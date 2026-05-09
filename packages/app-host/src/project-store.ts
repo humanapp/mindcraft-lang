@@ -14,9 +14,9 @@ export interface ProjectStore {
   listProjectCollections(): Promise<ProjectCollection[]>;
   /** Look up a non-deleted project collection by id. */
   getProjectCollection(projectCollectionId: string): Promise<ProjectCollection | undefined>;
-  /** Create a project collection with the given display name. */
+  /** Create a project collection with a trimmed, non-empty display name. */
   createProjectCollection(name: string): Promise<ProjectCollection>;
-  /** Patch the mutable fields of a project collection. */
+  /** Patch the mutable fields of a project collection. Names are trimmed and validated. */
   updateProjectCollection(
     projectCollectionId: string,
     updates: Partial<Pick<ProjectCollection, "name">>

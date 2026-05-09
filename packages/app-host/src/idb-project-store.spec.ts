@@ -5,12 +5,14 @@ import {
   createIdbProjectStore,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_COLLECTION_NAME,
+  PROJECT_COLLECTION_NAME_MAX_LENGTH,
   type ProjectCollection,
   type ProjectManifest,
   type ProjectStore,
 } from "@mindcraft-lang/app-host";
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { ProjectFileSystemEntry } from "./project-file-snapshot.js";
+import { assertRejectsWithCode } from "./test-support/error-assertions.js";
 
 let testId = 0;
 
@@ -105,13 +107,14 @@ describe("createIdbProjectStore project collections", () => {
 
   it("round-trips collection create, list, get, update, and delete", async () => {
     const store = await createIdbProjectStore(nextKeyPrefix());
-    const first = await store.createProjectCollection("Alpha");
+    const first = await store.createProjectCollection("  Alpha  ");
     const second = await store.createProjectCollection("Alpha");
 
+    assert.strictEqual(first.name, "Alpha");
     assert.notStrictEqual(first.projectCollectionId, second.projectCollectionId);
     assert.strictEqual((await store.listProjectCollections()).length, 2);
 
-    await store.updateProjectCollection(first.projectCollectionId, { name: "Beta" });
+    await store.updateProjectCollection(first.projectCollectionId, { name: "  Beta  " });
     const updated = await store.getProjectCollection(first.projectCollectionId);
     assert.strictEqual(updated?.name, "Beta");
     assert.ok(updated!.updatedAt >= first.updatedAt);
@@ -126,6 +129,24 @@ describe("createIdbProjectStore project collections", () => {
     );
   });
 
+  it("rejects invalid collection names", async () => {
+    const store = await createIdbProjectStore(nextKeyPrefix());
+    const collection = await store.createProjectCollection("Valid");
+    const tooLong = "x".repeat(PROJECT_COLLECTION_NAME_MAX_LENGTH + 1);
+
+    await assertRejectsWithCode(() => store.createProjectCollection("   "), "INVALID_PROJECT_COLLECTION_NAME");
+    await assertRejectsWithCode(() => store.createProjectCollection(tooLong), "INVALID_PROJECT_COLLECTION_NAME");
+    await assertRejectsWithCode(
+      () => store.updateProjectCollection(collection.projectCollectionId, { name: "" }),
+      "INVALID_PROJECT_COLLECTION_NAME"
+    );
+    await assertRejectsWithCode(
+      () => store.updateProjectCollection(collection.projectCollectionId, { name: tooLong }),
+      "INVALID_PROJECT_COLLECTION_NAME"
+    );
+    assert.strictEqual((await store.getProjectCollection(collection.projectCollectionId))?.name, "Valid");
+  });
+
   it("rejects deleting the default collection by id", async () => {
     const store = await createIdbProjectStore(nextKeyPrefix());
     const defaultCollection = await store.ensureDefaultProjectCollection();
@@ -135,9 +156,9 @@ describe("createIdbProjectStore project collections", () => {
     });
     const nonDefault = await store.createProjectCollection(DEFAULT_PROJECT_COLLECTION_NAME);
 
-    await assert.rejects(
+    await assertRejectsWithCode(
       () => store.deleteProjectCollection(DEFAULT_PROJECT_COLLECTION_ID),
-      /default project collection/i
+      "DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED"
     );
 
     await store.deleteProjectCollection(nonDefault.projectCollectionId);
@@ -242,13 +263,13 @@ describe("createIdbProjectStore project collection membership", () => {
   it("creates projects only in non-deleted project collections", async () => {
     const store = await createIdbProjectStore(nextKeyPrefix());
 
-    await assert.rejects(() => store.createProject("missing", "No Collection"), /project collection not found/i);
+    await assertRejectsWithCode(() => store.createProject("missing", "No Collection"), "PROJECT_COLLECTION_NOT_FOUND");
 
     const collection = await store.createProjectCollection("Transient");
     await store.deleteProjectCollection(collection.projectCollectionId);
-    await assert.rejects(
+    await assertRejectsWithCode(
       () => store.createProject(collection.projectCollectionId, "Tombstoned Collection"),
-      /project collection not found/i
+      "PROJECT_COLLECTION_NOT_FOUND"
     );
 
     assert.strictEqual((await store.listProjects(collection.projectCollectionId)).length, 0);
@@ -300,8 +321,8 @@ describe("createIdbProjectStore project collection membership", () => {
   it("rejects project delete and duplicate when the project is missing", async () => {
     const store = await createIdbProjectStore(nextKeyPrefix());
 
-    await assert.rejects(() => store.deleteProject("missing"), /project not found/i);
-    await assert.rejects(() => store.duplicateProject("missing", "Copy"), /project not found/i);
+    await assertRejectsWithCode(() => store.deleteProject("missing"), "PROJECT_NOT_FOUND");
+    await assertRejectsWithCode(() => store.duplicateProject("missing", "Copy"), "PROJECT_NOT_FOUND");
   });
 
   it("rejects project delete and duplicate when the owning collection is unavailable", async () => {
@@ -311,8 +332,8 @@ describe("createIdbProjectStore project collection membership", () => {
     await (store as TestStoreInternals).db.delete("projectCollections", collection.projectCollectionId);
 
     assert.strictEqual(await store.getProject(project.id), undefined);
-    await assert.rejects(() => store.deleteProject(project.id), /project collection not found/i);
-    await assert.rejects(() => store.duplicateProject(project.id, "Copy"), /project not found/i);
+    await assertRejectsWithCode(() => store.deleteProject(project.id), "PROJECT_COLLECTION_NOT_FOUND");
+    await assertRejectsWithCode(() => store.duplicateProject(project.id, "Copy"), "PROJECT_NOT_FOUND");
   });
 
   it("duplicates a project within the source collection", async () => {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import type {
   ImportDiagnostic,
+  ImportDiagnosticCode,
   ProjectFileChange,
   ProjectFileSnapshot,
   ProjectFileSystem,
@@ -17,6 +18,7 @@ import {
   MINDCRAFT_JSON_PATH,
   ProjectManager,
 } from "@mindcraft-lang/app-host";
+import { assertRejectsWithCode } from "./test-support/error-assertions.js";
 import { MemoryProjectStore } from "./test-support/memory-project-store.js";
 
 // -- Helpers ------------------------------------------------------------------
@@ -93,12 +95,16 @@ function makeFile(doc: Record<string, unknown>, name = "test.mindcraft"): File {
   return new File([json], name, { type: "application/json" });
 }
 
-function hasError(diagnostics: ImportDiagnostic[], substring: string): boolean {
-  return diagnostics.some((d) => d.severity === "error" && d.message.includes(substring));
+function hasDiagnosticCode(
+  diagnostics: ImportDiagnostic[],
+  severity: ImportDiagnostic["severity"],
+  code: ImportDiagnosticCode
+): boolean {
+  return diagnostics.some((diagnostic) => diagnostic.severity === severity && diagnostic.code === code);
 }
 
-function hasWarning(diagnostics: ImportDiagnostic[], substring: string): boolean {
-  return diagnostics.some((d) => d.severity === "warning" && d.message.includes(substring));
+function countDiagnosticCode(diagnostics: ImportDiagnostic[], code: ImportDiagnosticCode): number {
+  return diagnostics.filter((diagnostic) => diagnostic.code === code).length;
 }
 
 // -- Tests --------------------------------------------------------------------
@@ -197,9 +203,10 @@ describe("importProject", () => {
   let store: MemoryProjectStore;
   let pm: ProjectManager;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     store = new MemoryProjectStore();
     pm = new ProjectManager(store);
+    await pm.init();
   });
 
   afterEach(async () => {
@@ -215,7 +222,7 @@ describe("importProject", () => {
     });
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "maximum size"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_FILE_TOO_LARGE"));
   });
 
   it("rejects invalid JSON", async () => {
@@ -224,7 +231,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "not valid JSON"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_INVALID_JSON"));
   });
 
   it("rejects mismatched host.name", async () => {
@@ -233,8 +240,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "other-app"));
-    assert.ok(hasError(result.diagnostics, "cannot be imported"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_HOST_MISMATCH"));
   });
 
   it("rejects missing host.name", async () => {
@@ -243,7 +249,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "cannot be imported"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_HOST_MISMATCH"));
   });
 
   it("rejects newer host.version", async () => {
@@ -252,7 +258,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "newer version"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_NEWER_HOST_VERSION"));
   });
 
   it("accepts same host.version", async () => {
@@ -274,19 +280,19 @@ describe("importProject", () => {
   });
 
   it("rejects missing required fields", async () => {
-    const cases = [
-      { field: "name", doc: makeExportDoc({ name: 123 }), expected: '"name"' },
-      { field: "description", doc: makeExportDoc({ description: null }), expected: '"description"' },
-      { field: "files", doc: makeExportDoc({ files: "not-array" }), expected: '"files"' },
-      { field: "brains", doc: makeExportDoc({ brains: null }), expected: '"brains"' },
-      { field: "brains (array)", doc: makeExportDoc({ brains: [] }), expected: '"brains"' },
+    const cases: Array<{ field: string; doc: Record<string, unknown>; code: ImportDiagnosticCode }> = [
+      { field: "name", doc: makeExportDoc({ name: 123 }), code: "IMPORT_INVALID_NAME" },
+      { field: "description", doc: makeExportDoc({ description: null }), code: "IMPORT_INVALID_DESCRIPTION" },
+      { field: "files", doc: makeExportDoc({ files: "not-array" }), code: "IMPORT_INVALID_FILES" },
+      { field: "brains", doc: makeExportDoc({ brains: null }), code: "IMPORT_INVALID_BRAINS" },
+      { field: "brains (array)", doc: makeExportDoc({ brains: [] }), code: "IMPORT_INVALID_BRAINS" },
     ];
 
-    for (const { field, doc, expected } of cases) {
+    for (const { field, doc, code } of cases) {
       const file = makeFile(doc);
       const result = await importProject(file, "test-app", "1.0.0", pm);
       assert.strictEqual(result.success, false, `Expected failure for ${field}`);
-      assert.ok(hasError(result.diagnostics, expected), `Expected error mentioning ${expected} for ${field}`);
+      assert.ok(hasDiagnosticCode(result.diagnostics, "error", code));
     }
   });
 
@@ -346,7 +352,7 @@ describe("importProject", () => {
     assert.strictEqual(result.success, true);
     const snapshot = await store.loadProjectFiles(result.projectId!);
     assert.ok(snapshot?.get("valid.ts"));
-    assert.strictEqual(result.diagnostics.filter((d) => d.severity === "warning").length, 2);
+    assert.strictEqual(countDiagnosticCode(result.diagnostics, "IMPORT_INVALID_FILE_ENTRY"), 2);
   });
 
   it("saves brains to app data", async () => {
@@ -383,7 +389,7 @@ describe("importProject", () => {
     assert.strictEqual(callbackCalled, true);
     assert.deepStrictEqual(receivedApp, appData);
     assert.strictEqual(receivedVersion, "1.0.0");
-    assert.ok(hasWarning(result.diagnostics, "app warning"));
+    assert.strictEqual(result.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length, 1);
   });
 
   it("returns error when app is missing but callback is provided", async () => {
@@ -401,7 +407,7 @@ describe("importProject", () => {
 
     assert.strictEqual(result.success, false);
     assert.strictEqual(callbackCalled, false);
-    assert.ok(hasError(result.diagnostics, "No app-specific data"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_MISSING_APP_DATA"));
     assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
@@ -416,7 +422,7 @@ describe("importProject", () => {
     });
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "bad app data"));
+    assert.strictEqual(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length, 1);
     assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
@@ -472,7 +478,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", badPm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "boom"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
   });
 
   it("validates file paths -- rejects .. and leading /", async () => {
@@ -494,10 +500,7 @@ describe("importProject", () => {
     assert.strictEqual(snapshot?.has("../escape.ts"), false);
     assert.strictEqual(snapshot?.has("/absolute.ts"), false);
     assert.strictEqual(snapshot?.has("src\\backslash.ts"), false);
-    assert.strictEqual(
-      result.diagnostics.filter((d) => d.severity === "warning" && d.message.includes("invalid path")).length,
-      3
-    );
+    assert.strictEqual(countDiagnosticCode(result.diagnostics, "IMPORT_INVALID_FILE_PATH"), 3);
   });
 });
 
@@ -505,6 +508,7 @@ describe("ProjectManager.createFromSnapshot", () => {
   it("writes manifest, description, project files, and app data without opening", async () => {
     const store = new MemoryProjectStore();
     const pm = new ProjectManager(store);
+    await pm.init();
 
     const snapshot: ProjectFileSnapshot = new Map([
       ["src/main.ts", { kind: "file", content: "hello", etag: "e1", isReadonly: false }],
@@ -528,5 +532,37 @@ describe("ProjectManager.createFromSnapshot", () => {
 
     assert.strictEqual(await store.loadAppData(manifest.id, "brains"), '{"a":1}');
     assert.strictEqual(await store.loadAppData(manifest.id, "actors"), '{"b":2}');
+  });
+
+  it("rejects without writing a project when there is no active project collection", async () => {
+    const store = new MemoryProjectStore();
+    const pm = new ProjectManager(store);
+    const snapshot: ProjectFileSnapshot = new Map([
+      ["src/main.ts", { kind: "file", content: "hello", etag: "e1", isReadonly: false }],
+    ]);
+
+    await assertRejectsWithCode(
+      () => pm.createFromSnapshot("No Collection", "", snapshot),
+      "NO_ACTIVE_PROJECT_COLLECTION"
+    );
+    assert.deepStrictEqual(await store.listProjectCollections(), []);
+  });
+
+  it("rejects without writing a project when the active project collection is tombstoned", async () => {
+    const store = new MemoryProjectStore();
+    const pm = new ProjectManager(store);
+    await pm.init();
+    const collection = await pm.createProjectCollection("Transient");
+    await pm.switchProjectCollection(collection.projectCollectionId);
+    await store.deleteProjectCollection(collection.projectCollectionId);
+    const snapshot: ProjectFileSnapshot = new Map([
+      ["src/main.ts", { kind: "file", content: "hello", etag: "e1", isReadonly: false }],
+    ]);
+
+    await assertRejectsWithCode(
+      () => pm.createFromSnapshot("No Collection", "", snapshot),
+      "PROJECT_COLLECTION_NOT_FOUND"
+    );
+    assert.deepStrictEqual(await store.listProjects(collection.projectCollectionId), []);
   });
 });

@@ -505,8 +505,8 @@ follow."
 
 ## Current State
 
-Completed: W0, W1, W2
-Next up: W3
+Completed: W0, W1, W2, W3
+Next up: W4
 
 ---
 
@@ -552,6 +552,27 @@ passed in `packages/app-host`; `npm run typecheck && npm run check` passed in
 Risk: W4 still owns guarded file/app-data write re-checks and the tab-scoped
 project session shape, so stale-tab tombstone correctness is not complete until
 that phase lands.
+
+### W3 -- ProjectManager Project Collection Context
+
+W3 shipped active project collection context in app-host and scoped normal
+ProjectManager project lifecycle operations to that active collection.
+
+New public API: `ProjectCollectionState`,
+`ProjectCollectionSwitchResult`, project collection state subscriptions,
+ProjectManager collection CRUD/switch methods, app-host error codes, import
+diagnostic codes, and project collection name normalization.
+
+Verification: `npm run typecheck && npm run check && npm test && npm run build`
+passed in `packages/app-host`; `npm run typecheck && npm run check` passed in
+`apps/sim`.
+
+Risk: W4 must replace the active-project-only restore path with
+`ProjectCollectionTabSession` and should share stale-session fallback behavior
+across init, switch, and later unlock restore paths.
+
+Risk: W5/W6 UI should surface project collection name validation by app-host
+error code and avoid duplicating a divergent trim or length policy.
 
 ---
 

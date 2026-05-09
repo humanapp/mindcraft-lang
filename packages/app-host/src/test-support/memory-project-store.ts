@@ -1,6 +1,8 @@
 import {
+  appHostError,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_COLLECTION_NAME,
+  normalizeProjectCollectionName,
   type ProjectCollection,
   type ProjectFileSnapshot,
   type ProjectManifest,
@@ -30,7 +32,7 @@ export class MemoryProjectStore implements ProjectStore {
     const now = Date.now();
     const collection: ProjectCollection = {
       projectCollectionId: crypto.randomUUID(),
-      name,
+      name: normalizeProjectCollectionName(name),
       createdAt: now,
       updatedAt: now,
     };
@@ -44,17 +46,27 @@ export class MemoryProjectStore implements ProjectStore {
   ): Promise<void> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) return;
-    Object.assign(collection, updates, { updatedAt: Date.now() });
+    Object.assign(collection, {
+      ...updates,
+      name: updates.name === undefined ? collection.name : normalizeProjectCollectionName(updates.name),
+      updatedAt: Date.now(),
+    });
   }
 
   async deleteProjectCollection(projectCollectionId: string): Promise<void> {
     if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
-      throw new Error("Cannot delete the default project collection");
+      throw appHostError("DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the default project collection");
     }
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) return;
+    const now = Date.now();
     collection.deleted = true;
-    collection.updatedAt = Date.now();
+    collection.updatedAt = now;
+    this.projects = this.projects.map((project) =>
+      project.projectCollectionId === projectCollectionId && project.deleted !== true
+        ? { ...project, deleted: true, updatedAt: now }
+        : project
+    );
   }
 
   async ensureDefaultProjectCollection(): Promise<ProjectCollection> {
@@ -88,7 +100,9 @@ export class MemoryProjectStore implements ProjectStore {
 
   async createProject(projectCollectionId: string, name: string): Promise<ProjectManifest> {
     const collection = await this.getProjectCollection(projectCollectionId);
-    if (!collection) throw new Error(`not found: ${projectCollectionId}`);
+    if (!collection) {
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Project collection not found: ${projectCollectionId}`);
+    }
     const manifest: ProjectManifest = {
       id: `id-${this.projects.length + 1}`,
       projectCollectionId,
@@ -103,11 +117,18 @@ export class MemoryProjectStore implements ProjectStore {
 
   async deleteProject(id: string): Promise<void> {
     const idx = this.projects.findIndex((project) => project.id === id);
-    if (idx === -1) throw new Error(`not found: ${id}`);
+    if (idx === -1) {
+      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+    }
     const project = this.projects[idx];
     if (project.deleted === true) return;
     const collection = await this.getProjectCollection(project.projectCollectionId);
-    if (!collection) throw new Error(`not found: ${project.projectCollectionId}`);
+    if (!collection) {
+      throw appHostError(
+        "PROJECT_COLLECTION_NOT_FOUND",
+        `Project collection not found: ${project.projectCollectionId}`
+      );
+    }
     this.projects[idx] = { ...project, deleted: true, updatedAt: Date.now() };
   }
 
@@ -122,7 +143,9 @@ export class MemoryProjectStore implements ProjectStore {
 
   async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
     const source = await this.getProject(id);
-    if (!source) throw new Error(`not found: ${id}`);
+    if (!source) {
+      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+    }
     const dup = await this.createProject(source.projectCollectionId, newName);
     const snapshot = this.projectFiles.get(id);
     if (snapshot) this.projectFiles.set(dup.id, new Map(snapshot));

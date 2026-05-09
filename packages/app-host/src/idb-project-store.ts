@@ -1,8 +1,10 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
+import { appHostError } from "./app-host-error.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import {
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_COLLECTION_NAME,
+  normalizeProjectCollectionName,
   type ProjectCollection,
 } from "./project-collection.js";
 import type { ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
@@ -150,7 +152,7 @@ class IdbProjectStore implements ProjectStore {
     const now = Date.now();
     const collection: ProjectCollection = {
       projectCollectionId: crypto.randomUUID(),
-      name,
+      name: normalizeProjectCollectionName(name),
       createdAt: now,
       updatedAt: now,
     };
@@ -169,13 +171,14 @@ class IdbProjectStore implements ProjectStore {
     await this.db.put("projectCollections", {
       ...collection,
       ...updates,
+      name: updates.name === undefined ? collection.name : normalizeProjectCollectionName(updates.name),
       updatedAt: Date.now(),
     });
   }
 
   async deleteProjectCollection(projectCollectionId: string): Promise<void> {
     if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
-      throw new Error("Cannot delete the default project collection");
+      throw appHostError("DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the default project collection");
     }
 
     const collection = await this.getProjectCollection(projectCollectionId);
@@ -257,7 +260,7 @@ class IdbProjectStore implements ProjectStore {
   async createProject(projectCollectionId: string, name: string): Promise<ProjectManifest> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw new Error(`Project collection not found: ${projectCollectionId}`);
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Project collection not found: ${projectCollectionId}`);
     }
 
     const now = Date.now();
@@ -276,14 +279,17 @@ class IdbProjectStore implements ProjectStore {
   async deleteProject(id: string): Promise<void> {
     const project = await this.db.get("projects", id);
     if (!project) {
-      throw new Error(`Project not found: ${id}`);
+      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
     }
     if (!isLiveProject(project)) {
       return;
     }
     const collection = await this.getProjectCollection(project.projectCollectionId);
     if (!collection) {
-      throw new Error(`Project collection not found: ${project.projectCollectionId}`);
+      throw appHostError(
+        "PROJECT_COLLECTION_NOT_FOUND",
+        `Project collection not found: ${project.projectCollectionId}`
+      );
     }
 
     await this.db.put("projects", {
@@ -316,7 +322,7 @@ class IdbProjectStore implements ProjectStore {
   async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
     const source = await this.getProject(id);
     if (!source) {
-      throw new Error(`Project not found: ${id}`);
+      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
     }
 
     const newManifest = await this.createProject(source.projectCollectionId, newName);

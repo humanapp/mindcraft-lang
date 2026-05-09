@@ -1,3 +1,5 @@
+export type { AppHostErrorCode } from "./app-host-error.js";
+export { AppHostError, appHostError } from "./app-host-error.js";
 export type { ExampleDefinition, ExampleFile } from "./examples.js";
 export { EXAMPLES_FOLDER } from "./examples.js";
 export { createIdbProjectStore } from "./idb-project-store.js";
@@ -8,7 +10,12 @@ export { MINDCRAFT_JSON_PATH, parseMindcraftJson, serializeMindcraftJson } from 
 export type { MindcraftJsonHostInfo } from "./mindcraft-json-sync.js";
 export { diffMindcraftJsonToManifest, syncManifestToMindcraftJson } from "./mindcraft-json-sync.js";
 export type { ProjectCollection } from "./project-collection.js";
-export { DEFAULT_PROJECT_COLLECTION_ID, DEFAULT_PROJECT_COLLECTION_NAME } from "./project-collection.js";
+export {
+  DEFAULT_PROJECT_COLLECTION_ID,
+  DEFAULT_PROJECT_COLLECTION_NAME,
+  normalizeProjectCollectionName,
+  PROJECT_COLLECTION_NAME_MAX_LENGTH,
+} from "./project-collection.js";
 export type {
   ProjectDirectoryEntry,
   ProjectFileChange,
@@ -21,6 +28,7 @@ export type {
   ImportAppLayerCallback,
   ImportAppLayerResult,
   ImportDiagnostic,
+  ImportDiagnosticCode,
   ImportResult,
   MindcraftExportCommon,
   MindcraftExportDocument,
@@ -30,7 +38,13 @@ export type {
 export { buildExportCommon, DEFAULT_MAX_FILE_SIZE, importProject } from "./project-io.js";
 export type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 export { createWebLocksProjectLock } from "./project-lock.js";
-export type { ActiveProject, ProjectManagerOptions } from "./project-manager.js";
+export type {
+  ActiveProject,
+  ProjectCollectionAccessState,
+  ProjectCollectionState,
+  ProjectCollectionSwitchResult,
+  ProjectManagerOptions,
+} from "./project-manager.js";
 export { DEFAULT_PROJECT_NAME, ProjectManager } from "./project-manager.js";
 export type { ProjectManifest } from "./project-manifest.js";
 export type { ProjectStore } from "./project-store.js";
