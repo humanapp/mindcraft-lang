@@ -471,6 +471,7 @@ Include only:
 - One-sentence summary of what shipped.
 - Any new spec section, contract surface, or public API added.
 - Verification line.
+- New risks (see below for description)
 
 Do not include:
 
@@ -481,6 +482,8 @@ Do not include:
 - Before/after diffs.
 - Restatement of the phase deliverables.
 - Justification of why the implementation looks the way it does.
+
+#### Risks
 
 Risks should be recorded when they imply a concrete future action, expose a
 behavior change, document a gap between spec and implementation, or identify a
@@ -502,8 +505,8 @@ follow."
 
 ## Current State
 
-Completed: W0
-Next up: W1
+Completed: W0, W1
+Next up: W2
 
 ---
 
@@ -520,6 +523,18 @@ app-owned localStorage keys to use the app namespace without legacy key
 fallbacks.
 
 Verification: documentation-only phase; no code gate was required.
+
+### W1 -- Project Collection Metadata Store
+
+W1 shipped project collection metadata persistence in app-host without changing
+ProjectManager behavior or project membership.
+
+New public API: `ProjectCollection`,
+`DEFAULT_PROJECT_COLLECTION_ID`, `DEFAULT_PROJECT_COLLECTION_NAME`, and
+project collection CRUD/default-bootstrap methods on `ProjectStore`.
+
+Verification: `npm run typecheck && npm run check && npm test && npm run build`
+passed in `packages/app-host`.
 
 ---
 

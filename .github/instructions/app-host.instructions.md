@@ -6,9 +6,10 @@ applyTo: "packages/app-host/**"
 
 # app-host -- Rules & Patterns
 
-Project management, project file storage, and persistence for Mindcraft host apps.
-Apps (e.g. `apps/sim`) depend on this package for named projects, in-memory
-project file systems, and IDB-backed persistence. No dependency on
+Project collection management, project file storage, and persistence for
+Mindcraft host apps. Apps (e.g. `apps/sim`) depend on this package for named
+project collections, named projects, in-memory project file systems, and
+IDB-backed persistence. No dependency on
 `bridge-app`, `bridge-client`, or `bridge-protocol`.
 
 ## Build & Scripts
@@ -34,6 +35,7 @@ src/
   project-manager.spec.ts         # tests
   project-store.ts                # ProjectStore interface
   idb-project-store.ts            # IndexedDB implementation of ProjectStore
+  project-collection.ts           # ProjectCollection type and default constants
   project-manifest.ts             # ProjectManifest type
   project-lock.ts                 # Web Locks API for multi-tab safety
   project-file-system.ts          # ProjectFileSystem interface
@@ -51,8 +53,9 @@ src/
 - `ProjectManager` -- manages project lifecycle: create, open, switch, close,
   delete, duplicate. Owns the active project's file system and coordinates
   debounced auto-save to the store on any project file change.
-- `ProjectStore` -- interface for CRUD on projects, project files, and app data.
-  Implemented by `createIdbProjectStore` (IndexedDB).
+- `ProjectStore` -- interface for CRUD on project collections, projects,
+  project files, and app data. Implemented by `createIdbProjectStore`
+  (IndexedDB).
 - `ProjectFileSystem` -- interface for an in-memory filesystem: `exportSnapshot`,
   `applyRemoteChange`, `applyLocalChange`, `onLocalChange`, `onAnyChange`,
   `flush`. Implemented by `createInMemoryProjectFileSystem`.
@@ -91,6 +94,7 @@ Tests use `node:test` and `node:assert/strict`. Test files are colocated with
 source (`*.spec.ts`) and excluded from the build tsconfig.
 
 Current test files:
+- `idb-project-store.spec.ts` -- IndexedDB ProjectStore behavior
 - `project-manager.spec.ts` -- ProjectManager lifecycle, auto-save, events
 - `mindcraft-json.spec.ts` -- parse/serialize round-trips
 - `mindcraft-json-sync.spec.ts` -- manifest <-> mindcraft.json sync

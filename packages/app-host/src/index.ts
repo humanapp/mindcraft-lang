@@ -7,6 +7,8 @@ export type { MindcraftJson } from "./mindcraft-json.js";
 export { MINDCRAFT_JSON_PATH, parseMindcraftJson, serializeMindcraftJson } from "./mindcraft-json.js";
 export type { MindcraftJsonHostInfo } from "./mindcraft-json-sync.js";
 export { diffMindcraftJsonToManifest, syncManifestToMindcraftJson } from "./mindcraft-json-sync.js";
+export type { ProjectCollection } from "./project-collection.js";
+export { DEFAULT_PROJECT_COLLECTION_ID, DEFAULT_PROJECT_COLLECTION_NAME } from "./project-collection.js";
 export type {
   ProjectDirectoryEntry,
   ProjectFileChange,

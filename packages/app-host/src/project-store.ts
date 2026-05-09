@@ -1,13 +1,30 @@
+import type { ProjectCollection } from "./project-collection.js";
 import type { ProjectFileSnapshot } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
 
 /**
- * Persistence layer for projects: their manifests, project file snapshots, and
- * app-specific data.
+ * Persistence layer for project collections, project manifests, project file
+ * snapshots, and app-specific data.
  */
 export interface ProjectStore {
   /** Prefix used to scope this store's underlying storage keys. */
   readonly keyPrefix: string;
+
+  /** List all non-deleted project collections. */
+  listProjectCollections(): Promise<ProjectCollection[]>;
+  /** Look up a non-deleted project collection by id. */
+  getProjectCollection(projectCollectionId: string): Promise<ProjectCollection | undefined>;
+  /** Create a project collection with the given display name. */
+  createProjectCollection(name: string): Promise<ProjectCollection>;
+  /** Patch the mutable fields of a project collection. */
+  updateProjectCollection(
+    projectCollectionId: string,
+    updates: Partial<Pick<ProjectCollection, "name">>
+  ): Promise<void>;
+  /** Tombstone a project collection. */
+  deleteProjectCollection(projectCollectionId: string): Promise<void>;
+  /** Return the bootstrap project collection, creating it when needed. */
+  ensureDefaultProjectCollection(): Promise<ProjectCollection>;
 
   /** List all known project manifests. */
   listProjects(): Promise<ProjectManifest[]>;

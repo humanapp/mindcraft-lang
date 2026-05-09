@@ -1,10 +1,19 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
+import {
+  DEFAULT_PROJECT_COLLECTION_ID,
+  DEFAULT_PROJECT_COLLECTION_NAME,
+  type ProjectCollection,
+} from "./project-collection.js";
 import type { ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectStore } from "./project-store.js";
 
 interface ProjectDbSchema extends DBSchema {
+  projectCollections: {
+    key: string;
+    value: ProjectCollection;
+  };
   projects: {
     key: string;
     value: ProjectManifest;
@@ -19,7 +28,7 @@ interface ProjectDbSchema extends DBSchema {
   };
 }
 
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 function dbName(keyPrefix: string): string {
   return `${keyPrefix}-projects`;
@@ -27,6 +36,14 @@ function dbName(keyPrefix: string): string {
 
 function appDataKey(projectId: string, key: string): string {
   return `${projectId}:${key}`;
+}
+
+function isLiveProjectCollection(collection: ProjectCollection): boolean {
+  return collection.deleted !== true;
+}
+
+function isConstraintError(error: unknown): boolean {
+  return error instanceof Error && error.name === "ConstraintError";
 }
 
 /**
@@ -57,6 +74,9 @@ export async function createIdbProjectStore(keyPrefix: string): Promise<ProjectS
         db.deleteObjectStore("workspaces" as never);
         db.createObjectStore("files");
       }
+      if (oldVersion < 3) {
+        db.createObjectStore("projectCollections", { keyPath: "projectCollectionId" });
+      }
     },
   });
 
@@ -78,6 +98,90 @@ class IdbProjectStore implements ProjectStore {
   constructor(keyPrefix: string, db: IDBPDatabase<ProjectDbSchema>) {
     this.keyPrefix = keyPrefix;
     this.db = db;
+  }
+
+  async listProjectCollections(): Promise<ProjectCollection[]> {
+    return this.listLiveProjectCollections();
+  }
+
+  async getProjectCollection(projectCollectionId: string): Promise<ProjectCollection | undefined> {
+    const collection = await this.db.get("projectCollections", projectCollectionId);
+    if (!collection || !isLiveProjectCollection(collection)) {
+      return undefined;
+    }
+    return collection;
+  }
+
+  async createProjectCollection(name: string): Promise<ProjectCollection> {
+    const now = Date.now();
+    const collection: ProjectCollection = {
+      projectCollectionId: crypto.randomUUID(),
+      name,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.db.add("projectCollections", collection);
+    return collection;
+  }
+
+  async updateProjectCollection(
+    projectCollectionId: string,
+    updates: Partial<Pick<ProjectCollection, "name">>
+  ): Promise<void> {
+    const collection = await this.getProjectCollection(projectCollectionId);
+    if (!collection) {
+      return;
+    }
+    await this.db.put("projectCollections", {
+      ...collection,
+      ...updates,
+      updatedAt: Date.now(),
+    });
+  }
+
+  async deleteProjectCollection(projectCollectionId: string): Promise<void> {
+    if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
+      throw new Error("Cannot delete the default project collection");
+    }
+
+    const collection = await this.getProjectCollection(projectCollectionId);
+    if (!collection) {
+      return;
+    }
+    await this.db.put("projectCollections", {
+      ...collection,
+      deleted: true,
+      updatedAt: Date.now(),
+    });
+  }
+
+  async ensureDefaultProjectCollection(): Promise<ProjectCollection> {
+    const existing = await this.getProjectCollection(DEFAULT_PROJECT_COLLECTION_ID);
+    if (existing) {
+      return existing;
+    }
+
+    const now = Date.now();
+    const collection: ProjectCollection = {
+      projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
+      name: DEFAULT_PROJECT_COLLECTION_NAME,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    try {
+      await this.db.add("projectCollections", collection);
+      return collection;
+    } catch (error) {
+      if (!isConstraintError(error)) {
+        throw error;
+      }
+      const inserted = await this.getProjectCollection(DEFAULT_PROJECT_COLLECTION_ID);
+      if (inserted) {
+        return inserted;
+      }
+      throw error;
+    }
   }
 
   async listProjects(): Promise<ProjectManifest[]> {
@@ -207,5 +311,10 @@ class IdbProjectStore implements ProjectStore {
       sessionStorage.setItem(`${this.keyPrefix}:active-project`, id);
       localStorage.setItem(`${this.keyPrefix}:active-project`, id);
     }
+  }
+
+  private async listLiveProjectCollections(): Promise<ProjectCollection[]> {
+    const collections = await this.db.getAll("projectCollections");
+    return collections.filter(isLiveProjectCollection);
   }
 }

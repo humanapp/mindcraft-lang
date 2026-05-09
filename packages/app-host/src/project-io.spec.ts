@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import type {
   ImportDiagnostic,
+  ProjectCollection,
   ProjectFileChange,
   ProjectFileSnapshot,
   ProjectFileSystem,
@@ -11,6 +12,8 @@ import type {
 import {
   buildExportCommon,
   DEFAULT_MAX_FILE_SIZE,
+  DEFAULT_PROJECT_COLLECTION_ID,
+  DEFAULT_PROJECT_COLLECTION_NAME,
   DEFAULT_PROJECT_NAME,
   EXAMPLES_FOLDER,
   importProject,
@@ -22,10 +25,66 @@ import {
 
 class MemoryProjectStore implements ProjectStore {
   readonly keyPrefix = "test-app";
+  private projectCollections: ProjectCollection[] = [];
   private projects: ProjectManifest[] = [];
   private projectFiles = new Map<string, ProjectFileSnapshot>();
   private appData = new Map<string, string>();
   private activeId: string | undefined;
+
+  async listProjectCollections(): Promise<ProjectCollection[]> {
+    return this.projectCollections.filter((collection) => collection.deleted !== true);
+  }
+
+  async getProjectCollection(projectCollectionId: string): Promise<ProjectCollection | undefined> {
+    return this.projectCollections.find(
+      (collection) => collection.projectCollectionId === projectCollectionId && collection.deleted !== true
+    );
+  }
+
+  async createProjectCollection(name: string): Promise<ProjectCollection> {
+    const now = Date.now();
+    const collection: ProjectCollection = {
+      projectCollectionId: crypto.randomUUID(),
+      name,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.projectCollections.push(collection);
+    return collection;
+  }
+
+  async updateProjectCollection(
+    projectCollectionId: string,
+    updates: Partial<Pick<ProjectCollection, "name">>
+  ): Promise<void> {
+    const collection = await this.getProjectCollection(projectCollectionId);
+    if (!collection) return;
+    Object.assign(collection, updates, { updatedAt: Date.now() });
+  }
+
+  async deleteProjectCollection(projectCollectionId: string): Promise<void> {
+    if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
+      throw new Error("Cannot delete the default project collection");
+    }
+    const collection = await this.getProjectCollection(projectCollectionId);
+    if (!collection) return;
+    collection.deleted = true;
+    collection.updatedAt = Date.now();
+  }
+
+  async ensureDefaultProjectCollection(): Promise<ProjectCollection> {
+    const existing = await this.getProjectCollection(DEFAULT_PROJECT_COLLECTION_ID);
+    if (existing) return existing;
+    const now = Date.now();
+    const collection: ProjectCollection = {
+      projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
+      name: DEFAULT_PROJECT_COLLECTION_NAME,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.projectCollections.push(collection);
+    return collection;
+  }
 
   async listProjects(): Promise<ProjectManifest[]> {
     return [...this.projects];
