@@ -28,7 +28,11 @@ interface ProjectDbSchema extends DBSchema {
   };
 }
 
-const DB_VERSION = 3;
+type LegacyProjectManifest = Omit<ProjectManifest, "projectCollectionId"> & {
+  projectCollectionId?: string;
+};
+
+const DB_VERSION = 4;
 
 function dbName(keyPrefix: string): string {
   return `${keyPrefix}-projects`;
@@ -40,6 +44,10 @@ function appDataKey(projectId: string, key: string): string {
 
 function isLiveProjectCollection(collection: ProjectCollection): boolean {
   return collection.deleted !== true;
+}
+
+function isLiveProject(project: ProjectManifest): boolean {
+  return project.deleted !== true;
 }
 
 function isConstraintError(error: unknown): boolean {
@@ -76,6 +84,32 @@ export async function createIdbProjectStore(keyPrefix: string): Promise<ProjectS
       }
       if (oldVersion < 3) {
         db.createObjectStore("projectCollections", { keyPath: "projectCollectionId" });
+      }
+      if (oldVersion < 4) {
+        const projectStore = tx.objectStore("projects");
+        const projects = (await projectStore.getAll()) as LegacyProjectManifest[];
+        const projectsWithoutCollection = projects.filter((project) => project.projectCollectionId === undefined);
+
+        if (projectsWithoutCollection.length > 0) {
+          const collectionStore = tx.objectStore("projectCollections");
+          const existingDefault = await collectionStore.get(DEFAULT_PROJECT_COLLECTION_ID);
+          if (!existingDefault) {
+            const now = Date.now();
+            await collectionStore.add({
+              projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
+              name: DEFAULT_PROJECT_COLLECTION_NAME,
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
+
+          for (const project of projectsWithoutCollection) {
+            await projectStore.put({
+              ...project,
+              projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
+            });
+          }
+        }
       }
     },
   });
@@ -148,11 +182,26 @@ class IdbProjectStore implements ProjectStore {
     if (!collection) {
       return;
     }
-    await this.db.put("projectCollections", {
+    const now = Date.now();
+    const tx = this.db.transaction(["projectCollections", "projects"], "readwrite");
+    await tx.objectStore("projectCollections").put({
       ...collection,
       deleted: true,
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
+
+    const projectStore = tx.objectStore("projects");
+    const projects = await projectStore.getAll();
+    for (const project of projects) {
+      if (project.projectCollectionId === projectCollectionId && isLiveProject(project)) {
+        await projectStore.put({
+          ...project,
+          deleted: true,
+          updatedAt: now,
+        });
+      }
+    }
+    await tx.done;
   }
 
   async ensureDefaultProjectCollection(): Promise<ProjectCollection> {
@@ -184,40 +233,64 @@ class IdbProjectStore implements ProjectStore {
     }
   }
 
-  async listProjects(): Promise<ProjectManifest[]> {
-    return this.db.getAll("projects");
+  async listProjects(projectCollectionId: string): Promise<ProjectManifest[]> {
+    const collection = await this.getProjectCollection(projectCollectionId);
+    if (!collection) {
+      return [];
+    }
+    const projects = await this.db.getAll("projects");
+    return projects.filter((project) => project.projectCollectionId === projectCollectionId && isLiveProject(project));
   }
 
   async getProject(id: string): Promise<ProjectManifest | undefined> {
-    return this.db.get("projects", id);
+    const project = await this.db.get("projects", id);
+    if (!project || !isLiveProject(project)) {
+      return undefined;
+    }
+    const collection = await this.getProjectCollection(project.projectCollectionId);
+    if (!collection) {
+      return undefined;
+    }
+    return project;
   }
 
-  async createProject(name: string): Promise<ProjectManifest> {
+  async createProject(projectCollectionId: string, name: string): Promise<ProjectManifest> {
+    const collection = await this.getProjectCollection(projectCollectionId);
+    if (!collection) {
+      throw new Error(`Project collection not found: ${projectCollectionId}`);
+    }
+
+    const now = Date.now();
     const manifest: ProjectManifest = {
       id: crypto.randomUUID(),
+      projectCollectionId,
       name,
       description: "",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     };
     await this.db.put("projects", manifest);
     return manifest;
   }
 
   async deleteProject(id: string): Promise<void> {
-    const tx = this.db.transaction(["projects", "files", "appData"], "readwrite");
-    await tx.objectStore("projects").delete(id);
-    await tx.objectStore("files").delete(id);
-
-    const appStore = tx.objectStore("appData");
-    const allKeys = await appStore.getAllKeys();
-    const prefix = `${id}:`;
-    for (const key of allKeys) {
-      if (typeof key === "string" && key.startsWith(prefix)) {
-        await appStore.delete(key);
-      }
+    const project = await this.db.get("projects", id);
+    if (!project) {
+      throw new Error(`Project not found: ${id}`);
     }
-    await tx.done;
+    if (!isLiveProject(project)) {
+      return;
+    }
+    const collection = await this.getProjectCollection(project.projectCollectionId);
+    if (!collection) {
+      throw new Error(`Project collection not found: ${project.projectCollectionId}`);
+    }
+
+    await this.db.put("projects", {
+      ...project,
+      deleted: true,
+      updatedAt: Date.now(),
+    });
 
     const activeId = this.getActiveProjectId();
     if (activeId === id) {
@@ -246,7 +319,7 @@ class IdbProjectStore implements ProjectStore {
       throw new Error(`Project not found: ${id}`);
     }
 
-    const newManifest = await this.createProject(newName);
+    const newManifest = await this.createProject(source.projectCollectionId, newName);
 
     const projectFiles = await this.loadProjectFiles(id);
     if (projectFiles) {
@@ -297,19 +370,29 @@ class IdbProjectStore implements ProjectStore {
 
   getActiveProjectId(): string | undefined {
     return (
-      sessionStorage.getItem(`${this.keyPrefix}:active-project`) ??
-      localStorage.getItem(`${this.keyPrefix}:active-project`) ??
+      (typeof sessionStorage === "undefined"
+        ? undefined
+        : sessionStorage.getItem(`${this.keyPrefix}:active-project`)) ??
+      (typeof localStorage === "undefined" ? undefined : localStorage.getItem(`${this.keyPrefix}:active-project`)) ??
       undefined
     );
   }
 
   setActiveProjectId(id: string | undefined): void {
     if (id === undefined) {
-      sessionStorage.removeItem(`${this.keyPrefix}:active-project`);
-      localStorage.removeItem(`${this.keyPrefix}:active-project`);
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.removeItem(`${this.keyPrefix}:active-project`);
+      }
+      if (typeof localStorage !== "undefined") {
+        localStorage.removeItem(`${this.keyPrefix}:active-project`);
+      }
     } else {
-      sessionStorage.setItem(`${this.keyPrefix}:active-project`, id);
-      localStorage.setItem(`${this.keyPrefix}:active-project`, id);
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.setItem(`${this.keyPrefix}:active-project`, id);
+      }
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(`${this.keyPrefix}:active-project`, id);
+      }
     }
   }
 

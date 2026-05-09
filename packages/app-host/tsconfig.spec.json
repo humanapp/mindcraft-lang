@@ -9,6 +9,6 @@
       "@mindcraft-lang/app-host": ["./src/index.ts"]
     }
   },
-  "include": ["src/**/*.spec.ts"],
+  "include": ["src/**/*.spec.ts", "src/test-support/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

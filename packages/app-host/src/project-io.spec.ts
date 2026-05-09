@@ -2,166 +2,24 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import type {
   ImportDiagnostic,
-  ProjectCollection,
   ProjectFileChange,
   ProjectFileSnapshot,
   ProjectFileSystem,
   ProjectManifest,
-  ProjectStore,
 } from "@mindcraft-lang/app-host";
 import {
   buildExportCommon,
   DEFAULT_MAX_FILE_SIZE,
   DEFAULT_PROJECT_COLLECTION_ID,
-  DEFAULT_PROJECT_COLLECTION_NAME,
   DEFAULT_PROJECT_NAME,
   EXAMPLES_FOLDER,
   importProject,
   MINDCRAFT_JSON_PATH,
   ProjectManager,
 } from "@mindcraft-lang/app-host";
+import { MemoryProjectStore } from "./test-support/memory-project-store.js";
 
 // -- Helpers ------------------------------------------------------------------
-
-class MemoryProjectStore implements ProjectStore {
-  readonly keyPrefix = "test-app";
-  private projectCollections: ProjectCollection[] = [];
-  private projects: ProjectManifest[] = [];
-  private projectFiles = new Map<string, ProjectFileSnapshot>();
-  private appData = new Map<string, string>();
-  private activeId: string | undefined;
-
-  async listProjectCollections(): Promise<ProjectCollection[]> {
-    return this.projectCollections.filter((collection) => collection.deleted !== true);
-  }
-
-  async getProjectCollection(projectCollectionId: string): Promise<ProjectCollection | undefined> {
-    return this.projectCollections.find(
-      (collection) => collection.projectCollectionId === projectCollectionId && collection.deleted !== true
-    );
-  }
-
-  async createProjectCollection(name: string): Promise<ProjectCollection> {
-    const now = Date.now();
-    const collection: ProjectCollection = {
-      projectCollectionId: crypto.randomUUID(),
-      name,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.projectCollections.push(collection);
-    return collection;
-  }
-
-  async updateProjectCollection(
-    projectCollectionId: string,
-    updates: Partial<Pick<ProjectCollection, "name">>
-  ): Promise<void> {
-    const collection = await this.getProjectCollection(projectCollectionId);
-    if (!collection) return;
-    Object.assign(collection, updates, { updatedAt: Date.now() });
-  }
-
-  async deleteProjectCollection(projectCollectionId: string): Promise<void> {
-    if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
-      throw new Error("Cannot delete the default project collection");
-    }
-    const collection = await this.getProjectCollection(projectCollectionId);
-    if (!collection) return;
-    collection.deleted = true;
-    collection.updatedAt = Date.now();
-  }
-
-  async ensureDefaultProjectCollection(): Promise<ProjectCollection> {
-    const existing = await this.getProjectCollection(DEFAULT_PROJECT_COLLECTION_ID);
-    if (existing) return existing;
-    const now = Date.now();
-    const collection: ProjectCollection = {
-      projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
-      name: DEFAULT_PROJECT_COLLECTION_NAME,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.projectCollections.push(collection);
-    return collection;
-  }
-
-  async listProjects(): Promise<ProjectManifest[]> {
-    return [...this.projects];
-  }
-
-  async getProject(id: string): Promise<ProjectManifest | undefined> {
-    return this.projects.find((p) => p.id === id);
-  }
-
-  async createProject(name: string): Promise<ProjectManifest> {
-    const manifest: ProjectManifest = {
-      id: `id-${this.projects.length + 1}`,
-      name,
-      description: "",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    this.projects.push(manifest);
-    return manifest;
-  }
-
-  async deleteProject(id: string): Promise<void> {
-    this.projects = this.projects.filter((p) => p.id !== id);
-    this.projectFiles.delete(id);
-    for (const key of this.appData.keys()) {
-      if (key.startsWith(`${id}:`)) {
-        this.appData.delete(key);
-      }
-    }
-  }
-
-  async updateProject(
-    id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
-  ): Promise<void> {
-    const idx = this.projects.findIndex((p) => p.id === id);
-    if (idx === -1) return;
-    this.projects[idx] = { ...this.projects[idx], ...updates, updatedAt: Date.now() };
-  }
-
-  async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
-    const source = await this.getProject(id);
-    if (!source) throw new Error(`not found: ${id}`);
-    const dup = await this.createProject(newName);
-    const ws = this.projectFiles.get(id);
-    if (ws) this.projectFiles.set(dup.id, new Map(ws));
-    return dup;
-  }
-
-  async loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined> {
-    return this.projectFiles.get(id);
-  }
-
-  async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
-    this.projectFiles.set(id, snapshot);
-  }
-
-  async loadAppData(id: string, key: string): Promise<string | undefined> {
-    return this.appData.get(`${id}:${key}`);
-  }
-
-  async saveAppData(id: string, key: string, data: string): Promise<void> {
-    this.appData.set(`${id}:${key}`, data);
-  }
-
-  async deleteAppData(id: string, key: string): Promise<void> {
-    this.appData.delete(`${id}:${key}`);
-  }
-
-  getActiveProjectId(): string | undefined {
-    return this.activeId;
-  }
-
-  setActiveProjectId(id: string | undefined): void {
-    this.activeId = id;
-  }
-}
 
 function makeProjectFileSystem(
   files?: Map<string, { kind: "file"; content: string; etag: string; isReadonly: boolean }>,
@@ -208,6 +66,7 @@ function makeProjectFileSystem(
 function makeManifest(overrides?: Partial<ProjectManifest>): ProjectManifest {
   return {
     id: "proj-1",
+    projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
     name: "My Project",
     description: "A test project",
     createdAt: 1000,
@@ -260,6 +119,7 @@ describe("buildExportCommon", () => {
     assert.strictEqual(result.files[0].content, "hello");
     assert.strictEqual(result.name, "My Project");
     assert.strictEqual(result.description, "A test project");
+    assert.strictEqual("projectCollectionId" in result, false);
   });
 
   it("excludes read-only files", async () => {
@@ -542,7 +402,7 @@ describe("importProject", () => {
     assert.strictEqual(result.success, false);
     assert.strictEqual(callbackCalled, false);
     assert.ok(hasError(result.diagnostics, "No app-specific data"));
-    assert.strictEqual((await store.listProjects()).length, 0);
+    assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
   it("aborts import when app layer callback returns error diagnostic", async () => {
@@ -557,7 +417,7 @@ describe("importProject", () => {
 
     assert.strictEqual(result.success, false);
     assert.ok(hasError(result.diagnostics, "bad app data"));
-    assert.strictEqual((await store.listProjects()).length, 0);
+    assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
   it("merges app layer appData into store alongside brains", async () => {

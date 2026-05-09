@@ -50,6 +50,7 @@ export class ProjectManager {
   }
 
   async init(): Promise<void> {
+    await this.defaultProjectCollectionId();
     const activeId = this.store.getActiveProjectId();
     if (activeId) {
       const manifest = await this.store.getProject(activeId);
@@ -65,7 +66,7 @@ export class ProjectManager {
   }
 
   async listProjects(): Promise<ProjectManifest[]> {
-    return this.store.listProjects();
+    return this.store.listProjects(await this.defaultProjectCollectionId());
   }
 
   get activeProject(): ActiveProject | undefined {
@@ -73,7 +74,7 @@ export class ProjectManager {
   }
 
   async create(name: string): Promise<ProjectManifest> {
-    const manifest = await this.store.createProject(name);
+    const manifest = await this.store.createProject(await this.defaultProjectCollectionId(), name);
     await this.notifyProjectList();
     await this.open(manifest.id);
     return manifest;
@@ -86,7 +87,7 @@ export class ProjectManager {
     appData?: Record<string, string>,
     thumbnailUrl?: string
   ): Promise<ProjectManifest> {
-    const manifest = await this.store.createProject(name);
+    const manifest = await this.store.createProject(await this.defaultProjectCollectionId(), name);
     await this.store.updateProject(manifest.id, { description, thumbnailUrl });
     await this.store.saveProjectFiles(manifest.id, snapshot);
     if (appData) {
@@ -175,7 +176,7 @@ export class ProjectManager {
     if (this.currentActive) {
       return this.currentActive;
     }
-    const existing = await this.store.listProjects();
+    const existing = await this.listProjects();
     for (const project of existing) {
       const result = await this.tryOpen(project.id);
       if (result) {
@@ -293,9 +294,14 @@ export class ProjectManager {
   }
 
   private async notifyProjectList(): Promise<void> {
-    const projects = await this.store.listProjects();
+    const projects = await this.listProjects();
     for (const listener of this.projectListListeners) {
       listener(projects);
     }
+  }
+
+  private async defaultProjectCollectionId(): Promise<string> {
+    const collection = await this.store.ensureDefaultProjectCollection();
+    return collection.projectCollectionId;
   }
 }

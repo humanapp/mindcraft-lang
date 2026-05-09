@@ -1,151 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import type { ProjectCollection, ProjectFileSnapshot, ProjectManifest, ProjectStore } from "@mindcraft-lang/app-host";
-import {
-  DEFAULT_PROJECT_COLLECTION_ID,
-  DEFAULT_PROJECT_COLLECTION_NAME,
-  ProjectManager,
-} from "@mindcraft-lang/app-host";
-
-class MemoryProjectStore implements ProjectStore {
-  readonly keyPrefix = "test-app";
-  private projectCollections: ProjectCollection[] = [];
-  private projects: ProjectManifest[] = [];
-  private projectFiles = new Map<string, ProjectFileSnapshot>();
-  private appData = new Map<string, string>();
-  private activeId: string | undefined;
-
-  async listProjectCollections(): Promise<ProjectCollection[]> {
-    return this.projectCollections.filter((collection) => collection.deleted !== true);
-  }
-
-  async getProjectCollection(projectCollectionId: string): Promise<ProjectCollection | undefined> {
-    return this.projectCollections.find(
-      (collection) => collection.projectCollectionId === projectCollectionId && collection.deleted !== true
-    );
-  }
-
-  async createProjectCollection(name: string): Promise<ProjectCollection> {
-    const now = Date.now();
-    const collection: ProjectCollection = {
-      projectCollectionId: crypto.randomUUID(),
-      name,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.projectCollections.push(collection);
-    return collection;
-  }
-
-  async updateProjectCollection(
-    projectCollectionId: string,
-    updates: Partial<Pick<ProjectCollection, "name">>
-  ): Promise<void> {
-    const collection = await this.getProjectCollection(projectCollectionId);
-    if (!collection) return;
-    Object.assign(collection, updates, { updatedAt: Date.now() });
-  }
-
-  async deleteProjectCollection(projectCollectionId: string): Promise<void> {
-    if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
-      throw new Error("Cannot delete the default project collection");
-    }
-    const collection = await this.getProjectCollection(projectCollectionId);
-    if (!collection) return;
-    collection.deleted = true;
-    collection.updatedAt = Date.now();
-  }
-
-  async ensureDefaultProjectCollection(): Promise<ProjectCollection> {
-    const existing = await this.getProjectCollection(DEFAULT_PROJECT_COLLECTION_ID);
-    if (existing) return existing;
-    const now = Date.now();
-    const collection: ProjectCollection = {
-      projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
-      name: DEFAULT_PROJECT_COLLECTION_NAME,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.projectCollections.push(collection);
-    return collection;
-  }
-
-  async listProjects(): Promise<ProjectManifest[]> {
-    return [...this.projects];
-  }
-
-  async getProject(id: string): Promise<ProjectManifest | undefined> {
-    return this.projects.find((p) => p.id === id);
-  }
-
-  async createProject(name: string): Promise<ProjectManifest> {
-    const manifest: ProjectManifest = {
-      id: `id-${this.projects.length + 1}`,
-      name,
-      description: "",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    this.projects.push(manifest);
-    return manifest;
-  }
-
-  async deleteProject(id: string): Promise<void> {
-    this.projects = this.projects.filter((p) => p.id !== id);
-    this.projectFiles.delete(id);
-    for (const key of this.appData.keys()) {
-      if (key.startsWith(`${id}:`)) {
-        this.appData.delete(key);
-      }
-    }
-  }
-
-  async updateProject(
-    id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
-  ): Promise<void> {
-    const idx = this.projects.findIndex((p) => p.id === id);
-    if (idx === -1) return;
-    this.projects[idx] = { ...this.projects[idx], ...updates, updatedAt: Date.now() };
-  }
-
-  async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
-    const source = await this.getProject(id);
-    if (!source) throw new Error(`not found: ${id}`);
-    const dup = await this.createProject(newName);
-    const ws = this.projectFiles.get(id);
-    if (ws) this.projectFiles.set(dup.id, new Map(ws));
-    return dup;
-  }
-
-  async loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined> {
-    return this.projectFiles.get(id);
-  }
-
-  async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
-    this.projectFiles.set(id, snapshot);
-  }
-
-  async loadAppData(id: string, key: string): Promise<string | undefined> {
-    return this.appData.get(`${id}:${key}`);
-  }
-
-  async saveAppData(id: string, key: string, data: string): Promise<void> {
-    this.appData.set(`${id}:${key}`, data);
-  }
-
-  async deleteAppData(id: string, key: string): Promise<void> {
-    this.appData.delete(`${id}:${key}`);
-  }
-
-  getActiveProjectId(): string | undefined {
-    return this.activeId;
-  }
-
-  setActiveProjectId(id: string | undefined): void {
-    this.activeId = id;
-  }
-}
+import { DEFAULT_PROJECT_COLLECTION_ID, ProjectManager } from "@mindcraft-lang/app-host";
+import { MemoryProjectStore } from "./test-support/memory-project-store.js";
 
 describe("ProjectManager", () => {
   let memStore: MemoryProjectStore;
@@ -176,7 +32,8 @@ describe("ProjectManager", () => {
     });
 
     it("opens first existing project when no active project", async () => {
-      await memStore.createProject("Existing");
+      await memStore.ensureDefaultProjectCollection();
+      await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Existing");
       const fresh = new ProjectManager(memStore);
       const active = await fresh.ensureDefaultProject("Ignored");
       assert.strictEqual(active.manifest.name, "Existing");
@@ -231,7 +88,7 @@ describe("ProjectManager", () => {
   describe("delete", () => {
     it("removes a non-active project", async () => {
       const a = await pm.create("A");
-      const b = await memStore.createProject("B");
+      const b = await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "B");
       await pm.delete(b.id);
       const projects = await pm.listProjects();
       assert.strictEqual(projects.length, 1);
@@ -245,7 +102,7 @@ describe("ProjectManager", () => {
 
     it("fires project list listener", async () => {
       await pm.create("A");
-      const b = await memStore.createProject("B");
+      const b = await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "B");
       const calls: number[] = [];
       pm.onProjectListChange((projects) => calls.push(projects.length));
       await pm.delete(b.id);
@@ -318,7 +175,8 @@ describe("ProjectManager", () => {
 
   describe("init restores active project", () => {
     it("opens previously active project on init", async () => {
-      const manifest = await memStore.createProject("Persisted");
+      await memStore.ensureDefaultProjectCollection();
+      const manifest = await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Persisted");
       memStore.setActiveProjectId(manifest.id);
 
       const restored = new ProjectManager(memStore);

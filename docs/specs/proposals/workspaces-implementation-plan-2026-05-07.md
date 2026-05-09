@@ -505,8 +505,8 @@ follow."
 
 ## Current State
 
-Completed: W0, W1
-Next up: W2
+Completed: W0, W1, W2
+Next up: W3
 
 ---
 
@@ -535,6 +535,23 @@ project collection CRUD/default-bootstrap methods on `ProjectStore`.
 
 Verification: `npm run typecheck && npm run check && npm test && npm run build`
 passed in `packages/app-host`.
+
+### W2 -- Project Collection Membership Migration
+
+W2 shipped project collection ownership for persisted projects while preserving
+the current single-default-collection app behavior.
+
+New public API: `ProjectManifest.projectCollectionId`,
+`ProjectManifest.deleted`, `ProjectStore.listProjects(projectCollectionId)`,
+and `ProjectStore.createProject(projectCollectionId, name)`.
+
+Verification: `npm run typecheck && npm run check && npm test && npm run build`
+passed in `packages/app-host`; `npm run typecheck && npm run check` passed in
+`apps/sim`.
+
+Risk: W4 still owns guarded file/app-data write re-checks and the tab-scoped
+project session shape, so stale-tab tombstone correctness is not complete until
+that phase lands.
 
 ---
 

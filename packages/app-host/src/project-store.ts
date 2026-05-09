@@ -26,13 +26,13 @@ export interface ProjectStore {
   /** Return the bootstrap project collection, creating it when needed. */
   ensureDefaultProjectCollection(): Promise<ProjectCollection>;
 
-  /** List all known project manifests. */
-  listProjects(): Promise<ProjectManifest[]>;
-  /** Look up a single manifest by id. */
+  /** List all non-deleted project manifests in one project collection. */
+  listProjects(projectCollectionId: string): Promise<ProjectManifest[]>;
+  /** Look up a single non-deleted manifest by id. */
   getProject(id: string): Promise<ProjectManifest | undefined>;
-  /** Create a new, empty project with the given display name. */
-  createProject(name: string): Promise<ProjectManifest>;
-  /** Delete the project, its files, and all associated app data. */
+  /** Create a new, empty project in the given project collection. */
+  createProject(projectCollectionId: string, name: string): Promise<ProjectManifest>;
+  /** Tombstone the project manifest while preserving project files and app data. */
   deleteProject(id: string): Promise<void>;
   /** Patch the mutable fields of a project's manifest. */
   updateProject(

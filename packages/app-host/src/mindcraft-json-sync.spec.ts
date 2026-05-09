@@ -7,6 +7,7 @@ import type {
   ProjectManifest,
 } from "@mindcraft-lang/app-host";
 import {
+  DEFAULT_PROJECT_COLLECTION_ID,
   diffMindcraftJsonToManifest,
   MINDCRAFT_JSON_PATH,
   parseMindcraftJson,
@@ -19,6 +20,7 @@ const HOST = { name: "test-app", version: "1.0.0" };
 function makeManifest(overrides?: Partial<ProjectManifest>): ProjectManifest {
   return {
     id: "proj-1",
+    projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
     name: "My Project",
     description: "A test project",
     createdAt: 1000,
