@@ -1,16 +1,23 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import {
+  createProjectCollectionPinVerifier,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_NAME,
+  normalizeProjectCollectionPin,
   PROJECT_COLLECTION_NAME_MAX_LENGTH,
+  type ProjectCollection,
   type ProjectCollectionEvent,
+  type ProjectCollectionReloadUnlock,
   type ProjectCollectionState,
   type ProjectCollectionSummaryChange,
   type ProjectCollectionTabSession,
   type ProjectFileSnapshot,
   ProjectManager,
   type ProjectPersistenceError,
+  RELOAD_UNLOCK_REFRESH_INTERVAL_MS,
+  RELOAD_UNLOCK_TTL_MS,
+  verifyProjectCollectionPin,
 } from "@mindcraft-lang/app-host";
 import { logger } from "@mindcraft-lang/core";
 import { createProjectCollectionBroadcast } from "./project-collection-broadcast.js";
@@ -21,6 +28,7 @@ describe("ProjectManager", () => {
   let memStore: MemoryProjectStore;
   let pm: ProjectManager;
   const originalBroadcastChannel: typeof BroadcastChannel | undefined = globalThis.BroadcastChannel;
+  const originalSessionStorage: Storage | undefined = globalThis.sessionStorage;
 
   beforeEach(() => {
     installTestBroadcastChannel();
@@ -32,6 +40,7 @@ describe("ProjectManager", () => {
     await pm.close();
     pm.dispose();
     restoreBroadcastChannel(originalBroadcastChannel);
+    restoreStorage("sessionStorage", originalSessionStorage);
   });
 
   describe("ensureDefaultProject", () => {
@@ -56,6 +65,7 @@ describe("ProjectManager", () => {
       const active = await fresh.ensureDefaultProject("Ignored");
       assert.strictEqual(active.manifest.name, "Existing");
       await fresh.close();
+      fresh.dispose();
     });
   });
 
@@ -756,6 +766,530 @@ describe("ProjectManager", () => {
     });
   });
 
+  describe("project collection PIN protection", () => {
+    it("validates and verifies v1 PIN verifiers without storing raw PINs", async () => {
+      const verifier = await createProjectCollectionPinVerifier("  1234  ");
+
+      assert.strictEqual(normalizeProjectCollectionPin("  phrase with spaces  "), "phrase with spaces");
+      assert.strictEqual(verifier.scheme, "v1");
+      assert.strictEqual(typeof verifier.createdAt, "number");
+      assert.notStrictEqual(verifier.hash, "1234");
+      assert.strictEqual(await verifyProjectCollectionPin("1234", verifier), true);
+      assert.strictEqual(await verifyProjectCollectionPin(" 1234 ", verifier), true);
+      assert.strictEqual(await verifyProjectCollectionPin("9999", verifier), false);
+      assert.throws(() => normalizeProjectCollectionPin("123"), /Project collection PIN/);
+      assert.throws(() => normalizeProjectCollectionPin("ab\ncd"), /Project collection PIN/);
+    });
+
+    it("fails clearly when WebCrypto PBKDF2 is unavailable", async () => {
+      const originalCrypto = globalThis.crypto;
+      Object.defineProperty(globalThis, "crypto", {
+        configurable: true,
+        writable: true,
+        value: undefined,
+      });
+      try {
+        await assertRejectsWithCode(
+          () => createProjectCollectionPinVerifier("1234"),
+          "PROJECT_COLLECTION_PIN_CAPABILITY_UNAVAILABLE"
+        );
+      } finally {
+        Object.defineProperty(globalThis, "crypto", {
+          configurable: true,
+          writable: true,
+          value: originalCrypto,
+        });
+      }
+    });
+
+    it("reports protected collection access per tab in summaries and state", async () => {
+      await pm.init();
+      const collection = await pm.createProjectCollection("Protected");
+      await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+      const tabB = new ProjectManager(memStore.cloneForNewTab());
+
+      await tabB.init();
+      const tabBSummaries = await tabB.watchProjectCollectionSummaries(() => {});
+      assert.strictEqual(
+        tabBSummaries.initial.find(
+          (summary) => summary.collection.projectCollectionId === collection.projectCollectionId
+        )?.access,
+        "locked"
+      );
+
+      const changes: ProjectCollectionSummaryChange[] = [];
+      await tabB.watchProjectCollectionSummaries((change) => changes.push(change));
+      await tabB.unlockProjectCollection(collection.projectCollectionId, "1234");
+
+      const change = changes.at(-1);
+      if (change?.type !== "upsert") {
+        assert.fail("Expected unlock summary upsert");
+      }
+      assert.strictEqual(change.summary.access, "ready");
+      assert.strictEqual(tabB.isProjectCollectionUnlocked(collection.projectCollectionId), true);
+      await tabB.close();
+      tabB.dispose();
+    });
+
+    it("switches to a protected locked collection without opening a project", async () => {
+      const source = await pm.create("Source");
+      const collection = await pm.createProjectCollection("Protected");
+      await memStore.createProject(collection.projectCollectionId, "Hidden");
+      await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+      pm.lockProjectCollection(collection.projectCollectionId);
+
+      const result = await pm.switchProjectCollection(collection.projectCollectionId);
+
+      assert.strictEqual(result.access, "locked");
+      assert.strictEqual(pm.activeProject, undefined);
+      assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, collection.projectCollectionId);
+      assert.strictEqual(memStore.getProjectSession()?.activeProjectId, undefined);
+      assert.strictEqual((await memStore.loadProjectFiles(source.id)) !== undefined, true);
+      await assertRejectsWithCode(() => pm.listProjects(), "PROJECT_COLLECTION_LOCKED");
+    });
+
+    it("rejects open, create, delete, and import-target actions while protected collections are locked", async () => {
+      const active = await pm.create("Active");
+      const collection = await pm.createProjectCollection("Protected");
+      const project = await memStore.createProject(collection.projectCollectionId, "Hidden");
+      await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+      pm.lockProjectCollection(collection.projectCollectionId);
+
+      await assertRejectsWithCode(
+        () => pm.switchProjectCollectionAndOpenProject(collection.projectCollectionId, project.id),
+        "PROJECT_COLLECTION_LOCKED"
+      );
+      await assertRejectsWithCode(
+        () => pm.switchProjectCollectionAndCreateProject(collection.projectCollectionId, "Nope"),
+        "PROJECT_COLLECTION_LOCKED"
+      );
+      await assertRejectsWithCode(
+        () => pm.listProjectsForCollection(collection.projectCollectionId),
+        "PROJECT_COLLECTION_LOCKED"
+      );
+      await assertRejectsWithCode(
+        () => pm.deleteProjectCollection(collection.projectCollectionId),
+        "PROJECT_COLLECTION_LOCKED"
+      );
+
+      assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(pm.activeProject?.manifest.id, active.id);
+      assert.deepStrictEqual(await memStore.listProjects(collection.projectCollectionId), [project]);
+    });
+
+    it("requires unlock before changing or removing a project collection PIN", async () => {
+      await pm.init();
+      const collection = await pm.createProjectCollection("Protected");
+      await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+      pm.lockProjectCollection(collection.projectCollectionId);
+
+      await assertRejectsWithCode(
+        () => pm.setProjectCollectionPin(collection.projectCollectionId, "5678"),
+        "PROJECT_COLLECTION_LOCKED"
+      );
+      await assertRejectsWithCode(
+        () => pm.clearProjectCollectionPin(collection.projectCollectionId),
+        "PROJECT_COLLECTION_LOCKED"
+      );
+
+      await pm.unlockProjectCollection(collection.projectCollectionId, "1234");
+      const changed = await pm.setProjectCollectionPin(collection.projectCollectionId, "5678");
+      assert.strictEqual(await verifyProjectCollectionPin("5678", changed.pinVerifier!), true);
+      const cleared = await pm.clearProjectCollectionPin(collection.projectCollectionId);
+      assert.strictEqual(cleared.pinVerifier, undefined);
+    });
+
+    it("writes reload unlock records only for the current tab session collection", async () => {
+      installStorage("sessionStorage");
+      await pm.init();
+      const activeCollection = pm.activeProjectCollection!;
+      const otherCollection = await pm.createProjectCollection("Other");
+      await pm.setProjectCollectionPin(activeCollection.projectCollectionId, "1234");
+      await pm.setProjectCollectionPin(otherCollection.projectCollectionId, "5678");
+      pm.lockProjectCollection(activeCollection.projectCollectionId);
+      pm.lockProjectCollection(otherCollection.projectCollectionId);
+
+      await pm.unlockProjectCollection(otherCollection.projectCollectionId, "5678");
+      assert.strictEqual(readReloadUnlockRecord(memStore), undefined);
+
+      await pm.unlockProjectCollection(activeCollection.projectCollectionId, "1234");
+      assert.strictEqual(readReloadUnlockRecord(memStore)?.projectCollectionId, activeCollection.projectCollectionId);
+
+      pm.lockProjectCollection(activeCollection.projectCollectionId);
+      assert.strictEqual(readReloadUnlockRecord(memStore), undefined);
+    });
+
+    it("runs one PBKDF2 pass when unlocking with a cloned matching verifier", async () => {
+      await pm.close();
+      pm.dispose();
+      const cloningStore = new CloningProjectCollectionStore();
+      memStore = cloningStore;
+      pm = new ProjectManager(cloningStore);
+      await pm.init();
+      const collection = await pm.createProjectCollection("Protected");
+      await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+      pm.lockProjectCollection(collection.projectCollectionId);
+      cloningStore.cloneProjectCollectionsOnRead = true;
+
+      const originalCrypto = globalThis.crypto;
+      const originalDeriveBits = originalCrypto.subtle.deriveBits.bind(originalCrypto.subtle);
+      let deriveBitsCalls = 0;
+      const subtle = {
+        importKey: originalCrypto.subtle.importKey.bind(originalCrypto.subtle),
+        deriveBits: (...args: Parameters<SubtleCrypto["deriveBits"]>): Promise<ArrayBuffer> => {
+          deriveBitsCalls += 1;
+          return originalDeriveBits(...args);
+        },
+      } as unknown as SubtleCrypto;
+      const cryptoOverride = Object.create(originalCrypto) as Crypto;
+      Object.defineProperty(cryptoOverride, "subtle", {
+        configurable: true,
+        value: subtle,
+      });
+      Object.defineProperty(globalThis, "crypto", {
+        configurable: true,
+        writable: true,
+        value: cryptoOverride,
+      });
+      try {
+        await pm.unlockProjectCollection(collection.projectCollectionId, "1234");
+        assert.strictEqual(deriveBitsCalls, 1);
+      } finally {
+        Object.defineProperty(globalThis, "crypto", {
+          configurable: true,
+          writable: true,
+          value: originalCrypto,
+        });
+      }
+    });
+
+    it("uses unexpired reload unlock records for same-tab restore and ignores expired records", async () => {
+      installStorage("sessionStorage");
+      const active = await pm.create("Active");
+      const collection = pm.activeProjectCollection!;
+      await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+
+      const restored = new ProjectManager(memStore);
+      await restored.init();
+      assert.strictEqual(restored.activeProject?.manifest.id, active.id);
+      assert.strictEqual((await restored.getProjectCollectionState()).access, "ready");
+      await restored.close();
+      restored.dispose();
+
+      memStore.setProjectSession({
+        projectCollectionId: collection.projectCollectionId,
+        activeProjectId: active.id,
+      });
+      writeReloadUnlockRecord(memStore, {
+        projectCollectionId: collection.projectCollectionId,
+        expiresAt: Date.now() - 1,
+      });
+      const expired = new ProjectManager(memStore);
+      await expired.init();
+      assert.strictEqual(expired.activeProject, undefined);
+      assert.strictEqual((await expired.getProjectCollectionState()).access, "locked");
+      await expired.close();
+      expired.dispose();
+    });
+
+    it("ignores reload unlock records for mismatched, deleted, or unprotected collections", async () => {
+      installStorage("sessionStorage");
+      await pm.create("Active");
+      const collection = await pm.createProjectCollection("Protected");
+      const active = await memStore.createProject(collection.projectCollectionId, "Protected Active");
+      await pm.switchProjectCollectionAndOpenProject(collection.projectCollectionId, active.id);
+      await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+
+      writeReloadUnlockRecord(memStore, {
+        projectCollectionId: "other",
+        expiresAt: Date.now() + RELOAD_UNLOCK_TTL_MS,
+      });
+      const mismatched = new ProjectManager(memStore);
+      await mismatched.init();
+      assert.strictEqual((await mismatched.getProjectCollectionState()).access, "locked");
+      await mismatched.close();
+      mismatched.dispose();
+
+      memStore.setProjectSession({
+        projectCollectionId: collection.projectCollectionId,
+        activeProjectId: active.id,
+      });
+      await memStore.updateProjectCollection(collection.projectCollectionId, { pinVerifier: undefined });
+      writeReloadUnlockRecord(memStore, {
+        projectCollectionId: collection.projectCollectionId,
+        expiresAt: Date.now() + RELOAD_UNLOCK_TTL_MS,
+      });
+      const unprotected = new ProjectManager(memStore);
+      await unprotected.init();
+      assert.strictEqual(unprotected.activeProject?.manifest.id, active.id);
+      await unprotected.close();
+      unprotected.dispose();
+
+      await memStore.updateProjectCollection(collection.projectCollectionId, {
+        pinVerifier: await createProjectCollectionPinVerifier("1234"),
+      });
+      await memStore.deleteProjectCollection(collection.projectCollectionId);
+      pm.dispose();
+      pm = new ProjectManager(new MemoryProjectStore());
+      const deleted = new ProjectManager(memStore);
+      await deleted.init();
+      assert.strictEqual(deleted.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      await deleted.close();
+      deleted.dispose();
+    });
+
+    it("clears protected unlock state and previous reload record on committed switch", async () => {
+      installStorage("sessionStorage");
+      await pm.init();
+      const defaultCollection = pm.activeProjectCollection!;
+      const pending = await pm.createProjectCollection("Pending");
+      const target = await pm.createProjectCollection("Target");
+      await pm.setProjectCollectionPin(defaultCollection.projectCollectionId, "1234");
+      await pm.setProjectCollectionPin(pending.projectCollectionId, "5678");
+      await pm.unlockProjectCollection(defaultCollection.projectCollectionId, "1234");
+      await pm.unlockProjectCollection(pending.projectCollectionId, "5678");
+      const changes: ProjectCollectionSummaryChange[] = [];
+      await pm.watchProjectCollectionSummaries((change) => changes.push(change));
+      changes.length = 0;
+
+      await pm.switchProjectCollection(target.projectCollectionId);
+      await waitForTimers();
+
+      assert.strictEqual(pm.isProjectCollectionUnlocked(defaultCollection.projectCollectionId), false);
+      assert.strictEqual(pm.isProjectCollectionUnlocked(pending.projectCollectionId), false);
+      assert.strictEqual(readReloadUnlockRecord(memStore), undefined);
+      const accessByCollection = new Map(
+        changes
+          .filter((change) => change.type === "upsert")
+          .map((change) => [change.summary.collection.projectCollectionId, change.summary.access])
+      );
+      assert.strictEqual(accessByCollection.get(defaultCollection.projectCollectionId), "locked");
+      assert.strictEqual(accessByCollection.get(pending.projectCollectionId), "locked");
+    });
+
+    it("refreshes reload unlock records for active protected collections on the refresh timer", async () => {
+      installStorage("sessionStorage");
+      const intervals = installIntervalCapture();
+      const originalDateNow = Date.now;
+      try {
+        let now = 1_000;
+        Date.now = () => now;
+        await pm.create("Active");
+        const collection = pm.activeProjectCollection!;
+        await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+        const initialRecord = readReloadUnlockRecord(memStore);
+
+        now += RELOAD_UNLOCK_REFRESH_INTERVAL_MS;
+        await intervals.runForDelay(RELOAD_UNLOCK_REFRESH_INTERVAL_MS);
+
+        const refreshedRecord = readReloadUnlockRecord(memStore);
+        assert.strictEqual(initialRecord?.projectCollectionId, collection.projectCollectionId);
+        assert.strictEqual(refreshedRecord?.projectCollectionId, collection.projectCollectionId);
+        assert.strictEqual(initialRecord?.expiresAt, 1_000 + RELOAD_UNLOCK_TTL_MS);
+        assert.strictEqual(refreshedRecord?.expiresAt, now + RELOAD_UNLOCK_TTL_MS);
+        assert.strictEqual(intervals.count(), 1);
+      } finally {
+        Date.now = originalDateNow;
+        intervals.restore();
+      }
+    });
+
+    it("does not refresh non-active unlocked collections and stops refresh on lock, verifier removal, and dispose", async () => {
+      installStorage("sessionStorage");
+      const intervals = installIntervalCapture();
+      try {
+        await pm.init();
+        const activeCollection = pm.activeProjectCollection!;
+        const otherCollection = await pm.createProjectCollection("Other");
+        await pm.setProjectCollectionPin(otherCollection.projectCollectionId, "5678");
+        assert.strictEqual(intervals.count(), 0);
+
+        await pm.setProjectCollectionPin(activeCollection.projectCollectionId, "1234");
+        assert.strictEqual(intervals.count(), 1);
+        pm.lockProjectCollection(activeCollection.projectCollectionId);
+        assert.strictEqual(intervals.count(), 0);
+
+        await pm.unlockProjectCollection(activeCollection.projectCollectionId, "1234");
+        assert.strictEqual(intervals.count(), 1);
+        await pm.clearProjectCollectionPin(activeCollection.projectCollectionId);
+        assert.strictEqual(intervals.count(), 0);
+
+        await pm.setProjectCollectionPin(activeCollection.projectCollectionId, "1234");
+        assert.strictEqual(intervals.count(), 1);
+        pm.dispose();
+        assert.strictEqual(intervals.count(), 0);
+        assert.strictEqual(readReloadUnlockRecord(memStore), undefined);
+      } finally {
+        intervals.restore();
+      }
+    });
+
+    it("stops reload unlock refresh after switch away and tombstone", async () => {
+      installStorage("sessionStorage");
+      const intervals = installIntervalCapture();
+      try {
+        await pm.init();
+        const activeCollection = pm.activeProjectCollection!;
+        const otherCollection = await pm.createProjectCollection("Other");
+        await pm.setProjectCollectionPin(activeCollection.projectCollectionId, "1234");
+        await pm.switchProjectCollection(otherCollection.projectCollectionId);
+        assert.strictEqual(intervals.count(), 0);
+
+        await pm.setProjectCollectionPin(otherCollection.projectCollectionId, "5678");
+        assert.strictEqual(intervals.count(), 1);
+        await memStore.deleteProjectCollection(otherCollection.projectCollectionId);
+        await intervals.runForDelay(RELOAD_UNLOCK_REFRESH_INTERVAL_MS);
+        assert.strictEqual(intervals.count(), 0);
+        assert.strictEqual(readReloadUnlockRecord(memStore), undefined);
+      } finally {
+        intervals.restore();
+      }
+    });
+
+    it("logs reload unlock refresh failures from the interval callback", async () => {
+      installStorage("sessionStorage");
+      await pm.close();
+      pm.dispose();
+      const failingStore = new FailingProjectCollectionReadStore();
+      memStore = failingStore;
+      pm = new ProjectManager(failingStore);
+      const intervals = installIntervalCapture();
+      const loggerErrors: unknown[][] = [];
+      const originalLoggerError = logger.error.bind(logger);
+      logger.error = (message: string, data?: unknown) => {
+        loggerErrors.push([message, data]);
+      };
+      try {
+        await pm.create("Active");
+        const collection = pm.activeProjectCollection!;
+        await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+
+        failingStore.failProjectCollectionReads = true;
+        await intervals.runForDelay(RELOAD_UNLOCK_REFRESH_INTERVAL_MS);
+
+        assert.strictEqual(loggerErrors.length, 1);
+        assert.strictEqual(loggerErrors[0][0], "[app-host] project collection reload unlock refresh failed");
+        assert.strictEqual((loggerErrors[0][1] as Error).message, "project collection read failed");
+      } finally {
+        logger.error = originalLoggerError;
+        failingStore.failProjectCollectionReads = false;
+        intervals.restore();
+      }
+    });
+
+    it("does not refresh reload unlock records during autosave or close-time project saves", async () => {
+      installStorage("sessionStorage");
+      await pm.close();
+      pm.dispose();
+      memStore = new MemoryProjectStore();
+      pm = new ProjectManager(memStore, { autoSaveDelayMs: 0 });
+      const originalDateNow = Date.now;
+      try {
+        let now = 1_000;
+        Date.now = () => now;
+        const active = await pm.create("Autosaved");
+        const collection = pm.activeProjectCollection!;
+        await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+        const initialRecord = readReloadUnlockRecord(memStore);
+
+        now += 10_000;
+        pm.activeProject?.filesystem.applyLocalChange({
+          action: "write",
+          path: "src/main.ts",
+          content: "autosaved",
+          newEtag: "etag-1",
+        });
+        await waitForTimers();
+        const autosaveRecord = readReloadUnlockRecord(memStore);
+        assert.strictEqual(autosaveRecord?.expiresAt, initialRecord?.expiresAt);
+        const autosaved = await memStore.loadProjectFiles(active.id);
+        const autosavedEntry = autosaved?.get("src/main.ts");
+        assert.ok(autosavedEntry && autosavedEntry.kind === "file");
+        assert.strictEqual(autosavedEntry.content, "autosaved");
+
+        now += 10_000;
+        pm.activeProject?.filesystem.applyLocalChange({
+          action: "write",
+          path: "src/main.ts",
+          content: "closed",
+          newEtag: "etag-2",
+        });
+        await pm.close();
+        const closeRecord = readReloadUnlockRecord(memStore);
+        assert.strictEqual(closeRecord?.expiresAt, initialRecord?.expiresAt);
+        const closed = await memStore.loadProjectFiles(active.id);
+        const closedEntry = closed?.get("src/main.ts");
+        assert.ok(closedEntry && closedEntry.kind === "file");
+        assert.strictEqual(closedEntry.content, "closed");
+      } finally {
+        Date.now = originalDateNow;
+      }
+    });
+
+    it("leaves unlock state unchanged when PIN verification fails or collection is tombstoned", async () => {
+      await pm.init();
+      const collection = await pm.createProjectCollection("Protected");
+      await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+      pm.lockProjectCollection(collection.projectCollectionId);
+
+      await assertRejectsWithCode(
+        () => pm.unlockProjectCollection(collection.projectCollectionId, "9999"),
+        "PROJECT_COLLECTION_PIN_INVALID"
+      );
+      assert.strictEqual(pm.isProjectCollectionUnlocked(collection.projectCollectionId), false);
+
+      await memStore.deleteProjectCollection(collection.projectCollectionId);
+      await assertRejectsWithCode(
+        () => pm.unlockProjectCollection(collection.projectCollectionId, "1234"),
+        "PROJECT_COLLECTION_NOT_FOUND"
+      );
+      assert.strictEqual(pm.isProjectCollectionUnlocked(collection.projectCollectionId), false);
+    });
+
+    it("leaves unlock state unchanged when a collection is tombstoned while PIN verification is awaiting work", async () => {
+      await pm.init();
+      const collection = await pm.createProjectCollection("Protected");
+      await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+      pm.lockProjectCollection(collection.projectCollectionId);
+      const originalCrypto = globalThis.crypto;
+      const originalDeriveBits = originalCrypto.subtle.deriveBits.bind(originalCrypto.subtle);
+      let deriveBitsCalled = false;
+      const subtle = {
+        importKey: originalCrypto.subtle.importKey.bind(originalCrypto.subtle),
+        deriveBits: async (...args: Parameters<SubtleCrypto["deriveBits"]>): Promise<ArrayBuffer> => {
+          deriveBitsCalled = true;
+          const derived = originalDeriveBits(...args);
+          await memStore.deleteProjectCollection(collection.projectCollectionId);
+          return derived;
+        },
+      } as unknown as SubtleCrypto;
+      const cryptoOverride = Object.create(originalCrypto) as Crypto;
+      Object.defineProperty(cryptoOverride, "subtle", {
+        configurable: true,
+        value: subtle,
+      });
+      Object.defineProperty(globalThis, "crypto", {
+        configurable: true,
+        writable: true,
+        value: cryptoOverride,
+      });
+      try {
+        await assertRejectsWithCode(
+          () => pm.unlockProjectCollection(collection.projectCollectionId, "1234"),
+          "PROJECT_COLLECTION_NOT_FOUND"
+        );
+        assert.strictEqual(deriveBitsCalled, true);
+        assert.strictEqual(pm.isProjectCollectionUnlocked(collection.projectCollectionId), false);
+      } finally {
+        Object.defineProperty(globalThis, "crypto", {
+          configurable: true,
+          writable: true,
+          value: originalCrypto,
+        });
+      }
+    });
+  });
+
   describe("project collection management", () => {
     it("lists, creates, and renames project collections", async () => {
       await pm.init();
@@ -1303,6 +1837,32 @@ class CountingListProjectsStore extends MemoryProjectStore {
   }
 }
 
+class CloningProjectCollectionStore extends MemoryProjectStore {
+  cloneProjectCollectionsOnRead = false;
+
+  override async getProjectCollection(projectCollectionId: string): Promise<ProjectCollection | undefined> {
+    const collection = await super.getProjectCollection(projectCollectionId);
+    if (!collection || !this.cloneProjectCollectionsOnRead) {
+      return collection;
+    }
+    return {
+      ...collection,
+      pinVerifier: collection.pinVerifier ? { ...collection.pinVerifier } : undefined,
+    };
+  }
+}
+
+class FailingProjectCollectionReadStore extends MemoryProjectStore {
+  failProjectCollectionReads = false;
+
+  override async getProjectCollection(projectCollectionId: string): Promise<ProjectCollection | undefined> {
+    if (this.failProjectCollectionReads) {
+      throw new Error("project collection read failed");
+    }
+    return super.getProjectCollection(projectCollectionId);
+  }
+}
+
 class Deferred {
   readonly promise: Promise<void>;
   private resolvePromise: (() => void) | undefined;
@@ -1349,6 +1909,116 @@ function restoreBroadcastChannel(original: typeof BroadcastChannel | undefined):
     writable: true,
     value: original,
   });
+}
+
+class TestStorage {
+  private readonly values = new Map<string, string>();
+
+  get length(): number {
+    return this.values.size;
+  }
+
+  clear(): void {
+    this.values.clear();
+  }
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.values.keys())[index] ?? null;
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+}
+
+function installStorage(name: "sessionStorage"): Storage {
+  const storage = new TestStorage() as Storage;
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value: storage,
+  });
+  return storage;
+}
+
+function restoreStorage(name: "sessionStorage", storage: Storage | undefined): void {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value: storage,
+  });
+}
+
+function reloadUnlockKey(store: MemoryProjectStore): string {
+  return `${store.keyPrefix}:project-collection-reload-unlock`;
+}
+
+function readReloadUnlockRecord(store: MemoryProjectStore): ProjectCollectionReloadUnlock | undefined {
+  const raw = sessionStorage.getItem(reloadUnlockKey(store));
+  return raw ? (JSON.parse(raw) as ProjectCollectionReloadUnlock) : undefined;
+}
+
+function writeReloadUnlockRecord(store: MemoryProjectStore, record: ProjectCollectionReloadUnlock): void {
+  sessionStorage.setItem(reloadUnlockKey(store), JSON.stringify(record));
+}
+
+interface IntervalCapture {
+  count(): number;
+  restore(): void;
+  runForDelay(delay: number): Promise<void>;
+}
+
+function installIntervalCapture(): IntervalCapture {
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  let nextId = 1;
+  const callbacks = new Map<number, { callback: () => unknown; delay: number | undefined }>();
+  Object.defineProperty(globalThis, "setInterval", {
+    configurable: true,
+    writable: true,
+    value: (callback: () => unknown, delay?: number) => {
+      const id = nextId;
+      nextId += 1;
+      callbacks.set(id, { callback, delay });
+      return id;
+    },
+  });
+  Object.defineProperty(globalThis, "clearInterval", {
+    configurable: true,
+    writable: true,
+    value: (id: number) => {
+      callbacks.delete(id);
+    },
+  });
+  return {
+    count: () => callbacks.size,
+    restore: () => {
+      Object.defineProperty(globalThis, "setInterval", {
+        configurable: true,
+        writable: true,
+        value: originalSetInterval,
+      });
+      Object.defineProperty(globalThis, "clearInterval", {
+        configurable: true,
+        writable: true,
+        value: originalClearInterval,
+      });
+    },
+    runForDelay: async (delay: number) => {
+      for (const { callback } of Array.from(callbacks.values()).filter((entry) => entry.delay === delay)) {
+        await callback();
+      }
+      await waitForTimers();
+    },
+  };
 }
 
 async function waitForTimers(): Promise<void> {

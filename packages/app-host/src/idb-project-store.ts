@@ -162,15 +162,23 @@ class IdbProjectStore implements ProjectStore {
 
   async updateProjectCollection(
     projectCollectionId: string,
-    updates: Partial<Pick<ProjectCollection, "name">>
+    updates: Partial<Pick<ProjectCollection, "name" | "pinVerifier">>
   ): Promise<void> {
     const collection = await this.requireLiveProjectCollection(projectCollectionId);
-    await this.db.put("projectCollections", {
+    const hasPinVerifierUpdate = Object.hasOwn(updates, "pinVerifier");
+    const pinVerifier = hasPinVerifierUpdate ? updates.pinVerifier : collection.pinVerifier;
+    const updatedCollection: ProjectCollection = {
       ...collection,
       ...updates,
       name: updates.name === undefined ? collection.name : normalizeProjectCollectionName(updates.name),
       updatedAt: Date.now(),
-    });
+    };
+    if (pinVerifier === undefined) {
+      delete updatedCollection.pinVerifier;
+    } else {
+      updatedCollection.pinVerifier = pinVerifier;
+    }
+    await this.db.put("projectCollections", updatedCollection);
   }
 
   async deleteProjectCollection(projectCollectionId: string): Promise<void> {

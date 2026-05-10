@@ -509,8 +509,8 @@ follow."
 
 ## Current State
 
-Completed: W0, W1, W2, W3, W4, W5a, W5b
-Next up: W6a
+Completed: W0, W1, W2, W3, W4, W5a, W5b, W6a
+Next up: W6b
 
 ---
 
@@ -627,6 +627,23 @@ typecheck/check/test/build, `packages/bridge-app` typecheck/check/build, and
 Risk: W5b touched `packages/bridge-app` despite the original gate text; future
 bridge-adjacent phases should keep protocol/payloads unchanged while treating
 `AppEnvironmentHost` as app integration gate coverage.
+
+### W6a -- PIN Protection Data And State
+
+W6a shipped app-host PIN verifier storage, protected collection access state,
+reload unlock lifecycle, and lock/unlock semantics without visible PIN UI.
+
+New public API and contract surface: `ProjectCollection.pinVerifier`,
+`ProjectCollectionSummary.access`, PIN verifier helpers/constants, reload unlock
+constants, PIN-related app-host error codes, and ProjectManager methods for
+setting, clearing, unlocking, locking, and checking collection unlock state.
+
+Verification: `npm run typecheck`, `npm run check`, `npm test`, and
+`npm run build` passed in `packages/app-host`.
+
+Risk: W6b must treat `ProjectCollectionSummary.access` as tab-local UI state
+and route all PIN prompts/actions through the W6a ProjectManager APIs rather
+than inferring lock state from persisted verifier metadata alone.
 
 ---
 
@@ -2098,6 +2115,11 @@ interface ProjectCollectionUnlockResult {
   access: "ready";
 }
 
+setProjectCollectionPin(
+  projectCollectionId: string,
+  pin: string
+): Promise<ProjectCollection>;
+clearProjectCollectionPin(projectCollectionId: string): Promise<ProjectCollection>;
 unlockProjectCollection(
   projectCollectionId: string,
   pin: string

@@ -30,6 +30,18 @@ export function normalizeProjectCollectionName(name: string): string {
   return trimmed;
 }
 
+/** Stored verifier for a protected project collection PIN. */
+export interface ProjectCollectionPinVerifier {
+  /** Verifier scheme used to derive and compare the stored hash. */
+  scheme: "v1";
+  /** Base64-encoded verifier salt. */
+  salt: string;
+  /** Base64-encoded verifier hash. */
+  hash: string;
+  /** Unix epoch timestamp in milliseconds for verifier creation. */
+  createdAt: number;
+}
+
 /** Metadata for a group of projects stored under one app namespace. */
 export interface ProjectCollection {
   /** Stable storage key for this project collection. */
@@ -38,6 +50,8 @@ export interface ProjectCollection {
   name: string;
   /** Present when the collection has been tombstoned and hidden from public APIs. */
   deleted?: true;
+  /** Present when this project collection requires a PIN unlock in the current tab. */
+  pinVerifier?: ProjectCollectionPinVerifier;
   /** Unix epoch timestamp in milliseconds for record creation. */
   createdAt: number;
   /** Unix epoch timestamp in milliseconds for the last metadata update. */

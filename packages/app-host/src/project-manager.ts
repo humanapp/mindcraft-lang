@@ -2,12 +2,17 @@ import { logger } from "@mindcraft-lang/core";
 import { AppHostError, appHostError } from "./app-host-error.js";
 import type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";
 import { createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";
-import { DEFAULT_PROJECT_COLLECTION_ID, type ProjectCollection } from "./project-collection.js";
+import {
+  DEFAULT_PROJECT_COLLECTION_ID,
+  type ProjectCollection,
+  type ProjectCollectionPinVerifier,
+} from "./project-collection.js";
 import {
   createProjectCollectionBroadcast,
   type ProjectCollectionBroadcast,
   type ProjectCollectionBroadcastMessage,
 } from "./project-collection-broadcast.js";
+import { createProjectCollectionPinVerifier, verifyProjectCollectionPin } from "./project-collection-pin.js";
 import type { ProjectFileSnapshot } from "./project-file-snapshot.js";
 import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
@@ -16,6 +21,12 @@ import type { ProjectCollectionTabSession, ProjectStore } from "./project-store.
 
 /** Display name used when a project is created without an explicit name. */
 export const DEFAULT_PROJECT_NAME = "Untitled Project";
+
+/** Reload unlock lifetime for protected project collections. */
+export const RELOAD_UNLOCK_TTL_MS = 30 * 60 * 1000;
+
+/** Coarse refresh interval for active protected project collection reload unlocks. */
+export const RELOAD_UNLOCK_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 /** The currently open project together with its in-memory project file system. */
 export interface ActiveProject {
@@ -46,12 +57,30 @@ export interface ProjectCollectionSwitchResult {
   readonly access: ProjectCollectionAccessState;
 }
 
+/** Result returned after unlocking a protected project collection. */
+export interface ProjectCollectionUnlockResult {
+  /** Project collection that was unlocked. */
+  readonly collection: ProjectCollection;
+  /** Access status after a successful unlock. */
+  readonly access: "ready";
+}
+
 /** Summary row data for one project collection. */
 export interface ProjectCollectionSummary {
   /** Project collection metadata for this summary row. */
   readonly collection: ProjectCollection;
   /** Number of non-deleted projects in the project collection. */
   readonly projectCount: number;
+  /** Current tab access status for this project collection. */
+  readonly access: ProjectCollectionAccessState;
+}
+
+/** Short-lived tab-local reload unlock record for one protected collection. */
+export interface ProjectCollectionReloadUnlock {
+  /** Project collection unlocked for reload restore. */
+  readonly projectCollectionId: string;
+  /** Unix epoch timestamp in milliseconds when the reload unlock expires. */
+  readonly expiresAt: number;
 }
 
 /** Active project collection state watcher registration result. */
@@ -144,6 +173,9 @@ export class ProjectManager {
   private currentLockHandle: ProjectLockHandle | undefined;
   private autoSaveUnsub: (() => void) | undefined;
   private autoSaveTimerId: ReturnType<typeof setTimeout> | undefined;
+  private reloadUnlockRefreshTimerId: ReturnType<typeof setInterval> | undefined;
+  private reloadUnlockRefreshProjectCollectionId: string | undefined;
+  private readonly unlockedProjectCollectionIds = new Set<string>();
   private disposed = false;
 
   constructor(store: ProjectStore, options?: ProjectManagerOptions) {
@@ -160,6 +192,11 @@ export class ProjectManager {
   async init(): Promise<void> {
     const session = this.store.getProjectSession();
     const collection = await this.ensureInitialProjectCollection(session?.projectCollectionId);
+    await this.restoreReloadUnlock(collection, session);
+    if (this.collectionAccess(collection) === "locked") {
+      await this.notifyProjectCollectionState();
+      return;
+    }
     if (!this.currentActive && session?.activeProjectId) {
       const restored = await this.tryRestoreSessionProject(session.activeProjectId, collection);
       if (!restored) {
@@ -171,7 +208,7 @@ export class ProjectManager {
   }
 
   async listProjects(): Promise<ProjectManifest[]> {
-    const collection = await this.ensureActiveProjectCollection();
+    const collection = await this.ensureActiveProjectCollectionReady();
     return this.store.listProjects(collection.projectCollectionId);
   }
 
@@ -188,7 +225,7 @@ export class ProjectManager {
   }
 
   private async createInternal(name: string, shouldNotifyProjectCollectionState: boolean): Promise<ProjectManifest> {
-    const collection = await this.ensureActiveProjectCollection();
+    const collection = await this.ensureActiveProjectCollectionReady();
     const manifest = await this.store.createProject(collection.projectCollectionId, name);
     await this.notifyProjectListChangedForCollection(collection.projectCollectionId);
     const active = await this.tryOpen(manifest.id, shouldNotifyProjectCollectionState);
@@ -205,7 +242,7 @@ export class ProjectManager {
     appData?: Record<string, string>,
     thumbnailUrl?: string
   ): Promise<ProjectManifest> {
-    const collection = await this.requireActiveProjectCollection();
+    const collection = await this.requireActiveProjectCollectionReady();
     const manifest = await this.store.createProject(collection.projectCollectionId, name);
     await this.store.updateProject(manifest.id, { description, thumbnailUrl });
     await this.store.saveProjectFiles(manifest.id, snapshot);
@@ -227,7 +264,7 @@ export class ProjectManager {
   }
 
   private async tryOpen(id: string, shouldNotifyProjectCollectionState: boolean): Promise<ActiveProject | undefined> {
-    const collection = await this.ensureActiveProjectCollection();
+    const collection = await this.ensureActiveProjectCollectionReady();
     const manifest = await this.store.getProject(id);
     if (!manifest) {
       throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
@@ -298,6 +335,7 @@ export class ProjectManager {
     if (!this.currentActive) {
       throw appHostError("NO_ACTIVE_PROJECT", "No active project");
     }
+    await this.requireActiveProjectCollectionReady();
     if (updates.name !== undefined && !updates.name.trim()) {
       return;
     }
@@ -343,7 +381,7 @@ export class ProjectManager {
       projectCollections: await this.store.listProjectCollections(),
       activeProjectCollection,
       activeProjectId: this.currentActive?.manifest.id,
-      access: "ready",
+      access: activeProjectCollection ? this.collectionAccess(activeProjectCollection) : "ready",
     };
   }
 
@@ -478,7 +516,8 @@ export class ProjectManager {
 
   /** List non-deleted projects in a non-deleted project collection. */
   async listProjectsForCollection(projectCollectionId: string): Promise<ProjectManifest[]> {
-    await this.requireProjectCollection(projectCollectionId);
+    const collection = await this.requireProjectCollection(projectCollectionId);
+    this.assertProjectCollectionReady(collection);
     return this.store.listProjects(projectCollectionId);
   }
 
@@ -606,6 +645,120 @@ export class ProjectManager {
     await this.notifyProjectCollectionState();
   }
 
+  /**
+   * Set or change a project collection PIN.
+   *
+   * @param projectCollectionId - Project collection to protect.
+   * @param pin - User-entered PIN or phrase.
+   * @returns The updated project collection.
+   */
+  async setProjectCollectionPin(projectCollectionId: string, pin: string): Promise<ProjectCollection> {
+    const collection = await this.requireProjectCollection(projectCollectionId);
+    if (collection.pinVerifier && !this.isProjectCollectionUnlocked(projectCollectionId)) {
+      throw appHostError("PROJECT_COLLECTION_LOCKED", "Project collection must be unlocked before changing its PIN");
+    }
+    const pinVerifier = await createProjectCollectionPinVerifier(pin);
+    await this.store.updateProjectCollection(projectCollectionId, { pinVerifier });
+    const updated = await this.requireProjectCollection(projectCollectionId);
+    this.unlockedProjectCollectionIds.add(projectCollectionId);
+    await this.refreshCurrentProjectCollection(updated);
+    this.writeReloadUnlockForCurrentSession(projectCollectionId);
+    this.updateReloadUnlockRefreshTimer();
+    this.emitProjectCollectionChanged(projectCollectionId);
+    await this.notifyProjectCollectionState();
+    return updated;
+  }
+
+  /**
+   * Remove PIN protection from a project collection.
+   *
+   * @param projectCollectionId - Project collection to make unprotected.
+   * @returns The updated project collection.
+   */
+  async clearProjectCollectionPin(projectCollectionId: string): Promise<ProjectCollection> {
+    const collection = await this.requireProjectCollection(projectCollectionId);
+    if (collection.pinVerifier && !this.isProjectCollectionUnlocked(projectCollectionId)) {
+      throw appHostError("PROJECT_COLLECTION_LOCKED", "Project collection must be unlocked before removing its PIN");
+    }
+    await this.store.updateProjectCollection(projectCollectionId, { pinVerifier: undefined });
+    const updated = await this.requireProjectCollection(projectCollectionId);
+    this.unlockedProjectCollectionIds.delete(projectCollectionId);
+    this.removeReloadUnlockRecord(projectCollectionId);
+    await this.refreshCurrentProjectCollection(updated);
+    this.updateReloadUnlockRefreshTimer();
+    this.emitProjectCollectionChanged(projectCollectionId);
+    await this.notifyProjectCollectionState();
+    return updated;
+  }
+
+  /**
+   * Unlock a protected project collection in this manager instance.
+   *
+   * @param projectCollectionId - Project collection to unlock.
+   * @param pin - User-entered PIN or phrase.
+   */
+  async unlockProjectCollection(projectCollectionId: string, pin: string): Promise<ProjectCollectionUnlockResult> {
+    const collection = await this.requireProjectCollection(projectCollectionId);
+    if (!collection.pinVerifier) {
+      return { collection, access: "ready" };
+    }
+    let unlocked = await verifyProjectCollectionPin(pin, collection.pinVerifier);
+    const current = await this.store.getProjectCollection(projectCollectionId);
+    if (!current) {
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Project collection not found: ${projectCollectionId}`);
+    }
+    if (!current.pinVerifier) {
+      return { collection: current, access: "ready" };
+    }
+    if (!projectCollectionPinVerifiersMatch(current.pinVerifier, collection.pinVerifier)) {
+      unlocked = await verifyProjectCollectionPin(pin, current.pinVerifier);
+    }
+    if (!unlocked) {
+      throw appHostError("PROJECT_COLLECTION_PIN_INVALID", "Invalid project collection PIN");
+    }
+    this.unlockedProjectCollectionIds.add(projectCollectionId);
+    await this.refreshCurrentProjectCollection(current);
+    this.writeReloadUnlockForCurrentSession(projectCollectionId);
+    this.updateReloadUnlockRefreshTimer();
+    if (this.currentProjectCollection?.projectCollectionId === projectCollectionId && !this.currentActive) {
+      const session = this.store.getProjectSession();
+      if (session?.activeProjectId) {
+        const restored = await this.tryRestoreSessionProject(session.activeProjectId, current);
+        if (!restored) {
+          await this.ensureDefaultProjectInternal(DEFAULT_PROJECT_NAME, false);
+        }
+      } else {
+        await this.ensureDefaultProjectInternal(DEFAULT_PROJECT_NAME, false);
+      }
+      this.updateProjectSession();
+    }
+    this.emitProjectCollectionChanged(projectCollectionId);
+    await this.notifyProjectCollectionState();
+    return { collection: current, access: "ready" };
+  }
+
+  /**
+   * Lock a protected project collection in this manager instance.
+   *
+   * @param projectCollectionId - Project collection to lock.
+   */
+  lockProjectCollection(projectCollectionId: string): void {
+    this.unlockedProjectCollectionIds.delete(projectCollectionId);
+    this.removeReloadUnlockRecord(projectCollectionId);
+    this.updateReloadUnlockRefreshTimer();
+    this.emitProjectCollectionChanged(projectCollectionId);
+    void this.closeActiveProjectCollectionAfterLock(projectCollectionId);
+  }
+
+  /**
+   * Check whether a protected project collection is unlocked in this manager.
+   *
+   * @param projectCollectionId - Project collection id to check.
+   */
+  isProjectCollectionUnlocked(projectCollectionId: string): boolean {
+    return this.unlockedProjectCollectionIds.has(projectCollectionId);
+  }
+
   /** Switch the active project collection and open a project in it. */
   async switchProjectCollection(projectCollectionId: string): Promise<ProjectCollectionSwitchResult> {
     const target = await this.store.getProjectCollection(projectCollectionId);
@@ -614,9 +767,18 @@ export class ProjectManager {
     }
     if (this.currentProjectCollection?.projectCollectionId === target.projectCollectionId) {
       this.currentProjectCollection = target;
-      return { collection: target, access: "ready" };
+      const access = this.collectionAccess(target);
+      if (access === "locked" && this.currentActive) {
+        await this.closeInternal();
+        this.currentActive = undefined;
+        this.updateProjectSession();
+        this.notifyActiveProject();
+      }
+      await this.notifyProjectCollectionState();
+      return { collection: target, access };
     }
 
+    const previousProjectCollectionId = this.currentProjectCollection?.projectCollectionId;
     if (this.currentActive) {
       await this.closeInternal();
       this.currentActive = undefined;
@@ -626,10 +788,16 @@ export class ProjectManager {
 
     this.currentProjectCollection = target;
     this.updateProjectSession();
-    await this.notifyProjectList();
-    await this.ensureDefaultProjectInternal(DEFAULT_PROJECT_NAME, false);
+    this.lockProtectedCollectionsExcept(target.projectCollectionId, previousProjectCollectionId);
+    if (this.collectionAccess(target) === "ready") {
+      await this.notifyProjectList();
+      await this.ensureDefaultProjectInternal(DEFAULT_PROJECT_NAME, false);
+    } else {
+      await this.notifyProjectListListeners([]);
+    }
+    this.updateReloadUnlockRefreshTimer();
     await this.notifyProjectCollectionState();
-    return { collection: target, access: "ready" };
+    return { collection: target, access: this.collectionAccess(target) };
   }
 
   /** Tombstone a non-active, non-default project collection and its projects. */
@@ -641,7 +809,12 @@ export class ProjectManager {
     if (active.projectCollectionId === projectCollectionId) {
       throw appHostError("ACTIVE_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the active project collection");
     }
+    const target = await this.requireProjectCollection(projectCollectionId);
+    this.assertProjectCollectionReady(target);
     await this.store.deleteProjectCollection(projectCollectionId);
+    this.unlockedProjectCollectionIds.delete(projectCollectionId);
+    this.removeReloadUnlockRecord(projectCollectionId);
+    this.updateReloadUnlockRefreshTimer();
     this.projectCollectionBroadcast.post({
       type: "project-collection-tombstoned",
       projectCollectionId,
@@ -659,6 +832,7 @@ export class ProjectManager {
     projectId: string
   ): Promise<ProjectCollectionProjectCommitResult> {
     const collection = await this.requireProjectCollection(projectCollectionId);
+    this.assertProjectCollectionReady(collection);
     const project = await this.store.getProject(projectId);
     if (!project) {
       throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${projectId}`);
@@ -675,6 +849,7 @@ export class ProjectManager {
     name: string
   ): Promise<ProjectCollectionProjectCommitResult> {
     const collection = await this.requireProjectCollection(projectCollectionId);
+    this.assertProjectCollectionReady(collection);
     const project = await this.store.createProject(collection.projectCollectionId, name);
     let result: ProjectCollectionProjectCommitResult;
     try {
@@ -695,6 +870,7 @@ export class ProjectManager {
       throw appHostError("NO_ACTIVE_PROJECT", "No active project");
     }
     const { id, projectCollectionId } = this.currentActive.manifest;
+    await this.requireActiveProjectCollectionReady();
     try {
       await this.store.saveAppData(id, key, data);
     } catch (error) {
@@ -706,6 +882,7 @@ export class ProjectManager {
     if (!this.currentActive) {
       return undefined;
     }
+    await this.requireActiveProjectCollectionReady();
     return this.store.loadAppData(this.currentActive.manifest.id, key);
   }
 
@@ -714,6 +891,7 @@ export class ProjectManager {
       throw appHostError("NO_ACTIVE_PROJECT", "No active project");
     }
     const { id, projectCollectionId } = this.currentActive.manifest;
+    await this.requireActiveProjectCollectionReady();
     try {
       await this.store.deleteAppData(id, key);
     } catch (error) {
@@ -749,6 +927,10 @@ export class ProjectManager {
       return;
     }
     this.disposed = true;
+    if (this.reloadUnlockRefreshProjectCollectionId) {
+      this.removeReloadUnlockRecord(this.reloadUnlockRefreshProjectCollectionId);
+    }
+    this.stopReloadUnlockRefreshTimer();
     this.projectCollectionBroadcastUnsub();
     this.projectCollectionBroadcast.close();
   }
@@ -830,6 +1012,10 @@ export class ProjectManager {
 
   private async notifyProjectList(): Promise<void> {
     const projects = await this.listProjects();
+    this.notifyProjectListListeners(projects);
+  }
+
+  private notifyProjectListListeners(projects: ProjectManifest[]): void {
     for (const listener of this.projectListListeners) {
       listener(projects);
     }
@@ -887,6 +1073,7 @@ export class ProjectManager {
     return collections.map((collection) => ({
       collection,
       projectCount: projectCounts.get(collection.projectCollectionId) ?? 0,
+      access: this.collectionAccess(collection),
     }));
   }
 
@@ -900,6 +1087,7 @@ export class ProjectManager {
     return {
       collection,
       projectCount: (await this.store.listProjects(projectCollectionId)).length,
+      access: this.collectionAccess(collection),
     };
   }
 
@@ -935,12 +1123,24 @@ export class ProjectManager {
     return this.requireActiveProjectCollection();
   }
 
+  private async ensureActiveProjectCollectionReady(): Promise<ProjectCollection> {
+    const collection = await this.ensureActiveProjectCollection();
+    this.assertProjectCollectionReady(collection);
+    return collection;
+  }
+
   private async requireActiveProjectCollection(): Promise<ProjectCollection> {
     if (!this.currentProjectCollection) {
       throw appHostError("NO_ACTIVE_PROJECT_COLLECTION", "No active project collection");
     }
     const collection = await this.requireProjectCollection(this.currentProjectCollection.projectCollectionId);
     this.currentProjectCollection = collection;
+    return collection;
+  }
+
+  private async requireActiveProjectCollectionReady(): Promise<ProjectCollection> {
+    const collection = await this.requireActiveProjectCollection();
+    this.assertProjectCollectionReady(collection);
     return collection;
   }
 
@@ -965,7 +1165,7 @@ export class ProjectManager {
   }
 
   private async getProjectInActiveCollection(id: string): Promise<ProjectManifest> {
-    const collection = await this.ensureActiveProjectCollection();
+    const collection = await this.ensureActiveProjectCollectionReady();
     const manifest = await this.store.getProject(id);
     if (!manifest || manifest.projectCollectionId !== collection.projectCollectionId) {
       throw appHostError("PROJECT_NOT_IN_ACTIVE_COLLECTION", `Project not found in active project collection: ${id}`);
@@ -999,6 +1199,7 @@ export class ProjectManager {
     collection: ProjectCollection,
     project: ProjectManifest
   ): Promise<ProjectCollectionProjectCommitResult> {
+    this.assertProjectCollectionReady(collection);
     if (
       this.currentProjectCollection?.projectCollectionId === collection.projectCollectionId &&
       this.currentActive?.manifest.id === project.id
@@ -1018,10 +1219,12 @@ export class ProjectManager {
         await this.closeInternal();
       }
 
+      const previousProjectCollectionId = this.currentProjectCollection?.projectCollectionId;
       const active = await this.openInternal(project);
       this.currentProjectCollection = collection;
       this.currentLockHandle = handle;
       this.currentActive = active;
+      this.lockProtectedCollectionsExcept(collection.projectCollectionId, previousProjectCollectionId);
       this.startAutoSave(active.filesystem);
       this.updateProjectSession(project.id);
       this.notifyActiveProject();
@@ -1078,6 +1281,7 @@ export class ProjectManager {
       if (message.projectCollectionId === activeCollectionId) {
         const activeProjectCollection = await this.getLiveCurrentProjectCollection();
         if (activeProjectCollection) {
+          await this.reconcileActiveProjectCollectionAccess(activeProjectCollection);
           await this.notifyProjectCollectionState();
         }
       }
@@ -1089,12 +1293,22 @@ export class ProjectManager {
   }
 
   private async recoverFromTombstonedActiveCollection(): Promise<void> {
+    const tombstonedProjectCollectionId = this.currentProjectCollection?.projectCollectionId;
     this.discardCurrentActiveWithoutSaving();
+    if (tombstonedProjectCollectionId) {
+      this.unlockedProjectCollectionIds.delete(tombstonedProjectCollectionId);
+      this.removeReloadUnlockRecord(tombstonedProjectCollectionId);
+    }
     this.currentProjectCollection = await this.store.ensureDefaultProjectCollection();
     this.updateProjectSession();
+    this.updateReloadUnlockRefreshTimer();
     this.notifyActiveProject();
-    await this.notifyProjectList();
-    await this.ensureDefaultProjectInternal(DEFAULT_PROJECT_NAME, false);
+    if (this.collectionAccess(this.currentProjectCollection) === "ready") {
+      await this.notifyProjectList();
+      await this.ensureDefaultProjectInternal(DEFAULT_PROJECT_NAME, false);
+    } else {
+      this.notifyProjectListListeners([]);
+    }
     await this.notifyProjectCollectionState();
   }
 
@@ -1107,7 +1321,35 @@ export class ProjectManager {
     await this.notifyProjectCollectionState();
   }
 
+  private async reconcileActiveProjectCollectionAccess(collection: ProjectCollection): Promise<void> {
+    if (!collection.pinVerifier) {
+      this.unlockedProjectCollectionIds.delete(collection.projectCollectionId);
+      this.removeReloadUnlockRecord(collection.projectCollectionId);
+    }
+    if (this.collectionAccess(collection) === "locked" && this.currentActive) {
+      await this.closeInternal();
+      this.currentActive = undefined;
+      this.notifyActiveProject();
+      this.notifyProjectListListeners([]);
+    }
+    this.updateReloadUnlockRefreshTimer();
+  }
+
+  private async closeActiveProjectCollectionAfterLock(projectCollectionId: string): Promise<void> {
+    if (this.currentProjectCollection?.projectCollectionId === projectCollectionId && this.currentActive) {
+      await this.closeInternal();
+      this.currentActive = undefined;
+      this.notifyActiveProject();
+      this.notifyProjectListListeners([]);
+    }
+    await this.notifyProjectCollectionState();
+  }
+
   private async replaceTombstonedActiveProject(): Promise<ActiveProject> {
+    const collection = await this.ensureActiveProjectCollection();
+    if (this.collectionAccess(collection) === "locked") {
+      throw appHostError("PROJECT_COLLECTION_LOCKED", "Project collection is locked");
+    }
     const existing = await this.openFirstAvailableProject(false);
     if (existing) {
       return existing;
@@ -1119,7 +1361,11 @@ export class ProjectManager {
   private async openFirstAvailableProject(
     shouldNotifyProjectCollectionState: boolean
   ): Promise<ActiveProject | undefined> {
-    const existing = await this.listProjects();
+    const collection = await this.ensureActiveProjectCollection();
+    if (this.collectionAccess(collection) === "locked") {
+      return undefined;
+    }
+    const existing = await this.store.listProjects(collection.projectCollectionId);
     for (const project of existing) {
       const result = await this.tryOpen(project.id, shouldNotifyProjectCollectionState);
       if (result) {
@@ -1196,6 +1442,170 @@ export class ProjectManager {
     }
     return false;
   }
+
+  private async refreshCurrentProjectCollection(collection: ProjectCollection): Promise<void> {
+    if (this.currentProjectCollection?.projectCollectionId === collection.projectCollectionId) {
+      this.currentProjectCollection = collection;
+    }
+  }
+
+  private collectionAccess(collection: ProjectCollection): ProjectCollectionAccessState {
+    return collection.pinVerifier && !this.unlockedProjectCollectionIds.has(collection.projectCollectionId)
+      ? "locked"
+      : "ready";
+  }
+
+  private assertProjectCollectionReady(collection: ProjectCollection): void {
+    if (this.collectionAccess(collection) === "locked") {
+      throw appHostError("PROJECT_COLLECTION_LOCKED", "Project collection is locked");
+    }
+  }
+
+  private emitProjectCollectionChanged(projectCollectionId: string): void {
+    this.projectCollectionBroadcast.post({
+      type: "project-collection-changed",
+      projectCollectionId,
+    });
+    this.emitProjectCollectionEvent({
+      type: "project-collection-changed",
+      projectCollectionId,
+    });
+  }
+
+  private lockProtectedCollectionsExcept(
+    projectCollectionIdToKeep: string,
+    previousProjectCollectionId: string | undefined
+  ): void {
+    for (const projectCollectionId of Array.from(this.unlockedProjectCollectionIds)) {
+      if (projectCollectionId !== projectCollectionIdToKeep) {
+        this.unlockedProjectCollectionIds.delete(projectCollectionId);
+        this.emitProjectCollectionChanged(projectCollectionId);
+      }
+    }
+    if (previousProjectCollectionId && previousProjectCollectionId !== projectCollectionIdToKeep) {
+      this.removeReloadUnlockRecord(previousProjectCollectionId);
+    }
+  }
+
+  private reloadUnlockStorageKey(): string {
+    return `${this.store.keyPrefix}:project-collection-reload-unlock`;
+  }
+
+  private readReloadUnlockRecord(): ProjectCollectionReloadUnlock | undefined {
+    if (typeof sessionStorage === "undefined") {
+      return undefined;
+    }
+    const raw = sessionStorage.getItem(this.reloadUnlockStorageKey());
+    if (!raw) {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(raw) as Partial<ProjectCollectionReloadUnlock>;
+      if (typeof parsed.projectCollectionId === "string" && typeof parsed.expiresAt === "number") {
+        return {
+          projectCollectionId: parsed.projectCollectionId,
+          expiresAt: parsed.expiresAt,
+        };
+      }
+    } catch {
+      sessionStorage.removeItem(this.reloadUnlockStorageKey());
+    }
+    return undefined;
+  }
+
+  private writeReloadUnlockRecord(projectCollectionId: string): void {
+    if (typeof sessionStorage === "undefined") {
+      return;
+    }
+    const record: ProjectCollectionReloadUnlock = {
+      projectCollectionId,
+      expiresAt: Date.now() + RELOAD_UNLOCK_TTL_MS,
+    };
+    sessionStorage.setItem(this.reloadUnlockStorageKey(), JSON.stringify(record));
+  }
+
+  private removeReloadUnlockRecord(projectCollectionId: string): void {
+    if (typeof sessionStorage === "undefined") {
+      return;
+    }
+    const record = this.readReloadUnlockRecord();
+    if (record?.projectCollectionId === projectCollectionId) {
+      sessionStorage.removeItem(this.reloadUnlockStorageKey());
+    }
+  }
+
+  private async restoreReloadUnlock(
+    collection: ProjectCollection,
+    session: ProjectCollectionTabSession | undefined
+  ): Promise<void> {
+    if (!collection.pinVerifier || session?.projectCollectionId !== collection.projectCollectionId) {
+      return;
+    }
+    const record = this.readReloadUnlockRecord();
+    if (record?.projectCollectionId === collection.projectCollectionId && record.expiresAt > Date.now()) {
+      this.unlockedProjectCollectionIds.add(collection.projectCollectionId);
+      this.updateReloadUnlockRefreshTimer();
+      return;
+    }
+    this.removeReloadUnlockRecord(collection.projectCollectionId);
+  }
+
+  private writeReloadUnlockForCurrentSession(projectCollectionId: string): void {
+    const session = this.store.getProjectSession();
+    if (session?.projectCollectionId === projectCollectionId) {
+      this.writeReloadUnlockRecord(projectCollectionId);
+    }
+  }
+
+  private updateReloadUnlockRefreshTimer(): void {
+    const collection = this.currentProjectCollection;
+    if (
+      collection?.pinVerifier &&
+      this.unlockedProjectCollectionIds.has(collection.projectCollectionId) &&
+      this.store.getProjectSession()?.projectCollectionId === collection.projectCollectionId
+    ) {
+      this.startReloadUnlockRefreshTimer(collection.projectCollectionId);
+      return;
+    }
+    this.stopReloadUnlockRefreshTimer();
+  }
+
+  private startReloadUnlockRefreshTimer(projectCollectionId: string): void {
+    if (this.reloadUnlockRefreshProjectCollectionId === projectCollectionId && this.reloadUnlockRefreshTimerId) {
+      return;
+    }
+    this.stopReloadUnlockRefreshTimer();
+    this.reloadUnlockRefreshProjectCollectionId = projectCollectionId;
+    this.reloadUnlockRefreshTimerId = setInterval(() => {
+      void this.refreshReloadUnlockRecord(projectCollectionId).catch((error: unknown) => {
+        logger.error("[app-host] project collection reload unlock refresh failed", error);
+      });
+    }, RELOAD_UNLOCK_REFRESH_INTERVAL_MS);
+  }
+
+  private stopReloadUnlockRefreshTimer(): void {
+    if (this.reloadUnlockRefreshTimerId !== undefined) {
+      clearInterval(this.reloadUnlockRefreshTimerId);
+      this.reloadUnlockRefreshTimerId = undefined;
+    }
+    this.reloadUnlockRefreshProjectCollectionId = undefined;
+  }
+
+  private async refreshReloadUnlockRecord(projectCollectionId: string): Promise<void> {
+    const collection = await this.store.getProjectCollection(projectCollectionId);
+    if (collection?.pinVerifier && this.currentProjectCollection?.projectCollectionId === projectCollectionId) {
+      this.writeReloadUnlockRecord(projectCollectionId);
+      return;
+    }
+    this.unlockedProjectCollectionIds.delete(projectCollectionId);
+    this.removeReloadUnlockRecord(projectCollectionId);
+    this.updateReloadUnlockRefreshTimer();
+    if (!collection && this.currentProjectCollection?.projectCollectionId === projectCollectionId) {
+      await this.recoverFromTombstonedActiveCollection();
+      return;
+    }
+    await this.notifyProjectCollectionState();
+  }
 }
 
 function projectSessionsEqual(
@@ -1203,4 +1613,11 @@ function projectSessionsEqual(
   right: ProjectCollectionTabSession | undefined
 ): boolean {
   return left?.projectCollectionId === right?.projectCollectionId && left?.activeProjectId === right?.activeProjectId;
+}
+
+function projectCollectionPinVerifiersMatch(
+  left: ProjectCollectionPinVerifier,
+  right: ProjectCollectionPinVerifier
+): boolean {
+  return left.scheme === right.scheme && left.salt === right.salt && left.hash === right.hash;
 }

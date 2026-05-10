@@ -27,7 +27,7 @@ export interface ProjectStore {
   /** Patch the mutable fields of a project collection. Names are trimmed and validated. */
   updateProjectCollection(
     projectCollectionId: string,
-    updates: Partial<Pick<ProjectCollection, "name">>
+    updates: Partial<Pick<ProjectCollection, "name" | "pinVerifier">>
   ): Promise<void>;
   /** Tombstone a project collection. */
   deleteProjectCollection(projectCollectionId: string): Promise<void>;

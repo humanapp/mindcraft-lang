@@ -66,14 +66,21 @@ export class MemoryProjectStore implements ProjectStore {
 
   async updateProjectCollection(
     projectCollectionId: string,
-    updates: Partial<Pick<ProjectCollection, "name">>
+    updates: Partial<Pick<ProjectCollection, "name" | "pinVerifier">>
   ): Promise<void> {
     const collection = await this.requireLiveProjectCollection(projectCollectionId);
+    const hasPinVerifierUpdate = Object.hasOwn(updates, "pinVerifier");
+    const pinVerifier = hasPinVerifierUpdate ? updates.pinVerifier : collection.pinVerifier;
     Object.assign(collection, {
       ...updates,
       name: updates.name === undefined ? collection.name : normalizeProjectCollectionName(updates.name),
       updatedAt: Date.now(),
     });
+    if (pinVerifier === undefined) {
+      delete collection.pinVerifier;
+    } else {
+      collection.pinVerifier = pinVerifier;
+    }
   }
 
   async deleteProjectCollection(projectCollectionId: string): Promise<void> {

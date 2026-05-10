@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
   createIdbProjectStore,
+  createProjectCollectionPinVerifier,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_COLLECTION_NAME,
   PROJECT_COLLECTION_NAME_MAX_LENGTH,
@@ -134,6 +135,26 @@ describe("createIdbProjectStore project collections", () => {
       remaining.map((entry) => entry.projectCollectionId),
       [second.projectCollectionId]
     );
+  });
+
+  it("sets and clears project collection PIN verifiers", async () => {
+    const store = await createIdbProjectStore(nextKeyPrefix());
+    const collection = await store.createProjectCollection("Protected");
+    const pinVerifier = await createProjectCollectionPinVerifier("1234");
+
+    await store.updateProjectCollection(collection.projectCollectionId, { pinVerifier });
+    const protectedCollection = await store.getProjectCollection(collection.projectCollectionId);
+    assert.strictEqual(protectedCollection?.pinVerifier?.scheme, "v1");
+    assert.strictEqual(protectedCollection?.pinVerifier?.hash, pinVerifier.hash);
+
+    await store.updateProjectCollection(collection.projectCollectionId, { name: "Still Protected" });
+    assert.strictEqual(
+      (await store.getProjectCollection(collection.projectCollectionId))?.pinVerifier?.hash,
+      pinVerifier.hash
+    );
+
+    await store.updateProjectCollection(collection.projectCollectionId, { pinVerifier: undefined });
+    assert.strictEqual((await store.getProjectCollection(collection.projectCollectionId))?.pinVerifier, undefined);
   });
 
   it("rejects invalid collection names", async () => {
