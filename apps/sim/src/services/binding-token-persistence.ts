@@ -1,4 +1,6 @@
-const BINDING_TOKEN_KEY = "bridge-binding-token";
+import { name as simName } from "../../package.json";
+
+const BINDING_TOKEN_KEY = `${simName}:bridge-binding-token`;
 
 export function loadBindingToken(): string | undefined {
   try {

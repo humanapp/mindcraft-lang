@@ -21,7 +21,18 @@ if (import.meta.env.DEV) {
 }
 
 (async () => {
+  let disposed = false;
   const simStore = await SimEnvironmentStore.create();
+  const disposeSimStore = () => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    simStore.dispose();
+  };
+  window.addEventListener("pagehide", disposeSimStore, { once: true });
+  import.meta.hot?.dispose(disposeSimStore);
+
   await simStore.initialize();
 
   const root = document.getElementById("root");

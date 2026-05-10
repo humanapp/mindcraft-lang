@@ -4,26 +4,50 @@ import {
   DEFAULT_PROJECT_COLLECTION_NAME,
   normalizeProjectCollectionName,
   type ProjectCollection,
+  type ProjectCollectionTabSession,
   type ProjectFileSnapshot,
   type ProjectManifest,
   type ProjectStore,
 } from "@mindcraft-lang/app-host";
 
+interface MemoryProjectStoreData {
+  projectCollections: ProjectCollection[];
+  projects: ProjectManifest[];
+  projectFiles: Map<string, ProjectFileSnapshot>;
+  appData: Map<string, string>;
+}
+
+function createMemoryProjectStoreData(): MemoryProjectStoreData {
+  return {
+    projectCollections: [],
+    projects: [],
+    projectFiles: new Map(),
+    appData: new Map(),
+  };
+}
+
 /** In-memory ProjectStore implementation for app-host specs. */
 export class MemoryProjectStore implements ProjectStore {
-  readonly keyPrefix = "test-app";
-  private projectCollections: ProjectCollection[] = [];
-  private projects: ProjectManifest[] = [];
-  private projectFiles = new Map<string, ProjectFileSnapshot>();
-  private appData = new Map<string, string>();
-  private activeId: string | undefined;
+  readonly keyPrefix: string;
+  private readonly data: MemoryProjectStoreData;
+  private projectSession: ProjectCollectionTabSession | undefined;
+
+  constructor(keyPrefix = "test-app", data: MemoryProjectStoreData = createMemoryProjectStoreData()) {
+    this.keyPrefix = keyPrefix;
+    this.data = data;
+  }
+
+  /** Create another tab-scoped store instance over the same project data. */
+  cloneForNewTab(): MemoryProjectStore {
+    return new MemoryProjectStore(this.keyPrefix, this.data);
+  }
 
   async listProjectCollections(): Promise<ProjectCollection[]> {
-    return this.projectCollections.filter((collection) => collection.deleted !== true);
+    return this.data.projectCollections.filter((collection) => collection.deleted !== true);
   }
 
   async getProjectCollection(projectCollectionId: string): Promise<ProjectCollection | undefined> {
-    return this.projectCollections.find(
+    return this.data.projectCollections.find(
       (collection) => collection.projectCollectionId === projectCollectionId && collection.deleted !== true
     );
   }
@@ -36,7 +60,7 @@ export class MemoryProjectStore implements ProjectStore {
       createdAt: now,
       updatedAt: now,
     };
-    this.projectCollections.push(collection);
+    this.data.projectCollections.push(collection);
     return collection;
   }
 
@@ -44,8 +68,7 @@ export class MemoryProjectStore implements ProjectStore {
     projectCollectionId: string,
     updates: Partial<Pick<ProjectCollection, "name">>
   ): Promise<void> {
-    const collection = await this.getProjectCollection(projectCollectionId);
-    if (!collection) return;
+    const collection = await this.requireLiveProjectCollection(projectCollectionId);
     Object.assign(collection, {
       ...updates,
       name: updates.name === undefined ? collection.name : normalizeProjectCollectionName(updates.name),
@@ -62,7 +85,7 @@ export class MemoryProjectStore implements ProjectStore {
     const now = Date.now();
     collection.deleted = true;
     collection.updatedAt = now;
-    this.projects = this.projects.map((project) =>
+    this.data.projects = this.data.projects.map((project) =>
       project.projectCollectionId === projectCollectionId && project.deleted !== true
         ? { ...project, deleted: true, updatedAt: now }
         : project
@@ -79,20 +102,28 @@ export class MemoryProjectStore implements ProjectStore {
       createdAt: now,
       updatedAt: now,
     };
-    this.projectCollections.push(collection);
+    this.data.projectCollections.push(collection);
     return collection;
   }
 
   async listProjects(projectCollectionId: string): Promise<ProjectManifest[]> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) return [];
-    return this.projects.filter(
+    return this.data.projects.filter(
       (project) => project.projectCollectionId === projectCollectionId && project.deleted !== true
     );
   }
 
+  private async requireLiveProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
+    const collection = await this.getProjectCollection(projectCollectionId);
+    if (!collection) {
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Project collection not found: ${projectCollectionId}`);
+    }
+    return collection;
+  }
+
   async getProject(id: string): Promise<ProjectManifest | undefined> {
-    const project = this.projects.find((entry) => entry.id === id && entry.deleted !== true);
+    const project = this.data.projects.find((entry) => entry.id === id && entry.deleted !== true);
     if (!project) return undefined;
     const collection = await this.getProjectCollection(project.projectCollectionId);
     return collection ? project : undefined;
@@ -104,23 +135,23 @@ export class MemoryProjectStore implements ProjectStore {
       throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Project collection not found: ${projectCollectionId}`);
     }
     const manifest: ProjectManifest = {
-      id: `id-${this.projects.length + 1}`,
+      id: `id-${this.data.projects.length + 1}`,
       projectCollectionId,
       name,
       description: "",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    this.projects.push(manifest);
+    this.data.projects.push(manifest);
     return manifest;
   }
 
   async deleteProject(id: string): Promise<void> {
-    const idx = this.projects.findIndex((project) => project.id === id);
+    const idx = this.data.projects.findIndex((project) => project.id === id);
     if (idx === -1) {
       throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
     }
-    const project = this.projects[idx];
+    const project = this.data.projects[idx];
     if (project.deleted === true) return;
     const collection = await this.getProjectCollection(project.projectCollectionId);
     if (!collection) {
@@ -129,16 +160,16 @@ export class MemoryProjectStore implements ProjectStore {
         `Project collection not found: ${project.projectCollectionId}`
       );
     }
-    this.projects[idx] = { ...project, deleted: true, updatedAt: Date.now() };
+    this.data.projects[idx] = { ...project, deleted: true, updatedAt: Date.now() };
   }
 
   async updateProject(
     id: string,
     updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
   ): Promise<void> {
-    const idx = this.projects.findIndex((project) => project.id === id);
-    if (idx === -1) return;
-    this.projects[idx] = { ...this.projects[idx], ...updates, updatedAt: Date.now() };
+    await this.requireLiveProject(id);
+    const idx = this.data.projects.findIndex((project) => project.id === id);
+    this.data.projects[idx] = { ...this.data.projects[idx], ...updates, updatedAt: Date.now() };
   }
 
   async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
@@ -147,41 +178,58 @@ export class MemoryProjectStore implements ProjectStore {
       throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
     }
     const dup = await this.createProject(source.projectCollectionId, newName);
-    const snapshot = this.projectFiles.get(id);
-    if (snapshot) this.projectFiles.set(dup.id, new Map(snapshot));
-    for (const [key, value] of this.appData) {
+    const snapshot = this.data.projectFiles.get(id);
+    if (snapshot) this.data.projectFiles.set(dup.id, new Map(snapshot));
+    for (const [key, value] of this.data.appData) {
       if (key.startsWith(`${id}:`)) {
-        this.appData.set(`${dup.id}:${key.slice(id.length + 1)}`, value);
+        this.data.appData.set(`${dup.id}:${key.slice(id.length + 1)}`, value);
       }
     }
     return dup;
   }
 
   async loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined> {
-    return this.projectFiles.get(id);
+    return this.data.projectFiles.get(id);
   }
 
   async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
-    this.projectFiles.set(id, snapshot);
+    await this.requireLiveProject(id);
+    this.data.projectFiles.set(id, snapshot);
   }
 
   async loadAppData(id: string, key: string): Promise<string | undefined> {
-    return this.appData.get(`${id}:${key}`);
+    return this.data.appData.get(`${id}:${key}`);
   }
 
   async saveAppData(id: string, key: string, data: string): Promise<void> {
-    this.appData.set(`${id}:${key}`, data);
+    await this.requireLiveProject(id);
+    this.data.appData.set(`${id}:${key}`, data);
   }
 
   async deleteAppData(id: string, key: string): Promise<void> {
-    this.appData.delete(`${id}:${key}`);
+    this.data.appData.delete(`${id}:${key}`);
   }
 
-  getActiveProjectId(): string | undefined {
-    return this.activeId;
+  getProjectSession(): ProjectCollectionTabSession | undefined {
+    return this.projectSession;
   }
 
-  setActiveProjectId(id: string | undefined): void {
-    this.activeId = id;
+  setProjectSession(session: ProjectCollectionTabSession | undefined): void {
+    this.projectSession = session;
+  }
+
+  private async requireLiveProject(id: string): Promise<ProjectManifest> {
+    const project = this.data.projects.find((entry) => entry.id === id);
+    if (!project || project.deleted === true) {
+      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+    }
+    const collection = await this.getProjectCollection(project.projectCollectionId);
+    if (!collection) {
+      throw appHostError(
+        "PROJECT_COLLECTION_NOT_FOUND",
+        `Project collection not found: ${project.projectCollectionId}`
+      );
+    }
+    return project;
   }
 }

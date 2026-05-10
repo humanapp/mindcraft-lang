@@ -2,6 +2,14 @@ import type { ProjectCollection } from "./project-collection.js";
 import type { ProjectFileSnapshot } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
 
+/** Tab-scoped project collection and project restore state. */
+export interface ProjectCollectionTabSession {
+  /** Project collection selected in the current tab. */
+  readonly projectCollectionId: string;
+  /** Project selected in the current tab, when one is open. */
+  readonly activeProjectId?: string;
+}
+
 /**
  * Persistence layer for project collections, project manifests, project file
  * snapshots, and app-specific data.
@@ -54,8 +62,8 @@ export interface ProjectStore {
   /** Remove a per-project app-data entry. */
   deleteAppData(id: string, key: string): Promise<void>;
 
-  /** Get the id of the project most recently marked active in this browser. */
-  getActiveProjectId(): string | undefined;
-  /** Record (or clear, when `id` is `undefined`) the active project. */
-  setActiveProjectId(id: string | undefined): void;
+  /** Read the current tab's selected project collection and project. */
+  getProjectSession(): ProjectCollectionTabSession | undefined;
+  /** Store or clear the current tab's selected project collection and project. */
+  setProjectSession(session: ProjectCollectionTabSession | undefined): void;
 }

@@ -147,6 +147,12 @@ export class AppEnvironmentHost {
     return this.projectManager.activeProject?.manifest;
   }
 
+  /** Release bridge and project-manager resources owned by this host. */
+  dispose(): void {
+    this.teardownBridge();
+    this.projectManager.dispose();
+  }
+
   // ---------------------------------------------------------------------------
   // Initialize
   // ---------------------------------------------------------------------------

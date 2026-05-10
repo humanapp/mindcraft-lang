@@ -505,8 +505,8 @@ follow."
 
 ## Current State
 
-Completed: W0, W1, W2, W3
-Next up: W4
+Completed: W0, W1, W2, W3, W4
+Next up: W5
 
 ---
 
@@ -573,6 +573,23 @@ across init, switch, and later unlock restore paths.
 
 Risk: W5/W6 UI should surface project collection name validation by app-host
 error code and avoid duplicating a divergent trim or length policy.
+
+### W4 -- Multi-Tab And Tab Restore Semantics
+
+W4 shipped tab-scoped project collection/project restore, cross-tab tombstone
+broadcast recovery, guarded stale-write rejection, and app-owned storage key
+namespacing before visible workspace switching.
+
+New public API: `ProjectCollectionTabSession`,
+`ProjectManager.dispose()`, `ProjectPersistenceError`, and
+`ProjectManager.onProjectPersistenceError`.
+
+Verification: full gates passed in `packages/app-host`,
+`packages/bridge-app`, and `apps/sim`.
+
+Risk: W5 should attach toast or explorer-visible feedback to
+`ProjectManager.onProjectPersistenceError` so non-tombstone autosave failures
+are visible in the app UI.
 
 ---
 
@@ -1209,6 +1226,10 @@ BroadcastChannel wrapper location and contract:
 - Define the wrapper in
   `packages/app-host/src/project-collection-broadcast.ts`.
 - `ProjectManager` owns the wrapper instance and subscribes to it.
+- `ProjectManager.dispose()` closes the wrapper subscription and channel. Owners
+  of a `ProjectManager` instance must call `dispose()` when the manager leaves
+  service; project-level `close()` does not release manager-level cross-tab
+  resources.
 - `ProjectStore` does not own BroadcastChannel behavior.
 - App UI does not import or subscribe to this wrapper.
 - Export from `project-collection-broadcast.ts` only.
@@ -1249,6 +1270,8 @@ Deliverables:
   collection.
 - Emit `ProjectCollectionState` after processing tombstone broadcasts and stale
   session fallback.
+- Add `ProjectPersistenceError` and `ProjectManager.onProjectPersistenceError`
+  as the app-facing attachment point for non-tombstone autosave failures.
 - Keep `localStorage` as the owner for app settings, UI preference,
   binding-token, and user-tile metadata behavior, but use only app-namespaced
   keys for app-owned values. Do not read, write, migrate, or fall back to old
@@ -1292,6 +1315,8 @@ Acceptance:
 - App settings, UI preference, binding-token, and user-tile metadata
   localStorage behavior uses app-namespaced keys only, with old key data
   abandoned.
+- `AppEnvironmentHost` and `SimEnvironmentStore` expose disposal paths that
+  release the `ProjectManager` BroadcastChannel resources.
 
 Gate:
 
@@ -1337,6 +1362,9 @@ Deliverables:
 - Wire explorer actions through ProjectManager methods from W3.
 - Subscribe to `ProjectCollectionState` for active collection, collection list,
   active project, and access state.
+- Keep Workspace Explorer state subscriptions inside component lifecycles and
+  do not create additional `ProjectManager` instances without wiring their
+  owner disposal path.
 - Refresh project list and active project display after switching collection.
 - Ensure delete confirmation describes deleting the workspace and its projects
   from normal lists while preserving the underlying records.

@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import {
   createIdbProjectStore,
   DEFAULT_PROJECT_COLLECTION_ID,
@@ -15,6 +15,13 @@ import type { ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import { assertRejectsWithCode } from "./test-support/error-assertions.js";
 
 let testId = 0;
+const originalSessionStorage: Storage | undefined = globalThis.sessionStorage;
+const originalLocalStorage: Storage | undefined = globalThis.localStorage;
+
+afterEach(() => {
+  restoreStorage("sessionStorage", originalSessionStorage);
+  restoreStorage("localStorage", originalLocalStorage);
+});
 
 function nextKeyPrefix(): string {
   testId += 1;
@@ -368,4 +375,108 @@ describe("createIdbProjectStore project collection membership", () => {
     const rawProject = await (store as TestStoreInternals).db.get("projects", project.id);
     assert.strictEqual(rawProject?.deleted, true);
   });
+
+  it("stores the current project session in sessionStorage only", async () => {
+    installStorage("sessionStorage");
+    const localStorage = installStorage("localStorage");
+    const keyPrefix = nextKeyPrefix();
+    localStorage.setItem(`${keyPrefix}:active-project`, "old-project");
+    const store = await createIdbProjectStore(keyPrefix);
+
+    assert.strictEqual(store.getProjectSession(), undefined);
+
+    store.setProjectSession({
+      projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
+      activeProjectId: "current-project",
+    });
+
+    assert.deepStrictEqual(store.getProjectSession(), {
+      projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
+      activeProjectId: "current-project",
+    });
+    assert.strictEqual(localStorage.getItem(`${keyPrefix}:active-project`), "old-project");
+    assert.strictEqual(localStorage.getItem(`${keyPrefix}:project-session`), null);
+
+    store.setProjectSession(undefined);
+    assert.strictEqual(store.getProjectSession(), undefined);
+  });
+
+  it("rejects guarded project writes after project tombstone", async () => {
+    const store = await createIdbProjectStore(nextKeyPrefix());
+    const collection = await store.ensureDefaultProjectCollection();
+    const project = await store.createProject(collection.projectCollectionId, "Stale");
+
+    await store.deleteProject(project.id);
+
+    await assertRejectsWithCode(() => store.updateProject(project.id, { name: "Nope" }), "PROJECT_NOT_FOUND");
+    await assertRejectsWithCode(
+      () =>
+        store.saveProjectFiles(
+          project.id,
+          new Map([["src/main.ts", { kind: "file", content: "x", etag: "etag-1", isReadonly: false }]])
+        ),
+      "PROJECT_NOT_FOUND"
+    );
+    await assertRejectsWithCode(() => store.saveAppData(project.id, "brains", "{}"), "PROJECT_NOT_FOUND");
+  });
+
+  it("rejects guarded writes after project collection tombstone", async () => {
+    const store = await createIdbProjectStore(nextKeyPrefix());
+    const collection = await store.createProjectCollection("Stale Collection");
+    const project = await store.createProject(collection.projectCollectionId, "Stale");
+
+    await store.deleteProjectCollection(collection.projectCollectionId);
+
+    await assertRejectsWithCode(
+      () => store.updateProjectCollection(collection.projectCollectionId, { name: "Nope" }),
+      "PROJECT_COLLECTION_NOT_FOUND"
+    );
+    await assertRejectsWithCode(() => store.saveAppData(project.id, "brains", "{}"), "PROJECT_NOT_FOUND");
+  });
 });
+
+class TestStorage {
+  private readonly values = new Map<string, string>();
+
+  get length(): number {
+    return this.values.size;
+  }
+
+  clear(): void {
+    this.values.clear();
+  }
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.values.keys())[index] ?? null;
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+}
+
+function installStorage(name: "sessionStorage" | "localStorage"): Storage {
+  const storage = new TestStorage() as Storage;
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value: storage,
+  });
+  return storage;
+}
+
+function restoreStorage(name: "sessionStorage" | "localStorage", storage: Storage | undefined): void {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value: storage,
+  });
+}

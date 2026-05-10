@@ -9,7 +9,7 @@ import {
 } from "./project-collection.js";
 import type { ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
-import type { ProjectStore } from "./project-store.js";
+import type { ProjectCollectionTabSession, ProjectStore } from "./project-store.js";
 
 interface ProjectDbSchema extends DBSchema {
   projectCollections: {
@@ -60,7 +60,7 @@ function isConstraintError(error: unknown): boolean {
  * Create a {@link ProjectStore} backed by IndexedDB.
  *
  * @param keyPrefix - Used to derive the IndexedDB database name and the
- *   `localStorage`/`sessionStorage` keys that track the active project.
+ *   `sessionStorage` key that tracks the current tab's project session.
  */
 export async function createIdbProjectStore(keyPrefix: string): Promise<ProjectStore> {
   let migrateWorkspacesToFiles: Map<string, Array<[string, ProjectFileSystemEntry]>> | undefined;
@@ -164,10 +164,7 @@ class IdbProjectStore implements ProjectStore {
     projectCollectionId: string,
     updates: Partial<Pick<ProjectCollection, "name">>
   ): Promise<void> {
-    const collection = await this.getProjectCollection(projectCollectionId);
-    if (!collection) {
-      return;
-    }
+    const collection = await this.requireLiveProjectCollection(projectCollectionId);
     await this.db.put("projectCollections", {
       ...collection,
       ...updates,
@@ -245,6 +242,14 @@ class IdbProjectStore implements ProjectStore {
     return projects.filter((project) => project.projectCollectionId === projectCollectionId && isLiveProject(project));
   }
 
+  private async requireLiveProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
+    const collection = await this.getProjectCollection(projectCollectionId);
+    if (!collection) {
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Project collection not found: ${projectCollectionId}`);
+    }
+    return collection;
+  }
+
   async getProject(id: string): Promise<ProjectManifest | undefined> {
     const project = await this.db.get("projects", id);
     if (!project || !isLiveProject(project)) {
@@ -297,26 +302,36 @@ class IdbProjectStore implements ProjectStore {
       deleted: true,
       updatedAt: Date.now(),
     });
-
-    const activeId = this.getActiveProjectId();
-    if (activeId === id) {
-      this.setActiveProjectId(undefined);
-    }
   }
 
   async updateProject(
     id: string,
     updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
   ): Promise<void> {
-    const manifest = await this.db.get("projects", id);
-    if (!manifest) {
-      return;
-    }
+    const manifest = await this.requireLiveProject(id);
     await this.db.put("projects", {
       ...manifest,
       ...updates,
       updatedAt: Date.now(),
     });
+  }
+
+  private async requireLiveProject(id: string): Promise<ProjectManifest> {
+    const manifest = await this.db.get("projects", id);
+    if (!manifest) {
+      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+    }
+    if (!isLiveProject(manifest)) {
+      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+    }
+    const collection = await this.getProjectCollection(manifest.projectCollectionId);
+    if (!collection) {
+      throw appHostError(
+        "PROJECT_COLLECTION_NOT_FOUND",
+        `Project collection not found: ${manifest.projectCollectionId}`
+      );
+    }
+    return manifest;
   }
 
   async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
@@ -356,6 +371,7 @@ class IdbProjectStore implements ProjectStore {
   }
 
   async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
+    await this.requireLiveProject(id);
     snapshot.delete(MINDCRAFT_JSON_PATH);
     await this.db.put("files", [...snapshot], id);
     await this.updateProject(id, {});
@@ -366,6 +382,7 @@ class IdbProjectStore implements ProjectStore {
   }
 
   async saveAppData(id: string, key: string, data: string): Promise<void> {
+    await this.requireLiveProject(id);
     await this.db.put("appData", data, appDataKey(id, key));
     await this.updateProject(id, {});
   }
@@ -374,32 +391,41 @@ class IdbProjectStore implements ProjectStore {
     await this.db.delete("appData", appDataKey(id, key));
   }
 
-  getActiveProjectId(): string | undefined {
-    return (
-      (typeof sessionStorage === "undefined"
-        ? undefined
-        : sessionStorage.getItem(`${this.keyPrefix}:active-project`)) ??
-      (typeof localStorage === "undefined" ? undefined : localStorage.getItem(`${this.keyPrefix}:active-project`)) ??
-      undefined
-    );
+  getProjectSession(): ProjectCollectionTabSession | undefined {
+    if (typeof sessionStorage === "undefined") {
+      return undefined;
+    }
+    const raw = sessionStorage.getItem(`${this.keyPrefix}:project-session`);
+    if (!raw) {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(raw) as Partial<ProjectCollectionTabSession>;
+      if (
+        typeof parsed.projectCollectionId === "string" &&
+        (parsed.activeProjectId === undefined || typeof parsed.activeProjectId === "string")
+      ) {
+        return {
+          projectCollectionId: parsed.projectCollectionId,
+          ...(parsed.activeProjectId === undefined ? {} : { activeProjectId: parsed.activeProjectId }),
+        };
+      }
+    } catch {
+      sessionStorage.removeItem(`${this.keyPrefix}:project-session`);
+    }
+    return undefined;
   }
 
-  setActiveProjectId(id: string | undefined): void {
-    if (id === undefined) {
-      if (typeof sessionStorage !== "undefined") {
-        sessionStorage.removeItem(`${this.keyPrefix}:active-project`);
-      }
-      if (typeof localStorage !== "undefined") {
-        localStorage.removeItem(`${this.keyPrefix}:active-project`);
-      }
-    } else {
-      if (typeof sessionStorage !== "undefined") {
-        sessionStorage.setItem(`${this.keyPrefix}:active-project`, id);
-      }
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem(`${this.keyPrefix}:active-project`, id);
-      }
+  setProjectSession(session: ProjectCollectionTabSession | undefined): void {
+    if (typeof sessionStorage === "undefined") {
+      return;
     }
+    const key = `${this.keyPrefix}:project-session`;
+    if (session === undefined) {
+      sessionStorage.removeItem(key);
+      return;
+    }
+    sessionStorage.setItem(key, JSON.stringify(session));
   }
 
   private async listLiveProjectCollections(): Promise<ProjectCollection[]> {

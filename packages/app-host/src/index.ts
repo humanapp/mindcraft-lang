@@ -44,7 +44,8 @@ export type {
   ProjectCollectionState,
   ProjectCollectionSwitchResult,
   ProjectManagerOptions,
+  ProjectPersistenceError,
 } from "./project-manager.js";
 export { DEFAULT_PROJECT_NAME, ProjectManager } from "./project-manager.js";
 export type { ProjectManifest } from "./project-manifest.js";
-export type { ProjectStore } from "./project-store.js";
+export type { ProjectCollectionTabSession, ProjectStore } from "./project-store.js";

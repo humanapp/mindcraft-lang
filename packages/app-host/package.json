@@ -72,6 +72,7 @@
     "typescript": "~5.9.3"
   },
   "dependencies": {
+    "@mindcraft-lang/core": "file:../core",
     "@mindcraft-lang/service-api": "file:../service-api",
     "idb": "^8.0.3"
   }

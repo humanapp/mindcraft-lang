@@ -33,7 +33,7 @@ import { initVfsServiceWorker } from "./vfs-service-worker";
 
 // -- AppSettings --
 
-const APP_SETTINGS_STORAGE_KEY = "app-settings";
+const APP_SETTINGS_STORAGE_KEY = `${simName}:app-settings`;
 
 export interface AppSettings {
   vscodeBridgeUrl: string;
@@ -261,7 +261,7 @@ export class SimEnvironmentStore {
       modules: [coreModule(), createSimModule()],
       ambientFiles: simAmbientFiles,
       host: { name: simName, version: simVersion },
-      userTileStorageKey: "sim:user-tile-metadata",
+      userTileStorageKey: `${simName}:user-tile-metadata`,
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,
       saveBindingToken,
@@ -314,6 +314,15 @@ export class SimEnvironmentStore {
         this.host.updateBridgeUrl(settings.vscodeBridgeUrl);
       }
     });
+  }
+
+  /** Release host resources owned by this store. */
+  dispose(): void {
+    if (this._desiredCountsSaveTimer !== undefined) {
+      clearTimeout(this._desiredCountsSaveTimer);
+      this._desiredCountsSaveTimer = undefined;
+    }
+    this.host.dispose();
   }
 
   // -- Brain Persistence (archetype-typed wrappers) --
