@@ -41,8 +41,15 @@ export { createWebLocksProjectLock } from "./project-lock.js";
 export type {
   ActiveProject,
   ProjectCollectionAccessState,
+  ProjectCollectionEvent,
+  ProjectCollectionProjectCommitResult,
   ProjectCollectionState,
+  ProjectCollectionStateSubscription,
+  ProjectCollectionSummary,
+  ProjectCollectionSummaryChange,
+  ProjectCollectionSummarySubscription,
   ProjectCollectionSwitchResult,
+  ProjectListSubscription,
   ProjectManagerOptions,
   ProjectPersistenceError,
 } from "./project-manager.js";

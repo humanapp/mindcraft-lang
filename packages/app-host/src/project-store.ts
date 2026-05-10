@@ -36,6 +36,8 @@ export interface ProjectStore {
 
   /** List all non-deleted project manifests in one project collection. */
   listProjects(projectCollectionId: string): Promise<ProjectManifest[]>;
+  /** Count non-deleted projects for each non-deleted project collection. */
+  countProjectsByCollection(): Promise<Map<string, number>>;
   /** Look up a single non-deleted manifest by id. */
   getProject(id: string): Promise<ProjectManifest | undefined>;
   /** Create a new, empty project in the given project collection. */

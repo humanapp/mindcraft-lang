@@ -1,5 +1,5 @@
 import { logger } from "@mindcraft-lang/core";
-import { appHostError } from "./app-host-error.js";
+import { AppHostError, appHostError } from "./app-host-error.js";
 import type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";
 import { createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";
 import { DEFAULT_PROJECT_COLLECTION_ID, type ProjectCollection } from "./project-collection.js";
@@ -46,6 +46,60 @@ export interface ProjectCollectionSwitchResult {
   readonly access: ProjectCollectionAccessState;
 }
 
+/** Summary row data for one project collection. */
+export interface ProjectCollectionSummary {
+  /** Project collection metadata for this summary row. */
+  readonly collection: ProjectCollection;
+  /** Number of non-deleted projects in the project collection. */
+  readonly projectCount: number;
+}
+
+/** Active project collection state watcher registration result. */
+export interface ProjectCollectionStateSubscription {
+  /** State captured immediately after the watcher was registered. */
+  readonly initial: ProjectCollectionState;
+  /** Stop receiving state updates. */
+  readonly unsubscribe: () => void;
+}
+
+/** Project collection summary watcher registration result. */
+export interface ProjectCollectionSummarySubscription {
+  /** Summary rows captured immediately after the watcher was registered. */
+  readonly initial: ProjectCollectionSummary[];
+  /** Stop receiving summary updates. */
+  readonly unsubscribe: () => void;
+}
+
+/** Refreshed project list watcher registration result. */
+export interface ProjectListSubscription {
+  /** Project list captured immediately after the watcher was registered. */
+  readonly initial: ProjectManifest[];
+  /** Stop receiving project list updates. */
+  readonly unsubscribe: () => void;
+}
+
+/** Atomic project collection commit result for workspace UI flows. */
+export interface ProjectCollectionProjectCommitResult {
+  /** Project collection that became active. */
+  readonly collection: ProjectCollection;
+  /** Project that became active. */
+  readonly project: ProjectManifest;
+  /** Access status for the active project collection. */
+  readonly access: "ready";
+}
+
+/** Targeted project collection summary patch emitted to workspace UI. */
+export type ProjectCollectionSummaryChange =
+  | { readonly type: "upsert"; readonly summary: ProjectCollectionSummary }
+  | { readonly type: "remove"; readonly projectCollectionId: string };
+
+/** Low-level in-process project collection event used by derived UI watchers. */
+export type ProjectCollectionEvent =
+  | { readonly type: "project-collection-changed"; readonly projectCollectionId: string }
+  | { readonly type: "project-collection-tombstoned"; readonly projectCollectionId: string }
+  | { readonly type: "project-list-changed"; readonly projectCollectionId: string }
+  | { readonly type: "project-tombstoned"; readonly projectCollectionId: string; readonly projectId: string };
+
 /** Non-fatal persistence failure observed by {@link ProjectManager}. */
 export interface ProjectPersistenceError {
   /** ProjectManager operation that failed. */
@@ -83,6 +137,7 @@ export class ProjectManager {
   private readonly activeProjectListeners = new Set<(project: ActiveProject | undefined) => void>();
   private readonly projectListListeners = new Set<(projects: ProjectManifest[]) => void>();
   private readonly projectCollectionStateListeners = new Set<(state: ProjectCollectionState) => void>();
+  private readonly projectCollectionEventListeners = new Set<(event: ProjectCollectionEvent) => void>();
   private readonly projectPersistenceErrorListeners = new Set<(error: ProjectPersistenceError) => void>();
   private currentProjectCollection: ProjectCollection | undefined;
   private currentActive: ActiveProject | undefined;
@@ -135,7 +190,7 @@ export class ProjectManager {
   private async createInternal(name: string, shouldNotifyProjectCollectionState: boolean): Promise<ProjectManifest> {
     const collection = await this.ensureActiveProjectCollection();
     const manifest = await this.store.createProject(collection.projectCollectionId, name);
-    await this.notifyProjectList();
+    await this.notifyProjectListChangedForCollection(collection.projectCollectionId);
     const active = await this.tryOpen(manifest.id, shouldNotifyProjectCollectionState);
     if (!active) {
       throw appHostError("PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB", "Project is already open in another tab");
@@ -159,7 +214,7 @@ export class ProjectManager {
         await this.store.saveAppData(manifest.id, key, value);
       }
     }
-    await this.notifyProjectList();
+    await this.notifyProjectListChangedForCollection(collection.projectCollectionId);
     return manifest;
   }
 
@@ -228,14 +283,14 @@ export class ProjectManager {
       projectCollectionId: manifest.projectCollectionId,
       projectId: manifest.id,
     });
-    await this.notifyProjectList();
+    await this.notifyProjectTombstoned(manifest.projectCollectionId, manifest.id);
     await this.notifyProjectCollectionState();
   }
 
   async duplicate(id: string, newName: string): Promise<ProjectManifest> {
     await this.getProjectInActiveCollection(id);
     const manifest = await this.store.duplicateProject(id, newName);
-    await this.notifyProjectList();
+    await this.notifyProjectListChangedForCollection(manifest.projectCollectionId);
     return manifest;
   }
 
@@ -257,7 +312,7 @@ export class ProjectManager {
     if (updated) {
       this.currentActive = { manifest: updated, filesystem: this.currentActive.filesystem };
       this.notifyActiveProject();
-      await this.notifyProjectList();
+      await this.notifyProjectListChangedForCollection(projectCollectionId);
       await this.notifyProjectCollectionState();
     }
   }
@@ -296,6 +351,47 @@ export class ProjectManager {
   }
 
   /**
+   * Subscribe to committed project collection state after registering the
+   * listener.
+   */
+  async watchProjectCollectionState(
+    listener: (state: ProjectCollectionState) => void
+  ): Promise<ProjectCollectionStateSubscription> {
+    let active = true;
+    let initializing = true;
+    let changedWhileInitializing = false;
+    const unsubscribeStateChange = this.onProjectCollectionStateChange((state) => {
+      if (initializing) {
+        changedWhileInitializing = true;
+        return;
+      }
+      if (active) {
+        listener(state);
+      }
+    });
+    const initial = await this.getProjectCollectionState();
+    initializing = false;
+    if (changedWhileInitializing) {
+      setTimeout(() => {
+        if (active) {
+          void this.getProjectCollectionState().then((state) => {
+            if (active) {
+              listener(state);
+            }
+          });
+        }
+      }, 0);
+    }
+    return {
+      initial,
+      unsubscribe: () => {
+        active = false;
+        unsubscribeStateChange();
+      },
+    };
+  }
+
+  /**
    * Subscribe to project collection state changes.
    *
    * The current state is not emitted during subscription. Call
@@ -309,6 +405,172 @@ export class ProjectManager {
     };
   }
 
+  /** Subscribe to low-level project collection UI events without replay. */
+  onProjectCollectionEvent(listener: (event: ProjectCollectionEvent) => void): () => void {
+    this.projectCollectionEventListeners.add(listener);
+    return () => {
+      this.projectCollectionEventListeners.delete(listener);
+    };
+  }
+
+  /** Watch project collection summaries and receive targeted patches. */
+  async watchProjectCollectionSummaries(
+    listener: (change: ProjectCollectionSummaryChange) => void
+  ): Promise<ProjectCollectionSummarySubscription> {
+    let active = true;
+    let initializing = true;
+    const bufferedEvents: ProjectCollectionEvent[] = [];
+    const projectListChanges = new Set<string>();
+    const handleEvent = (event: ProjectCollectionEvent) => {
+      if (event.type === "project-collection-tombstoned") {
+        if (active) {
+          listener({ type: "remove", projectCollectionId: event.projectCollectionId });
+        }
+        return;
+      }
+      if (event.type === "project-collection-changed" || event.type === "project-list-changed") {
+        if (event.type === "project-list-changed") {
+          projectListChanges.add(event.projectCollectionId);
+          queueMicrotask(() => {
+            projectListChanges.delete(event.projectCollectionId);
+          });
+        }
+        void this.loadProjectCollectionSummary(event.projectCollectionId).then((summary) => {
+          if (active && summary) {
+            listener({ type: "upsert", summary });
+          }
+        });
+        return;
+      }
+      if (projectListChanges.has(event.projectCollectionId)) {
+        return;
+      }
+      void this.loadProjectCollectionSummary(event.projectCollectionId).then((summary) => {
+        if (active && summary) {
+          listener({ type: "upsert", summary });
+        }
+      });
+    };
+    const unsubscribeProjectCollectionEvent = this.onProjectCollectionEvent((event) => {
+      if (initializing) {
+        bufferedEvents.push(event);
+        return;
+      }
+      handleEvent(event);
+    });
+    const initial = await this.loadProjectCollectionSummaries();
+    initializing = false;
+    if (bufferedEvents.length > 0) {
+      setTimeout(() => {
+        if (!active) {
+          return;
+        }
+        for (const event of bufferedEvents) {
+          handleEvent(event);
+        }
+      }, 0);
+    }
+    return {
+      initial,
+      unsubscribe: () => {
+        active = false;
+        unsubscribeProjectCollectionEvent();
+      },
+    };
+  }
+
+  /** List non-deleted projects in a non-deleted project collection. */
+  async listProjectsForCollection(projectCollectionId: string): Promise<ProjectManifest[]> {
+    await this.requireProjectCollection(projectCollectionId);
+    return this.store.listProjects(projectCollectionId);
+  }
+
+  /** Watch one project collection's project list and receive refreshed lists. */
+  async watchProjectListForCollection(
+    projectCollectionId: string,
+    listener: (projects: ProjectManifest[]) => void
+  ): Promise<ProjectListSubscription> {
+    let active = true;
+    let initializing = true;
+    const bufferedEvents: ProjectCollectionEvent[] = [];
+    let projectListChanged = false;
+    let collectionUnavailable = false;
+    const emitProjectList = () => {
+      if (collectionUnavailable) {
+        if (active) {
+          listener([]);
+        }
+        return;
+      }
+      void this.listProjectsForCollection(projectCollectionId)
+        .catch((error: unknown) => {
+          if (error instanceof AppHostError && error.code === "PROJECT_COLLECTION_NOT_FOUND") {
+            collectionUnavailable = true;
+            return [];
+          }
+          throw error;
+        })
+        .then((projects) => {
+          if (active) {
+            listener(projects);
+          }
+        });
+    };
+    const handleEvent = (event: ProjectCollectionEvent) => {
+      if (event.projectCollectionId === projectCollectionId && event.type === "project-collection-tombstoned") {
+        collectionUnavailable = true;
+        if (active) {
+          listener([]);
+        }
+        return;
+      }
+      if (collectionUnavailable) {
+        return;
+      }
+      if (event.projectCollectionId === projectCollectionId && event.type === "project-list-changed") {
+        projectListChanged = true;
+        queueMicrotask(() => {
+          projectListChanged = false;
+        });
+        emitProjectList();
+        return;
+      }
+      if (
+        event.projectCollectionId === projectCollectionId &&
+        event.type === "project-tombstoned" &&
+        !projectListChanged
+      ) {
+        emitProjectList();
+      }
+    };
+    const unsubscribeProjectCollectionEvent = this.onProjectCollectionEvent((event) => {
+      if (initializing) {
+        bufferedEvents.push(event);
+        return;
+      }
+      handleEvent(event);
+    });
+    const initial = await this.listProjectsForCollection(projectCollectionId);
+    initializing = false;
+    if (bufferedEvents.length > 0) {
+      setTimeout(() => {
+        if (!active) {
+          return;
+        }
+        for (const event of bufferedEvents) {
+          handleEvent(event);
+        }
+      }, 0);
+    }
+    return {
+      initial,
+      unsubscribe: () => {
+        active = false;
+        unsubscribeProjectCollectionEvent();
+      },
+    };
+  }
+
   /** List non-deleted project collections. */
   async listProjectCollections(): Promise<ProjectCollection[]> {
     return this.store.listProjectCollections();
@@ -317,6 +579,14 @@ export class ProjectManager {
   /** Create a project collection without switching to it. */
   async createProjectCollection(name: string): Promise<ProjectCollection> {
     const collection = await this.store.createProjectCollection(name);
+    this.projectCollectionBroadcast.post({
+      type: "project-collection-changed",
+      projectCollectionId: collection.projectCollectionId,
+    });
+    this.emitProjectCollectionEvent({
+      type: "project-collection-changed",
+      projectCollectionId: collection.projectCollectionId,
+    });
     await this.notifyProjectCollectionState();
     return collection;
   }
@@ -328,6 +598,14 @@ export class ProjectManager {
       const updated = await this.store.getProjectCollection(projectCollectionId);
       this.currentProjectCollection = updated;
     }
+    this.projectCollectionBroadcast.post({
+      type: "project-collection-changed",
+      projectCollectionId,
+    });
+    this.emitProjectCollectionEvent({
+      type: "project-collection-changed",
+      projectCollectionId,
+    });
     await this.notifyProjectCollectionState();
   }
 
@@ -371,7 +649,48 @@ export class ProjectManager {
       type: "project-collection-tombstoned",
       projectCollectionId,
     });
+    this.emitProjectCollectionEvent({
+      type: "project-collection-tombstoned",
+      projectCollectionId,
+    });
     await this.notifyProjectCollectionState();
+  }
+
+  /** Switch to a project collection and open a selected project atomically. */
+  async switchProjectCollectionAndOpenProject(
+    projectCollectionId: string,
+    projectId: string
+  ): Promise<ProjectCollectionProjectCommitResult> {
+    const collection = await this.requireProjectCollection(projectCollectionId);
+    const project = await this.store.getProject(projectId);
+    if (!project) {
+      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${projectId}`);
+    }
+    if (project.projectCollectionId !== projectCollectionId) {
+      throw appHostError("PROJECT_NOT_IN_ACTIVE_COLLECTION", `Project not found in project collection: ${projectId}`);
+    }
+    return this.commitProjectCollectionProject(collection, project);
+  }
+
+  /** Switch to a project collection and create a project there atomically. */
+  async switchProjectCollectionAndCreateProject(
+    projectCollectionId: string,
+    name: string
+  ): Promise<ProjectCollectionProjectCommitResult> {
+    const collection = await this.requireProjectCollection(projectCollectionId);
+    const project = await this.store.createProject(collection.projectCollectionId, name);
+    let result: ProjectCollectionProjectCommitResult;
+    try {
+      result = await this.commitProjectCollectionProject(collection, project);
+    } catch (error) {
+      await this.deleteCreatedProjectAfterFailedCommit(project);
+      throw error;
+    }
+    this.emitProjectCollectionEvent({
+      type: "project-list-changed",
+      projectCollectionId: collection.projectCollectionId,
+    });
+    return result;
   }
 
   async saveAppData(key: string, data: string): Promise<void> {
@@ -466,15 +785,14 @@ export class ProjectManager {
     if (!this.currentActive) {
       return;
     }
-    this.stopAutoSave();
     const { manifest, filesystem } = this.currentActive;
-    try {
-      filesystem.flush();
-      await this.store.saveProjectFiles(manifest.id, filesystem.exportSnapshot());
-    } finally {
-      this.currentLockHandle?.release();
-      this.currentLockHandle = undefined;
+    filesystem.flush();
+    await this.store.saveProjectFiles(manifest.id, filesystem.exportSnapshot());
+    this.stopAutoSave();
+    if (this.currentLockHandle) {
+      this.releaseLockHandle(this.currentLockHandle);
     }
+    this.currentLockHandle = undefined;
   }
 
   private startAutoSave(filesystem: ProjectFileSystem): void {
@@ -520,6 +838,31 @@ export class ProjectManager {
     }
   }
 
+  private async notifyProjectListChangedForCollection(projectCollectionId: string): Promise<void> {
+    if (this.currentProjectCollection?.projectCollectionId === projectCollectionId) {
+      await this.notifyProjectList();
+    }
+    this.emitProjectCollectionEvent({
+      type: "project-list-changed",
+      projectCollectionId,
+    });
+  }
+
+  private async notifyProjectTombstoned(projectCollectionId: string, projectId: string): Promise<void> {
+    if (this.currentProjectCollection?.projectCollectionId === projectCollectionId) {
+      await this.notifyProjectList();
+    }
+    this.emitProjectCollectionEvent({
+      type: "project-list-changed",
+      projectCollectionId,
+    });
+    this.emitProjectCollectionEvent({
+      type: "project-tombstoned",
+      projectCollectionId,
+      projectId,
+    });
+  }
+
   private async notifyProjectCollectionState(): Promise<void> {
     const state = await this.getProjectCollectionState();
     for (const listener of this.projectCollectionStateListeners) {
@@ -527,10 +870,40 @@ export class ProjectManager {
     }
   }
 
+  private emitProjectCollectionEvent(event: ProjectCollectionEvent): void {
+    for (const listener of this.projectCollectionEventListeners) {
+      listener(event);
+    }
+  }
+
   private notifyProjectPersistenceError(error: ProjectPersistenceError): void {
     for (const listener of this.projectPersistenceErrorListeners) {
       listener(error);
     }
+  }
+
+  private async loadProjectCollectionSummaries(): Promise<ProjectCollectionSummary[]> {
+    const [collections, projectCounts] = await Promise.all([
+      this.store.listProjectCollections(),
+      this.store.countProjectsByCollection(),
+    ]);
+    return collections.map((collection) => ({
+      collection,
+      projectCount: projectCounts.get(collection.projectCollectionId) ?? 0,
+    }));
+  }
+
+  private async loadProjectCollectionSummary(
+    projectCollectionId: string
+  ): Promise<ProjectCollectionSummary | undefined> {
+    const collection = await this.store.getProjectCollection(projectCollectionId);
+    if (!collection) {
+      return undefined;
+    }
+    return {
+      collection,
+      projectCount: (await this.store.listProjects(projectCollectionId)).length,
+    };
   }
 
   private async ensureInitialProjectCollection(projectCollectionId?: string): Promise<ProjectCollection> {
@@ -569,14 +942,16 @@ export class ProjectManager {
     if (!this.currentProjectCollection) {
       throw appHostError("NO_ACTIVE_PROJECT_COLLECTION", "No active project collection");
     }
-    const collection = await this.store.getProjectCollection(this.currentProjectCollection.projectCollectionId);
-    if (!collection) {
-      throw appHostError(
-        "PROJECT_COLLECTION_NOT_FOUND",
-        `Project collection not found: ${this.currentProjectCollection.projectCollectionId}`
-      );
-    }
+    const collection = await this.requireProjectCollection(this.currentProjectCollection.projectCollectionId);
     this.currentProjectCollection = collection;
+    return collection;
+  }
+
+  private async requireProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
+    const collection = await this.store.getProjectCollection(projectCollectionId);
+    if (!collection) {
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Project collection not found: ${projectCollectionId}`);
+    }
     return collection;
   }
 
@@ -623,6 +998,56 @@ export class ProjectManager {
     return active;
   }
 
+  private async commitProjectCollectionProject(
+    collection: ProjectCollection,
+    project: ProjectManifest
+  ): Promise<ProjectCollectionProjectCommitResult> {
+    if (
+      this.currentProjectCollection?.projectCollectionId === collection.projectCollectionId &&
+      this.currentActive?.manifest.id === project.id
+    ) {
+      this.currentProjectCollection = collection;
+      this.currentActive = { manifest: project, filesystem: this.currentActive.filesystem };
+      return { collection, project, access: "ready" };
+    }
+
+    const handle = await this.acquireLock(project.id);
+    if (!handle) {
+      throw appHostError("PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB", "Project is already open in another tab");
+    }
+
+    try {
+      if (this.currentActive) {
+        await this.closeInternal();
+      }
+
+      const active = await this.openInternal(project);
+      this.currentProjectCollection = collection;
+      this.currentLockHandle = handle;
+      this.currentActive = active;
+      this.startAutoSave(active.filesystem);
+      this.updateProjectSession(project.id);
+      this.notifyActiveProject();
+      await this.notifyProjectList();
+      await this.notifyProjectCollectionState();
+      return { collection, project: active.manifest, access: "ready" };
+    } catch (error) {
+      this.releaseLockHandle(handle);
+      throw error;
+    }
+  }
+
+  private async deleteCreatedProjectAfterFailedCommit(project: ProjectManifest): Promise<void> {
+    if (this.currentActive?.manifest.id === project.id) {
+      return;
+    }
+    try {
+      await this.store.deleteProject(project.id);
+    } catch {
+      return;
+    }
+  }
+
   private updateProjectSession(activeProjectId = this.currentActive?.manifest.id): void {
     if (!this.currentProjectCollection) {
       if (this.store.getProjectSession() !== undefined) {
@@ -642,6 +1067,7 @@ export class ProjectManager {
 
   private async handleProjectCollectionBroadcast(message: ProjectCollectionBroadcastMessage): Promise<void> {
     const activeCollectionId = this.currentProjectCollection?.projectCollectionId;
+    this.emitProjectCollectionEvent(message);
     if (!activeCollectionId) {
       return;
     }
@@ -649,6 +1075,9 @@ export class ProjectManager {
       if (message.projectCollectionId === activeCollectionId) {
         await this.recoverFromTombstonedActiveCollection();
       }
+      return;
+    }
+    if (message.type === "project-collection-changed") {
       return;
     }
     if (message.projectCollectionId === activeCollectionId && this.currentActive?.manifest.id === message.projectId) {
@@ -677,9 +1106,19 @@ export class ProjectManager {
 
   private discardCurrentActiveWithoutSaving(): void {
     this.stopAutoSave();
-    this.currentLockHandle?.release();
+    if (this.currentLockHandle) {
+      this.releaseLockHandle(this.currentLockHandle);
+    }
     this.currentLockHandle = undefined;
     this.currentActive = undefined;
+  }
+
+  private releaseLockHandle(handle: ProjectLockHandle): void {
+    try {
+      handle.release();
+    } catch (error) {
+      logger.error("[app-host] project lock release failed", error);
+    }
   }
 
   private async handleAutoSaveError(projectCollectionId: string, projectId: string, error: unknown): Promise<void> {

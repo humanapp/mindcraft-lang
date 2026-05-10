@@ -504,8 +504,8 @@ follow."
 
 ## Current State
 
-Completed: W0, W1, W2, W3, W4
-Next up: W5a
+Completed: W0, W1, W2, W3, W4, W5a
+Next up: W5b
 
 ---
 
@@ -589,6 +589,22 @@ Verification: full gates passed in `packages/app-host`,
 Risk: W5b should attach toast or visible app feedback to
 `ProjectManager.onProjectPersistenceError` so non-tombstone autosave failures
 are visible in the app UI.
+
+### W5a -- Workspace UI Data APIs
+
+W5a shipped app-host watcher and commit APIs for workspace selector rows,
+collection-scoped project lists, committed workspace state, and pending
+workspace/project commits, without adding visible workspace UI.
+
+New public API: `ProjectCollectionEvent`, `ProjectCollectionSummary`,
+`ProjectCollectionSummaryChange`, `ProjectCollectionProjectCommitResult`,
+`watchProjectCollectionState`, `watchProjectCollectionSummaries`,
+`listProjectsForCollection`, `watchProjectListForCollection`,
+`switchProjectCollectionAndOpenProject`, and
+`switchProjectCollectionAndCreateProject`.
+
+Verification: `npm run typecheck`, `npm run check`, `npm test`, and
+`npm run build` passed in `packages/app-host`.
 
 ---
 

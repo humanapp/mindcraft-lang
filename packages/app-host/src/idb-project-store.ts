@@ -242,6 +242,19 @@ class IdbProjectStore implements ProjectStore {
     return projects.filter((project) => project.projectCollectionId === projectCollectionId && isLiveProject(project));
   }
 
+  async countProjectsByCollection(): Promise<Map<string, number>> {
+    const liveCollectionIds = new Set(
+      (await this.listLiveProjectCollections()).map((collection) => collection.projectCollectionId)
+    );
+    const counts = new Map<string, number>();
+    for (const project of await this.db.getAll("projects")) {
+      if (isLiveProject(project) && liveCollectionIds.has(project.projectCollectionId)) {
+        counts.set(project.projectCollectionId, (counts.get(project.projectCollectionId) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }
+
   private async requireLiveProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {

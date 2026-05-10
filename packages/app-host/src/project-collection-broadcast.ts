@@ -1,13 +1,14 @@
-/** Cross-tab messages for project collection and project tombstones. */
+/** Cross-tab messages for project collection and project changes. */
 export type ProjectCollectionBroadcastMessage =
+  | { type: "project-collection-changed"; projectCollectionId: string }
   | { type: "project-collection-tombstoned"; projectCollectionId: string }
   | { type: "project-tombstoned"; projectCollectionId: string; projectId: string };
 
 /** Broadcast channel used by project managers in one app namespace. */
 export interface ProjectCollectionBroadcast {
-  /** Send a tombstone message to other tabs in the same app namespace. */
+  /** Send a project collection message to other tabs in the same app namespace. */
   post(message: ProjectCollectionBroadcastMessage): void;
-  /** Subscribe to tombstone messages. Returns an unsubscribe function. */
+  /** Subscribe to project collection messages. Returns an unsubscribe function. */
   subscribe(listener: (message: ProjectCollectionBroadcastMessage) => void): () => void;
   /** Close the underlying channel and remove local listeners. */
   close(): void;
@@ -18,7 +19,7 @@ export function projectCollectionBroadcastChannelName(keyPrefix: string): string
   return `${keyPrefix}:project-collections`;
 }
 
-/** Create a tombstone broadcast channel for one app namespace. */
+/** Create a project collection broadcast channel for one app namespace. */
 export function createProjectCollectionBroadcast(keyPrefix: string): ProjectCollectionBroadcast {
   if (typeof BroadcastChannel === "undefined") {
     return createNoopBroadcast();
@@ -41,6 +42,9 @@ function isProjectCollectionBroadcastMessage(value: unknown): value is ProjectCo
     return false;
   }
   const message = value as Partial<ProjectCollectionBroadcastMessage>;
+  if (message.type === "project-collection-changed") {
+    return typeof message.projectCollectionId === "string";
+  }
   if (message.type === "project-collection-tombstoned") {
     return typeof message.projectCollectionId === "string";
   }

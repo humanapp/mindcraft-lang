@@ -114,6 +114,19 @@ export class MemoryProjectStore implements ProjectStore {
     );
   }
 
+  async countProjectsByCollection(): Promise<Map<string, number>> {
+    const liveCollectionIds = new Set(
+      (await this.listProjectCollections()).map((collection) => collection.projectCollectionId)
+    );
+    const counts = new Map<string, number>();
+    for (const project of this.data.projects) {
+      if (project.deleted !== true && liveCollectionIds.has(project.projectCollectionId)) {
+        counts.set(project.projectCollectionId, (counts.get(project.projectCollectionId) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }
+
   private async requireLiveProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {

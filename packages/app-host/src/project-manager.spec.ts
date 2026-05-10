@@ -4,7 +4,9 @@ import {
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_NAME,
   PROJECT_COLLECTION_NAME_MAX_LENGTH,
+  type ProjectCollectionEvent,
   type ProjectCollectionState,
+  type ProjectCollectionSummaryChange,
   type ProjectCollectionTabSession,
   type ProjectFileSnapshot,
   ProjectManager,
@@ -470,6 +472,290 @@ describe("ProjectManager", () => {
     });
   });
 
+  describe("project collection UI data APIs", () => {
+    it("watches committed project collection state with an initial value", async () => {
+      await pm.init();
+      const calls: ProjectCollectionState[] = [];
+
+      const subscription = await pm.watchProjectCollectionState((state) => calls.push(state));
+
+      assert.strictEqual(
+        subscription.initial.activeProjectCollection?.projectCollectionId,
+        DEFAULT_PROJECT_COLLECTION_ID
+      );
+      assert.strictEqual(calls.length, 0);
+
+      await pm.createProjectCollection("Later");
+      assert.strictEqual(calls.length, 1);
+      subscription.unsubscribe();
+
+      await pm.createProjectCollection("After Unsubscribe");
+      assert.strictEqual(calls.length, 1);
+    });
+
+    it("returns initial workspace summaries with project counts and emits targeted patches", async () => {
+      await pm.init();
+      await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Default A");
+      const otherCollection = await pm.createProjectCollection("Other");
+      await memStore.createProject(otherCollection.projectCollectionId, "Other A");
+      await memStore.createProject(otherCollection.projectCollectionId, "Other B");
+      const changes: ProjectCollectionSummaryChange[] = [];
+
+      const subscription = await pm.watchProjectCollectionSummaries((change) => changes.push(change));
+      const initialSummaryCounts = subscription.initial.map((summary): [string, number] => [
+        summary.collection.projectCollectionId,
+        summary.projectCount,
+      ]);
+      const expectedSummaryCounts: Array<[string, number]> = [
+        [DEFAULT_PROJECT_COLLECTION_ID, 1],
+        [otherCollection.projectCollectionId, 2],
+      ];
+
+      assert.deepStrictEqual(
+        initialSummaryCounts.sort((left, right) => left[0].localeCompare(right[0])),
+        expectedSummaryCounts.sort((left, right) => left[0].localeCompare(right[0]))
+      );
+
+      const createdCollection = await pm.createProjectCollection("Created");
+      const createChange = changes.at(-1);
+      if (createChange?.type !== "upsert") {
+        assert.fail("Expected project collection summary upsert");
+      }
+      assert.strictEqual(createChange.summary.collection.projectCollectionId, createdCollection.projectCollectionId);
+      assert.strictEqual(createChange.summary.projectCount, 0);
+
+      await pm.deleteProjectCollection(createdCollection.projectCollectionId);
+      assert.deepStrictEqual(changes.at(-1), {
+        type: "remove",
+        projectCollectionId: createdCollection.projectCollectionId,
+      });
+      subscription.unsubscribe();
+    });
+
+    it("broadcasts project collection creates and renames to summary watchers in other managers", async () => {
+      await pm.init();
+      const tabB = new ProjectManager(memStore.cloneForNewTab());
+      await tabB.init();
+      const changes: ProjectCollectionSummaryChange[] = [];
+      const subscription = await tabB.watchProjectCollectionSummaries((change) => changes.push(change));
+
+      const createdCollection = await pm.createProjectCollection("Created");
+      await waitForTimers();
+
+      const createChange = changes.at(-1);
+      if (createChange?.type !== "upsert") {
+        assert.fail("Expected cross-tab project collection create upsert");
+      }
+      assert.strictEqual(createChange.summary.collection.projectCollectionId, createdCollection.projectCollectionId);
+      assert.strictEqual(createChange.summary.collection.name, "Created");
+
+      await pm.renameProjectCollection(createdCollection.projectCollectionId, "Renamed");
+      await waitForTimers();
+
+      const renameChange = changes.at(-1);
+      if (renameChange?.type !== "upsert") {
+        assert.fail("Expected cross-tab project collection rename upsert");
+      }
+      assert.strictEqual(renameChange.summary.collection.projectCollectionId, createdCollection.projectCollectionId);
+      assert.strictEqual(renameChange.summary.collection.name, "Renamed");
+      subscription.unsubscribe();
+      await tabB.close();
+      tabB.dispose();
+    });
+
+    it("buffers summary changes until after initial summaries resolve", async () => {
+      const store = new DelayedSummaryCountStore();
+      const manager = new ProjectManager(store);
+      await manager.init();
+      const changes: ProjectCollectionSummaryChange[] = [];
+
+      const pendingSubscription = manager.watchProjectCollectionSummaries((change) => changes.push(change));
+      await manager.create("Buffered Project");
+
+      assert.strictEqual(changes.length, 0);
+      store.resolveCountProjectsByCollection();
+      const subscription = await pendingSubscription;
+      assert.strictEqual(changes.length, 0);
+      await waitForTimers();
+
+      assert.strictEqual(
+        subscription.initial.find((summary) => summary.collection.projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID)
+          ?.projectCount,
+        1
+      );
+      assert.strictEqual(changes.length, 1);
+      const change = changes[0];
+      if (change.type !== "upsert") {
+        assert.fail("Expected buffered summary upsert");
+      }
+      assert.strictEqual(change.summary.collection.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(change.summary.projectCount, 1);
+      subscription.unsubscribe();
+      await manager.close();
+      manager.dispose();
+    });
+
+    it("refreshes only the affected workspace summary after project count changes", async () => {
+      const countingStore = new CountingListProjectsStore();
+      const manager = new ProjectManager(countingStore);
+      await manager.init();
+      const otherCollection = await manager.createProjectCollection("Other");
+      await countingStore.createProject(otherCollection.projectCollectionId, "Other Project");
+      const changes: ProjectCollectionSummaryChange[] = [];
+      await manager.watchProjectCollectionSummaries((change) => changes.push(change));
+      assert.strictEqual(countingStore.countProjectCalls, 1);
+      countingStore.listProjectCalls = [];
+
+      await manager.create("Default Project");
+
+      assert.deepStrictEqual(
+        countingStore.listProjectCalls.filter(
+          (projectCollectionId) => projectCollectionId === otherCollection.projectCollectionId
+        ),
+        []
+      );
+      const projectChange = changes.at(-1);
+      if (projectChange?.type !== "upsert") {
+        assert.fail("Expected project count summary upsert");
+      }
+      assert.strictEqual(projectChange.summary.collection.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      await manager.close();
+      manager.dispose();
+    });
+
+    it("emits one summary patch for local project delete", async () => {
+      await pm.init();
+      const active = await pm.create("Active");
+      const deleted = await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Deleted");
+      const changes: ProjectCollectionSummaryChange[] = [];
+      await pm.watchProjectCollectionSummaries((change) => changes.push(change));
+      changes.length = 0;
+
+      await pm.delete(deleted.id);
+
+      assert.strictEqual(pm.activeProject?.manifest.id, active.id);
+      assert.strictEqual(changes.length, 1);
+      const change = changes[0];
+      if (change.type !== "upsert") {
+        assert.fail("Expected local project delete summary upsert");
+      }
+      assert.strictEqual(change.summary.collection.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(change.summary.projectCount, 1);
+    });
+
+    it("lists projects for a non-active collection without changing active collection", async () => {
+      await pm.init();
+      const otherCollection = await pm.createProjectCollection("Other");
+      const otherProject = await memStore.createProject(otherCollection.projectCollectionId, "Other Project");
+
+      const projects = await pm.listProjectsForCollection(otherCollection.projectCollectionId);
+
+      assert.deepStrictEqual(
+        projects.map((project) => project.id),
+        [otherProject.id]
+      );
+      assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      await assertRejectsWithCode(() => pm.listProjectsForCollection("missing"), "PROJECT_COLLECTION_NOT_FOUND");
+    });
+
+    it("watches project lists for non-active collections and refreshes after tombstone broadcasts", async () => {
+      await pm.init();
+      const otherCollection = await pm.createProjectCollection("Other");
+      const otherProject = await memStore.createProject(otherCollection.projectCollectionId, "Other Project");
+      const calls: string[][] = [];
+
+      const subscription = await pm.watchProjectListForCollection(otherCollection.projectCollectionId, (projects) => {
+        calls.push(projects.map((project) => project.id));
+      });
+      await memStore.deleteProject(otherProject.id);
+      const broadcast = createProjectCollectionBroadcast("test-app");
+      broadcast.post({
+        type: "project-tombstoned",
+        projectCollectionId: otherCollection.projectCollectionId,
+        projectId: otherProject.id,
+      });
+      await waitForTimers();
+
+      assert.deepStrictEqual(
+        subscription.initial.map((project) => project.id),
+        [otherProject.id]
+      );
+      assert.deepStrictEqual(calls, [[]]);
+      assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      subscription.unsubscribe();
+      broadcast.close();
+    });
+
+    it("handles collection tombstone before stale project tombstone for watched project lists", async () => {
+      await pm.init();
+      const otherCollection = await pm.createProjectCollection("Other");
+      const otherProject = await memStore.createProject(otherCollection.projectCollectionId, "Other Project");
+      const calls: string[][] = [];
+
+      const subscription = await pm.watchProjectListForCollection(otherCollection.projectCollectionId, (projects) => {
+        calls.push(projects.map((project) => project.id));
+      });
+      await memStore.deleteProjectCollection(otherCollection.projectCollectionId);
+      const broadcast = createProjectCollectionBroadcast("test-app");
+      broadcast.post({
+        type: "project-collection-tombstoned",
+        projectCollectionId: otherCollection.projectCollectionId,
+      });
+      await waitForTimers();
+      broadcast.post({
+        type: "project-tombstoned",
+        projectCollectionId: otherCollection.projectCollectionId,
+        projectId: otherProject.id,
+      });
+      await waitForTimers();
+
+      assert.deepStrictEqual(
+        subscription.initial.map((project) => project.id),
+        [otherProject.id]
+      );
+      assert.deepStrictEqual(calls, [[]]);
+      subscription.unsubscribe();
+      broadcast.close();
+    });
+
+    it("emits low-level project collection events without replay", async () => {
+      await pm.init();
+      const events: ProjectCollectionEvent[] = [];
+      pm.onProjectCollectionEvent((event) => events.push(event));
+
+      const collection = await pm.createProjectCollection("Events");
+      await pm.renameProjectCollection(collection.projectCollectionId, "Renamed");
+      await pm.deleteProjectCollection(collection.projectCollectionId);
+
+      assert.deepStrictEqual(
+        events.map((event) => event.type),
+        ["project-collection-changed", "project-collection-changed", "project-collection-tombstoned"]
+      );
+    });
+
+    it("emits project list change and project tombstone events after local project delete", async () => {
+      await pm.init();
+      await pm.create("Active");
+      const deleted = await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Deleted");
+      const events: ProjectCollectionEvent[] = [];
+      pm.onProjectCollectionEvent((event) => events.push(event));
+
+      await pm.delete(deleted.id);
+
+      assert.deepStrictEqual(events, [
+        {
+          type: "project-list-changed",
+          projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
+        },
+        {
+          type: "project-tombstoned",
+          projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
+          projectId: deleted.id,
+        },
+      ]);
+    });
+  });
+
   describe("project collection management", () => {
     it("lists, creates, and renames project collections", async () => {
       await pm.init();
@@ -578,6 +864,156 @@ describe("ProjectManager", () => {
 
       assert.strictEqual(pm.activeProject?.manifest.projectCollectionId, targetCollection.projectCollectionId);
       assert.strictEqual(pm.activeProject?.manifest.name, DEFAULT_PROJECT_NAME);
+    });
+
+    it("switches and opens a selected project without creating an intermediate project", async () => {
+      await pm.create("Source");
+      const targetCollection = await pm.createProjectCollection("Target");
+      const targetProject = await memStore.createProject(targetCollection.projectCollectionId, "Target Project");
+
+      const result = await pm.switchProjectCollectionAndOpenProject(
+        targetCollection.projectCollectionId,
+        targetProject.id
+      );
+
+      assert.strictEqual(result.collection.projectCollectionId, targetCollection.projectCollectionId);
+      assert.strictEqual(result.project.id, targetProject.id);
+      assert.strictEqual(result.access, "ready");
+      assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, targetCollection.projectCollectionId);
+      assert.strictEqual(pm.activeProject?.manifest.id, targetProject.id);
+      assert.deepStrictEqual(
+        (await pm.listProjectsForCollection(targetCollection.projectCollectionId)).map((project) => project.id),
+        [targetProject.id]
+      );
+    });
+
+    it("switches and creates a project in the target collection without restoring another project", async () => {
+      await pm.create("Source");
+      const targetCollection = await pm.createProjectCollection("Target");
+      const events: ProjectCollectionEvent[] = [];
+      pm.onProjectCollectionEvent((event) => events.push(event));
+
+      const result = await pm.switchProjectCollectionAndCreateProject(targetCollection.projectCollectionId, "Created");
+
+      assert.strictEqual(result.collection.projectCollectionId, targetCollection.projectCollectionId);
+      assert.strictEqual(result.project.name, "Created");
+      assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, targetCollection.projectCollectionId);
+      assert.strictEqual(pm.activeProject?.manifest.id, result.project.id);
+      assert.deepStrictEqual(
+        (await pm.listProjectsForCollection(targetCollection.projectCollectionId)).map((project) => project.name),
+        ["Created"]
+      );
+      assert.deepStrictEqual(events, [
+        {
+          type: "project-list-changed",
+          projectCollectionId: targetCollection.projectCollectionId,
+        },
+      ]);
+    });
+
+    it("leaves active state unchanged when pending open commit validation fails", async () => {
+      const active = await pm.create("Source");
+      const targetCollection = await pm.createProjectCollection("Target");
+      const otherCollection = await pm.createProjectCollection("Other");
+      const otherProject = await memStore.createProject(otherCollection.projectCollectionId, "Other Project");
+
+      await assertRejectsWithCode(
+        () => pm.switchProjectCollectionAndOpenProject(targetCollection.projectCollectionId, otherProject.id),
+        "PROJECT_NOT_IN_ACTIVE_COLLECTION"
+      );
+
+      assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(pm.activeProject?.manifest.id, active.id);
+    });
+
+    it("rejects pending create commits for missing collections without creating a project", async () => {
+      const active = await pm.create("Source");
+
+      await assertRejectsWithCode(
+        () => pm.switchProjectCollectionAndCreateProject("missing", "Created"),
+        "PROJECT_COLLECTION_NOT_FOUND"
+      );
+
+      assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(pm.activeProject?.manifest.id, active.id);
+      assert.deepStrictEqual(
+        (await pm.listProjectsForCollection(DEFAULT_PROJECT_COLLECTION_ID)).map((project) => project.id),
+        [active.id]
+      );
+    });
+
+    it("tombstones the pending created project when create commit locking fails", async () => {
+      const lock = new SecondAcquireFailsProjectLock();
+      await pm.close();
+      pm.dispose();
+      pm = new ProjectManager(memStore, { lock });
+      const active = await pm.create("Source");
+      const targetCollection = await pm.createProjectCollection("Target");
+
+      await assertRejectsWithCode(
+        () => pm.switchProjectCollectionAndCreateProject(targetCollection.projectCollectionId, "Created"),
+        "PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB"
+      );
+
+      assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(pm.activeProject?.manifest.id, active.id);
+      assert.deepStrictEqual(await pm.listProjectsForCollection(targetCollection.projectCollectionId), []);
+    });
+
+    it("tombstones the pending created project when create commit close fails", async () => {
+      await pm.close();
+      pm.dispose();
+      const lock = new MemoryProjectLock();
+      const failingStore = new FailingSaveProjectStore();
+      memStore = failingStore;
+      pm = new ProjectManager(failingStore, { lock });
+      const active = await pm.create("Source");
+      const targetCollection = await pm.createProjectCollection("Target");
+
+      failingStore.failProjectFileSaves = true;
+      try {
+        await assert.rejects(
+          () => pm.switchProjectCollectionAndCreateProject(targetCollection.projectCollectionId, "Created"),
+          /autosave failed/
+        );
+      } finally {
+        failingStore.failProjectFileSaves = false;
+      }
+
+      assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(pm.activeProject?.manifest.id, active.id);
+      assert.deepStrictEqual(await pm.listProjectsForCollection(targetCollection.projectCollectionId), []);
+      const tabB = new ProjectManager(failingStore.cloneForNewTab(), { lock });
+      await assertRejectsWithCode(() => tabB.open(active.id), "PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB");
+      tabB.dispose();
+    });
+
+    it("does not fail a pending create commit when closing the previous project releases with an error", async () => {
+      const lock = new FirstReleaseThrowsProjectLock();
+      await pm.close();
+      pm.dispose();
+      pm = new ProjectManager(memStore, { lock });
+      const originalLoggerError = logger.error.bind(logger);
+      logger.error = () => {};
+      try {
+        await pm.create("Source");
+        const targetCollection = await pm.createProjectCollection("Target");
+
+        const result = await pm.switchProjectCollectionAndCreateProject(
+          targetCollection.projectCollectionId,
+          "Created"
+        );
+
+        assert.strictEqual(result.collection.projectCollectionId, targetCollection.projectCollectionId);
+        assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, targetCollection.projectCollectionId);
+        assert.strictEqual(pm.activeProject?.manifest.id, result.project.id);
+        assert.deepStrictEqual(
+          (await pm.listProjectsForCollection(targetCollection.projectCollectionId)).map((project) => project.id),
+          [result.project.id]
+        );
+      } finally {
+        logger.error = originalLoggerError;
+      }
     });
 
     it("rejects switching to missing or tombstoned project collections without changing active collection", async () => {
@@ -760,6 +1196,35 @@ class MemoryProjectLock {
   }
 }
 
+class SecondAcquireFailsProjectLock {
+  private acquireCount = 0;
+
+  async tryAcquire(_projectId: string): Promise<{ release(): void } | undefined> {
+    this.acquireCount += 1;
+    if (this.acquireCount > 1) {
+      return undefined;
+    }
+    return {
+      release() {},
+    };
+  }
+}
+
+class FirstReleaseThrowsProjectLock {
+  private releaseCount = 0;
+
+  async tryAcquire(_projectId: string): Promise<{ release(): void }> {
+    return {
+      release: () => {
+        this.releaseCount += 1;
+        if (this.releaseCount === 1) {
+          throw new Error("release failed");
+        }
+      },
+    };
+  }
+}
+
 class FailingSaveProjectStore extends MemoryProjectStore {
   failProjectFileSaves = false;
 
@@ -777,6 +1242,53 @@ class CountingProjectSessionStore extends MemoryProjectStore {
   override setProjectSession(session: ProjectCollectionTabSession | undefined): void {
     this.projectSessionWriteCount += 1;
     super.setProjectSession(session);
+  }
+}
+
+class CountingListProjectsStore extends MemoryProjectStore {
+  listProjectCalls: string[] = [];
+  countProjectCalls = 0;
+
+  override async listProjects(projectCollectionId: string) {
+    this.listProjectCalls.push(projectCollectionId);
+    return super.listProjects(projectCollectionId);
+  }
+
+  override async countProjectsByCollection() {
+    this.countProjectCalls += 1;
+    return super.countProjectsByCollection();
+  }
+}
+
+class Deferred {
+  readonly promise: Promise<void>;
+  private resolvePromise: (() => void) | undefined;
+
+  constructor() {
+    this.promise = new Promise<void>((resolve) => {
+      this.resolvePromise = resolve;
+    });
+  }
+
+  resolve(): void {
+    this.resolvePromise?.();
+  }
+}
+
+class DelayedSummaryCountStore extends MemoryProjectStore {
+  private readonly countProjectsDelay = new Deferred();
+  private delayedCountProjects = false;
+
+  resolveCountProjectsByCollection(): void {
+    this.countProjectsDelay.resolve();
+  }
+
+  override async countProjectsByCollection() {
+    if (!this.delayedCountProjects) {
+      this.delayedCountProjects = true;
+      await this.countProjectsDelay.promise;
+    }
+    return super.countProjectsByCollection();
   }
 }
 
