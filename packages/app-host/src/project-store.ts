@@ -51,6 +51,12 @@ export interface ProjectStore {
   ): Promise<void>;
   /** Create a copy of `id` (project files and app data) under `newName`. */
   duplicateProject(id: string, newName: string): Promise<ProjectManifest>;
+  /** Copy project content into another project collection under `newName`. */
+  copyProjectToCollection(
+    sourceProjectId: string,
+    targetProjectCollectionId: string,
+    newName: string
+  ): Promise<ProjectManifest>;
 
   /** Load the persisted project file snapshot for `id`, or `undefined` if none. */
   loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined>;

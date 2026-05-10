@@ -449,7 +449,7 @@ export function ProjectHeader({
           setRenamingWorkspaceId(undefined);
         },
         (error: unknown) => {
-          if (error instanceof AppHostError && error.code === "INVALID_PROJECT_COLLECTION_NAME") {
+          if (error instanceof AppHostError) {
             toast.error(error.message);
             return;
           }
@@ -563,6 +563,8 @@ export function ProjectHeader({
                   : isProtected && isLocked
                     ? "Unlock the workspace before deleting it"
                     : undefined;
+              const renameDisabledReason =
+                isProtected && isLocked ? "Unlock the workspace before renaming it" : undefined;
               const isRenaming = renamingWorkspaceId === collection.projectCollectionId;
               const context = getWorkspaceContext(summary, duplicateWorkspaceNames);
               const browseWorkspace = () => {
@@ -723,8 +725,14 @@ export function ProjectHeader({
                       )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
+                        disabled={renameDisabledReason !== undefined}
+                        title={renameDisabledReason}
+                        aria-label={renameDisabledReason ?? `Rename ${collection.name}`}
                         onSelect={(event) => {
                           event.preventDefault();
+                          if (renameDisabledReason !== undefined) {
+                            return;
+                          }
                           setOpenWorkspaceActionId(undefined);
                           handleWorkspaceRename(summary);
                         }}

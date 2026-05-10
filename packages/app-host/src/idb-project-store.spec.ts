@@ -348,9 +348,14 @@ describe("createIdbProjectStore project collection membership", () => {
 
   it("rejects project delete and duplicate when the project is missing", async () => {
     const store = await createIdbProjectStore(nextKeyPrefix());
+    const targetCollection = await store.ensureDefaultProjectCollection();
 
     await assertRejectsWithCode(() => store.deleteProject("missing"), "PROJECT_NOT_FOUND");
     await assertRejectsWithCode(() => store.duplicateProject("missing", "Copy"), "PROJECT_NOT_FOUND");
+    await assertRejectsWithCode(
+      () => store.copyProjectToCollection("missing", targetCollection.projectCollectionId, "Copy"),
+      "PROJECT_NOT_FOUND"
+    );
   });
 
   it("rejects project delete and duplicate when the owning collection is unavailable", async () => {
@@ -362,6 +367,10 @@ describe("createIdbProjectStore project collection membership", () => {
     assert.strictEqual(await store.getProject(project.id), undefined);
     await assertRejectsWithCode(() => store.deleteProject(project.id), "PROJECT_COLLECTION_NOT_FOUND");
     await assertRejectsWithCode(() => store.duplicateProject(project.id, "Copy"), "PROJECT_NOT_FOUND");
+    await assertRejectsWithCode(
+      () => store.copyProjectToCollection(project.id, DEFAULT_PROJECT_COLLECTION_ID, "Copy"),
+      "PROJECT_COLLECTION_NOT_FOUND"
+    );
   });
 
   it("duplicates a project within the source collection", async () => {
@@ -373,12 +382,49 @@ describe("createIdbProjectStore project collection membership", () => {
       new Map([["src/main.ts", { kind: "file", content: "source", etag: "etag-1", isReadonly: false }]])
     );
     await store.saveAppData(project.id, "brains", '{"source":true}');
+    await store.updateProject(project.id, {
+      description: "source description",
+      thumbnailUrl: "data:image/png;base64,source",
+    });
 
     const copy = await store.duplicateProject(project.id, "Copy");
 
     assert.strictEqual(copy.projectCollectionId, collection.projectCollectionId);
+    assert.strictEqual(copy.description, "source description");
+    assert.strictEqual(copy.thumbnailUrl, "data:image/png;base64,source");
     assert.strictEqual((await store.loadProjectFiles(copy.id))?.get("src/main.ts")?.kind, "file");
     assert.strictEqual(await store.loadAppData(copy.id, "brains"), '{"source":true}');
+  });
+
+  it("copies a project to another project collection without local metadata", async () => {
+    const store = await createIdbProjectStore(nextKeyPrefix());
+    const sourceCollection = await store.createProjectCollection("Source Collection");
+    const targetCollection = await store.createProjectCollection("Target Collection");
+    const project = await store.createProject(sourceCollection.projectCollectionId, "Source");
+    await store.updateProject(project.id, {
+      description: "source description",
+      thumbnailUrl: "data:image/png;base64,source",
+    });
+    await store.saveProjectFiles(
+      project.id,
+      new Map([["src/main.ts", { kind: "file", content: "source", etag: "etag-1", isReadonly: false }]])
+    );
+    await store.saveAppData(project.id, "brains", '{"source":true}');
+
+    const copy = await store.copyProjectToCollection(project.id, targetCollection.projectCollectionId, "Copy");
+
+    assert.notStrictEqual(copy.id, project.id);
+    assert.strictEqual(copy.projectCollectionId, targetCollection.projectCollectionId);
+    assert.strictEqual(copy.deleted, undefined);
+    assert.strictEqual(copy.name, "Copy");
+    assert.strictEqual(copy.description, "source description");
+    assert.strictEqual(copy.thumbnailUrl, "data:image/png;base64,source");
+    assert.strictEqual((await store.loadProjectFiles(copy.id))?.get("src/main.ts")?.kind, "file");
+    assert.strictEqual(await store.loadAppData(copy.id, "brains"), '{"source":true}');
+    await assertRejectsWithCode(
+      () => store.copyProjectToCollection(project.id, "missing", "No Target"),
+      "PROJECT_COLLECTION_NOT_FOUND"
+    );
   });
 
   it("tombstones projects when their project collection is tombstoned", async () => {

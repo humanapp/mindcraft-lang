@@ -1,4 +1,5 @@
 import type { MindcraftExportCommon, MindcraftExportFile, MindcraftExportHost } from "@mindcraft-lang/service-api";
+import { appHostError } from "./app-host-error.js";
 import { EXAMPLES_FOLDER } from "./examples.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import type { ProjectFileSystemEntry } from "./project-file-snapshot.js";
@@ -110,6 +111,21 @@ export async function buildExportCommon(
     files,
     brains,
   };
+}
+
+/**
+ * Build the common export document fields for the active project managed by
+ * `projectManager`.
+ */
+export async function buildActiveProjectExportCommon(
+  host: MindcraftExportHost,
+  projectManager: ProjectManager
+): Promise<MindcraftExportCommon> {
+  const active = projectManager.activeProject;
+  if (!active) {
+    throw appHostError("NO_ACTIVE_PROJECT", "No active project");
+  }
+  return buildExportCommon(host, active.manifest, active.filesystem, (key) => projectManager.loadAppData(key));
 }
 
 /** Default upper bound on import file size, in bytes (5 MB). */

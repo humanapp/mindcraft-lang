@@ -14,6 +14,7 @@ import {
   type ProjectCollectionTabSession,
   type ProjectFileSnapshot,
   ProjectManager,
+  type ProjectManifest,
   type ProjectPersistenceError,
   RELOAD_UNLOCK_REFRESH_INTERVAL_MS,
   RELOAD_UNLOCK_TTL_MS,
@@ -214,9 +215,22 @@ describe("ProjectManager", () => {
   describe("duplicate", () => {
     it("duplicates projects only in the active project collection", async () => {
       const source = await pm.create("Source");
+      await memStore.updateProject(source.id, {
+        description: "source description",
+        thumbnailUrl: "data:image/png;base64,source",
+      });
+      await memStore.saveProjectFiles(
+        source.id,
+        new Map([["src/main.ts", { kind: "file", content: "source", etag: "etag-1", isReadonly: false }]])
+      );
+      await memStore.saveAppData(source.id, "brains", '{"source":true}');
       const copy = await pm.duplicate(source.id, "Copy");
 
       assert.strictEqual(copy.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(copy.description, "source description");
+      assert.strictEqual(copy.thumbnailUrl, "data:image/png;base64,source");
+      assert.strictEqual((await memStore.loadProjectFiles(copy.id))?.get("src/main.ts")?.kind, "file");
+      assert.strictEqual(await memStore.loadAppData(copy.id, "brains"), '{"source":true}');
       assert.strictEqual((await pm.listProjects()).length, 2);
     });
 
@@ -226,6 +240,121 @@ describe("ProjectManager", () => {
       const otherProject = await memStore.createProject(otherCollection.projectCollectionId, "Other Project");
 
       await assertRejectsWithCode(() => pm.duplicate(otherProject.id, "Copy"), "PROJECT_NOT_IN_ACTIVE_COLLECTION");
+    });
+  });
+
+  describe("copyProjectToCollection", () => {
+    it("copies project content to another collection without copying local metadata or active session", async () => {
+      const source = await pm.create("Source");
+      await memStore.updateProject(source.id, {
+        description: "source description",
+        thumbnailUrl: "data:image/png;base64,source",
+      });
+      await memStore.saveProjectFiles(
+        source.id,
+        new Map([["src/main.ts", { kind: "file", content: "source", etag: "etag-1", isReadonly: false }]])
+      );
+      await memStore.saveAppData(source.id, "brains", '{"source":true}');
+      const targetCollection = await pm.createProjectCollection("Target");
+      const sessionBefore = memStore.getProjectSession();
+
+      const copy = await pm.copyProjectToCollection(source.id, targetCollection.projectCollectionId, "Remix");
+
+      assert.strictEqual(copy.name, "Remix");
+      assert.strictEqual(copy.description, "source description");
+      assert.strictEqual(copy.thumbnailUrl, "data:image/png;base64,source");
+      assert.strictEqual(copy.projectCollectionId, targetCollection.projectCollectionId);
+      assert.strictEqual(copy.deleted, undefined);
+      assert.notStrictEqual(copy.id, source.id);
+      assert.strictEqual((await memStore.loadProjectFiles(copy.id))?.get("src/main.ts")?.kind, "file");
+      assert.strictEqual(await memStore.loadAppData(copy.id, "brains"), '{"source":true}');
+      assert.deepStrictEqual(memStore.getProjectSession(), sessionBefore);
+      assert.strictEqual(pm.activeProject?.manifest.id, source.id);
+      assert.deepStrictEqual(
+        (await pm.listProjectsForCollection(targetCollection.projectCollectionId)).map((project) => project.id),
+        [copy.id]
+      );
+    });
+
+    it("requires unlocked source and target project collections", async () => {
+      await pm.init();
+      const sourceCollection = await pm.createProjectCollection("Source Protected");
+      const source = await memStore.createProject(sourceCollection.projectCollectionId, "Source");
+      const targetCollection = await pm.createProjectCollection("Target Protected");
+      await pm.setProjectCollectionPin(sourceCollection.projectCollectionId, "1234");
+      await pm.lockProjectCollection(sourceCollection.projectCollectionId);
+
+      await assertRejectsWithCode(
+        () => pm.copyProjectToCollection(source.id, targetCollection.projectCollectionId, "Copy"),
+        "PROJECT_COLLECTION_LOCKED"
+      );
+      assert.deepStrictEqual(await memStore.listProjects(targetCollection.projectCollectionId), []);
+
+      await pm.unlockProjectCollection(sourceCollection.projectCollectionId, "1234");
+      await pm.setProjectCollectionPin(targetCollection.projectCollectionId, "5678");
+      await pm.lockProjectCollection(targetCollection.projectCollectionId);
+
+      await assertRejectsWithCode(
+        () => pm.copyProjectToCollection(source.id, targetCollection.projectCollectionId, "Copy"),
+        "PROJECT_COLLECTION_LOCKED"
+      );
+      assert.deepStrictEqual(await memStore.listProjects(targetCollection.projectCollectionId), []);
+    });
+
+    it("rejects missing or tombstoned source projects without writing to the target collection", async () => {
+      await pm.init();
+      const targetCollection = await pm.createProjectCollection("Target");
+      await assertRejectsWithCode(
+        () => pm.copyProjectToCollection("missing", targetCollection.projectCollectionId, "Copy"),
+        "PROJECT_NOT_FOUND"
+      );
+
+      const source = await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Source");
+      await memStore.deleteProject(source.id);
+      await assertRejectsWithCode(
+        () => pm.copyProjectToCollection(source.id, targetCollection.projectCollectionId, "Copy"),
+        "PROJECT_NOT_FOUND"
+      );
+      assert.deepStrictEqual(await memStore.listProjects(targetCollection.projectCollectionId), []);
+    });
+
+    it("rejects missing or tombstoned target project collections without writing a copy", async () => {
+      const source = await pm.create("Source");
+      const targetCollection = await pm.createProjectCollection("Target");
+      await memStore.deleteProjectCollection(targetCollection.projectCollectionId);
+
+      await assertRejectsWithCode(
+        () => pm.copyProjectToCollection(source.id, "missing", "Copy"),
+        "PROJECT_COLLECTION_NOT_FOUND"
+      );
+      await assertRejectsWithCode(
+        () => pm.copyProjectToCollection(source.id, targetCollection.projectCollectionId, "Copy"),
+        "PROJECT_COLLECTION_NOT_FOUND"
+      );
+      assert.deepStrictEqual(
+        (await memStore.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).map((project) => project.id),
+        [source.id]
+      );
+    });
+
+    it("rejects unavailable source project collections without writing to the target collection", async () => {
+      await pm.close();
+      pm.dispose();
+      const store = new MissingProjectCollectionStore();
+      memStore = store;
+      pm = new ProjectManager(store);
+      await pm.init();
+      const sourceCollection = await pm.createProjectCollection("Source");
+      const source = await memStore.createProject(sourceCollection.projectCollectionId, "Source");
+      const targetCollection = await pm.createProjectCollection("Target");
+      store.unavailableProject = source;
+      store.unavailableProjectCollectionId = sourceCollection.projectCollectionId;
+
+      await assertRejectsWithCode(
+        () => pm.copyProjectToCollection(source.id, targetCollection.projectCollectionId, "Copy"),
+        "PROJECT_COLLECTION_NOT_FOUND"
+      );
+      assert.deepStrictEqual(await memStore.listProjects(targetCollection.projectCollectionId), []);
     });
   });
 
@@ -941,6 +1070,23 @@ describe("ProjectManager", () => {
       assert.strictEqual(await verifyProjectCollectionPin("5678", changed.pinVerifier!), true);
       const cleared = await pm.clearProjectCollectionPin(collection.projectCollectionId);
       assert.strictEqual(cleared.pinVerifier, undefined);
+    });
+
+    it("requires unlock before renaming a protected project collection", async () => {
+      await pm.init();
+      const collection = await pm.createProjectCollection("Protected");
+      await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+      await pm.lockProjectCollection(collection.projectCollectionId);
+
+      await assertRejectsWithCode(
+        () => pm.renameProjectCollection(collection.projectCollectionId, "Renamed"),
+        "PROJECT_COLLECTION_LOCKED"
+      );
+      assert.strictEqual((await memStore.getProjectCollection(collection.projectCollectionId))?.name, "Protected");
+
+      await pm.unlockProjectCollection(collection.projectCollectionId, "1234");
+      await pm.renameProjectCollection(collection.projectCollectionId, "Renamed");
+      assert.strictEqual((await memStore.getProjectCollection(collection.projectCollectionId))?.name, "Renamed");
     });
 
     it("writes reload unlock records only for the current tab session collection", async () => {
@@ -1936,6 +2082,25 @@ class CloningProjectCollectionStore extends MemoryProjectStore {
       ...collection,
       pinVerifier: collection.pinVerifier ? { ...collection.pinVerifier } : undefined,
     };
+  }
+}
+
+class MissingProjectCollectionStore extends MemoryProjectStore {
+  unavailableProject: ProjectManifest | undefined;
+  unavailableProjectCollectionId: string | undefined;
+
+  override async getProject(id: string): Promise<ProjectManifest | undefined> {
+    if (this.unavailableProject?.id === id) {
+      return this.unavailableProject;
+    }
+    return super.getProject(id);
+  }
+
+  override async getProjectCollection(projectCollectionId: string): Promise<ProjectCollection | undefined> {
+    if (this.unavailableProjectCollectionId === projectCollectionId) {
+      return undefined;
+    }
+    return super.getProjectCollection(projectCollectionId);
   }
 }
 

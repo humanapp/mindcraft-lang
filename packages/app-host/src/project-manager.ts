@@ -346,6 +346,30 @@ export class ProjectManager {
     return manifest;
   }
 
+  /**
+   * Copy project files and app data into another project collection.
+   *
+   * The source and target project collections must be visible and unlocked in
+   * this manager instance. The copied project is not opened automatically.
+   */
+  async copyProjectToCollection(
+    sourceProjectId: string,
+    targetProjectCollectionId: string,
+    newName: string
+  ): Promise<ProjectManifest> {
+    const source = await this.store.getProject(sourceProjectId);
+    if (!source) {
+      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${sourceProjectId}`);
+    }
+    const sourceCollection = await this.requireProjectCollection(source.projectCollectionId);
+    this.assertProjectCollectionReady(sourceCollection);
+    const targetCollection = await this.requireProjectCollection(targetProjectCollectionId);
+    this.assertProjectCollectionReady(targetCollection);
+    const manifest = await this.store.copyProjectToCollection(sourceProjectId, targetProjectCollectionId, newName);
+    await this.notifyProjectListChangedForCollection(targetProjectCollectionId);
+    return manifest;
+  }
+
   async updateActive(updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>): Promise<void> {
     if (!this.currentActive) {
       throw appHostError("NO_ACTIVE_PROJECT", "No active project");
@@ -644,6 +668,8 @@ export class ProjectManager {
 
   /** Rename a project collection. */
   async renameProjectCollection(projectCollectionId: string, name: string): Promise<void> {
+    const collection = await this.requireProjectCollection(projectCollectionId);
+    this.assertProjectCollectionReady(collection);
     await this.store.updateProjectCollection(projectCollectionId, { name });
     if (this.currentProjectCollection?.projectCollectionId === projectCollectionId) {
       const updated = await this.store.getProjectCollection(projectCollectionId);

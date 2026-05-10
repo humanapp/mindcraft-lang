@@ -509,8 +509,8 @@ follow."
 
 ## Current State
 
-Completed: W0, W1, W2, W3, W4, W5a, W5b, W6a, W6b
-Next up: W7
+Completed: W0, W1, W2, W3, W4, W5a, W5b, W6a, W6b, W7
+Next up: W8
 
 ---
 
@@ -663,6 +663,25 @@ Verification: full gates passed in `apps/sim`, `packages/app-host`, and
 Risk: W7 import/export/copy UI and diagnostics must keep using workspace as the
 user-facing term while preserving `ProjectCollection` only as the internal
 app-host model and API vocabulary.
+
+### W7 -- Cross-Project-Collection Copy, Import, And Export Hygiene
+
+W7 shipped explicit cross-workspace project copy, import, and export ownership
+boundaries while keeping same-workspace duplication distinct from copy/remix to
+another workspace.
+
+New public API and contract surface: `ProjectManager.copyProjectToCollection`
+and `ProjectStore.copyProjectToCollection` copy project content without local
+ownership/session metadata; import/create-from-snapshot require the active
+unlocked workspace; export requires the active unlocked workspace and excludes
+`projectCollectionId`.
+
+Verification: full gates passed in `packages/app-host`; typecheck/check/build
+passed in `apps/sim`.
+
+Risk: W8 should audit final package exports and user-facing diagnostics to
+confirm copy/import/export names still say workspace in UI while internal APIs
+retain `ProjectCollection` vocabulary.
 
 ---
 

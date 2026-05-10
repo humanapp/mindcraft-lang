@@ -194,15 +194,50 @@ export class MemoryProjectStore implements ProjectStore {
     if (!source) {
       throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
     }
-    const dup = await this.createProject(source.projectCollectionId, newName);
-    const snapshot = this.data.projectFiles.get(id);
-    if (snapshot) this.data.projectFiles.set(dup.id, new Map(snapshot));
+    const dup = await this.createProjectFromSource(source, source.projectCollectionId, newName);
+    this.copyProjectContent(id, dup.id);
+    return dup;
+  }
+
+  async copyProjectToCollection(
+    sourceProjectId: string,
+    targetProjectCollectionId: string,
+    newName: string
+  ): Promise<ProjectManifest> {
+    const source = await this.requireLiveProject(sourceProjectId);
+    await this.requireLiveProjectCollection(targetProjectCollectionId);
+    const copy = await this.createProjectFromSource(source, targetProjectCollectionId, newName);
+    this.copyProjectContent(sourceProjectId, copy.id);
+    return copy;
+  }
+
+  private async createProjectFromSource(
+    source: ProjectManifest,
+    targetProjectCollectionId: string,
+    newName: string
+  ): Promise<ProjectManifest> {
+    const now = Date.now();
+    const manifest: ProjectManifest = {
+      id: `id-${this.data.projects.length + 1}`,
+      projectCollectionId: targetProjectCollectionId,
+      name: newName,
+      description: source.description,
+      ...(source.thumbnailUrl === undefined ? {} : { thumbnailUrl: source.thumbnailUrl }),
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.data.projects.push(manifest);
+    return manifest;
+  }
+
+  private copyProjectContent(sourceProjectId: string, targetProjectId: string): void {
+    const snapshot = this.data.projectFiles.get(sourceProjectId);
+    if (snapshot) this.data.projectFiles.set(targetProjectId, new Map(snapshot));
     for (const [key, value] of this.data.appData) {
-      if (key.startsWith(`${id}:`)) {
-        this.data.appData.set(`${dup.id}:${key.slice(id.length + 1)}`, value);
+      if (key.startsWith(`${sourceProjectId}:`)) {
+        this.data.appData.set(`${targetProjectId}:${key.slice(sourceProjectId.length + 1)}`, value);
       }
     }
-    return dup;
   }
 
   async loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined> {

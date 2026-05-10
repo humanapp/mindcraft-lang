@@ -45,7 +45,12 @@ export type {
   MindcraftExportFile,
   MindcraftExportHost,
 } from "./project-io.js";
-export { buildExportCommon, DEFAULT_MAX_FILE_SIZE, importProject } from "./project-io.js";
+export {
+  buildActiveProjectExportCommon,
+  buildExportCommon,
+  DEFAULT_MAX_FILE_SIZE,
+  importProject,
+} from "./project-io.js";
 export type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 export { createWebLocksProjectLock } from "./project-lock.js";
 export type {

@@ -9,7 +9,9 @@ import type {
   ProjectManifest,
 } from "@mindcraft-lang/app-host";
 import {
+  buildActiveProjectExportCommon,
   buildExportCommon,
+  createProjectCollectionPinVerifier,
   DEFAULT_MAX_FILE_SIZE,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_NAME,
@@ -126,6 +128,30 @@ describe("buildExportCommon", () => {
     assert.strictEqual(result.name, "My Project");
     assert.strictEqual(result.description, "A test project");
     assert.strictEqual("projectCollectionId" in result, false);
+  });
+
+  it("serializes without local project collection metadata", async () => {
+    const ws = makeProjectFileSystem();
+    const manifest = makeManifest({ projectCollectionId: "private-workspace" });
+
+    const result = await buildExportCommon(HOST, manifest, ws, async () => undefined);
+    const serialized = JSON.stringify(result);
+
+    assert.strictEqual(serialized.includes("projectCollectionId"), false);
+    assert.strictEqual(serialized.includes("private-workspace"), false);
+  });
+
+  it("rejects active project export when the active project collection is locked", async () => {
+    const store = new MemoryProjectStore();
+    const pm = new ProjectManager(store);
+    const active = await pm.create("Protected Export");
+    await store.updateProjectCollection(active.projectCollectionId, {
+      pinVerifier: await createProjectCollectionPinVerifier("1234"),
+    });
+
+    await assertRejectsWithCode(() => buildActiveProjectExportCommon(HOST, pm), "PROJECT_COLLECTION_LOCKED");
+    await pm.close();
+    pm.dispose();
   });
 
   it("excludes read-only files", async () => {
@@ -337,6 +363,31 @@ describe("importProject", () => {
     assert.strictEqual(project?.description, "imported desc");
   });
 
+  it("assigns imported projects to the active project collection", async () => {
+    const targetCollection = await pm.createProjectCollection("Import Target");
+    await pm.switchProjectCollection(targetCollection.projectCollectionId);
+    const file = makeFile(makeExportDoc({ projectCollectionId: "file-owned-workspace" }));
+
+    const result = await importProject(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, true);
+    const project = await store.getProject(result.projectId!);
+    assert.strictEqual(project?.projectCollectionId, targetCollection.projectCollectionId);
+  });
+
+  it("allows imported projects to use a duplicate name", async () => {
+    await store.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Test Project");
+    const file = makeFile(makeExportDoc({ name: "Test Project" }));
+
+    const result = await importProject(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, true);
+    assert.deepStrictEqual(
+      (await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).map((project) => project.name),
+      ["Test Project", "Test Project"]
+    );
+  });
+
   it("skips invalid file entries with warning diagnostic", async () => {
     const doc = makeExportDoc({
       files: [
@@ -502,6 +553,46 @@ describe("importProject", () => {
     assert.strictEqual(snapshot?.has("src\\backslash.ts"), false);
     assert.strictEqual(countDiagnosticCode(result.diagnostics, "IMPORT_INVALID_FILE_PATH"), 3);
   });
+
+  it("rejects without writing a project when there is no active project collection", async () => {
+    await pm.close();
+    pm.dispose();
+    store = new MemoryProjectStore();
+    pm = new ProjectManager(store);
+
+    const result = await importProject(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
+    assert.strictEqual((await store.listProjectCollections()).length, 0);
+  });
+
+  it("rejects without writing a project when the active project collection is tombstoned", async () => {
+    const collection = await pm.createProjectCollection("Import Tombstone");
+    await pm.switchProjectCollection(collection.projectCollectionId);
+    await pm.close();
+    await store.deleteProjectCollection(collection.projectCollectionId);
+
+    const result = await importProject(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
+    assert.deepStrictEqual(await store.listProjects(collection.projectCollectionId), []);
+  });
+
+  it("rejects without writing a project when the active project collection is locked", async () => {
+    const activeCollectionId = pm.activeProjectCollection!.projectCollectionId;
+    await store.updateProjectCollection(activeCollectionId, {
+      pinVerifier: await createProjectCollectionPinVerifier("1234"),
+    });
+    const before = await store.listProjects(activeCollectionId);
+
+    const result = await importProject(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
+    assert.deepStrictEqual(await store.listProjects(activeCollectionId), before);
+  });
 });
 
 describe("ProjectManager.createFromSnapshot", () => {
@@ -563,6 +654,22 @@ describe("ProjectManager.createFromSnapshot", () => {
       () => pm.createFromSnapshot("No Collection", "", snapshot),
       "PROJECT_COLLECTION_NOT_FOUND"
     );
+    assert.deepStrictEqual(await store.listProjects(collection.projectCollectionId), []);
+  });
+
+  it("rejects without writing a project when the active project collection is locked", async () => {
+    const store = new MemoryProjectStore();
+    const pm = new ProjectManager(store);
+    await pm.init();
+    const collection = pm.activeProjectCollection!;
+    await store.updateProjectCollection(collection.projectCollectionId, {
+      pinVerifier: await createProjectCollectionPinVerifier("1234"),
+    });
+    const snapshot: ProjectFileSnapshot = new Map([
+      ["src/main.ts", { kind: "file", content: "hello", etag: "e1", isReadonly: false }],
+    ]);
+
+    await assertRejectsWithCode(() => pm.createFromSnapshot("Locked", "", snapshot), "PROJECT_COLLECTION_LOCKED");
     assert.deepStrictEqual(await store.listProjects(collection.projectCollectionId), []);
   });
 });

@@ -354,27 +354,59 @@ class IdbProjectStore implements ProjectStore {
     if (!source) {
       throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
     }
+    const newManifest = await this.createProjectFromSource(source, source.projectCollectionId, newName);
+    await this.copyProjectContent(id, newManifest.id);
+    return newManifest;
+  }
 
-    const newManifest = await this.createProject(source.projectCollectionId, newName);
+  async copyProjectToCollection(
+    sourceProjectId: string,
+    targetProjectCollectionId: string,
+    newName: string
+  ): Promise<ProjectManifest> {
+    const source = await this.requireLiveProject(sourceProjectId);
+    await this.requireLiveProjectCollection(targetProjectCollectionId);
+    const newManifest = await this.createProjectFromSource(source, targetProjectCollectionId, newName);
+    await this.copyProjectContent(sourceProjectId, newManifest.id);
+    return newManifest;
+  }
 
-    const projectFiles = await this.loadProjectFiles(id);
+  private async createProjectFromSource(
+    source: ProjectManifest,
+    targetProjectCollectionId: string,
+    newName: string
+  ): Promise<ProjectManifest> {
+    const now = Date.now();
+    const manifest: ProjectManifest = {
+      id: crypto.randomUUID(),
+      projectCollectionId: targetProjectCollectionId,
+      name: newName,
+      description: source.description,
+      ...(source.thumbnailUrl === undefined ? {} : { thumbnailUrl: source.thumbnailUrl }),
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.db.put("projects", manifest);
+    return manifest;
+  }
+
+  private async copyProjectContent(sourceProjectId: string, targetProjectId: string): Promise<void> {
+    const projectFiles = await this.loadProjectFiles(sourceProjectId);
     if (projectFiles) {
-      await this.saveProjectFiles(newManifest.id, projectFiles);
+      await this.saveProjectFiles(targetProjectId, new Map(projectFiles));
     }
 
     const allKeys = await this.db.getAllKeys("appData");
-    const prefix = `${id}:`;
+    const prefix = `${sourceProjectId}:`;
     for (const key of allKeys) {
       if (typeof key === "string" && key.startsWith(prefix)) {
         const suffix = key.slice(prefix.length);
         const data = await this.db.get("appData", key);
         if (data !== undefined) {
-          await this.db.put("appData", data, appDataKey(newManifest.id, suffix));
+          await this.db.put("appData", data, appDataKey(targetProjectId, suffix));
         }
       }
     }
-
-    return newManifest;
   }
 
   async loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined> {

@@ -1,5 +1,5 @@
 import {
-  buildExportCommon,
+  buildActiveProjectExportCommon,
   createIdbProjectStore,
   createWebLocksProjectLock,
   DEFAULT_PROJECT_NAME,
@@ -431,13 +431,9 @@ export class SimEnvironmentStore {
   // -- Project export / import --
 
   async exportProject(): Promise<string> {
-    const manifest = this.host.activeProjectManifest!;
-    const filesystem = this.host.projectFileSystem;
     const pm = this.host.projectManager;
 
-    const common = await buildExportCommon({ name: simName, version: simVersion }, manifest, filesystem, (key) =>
-      pm.loadAppData(key)
-    );
+    const common = await buildActiveProjectExportCommon({ name: simName, version: simVersion }, pm);
 
     const counts = this.getDesiredCounts();
     const actors: { archetype: string; brain: string | null; desiredCount: number }[] = [];
