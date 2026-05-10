@@ -19,8 +19,13 @@ export interface ProjectPickerItem {
 export interface ProjectPickerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  title?: string;
+  description?: string;
+  workspaceContext?: string;
+  emptyStateMessage?: string;
   projects: ProjectPickerItem[];
   activeProjectId?: string;
+  projectDeletionDisabled?: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onCreate: () => void;
@@ -69,6 +74,7 @@ interface ProjectCardProps {
   project: ProjectPickerItem;
   isActive: boolean;
   isConfirmingDelete: boolean;
+  deleteDisabled: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onStartDelete: () => void;
@@ -79,6 +85,7 @@ function ProjectCard({
   project,
   isActive,
   isConfirmingDelete,
+  deleteDisabled,
   onSelect,
   onDelete,
   onStartDelete,
@@ -104,7 +111,8 @@ function ProjectCard({
   descriptionParts.push(`Last modified ${formatRelativeTime(project.updatedAt)}.`);
   if (project.tags?.length) descriptionParts.push(`Tags: ${project.tags.join(", ")}.`);
   if (isActive) descriptionParts.push("Currently active.");
-  if (!isActive) descriptionParts.push("Press Delete to delete.");
+  if (!isActive && !deleteDisabled) descriptionParts.push("Press Delete to delete.");
+  if (!isActive && deleteDisabled) descriptionParts.push("Project deletion is unavailable while choosing a workspace.");
 
   return (
     <li
@@ -123,7 +131,9 @@ function ProjectCard({
           <div className="flex items-center gap-1.5">
             <span className="truncate text-sm font-medium">{project.title}</span>
             {isActive && (
-              <span className="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] text-primary">active</span>
+              <span className="shrink-0 rounded border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">
+                active
+              </span>
             )}
           </div>
           {project.description && (
@@ -150,7 +160,7 @@ function ProjectCard({
           aria-current={isActive ? true : undefined}
           onClick={() => onSelect(project.id)}
           onKeyDown={(e) => {
-            if (!isActive && (e.key === "Delete" || e.key === "Backspace")) {
+            if (!isActive && !deleteDisabled && (e.key === "Delete" || e.key === "Backspace")) {
               e.preventDefault();
               onStartDelete();
             }
@@ -158,7 +168,7 @@ function ProjectCard({
         />
       )}
 
-      {!isActive && !isConfirmingDelete && (
+      {!isActive && !deleteDisabled && !isConfirmingDelete && (
         <button
           tabIndex={-1}
           type="button"
@@ -213,8 +223,13 @@ function ProjectCard({
 export function ProjectPickerDialog({
   open,
   onOpenChange,
+  title = "Projects",
+  description = "Select a project to open, or create a new one.",
+  workspaceContext,
+  emptyStateMessage = "This workspace has no projects yet.",
   projects,
   activeProjectId,
+  projectDeletionDisabled = false,
   onSelect,
   onDelete,
   onCreate,
@@ -239,8 +254,8 @@ export function ProjectPickerDialog({
         }}
       >
         <DialogHeader className="flex-col space-y-0.5 border-b px-4 py-3 sm:px-6 sm:py-4">
-          <DialogTitle>Projects</DialogTitle>
-          <DialogDescription>Select a project to open, or create a new one.</DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{workspaceContext ? `${description} ${workspaceContext}` : description}</DialogDescription>
         </DialogHeader>
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4" aria-label="Projects">
@@ -255,12 +270,20 @@ export function ProjectPickerDialog({
                 <span className="text-sm font-medium">New Project</span>
               </button>
             </li>
+            {sorted.length === 0 && (
+              <li className="col-span-1 list-none sm:col-span-2 md:col-span-3">
+                <div className="flex min-h-36 items-center rounded-lg border border-dashed border-muted-foreground/25 bg-card/70 p-4 text-sm text-muted-foreground">
+                  {emptyStateMessage}
+                </div>
+              </li>
+            )}
             {sorted.map((project) => (
               <ProjectCard
                 key={project.id}
                 project={project}
                 isActive={project.id === activeProjectId}
                 isConfirmingDelete={confirmingDeleteId === project.id}
+                deleteDisabled={projectDeletionDisabled}
                 onSelect={handleSelect}
                 onDelete={onDelete}
                 onStartDelete={() => setConfirmingDeleteId(project.id)}

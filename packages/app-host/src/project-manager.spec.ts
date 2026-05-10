@@ -842,6 +842,24 @@ describe("ProjectManager", () => {
       tabB.dispose();
     });
 
+    it("broadcasts active project collection renames to state watchers in other managers", async () => {
+      const tabB = new ProjectManager(memStore.cloneForNewTab());
+      await pm.init();
+      const targetCollection = await pm.createProjectCollection("Original");
+      await tabB.init();
+      await tabB.switchProjectCollection(targetCollection.projectCollectionId);
+      const states: ProjectCollectionState[] = [];
+      tabB.onProjectCollectionStateChange((state) => states.push(state));
+
+      await pm.renameProjectCollection(targetCollection.projectCollectionId, "Renamed");
+      await waitForTimers();
+
+      assert.strictEqual(tabB.activeProjectCollection?.name, "Renamed");
+      assert.strictEqual(states.at(-1)?.activeProjectCollection?.name, "Renamed");
+      await tabB.close();
+      tabB.dispose();
+    });
+
     it("preserves same-project locking across project managers", async () => {
       const lock = new MemoryProjectLock();
       await pm.close();
@@ -1076,6 +1094,31 @@ describe("ProjectManager", () => {
       assert.notStrictEqual(tabB.activeProject?.manifest.id, second.id);
       assert.strictEqual(tabB.activeProject?.manifest.id, first.id);
       assert.strictEqual(states.at(-1)?.activeProjectId, first.id);
+      await tabB.close();
+      tabB.dispose();
+    });
+
+    it("broadcasts project tombstones and creates a replacement when no project remains", async () => {
+      const tabB = new ProjectManager(memStore.cloneForNewTab());
+      await memStore.ensureDefaultProjectCollection();
+      const deleted = await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Only Project");
+      await pm.init();
+      await tabB.init();
+      await tabB.open(deleted.id);
+      const states: ProjectCollectionState[] = [];
+      tabB.onProjectCollectionStateChange((state) => states.push(state));
+
+      await pm.delete(deleted.id);
+      await waitForTimers();
+
+      assert.notStrictEqual(tabB.activeProject?.manifest.id, deleted.id);
+      assert.strictEqual(tabB.activeProject?.manifest.name, DEFAULT_PROJECT_NAME);
+      const projects = await tabB.listProjects();
+      assert.deepStrictEqual(
+        projects.map((project) => project.id),
+        [tabB.activeProject?.manifest.id]
+      );
+      assert.strictEqual(states.at(-1)?.activeProjectId, tabB.activeProject?.manifest.id);
       await tabB.close();
       tabB.dispose();
     });

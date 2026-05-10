@@ -1,4 +1,5 @@
-import type { ProjectManifest } from "@mindcraft-lang/app-host";
+import type { ProjectCollection, ProjectCollectionState, ProjectManifest } from "@mindcraft-lang/app-host";
+import { AppHostError } from "@mindcraft-lang/app-host";
 import type { BrainDef } from "@mindcraft-lang/core/app";
 import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
@@ -17,6 +18,7 @@ import type { Archetype } from "./brain/actor";
 import { buildBrainEditorConfig } from "./brain/editor/config";
 import { genVisualForTile } from "./brain/editor/visual-provider";
 import { NewProjectDialog } from "./components/NewProjectDialog";
+import { NewWorkspaceDialog } from "./components/NewWorkspaceDialog";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Sidebar } from "./components/Sidebar";
 import { useSimEnvironment } from "./contexts/sim-environment";
@@ -71,6 +73,13 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
   return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
 }
 
+interface PickerWorkspace {
+  collection: ProjectCollection;
+  pending: boolean;
+  createdByFlow: boolean;
+  context?: string;
+}
+
 function App() {
   const store = useSimEnvironment();
   const [isBrainEditorOpen, setIsBrainEditorOpen] = useState(false);
@@ -85,28 +94,109 @@ function App() {
 
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const [isNewWorkspaceOpen, setIsNewWorkspaceOpen] = useState(false);
+  const [pickerWorkspace, setPickerWorkspace] = useState<PickerWorkspace | undefined>();
+  const [projectCollectionState, setProjectCollectionState] = useState<ProjectCollectionState | undefined>();
   const [projectName, setProjectName] = useState(() => store.activeProjectManifest?.name ?? "");
   const [projectList, setProjectList] = useState<ProjectManifest[]>([]);
+  const pickerCommitInProgressRef = useRef(false);
+  const newProjectCommitInProgressRef = useRef(false);
+  const pendingWorkspaceCleanupRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    store.projectManager.listProjects().then(setProjectList, () => toast.error("Failed to load projects"));
-    const unsubActive = store.projectManager.onActiveProjectChange((project) => {
-      setProjectName(project?.manifest.name ?? "");
-    });
-    const unsubList = store.projectManager.onProjectListChange((projects) => {
-      setProjectList(projects);
-    });
+    let active = true;
+    let unsubscribeProjectCollectionState = () => {};
+    store.projectManager
+      .watchProjectCollectionState((state) => {
+        setProjectCollectionState(state);
+        setProjectName(store.activeProjectManifest?.name ?? "");
+      })
+      .then(
+        (subscription) => {
+          if (!active) {
+            subscription.unsubscribe();
+            return;
+          }
+          unsubscribeProjectCollectionState = subscription.unsubscribe;
+          setProjectCollectionState(subscription.initial);
+          setProjectName(store.activeProjectManifest?.name ?? "");
+        },
+        () => {
+          if (active) {
+            toast.error("Failed to load workspace state");
+          }
+        }
+      );
     const unsubLoaded = store.onProjectLoaded(() => {
       const prefs = store.getUiPreferences();
       setTimeSpeed(prefs.timeScale);
       setDebugEnabled(prefs.debugEnabled);
     });
+    const unsubPersistenceError = store.projectManager.onProjectPersistenceError(() => {
+      toast.error("Autosave failed");
+    });
     return () => {
-      unsubActive();
-      unsubList();
+      active = false;
+      unsubscribeProjectCollectionState();
       unsubLoaded();
+      unsubPersistenceError();
     };
   }, [store]);
+
+  useEffect(() => {
+    const projectCollectionId = pickerWorkspace?.collection.projectCollectionId;
+    if (!projectCollectionId) {
+      setProjectList([]);
+      return;
+    }
+    let active = true;
+    let unsubscribeProjectList = () => {};
+    store.projectManager
+      .watchProjectListForCollection(projectCollectionId, (projects) => {
+        setProjectList(projects);
+      })
+      .then(
+        (subscription) => {
+          if (!active) {
+            subscription.unsubscribe();
+            return;
+          }
+          unsubscribeProjectList = subscription.unsubscribe;
+          setProjectList(subscription.initial);
+        },
+        () => {
+          if (active) {
+            toast.error("Failed to load projects");
+            setProjectList([]);
+            setIsPickerOpen(false);
+            setPickerWorkspace(undefined);
+          }
+        }
+      );
+    return () => {
+      active = false;
+      unsubscribeProjectList();
+    };
+  }, [pickerWorkspace?.collection.projectCollectionId, store]);
+
+  useEffect(() => {
+    if (!pickerWorkspace?.pending) {
+      return;
+    }
+    return store.projectManager.onProjectCollectionEvent((event) => {
+      if (
+        event.type === "project-collection-tombstoned" &&
+        event.projectCollectionId === pickerWorkspace.collection.projectCollectionId
+      ) {
+        if (pendingWorkspaceCleanupRef.current === event.projectCollectionId) {
+          return;
+        }
+        setIsPickerOpen(false);
+        setPickerWorkspace(undefined);
+        toast.error("Workspace was removed in another tab");
+      }
+    });
+  }, [pickerWorkspace, store]);
 
   useEffect(() => {
     if (!scene) return;
@@ -126,18 +216,83 @@ function App() {
     [projectList]
   );
 
+  const openProjectPickerForWorkspace = useCallback(
+    (collection: ProjectCollection, context?: string) => {
+      const activeCollectionId =
+        projectCollectionState?.activeProjectCollection?.projectCollectionId ??
+        store.projectManager.activeProjectCollection?.projectCollectionId;
+      setPickerWorkspace({
+        collection,
+        pending: activeCollectionId !== undefined && collection.projectCollectionId !== activeCollectionId,
+        createdByFlow: false,
+        context,
+      });
+      setIsPickerOpen(true);
+    },
+    [projectCollectionState?.activeProjectCollection?.projectCollectionId, store]
+  );
+
+  const clearPickerWorkspace = useCallback(() => {
+    setPickerWorkspace(undefined);
+    setProjectList([]);
+  }, []);
+
+  const cancelPickerWorkspace = useCallback(() => {
+    const workspace = pickerWorkspace;
+    setIsPickerOpen(false);
+    clearPickerWorkspace();
+    if (workspace?.pending && workspace.createdByFlow) {
+      const projectCollectionId = workspace.collection.projectCollectionId;
+      pendingWorkspaceCleanupRef.current = projectCollectionId;
+      store.projectManager
+        .deleteProjectCollection(projectCollectionId)
+        .catch(() => {
+          toast.error("Failed to delete workspace");
+        })
+        .finally(() => {
+          if (pendingWorkspaceCleanupRef.current === projectCollectionId) {
+            pendingWorkspaceCleanupRef.current = undefined;
+          }
+        });
+    }
+  }, [clearPickerWorkspace, pickerWorkspace, store]);
+
+  const finishPickerCommit = useCallback(() => {
+    pickerCommitInProgressRef.current = false;
+    newProjectCommitInProgressRef.current = false;
+    setIsPickerOpen(false);
+    setIsNewProjectOpen(false);
+    clearPickerWorkspace();
+  }, [clearPickerWorkspace]);
+
   const handleSelectProject = useCallback(
     (id: string) => {
-      store.switchProject(id).then(
+      const workspace = pickerWorkspace;
+      if (!workspace) {
+        return;
+      }
+      pickerCommitInProgressRef.current = true;
+      const commit = workspace.pending
+        ? store.switchProjectCollectionAndOpenProject(workspace.collection.projectCollectionId, id)
+        : store.switchProject(id);
+      commit.then(
         () => {
-          setIsPickerOpen(false);
+          finishPickerCommit();
         },
-        () => {
-          toast.error("This project is already open in another tab");
+        (error: unknown) => {
+          pickerCommitInProgressRef.current = false;
+          if (error instanceof AppHostError && error.code === "PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB") {
+            toast.error("This project is already open in another tab");
+          } else {
+            toast.error("Failed to open project");
+          }
+          if (workspace.pending) {
+            setIsPickerOpen(true);
+          }
         }
       );
     },
-    [store]
+    [finishPickerCommit, pickerWorkspace, store]
   );
 
   const handleDeleteProject = useCallback(
@@ -156,9 +311,79 @@ function App() {
 
   const handleNewProjectConfirm = useCallback(
     (name: string) => {
-      store.createProject(name).catch(() => {
-        toast.error("Failed to create project");
-      });
+      const workspace = pickerWorkspace;
+      if (workspace?.pending) {
+        newProjectCommitInProgressRef.current = true;
+        store.switchProjectCollectionAndCreateProject(workspace.collection.projectCollectionId, name).then(
+          () => {
+            finishPickerCommit();
+          },
+          () => {
+            newProjectCommitInProgressRef.current = false;
+            toast.error("Failed to create project");
+            setIsPickerOpen(true);
+          }
+        );
+        return;
+      }
+      store.createProject(name).then(
+        () => {
+          finishPickerCommit();
+        },
+        () => {
+          toast.error("Failed to create project");
+        }
+      );
+    },
+    [finishPickerCommit, pickerWorkspace, store]
+  );
+
+  const handleNewProjectOpenChange = useCallback(
+    (open: boolean) => {
+      setIsNewProjectOpen(open);
+      if (!open && pickerWorkspace?.pending && !newProjectCommitInProgressRef.current) {
+        setIsPickerOpen(true);
+      }
+    },
+    [pickerWorkspace]
+  );
+
+  const handleProjectPickerOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        setIsPickerOpen(true);
+        return;
+      }
+      if (pickerCommitInProgressRef.current) {
+        setIsPickerOpen(false);
+        return;
+      }
+      cancelPickerWorkspace();
+    },
+    [cancelPickerWorkspace]
+  );
+
+  const handleNewWorkspaceConfirm = useCallback(
+    (name: string) => {
+      store.projectManager.createProjectCollection(name).then(
+        (collection) => {
+          setIsNewWorkspaceOpen(false);
+          setPickerWorkspace({
+            collection,
+            pending: true,
+            createdByFlow: true,
+            context: `Created ${new Date(collection.createdAt).toLocaleDateString()}`,
+          });
+          setIsPickerOpen(true);
+        },
+        (error: unknown) => {
+          if (error instanceof AppHostError && error.code === "INVALID_PROJECT_COLLECTION_NAME") {
+            toast.error(error.message);
+            return;
+          }
+          toast.error("Failed to create workspace");
+        }
+      );
     },
     [store]
   );
@@ -354,8 +579,10 @@ function App() {
           <PhaserGame store={store} onSceneReady={handleSceneReady} />
           <ProjectHeader
             projectName={projectName}
-            onBrowseProjects={() => setIsPickerOpen(true)}
+            projectCollectionState={projectCollectionState}
+            onBrowseProjects={openProjectPickerForWorkspace}
             onNewProject={() => setIsNewProjectOpen(true)}
+            onNewWorkspace={() => setIsNewWorkspaceOpen(true)}
             onExportProject={handleExportProject}
             onImportProject={handleImportProject}
           />
@@ -410,9 +637,20 @@ function App() {
 
         <ProjectPickerDialog
           open={isPickerOpen}
-          onOpenChange={setIsPickerOpen}
+          onOpenChange={handleProjectPickerOpenChange}
+          title={`Projects in ${pickerWorkspace?.collection.name ?? "Workspace"}`}
+          description={
+            pickerWorkspace?.pending
+              ? `Choose a project to open this workspace, or close to stay in ${
+                  projectCollectionState?.activeProjectCollection?.name ?? "the current workspace"
+                }.`
+              : "Select a project to open, or create a new one."
+          }
+          workspaceContext={pickerWorkspace?.context}
+          emptyStateMessage={`${pickerWorkspace?.collection.name ?? "This workspace"} has no projects yet.`}
           projects={pickerItems}
-          activeProjectId={store.activeProjectManifest?.id}
+          activeProjectId={projectCollectionState?.activeProjectId}
+          projectDeletionDisabled={pickerWorkspace?.pending === true}
           onSelect={handleSelectProject}
           onDelete={handleDeleteProject}
           onCreate={handleNewProject}
@@ -420,9 +658,15 @@ function App() {
 
         <NewProjectDialog
           open={isNewProjectOpen}
-          onOpenChange={setIsNewProjectOpen}
+          onOpenChange={handleNewProjectOpenChange}
           onConfirm={handleNewProjectConfirm}
           defaultName={defaultNewProjectName}
+        />
+
+        <NewWorkspaceDialog
+          open={isNewWorkspaceOpen}
+          onOpenChange={setIsNewWorkspaceOpen}
+          onConfirm={handleNewWorkspaceConfirm}
         />
       </div>
 

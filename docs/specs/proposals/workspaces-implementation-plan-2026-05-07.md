@@ -504,8 +504,8 @@ follow."
 
 ## Current State
 
-Completed: W0, W1, W2, W3, W4, W5a
-Next up: W5b
+Completed: W0, W1, W2, W3, W4, W5a, W5b
+Next up: W6
 
 ---
 
@@ -605,6 +605,23 @@ New public API: `ProjectCollectionEvent`, `ProjectCollectionSummary`,
 
 Verification: `npm run typecheck`, `npm run check`, `npm test`, and
 `npm run build` passed in `packages/app-host`.
+
+### W5b -- Workspace Selector and Pending Project Picker UX
+
+W5b shipped the visible workspace selector, workspace create/rename/delete
+flows, pending workspace project picker routing, and committed header context.
+
+New contract surface: `AppEnvironmentHost` wraps pending workspace project
+commits, and the project picker accepts workspace-scoped browsing context while
+disabling project deletion for pending workspaces.
+
+Verification: `apps/sim` typecheck/check/build, `packages/app-host`
+typecheck/check/test/build, `packages/bridge-app` typecheck/check/build, and
+`packages/ui` typecheck/check passed.
+
+Risk: W5b touched `packages/bridge-app` despite the original gate text; future
+bridge-adjacent phases should keep protocol/payloads unchanged while treating
+`AppEnvironmentHost` as app integration gate coverage.
 
 ---
 

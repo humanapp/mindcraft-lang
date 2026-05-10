@@ -1,6 +1,7 @@
 import type {
   ExampleDefinition,
   MindcraftJsonHostInfo,
+  ProjectCollectionProjectCommitResult,
   ProjectFileSystem,
   ProjectManifest,
 } from "@mindcraft-lang/app-host";
@@ -307,6 +308,36 @@ export class AppEnvironmentHost {
     await this.beginProjectTransition();
     await this.projectManager.open(id);
     await this.completeProjectTransition();
+  }
+
+  async switchProjectCollectionAndOpenProject(
+    projectCollectionId: string,
+    projectId: string
+  ): Promise<ProjectCollectionProjectCommitResult> {
+    if (
+      this.projectManager.activeProjectCollection?.projectCollectionId === projectCollectionId &&
+      this.projectManager.activeProject?.manifest.id === projectId
+    ) {
+      return {
+        collection: this.projectManager.activeProjectCollection,
+        project: this.projectManager.activeProject.manifest,
+        access: "ready",
+      };
+    }
+    await this.beginProjectTransition();
+    const result = await this.projectManager.switchProjectCollectionAndOpenProject(projectCollectionId, projectId);
+    await this.completeProjectTransition();
+    return result;
+  }
+
+  async switchProjectCollectionAndCreateProject(
+    projectCollectionId: string,
+    name: string
+  ): Promise<ProjectCollectionProjectCommitResult> {
+    await this.beginProjectTransition();
+    const result = await this.projectManager.switchProjectCollectionAndCreateProject(projectCollectionId, name);
+    await this.completeProjectTransition();
+    return result;
   }
 
   private async beginProjectTransition(): Promise<void> {

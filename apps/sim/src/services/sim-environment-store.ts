@@ -6,6 +6,7 @@ import {
   type ImportResult,
   importProject as importProjectCommon,
   type MindcraftExportDocument,
+  type ProjectCollectionProjectCommitResult,
   type ProjectFileSystem,
   ProjectManager,
   type ProjectManifest,
@@ -363,15 +364,44 @@ export class SimEnvironmentStore {
 
   async createProject(name: string): Promise<ProjectManifest> {
     this._isSwitchingProject = true;
-    const manifest = await this.host.createProject(name);
-    this._isSwitchingProject = false;
-    return manifest;
+    try {
+      return await this.host.createProject(name);
+    } finally {
+      this._isSwitchingProject = false;
+    }
   }
 
   async switchProject(id: string): Promise<void> {
     this._isSwitchingProject = true;
-    await this.host.switchProject(id);
-    this._isSwitchingProject = false;
+    try {
+      await this.host.switchProject(id);
+    } finally {
+      this._isSwitchingProject = false;
+    }
+  }
+
+  async switchProjectCollectionAndOpenProject(
+    projectCollectionId: string,
+    projectId: string
+  ): Promise<ProjectCollectionProjectCommitResult> {
+    this._isSwitchingProject = true;
+    try {
+      return await this.host.switchProjectCollectionAndOpenProject(projectCollectionId, projectId);
+    } finally {
+      this._isSwitchingProject = false;
+    }
+  }
+
+  async switchProjectCollectionAndCreateProject(
+    projectCollectionId: string,
+    name: string
+  ): Promise<ProjectCollectionProjectCommitResult> {
+    this._isSwitchingProject = true;
+    try {
+      return await this.host.switchProjectCollectionAndCreateProject(projectCollectionId, name);
+    } finally {
+      this._isSwitchingProject = false;
+    }
   }
 
   // -- Project export / import --

@@ -328,12 +328,9 @@ export class ProjectManager {
     if (this.currentActive) {
       return this.currentActive;
     }
-    const existing = await this.listProjects();
-    for (const project of existing) {
-      const result = await this.tryOpen(project.id, shouldNotifyProjectCollectionState);
-      if (result) {
-        return result;
-      }
+    const existing = await this.openFirstAvailableProject(shouldNotifyProjectCollectionState);
+    if (existing) {
+      return existing;
     }
     await this.createInternal(defaultName, shouldNotifyProjectCollectionState);
     return this.currentActive!;
@@ -1078,6 +1075,12 @@ export class ProjectManager {
       return;
     }
     if (message.type === "project-collection-changed") {
+      if (message.projectCollectionId === activeCollectionId) {
+        const activeProjectCollection = await this.getLiveCurrentProjectCollection();
+        if (activeProjectCollection) {
+          await this.notifyProjectCollectionState();
+        }
+      }
       return;
     }
     if (message.projectCollectionId === activeCollectionId && this.currentActive?.manifest.id === message.projectId) {
@@ -1100,8 +1103,30 @@ export class ProjectManager {
     this.updateProjectSession();
     this.notifyActiveProject();
     await this.notifyProjectList();
-    await this.ensureDefaultProjectInternal(DEFAULT_PROJECT_NAME, false);
+    await this.replaceTombstonedActiveProject();
     await this.notifyProjectCollectionState();
+  }
+
+  private async replaceTombstonedActiveProject(): Promise<ActiveProject> {
+    const existing = await this.openFirstAvailableProject(false);
+    if (existing) {
+      return existing;
+    }
+    await this.createInternal(DEFAULT_PROJECT_NAME, false);
+    return this.currentActive!;
+  }
+
+  private async openFirstAvailableProject(
+    shouldNotifyProjectCollectionState: boolean
+  ): Promise<ActiveProject | undefined> {
+    const existing = await this.listProjects();
+    for (const project of existing) {
+      const result = await this.tryOpen(project.id, shouldNotifyProjectCollectionState);
+      if (result) {
+        return result;
+      }
+    }
+    return undefined;
   }
 
   private discardCurrentActiveWithoutSaving(): void {
