@@ -124,7 +124,7 @@ export class ProjectManager implements vscode.Disposable {
     const project = new Project<ExtensionClientMessage, ExtensionServerMessage>({
       bridgeUrl,
       wsPath: "extension",
-      filesystem: new Map(),
+      initialFileSnapshot: new Map(),
       joinCode,
       bindingToken,
     });

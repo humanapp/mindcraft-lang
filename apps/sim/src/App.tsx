@@ -1,15 +1,17 @@
-import type { ProjectManifest } from "@mindcraft-lang/app-host";
+import type { ProjectCollection, ProjectCollectionState, ProjectManifest } from "@mindcraft-lang/app-host";
+import { AppHostError } from "@mindcraft-lang/app-host";
 import type { BrainDef } from "@mindcraft-lang/core/app";
 import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
 import {
   BrainEditorDialog,
   BrainEditorProvider,
+  Button,
   ProjectPickerDialog,
   type ProjectPickerItem,
   Toaster,
 } from "@mindcraft-lang/ui";
-import { Menu, X } from "lucide-react";
+import { Lock, Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
@@ -17,8 +19,10 @@ import type { Archetype } from "./brain/actor";
 import { buildBrainEditorConfig } from "./brain/editor/config";
 import { genVisualForTile } from "./brain/editor/visual-provider";
 import { NewProjectDialog } from "./components/NewProjectDialog";
+import { NewWorkspaceDialog } from "./components/NewWorkspaceDialog";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Sidebar } from "./components/Sidebar";
+import { WorkspacePinInput } from "./components/WorkspacePinInput";
 import { useSimEnvironment } from "./contexts/sim-environment";
 import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground } from "./game/scenes/Playground";
@@ -71,6 +75,18 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
   return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
 }
 
+interface PickerWorkspace {
+  collection: ProjectCollection;
+  pending: boolean;
+  createdByFlow: boolean;
+  context?: string;
+}
+
+interface PickerProjectListState {
+  projectCollectionId: string;
+  projects: ProjectManifest[];
+}
+
 function App() {
   const store = useSimEnvironment();
   const [isBrainEditorOpen, setIsBrainEditorOpen] = useState(false);
@@ -85,28 +101,113 @@ function App() {
 
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const [isNewWorkspaceOpen, setIsNewWorkspaceOpen] = useState(false);
+  const [pickerWorkspace, setPickerWorkspace] = useState<PickerWorkspace | undefined>();
+  const [projectCollectionState, setProjectCollectionState] = useState<ProjectCollectionState | undefined>();
   const [projectName, setProjectName] = useState(() => store.activeProjectManifest?.name ?? "");
-  const [projectList, setProjectList] = useState<ProjectManifest[]>([]);
+  const [activeUnlockPin, setActiveUnlockPin] = useState("");
+  const [activeUnlockError, setActiveUnlockError] = useState<string | undefined>();
+  const [activeUnlockBusy, setActiveUnlockBusy] = useState(false);
+  const [projectListState, setProjectListState] = useState<PickerProjectListState | undefined>();
+  const pickerCommitInProgressRef = useRef(false);
+  const newProjectCommitInProgressRef = useRef(false);
+  const pendingWorkspaceCleanupRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    store.projectManager.listProjects().then(setProjectList, () => toast.error("Failed to load projects"));
-    const unsubActive = store.projectManager.onActiveProjectChange((project) => {
-      setProjectName(project?.manifest.name ?? "");
-    });
-    const unsubList = store.projectManager.onProjectListChange((projects) => {
-      setProjectList(projects);
-    });
+    let active = true;
+    let unsubscribeProjectCollectionState = () => {};
+    store.projectManager
+      .watchProjectCollectionState((state) => {
+        setProjectCollectionState(state);
+        setProjectName(store.activeProjectManifest?.name ?? "");
+      })
+      .then(
+        (subscription) => {
+          if (!active) {
+            subscription.unsubscribe();
+            return;
+          }
+          unsubscribeProjectCollectionState = subscription.unsubscribe;
+          setProjectCollectionState(subscription.initial);
+          setProjectName(store.activeProjectManifest?.name ?? "");
+        },
+        () => {
+          if (active) {
+            toast.error("Failed to load workspace state");
+          }
+        }
+      );
     const unsubLoaded = store.onProjectLoaded(() => {
       const prefs = store.getUiPreferences();
       setTimeSpeed(prefs.timeScale);
       setDebugEnabled(prefs.debugEnabled);
     });
+    const unsubPersistenceError = store.projectManager.onProjectPersistenceError(() => {
+      toast.error("Autosave failed");
+    });
     return () => {
-      unsubActive();
-      unsubList();
+      active = false;
+      unsubscribeProjectCollectionState();
       unsubLoaded();
+      unsubPersistenceError();
     };
   }, [store]);
+
+  useEffect(() => {
+    const projectCollectionId = pickerWorkspace?.collection.projectCollectionId;
+    if (!projectCollectionId) {
+      setProjectListState(undefined);
+      return;
+    }
+    setProjectListState(undefined);
+    let active = true;
+    let unsubscribeProjectList = () => {};
+    store.projectManager
+      .watchProjectListForCollection(projectCollectionId, (projects) => {
+        setProjectListState({ projectCollectionId, projects });
+      })
+      .then(
+        (subscription) => {
+          if (!active) {
+            subscription.unsubscribe();
+            return;
+          }
+          unsubscribeProjectList = subscription.unsubscribe;
+          setProjectListState({ projectCollectionId, projects: subscription.initial });
+        },
+        () => {
+          if (active) {
+            toast.error("Failed to load projects");
+            setProjectListState(undefined);
+            setIsPickerOpen(false);
+            setPickerWorkspace(undefined);
+          }
+        }
+      );
+    return () => {
+      active = false;
+      unsubscribeProjectList();
+    };
+  }, [pickerWorkspace?.collection.projectCollectionId, store]);
+
+  useEffect(() => {
+    if (!pickerWorkspace?.pending) {
+      return;
+    }
+    return store.projectManager.onProjectCollectionEvent((event) => {
+      if (
+        event.type === "project-collection-tombstoned" &&
+        event.projectCollectionId === pickerWorkspace.collection.projectCollectionId
+      ) {
+        if (pendingWorkspaceCleanupRef.current === event.projectCollectionId) {
+          return;
+        }
+        setIsPickerOpen(false);
+        setPickerWorkspace(undefined);
+        toast.error("Workspace was removed in another tab");
+      }
+    });
+  }, [pickerWorkspace, store]);
 
   useEffect(() => {
     if (!scene) return;
@@ -116,6 +217,10 @@ function App() {
     }
   }, [scene, debugEnabled]);
 
+  const pickerProjectCollectionId = pickerWorkspace?.collection.projectCollectionId;
+  const pickerProjectListReady =
+    pickerProjectCollectionId !== undefined && projectListState?.projectCollectionId === pickerProjectCollectionId;
+  const projectList = pickerProjectListReady ? projectListState.projects : [];
   const pickerItems = useMemo<ProjectPickerItem[]>(
     () =>
       projectList.map((p) => ({
@@ -126,18 +231,97 @@ function App() {
     [projectList]
   );
 
+  const openProjectPickerForWorkspace = useCallback(
+    (collection: ProjectCollection, context?: string) => {
+      const activeCollectionId =
+        projectCollectionState?.activeProjectCollection?.projectCollectionId ??
+        store.projectManager.activeProjectCollection?.projectCollectionId;
+      setPickerWorkspace({
+        collection,
+        pending: activeCollectionId !== undefined && collection.projectCollectionId !== activeCollectionId,
+        createdByFlow: false,
+        context,
+      });
+      setIsPickerOpen(true);
+    },
+    [projectCollectionState?.activeProjectCollection?.projectCollectionId, store]
+  );
+
+  const unlockWorkspace = useCallback(
+    async (projectCollectionId: string, pin: string): Promise<ProjectCollection> => {
+      return store.unlockProjectCollection(projectCollectionId, pin);
+    },
+    [store]
+  );
+
+  const clearPickerWorkspace = useCallback(() => {
+    setPickerWorkspace(undefined);
+    setProjectListState(undefined);
+  }, []);
+
+  const cancelPickerWorkspace = useCallback(() => {
+    const workspace = pickerWorkspace;
+    setIsPickerOpen(false);
+    clearPickerWorkspace();
+    if (workspace?.pending && workspace.createdByFlow) {
+      const projectCollectionId = workspace.collection.projectCollectionId;
+      pendingWorkspaceCleanupRef.current = projectCollectionId;
+      store.projectManager
+        .deleteProjectCollection(projectCollectionId)
+        .catch(() => {
+          toast.error("Failed to delete workspace");
+        })
+        .finally(() => {
+          if (pendingWorkspaceCleanupRef.current === projectCollectionId) {
+            pendingWorkspaceCleanupRef.current = undefined;
+          }
+        });
+    }
+  }, [clearPickerWorkspace, pickerWorkspace, store]);
+
+  const finishPickerCommit = useCallback(() => {
+    pickerCommitInProgressRef.current = false;
+    newProjectCommitInProgressRef.current = false;
+    setIsPickerOpen(false);
+    setIsNewProjectOpen(false);
+    clearPickerWorkspace();
+  }, [clearPickerWorkspace]);
+
   const handleSelectProject = useCallback(
     (id: string) => {
-      store.switchProject(id).then(
+      const workspace = pickerWorkspace;
+      if (!workspace || pickerCommitInProgressRef.current) {
+        return;
+      }
+      const projects =
+        projectListState?.projectCollectionId === workspace.collection.projectCollectionId
+          ? projectListState.projects
+          : [];
+      if (!projects.some((project) => project.id === id)) {
+        return;
+      }
+      pickerCommitInProgressRef.current = true;
+      const commit = workspace.pending
+        ? store.switchProjectCollectionAndOpenProject(workspace.collection.projectCollectionId, id)
+        : store.switchProject(id);
+      commit.then(
         () => {
-          setIsPickerOpen(false);
+          finishPickerCommit();
         },
-        () => {
-          toast.error("This project is already open in another tab");
+        (error: unknown) => {
+          pickerCommitInProgressRef.current = false;
+          if (error instanceof AppHostError && error.code === "PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB") {
+            toast.error("This project is already open in another tab");
+          } else {
+            toast.error("Failed to open project");
+          }
+          if (workspace.pending) {
+            setIsPickerOpen(true);
+          }
         }
       );
     },
-    [store]
+    [finishPickerCommit, pickerWorkspace, projectListState, store]
   );
 
   const handleDeleteProject = useCallback(
@@ -150,17 +334,123 @@ function App() {
   );
 
   const handleNewProject = useCallback(() => {
+    if (!pickerProjectListReady) {
+      return;
+    }
     setIsPickerOpen(false);
     setIsNewProjectOpen(true);
-  }, []);
+  }, [pickerProjectListReady]);
 
   const handleNewProjectConfirm = useCallback(
     (name: string) => {
-      store.createProject(name).catch(() => {
-        toast.error("Failed to create project");
-      });
+      const workspace = pickerWorkspace;
+      if (workspace?.pending) {
+        newProjectCommitInProgressRef.current = true;
+        store.switchProjectCollectionAndCreateProject(workspace.collection.projectCollectionId, name).then(
+          () => {
+            finishPickerCommit();
+          },
+          () => {
+            newProjectCommitInProgressRef.current = false;
+            toast.error("Failed to create project");
+            setIsPickerOpen(true);
+          }
+        );
+        return;
+      }
+      store.createProject(name).then(
+        () => {
+          finishPickerCommit();
+        },
+        () => {
+          toast.error("Failed to create project");
+        }
+      );
+    },
+    [finishPickerCommit, pickerWorkspace, store]
+  );
+
+  const handleNewProjectOpenChange = useCallback(
+    (open: boolean) => {
+      setIsNewProjectOpen(open);
+      if (!open && pickerWorkspace?.pending && !newProjectCommitInProgressRef.current) {
+        setIsPickerOpen(true);
+      }
+    },
+    [pickerWorkspace]
+  );
+
+  const handleProjectPickerOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        setIsPickerOpen(true);
+        return;
+      }
+      if (pickerCommitInProgressRef.current) {
+        setIsPickerOpen(false);
+        return;
+      }
+      cancelPickerWorkspace();
+    },
+    [cancelPickerWorkspace]
+  );
+
+  const handleNewWorkspaceConfirm = useCallback(
+    (name: string) => {
+      store.projectManager.createProjectCollection(name).then(
+        (collection) => {
+          setIsNewWorkspaceOpen(false);
+          setPickerWorkspace({
+            collection,
+            pending: true,
+            createdByFlow: true,
+            context: `Created ${new Date(collection.createdAt).toLocaleDateString()}`,
+          });
+          setIsPickerOpen(true);
+        },
+        (error: unknown) => {
+          if (error instanceof AppHostError && error.code === "INVALID_PROJECT_COLLECTION_NAME") {
+            toast.error(error.message);
+            return;
+          }
+          toast.error("Failed to create workspace");
+        }
+      );
     },
     [store]
+  );
+
+  const handleActiveWorkspaceUnlock = useCallback(
+    (event: React.FormEvent) => {
+      event.preventDefault();
+      const projectCollectionId = projectCollectionState?.activeProjectCollection?.projectCollectionId;
+      if (!projectCollectionId || activeUnlockBusy) {
+        return;
+      }
+      setActiveUnlockBusy(true);
+      setActiveUnlockError(undefined);
+      unlockWorkspace(projectCollectionId, activeUnlockPin).then(
+        () => {
+          setActiveUnlockPin("");
+          setActiveUnlockBusy(false);
+          toast.success("Workspace unlocked");
+        },
+        (error: unknown) => {
+          setActiveUnlockBusy(false);
+          if (error instanceof AppHostError) {
+            setActiveUnlockError(error.message);
+            return;
+          }
+          setActiveUnlockError("Failed to unlock workspace");
+        }
+      );
+    },
+    [
+      activeUnlockBusy,
+      activeUnlockPin,
+      projectCollectionState?.activeProjectCollection?.projectCollectionId,
+      unlockWorkspace,
+    ]
   );
 
   const handleExportProject = useCallback(() => {
@@ -220,6 +510,19 @@ function App() {
   }, [store]);
 
   const defaultNewProjectName = useMemo(() => `Project ${projectList.length + 1}`, [projectList.length]);
+  const activeWorkspaceLocked = projectCollectionState?.access === "locked";
+  const activeWorkspaceName = projectCollectionState?.activeProjectCollection?.name ?? "Workspace";
+
+  useEffect(() => {
+    if (activeWorkspaceLocked) {
+      setScene(null);
+      setSnapshot(null);
+      setIsSidebarOpen(false);
+      setIsBrainEditorOpen(false);
+      setEditingArchetype(null);
+      prevSnapshotRef.current = null;
+    }
+  }, [activeWorkspaceLocked]);
 
   const docRevision = useSyncExternalStore(store.subscribeToDocRevision, store.getDocRevisionSnapshot);
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
@@ -351,27 +654,72 @@ function App() {
         <h1 className="sr-only">Mindcraft Simulation</h1>
         {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
         <main className="flex-1 min-w-0 relative" aria-label="Game canvas" style={{ backgroundColor: "#2d3561" }}>
-          <PhaserGame store={store} onSceneReady={handleSceneReady} />
+          {activeWorkspaceLocked ? (
+            <div className="flex h-full min-h-screen items-center justify-center bg-slate-950 p-4 text-white">
+              <form
+                className="w-full max-w-sm rounded-lg border border-white/15 bg-slate-900/95 p-5 shadow-2xl"
+                onSubmit={handleActiveWorkspaceUnlock}
+              >
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-400/15 text-amber-200">
+                    <Lock className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 className="truncate text-lg font-semibold">Workspace Locked</h2>
+                    <p className="truncate text-sm text-slate-300">{activeWorkspaceName}</p>
+                  </div>
+                </div>
+                <WorkspacePinInput
+                  label="PIN"
+                  value={activeUnlockPin}
+                  disabled={activeUnlockBusy}
+                  autoFocus
+                  labelClassName="text-sm font-medium text-slate-100"
+                  inputClassName="border-slate-400 bg-white text-slate-950"
+                  buttonClassName="text-slate-500 hover:text-slate-950 focus-visible:ring-slate-950"
+                  resetVisibilityKey={projectCollectionState?.activeProjectCollection?.projectCollectionId}
+                  onValueChange={(value) => {
+                    setActiveUnlockPin(value);
+                    setActiveUnlockError(undefined);
+                  }}
+                />
+                {activeUnlockError && (
+                  <p className="mt-2 text-sm text-red-300" role="alert">
+                    {activeUnlockError}
+                  </p>
+                )}
+                <Button className="mt-4 w-full" type="submit" disabled={!activeUnlockPin || activeUnlockBusy}>
+                  {activeUnlockBusy ? "Unlocking..." : "Unlock Workspace"}
+                </Button>
+              </form>
+            </div>
+          ) : (
+            <PhaserGame store={store} onSceneReady={handleSceneReady} />
+          )}
           <ProjectHeader
             projectName={projectName}
-            onBrowseProjects={() => setIsPickerOpen(true)}
+            projectCollectionState={projectCollectionState}
+            onBrowseProjects={openProjectPickerForWorkspace}
+            onUnlockWorkspace={unlockWorkspace}
             onNewProject={() => setIsNewProjectOpen(true)}
+            onNewWorkspace={() => setIsNewWorkspaceOpen(true)}
             onExportProject={handleExportProject}
             onImportProject={handleImportProject}
           />
-          {/* Mobile sidebar toggle */}
-          <button
-            type="button"
-            className="absolute top-3 right-3 z-40 md:hidden flex items-center justify-center w-10 h-10 rounded-lg bg-background/80 backdrop-blur border border-border shadow-md"
-            onClick={() => setIsSidebarOpen((o) => !o)}
-            aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
-          >
-            {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          {!activeWorkspaceLocked && (
+            <button
+              type="button"
+              className="absolute top-3 right-3 z-40 md:hidden flex items-center justify-center w-10 h-10 rounded-lg bg-background/80 backdrop-blur border border-border shadow-md"
+              onClick={() => setIsSidebarOpen((o) => !o)}
+              aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
+            >
+              {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          )}
         </main>
 
         {/* Backdrop -- mobile only */}
-        {isSidebarOpen && (
+        {!activeWorkspaceLocked && isSidebarOpen && (
           <div
             className="fixed inset-0 z-40 bg-black/50 md:hidden"
             onClick={() => setIsSidebarOpen(false)}
@@ -379,19 +727,21 @@ function App() {
           />
         )}
 
-        <Sidebar
-          snapshot={snapshot}
-          timeSpeed={timeSpeed}
-          onTimeSpeedChange={handleTimeSpeedChange}
-          isPlaying={isPlaying}
-          onTogglePlay={handleTogglePlay}
-          onEditBrain={handleEditBrain}
-          onDesiredCountChange={handleDesiredCountChange}
-          onToggleDebug={handleToggleDebug}
-          debugEnabled={debugEnabled}
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-        />
+        {!activeWorkspaceLocked && (
+          <Sidebar
+            snapshot={snapshot}
+            timeSpeed={timeSpeed}
+            onTimeSpeedChange={handleTimeSpeedChange}
+            isPlaying={isPlaying}
+            onTogglePlay={handleTogglePlay}
+            onEditBrain={handleEditBrain}
+            onDesiredCountChange={handleDesiredCountChange}
+            onToggleDebug={handleToggleDebug}
+            debugEnabled={debugEnabled}
+            isOpen={isSidebarOpen}
+            onClose={() => setIsSidebarOpen(false)}
+          />
+        )}
 
         {/* Brain Editor Dialog (rendered at root for proper overlay) */}
         <DocsBrainEditorProvider archetype={editingArchetype}>
@@ -410,9 +760,24 @@ function App() {
 
         <ProjectPickerDialog
           open={isPickerOpen}
-          onOpenChange={setIsPickerOpen}
+          onOpenChange={handleProjectPickerOpenChange}
+          title={`Projects in ${pickerWorkspace?.collection.name ?? "Workspace"}`}
+          description={
+            pickerWorkspace?.pending
+              ? `Choose a project to open this workspace, or close to stay in ${
+                  projectCollectionState?.activeProjectCollection?.name ?? "the current workspace"
+                }.`
+              : "Select a project to open, or create a new one."
+          }
+          workspaceContext={pickerWorkspace?.context}
+          emptyStateMessage={
+            pickerProjectListReady
+              ? `${pickerWorkspace?.collection.name ?? "This workspace"} has no projects yet.`
+              : "Loading projects..."
+          }
           projects={pickerItems}
-          activeProjectId={store.activeProjectManifest?.id}
+          activeProjectId={projectCollectionState?.activeProjectId}
+          projectDeletionDisabled={pickerWorkspace?.pending === true}
           onSelect={handleSelectProject}
           onDelete={handleDeleteProject}
           onCreate={handleNewProject}
@@ -420,9 +785,15 @@ function App() {
 
         <NewProjectDialog
           open={isNewProjectOpen}
-          onOpenChange={setIsNewProjectOpen}
+          onOpenChange={handleNewProjectOpenChange}
           onConfirm={handleNewProjectConfirm}
           defaultName={defaultNewProjectName}
+        />
+
+        <NewWorkspaceDialog
+          open={isNewWorkspaceOpen}
+          onOpenChange={setIsNewWorkspaceOpen}
+          onConfirm={handleNewWorkspaceConfirm}
         />
       </div>
 

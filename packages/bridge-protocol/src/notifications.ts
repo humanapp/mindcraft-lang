@@ -5,7 +5,7 @@ export const MAX_FILE_CONTENT_BYTES = 512 * 1024;
 /** Maximum total byte length of all file contents in a single snapshot. */
 export const MAX_SNAPSHOT_CONTENT_BYTES = 16 * 1024 * 1024;
 
-const fileSystemEntrySchema = z.discriminatedUnion("kind", [
+const filesystemEntrySchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("file"),
     content: z.string().max(MAX_FILE_CONTENT_BYTES),
@@ -15,13 +15,13 @@ const fileSystemEntrySchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("directory") }),
 ]);
 
-const fileSystemEntriesSchema = z.array(z.tuple([z.string(), fileSystemEntrySchema]));
+const filesystemEntriesSchema = z.array(z.tuple([z.string(), filesystemEntrySchema]));
 
 /**
  * Schema for a single filesystem mutation: write, delete, rename, mkdir, rmdir,
  * or a full `import` snapshot replacement.
  */
-export const fileSystemNotificationSchema = z.discriminatedUnion("action", [
+export const filesystemNotificationSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("write"),
     path: z.string(),
@@ -41,7 +41,7 @@ export const fileSystemNotificationSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("rmdir"), path: z.string() }),
   z.object({
     action: z.literal("import"),
-    entries: fileSystemEntriesSchema.refine(
+    entries: filesystemEntriesSchema.refine(
       (entries) => {
         let totalBytes = 0;
         for (const [, entry] of entries) {
@@ -58,11 +58,11 @@ export const fileSystemNotificationSchema = z.discriminatedUnion("action", [
 ]);
 
 /** A single filesystem mutation transmitted over the bridge. */
-export type FileSystemNotification = z.infer<typeof fileSystemNotificationSchema>;
+export type FileSystemNotification = z.infer<typeof filesystemNotificationSchema>;
 
 /** Schema for a full filesystem snapshot used to seed or resync a peer. */
 export const filesystemSyncPayloadSchema = z.object({
-  entries: fileSystemEntriesSchema.refine(
+  entries: filesystemEntriesSchema.refine(
     (entries) => {
       let totalBytes = 0;
       for (const [, entry] of entries) {
@@ -77,5 +77,5 @@ export const filesystemSyncPayloadSchema = z.object({
   ),
 });
 
-/** Payload for `filesystem:sync`: a full snapshot of the workspace. */
+/** Payload for `filesystem:sync`: a full filesystem snapshot. */
 export type FilesystemSyncPayload = z.infer<typeof filesystemSyncPayloadSchema>;

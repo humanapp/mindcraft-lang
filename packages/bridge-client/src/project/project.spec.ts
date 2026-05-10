@@ -70,7 +70,7 @@ function createProject(): Project {
   return new Project({
     bridgeUrl: "http://localhost:3000",
     wsPath: "app",
-    filesystem: fs,
+    initialFileSnapshot: fs,
   });
 }
 

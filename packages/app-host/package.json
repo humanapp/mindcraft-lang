@@ -1,7 +1,7 @@
 {
   "name": "@mindcraft-lang/app-host",
   "version": "0.2.1",
-  "description": "Project management and workspace storage for Mindcraft apps",
+  "description": "Project management and project file storage for Mindcraft apps",
   "license": "MIT",
   "type": "module",
   "author": "humanapp",
@@ -67,10 +67,12 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.15",
+    "fake-indexeddb": "^6.2.5",
     "tsx": "^4.21.0",
     "typescript": "~5.9.3"
   },
   "dependencies": {
+    "@mindcraft-lang/core": "file:../core",
     "@mindcraft-lang/service-api": "file:../service-api",
     "idb": "^8.0.3"
   }

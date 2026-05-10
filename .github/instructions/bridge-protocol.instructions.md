@@ -42,7 +42,7 @@ src/
 - `SessionRole` -- `"app" | "extension"`, identifies the connecting client role.
 - `wsMessageSchema` -- Zod schema for the base WebSocket message envelope
   (`type`, optional `id`, optional `payload`, optional `seq`).
-- `fileSystemNotificationSchema` -- Zod discriminated union on `action`:
+- `filesystemNotificationSchema` -- Zod discriminated union on `action`:
   `write`, `delete`, `rename`, `mkdir`, `rmdir`, `import`.
 - `filesystemSyncPayloadSchema` -- array of `[path, entry]` tuples for full filesystem
   snapshots.

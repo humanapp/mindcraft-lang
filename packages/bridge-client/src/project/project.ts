@@ -5,7 +5,7 @@ import type {
   WsMessage,
 } from "@mindcraft-lang/bridge-protocol";
 import { ErrorCode, ProtocolError } from "../error-codes.js";
-import type { ExportedFileSystem } from "../filesystem.js";
+import type { FileSystemSnapshot } from "../filesystem.js";
 import { ProjectFiles, type ProjectFilesOptions } from "./files.js";
 import { ProjectSession } from "./session.js";
 
@@ -15,7 +15,7 @@ export interface ProjectOptions<TClient extends WsMessage = WsMessage, TServer e
   /** WebSocket path on the bridge server (e.g. `"app"` or `"extension"`). */
   wsPath: string;
   /** Initial filesystem snapshot the project starts with. */
-  filesystem: ExportedFileSystem;
+  initialFileSnapshot: FileSystemSnapshot;
   joinCode?: string;
   /** Token used to rebind to a previously established session. */
   bindingToken?: string;
@@ -56,7 +56,7 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
       options.joinCode
     );
     const filesOptions: ProjectFilesOptions = {
-      entries: options.filesystem,
+      initialFileSnapshot: options.initialFileSnapshot,
       toRemoteChange: (ev) => this.toRemoteFileChange(ev),
       fromRemoteChange: (ev) => this.fromRemoteFileChange(ev),
     };

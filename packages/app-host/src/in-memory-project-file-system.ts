@@ -1,8 +1,8 @@
-import type { WorkspaceAdapter } from "./workspace-adapter.js";
-import type { WorkspaceChange, WorkspaceEntry, WorkspaceSnapshot } from "./workspace-snapshot.js";
+import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
+import type { ProjectFileSystem } from "./project-file-system.js";
 
-/** Options for {@link createInMemoryWorkspace}. */
-export interface InMemoryWorkspaceOptions {
+/** Options for {@link createInMemoryProjectFileSystem}. */
+export interface InMemoryProjectFileSystemOptions {
   /**
    * Predicate invoked for every change. Changes whose path(s) match are
    * silently dropped before being applied to the snapshot.
@@ -10,12 +10,12 @@ export interface InMemoryWorkspaceOptions {
   shouldExclude?: (path: string) => boolean;
 }
 
-/** Create a {@link WorkspaceAdapter} that stores all files in memory. */
-export function createInMemoryWorkspace(options?: InMemoryWorkspaceOptions): WorkspaceAdapter {
-  return new InMemoryWorkspace(options?.shouldExclude);
+/** Create a {@link ProjectFileSystem} that stores all files in memory. */
+export function createInMemoryProjectFileSystem(options?: InMemoryProjectFileSystemOptions): ProjectFileSystem {
+  return new InMemoryProjectFileSystem(options?.shouldExclude);
 }
 
-function ensureParentDirectories(snapshot: WorkspaceSnapshot, path: string): void {
+function ensureParentDirectories(snapshot: ProjectFileSnapshot, path: string): void {
   const segments = path.split("/").filter((s) => s.length > 0);
   for (let i = 1; i < segments.length; i++) {
     const dirPath = segments.slice(0, i).join("/");
@@ -25,7 +25,7 @@ function ensureParentDirectories(snapshot: WorkspaceSnapshot, path: string): voi
   }
 }
 
-function removePath(snapshot: WorkspaceSnapshot, path: string): void {
+function removePath(snapshot: ProjectFileSnapshot, path: string): void {
   snapshot.delete(path);
   const prefix = `${path}/`;
   for (const key of Array.from(snapshot.keys())) {
@@ -36,10 +36,10 @@ function removePath(snapshot: WorkspaceSnapshot, path: string): void {
 }
 
 function filterSnapshot(
-  entries: Iterable<[string, WorkspaceEntry]>,
+  entries: Iterable<[string, ProjectFileSystemEntry]>,
   shouldExclude: ((path: string) => boolean) | undefined
-): WorkspaceSnapshot {
-  const filtered: WorkspaceSnapshot = new Map();
+): ProjectFileSnapshot {
+  const filtered: ProjectFileSnapshot = new Map();
 
   for (const [path, entry] of entries) {
     if (shouldExclude?.(path)) {
@@ -54,7 +54,7 @@ function filterSnapshot(
   return filtered;
 }
 
-function applyChange(snapshot: WorkspaceSnapshot, change: WorkspaceChange): void {
+function applyChange(snapshot: ProjectFileSnapshot, change: ProjectFileChange): void {
   switch (change.action) {
     case "write":
       ensureParentDirectories(snapshot, change.path);
@@ -103,7 +103,7 @@ function applyChange(snapshot: WorkspaceSnapshot, change: WorkspaceChange): void
   }
 }
 
-function isChangeExcluded(change: WorkspaceChange, shouldExclude: (path: string) => boolean): boolean {
+function isChangeExcluded(change: ProjectFileChange, shouldExclude: (path: string) => boolean): boolean {
   switch (change.action) {
     case "write":
     case "delete":
@@ -117,9 +117,20 @@ function isChangeExcluded(change: WorkspaceChange, shouldExclude: (path: string)
   }
 }
 
-class InMemoryWorkspace implements WorkspaceAdapter {
-  private readonly snapshot: WorkspaceSnapshot = new Map();
-  private readonly listeners = new Set<(change: WorkspaceChange) => void>();
+function filterChange(
+  change: ProjectFileChange,
+  shouldExclude: (path: string) => boolean
+): ProjectFileChange | undefined {
+  if (change.action === "import") {
+    return { action: "import", entries: Array.from(filterSnapshot(change.entries, shouldExclude)) };
+  }
+
+  return isChangeExcluded(change, shouldExclude) ? undefined : change;
+}
+
+class InMemoryProjectFileSystem implements ProjectFileSystem {
+  private readonly snapshot: ProjectFileSnapshot = new Map();
+  private readonly listeners = new Set<(change: ProjectFileChange) => void>();
   private readonly anyChangeListeners = new Set<() => void>();
   private readonly shouldExclude: ((path: string) => boolean) | undefined;
 
@@ -127,34 +138,44 @@ class InMemoryWorkspace implements WorkspaceAdapter {
     this.shouldExclude = shouldExclude;
   }
 
-  exportSnapshot(): WorkspaceSnapshot {
+  exportSnapshot(): ProjectFileSnapshot {
     return new Map(this.snapshot);
   }
 
-  applyRemoteChange(change: WorkspaceChange): void {
-    if (this.shouldExclude && isChangeExcluded(change, this.shouldExclude)) {
-      return;
+  applyRemoteChange(change: ProjectFileChange): void {
+    let nextChange = change;
+    if (this.shouldExclude) {
+      const filtered = filterChange(change, this.shouldExclude);
+      if (!filtered) {
+        return;
+      }
+      nextChange = filtered;
     }
-    applyChange(this.snapshot, change);
+    applyChange(this.snapshot, nextChange);
     for (const listener of this.anyChangeListeners) {
       listener();
     }
   }
 
-  applyLocalChange(change: WorkspaceChange): void {
-    if (this.shouldExclude && isChangeExcluded(change, this.shouldExclude)) {
-      return;
+  applyLocalChange(change: ProjectFileChange): void {
+    let nextChange = change;
+    if (this.shouldExclude) {
+      const filtered = filterChange(change, this.shouldExclude);
+      if (!filtered) {
+        return;
+      }
+      nextChange = filtered;
     }
-    applyChange(this.snapshot, change);
+    applyChange(this.snapshot, nextChange);
     for (const listener of this.listeners) {
-      listener(change);
+      listener(nextChange);
     }
     for (const listener of this.anyChangeListeners) {
       listener();
     }
   }
 
-  onLocalChange(listener: (change: WorkspaceChange) => void): () => void {
+  onLocalChange(listener: (change: ProjectFileChange) => void): () => void {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);

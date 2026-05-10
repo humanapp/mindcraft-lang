@@ -50,8 +50,11 @@ The app lives at `apps/sim/` within the `mindcraft-lang` monorepo.
 | @mindcraft-lang/core          | workspace               | Brain language compiler, runtime, and tile definitions |
 | @mindcraft-lang/ui            | workspace (source-only) | Brain editor UI components, shadcn primitives          |
 | @mindcraft-lang/docs          | workspace (source-only) | Documentation framework and markdown renderer          |
+| @mindcraft-lang/app-host      | workspace               | Project, workspace, import/export, and persistence APIs |
+| @mindcraft-lang/bridge-app    | workspace               | App-side bridge, compiler, and user tile integration   |
+| @mindcraft-lang/ts-compiler   | workspace               | TypeScript compiler and ambient declaration support    |
 | Biome                         | 2.3 (dev)               | Linter and formatter                                   |
-| TypeScript                    | ~5.7                    | Type checking                                          |
+| TypeScript                    | ~5.9                    | Type checking                                          |
 | terser                        | ^5.28 (dev)             | Production minification                                |
 
 ## Build and Dev Scripts
@@ -153,6 +156,11 @@ apps/sim/
       color.ts                   # heatColor(), energyTint(), color space helpers
 
     components/
+      ProjectHeader.tsx          # Project/workspace menu, selector, PIN dialogs
+      NewProjectDialog.tsx       # Project creation dialog
+      NewWorkspaceDialog.tsx     # Workspace creation dialog
+      WorkspacePinDialog.tsx     # Shared workspace PIN dialog
+      WorkspacePinInput.tsx      # Shared PIN entry with visibility toggle
       Sidebar.tsx                # Dashboard: stats, time slider, population, edit buttons
 
     docs/
@@ -176,11 +184,38 @@ main.tsx
   |-- bootstrap.ts (side-effect: registers core + app brain components)
   |-- App.tsx
   |     |-- PhaserGame.tsx -> game/main.ts -> scenes/Boot -> Preloader -> Playground
+  |     |-- components/ProjectHeader.tsx -> @mindcraft-lang/app-host project/workspace APIs
   |     |-- components/Sidebar.tsx
   |     |-- brain-editor-config.tsx -> @mindcraft-lang/ui (BrainEditorDialog)
   |     |-- docs integration -> @mindcraft-lang/docs (DocsSidebar)
   |-- DocsPage.tsx (alternate route: /docs/*)
 ```
+
+### Project And Workspace Model
+
+The app presents projects inside workspaces. In app-host code, the workspace
+storage model is `ProjectCollection`: a named, app-scoped container that owns
+project manifests, project files, app data, and optional PIN protection
+metadata. UI copy uses the word "workspace"; `ProjectCollection` remains the
+internal app-host type and method vocabulary.
+
+At startup, `sim-environment-store.ts` creates an IndexedDB-backed
+`ProjectStore` with the app package name as `keyPrefix`, creates an app-scoped
+Web Locks project lock with the same prefix, and builds one `ProjectManager`.
+`ProjectManager` owns the active workspace, active project, tab-scoped
+workspace/project session, project locking, workspace switching, import/export,
+and copy/remix operations.
+
+The project header is the visible workspace surface. It provides workspace
+create, rename, browse, delete, PIN set/change/remove, lock/unlock, import, and
+export entry points. Locked protected workspaces show a lock badge, require the
+shared PIN dialog before browsing or mutation, and keep project actions disabled
+while locked. The default workspace is always present, cannot be deleted, and
+cannot be PIN protected.
+
+Workspace deletion and PIN removal use confirmation dialogs. The workspace
+selector shows loading and empty states before the create-workspace action so
+the menu remains navigable even if workspace summaries fail to load.
 
 ### React <-> Phaser Bridge
 

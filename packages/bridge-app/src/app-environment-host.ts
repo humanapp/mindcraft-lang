@@ -1,8 +1,10 @@
 import type {
   ExampleDefinition,
   MindcraftJsonHostInfo,
+  ProjectCollectionProjectCommitResult,
+  ProjectCollectionUnlockResult,
+  ProjectFileSystem,
   ProjectManifest,
-  WorkspaceAdapter,
 } from "@mindcraft-lang/app-host";
 import {
   diffMindcraftJsonToManifest,
@@ -14,7 +16,7 @@ import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraf
 import { createMindcraftEnvironment, Dict, logger } from "@mindcraft-lang/core/app";
 import type { IRngServices } from "@mindcraft-lang/core/runtime";
 import type { AmbientFile, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
-import type { AppBridge, AppBridgeState, WorkspaceChange } from "./app-bridge.js";
+import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { createBridgeProject, createProjectCompiler } from "./compilation.js";
 import type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
@@ -29,7 +31,7 @@ export interface AppEnvironmentHostOptions {
   projectManager: ProjectManager;
   /** Mindcraft modules to register with the environment. */
   modules: readonly MindcraftModule[];
-  /** Ordered ambient declaration files supplied to the workspace compiler and remote VFS. */
+  /** Ordered ambient declaration files supplied to the project compiler and remote VFS. */
   ambientFiles: readonly AmbientFile[];
   /** Identifies the host application when writing `mindcraft.json`. */
   host: MindcraftJsonHostInfo;
@@ -53,7 +55,7 @@ export interface AppEnvironmentHostOptions {
   /** Persists an updated bridge binding token. */
   saveBindingToken?: (token: string) => void;
 
-  /** Invoked after every successful workspace compile. */
+  /** Invoked after every successful project compile. */
   onDidCompile?: (result: WorkspaceCompileResult, tileResult: UserTileApplyResult | undefined) => void;
 }
 
@@ -63,7 +65,7 @@ export interface AppEnvironmentHostOptions {
 
 /**
  * Glue layer that wires a {@link ProjectManager}, a {@link MindcraftEnvironment},
- * the workspace compiler, user-tile registration, and (optionally) the bridge
+ * the project compiler, user-tile registration, and (optionally) the bridge
  * into a single host an app UI can drive.
  */
 export class AppEnvironmentHost {
@@ -136,15 +138,21 @@ export class AppEnvironmentHost {
   }
 
   // ---------------------------------------------------------------------------
-  // Workspace
+  // Project file system
   // ---------------------------------------------------------------------------
 
-  get workspace(): WorkspaceAdapter {
-    return this.projectManager.activeProject!.workspace;
+  get projectFileSystem(): ProjectFileSystem {
+    return this.projectManager.activeProject!.filesystem;
   }
 
   get activeProjectManifest(): ProjectManifest | undefined {
     return this.projectManager.activeProject?.manifest;
+  }
+
+  /** Release bridge and project-manager resources owned by this host. */
+  dispose(): void {
+    this.teardownBridge();
+    this.projectManager.dispose();
   }
 
   // ---------------------------------------------------------------------------
@@ -153,6 +161,10 @@ export class AppEnvironmentHost {
 
   async initialize(defaultProjectName: string): Promise<void> {
     await this.projectManager.init();
+    const state = await this.projectManager.getProjectCollectionState();
+    if (state.access === "locked") {
+      return;
+    }
     await this.projectManager.ensureDefaultProject(defaultProjectName);
     this._lastUserTileMetadata =
       hydrateUserTilesFromCache(this.env, {
@@ -169,7 +181,7 @@ export class AppEnvironmentHost {
   private initCompiler(): void {
     this._compiler = createProjectCompiler({
       environment: this.env,
-      workspace: this.workspace,
+      filesystem: this.projectFileSystem,
       ambientFiles: this.ambientFiles,
       examples: [...this._examples],
       onDidCompile: (result) => {
@@ -184,7 +196,7 @@ export class AppEnvironmentHost {
         this.onDidCompileCallback?.(result, tileResult);
       },
     });
-    syncManifestToMindcraftJson(this.workspace, this.projectManager.activeProject!.manifest, this.host);
+    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest, this.host);
     this._compiler.initialize();
   }
 
@@ -266,7 +278,7 @@ export class AppEnvironmentHost {
 
   async updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
     await this.projectManager.updateActive(updates);
-    syncManifestToMindcraftJson(this.workspace, this.projectManager.activeProject!.manifest, this.host);
+    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest, this.host);
   }
 
   // ---------------------------------------------------------------------------
@@ -288,8 +300,10 @@ export class AppEnvironmentHost {
   // ---------------------------------------------------------------------------
 
   async createProject(name: string): Promise<ProjectManifest> {
-    await this.beginProjectTransition();
-    const manifest = await this.projectManager.create(name);
+    await this.prepareProjectTransition();
+    const manifest = await this.projectManager.create(name, {
+      beforeActiveProjectChange: () => this.notifyProjectUnloading(),
+    });
     await this.completeProjectTransition();
     return manifest;
   }
@@ -298,28 +312,109 @@ export class AppEnvironmentHost {
     if (this.projectManager.activeProject?.manifest.id === id) {
       return;
     }
-    await this.beginProjectTransition();
-    await this.projectManager.open(id);
+    await this.prepareProjectTransition();
+    await this.projectManager.open(id, {
+      beforeActiveProjectChange: () => this.notifyProjectUnloading(),
+    });
     await this.completeProjectTransition();
   }
 
-  private async beginProjectTransition(): Promise<void> {
-    await this.saveAllBrains();
+  async switchProjectCollectionAndOpenProject(
+    projectCollectionId: string,
+    projectId: string
+  ): Promise<ProjectCollectionProjectCommitResult> {
+    if (
+      this.projectManager.activeProjectCollection?.projectCollectionId === projectCollectionId &&
+      this.projectManager.activeProject?.manifest.id === projectId
+    ) {
+      return {
+        collection: this.projectManager.activeProjectCollection,
+        project: this.projectManager.activeProject.manifest,
+        access: "ready",
+      };
+    }
+    await this.prepareProjectTransition();
+    const result = await this.projectManager.switchProjectCollectionAndOpenProject(projectCollectionId, projectId, {
+      beforeActiveProjectChange: () => this.notifyProjectUnloading(),
+    });
+    await this.completeProjectTransition();
+    return result;
+  }
 
+  async switchProjectCollectionAndCreateProject(
+    projectCollectionId: string,
+    name: string
+  ): Promise<ProjectCollectionProjectCommitResult> {
+    await this.prepareProjectTransition();
+    const result = await this.projectManager.switchProjectCollectionAndCreateProject(projectCollectionId, name, {
+      beforeActiveProjectChange: () => this.notifyProjectUnloading(),
+    });
+    await this.completeProjectTransition();
+    return result;
+  }
+
+  /**
+   * Unlock a project collection and initialize the project environment when
+   * unlocking restores the active project.
+   *
+   * @param projectCollectionId - Project collection to unlock.
+   * @param pin - User-entered PIN or phrase.
+   * @returns The unlocked project collection and its ready access status.
+   */
+  async unlockProjectCollection(projectCollectionId: string, pin: string): Promise<ProjectCollectionUnlockResult> {
+    const result = await this.projectManager.unlockProjectCollection(projectCollectionId, pin);
+    if (
+      this.projectManager.activeProjectCollection?.projectCollectionId === projectCollectionId &&
+      this.projectManager.activeProject
+    ) {
+      await this.completeProjectTransition();
+    }
+    return result;
+  }
+
+  /**
+   * Lock a project collection after flushing app-owned project state.
+   *
+   * @param projectCollectionId - Project collection to lock.
+   */
+  async lockProjectCollection(projectCollectionId: string): Promise<void> {
+    const locksActiveProject =
+      this.projectManager.activeProjectCollection?.projectCollectionId === projectCollectionId &&
+      this.projectManager.activeProject !== undefined;
+    if (locksActiveProject) {
+      await this.prepareProjectTransition();
+    }
+    await this.projectManager.lockProjectCollection(projectCollectionId, {
+      beforeActiveProjectChange: () => this.notifyProjectUnloading(),
+    });
+    if (locksActiveProject) {
+      this.completeProjectUnload();
+    }
+  }
+
+  private async prepareProjectTransition(): Promise<void> {
+    if (this.projectManager.activeProject) {
+      await this.saveAllBrains();
+    }
+  }
+
+  private notifyProjectUnloading(): void {
     for (const listener of this._projectUnloadingListeners) {
       listener();
     }
   }
 
-  private async completeProjectTransition(): Promise<void> {
+  private completeProjectUnload(): void {
     this._brainCache.clear();
     this._pendingBrainRebuild = false;
-
     this.env.replaceActionBundle({ revision: "", tiles: [], actions: Dict.empty() });
     this._lastUserTileMetadata = undefined;
     this.bumpDocRevision();
-
     this.teardownBridge();
+  }
+
+  private async completeProjectTransition(): Promise<void> {
+    this.completeProjectUnload();
     this._lastUserTileMetadata =
       hydrateUserTilesFromCache(this.env, {
         storageKey: this.userTileStorageKey,
@@ -409,7 +504,7 @@ export class AppEnvironmentHost {
 
     this._bridge = createBridgeProject({
       projectCompiler: this._compiler,
-      workspace: this.workspace,
+      filesystem: this.projectFileSystem,
       bridgeUrl: this._bridgeUrl,
       bindingToken: this._loadBindingToken(),
       onBindingTokenChange: (token) => {
@@ -498,7 +593,7 @@ export class AppEnvironmentHost {
     this._bridgeStateUnsub = bridge.onStateChange(() => {
       this.applyBridgeSnapshot(bridge);
     });
-    this._remoteChangeUnsub = bridge.onRemoteChange((change: WorkspaceChange) => {
+    this._remoteChangeUnsub = bridge.onRemoteChange((change: ProjectFileChange) => {
       this.bumpVfsRevision();
       if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
         const patch = diffMindcraftJsonToManifest(change.content, this.projectManager.activeProject.manifest);

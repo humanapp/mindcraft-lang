@@ -1,5 +1,5 @@
 import type { FilesystemChangeMessage, FilesystemSyncMessage } from "@mindcraft-lang/bridge-protocol";
-import { fileSystemNotificationSchema, filesystemSyncPayloadSchema } from "@mindcraft-lang/bridge-protocol";
+import { filesystemNotificationSchema, filesystemSyncPayloadSchema } from "@mindcraft-lang/bridge-protocol";
 import { logger } from "#core/logging/logger.js";
 import { getAppSession, getExtensionsByAppSessionId } from "#core/session-registry.js";
 import { safeSend } from "#transport/ws/safe-send.js";
@@ -12,7 +12,7 @@ const filesystemChange: WsHandler = (ws, payload, id, seq) => {
     return;
   }
 
-  const parsed = fileSystemNotificationSchema.safeParse(payload);
+  const parsed = filesystemNotificationSchema.safeParse(payload);
   if (!parsed.success) {
     logger.warn({ err: parsed.error }, "invalid filesystem:change payload");
     return;

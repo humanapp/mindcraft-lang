@@ -1,5 +1,5 @@
 /**
- * Folder name (relative to the workspace root) under which example projects are
+ * Folder name (relative to the project file root) under which example projects are
  * channeled to the vscode extension.
  */
 export const EXAMPLES_FOLDER = "__examples__";
@@ -12,7 +12,7 @@ export interface ExampleFile {
   content: string;
 }
 
-/** A bundled example project that can be loaded into a workspace. */
+/** A bundled example project that can be loaded into a project file system. */
 export interface ExampleDefinition {
   /** Folder name (within {@link EXAMPLES_FOLDER}) into which the files are written. */
   folder: string;

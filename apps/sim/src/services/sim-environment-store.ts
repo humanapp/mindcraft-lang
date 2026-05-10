@@ -1,14 +1,16 @@
 import {
-  buildExportCommon,
+  buildActiveProjectExportCommon,
   createIdbProjectStore,
   createWebLocksProjectLock,
   DEFAULT_PROJECT_NAME,
   type ImportResult,
   importProject as importProjectCommon,
   type MindcraftExportDocument,
+  type ProjectCollection,
+  type ProjectCollectionProjectCommitResult,
+  type ProjectFileSystem,
   ProjectManager,
   type ProjectManifest,
-  type WorkspaceAdapter,
 } from "@mindcraft-lang/app-host";
 import { type AppBridgeState, AppEnvironmentHost, type UserTileMetadata } from "@mindcraft-lang/bridge-app";
 import {
@@ -33,7 +35,7 @@ import { initVfsServiceWorker } from "./vfs-service-worker";
 
 // -- AppSettings --
 
-const APP_SETTINGS_STORAGE_KEY = "app-settings";
+const APP_SETTINGS_STORAGE_KEY = `${simName}:app-settings`;
 
 export interface AppSettings {
   vscodeBridgeUrl: string;
@@ -181,6 +183,7 @@ export class SimEnvironmentStore {
   private _projectDataReloadPromise: Promise<void> = Promise.resolve();
 
   private _isSwitchingProject = false;
+  private _vfsServiceWorkerInitialized = false;
 
   private constructor(host: AppEnvironmentHost) {
     this.host = host;
@@ -253,7 +256,7 @@ export class SimEnvironmentStore {
     let instanceRef: SimEnvironmentStore | undefined;
     const host = new AppEnvironmentHost({
       projectManager: new ProjectManager(projectStore, {
-        workspaceOptions: {
+        filesystemOptions: {
           shouldExclude: (path) => isCompilerControlledPath(path, { ambientFiles: simAmbientFiles }),
         },
         lock: createWebLocksProjectLock(simName),
@@ -261,7 +264,7 @@ export class SimEnvironmentStore {
       modules: [coreModule(), createSimModule()],
       ambientFiles: simAmbientFiles,
       host: { name: simName, version: simVersion },
-      userTileStorageKey: "sim:user-tile-metadata",
+      userTileStorageKey: `${simName}:user-tile-metadata`,
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,
       saveBindingToken,
@@ -289,8 +292,8 @@ export class SimEnvironmentStore {
     return this.host.projectManager;
   }
 
-  get workspace(): WorkspaceAdapter {
-    return this.host.workspace;
+  get projectFileSystem(): ProjectFileSystem {
+    return this.host.projectFileSystem;
   }
 
   get activeProjectManifest(): ProjectManifest | undefined {
@@ -299,21 +302,40 @@ export class SimEnvironmentStore {
 
   async initialize(): Promise<void> {
     await this.host.initialize(DEFAULT_PROJECT_NAME);
-    this._uiPreferences = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
+    await this.loadActiveProjectRuntime();
+    this.onAppSettingsChange((settings, prev) => {
+      if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl) {
+        this.host.updateBridgeUrl(settings.vscodeBridgeUrl);
+      }
+    });
+  }
+
+  private async loadActiveProjectRuntime(): Promise<void> {
+    const activeProject = this.host.projectManager.activeProject;
+    if (!activeProject) {
+      return;
+    }
+    this._uiPreferences = loadUiPreferences(activeProject.manifest.id);
     const metadata = this.host.lastUserTileMetadata;
     if (metadata) {
       this.userTileDocEntries = buildDocEntries(metadata);
     }
     this._projectDataReloadPromise = this.reloadProjectData();
     await this._projectDataReloadPromise;
-    initVfsServiceWorker(this);
+    if (!this._vfsServiceWorkerInitialized) {
+      initVfsServiceWorker(this);
+      this._vfsServiceWorkerInitialized = true;
+    }
     this.host.initBridge();
+  }
 
-    this.onAppSettingsChange((settings, prev) => {
-      if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl) {
-        this.host.updateBridgeUrl(settings.vscodeBridgeUrl);
-      }
-    });
+  /** Release host resources owned by this store. */
+  dispose(): void {
+    if (this._desiredCountsSaveTimer !== undefined) {
+      clearTimeout(this._desiredCountsSaveTimer);
+      this._desiredCountsSaveTimer = undefined;
+    }
+    this.host.dispose();
   }
 
   // -- Brain Persistence (archetype-typed wrappers) --
@@ -354,27 +376,64 @@ export class SimEnvironmentStore {
 
   async createProject(name: string): Promise<ProjectManifest> {
     this._isSwitchingProject = true;
-    const manifest = await this.host.createProject(name);
-    this._isSwitchingProject = false;
-    return manifest;
+    try {
+      return await this.host.createProject(name);
+    } finally {
+      this._isSwitchingProject = false;
+    }
   }
 
   async switchProject(id: string): Promise<void> {
     this._isSwitchingProject = true;
-    await this.host.switchProject(id);
-    this._isSwitchingProject = false;
+    try {
+      await this.host.switchProject(id);
+    } finally {
+      this._isSwitchingProject = false;
+    }
+  }
+
+  async switchProjectCollectionAndOpenProject(
+    projectCollectionId: string,
+    projectId: string
+  ): Promise<ProjectCollectionProjectCommitResult> {
+    this._isSwitchingProject = true;
+    try {
+      return await this.host.switchProjectCollectionAndOpenProject(projectCollectionId, projectId);
+    } finally {
+      this._isSwitchingProject = false;
+    }
+  }
+
+  async switchProjectCollectionAndCreateProject(
+    projectCollectionId: string,
+    name: string
+  ): Promise<ProjectCollectionProjectCommitResult> {
+    this._isSwitchingProject = true;
+    try {
+      return await this.host.switchProjectCollectionAndCreateProject(projectCollectionId, name);
+    } finally {
+      this._isSwitchingProject = false;
+    }
+  }
+
+  async unlockProjectCollection(projectCollectionId: string, pin: string): Promise<ProjectCollection> {
+    const result = await this.host.unlockProjectCollection(projectCollectionId, pin);
+    if (this.host.projectManager.activeProjectCollection?.projectCollectionId === projectCollectionId) {
+      await this.loadActiveProjectRuntime();
+    }
+    return result.collection;
+  }
+
+  async lockProjectCollection(projectCollectionId: string): Promise<void> {
+    await this.host.lockProjectCollection(projectCollectionId);
   }
 
   // -- Project export / import --
 
   async exportProject(): Promise<string> {
-    const manifest = this.host.activeProjectManifest!;
-    const workspace = this.host.workspace;
     const pm = this.host.projectManager;
 
-    const common = await buildExportCommon({ name: simName, version: simVersion }, manifest, workspace, (key) =>
-      pm.loadAppData(key)
-    );
+    const common = await buildActiveProjectExportCommon({ name: simName, version: simVersion }, pm);
 
     const counts = this.getDesiredCounts();
     const actors: { archetype: string; brain: string | null; desiredCount: number }[] = [];

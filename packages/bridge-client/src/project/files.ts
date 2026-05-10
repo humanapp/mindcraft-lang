@@ -1,12 +1,12 @@
 import {
-  type ExportedFileSystemEntry,
   FileSystem,
   type FileSystemNotification,
+  type FileSystemSnapshotEntry,
   NotifyingFileSystem,
 } from "../filesystem.js";
 
 export interface ProjectFilesOptions {
-  entries: Map<string, ExportedFileSystemEntry>;
+  initialFileSnapshot: Map<string, FileSystemSnapshotEntry>;
   toRemoteChange: (notification: FileSystemNotification) => void;
   fromRemoteChange: (notification: FileSystemNotification) => void;
 }
@@ -23,9 +23,7 @@ export class ProjectFiles {
   constructor(options: ProjectFilesOptions) {
     this._toRemote = new NotifyingFileSystem(this._fs, options.toRemoteChange);
     this._fromRemote = new NotifyingFileSystem(this._fs, options.fromRemoteChange);
-    if (options.entries) {
-      this._fs.import(options.entries);
-    }
+    this._fs.import(options.initialFileSnapshot);
   }
 
   get raw() {

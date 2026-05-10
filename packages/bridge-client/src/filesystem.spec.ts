@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { ErrorCode } from "./error-codes.js";
-import { type ExportedFileSystem, FileSystem, type FileSystemNotification, NotifyingFileSystem } from "./filesystem.js";
+import { FileSystem, type FileSystemNotification, type FileSystemSnapshot, NotifyingFileSystem } from "./filesystem.js";
 
-function make(entries?: ExportedFileSystem): FileSystem {
+function make(entries?: FileSystemSnapshot): FileSystem {
   const fs = new FileSystem();
   if (entries) fs.import(entries);
   return fs;
@@ -361,14 +361,14 @@ describe("FileSystem", () => {
     });
 
     it("imports files with nested directories created automatically", () => {
-      const entries: ExportedFileSystem = new Map();
+      const entries: FileSystemSnapshot = new Map();
       entries.set("a/b/c/file.txt", { kind: "file", content: "deep", etag: "e1", isReadonly: false });
       const pf2 = make(entries);
       assert.equal(pf2.read("a/b/c/file.txt"), "deep");
     });
 
     it("imports a mix of files and directories", () => {
-      const entries: ExportedFileSystem = new Map();
+      const entries: FileSystemSnapshot = new Map();
       entries.set("solo", { kind: "directory" });
       entries.set("d/file.txt", { kind: "file", content: "hi", etag: "e1", isReadonly: false });
       const pf2 = make(entries);
@@ -404,7 +404,7 @@ describe("FileSystem", () => {
       pf.mkdir("old");
       pf.write("old/file.txt", "stale");
 
-      const replacement: ExportedFileSystem = new Map();
+      const replacement: FileSystemSnapshot = new Map();
       replacement.set("src/main.ts", {
         kind: "file",
         content: "fresh",
@@ -516,7 +516,7 @@ describe("FileSystem", () => {
     });
 
     it("imports initial filesystem entries", () => {
-      const entries: ExportedFileSystem = new Map();
+      const entries: FileSystemSnapshot = new Map();
       entries.set("d", { kind: "directory" });
       entries.set("d/hello.txt", { kind: "file", content: "hi", etag: "e1", isReadonly: false });
       const pf2 = make(entries);
@@ -579,7 +579,7 @@ describe("FileSystem", () => {
     });
 
     it("import with duplicate directory does not throw", () => {
-      const entries: ExportedFileSystem = new Map();
+      const entries: FileSystemSnapshot = new Map();
       entries.set("d/a.txt", { kind: "file", content: "a", etag: "e1", isReadonly: false });
       entries.set("d/b.txt", { kind: "file", content: "b", etag: "e2", isReadonly: false });
       const pf2 = make(entries);
@@ -654,7 +654,7 @@ describe("FileSystem", () => {
     });
 
     it("import restores etags from exported entries", () => {
-      const entries: ExportedFileSystem = new Map();
+      const entries: FileSystemSnapshot = new Map();
       entries.set("d/f.txt", { kind: "file", content: "data", etag: "custom-etag-123", isReadonly: false });
       const pf2 = make(entries);
       const s = pf2.stat("d/f.txt");

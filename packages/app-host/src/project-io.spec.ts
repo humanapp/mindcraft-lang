@@ -2,113 +2,34 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import type {
   ImportDiagnostic,
+  ImportDiagnosticCode,
+  ProjectFileChange,
+  ProjectFileSnapshot,
+  ProjectFileSystem,
   ProjectManifest,
-  ProjectStore,
-  WorkspaceAdapter,
-  WorkspaceChange,
-  WorkspaceSnapshot,
 } from "@mindcraft-lang/app-host";
 import {
+  buildActiveProjectExportCommon,
   buildExportCommon,
+  createProjectCollectionPinVerifier,
   DEFAULT_MAX_FILE_SIZE,
+  DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_NAME,
   EXAMPLES_FOLDER,
   importProject,
   MINDCRAFT_JSON_PATH,
   ProjectManager,
 } from "@mindcraft-lang/app-host";
+import { assertRejectsWithCode } from "./test-support/error-assertions.js";
+import { MemoryProjectStore } from "./test-support/memory-project-store.js";
 
 // -- Helpers ------------------------------------------------------------------
 
-class MemoryProjectStore implements ProjectStore {
-  readonly keyPrefix = "test-app";
-  private projects: ProjectManifest[] = [];
-  private workspaces = new Map<string, WorkspaceSnapshot>();
-  private appData = new Map<string, string>();
-  private activeId: string | undefined;
-
-  async listProjects(): Promise<ProjectManifest[]> {
-    return [...this.projects];
-  }
-
-  async getProject(id: string): Promise<ProjectManifest | undefined> {
-    return this.projects.find((p) => p.id === id);
-  }
-
-  async createProject(name: string): Promise<ProjectManifest> {
-    const manifest: ProjectManifest = {
-      id: `id-${this.projects.length + 1}`,
-      name,
-      description: "",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    this.projects.push(manifest);
-    return manifest;
-  }
-
-  async deleteProject(id: string): Promise<void> {
-    this.projects = this.projects.filter((p) => p.id !== id);
-    this.workspaces.delete(id);
-    for (const key of this.appData.keys()) {
-      if (key.startsWith(`${id}:`)) {
-        this.appData.delete(key);
-      }
-    }
-  }
-
-  async updateProject(
-    id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
-  ): Promise<void> {
-    const idx = this.projects.findIndex((p) => p.id === id);
-    if (idx === -1) return;
-    this.projects[idx] = { ...this.projects[idx], ...updates, updatedAt: Date.now() };
-  }
-
-  async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
-    const source = await this.getProject(id);
-    if (!source) throw new Error(`not found: ${id}`);
-    const dup = await this.createProject(newName);
-    const ws = this.workspaces.get(id);
-    if (ws) this.workspaces.set(dup.id, new Map(ws));
-    return dup;
-  }
-
-  async loadWorkspace(id: string): Promise<WorkspaceSnapshot | undefined> {
-    return this.workspaces.get(id);
-  }
-
-  async saveWorkspace(id: string, snapshot: WorkspaceSnapshot): Promise<void> {
-    this.workspaces.set(id, snapshot);
-  }
-
-  async loadAppData(id: string, key: string): Promise<string | undefined> {
-    return this.appData.get(`${id}:${key}`);
-  }
-
-  async saveAppData(id: string, key: string, data: string): Promise<void> {
-    this.appData.set(`${id}:${key}`, data);
-  }
-
-  async deleteAppData(id: string, key: string): Promise<void> {
-    this.appData.delete(`${id}:${key}`);
-  }
-
-  getActiveProjectId(): string | undefined {
-    return this.activeId;
-  }
-
-  setActiveProjectId(id: string | undefined): void {
-    this.activeId = id;
-  }
-}
-
-function makeWorkspace(
+function makeProjectFileSystem(
   files?: Map<string, { kind: "file"; content: string; etag: string; isReadonly: boolean }>,
   dirs?: Map<string, { kind: "directory" }>
-): WorkspaceAdapter {
-  const snapshot: WorkspaceSnapshot = new Map();
+): ProjectFileSystem {
+  const snapshot: ProjectFileSnapshot = new Map();
   for (const [k, v] of files ?? []) snapshot.set(k, v);
   for (const [k, v] of dirs ?? []) snapshot.set(k, v);
 
@@ -116,7 +37,7 @@ function makeWorkspace(
     exportSnapshot() {
       return new Map(snapshot);
     },
-    applyRemoteChange(change: WorkspaceChange) {
+    applyRemoteChange(change: ProjectFileChange) {
       if (change.action === "write") {
         snapshot.set(change.path, {
           kind: "file",
@@ -126,7 +47,7 @@ function makeWorkspace(
         });
       }
     },
-    applyLocalChange(change: WorkspaceChange) {
+    applyLocalChange(change: ProjectFileChange) {
       if (change.action === "write") {
         snapshot.set(change.path, {
           kind: "file",
@@ -149,6 +70,7 @@ function makeWorkspace(
 function makeManifest(overrides?: Partial<ProjectManifest>): ProjectManifest {
   return {
     id: "proj-1",
+    projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
     name: "My Project",
     description: "A test project",
     createdAt: 1000,
@@ -175,12 +97,16 @@ function makeFile(doc: Record<string, unknown>, name = "test.mindcraft"): File {
   return new File([json], name, { type: "application/json" });
 }
 
-function hasError(diagnostics: ImportDiagnostic[], substring: string): boolean {
-  return diagnostics.some((d) => d.severity === "error" && d.message.includes(substring));
+function hasDiagnosticCode(
+  diagnostics: ImportDiagnostic[],
+  severity: ImportDiagnostic["severity"],
+  code: ImportDiagnosticCode
+): boolean {
+  return diagnostics.some((diagnostic) => diagnostic.severity === severity && diagnostic.code === code);
 }
 
-function hasWarning(diagnostics: ImportDiagnostic[], substring: string): boolean {
-  return diagnostics.some((d) => d.severity === "warning" && d.message.includes(substring));
+function countDiagnosticCode(diagnostics: ImportDiagnostic[], code: ImportDiagnosticCode): number {
+  return diagnostics.filter((diagnostic) => diagnostic.code === code).length;
 }
 
 // -- Tests --------------------------------------------------------------------
@@ -191,7 +117,7 @@ describe("buildExportCommon", () => {
       ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
       [MINDCRAFT_JSON_PATH, { kind: "file" as const, content: "{}", etag: "e2", isReadonly: false }],
     ]);
-    const ws = makeWorkspace(files);
+    const ws = makeProjectFileSystem(files);
     const manifest = makeManifest();
 
     const result = await buildExportCommon(HOST, manifest, ws, async () => undefined);
@@ -201,6 +127,31 @@ describe("buildExportCommon", () => {
     assert.strictEqual(result.files[0].content, "hello");
     assert.strictEqual(result.name, "My Project");
     assert.strictEqual(result.description, "A test project");
+    assert.strictEqual("projectCollectionId" in result, false);
+  });
+
+  it("serializes without local project collection metadata", async () => {
+    const ws = makeProjectFileSystem();
+    const manifest = makeManifest({ projectCollectionId: "private-workspace" });
+
+    const result = await buildExportCommon(HOST, manifest, ws, async () => undefined);
+    const serialized = JSON.stringify(result);
+
+    assert.strictEqual(serialized.includes("projectCollectionId"), false);
+    assert.strictEqual(serialized.includes("private-workspace"), false);
+  });
+
+  it("rejects active project export when the active project collection is locked", async () => {
+    const store = new MemoryProjectStore();
+    const pm = new ProjectManager(store);
+    const active = await pm.create("Protected Export");
+    await store.updateProjectCollection(active.projectCollectionId, {
+      pinVerifier: await createProjectCollectionPinVerifier("1234"),
+    });
+
+    await assertRejectsWithCode(() => buildActiveProjectExportCommon(HOST, pm), "PROJECT_COLLECTION_LOCKED");
+    await pm.close();
+    pm.dispose();
   });
 
   it("excludes read-only files", async () => {
@@ -208,7 +159,7 @@ describe("buildExportCommon", () => {
       ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
       ["lib/std.ts", { kind: "file" as const, content: "stdlib", etag: "e2", isReadonly: true }],
     ]);
-    const ws = makeWorkspace(files);
+    const ws = makeProjectFileSystem(files);
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async () => undefined);
 
@@ -221,7 +172,7 @@ describe("buildExportCommon", () => {
       ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
       [`${EXAMPLES_FOLDER}/demo.ts`, { kind: "file" as const, content: "demo", etag: "e2", isReadonly: false }],
     ]);
-    const ws = makeWorkspace(files);
+    const ws = makeProjectFileSystem(files);
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async () => undefined);
 
@@ -234,7 +185,7 @@ describe("buildExportCommon", () => {
       ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
     ]);
     const dirs = new Map([["src", { kind: "directory" as const }]]);
-    const ws = makeWorkspace(files, dirs);
+    const ws = makeProjectFileSystem(files, dirs);
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async () => undefined);
 
@@ -243,7 +194,7 @@ describe("buildExportCommon", () => {
   });
 
   it("loads and includes brains from app data", async () => {
-    const ws = makeWorkspace();
+    const ws = makeProjectFileSystem();
     const brains = { carnivore: { name: "carnivore" }, herbivore: { name: "herbivore" } };
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async (key) => {
@@ -255,18 +206,18 @@ describe("buildExportCommon", () => {
   });
 
   it("returns empty brains object when no brain data stored", async () => {
-    const ws = makeWorkspace();
+    const ws = makeProjectFileSystem();
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async () => undefined);
 
     assert.deepStrictEqual(result.brains, {});
   });
 
-  it("returns empty files array when workspace has no user files", async () => {
+  it("returns empty files array when project file system has no user files", async () => {
     const files = new Map([
       [MINDCRAFT_JSON_PATH, { kind: "file" as const, content: "{}", etag: "e1", isReadonly: false }],
     ]);
-    const ws = makeWorkspace(files);
+    const ws = makeProjectFileSystem(files);
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async () => undefined);
 
@@ -278,9 +229,10 @@ describe("importProject", () => {
   let store: MemoryProjectStore;
   let pm: ProjectManager;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     store = new MemoryProjectStore();
     pm = new ProjectManager(store);
+    await pm.init();
   });
 
   afterEach(async () => {
@@ -296,7 +248,7 @@ describe("importProject", () => {
     });
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "maximum size"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_FILE_TOO_LARGE"));
   });
 
   it("rejects invalid JSON", async () => {
@@ -305,7 +257,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "not valid JSON"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_INVALID_JSON"));
   });
 
   it("rejects mismatched host.name", async () => {
@@ -314,8 +266,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "other-app"));
-    assert.ok(hasError(result.diagnostics, "cannot be imported"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_HOST_MISMATCH"));
   });
 
   it("rejects missing host.name", async () => {
@@ -324,7 +275,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "cannot be imported"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_HOST_MISMATCH"));
   });
 
   it("rejects newer host.version", async () => {
@@ -333,7 +284,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "newer version"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_NEWER_HOST_VERSION"));
   });
 
   it("accepts same host.version", async () => {
@@ -355,19 +306,19 @@ describe("importProject", () => {
   });
 
   it("rejects missing required fields", async () => {
-    const cases = [
-      { field: "name", doc: makeExportDoc({ name: 123 }), expected: '"name"' },
-      { field: "description", doc: makeExportDoc({ description: null }), expected: '"description"' },
-      { field: "files", doc: makeExportDoc({ files: "not-array" }), expected: '"files"' },
-      { field: "brains", doc: makeExportDoc({ brains: null }), expected: '"brains"' },
-      { field: "brains (array)", doc: makeExportDoc({ brains: [] }), expected: '"brains"' },
+    const cases: Array<{ field: string; doc: Record<string, unknown>; code: ImportDiagnosticCode }> = [
+      { field: "name", doc: makeExportDoc({ name: 123 }), code: "IMPORT_INVALID_NAME" },
+      { field: "description", doc: makeExportDoc({ description: null }), code: "IMPORT_INVALID_DESCRIPTION" },
+      { field: "files", doc: makeExportDoc({ files: "not-array" }), code: "IMPORT_INVALID_FILES" },
+      { field: "brains", doc: makeExportDoc({ brains: null }), code: "IMPORT_INVALID_BRAINS" },
+      { field: "brains (array)", doc: makeExportDoc({ brains: [] }), code: "IMPORT_INVALID_BRAINS" },
     ];
 
-    for (const { field, doc, expected } of cases) {
+    for (const { field, doc, code } of cases) {
       const file = makeFile(doc);
       const result = await importProject(file, "test-app", "1.0.0", pm);
       assert.strictEqual(result.success, false, `Expected failure for ${field}`);
-      assert.ok(hasError(result.diagnostics, expected), `Expected error mentioning ${expected} for ${field}`);
+      assert.ok(hasDiagnosticCode(result.diagnostics, "error", code));
     }
   });
 
@@ -381,7 +332,7 @@ describe("importProject", () => {
     assert.strictEqual(project?.name, DEFAULT_PROJECT_NAME);
   });
 
-  it("creates project and writes files to workspace", async () => {
+  it("creates project and writes project files", async () => {
     const doc = makeExportDoc({
       name: "Import Test",
       description: "imported desc",
@@ -397,7 +348,7 @@ describe("importProject", () => {
     assert.strictEqual(result.success, true);
     assert.ok(result.projectId);
 
-    const snapshot = await store.loadWorkspace(result.projectId!);
+    const snapshot = await store.loadProjectFiles(result.projectId!);
     assert.ok(snapshot);
     const mainEntry = snapshot.get("src/main.ts");
     assert.ok(mainEntry && mainEntry.kind === "file");
@@ -410,6 +361,31 @@ describe("importProject", () => {
     const project = await store.getProject(result.projectId!);
     assert.strictEqual(project?.name, "Import Test");
     assert.strictEqual(project?.description, "imported desc");
+  });
+
+  it("assigns imported projects to the active project collection", async () => {
+    const targetCollection = await pm.createProjectCollection("Import Target");
+    await pm.switchProjectCollection(targetCollection.projectCollectionId);
+    const file = makeFile(makeExportDoc({ projectCollectionId: "file-owned-workspace" }));
+
+    const result = await importProject(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, true);
+    const project = await store.getProject(result.projectId!);
+    assert.strictEqual(project?.projectCollectionId, targetCollection.projectCollectionId);
+  });
+
+  it("allows imported projects to use a duplicate name", async () => {
+    await store.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Test Project");
+    const file = makeFile(makeExportDoc({ name: "Test Project" }));
+
+    const result = await importProject(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, true);
+    assert.deepStrictEqual(
+      (await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).map((project) => project.name),
+      ["Test Project", "Test Project"]
+    );
   });
 
   it("skips invalid file entries with warning diagnostic", async () => {
@@ -425,9 +401,9 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, true);
-    const snapshot = await store.loadWorkspace(result.projectId!);
+    const snapshot = await store.loadProjectFiles(result.projectId!);
     assert.ok(snapshot?.get("valid.ts"));
-    assert.strictEqual(result.diagnostics.filter((d) => d.severity === "warning").length, 2);
+    assert.strictEqual(countDiagnosticCode(result.diagnostics, "IMPORT_INVALID_FILE_ENTRY"), 2);
   });
 
   it("saves brains to app data", async () => {
@@ -464,7 +440,7 @@ describe("importProject", () => {
     assert.strictEqual(callbackCalled, true);
     assert.deepStrictEqual(receivedApp, appData);
     assert.strictEqual(receivedVersion, "1.0.0");
-    assert.ok(hasWarning(result.diagnostics, "app warning"));
+    assert.strictEqual(result.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length, 1);
   });
 
   it("returns error when app is missing but callback is provided", async () => {
@@ -482,8 +458,8 @@ describe("importProject", () => {
 
     assert.strictEqual(result.success, false);
     assert.strictEqual(callbackCalled, false);
-    assert.ok(hasError(result.diagnostics, "No app-specific data"));
-    assert.strictEqual((await store.listProjects()).length, 0);
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_MISSING_APP_DATA"));
+    assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
   it("aborts import when app layer callback returns error diagnostic", async () => {
@@ -497,8 +473,8 @@ describe("importProject", () => {
     });
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "bad app data"));
-    assert.strictEqual((await store.listProjects()).length, 0);
+    assert.strictEqual(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length, 1);
+    assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
   it("merges app layer appData into store alongside brains", async () => {
@@ -553,7 +529,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", badPm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasError(result.diagnostics, "boom"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
   });
 
   it("validates file paths -- rejects .. and leading /", async () => {
@@ -570,24 +546,62 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, true);
-    const snapshot = await store.loadWorkspace(result.projectId!);
+    const snapshot = await store.loadProjectFiles(result.projectId!);
     assert.ok(snapshot?.get("valid/file.ts"));
     assert.strictEqual(snapshot?.has("../escape.ts"), false);
     assert.strictEqual(snapshot?.has("/absolute.ts"), false);
     assert.strictEqual(snapshot?.has("src\\backslash.ts"), false);
-    assert.strictEqual(
-      result.diagnostics.filter((d) => d.severity === "warning" && d.message.includes("invalid path")).length,
-      3
-    );
+    assert.strictEqual(countDiagnosticCode(result.diagnostics, "IMPORT_INVALID_FILE_PATH"), 3);
+  });
+
+  it("rejects without writing a project when there is no active project collection", async () => {
+    await pm.close();
+    pm.dispose();
+    store = new MemoryProjectStore();
+    pm = new ProjectManager(store);
+
+    const result = await importProject(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
+    assert.strictEqual((await store.listProjectCollections()).length, 0);
+  });
+
+  it("rejects without writing a project when the active project collection is tombstoned", async () => {
+    const collection = await pm.createProjectCollection("Import Tombstone");
+    await pm.switchProjectCollection(collection.projectCollectionId);
+    await pm.close();
+    await store.deleteProjectCollection(collection.projectCollectionId);
+
+    const result = await importProject(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
+    assert.deepStrictEqual(await store.listProjects(collection.projectCollectionId), []);
+  });
+
+  it("rejects without writing a project when the active project collection is locked", async () => {
+    const activeCollectionId = pm.activeProjectCollection!.projectCollectionId;
+    await store.updateProjectCollection(activeCollectionId, {
+      pinVerifier: await createProjectCollectionPinVerifier("1234"),
+    });
+    const before = await store.listProjects(activeCollectionId);
+
+    const result = await importProject(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
+    assert.deepStrictEqual(await store.listProjects(activeCollectionId), before);
   });
 });
 
 describe("ProjectManager.createFromSnapshot", () => {
-  it("writes manifest, description, workspace, and app data without opening", async () => {
+  it("writes manifest, description, project files, and app data without opening", async () => {
     const store = new MemoryProjectStore();
     const pm = new ProjectManager(store);
+    await pm.init();
 
-    const snapshot: WorkspaceSnapshot = new Map([
+    const snapshot: ProjectFileSnapshot = new Map([
       ["src/main.ts", { kind: "file", content: "hello", etag: "e1", isReadonly: false }],
     ]);
 
@@ -602,12 +616,60 @@ describe("ProjectManager.createFromSnapshot", () => {
     const stored = await store.getProject(manifest.id);
     assert.strictEqual(stored?.description, "snap desc");
 
-    const ws = await store.loadWorkspace(manifest.id);
+    const ws = await store.loadProjectFiles(manifest.id);
     const file = ws?.get("src/main.ts");
     assert.ok(file && file.kind === "file");
     assert.strictEqual(file.content, "hello");
 
     assert.strictEqual(await store.loadAppData(manifest.id, "brains"), '{"a":1}');
     assert.strictEqual(await store.loadAppData(manifest.id, "actors"), '{"b":2}');
+  });
+
+  it("rejects without writing a project when there is no active project collection", async () => {
+    const store = new MemoryProjectStore();
+    const pm = new ProjectManager(store);
+    const snapshot: ProjectFileSnapshot = new Map([
+      ["src/main.ts", { kind: "file", content: "hello", etag: "e1", isReadonly: false }],
+    ]);
+
+    await assertRejectsWithCode(
+      () => pm.createFromSnapshot("No Collection", "", snapshot),
+      "NO_ACTIVE_PROJECT_COLLECTION"
+    );
+    assert.deepStrictEqual(await store.listProjectCollections(), []);
+  });
+
+  it("rejects without writing a project when the active project collection is tombstoned", async () => {
+    const store = new MemoryProjectStore();
+    const pm = new ProjectManager(store);
+    await pm.init();
+    const collection = await pm.createProjectCollection("Transient");
+    await pm.switchProjectCollection(collection.projectCollectionId);
+    await store.deleteProjectCollection(collection.projectCollectionId);
+    const snapshot: ProjectFileSnapshot = new Map([
+      ["src/main.ts", { kind: "file", content: "hello", etag: "e1", isReadonly: false }],
+    ]);
+
+    await assertRejectsWithCode(
+      () => pm.createFromSnapshot("No Collection", "", snapshot),
+      "PROJECT_COLLECTION_NOT_FOUND"
+    );
+    assert.deepStrictEqual(await store.listProjects(collection.projectCollectionId), []);
+  });
+
+  it("rejects without writing a project when the active project collection is locked", async () => {
+    const store = new MemoryProjectStore();
+    const pm = new ProjectManager(store);
+    await pm.init();
+    const collection = pm.activeProjectCollection!;
+    await store.updateProjectCollection(collection.projectCollectionId, {
+      pinVerifier: await createProjectCollectionPinVerifier("1234"),
+    });
+    const snapshot: ProjectFileSnapshot = new Map([
+      ["src/main.ts", { kind: "file", content: "hello", etag: "e1", isReadonly: false }],
+    ]);
+
+    await assertRejectsWithCode(() => pm.createFromSnapshot("Locked", "", snapshot), "PROJECT_COLLECTION_LOCKED");
+    assert.deepStrictEqual(await store.listProjects(collection.projectCollectionId), []);
   });
 });

@@ -3,7 +3,7 @@ import type {
   FilesystemSyncMessage,
   SessionErrorMessage,
 } from "@mindcraft-lang/bridge-protocol";
-import { fileSystemNotificationSchema } from "@mindcraft-lang/bridge-protocol";
+import { filesystemNotificationSchema } from "@mindcraft-lang/bridge-protocol";
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
 import { addPendingRequest } from "#core/pending-requests.js";
@@ -31,7 +31,7 @@ const filesystemChange: WsHandler = (ws, payload, id, seq) => {
     return;
   }
 
-  const parsed = fileSystemNotificationSchema.safeParse(payload);
+  const parsed = filesystemNotificationSchema.safeParse(payload);
   if (!parsed.success) {
     logger.warn({ err: parsed.error }, "invalid filesystem:change payload");
     sendChangeError(ws, id, "invalid payload");

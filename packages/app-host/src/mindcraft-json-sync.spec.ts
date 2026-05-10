@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ProjectManifest, WorkspaceAdapter, WorkspaceChange, WorkspaceSnapshot } from "@mindcraft-lang/app-host";
+import type {
+  ProjectFileChange,
+  ProjectFileSnapshot,
+  ProjectFileSystem,
+  ProjectManifest,
+} from "@mindcraft-lang/app-host";
 import {
+  DEFAULT_PROJECT_COLLECTION_ID,
   diffMindcraftJsonToManifest,
   MINDCRAFT_JSON_PATH,
   parseMindcraftJson,
@@ -14,6 +20,7 @@ const HOST = { name: "test-app", version: "1.0.0" };
 function makeManifest(overrides?: Partial<ProjectManifest>): ProjectManifest {
   return {
     id: "proj-1",
+    projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
     name: "My Project",
     description: "A test project",
     createdAt: 1000,
@@ -22,17 +29,17 @@ function makeManifest(overrides?: Partial<ProjectManifest>): ProjectManifest {
   };
 }
 
-function makeWorkspace(
+function makeProjectFileSystem(
   files?: Map<string, { kind: "file"; content: string; etag: string; isReadonly: boolean }>
-): WorkspaceAdapter {
-  const snapshot: WorkspaceSnapshot = new Map(files ?? []);
-  const changes: WorkspaceChange[] = [];
+): ProjectFileSystem {
+  const snapshot: ProjectFileSnapshot = new Map(files ?? []);
+  const changes: ProjectFileChange[] = [];
 
   return {
     exportSnapshot() {
       return new Map(snapshot);
     },
-    applyRemoteChange(change: WorkspaceChange) {
+    applyRemoteChange(change: ProjectFileChange) {
       changes.push(change);
       if (change.action === "write") {
         snapshot.set(change.path, {
@@ -43,7 +50,7 @@ function makeWorkspace(
         });
       }
     },
-    applyLocalChange(change: WorkspaceChange) {
+    applyLocalChange(change: ProjectFileChange) {
       changes.push(change);
       if (change.action === "write") {
         snapshot.set(change.path, {
@@ -64,24 +71,24 @@ function makeWorkspace(
     get _changes() {
       return changes;
     },
-  } as WorkspaceAdapter & { _changes: WorkspaceChange[] };
+  } as ProjectFileSystem & { _changes: ProjectFileChange[] };
 }
 
-function workspaceWithMindcraftJson(json: { name: string; description: string; version?: string }) {
+function projectFileSystemWithMindcraftJson(json: { name: string; description: string; version?: string }) {
   const content = serializeMindcraftJson({
     name: json.name,
     host: HOST,
     version: json.version ?? "0.0.1",
     description: json.description,
   });
-  return makeWorkspace(
+  return makeProjectFileSystem(
     new Map([[MINDCRAFT_JSON_PATH, { kind: "file", content, etag: "existing", isReadonly: false }]])
   );
 }
 
 describe("syncManifestToMindcraftJson", () => {
   it("creates mindcraft.json when it does not exist", () => {
-    const ws = makeWorkspace();
+    const ws = makeProjectFileSystem();
     const manifest = makeManifest();
 
     syncManifestToMindcraftJson(ws, manifest, HOST);
@@ -101,7 +108,7 @@ describe("syncManifestToMindcraftJson", () => {
   });
 
   it("updates name in existing mindcraft.json", () => {
-    const ws = workspaceWithMindcraftJson({ name: "Old Name", description: "desc" });
+    const ws = projectFileSystemWithMindcraftJson({ name: "Old Name", description: "desc" });
     const manifest = makeManifest({ name: "New Name", description: "desc" });
 
     syncManifestToMindcraftJson(ws, manifest, HOST);
@@ -115,7 +122,7 @@ describe("syncManifestToMindcraftJson", () => {
   });
 
   it("updates description in existing mindcraft.json", () => {
-    const ws = workspaceWithMindcraftJson({ name: "Same", description: "old desc" });
+    const ws = projectFileSystemWithMindcraftJson({ name: "Same", description: "old desc" });
     const manifest = makeManifest({ name: "Same", description: "new desc" });
 
     syncManifestToMindcraftJson(ws, manifest, HOST);
@@ -128,9 +135,9 @@ describe("syncManifestToMindcraftJson", () => {
   });
 
   it("does not write when synced fields already match", () => {
-    const ws = workspaceWithMindcraftJson({ name: "Match", description: "same" });
+    const ws = projectFileSystemWithMindcraftJson({ name: "Match", description: "same" });
     const manifest = makeManifest({ name: "Match", description: "same" });
-    const adapter = ws as WorkspaceAdapter & { _changes: WorkspaceChange[] };
+    const adapter = ws as ProjectFileSystem & { _changes: ProjectFileChange[] };
 
     syncManifestToMindcraftJson(ws, manifest, HOST);
 
@@ -138,7 +145,7 @@ describe("syncManifestToMindcraftJson", () => {
   });
 
   it("preserves non-synced fields (host, version) when updating", () => {
-    const ws = workspaceWithMindcraftJson({ name: "Old", description: "desc", version: "2.0.0" });
+    const ws = projectFileSystemWithMindcraftJson({ name: "Old", description: "desc", version: "2.0.0" });
     const manifest = makeManifest({ name: "New", description: "desc" });
 
     syncManifestToMindcraftJson(ws, manifest, HOST);

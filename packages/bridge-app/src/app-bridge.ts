@@ -1,9 +1,10 @@
-import type { WorkspaceAdapter, WorkspaceChange, WorkspaceSnapshot } from "@mindcraft-lang/app-host";
+import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystem } from "@mindcraft-lang/app-host";
 import type { ConnectionStatus } from "@mindcraft-lang/bridge-client";
 import type { AppClientMessage, CompileDiagnosticEntry } from "@mindcraft-lang/bridge-protocol";
 import { BridgeProject } from "./bridge-project.js";
+import { toFileSystemNotification, toFileSystemSnapshot, toProjectFileChange } from "./project-file-bridge.js";
 
-export type { WorkspaceAdapter, WorkspaceChange, WorkspaceSnapshot };
+export type { ProjectFileSystem, ProjectFileChange, ProjectFileSnapshot };
 /** Connection status of the underlying bridge session. */
 export type AppBridgeState = ConnectionStatus;
 /** A single compiler diagnostic entry surfaced through the bridge. */
@@ -11,7 +12,7 @@ export type DiagnosticEntry = CompileDiagnosticEntry;
 
 /**
  * App-side handle for a Mindcraft bridge session. Owns the lifecycle of the
- * underlying connection and forwards local workspace edits to and from the
+ * underlying connection and forwards local project file edits to and from the
  * remote peer.
  */
 export interface AppBridge {
@@ -19,14 +20,14 @@ export interface AppBridge {
   start(): void;
   /** Close the bridge connection and release resources. */
   stop(): void;
-  /** Request a full workspace resync from the peer. */
+  /** Request a full project file resync from the peer. */
   requestSync(): Promise<void>;
   /** Read the current connection state. */
   snapshot(): AppBridgeSnapshot;
   /** Subscribe to connection-state changes. Returns an unsubscribe function. */
   onStateChange(listener: (state: AppBridgeState) => void): () => void;
-  /** Subscribe to workspace changes pushed by the remote peer. */
-  onRemoteChange(listener: (change: WorkspaceChange) => void): () => void;
+  /** Subscribe to project file changes pushed by the remote peer. */
+  onRemoteChange(listener: (change: ProjectFileChange) => void): () => void;
 }
 
 /** Snapshot of the bridge connection state. */
@@ -39,7 +40,7 @@ export interface AppBridgeSnapshot {
 /** Options for {@link createAppBridge}. */
 export interface AppBridgeOptions {
   bridgeUrl: string;
-  workspace: WorkspaceAdapter;
+  filesystem: ProjectFileSystem;
   /** Optional features attached to the bridge for the duration of each session. */
   features?: readonly AppBridgeFeature[];
   /** Persisted token used to rebind to a previously established session. */
@@ -59,10 +60,10 @@ export interface AppBridgeFeature {
 /** Context passed to an {@link AppBridgeFeature} on attach. */
 export interface AppBridgeFeatureContext {
   snapshot(): AppBridgeSnapshot;
-  workspaceSnapshot(): WorkspaceSnapshot;
+  projectFileSnapshot(): ProjectFileSnapshot;
   onStateChange(listener: (state: AppBridgeState) => void): () => void;
-  onRemoteChange(listener: (change: WorkspaceChange) => void): () => void;
-  /** Subscribe to full-workspace sync completions from the peer. */
+  onRemoteChange(listener: (change: ProjectFileChange) => void): () => void;
+  /** Subscribe to full project file sync completions from the peer. */
   onDidSync(listener: () => void): () => void;
   /** Send the diagnostics for `file` to the peer. */
   publishDiagnostics(file: string, diagnostics: readonly DiagnosticEntry[]): void;
@@ -89,12 +90,12 @@ export function createAppBridge(options: AppBridgeOptions): AppBridge {
 class AppBridgeController implements AppBridge {
   private readonly _options: AppBridgeOptions;
   private readonly _stateListeners = new Set<(state: AppBridgeState) => void>();
-  private readonly _remoteChangeListeners = new Set<(change: WorkspaceChange) => void>();
+  private readonly _remoteChangeListeners = new Set<(change: ProjectFileChange) => void>();
   private readonly _syncListeners = new Set<() => void>();
   private readonly _diagnosticVersions = new Map<string, number>();
   private readonly _featureDisposers: (() => void)[] = [];
   private _project: BridgeProject | undefined;
-  private _workspaceUnsub: (() => void) | undefined;
+  private _filesystemUnsub: (() => void) | undefined;
   private _projectUnsubs: (() => void)[] = [];
   private _status: AppBridgeState = "disconnected";
   private _joinCode: string | undefined;
@@ -112,13 +113,13 @@ class AppBridgeController implements AppBridge {
 
     const project = new BridgeProject({
       bridgeUrl: this._options.bridgeUrl,
-      filesystem: this._options.workspace.exportSnapshot(),
+      initialFileSnapshot: toFileSystemSnapshot(this._options.filesystem.exportSnapshot()),
       bindingToken: this._options.bindingToken,
     });
 
     this._project = project;
-    this._workspaceUnsub = this._options.workspace.onLocalChange((change) => {
-      project.files.toRemote.applyNotification(change);
+    this._filesystemUnsub = this._options.filesystem.onLocalChange((change) => {
+      project.files.toRemote.applyNotification(toFileSystemNotification(change));
     });
     this._projectUnsubs = [
       project.session.addEventListener("status", (status) => {
@@ -134,8 +135,9 @@ class AppBridgeController implements AppBridge {
       project.onJoinCodeChange((joinCode) => {
         this.setJoinCode(joinCode);
       }),
-      project.onRemoteFileChange((change) => {
-        this._options.workspace.applyRemoteChange(change);
+      project.onRemoteFileChange((notification) => {
+        const change = toProjectFileChange(notification);
+        this._options.filesystem.applyRemoteChange(change);
         this.emitRemoteChange(change);
       }),
       project.onDidSync(() => {
@@ -180,7 +182,7 @@ class AppBridgeController implements AppBridge {
     };
   }
 
-  onRemoteChange(listener: (change: WorkspaceChange) => void): () => void {
+  onRemoteChange(listener: (change: ProjectFileChange) => void): () => void {
     this._remoteChangeListeners.add(listener);
     return () => {
       this._remoteChangeListeners.delete(listener);
@@ -195,7 +197,7 @@ class AppBridgeController implements AppBridge {
     const features = this._options.features ?? [];
     const context: AppBridgeFeatureContext = {
       snapshot: () => this.snapshot(),
-      workspaceSnapshot: () => this._options.workspace.exportSnapshot(),
+      projectFileSnapshot: () => this._options.filesystem.exportSnapshot(),
       onStateChange: (listener) => this.onStateChange(listener),
       onRemoteChange: (listener) => this.onRemoteChange(listener),
       onDidSync: (listener) => this.onDidSync(listener),
@@ -231,7 +233,7 @@ class AppBridgeController implements AppBridge {
     }
   }
 
-  private emitRemoteChange(change: WorkspaceChange): void {
+  private emitRemoteChange(change: ProjectFileChange): void {
     for (const listener of this._remoteChangeListeners) {
       listener(change);
     }
@@ -302,8 +304,8 @@ class AppBridgeController implements AppBridge {
   }
 
   private disposeProjectBindings(): void {
-    this._workspaceUnsub?.();
-    this._workspaceUnsub = undefined;
+    this._filesystemUnsub?.();
+    this._filesystemUnsub = undefined;
 
     for (const unsub of this._projectUnsubs.splice(0)) {
       unsub();

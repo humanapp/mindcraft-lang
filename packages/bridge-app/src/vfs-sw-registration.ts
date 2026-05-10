@@ -1,17 +1,17 @@
-import type { WorkspaceAdapter } from "./app-bridge.js";
+import type { ProjectFileSystem } from "./app-bridge.js";
 
 /** Options for {@link registerVfsServiceWorker}. */
 export interface VfsSwRegistrationOptions {
   /** URL of the service worker script. */
   swUrl: string;
-  /** Returns the workspace whose files the service worker should serve. */
-  getWorkspace: () => WorkspaceAdapter;
+  /** Returns the project file system whose files the service worker should serve. */
+  getProjectFileSystem: () => ProjectFileSystem;
   /** Invoked once a service worker is controlling the page. */
   onReady?: () => void;
 }
 
 /**
- * Register a service worker that serves files from the in-memory workspace via
+ * Register a service worker that serves files from the in-memory project file system via
  * `MessageChannel` requests. No-op in environments without `navigator.serviceWorker`.
  */
 export function registerVfsServiceWorker(options: VfsSwRegistrationOptions): void {
@@ -44,7 +44,7 @@ export function registerVfsServiceWorker(options: VfsSwRegistrationOptions): voi
 
     if (msg.type === "vfs-read") {
       const path = msg.path as string;
-      const snapshot = options.getWorkspace().exportSnapshot();
+      const snapshot = options.getProjectFileSystem().exportSnapshot();
       const entry = snapshot.get(path);
       const port = (event as MessageEvent).ports?.[0];
       if (!port) return;
