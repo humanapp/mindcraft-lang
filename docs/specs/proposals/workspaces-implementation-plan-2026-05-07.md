@@ -423,7 +423,8 @@ Invariants:
 
 ## Workflow Convention
 
-Phases ship one at a time and are numbered W0-W8. Each phase follows this loop:
+Phases ship one at a time and are numbered W0-W8, with W5 split into W5a and
+W5b. Each phase or subphase follows this loop:
 
 1. Before implementing, run the phase compatibility audit below.
 2. Implement the phase.
@@ -504,7 +505,7 @@ follow."
 ## Current State
 
 Completed: W0, W1, W2, W3, W4
-Next up: W5
+Next up: W5a
 
 ---
 
@@ -569,7 +570,7 @@ Risk: W4 must replace the active-project-only restore path with
 `ProjectCollectionTabSession` and should share stale-session fallback behavior
 across init, switch, and later unlock restore paths.
 
-Risk: W5/W6 UI should surface project collection name validation by app-host
+Risk: W5b/W6 UI should surface project collection name validation by app-host
 error code and avoid duplicating a divergent trim or length policy.
 
 ### W4 -- Multi-Tab And Tab Restore Semantics
@@ -585,7 +586,7 @@ New public API: `ProjectCollectionTabSession`,
 Verification: full gates passed in `packages/app-host`,
 `packages/bridge-app`, and `apps/sim`.
 
-Risk: W5 should attach toast or visible app feedback to
+Risk: W5b should attach toast or visible app feedback to
 `ProjectManager.onProjectPersistenceError` so non-tombstone autosave failures
 are visible in the app UI.
 
@@ -1322,10 +1323,268 @@ Gate:
 - `packages/bridge-app`: full gate.
 - `apps/sim`: typecheck/check/build/test.
 
-## Phase W5 -- Workspace Selector, No PIN
+## Phase W5a -- Workspace UI Data APIs
 
-Purpose: expose workspace management while all project collections are
-unprotected.
+Purpose: add the app-host data and notification surfaces that the workspace
+selector and workspace-scoped project picker need, without implementing the
+visible workspace selector UX yet.
+
+W5a keeps project collections unprotected. It should not add PIN UI or bridge
+protocol changes.
+
+Workspace UI notification contract:
+
+```ts
+interface ProjectCollectionSummary {
+  collection: ProjectCollection;
+  projectCount: number;
+}
+
+interface ProjectCollectionSummarySubscription {
+  initial: ProjectCollectionSummary[];
+  unsubscribe: () => void;
+}
+
+interface ProjectListSubscription {
+  initial: ProjectManifest[];
+  unsubscribe: () => void;
+}
+
+interface ProjectCollectionStateSubscription {
+  initial: ProjectCollectionState;
+  unsubscribe: () => void;
+}
+
+interface ProjectCollectionProjectCommitResult {
+  collection: ProjectCollection;
+  project: ProjectManifest;
+  access: "ready";
+}
+
+type ProjectCollectionSummaryChange =
+  | { type: "upsert"; summary: ProjectCollectionSummary }
+  | { type: "remove"; projectCollectionId: string };
+
+type ProjectCollectionEvent =
+  | { type: "project-collection-changed"; projectCollectionId: string }
+  | { type: "project-collection-tombstoned"; projectCollectionId: string }
+  | { type: "project-list-changed"; projectCollectionId: string }
+  | { type: "project-tombstoned"; projectCollectionId: string; projectId: string };
+
+onProjectCollectionEvent(
+  listener: (event: ProjectCollectionEvent) => void
+): () => void;
+watchProjectCollectionState(
+  listener: (state: ProjectCollectionState) => void
+): Promise<ProjectCollectionStateSubscription>;
+watchProjectCollectionSummaries(
+  listener: (change: ProjectCollectionSummaryChange) => void
+): Promise<ProjectCollectionSummarySubscription>;
+listProjectsForCollection(projectCollectionId: string): Promise<ProjectManifest[]>;
+watchProjectListForCollection(
+  projectCollectionId: string,
+  listener: (projects: ProjectManifest[]) => void
+): Promise<ProjectListSubscription>;
+switchProjectCollectionAndOpenProject(
+  projectCollectionId: string,
+  projectId: string
+): Promise<ProjectCollectionProjectCommitResult>;
+switchProjectCollectionAndCreateProject(
+  projectCollectionId: string,
+  name: string
+): Promise<ProjectCollectionProjectCommitResult>;
+```
+
+`ProjectCollectionEvent` is the low-level app-host event stream for workspace UI
+surfaces. It is emitted for local changes and for cross-tab broadcast messages.
+The event stream does not replay previous events during subscription. Normal app
+UI surfaces should prefer the derived state/list APIs below instead of
+subscribing to `ProjectCollectionEvent` directly.
+This is an in-process ProjectManager UI event stream fed by local manager
+operations and the W4 `ProjectCollectionBroadcast` transport; it is not a second
+cross-tab transport.
+
+`project-collection-changed` is emitted after project collection create and
+rename metadata changes. `project-collection-tombstoned` is emitted after local
+or cross-tab collection tombstones. `project-list-changed` is emitted after
+local project create, rename/update, delete, duplicate, import/create-from-
+snapshot, or any other operation that changes the non-deleted project list for a
+collection. `project-tombstoned` is emitted after local or cross-tab project
+tombstones.
+
+`watchProjectCollectionState` is the UI-facing watcher for committed workspace
+and active project state. It wraps the W3 `getProjectCollectionState` plus
+`onProjectCollectionStateChange` pair by registering for changes before reading
+the initial state, then returning `{ initial, unsubscribe }`. W5a keeps the W3
+APIs available, but W5b app UI must use this watcher instead of manually
+combining the W3 get/on pair.
+
+`watchProjectCollectionSummaries` is the only public workspace summary watcher.
+It starts watching before reading the initial summary list and returns both the
+initial non-deleted project collections plus project counts and the unsubscribe
+function. It must not expose internal IDs as visible disambiguation.
+W5a does not add a persisted project-count field, maintained counter, or
+required `projectCollectionId` index. Implementations may derive the initial
+summary list with one store-owned pass over non-deleted projects and group by
+`projectCollectionId`. This one-pass initial derivation is the accepted W5a
+cost.
+
+`watchProjectCollectionSummaries` emits targeted patches, not a full summary
+list. Project collection create, rename, and project-count changes call the
+listener with `{ type: "upsert", summary }` for the affected collection only.
+Project collection tombstones call the listener with
+`{ type: "remove", projectCollectionId }`. The UI owns applying these patches
+to the summary list returned in the watcher's `initial` value.
+For project-count changes, recompute only the affected collection summary; do
+not recompute all workspace summaries after every project create, delete,
+duplicate, or import. Implementations may use a collection-scoped cursor or
+index if a later phase introduces one, but W5a must not require schema work
+just to populate selector counts.
+W5a must not expose a public `getProjectCollectionSummaries` plus
+`onProjectCollectionSummaryChange` pair in parallel with
+`watchProjectCollectionSummaries`.
+
+`listProjectsForCollection` returns non-deleted projects in the requested
+non-deleted project collection without changing the active project collection.
+It throws when the project collection is missing or tombstoned.
+
+`watchProjectListForCollection` is the only public collection-scoped project
+list watcher. It starts watching before reading the initial list and returns
+both the initial project list and the unsubscribe function. It emits refreshed
+project lists after `project-list-changed` and `project-tombstoned` events that
+target the watched project collection. This notification path is separate from
+the existing active-project collection `onProjectListChange` listener. Use it
+instead of hand-rolling `fetch(); subscribe();` in component effects. W5a must
+not expose a second public no-replay subscription shape for the same
+collection-scoped project-list event stream.
+
+`switchProjectCollectionAndOpenProject` and
+`switchProjectCollectionAndCreateProject` are the atomic commit APIs for W5b's
+pending workspace picker. They perform the autosave flush and active-project
+close semantics of `switchProjectCollection`, but they must not restore an
+existing project or create a default project as an intermediate step. On
+success, they switch the active collection and open exactly the selected or
+newly created project. On failure, the previously active collection/project
+remain active. `switchProjectCollectionAndOpenProject` rejects when the target
+collection is missing or tombstoned, when the project is missing or tombstoned,
+or when the project does not belong to the target collection.
+`switchProjectCollectionAndCreateProject` rejects without writing a project
+record or changing active context when the target collection is missing or
+tombstoned.
+
+When a `project-collection-tombstoned` broadcast targets a subscribed project
+collection, UI that is browsing that collection must cancel or close that browse
+surface before stale project rows remain visible. W5b's pending workspace
+selection rule owns the user-visible cancellation and feedback for the project
+picker.
+
+Canonical UI subscription mapping:
+
+- Header committed workspace/project label and workspace selector trigger:
+  use `watchProjectCollectionState`.
+- Workspace selector dropdown list and secondary context: use
+  `watchProjectCollectionSummaries`.
+- Project picker project cards for the workspace being browsed: use
+  `watchProjectListForCollection(projectCollectionId, listener)`.
+- Pending workspace tombstone cancellation may observe
+  `onProjectCollectionEvent`, but it must not also subscribe to summaries or
+  collection state to drive the same cancellation path.
+- Do not drive the same visual surface from more than one of these APIs. Derived
+  APIs own React rendering; `ProjectCollectionEvent` exists to implement those
+  derived APIs and narrow one-off reactions.
+
+Deliverables:
+
+- Add `ProjectCollectionEvent`, `onProjectCollectionEvent`,
+  `ProjectCollectionStateSubscription`, `watchProjectCollectionState`,
+  `ProjectCollectionProjectCommitResult`,
+  `ProjectCollectionSummary`, `ProjectCollectionSummaryChange`,
+  `ProjectCollectionSummarySubscription`, and
+  `watchProjectCollectionSummaries`.
+- Add `listProjectsForCollection` for one-shot collection-scoped project list
+  reads.
+- Add `watchProjectListForCollection` as the only public collection-scoped
+  project list watcher, including its initial read and unsubscribe handle.
+- Derive `ProjectCollectionSummary.projectCount` at read time without a
+  persisted counter, and limit subsequent count refreshes to affected
+  workspaces.
+- Emit targeted summary patches after workspace rename, create, delete, project
+  create, project delete, and cross-tab changes.
+- Emit and consume collection-scoped project-list refreshes when
+  `project-tombstoned` broadcasts target the workspace currently being browsed,
+  including non-active workspaces.
+- Add `switchProjectCollectionAndOpenProject` and
+  `switchProjectCollectionAndCreateProject` for W5b pending workspace commits.
+- Keep the canonical UI subscription mapping documented for W5b consumers.
+
+Acceptance:
+
+- Loading workspace summaries may scan live projects once to derive project
+  counts, but a project create/delete/duplicate/import in one workspace emits
+  one summary patch for that workspace and does not force a full summary-list
+  recompute.
+- `ProjectCollectionSummary` and `ProjectCollectionSummaryChange` are the
+  canonical data contract for workspace selector rows and secondary context.
+- `watchProjectCollectionState` starts watching before reading the initial
+  committed workspace/project state and returns `{ initial, unsubscribe }`.
+- W5b header and active-project UI must use `watchProjectCollectionState`
+  rather than manually combining `getProjectCollectionState` and
+  `onProjectCollectionStateChange`.
+- `watchProjectCollectionSummaries` starts watching before reading the initial
+  summary list and returns `{ initial, unsubscribe }`.
+- `watchProjectCollectionSummaries` returns non-deleted collections with project
+  counts in its initial value and does not expose internal IDs as visible
+  disambiguation.
+- W5a does not expose a public `getProjectCollectionSummaries` plus
+  `onProjectCollectionSummaryChange` pair in parallel with
+  `watchProjectCollectionSummaries`.
+- Project collection create, rename, tombstone, and project-count changes emit
+  targeted summary patches.
+- `listProjectsForCollection` returns non-deleted projects for a non-active
+  collection without changing active collection state.
+- `watchProjectListForCollection` starts watching before reading the initial
+  list and returns `{ initial, unsubscribe }`.
+- W5a does not expose a public `onProjectListChangeForCollection` API in
+  parallel with `watchProjectListForCollection`.
+- `switchProjectCollectionAndOpenProject` switches to the target collection and
+  opens the requested project without first restoring or creating another
+  project in that collection.
+- `switchProjectCollectionAndCreateProject` switches to the target collection
+  and opens the new project without first restoring or creating another project
+  in that collection.
+- Pending commit API failures leave the previously active collection/project
+  active.
+- Collection-scoped project list notifications update when a project is created,
+  renamed, deleted, duplicated, imported, or tombstoned in that collection.
+- A project tombstoned in another tab is removed from a subscribed non-active
+  collection list without requiring an active workspace switch.
+- Header state, workspace selector rows, and project picker cards have distinct
+  canonical ProjectManager data sources documented for W5b.
+- `ProjectCollectionEvent` remains an in-process ProjectManager UI event stream
+  fed by local manager operations and W4 broadcasts; it is not a second
+  cross-tab transport.
+- ProjectManager still rejects deleting the active collection, the default
+  collection, and the last non-deleted collection while the W5a summary/event
+  APIs are present.
+- Deleted project collections disappear from summary snapshots and emit summary
+  remove patches.
+- W5a does not implement the visible workspace selector, row overflow menus, or
+  pending project picker UX.
+- No bridge protocol, bridge payload, or extension payload changes.
+
+Gate:
+
+- `packages/app-host`: full gate.
+- `apps/sim`: typecheck/check/build only if touched.
+
+## Phase W5b -- Workspace Selector and Pending Project Picker UX
+
+Purpose: expose workspace management through the app header and route project
+selection through the existing rich project picker while all project collections
+remain unprotected.
+
+W5b consumes the W5a UI data APIs. It should not add overlapping ProjectManager
+notification surfaces.
 
 Workspace and project UX model:
 
@@ -1353,6 +1612,18 @@ Workspace and project UX model:
   edit hit target.
 - Truncated workspace names expose the full workspace name in a tooltip.
 
+UI implementation convention:
+
+- Use shared primitives from `@mindcraft-lang/ui` for buttons, dialogs, inputs,
+  dropdown menus, cards, switches, sliders, and toasts.
+- Do not add shadcn/ui primitives under `apps/sim/src`.
+- If W5b needs a shadcn/ui primitive that does not exist yet, add it under
+  `packages/ui/src/ui/`, export it from `packages/ui/src/ui/index.ts`, and use
+  it from `apps/sim` through `@mindcraft-lang/ui`.
+- Follow existing `packages/ui` conventions: source-only package, relative
+  imports inside the package, `cn()` from `packages/ui/src/lib/utils`, no
+  app-specific types, and matching Radix/shadcn wrapper style.
+
 Entry points and naming:
 
 - The app header workspace name opens the workspace selector dropdown.
@@ -1368,9 +1639,9 @@ Entry points and naming:
 Workspace selector dropdown UX:
 
 - The selector lists all non-deleted workspaces.
-- Opening the selector must not block on `getProjectCollectionSummaries` when
-  the app has a last-known summary list. Render cached rows synchronously, then
-  refresh summaries in the background.
+- Opening the selector must not block on summary storage I/O when the app has a
+  last-known summary list. Render cached rows synchronously, then refresh
+  summaries in the background through `watchProjectCollectionSummaries`.
 - On a cold open with no cached summaries, open the dropdown immediately with a
   compact loading row, keep the `New Workspace` footer action available when
   possible, and replace the loading row when the summary read finishes.
@@ -1395,16 +1666,23 @@ Workspace selector dropdown UX:
 - Row overflow controls are visually secondary to workspace selection.
 - Rename is lightweight, works for active and non-active workspaces, and keeps
   the user in the selector flow without requiring a workspace switch.
+- Workspace rename opens from the row overflow menu as an inline edit or small
+  popover anchored to that row. Enter commits, Escape cancels, and focus returns
+  to the originating row action after close. Blur behavior should match the
+  app's existing rename controls.
 - Delete remains visible in the row overflow menu but disabled for the active
   workspace and the default workspace.
 - Disabled row delete controls include a short reason in accessible text or a
   tooltip.
 - Workspace deletion requires confirmation that says the workspace and its
   projects will disappear from normal lists.
-- Creating a workspace starts the project browsing flow for the new workspace.
-  If the user closes the project picker before opening or creating a project,
-  the app tombstones that newly created workspace and returns to the previously
-  active workspace and project.
+- Clicking `New Workspace` opens a lightweight name prompt. Canceling that
+  prompt creates no workspace and leaves the current workspace/project
+  unchanged.
+- Confirming the workspace name creates the workspace as a pending workspace and
+  opens the project picker scoped to it. If the user closes that project picker
+  before opening or creating a project, the app tombstones the newly created
+  workspace and returns to the previously active workspace and project.
 
 Project browsing flow:
 
@@ -1421,7 +1699,7 @@ Project browsing flow:
   picker removes that project from the visible list without requiring the user
   to close and reopen the picker.
 - Opening an existing project from that project picker commits the workspace
-  selection and opens the project.
+  selection and opens that exact project.
 - Creating a project from that project picker commits the workspace selection
   and opens the new project in that workspace.
 - Canceling the new-project dialog opened from a pending workspace returns to
@@ -1445,10 +1723,17 @@ Pending workspace selection semantics:
   active workspace and project until the user opens or creates a project.
 - The project picker is the only surface that shows the selected pending
   workspace before commit.
+- Committing a pending workspace selection is atomic from the user's
+  perspective.
 - Opening an existing project in the picker commits the pending workspace
-  selection and opens that project.
+  selection and opens that exact project without first restoring or creating
+  another project in that workspace.
 - Creating a new project from the picker commits the pending workspace
-  selection and opens the new project in that workspace.
+  selection and opens the new project in that workspace without first restoring
+  or creating another project in that workspace.
+- W5b uses W5a's `switchProjectCollectionAndOpenProject` and
+  `switchProjectCollectionAndCreateProject` APIs for these commit paths, not
+  plain `switchProjectCollection`.
 - Canceling the new-project dialog opened from a pending workspace keeps the
   project picker open for that workspace and does not commit the pending
   workspace selection.
@@ -1467,6 +1752,9 @@ Pending workspace selection semantics:
 - If the selected pending workspace has no projects, the project picker empty
   state names that workspace and offers a `New Project` action as the commit
   path.
+- Browsing an empty pending workspace must not auto-create a default project.
+  The only project creation path before commit is the user's `New Project`
+  action from the picker.
 - If the pending workspace has the same display name as another workspace, the
   project picker header includes the same secondary signal shown in the
   workspace selector so users can tell which workspace they are browsing.
@@ -1477,162 +1765,39 @@ Pending workspace selection semantics:
   the app shows inline or toast feedback that the workspace was removed in
   another tab.
 
-Workspace UI notification contract:
+Workspace selector summary cache:
 
-```ts
-interface ProjectCollectionSummary {
-  collection: ProjectCollection;
-  projectCount: number;
-}
-
-interface ProjectListSubscription {
-  initial: ProjectManifest[];
-  unsubscribe: () => void;
-}
-
-type ProjectCollectionSummaryChange =
-  | { type: "upsert"; summary: ProjectCollectionSummary }
-  | { type: "remove"; projectCollectionId: string };
-
-type ProjectCollectionEvent =
-  | { type: "project-collection-changed"; projectCollectionId: string }
-  | { type: "project-collection-tombstoned"; projectCollectionId: string }
-  | { type: "project-list-changed"; projectCollectionId: string }
-  | { type: "project-tombstoned"; projectCollectionId: string; projectId: string };
-
-onProjectCollectionEvent(
-  listener: (event: ProjectCollectionEvent) => void
-): () => void;
-getProjectCollectionSummaries(): Promise<ProjectCollectionSummary[]>;
-onProjectCollectionSummaryChange(
-  listener: (change: ProjectCollectionSummaryChange) => void
-): () => void;
-listProjectsForCollection(projectCollectionId: string): Promise<ProjectManifest[]>;
-onProjectListChangeForCollection(
-  projectCollectionId: string,
-  listener: (projects: ProjectManifest[]) => void
-): () => void;
-subscribeToProjectListForCollection(
-  projectCollectionId: string,
-  listener: (projects: ProjectManifest[]) => void
-): Promise<ProjectListSubscription>;
-```
-
-`ProjectCollectionEvent` is the low-level app-host event stream for workspace UI
-surfaces. It is emitted for local changes and for cross-tab broadcast messages.
-The event stream does not replay previous events during subscription. Normal app
-UI surfaces should prefer the derived state/list APIs below instead of
-subscribing to `ProjectCollectionEvent` directly.
-This is an in-process ProjectManager UI event stream fed by local manager
-operations and the W4 `ProjectCollectionBroadcast` transport; it is not a second
-cross-tab transport.
-
-`project-collection-changed` is emitted after project collection create and
-rename metadata changes. `project-collection-tombstoned` is emitted after local
-or cross-tab collection tombstones. `project-list-changed` is emitted after
-local project create, rename/update, delete, duplicate, import/create-from-
-snapshot, or any other operation that changes the non-deleted project list for a
-collection. `project-tombstoned` is emitted after local or cross-tab project
-tombstones.
-
-`getProjectCollectionSummaries` returns the initial non-deleted project
-collections plus project counts for selector secondary context. It must not
-expose internal IDs as visible disambiguation.
-W5 does not add a persisted project-count field, maintained counter, or required
-`projectCollectionId` index. Implementations may derive the initial summary list
-with one store-owned pass over non-deleted projects and group by
-`projectCollectionId`. This one-pass initial derivation is the accepted W5
-cost.
-
-`onProjectCollectionSummaryChange` emits targeted patches, not a full summary
-list. Project collection create, rename, and project-count changes emit
-`{ type: "upsert", summary }` for the affected collection only. Project
-collection tombstones emit `{ type: "remove", projectCollectionId }`. The UI
-owns applying these patches to the summary list it read from
-`getProjectCollectionSummaries`.
-For project-count changes, recompute only the affected collection summary; do
-not recompute all workspace summaries after every project create, delete,
-duplicate, or import. Implementations may use a collection-scoped cursor or
-index if a later phase introduces one, but W5 must not require schema work just
-to populate selector counts.
-
-The workspace selector owns an in-memory last-known summary cache for menu
-rendering. The header click path opens the dropdown from that cache without
-awaiting `getProjectCollectionSummaries`; the selector then refreshes the cache
-in the background and applies `onProjectCollectionSummaryChange` patches. If no
-summary cache exists yet, the dropdown still opens immediately and shows a
-compact loading row until the initial summary read resolves.
-
-`listProjectsForCollection` returns non-deleted projects in the requested
-non-deleted project collection without changing the active project collection.
-It throws when the project collection is missing or tombstoned.
-
-`onProjectListChangeForCollection` is scoped to one project collection and does
-not replay the current list during subscription. Callers that need initial state
-must subscribe first, then call `listProjectsForCollection(projectCollectionId)`.
-
-`subscribeToProjectListForCollection` is the canonical React UI helper for the
-project picker. It subscribes before reading the initial list and returns both
-the initial project list and the unsubscribe function. Use it instead of
-hand-rolling `fetch(); subscribe();` in component effects.
-
-`onProjectListChangeForCollection` emits refreshed project lists after
-`project-list-changed` and `project-tombstoned` events that target the
-subscribed project collection. This notification path is separate from the
-existing active-project collection `onProjectListChange` listener.
-
-When a `project-collection-tombstoned` broadcast targets a subscribed project
-collection, UI that is browsing that collection must cancel or close that browse
-surface before stale project rows remain visible. W5's pending workspace
-selection rule owns the user-visible cancellation and feedback for the project
-picker.
-
-Canonical UI subscription mapping:
-
-- Header committed workspace/project label and workspace selector trigger:
-  use `getProjectCollectionState` plus `onProjectCollectionStateChange`.
-- Workspace selector dropdown list and secondary context: use
-  `getProjectCollectionSummaries` plus `onProjectCollectionSummaryChange`.
-- Project picker project cards for the workspace being browsed: use
-  `subscribeToProjectListForCollection(projectCollectionId, listener)`.
-- Pending workspace tombstone cancellation may observe
-  `onProjectCollectionEvent`, but it must not also subscribe to summaries or
-  collection state to drive the same cancellation path.
-- Do not drive the same visual surface from more than one of these APIs. Derived
-  APIs own React rendering; `ProjectCollectionEvent` exists to implement those
-  derived APIs and narrow one-off reactions.
+- The workspace selector owns an in-memory last-known summary cache for menu
+  rendering.
+- The header click path opens the dropdown from that cache without awaiting
+  summary storage I/O.
+- The selector starts or reuses `watchProjectCollectionSummaries` in component
+  lifecycle code, seeds the cache from the watcher's `initial` value, and applies
+  subsequent summary patches from the watcher listener.
+- If no summary cache exists yet, the dropdown still opens immediately and shows
+  a compact loading row until the initial summary read resolves.
 
 Deliverables:
 
 - Add header workspace selector dropdown.
 - Add header layout constraints so the workspace selector truncates before the
   project-name edit target loses its usable hit area.
-- Create project collection.
-- Rename project collection.
-- Select project collection for project browsing.
-- Tombstone project collection with W0 safeguards.
 - Add per-row workspace overflow menus with rename/delete actions, and keep the
   dropdown footer scoped to `New Workspace`.
+- Add the `New Workspace` name prompt and its cancel path before a workspace
+  record is created.
+- Use shared `@mindcraft-lang/ui` primitives for W5b UI, adding any missing
+  shadcn/ui primitive to `packages/ui/src/ui/` rather than `apps/sim/src`.
 - Show active/default workspace states.
-- Wire workspace selector actions through ProjectManager methods from W3.
-- Subscribe to `ProjectCollectionState` for active collection, collection list,
+- Wire workspace selector actions through ProjectManager methods from W3 and
+  W5a.
+- Use `watchProjectCollectionState` for active collection, collection list,
   active project, and access state.
-- Add `ProjectCollectionEvent`, `onProjectCollectionEvent`,
-  `ProjectCollectionSummary`, `ProjectCollectionSummaryChange`,
-  `getProjectCollectionSummaries`, and `onProjectCollectionSummaryChange`.
-- Add `listProjectsForCollection` and
-  `onProjectListChangeForCollection` for lower-level collection-scoped project
-  list reads and updates.
-- Add `subscribeToProjectListForCollection` as the canonical project picker
-  helper that avoids fetch-before-subscribe races.
-- Derive `ProjectCollectionSummary.projectCount` at read time without a
-  persisted counter, and limit subsequent count refreshes to affected
-  workspaces.
 - Cache last-known project collection summaries in the workspace selector so
   opening the header dropdown does not wait for async storage I/O.
 - Use the active collection from `ProjectCollectionState` for the header
   workspace selector and workspace-name prefix.
-- Keep workspace selector state subscriptions inside component lifecycles and
+- Keep workspace selector state watchers inside component lifecycles and
   do not create additional `ProjectManager` instances without wiring their
   owner disposal path.
 - Use the canonical UI subscription mapping so the header, workspace selector,
@@ -1645,6 +1810,11 @@ Deliverables:
 - Open the project picker after a different workspace is selected from the
   workspace selector, using the selected workspace as a pending project
   collection.
+- Commit pending workspace selections atomically so opening or creating a
+  project from the picker cannot first restore or create an intermediate
+  project in that workspace. Use W5a's
+  `switchProjectCollectionAndOpenProject` and
+  `switchProjectCollectionAndCreateProject` APIs for these commits.
 - Cancel the pending workspace selection when the project picker closes without
   a project being opened or created.
 - Tombstone a newly created pending workspace when its initial project picker is
@@ -1660,9 +1830,6 @@ Deliverables:
 - Use project collection summaries to keep workspace selector secondary context
   current after workspace rename, create, delete, project create, project
   delete, and cross-tab changes.
-- Derive project counts for summaries without adding persisted counters in W5:
-  one grouped pass is acceptable for the initial summary list, and later summary
-  patches recompute only the affected workspace.
 - Disable project deletion from the project picker while a different workspace
   is pending.
 - Handle pending-workspace tombstone notifications by canceling the pending
@@ -1670,10 +1837,12 @@ Deliverables:
   feedback.
 - Ensure delete confirmation describes deleting the workspace and its projects
   from normal lists while preserving the underlying records.
-- Run an accessibility pass for the workspace selector, row overflow menus,
+- Verify keyboard navigation, visible focus, accessible names, and non-hover
+  access to needed information in the workspace selector, row overflow menus,
   project picker, pending-state feedback, and header project-name edit control.
-- Run a responsiveness pass for the app header, workspace selector dropdown,
-  row overflow menus, and project picker across narrow and wide viewports.
+- Verify the header label/edit area, workspace selector dropdown, row overflow
+  menus, and project picker at narrow and wide viewport sizes, with no text
+  overlap, clipped controls, or lost primary actions.
 
 Acceptance:
 
@@ -1687,16 +1856,21 @@ Acceptance:
   menu. The dropdown footer exposes only `New Workspace`.
 - Rename from a row overflow menu does not switch workspaces. Delete remains
   visible but disabled, with a reason, for active and default workspaces.
+- Workspace rename from a row overflow menu supports keyboard commit/cancel
+  behavior and returns focus to the originating row action after close.
 - The workspace selector opens immediately on header click. With cached
   summaries it renders cached rows before the background refresh completes; with
   no cache it renders a compact loading row.
-- Loading workspace summaries may scan live projects once to derive project
-  counts, but a project create/delete/duplicate/import in one workspace emits
-  one summary patch for that workspace and does not force a full summary-list
-  recompute.
-- Creating a workspace opens the project picker for that new workspace; closing
-  the picker without opening or creating a project tombstones the new workspace
-  and returns to the previous active workspace and project.
+- Canceling the `New Workspace` name prompt creates no workspace.
+- Confirming the `New Workspace` name opens the project picker for that new
+  workspace; closing the picker without opening or creating a project tombstones
+  the new workspace and returns to the previous active workspace and project.
+- Opening a project from a pending workspace commits that workspace and opens
+  the selected project through `switchProjectCollectionAndOpenProject` without
+  first opening or restoring another project.
+- Creating a project from a pending workspace commits that workspace and opens
+  the new project through `switchProjectCollectionAndCreateProject` without
+  auto-creating a default project first.
 - Committing a pending workspace selection updates project list and active
   project collection context.
 - Selecting a different workspace from the workspace selector opens the project
@@ -1726,6 +1900,7 @@ Acceptance:
   toast feedback explaining that the workspace was removed.
 - The project picker empty state names the selected workspace and offers a `New
   Project` action when that workspace has no projects.
+- Browsing an empty pending workspace does not auto-create a default project.
 - The workspace selector never displays project rows, project cards, thumbnails,
   GIFs, or a project-empty state for a workspace.
 - The workspace selector updates from ProjectManager state notifications after
@@ -1751,12 +1926,9 @@ Acceptance:
   clipped controls, or lost primary actions on narrow and wide viewports.
 - Editing the app header project label changes only the project name and does
   not edit, trim, validate, or submit the workspace name.
-- Deleting the active project collection is blocked; users must commit a
-  different workspace selection before deleting it.
-- Deleting the default project collection is blocked even after it is renamed.
 - Row overflow delete controls remain visible but disabled for active and
   default collections.
-- Deleting the last non-deleted project collection is blocked by the active
+- Deleting the last non-deleted project collection remains blocked by the active
   collection and default collection delete rules.
 - Deleted project collections disappear from normal workspace selector lists.
 - UI does not mention Guest/User/Named workspace categories.
@@ -1915,6 +2087,9 @@ updateProjectCollection(
   `isProjectCollectionUnlocked` APIs.
 - Update `switchProjectCollection` so its existing
   `ProjectCollectionSwitchResult` can return `access: "locked"`.
+- Update `switchProjectCollectionAndOpenProject` and
+  `switchProjectCollectionAndCreateProject` to reject without opening, creating,
+  or switching when the target collection is protected and locked.
 - Emit `ProjectCollectionState` after switch, unlock, lock, reload unlock
   restore, verifier set, verifier change, and verifier removal.
 - On `switchProjectCollection`, perform autosave flush and active-project close
@@ -1964,6 +2139,8 @@ Acceptance:
   matching reload unlock record.
 - Switching to a protected locked collection succeeds and returns locked state
   without opening a project.
+- Atomic pending-commit APIs reject against a protected locked collection and
+  leave the previous active collection/project unchanged.
 - Unlocking the active protected collection restores or opens a project.
 - Successful unlock writes a fresh reload unlock record only for the current tab
   session collection.
