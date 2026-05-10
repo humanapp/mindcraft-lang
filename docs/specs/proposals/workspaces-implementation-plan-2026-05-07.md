@@ -128,8 +128,9 @@ the ambiguous file-tree vocabulary. Restore the naming boundary first.
 | 5   | Active project collection lifecycle            | `ProjectManager`                                    |
 | 6   | Per-tab restore state                          | app-host session integration and app startup wiring |
 | 7   | Workspace selector UI                          | app UI, initially `apps/sim`                        |
-| 8   | Optional PIN verifier                          | app-host project collection model plus app UI       |
+| 8   | Optional PIN verifier                          | app-host project collection model                   |
 | 9   | Unlock state and reload unlock record          | `ProjectManager` and sessionStorage helpers         |
+| 9b  | Workspace PIN UI                               | app UI, initially `apps/sim`                        |
 | 10  | Cross-project-collection copy/remix            | app-host import/duplicate APIs                      |
 
 ## Desired End State
@@ -286,9 +287,13 @@ App isolation invariants:
 - Missing verifier means unprotected project collection.
 - There is no manual project save flow; project state persists through autosave.
 - Unlock state is per-tab.
+- After a committed workspace switch, all protected project collections other
+  than the new active collection are locked in the current tab's in-memory
+  state.
 - A reload unlock record, if present, is short-lived and stored only in
   `sessionStorage`.
-- Workspace switching locks the previously active protected project collection.
+- Workspace switching locks protected project collections other than the
+  resulting active collection.
 - The active project collection in a tab cannot be deleted from that tab.
 - Project collection UI state is observed through app-host subscriptions, not
   by reading storage or BroadcastChannel directly from app UI.
@@ -415,7 +420,7 @@ Invariants:
 ## Storage Responsibilities
 
 - IndexedDB stores project collection metadata, project metadata, project files,
-  app data, and autosave state. W6 adds the `pinVerifier` field to project
+  app data, and autosave state. W6a adds the `pinVerifier` field to project
   collection records.
 - `sessionStorage` stores tab-scoped active project collection/project session
   state and any short-lived reload unlock record.
@@ -423,8 +428,8 @@ Invariants:
 
 ## Workflow Convention
 
-Phases ship one at a time and are numbered W0-W8, with W5 split into W5a and
-W5b. Each phase or subphase follows this loop:
+Phases ship one at a time and are numbered W0-W8, with W5 and W6 split into
+subphases. Each phase or subphase follows this loop:
 
 1. Before implementing, run the phase compatibility audit below.
 2. Implement the phase.
@@ -505,7 +510,7 @@ follow."
 ## Current State
 
 Completed: W0, W1, W2, W3, W4, W5a, W5b
-Next up: W6
+Next up: W6a
 
 ---
 
@@ -570,7 +575,7 @@ Risk: W4 must replace the active-project-only restore path with
 `ProjectCollectionTabSession` and should share stale-session fallback behavior
 across init, switch, and later unlock restore paths.
 
-Risk: W5b/W6 UI should surface project collection name validation by app-host
+Risk: W5b/W6b UI should surface project collection name validation by app-host
 error code and avoid duplicating a divergent trim or length policy.
 
 ### W4 -- Multi-Tab And Tab Restore Semantics
@@ -894,7 +899,7 @@ export interface ProjectCollection {
 }
 ```
 
-PIN protection fields are intentionally not part of W1. W6 adds
+PIN protection fields are intentionally not part of W1. W6a adds
 `pinVerifier?: ProjectCollectionPinVerifier` and the related behavior.
 
 ProjectStore additions:
@@ -1138,7 +1143,7 @@ interface ProjectCollectionSwitchResult {
 ```
 
 W3 only produces `access: "ready"` in both `ProjectCollectionState` and
-`ProjectCollectionSwitchResult` because PIN protection is introduced in W6. The
+`ProjectCollectionSwitchResult` because PIN protection is introduced in W6a. The
 `locked` value is part of the shape now so workspace selector and app shell
 wiring do not need a second state or switch-result model later.
 
@@ -1973,9 +1978,10 @@ Gate:
 - `apps/sim`: typecheck/check/build.
 - `packages/app-host`: relevant gates if touched.
 
-## Phase W6 -- Optional PIN Protection
+## Phase W6a -- PIN Protection Data And State
 
-Purpose: add protection as a project collection property, not a workspace kind.
+Purpose: add protected project collection state to app-host without adding the
+visible workspace PIN UI.
 
 PIN verifier contract:
 
@@ -2036,6 +2042,11 @@ Unlock/session contract:
   collection active in the current tab, closes the active project, and returns a
   locked state without opening, listing, editing, deleting, exporting, or
   importing projects in that collection.
+- After any committed project collection switch, `ProjectManager` clears
+  in-memory unlock state for every protected collection except the resulting
+  active collection. This includes non-active collections that were unlocked by
+  a canceled pending workspace selection. The previous active collection's
+  matching reload unlock record is also removed from `sessionStorage`.
 - A separate unlock API verifies the PIN and marks the collection unlocked in
   memory for the current tab.
 - If the target collection becomes tombstoned during unlock verification,
@@ -2046,6 +2057,16 @@ Unlock/session contract:
   `expiresAt = Date.now() + RELOAD_UNLOCK_TTL_MS`.
 - On successful unlock of a non-active collection, do not write a reload unlock
   record.
+- While the active project collection is protected, unlocked in memory, and
+  matches the current tab session collection, refresh its reload unlock record
+  on a coarse timer by writing `expiresAt = Date.now() +
+  RELOAD_UNLOCK_TTL_MS`.
+- Use `RELOAD_UNLOCK_REFRESH_INTERVAL_MS = 5 * 60 * 1000`.
+- Do not refresh reload unlock records from project save or autosave activity.
+- Do not refresh reload unlock records for non-active unlocked collections.
+- Stop the refresh timer and remove the matching reload unlock record when the
+  collection is explicitly locked, switched away from, tombstoned, has its
+  verifier removed, or the `ProjectManager` is disposed.
 - If the unlocked collection is the active collection, unlock restores or opens
   the intended project using the same fallback rules as reload restore.
 - A protected collection may be restored after reload only through a
@@ -2085,6 +2106,21 @@ lockProjectCollection(projectCollectionId: string): void;
 isProjectCollectionUnlocked(projectCollectionId: string): boolean;
 ```
 
+W6a also expands the W5a workspace summary emitted by
+`watchProjectCollectionSummaries`:
+
+```ts
+interface ProjectCollectionSummary {
+  collection: ProjectCollection;
+  projectCount: number;
+  access: ProjectCollectionAccessState;
+}
+```
+
+`ProjectCollectionSummary.access` is per tab. It is `"locked"` only when the
+collection is protected and not unlocked in the current ProjectManager instance;
+unprotected and unlocked protected collections report `"ready"`.
+
 `switchProjectCollection` returns `{ access: "locked" }` only when the target
 collection exists, is non-deleted, is protected, and is not unlocked in the
 current tab. Missing collections, tombstoned collections, and failed project
@@ -2094,7 +2130,7 @@ Deliverables:
 
 - Add `ProjectCollectionPinVerifier` and add
   `pinVerifier?: ProjectCollectionPinVerifier` to `ProjectCollection`.
-- Expand `updateProjectCollection` so W6 code can set or clear `pinVerifier`:
+- Expand `updateProjectCollection` so W6a code can set or clear `pinVerifier`:
 
 ```ts
 updateProjectCollection(
@@ -2105,12 +2141,12 @@ updateProjectCollection(
 
 - Store verifier, never raw PIN.
 - Add shared PIN validation used by set/change PIN and unlock flows.
-- Add shared verifier helpers for `scheme: "v1"` using the W6 constants.
+- Add shared verifier helpers for `scheme: "v1"` using the W6a constants.
 - Treat missing or cleared `pinVerifier` fields as unprotected project
   collections.
-- Add per-workspace PIN controls in the workspace selector for set/change/remove
-  PIN.
 - Add locked/unlocked state in memory.
+- Expand `ProjectCollectionSummary` with per-tab `access` so W6b selector rows
+  can render protected locked/unlocked state from the summary watcher.
 - Require unlock before opening, editing, or deleting from a protected project
   collection.
 - `deleteProjectCollection` rejects when the target collection is protected and
@@ -2125,17 +2161,35 @@ updateProjectCollection(
   or switching when the target collection is protected and locked.
 - Emit `ProjectCollectionState` after switch, unlock, lock, reload unlock
   restore, verifier set, verifier change, and verifier removal.
-- On `switchProjectCollection`, perform autosave flush and active-project close
-  before locking the previous protected collection.
-- Lock previous protected project collection on workspace switch.
-- Lock-on-switch clears the previous active collection's in-memory unlock state
-  and removes the matching reload unlock record from `sessionStorage`.
+- Emit project collection summary patches after verifier set, verifier change,
+  verifier removal, unlock, and lock so W6b selector rows can refresh protected
+  and locked indicators.
+- On every committed workspace switch path, including
+  `switchProjectCollection`, `switchProjectCollectionAndOpenProject`, and
+  `switchProjectCollectionAndCreateProject`, perform autosave flush and
+  active-project close before clearing other protected collection unlock state.
+- Lock every protected project collection other than the resulting active
+  collection on workspace switch, including memory-only unlocks from canceled
+  pending workspace selections.
+- Lock-on-switch removes the previous active collection's matching reload unlock
+  record from `sessionStorage`.
 - Add short-lived reload unlock records in `sessionStorage`.
+- Add a manager-owned reload unlock refresh timer for the active protected
+  unlocked collection, using `RELOAD_UNLOCK_REFRESH_INTERVAL_MS`.
+- Ensure reload unlock refresh is independent from project save and autosave
+  activity.
+- Clear the reload unlock refresh timer on lock, switch away, tombstone,
+  verifier removal, and `ProjectManager.dispose()`.
+- Gate project open/edit/delete/import-target actions behind unlock when the
+  target collection is protected.
+- Do not gate project collection switch behind unlock; switch can produce a
+  locked active collection state.
 - Add tests for verifier behavior, unlock state, reload unlock expiry,
   collection mismatch, deleted collection, removed verifier, and new-tab
   behavior.
-- Add a test that lock-on-switch clears the previous active collection's
-  in-memory unlock state and removes the matching reload unlock record.
+- Add a test that lock-on-switch clears in-memory unlock state for protected
+  collections other than the resulting active collection and removes the
+  previous active collection's matching reload unlock record.
 - Add a test that `lockProjectCollection` removes the matching reload unlock
   record from `sessionStorage`.
 - Add a test that successful `unlockProjectCollection` writes a fresh reload
@@ -2143,21 +2197,23 @@ updateProjectCollection(
   the current tab session collection.
 - Add a test that successful unlock of a non-active collection does not write a
   reload unlock record.
+- Add a test that an active protected unlocked collection refreshes its reload
+  unlock record on the refresh timer.
+- Add a test that reload unlock refresh does not run for non-active unlocked
+  collections.
+- Add a test that project save/autosave activity does not refresh the reload
+  unlock record.
+- Add tests that reload unlock refresh stops on lock, switch away, tombstone,
+  verifier removal, and `ProjectManager.dispose()`.
 - Add a test where the collection is tombstoned while
   `unlockProjectCollection` is awaiting verifier work.
 - Add tests for unsupported WebCrypto capability handling.
-- Do not add PIN controls to App Settings in this phase.
-- Gate project open/edit/delete/import-target actions behind unlock when the
-  target collection is protected.
-- Do not gate project collection switch behind unlock; switch can produce a
-  locked active collection state.
 
 Acceptance:
 
 - Unpinned project collections remain frictionless.
 - PIN values are strings, so numeric-looking PINs and memorable phrases are both
   valid when they pass the shared validation rules.
-- The workspace selector is the canonical UI surface for set/change/remove PIN.
 - Removing the verifier removes protection without making projects inaccessible.
 - Protected project collection reload works inside the reload unlock record TTL.
 - Expired reload unlock records require PIN entry again.
@@ -2165,9 +2221,11 @@ Acceptance:
 - Reload unlock is ignored when the collection is deleted or no longer has a
   verifier.
 - New tab starts locked for protected project collections.
-- Switching away locks protected project collection state.
-- Lock-on-switch clears both in-memory unlock state and the matching reload
-  unlock record for the previous active collection.
+- Switching workspaces locks protected project collection state for every
+  collection other than the resulting active collection.
+- Lock-on-switch clears in-memory unlock state for protected collections other
+  than the resulting active collection and removes the matching reload unlock
+  record for the previous active collection.
 - Locking a project collection clears both in-memory unlock state and the
   matching reload unlock record.
 - Switching to a protected locked collection succeeds and returns locked state
@@ -2177,22 +2235,138 @@ Acceptance:
 - Unlocking the active protected collection restores or opens a project.
 - Successful unlock writes a fresh reload unlock record only for the current tab
   session collection.
+- Active protected unlocked collections refresh their reload unlock record on
+  the W6a refresh timer while they remain the current tab session collection.
+- Project save and autosave activity never refreshes a reload unlock record.
+- Non-active unlocked collections never refresh reload unlock records.
 - Invalid PIN leaves unlock state unchanged.
 - If the collection is tombstoned during unlock verification, unlock state is
   unchanged.
 - Unlock attempts are not rate-limited.
-- UI can render locked, ready, and unlock-failed states from method results and
-  ProjectManager state notifications without app-host owning any UI prompt.
+- `ProjectCollectionSummary.access` reports per-tab ready/locked state.
+- App-host exposes enough method results and ProjectManager state notifications
+  for UI to render locked, ready, and unlock-failed states without app-host
+  owning any UI prompt.
 - Clearing `pinVerifier` immediately makes the collection unprotected.
 - Changing or removing a PIN requires the collection to already be unlocked.
 - Deleting a protected non-active collection requires that collection to be
   unlocked first.
 - PIN protection does not encrypt IndexedDB project data.
+- W6a does not implement visible PIN controls or prompts.
 
 Gate:
 
 - `packages/app-host`: full gate.
+- `apps/sim`: typecheck/check/build only if touched.
+
+## Phase W6b -- Workspace PIN UX
+
+Purpose: add visible PIN controls and locked-state UX to the W5b workspace
+selector and project picker using the W6a app-host contracts.
+
+Workspace selector and project picker PIN UX:
+
+- PIN controls live in each workspace row overflow menu alongside W5b's
+  workspace actions. Do not add PIN controls to the dropdown footer.
+- Unprotected workspace rows show `Set PIN`. Protected unlocked rows show
+  `Change PIN`, `Remove PIN`, and `Lock Workspace`. Protected locked rows show
+  `Unlock Workspace`, with `Change PIN`, `Remove PIN`, and protected delete
+  unavailable until unlock.
+- Active and default delete rules from W5b still win. A protected locked
+  non-active workspace delete control remains visible but disabled with an
+  unlock-required reason.
+- Workspace selector rows show protected/locked state with a compact badge or
+  secondary-context signal that does not replace duplicate-name disambiguation.
+- Selecting a protected locked non-active workspace from the W5b workspace
+  selector starts a pending locked workspace selection and leaves the current
+  header, active project, and simulation unchanged. It opens an unlock prompt
+  instead of opening the project picker.
+- Successful unlock of that pending workspace opens the project picker scoped
+  to the now-unlocked pending workspace. It does not commit the workspace
+  selection and does not write a reload unlock record unless that workspace is
+  already the current tab session collection.
+- If the user closes that project picker without opening or creating a project,
+  the W5b cancel path restores the previous workspace/project, and the unlocked
+  pending workspace remains unlocked in the current tab's in-memory state. If
+  the previous active workspace is also protected and unlocked, both workspaces
+  remain unlocked in memory until the user commits a workspace switch, explicitly
+  locks one of them, reloads, or opens a new tab.
+- Canceling or failing the unlock prompt leaves the previous workspace/project
+  active and returns to the workspace selector flow with user-visible feedback.
+- Selecting a protected workspace that is already unlocked follows the W5b
+  pending project picker flow.
+- If the active workspace is protected and locked because of reload restore or
+  a direct `switchProjectCollection` call, the app renders locked active state
+  instead of project cards until unlock succeeds. Unlock then restores or opens
+  a project using the W6a restore rules.
+- PIN dialogs and locked-state surfaces inherit W5b's accessibility and
+  responsiveness requirements for keyboard navigation, focus return, accessible
+  names, non-hover information, and narrow/wide viewport behavior.
+
+Deliverables:
+
+- Add per-row PIN controls in the workspace selector overflow menu for set,
+  change, remove, lock, and unlock.
+- Add protected/locked row indicators that coexist with duplicate-name
+  secondary context.
+- Use `ProjectCollectionSummary.access` from the W6a summary watcher to render
+  protected locked/unlocked state in workspace selector rows.
+- Add UI flows for setting, changing, removing, locking, and unlocking workspace
+  PINs from row overflow actions.
+- Do not add PIN controls to App Settings or to the workspace selector footer.
+- In the W5b selector flow, gate opening the pending project picker for a
+  protected locked workspace behind successful unlock of that pending workspace.
+- Preserve the successful tab-memory unlock when the user cancels the project
+  picker after unlocking a pending workspace; canceling the picker cancels the
+  pending workspace switch, not the unlock.
+- Add locked active workspace UI for an active protected collection that is
+  locked after reload restore or direct collection switch.
+- Show user-visible feedback for unlock cancel, unlock failure, and
+  removed-in-another-tab cases while a PIN prompt is open.
+- Verify keyboard navigation, visible focus, accessible names, focus return,
+  and non-hover access to needed information for PIN prompts, row overflow PIN
+  actions, protected/locked row indicators, and locked active workspace UI.
+- Verify PIN prompts, row overflow PIN actions, protected/locked row
+  indicators, and locked active workspace UI at narrow and wide viewport sizes,
+  with no text overlap, clipped controls, or lost primary actions.
+
+Acceptance:
+
+- Workspace row overflow menus are the canonical UI surface for set, change,
+  remove, lock, and unlock PIN actions.
+- The workspace selector footer remains scoped to `New Workspace`; PIN actions
+  are not footer-level actions.
+- Protected and locked states are visible in workspace selector rows without
+  removing duplicate-name disambiguation.
+- Workspace selector rows render protected locked/unlocked state from
+  `ProjectCollectionSummary.access`.
+- Selecting a protected locked non-active workspace prompts for unlock before
+  opening the project picker and leaves the current workspace/project active
+  until the user successfully unlocks and opens or creates a project.
+- Canceling or failing unlock from a pending workspace selection leaves the
+  previous workspace/project active and provides user-visible feedback.
+- Canceling the project picker after successfully unlocking a pending workspace
+  leaves the previous workspace/project active and leaves the pending workspace
+  unlocked in current-tab memory only.
+- W5b opens the pending project picker for a protected workspace only after that
+  workspace is unlocked in the current tab.
+- Unlocking the active protected collection restores or opens a project.
+- UI can render locked, ready, and unlock-failed states from method results and
+  ProjectManager state notifications without app-host owning any UI prompt.
+- PIN prompts, row overflow PIN actions, and locked-state UI meet W5b keyboard,
+  focus, accessible-name, non-hover, and responsive layout requirements.
+- Clearing `pinVerifier` immediately updates workspace selector rows to show the
+  workspace as unprotected.
+- Changing or removing a PIN requires the collection to already be unlocked.
+- Deleting a protected non-active collection requires that collection to be
+  unlocked first.
+- PIN protection does not encrypt IndexedDB project data or present itself as
+  encryption in the UI.
+
+Gate:
+
 - `apps/sim`: typecheck/check/build.
+- `packages/app-host`: relevant gates if touched.
 
 ## Phase W7 -- Cross-Project-Collection Copy, Import, And Export Hygiene
 
