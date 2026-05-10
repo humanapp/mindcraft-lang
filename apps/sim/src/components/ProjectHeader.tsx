@@ -121,6 +121,13 @@ function getWorkspaceContext(summary: ProjectCollectionSummary, duplicateNames: 
   return formatProjectCount(summary.projectCount);
 }
 
+function formatDeleteWorkspaceDescription(summary: ProjectCollectionSummary | undefined): string {
+  if (!summary) {
+    return "This workspace and its projects will be deleted.";
+  }
+  return `Workspace "${summary.collection.name}" and ${formatProjectCount(summary.projectCount)} will be deleted.`;
+}
+
 export function ProjectHeader({
   projectName,
   projectCollectionState,
@@ -549,6 +556,8 @@ export function ProjectHeader({
         <DropdownMenuContent ref={workspaceDropdownContentRef} align="start" sideOffset={4} className="w-72">
           {workspaceSummaries === undefined ? (
             <div className="px-2 py-3 text-sm text-muted-foreground">Loading workspaces...</div>
+          ) : workspaceSummaries.length === 0 ? (
+            <div className="px-2 py-3 text-sm text-muted-foreground">No workspaces found</div>
           ) : (
             workspaceSummaries.map((summary) => {
               const collection = summary.collection;
@@ -819,8 +828,8 @@ export function ProjectHeader({
       <Dialog open={deleteCandidate !== undefined} onOpenChange={(open) => !open && setDeleteCandidate(undefined)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Delete Workspace</DialogTitle>
-            <DialogDescription>This workspace and its projects will disappear from normal lists.</DialogDescription>
+            <DialogTitle>Delete Workspace?</DialogTitle>
+            <DialogDescription>{formatDeleteWorkspaceDescription(deleteCandidate)}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="cancel" onClick={() => setDeleteCandidate(undefined)}>
@@ -838,7 +847,7 @@ export function ProjectHeader({
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Remove Workspace PIN</DialogTitle>
+            <DialogTitle>Remove Workspace PIN?</DialogTitle>
             <DialogDescription>
               {removePinCandidate?.collection.name ?? "This workspace"} will no longer require a PIN to open.
             </DialogDescription>

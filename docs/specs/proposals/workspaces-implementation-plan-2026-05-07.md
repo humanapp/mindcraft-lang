@@ -509,8 +509,8 @@ follow."
 
 ## Current State
 
-Completed: W0, W1, W2, W3, W4, W5a, W5b, W6a, W6b, W7
-Next up: W8
+Completed: W0, W1, W2, W3, W4, W5a, W5b, W6a, W6b, W7, W8
+Next up: none -- W0-W8 complete
 
 ---
 
@@ -682,6 +682,20 @@ passed in `apps/sim`.
 Risk: W8 should audit final package exports and user-facing diagnostics to
 confirm copy/import/export names still say workspace in UI while internal APIs
 retain `ProjectCollection` vocabulary.
+
+### W8 -- Lock-In And Cleanup
+
+W8 shipped the final workspace lock-in audit, selector polish, destructive
+confirmation copy cleanup, and final product/spec documentation.
+
+New spec surface: `W8 Lock-In Audit Result` records the completed terminology,
+storage key, app-host export, bridge/VS Code payload, and workspace UI audit;
+`docs/specs/apps/ecosystem-sim.md` now records the visible workspace UI and the
+internal `ProjectCollection` model boundary.
+
+Verification: full gates passed in `packages/app-host`; typecheck/check/build
+passed in `apps/sim`; the follow-up copy-only fix passed `apps/sim`
+typecheck/check.
 
 ---
 
@@ -2556,3 +2570,43 @@ Acceptance:
 Gate:
 
 - Full relevant gates for every touched package.
+
+### W8 Lock-In Audit Result
+
+Status: Complete.
+
+Audited areas and result:
+
+- Guest/User/Named terminology and workspace category flags:
+  `apps/`, `packages/`, and `docs/` contain no product implementation of
+  Guest/User/Named workspace categories, `WorkspaceKind`, `GuestWorkspace`, or
+  `NamedWorkspace`. Remaining mentions are policy/spec text that forbids those
+  categories.
+- Storage and coordination keys added after W0:
+  app-host IndexedDB database names, `sessionStorage` project-session records,
+  reload-unlock records, Web Lock names, and BroadcastChannel names are all
+  derived from `keyPrefix`. Sim app-owned `localStorage` keys for app settings,
+  UI preferences, collapsed archetypes, bridge binding tokens, and user-tile
+  metadata are derived from the sim app namespace or are explicitly
+  host-supplied app keys.
+- Workspace selector polish:
+  the selector shows loading and empty states, destructive workspace actions use
+  confirmation dialogs, locked protected workspaces disallow mutation until
+  unlock, and the default workspace remains non-deletable and non-protectable.
+- Final product/spec documentation:
+  `docs/specs/apps/ecosystem-sim.md` records the visible workspace UI and the
+  internal `ProjectCollection` model boundary.
+- App-host public exports:
+  `packages/app-host/src/index.ts` exports the intended project, workspace,
+  PIN, watcher, copy/import/export, session, persistence, and error surfaces.
+  Internal BroadcastChannel helpers remain unexported.
+- Bridge and VS Code surfaces:
+  `packages/bridge-protocol`, `packages/bridge-client`, `packages/bridge-app`
+  bridge payload types, `apps/vscode-bridge`, and `apps/vscode-extension` do
+  not add workspace ownership fields to bridge protocol messages, bridge-client
+  snapshots, VS Code bridge messages, or extension network payloads. VS Code
+  "workspace" mentions remain VS Code workspace-folder UI terminology, not
+  Mindcraft project collection ownership state.
+
+No aliases, fallback reads, dual writes, compatibility wrappers, legacy key
+reads, or unapproved migrations were added during W8.
