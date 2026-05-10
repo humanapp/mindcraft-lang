@@ -183,7 +183,7 @@ class IdbProjectStore implements ProjectStore {
 
   async deleteProjectCollection(projectCollectionId: string): Promise<void> {
     if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
-      throw appHostError("DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the default project collection");
+      throw appHostError("DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the default workspace");
     }
 
     const collection = await this.getProjectCollection(projectCollectionId);
@@ -266,7 +266,7 @@ class IdbProjectStore implements ProjectStore {
   private async requireLiveProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Project collection not found: ${projectCollectionId}`);
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
     }
     return collection;
   }
@@ -286,7 +286,7 @@ class IdbProjectStore implements ProjectStore {
   async createProject(projectCollectionId: string, name: string): Promise<ProjectManifest> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Project collection not found: ${projectCollectionId}`);
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
     }
 
     const now = Date.now();
@@ -312,10 +312,7 @@ class IdbProjectStore implements ProjectStore {
     }
     const collection = await this.getProjectCollection(project.projectCollectionId);
     if (!collection) {
-      throw appHostError(
-        "PROJECT_COLLECTION_NOT_FOUND",
-        `Project collection not found: ${project.projectCollectionId}`
-      );
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${project.projectCollectionId}`);
     }
 
     await this.db.put("projects", {
@@ -347,10 +344,7 @@ class IdbProjectStore implements ProjectStore {
     }
     const collection = await this.getProjectCollection(manifest.projectCollectionId);
     if (!collection) {
-      throw appHostError(
-        "PROJECT_COLLECTION_NOT_FOUND",
-        `Project collection not found: ${manifest.projectCollectionId}`
-      );
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${manifest.projectCollectionId}`);
     }
     return manifest;
   }

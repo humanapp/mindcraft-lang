@@ -6,11 +6,12 @@ import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lan
 import {
   BrainEditorDialog,
   BrainEditorProvider,
+  Button,
   ProjectPickerDialog,
   type ProjectPickerItem,
   Toaster,
 } from "@mindcraft-lang/ui";
-import { Menu, X } from "lucide-react";
+import { Lock, Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
@@ -21,6 +22,7 @@ import { NewProjectDialog } from "./components/NewProjectDialog";
 import { NewWorkspaceDialog } from "./components/NewWorkspaceDialog";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Sidebar } from "./components/Sidebar";
+import { WorkspacePinInput } from "./components/WorkspacePinInput";
 import { useSimEnvironment } from "./contexts/sim-environment";
 import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground } from "./game/scenes/Playground";
@@ -80,6 +82,11 @@ interface PickerWorkspace {
   context?: string;
 }
 
+interface PickerProjectListState {
+  projectCollectionId: string;
+  projects: ProjectManifest[];
+}
+
 function App() {
   const store = useSimEnvironment();
   const [isBrainEditorOpen, setIsBrainEditorOpen] = useState(false);
@@ -98,7 +105,10 @@ function App() {
   const [pickerWorkspace, setPickerWorkspace] = useState<PickerWorkspace | undefined>();
   const [projectCollectionState, setProjectCollectionState] = useState<ProjectCollectionState | undefined>();
   const [projectName, setProjectName] = useState(() => store.activeProjectManifest?.name ?? "");
-  const [projectList, setProjectList] = useState<ProjectManifest[]>([]);
+  const [activeUnlockPin, setActiveUnlockPin] = useState("");
+  const [activeUnlockError, setActiveUnlockError] = useState<string | undefined>();
+  const [activeUnlockBusy, setActiveUnlockBusy] = useState(false);
+  const [projectListState, setProjectListState] = useState<PickerProjectListState | undefined>();
   const pickerCommitInProgressRef = useRef(false);
   const newProjectCommitInProgressRef = useRef(false);
   const pendingWorkspaceCleanupRef = useRef<string | undefined>(undefined);
@@ -146,14 +156,15 @@ function App() {
   useEffect(() => {
     const projectCollectionId = pickerWorkspace?.collection.projectCollectionId;
     if (!projectCollectionId) {
-      setProjectList([]);
+      setProjectListState(undefined);
       return;
     }
+    setProjectListState(undefined);
     let active = true;
     let unsubscribeProjectList = () => {};
     store.projectManager
       .watchProjectListForCollection(projectCollectionId, (projects) => {
-        setProjectList(projects);
+        setProjectListState({ projectCollectionId, projects });
       })
       .then(
         (subscription) => {
@@ -162,12 +173,12 @@ function App() {
             return;
           }
           unsubscribeProjectList = subscription.unsubscribe;
-          setProjectList(subscription.initial);
+          setProjectListState({ projectCollectionId, projects: subscription.initial });
         },
         () => {
           if (active) {
             toast.error("Failed to load projects");
-            setProjectList([]);
+            setProjectListState(undefined);
             setIsPickerOpen(false);
             setPickerWorkspace(undefined);
           }
@@ -206,6 +217,10 @@ function App() {
     }
   }, [scene, debugEnabled]);
 
+  const pickerProjectCollectionId = pickerWorkspace?.collection.projectCollectionId;
+  const pickerProjectListReady =
+    pickerProjectCollectionId !== undefined && projectListState?.projectCollectionId === pickerProjectCollectionId;
+  const projectList = pickerProjectListReady ? projectListState.projects : [];
   const pickerItems = useMemo<ProjectPickerItem[]>(
     () =>
       projectList.map((p) => ({
@@ -232,9 +247,16 @@ function App() {
     [projectCollectionState?.activeProjectCollection?.projectCollectionId, store]
   );
 
+  const unlockWorkspace = useCallback(
+    async (projectCollectionId: string, pin: string): Promise<ProjectCollection> => {
+      return store.unlockProjectCollection(projectCollectionId, pin);
+    },
+    [store]
+  );
+
   const clearPickerWorkspace = useCallback(() => {
     setPickerWorkspace(undefined);
-    setProjectList([]);
+    setProjectListState(undefined);
   }, []);
 
   const cancelPickerWorkspace = useCallback(() => {
@@ -268,7 +290,14 @@ function App() {
   const handleSelectProject = useCallback(
     (id: string) => {
       const workspace = pickerWorkspace;
-      if (!workspace) {
+      if (!workspace || pickerCommitInProgressRef.current) {
+        return;
+      }
+      const projects =
+        projectListState?.projectCollectionId === workspace.collection.projectCollectionId
+          ? projectListState.projects
+          : [];
+      if (!projects.some((project) => project.id === id)) {
         return;
       }
       pickerCommitInProgressRef.current = true;
@@ -292,7 +321,7 @@ function App() {
         }
       );
     },
-    [finishPickerCommit, pickerWorkspace, store]
+    [finishPickerCommit, pickerWorkspace, projectListState, store]
   );
 
   const handleDeleteProject = useCallback(
@@ -305,9 +334,12 @@ function App() {
   );
 
   const handleNewProject = useCallback(() => {
+    if (!pickerProjectListReady) {
+      return;
+    }
     setIsPickerOpen(false);
     setIsNewProjectOpen(true);
-  }, []);
+  }, [pickerProjectListReady]);
 
   const handleNewProjectConfirm = useCallback(
     (name: string) => {
@@ -388,6 +420,39 @@ function App() {
     [store]
   );
 
+  const handleActiveWorkspaceUnlock = useCallback(
+    (event: React.FormEvent) => {
+      event.preventDefault();
+      const projectCollectionId = projectCollectionState?.activeProjectCollection?.projectCollectionId;
+      if (!projectCollectionId || activeUnlockBusy) {
+        return;
+      }
+      setActiveUnlockBusy(true);
+      setActiveUnlockError(undefined);
+      unlockWorkspace(projectCollectionId, activeUnlockPin).then(
+        () => {
+          setActiveUnlockPin("");
+          setActiveUnlockBusy(false);
+          toast.success("Workspace unlocked");
+        },
+        (error: unknown) => {
+          setActiveUnlockBusy(false);
+          if (error instanceof AppHostError) {
+            setActiveUnlockError(error.message);
+            return;
+          }
+          setActiveUnlockError("Failed to unlock workspace");
+        }
+      );
+    },
+    [
+      activeUnlockBusy,
+      activeUnlockPin,
+      projectCollectionState?.activeProjectCollection?.projectCollectionId,
+      unlockWorkspace,
+    ]
+  );
+
   const handleExportProject = useCallback(() => {
     store.exportProject().then(
       (json) => {
@@ -445,6 +510,19 @@ function App() {
   }, [store]);
 
   const defaultNewProjectName = useMemo(() => `Project ${projectList.length + 1}`, [projectList.length]);
+  const activeWorkspaceLocked = projectCollectionState?.access === "locked";
+  const activeWorkspaceName = projectCollectionState?.activeProjectCollection?.name ?? "Workspace";
+
+  useEffect(() => {
+    if (activeWorkspaceLocked) {
+      setScene(null);
+      setSnapshot(null);
+      setIsSidebarOpen(false);
+      setIsBrainEditorOpen(false);
+      setEditingArchetype(null);
+      prevSnapshotRef.current = null;
+    }
+  }, [activeWorkspaceLocked]);
 
   const docRevision = useSyncExternalStore(store.subscribeToDocRevision, store.getDocRevisionSnapshot);
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
@@ -576,29 +654,72 @@ function App() {
         <h1 className="sr-only">Mindcraft Simulation</h1>
         {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
         <main className="flex-1 min-w-0 relative" aria-label="Game canvas" style={{ backgroundColor: "#2d3561" }}>
-          <PhaserGame store={store} onSceneReady={handleSceneReady} />
+          {activeWorkspaceLocked ? (
+            <div className="flex h-full min-h-screen items-center justify-center bg-slate-950 p-4 text-white">
+              <form
+                className="w-full max-w-sm rounded-lg border border-white/15 bg-slate-900/95 p-5 shadow-2xl"
+                onSubmit={handleActiveWorkspaceUnlock}
+              >
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-400/15 text-amber-200">
+                    <Lock className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 className="truncate text-lg font-semibold">Workspace Locked</h2>
+                    <p className="truncate text-sm text-slate-300">{activeWorkspaceName}</p>
+                  </div>
+                </div>
+                <WorkspacePinInput
+                  label="PIN"
+                  value={activeUnlockPin}
+                  disabled={activeUnlockBusy}
+                  autoFocus
+                  labelClassName="text-sm font-medium text-slate-100"
+                  inputClassName="border-slate-400 bg-white text-slate-950"
+                  buttonClassName="text-slate-500 hover:text-slate-950 focus-visible:ring-slate-950"
+                  resetVisibilityKey={projectCollectionState?.activeProjectCollection?.projectCollectionId}
+                  onValueChange={(value) => {
+                    setActiveUnlockPin(value);
+                    setActiveUnlockError(undefined);
+                  }}
+                />
+                {activeUnlockError && (
+                  <p className="mt-2 text-sm text-red-300" role="alert">
+                    {activeUnlockError}
+                  </p>
+                )}
+                <Button className="mt-4 w-full" type="submit" disabled={!activeUnlockPin || activeUnlockBusy}>
+                  {activeUnlockBusy ? "Unlocking..." : "Unlock Workspace"}
+                </Button>
+              </form>
+            </div>
+          ) : (
+            <PhaserGame store={store} onSceneReady={handleSceneReady} />
+          )}
           <ProjectHeader
             projectName={projectName}
             projectCollectionState={projectCollectionState}
             onBrowseProjects={openProjectPickerForWorkspace}
+            onUnlockWorkspace={unlockWorkspace}
             onNewProject={() => setIsNewProjectOpen(true)}
             onNewWorkspace={() => setIsNewWorkspaceOpen(true)}
             onExportProject={handleExportProject}
             onImportProject={handleImportProject}
           />
-          {/* Mobile sidebar toggle */}
-          <button
-            type="button"
-            className="absolute top-3 right-3 z-40 md:hidden flex items-center justify-center w-10 h-10 rounded-lg bg-background/80 backdrop-blur border border-border shadow-md"
-            onClick={() => setIsSidebarOpen((o) => !o)}
-            aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
-          >
-            {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          {!activeWorkspaceLocked && (
+            <button
+              type="button"
+              className="absolute top-3 right-3 z-40 md:hidden flex items-center justify-center w-10 h-10 rounded-lg bg-background/80 backdrop-blur border border-border shadow-md"
+              onClick={() => setIsSidebarOpen((o) => !o)}
+              aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
+            >
+              {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          )}
         </main>
 
         {/* Backdrop -- mobile only */}
-        {isSidebarOpen && (
+        {!activeWorkspaceLocked && isSidebarOpen && (
           <div
             className="fixed inset-0 z-40 bg-black/50 md:hidden"
             onClick={() => setIsSidebarOpen(false)}
@@ -606,19 +727,21 @@ function App() {
           />
         )}
 
-        <Sidebar
-          snapshot={snapshot}
-          timeSpeed={timeSpeed}
-          onTimeSpeedChange={handleTimeSpeedChange}
-          isPlaying={isPlaying}
-          onTogglePlay={handleTogglePlay}
-          onEditBrain={handleEditBrain}
-          onDesiredCountChange={handleDesiredCountChange}
-          onToggleDebug={handleToggleDebug}
-          debugEnabled={debugEnabled}
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-        />
+        {!activeWorkspaceLocked && (
+          <Sidebar
+            snapshot={snapshot}
+            timeSpeed={timeSpeed}
+            onTimeSpeedChange={handleTimeSpeedChange}
+            isPlaying={isPlaying}
+            onTogglePlay={handleTogglePlay}
+            onEditBrain={handleEditBrain}
+            onDesiredCountChange={handleDesiredCountChange}
+            onToggleDebug={handleToggleDebug}
+            debugEnabled={debugEnabled}
+            isOpen={isSidebarOpen}
+            onClose={() => setIsSidebarOpen(false)}
+          />
+        )}
 
         {/* Brain Editor Dialog (rendered at root for proper overlay) */}
         <DocsBrainEditorProvider archetype={editingArchetype}>
@@ -647,7 +770,11 @@ function App() {
               : "Select a project to open, or create a new one."
           }
           workspaceContext={pickerWorkspace?.context}
-          emptyStateMessage={`${pickerWorkspace?.collection.name ?? "This workspace"} has no projects yet.`}
+          emptyStateMessage={
+            pickerProjectListReady
+              ? `${pickerWorkspace?.collection.name ?? "This workspace"} has no projects yet.`
+              : "Loading projects..."
+          }
           projects={pickerItems}
           activeProjectId={projectCollectionState?.activeProjectId}
           projectDeletionDisabled={pickerWorkspace?.pending === true}

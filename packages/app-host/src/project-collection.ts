@@ -19,12 +19,12 @@ export const PROJECT_COLLECTION_NAME_MAX_LENGTH = 80;
 export function normalizeProjectCollectionName(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) {
-    throw appHostError("INVALID_PROJECT_COLLECTION_NAME", "Project collection name is required");
+    throw appHostError("INVALID_PROJECT_COLLECTION_NAME", "Workspace name is required");
   }
   if (trimmed.length > PROJECT_COLLECTION_NAME_MAX_LENGTH) {
     throw appHostError(
       "INVALID_PROJECT_COLLECTION_NAME",
-      `Project collection name must be ${PROJECT_COLLECTION_NAME_MAX_LENGTH} characters or fewer`
+      `Workspace name must be ${PROJECT_COLLECTION_NAME_MAX_LENGTH} characters or fewer`
     );
   }
   return trimmed;

@@ -6,6 +6,7 @@ import {
   type ImportResult,
   importProject as importProjectCommon,
   type MindcraftExportDocument,
+  type ProjectCollection,
   type ProjectCollectionProjectCommitResult,
   type ProjectFileSystem,
   ProjectManager,
@@ -182,6 +183,7 @@ export class SimEnvironmentStore {
   private _projectDataReloadPromise: Promise<void> = Promise.resolve();
 
   private _isSwitchingProject = false;
+  private _vfsServiceWorkerInitialized = false;
 
   private constructor(host: AppEnvironmentHost) {
     this.host = host;
@@ -300,21 +302,31 @@ export class SimEnvironmentStore {
 
   async initialize(): Promise<void> {
     await this.host.initialize(DEFAULT_PROJECT_NAME);
-    this._uiPreferences = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
+    await this.loadActiveProjectRuntime();
+    this.onAppSettingsChange((settings, prev) => {
+      if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl) {
+        this.host.updateBridgeUrl(settings.vscodeBridgeUrl);
+      }
+    });
+  }
+
+  private async loadActiveProjectRuntime(): Promise<void> {
+    const activeProject = this.host.projectManager.activeProject;
+    if (!activeProject) {
+      return;
+    }
+    this._uiPreferences = loadUiPreferences(activeProject.manifest.id);
     const metadata = this.host.lastUserTileMetadata;
     if (metadata) {
       this.userTileDocEntries = buildDocEntries(metadata);
     }
     this._projectDataReloadPromise = this.reloadProjectData();
     await this._projectDataReloadPromise;
-    initVfsServiceWorker(this);
+    if (!this._vfsServiceWorkerInitialized) {
+      initVfsServiceWorker(this);
+      this._vfsServiceWorkerInitialized = true;
+    }
     this.host.initBridge();
-
-    this.onAppSettingsChange((settings, prev) => {
-      if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl) {
-        this.host.updateBridgeUrl(settings.vscodeBridgeUrl);
-      }
-    });
   }
 
   /** Release host resources owned by this store. */
@@ -402,6 +414,18 @@ export class SimEnvironmentStore {
     } finally {
       this._isSwitchingProject = false;
     }
+  }
+
+  async unlockProjectCollection(projectCollectionId: string, pin: string): Promise<ProjectCollection> {
+    const result = await this.host.unlockProjectCollection(projectCollectionId, pin);
+    if (this.host.projectManager.activeProjectCollection?.projectCollectionId === projectCollectionId) {
+      await this.loadActiveProjectRuntime();
+    }
+    return result.collection;
+  }
+
+  async lockProjectCollection(projectCollectionId: string): Promise<void> {
+    await this.host.lockProjectCollection(projectCollectionId);
   }
 
   // -- Project export / import --

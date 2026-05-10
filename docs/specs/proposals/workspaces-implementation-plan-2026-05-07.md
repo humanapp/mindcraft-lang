@@ -509,8 +509,8 @@ follow."
 
 ## Current State
 
-Completed: W0, W1, W2, W3, W4, W5a, W5b, W6a
-Next up: W6b
+Completed: W0, W1, W2, W3, W4, W5a, W5b, W6a, W6b
+Next up: W7
 
 ---
 
@@ -644,6 +644,25 @@ Verification: `npm run typecheck`, `npm run check`, `npm test`, and
 Risk: W6b must treat `ProjectCollectionSummary.access` as tab-local UI state
 and route all PIN prompts/actions through the W6a ProjectManager APIs rather
 than inferring lock state from persisted verifier metadata alone.
+
+### W6b -- Workspace PIN UX
+
+W6b shipped visible workspace PIN management, locked workspace surfaces, pending
+workspace unlock routing, reload-unlock restoration, and active-lock teardown
+through the app integration host.
+
+New contract surface: app-visible PIN flows use shared workspace PIN dialog/input
+surfaces, `AppEnvironmentHost` owns active workspace lock/unlock project teardown,
+and app-host error messages that apps may display directly use workspace
+terminology even when their error codes keep internal `PROJECT_COLLECTION_*`
+names.
+
+Verification: full gates passed in `apps/sim`, `packages/app-host`, and
+`packages/bridge-app`.
+
+Risk: W7 import/export/copy UI and diagnostics must keep using workspace as the
+user-facing term while preserving `ProjectCollection` only as the internal
+app-host model and API vocabulary.
 
 ---
 
@@ -2081,9 +2100,11 @@ Unlock/session contract:
 - Use `RELOAD_UNLOCK_REFRESH_INTERVAL_MS = 5 * 60 * 1000`.
 - Do not refresh reload unlock records from project save or autosave activity.
 - Do not refresh reload unlock records for non-active unlocked collections.
-- Stop the refresh timer and remove the matching reload unlock record when the
-  collection is explicitly locked, switched away from, tombstoned, has its
-  verifier removed, or the `ProjectManager` is disposed.
+- Stop the refresh timer when the collection is explicitly locked, switched
+  away from, tombstoned, has its verifier removed, or the `ProjectManager` is
+  disposed.
+- Remove the matching reload unlock record when the collection is explicitly
+  locked, switched away from, tombstoned, or has its verifier removed.
 - If the unlocked collection is the active collection, unlock restores or opens
   the intended project using the same fallback rules as reload restore.
 - A protected collection may be restored after reload only through a

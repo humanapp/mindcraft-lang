@@ -128,6 +128,50 @@ describe("ProjectManager", () => {
       assert.deepStrictEqual(calls, ["Watched", undefined]);
     });
 
+    it("calls beforeActiveProjectChange after reserving the target and before replacing the current project", async () => {
+      const source = await pm.create("Source");
+      const target = await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Target");
+      let callbackCount = 0;
+
+      await pm.open(target.id, {
+        beforeActiveProjectChange: () => {
+          callbackCount++;
+          assert.strictEqual(pm.activeProject?.manifest.id, source.id);
+        },
+      });
+
+      assert.strictEqual(callbackCount, 1);
+      assert.strictEqual(pm.activeProject?.manifest.id, target.id);
+    });
+
+    it("does not call beforeActiveProjectChange when target project locking fails", async () => {
+      const lock = new MemoryProjectLock();
+      await pm.close();
+      pm.dispose();
+      pm = new ProjectManager(memStore, { lock });
+      const tabB = new ProjectManager(memStore.cloneForNewTab(), { lock });
+      const source = await pm.create("Source");
+      const target = await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Target");
+      await tabB.init();
+      await tabB.open(target.id);
+      let callbackCount = 0;
+
+      await assertRejectsWithCode(
+        () =>
+          pm.open(target.id, {
+            beforeActiveProjectChange: () => {
+              callbackCount++;
+            },
+          }),
+        "PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB"
+      );
+
+      assert.strictEqual(callbackCount, 0);
+      assert.strictEqual(pm.activeProject?.manifest.id, source.id);
+      await tabB.close();
+      tabB.dispose();
+    });
+
     it("close is idempotent when nothing is open", async () => {
       await pm.close();
       assert.strictEqual(pm.activeProject, undefined);
@@ -777,8 +821,8 @@ describe("ProjectManager", () => {
       assert.strictEqual(await verifyProjectCollectionPin("1234", verifier), true);
       assert.strictEqual(await verifyProjectCollectionPin(" 1234 ", verifier), true);
       assert.strictEqual(await verifyProjectCollectionPin("9999", verifier), false);
-      assert.throws(() => normalizeProjectCollectionPin("123"), /Project collection PIN/);
-      assert.throws(() => normalizeProjectCollectionPin("ab\ncd"), /Project collection PIN/);
+      assert.throws(() => normalizeProjectCollectionPin("123"), /Workspace PIN/);
+      assert.throws(() => normalizeProjectCollectionPin("ab\ncd"), /Workspace PIN/);
     });
 
     it("fails clearly when WebCrypto PBKDF2 is unavailable", async () => {
@@ -836,7 +880,7 @@ describe("ProjectManager", () => {
       const collection = await pm.createProjectCollection("Protected");
       await memStore.createProject(collection.projectCollectionId, "Hidden");
       await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
-      pm.lockProjectCollection(collection.projectCollectionId);
+      await pm.lockProjectCollection(collection.projectCollectionId);
 
       const result = await pm.switchProjectCollection(collection.projectCollectionId);
 
@@ -853,7 +897,7 @@ describe("ProjectManager", () => {
       const collection = await pm.createProjectCollection("Protected");
       const project = await memStore.createProject(collection.projectCollectionId, "Hidden");
       await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
-      pm.lockProjectCollection(collection.projectCollectionId);
+      await pm.lockProjectCollection(collection.projectCollectionId);
 
       await assertRejectsWithCode(
         () => pm.switchProjectCollectionAndOpenProject(collection.projectCollectionId, project.id),
@@ -881,7 +925,7 @@ describe("ProjectManager", () => {
       await pm.init();
       const collection = await pm.createProjectCollection("Protected");
       await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
-      pm.lockProjectCollection(collection.projectCollectionId);
+      await pm.lockProjectCollection(collection.projectCollectionId);
 
       await assertRejectsWithCode(
         () => pm.setProjectCollectionPin(collection.projectCollectionId, "5678"),
@@ -906,8 +950,8 @@ describe("ProjectManager", () => {
       const otherCollection = await pm.createProjectCollection("Other");
       await pm.setProjectCollectionPin(activeCollection.projectCollectionId, "1234");
       await pm.setProjectCollectionPin(otherCollection.projectCollectionId, "5678");
-      pm.lockProjectCollection(activeCollection.projectCollectionId);
-      pm.lockProjectCollection(otherCollection.projectCollectionId);
+      await pm.lockProjectCollection(activeCollection.projectCollectionId);
+      await pm.lockProjectCollection(otherCollection.projectCollectionId);
 
       await pm.unlockProjectCollection(otherCollection.projectCollectionId, "5678");
       assert.strictEqual(readReloadUnlockRecord(memStore), undefined);
@@ -915,8 +959,25 @@ describe("ProjectManager", () => {
       await pm.unlockProjectCollection(activeCollection.projectCollectionId, "1234");
       assert.strictEqual(readReloadUnlockRecord(memStore)?.projectCollectionId, activeCollection.projectCollectionId);
 
-      pm.lockProjectCollection(activeCollection.projectCollectionId);
+      await pm.lockProjectCollection(activeCollection.projectCollectionId);
       assert.strictEqual(readReloadUnlockRecord(memStore), undefined);
+    });
+
+    it("calls beforeActiveProjectChange before closing the active project on lock", async () => {
+      const active = await pm.create("Active");
+      const activeCollection = pm.activeProjectCollection!;
+      await pm.setProjectCollectionPin(activeCollection.projectCollectionId, "1234");
+      let callbackCount = 0;
+
+      await pm.lockProjectCollection(activeCollection.projectCollectionId, {
+        beforeActiveProjectChange: () => {
+          callbackCount++;
+          assert.strictEqual(pm.activeProject?.manifest.id, active.id);
+        },
+      });
+
+      assert.strictEqual(callbackCount, 1);
+      assert.strictEqual(pm.activeProject, undefined);
     });
 
     it("runs one PBKDF2 pass when unlocking with a cloned matching verifier", async () => {
@@ -928,7 +989,7 @@ describe("ProjectManager", () => {
       await pm.init();
       const collection = await pm.createProjectCollection("Protected");
       await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
-      pm.lockProjectCollection(collection.projectCollectionId);
+      await pm.lockProjectCollection(collection.projectCollectionId);
       cloningStore.cloneProjectCollectionsOnRead = true;
 
       const originalCrypto = globalThis.crypto;
@@ -969,6 +1030,9 @@ describe("ProjectManager", () => {
       const collection = pm.activeProjectCollection!;
       await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
 
+      assert.strictEqual(readReloadUnlockRecord(memStore)?.projectCollectionId, collection.projectCollectionId);
+      pm.dispose();
+      assert.strictEqual(readReloadUnlockRecord(memStore)?.projectCollectionId, collection.projectCollectionId);
       const restored = new ProjectManager(memStore);
       await restored.init();
       assert.strictEqual(restored.activeProject?.manifest.id, active.id);
@@ -1106,7 +1170,7 @@ describe("ProjectManager", () => {
 
         await pm.setProjectCollectionPin(activeCollection.projectCollectionId, "1234");
         assert.strictEqual(intervals.count(), 1);
-        pm.lockProjectCollection(activeCollection.projectCollectionId);
+        await pm.lockProjectCollection(activeCollection.projectCollectionId);
         assert.strictEqual(intervals.count(), 0);
 
         await pm.unlockProjectCollection(activeCollection.projectCollectionId, "1234");
@@ -1118,7 +1182,7 @@ describe("ProjectManager", () => {
         assert.strictEqual(intervals.count(), 1);
         pm.dispose();
         assert.strictEqual(intervals.count(), 0);
-        assert.strictEqual(readReloadUnlockRecord(memStore), undefined);
+        assert.strictEqual(readReloadUnlockRecord(memStore)?.projectCollectionId, activeCollection.projectCollectionId);
       } finally {
         intervals.restore();
       }
@@ -1230,7 +1294,7 @@ describe("ProjectManager", () => {
       await pm.init();
       const collection = await pm.createProjectCollection("Protected");
       await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
-      pm.lockProjectCollection(collection.projectCollectionId);
+      await pm.lockProjectCollection(collection.projectCollectionId);
 
       await assertRejectsWithCode(
         () => pm.unlockProjectCollection(collection.projectCollectionId, "9999"),
@@ -1250,7 +1314,7 @@ describe("ProjectManager", () => {
       await pm.init();
       const collection = await pm.createProjectCollection("Protected");
       await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
-      pm.lockProjectCollection(collection.projectCollectionId);
+      await pm.lockProjectCollection(collection.projectCollectionId);
       const originalCrypto = globalThis.crypto;
       const originalDeriveBits = originalCrypto.subtle.deriveBits.bind(originalCrypto.subtle);
       let deriveBitsCalled = false;
@@ -1437,6 +1501,29 @@ describe("ProjectManager", () => {
         (await pm.listProjectsForCollection(targetCollection.projectCollectionId)).map((project) => project.id),
         [targetProject.id]
       );
+    });
+
+    it("writes a reload unlock record when committing a previously unlocked protected project collection", async () => {
+      installStorage("sessionStorage");
+      await pm.create("Source");
+      const targetCollection = await pm.createProjectCollection("Target");
+      const targetProject = await memStore.createProject(targetCollection.projectCollectionId, "Target Project");
+      await pm.setProjectCollectionPin(targetCollection.projectCollectionId, "1234");
+      await pm.lockProjectCollection(targetCollection.projectCollectionId);
+      await pm.unlockProjectCollection(targetCollection.projectCollectionId, "1234");
+
+      assert.strictEqual(readReloadUnlockRecord(memStore), undefined);
+
+      await pm.switchProjectCollectionAndOpenProject(targetCollection.projectCollectionId, targetProject.id);
+
+      const record = readReloadUnlockRecord(memStore);
+      assert.strictEqual(record?.projectCollectionId, targetCollection.projectCollectionId);
+      const restored = new ProjectManager(memStore);
+      await restored.init();
+      assert.strictEqual(restored.activeProject?.manifest.id, targetProject.id);
+      assert.strictEqual((await restored.getProjectCollectionState()).access, "ready");
+      await restored.close();
+      restored.dispose();
     });
 
     it("switches and creates a project in the target collection without restoring another project", async () => {

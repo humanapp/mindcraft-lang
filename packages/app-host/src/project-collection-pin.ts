@@ -32,7 +32,7 @@ export function normalizeProjectCollectionPin(pin: string): string {
   ) {
     throw appHostError(
       "INVALID_PROJECT_COLLECTION_PIN",
-      `Project collection PIN must be ${PROJECT_COLLECTION_PIN_MIN_LENGTH} to ${PROJECT_COLLECTION_PIN_MAX_LENGTH} printable characters`
+      `Workspace PIN must be ${PROJECT_COLLECTION_PIN_MIN_LENGTH} to ${PROJECT_COLLECTION_PIN_MAX_LENGTH} printable characters`
     );
   }
   return trimmed;
@@ -73,12 +73,12 @@ export async function verifyProjectCollectionPin(
 ): Promise<boolean> {
   const normalized = normalizeProjectCollectionPin(pin);
   if (verifier.scheme !== "v1") {
-    throw appHostError("PROJECT_COLLECTION_PIN_INVALID", "Unsupported project collection PIN verifier scheme");
+    throw appHostError("PROJECT_COLLECTION_PIN_INVALID", "Unsupported workspace PIN verifier scheme");
   }
   const salt = base64ToBytes(verifier.salt);
   const expected = base64ToBytes(verifier.hash);
   if (salt.length !== PIN_SALT_BYTES || expected.length !== PIN_HASH_BYTES) {
-    throw appHostError("PROJECT_COLLECTION_PIN_INVALID", "Invalid project collection PIN verifier");
+    throw appHostError("PROJECT_COLLECTION_PIN_INVALID", "Invalid workspace PIN verifier");
   }
   const actual = await derivePinHash(normalized, salt);
   return timingSafeBytesEqual(actual, expected);
@@ -99,7 +99,7 @@ function getPinCrypto(): Crypto {
   if (!candidate?.subtle || typeof candidate.getRandomValues !== "function") {
     throw appHostError(
       "PROJECT_COLLECTION_PIN_CAPABILITY_UNAVAILABLE",
-      "WebCrypto PBKDF2 is required for project collection PINs"
+      "WebCrypto PBKDF2 is required for workspace PINs"
     );
   }
   return candidate;
@@ -143,7 +143,7 @@ function base64ToBytes(value: string): Uint8Array {
     }
     return bytes;
   } catch {
-    throw appHostError("PROJECT_COLLECTION_PIN_INVALID", "Invalid project collection PIN verifier");
+    throw appHostError("PROJECT_COLLECTION_PIN_INVALID", "Invalid workspace PIN verifier");
   }
 }
 

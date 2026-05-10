@@ -2,6 +2,7 @@ import type {
   ExampleDefinition,
   MindcraftJsonHostInfo,
   ProjectCollectionProjectCommitResult,
+  ProjectCollectionUnlockResult,
   ProjectFileSystem,
   ProjectManifest,
 } from "@mindcraft-lang/app-host";
@@ -160,6 +161,10 @@ export class AppEnvironmentHost {
 
   async initialize(defaultProjectName: string): Promise<void> {
     await this.projectManager.init();
+    const state = await this.projectManager.getProjectCollectionState();
+    if (state.access === "locked") {
+      return;
+    }
     await this.projectManager.ensureDefaultProject(defaultProjectName);
     this._lastUserTileMetadata =
       hydrateUserTilesFromCache(this.env, {
@@ -295,8 +300,10 @@ export class AppEnvironmentHost {
   // ---------------------------------------------------------------------------
 
   async createProject(name: string): Promise<ProjectManifest> {
-    await this.beginProjectTransition();
-    const manifest = await this.projectManager.create(name);
+    await this.prepareProjectTransition();
+    const manifest = await this.projectManager.create(name, {
+      beforeActiveProjectChange: () => this.notifyProjectUnloading(),
+    });
     await this.completeProjectTransition();
     return manifest;
   }
@@ -305,8 +312,10 @@ export class AppEnvironmentHost {
     if (this.projectManager.activeProject?.manifest.id === id) {
       return;
     }
-    await this.beginProjectTransition();
-    await this.projectManager.open(id);
+    await this.prepareProjectTransition();
+    await this.projectManager.open(id, {
+      beforeActiveProjectChange: () => this.notifyProjectUnloading(),
+    });
     await this.completeProjectTransition();
   }
 
@@ -324,8 +333,10 @@ export class AppEnvironmentHost {
         access: "ready",
       };
     }
-    await this.beginProjectTransition();
-    const result = await this.projectManager.switchProjectCollectionAndOpenProject(projectCollectionId, projectId);
+    await this.prepareProjectTransition();
+    const result = await this.projectManager.switchProjectCollectionAndOpenProject(projectCollectionId, projectId, {
+      beforeActiveProjectChange: () => this.notifyProjectUnloading(),
+    });
     await this.completeProjectTransition();
     return result;
   }
@@ -334,29 +345,76 @@ export class AppEnvironmentHost {
     projectCollectionId: string,
     name: string
   ): Promise<ProjectCollectionProjectCommitResult> {
-    await this.beginProjectTransition();
-    const result = await this.projectManager.switchProjectCollectionAndCreateProject(projectCollectionId, name);
+    await this.prepareProjectTransition();
+    const result = await this.projectManager.switchProjectCollectionAndCreateProject(projectCollectionId, name, {
+      beforeActiveProjectChange: () => this.notifyProjectUnloading(),
+    });
     await this.completeProjectTransition();
     return result;
   }
 
-  private async beginProjectTransition(): Promise<void> {
-    await this.saveAllBrains();
+  /**
+   * Unlock a project collection and initialize the project environment when
+   * unlocking restores the active project.
+   *
+   * @param projectCollectionId - Project collection to unlock.
+   * @param pin - User-entered PIN or phrase.
+   * @returns The unlocked project collection and its ready access status.
+   */
+  async unlockProjectCollection(projectCollectionId: string, pin: string): Promise<ProjectCollectionUnlockResult> {
+    const result = await this.projectManager.unlockProjectCollection(projectCollectionId, pin);
+    if (
+      this.projectManager.activeProjectCollection?.projectCollectionId === projectCollectionId &&
+      this.projectManager.activeProject
+    ) {
+      await this.completeProjectTransition();
+    }
+    return result;
+  }
 
+  /**
+   * Lock a project collection after flushing app-owned project state.
+   *
+   * @param projectCollectionId - Project collection to lock.
+   */
+  async lockProjectCollection(projectCollectionId: string): Promise<void> {
+    const locksActiveProject =
+      this.projectManager.activeProjectCollection?.projectCollectionId === projectCollectionId &&
+      this.projectManager.activeProject !== undefined;
+    if (locksActiveProject) {
+      await this.prepareProjectTransition();
+    }
+    await this.projectManager.lockProjectCollection(projectCollectionId, {
+      beforeActiveProjectChange: () => this.notifyProjectUnloading(),
+    });
+    if (locksActiveProject) {
+      this.completeProjectUnload();
+    }
+  }
+
+  private async prepareProjectTransition(): Promise<void> {
+    if (this.projectManager.activeProject) {
+      await this.saveAllBrains();
+    }
+  }
+
+  private notifyProjectUnloading(): void {
     for (const listener of this._projectUnloadingListeners) {
       listener();
     }
   }
 
-  private async completeProjectTransition(): Promise<void> {
+  private completeProjectUnload(): void {
     this._brainCache.clear();
     this._pendingBrainRebuild = false;
-
     this.env.replaceActionBundle({ revision: "", tiles: [], actions: Dict.empty() });
     this._lastUserTileMetadata = undefined;
     this.bumpDocRevision();
-
     this.teardownBridge();
+  }
+
+  private async completeProjectTransition(): Promise<void> {
+    this.completeProjectUnload();
     this._lastUserTileMetadata =
       hydrateUserTilesFromCache(this.env, {
         storageKey: this.userTileStorageKey,

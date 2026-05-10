@@ -85,7 +85,7 @@ export class MemoryProjectStore implements ProjectStore {
 
   async deleteProjectCollection(projectCollectionId: string): Promise<void> {
     if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
-      throw appHostError("DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the default project collection");
+      throw appHostError("DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the default workspace");
     }
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) return;
@@ -137,7 +137,7 @@ export class MemoryProjectStore implements ProjectStore {
   private async requireLiveProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Project collection not found: ${projectCollectionId}`);
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
     }
     return collection;
   }
@@ -152,7 +152,7 @@ export class MemoryProjectStore implements ProjectStore {
   async createProject(projectCollectionId: string, name: string): Promise<ProjectManifest> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Project collection not found: ${projectCollectionId}`);
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
     }
     const manifest: ProjectManifest = {
       id: `id-${this.data.projects.length + 1}`,
@@ -175,10 +175,7 @@ export class MemoryProjectStore implements ProjectStore {
     if (project.deleted === true) return;
     const collection = await this.getProjectCollection(project.projectCollectionId);
     if (!collection) {
-      throw appHostError(
-        "PROJECT_COLLECTION_NOT_FOUND",
-        `Project collection not found: ${project.projectCollectionId}`
-      );
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${project.projectCollectionId}`);
     }
     this.data.projects[idx] = { ...project, deleted: true, updatedAt: Date.now() };
   }
@@ -245,10 +242,7 @@ export class MemoryProjectStore implements ProjectStore {
     }
     const collection = await this.getProjectCollection(project.projectCollectionId);
     if (!collection) {
-      throw appHostError(
-        "PROJECT_COLLECTION_NOT_FOUND",
-        `Project collection not found: ${project.projectCollectionId}`
-      );
+      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${project.projectCollectionId}`);
     }
     return project;
   }

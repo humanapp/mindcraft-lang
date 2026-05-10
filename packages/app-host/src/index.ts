@@ -64,6 +64,7 @@ export type {
   ProjectListSubscription,
   ProjectManagerOptions,
   ProjectPersistenceError,
+  ProjectTransitionOptions,
 } from "./project-manager.js";
 export {
   DEFAULT_PROJECT_NAME,
