@@ -1,12 +1,12 @@
 # VM Contract
 
 The implementation contract shared between the TypeScript reference VM
-(`packages/core/src/brain/runtime/vm.ts`) and the eventual C++ MCU
+(`packages/core/src/runtime/vm.ts`) and the eventual C++ MCU
 port. Covers opcode set, operand semantics, value model, calling
 convention, error model, feature flags, and resource limits. Does
-_not_ cover wire format; the MCU binary layout is described in the
-[Binary format appendix](#binary-format-appendix) at the end of this
-document.
+_not_ cover wire format; the
+[Binary format appendix](#binary-format-appendix) is reserved for the
+MCU binary layout once that container format is specified.
 
 When this spec and the code disagree, the spec is wrong; fix it in
 the same change.
@@ -67,7 +67,7 @@ host call. Re-entry corrupts all of these without diagnostic.
 
 This is a contract, not a runtime check. It is enforced by code
 review at the small set of host-function registration sites in
-`packages/core/src/brain/runtime/*` and at the public seam in
+`packages/core/src/runtime/*` and at the public seam in
 `packages/core/src/mindcraft.ts`. User TS code never registers host
 functions and is not subject to this rule.
 
@@ -102,18 +102,32 @@ overrides) tune resource shapes and do not change the boundary.
 ### `PlatformServices` responsibilities
 
 `PlatformServices` is the single aggregate the VM accepts at
-construction. Its members are:
+construction. Its members are the nested runtime service tiers:
 
-- `functions: IFunctionRegistry` -- resolved by `HOST_CALL` and
-  `HOST_CALL_ASYNC` dispatch to obtain the host function record
+- `runtime.functions: IFunctionRegistry` -- resolved by `HOST_CALL`
+  and `HOST_CALL_ASYNC` dispatch to obtain the host function record
   for a given function id.
-- `types: ITypeRegistry` -- consulted by VM value copying and
-  struct field access paths to look up type definitions, native
+- `runtime.types: ITypeRegistry` -- consulted by VM value copying
+  and struct field access paths to look up type definitions, native
   snapshot functions, and field getters/setters.
+- `runtime.actions: IBrainActionRegistry` -- used while constructing
+  the loaded `Program` action table; VM dispatch executes
+  `Program.actions` and does not resolve action descriptors on the
+  hot path.
+- `runtime.operatorTable: IOperatorTable` -- used by runtime helper
+  functions that are registered as host functions; primitive
+  operator dispatch remains monomorphized into host calls.
+- `shared.conversions: IConversionRegistry` -- used by registered
+  runtime conversion functions and mirrored by the edit-time language
+  services.
+- `app.rng: IRngServices` -- the brain-scoped random-number stream.
+- `brain.program`, `brain.brainVars`, `brain.ruleVars`,
+  `brain.pages`, and `brain.callsite` -- the id-keyed brain-instance
+  state surface described below.
 
 Scope rule (binding on every future addition): `PlatformServices`
-covers only runtime registries (function and type lookup tables)
-plus the runtime state members enumerated in the
+covers only runtime registries, shared runtime/edit registries,
+host-injected app services, and the runtime state members enumerated in the
 [Runtime state surface](#runtime-state-surface) section. The VM
 does **not** receive a program verifier; the reference VM trusts its
 in-process compiler, and verification is reserved for ports that
@@ -175,7 +189,7 @@ Any subsequent spec that modifies the VM constructor signature,
 adds or removes a `PlatformServices` field, adds or removes a
 `VmEvents` method, or changes the firewall rule **must update this
 section in lock-step** with the code change. Per the workflow
-convention, update `docs/specs/core/vm-contract.md` as part of the
+convention, update `docs/specs/contracts/vm-contract.md` as part of the
 same unit when the change is contract-shaping.
 
 ## Runtime state surface
@@ -208,27 +222,27 @@ reference. No field holds an authoring-graph object, and there is no
 
 ### `PlatformServices` runtime state members
 
-These id-keyed members extend `PlatformServices`
-(in addition to `functions` and `types` from
-[Construction and services boundary](#construction-and-services-boundary)):
+These id-keyed members live under `services.brain`:
 
 - `program` -- `getRuleFuncIdForFunc(funcId)`: owning rule id or `undefined`.
 - `brainVars` -- `getByName` / `setByName` / `clearByName`: brain-global vars.
 - `ruleVars` -- same three, keyed by `(ruleFuncId, name)`. `undefined`
   ruleFuncId: reads return `NIL_VALUE`, writes are no-ops; store walks
   `Program.ruleAncestors` for inherited values.
-- `brainPages` -- `getCurrentPageId()`, `getPreviousPageId()`,
+- `pages` -- `getCurrentPageId()`, `getPreviousPageId()`,
   `requestPageChange(pageIndex)`, `requestPageChangeByPageId(pageId)`,
   `requestPageRestart()`.
-- `rng` -- `next(): number` in `[0, 1)`, brain-scoped random stream.
 - `callsite` -- `ensure(id)`, `reset(id)`, `getSlot(id, slotIdx)`,
   `setSlot(id, slotIdx, value)`, `getHostState(id)`, `setHostState(id,
   value)`, `clearHostState(id)`.
 
+The brain-scoped random stream lives at `services.app.rng` and exposes
+`next(): number` in `[0, 1)`.
+
 Every member operates on ids, names, and primitives. Time, clock,
 and platform-entity services are not `PlatformServices` members.
-Action resolution is not a member; the VM resolves actions from
-`Program` directly.
+Action dispatch does not consult `services.brain`; the VM resolves
+actions from `Program` directly.
 
 ### Callsite-id binding discipline
 
@@ -237,26 +251,28 @@ branch), `ACTION_CALL_ASYNC` (host branch), or any lifecycle hook
 (`onInitialized` / `onPageEntered` / `onPageExited`), the VM binds
 `currentCallSiteId` and `currentRuleFuncId` on `ExecutionContext`. Host
 functions reach per-callsite host state through
-`services.callsite.{getHostState, setHostState, clearHostState}`, keyed by
-`ctx.currentCallSiteId`; accessing host state when `currentCallSiteId` is
-`undefined` is an error. Host functions never dereference an
-authoring-graph object.
+`services.brain.callsite.{getHostState, setHostState, clearHostState}`,
+keyed by `ctx.currentCallSiteId`; accessing host state when
+`currentCallSiteId` is `undefined` is an error. Host functions never
+dereference an authoring-graph object.
 
 ### Action call state model
 
 `ACTION_CALL` and `ACTION_CALL_ASYNC` both route per-callsite state-slot
-traffic through `services.callsite.{getSlot, setSlot}` keyed by
+traffic through `services.brain.callsite.{getSlot, setSlot}` keyed by
 `(callSiteId, slotIdx)`, backing `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`.
-`services.callsite.reset(callSiteId)` drops both slots and host state
-together; `clearHostState(callSiteId)` drops only the host-owned cell.
+`services.brain.callsite.reset(callSiteId)` drops both slots and host state
+together; `services.brain.callsite.clearHostState(callSiteId)` drops only
+the host-owned cell.
 
 `ACTION_CALL_ASYNC` allocates a `HandleId`, then either spawns a child
 fiber (bytecode) or calls `execAsync(ctx, args, handleId)` (host). Both
 paths resolve through `handles.events.on("completed", ...)`. **Host
 obligation:** every `execAsync` call must eventually resolve, reject, or
 cancel the `HandleId`. A synchronous throw is rolled back (the host branch
-frees the handle in a `try/catch`); a silent drop leaves it pending until
-`HandleTable.gc()` reclaims it.
+frees the handle in a `try/catch`); a silent drop leaves it pending
+indefinitely unless the host later resolves, rejects, or cancels it.
+`HandleTable.gc()` only reclaims terminal handles that have no waiters.
 
 ### Id-spaces
 
@@ -279,8 +295,8 @@ orchestrator carries fiber ids only.
 `functions`, `types`, and `VmEvents` are covered by
 [Construction and services boundary](#construction-and-services-boundary).
 The runtime state members above extend that aggregate without redefining the
-registry surface. Conversions and operators belong to the type and
-function registries, not to separate `PlatformServices` members.
+registry surface. Conversions and operators belong to `services.shared` and
+`services.runtime` respectively, not to the brain-instance state surface.
 
 ### Maintenance rule
 
@@ -409,7 +425,7 @@ but bytecode reads/writes always observe a slot already sized to
 `Program.variableNames.size()`.
 
 Name-keyed access remains available to host code via
-`services.brainVars.{getByName, setByName, clearByName}`. A host that
+`services.brain.brainVars.{getByName, setByName, clearByName}`. A host that
 writes through a name not present in `variableNames` allocates a
 fresh slot at the end of the value list; that slot is not addressable
 from bytecode (no `LOAD_VAR_SLOT` operand can target it) and is
@@ -428,9 +444,10 @@ address. `JMP` always sets `pc = pc + rel`. `JMP_IF_FALSE` pops the
 top of stack and jumps when the value is falsy (otherwise advances
 to `pc + 1`); `JMP_IF_TRUE` is the symmetric truthy branch.
 Truthiness follows the value-model rule defined in
-[Value model](#value-model): nil and `false` are falsy; every other
-value (including `0`, `""`, empty collections, error values) is
-truthy.
+[Value model](#value-model): unknown, void, nil, `false`, numeric `0`,
+the empty string, empty lists, empty maps, and error values are falsy.
+Enums, structs, function values, handle values, nonzero numbers,
+non-empty strings, and non-empty collections are truthy.
 
 ### Function calls
 
@@ -562,7 +579,7 @@ on entry; the remaining slots are nil-initialized.
 
 Per-callsite storage backs `let` / `const` variables declared at
 action scope. Reads and writes route through
-`services.callsite.{getSlot, setSlot}` keyed by
+`services.brain.callsite.{getSlot, setSlot}` keyed by
 `(currentCallSiteId, idx)`; callsite-id binding follows the
 [Callsite-id binding discipline](#callsite-id-binding-discipline)
 and the [Action call state model](#action-call-state-model).
@@ -910,7 +927,7 @@ Host-bound actions carry:
   that allocates the call site, before `onPageEntered` fires
   for the same activation. Symmetric to the bytecode
   `initializerFuncId`. Cleared by
-  `services.callsite.reset(callSiteId)` (re-runs on the next
+  `services.brain.callsite.reset(callSiteId)` (re-runs on the next
   activation) and by the orchestrator's brain shutdown (re-runs on
   the next brain startup). Soft `requestPageRestart` does not
   re-fire this hook.
@@ -920,7 +937,7 @@ Host-bound actions carry:
   containing this callsite becomes inactive.
 
 When `onInitialized` is set, the brain runtime calls
-`services.callsite.ensure(callSiteId)` for the host callsite to
+`services.brain.callsite.ensure(callSiteId)` for the host callsite to
 detect first-touch; when it is unset, no callsite record is
 allocated for the host action and no first-touch dispatch
 occurs.
@@ -931,10 +948,10 @@ All callsite storage -- bytecode state slots and host state -- is
 scoped to a single brain instance. The runtime contract is:
 
 - Storage is allocated **lazily** on first write
-  (`services.callsite.setSlot`, `services.callsite.setHostState`) or
-  on the first `services.callsite.ensure(callSiteId)` call for
+  (`services.brain.callsite.setSlot`, `services.brain.callsite.setHostState`) or
+  on the first `services.brain.callsite.ensure(callSiteId)` call for
   actions that declare an `initializerFuncId`.
-- `services.callsite.ensure(callSiteId)` returns `true` on the first
+- `services.brain.callsite.ensure(callSiteId)` returns `true` on the first
   call for a callsite (newly allocated) and `false` thereafter. The
   brain runtime uses this result to dispatch `initializerFuncId`
   exactly once per allocation.
@@ -947,12 +964,12 @@ scoped to a single brain instance. The runtime contract is:
 The runtime exposes two primitives for callers (host code and the
 brain runtime itself) to discard callsite state explicitly:
 
-- `services.callsite.reset(callSiteId)` -- deallocates the bytecode
+- `services.brain.callsite.reset(callSiteId)` -- deallocates the bytecode
   state slot block and the host-side cell for the callsite together.
-  The next `services.callsite.ensure` for the same id returns `true`
+  The next `services.brain.callsite.ensure` for the same id returns `true`
   and the next page activation re-runs the `initializerFuncId` for
   that callsite.
-- `services.callsite.clearHostState(callSiteId)` -- clears the
+- `services.brain.callsite.clearHostState(callSiteId)` -- clears the
   host-side state cell for the callsite without affecting bytecode
   state slots.
 
@@ -1064,8 +1081,9 @@ still `StackOverflow`.
 VM -- owns the fiber pool.
 
 Operand widths and other numeric ranges (slot ids, function ids,
-constant indices) are bounded by the binary format and are documented
-in the [Binary format appendix](#binary-format-appendix).
+constant indices) are part of the decoded bytecode contract. The MCU
+binary container may encode them differently, but it must decode to the
+operand widths documented in the opcode reference above.
 
 ### Recommended caps for memory-constrained hosts
 
