@@ -40,10 +40,13 @@ export const kMaxBrainNameLength = 100; // never reduce this value!
 export const kMaxBrainPageCount = 20; // never reduce this value!
 
 /** Warning codes emitted by {@link BrainDef} during page operations. */
-export enum BrainDefWarningCode {
-  MaxPagesExceeded = "MaxPagesExceeded",
-  PageIndexOutOfBounds = "PageIndexOutOfBounds",
-}
+export const BrainDefWarningCode = {
+  MaxPagesExceeded: "MaxPagesExceeded",
+  PageIndexOutOfBounds: "PageIndexOutOfBounds",
+} as const;
+
+/** Union of all {@link BrainDefWarningCode} values. */
+export type BrainDefWarningCode = (typeof BrainDefWarningCode)[keyof typeof BrainDefWarningCode];
 
 // Current serialization version.
 const kVersion = 1;

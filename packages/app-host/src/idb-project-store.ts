@@ -1,5 +1,5 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
-import { appHostError } from "./app-host-error.js";
+import { AppHostErrorCode, appHostError } from "./app-host-error.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import {
   DEFAULT_PROJECT_COLLECTION_ID,
@@ -183,7 +183,10 @@ class IdbProjectStore implements ProjectStore {
 
   async deleteProjectCollection(projectCollectionId: string): Promise<void> {
     if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
-      throw appHostError("DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the default workspace");
+      throw appHostError(
+        AppHostErrorCode.DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED,
+        "Cannot delete the default workspace"
+      );
     }
 
     const collection = await this.getProjectCollection(projectCollectionId);
@@ -266,7 +269,7 @@ class IdbProjectStore implements ProjectStore {
   private async requireLiveProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND, `Workspace not found: ${projectCollectionId}`);
     }
     return collection;
   }
@@ -286,7 +289,7 @@ class IdbProjectStore implements ProjectStore {
   async createProject(projectCollectionId: string, name: string): Promise<ProjectManifest> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND, `Workspace not found: ${projectCollectionId}`);
     }
 
     const now = Date.now();
@@ -305,14 +308,17 @@ class IdbProjectStore implements ProjectStore {
   async deleteProject(id: string): Promise<void> {
     const project = await this.db.get("projects", id);
     if (!project) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     if (!isLiveProject(project)) {
       return;
     }
     const collection = await this.getProjectCollection(project.projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${project.projectCollectionId}`);
+      throw appHostError(
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND,
+        `Workspace not found: ${project.projectCollectionId}`
+      );
     }
 
     await this.db.put("projects", {
@@ -337,14 +343,17 @@ class IdbProjectStore implements ProjectStore {
   private async requireLiveProject(id: string): Promise<ProjectManifest> {
     const manifest = await this.db.get("projects", id);
     if (!manifest) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     if (!isLiveProject(manifest)) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     const collection = await this.getProjectCollection(manifest.projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${manifest.projectCollectionId}`);
+      throw appHostError(
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND,
+        `Workspace not found: ${manifest.projectCollectionId}`
+      );
     }
     return manifest;
   }
@@ -352,7 +361,7 @@ class IdbProjectStore implements ProjectStore {
   async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
     const source = await this.getProject(id);
     if (!source) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     const newManifest = await this.createProjectFromSource(source, source.projectCollectionId, newName);
     await this.copyProjectContent(id, newManifest.id);

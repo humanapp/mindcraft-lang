@@ -1,5 +1,4 @@
-export type { AppHostErrorCode } from "./app-host-error.js";
-export { AppHostError, appHostError } from "./app-host-error.js";
+export { AppHostError, AppHostErrorCode, appHostError } from "./app-host-error.js";
 export type { ExampleDefinition, ExampleFile } from "./examples.js";
 export { EXAMPLES_FOLDER } from "./examples.js";
 export { createIdbProjectStore } from "./idb-project-store.js";
@@ -38,7 +37,6 @@ export type {
   ImportAppLayerCallback,
   ImportAppLayerResult,
   ImportDiagnostic,
-  ImportDiagnosticCode,
   ImportResult,
   MindcraftExportCommon,
   MindcraftExportDocument,
@@ -49,6 +47,7 @@ export {
   buildActiveProjectExportCommon,
   buildExportCommon,
   DEFAULT_MAX_FILE_SIZE,
+  ImportDiagnosticCode,
   importProject,
 } from "./project-io.js";
 export type { ProjectLock, ProjectLockHandle } from "./project-lock.js";

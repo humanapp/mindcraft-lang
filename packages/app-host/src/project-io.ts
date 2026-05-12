@@ -1,5 +1,5 @@
 import type { MindcraftExportCommon, MindcraftExportFile, MindcraftExportHost } from "@mindcraft-lang/service-api";
-import { appHostError } from "./app-host-error.js";
+import { AppHostErrorCode, appHostError } from "./app-host-error.js";
 import { EXAMPLES_FOLDER } from "./examples.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import type { ProjectFileSystemEntry } from "./project-file-snapshot.js";
@@ -16,21 +16,25 @@ export type {
 } from "@mindcraft-lang/service-api";
 
 /** Stable identifiers for import diagnostics produced by app-host. */
-export type ImportDiagnosticCode =
-  | "IMPORT_FILE_TOO_LARGE"
-  | "IMPORT_HOST_MISMATCH"
-  | "IMPORT_INVALID_BRAINS"
-  | "IMPORT_INVALID_DESCRIPTION"
-  | "IMPORT_INVALID_FILE_ENTRY"
-  | "IMPORT_INVALID_FILE_PATH"
-  | "IMPORT_INVALID_FILES"
-  | "IMPORT_INVALID_JSON"
-  | "IMPORT_INVALID_NAME"
-  | "IMPORT_INVALID_THUMBNAIL_URL"
-  | "IMPORT_MISSING_APP_DATA"
-  | "IMPORT_NEWER_HOST_VERSION"
-  | "IMPORT_SERIALIZE_BRAINS_FAILED"
-  | "IMPORT_UNEXPECTED_ERROR";
+export const ImportDiagnosticCode = {
+  IMPORT_FILE_TOO_LARGE: "IMPORT_FILE_TOO_LARGE",
+  IMPORT_HOST_MISMATCH: "IMPORT_HOST_MISMATCH",
+  IMPORT_INVALID_BRAINS: "IMPORT_INVALID_BRAINS",
+  IMPORT_INVALID_DESCRIPTION: "IMPORT_INVALID_DESCRIPTION",
+  IMPORT_INVALID_FILE_ENTRY: "IMPORT_INVALID_FILE_ENTRY",
+  IMPORT_INVALID_FILE_PATH: "IMPORT_INVALID_FILE_PATH",
+  IMPORT_INVALID_FILES: "IMPORT_INVALID_FILES",
+  IMPORT_INVALID_JSON: "IMPORT_INVALID_JSON",
+  IMPORT_INVALID_NAME: "IMPORT_INVALID_NAME",
+  IMPORT_INVALID_THUMBNAIL_URL: "IMPORT_INVALID_THUMBNAIL_URL",
+  IMPORT_MISSING_APP_DATA: "IMPORT_MISSING_APP_DATA",
+  IMPORT_NEWER_HOST_VERSION: "IMPORT_NEWER_HOST_VERSION",
+  IMPORT_SERIALIZE_BRAINS_FAILED: "IMPORT_SERIALIZE_BRAINS_FAILED",
+  IMPORT_UNEXPECTED_ERROR: "IMPORT_UNEXPECTED_ERROR",
+} as const;
+
+/** Union of all {@link ImportDiagnosticCode} values. */
+export type ImportDiagnosticCode = (typeof ImportDiagnosticCode)[keyof typeof ImportDiagnosticCode];
 
 /** A diagnostic produced while importing a project. */
 export interface ImportDiagnostic {
@@ -123,7 +127,7 @@ export async function buildActiveProjectExportCommon(
 ): Promise<MindcraftExportCommon> {
   const active = projectManager.activeProject;
   if (!active) {
-    throw appHostError("NO_ACTIVE_PROJECT", "No active project");
+    throw appHostError(AppHostErrorCode.NO_ACTIVE_PROJECT, "No active project");
   }
   return buildExportCommon(host, active.manifest, active.filesystem, (key) => projectManager.loadAppData(key));
 }
@@ -182,7 +186,10 @@ export async function importProject(
   try {
     const maxSize = options?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
     if (file.size > maxSize) {
-      return errorResult("IMPORT_FILE_TOO_LARGE", `File exceeds the maximum size of ${maxSize} bytes.`);
+      return errorResult(
+        ImportDiagnosticCode.IMPORT_FILE_TOO_LARGE,
+        `File exceeds the maximum size of ${maxSize} bytes.`
+      );
     }
 
     const text = await file.text();
@@ -191,13 +198,13 @@ export async function importProject(
     try {
       doc = JSON.parse(text) as Record<string, unknown>;
     } catch {
-      return errorResult("IMPORT_INVALID_JSON", "The file is not valid JSON.");
+      return errorResult(ImportDiagnosticCode.IMPORT_INVALID_JSON, "The file is not valid JSON.");
     }
 
     const docHost = doc.host as Record<string, unknown> | undefined;
     if (docHost?.name !== hostName) {
       return errorResult(
-        "IMPORT_HOST_MISMATCH",
+        ImportDiagnosticCode.IMPORT_HOST_MISMATCH,
         `This project was created by ${(docHost?.name as string) ?? "an unknown app"} and cannot be imported here.`
       );
     }
@@ -205,28 +212,34 @@ export async function importProject(
     const docHostVersion = docHost.version as string;
     if (typeof docHostVersion === "string" && compareSemver(docHostVersion, hostVersion) > 0) {
       return errorResult(
-        "IMPORT_NEWER_HOST_VERSION",
+        ImportDiagnosticCode.IMPORT_NEWER_HOST_VERSION,
         `This project was exported by a newer version of ${hostName} (${docHostVersion}). Update the app before importing.`
       );
     }
 
     if (typeof doc.name !== "string") {
-      return errorResult("IMPORT_INVALID_NAME", 'Invalid export file: "name" must be a string.');
+      return errorResult(ImportDiagnosticCode.IMPORT_INVALID_NAME, 'Invalid export file: "name" must be a string.');
     }
     if (typeof doc.description !== "string") {
-      return errorResult("IMPORT_INVALID_DESCRIPTION", 'Invalid export file: "description" must be a string.');
+      return errorResult(
+        ImportDiagnosticCode.IMPORT_INVALID_DESCRIPTION,
+        'Invalid export file: "description" must be a string.'
+      );
     }
     if (doc.thumbnailUrl !== undefined && typeof doc.thumbnailUrl !== "string") {
       return errorResult(
-        "IMPORT_INVALID_THUMBNAIL_URL",
+        ImportDiagnosticCode.IMPORT_INVALID_THUMBNAIL_URL,
         'Invalid export file: "thumbnailUrl" must be a string when present.'
       );
     }
     if (!Array.isArray(doc.files)) {
-      return errorResult("IMPORT_INVALID_FILES", 'Invalid export file: "files" must be an array.');
+      return errorResult(ImportDiagnosticCode.IMPORT_INVALID_FILES, 'Invalid export file: "files" must be an array.');
     }
     if (doc.brains === null || typeof doc.brains !== "object" || Array.isArray(doc.brains)) {
-      return errorResult("IMPORT_INVALID_BRAINS", 'Invalid export file: "brains" must be an object.');
+      return errorResult(
+        ImportDiagnosticCode.IMPORT_INVALID_BRAINS,
+        'Invalid export file: "brains" must be an object.'
+      );
     }
 
     const name = typeof doc.name === "string" && doc.name.trim() ? doc.name.trim() : DEFAULT_PROJECT_NAME;
@@ -241,7 +254,7 @@ export async function importProject(
       if (typeof fileEntry?.path !== "string" || typeof fileEntry?.content !== "string") {
         warnings.push({
           severity: "warning",
-          code: "IMPORT_INVALID_FILE_ENTRY",
+          code: ImportDiagnosticCode.IMPORT_INVALID_FILE_ENTRY,
           message: `Skipped file entry with invalid path or content.`,
         });
         continue;
@@ -249,7 +262,7 @@ export async function importProject(
       if (!isValidFilePath(fileEntry.path)) {
         warnings.push({
           severity: "warning",
-          code: "IMPORT_INVALID_FILE_PATH",
+          code: ImportDiagnosticCode.IMPORT_INVALID_FILE_PATH,
           message: `Skipped file with invalid path: "${fileEntry.path}".`,
         });
         continue;
@@ -268,7 +281,7 @@ export async function importProject(
     } catch {
       warnings.push({
         severity: "warning",
-        code: "IMPORT_SERIALIZE_BRAINS_FAILED",
+        code: ImportDiagnosticCode.IMPORT_SERIALIZE_BRAINS_FAILED,
         message: "Failed to serialize brains data. Using empty brains.",
       });
       serializedBrains = "{}";
@@ -277,7 +290,10 @@ export async function importProject(
     const callbackAppData: Record<string, string> = {};
     if (options?.appLayerCallback) {
       if (doc.app === undefined) {
-        return errorResult("IMPORT_MISSING_APP_DATA", "No app-specific data found in the export file.");
+        return errorResult(
+          ImportDiagnosticCode.IMPORT_MISSING_APP_DATA,
+          "No app-specific data found in the export file."
+        );
       }
       const appResult = options.appLayerCallback(doc.app, docHostVersion);
       const errors = appResult.diagnostics.filter((d) => d.severity === "error");
@@ -302,7 +318,7 @@ export async function importProject(
     return {
       success: false,
       projectId: undefined,
-      diagnostics: [{ severity: "error", code: "IMPORT_UNEXPECTED_ERROR", message }],
+      diagnostics: [{ severity: "error", code: ImportDiagnosticCode.IMPORT_UNEXPECTED_ERROR, message }],
     };
   }
 }

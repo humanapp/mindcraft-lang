@@ -1,4 +1,5 @@
 import {
+  AppHostErrorCode,
   appHostError,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_COLLECTION_NAME,
@@ -85,7 +86,10 @@ export class MemoryProjectStore implements ProjectStore {
 
   async deleteProjectCollection(projectCollectionId: string): Promise<void> {
     if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
-      throw appHostError("DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the default workspace");
+      throw appHostError(
+        AppHostErrorCode.DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED,
+        "Cannot delete the default workspace"
+      );
     }
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) return;
@@ -137,7 +141,7 @@ export class MemoryProjectStore implements ProjectStore {
   private async requireLiveProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND, `Workspace not found: ${projectCollectionId}`);
     }
     return collection;
   }
@@ -152,7 +156,7 @@ export class MemoryProjectStore implements ProjectStore {
   async createProject(projectCollectionId: string, name: string): Promise<ProjectManifest> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND, `Workspace not found: ${projectCollectionId}`);
     }
     const manifest: ProjectManifest = {
       id: `id-${this.data.projects.length + 1}`,
@@ -169,13 +173,16 @@ export class MemoryProjectStore implements ProjectStore {
   async deleteProject(id: string): Promise<void> {
     const idx = this.data.projects.findIndex((project) => project.id === id);
     if (idx === -1) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     const project = this.data.projects[idx];
     if (project.deleted === true) return;
     const collection = await this.getProjectCollection(project.projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${project.projectCollectionId}`);
+      throw appHostError(
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND,
+        `Workspace not found: ${project.projectCollectionId}`
+      );
     }
     this.data.projects[idx] = { ...project, deleted: true, updatedAt: Date.now() };
   }
@@ -192,7 +199,7 @@ export class MemoryProjectStore implements ProjectStore {
   async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
     const source = await this.getProject(id);
     if (!source) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     const dup = await this.createProjectFromSource(source, source.projectCollectionId, newName);
     this.copyProjectContent(id, dup.id);
@@ -273,11 +280,14 @@ export class MemoryProjectStore implements ProjectStore {
   private async requireLiveProject(id: string): Promise<ProjectManifest> {
     const project = this.data.projects.find((entry) => entry.id === id);
     if (!project || project.deleted === true) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     const collection = await this.getProjectCollection(project.projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${project.projectCollectionId}`);
+      throw appHostError(
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND,
+        `Workspace not found: ${project.projectCollectionId}`
+      );
     }
     return project;
   }

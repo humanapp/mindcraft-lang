@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import type {
   ImportDiagnostic,
-  ImportDiagnosticCode,
   ProjectFileChange,
   ProjectFileSnapshot,
   ProjectFileSystem,
   ProjectManifest,
 } from "@mindcraft-lang/app-host";
 import {
+  AppHostErrorCode,
   buildActiveProjectExportCommon,
   buildExportCommon,
   createProjectCollectionPinVerifier,
@@ -16,6 +16,7 @@ import {
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_NAME,
   EXAMPLES_FOLDER,
+  ImportDiagnosticCode,
   importProject,
   MINDCRAFT_JSON_PATH,
   ProjectManager,
@@ -149,7 +150,10 @@ describe("buildExportCommon", () => {
       pinVerifier: await createProjectCollectionPinVerifier("1234"),
     });
 
-    await assertRejectsWithCode(() => buildActiveProjectExportCommon(HOST, pm), "PROJECT_COLLECTION_LOCKED");
+    await assertRejectsWithCode(
+      () => buildActiveProjectExportCommon(HOST, pm),
+      AppHostErrorCode.PROJECT_COLLECTION_LOCKED
+    );
     await pm.close();
     pm.dispose();
   });
@@ -248,7 +252,7 @@ describe("importProject", () => {
     });
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_FILE_TOO_LARGE"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_FILE_TOO_LARGE));
   });
 
   it("rejects invalid JSON", async () => {
@@ -257,7 +261,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_INVALID_JSON"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_INVALID_JSON));
   });
 
   it("rejects mismatched host.name", async () => {
@@ -266,7 +270,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_HOST_MISMATCH"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_HOST_MISMATCH));
   });
 
   it("rejects missing host.name", async () => {
@@ -275,7 +279,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_HOST_MISMATCH"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_HOST_MISMATCH));
   });
 
   it("rejects newer host.version", async () => {
@@ -284,7 +288,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_NEWER_HOST_VERSION"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_NEWER_HOST_VERSION));
   });
 
   it("accepts same host.version", async () => {
@@ -307,11 +311,15 @@ describe("importProject", () => {
 
   it("rejects missing required fields", async () => {
     const cases: Array<{ field: string; doc: Record<string, unknown>; code: ImportDiagnosticCode }> = [
-      { field: "name", doc: makeExportDoc({ name: 123 }), code: "IMPORT_INVALID_NAME" },
-      { field: "description", doc: makeExportDoc({ description: null }), code: "IMPORT_INVALID_DESCRIPTION" },
-      { field: "files", doc: makeExportDoc({ files: "not-array" }), code: "IMPORT_INVALID_FILES" },
-      { field: "brains", doc: makeExportDoc({ brains: null }), code: "IMPORT_INVALID_BRAINS" },
-      { field: "brains (array)", doc: makeExportDoc({ brains: [] }), code: "IMPORT_INVALID_BRAINS" },
+      { field: "name", doc: makeExportDoc({ name: 123 }), code: ImportDiagnosticCode.IMPORT_INVALID_NAME },
+      {
+        field: "description",
+        doc: makeExportDoc({ description: null }),
+        code: ImportDiagnosticCode.IMPORT_INVALID_DESCRIPTION,
+      },
+      { field: "files", doc: makeExportDoc({ files: "not-array" }), code: ImportDiagnosticCode.IMPORT_INVALID_FILES },
+      { field: "brains", doc: makeExportDoc({ brains: null }), code: ImportDiagnosticCode.IMPORT_INVALID_BRAINS },
+      { field: "brains (array)", doc: makeExportDoc({ brains: [] }), code: ImportDiagnosticCode.IMPORT_INVALID_BRAINS },
     ];
 
     for (const { field, doc, code } of cases) {
@@ -403,7 +411,7 @@ describe("importProject", () => {
     assert.strictEqual(result.success, true);
     const snapshot = await store.loadProjectFiles(result.projectId!);
     assert.ok(snapshot?.get("valid.ts"));
-    assert.strictEqual(countDiagnosticCode(result.diagnostics, "IMPORT_INVALID_FILE_ENTRY"), 2);
+    assert.strictEqual(countDiagnosticCode(result.diagnostics, ImportDiagnosticCode.IMPORT_INVALID_FILE_ENTRY), 2);
   });
 
   it("saves brains to app data", async () => {
@@ -458,7 +466,7 @@ describe("importProject", () => {
 
     assert.strictEqual(result.success, false);
     assert.strictEqual(callbackCalled, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_MISSING_APP_DATA"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_MISSING_APP_DATA));
     assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
@@ -529,7 +537,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", badPm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_UNEXPECTED_ERROR));
   });
 
   it("validates file paths -- rejects .. and leading /", async () => {
@@ -551,7 +559,7 @@ describe("importProject", () => {
     assert.strictEqual(snapshot?.has("../escape.ts"), false);
     assert.strictEqual(snapshot?.has("/absolute.ts"), false);
     assert.strictEqual(snapshot?.has("src\\backslash.ts"), false);
-    assert.strictEqual(countDiagnosticCode(result.diagnostics, "IMPORT_INVALID_FILE_PATH"), 3);
+    assert.strictEqual(countDiagnosticCode(result.diagnostics, ImportDiagnosticCode.IMPORT_INVALID_FILE_PATH), 3);
   });
 
   it("rejects without writing a project when there is no active project collection", async () => {
@@ -563,7 +571,7 @@ describe("importProject", () => {
     const result = await importProject(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_UNEXPECTED_ERROR));
     assert.strictEqual((await store.listProjectCollections()).length, 0);
   });
 
@@ -576,7 +584,7 @@ describe("importProject", () => {
     const result = await importProject(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_UNEXPECTED_ERROR));
     assert.deepStrictEqual(await store.listProjects(collection.projectCollectionId), []);
   });
 
@@ -590,7 +598,7 @@ describe("importProject", () => {
     const result = await importProject(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", "IMPORT_UNEXPECTED_ERROR"));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_UNEXPECTED_ERROR));
     assert.deepStrictEqual(await store.listProjects(activeCollectionId), before);
   });
 });
@@ -634,7 +642,7 @@ describe("ProjectManager.createFromSnapshot", () => {
 
     await assertRejectsWithCode(
       () => pm.createFromSnapshot("No Collection", "", snapshot),
-      "NO_ACTIVE_PROJECT_COLLECTION"
+      AppHostErrorCode.NO_ACTIVE_PROJECT_COLLECTION
     );
     assert.deepStrictEqual(await store.listProjectCollections(), []);
   });
@@ -652,7 +660,7 @@ describe("ProjectManager.createFromSnapshot", () => {
 
     await assertRejectsWithCode(
       () => pm.createFromSnapshot("No Collection", "", snapshot),
-      "PROJECT_COLLECTION_NOT_FOUND"
+      AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
     );
     assert.deepStrictEqual(await store.listProjects(collection.projectCollectionId), []);
   });
@@ -669,7 +677,10 @@ describe("ProjectManager.createFromSnapshot", () => {
       ["src/main.ts", { kind: "file", content: "hello", etag: "e1", isReadonly: false }],
     ]);
 
-    await assertRejectsWithCode(() => pm.createFromSnapshot("Locked", "", snapshot), "PROJECT_COLLECTION_LOCKED");
+    await assertRejectsWithCode(
+      () => pm.createFromSnapshot("Locked", "", snapshot),
+      AppHostErrorCode.PROJECT_COLLECTION_LOCKED
+    );
     assert.deepStrictEqual(await store.listProjects(collection.projectCollectionId), []);
   });
 });
