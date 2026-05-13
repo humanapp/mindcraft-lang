@@ -19,6 +19,7 @@ export * from "./math-builtins";
 export * from "./operator-defs";
 export * from "./operators";
 export * from "./program";
+export * from "./program-image";
 export * from "./rule-services";
 export * from "./runtime-services";
 export * from "./services";
