@@ -1,11 +1,16 @@
-/** JSON primitive value accepted inside serialized linked brain program payloads. */
-export type BrainProgramJsonPrimitive = string | number | boolean | null;
+import { List } from "../platform/list";
+import { UniqueSet } from "../platform/uniqueset";
+import type { ConstantPools, FunctionBytecode, Instr } from "./bytecode";
+import type { BytecodeExecutableAction } from "./context";
+import type { ActionDescriptor, BrainActionArgSlot, BrainActionCallDef } from "./function-defs";
+import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
+import { dictFromJsonEntries, listFromJson } from "./json-container-codec";
+import type { Program } from "./program";
+import type { BrainProgramValueJson } from "./value-codec";
+import { brainValueFromJson } from "./value-codec";
 
-/** JSON value accepted inside serialized linked brain program payloads. */
-export type BrainProgramJsonValue =
-  | BrainProgramJsonPrimitive
-  | readonly BrainProgramJsonValue[]
-  | { readonly [key: string]: BrainProgramJsonValue };
+export type { BrainProgramJsonPrimitive, BrainProgramJsonValue, BrainProgramValueJson } from "./value-codec";
+export { brainValueFromJson } from "./value-codec";
 
 /** JSON-safe representation of one VM instruction. */
 export interface BrainProgramInstructionJson {
@@ -42,9 +47,6 @@ export interface BrainProgramFunctionBytecodeJson {
   /** Optional injected execution context type id. */
   readonly injectCtxTypeId?: string;
 }
-
-/** JSON-safe runtime value stored in constant pools. */
-export type BrainProgramValueJson = BrainProgramJsonValue;
 
 /** JSON-safe representation of VM constant pools. */
 export interface BrainProgramConstantPoolsJson {
@@ -321,4 +323,165 @@ export interface LinkedBrainProgramJson {
 
   /** Page metadata used by the brain runtime. */
   readonly pages: readonly LinkedBrainProgramPageMetadataJson[];
+}
+
+/**
+ * Converts a JSON-safe linked brain payload into the runtime container shape.
+ *
+ * @param json - Serialized linked brain program payload.
+ */
+export function linkedBrainProgramFromJson(json: LinkedBrainProgramJson): LinkedBrainProgram {
+  return {
+    program: brainProgramFromJson(json.program),
+    ruleIndex: dictFromJsonEntries(json.ruleIndex, (entry) => [entry.path, entry.functionId]),
+    pages: listFromJson(json.pages, pageMetadataFromJson),
+  };
+}
+
+function brainProgramFromJson(json: BrainProgramJson): Program {
+  const program: Program = {
+    version: json.version,
+    functions: listFromJson(json.functions, functionBytecodeFromJson),
+    constantPools: constantPoolsFromJson(json.constantPools),
+    variableNames: List.from(json.variableNames),
+  };
+
+  if (json.entryPoint !== undefined) {
+    program.entryPoint = json.entryPoint;
+  }
+  if (json.actions !== undefined) {
+    program.actions = listFromJson(json.actions, bytecodeExecutableActionFromJson);
+  }
+  if (json.ruleFuncIds !== undefined) {
+    program.ruleFuncIds = new UniqueSet(json.ruleFuncIds);
+  }
+  if (json.ruleAncestors !== undefined) {
+    program.ruleAncestors = dictFromJsonEntries(json.ruleAncestors, (entry) => [
+      entry.ruleFuncId,
+      entry.parentRuleFuncId,
+    ]);
+  }
+
+  return program;
+}
+
+function functionBytecodeFromJson(json: BrainProgramFunctionBytecodeJson): FunctionBytecode {
+  const fn: FunctionBytecode = {
+    code: listFromJson(json.code, instructionFromJson),
+    numParams: json.numParams,
+  };
+
+  if (json.numLocals !== undefined) {
+    fn.numLocals = json.numLocals;
+  }
+  if (json.name !== undefined) {
+    fn.name = json.name;
+  }
+  if (json.maxStackDepth !== undefined) {
+    fn.maxStackDepth = json.maxStackDepth;
+  }
+  if (json.injectCtxTypeId !== undefined) {
+    fn.injectCtxTypeId = json.injectCtxTypeId;
+  }
+
+  return fn;
+}
+
+function instructionFromJson(json: BrainProgramInstructionJson): Instr {
+  const instruction: Instr = { op: json.op };
+  if (json.a !== undefined) {
+    instruction.a = json.a;
+  }
+  if (json.b !== undefined) {
+    instruction.b = json.b;
+  }
+  if (json.c !== undefined) {
+    instruction.c = json.c;
+  }
+  return instruction;
+}
+
+function constantPoolsFromJson(json: BrainProgramConstantPoolsJson): ConstantPools {
+  return {
+    numbers: List.from(json.numbers),
+    strings: List.from(json.strings),
+    values: listFromJson(json.values, brainValueFromJson),
+  };
+}
+
+function bytecodeExecutableActionFromJson(json: BrainProgramBytecodeExecutableActionJson): BytecodeExecutableAction {
+  const action: BytecodeExecutableAction = {
+    binding: "bytecode",
+    descriptor: actionDescriptorFromJson(json.descriptor),
+    entryFuncId: json.entryFuncId,
+    numStateSlots: json.numStateSlots,
+  };
+
+  if (json.initializerFuncId !== undefined) {
+    action.initializerFuncId = json.initializerFuncId;
+  }
+  if (json.activationFuncId !== undefined) {
+    action.activationFuncId = json.activationFuncId;
+  }
+  if (json.deactivationFuncId !== undefined) {
+    action.deactivationFuncId = json.deactivationFuncId;
+  }
+
+  return action;
+}
+
+function actionDescriptorFromJson(json: BrainProgramActionDescriptorJson): ActionDescriptor {
+  const descriptor: ActionDescriptor = {
+    key: json.key,
+    kind: json.kind,
+    callDef: actionCallDefFromJson(json.callDef),
+    isAsync: json.isAsync,
+  };
+
+  if (json.outputType !== undefined) {
+    descriptor.outputType = json.outputType;
+  }
+
+  return descriptor;
+}
+
+function actionCallDefFromJson(json: BrainProgramActionCallDefJson): BrainActionCallDef {
+  return {
+    callSpec: json.callSpec,
+    argSlots: listFromJson(json.argSlots, actionArgSlotFromJson).asReadonly(),
+  };
+}
+
+function actionArgSlotFromJson(json: BrainProgramActionArgSlotJson): BrainActionArgSlot {
+  if (json.choiceGroup !== undefined) {
+    return {
+      slotId: json.slotId,
+      argSpec: json.argSpec,
+      choiceGroup: json.choiceGroup,
+    };
+  }
+
+  return {
+    slotId: json.slotId,
+    argSpec: json.argSpec,
+  };
+}
+
+function pageMetadataFromJson(json: LinkedBrainProgramPageMetadataJson): PageMetadata {
+  return {
+    pageIndex: json.pageIndex,
+    pageId: json.pageId,
+    pageName: json.pageName,
+    rootRuleFuncIds: List.from(json.rootRuleFuncIds),
+    actionCallSites: listFromJson(json.actionCallSites, actionCallSiteFromJson),
+    sensors: new UniqueSet(json.sensors),
+    actuators: new UniqueSet(json.actuators),
+  };
+}
+
+function actionCallSiteFromJson(json: LinkedBrainProgramActionCallSiteJsonEntry): ActionCallSiteEntry {
+  return {
+    actionSlot: json.actionSlot,
+    callSiteId: json.callSiteId,
+  };
 }
