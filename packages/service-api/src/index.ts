@@ -16,6 +16,16 @@ export {
   validateMindcraftProgramImage,
 } from "./program-image.js";
 export type {
+  MindcraftProjectBrainSelectionError,
+  MindcraftProjectBrainSelectionResult,
+  MindcraftProjectBrainSelector,
+  MindcraftProjectSelectedBrain,
+} from "./project-brain-selection.js";
+export {
+  MindcraftProjectBrainSelectionCode,
+  selectMindcraftProjectBrain,
+} from "./project-brain-selection.js";
+export type {
   MindcraftProjectDocument,
   MindcraftProjectDocumentParseResult,
   MindcraftProjectDocumentValidationError,
