@@ -8,6 +8,7 @@ import {
   type MindcraftProgramImage,
   MindcraftProgramImageEncoding,
   MindcraftProgramImageValidationCode,
+  parseMindcraftProgramImage,
   parseMindcraftProgramImageJson,
   serializeMindcraftProgramImageJson,
   validateMindcraftProgramImage,
@@ -52,6 +53,49 @@ describe("parseMindcraftProgramImageJson", () => {
     assert.deepEqual(
       result.errors.map((error) => error.code),
       [MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_JSON]
+    );
+    assert.ok(result.errors[0]?.cause);
+  });
+});
+
+describe("parseMindcraftProgramImage", () => {
+  it("parses JSON program image text", () => {
+    const result = parseMindcraftProgramImage(JSON.stringify(VALID_IMAGE));
+
+    assert.equal(result.ok, true);
+    assert.equal(result.encoding, MindcraftProgramImageEncoding.JSON);
+    assert.deepEqual(result.image, VALID_IMAGE);
+  });
+
+  it("detects JSON program image bytes", () => {
+    const bytes = new TextEncoder().encode(JSON.stringify(VALID_IMAGE));
+
+    const result = parseMindcraftProgramImage(bytes);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.encoding, MindcraftProgramImageEncoding.JSON);
+    assert.deepEqual(result.image, VALID_IMAGE);
+  });
+
+  it("returns a stable code for recognized binary program images", () => {
+    const result = parseMindcraftProgramImage(new Uint8Array([...MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC, 1, 2, 3]));
+
+    assert.equal(result.ok, false);
+    assert.equal(result.encoding, MindcraftProgramImageEncoding.BINARY);
+    assert.deepEqual(
+      result.errors.map((error) => error.code),
+      [MindcraftProgramImageValidationCode.UNSUPPORTED_BINARY_PROGRAM_IMAGE]
+    );
+  });
+
+  it("returns a stable code for unknown byte encodings", () => {
+    const result = parseMindcraftProgramImage(new Uint8Array([0x01, 0x02, 0x03]));
+
+    assert.equal(result.ok, false);
+    assert.equal(result.encoding, undefined);
+    assert.deepEqual(
+      result.errors.map((error) => error.code),
+      [MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_ENCODING]
     );
   });
 });

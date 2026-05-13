@@ -11,6 +11,7 @@ export {
   MINDCRAFT_PROGRAM_IMAGE_VERSION,
   MindcraftProgramImageEncoding,
   MindcraftProgramImageValidationCode,
+  parseMindcraftProgramImage,
   parseMindcraftProgramImageJson,
   serializeMindcraftProgramImageJson,
   validateMindcraftProgramImage,

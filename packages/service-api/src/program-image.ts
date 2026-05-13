@@ -33,19 +33,26 @@ export type MindcraftProgramImageValidationCode =
   (typeof MindcraftProgramImageValidationCode)[keyof typeof MindcraftProgramImageValidationCode];
 
 /** Validation diagnostic for a rejected program image. */
-export interface MindcraftProgramImageValidationError {
+export interface MindcraftProgramImageValidationError<TCode extends string = MindcraftProgramImageValidationCode> {
   /** Stable machine-readable validation code. */
-  readonly code: MindcraftProgramImageValidationCode;
+  readonly code: TCode;
 
   /** JSON path of the rejected field, or `$` for non-JSON input. */
   readonly path: string;
 
   /** Human-readable diagnostic message. */
   readonly message: string;
+
+  /** Original thrown value when one is available. */
+  readonly cause?: unknown;
 }
 
 /** Result of validating or parsing a program image. */
-export type MindcraftProgramImageParseResult<TProgram = unknown, TProfileId extends string = string> =
+export type MindcraftProgramImageParseResult<
+  TProgram = unknown,
+  TProfileId extends string = string,
+  TError extends MindcraftProgramImageValidationError<string> = MindcraftProgramImageValidationError,
+> =
   | {
       /** True when a valid program image was produced. */
       readonly ok: true;
@@ -67,8 +74,51 @@ export type MindcraftProgramImageParseResult<TProgram = unknown, TProfileId exte
       readonly encoding?: MindcraftProgramImageEncoding;
 
       /** Validation diagnostics. */
-      readonly errors: readonly MindcraftProgramImageValidationError[];
+      readonly errors: readonly TError[];
     };
+
+/**
+ * Parses a `.mcprogram` image from JSON text or bytes.
+ *
+ * @param input - Program image contents.
+ */
+export function parseMindcraftProgramImage(
+  input: string | MindcraftProgramImageBytes
+): MindcraftProgramImageParseResult {
+  if (typeof input === "string") {
+    return parseMindcraftProgramImageJson(input);
+  }
+
+  const encoding = detectMindcraftProgramImageEncoding(input);
+  if (encoding === undefined) {
+    return {
+      ok: false,
+      errors: [
+        {
+          code: MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_ENCODING,
+          path: "$",
+          message: "Program image encoding is not recognized.",
+        },
+      ],
+    };
+  }
+
+  if (encoding === MindcraftProgramImageEncoding.BINARY) {
+    return {
+      ok: false,
+      encoding,
+      errors: [
+        {
+          code: MindcraftProgramImageValidationCode.UNSUPPORTED_BINARY_PROGRAM_IMAGE,
+          path: "$",
+          message: "Binary program image encoding is not supported by this reader.",
+        },
+      ],
+    };
+  }
+
+  return parseMindcraftProgramImageJson(new TextDecoder().decode(new Uint8Array(input)));
+}
 
 /**
  * Parses a JSON program image from text.
@@ -79,7 +129,7 @@ export function parseMindcraftProgramImageJson(content: string): MindcraftProgra
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
-  } catch {
+  } catch (cause) {
     return {
       ok: false,
       encoding: MindcraftProgramImageEncoding.JSON,
@@ -88,6 +138,7 @@ export function parseMindcraftProgramImageJson(content: string): MindcraftProgra
           code: MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_JSON,
           path: "$",
           message: "Program image is not valid JSON.",
+          cause,
         },
       ],
     };
