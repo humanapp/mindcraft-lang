@@ -37,18 +37,20 @@ export type {
   ImportAppLayerCallback,
   ImportAppLayerResult,
   ImportDiagnostic,
+  ImportProjectTargetsCallback,
+  ImportProjectTargetsResult,
   ImportResult,
-  MindcraftExportCommon,
-  MindcraftExportDocument,
-  MindcraftExportFile,
-  MindcraftExportHost,
+  MindcraftProjectDocument,
+  MindcraftProjectFile,
+  MindcraftProjectTargets,
 } from "./project-io.js";
 export {
-  buildActiveProjectExportCommon,
-  buildExportCommon,
+  buildActiveProjectExportDocument,
+  buildProjectExportDocument,
   DEFAULT_MAX_FILE_SIZE,
   ImportDiagnosticCode,
-  importProject,
+  importProjectDocument,
+  PROJECT_TARGETS_APP_DATA_KEY,
 } from "./project-io.js";
 export type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 export { createWebLocksProjectLock } from "./project-lock.js";

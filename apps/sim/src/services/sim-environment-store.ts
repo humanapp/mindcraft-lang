@@ -1,11 +1,11 @@
 import {
-  buildActiveProjectExportCommon,
+  buildActiveProjectExportDocument,
   createIdbProjectStore,
   createWebLocksProjectLock,
   DEFAULT_PROJECT_NAME,
+  type ImportAppLayerResult,
   type ImportResult,
-  importProject as importProjectCommon,
-  type MindcraftExportDocument,
+  importProjectDocument,
   type ProjectCollection,
   type ProjectCollectionProjectCommitResult,
   type ProjectFileSystem,
@@ -160,6 +160,49 @@ function parseObstacles(value: unknown): Obstacle[] | undefined {
     }
   }
   return result;
+}
+
+function translateProjectTarget(app: unknown): ImportAppLayerResult {
+  const diagnostics: { severity: "error" | "warning"; message: string }[] = [];
+  const appData = app as { actors?: unknown[]; obstacles?: unknown } | null;
+  if (!appData?.actors || !Array.isArray(appData.actors) || appData.actors.length === 0) {
+    return {
+      diagnostics: [{ severity: "error", message: "No actor data found in app layer." }],
+    };
+  }
+
+  const counts: Record<string, number> = {};
+  for (const entry of appData.actors) {
+    const actorEntry = entry as { archetype?: string; desiredCount?: number } | null;
+    if (!actorEntry?.archetype || !(actorEntry.archetype in ARCHETYPES)) {
+      diagnostics.push({
+        severity: "warning",
+        message: `Skipped unknown archetype: "${actorEntry?.archetype ?? "(none)"}".`,
+      });
+      continue;
+    }
+    if (typeof actorEntry.desiredCount === "number") {
+      counts[actorEntry.archetype] = Math.max(0, Math.min(100, Math.round(actorEntry.desiredCount)));
+    }
+  }
+
+  const importedAppData: Record<string, string> = { actors: JSON.stringify(counts) };
+  if (appData.obstacles !== undefined) {
+    const obstacles = parseObstacles(appData.obstacles);
+    if (obstacles) {
+      importedAppData.obstacles = JSON.stringify(obstacles);
+    } else {
+      diagnostics.push({
+        severity: "warning",
+        message: "Ignored malformed obstacle data in app layer.",
+      });
+    }
+  }
+
+  return {
+    diagnostics,
+    appData: importedAppData,
+  };
 }
 
 const DESIRED_COUNTS_DEBOUNCE_MS = 200;
@@ -433,12 +476,12 @@ export class SimEnvironmentStore {
   async exportProject(): Promise<string> {
     const pm = this.host.projectManager;
 
-    const common = await buildActiveProjectExportCommon({ name: simName, version: simVersion }, pm);
+    const doc = await buildActiveProjectExportDocument(pm);
 
     const counts = this.getDesiredCounts();
     const actors: { archetype: string; brain: string | null; desiredCount: number }[] = [];
     for (const archetype of Object.keys(ARCHETYPES)) {
-      const hasBrain = archetype in (common.brains as Record<string, unknown>);
+      const hasBrain = archetype in (doc.brains as Record<string, unknown>);
       actors.push({
         archetype,
         brain: hasBrain ? archetype : null,
@@ -458,56 +501,15 @@ export class SimEnvironmentStore {
       }));
     }
 
-    const doc: MindcraftExportDocument = { ...common, app };
-    return JSON.stringify(doc, null, 2);
+    return JSON.stringify({ ...doc, targets: { ...doc.targets, [simName]: app } }, null, 2);
   }
 
   async importProject(file: File): Promise<ImportResult> {
     const pm = this.host.projectManager;
 
-    return importProjectCommon(file, simName, simVersion, pm, {
-      appLayerCallback: (app) => {
-        const diagnostics: { severity: "error" | "warning"; message: string }[] = [];
-        const appData = app as { actors?: unknown[]; obstacles?: unknown } | null;
-        if (!appData?.actors || !Array.isArray(appData.actors) || appData.actors.length === 0) {
-          return {
-            diagnostics: [{ severity: "error", message: "No actor data found in app layer." }],
-          };
-        }
-
-        const counts: Record<string, number> = {};
-        for (const entry of appData.actors) {
-          const actorEntry = entry as { archetype?: string; desiredCount?: number } | null;
-          if (!actorEntry?.archetype || !(actorEntry.archetype in ARCHETYPES)) {
-            diagnostics.push({
-              severity: "warning",
-              message: `Skipped unknown archetype: "${actorEntry?.archetype ?? "(none)"}".`,
-            });
-            continue;
-          }
-          if (typeof actorEntry.desiredCount === "number") {
-            counts[actorEntry.archetype] = Math.max(0, Math.min(100, Math.round(actorEntry.desiredCount)));
-          }
-        }
-
-        const importedAppData: Record<string, string> = { actors: JSON.stringify(counts) };
-        if (appData.obstacles !== undefined) {
-          const obstacles = parseObstacles(appData.obstacles);
-          if (obstacles) {
-            importedAppData.obstacles = JSON.stringify(obstacles);
-          } else {
-            diagnostics.push({
-              severity: "warning",
-              message: "Ignored malformed obstacle data in app layer.",
-            });
-          }
-        }
-
-        return {
-          diagnostics,
-          appData: importedAppData,
-        };
-      },
+    return importProjectDocument(file, simName, simVersion, pm, {
+      appLayerCallback: translateProjectTarget,
+      targetsCallback: (_targets, appTarget) => translateProjectTarget(appTarget),
     });
   }
 
