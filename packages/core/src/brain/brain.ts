@@ -5,15 +5,12 @@ import {
   BrainRuntime,
   type IBrain,
   type PageMetadata,
-  type UnlinkedBrainProgram,
   type VmEvents,
 } from "../runtime";
 import type { Program } from "../runtime/program";
 import type { Value } from "../runtime/value";
 import type { EventEmitterConsumer } from "../util";
-import { compileBrain } from "./compiler";
-import { linkBrainProgram } from "./compiler/linker";
-import { treeshakeProgram } from "./compiler/tree-shaker";
+import { BrainBuildError, runBrainLinkPipeline, summarizeBrainBuildDiagnostics } from "./compiler";
 import type { IBrainDef, IBrainPageDef } from "./interfaces";
 import { BrainPage } from "./page";
 import type { BrainServices } from "./services";
@@ -30,11 +27,6 @@ export class Brain implements IBrain {
 
   /** `BrainRuntime` instance constructed by {@link initialize}. */
   private runtime: BrainRuntime | undefined;
-
-  /**
-   * Unlinked program emitted by the brain compiler.
-   */
-  private compiledProgram: UnlinkedBrainProgram | undefined;
 
   /** Unsubscribe callbacks for the page-lifecycle event bridge registered in {@link initialize}. */
   private readonly unsubs: List<() => void> = new List<() => void>();
@@ -62,18 +54,12 @@ export class Brain implements IBrain {
   initialize(contextData?: unknown, vmEvents?: VmEvents): void {
     const previousVariables = this.runtime?.snapshotVariables();
 
-    const linkEnvironment = this.getLinkEnvironment();
+    const result = runBrainLinkPipeline(this.brainDef, this.getLinkEnvironment(), this.services.shared.conversions);
+    if (!result.program) {
+      throw new BrainBuildError(summarizeBrainBuildDiagnostics(result.diagnostics), result.diagnostics);
+    }
 
-    this.compiledProgram = compileBrain(this.brainDef, linkEnvironment.catalogs, this.services.shared.conversions);
-    let linked = linkBrainProgram(
-      this.compiledProgram,
-      this.brainDef,
-      linkEnvironment.catalogs,
-      linkEnvironment.actionResolver
-    );
-    linked = treeshakeProgram(linked);
-
-    const { program, ruleIndex, pages: pageMetadata } = linked;
+    const { program, ruleIndex, pages: pageMetadata } = result.program;
 
     for (let pageIdx = 0; pageIdx < this.pages.size(); pageIdx++) {
       const page = this.pages.get(pageIdx)!;
@@ -111,10 +97,6 @@ export class Brain implements IBrain {
    */
   getProgram(): Program | undefined {
     return this.runtime?.getProgram();
-  }
-
-  getCompiledProgram(): UnlinkedBrainProgram | undefined {
-    return this.compiledProgram;
   }
 
   getPages(): List<PageMetadata> {

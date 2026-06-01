@@ -31,7 +31,7 @@ import {
   type BrainTileSensorDef,
   type BrainTileVariableDef,
 } from "../tiles";
-import { ParseDiagCode } from "./diag-codes";
+import { ParseDiagCode } from "./diagnostics";
 import type { Expr, ParseDiag, ParseResult, SlotExpr } from "./types";
 
 /**

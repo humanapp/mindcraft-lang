@@ -87,7 +87,7 @@ describe("linkBrainProgram", () => {
 
     const brainDef = buildBrainWithBytecodeActuator(action);
     const catalogs = List.from([services.edit.tiles, brainDef.catalog()]);
-    const compiled = compileBrain(brainDef, catalogs, services.shared.conversions);
+    const compiled = compileBrain(brainDef, catalogs, services.shared.conversions).program!;
     const unlinked = {
       ...compiled,
       variableNames: List.from(["brainVar"]),
@@ -114,7 +114,7 @@ describe("linkBrainProgram", () => {
         return undefined;
       },
     });
-    const executable = linked.program;
+    const executable = linked.program!.program;
 
     assert.equal(executable.actions!.size(), 1);
     assert.equal(executable.functions.size(), funcOffset + artifact.functions.size());

@@ -58,8 +58,9 @@ Examples to avoid:
 - `// the URL representation -- not a storage key -- is exposed so ...`
 
 Treat the following phrasings as red flags in JSDoc on exported symbols
-and delete them when they introduce design rationale (they are usually
-fine inside cross-references like "call `foo()` rather than `bar()`"):
+and delete them when they introduce design rationale (they are fine only
+in a correctness-critical cross-reference -- see "Scope each comment to
+its own symbol" below):
 
 - "... so that ..."
 - "... rather than ..." (when comparing the chosen design to an alternative)
@@ -72,6 +73,29 @@ Removal test: cover the comment with your hand and re-read the code. If a
 reader cannot figure out **what the field/function is** or **how to use it
 correctly** without the comment, keep it. If covering the comment only
 removes *justification* of the current design, delete it.
+
+**Scope each comment to its own symbol.** Document what the symbol is, its
+inputs, outputs, and errors -- nothing about what it is *not*, or what a
+*different* symbol does. Do not redirect the reader to another API for a
+related-but-different task, and do not contrast this symbol with an
+alternative. Phrasings like "to do X instead, use `Y`", "use `Y` to ...", or
+"unlike `Y`, this ..." pull in scope the reader did not ask about and invite
+tangential questions ("can this not do X?", "what is `Y`?").
+
+A cross-reference is justified only when a reader cannot use *this* symbol
+correctly without it -- a required companion call or a precondition established
+elsewhere. State it as a plain instruction ("call `init()` first"), never as a
+contrast or a redirect to alternative functionality.
+
+Examples to avoid:
+
+- `Compiles and links a brain. To run one instead, use createBrain().`
+- `Builds the image without constructing a runtime.`
+
+Prefer:
+
+- `Compiles and links a brain and returns the linked program. Throws if it
+  fails to compile or link.`
 
 ## ASCII-Only Text in Comments and Documentation
 

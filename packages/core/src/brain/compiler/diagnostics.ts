@@ -1,3 +1,7 @@
+import { Error } from "../../platform/error";
+import type { ReadonlyList } from "../../platform/list";
+import type { LinkedBrainProgram } from "../../runtime";
+
 /**
  * Diagnostic codes for brain compiler errors and warnings.
  *
@@ -5,6 +9,8 @@
  * Codes are organized by subsystem:
  * - 1000-1999: Parser diagnostics
  * - 2000-2999: Type inference diagnostics
+ * - 3000-3999: Code-generation diagnostics
+ * - 4000-4999: Link diagnostics
  *
  * These codes enable programmatic handling of diagnostics, such as:
  * - Displaying context-specific suggestions in the UI
@@ -97,6 +103,87 @@ export enum CompilationDiagCode {
 }
 
 /**
+ * Link diagnostic codes (4000-4999)
+ */
+export enum LinkDiagCode {
+  /** Brain references an action with no descriptor in the catalog */
+  MissingActionDescriptor = 4000,
+
+  /** Action has a descriptor but no binding resolves in the environment */
+  MissingActionBinding = 4001,
+
+  /** A resolved user-tile bytecode artifact is malformed or signature-mismatched */
+  InvalidActionArtifact = 4002,
+}
+
+/**
  * Union type of all diagnostic codes for type safety
  */
-export type DiagCode = ParseDiagCode | TypeDiagCode | CompilationDiagCode;
+export type DiagCode = ParseDiagCode | TypeDiagCode | CompilationDiagCode | LinkDiagCode;
+
+/** Severity classification for a diagnostic. */
+export type DiagnosticSeverity = "error" | "warning" | "info";
+
+/** A diagnostic produced while compiling and linking a brain definition. */
+export interface BrainBuildDiagnostic {
+  /** Stable diagnostic code. */
+  readonly code: DiagCode;
+
+  /** An "error" blocks producing a program; "warning"/"info" do not. */
+  readonly severity: DiagnosticSeverity;
+
+  /** Human-readable description of the diagnostic. */
+  readonly message: string;
+}
+
+/**
+ * Result of a brain build step: the produced program and any diagnostics.
+ * `program` is present if and only if `diagnostics` contains no "error"-severity
+ * entries. `TProgram` is the unlinked program during compilation and the linked
+ * program after linking.
+ */
+export interface BrainBuildResult<TProgram = LinkedBrainProgram> {
+  readonly program?: TProgram;
+  readonly diagnostics: ReadonlyList<BrainBuildDiagnostic>;
+}
+
+/**
+ * Thrown by brain runtime construction ({@link MindcraftEnvironment.createBrain})
+ * when the brain has error-severity diagnostics.
+ */
+export class BrainBuildError extends Error {
+  constructor(
+    message: string,
+    readonly diagnostics: ReadonlyList<BrainBuildDiagnostic>
+  ) {
+    super(message);
+    this.name = "BrainBuildError";
+  }
+}
+
+/** True when `value` is a {@link BrainBuildError}. */
+export function isBrainBuildError(value: unknown): value is BrainBuildError {
+  return value instanceof BrainBuildError;
+}
+
+/** Builds a human-readable summary of the error-severity diagnostics for a {@link BrainBuildError} message. */
+export function summarizeBrainBuildDiagnostics(diagnostics: ReadonlyList<BrainBuildDiagnostic>): string {
+  let count = 0;
+  let firstMessage = "";
+  for (let i = 0; i < diagnostics.size(); i++) {
+    const diag = diagnostics.get(i)!;
+    if (diag.severity === "error") {
+      count++;
+      if (firstMessage === "") {
+        firstMessage = diag.message;
+      }
+    }
+  }
+  if (count === 0) {
+    return "Brain build failed.";
+  }
+  if (count === 1) {
+    return `Brain build failed: ${firstMessage}`;
+  }
+  return `Brain build failed (${count} errors): ${firstMessage}`;
+}

@@ -2,7 +2,7 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { type BrainActionArgSlot, CoreTypeNames, type IConversionRegistry } from "../../runtime";
 import type { IBrainTileDef, ITileCatalog } from "../interfaces";
 import type { BrainTileParameterDef } from "../tiles";
-import { TypeDiagCode } from "./diag-codes";
+import { TypeDiagCode } from "./diagnostics";
 import type {
   ActuatorExpr,
   AssignmentExpr,

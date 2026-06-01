@@ -1,10 +1,7 @@
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import type { BrainServices, DiagnosticSeverity } from "@mindcraft-lang/core/brain";
 import type { ConstantOffsets, UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
-
-/** Severity classification for a {@link CompileDiagnostic}. */
-export type DiagnosticSeverity = "error" | "warning" | "info";
 
 /** A diagnostic produced by any phase of the user-tile compiler. Lines and columns are 1-based when present. */
 export interface CompileDiagnostic {

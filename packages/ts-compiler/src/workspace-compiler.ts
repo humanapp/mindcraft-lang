@@ -1,7 +1,8 @@
 import type { CompiledActionBundle, MindcraftEnvironment } from "@mindcraft-lang/core";
+import type { DiagnosticSeverity } from "@mindcraft-lang/core/brain";
 import type { ProjectCompileResult } from "./compiler/compile.js";
 import { COMPILER_CONTROLLED_TSCONFIG_PATH, UserTileProject } from "./compiler/project.js";
-import type { AmbientFile, CompileDiagnostic, DiagnosticSeverity } from "./compiler/types.js";
+import type { AmbientFile, CompileDiagnostic } from "./compiler/types.js";
 import { buildCompiledActionBundle } from "./runtime/action-bundle.js";
 
 /** A file in a {@link WorkspaceSnapshot}: `content` plus the `etag` used for optimistic concurrency. */

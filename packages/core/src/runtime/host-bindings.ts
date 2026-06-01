@@ -214,8 +214,6 @@ export interface IBrain extends IBrainRuntime {
      (e.g., game entity, DOM context). This will be available to all host functions via ctx.data.
    */
   initialize(contextData?: unknown): void;
-  /** Compiler output prior to action linking. */
-  getCompiledProgram(): UnlinkedBrainProgram | undefined;
 }
 
 export interface IBrainPage {

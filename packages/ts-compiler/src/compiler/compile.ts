@@ -20,7 +20,6 @@ export type {
   DebugFunctionInfo,
   DebugMetadata,
   DebugSpan,
-  DiagnosticSeverity,
   ExtractedArgSpec,
   ExtractedChoice,
   ExtractedConditional,

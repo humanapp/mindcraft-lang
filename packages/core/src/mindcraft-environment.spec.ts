@@ -12,7 +12,13 @@ import {
   type MindcraftModule,
   type ReadonlyList,
 } from "@mindcraft-lang/core";
-import { type BrainServices, type ITileCatalog, mkVariableTileId, TilePlacement } from "@mindcraft-lang/core/brain";
+import {
+  type BrainServices,
+  type ITileCatalog,
+  isBrainBuildError,
+  mkVariableTileId,
+  TilePlacement,
+} from "@mindcraft-lang/core/brain";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileParameterDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import {
@@ -267,6 +273,30 @@ function createSensorBrainDef(services: BrainServices, name: string, sensorTile:
   return brainDef;
 }
 
+function assertBuildErrorIncludes(fn: () => unknown, substring: string): void {
+  let thrown: unknown;
+  let didThrow = false;
+  try {
+    fn();
+  } catch (err) {
+    didThrow = true;
+    thrown = err;
+  }
+  assert.ok(didThrow, "expected the call to throw");
+  if (!isBrainBuildError(thrown)) {
+    assert.fail("expected a BrainBuildError");
+  }
+  const diagnostics = thrown.diagnostics;
+  let matched = false;
+  for (let i = 0; i < diagnostics.size(); i++) {
+    if (diagnostics.get(i)!.message.includes(substring)) {
+      matched = true;
+      break;
+    }
+  }
+  assert.ok(matched, `expected a diagnostic mentioning '${substring}'`);
+}
+
 describe("mindcraft environment", () => {
   test("isolates module-owned registries between environments", () => {
     const capture: {
@@ -315,7 +345,7 @@ describe("mindcraft environment", () => {
 
     const alphaBrain = envA.createBrain(brainDef);
     assert.equal(alphaBrain.status, "active");
-    assert.throws(() => envB.createBrain(brainDef), /alpha.sensor/);
+    assertBuildErrorIncludes(() => envB.createBrain(brainDef), "alpha.sensor");
   });
 
   test("creates independent runnable brains from one definition", () => {
@@ -391,7 +421,7 @@ describe("mindcraft environment", () => {
       bundled.tile.tileId
     );
 
-    assert.throws(() => environment.createBrain(restoredFromJson), /bundle\.persisted/);
+    assertBuildErrorIncludes(() => environment.createBrain(restoredFromJson), "bundle.persisted");
 
     environment.replaceActionBundle(createActionBundle("bundle.persisted.rev1", [bundled]));
 
@@ -532,6 +562,36 @@ describe("mindcraft environment", () => {
     assert.equal(alphaBrain.status, "active");
     assert.equal(betaBrain.status, "active");
     assert.equal(localBrain.status, "active");
+  });
+
+  test("rebuildInvalidatedBrains rebuilds valid brains even when another fails to rebuild", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const good = createBundleSensor("bundle.good");
+    const bad = createBundleSensor("bundle.bad");
+    environment.replaceActionBundle(createActionBundle("bundle.rev1", [good, bad]));
+
+    const goodBrain = environment.createBrain(
+      createSensorBrainDef(getEnvironmentServices(environment), "Good Brain", good.tile)
+    );
+    const badBrain = environment.createBrain(
+      createSensorBrainDef(getEnvironmentServices(environment), "Bad Brain", bad.tile)
+    );
+
+    // New bundle changes good's revision (invalidates goodBrain) and drops bad
+    // (invalidates badBrain and leaves its action unresolvable on rebuild).
+    environment.replaceActionBundle(
+      createActionBundle("bundle.rev2", [
+        { artifact: withRevision(good.artifact, "bundle.good.rev2"), tile: good.tile },
+      ])
+    );
+
+    assert.equal(goodBrain.status, "invalidated");
+    assert.equal(badBrain.status, "invalidated");
+
+    environment.rebuildInvalidatedBrains();
+
+    assert.equal(goodBrain.status, "active");
+    assert.equal(badBrain.status, "invalidated");
   });
 
   test("rebuildInvalidatedBrains without args rebuilds all brains invalidated across overlapping replacements", () => {

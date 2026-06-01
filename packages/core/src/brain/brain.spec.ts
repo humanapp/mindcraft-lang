@@ -1959,7 +1959,7 @@ describe("Brain behavioral -- compiled program structure", () => {
       brainDef,
       List.from([services.edit.tiles, brainDef.catalog()]),
       services.shared.conversions
-    );
+    ).program!;
 
     assert.equal(program.actionRefs.size(), 1);
     assert.deepEqual(program.actionRefs.get(0), {

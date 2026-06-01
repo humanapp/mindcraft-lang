@@ -1,4 +1,5 @@
 import { Brain, installCoreBrainComponents } from "./brain";
+import { type BrainBuildResult, isBrainBuildError, runBrainLinkPipeline } from "./brain/compiler";
 import type {
   BrainTileDefCreateOptions,
   IBrainActionTileDef,
@@ -27,6 +28,7 @@ import type {
   AppServices,
   BrainActionCallDef,
   BrainActionResolver,
+  BrainLinkEnvironment,
   Conversion,
   EnumTypeDef,
   EnumTypeShape,
@@ -345,6 +347,8 @@ export interface MindcraftEnvironment {
   deserializeBrainJsonFromPlain(plain: unknown): IBrainDef;
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void;
   createBrain(definition: IBrainDef, options?: CreateBrainOptions): MindcraftBrain;
+  /** Compiles and links a brain definition into a {@link BrainBuildResult}. */
+  linkBrain(definition: IBrainDef): BrainBuildResult;
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate;
   onBrainsInvalidated(listener: (event: BrainInvalidationEvent) => void): () => void;
   rebuildInvalidatedBrains(brains?: readonly MindcraftBrain[]): void;
@@ -818,6 +822,15 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     return brain;
   }
 
+  linkBrain(definition: IBrainDef): BrainBuildResult {
+    const result = runBrainLinkPipeline(
+      definition,
+      this.buildLinkEnvironment(definition, List.empty<ITileCatalog>()),
+      this.brainServices.shared.conversions
+    );
+    return { program: result.program, diagnostics: result.diagnostics };
+  }
+
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate {
     const nextActions = copyActionArtifacts(bundle.actions);
     const changedActionKeys = collectChangedActionKeys(this.bundleResolver, nextActions);
@@ -880,7 +893,15 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
       if (candidate.owner() !== this || candidate.isDisposed()) {
         continue;
       }
-      candidate.rebuild();
+      try {
+        candidate.rebuild();
+      } catch (err) {
+        if (!isBrainBuildError(err)) {
+          throw err;
+        }
+        // The brain's content is invalid; it stays invalidated and is retried on
+        // the next rebuild. Continue rebuilding the rest of the batch.
+      }
     }
   }
 
@@ -895,6 +916,13 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     }
     catalogs.push(definition.catalog());
     return catalogs;
+  }
+
+  buildLinkEnvironment(definition: IBrainDef, overlays: List<ITileCatalog>): BrainLinkEnvironment {
+    return {
+      catalogs: this.buildCatalogChain(definition, overlays),
+      actionResolver: this.actionBindings(),
+    };
   }
 
   buildDeserializeCatalogs(): List<ITileCatalog> {
@@ -1010,10 +1038,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
 
 class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
   status: "active" | "invalidated" | "disposed" = "active";
-  private readonly linkEnvironmentRef: {
-    catalogs: List<ITileCatalog>;
-    actionResolver: BrainActionResolver;
-  };
+  private readonly linkEnvironmentRef: BrainLinkEnvironment;
   private readonly linkedActionRevisions = new Dict<string, string>();
   private readonly overlayCatalogs: List<ITileCatalog>;
   private contextData: unknown;
@@ -1025,10 +1050,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
     public readonly definition: IBrainDef,
     overlayCatalogs: List<ITileCatalog>
   ) {
-    const linkEnvironment = {
-      catalogs: environment.buildCatalogChain(definition, overlayCatalogs),
-      actionResolver: environment.actionBindings(),
-    };
+    const linkEnvironment = environment.buildLinkEnvironment(definition, overlayCatalogs);
     super(definition, environment.brainServices, linkEnvironment);
     this.linkEnvironmentRef = linkEnvironment;
     this.overlayCatalogs = overlayCatalogs;
@@ -1147,8 +1169,9 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
   }
 
   private refreshLinkEnvironment(): void {
-    this.linkEnvironmentRef.catalogs = this.environment.buildCatalogChain(this.definition, this.overlayCatalogs);
-    this.linkEnvironmentRef.actionResolver = this.environment.actionBindings();
+    const linkEnvironment = this.environment.buildLinkEnvironment(this.definition, this.overlayCatalogs);
+    this.linkEnvironmentRef.catalogs = linkEnvironment.catalogs;
+    this.linkEnvironmentRef.actionResolver = linkEnvironment.actionResolver;
   }
 
   private refreshLinkedActionRevisions(): void {

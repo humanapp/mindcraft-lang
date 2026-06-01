@@ -15,9 +15,14 @@ import type { ProgramArtifact } from "../../runtime/program";
 import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
 import type { IBrainActionTileDef, IBrainDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../interfaces";
+import { type BrainBuildDiagnostic, type BrainBuildResult, LinkDiagCode } from "./diagnostics";
 
 function isActionTileDef(tileDef: IBrainTileDef): tileDef is IBrainActionTileDef {
   return tileDef.kind === "sensor" || tileDef.kind === "actuator";
+}
+
+function invalidArtifact(message: string): BrainBuildDiagnostic {
+  return { code: LinkDiagCode.InvalidActionArtifact, severity: "error", message };
 }
 
 function addDescriptor(descriptors: Dict<string, ActionDescriptor>, descriptor: ActionDescriptor): void {
@@ -78,17 +83,20 @@ function buildActionDescriptorIndex(
   return descriptors;
 }
 
-function validateResolvedAction(descriptor: ActionDescriptor, resolved: ResolvedAction): void {
+function validateResolvedAction(
+  descriptor: ActionDescriptor,
+  resolved: ResolvedAction
+): BrainBuildDiagnostic | undefined {
   if (resolved.descriptor.key !== descriptor.key) {
     throw new Error(
       `linkBrainProgram: resolver returned action '${resolved.descriptor.key}' for descriptor '${descriptor.key}'`
     );
   }
   if (resolved.descriptor.kind !== descriptor.kind) {
-    throw new Error(`linkBrainProgram: action kind mismatch for '${descriptor.key}'`);
+    return invalidArtifact(`Action '${descriptor.key}' kind does not match the registered action.`);
   }
   if (resolved.descriptor.isAsync !== descriptor.isAsync) {
-    throw new Error(`linkBrainProgram: action async flag mismatch for '${descriptor.key}'`);
+    return invalidArtifact(`Action '${descriptor.key}' async flag does not match the registered action.`);
   }
 
   if (resolved.binding === "host") {
@@ -96,55 +104,50 @@ function validateResolvedAction(descriptor: ActionDescriptor, resolved: Resolved
       if (!resolved.execAsync) {
         throw new Error(`linkBrainProgram: async host action '${descriptor.key}' is missing execAsync`);
       }
-      return;
+      return undefined;
     }
     if (!resolved.execSync) {
       throw new Error(`linkBrainProgram: sync host action '${descriptor.key}' is missing execSync`);
     }
-    return;
+    return undefined;
   }
 
   const artifact = resolved.artifact;
   const metadata = resolved.metadata;
   if (metadata.key !== descriptor.key) {
-    throw new Error(`linkBrainProgram: bytecode artifact key mismatch for '${descriptor.key}'`);
+    return invalidArtifact(`Bytecode artifact key does not match action '${descriptor.key}'.`);
   }
   if (metadata.kind !== descriptor.kind) {
-    throw new Error(`linkBrainProgram: bytecode artifact kind mismatch for '${descriptor.key}'`);
+    return invalidArtifact(`Bytecode artifact kind does not match action '${descriptor.key}'.`);
   }
   if (artifact.isAsync !== descriptor.isAsync) {
-    throw new Error(`linkBrainProgram: bytecode artifact async flag mismatch for '${descriptor.key}'`);
+    return invalidArtifact(`Bytecode artifact async flag does not match action '${descriptor.key}'.`);
   }
   if (artifact.entryFuncId < 0 || artifact.entryFuncId >= artifact.functions.size()) {
-    throw new Error(`linkBrainProgram: action '${descriptor.key}' has invalid entryFuncId ${artifact.entryFuncId}`);
+    return invalidArtifact(`Action '${descriptor.key}' has invalid entryFuncId ${artifact.entryFuncId}.`);
   }
   if (
     artifact.activationFuncId !== undefined &&
     (artifact.activationFuncId < 0 || artifact.activationFuncId >= artifact.functions.size())
   ) {
-    throw new Error(
-      `linkBrainProgram: action '${descriptor.key}' has invalid activationFuncId ${artifact.activationFuncId}`
-    );
+    return invalidArtifact(`Action '${descriptor.key}' has invalid activationFuncId ${artifact.activationFuncId}.`);
   }
   if (
     artifact.initializerFuncId !== undefined &&
     (artifact.initializerFuncId < 0 || artifact.initializerFuncId >= artifact.functions.size())
   ) {
-    throw new Error(
-      `linkBrainProgram: action '${descriptor.key}' has invalid initializerFuncId ${artifact.initializerFuncId}`
-    );
+    return invalidArtifact(`Action '${descriptor.key}' has invalid initializerFuncId ${artifact.initializerFuncId}.`);
   }
   if (
     artifact.deactivationFuncId !== undefined &&
     (artifact.deactivationFuncId < 0 || artifact.deactivationFuncId >= artifact.functions.size())
   ) {
-    throw new Error(
-      `linkBrainProgram: action '${descriptor.key}' has invalid deactivationFuncId ${artifact.deactivationFuncId}`
-    );
+    return invalidArtifact(`Action '${descriptor.key}' has invalid deactivationFuncId ${artifact.deactivationFuncId}.`);
   }
   if (artifact.numStateSlots < 0) {
-    throw new Error(`linkBrainProgram: action '${descriptor.key}' has invalid numStateSlots ${artifact.numStateSlots}`);
+    return invalidArtifact(`Action '${descriptor.key}' has invalid numStateSlots ${artifact.numStateSlots}.`);
   }
+  return undefined;
 }
 
 function remapValue(value: Value, funcOffset: number): Value {
@@ -321,7 +324,7 @@ export function linkBrainProgram(
   brainDef: IBrainDef,
   catalogs: ReadonlyList<ITileCatalog>,
   resolver: BrainActionResolver
-): LinkedBrainProgram {
+): BrainBuildResult {
   const descriptorIndex = buildActionDescriptorIndex(brainDef, catalogs);
   const functions = List.empty<FunctionBytecode>();
   const pools: MutableConstantPools = {
@@ -331,6 +334,7 @@ export function linkBrainProgram(
   };
   const variableNames = List.empty<string>();
   const actions = List.empty<ExecutableAction>();
+  const diagnostics = List.empty<BrainBuildDiagnostic>();
 
   for (let i = 0; i < program.functions.size(); i++) {
     functions.push(program.functions.get(i)!);
@@ -352,34 +356,55 @@ export function linkBrainProgram(
     const actionRef = program.actionRefs.get(i)!;
     const descriptor = descriptorIndex.get(actionRef.key);
     if (!descriptor) {
-      throw new Error(`linkBrainProgram: missing action descriptor for '${actionRef.key}'`);
+      diagnostics.push({
+        code: LinkDiagCode.MissingActionDescriptor,
+        severity: "error",
+        message: `Brain references action '${actionRef.key}' with no descriptor in the catalog.`,
+      });
+      continue;
     }
 
     const resolved = resolver.resolveAction(descriptor);
     if (!resolved) {
-      throw new Error(`linkBrainProgram: missing action binding for '${descriptor.key}'`);
+      diagnostics.push({
+        code: LinkDiagCode.MissingActionBinding,
+        severity: "error",
+        message: `Action '${descriptor.key}' could not be resolved in this environment.`,
+      });
+      continue;
     }
 
-    validateResolvedAction(descriptor, resolved);
+    const diagnostic = validateResolvedAction(descriptor, resolved);
+    if (diagnostic) {
+      diagnostics.push(diagnostic);
+      continue;
+    }
     actions.push(toExecutableAction(resolved, functions, pools, variableNames));
+  }
+
+  if (!diagnostics.isEmpty()) {
+    return { diagnostics };
   }
 
   return {
     program: {
-      version: program.version,
-      functions,
-      constantPools: {
-        numbers: pools.numbers,
-        strings: pools.strings,
-        values: pools.values,
+      program: {
+        version: program.version,
+        functions,
+        constantPools: {
+          numbers: pools.numbers,
+          strings: pools.strings,
+          values: pools.values,
+        },
+        variableNames,
+        entryPoint: program.entryPoint,
+        actions,
+        ruleFuncIds: program.ruleFuncIds,
+        ruleAncestors: program.ruleAncestors,
       },
-      variableNames,
-      entryPoint: program.entryPoint,
-      actions,
-      ruleFuncIds: program.ruleFuncIds,
-      ruleAncestors: program.ruleAncestors,
+      ruleIndex: program.ruleIndex,
+      pages: program.pages,
     },
-    ruleIndex: program.ruleIndex,
-    pages: program.pages,
+    diagnostics,
   };
 }

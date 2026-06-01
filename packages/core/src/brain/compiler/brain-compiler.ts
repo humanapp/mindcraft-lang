@@ -14,13 +14,13 @@ import { BYTECODE_VERSION, type FunctionBytecode, type Instr, Op } from "../../r
 import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
 import type { IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog, TileId } from "../interfaces";
 import { ConstantPool } from "./constant-pool";
+import type { BrainBuildDiagnostic, BrainBuildResult } from "./diagnostics";
 import { BytecodeEmitter } from "./emitter";
 import { computeExpectedTypes } from "./expected-types";
 import { computeInferredTypes } from "./inferred-types";
 import { parseBrainTiles } from "./parser";
 import { type CompilationDiag, ExprCompiler } from "./rule-compiler";
-import type { ActuatorExpr, Expr, SensorExpr, TypeEnv, TypeInfo } from "./types";
-import { acceptExprVisitor } from "./types";
+import { type ActuatorExpr, acceptExprVisitor, type Expr, type SensorExpr, type TypeEnv, type TypeInfo } from "./types";
 
 // Manual character-by-character iteration instead of String.replace() for
 // Roblox-TS compatibility -- Roblox-TS doesn't support regex or string.replace.
@@ -156,6 +156,8 @@ export class BrainCompiler {
   private actionIndices: Dict<string, number>;
   /** Counter for unique call-site IDs (shared across all rules for uniqueness) */
   private nextCallSiteIdCounter: { value: number };
+  /** Code-generation diagnostics collected across all compiled rules. */
+  private compileDiags: List<BrainBuildDiagnostic>;
 
   constructor(catalogs: ReadonlyList<ITileCatalog>, conversions: IConversionRegistry) {
     this.constantPool = new ConstantPool();
@@ -172,6 +174,12 @@ export class BrainCompiler {
     this.actionRefs = List.empty();
     this.actionIndices = Dict.empty();
     this.nextCallSiteIdCounter = { value: 1 };
+    this.compileDiags = List.empty();
+  }
+
+  /** Code-generation diagnostics collected during the last {@link compile}. */
+  diagnostics(): ReadonlyList<BrainBuildDiagnostic> {
+    return this.compileDiags;
   }
 
   /**
@@ -194,6 +202,7 @@ export class BrainCompiler {
     this.actionRefs = List.empty();
     this.actionIndices = Dict.empty();
     this.nextCallSiteIdCounter = { value: 0 };
+    this.compileDiags = List.empty();
 
     // First pass: assign function IDs to all rules (depth-first)
     const pageList = brainDef.pages();
@@ -487,6 +496,11 @@ export class BrainCompiler {
 
     // Emit the expression
     acceptExprVisitor(expr, compiler);
+
+    for (let i = 0; i < context.diags.size(); i++) {
+      const diag = context.diags.get(i)!;
+      this.compileDiags.push({ code: diag.code, severity: "error", message: diag.message });
+    }
   }
 }
 
@@ -502,7 +516,8 @@ export function compileBrain(
   brainDef: IBrainDef,
   catalogs: ReadonlyList<ITileCatalog>,
   conversions: IConversionRegistry
-): UnlinkedBrainProgram {
+): BrainBuildResult<UnlinkedBrainProgram> {
   const compiler = new BrainCompiler(catalogs, conversions);
-  return compiler.compile(brainDef);
+  const program = compiler.compile(brainDef);
+  return { program, diagnostics: compiler.diagnostics() };
 }

@@ -1,7 +1,20 @@
 export { BrainCompiler, compileBrain } from "./brain-compiler";
 export { ConstantPool } from "./constant-pool";
-export { CompilationDiagCode, type DiagCode, ParseDiagCode, TypeDiagCode } from "./diag-codes";
+export {
+  type BrainBuildDiagnostic,
+  BrainBuildError,
+  type BrainBuildResult,
+  CompilationDiagCode,
+  type DiagCode,
+  type DiagnosticSeverity,
+  isBrainBuildError,
+  LinkDiagCode,
+  ParseDiagCode,
+  summarizeBrainBuildDiagnostics,
+  TypeDiagCode,
+} from "./diagnostics";
 export { BytecodeEmitter } from "./emitter";
+export { runBrainLinkPipeline } from "./link-brain";
 export { linkBrainProgram } from "./linker";
 export { parseBrainTiles } from "./parser";
 export type { CompilationDiag, CompilationResult } from "./rule-compiler";

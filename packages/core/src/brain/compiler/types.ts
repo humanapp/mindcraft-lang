@@ -18,7 +18,7 @@ import type {
   BrainTileSensorDef,
   BrainTileVariableDef,
 } from "../tiles";
-import type { DiagCode } from "./diag-codes";
+import type { DiagCode } from "./diagnostics";
 
 /**
  * Parse diagnostic (error or warning) with source location.

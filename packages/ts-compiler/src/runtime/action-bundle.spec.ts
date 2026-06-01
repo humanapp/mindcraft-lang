@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment, type HydratedTileMetadataSnapshot } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { type BrainServices, isBrainBuildError } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
@@ -193,7 +193,16 @@ export default Sensor({
     const restored = environment.deserializeBrainJson(json);
     assert.equal(restored.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.tileId, sensorTile!.tileId);
 
-    assert.throws(() => environment.createBrain(restored), /user\.sensor\.probe/);
+    let thrown: unknown;
+    try {
+      environment.createBrain(restored);
+    } catch (err) {
+      thrown = err;
+    }
+    if (!isBrainBuildError(thrown)) {
+      assert.fail("expected a BrainBuildError");
+    }
+    assert.ok(thrown.diagnostics.toArray().some((diag) => diag.message.includes("user.sensor.probe")));
 
     environment.replaceActionBundle(bundle);
 

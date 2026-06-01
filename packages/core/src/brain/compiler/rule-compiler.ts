@@ -10,7 +10,7 @@ import type { Instr } from "../../runtime/bytecode";
 import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
 import type { ConstantPool } from "./constant-pool";
-import { CompilationDiagCode } from "./diag-codes";
+import { CompilationDiagCode } from "./diagnostics";
 import type {
   ActuatorExpr,
   AssignmentExpr,
