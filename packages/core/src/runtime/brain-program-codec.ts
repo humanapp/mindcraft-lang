@@ -1,8 +1,9 @@
+import { Dict } from "../platform/dict";
 import { List } from "../platform/list";
 import { UniqueSet } from "../platform/uniqueset";
 import type { ConstantPools, FunctionBytecode, Instr } from "./bytecode";
 import type { BytecodeExecutableAction, ExecutableAction, HostActionBinding } from "./context";
-import { type ActionDescriptor, type BrainActionArgSlot, type BrainActionCallDef, mkCallDef } from "./function-defs";
+import { type ActionDescriptor, mkCallDef } from "./function-defs";
 import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
 import { dictFromJsonEntries, dictToJsonEntries, listFromJson, listToJson } from "./json-container-codec";
 import type { Program } from "./program";
@@ -43,12 +44,6 @@ export interface BrainProgramFunctionBytecodeJson {
   /** Total local slot count, including parameters. */
   readonly numLocals?: number;
 
-  /** Optional compiler/debug name. */
-  readonly name?: string;
-
-  /** Optional maximum operand stack depth. */
-  readonly maxStackDepth?: number;
-
   /** Optional injected execution context type id. */
   readonly injectCtxTypeId?: string;
 }
@@ -70,8 +65,11 @@ export interface BrainProgramBytecodeExecutableActionJson {
   /** Action binding kind. */
   readonly binding: "bytecode";
 
-  /** Static action metadata. */
-  readonly descriptor: BrainProgramActionDescriptorJson;
+  /** Stable action key identifying the bytecode action. */
+  readonly key: string;
+
+  /** True when the action body is asynchronous; selects ACTION_CALL vs ACTION_CALL_ASYNC dispatch. */
+  readonly isAsync: boolean;
 
   /** Function id for the action body. */
   readonly entryFuncId: number;
@@ -84,9 +82,6 @@ export interface BrainProgramBytecodeExecutableActionJson {
 
   /** Optional page deactivation hook function id. */
   readonly deactivationFuncId?: number;
-
-  /** Number of state slots allocated for the action instance. */
-  readonly numStateSlots: number;
 }
 
 /** JSON-safe representation of a host-bound executable action. */
@@ -105,157 +100,6 @@ export interface BrainProgramHostExecutableActionJson {
 export type BrainProgramExecutableActionJson =
   | BrainProgramHostExecutableActionJson
   | BrainProgramBytecodeExecutableActionJson;
-
-/** JSON-safe representation of a brain action descriptor. */
-export interface BrainProgramActionDescriptorJson {
-  /** Stable action key. */
-  readonly key: string;
-
-  /** Action kind. */
-  readonly kind: "sensor" | "actuator";
-
-  /** Action call grammar and flattened slots. */
-  readonly callDef: BrainProgramActionCallDefJson;
-
-  /** True when the action body is asynchronous. */
-  readonly isAsync: boolean;
-
-  /** Sensor output type id. */
-  readonly outputType?: string;
-}
-
-/** JSON-safe representation of a brain action call definition. */
-export interface BrainProgramActionCallDefJson {
-  /** Original action call grammar tree. */
-  readonly callSpec: BrainProgramActionCallSpecJson;
-
-  /** Flattened argument slots in call order. */
-  readonly argSlots: readonly BrainProgramActionArgSlotJson[];
-}
-
-/** JSON-safe representation of one flattened action argument slot. */
-export interface BrainProgramActionArgSlotJson {
-  /** Slot index used by compiled call sites. */
-  readonly slotId: number;
-
-  /** Source argument spec. */
-  readonly argSpec: BrainProgramActionCallArgSpecJson;
-
-  /** Optional choice-group identifier. */
-  readonly choiceGroup?: number;
-}
-
-/** JSON-safe representation of an action call grammar node. */
-export type BrainProgramActionCallSpecJson =
-  | BrainProgramActionCallArgSpecJson
-  | BrainProgramActionCallSeqSpecJson
-  | BrainProgramActionCallChoiceSpecJson
-  | BrainProgramActionCallOptionalSpecJson
-  | BrainProgramActionCallRepeatSpecJson
-  | BrainProgramActionCallBagSpecJson
-  | BrainProgramActionCallConditionalSpecJson;
-
-/** JSON-safe representation of one action argument grammar node. */
-export interface BrainProgramActionCallArgSpecJson {
-  /** Grammar node type. */
-  readonly type: "arg";
-
-  /** Optional display or binding name. */
-  readonly name?: string;
-
-  /** Tile id consumed by this argument. */
-  readonly tileId: string;
-
-  /** True when this argument is required. */
-  readonly required?: boolean;
-
-  /** True when this argument has no visible slot name. */
-  readonly anonymous?: boolean;
-}
-
-/** JSON-safe representation of an ordered action grammar sequence. */
-export interface BrainProgramActionCallSeqSpecJson {
-  /** Grammar node type. */
-  readonly type: "seq";
-
-  /** Optional display or binding name. */
-  readonly name?: string;
-
-  /** Ordered child grammar nodes. */
-  readonly items: readonly BrainProgramActionCallSpecJson[];
-}
-
-/** JSON-safe representation of a choice action grammar node. */
-export interface BrainProgramActionCallChoiceSpecJson {
-  /** Grammar node type. */
-  readonly type: "choice";
-
-  /** Optional display or binding name. */
-  readonly name?: string;
-
-  /** Available grammar options. */
-  readonly options: readonly BrainProgramActionCallSpecJson[];
-}
-
-/** JSON-safe representation of an optional action grammar node. */
-export interface BrainProgramActionCallOptionalSpecJson {
-  /** Grammar node type. */
-  readonly type: "optional";
-
-  /** Optional display or binding name. */
-  readonly name?: string;
-
-  /** Optional child grammar node. */
-  readonly item: BrainProgramActionCallSpecJson;
-}
-
-/** JSON-safe representation of a repeated action grammar node. */
-export interface BrainProgramActionCallRepeatSpecJson {
-  /** Grammar node type. */
-  readonly type: "repeat";
-
-  /** Optional display or binding name. */
-  readonly name?: string;
-
-  /** Repeated child grammar node. */
-  readonly item: BrainProgramActionCallSpecJson;
-
-  /** Minimum repetition count. */
-  readonly min?: number;
-
-  /** Maximum repetition count. */
-  readonly max?: number;
-}
-
-/** JSON-safe representation of an unordered action grammar bag. */
-export interface BrainProgramActionCallBagSpecJson {
-  /** Grammar node type. */
-  readonly type: "bag";
-
-  /** Optional display or binding name. */
-  readonly name?: string;
-
-  /** Unordered child grammar nodes. */
-  readonly items: readonly BrainProgramActionCallSpecJson[];
-}
-
-/** JSON-safe representation of a conditional action grammar node. */
-export interface BrainProgramActionCallConditionalSpecJson {
-  /** Grammar node type. */
-  readonly type: "conditional";
-
-  /** Optional display or binding name. */
-  readonly name?: string;
-
-  /** Named grammar node used as the condition. */
-  readonly condition: string;
-
-  /** Child grammar node used when the condition is true. */
-  readonly then: BrainProgramActionCallSpecJson;
-
-  /** Child grammar node used when the condition is false. */
-  readonly else?: BrainProgramActionCallSpecJson;
-}
 
 /** JSON-safe representation of one rule ancestor edge. */
 export interface BrainProgramRuleAncestorJsonEntry {
@@ -293,15 +137,6 @@ export interface BrainProgramJson {
   readonly ruleAncestors?: readonly BrainProgramRuleAncestorJsonEntry[];
 }
 
-/** JSON-safe representation of one linked brain rule-index entry. */
-export interface LinkedBrainProgramRuleIndexJsonEntry {
-  /** Rule path inside the brain. */
-  readonly path: string;
-
-  /** Function id for the rule body. */
-  readonly functionId: number;
-}
-
 /** JSON-safe representation of one action call site entry. */
 export interface LinkedBrainProgramActionCallSiteJsonEntry {
   /** Action slot in the linked program. */
@@ -334,9 +169,6 @@ export interface LinkedBrainProgramJson {
   /** Linked VM program. */
   readonly program: BrainProgramJson;
 
-  /** Rule paths mapped to linked function ids. */
-  readonly ruleIndex: readonly LinkedBrainProgramRuleIndexJsonEntry[];
-
   /** Page metadata used by the brain runtime. */
   readonly pages: readonly LinkedBrainProgramPageMetadataJson[];
 }
@@ -349,7 +181,9 @@ export interface LinkedBrainProgramJson {
 export function linkedBrainProgramFromJson(json: LinkedBrainProgramJson): LinkedBrainProgram {
   return {
     program: brainProgramFromJson(json.program),
-    ruleIndex: dictFromJsonEntries(json.ruleIndex, (entry) => [entry.path, entry.functionId]),
+    // ruleIndex is not serialized (no load/execute reader); it is rebuilt on the authoring side
+    // from the live compile result, so a deserialized program starts with an empty map.
+    ruleIndex: Dict.empty<string, number>(),
     pages: listFromJson(json.pages, pageMetadataFromJson),
   };
 }
@@ -390,12 +224,6 @@ function functionBytecodeFromJson(json: BrainProgramFunctionBytecodeJson): Funct
   if (json.numLocals !== undefined) {
     fn.numLocals = json.numLocals;
   }
-  if (json.name !== undefined) {
-    fn.name = json.name;
-  }
-  if (json.maxStackDepth !== undefined) {
-    fn.maxStackDepth = json.maxStackDepth;
-  }
   if (json.injectCtxTypeId !== undefined) {
     fn.injectCtxTypeId = json.injectCtxTypeId;
   }
@@ -433,27 +261,35 @@ function executableActionFromJson(json: BrainProgramExecutableActionJson): Execu
 }
 
 /**
+ * Builds a placeholder action descriptor from the fields a lean `.mcprogram` records. The call
+ * grammar, kind, and output type are not serialized; the `kind` and `callDef` here are inert
+ * placeholders the runtime never reads. Host actions are rebound to their environment descriptor by
+ * key at load; bytecode actions are dispatched by slot and read only `key`/`isAsync` off the
+ * descriptor.
+ */
+function placeholderActionDescriptor(key: string, isAsync: boolean): ActionDescriptor {
+  return { key, kind: "sensor", callDef: mkCallDef({ type: "bag", items: [] }), isAsync };
+}
+
+/**
  * Builds an unresolved host action binding from a serialized action key.
  *
- * A serialized `.mcprogram` records a host action as its descriptor key alone; the live
- * functions and full descriptor are environment builtins. The returned binding is a
- * placeholder: only `descriptor.key` is meaningful, it carries no functions, and a loader
- * must resolve it against the runtime environment by key before the program executes. The
- * remaining descriptor fields are inert placeholders and are never read on this binding.
+ * A serialized `.mcprogram` records a host action as its descriptor key alone; the live functions
+ * and full descriptor are environment builtins. The returned binding is a placeholder: only
+ * `descriptor.key` is meaningful, it carries no functions, and a loader must resolve it against the
+ * runtime environment by key before the program executes.
  */
 function unresolvedHostActionBinding(key: string): HostActionBinding {
-  return {
-    binding: "host",
-    descriptor: { key, kind: "sensor", callDef: mkCallDef({ type: "bag", items: [] }), isAsync: false },
-  };
+  return { binding: "host", descriptor: placeholderActionDescriptor(key, false) };
 }
 
 function bytecodeExecutableActionFromJson(json: BrainProgramBytecodeExecutableActionJson): BytecodeExecutableAction {
   const action: BytecodeExecutableAction = {
     binding: "bytecode",
-    descriptor: actionDescriptorFromJson(json.descriptor),
+    descriptor: placeholderActionDescriptor(json.key, json.isAsync),
     entryFuncId: json.entryFuncId,
-    numStateSlots: json.numStateSlots,
+    // numStateSlots is not serialized; the callsite store allocates state slots lazily.
+    numStateSlots: 0,
   };
 
   if (json.initializerFuncId !== undefined) {
@@ -467,43 +303,6 @@ function bytecodeExecutableActionFromJson(json: BrainProgramBytecodeExecutableAc
   }
 
   return action;
-}
-
-function actionDescriptorFromJson(json: BrainProgramActionDescriptorJson): ActionDescriptor {
-  const descriptor: ActionDescriptor = {
-    key: json.key,
-    kind: json.kind,
-    callDef: actionCallDefFromJson(json.callDef),
-    isAsync: json.isAsync,
-  };
-
-  if (json.outputType !== undefined) {
-    descriptor.outputType = json.outputType;
-  }
-
-  return descriptor;
-}
-
-function actionCallDefFromJson(json: BrainProgramActionCallDefJson): BrainActionCallDef {
-  return {
-    callSpec: json.callSpec,
-    argSlots: listFromJson(json.argSlots, actionArgSlotFromJson).asReadonly(),
-  };
-}
-
-function actionArgSlotFromJson(json: BrainProgramActionArgSlotJson): BrainActionArgSlot {
-  if (json.choiceGroup !== undefined) {
-    return {
-      slotId: json.slotId,
-      argSpec: json.argSpec,
-      choiceGroup: json.choiceGroup,
-    };
-  }
-
-  return {
-    slotId: json.slotId,
-    argSpec: json.argSpec,
-  };
 }
 
 function pageMetadataFromJson(json: LinkedBrainProgramPageMetadataJson): PageMetadata {
@@ -531,7 +330,6 @@ function actionCallSiteFromJson(json: LinkedBrainProgramActionCallSiteJsonEntry)
 export function linkedBrainProgramToJson(program: LinkedBrainProgram): LinkedBrainProgramJson {
   return {
     program: brainProgramToJson(program.program),
-    ruleIndex: dictToJsonEntries(program.ruleIndex, (path, functionId) => ({ path, functionId })),
     pages: listToJson(program.pages, pageMetadataToJson),
   };
 }
@@ -561,8 +359,6 @@ function functionBytecodeToJson(fn: FunctionBytecode): BrainProgramFunctionBytec
     code: listToJson(fn.code, instructionToJson),
     numParams: fn.numParams,
     ...(fn.numLocals !== undefined ? { numLocals: fn.numLocals } : {}),
-    ...(fn.name !== undefined ? { name: fn.name } : {}),
-    ...(fn.maxStackDepth !== undefined ? { maxStackDepth: fn.maxStackDepth } : {}),
     ...(fn.injectCtxTypeId !== undefined ? { injectCtxTypeId: fn.injectCtxTypeId } : {}),
   };
 }
@@ -594,37 +390,12 @@ function executableActionToJson(action: ExecutableAction): BrainProgramExecutabl
 function bytecodeExecutableActionToJson(action: BytecodeExecutableAction): BrainProgramBytecodeExecutableActionJson {
   return {
     binding: "bytecode",
-    descriptor: actionDescriptorToJson(action.descriptor),
+    key: action.descriptor.key,
+    isAsync: action.descriptor.isAsync,
     entryFuncId: action.entryFuncId,
-    numStateSlots: action.numStateSlots,
     ...(action.initializerFuncId !== undefined ? { initializerFuncId: action.initializerFuncId } : {}),
     ...(action.activationFuncId !== undefined ? { activationFuncId: action.activationFuncId } : {}),
     ...(action.deactivationFuncId !== undefined ? { deactivationFuncId: action.deactivationFuncId } : {}),
-  };
-}
-
-function actionDescriptorToJson(descriptor: ActionDescriptor): BrainProgramActionDescriptorJson {
-  return {
-    key: descriptor.key,
-    kind: descriptor.kind,
-    callDef: actionCallDefToJson(descriptor.callDef),
-    isAsync: descriptor.isAsync,
-    ...(descriptor.outputType !== undefined ? { outputType: descriptor.outputType } : {}),
-  };
-}
-
-function actionCallDefToJson(callDef: BrainActionCallDef): BrainProgramActionCallDefJson {
-  return {
-    callSpec: callDef.callSpec,
-    argSlots: listToJson(callDef.argSlots, actionArgSlotToJson),
-  };
-}
-
-function actionArgSlotToJson(slot: BrainActionArgSlot): BrainProgramActionArgSlotJson {
-  return {
-    slotId: slot.slotId,
-    argSpec: slot.argSpec,
-    ...(slot.choiceGroup !== undefined ? { choiceGroup: slot.choiceGroup } : {}),
   };
 }
 

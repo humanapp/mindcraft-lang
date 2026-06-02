@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { Dict, List } from "@mindcraft-lang/core";
 import {
   brainValueFromJson,
   brainValueToJson,
   ErrorCode,
   FALSE_VALUE,
+  type LinkedBrainProgram,
   type LinkedBrainProgramJson,
   linkedBrainProgramFromJson,
   linkedBrainProgramToJson,
+  mkCallDef,
   mkClosedStructValue,
   mkFunctionValue,
   mkListValue,
@@ -43,23 +45,14 @@ describe("linked brain program JSON payload", () => {
         actions: [
           {
             binding: "bytecode",
-            descriptor: {
-              key: "set-display-pixel",
-              kind: "actuator",
-              callDef: {
-                callSpec: { type: "arg", tileId: "brightness" },
-                argSlots: [{ slotId: 0, argSpec: { type: "arg", tileId: "brightness" } }],
-              },
-              isAsync: false,
-            },
+            key: "set-display-pixel",
+            isAsync: false,
             entryFuncId: 0,
-            numStateSlots: 0,
           },
         ],
         ruleFuncIds: [0],
         ruleAncestors: [],
       },
-      ruleIndex: [{ path: "page-1/0", functionId: 0 }],
       pages: [
         {
           pageIndex: 0,
@@ -115,11 +108,11 @@ describe("brainValueToJson", () => {
 });
 
 describe("linkedBrainProgramToJson", () => {
-  it("round-trips a linked program payload with host and bytecode actions", () => {
+  it("round-trips a lean linked program payload with host and bytecode actions", () => {
     const payload = {
       program: {
         version: 1,
-        functions: [{ code: [{ op: 0, a: 0 }], numParams: 0, name: "rule" }],
+        functions: [{ code: [{ op: 0, a: 0 }], numParams: 0 }],
         constantPools: {
           numbers: [42],
           strings: ["message"],
@@ -133,23 +126,14 @@ describe("linkedBrainProgramToJson", () => {
           },
           {
             binding: "bytecode",
-            descriptor: {
-              key: "set-display-pixel",
-              kind: "actuator",
-              callDef: {
-                callSpec: { type: "arg", tileId: "brightness" },
-                argSlots: [{ slotId: 0, argSpec: { type: "arg", tileId: "brightness" } }],
-              },
-              isAsync: false,
-            },
+            key: "set-display-pixel",
+            isAsync: false,
             entryFuncId: 0,
-            numStateSlots: 0,
           },
         ],
         ruleFuncIds: [0],
         ruleAncestors: [{ ruleFuncId: 2, parentRuleFuncId: 0 }],
       },
-      ruleIndex: [{ path: "page-1/0", functionId: 0 }],
       pages: [
         {
           pageIndex: 0,
@@ -162,6 +146,58 @@ describe("linkedBrainProgramToJson", () => {
     } satisfies LinkedBrainProgramJson;
 
     assert.deepEqual(linkedBrainProgramToJson(linkedBrainProgramFromJson(payload)), payload);
+  });
+});
+
+describe("linkedBrainProgramToJson lean payload", () => {
+  it("drops non-execution-essential fields from the serialized payload", () => {
+    const program: LinkedBrainProgram = {
+      program: {
+        version: 1,
+        functions: List.from([{ code: List.empty(), numParams: 0, name: "rule", maxStackDepth: 3 }]),
+        constantPools: { numbers: List.empty(), strings: List.empty(), values: List.empty() },
+        variableNames: List.empty(),
+        actions: List.from([
+          {
+            binding: "bytecode",
+            descriptor: {
+              key: "set-display-pixel",
+              kind: "actuator",
+              callDef: mkCallDef({ type: "bag", items: [] }),
+              isAsync: false,
+            },
+            entryFuncId: 0,
+            numStateSlots: 4,
+          },
+        ]),
+      },
+      ruleIndex: new Dict([["page-1/0", 0]]),
+      pages: List.from([
+        {
+          pageIndex: 0,
+          pageId: "page-1-id",
+          pageName: "page-1",
+          rootRuleFuncIds: List.from([0]),
+          actionCallSites: List.empty(),
+        },
+      ]),
+    };
+
+    const json = linkedBrainProgramToJson(program);
+
+    const fn = json.program.functions[0] as unknown as Record<string, unknown>;
+    assert.equal(fn.name, undefined);
+    assert.equal(fn.maxStackDepth, undefined);
+
+    const action = json.program.actions?.[0] as unknown as Record<string, unknown>;
+    assert.equal(action?.binding, "bytecode");
+    assert.equal(action?.key, "set-display-pixel");
+    assert.equal(action?.isAsync, false);
+    assert.equal(action?.entryFuncId, 0);
+    assert.equal(action?.descriptor, undefined);
+    assert.equal(action?.numStateSlots, undefined);
+
+    assert.equal((json as unknown as Record<string, unknown>).ruleIndex, undefined);
   });
 });
 
@@ -208,7 +244,6 @@ describe("linkedBrainProgramFromJson", () => {
           {
             code: [{ op: 0, a: 0 }],
             numParams: 0,
-            name: "rule",
           },
         ],
         constantPools: {
@@ -220,23 +255,14 @@ describe("linkedBrainProgramFromJson", () => {
         actions: [
           {
             binding: "bytecode",
-            descriptor: {
-              key: "set-display-pixel",
-              kind: "actuator",
-              callDef: {
-                callSpec: { type: "arg", tileId: "brightness" },
-                argSlots: [{ slotId: 0, argSpec: { type: "arg", tileId: "brightness" } }],
-              },
-              isAsync: false,
-            },
+            key: "set-display-pixel",
+            isAsync: false,
             entryFuncId: 0,
-            numStateSlots: 0,
           },
         ],
         ruleFuncIds: [0],
         ruleAncestors: [{ ruleFuncId: 2, parentRuleFuncId: 0 }],
       },
-      ruleIndex: [{ path: "page-1/0", functionId: 0 }],
       pages: [
         {
           pageIndex: 0,
@@ -250,14 +276,24 @@ describe("linkedBrainProgramFromJson", () => {
 
     assert.equal(linked.program.functions.size(), 1);
     assert.equal(linked.program.functions.get(0)?.code.size(), 1);
+    assert.equal(linked.program.functions.get(0)?.name, undefined);
     assert.equal(linked.program.constantPools.numbers.get(0), 42);
     assert.equal(linked.program.constantPools.strings.get(0), "message");
     assert.equal(linked.program.constantPools.values.get(0), VOID_VALUE);
     assert.equal(linked.program.variableNames.get(0), "score");
-    assert.equal(linked.program.actions?.get(0)?.descriptor.callDef.argSlots.size(), 1);
+
+    const action = linked.program.actions?.get(0);
+    assert.equal(action?.binding, "bytecode");
+    if (action?.binding !== "bytecode") assert.fail("expected a bytecode action");
+    assert.equal(action.descriptor.key, "set-display-pixel");
+    assert.equal(action.descriptor.isAsync, false);
+    assert.equal(action.descriptor.callDef.argSlots.size(), 0);
+    assert.equal(action.entryFuncId, 0);
+    assert.equal(action.numStateSlots, 0);
+
     assert.equal(linked.program.ruleFuncIds?.has(0), true);
     assert.equal(linked.program.ruleAncestors?.get(2), 0);
-    assert.equal(linked.ruleIndex.get("page-1/0"), 0);
+    assert.equal(linked.ruleIndex.size(), 0);
     assert.equal(linked.pages.get(0)?.rootRuleFuncIds.get(0), 0);
     assert.equal(linked.pages.get(0)?.actionCallSites.get(0)?.callSiteId, 1);
   });
