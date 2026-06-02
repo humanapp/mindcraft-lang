@@ -77,12 +77,13 @@ export class BrainTileVariableDef extends BrainTileDefBase {
 export function createVariableFactoryTileDef(
   factoryId: string,
   producedDataType: TypeId,
-  opts: BrainTileDefCreateOptions = {}
+  opts: BrainTileDefCreateOptions = {},
+  services?: BrainServices
 ): BrainTileFactoryDef {
   return new BrainTileFactoryDef(
     mkVariableFactoryTileId(factoryId),
     factoryId,
-    manufactureVarTileDef,
+    (factoryTileDef, manufactureOpts) => manufactureVarTileDef(factoryTileDef, manufactureOpts, services),
     producedDataType,
     opts
   );
@@ -95,14 +96,21 @@ export function registerVariableFactoryTileDef(
   opts: BrainTileDefCreateOptions = {},
   services: BrainServices
 ) {
-  services.edit.tiles.registerTileDef(createVariableFactoryTileDef(factoryId, producedDataType, opts));
+  services.edit.tiles.registerTileDef(createVariableFactoryTileDef(factoryId, producedDataType, opts, services));
 }
 
 function manufactureVarTileDef(
   factoryTileDef: BrainTileFactoryDef,
-  opts: { [key: string]: unknown }
+  opts: { [key: string]: unknown },
+  services?: BrainServices
 ): BrainTileVariableDef {
-  const uniqueId = SU.mkid();
+  let uniqueId: string;
+  if (services) {
+    const rng = services.app.rng;
+    uniqueId = SU.mkid(16, () => rng.next());
+  } else {
+    uniqueId = SU.mkid();
+  }
   const varName: string = (opts.name ? opts.name : uniqueId) as string;
   const varType: TypeId = (factoryTileDef.producedDataType as TypeId) || CoreTypeIds.Unknown;
   const tileDef = new BrainTileVariableDef(mkVariableTileId(uniqueId), varName, varType, uniqueId);

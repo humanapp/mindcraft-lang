@@ -1,16 +1,21 @@
 import { List } from "../platform/list";
 import { UniqueSet } from "../platform/uniqueset";
 import type { ConstantPools, FunctionBytecode, Instr } from "./bytecode";
-import type { BytecodeExecutableAction } from "./context";
+import type { BytecodeExecutableAction, ExecutableAction } from "./context";
 import type { ActionDescriptor, BrainActionArgSlot, BrainActionCallDef } from "./function-defs";
 import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
-import { dictFromJsonEntries, listFromJson } from "./json-container-codec";
+import { dictFromJsonEntries, dictToJsonEntries, listFromJson, listToJson } from "./json-container-codec";
 import type { Program } from "./program";
 import type { BrainProgramValueJson } from "./value-codec";
-import { brainValueFromJson } from "./value-codec";
+import { brainValueFromJson, brainValueToJson } from "./value-codec";
 
-export type { BrainProgramJsonPrimitive, BrainProgramJsonValue, BrainProgramValueJson } from "./value-codec";
-export { brainValueFromJson } from "./value-codec";
+export type {
+  BrainProgramJsonObject,
+  BrainProgramJsonPrimitive,
+  BrainProgramJsonValue,
+  BrainProgramValueJson,
+} from "./value-codec";
+export { brainValueFromJson, brainValueToJson } from "./value-codec";
 
 /** JSON-safe representation of one VM instruction. */
 export interface BrainProgramInstructionJson {
@@ -83,6 +88,20 @@ export interface BrainProgramBytecodeExecutableActionJson {
   /** Number of state slots allocated for the action instance. */
   readonly numStateSlots: number;
 }
+
+/** JSON-safe representation of a host-bound executable action. */
+export interface BrainProgramHostExecutableActionJson {
+  /** Action binding kind. */
+  readonly binding: "host";
+
+  /** Static action metadata used to rebind the host function from the environment at load. */
+  readonly descriptor: BrainProgramActionDescriptorJson;
+}
+
+/** JSON-safe representation of one linked executable action binding. */
+export type BrainProgramExecutableActionJson =
+  | BrainProgramHostExecutableActionJson
+  | BrainProgramBytecodeExecutableActionJson;
 
 /** JSON-safe representation of a brain action descriptor. */
 export interface BrainProgramActionDescriptorJson {
@@ -261,8 +280,8 @@ export interface BrainProgramJson {
   /** Optional entry function id. */
   readonly entryPoint?: number;
 
-  /** Bytecode-backed executable actions. */
-  readonly actions?: readonly BrainProgramBytecodeExecutableActionJson[];
+  /** Linked executable action bindings (host-bound or bytecode-backed). */
+  readonly actions?: readonly BrainProgramExecutableActionJson[];
 
   /** Function ids that are brain rule entries. */
   readonly ruleFuncIds?: readonly number[];
@@ -350,7 +369,7 @@ function brainProgramFromJson(json: BrainProgramJson): Program {
     program.entryPoint = json.entryPoint;
   }
   if (json.actions !== undefined) {
-    program.actions = listFromJson(json.actions, bytecodeExecutableActionFromJson);
+    program.actions = listFromJson(json.actions, executableActionFromJson);
   }
   if (json.ruleFuncIds !== undefined) {
     program.ruleFuncIds = new UniqueSet(json.ruleFuncIds);
@@ -407,6 +426,13 @@ function constantPoolsFromJson(json: BrainProgramConstantPoolsJson): ConstantPoo
     strings: List.from(json.strings),
     values: listFromJson(json.values, brainValueFromJson),
   };
+}
+
+function executableActionFromJson(json: BrainProgramExecutableActionJson): ExecutableAction {
+  if (json.binding === "host") {
+    return { binding: "host", descriptor: actionDescriptorFromJson(json.descriptor) };
+  }
+  return bytecodeExecutableActionFromJson(json);
 }
 
 function bytecodeExecutableActionFromJson(json: BrainProgramBytecodeExecutableActionJson): BytecodeExecutableAction {
@@ -483,5 +509,129 @@ function actionCallSiteFromJson(json: LinkedBrainProgramActionCallSiteJsonEntry)
   return {
     actionSlot: json.actionSlot,
     callSiteId: json.callSiteId,
+  };
+}
+
+/**
+ * Converts a runtime linked brain program into its JSON-safe payload.
+ *
+ * @param program - Linked brain program to serialize.
+ */
+export function linkedBrainProgramToJson(program: LinkedBrainProgram): LinkedBrainProgramJson {
+  return {
+    program: brainProgramToJson(program.program),
+    ruleIndex: dictToJsonEntries(program.ruleIndex, (path, functionId) => ({ path, functionId })),
+    pages: listToJson(program.pages, pageMetadataToJson),
+  };
+}
+
+function brainProgramToJson(program: Program): BrainProgramJson {
+  return {
+    version: program.version,
+    functions: listToJson(program.functions, functionBytecodeToJson),
+    constantPools: constantPoolsToJson(program.constantPools),
+    variableNames: program.variableNames.toArray(),
+    ...(program.entryPoint !== undefined ? { entryPoint: program.entryPoint } : {}),
+    ...(program.actions !== undefined ? { actions: listToJson(program.actions, executableActionToJson) } : {}),
+    ...(program.ruleFuncIds !== undefined ? { ruleFuncIds: program.ruleFuncIds.toArray() } : {}),
+    ...(program.ruleAncestors !== undefined
+      ? {
+          ruleAncestors: dictToJsonEntries(program.ruleAncestors, (ruleFuncId, parentRuleFuncId) => ({
+            ruleFuncId,
+            parentRuleFuncId,
+          })),
+        }
+      : {}),
+  };
+}
+
+function functionBytecodeToJson(fn: FunctionBytecode): BrainProgramFunctionBytecodeJson {
+  return {
+    code: listToJson(fn.code, instructionToJson),
+    numParams: fn.numParams,
+    ...(fn.numLocals !== undefined ? { numLocals: fn.numLocals } : {}),
+    ...(fn.name !== undefined ? { name: fn.name } : {}),
+    ...(fn.maxStackDepth !== undefined ? { maxStackDepth: fn.maxStackDepth } : {}),
+    ...(fn.injectCtxTypeId !== undefined ? { injectCtxTypeId: fn.injectCtxTypeId } : {}),
+  };
+}
+
+function instructionToJson(instruction: Instr): BrainProgramInstructionJson {
+  return {
+    op: instruction.op,
+    ...(instruction.a !== undefined ? { a: instruction.a } : {}),
+    ...(instruction.b !== undefined ? { b: instruction.b } : {}),
+    ...(instruction.c !== undefined ? { c: instruction.c } : {}),
+  };
+}
+
+function constantPoolsToJson(pools: ConstantPools): BrainProgramConstantPoolsJson {
+  return {
+    numbers: pools.numbers.toArray(),
+    strings: pools.strings.toArray(),
+    values: listToJson(pools.values, brainValueToJson),
+  };
+}
+
+function executableActionToJson(action: ExecutableAction): BrainProgramExecutableActionJson {
+  if (action.binding === "host") {
+    return { binding: "host", descriptor: actionDescriptorToJson(action.descriptor) };
+  }
+  return bytecodeExecutableActionToJson(action);
+}
+
+function bytecodeExecutableActionToJson(action: BytecodeExecutableAction): BrainProgramBytecodeExecutableActionJson {
+  return {
+    binding: "bytecode",
+    descriptor: actionDescriptorToJson(action.descriptor),
+    entryFuncId: action.entryFuncId,
+    numStateSlots: action.numStateSlots,
+    ...(action.initializerFuncId !== undefined ? { initializerFuncId: action.initializerFuncId } : {}),
+    ...(action.activationFuncId !== undefined ? { activationFuncId: action.activationFuncId } : {}),
+    ...(action.deactivationFuncId !== undefined ? { deactivationFuncId: action.deactivationFuncId } : {}),
+  };
+}
+
+function actionDescriptorToJson(descriptor: ActionDescriptor): BrainProgramActionDescriptorJson {
+  return {
+    key: descriptor.key,
+    kind: descriptor.kind,
+    callDef: actionCallDefToJson(descriptor.callDef),
+    isAsync: descriptor.isAsync,
+    ...(descriptor.outputType !== undefined ? { outputType: descriptor.outputType } : {}),
+  };
+}
+
+function actionCallDefToJson(callDef: BrainActionCallDef): BrainProgramActionCallDefJson {
+  return {
+    callSpec: callDef.callSpec,
+    argSlots: listToJson(callDef.argSlots, actionArgSlotToJson),
+  };
+}
+
+function actionArgSlotToJson(slot: BrainActionArgSlot): BrainProgramActionArgSlotJson {
+  return {
+    slotId: slot.slotId,
+    argSpec: slot.argSpec,
+    ...(slot.choiceGroup !== undefined ? { choiceGroup: slot.choiceGroup } : {}),
+  };
+}
+
+function pageMetadataToJson(page: PageMetadata): LinkedBrainProgramPageMetadataJson {
+  return {
+    pageIndex: page.pageIndex,
+    pageId: page.pageId,
+    pageName: page.pageName,
+    rootRuleFuncIds: page.rootRuleFuncIds.toArray(),
+    actionCallSites: listToJson(page.actionCallSites, actionCallSiteToJson),
+    sensors: page.sensors.toArray(),
+    actuators: page.actuators.toArray(),
+  };
+}
+
+function actionCallSiteToJson(entry: ActionCallSiteEntry): LinkedBrainProgramActionCallSiteJsonEntry {
+  return {
+    actionSlot: entry.actionSlot,
+    callSiteId: entry.callSiteId,
   };
 }

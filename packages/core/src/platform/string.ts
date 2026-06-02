@@ -48,10 +48,13 @@ export namespace StringUtils {
   export declare function fromCharCode(...codes: number[]): string;
 
   /**
-   * Generates a UUID-like string identifier
+   * Generates a UUID-like string identifier.
+   * @param len Identifier length in characters (default 16).
+   * @param random Source of [0, 1) random values (default platform RNG). Pass a
+   *   seeded source to produce reproducible identifiers.
    * @returns A UUID-like string
    */
-  export declare function mkid(len?: number): string;
+  export declare function mkid(len?: number, random?: () => number): string;
 
   /**
    * Converts a value to its string representation

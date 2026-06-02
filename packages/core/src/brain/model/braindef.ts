@@ -196,8 +196,12 @@ export class BrainDef implements IBrainDef {
     return new Brain(this, this.services_);
   }
 
+  private mintPageId_(): string {
+    return SU.mkid(16, () => this.services_.app.rng.next());
+  }
+
   appendNewPage(): OpResult<{ page: BrainPageDef; index: number }> {
-    const page = new BrainPageDef();
+    const page = new BrainPageDef(this.mintPageId_());
     const addPageResult = this.addPage(page);
     if (!addPageResult.success) {
       return opFailure(BrainDefWarningCode.MaxPagesExceeded);
@@ -251,7 +255,7 @@ export class BrainDef implements IBrainDef {
   }
 
   insertNewPageAtIndex(index: number): OpResult<{ page: BrainPageDef; index: number }> {
-    const page = new BrainPageDef();
+    const page = new BrainPageDef(this.mintPageId_());
     // Add a blank rule to the new page
     page.appendNewRule();
     return this.insertPageAtIndex(index, page);

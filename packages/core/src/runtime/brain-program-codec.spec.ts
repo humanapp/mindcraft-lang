@@ -1,10 +1,25 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { List } from "@mindcraft-lang/core";
 import {
   brainValueFromJson,
+  brainValueToJson,
+  ErrorCode,
+  FALSE_VALUE,
   type LinkedBrainProgramJson,
   linkedBrainProgramFromJson,
+  linkedBrainProgramToJson,
+  mkClosedStructValue,
+  mkFunctionValue,
+  mkListValue,
+  mkNumberValue,
+  mkStringValue,
   NativeType,
+  NIL_VALUE,
+  TRUE_VALUE,
+  UNKNOWN_VALUE,
+  type Value,
+  ValueDict,
   VOID_VALUE,
 } from "@mindcraft-lang/core/runtime";
 
@@ -61,6 +76,105 @@ describe("linked brain program JSON payload", () => {
     assert.equal(payload.program.functions[0]?.code[0]?.op, 0);
     assert.equal(payload.program.actions?.[0]?.binding, "bytecode");
     assert.equal(payload.pages[0]?.rootRuleFuncIds[0], 0);
+  });
+});
+
+describe("brainValueToJson", () => {
+  it("round-trips every runtime value kind through JSON", () => {
+    const values: Value[] = [
+      UNKNOWN_VALUE,
+      VOID_VALUE,
+      NIL_VALUE,
+      TRUE_VALUE,
+      FALSE_VALUE,
+      mkNumberValue(42),
+      mkStringValue("hi"),
+      { t: NativeType.Enum, typeId: "Color", v: "Red" },
+      mkListValue("list:<number>", List.from([mkNumberValue(1), mkNumberValue(2)])),
+      { t: NativeType.Map, typeId: "map:<string,string>", v: new ValueDict([["k", mkStringValue("v")]]) },
+      mkClosedStructValue("Point", List.from([mkNumberValue(1), mkNumberValue(2)])),
+      mkFunctionValue(3, List.from([TRUE_VALUE])),
+      mkFunctionValue(4),
+      { t: "handle", id: 7 },
+      { t: "err", e: { code: ErrorCode.HostError, message: "boom" } },
+      {
+        t: "err",
+        e: {
+          code: ErrorCode.Timeout,
+          message: "late",
+          detail: { reason: "x" },
+          site: { funcId: 1, pc: 2 },
+          stackTrace: List.from(["a", "b"]),
+        },
+      },
+    ];
+
+    for (const value of values) {
+      const json = brainValueToJson(value);
+      assert.deepEqual(brainValueToJson(brainValueFromJson(json)), json);
+    }
+  });
+});
+
+describe("linkedBrainProgramToJson", () => {
+  it("round-trips a linked program payload with host and bytecode actions", () => {
+    const payload = {
+      program: {
+        version: 1,
+        functions: [{ code: [{ op: 0, a: 0 }], numParams: 0, name: "rule" }],
+        constantPools: {
+          numbers: [42],
+          strings: ["message"],
+          values: [{ t: NativeType.Void }],
+        },
+        variableNames: ["score"],
+        actions: [
+          {
+            binding: "host",
+            descriptor: {
+              key: "button-a",
+              kind: "sensor",
+              callDef: {
+                callSpec: { type: "bag", items: [] },
+                argSlots: [],
+              },
+              isAsync: false,
+              outputType: "Boolean",
+            },
+          },
+          {
+            binding: "bytecode",
+            descriptor: {
+              key: "set-display-pixel",
+              kind: "actuator",
+              callDef: {
+                callSpec: { type: "arg", tileId: "brightness" },
+                argSlots: [{ slotId: 0, argSpec: { type: "arg", tileId: "brightness" } }],
+              },
+              isAsync: false,
+            },
+            entryFuncId: 0,
+            numStateSlots: 0,
+          },
+        ],
+        ruleFuncIds: [0],
+        ruleAncestors: [{ ruleFuncId: 2, parentRuleFuncId: 0 }],
+      },
+      ruleIndex: [{ path: "page-1/0", functionId: 0 }],
+      pages: [
+        {
+          pageIndex: 0,
+          pageId: "page-1-id",
+          pageName: "page-1",
+          rootRuleFuncIds: [0],
+          actionCallSites: [{ actionSlot: 0, callSiteId: 1 }],
+          sensors: ["button-a"],
+          actuators: ["set-display-pixel"],
+        },
+      ],
+    } satisfies LinkedBrainProgramJson;
+
+    assert.deepEqual(linkedBrainProgramToJson(linkedBrainProgramFromJson(payload)), payload);
   });
 });
 

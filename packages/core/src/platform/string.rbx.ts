@@ -61,11 +61,11 @@ export namespace StringUtils {
     return string.char(...codes);
   }
 
-  export function mkid(len: number = 16): string {
+  export function mkid(len: number = 16, random: () => number = () => math.random()): string {
     const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let result = "";
     for (let i = 0; i < len; i++) {
-      const randIndex = math.floor(math.random() * chars.size()) + 1;
+      const randIndex = math.floor(random() * chars.size()) + 1;
       result += chars.sub(randIndex, randIndex);
     }
     return result;
