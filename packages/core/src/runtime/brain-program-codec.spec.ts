@@ -67,8 +67,6 @@ describe("linked brain program JSON payload", () => {
           pageName: "page-1",
           rootRuleFuncIds: [0],
           actionCallSites: [{ actionSlot: 0, callSiteId: 1 }],
-          sensors: ["button-a-pressed"],
-          actuators: ["set-display-pixel"],
         },
       ],
     } satisfies LinkedBrainProgramJson;
@@ -131,16 +129,7 @@ describe("linkedBrainProgramToJson", () => {
         actions: [
           {
             binding: "host",
-            descriptor: {
-              key: "button-a",
-              kind: "sensor",
-              callDef: {
-                callSpec: { type: "bag", items: [] },
-                argSlots: [],
-              },
-              isAsync: false,
-              outputType: "Boolean",
-            },
+            key: "button-a",
           },
           {
             binding: "bytecode",
@@ -168,8 +157,6 @@ describe("linkedBrainProgramToJson", () => {
           pageName: "page-1",
           rootRuleFuncIds: [0],
           actionCallSites: [{ actionSlot: 0, callSiteId: 1 }],
-          sensors: ["button-a"],
-          actuators: ["set-display-pixel"],
         },
       ],
     } satisfies LinkedBrainProgramJson;
@@ -257,8 +244,6 @@ describe("linkedBrainProgramFromJson", () => {
           pageName: "page-1",
           rootRuleFuncIds: [0],
           actionCallSites: [{ actionSlot: 0, callSiteId: 1 }],
-          sensors: ["button-a-pressed"],
-          actuators: ["set-display-pixel"],
         },
       ],
     });
@@ -275,7 +260,5 @@ describe("linkedBrainProgramFromJson", () => {
     assert.equal(linked.ruleIndex.get("page-1/0"), 0);
     assert.equal(linked.pages.get(0)?.rootRuleFuncIds.get(0), 0);
     assert.equal(linked.pages.get(0)?.actionCallSites.get(0)?.callSiteId, 1);
-    assert.equal(linked.pages.get(0)?.sensors.has("button-a-pressed"), true);
-    assert.equal(linked.pages.get(0)?.actuators.has("set-display-pixel"), true);
   });
 });

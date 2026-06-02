@@ -23,7 +23,7 @@ export { coreModule, createHostActuator, createHostSensor, createMindcraftEnviro
 
 // -- Brain model ----------------------------------------------------------------
 
-export type { IBrainDef } from "../brain/interfaces";
+export type { IBrainDef, IBrainPageDef, IBrainRuleDef, IBrainTileSet } from "../brain/interfaces";
 export { BrainDef, brainJsonFromPlain } from "../brain/model";
 
 // -- Call-spec builders ---------------------------------------------------------

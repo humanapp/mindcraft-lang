@@ -1,12 +1,10 @@
 import type { ITileCatalog } from "../brain/interfaces/catalog";
 import type { Dict } from "../platform/dict";
 import type { List, ReadonlyList } from "../platform/list";
-import type { UniqueSet } from "../platform/uniqueset";
 import type { EventEmitterConsumer } from "../util";
 import type { HostActionBinding } from "./context";
 import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from "./function-defs";
 import type { Program, ProgramArtifact } from "./program";
-import type { TileId } from "./tile-ids";
 import type { TypeId } from "./type-defs";
 import type { Value } from "./value";
 
@@ -119,12 +117,6 @@ export interface PageMetadata {
 
   /** All ACTION_CALL / ACTION_CALL_ASYNC call sites in this page's rule tree */
   actionCallSites: List<ActionCallSiteEntry>;
-
-  /** Unique sensor tile IDs referenced by rules in this page */
-  sensors: UniqueSet<TileId>;
-
-  /** Unique actuator tile IDs referenced by rules in this page */
-  actuators: UniqueSet<TileId>;
 }
 
 /** Events emitted by an {@link IBrain}. */

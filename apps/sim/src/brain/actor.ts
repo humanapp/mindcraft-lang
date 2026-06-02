@@ -2,18 +2,48 @@ import {
   BrainDef,
   type CreateBrainOptions,
   type IBrainDef,
+  type IBrainPageDef,
+  type IBrainRuleDef,
+  type IBrainTileSet,
   logger,
   type MindcraftBrain,
-  mkSensorTileId,
   type Vector2,
 } from "@mindcraft-lang/core/app";
 import { ARCHETYPES } from "./archetypes";
 import { Engine } from "./engine";
 import { Mover, type MoverConfig, type Steering, steerAvoidObstacles } from "./movement";
-import { TileIds } from "./tileids";
+import { TileCapabilityBits } from "./tileids";
 import type { SightResult } from "./vision";
 
 export type Archetype = "carnivore" | "herbivore" | "plant";
+
+/** True when any tile in the tile set carries the given capability bit. */
+function tileSetHasCapability(tileSet: IBrainTileSet, bit: number): boolean {
+  const tiles = tileSet.tiles();
+  for (let i = 0; i < tiles.size(); i++) {
+    if (tiles.get(i).capabilities().get(bit) !== 0) return true;
+  }
+  return false;
+}
+
+/** True when the rule or any of its descendant rules uses a tile with the given capability bit. */
+function ruleHasCapability(rule: IBrainRuleDef, bit: number): boolean {
+  if (tileSetHasCapability(rule.when(), bit) || tileSetHasCapability(rule.do(), bit)) return true;
+  const children = rule.children();
+  for (let i = 0; i < children.size(); i++) {
+    if (ruleHasCapability(children.get(i), bit)) return true;
+  }
+  return false;
+}
+
+/** True when any rule on the page uses a tile that carries the given capability bit. */
+function pageHasCapability(page: IBrainPageDef, bit: number): boolean {
+  const rules = page.children();
+  for (let i = 0; i < rules.size(); i++) {
+    if (ruleHasCapability(rules.get(i), bit)) return true;
+  }
+  return false;
+}
 
 export class AnimalComp {
   steeringQueue: Steering[] = [];
@@ -214,14 +244,8 @@ export class Actor {
   }
 
   pageActivated = ({ pageIndex }: { pageIndex: number }) => {
-    const pageMeta = this.brain.getPages().get(pageIndex);
-    if (!pageMeta) return;
-    const sensors = pageMeta.sensors;
-    if (sensors.has(mkSensorTileId(TileIds.Sensor.See))) {
-      this.hasVision = true;
-    } else {
-      this.hasVision = false;
-    }
+    const page = this.brainDef.pages().get(pageIndex);
+    this.hasVision = page !== undefined && pageHasCapability(page, TileCapabilityBits.Vision);
   };
 
   pageDeactivated = (_: { pageIndex: number }) => {

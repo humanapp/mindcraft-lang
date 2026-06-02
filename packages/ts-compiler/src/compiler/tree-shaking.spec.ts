@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { Dict, List, runtime, UniqueSet } from "@mindcraft-lang/core";
+import { Dict, List, runtime } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { treeshakeProgram as treeshakeLinked } from "@mindcraft-lang/core/brain/compiler";
@@ -66,8 +66,6 @@ function wrapAsExecutable(prog: UserAuthoredProgram): FlatExecutable {
     pageName: "Page 0",
     rootRuleFuncIds: List.empty(),
     actionCallSites: List.empty(),
-    sensors: new UniqueSet<string>(),
-    actuators: new UniqueSet<string>(),
   };
   const action: BytecodeExecutableAction = {
     binding: "bytecode",

@@ -1,8 +1,8 @@
 import { List } from "../platform/list";
 import { UniqueSet } from "../platform/uniqueset";
 import type { ConstantPools, FunctionBytecode, Instr } from "./bytecode";
-import type { BytecodeExecutableAction, ExecutableAction } from "./context";
-import type { ActionDescriptor, BrainActionArgSlot, BrainActionCallDef } from "./function-defs";
+import type { BytecodeExecutableAction, ExecutableAction, HostActionBinding } from "./context";
+import { type ActionDescriptor, type BrainActionArgSlot, type BrainActionCallDef, mkCallDef } from "./function-defs";
 import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
 import { dictFromJsonEntries, dictToJsonEntries, listFromJson, listToJson } from "./json-container-codec";
 import type { Program } from "./program";
@@ -94,8 +94,11 @@ export interface BrainProgramHostExecutableActionJson {
   /** Action binding kind. */
   readonly binding: "host";
 
-  /** Static action metadata used to rebind the host function from the environment at load. */
-  readonly descriptor: BrainProgramActionDescriptorJson;
+  /**
+   * Stable action key identifying the host builtin. The live functions and full
+   * descriptor are owned by the runtime environment and rebound by this key at load.
+   */
+  readonly key: string;
 }
 
 /** JSON-safe representation of one linked executable action binding. */
@@ -324,12 +327,6 @@ export interface LinkedBrainProgramPageMetadataJson {
 
   /** Action call sites referenced by page rules. */
   readonly actionCallSites: readonly LinkedBrainProgramActionCallSiteJsonEntry[];
-
-  /** Sensor tile ids referenced by page rules. */
-  readonly sensors: readonly string[];
-
-  /** Actuator tile ids referenced by page rules. */
-  readonly actuators: readonly string[];
 }
 
 /** JSON-safe payload for linked brain execution. */
@@ -430,9 +427,25 @@ function constantPoolsFromJson(json: BrainProgramConstantPoolsJson): ConstantPoo
 
 function executableActionFromJson(json: BrainProgramExecutableActionJson): ExecutableAction {
   if (json.binding === "host") {
-    return { binding: "host", descriptor: actionDescriptorFromJson(json.descriptor) };
+    return unresolvedHostActionBinding(json.key);
   }
   return bytecodeExecutableActionFromJson(json);
+}
+
+/**
+ * Builds an unresolved host action binding from a serialized action key.
+ *
+ * A serialized `.mcprogram` records a host action as its descriptor key alone; the live
+ * functions and full descriptor are environment builtins. The returned binding is a
+ * placeholder: only `descriptor.key` is meaningful, it carries no functions, and a loader
+ * must resolve it against the runtime environment by key before the program executes. The
+ * remaining descriptor fields are inert placeholders and are never read on this binding.
+ */
+function unresolvedHostActionBinding(key: string): HostActionBinding {
+  return {
+    binding: "host",
+    descriptor: { key, kind: "sensor", callDef: mkCallDef({ type: "bag", items: [] }), isAsync: false },
+  };
 }
 
 function bytecodeExecutableActionFromJson(json: BrainProgramBytecodeExecutableActionJson): BytecodeExecutableAction {
@@ -500,8 +513,6 @@ function pageMetadataFromJson(json: LinkedBrainProgramPageMetadataJson): PageMet
     pageName: json.pageName,
     rootRuleFuncIds: List.from(json.rootRuleFuncIds),
     actionCallSites: listFromJson(json.actionCallSites, actionCallSiteFromJson),
-    sensors: new UniqueSet(json.sensors),
-    actuators: new UniqueSet(json.actuators),
   };
 }
 
@@ -575,7 +586,7 @@ function constantPoolsToJson(pools: ConstantPools): BrainProgramConstantPoolsJso
 
 function executableActionToJson(action: ExecutableAction): BrainProgramExecutableActionJson {
   if (action.binding === "host") {
-    return { binding: "host", descriptor: actionDescriptorToJson(action.descriptor) };
+    return { binding: "host", key: action.descriptor.key };
   }
   return bytecodeExecutableActionToJson(action);
 }
@@ -624,8 +635,6 @@ function pageMetadataToJson(page: PageMetadata): LinkedBrainProgramPageMetadataJ
     pageName: page.pageName,
     rootRuleFuncIds: page.rootRuleFuncIds.toArray(),
     actionCallSites: listToJson(page.actionCallSites, actionCallSiteToJson),
-    sensors: page.sensors.toArray(),
-    actuators: page.actuators.toArray(),
   };
 }
 

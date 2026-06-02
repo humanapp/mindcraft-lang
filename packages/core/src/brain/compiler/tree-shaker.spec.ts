@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
+import { Dict, List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { treeshakeProgram as treeshakeLinked } from "@mindcraft-lang/core/brain/compiler";
@@ -54,8 +54,6 @@ function mkPage(pageIndex: number, rootRuleFuncIds: number[]): PageMetadata {
     pageName: `Page ${pageIndex}`,
     rootRuleFuncIds: List.from(rootRuleFuncIds),
     actionCallSites: List.empty(),
-    sensors: new UniqueSet(),
-    actuators: new UniqueSet(),
   };
 }
 

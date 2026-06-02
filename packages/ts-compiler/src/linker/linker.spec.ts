@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { Dict, List, runtime, UniqueSet } from "@mindcraft-lang/core";
+import { Dict, List, runtime } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
@@ -67,8 +67,6 @@ function mkEmptyBrainProgram(): UnlinkedBrainProgram {
     pageName: "Page 0",
     rootRuleFuncIds: List.empty(),
     actionCallSites: List.empty(),
-    sensors: new UniqueSet<string>(),
-    actuators: new UniqueSet<string>(),
   };
   return {
     version: BYTECODE_VERSION,
@@ -99,8 +97,6 @@ function mkBrainProgramWithStubFunction(): UnlinkedBrainProgram {
     pageName: "Page 0",
     rootRuleFuncIds: List.from([0]),
     actionCallSites: List.empty(),
-    sensors: new UniqueSet<string>(),
-    actuators: new UniqueSet<string>(),
   };
   return {
     version: BYTECODE_VERSION,

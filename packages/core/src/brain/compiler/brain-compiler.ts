@@ -12,7 +12,7 @@ import type {
 } from "../../runtime";
 import { BYTECODE_VERSION, type FunctionBytecode, type Instr, Op } from "../../runtime/bytecode";
 import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
-import type { IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog, TileId } from "../interfaces";
+import type { IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog } from "../interfaces";
 import { ConstantPool } from "./constant-pool";
 import type { BrainBuildDiagnostic, BrainBuildResult } from "./diagnostics";
 import { BytecodeEmitter } from "./emitter";
@@ -20,7 +20,7 @@ import { computeExpectedTypes } from "./expected-types";
 import { computeInferredTypes } from "./inferred-types";
 import { parseBrainTiles } from "./parser";
 import { type CompilationDiag, ExprCompiler } from "./rule-compiler";
-import { type ActuatorExpr, acceptExprVisitor, type Expr, type SensorExpr, type TypeEnv, type TypeInfo } from "./types";
+import { acceptExprVisitor, type Expr, type TypeEnv, type TypeInfo } from "./types";
 
 // Manual character-by-character iteration instead of String.replace() for
 // Roblox-TS compatibility -- Roblox-TS doesn't support regex or string.replace.
@@ -33,65 +33,6 @@ function replaceAllSlashes(str: string): string {
     result += charCode === 47 ? "_" : SU.fromCharCode(charCode);
   }
   return result;
-}
-
-/**
- * Recursively walk an Expr tree to collect sensor and actuator tile IDs.
- */
-function collectTileIds(expr: Expr, sensors: UniqueSet<TileId>, actuators: UniqueSet<TileId>): void {
-  switch (expr.kind) {
-    case "sensor": {
-      sensors.add(expr.tileDef.tileId);
-      collectSlotExprs(expr, sensors, actuators);
-      break;
-    }
-    case "actuator": {
-      actuators.add(expr.tileDef.tileId);
-      collectSlotExprs(expr, sensors, actuators);
-      break;
-    }
-    case "binaryOp":
-      collectTileIds(expr.left, sensors, actuators);
-      collectTileIds(expr.right, sensors, actuators);
-      break;
-    case "unaryOp":
-      collectTileIds(expr.operand, sensors, actuators);
-      break;
-    case "assignment":
-      collectTileIds(expr.value, sensors, actuators);
-      break;
-    case "parameter":
-      collectTileIds(expr.value, sensors, actuators);
-      break;
-    case "errorExpr":
-      if (expr.expr) collectTileIds(expr.expr, sensors, actuators);
-      break;
-    case "literal":
-    case "variable":
-    case "modifier":
-    case "empty":
-      break;
-  }
-}
-
-/**
- * Collect tile IDs from the slot expressions (anons, parameters, modifiers)
- * of a sensor or actuator expression.
- */
-function collectSlotExprs(
-  expr: SensorExpr | ActuatorExpr,
-  sensors: UniqueSet<TileId>,
-  actuators: UniqueSet<TileId>
-): void {
-  for (let i = 0; i < expr.anons.size(); i++) {
-    collectTileIds(expr.anons.get(i)!.expr, sensors, actuators);
-  }
-  for (let i = 0; i < expr.parameters.size(); i++) {
-    collectTileIds(expr.parameters.get(i)!.expr, sensors, actuators);
-  }
-  for (let i = 0; i < expr.modifiers.size(); i++) {
-    collectTileIds(expr.modifiers.get(i)!.expr, sensors, actuators);
-  }
 }
 
 /**
@@ -251,8 +192,6 @@ export class BrainCompiler {
       pageId: pageDef.pageId(),
       rootRuleFuncIds,
       actionCallSites: List.empty(),
-      sensors: new UniqueSet(),
-      actuators: new UniqueSet(),
     });
   }
 
@@ -293,7 +232,7 @@ export class BrainCompiler {
 
     for (let ruleIdx = 0; ruleIdx < rules.size(); ruleIdx++) {
       const ruleDef = rules.get(ruleIdx);
-      this.compileRule(ruleDef, `${pageIdx}/${ruleIdx}`, pageMetadata);
+      this.compileRule(ruleDef, `${pageIdx}/${ruleIdx}`);
     }
 
     // Collect all action callsites from all compiled rules in this page
@@ -339,7 +278,7 @@ export class BrainCompiler {
   /**
    * Compile a single rule and its children recursively.
    */
-  private compileRule(ruleDef: IBrainRuleDef, rulePath: string, pageMetadata: PageMetadata): void {
+  private compileRule(ruleDef: IBrainRuleDef, rulePath: string): void {
     const funcId = this.ruleIndex.get(rulePath);
     if (funcId === undefined) {
       throw new Error(`BrainCompiler: No function ID assigned for rule at ${rulePath}`);
@@ -357,7 +296,7 @@ export class BrainCompiler {
     }
 
     // Compile this rule's WHEN and DO
-    const result = this.compileRuleBody(ruleDef, childFuncIds, pageMetadata);
+    const result = this.compileRuleBody(ruleDef, childFuncIds);
 
     // Update the function in place
     const fn = this.functions.get(funcId)!;
@@ -366,32 +305,20 @@ export class BrainCompiler {
     // Recursively compile children
     for (let childIdx = 0; childIdx < children.size(); childIdx++) {
       const childDef = children.get(childIdx);
-      this.compileRule(childDef, `${rulePath}/${childIdx}`, pageMetadata);
+      this.compileRule(childDef, `${rulePath}/${childIdx}`);
     }
   }
 
   /**
    * Compile a rule's WHEN/DO body and emit CALL instructions for children.
    */
-  private compileRuleBody(
-    ruleDef: IBrainRuleDef,
-    childFuncIds: List<number>,
-    pageMetadata: PageMetadata
-  ): RuleCompileResult {
+  private compileRuleBody(ruleDef: IBrainRuleDef, childFuncIds: List<number>): RuleCompileResult {
     const whenTiles = ruleDef.when().tiles();
     const doTiles = ruleDef.do().tiles();
 
     // Parse WHEN and DO sides
     const whenParseResult = parseBrainTiles(whenTiles, -1, 0);
     const doParseResult = parseBrainTiles(doTiles, -1, 0, whenParseResult.nextNodeId);
-
-    // Collect sensor/actuator tile IDs from parsed expressions
-    for (let i = 0; i < whenParseResult.exprs.size(); i++) {
-      collectTileIds(whenParseResult.exprs.get(i), pageMetadata.sensors, pageMetadata.actuators);
-    }
-    for (let i = 0; i < doParseResult.exprs.size(); i++) {
-      collectTileIds(doParseResult.exprs.get(i), pageMetadata.sensors, pageMetadata.actuators);
-    }
 
     // Type checking
     const typeEnv: TypeEnv = new Dict<number, TypeInfo>();

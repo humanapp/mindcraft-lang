@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List, UniqueSet } from "@mindcraft-lang/core";
+import { List } from "@mindcraft-lang/core";
 import {
   BrainRuntime,
   BYTECODE_VERSION,
@@ -46,8 +46,6 @@ function makePageMeta(pageIndex: number, pageId: string, pageName: string): Page
     pageName,
     rootRuleFuncIds: List.empty(),
     actionCallSites: List.empty(),
-    sensors: new UniqueSet<string>(),
-    actuators: new UniqueSet<string>(),
   };
 }
 
@@ -170,8 +168,6 @@ describe("BrainRuntime", () => {
       pageName: "page-1",
       rootRuleFuncIds: List.from([0]),
       actionCallSites: List.empty(),
-      sensors: new UniqueSet<string>(),
-      actuators: new UniqueSet<string>(),
     };
     const pages = List.from([page]);
 
