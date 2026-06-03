@@ -16,10 +16,9 @@ import { BrainPage } from "./page";
 import type { BrainServices } from "./services";
 
 /**
- * Authoring-side facade for a compiled Mindcraft brain. Compiles a
- * {@link IBrainDef} through the compile, link, and treeshake pipeline,
- * then constructs a {@link BrainRuntime} from the resulting program and
- * delegates all runtime operations to it.
+ * Live, running instance of a Mindcraft brain. Compiles an {@link IBrainDef} through the compile,
+ * link, and treeshake pipeline, constructs a {@link BrainRuntime} from the resulting program, and
+ * delegates all runtime operations (think, variables, page lifecycle) to it.
  */
 export class Brain implements IBrain {
   /** Runtime page instances */

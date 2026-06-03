@@ -68,7 +68,7 @@ export interface BrainProgramBytecodeExecutableActionJson {
   /** Stable action key identifying the bytecode action. */
   readonly key: string;
 
-  /** True when the action body is asynchronous; selects ACTION_CALL vs ACTION_CALL_ASYNC dispatch. */
+  /** True when the action body is asynchronous. */
   readonly isAsync: boolean;
 
   /** Function id for the action body. */
@@ -89,10 +89,7 @@ export interface BrainProgramHostExecutableActionJson {
   /** Action binding kind. */
   readonly binding: "host";
 
-  /**
-   * Stable action key identifying the host builtin. The live functions and full
-   * descriptor are owned by the runtime environment and rebound by this key at load.
-   */
+  /** Stable action key identifying the host builtin. */
   readonly key: string;
 }
 
@@ -181,8 +178,7 @@ export interface LinkedBrainProgramJson {
 export function linkedBrainProgramFromJson(json: LinkedBrainProgramJson): LinkedBrainProgram {
   return {
     program: brainProgramFromJson(json.program),
-    // ruleIndex is not serialized (no load/execute reader); it is rebuilt on the authoring side
-    // from the live compile result, so a deserialized program starts with an empty map.
+    // Not serialized; hydrates to an empty ruleIndex.
     ruleIndex: Dict.empty<string, number>(),
     pages: listFromJson(json.pages, pageMetadataFromJson),
   };
@@ -261,23 +257,17 @@ function executableActionFromJson(json: BrainProgramExecutableActionJson): Execu
 }
 
 /**
- * Builds a placeholder action descriptor from the fields a lean `.mcprogram` records. The call
- * grammar, kind, and output type are not serialized; the `kind` and `callDef` here are inert
- * placeholders the runtime never reads. Host actions are rebound to their environment descriptor by
- * key at load; bytecode actions are dispatched by slot and read only `key`/`isAsync` off the
- * descriptor.
+ * Builds an {@link ActionDescriptor} from the `key` and `isAsync` a lean `.mcprogram` records. The
+ * `kind` and `callDef` are placeholders; only `key` and `isAsync` carry serialized values.
  */
 function placeholderActionDescriptor(key: string, isAsync: boolean): ActionDescriptor {
   return { key, kind: "sensor", callDef: mkCallDef({ type: "bag", items: [] }), isAsync };
 }
 
 /**
- * Builds an unresolved host action binding from a serialized action key.
- *
- * A serialized `.mcprogram` records a host action as its descriptor key alone; the live functions
- * and full descriptor are environment builtins. The returned binding is a placeholder: only
- * `descriptor.key` is meaningful, it carries no functions, and a loader must resolve it against the
- * runtime environment by key before the program executes.
+ * Builds an unresolved host action binding from a serialized action key. Only `descriptor.key` is
+ * meaningful and the binding carries no functions; a loader must resolve it against the runtime
+ * environment by key before the program executes.
  */
 function unresolvedHostActionBinding(key: string): HostActionBinding {
   return { binding: "host", descriptor: placeholderActionDescriptor(key, false) };
@@ -288,7 +278,7 @@ function bytecodeExecutableActionFromJson(json: BrainProgramBytecodeExecutableAc
     binding: "bytecode",
     descriptor: placeholderActionDescriptor(json.key, json.isAsync),
     entryFuncId: json.entryFuncId,
-    // numStateSlots is not serialized; the callsite store allocates state slots lazily.
+    // Not serialized; defaults to 0.
     numStateSlots: 0,
   };
 
