@@ -25,7 +25,7 @@ import type { RuleJson } from "./ruledef";
 export interface BrainJson {
   version: number;
 
-  /** Stable unique brain id. Absent in brains saved before ids existed; minted on load when missing. */
+  /** Stable unique brain id. Optional; a missing id is minted on load. */
   id?: string;
 
   name: string;
@@ -306,7 +306,7 @@ export class BrainDef implements IBrainDef {
   }
 
   clone(extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
-    // A clone is a new brain with its own identity; drop the source id so fromJson mints a fresh one.
+    // A clone is a new brain: it drops the source id and mints its own.
     const json: BrainJson = { ...this.toJson(), id: undefined };
     return BrainDef.fromJson(json, this.services_, extraCatalogs ?? this.extraCatalogs_);
   }
