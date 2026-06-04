@@ -18,6 +18,8 @@ export type BrainDefEvents = {
 
 /** Definition of a brain: name, pages, catalogs, and conversion registry. Compile to an {@link IBrain} via `compile()`. */
 export interface IBrainDef {
+  /** Stable, unique identifier for this brain. Assigned at creation and preserved across serialization. */
+  id(): string;
   name(): string;
   setName(newName: string): void;
   pages(): ReadonlyList<IBrainPageDef>;

@@ -21,9 +21,13 @@ import { BrainTilePageDef } from "../tiles/pagetiles";
 import { BrainPageDef, type PageJson } from "./pagedef";
 import type { RuleJson } from "./ruledef";
 
-/** Serialized form of an {@link IBrainDef}: name, tile catalog, and page list. */
+/** Serialized form of an {@link IBrainDef}: id, name, tile catalog, and page list. */
 export interface BrainJson {
   version: number;
+
+  /** Stable unique brain id. Absent in brains saved before ids existed; minted on load when missing. */
+  id?: string;
+
   name: string;
   catalog: ReadonlyList<CatalogTileJson>;
   pages: ReadonlyList<PageJson>;
@@ -108,14 +112,14 @@ function convertPlainPage_(plain: unknown): PageJson {
  * Call this function on the JSON.parse output before passing it to fromJson.
  */
 export function brainJsonFromPlain(plain: unknown): BrainJson {
-  const obj = plain as { version: number; name: string; catalog: CatalogTileJson[]; pages: unknown[] };
+  const obj = plain as { version: number; id?: string; name: string; catalog: CatalogTileJson[]; pages: unknown[] };
   const catalog = List.from(obj.catalog);
   const plainPages = List.from(obj.pages);
   const pages = new List<PageJson>();
   for (let i = 0; i < plainPages.size(); i++) {
     pages.push(convertPlainPage_(plainPages.get(i)));
   }
-  return { version: obj.version, name: obj.name, catalog, pages };
+  return { version: obj.version, id: obj.id, name: obj.name, catalog, pages };
 }
 
 /** Concrete {@link IBrainDef} implementation: in-memory brain model with mutation, serialization, and compilation. */
@@ -126,10 +130,12 @@ export class BrainDef implements IBrainDef {
   private readonly pageSubscriptions_ = new Dict<BrainPageDef, () => void>();
   private readonly catalog_ = new TileCatalog();
   private readonly services_: BrainServices;
+  private readonly id_: string;
   private extraCatalogs_?: ReadonlyList<ITileCatalog>;
 
-  constructor(services: BrainServices) {
+  constructor(services: BrainServices, id?: string) {
     this.services_ = services;
+    this.id_ = id ?? this.mintBrainId_();
   }
 
   setExtraCatalogs(catalogs: ReadonlyList<ITileCatalog> | undefined): void {
@@ -165,6 +171,10 @@ export class BrainDef implements IBrainDef {
     return this.emitter_.consumer();
   }
 
+  id(): string {
+    return this.id_;
+  }
+
   name(): string {
     return this.name_;
   }
@@ -197,6 +207,10 @@ export class BrainDef implements IBrainDef {
   }
 
   private mintPageId_(): string {
+    return SU.mkid(16, () => this.services_.app.rng.next());
+  }
+
+  private mintBrainId_(): string {
     return SU.mkid(16, () => this.services_.app.rng.next());
   }
 
@@ -292,7 +306,8 @@ export class BrainDef implements IBrainDef {
   }
 
   clone(extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
-    const json = this.toJson();
+    // A clone is a new brain with its own identity; drop the source id so fromJson mints a fresh one.
+    const json: BrainJson = { ...this.toJson(), id: undefined };
     return BrainDef.fromJson(json, this.services_, extraCatalogs ?? this.extraCatalogs_);
   }
 
@@ -357,7 +372,7 @@ export class BrainDef implements IBrainDef {
       pages.push(this.pages_.get(i).toJson());
     }
 
-    return { version: kVersion, name: this.name_, catalog: this.catalog_.toJson(), pages };
+    return { version: kVersion, id: this.id_, name: this.name_, catalog: this.catalog_.toJson(), pages };
   }
 
   static fromJson(json: BrainJson, services: BrainServices, extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
@@ -365,7 +380,7 @@ export class BrainDef implements IBrainDef {
       throw new Error(`BrainDef.fromJson: unsupported version ${json.version}`);
     }
 
-    const brain = new BrainDef(services);
+    const brain = new BrainDef(services, json.id);
     brain.extraCatalogs_ = extraCatalogs;
     brain.setName(json.name);
 

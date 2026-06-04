@@ -611,4 +611,28 @@ describe("brain-json", () => {
     const restoredChild = restored.pages().get(0)!.children().get(0)!.children().get(0);
     assert.equal(restoredChild.comment(), "Child rule comment");
   });
+
+  test("brain id round-trips through JSON", () => {
+    const original = new BrainDef(services);
+    const json = original.toJson();
+    assert.equal(json.id, original.id());
+
+    const restored = BrainDef.fromJson(json, services);
+    assert.equal(restored.id(), original.id());
+  });
+
+  test("id-less brain JSON mints a fresh id on load", () => {
+    const original = new BrainDef(services);
+    const idless: BrainJson = { ...original.toJson(), id: undefined };
+
+    const restored = BrainDef.fromJson(idless, services);
+    assert.ok(restored.id().length > 0);
+  });
+
+  test("clone gets a fresh id distinct from its source", () => {
+    const original = new BrainDef(services);
+    const cloned = original.clone();
+    assert.ok(cloned.id().length > 0);
+    assert.notEqual(cloned.id(), original.id());
+  });
 });

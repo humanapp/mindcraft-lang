@@ -236,6 +236,15 @@ export class AppEnvironmentHost {
     }
   }
 
+  /**
+   * Returns the in-memory project brain for `key`, or undefined when none is cached. The cache is
+   * populated from the active project on load and maintained by `saveBrainForKey`/`removeBrain`, so
+   * this reads the live instance without re-parsing storage.
+   */
+  getCachedBrain(key: string): IBrainDef | undefined {
+    return this._brainCache.get(key);
+  }
+
   setDefaultBrain(key: string, brainDef: IBrainDef): void {
     this._defaultBrainCache.set(key, brainDef);
   }
