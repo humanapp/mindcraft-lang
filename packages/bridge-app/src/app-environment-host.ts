@@ -244,6 +244,11 @@ export class AppEnvironmentHost {
     return this._brainCache.get(key);
   }
 
+  /** Returns the keys of the active project's cached brains, in cache order. */
+  getCachedBrainKeys(): readonly string[] {
+    return [...this._brainCache.keys()];
+  }
+
   setDefaultBrain(key: string, brainDef: IBrainDef): void {
     this._defaultBrainCache.set(key, brainDef);
   }
