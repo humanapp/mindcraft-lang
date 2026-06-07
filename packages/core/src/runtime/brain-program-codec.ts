@@ -60,17 +60,14 @@ export interface BrainProgramConstantPoolsJson {
   readonly values: readonly BrainProgramValueJson[];
 }
 
-/** JSON-safe representation of a bytecode-backed action binding. */
+/**
+ * JSON-safe representation of a bytecode-backed action binding. Records only function ids: the
+ * action table is bytecode-only (so the binding kind is implicit), the VM dispatches by slot (so
+ * the action key is not needed), and sync vs async is encoded in the call-site opcode
+ * (`ACTION_CALL` / `ACTION_CALL_ASYNC`). Human-readable keys, if wanted, belong in a separate
+ * debug-symbol side table.
+ */
 export interface BrainProgramBytecodeExecutableActionJson {
-  /** Action binding kind. */
-  readonly binding: "bytecode";
-
-  /** Stable action key identifying the bytecode action. */
-  readonly key: string;
-
-  /** True when the action body is asynchronous. */
-  readonly isAsync: boolean;
-
   /** Function id for the action body. */
   readonly entryFuncId: number;
 
@@ -243,17 +240,19 @@ function constantPoolsFromJson(json: BrainProgramConstantPoolsJson): ConstantPoo
 }
 
 /**
- * Builds an {@link ActionDescriptor} from the `key` and `isAsync` a lean `.mcprogram` records. The
- * `kind` and `callDef` are placeholders; only `key` and `isAsync` carry serialized values.
+ * Builds a placeholder {@link ActionDescriptor} for a deserialized bytecode action. A lean
+ * `.mcprogram` records only function ids -- `key`, `kind`, `callDef`, and `isAsync` are not
+ * serialized (the VM dispatches by slot and the call-site opcode encodes sync vs async) -- so
+ * neutral defaults are used.
  */
-function placeholderActionDescriptor(key: string, isAsync: boolean): ActionDescriptor {
-  return { key, kind: "sensor", callDef: mkCallDef({ type: "bag", items: [] }), isAsync };
+function placeholderActionDescriptor(): ActionDescriptor {
+  return { key: "", kind: "sensor", callDef: mkCallDef({ type: "bag", items: [] }), isAsync: false };
 }
 
 function bytecodeExecutableActionFromJson(json: BrainProgramBytecodeExecutableActionJson): BytecodeExecutableAction {
   const action: BytecodeExecutableAction = {
     binding: "bytecode",
-    descriptor: placeholderActionDescriptor(json.key, json.isAsync),
+    descriptor: placeholderActionDescriptor(),
     entryFuncId: json.entryFuncId,
     // Not serialized; defaults to 0.
     numStateSlots: 0,
@@ -355,9 +354,6 @@ function constantPoolsToJson(pools: ConstantPools): BrainProgramConstantPoolsJso
 
 function bytecodeExecutableActionToJson(action: BytecodeExecutableAction): BrainProgramBytecodeExecutableActionJson {
   return {
-    binding: "bytecode",
-    key: action.descriptor.key,
-    isAsync: action.descriptor.isAsync,
     entryFuncId: action.entryFuncId,
     ...(action.initializerFuncId !== undefined ? { initializerFuncId: action.initializerFuncId } : {}),
     ...(action.activationFuncId !== undefined ? { activationFuncId: action.activationFuncId } : {}),

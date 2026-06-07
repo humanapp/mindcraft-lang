@@ -44,9 +44,6 @@ describe("linked brain program JSON payload", () => {
         variableNames: [],
         actions: [
           {
-            binding: "bytecode",
-            key: "set-display-pixel",
-            isAsync: false,
             entryFuncId: 0,
           },
         ],
@@ -65,7 +62,7 @@ describe("linked brain program JSON payload", () => {
     } satisfies LinkedBrainProgramJson;
 
     assert.equal(payload.program.functions[0]?.code[0]?.op, 0);
-    assert.equal(payload.program.actions?.[0]?.binding, "bytecode");
+    assert.equal(payload.program.actions?.[0]?.entryFuncId, 0);
     assert.equal(payload.pages[0]?.rootRuleFuncIds[0], 0);
   });
 });
@@ -121,9 +118,6 @@ describe("linkedBrainProgramToJson", () => {
         variableNames: ["score"],
         actions: [
           {
-            binding: "bytecode",
-            key: "set-display-pixel",
-            isAsync: false,
             entryFuncId: 0,
           },
         ],
@@ -211,10 +205,11 @@ describe("linkedBrainProgramToJson lean payload", () => {
     assert.equal(fn.maxStackDepth, undefined);
 
     const action = json.program.actions?.[0] as unknown as Record<string, unknown>;
-    assert.equal(action?.binding, "bytecode");
-    assert.equal(action?.key, "set-display-pixel");
-    assert.equal(action?.isAsync, false);
     assert.equal(action?.entryFuncId, 0);
+    // The lean format records only function ids; binding/key/isAsync are not serialized.
+    assert.equal(action?.binding, undefined);
+    assert.equal(action?.key, undefined);
+    assert.equal(action?.isAsync, undefined);
     assert.equal(action?.descriptor, undefined);
     assert.equal(action?.numStateSlots, undefined);
 
@@ -275,9 +270,6 @@ describe("linkedBrainProgramFromJson", () => {
         variableNames: ["score"],
         actions: [
           {
-            binding: "bytecode",
-            key: "set-display-pixel",
-            isAsync: false,
             entryFuncId: 0,
           },
         ],
@@ -306,7 +298,8 @@ describe("linkedBrainProgramFromJson", () => {
     const action = linked.program.actions?.get(0);
     assert.equal(action?.binding, "bytecode");
     if (action?.binding !== "bytecode") assert.fail("expected a bytecode action");
-    assert.equal(action.descriptor.key, "set-display-pixel");
+    // key/isAsync are not serialized in the lean format; deserialized actions carry placeholders.
+    assert.equal(action.descriptor.key, "");
     assert.equal(action.descriptor.isAsync, false);
     assert.equal(action.descriptor.callDef.argSlots.size(), 0);
     assert.equal(action.entryFuncId, 0);

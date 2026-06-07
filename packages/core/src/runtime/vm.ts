@@ -998,11 +998,8 @@ export class VM implements IVM {
       throwUnderflow(`ACTION_CALL: argc ${argc} exceeds stack size ${stackSize}`);
     }
 
+    // Sync vs async dispatch is determined by the opcode (ACTION_CALL here), not by the action.
     const action = this.getExecutableAction(actionSlot, "ACTION_CALL");
-    const actionKey = action.descriptor.key;
-    if (action.descriptor.isAsync) {
-      throw new Error(`ACTION_CALL: action ${actionKey} requires ACTION_CALL_ASYNC`);
-    }
 
     const args = this.snapshotStackArgs(fiber, argc, "ACTION_CALL");
     for (let i = 0; i < argc; i++) {
@@ -1024,11 +1021,9 @@ export class VM implements IVM {
       throwUnderflow(`ACTION_CALL_ASYNC: argc ${argc} exceeds stack size ${stackSize}`);
     }
 
+    // Sync vs async dispatch is determined by the opcode (ACTION_CALL_ASYNC here), not by the action.
     const action = this.getExecutableAction(actionSlot, "ACTION_CALL_ASYNC");
     const actionKey = action.descriptor.key;
-    if (!action.descriptor.isAsync) {
-      throw new Error(`ACTION_CALL_ASYNC: action ${actionKey} must use ACTION_CALL`);
-    }
 
     const args = this.snapshotStackArgs(fiber, argc, "ACTION_CALL_ASYNC");
     for (let i = 0; i < argc; i++) {
