@@ -105,7 +105,6 @@ describe("AppEnvironmentHost project transitions", () => {
       modules: [],
       ambientFiles: [],
       host: { name: "test", version: "0.0.0" },
-      userTileStorageKey: "test:user-tiles",
     });
     let unloadingCalls = 0;
     host.onProjectUnloading(() => {
@@ -131,6 +130,7 @@ describe("AppEnvironmentHost project transitions", () => {
       activeProjectCollection: ProjectCollection;
       saveAppData(key: string, data: string): Promise<void>;
       loadAppData(key: string): Promise<string | undefined>;
+      deleteAppData(key: string): Promise<void>;
       lockProjectCollection(
         projectCollectionId: string,
         options?: { beforeActiveProjectChange?: () => void }
@@ -146,6 +146,9 @@ describe("AppEnvironmentHost project transitions", () => {
       async loadAppData(key: string): Promise<string | undefined> {
         events.push(`load:${key}`);
         return undefined;
+      },
+      async deleteAppData(key: string): Promise<void> {
+        events.push(`delete:${key}`);
       },
       async lockProjectCollection(
         _projectCollectionId: string,
@@ -167,7 +170,6 @@ describe("AppEnvironmentHost project transitions", () => {
       modules: [],
       ambientFiles: [],
       host: { name: "test", version: "0.0.0" },
-      userTileStorageKey: "test:user-tiles",
     });
     const unloadingProjectIds: Array<string | undefined> = [];
     host.onProjectUnloading(() => {
@@ -187,7 +189,16 @@ describe("AppEnvironmentHost project transitions", () => {
 
     assert.deepStrictEqual(saveAppDataCalls, [{ key: "brains", data: "{}" }]);
     assert.deepStrictEqual(unloadingProjectIds, ["active"]);
-    assert.deepStrictEqual(events, ["save:brains", "lock", "unload:active", "unlock", "load:brains", "loaded"]);
+    assert.deepStrictEqual(events, [
+      "save:brains",
+      "lock",
+      "unload:active",
+      "unlock",
+      "load:user-tile-metadata",
+      "delete:user-tile-metadata",
+      "load:brains",
+      "loaded",
+    ]);
     assert.strictEqual(host.activeProjectManifest?.id, "active");
   });
 });

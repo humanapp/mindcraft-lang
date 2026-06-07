@@ -19,8 +19,12 @@ import type { AmbientFile, WorkspaceCompileResult } from "@mindcraft-lang/ts-com
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { createBridgeProject, createProjectCompiler } from "./compilation.js";
-import type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
+import type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
 import { applyCompiledUserTiles, hydrateUserTilesFromCache } from "./user-tile-registration.js";
+
+// Project app-data keys.
+const BRAINS_APP_DATA_KEY = "brains";
+const USER_TILE_METADATA_APP_DATA_KEY = "user-tile-metadata";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -35,8 +39,6 @@ export interface AppEnvironmentHostOptions {
   ambientFiles: readonly AmbientFile[];
   /** Identifies the host application when writing `mindcraft.json`. */
   host: MindcraftJsonHostInfo;
-  /** `localStorage` key under which the user-tile metadata cache is stored. */
-  userTileStorageKey: string;
   /** Read-only example projects materialized under the examples folder. */
   examples?: readonly ExampleDefinition[];
 
@@ -73,7 +75,6 @@ export class AppEnvironmentHost {
   readonly projectManager: ProjectManager;
 
   private readonly host: MindcraftJsonHostInfo;
-  private readonly userTileStorageKey: string;
   private readonly ambientFiles: readonly AmbientFile[];
   private readonly onDidCompileCallback?: (
     result: WorkspaceCompileResult,
@@ -121,7 +122,6 @@ export class AppEnvironmentHost {
     this.projectManager = options.projectManager;
     this.host = options.host;
     this.ambientFiles = options.ambientFiles;
-    this.userTileStorageKey = options.userTileStorageKey;
     this.onDidCompileCallback = options.onDidCompile;
     this._bridgeUrl = options.bridgeUrl;
     this._loadBindingToken = options.loadBindingToken ?? (() => undefined);
@@ -159,6 +159,25 @@ export class AppEnvironmentHost {
   // Initialize
   // ---------------------------------------------------------------------------
 
+  /**
+   * Storage hooks binding the user-tile metadata cache to the active project's
+   * durable app-data, so the cache is project-scoped rather than global.
+   */
+  private userTileStorageOptions(): UserTileRegistrationOptions {
+    return {
+      loadMetadata: () => this.projectManager.loadAppData(USER_TILE_METADATA_APP_DATA_KEY),
+      saveMetadata: (json) => {
+        const op =
+          json === undefined
+            ? this.projectManager.deleteAppData(USER_TILE_METADATA_APP_DATA_KEY)
+            : this.projectManager.saveAppData(USER_TILE_METADATA_APP_DATA_KEY, json);
+        op.catch((err: unknown) => {
+          logger.warn("[app-environment-host] failed to persist user-tile metadata cache:", err);
+        });
+      },
+    };
+  }
+
   async initialize(defaultProjectName: string): Promise<void> {
     await this.projectManager.init();
     const state = await this.projectManager.getProjectCollectionState();
@@ -167,9 +186,7 @@ export class AppEnvironmentHost {
     }
     await this.projectManager.ensureDefaultProject(defaultProjectName);
     this._lastUserTileMetadata =
-      hydrateUserTilesFromCache(this.env, {
-        storageKey: this.userTileStorageKey,
-      }) ?? undefined;
+      (await hydrateUserTilesFromCache(this.env, this.userTileStorageOptions())) ?? undefined;
     this.initCompiler();
     await this.loadBrainsFromProject();
   }
@@ -186,9 +203,7 @@ export class AppEnvironmentHost {
       examples: [...this._examples],
       onDidCompile: (result) => {
         logWorkspaceCompile(result);
-        const tileResult = applyCompiledUserTiles(this.env, result, {
-          storageKey: this.userTileStorageKey,
-        });
+        const tileResult = applyCompiledUserTiles(this.env, result, this.userTileStorageOptions());
         if (tileResult) {
           this._lastUserTileMetadata = tileResult.metadata;
           this.bumpDocRevision();
@@ -208,19 +223,19 @@ export class AppEnvironmentHost {
     this._brainCache.set(key, brainDef);
     const record = await this.loadBrainRecord();
     record[key] = brainDef.toJson();
-    await this.projectManager.saveAppData("brains", JSON.stringify(record));
+    await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
   }
 
   async removeBrain(key: string): Promise<void> {
     this._brainCache.delete(key);
     const record = await this.loadBrainRecord();
     delete record[key];
-    await this.projectManager.saveAppData("brains", JSON.stringify(record));
+    await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
   }
 
   async loadBrainFromProject(key: string): Promise<IBrainDef | undefined> {
     try {
-      const raw = await this.projectManager.loadAppData("brains");
+      const raw = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
       if (!raw) return undefined;
       const record = JSON.parse(raw) as Record<string, unknown>;
       const json = record[key];
@@ -262,12 +277,12 @@ export class AppEnvironmentHost {
     for (const [key, def] of this._brainCache) {
       record[key] = def.toJson();
     }
-    await this.projectManager.saveAppData("brains", JSON.stringify(record));
+    await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
   }
 
   private async loadBrainRecord(): Promise<Record<string, unknown>> {
     try {
-      const raw = await this.projectManager.loadAppData("brains");
+      const raw = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
       if (raw) return JSON.parse(raw) as Record<string, unknown>;
     } catch (err) {
       logger.warn("Failed to load brain record:", err);
@@ -429,9 +444,7 @@ export class AppEnvironmentHost {
   private async completeProjectTransition(): Promise<void> {
     this.completeProjectUnload();
     this._lastUserTileMetadata =
-      hydrateUserTilesFromCache(this.env, {
-        storageKey: this.userTileStorageKey,
-      }) ?? undefined;
+      (await hydrateUserTilesFromCache(this.env, this.userTileStorageOptions())) ?? undefined;
     this.initCompiler();
     await this.loadBrainsFromProject();
 

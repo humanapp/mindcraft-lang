@@ -59,10 +59,15 @@ export interface UserTileMetadata {
   tags?: string[];
 }
 
-/** Options shared by user-tile registration functions. */
+/**
+ * Storage hooks for the user-tile metadata warm-start cache. The cache is
+ * project-scoped: the host wires these to the active project's durable app-data.
+ */
 export interface UserTileRegistrationOptions {
-  /** `localStorage` key under which the metadata cache is stored. */
-  storageKey: string;
+  /** Loads the raw persisted metadata-cache JSON for the active project, or undefined when absent. */
+  loadMetadata: () => Promise<string | undefined>;
+  /** Persists the raw metadata-cache JSON for the active project; `undefined` clears the cache. */
+  saveMetadata: (json: string | undefined) => void;
 }
 
 /** Result returned by {@link applyCompiledUserTiles}. */
@@ -174,9 +179,13 @@ function parseMetadataCache(raw: unknown): LoadedHydratedMetadata | undefined {
   };
 }
 
-function persistMetadataCache(storageKey: string, revision: string, metadata: readonly UserTileMetadata[]): void {
+function persistMetadataCache(
+  save: (json: string | undefined) => void,
+  revision: string,
+  metadata: readonly UserTileMetadata[]
+): void {
   if (metadata.length === 0) {
-    localStorage.removeItem(storageKey);
+    save(undefined);
     return;
   }
 
@@ -185,11 +194,10 @@ function persistMetadataCache(storageKey: string, revision: string, metadata: re
     revision,
     tiles: [...metadata],
   };
-  localStorage.setItem(storageKey, JSON.stringify(cache));
+  save(JSON.stringify(cache));
 }
 
-function loadMetadataCache(storageKey: string): LoadedHydratedMetadata | undefined {
-  const json = localStorage.getItem(storageKey);
+function loadMetadataCache(json: string | undefined, clear: () => void): LoadedHydratedMetadata | undefined {
   if (!json) {
     return undefined;
   }
@@ -197,7 +205,7 @@ function loadMetadataCache(storageKey: string): LoadedHydratedMetadata | undefin
   try {
     const parsed = parseMetadataCache(JSON.parse(json) as unknown);
     if (!parsed) {
-      localStorage.removeItem(storageKey);
+      clear();
       logger.warn("[user-tile-registration] cleared incompatible metadata cache");
       return undefined;
     }
@@ -208,7 +216,7 @@ function loadMetadataCache(storageKey: string): LoadedHydratedMetadata | undefin
 
     return parsed;
   } catch {
-    localStorage.removeItem(storageKey);
+    clear();
     logger.warn("[user-tile-registration] cleared unreadable metadata cache");
     return undefined;
   }
@@ -320,15 +328,16 @@ export function collectMetadataFromCompile(result: WorkspaceCompileResult): User
 }
 
 /**
- * Restore user tiles from `localStorage` so the editor can render them before
- * the first compile finishes. Returns the cached metadata, or `undefined` when
- * no usable cache exists.
+ * Restore user tiles from the project's persisted metadata cache so the editor
+ * can render them before the first compile finishes. Returns the cached
+ * metadata, or `undefined` when no usable cache exists.
  */
-export function hydrateUserTilesFromCache(
+export async function hydrateUserTilesFromCache(
   env: MindcraftEnvironment,
   options: UserTileRegistrationOptions
-): readonly UserTileMetadata[] | undefined {
-  const loaded = loadMetadataCache(options.storageKey);
+): Promise<readonly UserTileMetadata[] | undefined> {
+  const json = await options.loadMetadata();
+  const loaded = loadMetadataCache(json, () => options.saveMetadata(undefined));
   if (!loaded) {
     return undefined;
   }
@@ -345,7 +354,7 @@ export function hydrateUserTilesFromCache(
   }
 
   if (loaded.migrated) {
-    persistMetadataCache(options.storageKey, snapshot.revision, loaded.metadata);
+    persistMetadataCache(options.saveMetadata, snapshot.revision, loaded.metadata);
   }
 
   env.hydrateTileMetadata(snapshot);
@@ -371,7 +380,7 @@ export function applyCompiledUserTiles(
   const metadata = collectMetadataFromCompile(result);
 
   try {
-    persistMetadataCache(options.storageKey, bundle.revision, metadata);
+    persistMetadataCache(options.saveMetadata, bundle.revision, metadata);
   } catch {
     logger.warn("[user-tile-registration] failed to save metadata cache");
   }

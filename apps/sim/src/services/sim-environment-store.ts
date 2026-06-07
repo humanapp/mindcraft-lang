@@ -307,7 +307,6 @@ export class SimEnvironmentStore {
       modules: [coreModule(), createSimModule()],
       ambientFiles: simAmbientFiles,
       host: { name: simName, version: simVersion },
-      userTileStorageKey: `${simName}:user-tile-metadata`,
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,
       saveBindingToken,
