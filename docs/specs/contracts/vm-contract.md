@@ -92,7 +92,11 @@ through, and the import firewall that holds them in place.
 ### Construction signature
 
 The VM is constructed as
-`new VM(program: Program, services: PlatformServices, options?: VmOptions)`.
+`new VM(program: Program, services: RuntimeLangServices, options?: VmOptions)`.
+The VM consumes only the `runtime` service tier; the `shared`, `app`,
+and `brain` tiers reach host functions through
+`ExecutionContext.services` (the full `PlatformServices`) carried on
+each fiber, not through VM construction.
 `options.events?: VmEvents` is the passive observer slot; omitting
 `options` (or omitting `options.events`) must yield identical
 program execution and identical host-visible side effects. The
@@ -101,8 +105,12 @@ overrides) tune resource shapes and do not change the boundary.
 
 ### `PlatformServices` responsibilities
 
-`PlatformServices` is the single aggregate the VM accepts at
-construction. Its members are the nested runtime service tiers:
+The VM accepts the `runtime` tier (`RuntimeLangServices`) at
+construction and consumes no other tier directly. The full
+`PlatformServices` aggregate -- `runtime` plus the `shared`, `app`, and
+`brain` tiers -- reaches host functions through
+`ExecutionContext.services`. The members the VM and the host calls it
+dispatches consume:
 
 - `runtime.functions: IFunctionRegistry` -- resolved by `HOST_CALL`
   and `HOST_CALL_ASYNC` dispatch to obtain the host function record
@@ -111,9 +119,10 @@ construction. Its members are the nested runtime service tiers:
   and struct field access paths to look up type definitions, native
   snapshot functions, and field getters/setters.
 - `runtime.actions: IBrainActionRegistry` -- used while constructing
-  the loaded `Program` action table; VM dispatch executes
-  `Program.actions` and does not resolve action descriptors on the
-  hot path.
+  the loaded `Program` action table; bytecode-action dispatch executes
+  `Program.actions` by slot and does not resolve descriptors on the hot
+  path. Host-action dispatch (`HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC`)
+  resolves the binding by stable id via `getById(actionId)`.
 - `runtime.operatorTable: IOperatorTable` -- used by runtime helper
   functions that are registered as host functions; primitive
   operator dispatch remains monomorphized into host calls.
@@ -241,13 +250,14 @@ The brain-scoped random stream lives at `services.app.rng` and exposes
 
 Every member operates on ids, names, and primitives. Time, clock,
 and platform-entity services are not `PlatformServices` members.
-Action dispatch does not consult `services.brain`; the VM resolves
-actions from `Program` directly.
+Action dispatch does not consult `services.brain`: bytecode action
+dispatch resolves from `Program.actions` by slot, and host action
+dispatch resolves from `services.runtime.actions` by stable id.
 
 ### Callsite-id binding discipline
 
-Before dispatching `HOST_CALL`, `HOST_CALL_ASYNC`, `ACTION_CALL` (host
-branch), `ACTION_CALL_ASYNC` (host branch), or any lifecycle hook
+Before dispatching `HOST_CALL`, `HOST_CALL_ASYNC`, `HOST_ACTION_CALL`,
+`HOST_ACTION_CALL_ASYNC`, or any lifecycle hook
 (`onInitialized` / `onPageEntered` / `onPageExited`), the VM binds
 `currentCallSiteId` and `currentRuleFuncId` on `ExecutionContext`. Host
 functions reach per-callsite host state through
@@ -265,22 +275,30 @@ traffic through `services.brain.callsite.{getSlot, setSlot}` keyed by
 together; `services.brain.callsite.clearHostState(callSiteId)` drops only
 the host-owned cell.
 
-`ACTION_CALL_ASYNC` allocates a `HandleId`, then either spawns a child
-fiber (bytecode) or calls `execAsync(ctx, args, handleId)` (host). Both
-paths resolve through `handles.events.on("completed", ...)`. **Host
-obligation:** every `execAsync` call must eventually resolve, reject, or
-cancel the `HandleId`. A synchronous throw is rolled back (the host branch
-frees the handle in a `try/catch`); a silent drop leaves it pending
-indefinitely unless the host later resolves, rejects, or cancels it.
-`HandleTable.gc()` only reclaims terminal handles that have no waiters.
+`ACTION_CALL_ASYNC` (bytecode) allocates a `HandleId` and spawns a child
+fiber; `HOST_ACTION_CALL_ASYNC` (host) allocates a `HandleId` and calls
+`execAsync(ctx, args, handleId)`. Both paths resolve through
+`handles.events.on("completed", ...)`. **Host obligation:** every
+`execAsync` call must eventually resolve, reject, or cancel the `HandleId`.
+A synchronous throw is rolled back (the host opcode frees the handle in a
+`try/catch`); a silent drop leaves it pending indefinitely unless the host
+later resolves, rejects, or cancels it. `HandleTable.gc()` only reclaims
+terminal handles that have no waiters.
 
 ### Id-spaces
 
-Rule ids and action ids are compiler-assigned and stable for the lifetime
-of a compiled `Program`. `0` is a valid `RuleId`; `undefined` is the only
-"no rule" sentinel. Fiber ids are scheduler-internal; the contract does
-not specify their allocation scheme. `HandleId`s come from the
-`HandleTable`.
+Rule ids and program-local bytecode action slots are compiler-assigned and
+stable for the lifetime of a compiled `Program`. `0` is a valid `RuleId`;
+`undefined` is the only "no rule" sentinel. Fiber ids are scheduler-internal;
+the contract does not specify their allocation scheme. `HandleId`s come from
+the `HandleTable`.
+
+Host action ids (the `actionId` operand of `HOST_ACTION_CALL` /
+`HOST_ACTION_CALL_ASYNC`) are a separate space, assigned by the brain action
+registry at registration: dense, non-negative, in registration order. The
+compiler and VM share one registry instance in-process, so they agree on these
+ids by construction; the ids are not guaranteed stable across separate builds
+of the registry (a durable, pinned id space is a future concern).
 
 ### Orchestrator opacity
 
@@ -483,14 +501,27 @@ shape, sync-vs-async lifetime contract, and the host re-entry rule.
 
 | Mnemonic            | Numeric | Operands                                              | Stack effect                                | Faults |
 | ------------------- | ------- | ----------------------------------------------------- | ------------------------------------------- | ------ |
-| `ACTION_CALL`       | 42      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if `actionSlot` is out of bounds or the program defines no actions. |
-| `ACTION_CALL_ASYNC` | 43      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `ACTION_CALL`; additionally `StackOverflow` on handle-table or fiber-pool exhaustion. |
+| `ACTION_CALL`            | 42      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if `actionSlot` is out of bounds or the program defines no actions. |
+| `ACTION_CALL_ASYNC`      | 43      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `ACTION_CALL`; additionally `StackOverflow` on handle-table or fiber-pool exhaustion. |
+| `HOST_ACTION_CALL`       | 44      | `actionId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if no action holds `actionId`, the resolved action is not host-backed, it is async, or its `execSync` is missing. |
+| `HOST_ACTION_CALL_ASYNC` | 45      | `actionId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `HOST_ACTION_CALL` but faults if the action is sync or its `execAsync` is missing; additionally `StackOverflow` on handle-table exhaustion. |
 
-`actionSlot` indexes `Program.actions`. The host or bytecode branch
-is selected from the `ExecutableAction.binding` discriminant. See
-[Calling convention](#host-call-layout) for the shared arg-buffer
+`actionSlot` indexes `Program.actions`, which holds bytecode actions
+only; `ACTION_CALL` / `ACTION_CALL_ASYNC` fault if the indexed entry is
+not a bytecode action. Host actions are invoked by id through
+`HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC` and carry no `Program.actions`
+entry. See [Calling convention](#host-call-layout) for the shared arg-buffer
 shape and [Action call state model](#action-call-state-model) for
 state-slot routing and `HandleId` allocation.
+
+`HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC` dispatch a host action by
+its stable registry `actionId` (assigned at registration; see
+[Id-spaces](#id-spaces)) rather than by a program-local slot: the VM
+resolves the binding via `services.runtime.actions.getById(actionId)`,
+validates it is host-backed with the opcode-matching sync/async-ness, and
+invokes `execSync` / `execAsync` with the same arg-buffer, callsite
+binding, and `HandleId` discipline as a host function call. They carry no
+`Program.actions` entry.
 
 ### Async and cooperative scheduling
 
@@ -852,11 +883,13 @@ its `args` view and the rest of `ctx`, but must not call back into
 `brain.think()`, `scheduler.tick()`, `runFiber()`, or async-handle
 resolution. See that section for the full transitive rule.
 
-Action calls (`ACTION_CALL` / `ACTION_CALL_ASYNC`) use the same
+Action calls (`ACTION_CALL` / `ACTION_CALL_ASYNC` and
+`HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC`) use the same
 positional buffer shape as host calls. The compiler pushes one
 `NIL_VALUE` filler per declared action slot, lowers each supplied
 argument expression, and stores it into the slot with
-`STACK_SET_REL argc-1-slotId`. Operand `a` is the action slot,
+`STACK_SET_REL argc-1-slotId`. Operand `a` is the bytecode action
+slot (`ACTION_CALL`) or the stable host action id (`HOST_ACTION_CALL`),
 operand `b` is `argc`, and operand `c` is the call-site id.
 
 Host-bound sync actions receive a transient

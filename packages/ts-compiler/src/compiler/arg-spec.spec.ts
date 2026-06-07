@@ -44,7 +44,8 @@ import type {
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 describe("descriptor arg spec extraction", () => {

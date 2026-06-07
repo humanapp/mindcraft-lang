@@ -55,7 +55,7 @@ test("HOST_CALL_ASYNC and AWAIT complete in one run when the handle resolves syn
     currentTick: 0,
   };
 
-  const vm = new VM(program, __test__createPlatformServices({ runtime: { functions: registry } }), { handles });
+  const vm = new VM(program, __test__createPlatformServices({ runtime: { functions: registry } }).runtime, { handles });
   const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
   fiber.instrBudget = 20;
   const result = vm.runFiber(fiber, {

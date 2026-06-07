@@ -167,7 +167,7 @@ export class BrainRuntime implements IBrainRuntime {
       },
     };
 
-    this.vm = new VM(program, services, vmEvents ? { events: vmEvents } : undefined);
+    this.vm = new VM(program, services.runtime, vmEvents ? { events: vmEvents } : undefined);
     this.scheduler = new FiberScheduler(this.vm, {
       maxFibersPerTick: 64,
       defaultBudget: 1000,
@@ -619,20 +619,12 @@ export class BrainRuntime implements IBrainRuntime {
 
     for (let i = 0; i < meta.actionCallSites.size(); i++) {
       const site = meta.actionCallSites.get(i)!;
-      const actions = this.program.actions;
-      const action = actions ? actions.get(site.actionSlot) : undefined;
-      if (!action) {
-        continue;
-      }
 
-      if (action.binding === "bytecode" && action.initializerFuncId !== undefined) {
-        const newlyAllocated = this.callsiteStore.ensure(site.callSiteId);
-        if (newlyAllocated) {
-          this.runBytecodeInitializerHook(action, site.callSiteId);
+      if (site.binding === "host") {
+        const action = this.executionContext.services.runtime.actions.getById(site.actionId);
+        if (!action || action.binding !== "host") {
+          continue;
         }
-      }
-
-      if (action.binding === "host") {
         if (action.onInitialized) {
           const newlyAllocated = this.callsiteStore.ensure(site.callSiteId);
           if (newlyAllocated) {
@@ -645,6 +637,17 @@ export class BrainRuntime implements IBrainRuntime {
         continue;
       }
 
+      const actions = this.program.actions;
+      const action = actions ? actions.get(site.actionSlot) : undefined;
+      if (!action) {
+        continue;
+      }
+      if (action.initializerFuncId !== undefined) {
+        const newlyAllocated = this.callsiteStore.ensure(site.callSiteId);
+        if (newlyAllocated) {
+          this.runBytecodeInitializerHook(action, site.callSiteId);
+        }
+      }
       if (action.activationFuncId !== undefined) {
         this.runBytecodeActivationHook(action, site.callSiteId);
       }
@@ -698,21 +701,20 @@ export class BrainRuntime implements IBrainRuntime {
     const meta = this.pageMetadata.get(this.currentPageIndex);
     if (!meta) return;
 
-    const actions = this.program.actions;
-    if (!actions) return;
-
     for (let i = 0; i < meta.actionCallSites.size(); i++) {
       const site = meta.actionCallSites.get(i)!;
-      const action = actions.get(site.actionSlot);
-      if (!action) continue;
 
-      if (action.binding === "host") {
-        if (action.onPageExited) {
+      if (site.binding === "host") {
+        const action = this.executionContext.services.runtime.actions.getById(site.actionId);
+        if (action && action.binding === "host" && action.onPageExited) {
           this.runHostDeactivationHook(site.callSiteId, action.onPageExited);
         }
         continue;
       }
 
+      const actions = this.program.actions;
+      const action = actions ? actions.get(site.actionSlot) : undefined;
+      if (!action) continue;
       if (action.deactivationFuncId !== undefined) {
         this.runBytecodeDeactivationHook(action, site.callSiteId);
       }

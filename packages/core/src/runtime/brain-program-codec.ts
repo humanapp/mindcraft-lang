@@ -2,7 +2,7 @@ import { Dict } from "../platform/dict";
 import { List } from "../platform/list";
 import { UniqueSet } from "../platform/uniqueset";
 import type { ConstantPools, FunctionBytecode, Instr } from "./bytecode";
-import type { BytecodeExecutableAction, ExecutableAction, HostActionBinding } from "./context";
+import type { BytecodeExecutableAction } from "./context";
 import { type ActionDescriptor, mkCallDef } from "./function-defs";
 import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
 import { dictFromJsonEntries, dictToJsonEntries, listFromJson, listToJson } from "./json-container-codec";
@@ -84,19 +84,12 @@ export interface BrainProgramBytecodeExecutableActionJson {
   readonly deactivationFuncId?: number;
 }
 
-/** JSON-safe representation of a host-bound executable action. */
-export interface BrainProgramHostExecutableActionJson {
-  /** Action binding kind. */
-  readonly binding: "host";
-
-  /** Stable action key identifying the host builtin. */
-  readonly key: string;
-}
-
-/** JSON-safe representation of one linked executable action binding. */
-export type BrainProgramExecutableActionJson =
-  | BrainProgramHostExecutableActionJson
-  | BrainProgramBytecodeExecutableActionJson;
+/**
+ * JSON-safe representation of one linked executable action binding. The action
+ * table is bytecode-only; host actions dispatch by stable id via
+ * `HOST_ACTION_CALL` and are not serialized here.
+ */
+export type BrainProgramExecutableActionJson = BrainProgramBytecodeExecutableActionJson;
 
 /** JSON-safe representation of one rule ancestor edge. */
 export interface BrainProgramRuleAncestorJsonEntry {
@@ -134,14 +127,14 @@ export interface BrainProgramJson {
   readonly ruleAncestors?: readonly BrainProgramRuleAncestorJsonEntry[];
 }
 
-/** JSON-safe representation of one action call site entry. */
-export interface LinkedBrainProgramActionCallSiteJsonEntry {
-  /** Action slot in the linked program. */
-  readonly actionSlot: number;
-
-  /** Stable call site id. */
-  readonly callSiteId: number;
-}
+/**
+ * JSON-safe representation of one action call site entry. A `host` entry
+ * carries the stable registry `actionId`; a `bytecode` entry carries the
+ * program-local `actionSlot`.
+ */
+export type LinkedBrainProgramActionCallSiteJsonEntry =
+  | { readonly binding: "host"; readonly callSiteId: number; readonly actionId: number }
+  | { readonly binding: "bytecode"; readonly callSiteId: number; readonly actionSlot: number };
 
 /** JSON-safe representation of one linked brain page. */
 export interface LinkedBrainProgramPageMetadataJson {
@@ -196,7 +189,7 @@ function brainProgramFromJson(json: BrainProgramJson): Program {
     program.entryPoint = json.entryPoint;
   }
   if (json.actions !== undefined) {
-    program.actions = listFromJson(json.actions, executableActionFromJson);
+    program.actions = listFromJson(json.actions, bytecodeExecutableActionFromJson);
   }
   if (json.ruleFuncIds !== undefined) {
     program.ruleFuncIds = new UniqueSet(json.ruleFuncIds);
@@ -249,28 +242,12 @@ function constantPoolsFromJson(json: BrainProgramConstantPoolsJson): ConstantPoo
   };
 }
 
-function executableActionFromJson(json: BrainProgramExecutableActionJson): ExecutableAction {
-  if (json.binding === "host") {
-    return unresolvedHostActionBinding(json.key);
-  }
-  return bytecodeExecutableActionFromJson(json);
-}
-
 /**
  * Builds an {@link ActionDescriptor} from the `key` and `isAsync` a lean `.mcprogram` records. The
  * `kind` and `callDef` are placeholders; only `key` and `isAsync` carry serialized values.
  */
 function placeholderActionDescriptor(key: string, isAsync: boolean): ActionDescriptor {
   return { key, kind: "sensor", callDef: mkCallDef({ type: "bag", items: [] }), isAsync };
-}
-
-/**
- * Builds an unresolved host action binding from a serialized action key. Only `descriptor.key` is
- * meaningful and the binding carries no functions; a loader must resolve it against the runtime
- * environment by key before the program executes.
- */
-function unresolvedHostActionBinding(key: string): HostActionBinding {
-  return { binding: "host", descriptor: placeholderActionDescriptor(key, false) };
 }
 
 function bytecodeExecutableActionFromJson(json: BrainProgramBytecodeExecutableActionJson): BytecodeExecutableAction {
@@ -306,14 +283,20 @@ function pageMetadataFromJson(json: LinkedBrainProgramPageMetadataJson): PageMet
 }
 
 function actionCallSiteFromJson(json: LinkedBrainProgramActionCallSiteJsonEntry): ActionCallSiteEntry {
-  return {
-    actionSlot: json.actionSlot,
-    callSiteId: json.callSiteId,
-  };
+  if (json.binding === "host") {
+    return { binding: "host", callSiteId: json.callSiteId, actionId: json.actionId };
+  }
+  return { binding: "bytecode", callSiteId: json.callSiteId, actionSlot: json.actionSlot };
 }
 
 /**
  * Converts a runtime linked brain program into its JSON-safe payload.
+ *
+ * The `actions` table is bytecode-only; host actions dispatch by id via
+ * `HOST_ACTION_CALL` and are not serialized there. Those instruction operands
+ * embed registration-order host ids, so a serialized program is only valid
+ * against an action registry built in the same order. A durable, pinned host
+ * id space is a separate concern.
  *
  * @param program - Linked brain program to serialize.
  */
@@ -331,7 +314,7 @@ function brainProgramToJson(program: Program): BrainProgramJson {
     constantPools: constantPoolsToJson(program.constantPools),
     variableNames: program.variableNames.toArray(),
     ...(program.entryPoint !== undefined ? { entryPoint: program.entryPoint } : {}),
-    ...(program.actions !== undefined ? { actions: listToJson(program.actions, executableActionToJson) } : {}),
+    ...(program.actions !== undefined ? { actions: listToJson(program.actions, bytecodeExecutableActionToJson) } : {}),
     ...(program.ruleFuncIds !== undefined ? { ruleFuncIds: program.ruleFuncIds.toArray() } : {}),
     ...(program.ruleAncestors !== undefined
       ? {
@@ -370,13 +353,6 @@ function constantPoolsToJson(pools: ConstantPools): BrainProgramConstantPoolsJso
   };
 }
 
-function executableActionToJson(action: ExecutableAction): BrainProgramExecutableActionJson {
-  if (action.binding === "host") {
-    return { binding: "host", key: action.descriptor.key };
-  }
-  return bytecodeExecutableActionToJson(action);
-}
-
 function bytecodeExecutableActionToJson(action: BytecodeExecutableAction): BrainProgramBytecodeExecutableActionJson {
   return {
     binding: "bytecode",
@@ -400,8 +376,8 @@ function pageMetadataToJson(page: PageMetadata): LinkedBrainProgramPageMetadataJ
 }
 
 function actionCallSiteToJson(entry: ActionCallSiteEntry): LinkedBrainProgramActionCallSiteJsonEntry {
-  return {
-    actionSlot: entry.actionSlot,
-    callSiteId: entry.callSiteId,
-  };
+  if (entry.binding === "host") {
+    return { binding: "host", callSiteId: entry.callSiteId, actionId: entry.actionId };
+  }
+  return { binding: "bytecode", callSiteId: entry.callSiteId, actionSlot: entry.actionSlot };
 }

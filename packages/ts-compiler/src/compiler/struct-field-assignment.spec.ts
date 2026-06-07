@@ -28,7 +28,8 @@ import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 function mkCtx(): ExecutionContext {

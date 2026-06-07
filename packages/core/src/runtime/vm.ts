@@ -8,10 +8,10 @@ import { Time } from "../platform/time";
 import { UniqueSet } from "../platform/uniqueset";
 import type { FunctionBytecode, Instr } from "./bytecode";
 import { Op } from "./bytecode";
-import type { ExecutableAction, ExecutionContext } from "./context";
+import type { BytecodeExecutableAction, ExecutionContext, HostActionBinding } from "./context";
 import type { VmEvents } from "./events";
 import type { Program } from "./program";
-import type { PlatformServices, RuntimeLangServices } from "./services";
+import type { RuntimeLangServices } from "./services";
 import type { ITypeRegistry } from "./type-defs";
 import { NativeType, type StructTypeDef, type TypeId } from "./type-defs";
 import type { ErrorValue, HandleId, Value } from "./value";
@@ -269,19 +269,17 @@ const VALID_TRANSITIONS: Record<FiberState, UniqueSet<FiberState>> = {
  */
 export class VM implements IVM {
   private config: VmConfig;
-  private services: PlatformServices;
-  private fns: RuntimeLangServices["functions"];
+  private runtime: RuntimeLangServices;
   private events?: VmEvents;
   private nextInternalFiberId = -1;
   public handles: HandleTable;
 
   constructor(
     private prog: Program,
-    services: PlatformServices,
+    services: RuntimeLangServices,
     options?: VmOptions
   ) {
-    this.services = services;
-    this.fns = services.runtime.functions;
+    this.runtime = services;
     const events = options?.events;
     const injectedHandles = options?.handles;
     const configOverrides: Partial<VmConfig> = {};
@@ -453,6 +451,10 @@ export class VM implements IVM {
           return this.execActionCall(fiber, ins, frame);
         case Op.ACTION_CALL_ASYNC:
           return this.execActionCallAsync(fiber, ins, frame, scheduler);
+        case Op.HOST_ACTION_CALL:
+          return this.execHostActionCall(fiber, ins, frame);
+        case Op.HOST_ACTION_CALL_ASYNC:
+          return this.execHostActionCallAsync(fiber, ins, frame);
         case Op.STACK_SET_REL:
           return this.execStackSetRel(fiber, ins, frame);
         case Op.AWAIT:
@@ -641,7 +643,7 @@ export class VM implements IVM {
     if (slotId < 0 || slotId >= this.prog.variableNames.size()) {
       throw new Error(`STORE_VAR_SLOT: slot index ${slotId} out of bounds`);
     }
-    const value = deepCopyValue(this.pop(fiber), this.services.runtime.types, fiber.executionContext);
+    const value = deepCopyValue(this.pop(fiber), this.runtime.types, fiber.executionContext);
     fiber.executionContext.setVariableBySlot(slotId, value);
     frame.pc++;
     return undefined;
@@ -904,7 +906,7 @@ export class VM implements IVM {
     const argc = ins.b ?? 0;
     const callSiteId = ins.c ?? 0;
 
-    if (fnId < 0 || fnId >= this.fns.size()) {
+    if (fnId < 0 || fnId >= this.runtime.functions.size()) {
       throw new Error(`HOST_CALL: function index ${fnId} out of bounds`);
     }
 
@@ -916,7 +918,7 @@ export class VM implements IVM {
     this.bindExecutionContext(fiber, frame, callSiteId);
 
     const args = fiber.vstack.subview(stackSize - argc, argc);
-    const result = this.fns.getSyncById(fnId)!.fn.exec(fiber.executionContext, args);
+    const result = this.runtime.functions.getSyncById(fnId)!.fn.exec(fiber.executionContext, args);
 
     for (let i = 0; i < argc; i++) {
       fiber.vstack.pop();
@@ -934,7 +936,7 @@ export class VM implements IVM {
     const argc = ins.b ?? 0;
     const callSiteId = ins.c ?? 0;
 
-    if (fnId < 0 || fnId >= this.fns.size()) {
+    if (fnId < 0 || fnId >= this.runtime.functions.size()) {
       throw new Error(`HOST_CALL_ASYNC: function index ${fnId} out of bounds`);
     }
 
@@ -956,7 +958,7 @@ export class VM implements IVM {
 
     this.bindExecutionContext(fiber, frame, callSiteId);
 
-    this.fns.getAsyncById(fnId)!.fn.exec(fiber.executionContext, args, hid);
+    this.runtime.functions.getAsyncById(fnId)!.fn.exec(fiber.executionContext, args, hid);
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
@@ -974,7 +976,7 @@ export class VM implements IVM {
     return undefined;
   }
 
-  private getExecutableAction(actionSlot: number, opName: string): ExecutableAction {
+  private getExecutableAction(actionSlot: number, opName: string): BytecodeExecutableAction {
     const actions = this.prog.actions;
     if (!actions) {
       throw new Error(`${opName}: program does not define executable actions`);
@@ -1000,24 +1002,6 @@ export class VM implements IVM {
     const actionKey = action.descriptor.key;
     if (action.descriptor.isAsync) {
       throw new Error(`ACTION_CALL: action ${actionKey} requires ACTION_CALL_ASYNC`);
-    }
-
-    if (action.binding === "host") {
-      if (!action.execSync) {
-        throw new Error(`ACTION_CALL: host action ${actionKey} is missing execSync`);
-      }
-
-      this.bindExecutionContext(fiber, frame, callSiteId);
-
-      const args = fiber.vstack.subview(stackSize - argc, argc);
-      const result = action.execSync(fiber.executionContext, args);
-      for (let i = 0; i < argc; i++) {
-        fiber.vstack.pop();
-      }
-      this.push(fiber, result);
-      frame.pc++;
-      this.syncExecutionContextFromTopFrame(fiber);
-      return undefined;
     }
 
     const args = this.snapshotStackArgs(fiber, argc, "ACTION_CALL");
@@ -1046,35 +1030,6 @@ export class VM implements IVM {
       throw new Error(`ACTION_CALL_ASYNC: action ${actionKey} must use ACTION_CALL`);
     }
 
-    if (action.binding === "host") {
-      if (!action.execAsync) {
-        throw new Error(`ACTION_CALL_ASYNC: host action ${actionKey} is missing execAsync`);
-      }
-
-      const args = List.empty<Value>();
-      for (let i = 0; i < argc; i++) {
-        args.push(fiber.vstack.get(stackSize - argc + i)!);
-      }
-      for (let i = 0; i < argc; i++) {
-        fiber.vstack.pop();
-      }
-
-      const hid = this.handles.createPending();
-      this.push(fiber, V.handle(hid));
-
-      this.bindExecutionContext(fiber, frame, callSiteId);
-
-      try {
-        action.execAsync(fiber.executionContext, args, hid);
-      } catch (error) {
-        this.handles.delete(hid);
-        throw error;
-      }
-      frame.pc++;
-      this.syncExecutionContextFromTopFrame(fiber);
-      return undefined;
-    }
-
     const args = this.snapshotStackArgs(fiber, argc, "ACTION_CALL_ASYNC");
     for (let i = 0; i < argc; i++) {
       fiber.vstack.pop();
@@ -1096,6 +1051,96 @@ export class VM implements IVM {
 
     this.push(fiber, V.handle(hid));
     this.bindExecutionContext(fiber, frame, callSiteId);
+    frame.pc++;
+    this.syncExecutionContextFromTopFrame(fiber);
+    return undefined;
+  }
+
+  /**
+   * Resolve a host action by its stable registry id and validate it against the
+   * opcode. Faults (surfacing as a `ScriptError`) when no action holds the id,
+   * the resolved action is not host-backed, or its sync/async-ness does not
+   * match the opcode that issued the call.
+   */
+  private resolveHostAction(actionId: number, wantAsync: boolean, opName: string): HostActionBinding {
+    const action = this.runtime.actions.getById(actionId);
+    if (!action) {
+      throw new Error(`${opName}: no action registered with id ${actionId}`);
+    }
+    if (action.binding !== "host") {
+      throw new Error(`${opName}: action id ${actionId} (${action.descriptor.key}) is not a host action`);
+    }
+    if (action.descriptor.isAsync !== wantAsync) {
+      const needed = action.descriptor.isAsync ? "HOST_ACTION_CALL_ASYNC" : "HOST_ACTION_CALL";
+      throw new Error(`${opName}: host action ${action.descriptor.key} requires ${needed}`);
+    }
+    return action;
+  }
+
+  private execHostActionCall(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const actionId = ins.a ?? 0;
+    const argc = ins.b ?? 0;
+    const callSiteId = ins.c ?? 0;
+
+    const stackSize = fiber.vstack.size();
+    if (argc < 0 || argc > stackSize) {
+      throwUnderflow(`HOST_ACTION_CALL: argc ${argc} exceeds stack size ${stackSize}`);
+    }
+
+    const action = this.resolveHostAction(actionId, false, "HOST_ACTION_CALL");
+    if (!action.execSync) {
+      throw new Error(`HOST_ACTION_CALL: host action ${action.descriptor.key} is missing execSync`);
+    }
+
+    this.bindExecutionContext(fiber, frame, callSiteId);
+
+    const args = fiber.vstack.subview(stackSize - argc, argc);
+    const result = action.execSync(fiber.executionContext, args);
+    for (let i = 0; i < argc; i++) {
+      fiber.vstack.pop();
+    }
+    this.push(fiber, result);
+    frame.pc++;
+    this.syncExecutionContextFromTopFrame(fiber);
+    return undefined;
+  }
+
+  private execHostActionCallAsync(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    this.assertCanSuspend(fiber, Op.HOST_ACTION_CALL_ASYNC);
+
+    const actionId = ins.a ?? 0;
+    const argc = ins.b ?? 0;
+    const callSiteId = ins.c ?? 0;
+
+    const stackSize = fiber.vstack.size();
+    if (argc < 0 || argc > stackSize) {
+      throwUnderflow(`HOST_ACTION_CALL_ASYNC: argc ${argc} exceeds stack size ${stackSize}`);
+    }
+
+    const action = this.resolveHostAction(actionId, true, "HOST_ACTION_CALL_ASYNC");
+    if (!action.execAsync) {
+      throw new Error(`HOST_ACTION_CALL_ASYNC: host action ${action.descriptor.key} is missing execAsync`);
+    }
+
+    const args = List.empty<Value>();
+    for (let i = 0; i < argc; i++) {
+      args.push(fiber.vstack.get(stackSize - argc + i)!);
+    }
+    for (let i = 0; i < argc; i++) {
+      fiber.vstack.pop();
+    }
+
+    const hid = this.handles.createPending();
+    this.push(fiber, V.handle(hid));
+
+    this.bindExecutionContext(fiber, frame, callSiteId);
+
+    try {
+      action.execAsync(fiber.executionContext, args, hid);
+    } catch (error) {
+      this.handles.delete(hid);
+      throw error;
+    }
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
@@ -1437,13 +1482,13 @@ export class VM implements IVM {
 
   // Struct operations
   private findStructField(typeId: TypeId, fieldName: string): number | undefined {
-    const typeDef = this.services.runtime.types.get(typeId) as StructTypeDef | undefined;
+    const typeDef = this.runtime.types.get(typeId) as StructTypeDef | undefined;
     return typeDef?.fieldIndexByName.get(fieldName);
   }
 
   private makeStructFields(typeId: TypeId): List<Value> {
     const fields = List.empty<Value>();
-    const typeDef = this.services.runtime.types.get(typeId) as StructTypeDef | undefined;
+    const typeDef = this.runtime.types.get(typeId) as StructTypeDef | undefined;
     const fieldCount = typeDef?.fields.size() ?? 0;
     for (let i = 0; i < fieldCount; i++) {
       fields.push(NIL_VALUE);
@@ -1557,7 +1602,7 @@ export class VM implements IVM {
 
     let resultTypeId = typeId;
     let fields = this.makeStructFields(resultTypeId);
-    const sourceDef = this.services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
+    const sourceDef = this.runtime.types.get(source.typeId) as StructTypeDef | undefined;
     if (source.v && sourceDef && fields.size() === 0) {
       resultTypeId = source.typeId;
       fields = List.empty<Value>();
@@ -1598,7 +1643,7 @@ export class VM implements IVM {
 
     if (isStructValue(source)) {
       // Check for a registered fieldGetter on the struct type
-      const typeDef = this.services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
+      const typeDef = this.runtime.types.get(source.typeId) as StructTypeDef | undefined;
       if (typeDef?.fieldGetter) {
         result = typeDef.fieldGetter(source, fieldName.v, fiber.executionContext);
       } else {
@@ -1615,7 +1660,7 @@ export class VM implements IVM {
   }
 
   private execSetField(fiber: Fiber, frame: Frame): undefined {
-    const value = deepCopyValue(this.pop(fiber), this.services.runtime.types, fiber.executionContext);
+    const value = deepCopyValue(this.pop(fiber), this.runtime.types, fiber.executionContext);
     const fieldName = this.pop(fiber);
     const source = this.pop(fiber);
 
@@ -1625,7 +1670,7 @@ export class VM implements IVM {
 
     if (isStructValue(source)) {
       // Check for a registered fieldSetter on the struct type
-      const typeDef = this.services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
+      const typeDef = this.runtime.types.get(source.typeId) as StructTypeDef | undefined;
       if (typeDef?.fieldSetter) {
         const success = typeDef.fieldSetter(source, fieldName.v, value, fiber.executionContext);
         if (!success) {
@@ -1764,7 +1809,7 @@ export class VM implements IVM {
   private enterBytecodeActionFrame(
     fiber: Fiber,
     callerFrame: Frame,
-    action: Extract<ExecutableAction, { binding: "bytecode" }>,
+    action: BytecodeExecutableAction,
     args: ReadonlyList<Value>,
     callSiteId: number
   ): void {
@@ -1802,7 +1847,7 @@ export class VM implements IVM {
 
   private spawnBytecodeActionFiber(
     parentFiber: Fiber,
-    action: Extract<ExecutableAction, { binding: "bytecode" }>,
+    action: BytecodeExecutableAction,
     args: List<Value>,
     callSiteId: number
   ): Fiber {

@@ -1958,9 +1958,12 @@ describe("Brain behavioral -- compiled program structure", () => {
     const program = compileBrain(
       brainDef,
       List.from([services.edit.tiles, brainDef.catalog()]),
-      services.shared.conversions
+      services.shared.conversions,
+      services.runtime.actions
     ).program!;
 
+    // An action the resolver cannot bind falls back to a program-local bytecode
+    // slot so the operand stack stays balanced for error recovery.
     assert.equal(program.actionRefs.size(), 1);
     assert.deepEqual(program.actionRefs.get(0), {
       slot: 0,
@@ -1970,6 +1973,7 @@ describe("Brain behavioral -- compiled program structure", () => {
     const page = program.pages.get(0)!;
     assert.equal(page.actionCallSites.size(), 1);
     assert.deepEqual(page.actionCallSites.get(0), {
+      binding: "bytecode",
       actionSlot: 0,
       callSiteId: 0,
     });
@@ -1982,7 +1986,7 @@ describe("Brain behavioral -- compiled program structure", () => {
     );
   });
 
-  test("brain initialization links action slots to executable host actions", () => {
+  test("host action tiles dispatch by stable id, not through the action table", () => {
     const fnEntry = services.runtime.functions.get(CoreSensorId.CurrentPage);
     assert.ok(fnEntry, "current-page function should be registered");
 
@@ -2000,10 +2004,16 @@ describe("Brain behavioral -- compiled program structure", () => {
 
     const program = brain.getProgram();
     assert.ok(program, "linked program should exist after initialize");
-    const actions = program!.actions!;
-    assert.equal(actions.size(), 1);
-    assert.equal(actions.get(0)!.binding, "host");
-    assert.equal(actions.get(0)!.descriptor.key, CoreSensorId.CurrentPage);
+    // Host actions are dispatched by stable id and are not placed in the
+    // program's bytecode-only action table.
+    assert.equal(program!.actions!.size(), 0);
+
+    const resolved = services.runtime.actions.getByKey(CoreSensorId.CurrentPage);
+    assert.ok(resolved && resolved.binding === "host", "current-page action should resolve as host");
+
+    const site = brain.getPages().get(0)!.actionCallSites.get(0)!;
+    assert.equal(site.binding, "host");
+    assert.equal(site.binding === "host" ? site.actionId : -1, resolved.binding === "host" ? resolved.id : -2);
   });
 });
 

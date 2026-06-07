@@ -6,6 +6,7 @@ import { UniqueSet } from "../../platform/uniqueset";
 import type {
   ActionCallSiteEntry,
   ActionRef,
+  BrainActionResolver,
   IConversionRegistry,
   PageMetadata,
   UnlinkedBrainProgram,
@@ -87,6 +88,8 @@ export class BrainCompiler {
   private nextFuncId: number;
   private catalogs: ReadonlyList<ITileCatalog>;
   private conversions: IConversionRegistry;
+  /** Resolves action descriptors to bindings (host vs bytecode) at compile time */
+  private actionResolver: BrainActionResolver;
   /** Global variable name pool for LOAD_VAR_SLOT/STORE_VAR_SLOT instructions */
   private variableNames: List<string>;
   /** Maps variable names to their index in variableNames */
@@ -100,7 +103,11 @@ export class BrainCompiler {
   /** Code-generation diagnostics collected across all compiled rules. */
   private compileDiags: List<BrainBuildDiagnostic>;
 
-  constructor(catalogs: ReadonlyList<ITileCatalog>, conversions: IConversionRegistry) {
+  constructor(
+    catalogs: ReadonlyList<ITileCatalog>,
+    conversions: IConversionRegistry,
+    actionResolver: BrainActionResolver
+  ) {
     this.constantPool = new ConstantPool();
     this.functions = List.empty();
     this.ruleIndex = Dict.empty();
@@ -110,6 +117,7 @@ export class BrainCompiler {
     this.nextFuncId = 0;
     this.catalogs = catalogs;
     this.conversions = conversions;
+    this.actionResolver = actionResolver;
     this.variableNames = List.empty();
     this.variableIndices = Dict.empty();
     this.actionRefs = List.empty();
@@ -241,9 +249,11 @@ export class BrainCompiler {
   }
 
   /**
-   * Recursively collect all ACTION_CALL / ACTION_CALL_ASYNC call sites from a set
-   * of rule functions and their children (via CALL instructions). Each call
-   * site is recorded with its actionSlot and callSiteId.
+   * Recursively collect all action call sites from a set of rule functions and
+   * their children (via CALL instructions). Host call sites
+   * (`HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC`) are recorded with their
+   * stable `actionId`; bytecode call sites (`ACTION_CALL` / `ACTION_CALL_ASYNC`)
+   * with their program-local `actionSlot`.
    */
   private collectActionCallSites(
     funcIds: List<number>,
@@ -262,7 +272,9 @@ export class BrainCompiler {
       for (let pc = 0; pc < fn.code.size(); pc++) {
         const ins = fn.code.get(pc)!;
         if (ins.op === Op.ACTION_CALL || ins.op === Op.ACTION_CALL_ASYNC) {
-          out.push({ actionSlot: ins.a ?? 0, callSiteId: ins.c ?? 0 });
+          out.push({ binding: "bytecode", actionSlot: ins.a ?? 0, callSiteId: ins.c ?? 0 });
+        } else if (ins.op === Op.HOST_ACTION_CALL || ins.op === Op.HOST_ACTION_CALL_ASYNC) {
+          out.push({ binding: "host", actionId: ins.a ?? 0, callSiteId: ins.c ?? 0 });
         } else if (ins.op === Op.CALL) {
           childFuncIds.push(ins.a ?? 0);
         }
@@ -399,6 +411,7 @@ export class BrainCompiler {
       variableNames: this.variableNames,
       actionIndices: this.actionIndices,
       actionRefs: this.actionRefs,
+      actionResolver: this.actionResolver,
       typeEnv,
       constantPool: this.constantPool,
       nextCallSiteId: this.nextCallSiteIdCounter,
@@ -437,14 +450,18 @@ export class BrainCompiler {
  *
  * @param brainDef - The brain definition to compile
  * @param catalogs - Tile catalogs for type resolution
+ * @param conversions - Conversion registry used during type inference
+ * @param actionResolver - Resolves each action's binding (host vs bytecode) so
+ *   the compiler emits host calls by stable id and bytecode calls by slot
  * @returns A complete BrainProgram
  */
 export function compileBrain(
   brainDef: IBrainDef,
   catalogs: ReadonlyList<ITileCatalog>,
-  conversions: IConversionRegistry
+  conversions: IConversionRegistry,
+  actionResolver: BrainActionResolver
 ): BrainBuildResult<UnlinkedBrainProgram> {
-  const compiler = new BrainCompiler(catalogs, conversions);
+  const compiler = new BrainCompiler(catalogs, conversions, actionResolver);
   const program = compiler.compile(brainDef);
   return { program, diagnostics: compiler.diagnostics() };
 }

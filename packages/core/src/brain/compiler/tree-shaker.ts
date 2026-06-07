@@ -5,14 +5,14 @@ import { logger } from "../../platform/logger";
 import { UniqueSet } from "../../platform/uniqueset";
 import type { ConstantPools, FunctionBytecode, Instr } from "../../runtime/bytecode";
 import { Op } from "../../runtime/bytecode";
-import type { BytecodeExecutableAction, ExecutableAction } from "../../runtime/context";
+import type { BytecodeExecutableAction } from "../../runtime/context";
 import type { LinkedBrainProgram, PageMetadata } from "../../runtime/host-bindings";
 import type { Program } from "../../runtime/program";
 import { NativeType } from "../../runtime/type-defs";
 import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
 
-function requireActions(program: Program): List<ExecutableAction> {
+function requireActions(program: Program): List<BytecodeExecutableAction> {
   const actions = program.actions;
   if (!actions) {
     throw new Error("treeshakeProgram: program has no linked actions");
@@ -45,17 +45,15 @@ function markReachableFunctions(program: Program, pages: List<PageMetadata>): Un
   const actions = requireActions(program);
   for (let a = 0; a < actions.size(); a++) {
     const action = actions.get(a);
-    if (action.binding === "bytecode") {
-      enqueue(action.entryFuncId);
-      if (action.initializerFuncId !== undefined) {
-        enqueue(action.initializerFuncId);
-      }
-      if (action.activationFuncId !== undefined) {
-        enqueue(action.activationFuncId);
-      }
-      if (action.deactivationFuncId !== undefined) {
-        enqueue(action.deactivationFuncId);
-      }
+    enqueue(action.entryFuncId);
+    if (action.initializerFuncId !== undefined) {
+      enqueue(action.initializerFuncId);
+    }
+    if (action.activationFuncId !== undefined) {
+      enqueue(action.activationFuncId);
+    }
+    if (action.deactivationFuncId !== undefined) {
+      enqueue(action.deactivationFuncId);
     }
   }
 
@@ -577,13 +575,9 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
   }
 
   const sourceActions = requireActions(program);
-  const newActions = List.empty<ExecutableAction>();
+  const newActions = List.empty<BytecodeExecutableAction>();
   for (let a = 0; a < sourceActions.size(); a++) {
     const action = sourceActions.get(a);
-    if (action.binding !== "bytecode") {
-      newActions.push(action);
-      continue;
-    }
     const newEntry = funcRemap.get(action.entryFuncId);
     const newInitializer = action.initializerFuncId !== undefined ? funcRemap.get(action.initializerFuncId) : undefined;
     const newActivation = action.activationFuncId !== undefined ? funcRemap.get(action.activationFuncId) : undefined;

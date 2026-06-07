@@ -17,7 +17,7 @@ export { BytecodeEmitter } from "./emitter";
 export { runBrainLinkPipeline } from "./link-brain";
 export { linkBrainProgram } from "./linker";
 export { parseBrainTiles } from "./parser";
-export type { CompilationDiag, CompilationResult } from "./rule-compiler";
+export type { CompilationDiag } from "./rule-compiler";
 export { treeshakeProgram } from "./tree-shaker";
 export type {
   ActuatorExpr,

@@ -59,7 +59,7 @@ describe("linked brain program JSON payload", () => {
           pageId: "page-1-id",
           pageName: "page-1",
           rootRuleFuncIds: [0],
-          actionCallSites: [{ actionSlot: 0, callSiteId: 1 }],
+          actionCallSites: [{ binding: "bytecode", actionSlot: 0, callSiteId: 1 }],
         },
       ],
     } satisfies LinkedBrainProgramJson;
@@ -108,7 +108,7 @@ describe("brainValueToJson", () => {
 });
 
 describe("linkedBrainProgramToJson", () => {
-  it("round-trips a lean linked program payload with host and bytecode actions", () => {
+  it("round-trips a lean linked program payload with bytecode actions", () => {
     const payload = {
       program: {
         version: 1,
@@ -120,10 +120,6 @@ describe("linkedBrainProgramToJson", () => {
         },
         variableNames: ["score"],
         actions: [
-          {
-            binding: "host",
-            key: "button-a",
-          },
           {
             binding: "bytecode",
             key: "set-display-pixel",
@@ -140,7 +136,32 @@ describe("linkedBrainProgramToJson", () => {
           pageId: "page-1-id",
           pageName: "page-1",
           rootRuleFuncIds: [0],
-          actionCallSites: [{ actionSlot: 0, callSiteId: 1 }],
+          actionCallSites: [{ binding: "bytecode", actionSlot: 0, callSiteId: 1 }],
+        },
+      ],
+    } satisfies LinkedBrainProgramJson;
+
+    assert.deepEqual(linkedBrainProgramToJson(linkedBrainProgramFromJson(payload)), payload);
+  });
+
+  it("round-trips a host call site and a HOST_ACTION_CALL instruction", () => {
+    const payload = {
+      program: {
+        version: 1,
+        functions: [{ code: [{ op: 44, a: 3, b: 0, c: 7 }], numParams: 0 }],
+        constantPools: { numbers: [], strings: [], values: [] },
+        variableNames: [],
+        actions: [],
+        ruleFuncIds: [0],
+        ruleAncestors: [],
+      },
+      pages: [
+        {
+          pageIndex: 0,
+          pageId: "page-1-id",
+          pageName: "page-1",
+          rootRuleFuncIds: [0],
+          actionCallSites: [{ binding: "host", actionId: 3, callSiteId: 7 }],
         },
       ],
     } satisfies LinkedBrainProgramJson;
@@ -269,7 +290,7 @@ describe("linkedBrainProgramFromJson", () => {
           pageId: "page-1-id",
           pageName: "page-1",
           rootRuleFuncIds: [0],
-          actionCallSites: [{ actionSlot: 0, callSiteId: 1 }],
+          actionCallSites: [{ binding: "bytecode", actionSlot: 0, callSiteId: 1 }],
         },
       ],
     });

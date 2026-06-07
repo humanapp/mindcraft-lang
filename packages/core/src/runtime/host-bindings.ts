@@ -14,11 +14,15 @@ export interface ActionRef {
   key: ActionKey;
 }
 
-/** Identifies one ACTION_CALL site within a brain program. */
-export interface ActionCallSiteEntry {
-  actionSlot: number;
-  callSiteId: number;
-}
+/**
+ * Identifies one action call site within a brain program, tagged by binding.
+ * A `host` call site dispatches its page-lifecycle hooks by stable registry
+ * `actionId` (via `IBrainActionRegistry.getById`); a `bytecode` call site
+ * dispatches by program-local `actionSlot` into `Program.actions`.
+ */
+export type ActionCallSiteEntry =
+  | { binding: "host"; callSiteId: number; actionId: number }
+  | { binding: "bytecode"; callSiteId: number; actionSlot: number };
 
 /**
  * Extended Program interface for compiled brains. Adds rule-to-function mapping
@@ -92,6 +96,12 @@ export interface BrainActionResolver {
 export interface IBrainActionRegistry extends BrainActionResolver {
   register(action: ResolvedAction): ResolvedAction;
   getByKey(key: ActionKey): ResolvedAction | undefined;
+  /**
+   * Resolve a registered action by the stable numeric id assigned at
+   * registration. Returns `undefined` when no action holds that id. Backs
+   * id-based host-action dispatch.
+   */
+  getById(id: number): ResolvedAction | undefined;
   size(): number;
 }
 
@@ -115,7 +125,11 @@ export interface PageMetadata {
   /** Function IDs of root-level rules in this page (in order) */
   rootRuleFuncIds: List<number>;
 
-  /** All ACTION_CALL / ACTION_CALL_ASYNC call sites in this page's rule tree */
+  /**
+   * All action call sites in this page's rule tree: host call sites
+   * (`HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC`) and bytecode call sites
+   * (`ACTION_CALL` / `ACTION_CALL_ASYNC`).
+   */
   actionCallSites: List<ActionCallSiteEntry>;
 }
 

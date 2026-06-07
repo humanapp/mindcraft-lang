@@ -2,7 +2,7 @@ import type { Dict } from "../platform/dict";
 import type { List } from "../platform/list";
 import type { UniqueSet } from "../platform/uniqueset";
 import type { ConstantPools, FunctionBytecode } from "./bytecode";
-import type { ExecutableAction } from "./context";
+import type { BytecodeExecutableAction } from "./context";
 
 /**
  * Compiled program. Constants are split into typed sub-pools for compactness
@@ -17,12 +17,13 @@ export interface Program {
   variableNames: List<string>;
   entryPoint?: number;
   /**
-   * Executable action bindings keyed by program-local action slot. Populated
-   * by the linker for programs that contain `ACTION_CALL` / `ACTION_CALL_ASYNC`
-   * instructions; absent on programs that have not been linked or that emit no
-   * action calls.
+   * Bytecode action bindings keyed by program-local action slot. Populated by
+   * the linker for programs that contain `ACTION_CALL` / `ACTION_CALL_ASYNC`
+   * instructions; absent on programs that have not been linked, and empty on
+   * linked programs whose only action calls are host actions (those dispatch by
+   * stable id via `HOST_ACTION_CALL` and carry no entry here).
    */
-  actions?: List<ExecutableAction>;
+  actions?: List<BytecodeExecutableAction>;
   /**
    * Set of function ids that are rule entries. Membership identifies a
    * function as the body of a brain rule; non-members are regular bytecode

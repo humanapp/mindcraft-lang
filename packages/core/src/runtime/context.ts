@@ -8,6 +8,14 @@ export interface HostActionBinding {
   binding: "host";
   descriptor: ActionDescriptor;
   /**
+   * Stable numeric id assigned by the brain action registry when the binding
+   * is registered. Dense and in registration order across the registry's host
+   * actions; used by `HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC` dispatch via
+   * the registry's `getById`. `undefined` until the binding has been
+   * registered.
+   */
+  id?: number;
+  /**
    * Invoked exactly once per `(brainInstance, callSiteId)`, on the first
    * activation that allocates the call site, before {@link onPageEntered}
    * fires for the same activation. Symmetric to the bytecode
@@ -70,9 +78,6 @@ export interface BytecodeExecutableAction {
   deactivationFuncId?: number;
   numStateSlots: number;
 }
-
-/** Tagged-union of executable action bindings: host function or executable bytecode. */
-export type ExecutableAction = HostActionBinding | BytecodeExecutableAction;
 
 /**
  * Execution context passed to host functions and bytecode dispatch paths.

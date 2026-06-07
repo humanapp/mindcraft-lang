@@ -46,7 +46,8 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -714,7 +715,7 @@ export default Sensor({
         },
       },
     });
-    const vm = new runtime.VM(prog, customServices, { handles });
+    const vm = new runtime.VM(prog, customServices.runtime, { handles });
     const execCtx = mkCtx({ services: customServices });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), execCtx);

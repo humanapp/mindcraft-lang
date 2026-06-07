@@ -121,7 +121,8 @@ function resolveLinkedFuncId(linkInfo: { functionOffset: number }, localFuncId: 
 describe("linker", () => {
   let services: BrainServices;
   function toVmServices(b: BrainServices) {
-    return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+    return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+      .runtime;
   }
   before(() => {
     services = __test__createBrainServices();

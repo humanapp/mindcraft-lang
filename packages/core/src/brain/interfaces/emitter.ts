@@ -174,6 +174,24 @@ export interface IBytecodeEmitter {
    */
   actionCallAsync(actionSlot: number, argc: number, callSiteId: number): void;
 
+  /**
+   * Call a host action synchronously by its stable registry id.
+   * Consumes `argc` positional values from the operand stack.
+   * @param actionId - The stable action id from the brain action registry
+   * @param argc - Width of the arg buffer on the stack
+   * @param callSiteId - Unique ID for this call site (for per-call-site state)
+   */
+  hostActionCall(actionId: number, argc: number, callSiteId: number): void;
+
+  /**
+   * Call a host action asynchronously by its stable registry id.
+   * Consumes `argc` positional values from the operand stack.
+   * @param actionId - The stable action id from the brain action registry
+   * @param argc - Width of the arg buffer on the stack
+   * @param callSiteId - Unique ID for this call site (for per-call-site state)
+   */
+  hostActionCallAsync(actionId: number, argc: number, callSiteId: number): void;
+
   // ==========================================
   // Async operations
   // ==========================================

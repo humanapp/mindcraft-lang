@@ -3,7 +3,7 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import type { ConstantOffsets, FunctionBytecode, Instr } from "../../runtime/bytecode";
 import { Op } from "../../runtime/bytecode";
-import type { BytecodeExecutableAction, ExecutableAction } from "../../runtime/context";
+import type { BytecodeExecutableAction } from "../../runtime/context";
 import type { ActionDescriptor } from "../../runtime/function-defs";
 import type {
   BrainActionResolver,
@@ -299,19 +299,6 @@ function appendArtifactTables(
   };
 }
 
-function toExecutableAction(
-  resolved: ResolvedAction,
-  functions: List<FunctionBytecode>,
-  pools: MutableConstantPools,
-  variableNames: List<string>
-): ExecutableAction {
-  if (resolved.binding === "host") {
-    return resolved;
-  }
-
-  return appendArtifactTables(resolved.descriptor, resolved.artifact, functions, pools, variableNames);
-}
-
 /**
  * Link an {@link UnlinkedBrainProgram} into a {@link LinkedBrainProgram} by
  * resolving every action reference through `resolver` and inlining bytecode-backed
@@ -333,7 +320,7 @@ export function linkBrainProgram(
     values: List.empty<Value>(),
   };
   const variableNames = List.empty<string>();
-  const actions = List.empty<ExecutableAction>();
+  const actions = List.empty<BytecodeExecutableAction>();
   const diagnostics = List.empty<BrainBuildDiagnostic>();
 
   for (let i = 0; i < program.functions.size(); i++) {
@@ -379,7 +366,15 @@ export function linkBrainProgram(
       diagnostics.push(diagnostic);
       continue;
     }
-    actions.push(toExecutableAction(resolved, functions, pools, variableNames));
+    if (resolved.binding !== "bytecode") {
+      diagnostics.push({
+        code: LinkDiagCode.MissingActionBinding,
+        severity: "error",
+        message: `Action '${descriptor.key}' resolved to a host binding but is referenced by a bytecode action slot.`,
+      });
+      continue;
+    }
+    actions.push(appendArtifactTables(resolved.descriptor, resolved.artifact, functions, pools, variableNames));
   }
 
   if (!diagnostics.isEmpty()) {

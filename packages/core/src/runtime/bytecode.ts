@@ -48,6 +48,10 @@ export enum Op {
   ACTION_CALL = 42,
   ACTION_CALL_ASYNC,
 
+  // Host action calls by stable registry id (positional arg buffer on stack: vstack[top-argc+1 .. top])
+  HOST_ACTION_CALL = 44,
+  HOST_ACTION_CALL_ASYNC,
+
   // Async operations and cooperative scheduling
   AWAIT = 50,
   YIELD,

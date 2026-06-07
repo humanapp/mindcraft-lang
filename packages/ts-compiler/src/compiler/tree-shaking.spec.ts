@@ -4,7 +4,7 @@ import { Dict, List, runtime } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { treeshakeProgram as treeshakeLinked } from "@mindcraft-lang/core/brain/compiler";
-import type { BytecodeExecutableAction, ExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
+import type { BytecodeExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   HandleTable,
   type LinkedBrainProgram,
@@ -25,7 +25,8 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 before(() => {
@@ -87,7 +88,7 @@ function wrapAsExecutable(prog: UserAuthoredProgram): FlatExecutable {
     entryPoint: prog.entryFuncId,
     ruleIndex: Dict.empty(),
     pages: List.from([page]),
-    actions: List.from<ExecutableAction>([action]),
+    actions: List.from<BytecodeExecutableAction>([action]),
   };
 }
 
@@ -104,7 +105,7 @@ interface FlatExecutable {
   entryPoint?: number;
   ruleIndex: Dict<string, number>;
   pages: List<PageMetadata>;
-  actions: List<ExecutableAction>;
+  actions: List<BytecodeExecutableAction>;
 }
 
 function treeshakeProgram(flat: FlatExecutable): FlatExecutable {
@@ -128,7 +129,7 @@ function treeshakeProgram(flat: FlatExecutable): FlatExecutable {
     constantPools: out.program.constantPools,
     variableNames: out.program.variableNames,
     entryPoint: out.program.entryPoint,
-    actions: out.program.actions ?? List.empty<ExecutableAction>(),
+    actions: out.program.actions ?? List.empty<BytecodeExecutableAction>(),
     ruleIndex: out.ruleIndex,
     pages: out.pages,
   };

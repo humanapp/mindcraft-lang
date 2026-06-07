@@ -201,6 +201,14 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.ACTION_CALL_ASYNC, a: actionSlot, b: argc, c: callSiteId });
   }
 
+  hostActionCall(actionId: number, argc: number, callSiteId: number): void {
+    this.emit({ op: Op.HOST_ACTION_CALL, a: actionId, b: argc, c: callSiteId });
+  }
+
+  hostActionCallAsync(actionId: number, argc: number, callSiteId: number): void {
+    this.emit({ op: Op.HOST_ACTION_CALL_ASYNC, a: actionId, b: argc, c: callSiteId });
+  }
+
   // ==========================================
   // Async operations
   // ==========================================

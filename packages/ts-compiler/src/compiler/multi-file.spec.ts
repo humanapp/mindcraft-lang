@@ -27,7 +27,8 @@ import type { ExtractedOptional, ExtractedParam, UserAuthoredProgram } from "./t
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {

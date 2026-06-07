@@ -103,13 +103,21 @@ export enum CompilationDiagCode {
 }
 
 /**
- * Link diagnostic codes (4000-4999)
+ * Link diagnostic codes (4000-4999).
+ *
+ * `MissingActionBinding` is also emitted at compile time: the compiler resolves
+ * each action's binding to choose its call opcode, so an action with no binding
+ * in the environment is reported there rather than at link. The code is shared
+ * because the condition is the same regardless of which phase detects it.
  */
 export enum LinkDiagCode {
   /** Brain references an action with no descriptor in the catalog */
   MissingActionDescriptor = 4000,
 
-  /** Action has a descriptor but no binding resolves in the environment */
+  /**
+   * Action has a descriptor but no binding resolves in the environment.
+   * Emitted at compile time (binding resolution) and at link time.
+   */
   MissingActionBinding = 4001,
 
   /** A resolved user-tile bytecode artifact is malformed or signature-mismatched */

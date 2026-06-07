@@ -87,17 +87,8 @@ describe("linkBrainProgram", () => {
 
     const brainDef = buildBrainWithBytecodeActuator(action);
     const catalogs = List.from([services.edit.tiles, brainDef.catalog()]);
-    const compiled = compileBrain(brainDef, catalogs, services.shared.conversions).program!;
-    const unlinked = {
-      ...compiled,
-      variableNames: List.from(["brainVar"]),
-    };
-    const funcOffset = unlinked.functions.size();
-    const constOffset = unlinked.constantPools.values.size();
-    const variableOffset = unlinked.variableNames.size();
-
-    const linked = linkBrainProgram(unlinked, brainDef, catalogs, {
-      resolveAction(candidate) {
+    const resolver = {
+      resolveAction(candidate: ActionDescriptor) {
         if (candidate.key === action.key) {
           return {
             binding: "bytecode" as const,
@@ -113,7 +104,17 @@ describe("linkBrainProgram", () => {
         }
         return undefined;
       },
-    });
+    };
+    const compiled = compileBrain(brainDef, catalogs, services.shared.conversions, resolver).program!;
+    const unlinked = {
+      ...compiled,
+      variableNames: List.from(["brainVar"]),
+    };
+    const funcOffset = unlinked.functions.size();
+    const constOffset = unlinked.constantPools.values.size();
+    const variableOffset = unlinked.variableNames.size();
+
+    const linked = linkBrainProgram(unlinked, brainDef, catalogs, resolver);
     const executable = linked.program!.program;
 
     assert.equal(executable.actions!.size(), 1);

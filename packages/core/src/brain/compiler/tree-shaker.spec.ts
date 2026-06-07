@@ -5,12 +5,7 @@ import { Dict, List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { treeshakeProgram as treeshakeLinked } from "@mindcraft-lang/core/brain/compiler";
-import type {
-  BytecodeExecutableAction,
-  ConstantPools,
-  ExecutableAction,
-  ExecutionContext,
-} from "@mindcraft-lang/core/runtime";
+import type { BytecodeExecutableAction, ConstantPools, ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   BYTECODE_VERSION,
   FALSE_VALUE,
@@ -78,7 +73,7 @@ function mkProgram(opts: {
   variableNames?: string[];
   entryPoint?: number;
   pages?: PageMetadata[];
-  actions?: ExecutableAction[];
+  actions?: BytecodeExecutableAction[];
   ruleIndex?: [string, number][];
 }): FlatProgram {
   return {
@@ -110,7 +105,7 @@ interface FlatProgram {
   entryPoint?: number;
   ruleIndex: Dict<string, number>;
   pages: List<PageMetadata>;
-  actions: List<ExecutableAction>;
+  actions: List<BytecodeExecutableAction>;
 }
 
 function toLinked(flat: FlatProgram): LinkedBrainProgram {
@@ -135,7 +130,7 @@ function flatten(linked: LinkedBrainProgram): FlatProgram {
     constantPools: linked.program.constantPools,
     variableNames: linked.program.variableNames,
     entryPoint: linked.program.entryPoint,
-    actions: linked.program.actions ?? List.empty<ExecutableAction>(),
+    actions: linked.program.actions ?? List.empty<BytecodeExecutableAction>(),
     ruleIndex: linked.ruleIndex,
     pages: linked.pages,
   };
@@ -355,20 +350,6 @@ describe("treeshakeProgram", () => {
     assert.equal(result.constantPools.values.size(), 2);
     assert.equal(result.constantPools.values.get(0).t, NativeType.Number);
     assert.equal(result.constantPools.values.get(1).t, NativeType.String);
-  });
-
-  test("host actions are preserved as-is", () => {
-    const hostAction: ExecutableAction = {
-      binding: "host",
-      descriptor: { key: "host-action", kind: "action" } as never,
-    };
-    const prog = mkProgram({
-      functions: [mkFunc([mkInstr(Op.RET)], 0, "main")],
-      entryPoint: 0,
-      actions: [hostAction],
-    });
-    const result = treeshakeProgram(prog);
-    assert.equal(result.actions.get(0).binding, "host");
   });
 
   test("unreferenced variable names are removed", () => {
@@ -779,7 +760,7 @@ let services: BrainServices;
 function toVmServices(b: BrainServices) {
   return __test__createPlatformServices({
     runtime: { functions: b.runtime.functions, types: b.runtime.types },
-  });
+  }).runtime;
 }
 
 before(() => {
