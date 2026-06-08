@@ -12,6 +12,9 @@ export const kMaxStringLength = 512; // 512 bytes
 export const kMaxLongStringLength = 64 * 1024; // 64 KB
 export const kMaxByteArrayLength = 1 * 1024 * 1024; // 1 MB
 
+// The binary serde primitives are unused on Roblox; any call throws this.
+const BINARY_SERDE_UNSUPPORTED = "Binary serde is not available on Roblox";
+
 type RobloxBuffer = buffer;
 
 class RobloxByteArray implements IByteArray {
@@ -580,6 +583,48 @@ export class MemoryStream implements IReadStream, IWriteStream {
     const len = this.readRawU32();
     // Skip the chunk data
     this.skip(len);
+  }
+
+  // ---- Raw / variable-length primitives ----
+
+  writeRawU8(_v: number): void {
+    throw new Error(BINARY_SERDE_UNSUPPORTED);
+  }
+
+  readRawU8(): number {
+    throw new Error(BINARY_SERDE_UNSUPPORTED);
+  }
+
+  writeRawF32(_v: number): void {
+    throw new Error(BINARY_SERDE_UNSUPPORTED);
+  }
+
+  readRawF32(): number {
+    throw new Error(BINARY_SERDE_UNSUPPORTED);
+  }
+
+  writeVarUint(_v: number): void {
+    throw new Error(BINARY_SERDE_UNSUPPORTED);
+  }
+
+  readVarUint(): number {
+    throw new Error(BINARY_SERDE_UNSUPPORTED);
+  }
+
+  writeVarInt(_v: number): void {
+    throw new Error(BINARY_SERDE_UNSUPPORTED);
+  }
+
+  readVarInt(): number {
+    throw new Error(BINARY_SERDE_UNSUPPORTED);
+  }
+
+  writeVarString(_v: string): void {
+    throw new Error(BINARY_SERDE_UNSUPPORTED);
+  }
+
+  readVarString(): string {
+    throw new Error(BINARY_SERDE_UNSUPPORTED);
   }
 
   // ---- internals ----

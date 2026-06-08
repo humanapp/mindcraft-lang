@@ -4,8 +4,13 @@ export const MINDCRAFT_PROGRAM_IMAGE_FORMAT = "mindcraft.program";
 /** Program image envelope version. */
 export const MINDCRAFT_PROGRAM_IMAGE_VERSION = 1;
 
-/** Binary `.mcprogram` magic bytes ('MCPROG'). */
-export const MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC = [0x4d, 0x43, 0x50, 0x52, 0x4f, 0x47] as const;
+/**
+ * Binary `.mcprogram` magic bytes (`0x89` + `"MBP"`, "mindcraft binary program").
+ * The high-bit lead byte distinguishes the binary form from JSON text and catches
+ * 7-bit/text-mode corruption (the same role `0x89` plays in the PNG signature);
+ * the `MBP` identifier makes the format recognizable in a hex dump.
+ */
+export const MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC = [0x89, 0x4d, 0x42, 0x50] as const;
 
 /** Program image encodings recognized by program image readers. */
 export const MindcraftProgramImageEncoding = {

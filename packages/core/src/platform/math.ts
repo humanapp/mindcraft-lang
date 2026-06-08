@@ -6,6 +6,8 @@ export declare const MathOps: {
   ceil: (n: number) => number;
   floor: (n: number) => number;
   round: (n: number) => number;
+  /** Rounds to the nearest IEEE-754 binary32 (single-precision f32) value. */
+  fround: (n: number) => number;
   random: () => number;
   min: (a: number, b: number) => number;
   max: (a: number, b: number) => number;

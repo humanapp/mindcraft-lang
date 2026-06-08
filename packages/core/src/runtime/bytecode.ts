@@ -123,6 +123,106 @@ export enum Op {
 export const BYTECODE_VERSION = 1;
 
 ///////////////////////////
+// Operand schema
+///////////////////////////
+
+/**
+ * Var-int encoding of a single instruction operand: `uvar` is an unsigned
+ * ULEB128 var-int; `svar` is a zigzag + ULEB128 signed var-int.
+ */
+export type OperandEncoding = "uvar" | "svar";
+
+/** One operand slot in an opcode's {@link OPERAND_SCHEMA} entry. */
+export interface OperandSpec {
+  /** Var-int encoding used for this operand. */
+  readonly encoding: OperandEncoding;
+  /**
+   * When true, the operand may be absent. Allowed only on the trailing slot.
+   * Absence is sentinel-biased on the wire (`0` = absent, `value + 1` =
+   * present), so an optional operand always occupies exactly one var-uint.
+   */
+  readonly optional?: boolean;
+}
+
+const UVAR: OperandSpec = { encoding: "uvar" };
+const SVAR: OperandSpec = { encoding: "svar" };
+const UVAR_OPT: OperandSpec = { encoding: "uvar", optional: true };
+
+/**
+ * Per-opcode operand layout for binary instruction serialization, transcribed
+ * from the operand columns of `docs/specs/contracts/vm-contract.md`. Each opcode
+ * maps to its operands as a contiguous prefix of `a, b, c`, in order. `svar`
+ * marks the five signed rel-offset opcodes (`JMP`, `JMP_IF_FALSE`,
+ * `JMP_IF_TRUE`, `WHEN_END`, `TRY`); the optional trailing `b` marks the four
+ * typeId-carrying constructors (`LIST_NEW`, `MAP_NEW`, `STRUCT_NEW`,
+ * `STRUCT_COPY_EXCEPT`); every other operand is `uvar`.
+ */
+export const OPERAND_SCHEMA: Readonly<Record<Op, readonly OperandSpec[]>> = {
+  [Op.PUSH_CONST_VAL]: [UVAR],
+  [Op.POP]: [],
+  [Op.DUP]: [],
+  [Op.SWAP]: [],
+  [Op.PUSH_CONST_NUM]: [UVAR],
+  [Op.PUSH_CONST_STR]: [UVAR],
+  [Op.STACK_SET_REL]: [UVAR],
+  [Op.LOAD_VAR_SLOT]: [UVAR],
+  [Op.STORE_VAR_SLOT]: [UVAR],
+  [Op.JMP]: [SVAR],
+  [Op.JMP_IF_FALSE]: [SVAR],
+  [Op.JMP_IF_TRUE]: [SVAR],
+  [Op.CALL]: [UVAR, UVAR],
+  [Op.RET]: [],
+  [Op.HOST_CALL]: [UVAR, UVAR, UVAR],
+  [Op.HOST_CALL_ASYNC]: [UVAR, UVAR, UVAR],
+  [Op.ACTION_CALL]: [UVAR, UVAR, UVAR],
+  [Op.ACTION_CALL_ASYNC]: [UVAR, UVAR, UVAR],
+  [Op.HOST_ACTION_CALL]: [UVAR, UVAR, UVAR],
+  [Op.HOST_ACTION_CALL_ASYNC]: [UVAR, UVAR, UVAR],
+  [Op.AWAIT]: [],
+  [Op.YIELD]: [],
+  [Op.TRY]: [SVAR],
+  [Op.END_TRY]: [],
+  [Op.THROW]: [],
+  [Op.WHEN_START]: [],
+  [Op.WHEN_END]: [SVAR],
+  [Op.DO_START]: [],
+  [Op.DO_END]: [],
+  [Op.LIST_NEW]: [UVAR, UVAR_OPT],
+  [Op.LIST_PUSH]: [],
+  [Op.LIST_GET]: [],
+  [Op.LIST_SET]: [],
+  [Op.LIST_LEN]: [],
+  [Op.LIST_POP]: [],
+  [Op.LIST_SHIFT]: [],
+  [Op.LIST_REMOVE]: [],
+  [Op.LIST_INSERT]: [],
+  [Op.LIST_SWAP]: [],
+  [Op.MAP_NEW]: [UVAR, UVAR_OPT],
+  [Op.MAP_SET]: [],
+  [Op.MAP_GET]: [],
+  [Op.MAP_HAS]: [],
+  [Op.MAP_DELETE]: [],
+  [Op.STRUCT_NEW]: [UVAR, UVAR_OPT],
+  [Op.STRUCT_GET]: [],
+  [Op.STRUCT_SET]: [],
+  [Op.STRUCT_COPY_EXCEPT]: [UVAR, UVAR_OPT],
+  [Op.STRUCT_GET_FIELD]: [UVAR],
+  [Op.STRUCT_SET_FIELD]: [UVAR],
+  [Op.GET_FIELD]: [],
+  [Op.SET_FIELD]: [],
+  [Op.LOAD_LOCAL]: [UVAR],
+  [Op.STORE_LOCAL]: [UVAR],
+  [Op.LOAD_CALLSITE_VAR]: [UVAR],
+  [Op.STORE_CALLSITE_VAR]: [UVAR],
+  [Op.TYPE_CHECK]: [UVAR],
+  [Op.INSTANCE_OF]: [UVAR],
+  [Op.CALL_INDIRECT]: [UVAR],
+  [Op.CALL_INDIRECT_ARGS]: [UVAR],
+  [Op.MAKE_CLOSURE]: [UVAR, UVAR],
+  [Op.LOAD_CAPTURE]: [UVAR],
+};
+
+///////////////////////////
 // Bytecode Structures
 ///////////////////////////
 

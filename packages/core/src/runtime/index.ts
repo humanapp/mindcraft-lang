@@ -1,4 +1,5 @@
 export * from "./action-registry";
+export * from "./brain-program-binary-codec";
 export * from "./brain-program-codec";
 export * from "./brain-runtime";
 export * from "./bytecode";
