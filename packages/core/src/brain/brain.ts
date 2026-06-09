@@ -221,6 +221,7 @@ export class Brain implements IBrain {
     return {
       catalogs: List.from([this.services.edit.tiles]),
       actionResolver: this.services.runtime.actions,
+      typeRegistry: this.services.runtime.types,
     };
   }
 }

@@ -815,8 +815,8 @@ describe("nullable struct nil comparison", () => {
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
         fields: List.from([
-          { name: "x", typeId: numTypeId },
-          { name: "y", typeId: numTypeId },
+          { name: "x", typeId: numTypeId, fieldIndex: 0 },
+          { name: "y", typeId: numTypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -967,8 +967,8 @@ describe("auto-instantiated list types", () => {
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
         fields: List.from([
-          { name: "x", typeId: numTypeId },
-          { name: "y", typeId: numTypeId },
+          { name: "x", typeId: numTypeId, fieldIndex: 0 },
+          { name: "y", typeId: numTypeId, fieldIndex: 1 },
         ]),
       });
     }

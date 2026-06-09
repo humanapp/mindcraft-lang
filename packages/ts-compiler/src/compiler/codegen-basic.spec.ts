@@ -347,7 +347,7 @@ export default Sensor({
     const actorRefTypeId = mkTypeId(NativeType.Struct, "ActorRef");
     if (!types.get(actorRefTypeId)) {
       types.addStructType("ActorRef", {
-        fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number") }]),
+        fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 }]),
       });
     }
     const appAmbient = buildAmbientDeclarations(services.runtime.types);

@@ -2,7 +2,7 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
-import type { IBrain, IConversionRegistry } from "../../runtime";
+import type { IBrain, IConversionRegistry, ITypeRegistry } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util/event-emitter";
 import { type OpResult, opFailure, opSuccess } from "../../util/op-result";
 import { Brain } from "..";
@@ -152,6 +152,10 @@ export class BrainDef implements IBrainDef {
 
   servicesConversions(): IConversionRegistry {
     return this.services_.shared.conversions;
+  }
+
+  servicesTypeRegistry(): ITypeRegistry {
+    return this.services_.runtime.types;
   }
 
   static emptyBrainDef(services: BrainServices, name?: string): BrainDef {

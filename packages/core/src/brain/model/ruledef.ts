@@ -181,9 +181,10 @@ export class BrainRuleDef implements IBrainRuleDef {
       const doTiles = this.do_.tiles();
       const brain = this.page()?.brain();
       const conversions = brain?.servicesConversions();
+      const typeRegistry = brain?.servicesTypeRegistry();
 
-      if (conversions) {
-        const typecheckResult = parseRule(whenTiles, doTiles, catalogs, conversions);
+      if (conversions && typeRegistry) {
+        const typecheckResult = parseRule(whenTiles, doTiles, catalogs, conversions, typeRegistry);
         this.when_.setTypecheckResult(typecheckResult);
         this.do_.setTypecheckResult(typecheckResult);
       }

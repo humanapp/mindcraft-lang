@@ -121,21 +121,29 @@ export interface StructMethodDecl {
 }
 
 /**
- * Field definition supplied at struct registration. The registry assigns
- * a stable {@link StructFieldDef.fieldIndex} when storing it.
+ * Field definition supplied at struct registration.
+ *
+ * The {@link fieldIndex} is the field's author-assigned numeric id, which is
+ * also its storage slot in a struct value's field list. It must be a
+ * non-negative integer and unique within the struct (including across
+ * {@link ITypeRegistry.addStructFields} extensions). Ids are assigned by hand
+ * at the field declaration and are intended to be durable: append-only, never
+ * renumbered, and never reused after a field is removed (a removed field's id
+ * leaves a reserved hole). The registry validates uniqueness and
+ * non-negativity; cross-build non-reuse is the author's responsibility.
  */
 export interface StructFieldInput {
   readonly name: string;
   readonly typeId: TypeId;
   readonly readOnly?: boolean;
+  readonly fieldIndex: number;
 }
 
 /**
  * Stored field definition on a registered {@link StructTypeDef}. The
- * {@link fieldIndex} is the field's stable, zero-based position in
- * {@link StructTypeDef.fields}; `fields.get(i).fieldIndex === i` for every
- * registered closed struct, and consumers may treat `fieldIndex` as a stable
- * id for indexed access (e.g. the V3.3 `STRUCT_GET_FIELD` opcode).
+ * {@link fieldIndex} is the validated author-assigned id from
+ * {@link StructFieldInput.fieldIndex}; it is the field's storage slot, used as
+ * the operand for the `STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` opcodes.
  */
 export interface StructFieldDef extends StructFieldInput {
   readonly fieldIndex: number;

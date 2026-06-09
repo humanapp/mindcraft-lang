@@ -183,8 +183,14 @@ describe("binary .mcprogram codec -- round-trip", () => {
   });
 
   test("round-trips an f64 profile without rounding", () => {
-    const json = sampleProgramJson();
-    json.program.constantPools.numbers = [0, 255, 0.1, 1e39];
+    const base = sampleProgramJson();
+    const json: LinkedBrainProgramJson = {
+      ...base,
+      program: {
+        ...base.program,
+        constantPools: { ...base.program.constantPools, numbers: [0, 255, 0.1, 1e39] },
+      },
+    };
     const decoded = encodeDecode(json, "f64");
     assert.deepEqual(linkedBrainProgramToJson(decoded.program), leanNormalize(json, "f64"));
   });

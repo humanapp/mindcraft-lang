@@ -20,8 +20,8 @@ describe("buildAmbientDeclarations", () => {
     if (!types.get(vecId)) {
       types.addStructType("Vector2", {
         fields: List.from([
-          { name: "x", typeId: mkTypeId(NativeType.Number, "number") },
-          { name: "y", typeId: mkTypeId(NativeType.Number, "number") },
+          { name: "x", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 },
+          { name: "y", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 1 },
         ]),
       });
     }
@@ -43,8 +43,8 @@ describe("buildAmbientDeclarations", () => {
     if (!types.get(actorRefId)) {
       types.addStructType("ActorRef", {
         fields: List.from([
-          { name: "id", typeId: mkTypeId(NativeType.Number, "number") },
-          { name: "energy pct", typeId: mkTypeId(NativeType.Number, "number") },
+          { name: "id", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 },
+          { name: "energy pct", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 1 },
         ]),
         fieldGetter: () => undefined,
       });
@@ -102,8 +102,8 @@ export default Sensor({
     if (!types.get(posId)) {
       types.addStructType("Position", {
         fields: List.from([
-          { name: "x", typeId: mkTypeId(NativeType.Number, "number") },
-          { name: "y", typeId: mkTypeId(NativeType.Number, "number") },
+          { name: "x", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 },
+          { name: "y", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 1 },
         ]),
       });
     }
@@ -111,8 +111,8 @@ export default Sensor({
     if (!types.get(entityId)) {
       types.addStructType("Entity", {
         fields: List.from([
-          { name: "name", typeId: mkTypeId(NativeType.String, "string") },
-          { name: "pos", typeId: posId },
+          { name: "name", typeId: mkTypeId(NativeType.String, "string"), fieldIndex: 0 },
+          { name: "pos", typeId: posId, fieldIndex: 1 },
         ]),
       });
     }

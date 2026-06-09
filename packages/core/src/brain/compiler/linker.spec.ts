@@ -105,7 +105,8 @@ describe("linkBrainProgram", () => {
         return undefined;
       },
     };
-    const compiled = compileBrain(brainDef, catalogs, services.shared.conversions, resolver).program!;
+    const compiled = compileBrain(brainDef, catalogs, services.shared.conversions, resolver, services.runtime.types)
+      .program!;
     const unlinked = {
       ...compiled,
       variableNames: List.from(["brainVar"]),

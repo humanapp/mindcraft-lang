@@ -19,7 +19,7 @@ import {
   type LinkedBrainProgramPageMetadataJson,
   linkedBrainProgramFromJson,
 } from "./brain-program-codec";
-import { type Instr, OPERAND_SCHEMA, type OperandSpec } from "./bytecode";
+import { type Instr, instrOperandMismatch, OPERAND_SCHEMA, type OperandSpec } from "./bytecode";
 import type { BytecodeExecutableAction } from "./context";
 import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
 import type { Program } from "./program";
@@ -325,17 +325,12 @@ function writeFuncSection(s: MemoryStream, program: Program, interner: StringInt
 
 function writeInstruction(s: MemoryStream, instr: Instr): void {
   const schema = operandSchemaFor(instr.op);
-  s.writeRawU8(instr.op);
-
-  const defined = definedOperandCount(instr);
-  const required = requiredOperandCount(schema);
-  if (defined < required || defined > schema.size()) {
-    throw codecError(
-      BrainProgramBinaryCodecErrorCode.INSTRUCTION_SCHEMA_MISMATCH,
-      `opcode ${instr.op} expects ${required}..${schema.size()} operands, got ${defined}`
-    );
+  const mismatch = instrOperandMismatch(instr);
+  if (mismatch !== undefined) {
+    throw codecError(BrainProgramBinaryCodecErrorCode.INSTRUCTION_SCHEMA_MISMATCH, mismatch);
   }
 
+  s.writeRawU8(instr.op);
   for (let i = 0; i < schema.size(); i++) {
     const spec = schema.get(i);
     const operand = operandAt(instr, i);
@@ -987,38 +982,6 @@ function writeValueTag(s: MemoryStream, tag: NativeType): void {
 function readValueTag(s: MemoryStream): NativeType {
   const raw = s.readRawU8();
   return (raw === 255 ? NativeType.Unknown : raw) as NativeType;
-}
-
-function definedOperandCount(instr: Instr): number {
-  if (instr.a === undefined) {
-    if (instr.b !== undefined || instr.c !== undefined) {
-      throw codecError(
-        BrainProgramBinaryCodecErrorCode.INSTRUCTION_SCHEMA_MISMATCH,
-        "operands are not a contiguous prefix"
-      );
-    }
-    return 0;
-  }
-  if (instr.b === undefined) {
-    if (instr.c !== undefined) {
-      throw codecError(
-        BrainProgramBinaryCodecErrorCode.INSTRUCTION_SCHEMA_MISMATCH,
-        "operands are not a contiguous prefix"
-      );
-    }
-    return 1;
-  }
-  return instr.c === undefined ? 2 : 3;
-}
-
-function requiredOperandCount(schema: List<OperandSpec>): number {
-  let count = 0;
-  for (let i = 0; i < schema.size(); i++) {
-    if (!schema.get(i).optional) {
-      count += 1;
-    }
-  }
-  return count;
 }
 
 function operandAt(instr: Instr, index: number): number | undefined {

@@ -36,7 +36,13 @@ export function runBrainLinkPipeline(
 ): BrainBuildResult {
   const diagnostics = List.empty<BrainBuildDiagnostic>();
 
-  const compiled = compileBrain(brainDef, linkEnvironment.catalogs, conversions, linkEnvironment.actionResolver);
+  const compiled = compileBrain(
+    brainDef,
+    linkEnvironment.catalogs,
+    conversions,
+    linkEnvironment.actionResolver,
+    linkEnvironment.typeRegistry
+  );
   appendAll(diagnostics, compiled.diagnostics);
   if (hasError(diagnostics) || !compiled.program) {
     return { diagnostics };

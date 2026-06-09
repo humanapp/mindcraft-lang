@@ -252,8 +252,8 @@ export default Sensor({
     const types = services.runtime.types;
     types.addStructType("AmbientPoint", {
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     const ambientSource = buildAmbientDeclarations(types);

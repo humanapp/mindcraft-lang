@@ -2,6 +2,7 @@ import type { BrainServices } from "../brain/services";
 import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
 import { List, type ReadonlyList } from "../platform/list";
+import { MathOps } from "../platform/math";
 import { StringUtils as SU } from "../platform/string";
 import { TypeUtils } from "../platform/types";
 import { UniqueSet } from "../platform/uniqueset";
@@ -38,19 +39,42 @@ import { type EnumValue, mkBooleanValue, type Value } from "./value";
 import type { StructFieldGetterFn } from "./vm-types";
 
 /**
- * Build a `List<StructFieldDef>` by assigning each input field a stable
- * `fieldIndex` starting at `baseIndex`. Used by every struct registration
- * path so `fields.get(i).fieldIndex === baseIndex + i` always holds.
+ * Validate author-assigned field ids and return them as `StructFieldDef`s.
+ * Each field's `fieldIndex` must be a non-negative integer that is unique
+ * within `inputs` and against `existing` (the struct's already-registered
+ * fields, empty for a fresh struct). The id is the field's durable storage
+ * slot; the registry does not assign ids, it only validates them.
  */
-function assignFieldIndices(inputs: List<StructFieldInput>, baseIndex: number): List<StructFieldDef> {
-  return inputs.map(
-    (field, i): StructFieldDef => ({
+function toStructFieldDefs(
+  typeId: TypeId,
+  inputs: List<StructFieldInput>,
+  existing: List<StructFieldDef>
+): List<StructFieldDef> {
+  const usedById = new Dict<number, string>();
+  existing.forEach((field) => {
+    usedById.set(field.fieldIndex, field.name);
+  });
+  return inputs.map((field): StructFieldDef => {
+    const id = field.fieldIndex;
+    if (id < 0 || MathOps.floor(id) !== id) {
+      throw new Error(
+        `Struct type ${typeId} field ${field.name} has invalid field id ${id}: must be a non-negative integer`
+      );
+    }
+    const prior = usedById.get(id);
+    if (prior !== undefined) {
+      throw new Error(
+        `Struct type ${typeId} field ${field.name} reuses field id ${id} already assigned to field ${prior}`
+      );
+    }
+    usedById.set(id, field.name);
+    return {
       name: field.name,
       typeId: field.typeId,
       readOnly: field.readOnly,
-      fieldIndex: baseIndex + i,
-    })
-  );
+      fieldIndex: id,
+    };
+  });
 }
 
 function buildFieldIndexByName(fields: List<StructFieldDef>): Dict<string, number> {
@@ -324,7 +348,7 @@ export class TypeRegistry implements ITypeRegistry {
       fieldCodecs.set(field.name, fieldTypeDef.codec);
     });
 
-    const indexedFields = assignFieldIndices(shape.fields, 0);
+    const indexedFields = toStructFieldDefs(typeId, shape.fields, List.empty<StructFieldDef>());
     const structTypeDef: StructTypeDef = {
       coreType: NativeType.Struct,
       typeId,
@@ -382,7 +406,7 @@ export class TypeRegistry implements ITypeRegistry {
       fieldCodecs.set(field.name, fieldTypeDef.codec);
     });
     const structDef = existing as StructTypeDef;
-    const indexedFields = assignFieldIndices(shape.fields, 0);
+    const indexedFields = toStructFieldDefs(typeId, shape.fields, List.empty<StructFieldDef>());
     structDef.fields = indexedFields;
     structDef.fieldIndexByName = buildFieldIndexByName(indexedFields);
     structDef.codec = new StructCodec(fieldCodecs);
@@ -439,15 +463,14 @@ export class TypeRegistry implements ITypeRegistry {
       fieldCodecs.set(field.name, fieldTypeDef.codec);
     });
 
-    const baseIndex = structDef.fields.size();
-    structDef.fields = structDef.fields.concat(assignFieldIndices(fields, baseIndex));
+    structDef.fields = structDef.fields.concat(toStructFieldDefs(typeId, fields, structDef.fields));
     structDef.fieldIndexByName = buildFieldIndexByName(structDef.fields);
     structDef.codec = new StructCodec(fieldCodecs);
 
     if (fieldGetter) {
       const existing = structDef.fieldGetter;
       structDef.fieldGetter = existing
-        ? (source, fieldName, ctx) => fieldGetter(source, fieldName, ctx) ?? existing(source, fieldName, ctx)
+        ? (source, fieldId, ctx) => fieldGetter(source, fieldId, ctx) ?? existing(source, fieldId, ctx)
         : fieldGetter;
     }
   }

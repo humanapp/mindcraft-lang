@@ -74,8 +74,8 @@ describe("struct field assignment", () => {
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
         fields: List.from([
-          { name: "x", typeId: numTypeId },
-          { name: "y", typeId: numTypeId },
+          { name: "x", typeId: numTypeId, fieldIndex: 0 },
+          { name: "y", typeId: numTypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -84,8 +84,8 @@ describe("struct field assignment", () => {
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
         fields: List.from([
-          { name: "position", typeId: vec2TypeId },
-          { name: "health", typeId: numTypeId },
+          { name: "position", typeId: vec2TypeId, fieldIndex: 0 },
+          { name: "health", typeId: numTypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -195,7 +195,7 @@ export default Sensor({
 });
 
 describe("struct field assignment with fieldSetter", () => {
-  let setterCalls: Array<{ field: string; value: Value }>;
+  let setterCalls: Array<{ field: number; value: Value }>;
 
   before(() => {
     services = __test__createBrainServices();
@@ -208,19 +208,20 @@ describe("struct field assignment with fieldSetter", () => {
     if (!types.get(nativeTypeId)) {
       types.addStructType("NativeWidget", {
         fields: List.from([
-          { name: "value", typeId: numTypeId },
-          { name: "id", typeId: numTypeId, readOnly: true },
+          { name: "value", typeId: numTypeId, fieldIndex: 0 },
+          { name: "id", typeId: numTypeId, readOnly: true, fieldIndex: 1 },
         ]),
-        fieldGetter: (source, fieldName) => {
+        // Field ids: value=0, id=1.
+        fieldGetter: (source, fieldId) => {
           const data = source.native as { value: number; id: number };
-          if (fieldName === "value") return mkNumberValue(data.value);
-          if (fieldName === "id") return mkNumberValue(data.id);
+          if (fieldId === 0) return mkNumberValue(data.value);
+          if (fieldId === 1) return mkNumberValue(data.id);
           return undefined;
         },
-        fieldSetter: (source, fieldName, val) => {
-          if (fieldName === "value") {
+        fieldSetter: (source, fieldId, val) => {
+          if (fieldId === 0) {
             (source.native as { value: number }).value = (val as NumberValue).v;
-            setterCalls.push({ field: fieldName, value: val });
+            setterCalls.push({ field: fieldId, value: val });
             return true;
           }
           return false;
@@ -268,7 +269,7 @@ export default Sensor({
     assert.ok(runResult.result);
     assert.equal((runResult.result as NumberValue).v, 42);
     assert.equal(setterCalls.length, 1);
-    assert.equal(setterCalls[0].field, "value");
+    assert.equal(setterCalls[0].field, 0);
   });
 });
 
@@ -283,8 +284,8 @@ describe("struct field assignment diagnostics", () => {
     if (!types.get(readOnlyTypeId)) {
       types.addStructType("Sensor_ReadOnly", {
         fields: List.from([
-          { name: "value", typeId: numTypeId, readOnly: true },
-          { name: "mutable", typeId: numTypeId },
+          { name: "value", typeId: numTypeId, readOnly: true, fieldIndex: 0 },
+          { name: "mutable", typeId: numTypeId, fieldIndex: 1 },
         ]),
         fieldGetter: () => mkNumberValue(0),
       });
@@ -356,8 +357,8 @@ describe("struct field compound assignment", () => {
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
         fields: List.from([
-          { name: "x", typeId: numTypeId },
-          { name: "y", typeId: numTypeId },
+          { name: "x", typeId: numTypeId, fieldIndex: 0 },
+          { name: "y", typeId: numTypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -476,8 +477,8 @@ describe("struct field assignment integration", () => {
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
         fields: List.from([
-          { name: "x", typeId: numTypeId },
-          { name: "y", typeId: numTypeId },
+          { name: "x", typeId: numTypeId, fieldIndex: 0 },
+          { name: "y", typeId: numTypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -486,31 +487,32 @@ describe("struct field assignment integration", () => {
     if (!types.get(unitTypeId)) {
       types.addStructType("Unit", {
         fields: List.from([
-          { name: "hp", typeId: numTypeId },
-          { name: "armor", typeId: numTypeId, readOnly: true },
-          { name: "x", typeId: numTypeId },
-          { name: "y", typeId: numTypeId },
+          { name: "hp", typeId: numTypeId, fieldIndex: 0 },
+          { name: "armor", typeId: numTypeId, readOnly: true, fieldIndex: 1 },
+          { name: "x", typeId: numTypeId, fieldIndex: 2 },
+          { name: "y", typeId: numTypeId, fieldIndex: 3 },
         ]),
-        fieldGetter: (source, fieldName) => {
+        // Field ids: hp=0, armor=1 (read-only), x=2, y=3.
+        fieldGetter: (source, fieldId) => {
           const data = source.native as typeof nativeState;
-          if (fieldName === "hp") return mkNumberValue(data.hp);
-          if (fieldName === "armor") return mkNumberValue(data.armor);
-          if (fieldName === "x") return mkNumberValue(data.x);
-          if (fieldName === "y") return mkNumberValue(data.y);
+          if (fieldId === 0) return mkNumberValue(data.hp);
+          if (fieldId === 1) return mkNumberValue(data.armor);
+          if (fieldId === 2) return mkNumberValue(data.x);
+          if (fieldId === 3) return mkNumberValue(data.y);
           return undefined;
         },
-        fieldSetter: (source, fieldName, val) => {
+        fieldSetter: (source, fieldId, val) => {
           const data = source.native as typeof nativeState;
           const n = (val as NumberValue).v;
-          if (fieldName === "hp") {
+          if (fieldId === 0) {
             data.hp = n;
             return true;
           }
-          if (fieldName === "x") {
+          if (fieldId === 2) {
             data.x = n;
             return true;
           }
-          if (fieldName === "y") {
+          if (fieldId === 3) {
             data.y = n;
             return true;
           }

@@ -8,6 +8,7 @@ import type {
   ActionRef,
   BrainActionResolver,
   IConversionRegistry,
+  ITypeRegistry,
   PageMetadata,
   UnlinkedBrainProgram,
 } from "../../runtime";
@@ -90,6 +91,8 @@ export class BrainCompiler {
   private conversions: IConversionRegistry;
   /** Resolves action descriptors to bindings (host vs bytecode) at compile time */
   private actionResolver: BrainActionResolver;
+  /** Type registry used during inference to resolve struct field ids from object types */
+  private typeRegistry: ITypeRegistry;
   /** Global variable name pool for LOAD_VAR_SLOT/STORE_VAR_SLOT instructions */
   private variableNames: List<string>;
   /** Maps variable names to their index in variableNames */
@@ -106,7 +109,8 @@ export class BrainCompiler {
   constructor(
     catalogs: ReadonlyList<ITileCatalog>,
     conversions: IConversionRegistry,
-    actionResolver: BrainActionResolver
+    actionResolver: BrainActionResolver,
+    typeRegistry: ITypeRegistry
   ) {
     this.constantPool = new ConstantPool();
     this.functions = List.empty();
@@ -118,6 +122,7 @@ export class BrainCompiler {
     this.catalogs = catalogs;
     this.conversions = conversions;
     this.actionResolver = actionResolver;
+    this.typeRegistry = typeRegistry;
     this.variableNames = List.empty();
     this.variableIndices = Dict.empty();
     this.actionRefs = List.empty();
@@ -343,10 +348,10 @@ export class BrainCompiler {
     }
 
     for (let i = 0; i < whenParseResult.exprs.size(); i++) {
-      computeInferredTypes(whenParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions);
+      computeInferredTypes(whenParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions, this.typeRegistry);
     }
     for (let i = 0; i < doParseResult.exprs.size(); i++) {
-      computeInferredTypes(doParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions);
+      computeInferredTypes(doParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions, this.typeRegistry);
     }
 
     // Create emitter for this rule's function
@@ -453,15 +458,18 @@ export class BrainCompiler {
  * @param conversions - Conversion registry used during type inference
  * @param actionResolver - Resolves each action's binding (host vs bytecode) so
  *   the compiler emits host calls by stable id and bytecode calls by slot
+ * @param typeRegistry - Type registry used during inference to resolve struct
+ *   field ids from a field-access object's type
  * @returns A complete BrainProgram
  */
 export function compileBrain(
   brainDef: IBrainDef,
   catalogs: ReadonlyList<ITileCatalog>,
   conversions: IConversionRegistry,
-  actionResolver: BrainActionResolver
+  actionResolver: BrainActionResolver,
+  typeRegistry: ITypeRegistry
 ): BrainBuildResult<UnlinkedBrainProgram> {
-  const compiler = new BrainCompiler(catalogs, conversions, actionResolver);
+  const compiler = new BrainCompiler(catalogs, conversions, actionResolver, typeRegistry);
   const program = compiler.compile(brainDef);
   return { program, diagnostics: compiler.diagnostics() };
 }

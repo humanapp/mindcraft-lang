@@ -237,11 +237,7 @@ export function emitFunction(
         break;
       }
       case "StructSet":
-        if (node.fieldIndex !== undefined) {
-          emitter.structSetField(node.fieldIndex);
-        } else {
-          emitter.structSet();
-        }
+        emitter.structSetField(node.fieldIndex);
         break;
       case "StructCopyExcept": {
         const typeIdIdx = pool.addString(node.typeId);
@@ -612,7 +608,7 @@ function stackEffect(node: IrNode): { pops: number; pushes: number } {
       return { pops: node.fieldIndex !== undefined ? 2 : 3, pushes: 1 };
 
     case "StructSet":
-      return { pops: node.fieldIndex !== undefined ? 2 : 3, pushes: 1 };
+      return { pops: 2, pushes: 1 };
 
     case "MapSet":
     case "ListSet":

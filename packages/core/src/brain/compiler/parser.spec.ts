@@ -143,7 +143,13 @@ function runParseTest(tc: TestCase): void {
   test(tc.name, () => {
     const tiles = List.from(tc.tiles);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const hasDiags = result.parseResult.diags.size() > 0;
 
     if (tc.shouldPass) {
@@ -795,7 +801,13 @@ describe("Field access AST shape", () => {
   test("[$pos] [x] produces fieldAccess node", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorX]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "fieldAccess");
@@ -808,7 +820,13 @@ describe("Field access AST shape", () => {
   test("[$pos] [x] + [5] produces binaryOp(fieldAccess, literal)", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorX, opAdd, literal5]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "binaryOp");
@@ -821,7 +839,13 @@ describe("Field access AST shape", () => {
   test("[$pos] [x] = [10] produces assignment(fieldAccess, literal)", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorX, opAssign, literal10]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "assignment");
@@ -834,7 +858,13 @@ describe("Field access AST shape", () => {
   test("[$pos] [mag] = [10] produces errorExpr (read-only)", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorMag, opAssign, literal10]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "errorExpr");
@@ -866,7 +896,13 @@ describe("Bag repeat interleaving", () => {
 
     const tiles = List.from<IBrainTileDef>([actuator, modSlowly, paramPriority, literal1000, modSlowly]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      emptyTiles,
+      tiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
@@ -895,7 +931,13 @@ describe("Bag repeat interleaving", () => {
 
     const tiles = List.from<IBrainTileDef>([actuator, modSlowly, modSlowly, paramPriority, literal1000]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      emptyTiles,
+      tiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
   });
@@ -919,7 +961,13 @@ describe("Bag repeat interleaving", () => {
 
     const tiles = List.from<IBrainTileDef>([actuator, modSlowly, paramPriority, literal1000, modSlowly, modSlowly]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      emptyTiles,
+      tiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
   });
@@ -950,7 +998,13 @@ describe("anonymous choice type discrimination", () => {
 
     const tiles = List.from<IBrainTileDef>([actuator, betaVar]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      emptyTiles,
+      tiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
 
@@ -984,7 +1038,13 @@ describe("anonymous choice type discrimination", () => {
 
     const tiles = List.from<IBrainTileDef>([actuator, betaLiteral]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      emptyTiles,
+      tiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
 
@@ -1002,5 +1062,109 @@ describe("anonymous choice type discrimination", () => {
         "literal with BetaLit type should match anon.BetaLit at slot 1, not anon.AlphaLit at slot 0"
       );
     }
+  });
+});
+
+// ---- Field id resolution from the object's type (Phase 3) ----
+//
+// Accessor tokens can desync from the object they sit on (an edit changes a
+// variable's type but the stored accessor token is not re-bound). These tests
+// pin that the field id is resolved during inference from the OBJECT's concrete
+// struct type -- never from the accessor's structTypeId/fieldTypeId.
+
+describe("Field id resolution from object type", () => {
+  let av2Var: BrainTileVariableDef;
+  let av3Var: BrainTileVariableDef;
+  let numVar: BrainTileVariableDef;
+  let entityVar: BrainTileVariableDef;
+  let av2AccessorX: BrainTileAccessorDef;
+  let av3AccessorX: BrainTileAccessorDef;
+  let entityPosAccessorWrongType: BrainTileAccessorDef;
+
+  before(() => {
+    const types = services.runtime.types;
+    // x is id 0 on Av2 but id 1 on Av3 -- the same field name, different ids.
+    const av2 = types.addStructType("Av2Resolve", {
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+      ]),
+    });
+    const av3 = types.addStructType("Av3Resolve", {
+      fields: List.from([
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+        { name: "z", typeId: CoreTypeIds.Number, fieldIndex: 2 },
+      ]),
+    });
+    const entity = types.addStructType("EntityResolve", {
+      fields: List.from([{ name: "pos", typeId: av2, fieldIndex: 0 }]),
+    });
+    av2Var = new BrainTileVariableDef(mkVariableTileId("av2-resolve"), "av2v", av2, "av2-resolve");
+    av3Var = new BrainTileVariableDef(mkVariableTileId("av3-resolve"), "av3v", av3, "av3-resolve");
+    numVar = new BrainTileVariableDef(mkVariableTileId("num-resolve"), "numv", CoreTypeIds.Number, "num-resolve");
+    entityVar = new BrainTileVariableDef(mkVariableTileId("entity-resolve"), "entv", entity, "entity-resolve");
+    av2AccessorX = new BrainTileAccessorDef(av2, "x", CoreTypeIds.Number);
+    av3AccessorX = new BrainTileAccessorDef(av3, "x", CoreTypeIds.Number);
+    // An Entity.pos accessor whose declared field type is wrong (Av3 rather than
+    // the real Av2) -- simulates a stale binding on a nested chain.
+    entityPosAccessorWrongType = new BrainTileAccessorDef(entity, "pos", av3);
+  });
+
+  test("stale binding: Av2 object + Av3 'x' accessor resolves to Av2's x id (0), not Av3's (1)", () => {
+    const result = parseRule(
+      List.from<IBrainTileDef>([av2Var, av3AccessorX]),
+      List.empty<IBrainTileDef>(),
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
+    const expr = result.parseResult.exprs.get(0);
+    assert.equal(expr.kind, "fieldAccess");
+    assert.equal(result.typeInfo.typeEnv.get(expr.nodeId)?.fieldId, 0);
+  });
+
+  test("symmetric: Av3 object + Av2 'x' accessor resolves to Av3's x id (1)", () => {
+    const result = parseRule(
+      List.from<IBrainTileDef>([av3Var, av2AccessorX]),
+      List.empty<IBrainTileDef>(),
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
+    const expr = result.parseResult.exprs.get(0);
+    assert.equal(result.typeInfo.typeEnv.get(expr.nodeId)?.fieldId, 1);
+  });
+
+  test("nested chain: the outer field resolves against the inner field's REAL type, not a stale inner accessor", () => {
+    // entity.pos.x : pos's accessor declares Av3, but pos's real type is Av2, so
+    // x must resolve to Av2.x (0), not Av3.x (1).
+    const result = parseRule(
+      List.from<IBrainTileDef>([entityVar, entityPosAccessorWrongType, av3AccessorX]),
+      List.empty<IBrainTileDef>(),
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
+    const outer = result.parseResult.exprs.get(0);
+    assert.equal(outer.kind, "fieldAccess");
+    assert.equal(result.typeInfo.typeEnv.get(outer.nodeId)?.fieldId, 0);
+    if (outer.kind === "fieldAccess") {
+      // the inner pos access resolved to id 0 as well
+      assert.equal(result.typeInfo.typeEnv.get(outer.object.nodeId)?.fieldId, 0);
+    }
+  });
+
+  test("non-struct object: field id is undefined (emitter falls back to the name-keyed path)", () => {
+    const result = parseRule(
+      List.from<IBrainTileDef>([numVar, av2AccessorX]),
+      List.empty<IBrainTileDef>(),
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
+    const expr = result.parseResult.exprs.get(0);
+    assert.equal(expr.kind, "fieldAccess");
+    assert.equal(result.typeInfo.typeEnv.get(expr.nodeId)?.fieldId, undefined);
   });
 });

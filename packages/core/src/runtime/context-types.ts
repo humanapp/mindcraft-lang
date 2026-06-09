@@ -23,6 +23,20 @@ export const ContextTypeIds = {
   RuleContext: mkTypeId(NativeType.Struct, ContextTypeNames.RuleContext),
 };
 
+/**
+ * Numeric field ids for the {@link ContextTypeNames.Context} struct. Each value
+ * is the field's durable id and its storage slot; it is the single source for
+ * both the registered `fieldIndex` and the `fieldGetter` dispatch below.
+ */
+enum ContextField {
+  Time = 0,
+  Dt = 1,
+  Tick = 2,
+  Brain = 3,
+  Engine = 4,
+  Rule = 5,
+}
+
 /** Register the built-in context struct types and their host method bindings. */
 export function registerContextTypes(services: BrainServices) {
   const { types, functions } = services.runtime;
@@ -74,27 +88,27 @@ export function registerContextTypes(services: BrainServices) {
 
   types.addStructType(ContextTypeNames.Context, {
     fields: List.from([
-      { name: "time", typeId: CoreTypeIds.Number },
-      { name: "dt", typeId: CoreTypeIds.Number },
-      { name: "tick", typeId: CoreTypeIds.Number },
-      { name: "brain", typeId: brainContextTypeId },
-      { name: "engine", typeId: engineContextTypeId },
-      { name: "rule", typeId: ruleContextTypeId },
+      { name: "time", typeId: CoreTypeIds.Number, fieldIndex: ContextField.Time },
+      { name: "dt", typeId: CoreTypeIds.Number, fieldIndex: ContextField.Dt },
+      { name: "tick", typeId: CoreTypeIds.Number, fieldIndex: ContextField.Tick },
+      { name: "brain", typeId: brainContextTypeId, fieldIndex: ContextField.Brain },
+      { name: "engine", typeId: engineContextTypeId, fieldIndex: ContextField.Engine },
+      { name: "rule", typeId: ruleContextTypeId, fieldIndex: ContextField.Rule },
     ]),
-    fieldGetter: (source: StructValue, fieldName: string) => {
+    fieldGetter: (source: StructValue, fieldId: number) => {
       const execCtx = source.native as ExecutionContext;
-      switch (fieldName) {
-        case "time":
+      switch (fieldId) {
+        case ContextField.Time:
           return mkNumberValue(execCtx.time);
-        case "dt":
+        case ContextField.Dt:
           return mkNumberValue(execCtx.dt);
-        case "tick":
+        case ContextField.Tick:
           return mkNumberValue(execCtx.currentTick);
-        case "brain":
+        case ContextField.Brain:
           return mkNativeStructValue(brainContextTypeId, execCtx);
-        case "engine":
+        case ContextField.Engine:
           return mkNativeStructValue(engineContextTypeId, execCtx);
-        case "rule":
+        case ContextField.Rule:
           return mkNativeStructValue(ruleContextTypeId, execCtx);
         default:
           return undefined;

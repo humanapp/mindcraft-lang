@@ -138,19 +138,21 @@ export type HostAsyncFn = {
 
 /**
  * Field getter function for native-backed struct types.
- * Called by GET_FIELD when a StructTypeDef has a fieldGetter registered.
+ * Called when reading a field whose `StructTypeDef` has a `fieldGetter` registered,
+ * dispatched by the field's numeric `fieldId` (its `StructFieldDef.fieldIndex`).
  * The source is the StructValue; ctx provides the execution context for resolver-based natives.
  */
-export type StructFieldGetterFn = (source: StructValue, fieldName: string, ctx: ExecutionContext) => Value | undefined;
+export type StructFieldGetterFn = (source: StructValue, fieldId: number, ctx: ExecutionContext) => Value | undefined;
 
 /**
  * Field setter function for native-backed struct types.
- * Called by SET_FIELD when a StructTypeDef has a fieldSetter registered.
- * Returns true if the field was successfully set.
+ * Called when writing a field whose `StructTypeDef` has a `fieldSetter` registered,
+ * dispatched by the field's numeric `fieldId` (its `StructFieldDef.fieldIndex`).
+ * Returns true if the field was successfully set (false rejects the write, e.g. a read-only field).
  */
 export type StructFieldSetterFn = (
   source: StructValue,
-  fieldName: string,
+  fieldId: number,
   value: Value,
   ctx: ExecutionContext
 ) => boolean;

@@ -1,0 +1,135 @@
+{
+  "program": {
+    "version": 1,
+    "functions": [
+      {
+        "code": [
+          {
+            "op": 0,
+            "a": 0
+          },
+          {
+            "op": 0,
+            "a": 13
+          },
+          {
+            "op": 1
+          },
+          {
+            "op": 31
+          }
+        ],
+        "numParams": 0,
+        "numLocals": 0
+      }
+    ],
+    "constantPools": {
+      "numbers": [],
+      "strings": [],
+      "values": [
+        {
+          "t": -1
+        },
+        {
+          "t": 0
+        },
+        {
+          "t": 1
+        },
+        {
+          "t": 2,
+          "v": true
+        },
+        {
+          "t": 2,
+          "v": false
+        },
+        {
+          "t": 3,
+          "v": 42
+        },
+        {
+          "t": 3,
+          "v": -7
+        },
+        {
+          "t": 4,
+          "v": "hello"
+        },
+        {
+          "t": 5,
+          "typeId": "enum:Color",
+          "v": "Red"
+        },
+        {
+          "t": 6,
+          "typeId": "list:number",
+          "v": [
+            {
+              "t": 3,
+              "v": 1
+            },
+            {
+              "t": 3,
+              "v": 2
+            }
+          ]
+        },
+        {
+          "t": 7,
+          "typeId": "map:any",
+          "v": [
+            {
+              "key": 1,
+              "value": {
+                "t": 4,
+                "v": "one"
+              }
+            },
+            {
+              "key": "k",
+              "value": {
+                "t": 3,
+                "v": 9
+              }
+            }
+          ]
+        },
+        {
+          "t": 8,
+          "typeId": "struct:Point",
+          "v": [
+            {
+              "t": 3,
+              "v": 3
+            },
+            {
+              "t": 3,
+              "v": 4
+            }
+          ]
+        },
+        {
+          "t": 11,
+          "funcId": 2
+        },
+        {
+          "t": 11,
+          "funcId": 3,
+          "captures": [
+            {
+              "t": 3,
+              "v": 5
+            },
+            {
+              "t": 4,
+              "v": "cap"
+            }
+          ]
+        }
+      ]
+    },
+    "variableNames": []
+  },
+  "pages": []
+}

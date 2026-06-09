@@ -922,6 +922,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     return {
       catalogs: this.buildCatalogChain(definition, overlays),
       actionResolver: this.actionBindings(),
+      typeRegistry: this.brainServices.runtime.types,
     };
   }
 

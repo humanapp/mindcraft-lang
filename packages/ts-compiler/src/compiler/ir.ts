@@ -226,7 +226,8 @@ export interface IrStructNew extends IrNodeBase {
 /** Set a field on a struct: pop value, field name, and struct. */
 export interface IrStructSet extends IrNodeBase {
   kind: "StructSet";
-  fieldIndex?: number;
+  /** Storage slot id (`StructFieldDef.fieldIndex`) of the field being written. */
+  fieldIndex: number;
 }
 
 /** Copy a struct of type `typeId` while excluding the top `numExclude` field names from the stack. */

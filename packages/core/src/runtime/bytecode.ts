@@ -88,11 +88,13 @@ export enum Op {
 
   // Struct operations
   STRUCT_NEW = 110,
-  STRUCT_GET,
-  STRUCT_SET,
+  // Reserved opcode slots with no VM handler. Keep these members; removing them renumbers 113+.
+  RESERVED_111,
+  RESERVED_112,
   STRUCT_COPY_EXCEPT,
   STRUCT_GET_FIELD,
   STRUCT_SET_FIELD,
+  STRUCT_DEEP_COPY, // pop value -> push a deep copy (copies structs; no-op otherwise)
 
   // Generic field access (works with Struct, extensible for custom types)
   GET_FIELD = 120,
@@ -203,11 +205,13 @@ export const OPERAND_SCHEMA: Readonly<Record<Op, readonly OperandSpec[]>> = {
   [Op.MAP_HAS]: [],
   [Op.MAP_DELETE]: [],
   [Op.STRUCT_NEW]: [UVAR, UVAR_OPT],
-  [Op.STRUCT_GET]: [],
-  [Op.STRUCT_SET]: [],
+  // Reserved (see Op enum).
+  [Op.RESERVED_111]: [],
+  [Op.RESERVED_112]: [],
   [Op.STRUCT_COPY_EXCEPT]: [UVAR, UVAR_OPT],
   [Op.STRUCT_GET_FIELD]: [UVAR],
   [Op.STRUCT_SET_FIELD]: [UVAR],
+  [Op.STRUCT_DEEP_COPY]: [],
   [Op.GET_FIELD]: [],
   [Op.SET_FIELD]: [],
   [Op.LOAD_LOCAL]: [UVAR],
@@ -232,6 +236,51 @@ export interface Instr {
   a?: number;
   b?: number;
   c?: number;
+}
+
+/**
+ * Checks an {@link Instr}'s operands against its opcode's {@link OPERAND_SCHEMA}
+ * entry. Returns a human-readable reason when the opcode has no schema entry, the
+ * operands are not a contiguous `a, b, c` prefix, or the operand count falls
+ * outside the schema's required..total range; returns `undefined` when the
+ * operand shape is valid. Validates operand shape (arity, contiguity) only, not
+ * operand values.
+ *
+ * @param instr - Instruction to check.
+ */
+export function instrOperandMismatch(instr: Instr): string | undefined {
+  const schema = OPERAND_SCHEMA[instr.op as keyof typeof OPERAND_SCHEMA] as readonly OperandSpec[] | undefined;
+  if (schema === undefined) {
+    return `unknown opcode ${instr.op}`;
+  }
+
+  let defined: number;
+  if (instr.a === undefined) {
+    if (instr.b !== undefined || instr.c !== undefined) {
+      return `opcode ${instr.op} operands are not a contiguous a,b,c prefix`;
+    }
+    defined = 0;
+  } else if (instr.b === undefined) {
+    if (instr.c !== undefined) {
+      return `opcode ${instr.op} operands are not a contiguous a,b,c prefix`;
+    }
+    defined = 1;
+  } else {
+    defined = instr.c === undefined ? 2 : 3;
+  }
+
+  let total = 0;
+  let required = 0;
+  for (const spec of schema) {
+    total += 1;
+    if (!spec.optional) {
+      required += 1;
+    }
+  }
+  if (defined < required || defined > total) {
+    return `opcode ${instr.op} expects ${required}..${total} operands, got ${defined}`;
+  }
+  return undefined;
 }
 
 /** Compiled function body: instruction list plus param/local counts and optional metadata. */

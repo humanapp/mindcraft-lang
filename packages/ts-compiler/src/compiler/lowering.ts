@@ -4159,7 +4159,13 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
   }
 
   const field = structDef ? findStructField(structDef, fieldName) : undefined;
-  const fieldIndex = field && structDef && isIndexedStruct(structDef) ? field.fieldIndex : undefined;
+  if (!field) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.PropertyNotOnStruct, `Cannot resolve field id for '${fieldName}'`, expr.left)
+    );
+    return;
+  }
+  const fieldIndex = field.fieldIndex;
 
   if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
     const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
@@ -4203,27 +4209,19 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
     }
 
     ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
-    if (fieldIndex === undefined) {
-      ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
-    }
     ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
-    ctx.ir.push(
-      fieldIndex !== undefined ? { kind: "GetField", fieldName, fieldIndex } : { kind: "GetField", fieldName }
-    );
+    ctx.ir.push({ kind: "GetField", fieldName, fieldIndex });
     lowerExpression(expr.right, ctx);
     ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
-    ctx.ir.push(fieldIndex !== undefined ? { kind: "StructSet", fieldIndex } : { kind: "StructSet" });
+    ctx.ir.push({ kind: "StructSet", fieldIndex });
     ctx.ir.push({ kind: "Dup" });
     ctx.ir.push({ kind: "StoreLocal", index: ctx.thisLocalIndex });
     return;
   }
 
   ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
-  if (fieldIndex === undefined) {
-    ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
-  }
   lowerExpression(expr.right, ctx);
-  ctx.ir.push(fieldIndex !== undefined ? { kind: "StructSet", fieldIndex } : { kind: "StructSet" });
+  ctx.ir.push({ kind: "StructSet", fieldIndex });
   ctx.ir.push({ kind: "Dup" });
   ctx.ir.push({ kind: "StoreLocal", index: ctx.thisLocalIndex });
 }
@@ -8254,8 +8252,12 @@ function findStructField(def: StructTypeDef, fieldName: string) {
   return fieldIndex !== undefined ? def.fields.get(fieldIndex) : undefined;
 }
 
-function isIndexedStruct(def: StructTypeDef): boolean {
-  return !isNativeBackedStruct(def);
+function isIndexedStruct(_def: StructTypeDef): boolean {
+  // Every struct is accessed by numeric field id: closed structs store fields in
+  // `struct.v` indexed by id, and native-backed structs resolve the same id through
+  // their registered fieldGetter/fieldSetter (so STRUCT_GET_FIELD/STRUCT_SET_FIELD
+  // dispatch correctly for both).
+  return true;
 }
 
 function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext): void {
@@ -8368,29 +8370,35 @@ function lowerObjectLiteralAsStruct(
         return;
       }
       const field = findStructField(structDef, fieldName);
-      if (!field || !isIndexedStruct(structDef)) {
-        ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+      if (!field) {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.PropertyNotOnStruct,
+            `Field '${fieldName}' is not a member of struct '${structDef.name}'`,
+            prop
+          )
+        );
+        continue;
       }
       lowerClosureExpression(prop, ctx);
-      ctx.ir.push(
-        field && isIndexedStruct(structDef)
-          ? { kind: "StructSet", fieldIndex: field.fieldIndex }
-          : { kind: "StructSet" }
-      );
+      ctx.ir.push({ kind: "StructSet", fieldIndex: field.fieldIndex });
       continue;
     }
     if (ts.isShorthandPropertyAssignment(prop)) {
       const fieldName = prop.name.text;
       const field = findStructField(structDef, fieldName);
-      if (!field || !isIndexedStruct(structDef)) {
-        ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+      if (!field) {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.PropertyNotOnStruct,
+            `Field '${fieldName}' is not a member of struct '${structDef.name}'`,
+            prop
+          )
+        );
+        continue;
       }
       lowerExpression(prop.name, ctx);
-      ctx.ir.push(
-        field && isIndexedStruct(structDef)
-          ? { kind: "StructSet", fieldIndex: field.fieldIndex }
-          : { kind: "StructSet" }
-      );
+      ctx.ir.push({ kind: "StructSet", fieldIndex: field.fieldIndex });
       continue;
     }
     if (ts.isSpreadAssignment(prop)) {
@@ -8408,8 +8416,10 @@ function lowerObjectLiteralAsStruct(
       const sourceStruct = resolveStructType(spreadType, ctx.services, ctx.checker);
       for (const sym of properties) {
         const targetField = findStructField(structDef, sym.name);
-        if (!targetField || !isIndexedStruct(structDef)) {
-          ctx.ir.push({ kind: "PushConst", value: mkStringValue(sym.name) });
+        // A spread source property that is not a field of the target struct has no
+        // storage slot; there is nothing to write.
+        if (!targetField) {
+          continue;
         }
         ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
         const sourceField = sourceStruct ? findStructField(sourceStruct, sym.name) : undefined;
@@ -8418,11 +8428,7 @@ function lowerObjectLiteralAsStruct(
             ? { kind: "GetField", fieldName: sym.name, fieldIndex: sourceField.fieldIndex }
             : { kind: "GetField", fieldName: sym.name }
         );
-        ctx.ir.push(
-          targetField && isIndexedStruct(structDef)
-            ? { kind: "StructSet", fieldIndex: targetField.fieldIndex }
-            : { kind: "StructSet" }
-        );
+        ctx.ir.push({ kind: "StructSet", fieldIndex: targetField.fieldIndex });
       }
       continue;
     }
@@ -8452,13 +8458,18 @@ function lowerObjectLiteralAsStruct(
       return;
     }
     const field = findStructField(structDef, fieldName);
-    if (!field || !isIndexedStruct(structDef)) {
-      ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    if (!field) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.PropertyNotOnStruct,
+          `Field '${fieldName}' is not a member of struct '${structDef.name}'`,
+          prop
+        )
+      );
+      continue;
     }
     lowerExpression(prop.initializer, ctx);
-    ctx.ir.push(
-      field && isIndexedStruct(structDef) ? { kind: "StructSet", fieldIndex: field.fieldIndex } : { kind: "StructSet" }
-    );
+    ctx.ir.push({ kind: "StructSet", fieldIndex: field.fieldIndex });
   }
 }
 
@@ -8906,7 +8917,7 @@ function autoRegisterIntersectionType(
   const props = type.getProperties();
   if (props.length === 0) return undefined;
 
-  const fields = new List<{ name: string; typeId: TypeId }>();
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
   for (const prop of props) {
     const propType = checker.getTypeOfSymbol(prop);
     if (propType.getCallSignatures().length > 0) return undefined;
@@ -8916,7 +8927,7 @@ function autoRegisterIntersectionType(
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
-    fields.push({ name: prop.name, typeId: fieldTypeId });
+    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
   }
 
   let structName: string;
@@ -8952,7 +8963,7 @@ function autoRegisterAnonymousStruct(
   const props = type.getProperties();
   if (props.length === 0) return undefined;
 
-  const fields = new List<{ name: string; typeId: TypeId }>();
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
   const nameParts: string[] = [];
   for (const prop of props) {
     const propType = checker.getTypeOfSymbol(prop);
@@ -8963,7 +8974,7 @@ function autoRegisterAnonymousStruct(
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
-    fields.push({ name: prop.name, typeId: fieldTypeId });
+    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
     nameParts.push(`${prop.name}:${fieldTypeId}`);
   }
 
@@ -9020,7 +9031,7 @@ function autoRegisterObjectType(
   const props = type.getProperties();
   if (props.length === 0) return undefined;
 
-  const fields = new List<{ name: string; typeId: TypeId }>();
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
   for (const prop of props) {
     const propType = checker.getTypeOfSymbol(prop);
     if (propType.getCallSignatures().length > 0) return undefined;
@@ -9030,7 +9041,7 @@ function autoRegisterObjectType(
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
-    fields.push({ name: prop.name, typeId: fieldTypeId });
+    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
   }
 
   const baseName = resolveRegistryName(sym, services);
@@ -9068,8 +9079,8 @@ function extractClassFields(
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
   services: BrainServices
-): List<{ name: string; typeId: TypeId }> | undefined {
-  const fields = new List<{ name: string; typeId: TypeId }>();
+): List<{ name: string; typeId: TypeId; fieldIndex: number }> | undefined {
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
   const seen = new Set<string>();
 
   for (const member of classNode.members) {
@@ -9101,7 +9112,7 @@ function extractClassFields(
       );
       return undefined;
     }
-    fields.push({ name: fieldName, typeId: fieldTypeId });
+    fields.push({ name: fieldName, typeId: fieldTypeId, fieldIndex: fields.size() });
   }
 
   const ctor = classNode.members.find(ts.isConstructorDeclaration);
@@ -9130,7 +9141,7 @@ function extractClassFields(
         );
         return undefined;
       }
-      fields.push({ name: fieldName, typeId: fieldTypeId });
+      fields.push({ name: fieldName, typeId: fieldTypeId, fieldIndex: fields.size() });
     }
   }
 
@@ -9300,8 +9311,8 @@ function extractInterfaceFields(
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
   services: BrainServices
-): List<{ name: string; typeId: TypeId }> | undefined {
-  const fields = new List<{ name: string; typeId: TypeId }>();
+): List<{ name: string; typeId: TypeId; fieldIndex: number }> | undefined {
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
 
   const indexInfo = checker.getIndexInfosOfType(type);
   if (indexInfo.length > 0) {
@@ -9352,7 +9363,7 @@ function extractInterfaceFields(
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
 
-    fields.push({ name: prop.name, typeId: fieldTypeId });
+    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
   }
 
   return fields;
@@ -9436,13 +9447,15 @@ function lowerClassDeclaration(
     const fieldName = member.name.text;
     const structDef = typeId ? (services.runtime.types.get(typeId) as StructTypeDef | undefined) : undefined;
     const field = structDef ? findStructField(structDef, fieldName) : undefined;
-    const fieldIndex = field && structDef && isIndexedStruct(structDef) ? field.fieldIndex : undefined;
-    ctorIr.push({ kind: "LoadLocal", index: thisLocal });
-    if (fieldIndex === undefined) {
-      ctorIr.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    if (!field) {
+      ctorCtx.diagnostics.push(
+        makeDiag(LoweringDiagCode.PropertyNotOnStruct, `Cannot resolve field id for '${fieldName}'`, member)
+      );
+      continue;
     }
+    ctorIr.push({ kind: "LoadLocal", index: thisLocal });
     lowerExpression(member.initializer, ctorCtx);
-    ctorIr.push(fieldIndex !== undefined ? { kind: "StructSet", fieldIndex } : { kind: "StructSet" });
+    ctorIr.push({ kind: "StructSet", fieldIndex: field.fieldIndex });
     ctorIr.push({ kind: "StoreLocal", index: thisLocal });
   }
 

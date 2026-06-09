@@ -1,6 +1,7 @@
 import type { List, ReadonlyList } from "../../platform/list";
 import type { IConversionRegistry } from "../../runtime/conversion-defs";
 import type { IBrain } from "../../runtime/host-bindings";
+import type { ITypeRegistry } from "../../runtime/type-defs";
 import type { EventEmitterConsumer } from "../../util/event-emitter";
 import type { OpResult } from "../../util/op-result";
 import type { ITileCatalog } from "./catalog";
@@ -28,6 +29,7 @@ export interface IBrainDef {
   servicesTiles(): ITileCatalog;
   deserializationCatalogs(): List<ITileCatalog>;
   servicesConversions(): IConversionRegistry;
+  servicesTypeRegistry(): ITypeRegistry;
   typecheck(): void;
   compile(): IBrain;
   appendNewPage(): OpResult<{ page: IBrainPageDef; index: number }>;

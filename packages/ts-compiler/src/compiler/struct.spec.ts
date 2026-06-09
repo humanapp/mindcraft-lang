@@ -286,8 +286,8 @@ describe("struct literal compilation", () => {
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
         fields: List.from([
-          { name: "x", typeId: numTypeId },
-          { name: "y", typeId: numTypeId },
+          { name: "x", typeId: numTypeId, fieldIndex: 0 },
+          { name: "y", typeId: numTypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -295,15 +295,15 @@ describe("struct literal compilation", () => {
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
         fields: List.from([
-          { name: "name", typeId: strTypeId },
-          { name: "position", typeId: vec2TypeId },
+          { name: "name", typeId: strTypeId, fieldIndex: 0 },
+          { name: "position", typeId: vec2TypeId, fieldIndex: 1 },
         ]),
       });
     }
     const nativeTypeId = mkTypeId(NativeType.Struct, "NativeObj");
     if (!types.get(nativeTypeId)) {
       types.addStructType("NativeObj", {
-        fields: List.from([{ name: "id", typeId: numTypeId }]),
+        fields: List.from([{ name: "id", typeId: numTypeId, fieldIndex: 0 }]),
         fieldGetter: () => undefined,
       });
     }
@@ -485,8 +485,8 @@ describe("property access chains + host calls", () => {
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
         fields: List.from([
-          { name: "x", typeId: numTypeId },
-          { name: "y", typeId: numTypeId },
+          { name: "x", typeId: numTypeId, fieldIndex: 0 },
+          { name: "y", typeId: numTypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -495,8 +495,8 @@ describe("property access chains + host calls", () => {
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
         fields: List.from([
-          { name: "name", typeId: strTypeId },
-          { name: "position", typeId: vec2TypeId },
+          { name: "name", typeId: strTypeId, fieldIndex: 0 },
+          { name: "position", typeId: vec2TypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -606,7 +606,7 @@ export default Sensor({
     }
   });
 
-  test("ctx.time compiles to GET_FIELD", () => {
+  test("ctx.time native field read returns the context value at runtime", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -641,7 +641,7 @@ export default Sensor({
     }
   });
 
-  test("ctx.dt compiles to GET_FIELD", () => {
+  test("ctx.dt native field read returns the context value at runtime", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -863,15 +863,15 @@ export default Sensor({
     }
   });
 
-  test("native-backed struct field access uses GET_FIELD", () => {
+  test("native-backed struct field access uses STRUCT_GET_FIELD (id-based, dispatched through the fieldGetter)", () => {
     const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const nativeActorId = mkTypeId(NativeType.Struct, "NativeActor");
     if (!types.get(nativeActorId)) {
       types.addStructType("NativeActor", {
-        fields: List.from([{ name: "health", typeId: numTypeId }]),
-        fieldGetter: (source, fieldName) => {
-          if (fieldName === "health") return mkNumberValue(100);
+        fields: List.from([{ name: "health", typeId: numTypeId, fieldIndex: 0 }]),
+        fieldGetter: (source, fieldId) => {
+          if (fieldId === 0) return mkNumberValue(100);
           return undefined;
         },
       });
@@ -897,7 +897,47 @@ export default Sensor({
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
-    findFunctionContainingOp(result.program, Op.GET_FIELD);
+    findFunctionContainingOp(result.program, Op.STRUCT_GET_FIELD);
+  });
+
+  test("struct field assignment has JavaScript reference semantics (STRUCT_SET_FIELD does not copy)", () => {
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+interface Vec2 { x: number; y: number; }
+interface Holder { v: Vec2; }
+
+export default Sensor({
+  name: "ref-semantics",
+  onExecute(ctx: Context): number {
+    const a: Vec2 = { x: 1, y: 2 };
+    const h: Holder = { v: a };
+    a.x = 9;
+    return h.v.x;
+  },
+});
+`;
+    const result = compileUserTile(source, {
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      // h.v aliases `a` (the field write does not copy), so mutating a.x is observable
+      // through h.v.x. Value semantics would instead yield 1.
+      assert.equal((runResult.result as NumberValue).v, 9);
+    }
   });
 
   test("unknown struct field produces compile error (caught by TS checker)", () => {
@@ -1001,9 +1041,9 @@ describe("struct method calls", () => {
     const widgetTypeId = mkTypeId(NativeType.Struct, "Widget");
     if (!types.get(widgetTypeId)) {
       types.addStructType("Widget", {
-        fields: List.from([{ name: "id", typeId: numTypeId }]),
-        fieldGetter: (source, fieldName) => {
-          if (fieldName === "id") return mkNumberValue((source.native as { id: number }).id);
+        fields: List.from([{ name: "id", typeId: numTypeId, fieldIndex: 0 }]),
+        fieldGetter: (source, fieldId) => {
+          if (fieldId === 0) return mkNumberValue((source.native as { id: number }).id);
           return undefined;
         },
         methods: List.from([

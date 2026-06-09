@@ -82,7 +82,7 @@ function testConversion(
     const emptyTiles = List.empty<never>();
     const catalogs = List.from([services.edit.tiles]);
 
-    const result = parseRule(tiles, emptyTiles, catalogs, services.shared.conversions);
+    const result = parseRule(tiles, emptyTiles, catalogs, services.shared.conversions, services.runtime.types);
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "actuator", "Expected actuator expression");

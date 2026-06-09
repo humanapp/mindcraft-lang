@@ -114,7 +114,7 @@ describe("await expression", () => {
     const widgetTypeId = mkTypeId(NativeType.Struct, "Widget");
     if (!types.get(widgetTypeId)) {
       types.addStructType("Widget", {
-        fields: List.from([{ name: "id", typeId: numTypeId }]),
+        fields: List.from([{ name: "id", typeId: numTypeId, fieldIndex: 0 }]),
         methods: List.from([
           {
             name: "fetchData",

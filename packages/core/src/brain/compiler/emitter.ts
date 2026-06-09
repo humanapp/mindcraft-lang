@@ -2,7 +2,7 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
 import type { Instr } from "../../runtime/bytecode";
-import { Op } from "../../runtime/bytecode";
+import { instrOperandMismatch, Op } from "../../runtime/bytecode";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
 
 /**
@@ -70,6 +70,10 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   private emit(ins: Instr): void {
     if (this.finalized) {
       throw new Error("Cannot emit after finalize()");
+    }
+    const mismatch = instrOperandMismatch(ins);
+    if (mismatch !== undefined) {
+      throw new Error(`BytecodeEmitter.emit: ${mismatch}`);
     }
     this.instrs.push(ins);
   }
@@ -368,16 +372,6 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.STRUCT_NEW, a: 0, b: typeIdConstIdx });
   }
 
-  /** Get field from struct. Field name is on stack. */
-  structGet(): void {
-    this.emit({ op: Op.STRUCT_GET });
-  }
-
-  /** Set field in struct. Field name and value are on stack. */
-  structSet(): void {
-    this.emit({ op: Op.STRUCT_SET });
-  }
-
   /** Copy struct excluding N keys. Keys are on stack, then source struct. typeIdConstIdx is constant pool index for typeId. */
   structCopyExcept(numExclude: number, typeIdConstIdx: number): void {
     this.emit({ op: Op.STRUCT_COPY_EXCEPT, a: numExclude, b: typeIdConstIdx });
@@ -391,6 +385,11 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   /** Set a closed-struct field by field index. */
   structSetField(fieldIndex: number): void {
     this.emit({ op: Op.STRUCT_SET_FIELD, a: fieldIndex });
+  }
+
+  /** Pop a value and push a deep copy of it (copies structs; no-op for other values). */
+  structDeepCopy(): void {
+    this.emit({ op: Op.STRUCT_DEEP_COPY });
   }
 
   // ==========================================

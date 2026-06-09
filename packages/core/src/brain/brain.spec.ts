@@ -24,13 +24,14 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
+  BrainTileAccessorDef,
   BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileOperatorDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
 } from "@mindcraft-lang/core/brain/tiles";
-import type { ExecutionContext, UserActionArtifact } from "@mindcraft-lang/core/runtime";
+import type { ExecutionContext, Instr, UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import {
   type ActionDescriptor,
   type BooleanValue,
@@ -974,6 +975,7 @@ describe("Brain behavioral -- action state", () => {
 
     const brain = new Brain(brainDef, services, {
       catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
+      typeRegistry: services.runtime.types,
       actionResolver: {
         resolveAction(actionDescriptor) {
           if (actionDescriptor.key === descriptor.key) {
@@ -1159,6 +1161,7 @@ function buildBytecodeActionBrain(
 
   const brain = new Brain(brainDef, services, {
     catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
+    typeRegistry: services.runtime.types,
     actionResolver: {
       resolveAction(ad) {
         if (ad.key !== key) return undefined;
@@ -1737,6 +1740,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
 
     const brain = new Brain(brainDef, services, {
       catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
+      typeRegistry: services.runtime.types,
       actionResolver: {
         resolveAction(ad) {
           if (ad.key === btKey) {
@@ -1901,6 +1905,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
 
     const brain = new Brain(brainDef, services, {
       catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
+      typeRegistry: services.runtime.types,
       actionResolver: {
         resolveAction(ad) {
           if (ad.key === btKey) {
@@ -1959,7 +1964,8 @@ describe("Brain behavioral -- compiled program structure", () => {
       brainDef,
       List.from([services.edit.tiles, brainDef.catalog()]),
       services.shared.conversions,
-      services.runtime.actions
+      services.runtime.actions,
+      services.runtime.types
     ).program!;
 
     // An action the resolver cannot bind falls back to a program-local bytecode
@@ -2266,5 +2272,68 @@ describe("Brain -- slot-keyed variable storage", () => {
     }
     assert.ok(slotId >= 0);
     assert.equal(brain.getVariableBySlot(slotId).t, NativeType.Nil, "slot-keyed read of cleared slot returns NIL");
+  });
+});
+
+// ---- Field access emits id-based opcodes (Phase 3) ----
+
+describe("Field access emits id-based opcodes", () => {
+  function compileToInstrs(whenTiles: unknown[], doTiles: unknown[]): Instr[] {
+    const brainDef = buildBrain(whenTiles, doTiles);
+    const result = compileBrain(
+      brainDef,
+      List.from([services.edit.tiles, brainDef.catalog()]),
+      services.shared.conversions,
+      services.runtime.actions,
+      services.runtime.types
+    );
+    assert.ok(result.program, "compile should succeed");
+    const instrs: Instr[] = [];
+    const fns = result.program!.functions;
+    for (let i = 0; i < fns.size(); i++) {
+      const code = fns.get(i).code;
+      for (let j = 0; j < code.size(); j++) {
+        instrs.push(code.get(j));
+      }
+    }
+    return instrs;
+  }
+
+  test("a concretely-typed field read emits STRUCT_GET_FIELD with the object's field id (not GET_FIELD)", () => {
+    const vec = services.runtime.types.addStructType("Vec2EmitRead", {
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+      ]),
+    });
+    const vVar = new BrainTileVariableDef(mkVariableTileId("vec2-emit-read"), "vv", vec, "vec2-emit-read");
+    const nVar = mkVar("nn", CoreTypeIds.Number);
+    const accY = new BrainTileAccessorDef(vec, "y", CoreTypeIds.Number);
+
+    // DO: $n = $v.y    (reads y, id 1)
+    const instrs = compileToInstrs([], [nVar, opAssign, vVar, accY]);
+    const reads = instrs.filter((ins) => ins.op === Op.STRUCT_GET_FIELD);
+    assert.equal(reads.length, 1, "should emit exactly one STRUCT_GET_FIELD");
+    assert.equal(reads[0].a, 1, "should read Vec2.y at id 1");
+    assert.equal(instrs.filter((ins) => ins.op === Op.GET_FIELD).length, 0, "should not emit name-keyed GET_FIELD");
+  });
+
+  test("a concretely-typed field write emits STRUCT_DEEP_COPY then STRUCT_SET_FIELD (not SET_FIELD)", () => {
+    const vec = services.runtime.types.addStructType("Vec2EmitWrite", {
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+      ]),
+    });
+    const vVar = new BrainTileVariableDef(mkVariableTileId("vec2-emit-write"), "vv", vec, "vec2-emit-write");
+    const accX = new BrainTileAccessorDef(vec, "x", CoreTypeIds.Number);
+
+    // DO: $v.x = 10
+    const instrs = compileToInstrs([], [vVar, accX, opAssign, mkLiteral(10)]);
+    const setIdx = instrs.findIndex((ins) => ins.op === Op.STRUCT_SET_FIELD);
+    assert.ok(setIdx >= 0, "should emit STRUCT_SET_FIELD");
+    assert.equal(instrs[setIdx].a, 0, "should write Vec2.x at id 0");
+    assert.equal(instrs[setIdx - 1].op, Op.STRUCT_DEEP_COPY, "STRUCT_DEEP_COPY must immediately precede the store");
+    assert.equal(instrs.filter((ins) => ins.op === Op.SET_FIELD).length, 0, "should not emit name-keyed SET_FIELD");
   });
 });

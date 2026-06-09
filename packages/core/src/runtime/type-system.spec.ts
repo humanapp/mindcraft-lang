@@ -612,14 +612,14 @@ describe("isStructurallyCompatible", () => {
     const registry = services.runtime.types;
     const typeA = registry.addStructType("IdenticalA", {
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     const typeB = registry.addStructType("IdenticalB", {
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     assert.equal(registry.isStructurallyCompatible(typeA, typeB), true);
@@ -630,15 +630,15 @@ describe("isStructurallyCompatible", () => {
     const registry = services.runtime.types;
     const point2D = registry.addStructType("Point2D", {
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     const point3D = registry.addStructType("Point3D", {
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
-        { name: "z", typeId: CoreTypeIds.Number },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+        { name: "z", typeId: CoreTypeIds.Number, fieldIndex: 2 },
       ]),
     });
     assert.equal(registry.isStructurallyCompatible(point3D, point2D), true);
@@ -649,12 +649,12 @@ describe("isStructurallyCompatible", () => {
     const registry = services.runtime.types;
     const withName = registry.addStructType("WithName", {
       fields: List.from([
-        { name: "name", typeId: CoreTypeIds.String },
-        { name: "age", typeId: CoreTypeIds.Number },
+        { name: "name", typeId: CoreTypeIds.String, fieldIndex: 0 },
+        { name: "age", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     const withoutName = registry.addStructType("WithoutName", {
-      fields: List.from([{ name: "age", typeId: CoreTypeIds.Number }]),
+      fields: List.from([{ name: "age", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
     });
     assert.equal(registry.isStructurallyCompatible(withoutName, withName), false);
   });
@@ -663,22 +663,22 @@ describe("isStructurallyCompatible", () => {
     const registry = services.runtime.types;
     const screenCoord = registry.addStructType("ScreenCoord", {
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
       nominal: true,
     });
     const worldCoord = registry.addStructType("WorldCoord", {
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
       nominal: true,
     });
     const plainCoord = registry.addStructType("PlainCoord", {
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     assert.equal(registry.isStructurallyCompatible(screenCoord, worldCoord), false);
@@ -691,21 +691,21 @@ describe("isStructurallyCompatible", () => {
     const registry = services.runtime.types;
     const innerA = registry.addStructType("InnerA", {
       fields: List.from([
-        { name: "val", typeId: CoreTypeIds.Number },
-        { name: "label", typeId: CoreTypeIds.String },
+        { name: "val", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "label", typeId: CoreTypeIds.String, fieldIndex: 1 },
       ]),
     });
     const innerB = registry.addStructType("InnerB", {
       fields: List.from([
-        { name: "val", typeId: CoreTypeIds.Number },
-        { name: "label", typeId: CoreTypeIds.String },
+        { name: "val", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "label", typeId: CoreTypeIds.String, fieldIndex: 1 },
       ]),
     });
     const outerA = registry.addStructType("OuterA", {
-      fields: List.from([{ name: "inner", typeId: innerA }]),
+      fields: List.from([{ name: "inner", typeId: innerA, fieldIndex: 0 }]),
     });
     const outerB = registry.addStructType("OuterB", {
-      fields: List.from([{ name: "inner", typeId: innerB }]),
+      fields: List.from([{ name: "inner", typeId: innerB, fieldIndex: 0 }]),
     });
     assert.equal(registry.isStructurallyCompatible(outerA, outerB), true);
   });
@@ -713,16 +713,16 @@ describe("isStructurallyCompatible", () => {
   test("recursive incompatibility for nested struct fields with different types", () => {
     const registry = services.runtime.types;
     const innerC = registry.addStructType("InnerC", {
-      fields: List.from([{ name: "val", typeId: CoreTypeIds.Number }]),
+      fields: List.from([{ name: "val", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
     });
     const innerD = registry.addStructType("InnerD", {
-      fields: List.from([{ name: "val", typeId: CoreTypeIds.String }]),
+      fields: List.from([{ name: "val", typeId: CoreTypeIds.String, fieldIndex: 0 }]),
     });
     const outerC = registry.addStructType("OuterC", {
-      fields: List.from([{ name: "inner", typeId: innerC }]),
+      fields: List.from([{ name: "inner", typeId: innerC, fieldIndex: 0 }]),
     });
     const outerD = registry.addStructType("OuterD", {
-      fields: List.from([{ name: "inner", typeId: innerD }]),
+      fields: List.from([{ name: "inner", typeId: innerD, fieldIndex: 0 }]),
     });
     assert.equal(registry.isStructurallyCompatible(outerC, outerD), false);
   });
@@ -774,7 +774,7 @@ describe("removeUserTypes", () => {
   test("removes struct types with module-qualified names (contains ::)", () => {
     const registry = services.runtime.types;
     const typeId = registry.addStructType("/user-code.ts::UserClass", {
-      fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
+      fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
     });
     assert.ok(registry.get(typeId));
     assert.ok(registry.resolveByName("/user-code.ts::UserClass"));
@@ -788,7 +788,7 @@ describe("removeUserTypes", () => {
   test("preserves struct types with bare names (no ::)", () => {
     const registry = services.runtime.types;
     const hostId = registry.addStructType("AppVector2RM", {
-      fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
+      fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
     });
     assert.ok(registry.get(hostId));
 
@@ -835,13 +835,13 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
     services = __test__createBrainServices();
   });
 
-  test("addStructType assigns sequential fieldIndex starting at 0", () => {
+  test("addStructType stores author-assigned fieldIndex", () => {
     const registry = services.runtime.types;
     const typeId = registry.addStructType("FieldIndexA", {
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
-        { name: "label", typeId: CoreTypeIds.String },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+        { name: "label", typeId: CoreTypeIds.String, fieldIndex: 2 },
       ]),
     });
     const def = registry.get(typeId) as StructTypeDef;
@@ -854,13 +854,13 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
     assert.equal(def.fieldIndexByName.get("label"), 2);
   });
 
-  test("finalizeStructType assigns sequential fieldIndex on the reserved type", () => {
+  test("finalizeStructType stores author-assigned fieldIndex on the reserved type", () => {
     const registry = services.runtime.types;
     const typeId = registry.reserveStructType("FieldIndexB");
     registry.finalizeStructType(typeId, {
       fields: List.from([
-        { name: "a", typeId: CoreTypeIds.Number },
-        { name: "b", typeId: CoreTypeIds.String },
+        { name: "a", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "b", typeId: CoreTypeIds.String, fieldIndex: 1 },
       ]),
     });
     const def = registry.get(typeId) as StructTypeDef;
@@ -871,16 +871,16 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
     assert.equal(def.fieldIndexByName.get("b"), 1);
   });
 
-  test("addStructFields continues fieldIndex from existing tail", () => {
+  test("addStructFields stores author-assigned fieldIndex extending the struct", () => {
     const registry = services.runtime.types;
     const typeId = registry.addStructType("FieldIndexC", {
-      fields: List.from([{ name: "first", typeId: CoreTypeIds.Number }]),
+      fields: List.from([{ name: "first", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
     });
     registry.addStructFields(
       typeId,
       List.from([
-        { name: "second", typeId: CoreTypeIds.Number },
-        { name: "third", typeId: CoreTypeIds.String },
+        { name: "second", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+        { name: "third", typeId: CoreTypeIds.String, fieldIndex: 2 },
       ])
     );
     const def = registry.get(typeId) as StructTypeDef;
@@ -900,9 +900,9 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
     const registry = services.runtime.types;
     const typeId = registry.addStructType("FieldIndexD", {
       fields: List.from([
-        { name: "alpha", typeId: CoreTypeIds.Number },
-        { name: "beta", typeId: CoreTypeIds.Number },
-        { name: "gamma", typeId: CoreTypeIds.Number },
+        { name: "alpha", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "beta", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+        { name: "gamma", typeId: CoreTypeIds.Number, fieldIndex: 2 },
       ]),
     });
     const def = registry.get(typeId) as StructTypeDef;
@@ -913,5 +913,49 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
       expected++;
     });
     assert.equal(expected, 3);
+  });
+
+  test("rejects a duplicate fieldIndex within a struct", () => {
+    const registry = services.runtime.types;
+    assert.throws(() =>
+      registry.addStructType("DupFieldId", {
+        fields: List.from([
+          { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+          { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        ]),
+      })
+    );
+  });
+
+  test("rejects a negative fieldIndex", () => {
+    const registry = services.runtime.types;
+    assert.throws(() =>
+      registry.addStructType("NegFieldId", {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: -1 }]),
+      })
+    );
+  });
+
+  test("rejects addStructFields whose fieldIndex collides with an existing field", () => {
+    const registry = services.runtime.types;
+    const typeId = registry.addStructType("CollideFieldId", {
+      fields: List.from([{ name: "first", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+    });
+    assert.throws(() =>
+      registry.addStructFields(typeId, List.from([{ name: "second", typeId: CoreTypeIds.Number, fieldIndex: 0 }]))
+    );
+  });
+
+  test("allows a sparse fieldIndex (a retired field leaves a hole)", () => {
+    const registry = services.runtime.types;
+    const typeId = registry.addStructType("SparseFieldId", {
+      fields: List.from([
+        { name: "first", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "third", typeId: CoreTypeIds.Number, fieldIndex: 2 },
+      ]),
+    });
+    const def = registry.get(typeId) as StructTypeDef;
+    assert.equal(def.fieldIndexByName.get("first"), 0);
+    assert.equal(def.fieldIndexByName.get("third"), 2);
   });
 });

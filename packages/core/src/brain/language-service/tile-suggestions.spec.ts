@@ -1618,9 +1618,9 @@ describe("Accessor / struct field suggestions", () => {
   before(() => {
     posStructTypeId = services.runtime.types.addStructType("Position", {
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
-        { name: "mag", typeId: CoreTypeIds.Number },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+        { name: "mag", typeId: CoreTypeIds.Number, fieldIndex: 2 },
       ]),
     });
     accessorXDef = new BrainTileAccessorDef(posStructTypeId, "x", CoreTypeIds.Number, { metadata: { label: "x" } });
@@ -1802,8 +1802,8 @@ describe("Accessor / struct field suggestions", () => {
   test("Test 46: Different struct type -> only matching accessors suggested", () => {
     const velStructTypeId = services.runtime.types.addStructType("Velocity", {
       fields: List.from([
-        { name: "dx", typeId: CoreTypeIds.Number },
-        { name: "dy", typeId: CoreTypeIds.Number },
+        { name: "dx", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "dy", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     const accessorDxDef = new BrainTileAccessorDef(velStructTypeId, "dx", CoreTypeIds.Number, {
@@ -2298,9 +2298,9 @@ describe("Struct-specific operator and accessor behavior", () => {
   before(() => {
     posStructTypeId = services.runtime.types.addStructType("Position62", {
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
-        { name: "mag", typeId: CoreTypeIds.Number },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+        { name: "mag", typeId: CoreTypeIds.Number, fieldIndex: 2 },
       ]),
     });
     accessorXDef = new BrainTileAccessorDef(posStructTypeId, "x", CoreTypeIds.Number, { metadata: { label: "x" } });

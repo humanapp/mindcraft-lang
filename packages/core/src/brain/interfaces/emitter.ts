@@ -322,16 +322,6 @@ export interface IBytecodeEmitter {
   structNew(typeIdConstIdx: number): void;
 
   /**
-   * Get field from struct. Field name is on stack.
-   */
-  structGet(): void;
-
-  /**
-   * Set field in struct. Field name and value are on stack.
-   */
-  structSet(): void;
-
-  /**
    * Get field from a closed struct by `StructFieldDef.fieldIndex`.
    */
   structGetField(fieldIndex: number): void;
@@ -340,6 +330,12 @@ export interface IBytecodeEmitter {
    * Set field on a closed struct by `StructFieldDef.fieldIndex`.
    */
   structSetField(fieldIndex: number): void;
+
+  /**
+   * Pop a value and push a deep copy of it. Copies structs (value semantics);
+   * a no-op for lists, maps, and primitives (reference/immutable).
+   */
+  structDeepCopy(): void;
 
   // ==========================================
   // Generic field access

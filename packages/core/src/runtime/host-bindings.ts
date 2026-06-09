@@ -5,7 +5,7 @@ import type { EventEmitterConsumer } from "../util";
 import type { HostActionBinding } from "./context";
 import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from "./function-defs";
 import type { Program, ProgramArtifact } from "./program";
-import type { TypeId } from "./type-defs";
+import type { ITypeRegistry, TypeId } from "./type-defs";
 import type { Value } from "./value";
 
 /** Reference to a registered action, by program-local slot and stable key. */
@@ -105,10 +105,12 @@ export interface IBrainActionRegistry extends BrainActionResolver {
   size(): number;
 }
 
-/** Linker inputs: tile catalogs and the action resolver to bind compiled programs against. */
+/** Linker inputs: tile catalogs, the action resolver, and the type registry to bind compiled programs against. */
 export interface BrainLinkEnvironment {
   catalogs: ReadonlyList<ITileCatalog>;
   actionResolver: BrainActionResolver;
+  /** Type registry used during inference to resolve struct field ids from a field-access object's type. */
+  typeRegistry: ITypeRegistry;
 }
 
 /** Per-page metadata embedded in a {@link UnlinkedBrainProgram}. */

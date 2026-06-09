@@ -712,11 +712,12 @@ by value, strings by character sequence).
 | Mnemonic             | Numeric | Operands                          | Stack effect                                                            | Faults |
 | -------------------- | ------- | --------------------------------- | ----------------------------------------------------------------------- | ------ |
 | `STRUCT_NEW`         | 110     | `numFields` (`a`), `k?` (`b`)     | `[name0, val0, ..., nameN, valN] -> [struct]` (with `N = numFields`)    | `ScriptError` if any popped name is not a string. Unknown field names are ignored. |
-| `STRUCT_GET`         | 111     | none                              | `[struct, fieldName] -> [value]`                                        | `ScriptError` if the popped value is not a struct, or `fieldName` is not a string. Unknown fields yield `nil`. |
-| `STRUCT_SET`         | 112     | none                              | `[struct, fieldName, value] -> [struct]`                                | Same constraints as `STRUCT_GET`. Unknown fields are silently dropped. |
+| `RESERVED_111`       | 111     | none (reserved)                   | reserved opcode number, no handler                                     | The VM has no handler; the dispatcher faults `ScriptError` ("Unknown opcode") if one is encountered. |
+| `RESERVED_112`       | 112     | none (reserved)                   | reserved opcode number, no handler                                     | The VM has no handler; the dispatcher faults `ScriptError` ("Unknown opcode") if one is encountered. |
 | `STRUCT_COPY_EXCEPT` | 113     | `numExclude` (`a`), `k?` (`b`)    | `[source, key0, ..., key(numExclude-1)] -> [struct]`                    | `ScriptError` if any exclude key is not a string, or the source value is not a struct. |
-| `STRUCT_GET_FIELD`   | 114     | `fieldIndex` (`a`)                | `[struct] -> [value]`                                                   | `ScriptError` if the source is not a struct. |
-| `STRUCT_SET_FIELD`   | 115     | `fieldIndex` (`a`)                | `[struct, value] -> [struct]`                                           | `ScriptError` if the source is not a struct. |
+| `STRUCT_GET_FIELD`   | 114     | `fieldId` (`a`)                   | `[struct] -> [value]`                                                   | `ScriptError` if the source is not a struct. |
+| `STRUCT_SET_FIELD`   | 115     | `fieldId` (`a`)                   | `[struct, value] -> [struct]`                                           | `ScriptError` if the source is not a struct, or the registered `fieldSetter` returns `false`. |
+| `STRUCT_DEEP_COPY`   | 116     | none                              | `[value] -> [copy]`                                                     | Never faults. |
 
 `STRUCT_NEW`'s `b` operand, when present and in range, indexes
 `constantPools.strings` for the struct's `TypeId`; when omitted, the
@@ -727,23 +728,37 @@ to a `fieldIndex` via `StructTypeDef.fieldIndexByName` and writes
 into that slot. Pairs whose names are not declared on the type are
 silently ignored.
 
-`STRUCT_GET` / `STRUCT_SET` are the name-keyed variants used when
-the compiler cannot prove the source's static type. They look up
-the field through `fieldIndexByName` and read or write the underlying
-`StructValue.v` slot; unknown names are no-ops on `STRUCT_SET` and
-yield `nil` on `STRUCT_GET`.
+`RESERVED_111` / `RESERVED_112` are reserved opcode numbers with no VM
+handler. Their enum members and empty `OPERAND_SCHEMA` entries are kept so
+the remaining struct opcodes keep their numbers and the binary codec
+round-trips the reserved numbers. The VM has no dispatch case for them, so
+executing one faults `ScriptError` ("Unknown opcode").
 
 `STRUCT_COPY_EXCEPT` builds a new struct value (typed by the
 optional `b` operand, or carried over from the source's typeId
 when no replacement type is given) by copying all fields of `source`
 except those whose names appear in the popped exclude key set.
 
-`STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` are the index-keyed fast
-paths used when the compiler statically knows the field index. They
-index `StructValue.v` directly with no type-registry consultation.
-Closed structs store field values in `StructValue.v: List<Value>`,
-indexed by `StructFieldDef.fieldIndex`; missing list entries read
-as `nil`.
+`STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` are the id-keyed field-access
+opcodes the compiler emits when it statically knows the field. The
+operand is the field's numeric `fieldId` (its
+`StructFieldDef.fieldIndex`). Dispatch: if the source's registered
+`StructTypeDef` has a `fieldGetter` / `fieldSetter`, the opcode calls
+it with the `fieldId` (this is how native-backed structs project host
+objects); otherwise it reads or writes `StructValue.v` at the
+`fieldId` slot. Closed structs store field values in
+`StructValue.v: List<Value>` indexed by `fieldId`; missing list
+entries read as `nil`. `STRUCT_SET_FIELD` is a **pure store -- it does
+not copy** the value (JavaScript-style reference semantics); a
+`fieldSetter` that returns `false` faults the fiber.
+
+`STRUCT_DEEP_COPY` pops a value and pushes a deep copy of it. It
+copies struct values recursively (a new `StructValue` with a cloned
+field list, and a snapshotted native handle when the type registers
+`snapshotNative`); lists, maps, and primitives pass through unchanged
+(reference/immutable). It is the explicit primitive a front-end emits
+before `STRUCT_SET_FIELD` when it wants struct *value* semantics on
+assignment.
 
 ### Generic field access
 
@@ -752,18 +767,22 @@ as `nil`.
 | `GET_FIELD` | 120     | none     | `[source, fieldName] -> [value]`          | `ScriptError` if `fieldName` is not a string. Non-struct sources yield `nil`. |
 | `SET_FIELD` | 121     | none     | `[source, fieldName, value] -> [source]`  | `ScriptError` if `fieldName` is not a string, the source is not a struct, or the registered `fieldSetter` returns `false`. |
 
-`GET_FIELD` / `SET_FIELD` are the universal field-access opcodes,
-emitted when the compiler cannot lower to a `STRUCT_GET_FIELD` /
-`STRUCT_SET_FIELD` pair. For struct values whose registered
-`StructTypeDef` has a `fieldGetter` / `fieldSetter` callback, the
-opcodes delegate to those callbacks (this is the path
-native-backed structs use to project host objects); otherwise they
-look up the field through `StructTypeDef.fieldIndexByName` and
-read or write `StructValue.v` directly.
+`GET_FIELD` / `SET_FIELD` are the name-keyed field-access opcodes,
+emitted when the field is selected by a runtime-computed key (the
+field name is on the stack). They resolve the name to its numeric
+`fieldId` through `StructTypeDef.fieldIndexByName`, then dispatch
+through the same id-based path as `STRUCT_GET_FIELD` /
+`STRUCT_SET_FIELD` (the registered `fieldGetter` / `fieldSetter`
+receives the numeric `fieldId`, not the name). A name that resolves
+to no field reads as `nil` (`GET_FIELD`) or is a no-op (`SET_FIELD`);
+a non-struct source reads as `nil` (`GET_FIELD`) or faults
+(`SET_FIELD`).
 
 `SET_FIELD` deep-copies struct values before storing them, the same
-way `STORE_VAR_SLOT` does, so a struct field cannot become an alias
-of a struct held elsewhere.
+way `STORE_VAR_SLOT` does, so a struct field set through the name-keyed
+path cannot become an alias of a struct held elsewhere. (The id-keyed
+`STRUCT_SET_FIELD` does not copy; a front-end that wants value
+semantics emits `STRUCT_DEEP_COPY` before it.)
 
 ---
 
@@ -772,17 +791,21 @@ of a struct held elsewhere.
 ### Struct field indices
 
 Every registered `StructTypeDef` exposes its fields as a
-`List<StructFieldDef>` in which `fields.get(i).fieldIndex === i` for
-every `i` in `[0, fields.size())`. The invariant holds for all three
-registration paths (`addStructType`, `finalizeStructType` on a
-reserved type, and `addStructFields` extending an existing type), and
-field iteration order matches `fieldIndex` order.
+`List<StructFieldDef>`, each carrying a `fieldIndex` that is the
+field's **author-assigned** numeric id, supplied at registration
+(`StructFieldInput.fieldIndex`) and validated to be a non-negative
+integer that is unique within the struct (including across
+`addStructFields` extensions). The id is durable: ids are assigned by
+hand, are intended to be append-only and never reused after a field is
+removed, and are decoupled from declaration position -- so a struct may
+have a sparse id set (a removed field leaves a reserved gap), and
+`fields.get(i).fieldIndex === i` does **not** hold in general.
 
-`fieldIndex` is the field's stable, zero-based id within its struct
-type. `STRUCT_GET_FIELD <idx>` / `STRUCT_SET_FIELD <idx>` take a
-`fieldIndex` directly as their operand. Consumers that need a stable
-per-field id should use `fieldIndex` rather than the field's name
-string.
+`fieldIndex` is also the field's **storage slot**: a struct value's
+`StructValue.v: List<Value>` is sized to `maxFieldId + 1`, and
+`STRUCT_GET_FIELD <fieldId>` / `STRUCT_SET_FIELD <fieldId>` use the id
+directly as the index. Consumers that need a stable per-field id should
+use `fieldIndex` rather than the field's name string.
 
 ### Constant pool layout
 

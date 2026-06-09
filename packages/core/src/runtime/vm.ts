@@ -14,7 +14,7 @@ import type { Program } from "./program";
 import type { RuntimeLangServices } from "./services";
 import type { ITypeRegistry } from "./type-defs";
 import { NativeType, type StructTypeDef, type TypeId } from "./type-defs";
-import type { ErrorValue, HandleId, Value } from "./value";
+import type { ErrorValue, HandleId, StructValue, Value } from "./value";
 import {
   ErrorCode,
   FALSE_VALUE,
@@ -509,16 +509,14 @@ export class VM implements IVM {
           return this.execMapDelete(fiber, frame);
         case Op.STRUCT_NEW:
           return this.execStructNew(fiber, ins, frame);
-        case Op.STRUCT_GET:
-          return this.execStructGet(fiber, ins, frame);
-        case Op.STRUCT_SET:
-          return this.execStructSet(fiber, ins, frame);
         case Op.STRUCT_COPY_EXCEPT:
           return this.execStructCopyExcept(fiber, ins, frame);
         case Op.STRUCT_GET_FIELD:
           return this.execStructGetField(fiber, ins, frame);
         case Op.STRUCT_SET_FIELD:
           return this.execStructSetField(fiber, ins, frame);
+        case Op.STRUCT_DEEP_COPY:
+          return this.execStructDeepCopy(fiber, frame);
         case Op.GET_FIELD:
           return this.execGetField(fiber, frame);
         case Op.SET_FIELD:
@@ -1484,8 +1482,17 @@ export class VM implements IVM {
   private makeStructFields(typeId: TypeId): List<Value> {
     const fields = List.empty<Value>();
     const typeDef = this.runtime.types.get(typeId) as StructTypeDef | undefined;
-    const fieldCount = typeDef?.fields.size() ?? 0;
-    for (let i = 0; i < fieldCount; i++) {
+    // Storage is sized to the highest field id + 1, so a field whose id is
+    // its storage slot can be addressed directly; retired ids leave nil holes.
+    let slotCount = 0;
+    if (typeDef !== undefined) {
+      typeDef.fields.forEach((field) => {
+        if (field.fieldIndex + 1 > slotCount) {
+          slotCount = field.fieldIndex + 1;
+        }
+      });
+    }
+    for (let i = 0; i < slotCount; i++) {
       fields.push(NIL_VALUE);
     }
     return fields;
@@ -1517,48 +1524,44 @@ export class VM implements IVM {
     return undefined;
   }
 
-  private execStructGet(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    const fieldName = this.pop(fiber);
-    const struct = this.pop(fiber);
-    if (!isStructValue(struct)) {
-      throw new Error("STRUCT_GET: requires struct");
+  /**
+   * Read a struct field by its numeric id: dispatch to the native `fieldGetter` when
+   * one is registered, else read the indexed storage slot. Shared by `STRUCT_GET_FIELD`
+   * and the name-keyed `GET_FIELD` shim.
+   */
+  private readStructFieldById(source: StructValue, fieldId: number, fiber: Fiber): Value {
+    const typeDef = this.runtime.types.get(source.typeId) as StructTypeDef | undefined;
+    if (typeDef?.fieldGetter) {
+      return typeDef.fieldGetter(source, fieldId, fiber.executionContext) ?? V.nil();
     }
-    if (!isStringValue(fieldName)) {
-      throw new Error("STRUCT_GET: field name must be string");
-    }
-    const fieldIndex = this.findStructField(struct.typeId, fieldName.v);
-    const value = fieldIndex !== undefined ? struct.v?.get(fieldIndex) : undefined;
-    this.push(fiber, value ?? V.nil());
-    frame.pc++;
-    return undefined;
+    return source.v?.get(fieldId) ?? V.nil();
   }
 
-  private execStructSet(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    const value = this.pop(fiber);
-    const fieldName = this.pop(fiber);
-    const struct = this.pop(fiber);
-    if (!isStructValue(struct)) {
-      throw new Error("STRUCT_SET: requires struct");
+  /**
+   * Write a struct field by its numeric id (a pure store -- no value copy): dispatch to
+   * the native `fieldSetter` when one is registered (throwing if it rejects the write),
+   * else write the indexed storage slot. Shared by `STRUCT_SET_FIELD` and the name-keyed
+   * `SET_FIELD` shim.
+   */
+  private writeStructFieldById(source: StructValue, fieldId: number, value: Value, fiber: Fiber): void {
+    const typeDef = this.runtime.types.get(source.typeId) as StructTypeDef | undefined;
+    if (typeDef?.fieldSetter) {
+      const ok = typeDef.fieldSetter(source, fieldId, value, fiber.executionContext);
+      if (!ok) {
+        throw new Error(`STRUCT_SET_FIELD: cannot set field id ${fieldId} on type ${source.typeId}`);
+      }
+      return;
     }
-    if (!isStringValue(fieldName)) {
-      throw new Error("STRUCT_SET: field name must be string");
-    }
-    const fieldIndex = this.findStructField(struct.typeId, fieldName.v);
-    if (fieldIndex !== undefined) {
-      struct.v?.set(fieldIndex, value);
-    }
-    this.push(fiber, struct);
-    frame.pc++;
-    return undefined;
+    source.v?.set(fieldId, value);
   }
 
   private execStructGetField(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    const fieldIndex = ins.a ?? 0;
+    const fieldId = ins.a ?? 0;
     const struct = this.pop(fiber);
     if (!isStructValue(struct)) {
       throw new Error("STRUCT_GET_FIELD: requires struct");
     }
-    this.push(fiber, struct.v?.get(fieldIndex) ?? V.nil());
+    this.push(fiber, this.readStructFieldById(struct, fieldId, fiber));
     frame.pc++;
     return undefined;
   }
@@ -1569,8 +1572,15 @@ export class VM implements IVM {
     if (!isStructValue(struct)) {
       throw new Error("STRUCT_SET_FIELD: requires struct");
     }
-    struct.v?.set(ins.a ?? 0, value);
+    this.writeStructFieldById(struct, ins.a ?? 0, value, fiber);
     this.push(fiber, struct);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execStructDeepCopy(fiber: Fiber, frame: Frame): undefined {
+    const value = this.pop(fiber);
+    this.push(fiber, deepCopyValue(value, this.runtime.types, fiber.executionContext));
     frame.pc++;
     return undefined;
   }
@@ -1626,6 +1636,8 @@ export class VM implements IVM {
     return undefined;
   }
 
+  // GET_FIELD is the dynamic (runtime-computed-key) struct read: resolve the field name
+  // to its numeric id, then dispatch through the same id-based path as STRUCT_GET_FIELD.
   private execGetField(fiber: Fiber, frame: Frame): undefined {
     const fieldName = this.pop(fiber);
     const source = this.pop(fiber);
@@ -1634,26 +1646,23 @@ export class VM implements IVM {
       throw new Error("GET_FIELD: field name must be string");
     }
 
-    let result: Value | undefined;
-
+    let result: Value;
     if (isStructValue(source)) {
-      // Check for a registered fieldGetter on the struct type
-      const typeDef = this.runtime.types.get(source.typeId) as StructTypeDef | undefined;
-      if (typeDef?.fieldGetter) {
-        result = typeDef.fieldGetter(source, fieldName.v, fiber.executionContext);
-      } else {
-        const fieldIndex = this.findStructField(source.typeId, fieldName.v);
-        result = fieldIndex !== undefined ? source.v?.get(fieldIndex) : undefined;
-      }
+      const fieldId = this.findStructField(source.typeId, fieldName.v);
+      result = fieldId !== undefined ? this.readStructFieldById(source, fieldId, fiber) : V.nil();
     } else {
       result = NIL_VALUE;
     }
 
-    this.push(fiber, result ?? V.nil());
+    this.push(fiber, result);
     frame.pc++;
     return undefined;
   }
 
+  // SET_FIELD is the dynamic (runtime-computed-key) struct write: resolve the field name
+  // to its numeric id, then dispatch through the same id-based path as STRUCT_SET_FIELD.
+  // It deep-copies the value (struct value-semantics) for the name-keyed callers that
+  // still emit it; STRUCT_SET_FIELD itself is a pure store.
   private execSetField(fiber: Fiber, frame: Frame): undefined {
     const value = deepCopyValue(this.pop(fiber), this.runtime.types, fiber.executionContext);
     const fieldName = this.pop(fiber);
@@ -1663,25 +1672,15 @@ export class VM implements IVM {
       throw new Error("SET_FIELD: field name must be string");
     }
 
-    if (isStructValue(source)) {
-      // Check for a registered fieldSetter on the struct type
-      const typeDef = this.runtime.types.get(source.typeId) as StructTypeDef | undefined;
-      if (typeDef?.fieldSetter) {
-        const success = typeDef.fieldSetter(source, fieldName.v, value, fiber.executionContext);
-        if (!success) {
-          throw new Error(`SET_FIELD: cannot set field '${fieldName.v}' on type ${source.typeId}`);
-        }
-      } else {
-        const fieldIndex = this.findStructField(source.typeId, fieldName.v);
-        if (fieldIndex !== undefined) {
-          source.v?.set(fieldIndex, value);
-        }
-      }
-      this.push(fiber, source);
-    } else {
+    if (!isStructValue(source)) {
       throw new Error(`SET_FIELD: cannot set field '${fieldName.v}' on type ${source.t}`);
     }
 
+    const fieldId = this.findStructField(source.typeId, fieldName.v);
+    if (fieldId !== undefined) {
+      this.writeStructFieldById(source, fieldId, value, fiber);
+    }
+    this.push(fiber, source);
     frame.pc++;
     return undefined;
   }

@@ -248,6 +248,13 @@ export type TypeInfo = {
   isLVal?: boolean;
   overload?: OpOverload;
   conversion?: Conversion;
+  /**
+   * For a field-access node, the numeric id of the accessed field, resolved
+   * during inference against the OBJECT's concrete struct type. Undefined when
+   * the object is not a concrete struct with that field; the emitter then falls
+   * back to the name-keyed `GET_FIELD`/`SET_FIELD` path.
+   */
+  fieldId?: number;
 };
 
 /** Type-checking diagnostic attached to a specific AST node. */

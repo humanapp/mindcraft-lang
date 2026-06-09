@@ -88,8 +88,8 @@ describe("optional chaining", () => {
     if (!types.get(innerTypeId)) {
       types.addStructType("Inner", {
         fields: List.from([
-          { name: "value", typeId: numTypeId },
-          { name: "label", typeId: strTypeId },
+          { name: "value", typeId: numTypeId, fieldIndex: 0 },
+          { name: "label", typeId: strTypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -97,7 +97,7 @@ describe("optional chaining", () => {
     const outerTypeId = mkTypeId(NativeType.Struct, "Outer");
     if (!types.get(outerTypeId)) {
       types.addStructType("Outer", {
-        fields: List.from([{ name: "inner", typeId: innerTypeId }]),
+        fields: List.from([{ name: "inner", typeId: innerTypeId, fieldIndex: 0 }]),
       });
     }
   });

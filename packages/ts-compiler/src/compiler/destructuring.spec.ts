@@ -119,8 +119,8 @@ describe("destructuring", () => {
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
         fields: List.from([
-          { name: "x", typeId: numTypeId },
-          { name: "y", typeId: numTypeId },
+          { name: "x", typeId: numTypeId, fieldIndex: 0 },
+          { name: "y", typeId: numTypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -202,7 +202,7 @@ export default Sensor({
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
-        fields: List.from([{ name: "pos", typeId: vec2TypeId }]),
+        fields: List.from([{ name: "pos", typeId: vec2TypeId, fieldIndex: 0 }]),
       });
     }
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
@@ -247,7 +247,7 @@ export default Sensor({
     const coordTypeId = mkTypeId(NativeType.Struct, "Coord");
     if (!types.get(coordTypeId)) {
       types.addStructType("Coord", {
-        fields: List.from([{ name: "pos", typeId: numListTypeId }]),
+        fields: List.from([{ name: "pos", typeId: numListTypeId, fieldIndex: 0 }]),
       });
     }
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
@@ -292,7 +292,7 @@ export default Sensor({
     const pairHolderTypeId = mkTypeId(NativeType.Struct, "PairHolder");
     if (!types.get(pairHolderTypeId)) {
       types.addStructType("PairHolder", {
-        fields: List.from([{ name: "items", typeId: numListTypeId }]),
+        fields: List.from([{ name: "items", typeId: numListTypeId, fieldIndex: 0 }]),
       });
     }
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
@@ -337,7 +337,7 @@ export default Sensor({
     const wrapperTypeId = mkTypeId(NativeType.Struct, "Wrapper");
     if (!types.get(wrapperTypeId)) {
       types.addStructType("Wrapper", {
-        fields: List.from([{ name: "entity", typeId: entityTypeId }]),
+        fields: List.from([{ name: "entity", typeId: entityTypeId, fieldIndex: 0 }]),
       });
     }
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
@@ -560,7 +560,7 @@ export default Sensor({
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
-        fields: List.from([{ name: "pos", typeId: vec2TypeId }]),
+        fields: List.from([{ name: "pos", typeId: vec2TypeId, fieldIndex: 0 }]),
       });
     }
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
@@ -607,9 +607,9 @@ export default Sensor({
     if (!types.get(playerTypeId)) {
       types.addStructType("Player", {
         fields: List.from([
-          { name: "name", typeId: strTypeId },
-          { name: "pos", typeId: vec2TypeId },
-          { name: "health", typeId: numTypeId },
+          { name: "name", typeId: strTypeId, fieldIndex: 0 },
+          { name: "pos", typeId: vec2TypeId, fieldIndex: 1 },
+          { name: "health", typeId: numTypeId, fieldIndex: 2 },
         ]),
       });
     }
@@ -662,9 +662,9 @@ export default Sensor({
     if (!types.get(playerTypeId)) {
       types.addStructType("Player", {
         fields: List.from([
-          { name: "name", typeId: strTypeId },
-          { name: "pos", typeId: vec2TypeId },
-          { name: "health", typeId: numTypeId },
+          { name: "name", typeId: strTypeId, fieldIndex: 0 },
+          { name: "pos", typeId: vec2TypeId, fieldIndex: 1 },
+          { name: "health", typeId: numTypeId, fieldIndex: 2 },
         ]),
       });
     }
@@ -747,9 +747,9 @@ export default Sensor({
     if (!types.get(playerTypeId)) {
       types.addStructType("Player", {
         fields: List.from([
-          { name: "name", typeId: strTypeId },
-          { name: "pos", typeId: vec2TypeId },
-          { name: "health", typeId: numTypeId },
+          { name: "name", typeId: strTypeId, fieldIndex: 0 },
+          { name: "pos", typeId: vec2TypeId, fieldIndex: 1 },
+          { name: "health", typeId: numTypeId, fieldIndex: 2 },
         ]),
       });
     }

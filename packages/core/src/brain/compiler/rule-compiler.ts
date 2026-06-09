@@ -384,14 +384,23 @@ export class ExprCompiler implements ExprVisitor<void> {
 
     if (expr.target.kind === "fieldAccess") {
       // Field assignment: object.field = value
-      // 1. Emit the object expression (pushes source onto stack)
-      // 2. Push field name constant
-      // 3. Emit the value expression
-      // 4. Call emitter.setField() -- uses SET_FIELD which supports native-backed structs
-      acceptExprVisitor(expr.target.object, this);
-      this.pushStringConstant(expr.target.accessor.fieldName);
-      acceptExprVisitor(expr.value, this);
-      this.emitter.setField();
+      const fieldId = this.context.typeEnv.get(expr.target.nodeId)?.fieldId;
+      if (fieldId !== undefined) {
+        // Id-based store. Deep-copy the value first to preserve the brain's struct
+        // value-semantics (STRUCT_DEEP_COPY is a runtime no-op for non-structs), then
+        // store by numeric id. STRUCT_SET_FIELD pops [struct, value].
+        acceptExprVisitor(expr.target.object, this);
+        acceptExprVisitor(expr.value, this);
+        this.emitter.structDeepCopy();
+        this.emitter.structSetField(fieldId);
+      } else {
+        // Fallback: name-keyed store. SET_FIELD deep-copies the value internally, so
+        // no explicit STRUCT_DEEP_COPY here.
+        acceptExprVisitor(expr.target.object, this);
+        this.pushStringConstant(expr.target.accessor.fieldName);
+        acceptExprVisitor(expr.value, this);
+        this.emitter.setField();
+      }
     } else {
       // Variable assignment: var = value
       // 1. Emit the value expression (pushes result to stack)
@@ -565,13 +574,17 @@ export class ExprCompiler implements ExprVisitor<void> {
   // ==========================================
 
   visitFieldAccess(expr: FieldAccessExpr): void {
-    // TODO: Emit field access bytecode
-    // 1. Compile the object expression (pushes struct value onto stack)
-    // 2. Push the field name constant
-    // 3. Call emitter.getField()
     acceptExprVisitor(expr.object, this);
-    this.pushStringConstant(expr.accessor.fieldName);
-    this.emitter.getField();
+    const fieldId = this.context.typeEnv.get(expr.nodeId)?.fieldId;
+    if (fieldId !== undefined) {
+      // Object's static type is a concrete struct: read the field by its numeric id.
+      this.emitter.structGetField(fieldId);
+    } else {
+      // Object's static type is not a concrete struct with this field: resolve the
+      // field name to its id at runtime via the name-keyed opcode.
+      this.pushStringConstant(expr.accessor.fieldName);
+      this.emitter.getField();
+    }
   }
 
   // ==========================================

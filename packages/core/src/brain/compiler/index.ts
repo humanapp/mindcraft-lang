@@ -40,7 +40,7 @@ export { acceptExprVisitor } from "./types";
 
 import { Dict } from "../../platform/dict";
 import { List, type ReadonlyList } from "../../platform/list";
-import type { IConversionRegistry } from "../../runtime";
+import type { IConversionRegistry, ITypeRegistry } from "../../runtime";
 import type { Instr } from "../../runtime/bytecode";
 import type { Value } from "../../runtime/value";
 import type { IBrainTileDef, ITileCatalog } from "../interfaces";
@@ -80,7 +80,8 @@ export function parseRule(
   whenSrc: ReadonlyList<IBrainTileDef>,
   doSrc: ReadonlyList<IBrainTileDef>,
   catalogs: ReadonlyList<ITileCatalog>,
-  conversions: IConversionRegistry
+  conversions: IConversionRegistry,
+  typeRegistry: ITypeRegistry
 ): TypecheckResult {
   // Parse WHEN and DO sides separately
   const whenParseResult = parseBrainTiles(whenSrc);
@@ -109,14 +110,14 @@ export function parseRule(
   const typeDiags = List.empty<TypeInfoDiag>();
   for (let i = 0; i < whenParseResult.exprs.size(); i++) {
     const expr = whenParseResult.exprs.get(i);
-    const diags = computeInferredTypes(expr, catalogs, typeEnv, conversions);
+    const diags = computeInferredTypes(expr, catalogs, typeEnv, conversions, typeRegistry);
     for (let j = 0; j < diags.size(); j++) {
       typeDiags.push(diags.get(j));
     }
   }
   for (let i = 0; i < doParseResult.exprs.size(); i++) {
     const expr = doParseResult.exprs.get(i);
-    const diags = computeInferredTypes(expr, catalogs, typeEnv, conversions);
+    const diags = computeInferredTypes(expr, catalogs, typeEnv, conversions, typeRegistry);
     for (let j = 0; j < diags.size(); j++) {
       typeDiags.push(diags.get(j));
     }

@@ -1,5 +1,12 @@
 import { List, type ReadonlyList } from "../../platform/list";
-import { type BrainActionArgSlot, CoreTypeNames, type IConversionRegistry } from "../../runtime";
+import {
+  type BrainActionArgSlot,
+  CoreTypeNames,
+  type IConversionRegistry,
+  type ITypeRegistry,
+  NativeType,
+  type StructTypeDef,
+} from "../../runtime";
 import type { IBrainTileDef, ITileCatalog } from "../interfaces";
 import type { BrainTileParameterDef } from "../tiles";
 import { TypeDiagCode } from "./diagnostics";
@@ -23,15 +30,13 @@ import { acceptExprVisitor, type TypeEnv, type TypeInfo, type TypeInfoDiag } fro
 
 class InferredTypeVisitor implements ExprVisitor<void> {
   diags = List.empty<TypeInfoDiag>();
-  private readonly conversions: IConversionRegistry;
 
   constructor(
     private readonly catalogs: ReadonlyList<ITileCatalog>,
     private readonly env: TypeEnv,
-    conversions: IConversionRegistry
-  ) {
-    this.conversions = conversions;
-  }
+    private readonly conversions: IConversionRegistry,
+    private readonly typeRegistry: ITypeRegistry
+  ) {}
 
   private ensureTypeInfo(nodeId: number): TypeInfo {
     let typeInfo = this.env.get(nodeId);
@@ -358,6 +363,28 @@ class InferredTypeVisitor implements ExprVisitor<void> {
   visitFieldAccess(expr: FieldAccessExpr): void {
     const typeInfo = this.ensureTypeInfo(expr.nodeId);
     acceptExprVisitor(expr.object, this);
+
+    // Resolve the field against the OBJECT's concrete struct type (not the
+    // accessor's structTypeId/fieldTypeId, which can desync from the object after
+    // edits). Look the field up by name so a sparse/author-assigned field id space
+    // is handled correctly, and set this node's type from the object's actual field
+    // so a nested chain stays reliable.
+    const objectTypeId = this.env.get(expr.object.nodeId)?.inferred;
+    const objectDef = objectTypeId !== undefined ? this.typeRegistry.get(objectTypeId) : undefined;
+    if (objectDef !== undefined && objectDef.coreType === NativeType.Struct) {
+      const fields = (objectDef as StructTypeDef).fields;
+      for (let i = 0; i < fields.size(); i++) {
+        const field = fields.get(i);
+        if (field.name === expr.accessor.fieldName) {
+          typeInfo.fieldId = field.fieldIndex;
+          typeInfo.inferred = field.typeId;
+          return;
+        }
+      }
+    }
+
+    // Object is not a concrete struct with this field: leave fieldId undefined (the
+    // emitter falls back to the name-keyed path) and best-effort the result type.
     typeInfo.inferred = expr.accessor.fieldTypeId;
   }
 
@@ -386,15 +413,19 @@ class InferredTypeVisitor implements ExprVisitor<void> {
  * @param expr - The root expression node to analyze
  * @param catalogs - Array of tile catalogs used to resolve tile definitions
  * @param env - The type environment to populate with inferred type information
+ * @param conversions - Conversion registry used to resolve operator/slot type conversions
+ * @param typeRegistry - Type registry used to resolve a field access to the numeric field
+ *   id of the accessed field on its object's concrete struct type
  * @returns A list of type diagnostics for any type errors or mismatches encountered during analysis
  */
 export function computeInferredTypes(
   expr: Expr,
   catalogs: ReadonlyList<ITileCatalog>,
   env: TypeEnv,
-  conversions: IConversionRegistry
+  conversions: IConversionRegistry,
+  typeRegistry: ITypeRegistry
 ): List<TypeInfoDiag> {
-  const visitor = new InferredTypeVisitor(catalogs, env, conversions);
+  const visitor = new InferredTypeVisitor(catalogs, env, conversions, typeRegistry);
   acceptExprVisitor(expr, visitor);
   return visitor.diags;
 }

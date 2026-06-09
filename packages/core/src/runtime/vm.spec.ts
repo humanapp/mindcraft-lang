@@ -54,6 +54,7 @@ import {
   type Value,
   ValueDict,
   VM,
+  type VmRunResult,
   VmStatus,
   VOID_VALUE,
 } from "@mindcraft-lang/core/runtime";
@@ -138,8 +139,8 @@ describe("VM -- closed struct field opcodes", () => {
     if (!services.runtime.types.get(typeId)) {
       services.runtime.types.addStructType("IndexedPair", {
         fields: List.from([
-          { name: "left", typeId: CoreTypeIds.Number },
-          { name: "right", typeId: CoreTypeIds.Number },
+          { name: "left", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+          { name: "right", typeId: CoreTypeIds.Number, fieldIndex: 1 },
         ]),
       });
     }
@@ -174,13 +175,13 @@ describe("VM -- closed struct field opcodes", () => {
     }
   });
 
-  test("GET_FIELD remains name-keyed for native-backed structs", () => {
+  test("GET_FIELD resolves the field name to its id and dispatches native-backed structs by id", () => {
     const typeId = mkTypeId(NativeType.Struct, "V33NativePoint");
     if (!services.runtime.types.get(typeId)) {
       services.runtime.types.addStructType("V33NativePoint", {
-        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
-        fieldGetter: (source, fieldName) => {
-          if (fieldName === "x") {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+        fieldGetter: (source, fieldId) => {
+          if (fieldId === 0) {
             return mkNumberValue((source.native as { x: number }).x);
           }
           return undefined;
@@ -208,6 +209,140 @@ describe("VM -- closed struct field opcodes", () => {
     assert.equal(result.status, VmStatus.DONE);
     if (result.status === VmStatus.DONE) {
       assert.equal((result.result as NumberValue).v, 77);
+    }
+  });
+});
+
+describe("VM -- native struct dispatch by field id", () => {
+  function runToNumber(prog: Program): VmRunResult {
+    const vm = new VM(prog, toVmServices(services), { handles: new HandleTable(100) });
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+    return vm.runFiber(fiber, mkSchedulerCallbacks());
+  }
+
+  test("STRUCT_GET_FIELD dispatches a native struct through the id-based fieldGetter", () => {
+    const typeId = mkTypeId(NativeType.Struct, "P2NativeGet");
+    if (!services.runtime.types.get(typeId)) {
+      services.runtime.types.addStructType("P2NativeGet", {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+        fieldGetter: (source, fieldId) =>
+          fieldId === 0 ? mkNumberValue((source.native as { x: number }).x) : undefined,
+      });
+    }
+    const struct: Value = { t: NativeType.Struct, typeId, native: { x: 77 }, v: List.empty<Value>() };
+    const result = runToNumber(
+      mkProgram(
+        [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.STRUCT_GET_FIELD, a: 0 }, { op: Op.RET }])],
+        [struct]
+      )
+    );
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 77);
+    }
+  });
+
+  test("STRUCT_SET_FIELD dispatches a native struct through the id-based fieldSetter", () => {
+    const typeId = mkTypeId(NativeType.Struct, "P2NativeSet");
+    if (!services.runtime.types.get(typeId)) {
+      services.runtime.types.addStructType("P2NativeSet", {
+        fields: List.from([
+          { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+          { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1, readOnly: true },
+        ]),
+        fieldGetter: (source, fieldId) => {
+          const native = source.native as { x: number; y: number };
+          if (fieldId === 0) return mkNumberValue(native.x);
+          if (fieldId === 1) return mkNumberValue(native.y);
+          return undefined;
+        },
+        // id 0 (x) is writable; id 1 (y) rejects the write (read-only).
+        fieldSetter: (source, fieldId, value) => {
+          if (fieldId === 0) {
+            (source.native as { x: number }).x = (value as NumberValue).v;
+            return true;
+          }
+          return false;
+        },
+      });
+    }
+
+    // Writing x (id 0) routes through the setter, then reading it back yields the new value.
+    const writable: Value = { t: NativeType.Struct, typeId, native: { x: 1, y: 2 }, v: List.empty<Value>() };
+    const ok = runToNumber(
+      mkProgram(
+        [
+          mkFunc([
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
+            { op: Op.STRUCT_SET_FIELD, a: 0 },
+            { op: Op.STRUCT_GET_FIELD, a: 0 },
+            { op: Op.RET },
+          ]),
+        ],
+        [writable, mkNumberValue(99)]
+      )
+    );
+    assert.equal(ok.status, VmStatus.DONE);
+    if (ok.status === VmStatus.DONE) {
+      assert.equal((ok.result as NumberValue).v, 99);
+    }
+
+    // Writing y (id 1) -- the setter returns false, which faults the fiber.
+    const readonly: Value = { t: NativeType.Struct, typeId, native: { x: 1, y: 2 }, v: List.empty<Value>() };
+    const rejected = runToNumber(
+      mkProgram(
+        [
+          mkFunc([
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
+            { op: Op.STRUCT_SET_FIELD, a: 1 },
+            { op: Op.RET },
+          ]),
+        ],
+        [readonly, mkNumberValue(99)]
+      )
+    );
+    assert.equal(rejected.status, VmStatus.FAULT);
+  });
+
+  test("STRUCT_DEEP_COPY copies a struct so mutating the copy leaves the original untouched", () => {
+    const typeId = mkTypeId(NativeType.Struct, "P2CopyPair");
+    const original: Value = { t: NativeType.Struct, typeId, v: List.from<Value>([mkNumberValue(7)]) };
+    const result = runToNumber(
+      mkProgram(
+        [
+          mkFunc([
+            { op: Op.PUSH_CONST_VAL, a: 0 }, // original
+            { op: Op.DUP },
+            { op: Op.STRUCT_DEEP_COPY }, // -> [original, copy]
+            { op: Op.PUSH_CONST_VAL, a: 1 }, // 99
+            { op: Op.STRUCT_SET_FIELD, a: 0 }, // copy.field0 = 99 -> [original, copy]
+            { op: Op.POP }, // drop the copy -> [original]
+            { op: Op.STRUCT_GET_FIELD, a: 0 }, // original.field0 (unchanged)
+            { op: Op.RET },
+          ]),
+        ],
+        [original, mkNumberValue(99)]
+      )
+    );
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 7);
+    }
+  });
+
+  test("STRUCT_DEEP_COPY is a no-op for a non-struct value", () => {
+    const result = runToNumber(
+      mkProgram(
+        [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.STRUCT_DEEP_COPY }, { op: Op.RET }])],
+        [mkNumberValue(5)]
+      )
+    );
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 5);
     }
   });
 });
