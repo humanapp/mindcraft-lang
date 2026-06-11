@@ -14,6 +14,7 @@ import {
 } from "@mindcraft-lang/core/app";
 import { getActor, getTargetActor } from "@/brain/execution-context-types";
 import { extractVector2, mkVector2Value, SimTypeIds } from "@/brain/type-system";
+import { SimFuncId } from "./abi-ids";
 
 export function registerBrainContext(api: MindcraftModuleApi) {
   const { types, functions } = api.brainServices.runtime;
@@ -40,6 +41,7 @@ export function registerBrainContext(api: MindcraftModuleApi) {
   const emptyCallDef = mkCallDef({ type: "bag", items: [] });
 
   functions.register(
+    SimFuncId.BrainContextGetTargetActor,
     "BrainContext.getTargetActor",
     false,
     {
@@ -53,6 +55,7 @@ export function registerBrainContext(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.BrainContextGetTargetPosition,
     "BrainContext.getTargetPosition",
     false,
     {

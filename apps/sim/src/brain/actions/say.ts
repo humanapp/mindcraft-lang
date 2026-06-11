@@ -16,6 +16,7 @@ import {
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
+import { SimHostActions } from "@/brain/abi-ids";
 import { hasArg } from "@/brain/actions/utils";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
@@ -57,7 +58,7 @@ function execSay(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
 }
 
 export default {
-  key: TileIds.Actuator.Say,
+  ...SimHostActions.Say,
   callDef,
   fn: { exec: execSay },
   isAsync: false,

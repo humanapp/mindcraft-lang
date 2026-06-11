@@ -5,9 +5,7 @@ import { mkTileId } from "../../runtime/tile-ids";
 import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
 
 export {
-  CoreActuatorId,
   CoreParameterId,
-  CoreSensorId,
   mkActuatorTileId,
   mkModifierTileId,
   mkParameterTileId,

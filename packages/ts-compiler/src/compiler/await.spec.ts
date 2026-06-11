@@ -138,6 +138,7 @@ describe("await expression", () => {
 
     if (!fns.get("Widget.fetchData")) {
       fns.register(
+        6001,
         "Widget.fetchData",
         true,
         { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, _handleId: number) => {} },
@@ -147,6 +148,7 @@ describe("await expression", () => {
 
     if (!fns.get("Widget.getValue")) {
       fns.register(
+        6002,
         "Widget.getValue",
         false,
         {
@@ -159,7 +161,7 @@ describe("await expression", () => {
     }
 
     if (!fns.get("Widget.reset")) {
-      fns.register("Widget.reset", false, { exec: () => NIL_VALUE }, emptyCallDef);
+      fns.register(6003, "Widget.reset", false, { exec: () => NIL_VALUE }, emptyCallDef);
     }
   });
 

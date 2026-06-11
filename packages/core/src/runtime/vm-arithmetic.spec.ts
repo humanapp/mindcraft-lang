@@ -30,7 +30,7 @@ test("HOST_CALL invokes a sync host function and returns the result", () => {
   const addFn: HostSyncFn = {
     exec: (_ctx, args) => mkNumberValue((args.get(0) as NumberValue).v + (args.get(1) as NumberValue).v),
   };
-  const entry = registry.register("add", false, addFn, callDef);
+  const entry = registry.register(2001, "add", false, addFn, callDef);
 
   const program: Program = {
     version: BYTECODE_VERSION,

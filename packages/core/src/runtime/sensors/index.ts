@@ -1,5 +1,5 @@
 import type { BrainServices } from "../../brain/services";
-import { CoreSensorId } from "../tile-ids";
+import { CoreHostActions } from "../abi-ids";
 import fnCurrentPage from "./current-page";
 import fnOnPageEntered from "./on-page-entered";
 import fnPreviousPage from "./previous-page";
@@ -14,9 +14,39 @@ export function registerCoreSensors(services: BrainServices) {
   services.runtime.actions.register(fnCurrentPage.binding);
   services.runtime.actions.register(fnPreviousPage.binding);
 
-  services.runtime.functions.register(CoreSensorId.Random, false, fnRandom.fn, fnRandom.callDef);
-  services.runtime.functions.register(CoreSensorId.OnPageEntered, false, fnOnPageEntered.fn, fnOnPageEntered.callDef);
-  services.runtime.functions.register(CoreSensorId.Timeout, false, fnTimeout.fn, fnTimeout.callDef);
-  services.runtime.functions.register(CoreSensorId.CurrentPage, false, fnCurrentPage.fn, fnCurrentPage.callDef);
-  services.runtime.functions.register(CoreSensorId.PreviousPage, false, fnPreviousPage.fn, fnPreviousPage.callDef);
+  services.runtime.functions.register(
+    CoreHostActions.Random.fnId,
+    CoreHostActions.Random.key,
+    false,
+    fnRandom.fn,
+    fnRandom.callDef
+  );
+  services.runtime.functions.register(
+    CoreHostActions.OnPageEntered.fnId,
+    CoreHostActions.OnPageEntered.key,
+    false,
+    fnOnPageEntered.fn,
+    fnOnPageEntered.callDef
+  );
+  services.runtime.functions.register(
+    CoreHostActions.Timeout.fnId,
+    CoreHostActions.Timeout.key,
+    false,
+    fnTimeout.fn,
+    fnTimeout.callDef
+  );
+  services.runtime.functions.register(
+    CoreHostActions.CurrentPage.fnId,
+    CoreHostActions.CurrentPage.key,
+    false,
+    fnCurrentPage.fn,
+    fnCurrentPage.callDef
+  );
+  services.runtime.functions.register(
+    CoreHostActions.PreviousPage.fnId,
+    CoreHostActions.PreviousPage.key,
+    false,
+    fnPreviousPage.fn,
+    fnPreviousPage.callDef
+  );
 }

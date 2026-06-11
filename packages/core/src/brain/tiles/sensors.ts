@@ -57,17 +57,17 @@ export function registerCoreSensorTileDefs(services: BrainServices) {
     const tileDef = new BrainTileSensorDef(sensorId, action, opts);
     tiles.registerTileDef(tileDef);
   };
-  register(fnRandom.fnId, fnRandom.descriptor, {
+  register(fnRandom.key, fnRandom.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
   });
-  register(fnOnPageEntered.fnId, fnOnPageEntered.descriptor);
-  register(fnTimeout.fnId, fnTimeout.descriptor);
+  register(fnOnPageEntered.key, fnOnPageEntered.descriptor);
+  register(fnTimeout.key, fnTimeout.descriptor);
   const pageSensorCaps = new BitSet().set(CoreCapabilityBits.PageSensor);
-  register(fnCurrentPage.fnId, fnCurrentPage.descriptor, {
+  register(fnCurrentPage.key, fnCurrentPage.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
     capabilities: pageSensorCaps,
   });
-  register(fnPreviousPage.fnId, fnPreviousPage.descriptor, {
+  register(fnPreviousPage.key, fnPreviousPage.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
     capabilities: pageSensorCaps,
   });

@@ -201,17 +201,20 @@ export class ExprCompiler implements ExprVisitor<void> {
 
   private emitBinaryOp(typeInfo: TypeInfo): void {
     // The 2-slot arg buffer is already in place on the stack. Emit
-    // HOST_CALL (or HOST_CALL_ASYNC + AWAIT) to consume it.
-    if (typeInfo.overload) {
-      if (typeInfo.overload.fnEntry.isAsync) {
-        this.emitter.hostCallAsync(typeInfo.overload.fnEntry.id, 2, this.nextCallSiteId());
+    // HOST_CALL (or HOST_CALL_ASYNC + AWAIT) to consume it. Type-only
+    // overloads (no fnEntry) never reach here: assignment lowers through
+    // visitAssignment.
+    const fnEntry = typeInfo.overload?.fnEntry;
+    if (fnEntry) {
+      if (fnEntry.isAsync) {
+        this.emitter.hostCallAsync(fnEntry.id, 2, this.nextCallSiteId());
         // Automatically await async operators so their result can be used by
         // subsequent operations This makes async operators work correctly in
         // multi-step operator chains
         this.emitter.await();
         return;
       }
-      this.emitter.hostCall(typeInfo.overload.fnEntry.id, 2, this.nextCallSiteId());
+      this.emitter.hostCall(fnEntry.id, 2, this.nextCallSiteId());
     } else {
       // This should have been caught during type inference, but handle
       // gracefully The diagnostic is tracked against the operator's nodeId,
@@ -251,17 +254,17 @@ export class ExprCompiler implements ExprVisitor<void> {
   }
 
   private emitUnaryOp(typeInfo: TypeInfo): void {
-    const overload = typeInfo.overload;
-    if (overload) {
-      if (overload.fnEntry.isAsync) {
-        this.emitter.hostCallAsync(overload.fnEntry.id, 1, this.nextCallSiteId());
+    const fnEntry = typeInfo.overload?.fnEntry;
+    if (fnEntry) {
+      if (fnEntry.isAsync) {
+        this.emitter.hostCallAsync(fnEntry.id, 1, this.nextCallSiteId());
         // Automatically await async operators so their result can be used by
         // subsequent operations This makes async operators work correctly in
         // multi-step operator chains
         this.emitter.await();
         return;
       }
-      this.emitter.hostCall(overload.fnEntry.id, 1, this.nextCallSiteId());
+      this.emitter.hostCall(fnEntry.id, 1, this.nextCallSiteId());
     } else {
       // This should have been caught during type inference, but handle
       // gracefully The diagnostic is tracked against the operator's nodeId,

@@ -16,6 +16,7 @@ import {
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
+import { SimHostActions } from "@/brain/abi-ids";
 import { ARCHETYPES } from "@/brain/archetypes";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
@@ -85,7 +86,7 @@ export function execEat(ctx: ExecutionContext, args: ReadonlyList<Value>): Value
 }
 
 export default {
-  key: TileIds.Actuator.Eat,
+  ...SimHostActions.Eat,
   callDef,
   fn: { onInitialized: initEat, exec: execEat },
   isAsync: false,

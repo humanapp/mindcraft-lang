@@ -44,20 +44,6 @@ export function mkModifierTileId(modifierId: string): string {
   return mkTileId("modifier", modifierId);
 }
 
-export enum CoreActuatorId {
-  SwitchPage = "switch-page",
-  RestartPage = "restart-page",
-  Yield = "yield",
-}
-
-export enum CoreSensorId {
-  Random = "random",
-  OnPageEntered = "on-page-entered",
-  Timeout = "sensor.timeout",
-  CurrentPage = "current-page",
-  PreviousPage = "previous-page",
-}
-
 export enum CoreParameterId {
   AnonymousBoolean = "anon.boolean",
   AnonymousNumber = "anon.number",

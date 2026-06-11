@@ -30,6 +30,7 @@ function createFacingModule(): MindcraftModule {
           { key: "south", label: "South", value: "south" },
         ]),
         defaultKey: "north",
+        functionIds: { toString: 30300, equalTo: 30302, notEqualTo: 30303 },
       };
       api.defineType(definition);
     },

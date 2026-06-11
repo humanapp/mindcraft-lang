@@ -111,6 +111,7 @@ describe("binary operator implicit conversions", () => {
           { key: "west", label: "West", value: "west" },
         ]),
         defaultKey: "north",
+        functionIds: { toString: 30004, toNumber: 30005, equalTo: 30006, notEqualTo: 30007 },
       });
     }
   });
@@ -280,6 +281,7 @@ describe("target-typed implicit conversions", () => {
           { key: "stop", label: "Stop", value: "red" },
         ]),
         defaultKey: "go",
+        functionIds: { toString: 30008, toNumber: 30009, equalTo: 30010, notEqualTo: 30011 },
       });
     }
 
@@ -291,6 +293,7 @@ describe("target-typed implicit conversions", () => {
           { key: "fast", label: "Fast", value: 2 },
         ]),
         defaultKey: "idle",
+        functionIds: { toString: 30012, toNumber: 30013, equalTo: 30014, notEqualTo: 30015 },
       });
     }
   });

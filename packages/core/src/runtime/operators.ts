@@ -3,6 +3,7 @@ import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
 import { List, type ReadonlyList } from "../platform/list";
 import { MathOps } from "../platform/math";
+import { CoreFuncId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
 import { CoreTypeIds } from "./core-types";
 import { BrainFunctionEntry, type IFunctionRegistry, mkCallDef } from "./function-defs";
@@ -203,13 +204,22 @@ export class OperatorOverloads implements IOperatorOverloads {
    * @param op - The operator identifier
    * @param lhs - The type ID of the left operand
    * @param rhs - The type ID of the right operand
-   * @param result - The type ID of the operation result
+   * @param resultType - The type ID of the operation result
+   * @param fnId - Author-assigned stable funcId for the implementing host function
    * @returns The registered operator instance
    * @throws {Error} If the operator is not found in the table
    */
-  binary(op: OpId, lhs: TypeId, rhs: TypeId, resultType: TypeId, fn: HostFn, isAsync = false): IRegisteredOperator {
+  binary(
+    op: OpId,
+    lhs: TypeId,
+    rhs: TypeId,
+    resultType: TypeId,
+    fnId: number,
+    fn: HostFn,
+    isAsync = false
+  ): IRegisteredOperator {
     const fnName = `$$op_${op}_${lhs}_${rhs}_to_${resultType}`;
-    const fnEntry = this.functions.register(fnName, isAsync, fn, binaryCallDef);
+    const fnEntry = this.functions.register(fnId, fnName, isAsync, fn, binaryCallDef);
 
     const reg = this.table_.get(op);
     if (!reg) {
@@ -227,13 +237,14 @@ export class OperatorOverloads implements IOperatorOverloads {
    * Registers a unary operator overload with specific argument and result types.
    * @param op - The operator identifier
    * @param arg - The type ID of the operand
-   * @param result - The type ID of the operation result
+   * @param resultType - The type ID of the operation result
+   * @param fnId - Author-assigned stable funcId for the implementing host function
    * @returns The registered operator instance
    * @throws {Error} If the operator is not found in the table
    */
-  unary(op: OpId, arg: TypeId, resultType: TypeId, fn: HostFn, isAsync = false): IRegisteredOperator {
+  unary(op: OpId, arg: TypeId, resultType: TypeId, fnId: number, fn: HostFn, isAsync = false): IRegisteredOperator {
     const fnName = `$$op_${op}_${arg}_to_${resultType}`;
-    const fnEntry = this.functions.register(fnName, isAsync, fn, unaryCallDef);
+    const fnEntry = this.functions.register(fnId, fnName, isAsync, fn, unaryCallDef);
 
     const reg = this.table_.get(op);
     if (!reg) {
@@ -243,6 +254,23 @@ export class OperatorOverloads implements IOperatorOverloads {
       argTypes: [arg],
       resultType,
       fnEntry,
+    });
+    return reg;
+  }
+
+  /**
+   * Registers a type-only binary overload with no host function. The
+   * overload participates in overload resolution and type checking only.
+   * @throws {Error} If the operator is not found in the table
+   */
+  binaryTypeOnly(op: OpId, lhs: TypeId, rhs: TypeId, resultType: TypeId): IRegisteredOperator {
+    const reg = this.table_.get(op);
+    if (!reg) {
+      throw new Error(`No such op ${op}`);
+    }
+    reg.add({
+      argTypes: [lhs, rhs],
+      resultType,
     });
     return reg;
   }
@@ -259,7 +287,9 @@ export class OperatorOverloads implements IOperatorOverloads {
     }
 
     reg.remove(argTypes);
-    this.functions.unregister(overload.fnEntry.name);
+    if (overload.fnEntry) {
+      this.functions.unregister(overload.fnEntry.name);
+    }
     return true;
   }
 
@@ -411,6 +441,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpAndBoolean,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const a = args.get(0) as BooleanValue;
@@ -425,6 +456,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpOrBoolean,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const a = args.get(0) as BooleanValue;
@@ -438,6 +470,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreOpId.Not,
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpNotBoolean,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const a = args.get(0) as BooleanValue;
@@ -452,6 +485,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpAddNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => a + b) },
     false
   );
@@ -460,6 +494,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpSubtractNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => a - b) },
     false
   );
@@ -468,6 +503,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpMultiplyNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => a * b) },
     false
   );
@@ -476,6 +512,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpDivideNumber,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
         safeNumBinary(args, (a, b) => {
@@ -494,6 +531,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpModuloNumber,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
         safeNumBinary(args, (a, b) => {
@@ -510,6 +548,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpPowerNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.pow(a, b)) },
     false
   );
@@ -517,6 +556,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreOpId.Negate,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpNegateNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumUnary(args, (a) => -a) },
     false
   );
@@ -526,6 +566,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpBitwiseAndNumber,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.bitAnd(a, b)),
     },
@@ -536,6 +577,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpBitwiseOrNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.bitOr(a, b)) },
     false
   );
@@ -544,6 +586,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpBitwiseXorNumber,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.bitXor(a, b)),
     },
@@ -553,6 +596,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreOpId.BitwiseNot,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpBitwiseNotNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumUnary(args, (a) => MathOps.bitNot(a)) },
     false
   );
@@ -561,6 +605,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpLeftShiftNumber,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
         safeNumBinary(args, (a, b) => MathOps.leftShift(a, b)),
@@ -572,6 +617,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
+    CoreFuncId.OpRightShiftNumber,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
         safeNumBinary(args, (a, b) => MathOps.rightShift(a, b)),
@@ -584,6 +630,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpEqualToBoolean,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const a = args.get(0) as BooleanValue;
@@ -598,6 +645,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpNotEqualToBoolean,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const a = args.get(0) as BooleanValue;
@@ -607,24 +655,16 @@ export function registerCoreOperators(services: BrainServices) {
     },
     false
   );
-  operatorOverloads.binary(
-    CoreOpId.Assign,
-    CoreTypeIds.Boolean,
-    CoreTypeIds.Boolean,
-    CoreTypeIds.Boolean,
-    {
-      exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
-        return NIL_VALUE; // Assignment is special-cased in the compiler; this is a no-op at runtime.
-      },
-    },
-    false
-  );
+  // Assignment is special-cased in the compiler (it lowers to store
+  // instructions), so its overloads are type-only: no host function.
+  operatorOverloads.binaryTypeOnly(CoreOpId.Assign, CoreTypeIds.Boolean, CoreTypeIds.Boolean, CoreTypeIds.Boolean);
 
   operatorOverloads.binary(
     CoreOpId.EqualTo,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpEqualToNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a === b) },
     false
   );
@@ -633,6 +673,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpNotEqualToNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a !== b) },
     false
   );
@@ -641,6 +682,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpLessThanNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a < b) },
     false
   );
@@ -649,6 +691,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpLessThanOrEqualToNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a <= b) },
     false
   );
@@ -657,6 +700,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpGreaterThanNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a > b) },
     false
   );
@@ -665,27 +709,18 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpGreaterThanOrEqualToNumber,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a >= b) },
     false
   );
-  operatorOverloads.binary(
-    CoreOpId.Assign,
-    CoreTypeIds.Number,
-    CoreTypeIds.Number,
-    CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
-        return NIL_VALUE; // Assignment is special-cased in the compiler; this is a no-op at runtime.
-      },
-    },
-    false
-  );
+  operatorOverloads.binaryTypeOnly(CoreOpId.Assign, CoreTypeIds.Number, CoreTypeIds.Number, CoreTypeIds.Number);
 
   operatorOverloads.binary(
     CoreOpId.Add,
     CoreTypeIds.String,
     CoreTypeIds.String,
     CoreTypeIds.String,
+    CoreFuncId.OpAddString,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeStrConcat(args) },
     false
   );
@@ -694,6 +729,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.String,
     CoreTypeIds.String,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpEqualToString,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeStrCompare(args, (a, b) => a === b) },
     false
   );
@@ -702,21 +738,11 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.String,
     CoreTypeIds.String,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpNotEqualToString,
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeStrCompare(args, (a, b) => a !== b) },
     false
   );
-  operatorOverloads.binary(
-    CoreOpId.Assign,
-    CoreTypeIds.String,
-    CoreTypeIds.String,
-    CoreTypeIds.String,
-    {
-      exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
-        return NIL_VALUE; // Assignment is special-cased in the compiler; this is a no-op at runtime.
-      },
-    },
-    false
-  );
+  operatorOverloads.binaryTypeOnly(CoreOpId.Assign, CoreTypeIds.String, CoreTypeIds.String, CoreTypeIds.String);
 
   // -- Nil overloads ----------------------------------------------------------
 
@@ -725,6 +751,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Nil,
     CoreTypeIds.Nil,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpEqualToNil,
     { exec: () => mkBooleanValue(true) },
     false
   );
@@ -733,6 +760,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Nil,
     CoreTypeIds.Nil,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpNotEqualToNil,
     { exec: () => mkBooleanValue(false) },
     false
   );
@@ -740,16 +768,47 @@ export function registerCoreOperators(services: BrainServices) {
     CoreOpId.Not,
     CoreTypeIds.Nil,
     CoreTypeIds.Boolean,
+    CoreFuncId.OpNotNil,
     { exec: () => mkBooleanValue(true) },
     false
   );
 
-  for (const typeId of [CoreTypeIds.Number, CoreTypeIds.Boolean, CoreTypeIds.String]) {
+  const nilComparableTypes: ReadonlyArray<{
+    typeId: TypeId;
+    eqTypeNil: number;
+    eqNilType: number;
+    neTypeNil: number;
+    neNilType: number;
+  }> = [
+    {
+      typeId: CoreTypeIds.Number,
+      eqTypeNil: CoreFuncId.OpEqualToNumberNil,
+      eqNilType: CoreFuncId.OpEqualToNilNumber,
+      neTypeNil: CoreFuncId.OpNotEqualToNumberNil,
+      neNilType: CoreFuncId.OpNotEqualToNilNumber,
+    },
+    {
+      typeId: CoreTypeIds.Boolean,
+      eqTypeNil: CoreFuncId.OpEqualToBooleanNil,
+      eqNilType: CoreFuncId.OpEqualToNilBoolean,
+      neTypeNil: CoreFuncId.OpNotEqualToBooleanNil,
+      neNilType: CoreFuncId.OpNotEqualToNilBoolean,
+    },
+    {
+      typeId: CoreTypeIds.String,
+      eqTypeNil: CoreFuncId.OpEqualToStringNil,
+      eqNilType: CoreFuncId.OpEqualToNilString,
+      neTypeNil: CoreFuncId.OpNotEqualToStringNil,
+      neNilType: CoreFuncId.OpNotEqualToNilString,
+    },
+  ];
+  for (const entry of nilComparableTypes) {
     operatorOverloads.binary(
       CoreOpId.EqualTo,
-      typeId,
+      entry.typeId,
       CoreTypeIds.Nil,
       CoreTypeIds.Boolean,
+      entry.eqTypeNil,
       {
         exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
           const a = args.get(0) as Value;
@@ -761,8 +820,9 @@ export function registerCoreOperators(services: BrainServices) {
     operatorOverloads.binary(
       CoreOpId.EqualTo,
       CoreTypeIds.Nil,
-      typeId,
+      entry.typeId,
       CoreTypeIds.Boolean,
+      entry.eqNilType,
       {
         exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
           const b = args.get(1) as Value;
@@ -773,9 +833,10 @@ export function registerCoreOperators(services: BrainServices) {
     );
     operatorOverloads.binary(
       CoreOpId.NotEqualTo,
-      typeId,
+      entry.typeId,
       CoreTypeIds.Nil,
       CoreTypeIds.Boolean,
+      entry.neTypeNil,
       {
         exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
           const a = args.get(0) as Value;
@@ -787,8 +848,9 @@ export function registerCoreOperators(services: BrainServices) {
     operatorOverloads.binary(
       CoreOpId.NotEqualTo,
       CoreTypeIds.Nil,
-      typeId,
+      entry.typeId,
       CoreTypeIds.Boolean,
+      entry.neNilType,
       {
         exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
           const b = args.get(1) as Value;

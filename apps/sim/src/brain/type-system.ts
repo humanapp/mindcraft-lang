@@ -22,6 +22,7 @@ import {
   Vector2,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
+import { SimFuncId } from "./abi-ids";
 import type { Actor } from "./actor";
 import { getSelf } from "./execution-context-types";
 
@@ -234,6 +235,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   });
 
   api.registerConversion({
+    id: SimFuncId.ConvActorRefToNumber,
     fromType: SimTypeIds.ActorRef,
     toType: CoreTypeIds.Number,
     cost: 2,
@@ -246,6 +248,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     },
   });
   api.registerConversion({
+    id: SimFuncId.ConvActorRefToVector2,
     fromType: SimTypeIds.ActorRef,
     toType: SimTypeIds.Vector2,
     cost: 2,
@@ -261,6 +264,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     },
   });
   api.registerConversion({
+    id: SimFuncId.ConvVector2ToString,
     fromType: SimTypeIds.Vector2,
     toType: CoreTypeIds.String,
     cost: 3,
@@ -353,6 +357,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Add,
     "Vector2.add",
     false,
     {
@@ -367,6 +372,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Sub,
     "Vector2.sub",
     false,
     {
@@ -381,6 +387,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Mul,
     "Vector2.mul",
     false,
     {
@@ -395,6 +402,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Div,
     "Vector2.div",
     false,
     {
@@ -409,6 +417,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Dot,
     "Vector2.dot",
     false,
     {
@@ -423,6 +432,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Cross,
     "Vector2.cross",
     false,
     {
@@ -437,6 +447,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Magnitude,
     "Vector2.magnitude",
     false,
     {
@@ -450,6 +461,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Normalize,
     "Vector2.normalize",
     false,
     {
@@ -463,6 +475,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Distance,
     "Vector2.distance",
     false,
     {
@@ -477,6 +490,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Lerp,
     "Vector2.lerp",
     false,
     {
@@ -492,6 +506,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Angle,
     "Vector2.angle",
     false,
     {
@@ -506,6 +521,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Rotate,
     "Vector2.rotate",
     false,
     {

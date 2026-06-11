@@ -1,5 +1,5 @@
 import type { BrainServices } from "../../brain/services";
-import { CoreActuatorId } from "../tile-ids";
+import { CoreHostActions } from "../abi-ids";
 import fnRestartPage from "./restart-page";
 import fnSwitchPage from "./switch-page";
 import fnYield from "./yield";
@@ -10,7 +10,25 @@ export function registerCoreActuators(services: BrainServices) {
   services.runtime.actions.register(fnRestartPage.binding);
   services.runtime.actions.register(fnYield.binding);
 
-  services.runtime.functions.register(CoreActuatorId.SwitchPage, false, fnSwitchPage.fn, fnSwitchPage.callDef);
-  services.runtime.functions.register(CoreActuatorId.RestartPage, false, fnRestartPage.fn, fnRestartPage.callDef);
-  services.runtime.functions.register(CoreActuatorId.Yield, false, fnYield.fn, fnYield.callDef);
+  services.runtime.functions.register(
+    CoreHostActions.SwitchPage.fnId,
+    CoreHostActions.SwitchPage.key,
+    false,
+    fnSwitchPage.fn,
+    fnSwitchPage.callDef
+  );
+  services.runtime.functions.register(
+    CoreHostActions.RestartPage.fnId,
+    CoreHostActions.RestartPage.key,
+    false,
+    fnRestartPage.fn,
+    fnRestartPage.callDef
+  );
+  services.runtime.functions.register(
+    CoreHostActions.Yield.fnId,
+    CoreHostActions.Yield.key,
+    false,
+    fnYield.fn,
+    fnYield.callDef
+  );
 }

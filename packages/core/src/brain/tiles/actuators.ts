@@ -33,7 +33,7 @@ export function registerCoreActuatorTileDefs(services: BrainServices) {
     const tileDef = new BrainTileActuatorDef(actuatorId, action, opts);
     tiles.registerTileDef(tileDef);
   };
-  register(fnSwitchPage.fnId, fnSwitchPage.descriptor);
-  register(fnRestartPage.fnId, fnRestartPage.descriptor, { deprecated: true });
-  //register(fnYield.fnId);
+  register(fnSwitchPage.key, fnSwitchPage.descriptor);
+  register(fnRestartPage.key, fnRestartPage.descriptor, { deprecated: true });
+  //register(fnYield.key);
 }

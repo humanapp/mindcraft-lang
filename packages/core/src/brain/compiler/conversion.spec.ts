@@ -14,6 +14,7 @@ import { BrainTileActuatorDef, BrainTileLiteralDef } from "@mindcraft-lang/core/
 import {
   CoreParameterId,
   CoreTypeIds,
+  type EnumFunctionIds,
   type EnumSymbolDef,
   type EnumValue,
   type ExecutionContext,
@@ -29,11 +30,21 @@ import {
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 
+let nextTestFnId = 2000;
+
 let services: BrainServices;
 
 before(() => {
   services = __test__createBrainServices();
 });
+
+let nextEnumFnId = 20000;
+
+function mkEnumFunctionIds(): EnumFunctionIds {
+  const base = nextEnumFnId;
+  nextEnumFnId += 4;
+  return { toString: base, toNumber: base + 1, equalTo: base + 2, notEqualTo: base + 3 };
+}
 
 function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?: string): string {
   const registry = services.runtime.types;
@@ -41,7 +52,7 @@ function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?:
   if (existing) {
     return existing;
   }
-  return registry.addEnumType(name, { symbols, defaultKey });
+  return registry.addEnumType(name, { symbols, defaultKey, functionIds: mkEnumFunctionIds() });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -73,7 +84,13 @@ function testConversion(
 ): void {
   test(label, () => {
     const actuatorId = `test.conv.${Date.now()}.${Math.random()}`;
-    const fnEntry = services.runtime.functions.register(actuatorId, false, { exec: () => VOID_VALUE }, actuatorCallDef);
+    const fnEntry = services.runtime.functions.register(
+      nextTestFnId++,
+      actuatorId,
+      false,
+      { exec: () => VOID_VALUE },
+      actuatorCallDef
+    );
 
     const sayTile = new BrainTileActuatorDef(actuatorId, mkActionDescriptor("actuator", fnEntry), {});
     const literal = new BrainTileLiteralDef(literalType, literalValue, {}, services);

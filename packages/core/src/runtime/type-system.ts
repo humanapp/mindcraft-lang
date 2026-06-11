@@ -11,6 +11,7 @@ import { registerEnumConversions } from "./conversions";
 import { CoreTypeIds, CoreTypeNames, mkTypeId } from "./core-types";
 import { CoreOpId } from "./operator-defs";
 import {
+  type EnumFunctionIds,
   type EnumPrimitiveValue,
   type EnumSymbolDef,
   type EnumTypeDef,
@@ -196,6 +197,9 @@ export class TypeRegistry implements ITypeRegistry {
     this.validateTypeNotRegistered(typeId);
     const symbols = normalizeEnumSymbols(typeId, shape.symbols);
     const defaultKey = resolveEnumDefaultKey(typeId, symbols, shape.defaultKey);
+    if (symbols.size() > 0 && !shape.functionIds) {
+      throw new Error(`Enum type ${typeId} requires functionIds for its conversion and operator host functions`);
+    }
     // Register
     const enumTypeDef: EnumTypeDef = {
       coreType: NativeType.Enum,
@@ -204,19 +208,22 @@ export class TypeRegistry implements ITypeRegistry {
       name,
       symbols,
       defaultKey,
+      functionIds: shape.functionIds,
     };
     this.add(enumTypeDef);
-    this.registerEnumConversions(typeId);
-    this.registerEnumOperators(typeId);
+    if (shape.functionIds) {
+      this.registerEnumConversions(typeId, shape.functionIds);
+      this.registerEnumOperators(typeId, shape.functionIds);
+    }
     return typeId;
   }
 
-  private registerEnumConversions(typeId: TypeId): void {
+  private registerEnumConversions(typeId: TypeId, functionIds: EnumFunctionIds): void {
     if (!this.services_) return;
-    registerEnumConversions(typeId, this.services_);
+    registerEnumConversions(typeId, this.services_, functionIds);
   }
 
-  private registerEnumOperators(typeId: TypeId): void {
+  private registerEnumOperators(typeId: TypeId, functionIds: EnumFunctionIds): void {
     if (!this.services_) return;
     const def = this.get(typeId);
     if (!def || def.coreType !== NativeType.Enum) {
@@ -231,6 +238,7 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       typeId,
       CoreTypeIds.Boolean,
+      functionIds.equalTo,
       {
         exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
           const a = args.get(0) as EnumValue;
@@ -253,6 +261,7 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       typeId,
       CoreTypeIds.Boolean,
+      functionIds.notEqualTo,
       {
         exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
           const a = args.get(0) as EnumValue;

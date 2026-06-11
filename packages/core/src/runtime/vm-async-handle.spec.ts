@@ -27,7 +27,7 @@ test("HOST_CALL_ASYNC and AWAIT complete in one run when the handle resolves syn
       handles.resolve(handleId, mkNumberValue(42));
     },
   };
-  const entry = registry.register("asyncOp", true, asyncFn, callDef);
+  const entry = registry.register(2001, "asyncOp", true, asyncFn, callDef);
 
   const program: Program = {
     version: BYTECODE_VERSION,

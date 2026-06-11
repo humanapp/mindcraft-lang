@@ -1,3 +1,4 @@
+export * from "./abi-ids";
 export * from "./action-registry";
 export * from "./brain-program-binary-codec";
 export * from "./brain-program-codec";
@@ -46,14 +47,18 @@ import { registerCoreTypes } from "./type-system";
 
 /** Register all built-in runtime components (types, contexts, actuators, sensors, operators, conversions, builtins) on `services`. */
 export function registerCoreRuntimeComponents(services: BrainServices) {
-  registerCoreTypes(services);
-  registerContextTypes(services);
-  registerCoreActuators(services);
-  registerCoreSensors(services);
-  registerCoreConversions(services);
-  registerCoreOperators(services);
-  registerElementAccessBuiltins(services);
-  registerMapBuiltins(services);
-  registerMathBuiltins(services);
-  registerStringBuiltins(services);
+  services.runtime.functions.withOwner("core", () => {
+    services.runtime.actions.withOwner("core", () => {
+      registerCoreTypes(services);
+      registerContextTypes(services);
+      registerCoreActuators(services);
+      registerCoreSensors(services);
+      registerCoreConversions(services);
+      registerCoreOperators(services);
+      registerElementAccessBuiltins(services);
+      registerMapBuiltins(services);
+      registerMathBuiltins(services);
+      registerStringBuiltins(services);
+    });
+  });
 }

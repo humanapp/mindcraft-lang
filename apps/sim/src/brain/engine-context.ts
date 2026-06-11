@@ -13,6 +13,7 @@ import {
   type ReadonlyList,
   type Value,
 } from "@mindcraft-lang/core/app";
+import { SimFuncId } from "./abi-ids";
 import type { Archetype } from "./actor";
 import { getSelf } from "./execution-context-types";
 import { SimTypeIds } from "./type-system";
@@ -43,6 +44,7 @@ export function registerEngineContext(api: MindcraftModuleApi) {
   const emptyCallDef = mkCallDef({ type: "bag", items: [] });
 
   functions.register(
+    SimFuncId.EngineContextGetActorsByArchetype,
     "EngineContext.getActorsByArchetype",
     false,
     {
@@ -62,6 +64,7 @@ export function registerEngineContext(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.EngineContextGetActorById,
     "EngineContext.getActorById",
     false,
     {

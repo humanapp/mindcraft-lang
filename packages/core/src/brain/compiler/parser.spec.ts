@@ -108,6 +108,7 @@ before(() => {
   };
 
   const everyFnEntry = services.runtime.functions.register(
+    4001,
     kSensorId_Every,
     false,
     { exec: () => VOID_VALUE },
@@ -480,6 +481,7 @@ describe("Conditional call specs", () => {
     };
 
     const fnEntry = services.runtime.functions.register(
+      4002,
       kSensorId,
       false,
       { exec: () => VOID_VALUE },
@@ -511,6 +513,7 @@ describe("Conditional call specs", () => {
     };
 
     const fnEntry = services.runtime.functions.register(
+      4003,
       kSensorId,
       false,
       { exec: () => VOID_VALUE },
@@ -546,6 +549,7 @@ describe("Conditional call specs", () => {
     };
 
     const fnEntry = services.runtime.functions.register(
+      4004,
       kSensorId,
       false,
       { exec: () => VOID_VALUE },
@@ -572,6 +576,7 @@ describe("Conditional call specs", () => {
     };
 
     const fnEntry = services.runtime.functions.register(
+      4005,
       kSensorId,
       false,
       { exec: () => VOID_VALUE },
@@ -612,6 +617,7 @@ describe("Conditional with else branch", () => {
     };
 
     const fnEntry = services.runtime.functions.register(
+      4006,
       kSensorId,
       false,
       { exec: () => VOID_VALUE },
@@ -889,7 +895,7 @@ describe("Bag repeat interleaving", () => {
         optional(param(kParamPriority))
       )
     );
-    const fnEntry = services.runtime.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(4007, kActId, false, { exec: () => VOID_VALUE }, callDef);
     const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
@@ -924,7 +930,7 @@ describe("Bag repeat interleaving", () => {
         optional(param(kParamPriority))
       )
     );
-    const fnEntry = services.runtime.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(4008, kActId, false, { exec: () => VOID_VALUE }, callDef);
     const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
@@ -954,7 +960,7 @@ describe("Bag repeat interleaving", () => {
         optional(param(kParamPriority))
       )
     );
-    const fnEntry = services.runtime.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(4009, kActId, false, { exec: () => VOID_VALUE }, callDef);
     const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
@@ -988,7 +994,7 @@ describe("anonymous choice type discrimination", () => {
     const callDef = mkCallDef(
       bag(optional(choice(param("anon.Alpha", { anonymous: true }), param("anon.Beta", { anonymous: true }))))
     );
-    const fnEntry = services.runtime.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(4010, kActId, false, { exec: () => VOID_VALUE }, callDef);
     const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
 
     services.edit.tiles.registerTileDef(new BrainTileParameterDef("anon.Alpha", kTypeAlpha, { hidden: true }));
@@ -1028,7 +1034,7 @@ describe("anonymous choice type discrimination", () => {
     const callDef = mkCallDef(
       bag(optional(choice(param("anon.AlphaLit", { anonymous: true }), param("anon.BetaLit", { anonymous: true }))))
     );
-    const fnEntry = services.runtime.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(4011, kActId, false, { exec: () => VOID_VALUE }, callDef);
     const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
 
     services.edit.tiles.registerTileDef(new BrainTileParameterDef("anon.AlphaLit", kTypeAlpha, { hidden: true }));

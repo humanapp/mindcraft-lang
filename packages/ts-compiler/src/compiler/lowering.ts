@@ -5,6 +5,8 @@ import {
   CoreOpId,
   CoreTypeIds,
   conversionFnName,
+  DYNAMIC_FUNC_ID_BASE,
+  type EnumFunctionIds,
   mkNumberValue,
   mkStringValue,
   NativeType,
@@ -230,7 +232,7 @@ function findOptionalChainRoot(
 }
 
 function resolveOperator(opId: string, argTypes: string[], services: BrainServices): string | undefined {
-  return services.edit.operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
+  return services.edit.operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry?.name;
 }
 
 // Operator resolution with type expansion: if a direct overload lookup fails,
@@ -8121,14 +8123,36 @@ function registerUserEnumType(
       return;
     }
 
-    registry.addEnumType(qualifiedName, {
-      symbols,
-      defaultKey: symbols.get(0).key,
+    services.runtime.functions.withOwner("dynamic", () => {
+      registry.addEnumType(qualifiedName, {
+        symbols,
+        defaultKey: symbols.get(0).key,
+        functionIds: nextUserEnumFunctionIds(services),
+      });
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : `Invalid enum declaration '${enumNode.name.text}'`;
     diagnostics.push(makeCompileDiag(CompileDiagCode.InvalidEnumDeclaration, message, enumNode));
   }
+}
+
+/**
+ * Derive the dynamic-range funcIds for the next user-declared enum: the k-th
+ * user enum registered into the type registry takes the 4-id block at
+ * `DYNAMIC_FUNC_ID_BASE + 4k`. The count is taken from the registry itself
+ * (user enums are the module-qualified ones, removed by `removeUserTypes()`
+ * before each project compile), so an unchanged project compiles to the same
+ * ids every build.
+ */
+function nextUserEnumFunctionIds(services: BrainServices): EnumFunctionIds {
+  let userEnumCount = 0;
+  for (const [, def] of services.runtime.types.entries()) {
+    if (def.coreType === NativeType.Enum && def.name.indexOf("::") >= 0) {
+      userEnumCount++;
+    }
+  }
+  const base = DYNAMIC_FUNC_ID_BASE + 4 * userEnumCount;
+  return { toString: base, toNumber: base + 1, equalTo: base + 2, notEqualTo: base + 3 };
 }
 
 type EnumPropertyAccessResolution = { kind: "member"; value: Value } | { kind: "unsupported" };

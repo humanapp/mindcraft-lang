@@ -86,10 +86,28 @@ export interface EnumSymbolDef {
   deprecated?: boolean;
 }
 
-/** Shape fields specific to enum types. */
+/**
+ * Author-assigned stable funcIds for the host functions registered with an
+ * enum type. Each id follows the same rules as any other funcId: a
+ * non-negative integer inside the declaring owner's range, never changed or
+ * reused once assigned.
+ */
+export interface EnumFunctionIds {
+  /** FuncId of the enum->string conversion. */
+  toString: number;
+  /** FuncId of the enum->number conversion. Required for numeric-valued enums. */
+  toNumber?: number;
+  /** FuncId of the `==` operator overload. */
+  equalTo: number;
+  /** FuncId of the `!=` operator overload. */
+  notEqualTo: number;
+}
+
+/** Shape fields specific to enum types. `functionIds` is required when `symbols` is non-empty. */
 export interface EnumTypeShape {
   symbols: List<EnumSymbolDef>;
   defaultKey?: string;
+  functionIds?: EnumFunctionIds;
 }
 
 /** A registered enum type. */

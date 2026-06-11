@@ -26,6 +26,7 @@ import {
   type Value,
   Vector2,
 } from "@mindcraft-lang/core/app";
+import { SimHostActions } from "@/brain/abi-ids";
 import { hasArg } from "@/brain/actions/utils";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
@@ -203,7 +204,7 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
 }
 
 export default {
-  key: TileIds.Sensor.See,
+  ...SimHostActions.See,
   callDef,
   fn: {
     onInitialized: initSee,

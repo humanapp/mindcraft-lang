@@ -1,6 +1,7 @@
 import type { BrainServices } from "../brain/services";
 import type { ReadonlyList } from "../platform/list";
 import { MathOps } from "../platform/math";
+import { CoreFuncId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
 import { CoreTypeIds } from "./core-types";
 import { mkCallDef } from "./function-defs";
@@ -17,6 +18,7 @@ export function registerMathBuiltins(services: BrainServices) {
   const { functions } = services.runtime;
 
   functions.register(
+    CoreFuncId.MathAbs,
     "$$math_abs",
     false,
     {
@@ -26,6 +28,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathAcos,
     "$$math_acos",
     false,
     {
@@ -35,6 +38,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathAsin,
     "$$math_asin",
     false,
     {
@@ -44,6 +48,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathAtan,
     "$$math_atan",
     false,
     {
@@ -53,6 +58,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathAtan2,
     "$$math_atan2",
     false,
     {
@@ -63,6 +69,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathCeil,
     "$$math_ceil",
     false,
     {
@@ -72,6 +79,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathCos,
     "$$math_cos",
     false,
     {
@@ -81,6 +89,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathExp,
     "$$math_exp",
     false,
     {
@@ -90,6 +99,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathFloor,
     "$$math_floor",
     false,
     {
@@ -99,6 +109,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathLog,
     "$$math_log",
     false,
     {
@@ -108,6 +119,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathMax,
     "$$math_max",
     false,
     {
@@ -118,6 +130,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathMin,
     "$$math_min",
     false,
     {
@@ -128,6 +141,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathPow,
     "$$math_pow",
     false,
     {
@@ -138,6 +152,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathRandom,
     "$$math_random",
     false,
     {
@@ -147,6 +162,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathRound,
     "$$math_round",
     false,
     {
@@ -156,6 +172,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathSin,
     "$$math_sin",
     false,
     {
@@ -165,6 +182,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathSqrt,
     "$$math_sqrt",
     false,
     {
@@ -174,6 +192,7 @@ export function registerMathBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MathTan,
     "$$math_tan",
     false,
     {

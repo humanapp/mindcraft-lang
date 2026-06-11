@@ -8,13 +8,13 @@ export interface HostActionBinding {
   binding: "host";
   descriptor: ActionDescriptor;
   /**
-   * Stable numeric id assigned by the brain action registry when the binding
-   * is registered. Dense and in registration order across the registry's host
-   * actions; used by `HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC` dispatch via
-   * the registry's `getById`. `undefined` until the binding has been
-   * registered.
+   * Author-assigned stable numeric action id, validated by the brain action
+   * registry at registration: a non-negative integer, unique across the
+   * registry's host actions, and inside the registering owner's range. Used
+   * by `HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC` dispatch via the
+   * registry's `getById`. Once assigned, never changed or reused.
    */
-  id?: number;
+  id: number;
   /**
    * Invoked exactly once per `(brainInstance, callSiteId)`, on the first
    * activation that allocates the call site, before {@link onPageEntered}

@@ -10,6 +10,7 @@ import {
   CoreOpId,
   CoreTypeIds,
   CoreTypeNames,
+  type EnumFunctionIds,
   type EnumSymbolDef,
   type EnumTypeDef,
   type ExecutionContext,
@@ -29,13 +30,21 @@ import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__t
 
 let services: BrainServices;
 
+let nextEnumFnId = 20000;
+
+function mkEnumFunctionIds(): EnumFunctionIds {
+  const base = nextEnumFnId;
+  nextEnumFnId += 4;
+  return { toString: base, toNumber: base + 1, equalTo: base + 2, notEqualTo: base + 3 };
+}
+
 function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?: string): string {
   const registry = services.runtime.types;
   const existing = registry.resolveByName(name);
   if (existing) {
     return existing;
   }
-  return registry.addEnumType(name, { symbols, defaultKey });
+  return registry.addEnumType(name, { symbols, defaultKey, functionIds: mkEnumFunctionIds() });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -62,6 +71,7 @@ function callEnumEqualityOperator(opId: string, typeId: string, leftKey: string,
   assert.ok(resolution, `operator ${opId} for ${typeId} was not registered`);
 
   const entry = resolution.overload.fnEntry;
+  assert.ok(entry, `operator ${opId} for ${typeId} must have a host function`);
   assert.equal(entry.isAsync, false);
 
   const result = (entry as BrainSyncFunctionEntry).fn.exec(
@@ -752,6 +762,7 @@ describe("removeUserTypes", () => {
         { key: "go", label: "Go", value: 1 },
       ]),
       defaultKey: "stop",
+      functionIds: mkEnumFunctionIds(),
     });
 
     assert.ok(registry.get(typeId));
@@ -806,6 +817,7 @@ describe("removeUserTypes", () => {
         { key: "busy", label: "Busy", value: "busy" },
       ]),
       defaultKey: "ready",
+      functionIds: mkEnumFunctionIds(),
     });
 
     registry.removeUserTypes();

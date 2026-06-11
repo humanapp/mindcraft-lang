@@ -32,18 +32,7 @@ export const TileIds = {
     Priority: "parameter.priority",
     Rate: "parameter.rate",
   } as const,
-  Sensor: {
-    Bump: "sensor.bump",
-    See: "sensor.see",
-  } as const,
   Operator: {} as const,
-  Actuator: {
-    Move: "actuator.move",
-    Say: "actuator.say",
-    Eat: "actuator.eat",
-    Turn: "actuator.turn",
-    Shoot: "actuator.shoot",
-  } as const,
 } as const;
 
 export const TileCapabilityBits = {

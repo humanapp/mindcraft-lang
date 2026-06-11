@@ -1,6 +1,7 @@
 import { Error } from "../platform/error";
 import { List, type ReadonlyList } from "../platform/list";
 import { TypeUtils } from "../platform/types";
+import type { StableIdOwner } from "./abi-ids";
 import type { TypeId } from "./type-defs";
 import type { HostAsyncFn, HostFn, HostSyncFn } from "./vm-types";
 
@@ -203,6 +204,10 @@ function callSpecToArgSlotsImpl(
 }
 
 export type BrainFunctionCommon = {
+  /**
+   * Author-assigned stable funcId. Serialized programs record it verbatim;
+   * once assigned it is never changed or reused.
+   */
   id: number;
   name: string;
   callDef: BrainActionCallDef;
@@ -235,7 +240,21 @@ export function mkActionDescriptor(
 }
 
 export interface IFunctionRegistry {
-  register(name: string, isAsync: boolean, fn: HostFn, callDef: BrainActionCallDef): BrainFunctionEntry;
+  /**
+   * Register a host function under the author-assigned stable `id`. The id
+   * must be a non-negative integer, unused in this registry, and inside the
+   * range of the active registration owner. Throws on any violation, and
+   * when `name` is empty or already registered.
+   */
+  register(id: number, name: string, isAsync: boolean, fn: HostFn, callDef: BrainActionCallDef): BrainFunctionEntry;
+  /**
+   * Run `body` with registrations validated against `owner`'s id range:
+   * core `[0, TARGET_FUNC_ID_BASE)`, target
+   * `[TARGET_FUNC_ID_BASE, DYNAMIC_FUNC_ID_BASE)`, dynamic
+   * `[DYNAMIC_FUNC_ID_BASE, ...)`. The previous owner is restored when
+   * `body` returns or throws. The default owner is `target`.
+   */
+  withOwner<T>(owner: StableIdOwner, body: () => T): T;
   unregister(name: string): boolean;
   get(name: string): BrainFunctionEntry | undefined;
   getSyncById(id: number): BrainSyncFunctionEntry | undefined;

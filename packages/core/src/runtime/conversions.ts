@@ -6,12 +6,13 @@ import { INFINITY, MathOps } from "../platform/math";
 import { StringUtils as SU } from "../platform/string";
 import { TypeUtils } from "../platform/types";
 import { UniqueSet } from "../platform/uniqueset";
+import { CoreFuncId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
 import type { Conversion, IConversionRegistry } from "./conversion-defs";
 import { CoreTypeIds } from "./core-types";
 import type { IFunctionRegistry } from "./function-defs";
 import { mkCallDef } from "./function-defs";
-import { type EnumTypeDef, NativeType, type TypeId } from "./type-defs";
+import { type EnumFunctionIds, type EnumTypeDef, NativeType, type TypeId } from "./type-defs";
 import type { BooleanValue, EnumValue, NumberValue, StringValue, Value } from "./value";
 
 /** Build the host function name used to register a conversion from `fromType` to `toType`. */
@@ -30,17 +31,17 @@ export class ConversionRegistry implements IConversionRegistry {
 
   /**
    * Registers a new conversion in the registry.
-   * @param conversion - The conversion to register, defining how to convert from one type to another
+   * @param conv - The conversion to register, defining how to convert from one type to another
    */
-  register(conv: Omit<Conversion, "id">): Conversion {
+  register(conv: Conversion): Conversion {
     const name = conversionFnName(conv.fromType, conv.toType);
     const existing = this.functions.get(name);
     if (existing) {
       throw new Error(`ConversionRegistry.register: conversion from ${conv.fromType} to ${conv.toType} already exists`);
     }
     const callDef = conv.callDef ?? anonConversionCallDef;
-    const funcEntry = this.functions.register(name, false, conv.fn, callDef);
-    const conversion: Conversion = { ...conv, id: funcEntry.id };
+    this.functions.register(conv.id, name, false, conv.fn, callDef);
+    const conversion: Conversion = { ...conv };
 
     // Store in conversions map for pathfinding
     if (!this.conversions.has(conversion.fromType)) {
@@ -158,7 +159,7 @@ const anonConversionCallDef = mkCallDef({
 });
 
 /** Register the implicit/explicit conversions for an enum type (string<->enum, number<->enum). */
-export function registerEnumConversions(typeId: TypeId, services: BrainServices) {
+export function registerEnumConversions(typeId: TypeId, services: BrainServices, functionIds: EnumFunctionIds) {
   const enumType = services.runtime.types.get(typeId);
   if (!enumType || enumType.coreType !== NativeType.Enum) {
     throw new Error(`registerEnumConversions: type ${typeId} is not an enum`);
@@ -173,6 +174,7 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices)
   if (!services.shared.conversions.get(typeId, CoreTypeIds.String)) {
     const stringCost = TypeUtils.isNumber(firstSymbol.value) ? 2 : 1;
     services.shared.conversions.register({
+      id: functionIds.toString,
       fromType: typeId,
       toType: CoreTypeIds.String,
       cost: stringCost,
@@ -189,7 +191,11 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices)
   }
 
   if (TypeUtils.isNumber(firstSymbol.value) && !services.shared.conversions.get(typeId, CoreTypeIds.Number)) {
+    if (functionIds.toNumber === undefined) {
+      throw new Error(`Enum type ${typeId} has numeric values and requires functionIds.toNumber`);
+    }
     services.shared.conversions.register({
+      id: functionIds.toNumber,
       fromType: typeId,
       toType: CoreTypeIds.Number,
       cost: 1,
@@ -232,6 +238,7 @@ export function registerCoreConversions(services: BrainServices) {
   const conversionRegistry = services.shared.conversions;
   // Number -> String conversion
   conversionRegistry.register({
+    id: CoreFuncId.ConvNumberToString,
     fromType: CoreTypeIds.Number,
     toType: CoreTypeIds.String,
     cost: 2,
@@ -247,6 +254,7 @@ export function registerCoreConversions(services: BrainServices) {
   });
   // String -> Number conversion
   conversionRegistry.register({
+    id: CoreFuncId.ConvStringToNumber,
     fromType: CoreTypeIds.String,
     toType: CoreTypeIds.Number,
     cost: 2,
@@ -263,6 +271,7 @@ export function registerCoreConversions(services: BrainServices) {
   });
   // Number -> Boolean conversion
   conversionRegistry.register({
+    id: CoreFuncId.ConvNumberToBoolean,
     fromType: CoreTypeIds.Number,
     toType: CoreTypeIds.Boolean,
     cost: 1,
@@ -278,6 +287,7 @@ export function registerCoreConversions(services: BrainServices) {
   });
   // Boolean -> Number conversion
   conversionRegistry.register({
+    id: CoreFuncId.ConvBooleanToNumber,
     fromType: CoreTypeIds.Boolean,
     toType: CoreTypeIds.Number,
     cost: 1,
@@ -293,6 +303,7 @@ export function registerCoreConversions(services: BrainServices) {
   });
   // String -> Boolean conversion
   conversionRegistry.register({
+    id: CoreFuncId.ConvStringToBoolean,
     fromType: CoreTypeIds.String,
     toType: CoreTypeIds.Boolean,
     cost: 2,
@@ -308,6 +319,7 @@ export function registerCoreConversions(services: BrainServices) {
   });
   // Boolean -> String conversion
   conversionRegistry.register({
+    id: CoreFuncId.ConvBooleanToString,
     fromType: CoreTypeIds.Boolean,
     toType: CoreTypeIds.String,
     cost: 1,

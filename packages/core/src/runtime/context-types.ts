@@ -1,5 +1,6 @@
 import type { BrainServices } from "../brain/services";
 import { List, type ReadonlyList } from "../platform/list";
+import { CoreFuncId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
 import { getRuleVariable, setRuleVariable } from "./context";
 import { CoreTypeIds, mkTypeId } from "./core-types";
@@ -121,6 +122,7 @@ export function registerContextTypes(services: BrainServices) {
   // Struct method calling convention: the emitter pushes the struct value itself as
   // arg index 0 (the receiver). User-visible arguments start at index 1.
   functions.register(
+    CoreFuncId.BrainContextGetVariable,
     "BrainContext.getVariable",
     false,
     {
@@ -133,6 +135,7 @@ export function registerContextTypes(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.BrainContextSetVariable,
     "BrainContext.setVariable",
     false,
     {
@@ -147,6 +150,7 @@ export function registerContextTypes(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.RuleContextGetVariable,
     "RuleContext.getVariable",
     false,
     {
@@ -159,6 +163,7 @@ export function registerContextTypes(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.RuleContextSetVariable,
     "RuleContext.setVariable",
     false,
     {

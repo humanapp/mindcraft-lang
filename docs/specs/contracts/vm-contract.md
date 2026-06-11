@@ -293,12 +293,24 @@ stable for the lifetime of a compiled `Program`. `0` is a valid `RuleId`;
 the contract does not specify their allocation scheme. `HandleId`s come from
 the `HandleTable`.
 
-Host action ids (the `actionId` operand of `HOST_ACTION_CALL` /
-`HOST_ACTION_CALL_ASYNC`) are a separate space, assigned by the brain action
-registry at registration: dense, non-negative, in registration order. The
-compiler and VM share one registry instance in-process, so they agree on these
-ids by construction; the ids are not guaranteed stable across separate builds
-of the registry (a durable, pinned id space is a future concern).
+Host function ids (the `funcId` operand of `HOST_CALL` / `HOST_CALL_ASYNC`)
+and host action ids (the `actionId` operand of `HOST_ACTION_CALL` /
+`HOST_ACTION_CALL_ASYNC`) are separate spaces of author-assigned stable ids,
+declared as explicitly-valued enum members and validated by the registries at
+registration: each id must be a non-negative integer, unique within its
+space, and inside its owner's reserved range. The shared funcId space is
+partitioned by owner: core owns `[0, TARGET_FUNC_ID_BASE)`, the active
+target owns `[TARGET_FUNC_ID_BASE, DYNAMIC_FUNC_ID_BASE)`, and dynamically
+registered program-dependent functions (user-declared enum conversions and
+operators) own `[DYNAMIC_FUNC_ID_BASE, ...)`; ids in the dynamic region are
+stable only for a given compiled program and are not part of the device ABI.
+The host-action space partitions at `TARGET_ACTION_ID_BASE` (core below,
+target at and above) and has no dynamic region. `TARGET_FUNC_ID_BASE = 1024`,
+`DYNAMIC_FUNC_ID_BASE = 65536`, and `TARGET_ACTION_ID_BASE = 1024` are
+exported from core (`runtime/abi-ids.ts`). An id, once assigned, is never
+changed or reused; removing a registration leaves a permanent gap. Serialized
+programs record these ids verbatim, so they are stable across separate builds
+by construction.
 
 ### Orchestrator opacity
 

@@ -1,7 +1,8 @@
+import { CoreHostActions } from "../abi-ids";
 import type { ExecutionContext, HostActionBinding } from "../context";
 import { CoreTypeIds } from "../core-types";
 import { type ActionDescriptor, type BrainActionCallDef, type BrainActionCallSpec, mkCallDef } from "../function-defs";
-import { CoreSensorId, mkSensorTileId } from "../tile-ids";
+import { mkSensorTileId } from "../tile-ids";
 import { NativeType } from "../type-defs";
 import type { Value } from "../value";
 
@@ -13,7 +14,7 @@ const callSpec: BrainActionCallSpec = {
 const callDef: BrainActionCallDef = mkCallDef(callSpec);
 
 const descriptor: ActionDescriptor = {
-  key: CoreSensorId.CurrentPage,
+  key: CoreHostActions.CurrentPage.key,
   kind: "sensor",
   callDef,
   isAsync: false,
@@ -27,12 +28,13 @@ function fnCurrentPage(ctx: ExecutionContext): Value {
 const binding: HostActionBinding = {
   binding: "host",
   descriptor,
+  id: CoreHostActions.CurrentPage.actionId,
   execSync: fnCurrentPage,
 };
 
 export default {
-  fnId: CoreSensorId.CurrentPage,
-  tileId: mkSensorTileId(CoreSensorId.CurrentPage),
+  key: CoreHostActions.CurrentPage.key,
+  tileId: mkSensorTileId(CoreHostActions.CurrentPage.key),
   isAsync: false,
   descriptor,
   binding,

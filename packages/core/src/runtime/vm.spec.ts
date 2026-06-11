@@ -1243,6 +1243,7 @@ describe("VM -- callsite-persistent variables", () => {
     const seenValues: number[] = [];
     const action: HostActionBinding = {
       binding: "host",
+      id: 3101,
       descriptor: {
         key: "test-vm-host-action-state-isolation",
         kind: "actuator",
@@ -1352,6 +1353,7 @@ describe("VM -- action calls", () => {
 
     const action: HostActionBinding = {
       binding: "host",
+      id: 3102,
       descriptor: {
         key: "test-vm-action-call",
         kind: "actuator",
@@ -1387,6 +1389,7 @@ describe("VM -- action calls", () => {
     let observed: List<Value> | undefined;
     const action: HostActionBinding = {
       binding: "host",
+      id: 3103,
       descriptor: {
         key: "test-vm-action-call-positional-host",
         kind: "sensor",
@@ -1474,6 +1477,7 @@ describe("VM -- action calls", () => {
     const handles = new HandleTable(100);
     const action: HostActionBinding = {
       binding: "host",
+      id: 3104,
       descriptor: {
         key: "test-vm-action-call-async-host",
         kind: "actuator",
@@ -1506,6 +1510,7 @@ describe("VM -- action calls", () => {
     let captured: ReadonlyList<Value> | undefined;
     const action: HostActionBinding = {
       binding: "host",
+      id: 3105,
       descriptor: {
         key: "test-vm-action-call-async-positional-host",
         kind: "actuator",
@@ -1671,6 +1676,7 @@ describe("VM -- action calls", () => {
     let seenRuleFuncId: number | undefined;
 
     const hostFnEntry = services.runtime.functions.register(
+      4001,
       "test-vm-bytecode-action-rule-host",
       false,
       {
@@ -1818,6 +1824,7 @@ describe("VM -- action calls", () => {
   test("HOST_ACTION_CALL_ASYNC rolls back the handle when host execAsync throws synchronously", () => {
     const action: HostActionBinding = {
       binding: "host",
+      id: 3106,
       descriptor: {
         key: "test-vm-action-call-async-host-throw",
         kind: "actuator",
@@ -3186,7 +3193,7 @@ describe("VM -- operator monomorphization", () => {
   test("primitive number arithmetic does not consult ITypeRegistry on the dispatch hot path", () => {
     const resolved = services.edit.operatorOverloads.resolve(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
     assert.ok(resolved !== undefined, "add(number, number) overload must be registered");
-    const addFnId = resolved!.overload.fnEntry.id;
+    const addFnId = resolved!.overload.fnEntry!.id;
 
     // Tight number-heavy loop: 1000 iterations of `1 + 1` via HOST_CALL.
     const ITER = 1000;
@@ -3295,6 +3302,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
       ],
     });
     const fnEntry = services.runtime.functions.register(
+      4002,
       "$$test_v4_1_add",
       false,
       {
@@ -3370,6 +3378,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
       ],
     });
     const fnEntry = services.runtime.functions.register(
+      4003,
       "$$test_v4_1_async_capture",
       true,
       {
@@ -3466,6 +3475,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
     });
     let observed: List<Value> | undefined;
     const fnEntry = services.runtime.functions.register(
+      4004,
       "$$test_v4_1_spy",
       false,
       {

@@ -29,6 +29,7 @@ import {
   Vector2,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
+import { SimHostActions } from "@/brain/abi-ids";
 import { hasArg, resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
@@ -247,7 +248,7 @@ function execMove(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
 }
 
 export default {
-  key: TileIds.Actuator.Move,
+  ...SimHostActions.Move,
   callDef,
   fn: { exec: execMove },
   isAsync: false,

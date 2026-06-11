@@ -14,7 +14,7 @@ import {
   suggestTiles,
   type TileSuggestion,
 } from "@mindcraft-lang/core/brain/language-service";
-import { CoreActuatorId, mkActuatorTileId, type TypeId } from "@mindcraft-lang/core/runtime";
+import { CoreHostActions, mkActuatorTileId, type TypeId } from "@mindcraft-lang/core/runtime";
 import React from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
@@ -166,7 +166,7 @@ export function BrainTilePickerDialog({
       }
     };
 
-    const switchPageTileId = mkActuatorTileId(CoreActuatorId.SwitchPage);
+    const switchPageTileId = mkActuatorTileId(CoreHostActions.SwitchPage.key);
     const precedingIndex = replaceTileIndex != null ? replaceTileIndex - 1 : (existingTiles?.size() ?? 0) - 1;
     const precedingTile = precedingIndex >= 0 ? existingTiles?.get(precedingIndex) : undefined;
     const pagesFirst = precedingTile?.tileId === switchPageTileId;

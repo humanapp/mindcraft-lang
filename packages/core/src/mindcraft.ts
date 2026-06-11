@@ -59,13 +59,12 @@ import type {
 import { CoreOpId, NativeType } from "./runtime";
 import type { ExecutionContext, HostActionBinding } from "./runtime/context";
 import type { HandleId, Value } from "./runtime/value";
-import { NIL_VALUE } from "./runtime/value";
 
 /** Tile definition value. Alias for {@link IBrainTileDef}. */
 export type TileDefinitionInput = IBrainTileDef;
 
-/** Definition of a value-conversion overload. Same as {@link Conversion} but without the auto-assigned `id`. */
-export type ConversionDefinition = Omit<Conversion, "id">;
+/** Definition of a value-conversion overload, including its author-assigned stable funcId. */
+export type ConversionDefinition = Conversion;
 
 type TypeDefInput = Omit<TypeDef, "codec">;
 
@@ -92,6 +91,10 @@ export type CompiledActionArtifact = UserActionArtifact;
 
 /** A host-implemented function registered with a brain's function registry. */
 export interface HostFunctionDefinition {
+  /**
+   * Author-assigned stable funcId. Once assigned, never changed or reused.
+   */
+  readonly id: number;
   readonly name: string;
   readonly isAsync: boolean;
   readonly fn: HostFn;
@@ -101,6 +104,11 @@ export interface HostFunctionDefinition {
 /** A host-implemented sensor: descriptor + function + action exec + sensor tile. Build with {@link createHostSensor}. */
 export interface HostSensorDefinition {
   readonly descriptor: ActionDescriptor;
+  /**
+   * Author-assigned stable host-action id. Once assigned, never changed or
+   * reused.
+   */
+  readonly actionId: number;
   readonly function: HostFunctionDefinition;
   readonly actionFn: SyncHostActionFn | AsyncHostActionFn;
   readonly tile: IBrainActionTileDef;
@@ -109,6 +117,11 @@ export interface HostSensorDefinition {
 /** A host-implemented actuator: descriptor + function + action exec + actuator tile. Build with {@link createHostActuator}. */
 export interface HostActuatorDefinition {
   readonly descriptor: ActionDescriptor;
+  /**
+   * Author-assigned stable host-action id. Once assigned, never changed or
+   * reused.
+   */
+  readonly actionId: number;
   readonly function: HostFunctionDefinition;
   readonly actionFn: SyncHostActionFn | AsyncHostActionFn;
   readonly tile: IBrainActionTileDef;
@@ -132,6 +145,16 @@ export type AsyncHostActionFn = {
 
 type HostActionOptionsBase = {
   readonly key: string;
+  /**
+   * Author-assigned stable host-action id. Once assigned, never changed or
+   * reused.
+   */
+  readonly actionId: number;
+  /**
+   * Author-assigned stable funcId for the action's host function. Once
+   * assigned, never changed or reused.
+   */
+  readonly fnId: number;
   readonly callDef: BrainActionCallDef;
   readonly metadata?: ITileMetadata;
   readonly capabilities?: BrainTileDefCreateOptions["capabilities"];
@@ -188,7 +211,8 @@ export function createHostSensor(options: CreateHostSensorOptions): HostSensorDe
     : adaptSyncActionFn(options.fn as SyncHostActionFn);
   return {
     descriptor,
-    function: { name: options.key, isAsync, fn: hostFn, callDef: options.callDef },
+    actionId: options.actionId,
+    function: { id: options.fnId, name: options.key, isAsync, fn: hostFn, callDef: options.callDef },
     actionFn: options.fn,
     tile: new BrainTileSensorDef(options.key, descriptor, {
       metadata: options.metadata,
@@ -211,7 +235,8 @@ export function createHostActuator(options: CreateHostActuatorOptions): HostActu
     : adaptSyncActionFn(options.fn as SyncHostActionFn);
   return {
     descriptor,
-    function: { name: options.key, isAsync, fn: hostFn, callDef: options.callDef },
+    actionId: options.actionId,
+    function: { id: options.fnId, name: options.key, isAsync, fn: hostFn, callDef: options.callDef },
     actionFn: options.fn,
     tile: new BrainTileActuatorDef(options.key, descriptor, {
       metadata: options.metadata,
@@ -224,6 +249,11 @@ export function createHostActuator(options: CreateHostActuatorOptions): HostActu
 export interface OperatorOverloadDefinition {
   readonly argTypes: readonly TypeId[];
   readonly resultType: TypeId;
+  /**
+   * Author-assigned stable funcId of the implementing host function. Once
+   * assigned, never changed or reused.
+   */
+  readonly fnId: number;
   readonly fn: HostFn;
   readonly isAsync?: boolean;
 }
@@ -366,11 +396,13 @@ type CreateMindcraftEnvironmentOptions = {
 
 function buildHostActionBinding(
   descriptor: ActionDescriptor,
+  actionId: number,
   actionFn: SyncHostActionFn | AsyncHostActionFn
 ): HostActionBinding {
   const binding: HostActionBinding = {
     binding: "host",
     descriptor,
+    id: actionId,
     onInitialized: actionFn.onInitialized,
     onPageEntered: actionFn.onPageEntered,
     onPageExited: actionFn.onPageExited,
@@ -390,7 +422,13 @@ function ensureFunctionRegistered(services: BrainServices, definition: HostFunct
     return;
   }
 
-  services.runtime.functions.register(definition.name, definition.isAsync, definition.fn, definition.callDef);
+  services.runtime.functions.register(
+    definition.id,
+    definition.name,
+    definition.isAsync,
+    definition.fn,
+    definition.callDef
+  );
 }
 
 function assertRegisteredTypeId(actual: string, expected: string, name: string): string {
@@ -400,13 +438,12 @@ function assertRegisteredTypeId(actual: string, expected: string, name: string):
   return actual;
 }
 
-const assignNoop: HostSyncFn = { exec: () => NIL_VALUE };
-
 function autoRegisterAssignment(services: BrainServices, typeId: TypeId): void {
   if (services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId])) {
     return;
   }
-  services.edit.operatorOverloads.binary(CoreOpId.Assign, typeId, typeId, typeId, assignNoop, false);
+  // Assignment compiles to store instructions; the overload is type-only.
+  services.edit.operatorOverloads.binaryTypeOnly(CoreOpId.Assign, typeId, typeId, typeId);
 }
 
 function registerMindcraftTypeDefinition(services: BrainServices, definition: MindcraftTypeDefinition): string {
@@ -458,6 +495,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         services.runtime.types.addEnumType(enumDef.name, {
           symbols: enumDef.symbols,
           defaultKey: enumDef.defaultKey,
+          functionIds: enumDef.functionIds,
         }),
         enumDef.typeId,
         enumDef.name
@@ -574,6 +612,7 @@ function registerOperatorDefinition(services: BrainServices, definition: Operato
         definition.spec.id,
         argTypes.get(0)!,
         overload.resultType,
+        overload.fnId,
         overload.fn,
         overload.isAsync ?? false
       );
@@ -586,6 +625,7 @@ function registerOperatorDefinition(services: BrainServices, definition: Operato
         argTypes.get(0)!,
         argTypes.get(1)!,
         overload.resultType,
+        overload.fnId,
         overload.fn,
         overload.isAsync ?? false
       );
@@ -712,7 +752,7 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
     }
 
     ensureFunctionRegistered(this.brainServices, def.function);
-    this.brainServices.runtime.actions.register(buildHostActionBinding(def.descriptor, def.actionFn));
+    this.brainServices.runtime.actions.register(buildHostActionBinding(def.descriptor, def.actionId, def.actionFn));
     this.brainServices.edit.tiles.registerTileDef(def.tile);
   }
 
@@ -722,7 +762,7 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
     }
 
     ensureFunctionRegistered(this.brainServices, def.function);
-    this.brainServices.runtime.actions.register(buildHostActionBinding(def.descriptor, def.actionFn));
+    this.brainServices.runtime.actions.register(buildHostActionBinding(def.descriptor, def.actionId, def.actionFn));
     this.brainServices.edit.tiles.registerTileDef(def.tile);
   }
 

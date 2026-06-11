@@ -21,6 +21,7 @@ import {
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
+import { SimHostActions } from "@/brain/abi-ids";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
 import { SimTypeIds } from "@/brain/type-system";
@@ -128,7 +129,7 @@ export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Val
 }
 
 export default {
-  key: TileIds.Actuator.Shoot,
+  ...SimHostActions.Shoot,
   callDef,
   fn: { onInitialized: initShoot, exec: execShoot },
   isAsync: false,

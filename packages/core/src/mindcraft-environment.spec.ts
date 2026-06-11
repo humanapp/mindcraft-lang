@@ -23,7 +23,6 @@ import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileParameterDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import {
   BYTECODE_VERSION,
-  CoreSensorId,
   CoreTypeIds,
   type ExecutionContext,
   mkCallDef,
@@ -97,6 +96,7 @@ function createAlphaModule(capture: {
 
       const helperCallDef = mkCallDef({ type: "bag", items: [] });
       api.registerFunction({
+        id: 2101,
         name: "alpha.helper",
         isAsync: false,
         fn: {
@@ -114,6 +114,7 @@ function createAlphaModule(capture: {
           {
             argTypes: [CoreTypeIds.Number, CoreTypeIds.Number],
             resultType: CoreTypeIds.Boolean,
+            fnId: 2102,
             fn: {
               exec: () => TRUE_VALUE,
             },
@@ -137,7 +138,9 @@ function createAlphaModule(capture: {
       });
       api.registerHostSensor({
         descriptor,
+        actionId: 3401,
         function: {
+          id: 4401,
           name: "alpha.sensor",
           isAsync: false,
           fn: {
@@ -176,7 +179,9 @@ function createHostSensorModule(
       install(api): void {
         api.registerHostSensor({
           descriptor,
+          actionId: 3301,
           function: {
+            id: 4301,
             name: key,
             isAsync: false,
             fn: {

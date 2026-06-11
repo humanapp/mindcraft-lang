@@ -193,6 +193,7 @@ function emitSyntheticHostCallBuffer(
 ): FunctionBytecode {
   const localServices = __test__createBrainServices();
   localServices.runtime.functions.register(
+    6101,
     "$$emit_host_call_matrix",
     op === Op.HOST_CALL_ASYNC,
     op === Op.HOST_CALL_ASYNC ? { exec: () => {} } : { exec: () => NIL_VALUE },
@@ -527,7 +528,7 @@ describe("property access chains + host calls", () => {
     }
 
     if (!fns.get("EngineContext.queryNearby")) {
-      fns.register("EngineContext.queryNearby", false, { exec: () => NIL_VALUE }, emptyCallDef);
+      fns.register(6105, "EngineContext.queryNearby", false, { exec: () => NIL_VALUE }, emptyCallDef);
     }
   });
 
@@ -1082,6 +1083,7 @@ describe("struct method calls", () => {
 
     if (!fns.get("Widget.getValue")) {
       fns.register(
+        6102,
         "Widget.getValue",
         false,
         {
@@ -1097,11 +1099,12 @@ describe("struct method calls", () => {
     }
 
     if (!fns.get("Widget.reset")) {
-      fns.register("Widget.reset", false, { exec: () => NIL_VALUE }, emptyCallDef);
+      fns.register(6106, "Widget.reset", false, { exec: () => NIL_VALUE }, emptyCallDef);
     }
 
     if (!fns.get("Widget.add")) {
       fns.register(
+        6103,
         "Widget.add",
         false,
         {
@@ -1117,6 +1120,7 @@ describe("struct method calls", () => {
 
     if (!fns.get("Widget.fetchData")) {
       fns.register(
+        6104,
         "Widget.fetchData",
         true,
         { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, _handleId: number) => {} },

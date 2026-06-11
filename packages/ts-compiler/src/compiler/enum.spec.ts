@@ -270,6 +270,7 @@ describe("enum value literals", () => {
           { key: "west", label: "West", value: "west" },
         ]),
         defaultKey: "north",
+        functionIds: { toString: 30104, toNumber: 30105, equalTo: 30106, notEqualTo: 30107 },
       });
     }
   });

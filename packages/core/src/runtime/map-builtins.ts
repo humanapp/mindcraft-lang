@@ -1,6 +1,7 @@
 import type { BrainServices } from "../brain/services";
 import { List, type ReadonlyList } from "../platform/list";
 import { TypeUtils } from "../platform/types";
+import { CoreFuncId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
 import { CoreTypeIds } from "./core-types";
 import { mkCallDef } from "./function-defs";
@@ -14,6 +15,7 @@ export function registerMapBuiltins(services: BrainServices) {
   const { functions, types } = services.runtime;
 
   functions.register(
+    CoreFuncId.MapKeys,
     "$$map_keys",
     false,
     {
@@ -41,6 +43,7 @@ export function registerMapBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MapValues,
     "$$map_values",
     false,
     {
@@ -61,6 +64,7 @@ export function registerMapBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MapSize,
     "$$map_size",
     false,
     {
@@ -73,6 +77,7 @@ export function registerMapBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.MapClear,
     "$$map_clear",
     false,
     {

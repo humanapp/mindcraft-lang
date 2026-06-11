@@ -56,7 +56,9 @@ function createHostSensorModule(moduleId: string, key: string): { module: Mindcr
       install(api): void {
         api.registerHostSensor({
           descriptor,
+          actionId: 3501,
           function: {
+            id: 4501,
             name: key,
             isAsync: false,
             fn: { exec: () => TRUE_VALUE },

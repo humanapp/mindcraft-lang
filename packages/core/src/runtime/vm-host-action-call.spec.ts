@@ -33,6 +33,7 @@ function registerSyncAction(
 ): HostActionBinding {
   const binding: HostActionBinding = {
     binding: "host",
+    id: 3201,
     descriptor: { key, kind: "actuator", callDef: mkCallDef({ type: "seq", items: [] }), isAsync: false },
     execSync: (_ctx, args) => fn(args),
   };
@@ -89,6 +90,7 @@ describe("HOST_ACTION_CALL dispatch", () => {
     const handles = new HandleTable(10);
     const binding: HostActionBinding = {
       binding: "host",
+      id: 3202,
       descriptor: { key: "asyncEcho", kind: "sensor", callDef: mkCallDef({ type: "seq", items: [] }), isAsync: true },
       execAsync: (_ctx, _args, handleId) => {
         handles.resolve(handleId, mkNumberValue(99));

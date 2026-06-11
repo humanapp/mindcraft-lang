@@ -904,8 +904,9 @@ export class VM implements IVM {
     const argc = ins.b ?? 0;
     const callSiteId = ins.c ?? 0;
 
-    if (fnId < 0 || fnId >= this.runtime.functions.size()) {
-      throw new Error(`HOST_CALL: function index ${fnId} out of bounds`);
+    const fnEntry = this.runtime.functions.getSyncById(fnId);
+    if (!fnEntry) {
+      throw new Error(`HOST_CALL: no sync host function registered under id ${fnId}`);
     }
 
     const stackSize = fiber.vstack.size();
@@ -916,7 +917,7 @@ export class VM implements IVM {
     this.bindExecutionContext(fiber, frame, callSiteId);
 
     const args = fiber.vstack.subview(stackSize - argc, argc);
-    const result = this.runtime.functions.getSyncById(fnId)!.fn.exec(fiber.executionContext, args);
+    const result = fnEntry.fn.exec(fiber.executionContext, args);
 
     for (let i = 0; i < argc; i++) {
       fiber.vstack.pop();
@@ -934,8 +935,9 @@ export class VM implements IVM {
     const argc = ins.b ?? 0;
     const callSiteId = ins.c ?? 0;
 
-    if (fnId < 0 || fnId >= this.runtime.functions.size()) {
-      throw new Error(`HOST_CALL_ASYNC: function index ${fnId} out of bounds`);
+    const fnEntry = this.runtime.functions.getAsyncById(fnId);
+    if (!fnEntry) {
+      throw new Error(`HOST_CALL_ASYNC: no async host function registered under id ${fnId}`);
     }
 
     const stackSize = fiber.vstack.size();
@@ -956,7 +958,7 @@ export class VM implements IVM {
 
     this.bindExecutionContext(fiber, frame, callSiteId);
 
-    this.runtime.functions.getAsyncById(fnId)!.fn.exec(fiber.executionContext, args, hid);
+    fnEntry.fn.exec(fiber.executionContext, args, hid);
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
     return undefined;

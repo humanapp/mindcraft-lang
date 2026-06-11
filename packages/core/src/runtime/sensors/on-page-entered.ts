@@ -1,8 +1,9 @@
+import { CoreHostActions } from "../abi-ids";
 import type { ExecutionContext, HostActionBinding } from "../context";
 import { getCallSiteState, setCallSiteState } from "../context";
 import { CoreTypeIds } from "../core-types";
 import { type ActionDescriptor, type BrainActionCallDef, type BrainActionCallSpec, mkCallDef } from "../function-defs";
-import { CoreSensorId, mkSensorTileId } from "../tile-ids";
+import { mkSensorTileId } from "../tile-ids";
 import { FALSE_VALUE, TRUE_VALUE, type Value } from "../value";
 
 const callSpec: BrainActionCallSpec = {
@@ -13,7 +14,7 @@ const callSpec: BrainActionCallSpec = {
 const callDef: BrainActionCallDef = mkCallDef(callSpec);
 
 const descriptor: ActionDescriptor = {
-  key: CoreSensorId.OnPageEntered,
+  key: CoreHostActions.OnPageEntered.key,
   kind: "sensor",
   callDef,
   isAsync: false,
@@ -44,13 +45,14 @@ function fnOnPageEntered(ctx: ExecutionContext): Value {
 const binding: HostActionBinding = {
   binding: "host",
   descriptor,
+  id: CoreHostActions.OnPageEntered.actionId,
   onPageEntered,
   execSync: fnOnPageEntered,
 };
 
 export default {
-  fnId: CoreSensorId.OnPageEntered,
-  tileId: mkSensorTileId(CoreSensorId.OnPageEntered),
+  key: CoreHostActions.OnPageEntered.key,
+  tileId: mkSensorTileId(CoreHostActions.OnPageEntered.key),
   isAsync: false,
   descriptor,
   binding,

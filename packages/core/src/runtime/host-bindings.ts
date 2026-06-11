@@ -94,12 +94,26 @@ export interface BrainActionResolver {
 
 /** Mutable registry of resolved actions keyed by `ActionKey`. */
 export interface IBrainActionRegistry extends BrainActionResolver {
+  /**
+   * Register a resolved action. Host bindings must carry an author-assigned
+   * stable `id`: a non-negative integer, unique across the registry's host
+   * actions, and inside the active registration owner's range. Bytecode
+   * bindings carry no id (they dispatch by program-local slot). Throws on
+   * a duplicate key or an invalid host-binding id.
+   */
   register(action: ResolvedAction): ResolvedAction;
+  /**
+   * Run `body` with host-binding registrations validated against `owner`'s
+   * id range: core `[0, TARGET_ACTION_ID_BASE)`, target
+   * `[TARGET_ACTION_ID_BASE, ...)`. The previous owner is restored when
+   * `body` returns or throws. The default owner is `target`.
+   */
+  withOwner<T>(owner: "core" | "target", body: () => T): T;
   getByKey(key: ActionKey): ResolvedAction | undefined;
   /**
-   * Resolve a registered action by the stable numeric id assigned at
-   * registration. Returns `undefined` when no action holds that id. Backs
-   * id-based host-action dispatch.
+   * Resolve a registered host action by its author-assigned stable id.
+   * Returns `undefined` when no action holds that id. Backs id-based
+   * host-action dispatch.
    */
   getById(id: number): ResolvedAction | undefined;
   size(): number;

@@ -144,6 +144,7 @@ export default Sensor({
           { key: "east", label: "East", value: "east" },
         ]),
         defaultKey: "north",
+        functionIds: { toString: 30204, toNumber: 30205, equalTo: 30206, notEqualTo: 30207 },
       });
     }
 

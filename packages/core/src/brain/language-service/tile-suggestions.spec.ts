@@ -1,3 +1,4 @@
+import { CoreHostActions } from "@mindcraft-lang/core/runtime";
 /**
  * Tile suggestion language service tests.
  *
@@ -56,10 +57,8 @@ import {
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   bag,
-  CoreActuatorId,
   CoreOpId,
   CoreParameterId,
-  CoreSensorId,
   CoreTypeIds,
   choice,
   conditional,
@@ -195,7 +194,7 @@ test("Test 3: Expression position, DO side, no type constraint", () => {
 // ---- Test 4: Action call context (switch-page actuator) ----
 
 test("Test 4: Action call context for switch-page actuator", () => {
-  const switchPageTileId = mkActuatorTileId(CoreActuatorId.SwitchPage);
+  const switchPageTileId = mkActuatorTileId(CoreHostActions.SwitchPage.key);
   const switchPageTile = services.edit.tiles.get(switchPageTileId) as BrainTileActuatorDef;
   assert.ok(switchPageTile !== undefined, "switch-page actuator exists in catalog");
 
@@ -292,7 +291,7 @@ test("Test 7: Complete value expr (literal) -> infix operators only", () => {
 // ---- Test 8: Complete actuator -> nothing ----
 
 test("Test 8: Complete actuator (all slots filled) -> nothing", () => {
-  const switchPageTileId = mkActuatorTileId(CoreActuatorId.SwitchPage);
+  const switchPageTileId = mkActuatorTileId(CoreHostActions.SwitchPage.key);
   const switchPageTile = services.edit.tiles.get(switchPageTileId) as BrainTileActuatorDef;
 
   if (switchPageTile) {
@@ -330,7 +329,7 @@ test("Test 8: Complete actuator (all slots filled) -> nothing", () => {
 // ---- Test 9: Parameter needing value (errorExpr) -> value tiles ----
 
 test("Test 9: Actuator with parameter needing value (errorExpr) -> value tiles", () => {
-  const restartPageTileId = mkActuatorTileId(CoreActuatorId.RestartPage);
+  const restartPageTileId = mkActuatorTileId(CoreHostActions.RestartPage.key);
   const restartPageTile = services.edit.tiles.get(restartPageTileId) as BrainTileActuatorDef;
 
   if (restartPageTile) {
@@ -393,6 +392,7 @@ test("Test 10: Integration -- parse [actuator, priority] -> suggest value tiles"
 
   const testCallDef = mkCallDef(bag(optional(param(testParamId))));
   const testFnEntry = services.runtime.functions.register(
+    4001,
     "test-move-10",
     false,
     { exec: () => VOID_VALUE },
@@ -570,6 +570,7 @@ describe("Replace operand/operator in binary expression", () => {
     services.edit.tiles.registerTileDef(testParamDef);
     const testCallDef = mkCallDef(bag(optional(param(testParamId))));
     const testFnEntry = services.runtime.functions.register(
+      4002,
       "test-move-15",
       false,
       { exec: () => VOID_VALUE },
@@ -698,7 +699,13 @@ describe("Parameter value expression chains", () => {
     testParamDef = new BrainTileParameterDef(id, CoreTypeIds.Number, { metadata: { label: "priority" } });
     services.edit.tiles.registerTileDef(testParamDef);
     const callDef = mkCallDef(bag(optional(param(id))));
-    const fnEntry = services.runtime.functions.register("test-move-18", false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(
+      4008,
+      "test-move-18",
+      false,
+      { exec: () => VOID_VALUE },
+      callDef
+    );
     testActuatorDef = new BrainTileActuatorDef("test-move-18", mkActionDescriptor("actuator", fnEntry), {
       metadata: { label: "move" },
     });
@@ -966,6 +973,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
       )
     );
     const richFnEntry = services.runtime.functions.register(
+      4003,
       "test-rich",
       false,
       { exec: () => VOID_VALUE },
@@ -1088,6 +1096,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
       )
     );
     const condFnEntry = services.runtime.functions.register(
+      4004,
       "test-cond",
       false,
       { exec: () => VOID_VALUE },
@@ -1190,6 +1199,7 @@ describe("Non-inline sensor operator suggestions", () => {
 
     const sensorCallDef = mkCallDef(choice(mod("test.modP"), mod("test.modQ")));
     const sensorFnEntry = services.runtime.functions.register(
+      4005,
       "test-sense",
       false,
       { exec: () => VOID_VALUE },
@@ -1268,6 +1278,7 @@ describe("Non-inline sensor operator suggestions", () => {
       )
     );
     const senseFnEntry = services.runtime.functions.register(
+      4006,
       "test-sense2",
       false,
       { exec: () => VOID_VALUE },
@@ -1465,7 +1476,13 @@ describe("Incomplete expression type constraints", () => {
   test("Test 35: [say] ['hi'] [+] -> suggests string-producing value tiles", () => {
     const anonStringSpec = param(CoreParameterId.AnonymousString, { name: "anonStr", required: true, anonymous: true });
     const sayCallDef = mkCallDef(bag(anonStringSpec));
-    const sayFnEntry = services.runtime.functions.register("test-say", false, { exec: () => VOID_VALUE }, sayCallDef);
+    const sayFnEntry = services.runtime.functions.register(
+      4009,
+      "test-say",
+      false,
+      { exec: () => VOID_VALUE },
+      sayCallDef
+    );
     const sayDef = new BrainTileActuatorDef("test-say", mkActionDescriptor("actuator", sayFnEntry), {
       metadata: { label: "say" },
     });
@@ -1576,6 +1593,7 @@ describe("Incomplete expression type constraints", () => {
     const anonNumSpec = param(CoreParameterId.AnonymousNumber, { name: "anonNum", required: true, anonymous: true });
     const numActCallDef = mkCallDef(bag(anonNumSpec));
     const numActFnEntry = services.runtime.functions.register(
+      4007,
       "test-numact",
       false,
       { exec: () => VOID_VALUE },
@@ -1636,14 +1654,7 @@ describe("Accessor / struct field suggestions", () => {
     posVarDef = new BrainTileVariableDef("test.posVar", "my_position", posStructTypeId, "var-pos-1");
     services.edit.tiles.registerTileDef(posVarDef);
 
-    services.edit.operatorOverloads.binary(
-      CoreOpId.Assign,
-      posStructTypeId,
-      posStructTypeId,
-      posStructTypeId,
-      { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => NIL_VALUE },
-      false
-    );
+    services.edit.operatorOverloads.binaryTypeOnly(CoreOpId.Assign, posStructTypeId, posStructTypeId, posStructTypeId);
   });
 
   test("Test 38: Struct variable -> accessor tiles suggested", () => {
@@ -1997,7 +2008,7 @@ describe("Sub-expression filtering", () => {
 
   test("Test 51: [not] [on-page-entered] -> UnaryOp(NOT, SensorExpr)", () => {
     const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
-    const sensorDef = services.edit.tiles.get(mkSensorTileId(CoreSensorId.OnPageEntered)) as BrainTileSensorDef;
+    const sensorDef = services.edit.tiles.get(mkSensorTileId(CoreHostActions.OnPageEntered.key)) as BrainTileSensorDef;
 
     const tiles = List.from<IBrainTileDef>([notOpDef, sensorDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -2007,7 +2018,7 @@ describe("Sub-expression filtering", () => {
       assert.equal(expr.operator.op.id, CoreOpId.Not);
       assert.equal(expr.operand.kind, "sensor");
       if (expr.operand.kind === "sensor") {
-        assert.equal(expr.operand.tileDef.sensorId, CoreSensorId.OnPageEntered);
+        assert.equal(expr.operand.tileDef.sensorId, CoreHostActions.OnPageEntered.key);
       }
     }
   });
@@ -2019,7 +2030,7 @@ describe("Sub-expression filtering", () => {
 
     const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
 
-    const sensorTileId = mkSensorTileId(CoreSensorId.OnPageEntered);
+    const sensorTileId = mkSensorTileId(CoreHostActions.OnPageEntered.key);
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === sensorTileId) !== undefined,
       "[not] _ should include non-inline sensors"
@@ -2037,7 +2048,7 @@ describe("Sub-expression filtering", () => {
 
   test("Test 53: Complete [not] [on-page-entered] -> Boolean infix operators", () => {
     const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
-    const sensorDef = services.edit.tiles.get(mkSensorTileId(CoreSensorId.OnPageEntered)) as BrainTileSensorDef;
+    const sensorDef = services.edit.tiles.get(mkSensorTileId(CoreHostActions.OnPageEntered.key)) as BrainTileSensorDef;
 
     const tiles = List.from<IBrainTileDef>([notOpDef, sensorDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -2069,7 +2080,13 @@ describe("Sub-expression filtering", () => {
     services.edit.tiles.registerTileDef(modFarDef);
 
     const callDef54 = mkCallDef(bag(choice(mod("test.near54"), mod("test.far54"))));
-    const fnEntry54 = services.runtime.functions.register("test-see54", false, { exec: () => TRUE_VALUE }, callDef54);
+    const fnEntry54 = services.runtime.functions.register(
+      4010,
+      "test-see54",
+      false,
+      { exec: () => TRUE_VALUE },
+      callDef54
+    );
     const seeDef = new BrainTileSensorDef("test-see54", mkActionDescriptor("sensor", fnEntry54, CoreTypeIds.Boolean), {
       placement: TilePlacement.WhenSide,
       metadata: { label: "see" },
@@ -2119,7 +2136,7 @@ describe("Sub-expression filtering", () => {
 
   test("Test 56: Replace operand in [not] [sensor] -> expression tiles including sensors", () => {
     const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
-    const sensorDef = services.edit.tiles.get(mkSensorTileId(CoreSensorId.OnPageEntered)) as BrainTileSensorDef;
+    const sensorDef = services.edit.tiles.get(mkSensorTileId(CoreHostActions.OnPageEntered.key)) as BrainTileSensorDef;
 
     const tiles = List.from<IBrainTileDef>([notOpDef, sensorDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -2162,7 +2179,7 @@ describe("Sub-expression filtering", () => {
 
     const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
 
-    const sensorTileId = mkSensorTileId(CoreSensorId.OnPageEntered);
+    const sensorTileId = mkSensorTileId(CoreHostActions.OnPageEntered.key);
     const hasNonInlineSensor =
       listFind(result.exact, (s) => s.tileDef.tileId === sensorTileId) !== undefined ||
       listFind(result.withConversion, (s) => s.tileDef.tileId === sensorTileId) !== undefined;
@@ -2316,14 +2333,7 @@ describe("Struct-specific operator and accessor behavior", () => {
     posVarDef = new BrainTileVariableDef("test.posVar62", "my_position", posStructTypeId, "var-pos-62");
     services.edit.tiles.registerTileDef(posVarDef);
 
-    services.edit.operatorOverloads.binary(
-      CoreOpId.Assign,
-      posStructTypeId,
-      posStructTypeId,
-      posStructTypeId,
-      { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => NIL_VALUE },
-      false
-    );
+    services.edit.operatorOverloads.binaryTypeOnly(CoreOpId.Assign, posStructTypeId, posStructTypeId, posStructTypeId);
   });
 
   test("Test 62: Struct variable with operatorOverloads -> assign + accessors", () => {
@@ -2658,7 +2668,13 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
     const anonStr = param(CoreParameterId.AnonymousString, { anonymous: true });
     const durationParam = param(durationId);
     const callDef = mkCallDef(bag(optional(anonStr), optional(durationParam)));
-    const fnEntry = services.runtime.functions.register("test-say-78", false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(
+      4011,
+      "test-say-78",
+      false,
+      { exec: () => VOID_VALUE },
+      callDef
+    );
     sayActuatorDef = new BrainTileActuatorDef("test-say-78", mkActionDescriptor("actuator", fnEntry), {
       metadata: { label: "say" },
       placement: TilePlacement.DoSide,
@@ -2981,7 +2997,13 @@ describe("Replace repeated modifier and anonymous slot value", () => {
     services.edit.tiles.registerTileDef(anonNumParamDef);
 
     const callDef75 = mkCallDef(bag(param(anonNumParamId, { anonymous: true })));
-    const fnEntry75 = services.runtime.functions.register("test-anon75", false, { exec: () => VOID_VALUE }, callDef75);
+    const fnEntry75 = services.runtime.functions.register(
+      4012,
+      "test-anon75",
+      false,
+      { exec: () => VOID_VALUE },
+      callDef75
+    );
     const actuatorDef75 = new BrainTileActuatorDef("test-anon75", mkActionDescriptor("actuator", fnEntry75), {
       metadata: { label: "anon75" },
     });
@@ -3030,7 +3052,7 @@ describe("Replace repeated modifier and anonymous slot value", () => {
     // outputs String. The parser greedily assigns the page to AnonNumber (first
     // choice). When replacing, the system should still recognize String as an
     // exact match (via the AnonString sibling), not a conversion.
-    const switchPageTileId = mkActuatorTileId(CoreActuatorId.SwitchPage);
+    const switchPageTileId = mkActuatorTileId(CoreHostActions.SwitchPage.key);
     const switchPageTile = services.edit.tiles.get(switchPageTileId) as BrainTileActuatorDef;
     assert.ok(switchPageTile, "switch-page actuator must exist");
 
@@ -3122,7 +3144,13 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
         optional(choice(repeated(mod("test.near77"), { max: 3 }), repeated(mod("test.far77"), { max: 3 })))
       )
     );
-    const seeFnEntry = services.runtime.functions.register("test-see77", false, { exec: () => TRUE_VALUE }, seeCallDef);
+    const seeFnEntry = services.runtime.functions.register(
+      4013,
+      "test-see77",
+      false,
+      { exec: () => TRUE_VALUE },
+      seeCallDef
+    );
     const seeDef77 = new BrainTileSensorDef(
       "test-see77",
       mkActionDescriptor("sensor", seeFnEntry, CoreTypeIds.Boolean),
