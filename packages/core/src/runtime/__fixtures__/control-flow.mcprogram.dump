@@ -1,0 +1,36 @@
+mcprogram-dump 1
+profile 0
+precision f32
+strings 0
+types 0
+numbers 0
+values 1
+  value 0 nil
+functions 2
+  function 0 params 0 locals 0 ctx - code 8
+    instr 46
+    instr a 0
+    instr 15 4
+    instr 48
+    instr 2c 0 1 0
+    instr 49
+    instr 47 fffffffa
+    instr 1f
+  function 1 params 0 locals 0 ctx - code 5
+    instr 3c 3
+    instr 0 0
+    instr 3e
+    instr 3d
+    instr 1f
+vars 1
+  var 0 "enabled"
+actions 1
+  action 0 entry 1 init - activate - deactivate -
+rulefuncs 1
+  rulefunc 0 0
+ruleancestors 1
+  ruleancestor 0 0 0
+pages 1
+  page 0 index 0 id "PAGEID0001" roots 1 callsites 1
+    root 0
+    callsite host 0 action 0

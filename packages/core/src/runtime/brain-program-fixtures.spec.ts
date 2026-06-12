@@ -1,14 +1,19 @@
 /**
- * Committed golden `.mcprogram` (JSON) and `.mcprogram.bin` (binary) reference
- * vectors for the linked brain program codec.
+ * Committed golden `.mcprogram` (JSON), `.mcprogram.bin` (binary), and
+ * `.mcprogram.dump` (canonical dump) reference vectors for the linked brain
+ * program codec.
  *
- * Each fixture pairs a canonical JSON golden with its binary encoding. The JSON
- * golden is the canonical serialization of an authored program; the binary
- * golden is derived from that JSON. Per fixture the test (1) writes either
- * golden if it is missing, (2) asserts both are byte-stable against a fresh
- * deterministic build, and (3) decodes the binary and asserts it matches the
- * f32-rounded, lean-normalized JSON. The committed files double as portable
- * decode vectors for a separately-built (e.g. C++) VM.
+ * Each fixture pairs a canonical JSON golden with its binary encoding and the
+ * canonical program dump of the decoded binary. The JSON golden is the
+ * canonical serialization of an authored program; the binary golden is
+ * derived from that JSON; the dump golden is derived from the decoded binary.
+ * Per fixture the test (1) writes any golden that is missing, (2) asserts all
+ * three are byte-stable against a fresh deterministic build, and (3) decodes
+ * the binary and asserts it matches the f32-rounded, lean-normalized JSON.
+ * The committed files double as portable decode vectors for a
+ * separately-built (e.g. C++) VM: such a VM decodes the `.mcprogram.bin` and
+ * byte-compares its own canonical dump against the committed
+ * `.mcprogram.dump`.
  */
 
 import assert from "node:assert/strict";
@@ -28,6 +33,7 @@ import {
   linkedBrainProgramFromBytes,
   linkedBrainProgramFromJson,
   linkedBrainProgramToBytes,
+  linkedBrainProgramToCanonicalDump,
   linkedBrainProgramToJson,
   NativeType,
   type NumberPrecision,
@@ -304,9 +310,10 @@ function fixturePath(relative: string): string {
 }
 
 for (const fixture of FIXTURES) {
-  test(`${fixture.name}: JSON and binary goldens are reproducible and round-trip`, () => {
+  test(`${fixture.name}: JSON, binary, and dump goldens are reproducible and round-trip`, () => {
     const jsonPath = fixturePath(`${fixture.name}.mcprogram`);
     const binPath = fixturePath(`${fixture.name}.mcprogram.bin`);
+    const dumpPath = fixturePath(`${fixture.name}.mcprogram.dump`);
 
     const canonicalJson = linkedBrainProgramToJson(linkedBrainProgramFromJson(fixture.program));
     const jsonText = `${JSON.stringify(canonicalJson, null, 2)}\n`;
@@ -333,6 +340,17 @@ for (const fixture of FIXTURES) {
     });
     assert.equal(decoded.profileId, PROFILE_ID);
     assert.deepEqual(linkedBrainProgramToJson(decoded.program), leanNormalize(committedJson, PRECISION));
+
+    const dumpText = linkedBrainProgramToCanonicalDump(decoded.program, {
+      profileId: decoded.profileId,
+      precision: PRECISION,
+      typeRegistry,
+    });
+    if (!existsSync(dumpPath)) {
+      writeFileSync(dumpPath, dumpText);
+    }
+    const committedDumpText = readFileSync(dumpPath, "utf8");
+    assert.equal(committedDumpText, dumpText, `${fixture.name}.mcprogram.dump is not byte-stable`);
   });
 }
 

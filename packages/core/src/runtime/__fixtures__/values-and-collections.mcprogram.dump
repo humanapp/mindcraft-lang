@@ -1,0 +1,49 @@
+mcprogram-dump 1
+profile 0
+precision f32
+strings 0
+types a
+  type 0 atom 3
+  type 1 atom 5
+  type 2 atom 4
+  type 3 list 0
+  type 4 map 1 1
+  type 5 union 2 0 2
+  type 6 function 1 0 0
+  type 7 nullable 0
+  type 8 struct "/fixture.ts::Point" slots 2
+  type 9 enum "/fixture.ts::Color" symbols 2 "Red" "Green"
+numbers 0
+values e
+  value 0 unknown
+  value 1 void
+  value 2 nil
+  value 3 bool 1
+  value 4 bool 0
+  value 5 number 42280000
+  value 6 number c0e00000
+  value 7 string "hello"
+  value 8 enum 9 0
+  value 9 list 3 2
+    number 3f800000
+    number 40000000
+  value a map 4 2
+    entry number 3f800000
+      string "one"
+    entry string "k"
+      number 41100000
+  value b struct 8 2
+    number 40400000
+    number 40800000
+  value c function 2 captures -
+  value d function 3 captures 2
+    number 40a00000
+    string "cap"
+functions 1
+  function 0 params 0 locals 0 ctx - code 4
+    instr 0 0
+    instr 0 d
+    instr 1
+    instr 1f
+vars 0
+pages 0

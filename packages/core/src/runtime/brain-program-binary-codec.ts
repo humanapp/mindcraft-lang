@@ -309,7 +309,7 @@ export function linkedBrainProgramToBytes(
   const precision = options.precision;
   const linkedProgram = program.program;
   const types = linkedProgram.types ?? List.empty<ProgramTypeEntry>();
-  const encodeTypes = buildEncodeTypeContext(types, options.typeRegistry);
+  const encodeTypes = buildProgramTypeIndex(types, options.typeRegistry);
 
   let presence = 0;
   if (linkedProgram.actions !== undefined) presence |= PRESENCE_ACTS;
@@ -345,15 +345,28 @@ export function linkedBrainProgramToBytes(
 }
 
 /**
- * Type-resolution context for the encoder: maps a value's typeId string to
- * its type-table index, and an enum value's symbol key to its ordinal.
+ * Resolves a value's typeId string to its program type-table index, and an
+ * enum value's symbol key to its ordinal. Both lookups throw on a typeId or
+ * symbol the type table (or, for atom enum types, the registry) does not
+ * carry.
  */
-interface EncodeTypeContext {
+export interface ProgramTypeIndex {
   typeIdxOf(typeId: TypeId): number;
   enumOrdinalOf(typeId: TypeId, key: string): number;
 }
 
-function buildEncodeTypeContext(types: List<ProgramTypeEntry>, registry: ITypeRegistry | undefined): EncodeTypeContext {
+/**
+ * Builds a {@link ProgramTypeIndex} over a program's type table. The registry
+ * is required only to resolve symbol ordinals of atom (core/target) enum
+ * types; program-local enum entries resolve through their own symbol lists.
+ *
+ * @param types - The program's type table.
+ * @param registry - Type registry for atom enum symbol resolution.
+ */
+export function buildProgramTypeIndex(
+  types: List<ProgramTypeEntry>,
+  registry: ITypeRegistry | undefined
+): ProgramTypeIndex {
   const indexByTypeId = new Dict<string, number>();
   for (let i = 0; i < types.size(); i++) {
     indexByTypeId.set(types.get(i)!.typeId, i);
@@ -545,7 +558,7 @@ function writeCvalSection(
   s: MemoryStream,
   values: List<Value>,
   interner: StringInterner,
-  types: EncodeTypeContext,
+  types: ProgramTypeIndex,
   precision: NumberPrecision
 ): void {
   s.writeVarUint(values.size());
@@ -558,7 +571,7 @@ function writeValue(
   s: MemoryStream,
   value: Value,
   interner: StringInterner,
-  types: EncodeTypeContext,
+  types: ProgramTypeIndex,
   precision: NumberPrecision
 ): void {
   if (value.t === "handle" || value.t === "err") {
