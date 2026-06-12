@@ -13,9 +13,15 @@ function num(args: ReadonlyList<Value>, index: number): number {
   return (args.get(index) as NumberValue).v;
 }
 
-/** Register the built-in math functions on `services.runtime.functions`. */
+/**
+ * Register the built-in math functions on `services.runtime.functions`.
+ * Transcendental and square-root bodies capture `services.app.numerics`
+ * and compute results at the profile's precision; the exact builtins
+ * (abs, ceil, floor, round, min, max) stay on the platform math ops.
+ */
 export function registerMathBuiltins(services: BrainServices) {
   const { functions } = services.runtime;
+  const numerics = services.app.numerics;
 
   functions.register(
     CoreFuncId.MathAbs,
@@ -32,7 +38,7 @@ export function registerMathBuiltins(services: BrainServices) {
     "$$math_acos",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(MathOps.acos(num(args, 0))),
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(numerics.acos(num(args, 0))),
     },
     mathCallDef
   );
@@ -42,7 +48,7 @@ export function registerMathBuiltins(services: BrainServices) {
     "$$math_asin",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(MathOps.asin(num(args, 0))),
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(numerics.asin(num(args, 0))),
     },
     mathCallDef
   );
@@ -52,7 +58,7 @@ export function registerMathBuiltins(services: BrainServices) {
     "$$math_atan",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(MathOps.atan(num(args, 0))),
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(numerics.atan(num(args, 0))),
     },
     mathCallDef
   );
@@ -63,7 +69,7 @@ export function registerMathBuiltins(services: BrainServices) {
     false,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
-        mkNumberValue(MathOps.atan2(num(args, 0), num(args, 1))),
+        mkNumberValue(numerics.atan2(num(args, 0), num(args, 1))),
     },
     mathCallDef
   );
@@ -83,7 +89,7 @@ export function registerMathBuiltins(services: BrainServices) {
     "$$math_cos",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(MathOps.cos(num(args, 0))),
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(numerics.cos(num(args, 0))),
     },
     mathCallDef
   );
@@ -93,7 +99,7 @@ export function registerMathBuiltins(services: BrainServices) {
     "$$math_exp",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(MathOps.exp(num(args, 0))),
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(numerics.exp(num(args, 0))),
     },
     mathCallDef
   );
@@ -113,7 +119,7 @@ export function registerMathBuiltins(services: BrainServices) {
     "$$math_log",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(MathOps.log(num(args, 0))),
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(numerics.log(num(args, 0))),
     },
     mathCallDef
   );
@@ -146,7 +152,7 @@ export function registerMathBuiltins(services: BrainServices) {
     false,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
-        mkNumberValue(MathOps.pow(num(args, 0), num(args, 1))),
+        mkNumberValue(numerics.pow(num(args, 0), num(args, 1))),
     },
     mathCallDef
   );
@@ -176,7 +182,7 @@ export function registerMathBuiltins(services: BrainServices) {
     "$$math_sin",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(MathOps.sin(num(args, 0))),
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(numerics.sin(num(args, 0))),
     },
     mathCallDef
   );
@@ -186,7 +192,7 @@ export function registerMathBuiltins(services: BrainServices) {
     "$$math_sqrt",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(MathOps.sqrt(num(args, 0))),
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(numerics.sqrt(num(args, 0))),
     },
     mathCallDef
   );
@@ -196,7 +202,7 @@ export function registerMathBuiltins(services: BrainServices) {
     "$$math_tan",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(MathOps.tan(num(args, 0))),
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => mkNumberValue(numerics.tan(num(args, 0))),
     },
     mathCallDef
   );

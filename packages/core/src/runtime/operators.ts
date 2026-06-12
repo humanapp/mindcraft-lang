@@ -397,11 +397,14 @@ export function safeStrCompare(args: ReadonlyList<Value>, cmp: (a: string, b: st
  * Registers all core operators with their type-specific overloads.
  * This includes logical (and, or, not), arithmetic (+, -, *, /, negate),
  * comparison (<, <=, >, >=, ==, !=), and assignment operators for Boolean, Number, and String types.
+ * Numeric exec bodies capture `services.app.numerics` and compute results
+ * at the profile's precision.
  * Note: Assignment is special-cased in the compiler and is a no-op at runtime. The overload is registered for the type system.
  */
 export function registerCoreOperators(services: BrainServices) {
   const operatorTable = services.runtime.operatorTable;
   const operatorOverloads = services.edit.operatorOverloads;
+  const numerics = services.app.numerics;
 
   operatorTable.add({ id: CoreOpId.And, parse: Precedence[CoreOpId.And] });
   operatorTable.add({ id: CoreOpId.Or, parse: Precedence[CoreOpId.Or] });
@@ -486,7 +489,9 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreFuncId.OpAddNumber,
-    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => a + b) },
+    {
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => numerics.round(a + b)),
+    },
     false
   );
   operatorOverloads.binary(
@@ -495,7 +500,9 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreFuncId.OpSubtractNumber,
-    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => a - b) },
+    {
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => numerics.round(a - b)),
+    },
     false
   );
   operatorOverloads.binary(
@@ -504,7 +511,9 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreFuncId.OpMultiplyNumber,
-    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => a * b) },
+    {
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => numerics.round(a * b)),
+    },
     false
   );
   operatorOverloads.binary(
@@ -521,7 +530,7 @@ export function registerCoreOperators(services: BrainServices) {
           if (b === 0) {
             return 0 / 0;
           }
-          return a / b;
+          return numerics.round(a / b);
         }),
     },
     false
@@ -538,7 +547,7 @@ export function registerCoreOperators(services: BrainServices) {
           if (b === 0) {
             return 0 / 0;
           }
-          return a % b;
+          return numerics.round(a % b);
         }),
     },
     false
@@ -549,7 +558,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreFuncId.OpPowerNumber,
-    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.pow(a, b)) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => numerics.pow(a, b)) },
     false
   );
   operatorOverloads.unary(
@@ -557,7 +566,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreFuncId.OpNegateNumber,
-    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumUnary(args, (a) => -a) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumUnary(args, (a) => numerics.round(-a)) },
     false
   );
 
@@ -568,7 +577,8 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreFuncId.OpBitwiseAndNumber,
     {
-      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.bitAnd(a, b)),
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
+        safeNumBinary(args, (a, b) => numerics.round(MathOps.bitAnd(a, b))),
     },
     false
   );
@@ -578,7 +588,10 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreFuncId.OpBitwiseOrNumber,
-    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.bitOr(a, b)) },
+    {
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
+        safeNumBinary(args, (a, b) => numerics.round(MathOps.bitOr(a, b))),
+    },
     false
   );
   operatorOverloads.binary(
@@ -588,7 +601,8 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreFuncId.OpBitwiseXorNumber,
     {
-      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.bitXor(a, b)),
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
+        safeNumBinary(args, (a, b) => numerics.round(MathOps.bitXor(a, b))),
     },
     false
   );
@@ -597,7 +611,10 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreFuncId.OpBitwiseNotNumber,
-    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumUnary(args, (a) => MathOps.bitNot(a)) },
+    {
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
+        safeNumUnary(args, (a) => numerics.round(MathOps.bitNot(a))),
+    },
     false
   );
   operatorOverloads.binary(
@@ -608,7 +625,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreFuncId.OpLeftShiftNumber,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
-        safeNumBinary(args, (a, b) => MathOps.leftShift(a, b)),
+        safeNumBinary(args, (a, b) => numerics.round(MathOps.leftShift(a, b))),
     },
     false
   );
@@ -620,7 +637,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreFuncId.OpRightShiftNumber,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
-        safeNumBinary(args, (a, b) => MathOps.rightShift(a, b)),
+        safeNumBinary(args, (a, b) => numerics.round(MathOps.rightShift(a, b))),
     },
     false
   );

@@ -2154,17 +2154,26 @@ export class VM implements IVM {
 
 /** Tunables for {@link FiberScheduler}. */
 export interface SchedulerConfig {
-  maxFibersPerTick: number;
+  /** Instruction budget granted to each fiber's slice of a tick. */
   defaultBudget: number;
+  /**
+   * Instruction budget granted to a page-lifecycle hook fiber. Hook fibers
+   * run to completion outside the tick loop via a direct `runFiber` call.
+   */
+  hookBudget: number;
   autoGcHandles: boolean;
-  /** Maximum number of fibers tracked by the scheduler at any one time. */
+  /**
+   * Maximum number of fibers tracked by the scheduler at any one time.
+   * Checked at spawn; exceeding it throws an {@link OverflowError}, which
+   * surfaces as a `StackOverflow` fault when the spawn came from bytecode.
+   */
   maxFibers: number;
 }
 
 /** Default values for {@link SchedulerConfig}. */
 export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
-  maxFibersPerTick: 64,
   defaultBudget: 1000,
+  hookBudget: 10000,
   autoGcHandles: true,
   maxFibers: 10000,
 };
@@ -2248,11 +2257,19 @@ export class FiberScheduler implements IFiberScheduler {
     }
   }
 
+  /**
+   * Executes one round: every fiber in the runnable queue at entry receives
+   * exactly one `defaultBudget` slice, in FIFO order. Fibers enqueued while
+   * the round runs (spawns, `YIELD` or budget-exhaustion re-enqueues, handle
+   * resumes) stay queued and run in the next tick.
+   *
+   * @returns Number of fibers that received a slice this tick.
+   */
   tick(): number {
     let executed = 0;
-    const maxFibers = this.config.maxFibersPerTick;
+    const roundSize = this.runQueue.size();
 
-    while (this.runQueue.size() > 0 && executed < maxFibers) {
+    for (let i = 0; i < roundSize; i++) {
       const fiberId = this.runQueue.shift()!;
       const fiber = this.getFiber(fiberId);
 

@@ -2,8 +2,9 @@
 
 The implementation contract shared between the TypeScript reference VM
 (`packages/core/src/runtime/vm.ts`) and the eventual C++ MCU
-port. Covers opcode set, operand semantics, value model, calling
-convention, error model, feature flags, and resource limits. Does
+port. Covers opcode set, operand semantics, value model, numeric
+semantics, calling convention, fiber scheduling, error model, feature
+flags, and resource limits. Does
 _not_ cover wire format; the
 [Binary format appendix](#binary-format-appendix) is reserved for the
 MCU binary layout once that container format is specified.
@@ -551,9 +552,10 @@ records its resume PC, stack height, and frame depth; the scheduler
 resumes the fiber when the handle completes.
 
 `YIELD` is a cooperative suspension point that does not allocate a
-handle: the fiber transitions to `YIELDED` and the scheduler picks
-another runnable fiber. The fiber resumes at the next instruction
-on its next scheduled turn.
+handle: the fiber's slice ends and the scheduler re-enqueues it.
+Ticks are rounds (see [Fiber scheduling](#fiber-scheduling)), so the
+fiber resumes at the next instruction on the **next tick**, never
+later in the same tick.
 
 Both opcodes require the fiber to be suspendable (i.e. not running
 inside a non-suspendable host frame). Use in a non-suspendable
@@ -1131,6 +1133,87 @@ instance behaves identically to a fresh brain: every
 `initializerFuncId` runs again on first activation, and every host
 hook re-binds against freshly allocated host state. Implementations
 must not leak callsite state across a shutdown / startup boundary.
+
+---
+
+## Numeric semantics and profile precision
+
+Brain-observable numbers are computed at the **device profile's
+precision**: f64 (native double) or f32 (IEEE-754 binary32). The
+selection is a `ProfileNumerics` instance
+(`packages/core/src/runtime/profile-numerics.ts`) chosen once at
+environment construction (`AppServices.numerics`) and captured by the
+operator, conversion, and math-builtin exec bodies at registration.
+There is no ambient or per-call selection; environments with
+different precisions coexist in one process.
+
+VM-internal mechanics are profile-invariant: operand-stack indexing,
+list/map index coercion, codec encoding, and scheduler bookkeeping do
+not vary with the profile. Only host-function results that a brain
+can observe go through `ProfileNumerics`.
+
+The f32 rules model a single-precision FPU (e.g. the M4F) bit-exactly:
+
+- **Result rounding.** Every numeric operator result is rounded to the
+  nearest binary32 value (`Math.fround` semantics in the TS reference;
+  native f32 arithmetic on a device). For `+ - * / %` and `sqrt` on
+  f32-representable inputs, rounding the double-precision result is
+  provably the correctly-rounded f32 result, so the TS reference and
+  native f32 hardware agree bit-for-bit. A result whose magnitude
+  exceeds the f32 range rounds to an infinity, matching hardware
+  overflow.
+- **Bitwise and shift ops** keep i32/ToInt32 coercion semantics
+  (precision-independent mechanics), and the i32 result is then stored
+  at the profile's precision -- at f32, a result needing more than 24
+  mantissa bits rounds.
+- **Invalid-operand conventions are unchanged by precision**: NaN
+  operands collapse arithmetic to `nil` and comparisons to `false`;
+  `div` / `mod` by zero produce `nil`.
+- **Constant pools are already profile-rounded** by the binary codec
+  (the `.mcprogram` is profile-tagged and an f32 program never carries
+  f64 numeric entries), so constants need no runtime rounding.
+
+The transcendental slots (`pow`, `sin`, ...), `formatNumber`, and
+`parseNumber` are **not yet pinned**: until the device reference
+implementations are chosen, the f32 instance delegates to the host's
+double-precision math and rounds numeric results to f32. Their
+low-order result bits are therefore not yet part of the cross-VM
+parity surface; result rounding, basic arithmetic, `sqrt`, and the
+invalid-operand conventions are.
+
+---
+
+## Fiber scheduling
+
+Scheduler behavior is observable (it orders side effects from
+different fibers), so it is part of the contract. Conforming VMs
+reproduce it exactly.
+
+- **FIFO run queue.** Runnable fibers are dispatched in enqueue
+  order. A fiber id appears at most once in the queue.
+- **A tick is a round.** `FiberScheduler.tick()` snapshots the
+  runnable queue at entry and gives every fiber in the snapshot
+  exactly one budget slice (`instrBudget = defaultBudget`). Anything
+  enqueued while the round runs -- a new spawn, a `YIELD` or
+  budget-exhaustion re-enqueue, a handle-completion resume -- joins
+  the **next** round. There is no per-tick invocation cap: every
+  top-level rule on the active page evaluates every think by
+  construction, and `YIELD` deterministically resumes on the next
+  tick. Per-tick work is bounded by `liveFibers x defaultBudget`.
+- **Budgets are profile-pinned.** `defaultBudget` (TS default 1000)
+  is the per-slice instruction budget. `hookBudget` (TS default
+  10000) is the budget for page-lifecycle hook fibers, which run to
+  completion via a direct `runFiber` call outside the tick loop and
+  may not suspend. A device profile pins both values and the device
+  build mirrors them as build constants; they are not free tuning
+  knobs.
+- **Rule respawn.** Completed **and faulted** root-rule fibers
+  respawn on the next think; a fault kills the fiber, not the rule.
+- **`maxFibers` is a count cap on concurrently live fibers**, checked
+  at spawn. Exhaustion is a loud, deterministic fault -- an
+  `OverflowError` from a host-side `spawn`/`addFiber`, surfacing as a
+  `StackOverflow` fault on the spawning fiber when the spawn came
+  from bytecode (`ACTION_CALL_ASYNC`) -- never a silent skip.
 
 ---
 

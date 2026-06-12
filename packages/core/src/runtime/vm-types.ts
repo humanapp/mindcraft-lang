@@ -519,7 +519,9 @@ export interface IFiberScheduler extends Scheduler {
   cancel(fiberId: number): void;
 
   /**
-   * Execute one scheduler tick, running fibers until budget exhausted
+   * Execute one scheduler tick: every fiber runnable at tick entry gets
+   * exactly one budget slice; fibers enqueued during the tick run in the
+   * next tick.
    * @returns Number of fibers executed in this tick
    */
   tick(): number;

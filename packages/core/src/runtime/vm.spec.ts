@@ -1826,13 +1826,16 @@ describe("VM -- action calls", () => {
       },
     });
     const scheduler = new FiberScheduler(vm, {
-      maxFibersPerTick: 64,
       defaultBudget: 100,
       autoGcHandles: true,
     });
     rootFiberId = scheduler.spawn(0, List.empty(), mkCtx());
 
-    scheduler.tick();
+    // Round-based ticks: the child fiber spawned by ACTION_CALL_ASYNC, its
+    // YIELD resume, and the root's handle resume each land in a later round.
+    for (let i = 0; i < 4; i++) {
+      scheduler.tick();
+    }
 
     const rootFiber = scheduler.getFiber(rootFiberId);
     assert.ok(rootFiber !== undefined, "root fiber should still be tracked until gc");
@@ -2926,7 +2929,7 @@ describe("FiberScheduler", () => {
   test("spawn creates a runnable fiber and tick executes it", () => {
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
     const vm = new VM(prog, toVmServices(services));
-    const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 10, defaultBudget: 1000, autoGcHandles: true });
+    const scheduler = new FiberScheduler(vm, { defaultBudget: 1000, autoGcHandles: true });
 
     const fiberId = scheduler.spawn(0, List.empty(), mkCtx());
     const fiber = scheduler.getFiber(fiberId);
@@ -2944,7 +2947,7 @@ describe("FiberScheduler", () => {
       [NIL_VALUE]
     );
     const vm = new VM(prog, toVmServices(services));
-    const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 10, defaultBudget: 1000, autoGcHandles: true });
+    const scheduler = new FiberScheduler(vm, { defaultBudget: 1000, autoGcHandles: true });
 
     const fiberId = scheduler.spawn(0, List.empty(), mkCtx());
     scheduler.cancel(fiberId);
@@ -2956,7 +2959,7 @@ describe("FiberScheduler", () => {
   test("gc removes completed/faulted/cancelled fibers", () => {
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
     const vm = new VM(prog, toVmServices(services));
-    const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 64, defaultBudget: 1000, autoGcHandles: true });
+    const scheduler = new FiberScheduler(vm, { defaultBudget: 1000, autoGcHandles: true });
 
     scheduler.spawn(0, List.empty(), mkCtx());
     scheduler.spawn(0, List.empty(), mkCtx());
@@ -2983,7 +2986,7 @@ describe("FiberScheduler", () => {
     );
 
     const vm = new VM(prog, toVmServices(services), { handles });
-    const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 64, defaultBudget: 1000, autoGcHandles: true });
+    const scheduler = new FiberScheduler(vm, { defaultBudget: 1000, autoGcHandles: true });
 
     const fiberId = scheduler.spawn(0, List.empty(), mkCtx());
     scheduler.tick();
@@ -3146,7 +3149,6 @@ describe("VM -- overflow faults", () => {
     const prog = mkProgram([mkFunc([{ op: Op.JMP, a: 0 }])]);
     const vm = new VM(prog, toVmServices(services));
     const scheduler = new FiberScheduler(vm, {
-      maxFibersPerTick: 1,
       defaultBudget: 1,
       autoGcHandles: true,
       maxFibers: 3,

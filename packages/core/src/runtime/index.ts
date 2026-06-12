@@ -20,6 +20,7 @@ export * from "./map-builtins";
 export * from "./math-builtins";
 export * from "./operator-defs";
 export * from "./operators";
+export * from "./profile-numerics";
 export * from "./program";
 export * from "./program-image";
 export * from "./rule-services";

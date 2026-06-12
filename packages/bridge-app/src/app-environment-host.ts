@@ -14,7 +14,7 @@ import {
 } from "@mindcraft-lang/app-host";
 import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
 import { createMindcraftEnvironment, Dict, logger } from "@mindcraft-lang/core/app";
-import type { IRngServices } from "@mindcraft-lang/core/runtime";
+import type { IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
 import type { AmbientFile, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
@@ -49,6 +49,13 @@ export interface AppEnvironmentHostOptions {
    * to a `Math.random()`-backed default.
    */
   rng?: IRngServices;
+
+  /**
+   * Brain-observable numeric semantics for the host's device profile,
+   * forwarded to {@link createMindcraftEnvironment}. When omitted, the
+   * environment falls back to the f64 (native double-precision) default.
+   */
+  numerics?: ProfileNumerics;
 
   /** When set, enables the optional bridge connection to a remote peer. */
   bridgeUrl?: string;
@@ -128,7 +135,11 @@ export class AppEnvironmentHost {
     this._saveBindingToken = options.saveBindingToken ?? (() => {});
     this._examples = options.examples ?? [];
 
-    this.env = createMindcraftEnvironment({ modules: [...options.modules], rng: options.rng });
+    this.env = createMindcraftEnvironment({
+      modules: [...options.modules],
+      rng: options.rng,
+      numerics: options.numerics,
+    });
 
     this.env.onBrainsInvalidated((event) => {
       if (event.invalidatedBrains.length > 0) {

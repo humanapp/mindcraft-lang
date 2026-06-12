@@ -5,6 +5,7 @@ import { createCallsiteStore } from "./callsite-store";
 import { ConversionRegistry } from "./conversions";
 import { FunctionRegistry } from "./functions";
 import { OperatorOverloads, OperatorTable } from "./operators";
+import { createF64ProfileNumerics } from "./profile-numerics";
 import type {
   AppServices,
   IBrainPageServices,
@@ -28,7 +29,7 @@ export interface __test__PlatformServicesOptions {
   runtime?: Partial<RuntimeLangServices>;
   /** Override individual fields of the {@link SharedLangServices} tier (conversions). */
   shared?: Partial<SharedLangServices>;
-  /** Override individual fields of the {@link AppServices} tier (rng). */
+  /** Override individual fields of the {@link AppServices} tier (rng, numerics). */
   app?: Partial<AppServices>;
   /** Override the program services (rule funcId resolution). */
   program?: IProgramServices;
@@ -123,6 +124,7 @@ export function __test__createPlatformServices(options?: __test__PlatformService
           return MathOps.random();
         },
       },
+      numerics: app?.numerics ?? createF64ProfileNumerics(),
     },
     brain: {
       program: options?.program ?? {

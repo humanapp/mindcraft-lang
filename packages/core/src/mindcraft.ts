@@ -46,6 +46,7 @@ import type {
   NullableTypeDef,
   NullableTypeShape,
   OpSpec,
+  ProfileNumerics,
   ResolvedAction,
   StructTypeDef,
   StructTypeShape,
@@ -392,6 +393,13 @@ type CreateMindcraftEnvironmentOptions = {
    * Defaults to {@link createDefaultRng} when omitted.
    */
   readonly rng?: IRngServices;
+  /**
+   * Brain-observable numeric semantics for the environment's device profile.
+   * Captured by the core operator, conversion, and math-builtin exec bodies
+   * at module installation. Defaults to the f64 (native double-precision)
+   * implementation when omitted.
+   */
+  readonly numerics?: ProfileNumerics;
 };
 
 function buildHostActionBinding(
@@ -835,8 +843,8 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   private readonly actionResolver: BrainActionResolver;
   private readonly brainJsonMigrations_ = List.empty<BrainJsonMigration>();
 
-  constructor(modules: readonly MindcraftModule[], rng?: IRngServices) {
-    this.appServices = createAppServices(rng);
+  constructor(modules: readonly MindcraftModule[], rng?: IRngServices, numerics?: ProfileNumerics) {
+    this.appServices = createAppServices(rng, numerics);
     this.brainServices = createBrainServices(this.appServices);
     this.actionResolver = new EnvironmentActionResolver(this);
     this.installModules(modules);
@@ -1260,7 +1268,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
 
 /** Construct a {@link MindcraftEnvironment}, installing each module in `options.modules`. */
 export function createMindcraftEnvironment(options: CreateMindcraftEnvironmentOptions = {}): MindcraftEnvironment {
-  return new MindcraftEnvironmentImpl(options.modules ?? [], options.rng);
+  return new MindcraftEnvironmentImpl(options.modules ?? [], options.rng, options.numerics);
 }
 
 /** The built-in `mindcraft.core` module: registers the core types, operators, and tile components every brain needs. */

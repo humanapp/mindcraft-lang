@@ -11,7 +11,7 @@ import { createProgramServices, createRuleVariableServices, type RuleVariableSto
 import { createRuntimeServices } from "./runtime-services";
 import type { PlatformServices } from "./services";
 import { NIL_VALUE, type Value } from "./value";
-import { FiberScheduler, VM } from "./vm";
+import { DEFAULT_SCHEDULER_CONFIG, FiberScheduler, type SchedulerConfig, VM } from "./vm";
 import { FiberState, VmStatus } from "./vm-types";
 
 /**
@@ -68,6 +68,12 @@ export class BrainRuntime implements IBrainRuntime {
    * Single scheduler for managing all fibers.
    */
   private readonly scheduler: FiberScheduler;
+
+  /**
+   * Resolved scheduler tunables for this brain instance. Also supplies the
+   * instruction budget for page-lifecycle hook fibers.
+   */
+  private readonly schedulerConfig: SchedulerConfig;
 
   /**
    * Persistent execution context shared across all fibers. Provides variable
@@ -128,6 +134,10 @@ export class BrainRuntime implements IBrainRuntime {
    * @param previousVariables - Optional snapshot of the prior runtime's
    *   variable storage, used to carry variable values across a
    *   re-initialization (hot reload).
+   * @param schedulerConfig - Optional scheduler tunables for this brain
+   *   (fiber slice budget, hook budget, fiber cap). Omitted fields fall
+   *   back to {@link DEFAULT_SCHEDULER_CONFIG}. Device profiles pin these
+   *   values so the reference VM and a device VM schedule identically.
    */
   constructor(
     program: Program,
@@ -135,7 +145,8 @@ export class BrainRuntime implements IBrainRuntime {
     hostServices: Omit<PlatformServices, "brain">,
     contextData: unknown = undefined,
     previousVariables?: VariableSnapshot,
-    vmEvents?: VmEvents
+    vmEvents?: VmEvents,
+    schedulerConfig?: Partial<SchedulerConfig>
   ) {
     this.program = program;
     this.pageMetadata = pageMetadata;
@@ -168,11 +179,8 @@ export class BrainRuntime implements IBrainRuntime {
     };
 
     this.vm = new VM(program, services.runtime, vmEvents ? { events: vmEvents } : undefined);
-    this.scheduler = new FiberScheduler(this.vm, {
-      maxFibersPerTick: 64,
-      defaultBudget: 1000,
-      autoGcHandles: true,
-    });
+    this.schedulerConfig = { ...DEFAULT_SCHEDULER_CONFIG, ...schedulerConfig };
+    this.scheduler = new FiberScheduler(this.vm, this.schedulerConfig);
 
     const runtime = this;
     this.executionContext = {
@@ -416,7 +424,7 @@ export class BrainRuntime implements IBrainRuntime {
       callSiteId,
       isAsync: false,
     };
-    hookFiber.instrBudget = 10000;
+    hookFiber.instrBudget = this.schedulerConfig.hookBudget;
 
     const result = vm.runFiber(hookFiber, scheduler);
     if (result.status === VmStatus.FAULT) {

@@ -2,7 +2,7 @@ import type { BrainServices } from "../brain/services";
 import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
 import { List, type ReadonlyList } from "../platform/list";
-import { INFINITY, MathOps } from "../platform/math";
+import { INFINITY } from "../platform/math";
 import { StringUtils as SU } from "../platform/string";
 import { TypeUtils } from "../platform/types";
 import { UniqueSet } from "../platform/uniqueset";
@@ -171,6 +171,7 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices,
     return;
   }
 
+  const numerics = services.app.numerics;
   if (!services.shared.conversions.get(typeId, CoreTypeIds.String)) {
     const stringCost = TypeUtils.isNumber(firstSymbol.value) ? 2 : 1;
     services.shared.conversions.register({
@@ -183,7 +184,7 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices,
           const value = resolveEnumPrimitiveValue(typeId, args, services);
           return {
             t: NativeType.String,
-            v: TypeUtils.isString(value) ? value : SU.toString(value),
+            v: TypeUtils.isString(value) ? value : numerics.formatNumber(value),
           };
         },
       },
@@ -207,7 +208,7 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices,
           }
           return {
             t: NativeType.Number,
-            v: value,
+            v: numerics.round(value),
           };
         },
       },
@@ -236,6 +237,7 @@ function resolveEnumPrimitiveValue(
 /** Register the built-in conversions between core primitive types (number<->string, boolean<->number, etc.). */
 export function registerCoreConversions(services: BrainServices) {
   const conversionRegistry = services.shared.conversions;
+  const numerics = services.app.numerics;
   // Number -> String conversion
   conversionRegistry.register({
     id: CoreFuncId.ConvNumberToString,
@@ -247,7 +249,7 @@ export function registerCoreConversions(services: BrainServices) {
         const numVal = args.get(0) as NumberValue;
         return {
           t: NativeType.String,
-          v: SU.toString(numVal.v),
+          v: numerics.formatNumber(numVal.v),
         };
       },
     },
@@ -261,10 +263,9 @@ export function registerCoreConversions(services: BrainServices) {
     fn: {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const strVal = args.get(0) as StringValue;
-        const num = MathOps.parseFloat(strVal.v);
         return {
           t: NativeType.Number,
-          v: MathOps.isNaN(num) ? 0 : num,
+          v: numerics.parseNumber(strVal.v),
         };
       },
     },
