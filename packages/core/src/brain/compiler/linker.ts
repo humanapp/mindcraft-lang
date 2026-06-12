@@ -11,7 +11,8 @@ import type {
   ResolvedAction,
   UnlinkedBrainProgram,
 } from "../../runtime/host-bindings";
-import type { ProgramArtifact } from "../../runtime/program";
+import type { ProgramArtifact, ProgramTypeEntry } from "../../runtime/program";
+import { remapProgramTypeEntry } from "../../runtime/program";
 import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
 import type { IBrainActionTileDef, IBrainDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../interfaces";
@@ -175,6 +176,7 @@ function remapInstruction(
   instr: Instr,
   funcOffset: number,
   constOffsets: ConstantOffsets,
+  typeOffset: number,
   variableOffset: number
 ): Instr {
   switch (instr.op) {
@@ -201,7 +203,7 @@ function remapInstruction(
       return instr;
     case Op.INSTANCE_OF:
       if (instr.a !== undefined) {
-        return { ...instr, a: instr.a + constOffsets.strings };
+        return { ...instr, a: instr.a + typeOffset };
       }
       return instr;
     case Op.LOAD_VAR_SLOT:
@@ -215,7 +217,7 @@ function remapInstruction(
     case Op.STRUCT_NEW:
     case Op.STRUCT_COPY_EXCEPT:
       if (instr.b !== undefined) {
-        return { ...instr, b: instr.b + constOffsets.strings };
+        return { ...instr, b: instr.b + typeOffset };
       }
       return instr;
     default:
@@ -227,12 +229,13 @@ function remapInstructions(
   code: ReadonlyList<Instr>,
   funcOffset: number,
   constOffsets: ConstantOffsets,
+  typeOffset: number,
   variableOffset: number
 ): List<Instr> {
   const remapped = List.empty<Instr>();
 
   for (let i = 0; i < code.size(); i++) {
-    remapped.push(remapInstruction(code.get(i)!, funcOffset, constOffsets, variableOffset));
+    remapped.push(remapInstruction(code.get(i)!, funcOffset, constOffsets, typeOffset, variableOffset));
   }
 
   return remapped;
@@ -249,6 +252,7 @@ function appendArtifactTables(
   artifact: ProgramArtifact,
   functions: List<FunctionBytecode>,
   pools: MutableConstantPools,
+  types: List<ProgramTypeEntry>,
   variableNames: List<string>
 ): BytecodeExecutableAction {
   const funcOffset = functions.size();
@@ -257,7 +261,13 @@ function appendArtifactTables(
     strings: pools.strings.size(),
     values: pools.values.size(),
   };
+  const typeOffset = types.size();
   const variableOffset = variableNames.size();
+
+  const artifactTypes = artifact.types ?? List.empty<ProgramTypeEntry>();
+  for (let i = 0; i < artifactTypes.size(); i++) {
+    types.push(remapProgramTypeEntry(artifactTypes.get(i)!, (idx) => idx + typeOffset));
+  }
 
   for (let i = 0; i < artifact.constantPools.values.size(); i++) {
     pools.values.push(remapValue(artifact.constantPools.values.get(i)!, funcOffset));
@@ -278,12 +288,12 @@ function appendArtifactTables(
   for (let i = 0; i < artifact.functions.size(); i++) {
     const fn = artifact.functions.get(i)!;
     functions.push({
-      code: remapInstructions(fn.code, funcOffset, constOffsets, variableOffset),
+      code: remapInstructions(fn.code, funcOffset, constOffsets, typeOffset, variableOffset),
       numParams: fn.numParams,
       numLocals: fn.numLocals,
       name: fn.name,
       maxStackDepth: fn.maxStackDepth,
-      injectCtxTypeId: fn.injectCtxTypeId,
+      ...(fn.injectCtxTypeIdx === undefined ? {} : { injectCtxTypeIdx: fn.injectCtxTypeIdx + typeOffset }),
     });
   }
 
@@ -319,6 +329,7 @@ export function linkBrainProgram(
     strings: List.empty<string>(),
     values: List.empty<Value>(),
   };
+  const types = List.empty<ProgramTypeEntry>();
   const variableNames = List.empty<string>();
   const actions = List.empty<BytecodeExecutableAction>();
   const diagnostics = List.empty<BrainBuildDiagnostic>();
@@ -334,6 +345,10 @@ export function linkBrainProgram(
   }
   for (let i = 0; i < program.constantPools.strings.size(); i++) {
     pools.strings.push(program.constantPools.strings.get(i)!);
+  }
+  const programTypes = program.types ?? List.empty<ProgramTypeEntry>();
+  for (let i = 0; i < programTypes.size(); i++) {
+    types.push(programTypes.get(i)!);
   }
   for (let i = 0; i < program.variableNames.size(); i++) {
     variableNames.push(program.variableNames.get(i)!);
@@ -374,7 +389,7 @@ export function linkBrainProgram(
       });
       continue;
     }
-    actions.push(appendArtifactTables(resolved.descriptor, resolved.artifact, functions, pools, variableNames));
+    actions.push(appendArtifactTables(resolved.descriptor, resolved.artifact, functions, pools, types, variableNames));
   }
 
   if (!diagnostics.isEmpty()) {
@@ -391,6 +406,7 @@ export function linkBrainProgram(
           strings: pools.strings,
           values: pools.values,
         },
+        types,
         variableNames,
         entryPoint: program.entryPoint,
         actions,

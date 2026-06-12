@@ -89,6 +89,12 @@ before(() => {
   services = __test__createBrainServices();
 });
 
+let nextTypeAtomId = 20000;
+
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
+
 // ---- Helpers ----
 
 function catalogList(): List<ITileCatalog> {
@@ -1635,6 +1641,7 @@ describe("Accessor / struct field suggestions", () => {
 
   before(() => {
     posStructTypeId = services.runtime.types.addStructType("Position", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -1812,6 +1819,7 @@ describe("Accessor / struct field suggestions", () => {
 
   test("Test 46: Different struct type -> only matching accessors suggested", () => {
     const velStructTypeId = services.runtime.types.addStructType("Velocity", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "dx", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "dy", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -2314,6 +2322,7 @@ describe("Struct-specific operator and accessor behavior", () => {
 
   before(() => {
     posStructTypeId = services.runtime.types.addStructType("Position62", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },

@@ -17,8 +17,13 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { stream } from "@mindcraft-lang/core";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
+  type BrainProgramTypeEntryJson,
   type BrainProgramValueJson,
+  ContextTypeIds,
+  CoreTypeAtomId,
+  CoreTypeIds,
   type LinkedBrainProgramJson,
   linkedBrainProgramFromBytes,
   linkedBrainProgramFromJson,
@@ -33,6 +38,7 @@ const { byteArrayFromUint8Array, byteArrayToUint8Array } = stream;
 
 const PROFILE_ID = 0;
 const PRECISION: NumberPrecision = "f32";
+const typeRegistry = __test__createBrainServices().runtime.types;
 
 // ---- Fixtures ----
 
@@ -60,10 +66,11 @@ const STRUCT_FIELD_ACCESS: LinkedBrainProgramJson = {
         ],
         numParams: 1,
         numLocals: 2,
-        injectCtxTypeId: "struct:<Context>",
+        injectCtxTypeIdx: 0,
       },
     ],
     constantPools: { numbers: [1], strings: ["label"], values: [] },
+    types: [{ tag: "atom", typeId: ContextTypeIds.Context, atomId: CoreTypeAtomId.Context }],
     variableNames: [],
   },
   pages: [],
@@ -121,6 +128,33 @@ const CONTROL_FLOW: LinkedBrainProgramJson = {
 
 // Full coverage of the residual value pool: every value variant the codec can carry,
 // including nested containers, both map key kinds, an enum, and a capturing closure.
+// Type table for the value pool: atom refs, parameterized list/map (with a
+// nested list), and program-local struct + enum entries.
+const NUMBER_LIST_TYPE_ID = `list:<List<${CoreTypeIds.Number}>>`;
+const ANY_MAP_TYPE_ID = `map:<Map<${CoreTypeIds.Any},${CoreTypeIds.Any}>>`;
+const POINT_TYPE_ID = "struct:</fixture.ts::Point>";
+const COLOR_TYPE_ID = "enum:</fixture.ts::Color>";
+
+const NUMBER_OR_STRING_TYPE_ID = `union:<${CoreTypeIds.Number},${CoreTypeIds.String}>`;
+const NULLABLE_NUMBER_TYPE_ID = "number:<number?>";
+const NUMBER_TO_NUMBER_TYPE_ID = `function:<Function<(${CoreTypeIds.Number})=>${CoreTypeIds.Number}>>`;
+
+// Exercises every TYPS entry kind: atoms, parameterized list/map, union (in
+// canonical sorted member order), function, nullable, and program-local
+// struct + enum.
+const VALUES_TYPES: readonly BrainProgramTypeEntryJson[] = [
+  { tag: "atom", typeId: CoreTypeIds.Number, atomId: CoreTypeAtomId.Number },
+  { tag: "atom", typeId: CoreTypeIds.Any, atomId: CoreTypeAtomId.Any },
+  { tag: "atom", typeId: CoreTypeIds.String, atomId: CoreTypeAtomId.String },
+  { tag: "list", typeId: NUMBER_LIST_TYPE_ID, elem: 0 },
+  { tag: "map", typeId: ANY_MAP_TYPE_ID, key: 1, value: 1 },
+  { tag: "union", typeId: NUMBER_OR_STRING_TYPE_ID, members: [0, 2] },
+  { tag: "function", typeId: NUMBER_TO_NUMBER_TYPE_ID, params: [0], result: 0 },
+  { tag: "nullable", typeId: NULLABLE_NUMBER_TYPE_ID, base: 0 },
+  { tag: "struct", typeId: POINT_TYPE_ID, name: "/fixture.ts::Point", maxFieldId: 1 },
+  { tag: "enum", typeId: COLOR_TYPE_ID, name: "/fixture.ts::Color", symbols: ["Red", "Green"] },
+];
+
 const VALUES_POOL: readonly BrainProgramValueJson[] = [
   { t: NativeType.Unknown },
   { t: NativeType.Void },
@@ -130,10 +164,10 @@ const VALUES_POOL: readonly BrainProgramValueJson[] = [
   { t: NativeType.Number, v: 42 },
   { t: NativeType.Number, v: -7 },
   { t: NativeType.String, v: "hello" },
-  { t: NativeType.Enum, typeId: "enum:Color", v: "Red" },
+  { t: NativeType.Enum, typeId: COLOR_TYPE_ID, v: "Red" },
   {
     t: NativeType.List,
-    typeId: "list:number",
+    typeId: NUMBER_LIST_TYPE_ID,
     v: [
       { t: NativeType.Number, v: 1 },
       { t: NativeType.Number, v: 2 },
@@ -141,7 +175,7 @@ const VALUES_POOL: readonly BrainProgramValueJson[] = [
   },
   {
     t: NativeType.Map,
-    typeId: "map:any",
+    typeId: ANY_MAP_TYPE_ID,
     v: [
       { key: 1, value: { t: NativeType.String, v: "one" } },
       { key: "k", value: { t: NativeType.Number, v: 9 } },
@@ -149,7 +183,7 @@ const VALUES_POOL: readonly BrainProgramValueJson[] = [
   },
   {
     t: NativeType.Struct,
-    typeId: "struct:Point",
+    typeId: POINT_TYPE_ID,
     v: [
       { t: NativeType.Number, v: 3 },
       { t: NativeType.Number, v: 4 },
@@ -177,6 +211,7 @@ const VALUES_AND_COLLECTIONS: LinkedBrainProgramJson = {
       },
     ],
     constantPools: { numbers: [], strings: [], values: [...VALUES_POOL] },
+    types: [...VALUES_TYPES],
     variableNames: [],
   },
   pages: [],
@@ -245,13 +280,14 @@ function leanNormalize(json: LinkedBrainProgramJson, precision: NumberPrecision)
         code: fn.code.map((instr) => ({ ...instr })),
         numParams: fn.numParams,
         numLocals: fn.numLocals ?? fn.numParams,
-        ...(fn.injectCtxTypeId !== undefined ? { injectCtxTypeId: fn.injectCtxTypeId } : {}),
+        ...(fn.injectCtxTypeIdx !== undefined ? { injectCtxTypeIdx: fn.injectCtxTypeIdx } : {}),
       })),
       constantPools: {
         numbers: p.constantPools.numbers.map((n) => round(n, precision)),
         strings: p.constantPools.strings,
         values: p.constantPools.values.map((v) => normalizeValue(v, precision)),
       },
+      types: p.types ?? [],
       variableNames: p.variableNames,
       ...(p.actions !== undefined ? { actions: p.actions } : {}),
       ...(p.ruleFuncIds !== undefined ? { ruleFuncIds: p.ruleFuncIds } : {}),
@@ -283,7 +319,7 @@ for (const fixture of FIXTURES) {
     const committedJson = JSON.parse(committedJsonText) as LinkedBrainProgramJson;
     const program = linkedBrainProgramFromJson(committedJson);
 
-    const bytes = linkedBrainProgramToBytes(program, { profileId: PROFILE_ID, precision: PRECISION });
+    const bytes = linkedBrainProgramToBytes(program, { profileId: PROFILE_ID, precision: PRECISION, typeRegistry });
     const generated = Buffer.from(byteArrayToUint8Array(bytes) as Uint8Array);
     if (!existsSync(binPath)) {
       writeFileSync(binPath, generated);
@@ -293,6 +329,7 @@ for (const fixture of FIXTURES) {
 
     const decoded = linkedBrainProgramFromBytes(byteArrayFromUint8Array(new Uint8Array(committedBin)), {
       precision: PRECISION,
+      typeRegistry,
     });
     assert.equal(decoded.profileId, PROFILE_ID);
     assert.deepEqual(linkedBrainProgramToJson(decoded.program), leanNormalize(committedJson, PRECISION));

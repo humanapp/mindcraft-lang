@@ -9,6 +9,11 @@ import { compileUserTile } from "./compile.js";
 
 let services: BrainServices;
 
+let nextTypeAtomId = 1024;
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
+
 describe("buildAmbientDeclarations", () => {
   before(() => {
     services = __test__createBrainServices();
@@ -19,6 +24,7 @@ describe("buildAmbientDeclarations", () => {
     const vecId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vecId)) {
       types.addStructType("Vector2", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "x", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 },
           { name: "y", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 1 },
@@ -42,6 +48,7 @@ describe("buildAmbientDeclarations", () => {
     const actorRefId = mkTypeId(NativeType.Struct, "ActorRef");
     if (!types.get(actorRefId)) {
       types.addStructType("ActorRef", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "id", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 },
           { name: "energy pct", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 1 },
@@ -101,6 +108,7 @@ export default Sensor({
     const posId = mkTypeId(NativeType.Struct, "Position");
     if (!types.get(posId)) {
       types.addStructType("Position", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "x", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 },
           { name: "y", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 1 },
@@ -110,6 +118,7 @@ export default Sensor({
     const entityId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityId)) {
       types.addStructType("Entity", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "name", typeId: mkTypeId(NativeType.String, "string"), fieldIndex: 0 },
           { name: "pos", typeId: posId, fieldIndex: 1 },
@@ -126,7 +135,7 @@ export default Sensor({
     const types = services.runtime.types;
     const healthId = mkTypeId(NativeType.Number, "health");
     if (!types.get(healthId)) {
-      types.addNumberType("health");
+      types.addNumberType("health", mkTestAtomId());
     }
 
     const ambient = buildAmbientDeclarations(services.runtime.types);
@@ -138,6 +147,7 @@ export default Sensor({
     const dirId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirId)) {
       types.addEnumType("Direction", {
+        atomId: mkTestAtomId(),
         symbols: List.from([
           { key: "north", label: "North", value: "north" },
           { key: "south", label: "South", value: "south" },
@@ -161,6 +171,7 @@ export default Sensor({
     const listId = mkTypeId(NativeType.List, "NumberList");
     if (!types.get(listId)) {
       types.addListType("NumberList", {
+        atomId: mkTestAtomId(),
         elementTypeId: mkTypeId(NativeType.Number, "number"),
       });
     }

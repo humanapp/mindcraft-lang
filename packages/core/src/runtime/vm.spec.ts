@@ -21,6 +21,7 @@ import {
   BYTECODE_VERSION,
   ContextTypeIds,
   CoreOpId,
+  CoreTypeAtomId,
   CoreTypeIds,
   ErrorCode,
   type ExecutionContext,
@@ -50,6 +51,7 @@ import {
   type NumberValue,
   Op,
   type Program,
+  type ProgramTypeEntry,
   TRUE_VALUE,
   type Value,
   ValueDict,
@@ -65,6 +67,12 @@ let services: BrainServices;
 before(() => {
   services = __test__createBrainServices();
 });
+
+let nextTypeAtomId = 20000;
+
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
 
 function toVmServices(b: BrainServices) {
   return __test__createPlatformServices({
@@ -138,6 +146,7 @@ describe("VM -- closed struct field opcodes", () => {
     const typeId = mkTypeId(NativeType.Struct, "IndexedPair");
     if (!services.runtime.types.get(typeId)) {
       services.runtime.types.addStructType("IndexedPair", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "left", typeId: CoreTypeIds.Number, fieldIndex: 0 },
           { name: "right", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -157,9 +166,10 @@ describe("VM -- closed struct field opcodes", () => {
       ]),
       constantPools: {
         numbers: List.empty<number>(),
-        strings: List.from([typeId]),
+        strings: List.empty<string>(),
         values: List.from([mkNumberValue(42)]),
       },
+      types: List.from<ProgramTypeEntry>([{ tag: "struct", typeId, name: "IndexedPair", maxFieldId: 1 }]),
       variableNames: List.empty<string>(),
       entryPoint: 0,
     };
@@ -179,6 +189,7 @@ describe("VM -- closed struct field opcodes", () => {
     const typeId = mkTypeId(NativeType.Struct, "V33NativePoint");
     if (!services.runtime.types.get(typeId)) {
       services.runtime.types.addStructType("V33NativePoint", {
+        atomId: mkTestAtomId(),
         fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
         fieldGetter: (source, fieldId) => {
           if (fieldId === 0) {
@@ -225,6 +236,7 @@ describe("VM -- native struct dispatch by field id", () => {
     const typeId = mkTypeId(NativeType.Struct, "P2NativeGet");
     if (!services.runtime.types.get(typeId)) {
       services.runtime.types.addStructType("P2NativeGet", {
+        atomId: mkTestAtomId(),
         fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
         fieldGetter: (source, fieldId) =>
           fieldId === 0 ? mkNumberValue((source.native as { x: number }).x) : undefined,
@@ -247,6 +259,7 @@ describe("VM -- native struct dispatch by field id", () => {
     const typeId = mkTypeId(NativeType.Struct, "P2NativeSet");
     if (!services.runtime.types.get(typeId)) {
       services.runtime.types.addStructType("P2NativeSet", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
           { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1, readOnly: true },
@@ -962,6 +975,10 @@ describe("VM -- malformed bytecode faults as ScriptError", () => {
     );
   });
 
+  test("STRUCT_NEW with a non-zero reserved operand faults", () => {
+    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.STRUCT_NEW, a: 1 }, { op: Op.RET }])], []));
+  });
+
   test("JMP target out of bounds faults via PC bounds check", () => {
     expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.JMP, a: 99 }, { op: Op.RET }])], []));
   });
@@ -1644,12 +1661,15 @@ describe("VM -- action calls", () => {
             code: List.from([{ op: Op.LOAD_LOCAL, a: 2 }, { op: Op.RET }]),
             numParams: 3,
             numLocals: 5,
-            injectCtxTypeId: ContextTypeIds.Context,
+            injectCtxTypeIdx: 0,
             name: "action-entry",
           },
         ],
         [mkNumberValue(31), mkNumberValue(37), NIL_VALUE]
       ),
+      types: List.from<ProgramTypeEntry>([
+        { tag: "atom", typeId: ContextTypeIds.Context, atomId: CoreTypeAtomId.Context },
+      ]),
       actions: List.from([
         {
           binding: "bytecode" as const,

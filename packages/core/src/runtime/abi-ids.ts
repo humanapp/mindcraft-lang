@@ -18,6 +18,10 @@
  * The host-action id space partitions the same way at
  * `TARGET_ACTION_ID_BASE`, with no dynamic region.
  *
+ * The type-atom id space partitions at `TARGET_TYPE_ATOM_BASE`, also with no
+ * dynamic region: program-local (user) types carry no atom id and are
+ * identified per program instead.
+ *
  * Ids 0-127 encode as 1-byte var-uints in the binary program form; keep the
  * hottest core operators there.
  */
@@ -35,6 +39,37 @@ export const DYNAMIC_FUNC_ID_BASE = 65536;
 
 /** First host-action id owned by the active target; core action ids are below this. */
 export const TARGET_ACTION_ID_BASE = 1024;
+
+/** First type-atom id owned by the active target; core type atoms are below this. */
+export const TARGET_TYPE_ATOM_BASE = 1024;
+
+/**
+ * Stable type-atom ids of the core nominal types: the scalar types, the named
+ * core list type, and the built-in context structs. Every nominal type a
+ * core or target module registers carries one of these author-assigned ids;
+ * serialized programs reference nominal types by atom id, so an id, once
+ * assigned, is permanent: never change it and never reuse it. Append new
+ * members at the next free id.
+ *
+ * For an enum type registered with an atom id, the declared symbol-list
+ * order is ABI: enum values serialize as ordinals into that list, so the
+ * symbol list is append-only -- never reorder or remove a symbol of a
+ * registered core/target enum.
+ */
+export enum CoreTypeAtomId {
+  Void = 0,
+  Nil = 1,
+  Boolean = 2,
+  Number = 3,
+  String = 4,
+  Any = 5,
+  Function = 6,
+  AnyList = 7,
+  BrainContext = 8,
+  EngineContext = 9,
+  RuleContext = 10,
+  Context = 11,
+}
 
 /**
  * Owner of a registration scope: which partition of the id space the

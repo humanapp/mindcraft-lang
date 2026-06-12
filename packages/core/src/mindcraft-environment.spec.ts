@@ -89,6 +89,7 @@ function createAlphaModule(capture: {
         typeId: alphaTypeId,
         codec: noopCodec,
         name: "AlphaThing",
+        atomId: 1024,
         fields: List.empty(),
         fieldIndexByName: new Dict<string, number>(),
       };

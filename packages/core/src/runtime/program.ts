@@ -1,8 +1,100 @@
 import type { Dict } from "../platform/dict";
+import { Error } from "../platform/error";
 import type { List } from "../platform/list";
 import type { UniqueSet } from "../platform/uniqueset";
 import type { ConstantPools, FunctionBytecode } from "./bytecode";
 import type { BytecodeExecutableAction } from "./context";
+import type { TypeId } from "./type-defs";
+
+/**
+ * One entry of a program's type table. Each entry describes one distinct type
+ * the program references; child references (`elem`, `key`, `value`,
+ * `members`, `params`, `result`, `base`) are table indices strictly less than
+ * the entry's own index. Every entry carries its resolved {@link TypeId}
+ * string for the TS runtime; the structural fields are the durable identity.
+ */
+export type ProgramTypeEntry =
+  /** A core/target nominal type, identified by its stable type-atom id. */
+  | { tag: "atom"; typeId: TypeId; atomId: number }
+  /** A parameterized list type. */
+  | { tag: "list"; typeId: TypeId; elem: number }
+  /** A parameterized map type. */
+  | { tag: "map"; typeId: TypeId; key: number; value: number }
+  /** A union type; `members` follow the registry's canonical sorted order. */
+  | { tag: "union"; typeId: TypeId; members: List<number> }
+  /** A structural function type. */
+  | { tag: "function"; typeId: TypeId; params: List<number>; result: number }
+  /** A nullable wrapper around `base`. */
+  | { tag: "nullable"; typeId: TypeId; base: number }
+  /**
+   * A program-local struct. Identity is the table position; `name` is the
+   * registered type name (the `::`-qualified or anonymous compiler name).
+   * `maxFieldId` is the highest declared field id, or -1 for a fieldless
+   * struct; field storage holds `maxFieldId + 1` slots.
+   */
+  | { tag: "struct"; typeId: TypeId; name: string; maxFieldId: number }
+  /**
+   * A program-local enum. `symbols` lists the enum's symbol keys in declared
+   * order; enum values reference symbols by ordinal into this list.
+   */
+  | { tag: "enum"; typeId: TypeId; name: string; symbols: List<string> };
+
+/**
+ * Resolve a type-table index to its {@link TypeId} string. Throws if the
+ * program has no type table or the index is out of range.
+ */
+export function resolveProgramTypeId(types: List<ProgramTypeEntry> | undefined, idx: number): TypeId {
+  const entry = types?.get(idx);
+  if (!entry) {
+    throw new Error(`Type-table index ${idx} out of range (table size ${types ? types.size() : 0})`);
+  }
+  return entry.typeId;
+}
+
+/**
+ * Return `entry` with every child table reference rewritten by `mapIdx`.
+ * Returns the original entry object when no reference changes.
+ */
+export function remapProgramTypeEntry(entry: ProgramTypeEntry, mapIdx: (idx: number) => number): ProgramTypeEntry {
+  switch (entry.tag) {
+    case "atom":
+    case "struct":
+    case "enum":
+      return entry;
+    case "list": {
+      const elem = mapIdx(entry.elem);
+      return elem === entry.elem ? entry : { ...entry, elem };
+    }
+    case "map": {
+      const key = mapIdx(entry.key);
+      const value = mapIdx(entry.value);
+      return key === entry.key && value === entry.value ? entry : { ...entry, key, value };
+    }
+    case "union": {
+      let changed = false;
+      const members = entry.members.map((m) => {
+        const mapped = mapIdx(m);
+        if (mapped !== m) changed = true;
+        return mapped;
+      });
+      return changed ? { ...entry, members } : entry;
+    }
+    case "function": {
+      let changed = false;
+      const params = entry.params.map((p) => {
+        const mapped = mapIdx(p);
+        if (mapped !== p) changed = true;
+        return mapped;
+      });
+      const result = mapIdx(entry.result);
+      return changed || result !== entry.result ? { ...entry, params, result } : entry;
+    }
+    case "nullable": {
+      const base = mapIdx(entry.base);
+      return base === entry.base ? entry : { ...entry, base };
+    }
+  }
+}
 
 /**
  * Compiled program. Constants are split into typed sub-pools for compactness
@@ -13,6 +105,14 @@ export interface Program {
   version: number;
   functions: List<FunctionBytecode>;
   constantPools: ConstantPools;
+  /**
+   * The program's type table. Typed instruction operands
+   * (`LIST_NEW`/`MAP_NEW`/`STRUCT_NEW`/`STRUCT_COPY_EXCEPT` operand `b`,
+   * `INSTANCE_OF` operand `a`) and `FunctionBytecode.injectCtxTypeIdx` are
+   * indices into this table. Absent is treated as empty (valid only for
+   * programs that reference no types).
+   */
+  types?: List<ProgramTypeEntry>;
   /** Named variable identifiers for cross-context variable access */
   variableNames: List<string>;
   entryPoint?: number;

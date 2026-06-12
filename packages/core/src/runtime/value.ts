@@ -313,3 +313,37 @@ export function isFunctionValue(v: Value | undefined): v is FunctionValue {
 export function isErrValue(v: Value | undefined): v is { t: "err"; e: ErrorValue } {
   return v?.t === "err";
 }
+
+/**
+ * Invoke `cb` with the {@link TypeId} of `value` and of every value nested
+ * inside it (list elements, map values, struct fields). Values that carry no
+ * type identity (numbers, strings, booleans, nil, functions, handles) are
+ * skipped.
+ */
+export function forEachValueTypeId(value: Value, cb: (typeId: TypeId) => void): void {
+  switch (value.t) {
+    case NativeType.Enum:
+      cb(value.typeId);
+      return;
+    case NativeType.List:
+      cb(value.typeId);
+      value.v.forEach((item) => {
+        forEachValueTypeId(item, cb);
+      });
+      return;
+    case NativeType.Map:
+      cb(value.typeId);
+      value.v.forEach((item) => {
+        forEachValueTypeId(item, cb);
+      });
+      return;
+    case NativeType.Struct:
+      cb(value.typeId);
+      value.v?.forEach((item) => {
+        forEachValueTypeId(item, cb);
+      });
+      return;
+    default:
+      return;
+  }
+}

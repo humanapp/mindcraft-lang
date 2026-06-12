@@ -14,6 +14,7 @@ import {
   type BrainProgramJson,
   type BrainProgramJsonObject,
   type BrainProgramRuleAncestorJsonEntry,
+  type BrainProgramTypeEntryJson,
   type LinkedBrainProgramActionCallSiteJsonEntry,
   type LinkedBrainProgramJson,
   type LinkedBrainProgramPageMetadataJson,
@@ -21,10 +22,11 @@ import {
 } from "./brain-program-codec";
 import { type Instr, instrOperandMismatch, OPERAND_SCHEMA, type OperandSpec } from "./bytecode";
 import type { BytecodeExecutableAction } from "./context";
+import { CoreTypeNames, mkTypeId } from "./core-types";
 import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
-import type { Program } from "./program";
+import type { Program, ProgramTypeEntry } from "./program";
 import { MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC } from "./program-image";
-import { NativeType } from "./type-defs";
+import { type EnumTypeDef, type ITypeRegistry, NativeType, type TypeId } from "./type-defs";
 import type { Value } from "./value";
 
 /**
@@ -42,6 +44,13 @@ export interface LinkedBrainProgramToBytesOptions {
 
   /** Target numeric precision; constant numbers are rounded to it before encoding. */
   readonly precision: NumberPrecision;
+
+  /**
+   * Type registry used to resolve symbol ordinals for enum constant values of
+   * atom (core/target) enum types. Required only when the program carries such
+   * a constant; program-local enum ordinals resolve through the type table.
+   */
+  readonly typeRegistry?: ITypeRegistry;
 }
 
 /** Options controlling {@link linkedBrainProgramFromBytes}. */
@@ -57,6 +66,13 @@ export interface LinkedBrainProgramFromBytesOptions {
    * exceeds this is rejected. Defaults to {@link BINARY_PROGRAM_FORMAT_VERSION}.
    */
   readonly maxFormatVersion?: number;
+
+  /**
+   * Type registry of the decoding runtime. Atom entries in the TYPS section
+   * resolve their typeId through it, and enum constant values of atom enum
+   * types resolve their symbol key through it.
+   */
+  readonly typeRegistry: ITypeRegistry;
 }
 
 /** Decoded binary `.mcprogram` envelope. */
@@ -88,6 +104,16 @@ export const BrainProgramBinaryCodecErrorCode = {
   INSTRUCTION_SCHEMA_MISMATCH: "MINDCRAFT_BINARY_CODEC_INSTRUCTION_SCHEMA_MISMATCH",
   /** A profile id outside the unsigned 32-bit range was supplied to the encoder. */
   INVALID_PROFILE_ID: "MINDCRAFT_BINARY_CODEC_INVALID_PROFILE_ID",
+  /** A TYPS entry tag byte is not a known type-entry tag. */
+  INVALID_TYPE_ENTRY_TAG: "MINDCRAFT_BINARY_CODEC_INVALID_TYPE_ENTRY_TAG",
+  /** A TYPS entry references a child at or beyond its own index. */
+  TYPE_FORWARD_REFERENCE: "MINDCRAFT_BINARY_CODEC_TYPE_FORWARD_REFERENCE",
+  /** A type-table index is outside the decoded table. */
+  TYPE_INDEX_OUT_OF_RANGE: "MINDCRAFT_BINARY_CODEC_TYPE_INDEX_OUT_OF_RANGE",
+  /** An enum constant's symbol ordinal is outside its type's symbol list. */
+  ENUM_ORDINAL_OUT_OF_RANGE: "MINDCRAFT_BINARY_CODEC_ENUM_ORDINAL_OUT_OF_RANGE",
+  /** A TYPS atom entry's atomId is not registered in the decoding runtime. */
+  UNKNOWN_TYPE_ATOM: "MINDCRAFT_BINARY_CODEC_UNKNOWN_TYPE_ATOM",
 } as const;
 
 /** Union of all {@link BrainProgramBinaryCodecErrorCode} values. */
@@ -95,7 +121,7 @@ export type BrainProgramBinaryCodecErrorCode =
   (typeof BrainProgramBinaryCodecErrorCode)[keyof typeof BrainProgramBinaryCodecErrorCode];
 
 /** Current binary `.mcprogram` envelope/format version. */
-export const BINARY_PROGRAM_FORMAT_VERSION = 1;
+export const BINARY_PROGRAM_FORMAT_VERSION = 2;
 
 /** The file magic identifying a binary `.mcprogram`, as a cross-platform list of bytes. */
 const MAGIC = List.from(MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC as readonly number[]);
@@ -112,6 +138,15 @@ const MAP_KEY_TAG_STRING = 1;
 
 const CALL_SITE_BINDING_HOST = 0;
 const CALL_SITE_BINDING_BYTECODE = 1;
+
+const TYPE_ENTRY_TAG_ATOM = 0;
+const TYPE_ENTRY_TAG_LIST = 1;
+const TYPE_ENTRY_TAG_MAP = 2;
+const TYPE_ENTRY_TAG_UNION = 3;
+const TYPE_ENTRY_TAG_FUNCTION = 4;
+const TYPE_ENTRY_TAG_NULLABLE = 5;
+const TYPE_ENTRY_TAG_STRUCT = 6;
+const TYPE_ENTRY_TAG_ENUM = 7;
 
 const ACTION_FLAG_INITIALIZER = 1;
 const ACTION_FLAG_ACTIVATION = 2;
@@ -135,10 +170,10 @@ function codecError(code: BrainProgramBinaryCodecErrorCode, message: string): Er
 /**
  * The single program-wide string table (`CSTR`). The first
  * {@link constStringCount} entries are exactly `constantPools.strings` (opcode
- * string/typeId operands index `0..N-1` unchanged); every other string
- * reference (function `injectCtxTypeId`, page ids, variable names, and value
- * typeIds / enum symbols / `String` values) is interned and deduped into the
- * same table, with new entries appended at `>= N`.
+ * string operands index `0..N-1` unchanged); every other string reference
+ * (type-table struct/enum names and enum symbol keys, page ids, variable
+ * names, `String` values, and map string keys) is interned and deduped into
+ * the same table, with new entries appended at `>= N`.
  */
 class StringInterner {
   readonly strings = List.empty<string>();
@@ -173,11 +208,18 @@ function buildStringInterner(linked: LinkedBrainProgram): StringInterner {
   const program = linked.program;
   const interner = new StringInterner(program.constantPools.strings);
 
-  const functions = program.functions;
-  for (let i = 0; i < functions.size(); i++) {
-    const injectCtxTypeId = functions.get(i).injectCtxTypeId;
-    if (injectCtxTypeId !== undefined) {
-      interner.intern(injectCtxTypeId);
+  const types = program.types;
+  if (types !== undefined) {
+    for (let i = 0; i < types.size(); i++) {
+      const entry = types.get(i)!;
+      if (entry.tag === "struct") {
+        interner.intern(entry.name);
+      } else if (entry.tag === "enum") {
+        interner.intern(entry.name);
+        for (let j = 0; j < entry.symbols.size(); j++) {
+          interner.intern(entry.symbols.get(j)!);
+        }
+      }
     }
   }
 
@@ -202,16 +244,11 @@ function buildStringInterner(linked: LinkedBrainProgram): StringInterner {
 function internValueStrings(value: Value, interner: StringInterner): void {
   if (value.t === NativeType.String) {
     interner.intern(value.v);
-  } else if (value.t === NativeType.Enum) {
-    interner.intern(value.typeId);
-    interner.intern(value.v);
   } else if (value.t === NativeType.List) {
-    interner.intern(value.typeId);
     for (let i = 0; i < value.v.size(); i++) {
       internValueStrings(value.v.get(i), interner);
     }
   } else if (value.t === NativeType.Map) {
-    interner.intern(value.typeId);
     const entries = value.v.entries();
     for (let i = 0; i < entries.size(); i++) {
       const entry = entries.get(i);
@@ -221,7 +258,6 @@ function internValueStrings(value: Value, interner: StringInterner): void {
       internValueStrings(entry[1], interner);
     }
   } else if (value.t === NativeType.Struct) {
-    interner.intern(value.typeId);
     if (value.v !== undefined) {
       for (let i = 0; i < value.v.size(); i++) {
         internValueStrings(value.v.get(i), interner);
@@ -241,16 +277,22 @@ function internValueStrings(value: Value, interner: StringInterner): void {
 /**
  * Serializes a linked brain program to the binary `.mcprogram` form: a 2-byte
  * magic, a 1-byte format version, the numeric profile id, a 1-byte presence
- * bitmask, then the positional sections `CSTR`, `CNUM`, `CVAL`, `FUNC`, `VARS`,
- * the present optional sections (`ACTS`, `RULF`, `RANC`), and `PAGE`. Sections
- * carry no tags or lengths; each is self-delimiting by its leading count.
+ * bitmask, then the positional sections `CSTR`, `TYPS`, `CNUM`, `CVAL`,
+ * `FUNC`, `VARS`, the present optional sections (`ACTS`, `RULF`, `RANC`), and
+ * `PAGE`. Sections carry no tags or lengths; each is self-delimiting by its
+ * leading count.
+ *
+ * Type identity travels by type-table index: typed instruction operands,
+ * `injectCtxTypeIdx`, and constant-value typeIds reference `TYPS` entries, and
+ * enum constant values carry symbol ordinals. TypeId strings are never
+ * written; the decoder reconstructs them.
  *
  * Drops `name`, `maxStackDepth`, `ruleIndex`, `entryPoint`, and `pageName`.
  * Numbers are rounded to the target profile precision; `handle`, `err`, and
  * native-backed struct values are rejected.
  *
  * @param program - Linked brain program to serialize.
- * @param options - Numeric profile id and target precision.
+ * @param options - Numeric profile id, target precision, and optional type registry.
  */
 export function linkedBrainProgramToBytes(
   program: LinkedBrainProgram,
@@ -266,6 +308,8 @@ export function linkedBrainProgramToBytes(
   const interner = buildStringInterner(program);
   const precision = options.precision;
   const linkedProgram = program.program;
+  const types = linkedProgram.types ?? List.empty<ProgramTypeEntry>();
+  const encodeTypes = buildEncodeTypeContext(types, options.typeRegistry);
 
   let presence = 0;
   if (linkedProgram.actions !== undefined) presence |= PRESENCE_ACTS;
@@ -282,9 +326,10 @@ export function linkedBrainProgramToBytes(
 
   // CSTR is written first; every later section resolves string indices against it.
   writeCstrSection(s, interner);
+  writeTypsSection(s, types, interner);
   writeCnumSection(s, linkedProgram.constantPools.numbers, precision);
-  writeCvalSection(s, linkedProgram.constantPools.values, interner, precision);
-  writeFuncSection(s, linkedProgram, interner);
+  writeCvalSection(s, linkedProgram.constantPools.values, interner, encodeTypes, precision);
+  writeFuncSection(s, linkedProgram);
   writeVarsSection(s, linkedProgram.variableNames, interner);
   if (linkedProgram.actions !== undefined) {
     writeActsSection(s, linkedProgram.actions);
@@ -299,7 +344,130 @@ export function linkedBrainProgramToBytes(
   return s.toBytes();
 }
 
-function writeFuncSection(s: MemoryStream, program: Program, interner: StringInterner): void {
+/**
+ * Type-resolution context for the encoder: maps a value's typeId string to
+ * its type-table index, and an enum value's symbol key to its ordinal.
+ */
+interface EncodeTypeContext {
+  typeIdxOf(typeId: TypeId): number;
+  enumOrdinalOf(typeId: TypeId, key: string): number;
+}
+
+function buildEncodeTypeContext(types: List<ProgramTypeEntry>, registry: ITypeRegistry | undefined): EncodeTypeContext {
+  const indexByTypeId = new Dict<string, number>();
+  for (let i = 0; i < types.size(); i++) {
+    indexByTypeId.set(types.get(i)!.typeId, i);
+  }
+  return {
+    typeIdxOf(typeId: TypeId): number {
+      const idx = indexByTypeId.get(typeId);
+      if (idx === undefined) {
+        throw codecError(
+          BrainProgramBinaryCodecErrorCode.UNENCODABLE_VALUE,
+          `constant value type ${typeId} is not in the program type table`
+        );
+      }
+      return idx;
+    },
+    enumOrdinalOf(typeId: TypeId, key: string): number {
+      const idx = indexByTypeId.get(typeId);
+      const entry = idx === undefined ? undefined : types.get(idx);
+      if (entry?.tag === "enum") {
+        for (let i = 0; i < entry.symbols.size(); i++) {
+          if (entry.symbols.get(i) === key) {
+            return i;
+          }
+        }
+        throw codecError(
+          BrainProgramBinaryCodecErrorCode.UNENCODABLE_VALUE,
+          `enum value ${typeId}:${key} has no symbol in its type-table entry`
+        );
+      }
+      if (entry?.tag === "atom") {
+        const def = registry?.get(typeId) as EnumTypeDef | undefined;
+        if (!def || def.coreType !== NativeType.Enum) {
+          throw codecError(
+            BrainProgramBinaryCodecErrorCode.UNENCODABLE_VALUE,
+            `atom enum ${typeId} requires a type registry to resolve symbol ordinals`
+          );
+        }
+        for (let i = 0; i < def.symbols.size(); i++) {
+          if (def.symbols.get(i)!.key === key) {
+            return i;
+          }
+        }
+        throw codecError(
+          BrainProgramBinaryCodecErrorCode.UNENCODABLE_VALUE,
+          `enum value ${typeId}:${key} has no symbol in its registered type`
+        );
+      }
+      throw codecError(
+        BrainProgramBinaryCodecErrorCode.UNENCODABLE_VALUE,
+        `enum value type ${typeId} is not an enum or atom entry in the program type table`
+      );
+    },
+  };
+}
+
+function writeTypsSection(s: MemoryStream, types: List<ProgramTypeEntry>, interner: StringInterner): void {
+  s.writeVarUint(types.size());
+  for (let i = 0; i < types.size(); i++) {
+    const entry = types.get(i)!;
+    switch (entry.tag) {
+      case "atom":
+        s.writeRawU8(TYPE_ENTRY_TAG_ATOM);
+        s.writeVarUint(entry.atomId);
+        break;
+      case "list":
+        s.writeRawU8(TYPE_ENTRY_TAG_LIST);
+        s.writeVarUint(entry.elem);
+        break;
+      case "map":
+        s.writeRawU8(TYPE_ENTRY_TAG_MAP);
+        s.writeVarUint(entry.key);
+        s.writeVarUint(entry.value);
+        break;
+      case "union": {
+        s.writeRawU8(TYPE_ENTRY_TAG_UNION);
+        s.writeVarUint(entry.members.size());
+        for (let j = 0; j < entry.members.size(); j++) {
+          s.writeVarUint(entry.members.get(j)!);
+        }
+        break;
+      }
+      case "function": {
+        s.writeRawU8(TYPE_ENTRY_TAG_FUNCTION);
+        s.writeVarUint(entry.params.size());
+        for (let j = 0; j < entry.params.size(); j++) {
+          s.writeVarUint(entry.params.get(j)!);
+        }
+        s.writeVarUint(entry.result);
+        break;
+      }
+      case "nullable":
+        s.writeRawU8(TYPE_ENTRY_TAG_NULLABLE);
+        s.writeVarUint(entry.base);
+        break;
+      case "struct":
+        s.writeRawU8(TYPE_ENTRY_TAG_STRUCT);
+        s.writeVarUint(interner.intern(entry.name));
+        // Field storage slot count; maxFieldId is -1 for a fieldless struct.
+        s.writeVarUint(entry.maxFieldId + 1);
+        break;
+      case "enum": {
+        s.writeRawU8(TYPE_ENTRY_TAG_ENUM);
+        s.writeVarUint(interner.intern(entry.name));
+        s.writeVarUint(entry.symbols.size());
+        for (let j = 0; j < entry.symbols.size(); j++) {
+          s.writeVarUint(interner.intern(entry.symbols.get(j)!));
+        }
+        break;
+      }
+    }
+  }
+}
+
+function writeFuncSection(s: MemoryStream, program: Program): void {
   const functions = program.functions;
   s.writeVarUint(functions.size());
   for (let i = 0; i < functions.size(); i++) {
@@ -314,7 +482,7 @@ function writeFuncSection(s: MemoryStream, program: Program, interner: StringInt
       );
     }
     s.writeVarUint(extraLocals);
-    s.writeVarUint(fn.injectCtxTypeId === undefined ? 0 : interner.intern(fn.injectCtxTypeId) + 1);
+    s.writeVarUint(fn.injectCtxTypeIdx === undefined ? 0 : fn.injectCtxTypeIdx + 1);
     const code = fn.code;
     s.writeVarUint(code.size());
     for (let j = 0; j < code.size(); j++) {
@@ -377,15 +545,22 @@ function writeCvalSection(
   s: MemoryStream,
   values: List<Value>,
   interner: StringInterner,
+  types: EncodeTypeContext,
   precision: NumberPrecision
 ): void {
   s.writeVarUint(values.size());
   for (let i = 0; i < values.size(); i++) {
-    writeValue(s, values.get(i), interner, precision);
+    writeValue(s, values.get(i), interner, types, precision);
   }
 }
 
-function writeValue(s: MemoryStream, value: Value, interner: StringInterner, precision: NumberPrecision): void {
+function writeValue(
+  s: MemoryStream,
+  value: Value,
+  interner: StringInterner,
+  types: EncodeTypeContext,
+  precision: NumberPrecision
+): void {
   if (value.t === "handle" || value.t === "err") {
     throw codecError(
       BrainProgramBinaryCodecErrorCode.UNENCODABLE_VALUE,
@@ -408,19 +583,19 @@ function writeValue(s: MemoryStream, value: Value, interner: StringInterner, pre
       s.writeVarUint(interner.intern(value.v));
       return;
     case NativeType.Enum:
-      s.writeVarUint(interner.intern(value.typeId));
-      s.writeVarUint(interner.intern(value.v));
+      s.writeVarUint(types.typeIdxOf(value.typeId));
+      s.writeVarUint(types.enumOrdinalOf(value.typeId, value.v));
       return;
     case NativeType.List: {
-      s.writeVarUint(interner.intern(value.typeId));
+      s.writeVarUint(types.typeIdxOf(value.typeId));
       s.writeVarUint(value.v.size());
       for (let i = 0; i < value.v.size(); i++) {
-        writeValue(s, value.v.get(i), interner, precision);
+        writeValue(s, value.v.get(i), interner, types, precision);
       }
       return;
     }
     case NativeType.Map: {
-      s.writeVarUint(interner.intern(value.typeId));
+      s.writeVarUint(types.typeIdxOf(value.typeId));
       const entries = value.v.entries();
       s.writeVarUint(entries.size());
       for (let i = 0; i < entries.size(); i++) {
@@ -433,7 +608,7 @@ function writeValue(s: MemoryStream, value: Value, interner: StringInterner, pre
           s.writeRawU8(MAP_KEY_TAG_STRING);
           s.writeVarUint(interner.intern(key));
         }
-        writeValue(s, entry[1], interner, precision);
+        writeValue(s, entry[1], interner, types, precision);
       }
       return;
     }
@@ -444,13 +619,13 @@ function writeValue(s: MemoryStream, value: Value, interner: StringInterner, pre
           "native-backed struct values cannot be serialized"
         );
       }
-      s.writeVarUint(interner.intern(value.typeId));
+      s.writeVarUint(types.typeIdxOf(value.typeId));
       const fields = value.v;
       const fieldCount = fields === undefined ? 0 : fields.size();
       s.writeVarUint(fieldCount);
       if (fields !== undefined) {
         for (let i = 0; i < fields.size(); i++) {
-          writeValue(s, fields.get(i), interner, precision);
+          writeValue(s, fields.get(i), interner, types, precision);
         }
       }
       return;
@@ -462,7 +637,7 @@ function writeValue(s: MemoryStream, value: Value, interner: StringInterner, pre
       } else {
         s.writeVarUint(value.captures.size() + 1);
         for (let i = 0; i < value.captures.size(); i++) {
-          writeValue(s, value.captures.get(i), interner, precision);
+          writeValue(s, value.captures.get(i), interner, types, precision);
         }
       }
       return;
@@ -579,14 +754,22 @@ export function linkedBrainProgramFromBytes(
       `format version ${formatVersion} exceeds reader max ${maxFormatVersion}`
     );
   }
+  if (formatVersion < BINARY_PROGRAM_FORMAT_VERSION) {
+    throw codecError(
+      BrainProgramBinaryCodecErrorCode.UNSUPPORTED_FORMAT_VERSION,
+      `format version ${formatVersion} is older than this reader's format ${BINARY_PROGRAM_FORMAT_VERSION}`
+    );
+  }
   const profileId = s.readVarUint();
   const presence = s.readRawU8();
 
   // CSTR is read first; every later section resolves string indices against it.
   const strings = readCstrSection(s);
+  const rawTypes = readTypsSectionRaw(s, strings);
+  const resolvedTypes = resolveTypsEntries(rawTypes, options.typeRegistry);
   const numbers = readCnumSection(s, precision);
-  const values = readCvalSection(s, strings, precision);
-  const functions = readFuncSection(s, strings);
+  const values = readCvalSection(s, strings, resolvedTypes.context, precision);
+  const functions = readFuncSection(s);
   const variableNames = readVarsSection(s, strings);
   const actions = (presence & PRESENCE_ACTS) !== 0 ? readActsSection(s) : undefined;
   const ruleFuncIds = (presence & PRESENCE_RULF) !== 0 ? readRulfSection(s) : undefined;
@@ -602,6 +785,7 @@ export function linkedBrainProgramFromBytes(
     version: 1,
     functions,
     constantPools,
+    types: resolvedTypes.entries,
     variableNames,
     ...(actions !== undefined ? { actions } : {}),
     ...(ruleFuncIds !== undefined ? { ruleFuncIds } : {}),
@@ -644,7 +828,7 @@ function readCstrSection(s: MemoryStream): StringTable {
   return new StringTable(all, constStringCount);
 }
 
-function readFuncSection(s: MemoryStream, strings: StringTable): BrainProgramFunctionBytecodeJson[] {
+function readFuncSection(s: MemoryStream): BrainProgramFunctionBytecodeJson[] {
   const count = s.readVarUint();
   const functions: BrainProgramFunctionBytecodeJson[] = [];
   for (let i = 0; i < count; i++) {
@@ -660,10 +844,250 @@ function readFuncSection(s: MemoryStream, strings: StringTable): BrainProgramFun
       code,
       numParams,
       numLocals: numParams + extraLocals,
-      ...(injectCtxId === 0 ? {} : { injectCtxTypeId: strings.get(injectCtxId - 1) }),
+      ...(injectCtxId === 0 ? {} : { injectCtxTypeIdx: injectCtxId - 1 }),
     });
   }
   return functions;
+}
+
+/** One TYPS entry as read off the wire, before atom/typeId resolution. */
+type RawTypeEntry =
+  | { readonly tag: typeof TYPE_ENTRY_TAG_ATOM; readonly atomId: number }
+  | { readonly tag: typeof TYPE_ENTRY_TAG_LIST; readonly elem: number }
+  | { readonly tag: typeof TYPE_ENTRY_TAG_MAP; readonly key: number; readonly value: number }
+  | { readonly tag: typeof TYPE_ENTRY_TAG_UNION; readonly members: List<number> }
+  | { readonly tag: typeof TYPE_ENTRY_TAG_FUNCTION; readonly params: List<number>; readonly result: number }
+  | { readonly tag: typeof TYPE_ENTRY_TAG_NULLABLE; readonly base: number }
+  | { readonly tag: typeof TYPE_ENTRY_TAG_STRUCT; readonly name: string; readonly slotCount: number }
+  | { readonly tag: typeof TYPE_ENTRY_TAG_ENUM; readonly name: string; readonly symbols: List<string> };
+
+function readTypsSectionRaw(s: MemoryStream, strings: StringTable): List<RawTypeEntry> {
+  const count = s.readVarUint();
+  const entries = List.empty<RawTypeEntry>();
+
+  const child = (own: number): number => {
+    const idx = s.readVarUint();
+    if (idx >= own) {
+      throw codecError(
+        BrainProgramBinaryCodecErrorCode.TYPE_FORWARD_REFERENCE,
+        `TYPS entry ${own} references child ${idx}; children must precede their parent`
+      );
+    }
+    return idx;
+  };
+
+  for (let i = 0; i < count; i++) {
+    const tag = s.readRawU8();
+    switch (tag) {
+      case TYPE_ENTRY_TAG_ATOM:
+        entries.push({ tag, atomId: s.readVarUint() });
+        break;
+      case TYPE_ENTRY_TAG_LIST:
+        entries.push({ tag, elem: child(i) });
+        break;
+      case TYPE_ENTRY_TAG_MAP:
+        entries.push({ tag, key: child(i), value: child(i) });
+        break;
+      case TYPE_ENTRY_TAG_UNION: {
+        const memberCount = s.readVarUint();
+        const members = List.empty<number>();
+        for (let j = 0; j < memberCount; j++) {
+          members.push(child(i));
+        }
+        entries.push({ tag, members });
+        break;
+      }
+      case TYPE_ENTRY_TAG_FUNCTION: {
+        const paramCount = s.readVarUint();
+        const params = List.empty<number>();
+        for (let j = 0; j < paramCount; j++) {
+          params.push(child(i));
+        }
+        entries.push({ tag, params, result: child(i) });
+        break;
+      }
+      case TYPE_ENTRY_TAG_NULLABLE:
+        entries.push({ tag, base: child(i) });
+        break;
+      case TYPE_ENTRY_TAG_STRUCT:
+        entries.push({ tag, name: strings.get(s.readVarUint()), slotCount: s.readVarUint() });
+        break;
+      case TYPE_ENTRY_TAG_ENUM: {
+        const name = strings.get(s.readVarUint());
+        const symbolCount = s.readVarUint();
+        const symbols = List.empty<string>();
+        for (let j = 0; j < symbolCount; j++) {
+          symbols.push(strings.get(s.readVarUint()));
+        }
+        entries.push({ tag, name, symbols });
+        break;
+      }
+      default:
+        throw codecError(BrainProgramBinaryCodecErrorCode.INVALID_TYPE_ENTRY_TAG, `invalid TYPS entry tag ${tag}`);
+    }
+  }
+  return entries;
+}
+
+/**
+ * Type-resolution context for the decoder: maps a type-table index to its
+ * reconstructed typeId string, and an enum value's `(typeIdx, ordinal)` pair
+ * to its symbol key.
+ */
+interface DecodeTypeContext {
+  typeIdOf(idx: number): string;
+  enumSymbolOf(idx: number, ordinal: number): string;
+}
+
+interface ResolvedTypsEntries {
+  entries: BrainProgramTypeEntryJson[];
+  context: DecodeTypeContext;
+}
+
+/**
+ * Reconstruct each raw TYPS entry's typeId string: atoms through the
+ * registry's atom map, structural entries through the deterministic
+ * composition rules, and program-local struct/enum entries through their
+ * carried names.
+ */
+function resolveTypsEntries(rawEntries: List<RawTypeEntry>, registry: ITypeRegistry): ResolvedTypsEntries {
+  const entries: BrainProgramTypeEntryJson[] = [];
+  const typeIds = List.empty<string>();
+  const names = List.empty<string>();
+  const coreTypes = List.empty<NativeType>();
+
+  for (let i = 0; i < rawEntries.size(); i++) {
+    const raw = rawEntries.get(i)!;
+    switch (raw.tag) {
+      case TYPE_ENTRY_TAG_ATOM: {
+        const typeId = registry.resolveByAtomId(raw.atomId);
+        const def = typeId === undefined ? undefined : registry.get(typeId);
+        if (typeId === undefined || def === undefined) {
+          throw codecError(
+            BrainProgramBinaryCodecErrorCode.UNKNOWN_TYPE_ATOM,
+            `TYPS entry ${i}: type atom ${raw.atomId} is not registered in this runtime`
+          );
+        }
+        entries.push({ tag: "atom", typeId, atomId: raw.atomId });
+        typeIds.push(typeId);
+        names.push(def.name);
+        coreTypes.push(def.coreType);
+        break;
+      }
+      case TYPE_ENTRY_TAG_LIST: {
+        const name = `List<${typeIds.get(raw.elem)}>`;
+        const typeId = mkTypeId(NativeType.List, name);
+        entries.push({ tag: "list", typeId, elem: raw.elem });
+        typeIds.push(typeId);
+        names.push(name);
+        coreTypes.push(NativeType.List);
+        break;
+      }
+      case TYPE_ENTRY_TAG_MAP: {
+        const name = `Map<${typeIds.get(raw.key)},${typeIds.get(raw.value)}>`;
+        const typeId = mkTypeId(NativeType.Map, name);
+        entries.push({ tag: "map", typeId, key: raw.key, value: raw.value });
+        typeIds.push(typeId);
+        names.push(name);
+        coreTypes.push(NativeType.Map);
+        break;
+      }
+      case TYPE_ENTRY_TAG_UNION: {
+        const parts: string[] = [];
+        for (let j = 0; j < raw.members.size(); j++) {
+          parts.push(typeIds.get(raw.members.get(j)!)!);
+        }
+        const name = parts.join(",");
+        const typeId = mkTypeId(NativeType.Union, name);
+        entries.push({ tag: "union", typeId, members: raw.members.toArray() });
+        typeIds.push(typeId);
+        names.push(name);
+        coreTypes.push(NativeType.Union);
+        break;
+      }
+      case TYPE_ENTRY_TAG_FUNCTION: {
+        const parts: string[] = [];
+        for (let j = 0; j < raw.params.size(); j++) {
+          parts.push(typeIds.get(raw.params.get(j)!)!);
+        }
+        const name = `Function<(${parts.join(",")})=>${typeIds.get(raw.result)}>`;
+        const typeId = mkTypeId(NativeType.Function, name);
+        entries.push({ tag: "function", typeId, params: raw.params.toArray(), result: raw.result });
+        typeIds.push(typeId);
+        names.push(name);
+        coreTypes.push(NativeType.Function);
+        break;
+      }
+      case TYPE_ENTRY_TAG_NULLABLE: {
+        const name = `${names.get(raw.base)}?`;
+        const coreType = coreTypes.get(raw.base)!;
+        const typeId = mkTypeId(coreType, name);
+        entries.push({ tag: "nullable", typeId, base: raw.base });
+        typeIds.push(typeId);
+        names.push(name);
+        coreTypes.push(coreType);
+        break;
+      }
+      case TYPE_ENTRY_TAG_STRUCT: {
+        const typeId = mkTypeId(NativeType.Struct, raw.name);
+        entries.push({ tag: "struct", typeId, name: raw.name, maxFieldId: raw.slotCount - 1 });
+        typeIds.push(typeId);
+        names.push(raw.name);
+        coreTypes.push(NativeType.Struct);
+        break;
+      }
+      case TYPE_ENTRY_TAG_ENUM: {
+        const typeId = mkTypeId(NativeType.Enum, raw.name);
+        entries.push({ tag: "enum", typeId, name: raw.name, symbols: raw.symbols.toArray() });
+        typeIds.push(typeId);
+        names.push(raw.name);
+        coreTypes.push(NativeType.Enum);
+        break;
+      }
+    }
+  }
+
+  const context: DecodeTypeContext = {
+    typeIdOf(idx: number): string {
+      if (idx < 0 || idx >= typeIds.size()) {
+        throw codecError(
+          BrainProgramBinaryCodecErrorCode.TYPE_INDEX_OUT_OF_RANGE,
+          `type-table index ${idx} out of range (table size ${typeIds.size()})`
+        );
+      }
+      return typeIds.get(idx)!;
+    },
+    enumSymbolOf(idx: number, ordinal: number): string {
+      const typeId = this.typeIdOf(idx);
+      const raw = rawEntries.get(idx)!;
+      if (raw.tag === TYPE_ENTRY_TAG_ENUM) {
+        if (ordinal < 0 || ordinal >= raw.symbols.size()) {
+          throw codecError(
+            BrainProgramBinaryCodecErrorCode.ENUM_ORDINAL_OUT_OF_RANGE,
+            `enum ${typeId} ordinal ${ordinal} out of range (${raw.symbols.size()} symbols)`
+          );
+        }
+        return raw.symbols.get(ordinal)!;
+      }
+      if (raw.tag === TYPE_ENTRY_TAG_ATOM) {
+        const def = registry.get(typeId) as EnumTypeDef | undefined;
+        const symbol = def && def.coreType === NativeType.Enum ? def.symbols.get(ordinal) : undefined;
+        if (!symbol) {
+          throw codecError(
+            BrainProgramBinaryCodecErrorCode.ENUM_ORDINAL_OUT_OF_RANGE,
+            `enum ${typeId} ordinal ${ordinal} does not resolve to a registered symbol`
+          );
+        }
+        return symbol.key;
+      }
+      throw codecError(
+        BrainProgramBinaryCodecErrorCode.INVALID_VALUE_TAG,
+        `enum constant references non-enum type-table entry ${idx} (${typeId})`
+      );
+    },
+  };
+
+  return { entries, context };
 }
 
 function readInstruction(s: MemoryStream): BrainProgramInstructionJson {
@@ -716,16 +1140,26 @@ function readNumberEntry(s: MemoryStream, precision: NumberPrecision): number {
   );
 }
 
-function readCvalSection(s: MemoryStream, strings: StringTable, precision: NumberPrecision): BrainProgramJsonObject[] {
+function readCvalSection(
+  s: MemoryStream,
+  strings: StringTable,
+  types: DecodeTypeContext,
+  precision: NumberPrecision
+): BrainProgramJsonObject[] {
   const count = s.readVarUint();
   const values: BrainProgramJsonObject[] = [];
   for (let i = 0; i < count; i++) {
-    values.push(readValue(s, strings, precision));
+    values.push(readValue(s, strings, types, precision));
   }
   return values;
 }
 
-function readValue(s: MemoryStream, strings: StringTable, precision: NumberPrecision): BrainProgramJsonObject {
+function readValue(
+  s: MemoryStream,
+  strings: StringTable,
+  types: DecodeTypeContext,
+  precision: NumberPrecision
+): BrainProgramJsonObject {
   const tag = readValueTag(s);
   switch (tag) {
     case NativeType.Unknown:
@@ -740,34 +1174,37 @@ function readValue(s: MemoryStream, strings: StringTable, precision: NumberPreci
       return { t: NativeType.Number, v: readNumberEntry(s, precision) };
     case NativeType.String:
       return { t: NativeType.String, v: strings.get(s.readVarUint()) };
-    case NativeType.Enum:
-      return { t: NativeType.Enum, typeId: strings.get(s.readVarUint()), v: strings.get(s.readVarUint()) };
+    case NativeType.Enum: {
+      const typeIdx = s.readVarUint();
+      const ordinal = s.readVarUint();
+      return { t: NativeType.Enum, typeId: types.typeIdOf(typeIdx), v: types.enumSymbolOf(typeIdx, ordinal) };
+    }
     case NativeType.List: {
-      const typeId = strings.get(s.readVarUint());
+      const typeId = types.typeIdOf(s.readVarUint());
       const count = s.readVarUint();
       const items: BrainProgramJsonObject[] = [];
       for (let i = 0; i < count; i++) {
-        items.push(readValue(s, strings, precision));
+        items.push(readValue(s, strings, types, precision));
       }
       return { t: NativeType.List, typeId, v: items };
     }
     case NativeType.Map: {
-      const typeId = strings.get(s.readVarUint());
+      const typeId = types.typeIdOf(s.readVarUint());
       const count = s.readVarUint();
       const entries: MapEntryJson[] = [];
       for (let i = 0; i < count; i++) {
         const keyTag = s.readRawU8();
         const key = keyTag === MAP_KEY_TAG_NUMBER ? readNumberEntry(s, precision) : strings.get(s.readVarUint());
-        entries.push({ key, value: readValue(s, strings, precision) });
+        entries.push({ key, value: readValue(s, strings, types, precision) });
       }
       return { t: NativeType.Map, typeId, v: entries };
     }
     case NativeType.Struct: {
-      const typeId = strings.get(s.readVarUint());
+      const typeId = types.typeIdOf(s.readVarUint());
       const count = s.readVarUint();
       const fields: BrainProgramJsonObject[] = [];
       for (let i = 0; i < count; i++) {
-        fields.push(readValue(s, strings, precision));
+        fields.push(readValue(s, strings, types, precision));
       }
       return { t: NativeType.Struct, typeId, v: fields };
     }
@@ -779,7 +1216,7 @@ function readValue(s: MemoryStream, strings: StringTable, precision: NumberPreci
       }
       const captures: BrainProgramJsonObject[] = [];
       for (let i = 0; i < biasedCaptures - 1; i++) {
-        captures.push(readValue(s, strings, precision));
+        captures.push(readValue(s, strings, types, precision));
       }
       return { t: NativeType.Function, funcId, captures };
     }
@@ -922,14 +1359,26 @@ export function binaryProgramByteReport(bytes: IByteArray): BinaryProgramByteRep
   const cstrStart = s.tellRead();
   const strings = readCstrSection(s);
   sections.push({ tag: "CSTR", bodyBytes: s.tellRead() - cstrStart });
+  measure("TYPS", () => {
+    readTypsSectionRaw(s, strings);
+  });
+  // Measuring needs only byte spans, so type references resolve to placeholders.
+  const measureTypes: DecodeTypeContext = {
+    typeIdOf(): string {
+      return "";
+    },
+    enumSymbolOf(): string {
+      return "";
+    },
+  };
   measure("CNUM", () => {
     readCnumSection(s, "f64");
   });
   measure("CVAL", () => {
-    readCvalSection(s, strings, "f64");
+    readCvalSection(s, strings, measureTypes, "f64");
   });
   measure("FUNC", () => {
-    readFuncSection(s, strings);
+    readFuncSection(s);
   });
   measure("VARS", () => {
     readVarsSection(s, strings);

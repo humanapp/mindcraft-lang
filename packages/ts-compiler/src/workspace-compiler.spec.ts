@@ -25,6 +25,7 @@ function createFacingModule(): MindcraftModule {
         typeId: mkTypeId(NativeType.Enum, "Facing"),
         codec: noopCodec,
         name: "Facing",
+        atomId: 1024,
         symbols: List.from([
           { key: "north", label: "North", value: "north" },
           { key: "south", label: "South", value: "south" },

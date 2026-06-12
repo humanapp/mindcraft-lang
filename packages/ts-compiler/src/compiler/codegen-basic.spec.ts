@@ -347,6 +347,7 @@ export default Sensor({
     const actorRefTypeId = mkTypeId(NativeType.Struct, "ActorRef");
     if (!types.get(actorRefTypeId)) {
       types.addStructType("ActorRef", {
+        atomId: 1024,
         fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 }]),
       });
     }

@@ -6,6 +6,7 @@ import { MathOps } from "../platform/math";
 import { StringUtils as SU } from "../platform/string";
 import { TypeUtils } from "../platform/types";
 import { UniqueSet } from "../platform/uniqueset";
+import { CoreTypeAtomId, type StableIdOwner, TARGET_TYPE_ATOM_BASE } from "./abi-ids";
 import type { ExecutionContext } from "./context";
 import { registerEnumConversions } from "./conversions";
 import { CoreTypeIds, CoreTypeNames, mkTypeId } from "./core-types";
@@ -90,12 +91,24 @@ function buildFieldIndexByName(fields: List<StructFieldDef>): Dict<string, numbe
 export class TypeRegistry implements ITypeRegistry {
   private defs = new Dict<TypeId, TypeDef>();
   private nameToId = new Dict<string, TypeId>();
+  private atomToId = new Dict<number, TypeId>();
   private constructors = new Dict<string, TypeConstructor>();
   private compatCache = new Dict<string, boolean>();
   private services_?: BrainServices;
+  private owner: StableIdOwner = "target";
 
   setServices(services: BrainServices): void {
     this.services_ = services;
+  }
+
+  withOwner<T>(owner: StableIdOwner, body: () => T): T {
+    const previous = this.owner;
+    this.owner = owner;
+    try {
+      return body();
+    } finally {
+      this.owner = previous;
+    }
   }
 
   private add(def: TypeDef) {
@@ -104,6 +117,42 @@ export class TypeRegistry implements ITypeRegistry {
     }
     this.defs.set(def.typeId, def);
     this.nameToId.set(def.name, def.typeId);
+    if (def.atomId !== undefined) {
+      this.atomToId.set(def.atomId, def.typeId);
+    }
+  }
+
+  /**
+   * Validate an atom id for a named registration against the active owner
+   * scope: `core` and `target` owners must supply one inside their partition
+   * of the atom space, `dynamic` owners must not supply one. Also rejects
+   * non-integer, negative, and already-assigned atom ids.
+   */
+  private validateAtomId(atomId: number | undefined, name: string): void {
+    if (this.owner === "dynamic") {
+      if (atomId !== undefined) {
+        throw new Error(`Dynamic type '${name}' must not declare an atomId (got ${atomId})`);
+      }
+      return;
+    }
+    if (atomId === undefined) {
+      throw new Error(`${this.owner === "core" ? "Core" : "Target"} type '${name}' requires an atomId`);
+    }
+    if (atomId < 0 || MathOps.floor(atomId) !== atomId) {
+      throw new Error(`Type '${name}' has invalid atomId ${atomId}: must be a non-negative integer`);
+    }
+    const existing = this.atomToId.get(atomId);
+    if (existing !== undefined) {
+      throw new Error(`Type '${name}' reuses atomId ${atomId} already assigned to type ${existing}`);
+    }
+    if (this.owner === "core" && atomId >= TARGET_TYPE_ATOM_BASE) {
+      throw new Error(`Core type '${name}' has atomId ${atomId} outside the core range [0, ${TARGET_TYPE_ATOM_BASE})`);
+    }
+    if (this.owner === "target" && atomId < TARGET_TYPE_ATOM_BASE) {
+      throw new Error(
+        `Target type '${name}' has atomId ${atomId} below the target range base ${TARGET_TYPE_ATOM_BASE}`
+      );
+    }
   }
 
   private validateTypeName(name: string) {
@@ -126,8 +175,9 @@ export class TypeRegistry implements ITypeRegistry {
     return (def as EnumTypeDef).symbols.find((symbol) => symbol.key === key);
   }
 
-  addVoidType(name: string): TypeId {
+  addVoidType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Void, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -135,12 +185,14 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new VoidCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
 
-  addNilType(name: string): TypeId {
+  addNilType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Nil, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -148,12 +200,14 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new NilCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
 
-  addBooleanType(name: string): TypeId {
+  addBooleanType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Boolean, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -161,12 +215,14 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new BooleanCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
 
-  addNumberType(name: string): TypeId {
+  addNumberType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Number, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -174,12 +230,14 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new NumberCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
 
-  addStringType(name: string): TypeId {
+  addStringType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.String, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -187,12 +245,14 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new StringCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
 
   addEnumType(name: string, shape: EnumTypeShape): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(shape.atomId, name);
     const typeId = mkTypeId(NativeType.Enum, name);
     this.validateTypeNotRegistered(typeId);
     const symbols = normalizeEnumSymbols(typeId, shape.symbols);
@@ -209,6 +269,7 @@ export class TypeRegistry implements ITypeRegistry {
       symbols,
       defaultKey,
       functionIds: shape.functionIds,
+      atomId: shape.atomId,
     };
     this.add(enumTypeDef);
     if (shape.functionIds) {
@@ -291,6 +352,7 @@ export class TypeRegistry implements ITypeRegistry {
 
   addListType(name: string, shape: ListTypeShape): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(shape.atomId, name);
     const typeId = mkTypeId(NativeType.List, name);
     this.validateTypeNotRegistered(typeId);
     const { elementTypeId } = shape;
@@ -315,6 +377,7 @@ export class TypeRegistry implements ITypeRegistry {
 
   addMapType(name: string, shape: MapTypeShape): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(shape.atomId, name);
     const typeId = mkTypeId(NativeType.Map, name);
     this.validateTypeNotRegistered(typeId);
     const { keyTypeId, valueTypeId } = shape;
@@ -339,6 +402,7 @@ export class TypeRegistry implements ITypeRegistry {
 
   addStructType(name: string, shape: StructTypeShape): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(shape.atomId, name);
     const typeId = mkTypeId(NativeType.Struct, name);
     this.validateTypeNotRegistered(typeId);
     const fieldNames = new UniqueSet<string>();
@@ -370,11 +434,16 @@ export class TypeRegistry implements ITypeRegistry {
       fieldSetter: shape.fieldSetter,
       snapshotNative: shape.snapshotNative,
       methods: shape.methods,
+      atomId: shape.atomId,
     };
     this.add(structTypeDef);
     return typeId;
   }
 
+  /**
+   * Register a placeholder for a program-local struct, to be completed with
+   * {@link finalizeStructType}. Program-local types carry no atom id.
+   */
   reserveStructType(name: string): TypeId {
     this.validateTypeName(name);
     const typeId = mkTypeId(NativeType.Struct, name);
@@ -398,6 +467,9 @@ export class TypeRegistry implements ITypeRegistry {
     }
     if (existing.coreType !== NativeType.Struct) {
       throw new Error(`Cannot finalize non-struct type: ${typeId}`);
+    }
+    if (shape.atomId !== undefined) {
+      throw new Error(`Program-local struct type ${typeId} must not declare an atomId (got ${shape.atomId})`);
     }
     const fieldNames = new UniqueSet<string>();
     shape.fields.forEach((field) => {
@@ -484,8 +556,9 @@ export class TypeRegistry implements ITypeRegistry {
     }
   }
 
-  addAnyType(name: string): TypeId {
+  addAnyType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Any, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -493,12 +566,14 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new AnyCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
 
-  addFunctionType(name: string): TypeId {
+  addFunctionType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Function, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -506,6 +581,7 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new FunctionCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
@@ -685,6 +761,10 @@ export class TypeRegistry implements ITypeRegistry {
     return this.nameToId.get(name);
   }
 
+  resolveByAtomId(atomId: number): TypeId | undefined {
+    return this.atomToId.get(atomId);
+  }
+
   entries(): Iterable<[TypeId, TypeDef]> {
     return this.defs.entries().toArray();
   }
@@ -775,14 +855,17 @@ export class TypeRegistry implements ITypeRegistry {
 /** Register the built-in core types (`Void`, `Nil`, `Boolean`, `Number`, `String`, `Any`, `Function`, list/map constructors) on `services.runtime.types`. */
 export function registerCoreTypes(services: BrainServices) {
   const typeRegistry = services.runtime.types;
-  typeRegistry.addVoidType(CoreTypeNames.Void);
-  typeRegistry.addNilType(CoreTypeNames.Nil);
-  typeRegistry.addBooleanType(CoreTypeNames.Boolean);
-  typeRegistry.addNumberType(CoreTypeNames.Number);
-  typeRegistry.addStringType(CoreTypeNames.String);
-  typeRegistry.addAnyType(CoreTypeNames.Any);
-  typeRegistry.addFunctionType(CoreTypeNames.Function);
-  typeRegistry.addListType("AnyList", { elementTypeId: mkTypeId(NativeType.Any, CoreTypeNames.Any) });
+  typeRegistry.addVoidType(CoreTypeNames.Void, CoreTypeAtomId.Void);
+  typeRegistry.addNilType(CoreTypeNames.Nil, CoreTypeAtomId.Nil);
+  typeRegistry.addBooleanType(CoreTypeNames.Boolean, CoreTypeAtomId.Boolean);
+  typeRegistry.addNumberType(CoreTypeNames.Number, CoreTypeAtomId.Number);
+  typeRegistry.addStringType(CoreTypeNames.String, CoreTypeAtomId.String);
+  typeRegistry.addAnyType(CoreTypeNames.Any, CoreTypeAtomId.Any);
+  typeRegistry.addFunctionType(CoreTypeNames.Function, CoreTypeAtomId.Function);
+  typeRegistry.addListType("AnyList", {
+    elementTypeId: mkTypeId(NativeType.Any, CoreTypeNames.Any),
+    atomId: CoreTypeAtomId.AnyList,
+  });
   typeRegistry.registerConstructor(new ListConstructor());
   typeRegistry.registerConstructor(new MapConstructor());
 }

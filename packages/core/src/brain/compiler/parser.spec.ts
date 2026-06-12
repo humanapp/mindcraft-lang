@@ -47,6 +47,12 @@ import {
 
 // ---- Shared setup ----
 
+let nextTypeAtomId = 20000;
+
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
+
 let services: BrainServices;
 let everySensor: BrainTileSensorDef;
 let modTimeMs: BrainTileModifierDef;
@@ -1028,8 +1034,14 @@ describe("anonymous choice type discrimination", () => {
 
   test("literal matches correct anonymous type in choice(anon.A, anon.B)", () => {
     const kActId = "type-disc-lit";
-    const kTypeAlpha = services.runtime.types.addStructType("AlphaLit", { fields: List.empty() });
-    const kTypeBeta = services.runtime.types.addStructType("BetaLit", { fields: List.empty() });
+    const kTypeAlpha = services.runtime.types.addStructType("AlphaLit", {
+      atomId: mkTestAtomId(),
+      fields: List.empty(),
+    });
+    const kTypeBeta = services.runtime.types.addStructType("BetaLit", {
+      atomId: mkTestAtomId(),
+      fields: List.empty(),
+    });
 
     const callDef = mkCallDef(
       bag(optional(choice(param("anon.AlphaLit", { anonymous: true }), param("anon.BetaLit", { anonymous: true }))))
@@ -1091,12 +1103,14 @@ describe("Field id resolution from object type", () => {
     const types = services.runtime.types;
     // x is id 0 on Av2 but id 1 on Av3 -- the same field name, different ids.
     const av2 = types.addStructType("Av2Resolve", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     const av3 = types.addStructType("Av3Resolve", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -1104,6 +1118,7 @@ describe("Field id resolution from object type", () => {
       ]),
     });
     const entity = types.addStructType("EntityResolve", {
+      atomId: mkTestAtomId(),
       fields: List.from([{ name: "pos", typeId: av2, fieldIndex: 0 }]),
     });
     av2Var = new BrainTileVariableDef(mkVariableTileId("av2-resolve"), "av2v", av2, "av2-resolve");

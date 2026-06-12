@@ -814,6 +814,7 @@ describe("nullable struct nil comparison", () => {
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
+        atomId: 1024,
         fields: List.from([
           { name: "x", typeId: numTypeId, fieldIndex: 0 },
           { name: "y", typeId: numTypeId, fieldIndex: 1 },
@@ -966,6 +967,7 @@ describe("auto-instantiated list types", () => {
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
+        atomId: 1025,
         fields: List.from([
           { name: "x", typeId: numTypeId, fieldIndex: 0 },
           { name: "y", typeId: numTypeId, fieldIndex: 1 },

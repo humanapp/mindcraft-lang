@@ -45,6 +45,11 @@ import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
+let nextTypeAtomId = 1024;
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
+
 function toVmServices(b: BrainServices) {
   return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
     .runtime;
@@ -286,6 +291,7 @@ describe("struct literal compilation", () => {
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "x", typeId: numTypeId, fieldIndex: 0 },
           { name: "y", typeId: numTypeId, fieldIndex: 1 },
@@ -295,6 +301,7 @@ describe("struct literal compilation", () => {
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "name", typeId: strTypeId, fieldIndex: 0 },
           { name: "position", typeId: vec2TypeId, fieldIndex: 1 },
@@ -304,6 +311,7 @@ describe("struct literal compilation", () => {
     const nativeTypeId = mkTypeId(NativeType.Struct, "NativeObj");
     if (!types.get(nativeTypeId)) {
       types.addStructType("NativeObj", {
+        atomId: mkTestAtomId(),
         fields: List.from([{ name: "id", typeId: numTypeId, fieldIndex: 0 }]),
         fieldGetter: () => undefined,
       });
@@ -485,6 +493,7 @@ describe("property access chains + host calls", () => {
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "x", typeId: numTypeId, fieldIndex: 0 },
           { name: "y", typeId: numTypeId, fieldIndex: 1 },
@@ -495,6 +504,7 @@ describe("property access chains + host calls", () => {
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "name", typeId: strTypeId, fieldIndex: 0 },
           { name: "position", typeId: vec2TypeId, fieldIndex: 1 },
@@ -870,6 +880,7 @@ export default Sensor({
     const nativeActorId = mkTypeId(NativeType.Struct, "NativeActor");
     if (!types.get(nativeActorId)) {
       types.addStructType("NativeActor", {
+        atomId: mkTestAtomId(),
         fields: List.from([{ name: "health", typeId: numTypeId, fieldIndex: 0 }]),
         fieldGetter: (source, fieldId) => {
           if (fieldId === 0) return mkNumberValue(100);
@@ -1036,12 +1047,13 @@ describe("struct method calls", () => {
 
     const numListTypeId = mkTypeId(NativeType.List, "NumberList");
     if (!types.get(numListTypeId)) {
-      types.addListType("NumberList", { elementTypeId: numTypeId });
+      types.addListType("NumberList", { atomId: mkTestAtomId(), elementTypeId: numTypeId });
     }
 
     const widgetTypeId = mkTypeId(NativeType.Struct, "Widget");
     if (!types.get(widgetTypeId)) {
       types.addStructType("Widget", {
+        atomId: mkTestAtomId(),
         fields: List.from([{ name: "id", typeId: numTypeId, fieldIndex: 0 }]),
         fieldGetter: (source, fieldId) => {
           if (fieldId === 0) return mkNumberValue((source.native as { id: number }).id);

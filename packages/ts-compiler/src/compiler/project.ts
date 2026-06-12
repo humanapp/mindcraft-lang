@@ -339,7 +339,7 @@ export class UserTileProject {
       return { diagnostics: programResult.diagnostics };
     }
 
-    const pool = new compiler.ConstantPool();
+    const pool = new compiler.ConstantPool(services.runtime.types);
     const emittedFunctions: ReturnType<typeof emitFunction>["bytecode"][] = [];
     const functionDebugInfo: FunctionDebugInfo[] = [];
 
@@ -442,6 +442,7 @@ export class UserTileProject {
       version: 1,
       functions: List.from(emittedFunctions),
       constantPools: pool.toPools(),
+      types: pool.typeEntries(),
       variableNames: List.empty(),
       entryPoint: programResult.entryFuncId,
       key: buildUserActionKey(descriptor.kind, descriptor.name),

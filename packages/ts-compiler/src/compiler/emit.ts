@@ -218,7 +218,7 @@ export function emitFunction(
         emitter.mapGet();
         break;
       case "MapNew": {
-        const typeIdIdx = pool.addString(node.typeId);
+        const typeIdIdx = pool.addType(node.typeId);
         emitter.mapNew(typeIdIdx);
         break;
       }
@@ -232,7 +232,7 @@ export function emitFunction(
         emitter.mapDelete();
         break;
       case "StructNew": {
-        const typeIdIdx = pool.addString(node.typeId);
+        const typeIdIdx = pool.addType(node.typeId);
         emitter.structNew(typeIdIdx);
         break;
       }
@@ -240,12 +240,12 @@ export function emitFunction(
         emitter.structSetField(node.fieldIndex);
         break;
       case "StructCopyExcept": {
-        const typeIdIdx = pool.addString(node.typeId);
+        const typeIdIdx = node.typeId === undefined ? undefined : pool.addType(node.typeId);
         emitter.structCopyExcept(node.numExclude, typeIdIdx);
         break;
       }
       case "ListNew": {
-        const typeIdIdx = pool.addString(node.typeId);
+        const typeIdIdx = pool.addType(node.typeId);
         emitter.listNew(typeIdIdx);
         break;
       }
@@ -300,7 +300,7 @@ export function emitFunction(
         emitter.typeCheck(node.nativeType);
         break;
       case "InstanceOf": {
-        const typeIdIdx = pool.addString(node.typeId);
+        const typeIdIdx = pool.addType(node.typeId);
         emitter.instanceOf(typeIdIdx);
         break;
       }
@@ -397,7 +397,13 @@ export function emitFunction(
 
   const code = emitter.finalize();
   return {
-    bytecode: { code, numParams, numLocals, name, injectCtxTypeId },
+    bytecode: {
+      code,
+      numParams,
+      numLocals,
+      name,
+      ...(injectCtxTypeId === undefined ? {} : { injectCtxTypeIdx: pool.addType(injectCtxTypeId) }),
+    },
     diagnostics,
     spans,
     pcToSpanIndex,

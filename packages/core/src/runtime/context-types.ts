@@ -1,6 +1,6 @@
 import type { BrainServices } from "../brain/services";
 import { List, type ReadonlyList } from "../platform/list";
-import { CoreFuncId } from "./abi-ids";
+import { CoreFuncId, CoreTypeAtomId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
 import { getRuleVariable, setRuleVariable } from "./context";
 import { CoreTypeIds, mkTypeId } from "./core-types";
@@ -43,6 +43,7 @@ export function registerContextTypes(services: BrainServices) {
   const { types, functions } = services.runtime;
 
   const brainContextTypeId = types.addStructType(ContextTypeNames.BrainContext, {
+    atomId: CoreTypeAtomId.BrainContext,
     fields: List.empty(),
     fieldGetter: () => undefined,
     methods: List.from([
@@ -63,11 +64,13 @@ export function registerContextTypes(services: BrainServices) {
   });
 
   const engineContextTypeId = types.addStructType(ContextTypeNames.EngineContext, {
+    atomId: CoreTypeAtomId.EngineContext,
     fields: List.empty(),
     fieldGetter: () => undefined,
   });
 
   const ruleContextTypeId = types.addStructType(ContextTypeNames.RuleContext, {
+    atomId: CoreTypeAtomId.RuleContext,
     fields: List.empty(),
     fieldGetter: () => undefined,
     methods: List.from([
@@ -88,6 +91,7 @@ export function registerContextTypes(services: BrainServices) {
   });
 
   types.addStructType(ContextTypeNames.Context, {
+    atomId: CoreTypeAtomId.Context,
     fields: List.from([
       { name: "time", typeId: CoreTypeIds.Number, fieldIndex: ContextField.Time },
       { name: "dt", typeId: CoreTypeIds.Number, fieldIndex: ContextField.Dt },

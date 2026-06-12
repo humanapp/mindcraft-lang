@@ -104,6 +104,7 @@ describe("binary operator implicit conversions", () => {
     const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirTypeId)) {
       types.addEnumType("Direction", {
+        atomId: 1024,
         symbols: List.from([
           { key: "north", label: "North", value: "north" },
           { key: "south", label: "South", value: "south" },
@@ -276,6 +277,7 @@ describe("target-typed implicit conversions", () => {
     const signalTypeId = mkTypeId(NativeType.Enum, "Signal");
     if (!types.get(signalTypeId)) {
       types.addEnumType("Signal", {
+        atomId: 1025,
         symbols: List.from([
           { key: "go", label: "Go", value: "green" },
           { key: "stop", label: "Stop", value: "red" },
@@ -288,6 +290,7 @@ describe("target-typed implicit conversions", () => {
     const throttleTypeId = mkTypeId(NativeType.Enum, "Throttle");
     if (!types.get(throttleTypeId)) {
       types.addEnumType("Throttle", {
+        atomId: 1026,
         symbols: List.from([
           { key: "idle", label: "Idle", value: 0 },
           { key: "fast", label: "Fast", value: 2 },

@@ -46,13 +46,19 @@ function mkEnumFunctionIds(): EnumFunctionIds {
   return { toString: base, toNumber: base + 1, equalTo: base + 2, notEqualTo: base + 3 };
 }
 
+let nextTypeAtomId = 20000;
+
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
+
 function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?: string): string {
   const registry = services.runtime.types;
   const existing = registry.resolveByName(name);
   if (existing) {
     return existing;
   }
-  return registry.addEnumType(name, { symbols, defaultKey, functionIds: mkEnumFunctionIds() });
+  return registry.addEnumType(name, { atomId: mkTestAtomId(), symbols, defaultKey, functionIds: mkEnumFunctionIds() });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {

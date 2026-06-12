@@ -112,7 +112,7 @@ export class BrainCompiler {
     actionResolver: BrainActionResolver,
     typeRegistry: ITypeRegistry
   ) {
-    this.constantPool = new ConstantPool();
+    this.constantPool = new ConstantPool(typeRegistry);
     this.functions = List.empty();
     this.ruleIndex = Dict.empty();
     this.ruleFuncIds = new UniqueSet<number>();
@@ -144,7 +144,7 @@ export class BrainCompiler {
    */
   compile(brainDef: IBrainDef): UnlinkedBrainProgram {
     // Reset state for fresh compilation
-    this.constantPool = new ConstantPool();
+    this.constantPool = new ConstantPool(this.typeRegistry);
     this.functions = List.empty();
     this.ruleIndex = Dict.empty();
     this.ruleFuncIds = new UniqueSet<number>();
@@ -175,6 +175,7 @@ export class BrainCompiler {
       version: BYTECODE_VERSION,
       functions: this.functions,
       constantPools: this.constantPool.toPools(),
+      types: this.constantPool.typeEntries(),
       variableNames: this.variableNames,
       entryPoint: 0, // First page's first rule
       ruleIndex: this.ruleIndex,

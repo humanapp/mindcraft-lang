@@ -1,4 +1,5 @@
 import { Dict } from "../platform/dict";
+import { Error } from "../platform/error";
 import { List } from "../platform/list";
 import { UniqueSet } from "../platform/uniqueset";
 import type { ConstantPools, FunctionBytecode, Instr } from "./bytecode";
@@ -6,7 +7,7 @@ import type { BytecodeExecutableAction } from "./context";
 import { type ActionDescriptor, mkCallDef } from "./function-defs";
 import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
 import { dictFromJsonEntries, dictToJsonEntries, listFromJson, listToJson } from "./json-container-codec";
-import type { Program } from "./program";
+import type { Program, ProgramTypeEntry } from "./program";
 import type { BrainProgramValueJson } from "./value-codec";
 import { brainValueFromJson, brainValueToJson } from "./value-codec";
 
@@ -44,9 +45,34 @@ export interface BrainProgramFunctionBytecodeJson {
   /** Total local slot count, including parameters. */
   readonly numLocals?: number;
 
-  /** Optional injected execution context type id. */
-  readonly injectCtxTypeId?: string;
+  /** Optional type-table index of the injected execution context type. */
+  readonly injectCtxTypeIdx?: number;
 }
+
+/**
+ * JSON-safe representation of one program type-table entry. Mirrors
+ * {@link ProgramTypeEntry}: structural child references are table indices, and
+ * every entry carries its resolved typeId string.
+ */
+export type BrainProgramTypeEntryJson =
+  | { readonly tag: "atom"; readonly typeId: string; readonly atomId: number }
+  | { readonly tag: "list"; readonly typeId: string; readonly elem: number }
+  | { readonly tag: "map"; readonly typeId: string; readonly key: number; readonly value: number }
+  | { readonly tag: "union"; readonly typeId: string; readonly members: readonly number[] }
+  | {
+      readonly tag: "function";
+      readonly typeId: string;
+      readonly params: readonly number[];
+      readonly result: number;
+    }
+  | { readonly tag: "nullable"; readonly typeId: string; readonly base: number }
+  | { readonly tag: "struct"; readonly typeId: string; readonly name: string; readonly maxFieldId: number }
+  | {
+      readonly tag: "enum";
+      readonly typeId: string;
+      readonly name: string;
+      readonly symbols: readonly string[];
+    };
 
 /** JSON-safe representation of VM constant pools. */
 export interface BrainProgramConstantPoolsJson {
@@ -107,6 +133,9 @@ export interface BrainProgramJson {
 
   /** VM constant pools. */
   readonly constantPools: BrainProgramConstantPoolsJson;
+
+  /** Program type table referenced by typed instruction operands. */
+  readonly types?: readonly BrainProgramTypeEntryJson[];
 
   /** Variable names indexed by compiler-assigned variable slot. */
   readonly variableNames: readonly string[];
@@ -182,6 +211,10 @@ function brainProgramFromJson(json: BrainProgramJson): Program {
     variableNames: List.from(json.variableNames),
   };
 
+  if (json.types !== undefined) {
+    program.types = listFromJson(json.types, typeEntryFromJson);
+  }
+
   if (json.entryPoint !== undefined) {
     program.entryPoint = json.entryPoint;
   }
@@ -210,11 +243,47 @@ function functionBytecodeFromJson(json: BrainProgramFunctionBytecodeJson): Funct
   if (json.numLocals !== undefined) {
     fn.numLocals = json.numLocals;
   }
-  if (json.injectCtxTypeId !== undefined) {
-    fn.injectCtxTypeId = json.injectCtxTypeId;
+  if (json.injectCtxTypeIdx !== undefined) {
+    fn.injectCtxTypeIdx = json.injectCtxTypeIdx;
   }
 
   return fn;
+}
+
+function typeEntryFromJson(json: BrainProgramTypeEntryJson): ProgramTypeEntry {
+  switch (json.tag) {
+    case "atom":
+    case "nullable":
+    case "list":
+    case "map":
+    case "struct":
+      return json;
+    case "union":
+      return { tag: "union", typeId: json.typeId, members: List.from(json.members) };
+    case "function":
+      return { tag: "function", typeId: json.typeId, params: List.from(json.params), result: json.result };
+    case "enum":
+      return { tag: "enum", typeId: json.typeId, name: json.name, symbols: List.from(json.symbols) };
+    default:
+      throw new Error(`Unknown program type-table entry tag: ${(json as { tag: string }).tag}`);
+  }
+}
+
+function typeEntryToJson(entry: ProgramTypeEntry): BrainProgramTypeEntryJson {
+  switch (entry.tag) {
+    case "atom":
+    case "nullable":
+    case "list":
+    case "map":
+    case "struct":
+      return entry;
+    case "union":
+      return { tag: "union", typeId: entry.typeId, members: entry.members.toArray() };
+    case "function":
+      return { tag: "function", typeId: entry.typeId, params: entry.params.toArray(), result: entry.result };
+    case "enum":
+      return { tag: "enum", typeId: entry.typeId, name: entry.name, symbols: entry.symbols.toArray() };
+  }
 }
 
 function instructionFromJson(json: BrainProgramInstructionJson): Instr {
@@ -311,6 +380,7 @@ function brainProgramToJson(program: Program): BrainProgramJson {
     version: program.version,
     functions: listToJson(program.functions, functionBytecodeToJson),
     constantPools: constantPoolsToJson(program.constantPools),
+    ...(program.types !== undefined ? { types: listToJson(program.types, typeEntryToJson) } : {}),
     variableNames: program.variableNames.toArray(),
     ...(program.entryPoint !== undefined ? { entryPoint: program.entryPoint } : {}),
     ...(program.actions !== undefined ? { actions: listToJson(program.actions, bytecodeExecutableActionToJson) } : {}),
@@ -331,7 +401,7 @@ function functionBytecodeToJson(fn: FunctionBytecode): BrainProgramFunctionBytec
     code: listToJson(fn.code, instructionToJson),
     numParams: fn.numParams,
     ...(fn.numLocals !== undefined ? { numLocals: fn.numLocals } : {}),
-    ...(fn.injectCtxTypeId !== undefined ? { injectCtxTypeId: fn.injectCtxTypeId } : {}),
+    ...(fn.injectCtxTypeIdx !== undefined ? { injectCtxTypeIdx: fn.injectCtxTypeIdx } : {}),
   };
 }
 

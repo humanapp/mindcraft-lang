@@ -285,8 +285,8 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   // ==========================================
 
   /** Create a new list with typeId. */
-  listNew(typeIdConstIdx: number): void {
-    this.emit({ op: Op.LIST_NEW, a: 0, b: typeIdConstIdx });
+  listNew(typeIdx: number): void {
+    this.emit({ op: Op.LIST_NEW, a: 0, b: typeIdx });
   }
 
   /** Push value onto list. */
@@ -339,8 +339,8 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   // ==========================================
 
   /** Create a new map with typeId from constant pool. */
-  mapNew(typeIdConstIdx: number): void {
-    this.emit({ op: Op.MAP_NEW, a: 0, b: typeIdConstIdx });
+  mapNew(typeIdx: number): void {
+    this.emit({ op: Op.MAP_NEW, a: 0, b: typeIdx });
   }
 
   /** Set key-value pair in map. */
@@ -367,14 +367,22 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   // Struct operations
   // ==========================================
 
-  /** Create a new empty struct. typeIdConstIdx is the constant pool index for the typeId string. */
-  structNew(typeIdConstIdx: number): void {
-    this.emit({ op: Op.STRUCT_NEW, a: 0, b: typeIdConstIdx });
+  /** Create a new empty struct. `typeIdx` is the program type-table index of the struct type. */
+  structNew(typeIdx: number): void {
+    this.emit({ op: Op.STRUCT_NEW, a: 0, b: typeIdx });
   }
 
-  /** Copy struct excluding N keys. Keys are on stack, then source struct. typeIdConstIdx is constant pool index for typeId. */
-  structCopyExcept(numExclude: number, typeIdConstIdx: number): void {
-    this.emit({ op: Op.STRUCT_COPY_EXCEPT, a: numExclude, b: typeIdConstIdx });
+  /**
+   * Copy struct excluding N keys. Keys are on stack, then source struct.
+   * `typeIdx` is the program type-table index of the result type; omit it for
+   * an untyped (anonymous) copy.
+   */
+  structCopyExcept(numExclude: number, typeIdx?: number): void {
+    if (typeIdx === undefined) {
+      this.emit({ op: Op.STRUCT_COPY_EXCEPT, a: numExclude });
+    } else {
+      this.emit({ op: Op.STRUCT_COPY_EXCEPT, a: numExclude, b: typeIdx });
+    }
   }
 
   /** Get a closed-struct field by field index. */
@@ -438,8 +446,8 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.TYPE_CHECK, a: nativeType });
   }
 
-  instanceOf(typeIdConstIdx: number): void {
-    this.emit({ op: Op.INSTANCE_OF, a: typeIdConstIdx });
+  instanceOf(typeIdx: number): void {
+    this.emit({ op: Op.INSTANCE_OF, a: typeIdx });
   }
 
   // ==========================================

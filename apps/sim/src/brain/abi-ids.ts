@@ -40,6 +40,17 @@ export enum SimFuncId {
 }
 
 /**
+ * Stable type-atom ids of the sim module's native struct types. Serialized
+ * programs reference nominal types by these values, so an id, once assigned,
+ * is never changed or reused. All values are at or above core's
+ * `TARGET_TYPE_ATOM_BASE`. Append new members at the next free id.
+ */
+export enum SimTypeAtomId {
+  Vector2 = 1024,
+  ActorRef = 1025,
+}
+
+/**
  * Identity records of the sim module's sensors and actuators, one per host
  * action. The record is the single declaration of each action's key and
  * action id; `fnId` references the action's {@link SimFuncId} member. Action

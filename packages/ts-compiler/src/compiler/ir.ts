@@ -230,11 +230,15 @@ export interface IrStructSet extends IrNodeBase {
   fieldIndex: number;
 }
 
-/** Copy a struct of type `typeId` while excluding the top `numExclude` field names from the stack. */
+/**
+ * Copy a struct of type `typeId` while excluding the top `numExclude` field
+ * names from the stack. An undefined `typeId` produces an untyped (anonymous)
+ * copy: the instruction's type operand is omitted.
+ */
 export interface IrStructCopyExcept extends IrNodeBase {
   kind: "StructCopyExcept";
   numExclude: number;
-  typeId: string;
+  typeId: string | undefined;
 }
 
 /** Construct a new list of element type `typeId` and push it. */

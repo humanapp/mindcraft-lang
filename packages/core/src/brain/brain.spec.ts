@@ -2342,6 +2342,7 @@ describe("Field access emits id-based opcodes", () => {
 
   test("a concretely-typed field read emits STRUCT_GET_FIELD with the object's field id (not GET_FIELD)", () => {
     const vec = services.runtime.types.addStructType("Vec2EmitRead", {
+      atomId: 1024,
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -2361,6 +2362,7 @@ describe("Field access emits id-based opcodes", () => {
 
   test("a concretely-typed field write emits STRUCT_DEEP_COPY then STRUCT_SET_FIELD (not SET_FIELD)", () => {
     const vec = services.runtime.types.addStructType("Vec2EmitWrite", {
+      atomId: 1025,
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },

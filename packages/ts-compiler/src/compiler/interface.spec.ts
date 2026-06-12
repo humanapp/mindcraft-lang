@@ -251,6 +251,7 @@ export default Sensor({
   test("interface colliding with ambient type emits diagnostic", () => {
     const types = services.runtime.types;
     types.addStructType("AmbientPoint", {
+      atomId: 1024,
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },

@@ -41,6 +41,11 @@ import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
+let nextTypeAtomId = 1024;
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
+
 function toVmServices(b: BrainServices) {
   return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
     .runtime;
@@ -118,6 +123,7 @@ describe("destructuring", () => {
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "x", typeId: numTypeId, fieldIndex: 0 },
           { name: "y", typeId: numTypeId, fieldIndex: 1 },
@@ -202,6 +208,7 @@ export default Sensor({
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
+        atomId: mkTestAtomId(),
         fields: List.from([{ name: "pos", typeId: vec2TypeId, fieldIndex: 0 }]),
       });
     }
@@ -247,6 +254,7 @@ export default Sensor({
     const coordTypeId = mkTypeId(NativeType.Struct, "Coord");
     if (!types.get(coordTypeId)) {
       types.addStructType("Coord", {
+        atomId: mkTestAtomId(),
         fields: List.from([{ name: "pos", typeId: numListTypeId, fieldIndex: 0 }]),
       });
     }
@@ -292,6 +300,7 @@ export default Sensor({
     const pairHolderTypeId = mkTypeId(NativeType.Struct, "PairHolder");
     if (!types.get(pairHolderTypeId)) {
       types.addStructType("PairHolder", {
+        atomId: mkTestAtomId(),
         fields: List.from([{ name: "items", typeId: numListTypeId, fieldIndex: 0 }]),
       });
     }
@@ -337,6 +346,7 @@ export default Sensor({
     const wrapperTypeId = mkTypeId(NativeType.Struct, "Wrapper");
     if (!types.get(wrapperTypeId)) {
       types.addStructType("Wrapper", {
+        atomId: mkTestAtomId(),
         fields: List.from([{ name: "entity", typeId: entityTypeId, fieldIndex: 0 }]),
       });
     }
@@ -560,6 +570,7 @@ export default Sensor({
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
+        atomId: mkTestAtomId(),
         fields: List.from([{ name: "pos", typeId: vec2TypeId, fieldIndex: 0 }]),
       });
     }
@@ -606,6 +617,7 @@ export default Sensor({
     const playerTypeId = mkTypeId(NativeType.Struct, "Player");
     if (!types.get(playerTypeId)) {
       types.addStructType("Player", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "name", typeId: strTypeId, fieldIndex: 0 },
           { name: "pos", typeId: vec2TypeId, fieldIndex: 1 },
@@ -661,6 +673,7 @@ export default Sensor({
     const playerTypeId = mkTypeId(NativeType.Struct, "Player");
     if (!types.get(playerTypeId)) {
       types.addStructType("Player", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "name", typeId: strTypeId, fieldIndex: 0 },
           { name: "pos", typeId: vec2TypeId, fieldIndex: 1 },
@@ -746,6 +759,7 @@ export default Sensor({
     const playerTypeId = mkTypeId(NativeType.Struct, "Player");
     if (!types.get(playerTypeId)) {
       types.addStructType("Player", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "name", typeId: strTypeId, fieldIndex: 0 },
           { name: "pos", typeId: vec2TypeId, fieldIndex: 1 },
@@ -1178,5 +1192,68 @@ export default Sensor({
       result.diagnostics.some((d) => d.code === LoweringDiagCode.DestructuringInOnExecuteNotSupported),
       `expected onExecute destructuring error, got: ${JSON.stringify(result.diagnostics)}`
     );
+  });
+
+  test("statically-typed object rest lowers to id-based copies, not STRUCT_COPY_EXCEPT", () => {
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "static-rest-emission",
+  onExecute(ctx: Context): number {
+    const pos: Vector2 = { x: 1, y: 2 };
+    const { x, ...rest } = pos;
+    return x + rest.y;
+  },
+});
+`;
+    const result = compileUserTile(source, {
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    const prog = result.program!;
+
+    let sawCopyExcept = false;
+    let sawStructSetField = false;
+    prog.functions.forEach((fn) => {
+      fn.code.forEach((instr) => {
+        if (instr.op === Op.STRUCT_COPY_EXCEPT) sawCopyExcept = true;
+        if (instr.op === Op.STRUCT_SET_FIELD) sawStructSetField = true;
+      });
+    });
+    assert.equal(sawCopyExcept, false, "static rest must not emit STRUCT_COPY_EXCEPT");
+    assert.ok(sawStructSetField, "static rest populates the rest struct by field id");
+  });
+
+  test("computed-key rest keeps the name-keyed STRUCT_COPY_EXCEPT fallback", () => {
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "computed-rest-emission",
+  onExecute(ctx: Context): number {
+    const pos: Vector2 = { x: 1, y: 2 };
+    const { ['x']: val, ...rest } = pos;
+    return val + rest.y;
+  },
+});
+`;
+    const result = compileUserTile(source, {
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    const prog = result.program!;
+
+    let sawCopyExcept = false;
+    prog.functions.forEach((fn) => {
+      fn.code.forEach((instr) => {
+        if (instr.op === Op.STRUCT_COPY_EXCEPT) sawCopyExcept = true;
+      });
+    });
+    assert.ok(sawCopyExcept, "computed-key rest uses the dynamic STRUCT_COPY_EXCEPT fallback");
   });
 });

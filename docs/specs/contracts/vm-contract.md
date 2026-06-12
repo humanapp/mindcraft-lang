@@ -632,15 +632,17 @@ and the [Action call state model](#action-call-state-model).
 | Mnemonic      | Numeric | Operands    | Stack effect       | Faults |
 | ------------- | ------- | ----------- | ------------------ | ------ |
 | `TYPE_CHECK`  | 150     | `tag` (`a`) | `[value] -> [bool]` | -     |
-| `INSTANCE_OF` | 151     | `k` (`a`)   | `[value] -> [bool]` | `ScriptError` if `k` is out of range in `constantPools.strings`. |
+| `INSTANCE_OF` | 151     | `t` (`a`)   | `[value] -> [bool]` | `ScriptError` if `t` is out of range in the program type table. |
 
 `TYPE_CHECK` compares the popped value's tag (`Value.t`) to the
 operand and pushes the boolean result.
 
-`INSTANCE_OF` reads the target `TypeId` from
-`constantPools.strings[k]` and pushes `true` when the popped value
-is a struct value whose `typeId` equals the target. Non-struct
-values always yield `false`.
+`INSTANCE_OF` reads the target type from program type-table entry
+`t` (see [Program type table](#program-type-table)) and pushes
+`true` when the popped value is a struct value of that exact type
+(on the TS reference VM, `typeId` string equality; on an integer-
+identity port, type-handle equality). Non-struct values always
+yield `false`.
 
 ### Indirect function calls
 
@@ -692,10 +694,10 @@ captures list.
 | `LIST_INSERT` | 98      | none                  | `[list, index, value] -> []`          | `ScriptError` if not a list, or `index` is not a number. |
 | `LIST_SWAP`   | 99      | none                  | `[list, i, j] -> []`                  | `ScriptError` if not a list, or either index is not a number. |
 
-`LIST_NEW`'s `b` operand is optional: when present and in range, it
-indexes `constantPools.strings` for the list's `TypeId`; when
-omitted or out of range, the typeId defaults to `list:<unknown>`.
-The `a` operand is reserved.
+`LIST_NEW`'s `b` operand is optional: when present, it indexes the
+program type table for the list's type (faulting `ScriptError` when
+out of range); when omitted, the typeId defaults to
+`list:<unknown>`. The `a` operand is reserved.
 
 All in-place list mutations (`LIST_PUSH`, `LIST_SET`, `LIST_INSERT`,
 `LIST_SWAP`, `LIST_POP`, `LIST_SHIFT`, `LIST_REMOVE`) modify the
@@ -713,7 +715,7 @@ floored to integers before indexing.
 | `MAP_HAS`    | 103     | none                  | `[map, key] -> [bool]`        | Same constraints as `MAP_SET`. |
 | `MAP_DELETE` | 104     | none                  | `[map, key] -> [map]`         | Same constraints as `MAP_SET`. |
 
-`MAP_NEW`'s `b` operand has the same optional typeId-from-strings
+`MAP_NEW`'s `b` operand has the same optional type-table-index
 behavior as `LIST_NEW`'s; the default typeId is `map:<unknown>`.
 Map keys are restricted to string and number values; key equality
 follows the underlying platform `Dict` semantics (numbers compare
@@ -723,22 +725,22 @@ by value, strings by character sequence).
 
 | Mnemonic             | Numeric | Operands                          | Stack effect                                                            | Faults |
 | -------------------- | ------- | --------------------------------- | ----------------------------------------------------------------------- | ------ |
-| `STRUCT_NEW`         | 110     | `numFields` (`a`), `k?` (`b`)     | `[name0, val0, ..., nameN, valN] -> [struct]` (with `N = numFields`)    | `ScriptError` if any popped name is not a string. Unknown field names are ignored. |
+| `STRUCT_NEW`         | 110     | `_` (`a`), `t?` (`b`)             | `[] -> [struct]`                                                        | `ScriptError` if `a` is non-zero (reserved) or `t` is out of range in the program type table. |
 | `RESERVED_111`       | 111     | none (reserved)                   | reserved opcode number, no handler                                     | The VM has no handler; the dispatcher faults `ScriptError` ("Unknown opcode") if one is encountered. |
 | `RESERVED_112`       | 112     | none (reserved)                   | reserved opcode number, no handler                                     | The VM has no handler; the dispatcher faults `ScriptError` ("Unknown opcode") if one is encountered. |
-| `STRUCT_COPY_EXCEPT` | 113     | `numExclude` (`a`), `k?` (`b`)    | `[source, key0, ..., key(numExclude-1)] -> [struct]`                    | `ScriptError` if any exclude key is not a string, or the source value is not a struct. |
+| `STRUCT_COPY_EXCEPT` | 113     | `numExclude` (`a`), `t?` (`b`)    | `[source, key0, ..., key(numExclude-1)] -> [struct]`                    | `ScriptError` if any exclude key is not a string, or the source value is not a struct. |
 | `STRUCT_GET_FIELD`   | 114     | `fieldId` (`a`)                   | `[struct] -> [value]`                                                   | `ScriptError` if the source is not a struct. |
 | `STRUCT_SET_FIELD`   | 115     | `fieldId` (`a`)                   | `[struct, value] -> [struct]`                                           | `ScriptError` if the source is not a struct, or the registered `fieldSetter` returns `false`. |
 | `STRUCT_DEEP_COPY`   | 116     | none                              | `[value] -> [copy]`                                                     | Never faults. |
 
-`STRUCT_NEW`'s `b` operand, when present and in range, indexes
-`constantPools.strings` for the struct's `TypeId`; when omitted, the
-typeId defaults to `struct:<anonymous>`. The dispatcher pre-allocates
-a field list sized to the registered type's field count (or empty
-for an anonymous struct), then resolves each `(name, value)` pair
-to a `fieldIndex` via `StructTypeDef.fieldIndexByName` and writes
-into that slot. Pairs whose names are not declared on the type are
-silently ignored.
+`STRUCT_NEW`'s `b` operand, when present, indexes the program type
+table for the struct's type (faulting `ScriptError` when out of
+range); when omitted, the typeId defaults to `struct:<anonymous>`.
+The dispatcher pre-allocates a field list sized to the type's field
+storage (`maxFieldId + 1` slots; empty for an anonymous struct) and
+pushes the empty struct. Field population is id-based: the compiler
+follows `STRUCT_NEW` with one `STRUCT_SET_FIELD <fieldId>` per
+initialized field. The `a` operand is reserved and must be 0.
 
 `RESERVED_111` / `RESERVED_112` are reserved opcode numbers with no VM
 handler. Their enum members and empty `OPERAND_SCHEMA` entries are kept so
@@ -749,7 +751,13 @@ executing one faults `ScriptError` ("Unknown opcode").
 `STRUCT_COPY_EXCEPT` builds a new struct value (typed by the
 optional `b` operand, or carried over from the source's typeId
 when no replacement type is given) by copying all fields of `source`
-except those whose names appear in the popped exclude key set.
+except those whose names appear in the popped exclude key set. It is
+the dynamic-key fallback of the name-keyed field-access family
+(`GET_FIELD` / `SET_FIELD`): the compiler emits it only when an
+exclusion key or the rest type is unknowable at compile time
+(computed property keys). A statically-typed object-rest copy does
+not use it; it lowers to `STRUCT_NEW` plus per-field
+`STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` id-based copies.
 
 `STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` are the id-keyed field-access
 opcodes the compiler emits when it statically knows the field. The
@@ -827,9 +835,8 @@ parallel sub-pools each have an independent index space:
 - `constantPools.numbers: List<number>` -- raw `number` values pushed by
   `PUSH_CONST_NUM` and wrapped into `NumberValue` at runtime.
 - `constantPools.strings: List<string>` -- raw `string` values pushed by
-  `PUSH_CONST_STR`. Also used directly (without wrapping) as the
-  typeId payload for `INSTANCE_OF.a`, `LIST_NEW.b`, `MAP_NEW.b`,
-  `STRUCT_NEW.b`, and `STRUCT_COPY_EXCEPT.b`.
+  `PUSH_CONST_STR`. String constants carry data only; type identity
+  lives in the [program type table](#program-type-table).
 - `constantPools.values: List<Value>` -- residual pool for tagged values
   that do not fit the typed pools (e.g. `BoolValue`, `NilValue`,
   `FunctionValue`, `StructValue`). Pushed by `PUSH_CONST_VAL`.
@@ -838,6 +845,77 @@ Pool indices are independent: a `PUSH_CONST_NUM 3` and a
 `PUSH_CONST_STR 3` reference unrelated entries. The linker and
 tree-shaker remap each pool independently; cross-pool offsets are
 carried as a `ConstantOffsets` aggregate.
+
+### Program type table
+
+Programs carry a type table (`Program.types: List<ProgramTypeEntry>`)
+holding one entry per distinct type the program references. Type
+identity travels exclusively by table index:
+
+- `INSTANCE_OF.a`, and the optional `b` operands of `LIST_NEW`,
+  `MAP_NEW`, `STRUCT_NEW`, and `STRUCT_COPY_EXCEPT`, are type-table
+  indices.
+- `FunctionBytecode.injectCtxTypeIdx` (the injected execution-context
+  struct type of a function) is a type-table index.
+- Constant values in `constantPools.values` resolve their typeIds
+  through the table on the wire; enum constants carry
+  `(type index, symbol ordinal)` pairs.
+
+Entry kinds (child references are table indices strictly less than
+the entry's own index, so a single forward pass interns the table):
+
+- `atom { atomId }` -- a core/target nominal type identified by its
+  stable type-atom id (declared in `runtime/abi-ids.ts` and the
+  target's id declarations; core ids are below
+  `TARGET_TYPE_ATOM_BASE = 1024`, target ids at or above it).
+- `list { elem }`, `map { key, value }` -- parameterized containers.
+- `union { members }` -- members follow the registry's canonical
+  sorted member order.
+- `function { params, result }` -- structural function type.
+- `nullable { base }` -- nullable wrapper.
+- `struct { name, maxFieldId }` -- a program-local struct. Identity
+  is the table position; `name` is carried for round-trip; field
+  storage holds `maxFieldId + 1` slots (`maxFieldId` is -1 for a
+  fieldless struct).
+- `enum { name, symbols }` -- a program-local enum; `symbols` lists
+  the symbol keys in declared order and defines the ordinals used by
+  enum constant values.
+
+For an enum type registered as an atom, the registered declaration's
+symbol order is the ordinal source and is ABI: append-only, never
+reordered, never reused.
+
+On the TS reference VM each entry resolves to its `TypeId` string and
+the runtime keeps string-keyed type identity; an integer-identity
+port interns the table once at load (atoms bind to the statically
+mirrored atom table; structural and program-local entries become
+local handles) and compares types as integers.
+
+#### TYPS binary section
+
+The binary `.mcprogram` form (format version 2) encodes the table as
+the `TYPS` section, positioned after `CSTR` and before `CNUM` so the
+later sections can reference it. Layout: a var-uint entry count, then
+per entry a tag byte followed by its fields (all var-uints):
+
+| Tag | Kind     | Fields |
+| --- | -------- | ------ |
+| 0   | atom     | `atomId` |
+| 1   | list     | `elem` |
+| 2   | map      | `key`, `value` |
+| 3   | union    | `memberCount`, members |
+| 4   | function | `paramCount`, params, `result` |
+| 5   | nullable | `base` |
+| 6   | struct   | `nameIdx` (CSTR), `slotCount` (= `maxFieldId + 1`) |
+| 7   | enum     | `nameIdx` (CSTR), `symbolCount`, symbol CSTR indices |
+
+TypeId strings are never written; the decoder reconstructs them
+(atoms through the runtime's atom registrations, structural entries
+through the deterministic composition rules, program-local entries
+through their carried names). A reader rejects: an unknown tag byte,
+a child reference at or beyond its entry's own index, an atom id not
+registered in the decoding runtime, an enum ordinal outside its
+type's symbol list, and a format version other than its own.
 
 ---
 

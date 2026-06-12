@@ -84,6 +84,7 @@ function wrapAsExecutable(prog: UserAuthoredProgram): FlatExecutable {
     version: prog.version,
     functions: prog.functions,
     constantPools: prog.constantPools,
+    types: prog.types,
     variableNames: prog.variableNames,
     entryPoint: prog.entryFuncId,
     ruleIndex: Dict.empty(),
@@ -101,6 +102,7 @@ interface FlatExecutable {
   version: number;
   functions: UserAuthoredProgram["functions"];
   constantPools: UserAuthoredProgram["constantPools"];
+  types: UserAuthoredProgram["types"];
   variableNames: UserAuthoredProgram["variableNames"];
   entryPoint?: number;
   ruleIndex: Dict<string, number>;
@@ -114,6 +116,7 @@ function treeshakeProgram(flat: FlatExecutable): FlatExecutable {
       version: flat.version,
       functions: flat.functions,
       constantPools: flat.constantPools,
+      types: flat.types,
       variableNames: flat.variableNames,
       entryPoint: flat.entryPoint,
       actions: flat.actions,
@@ -127,6 +130,7 @@ function treeshakeProgram(flat: FlatExecutable): FlatExecutable {
     version: out.program.version,
     functions: out.program.functions,
     constantPools: out.program.constantPools,
+    types: out.program.types,
     variableNames: out.program.variableNames,
     entryPoint: out.program.entryPoint,
     actions: out.program.actions ?? List.empty<BytecodeExecutableAction>(),

@@ -1,5 +1,4 @@
 import type { List } from "../platform/list";
-import type { TypeId } from "./type-defs";
 import type { Value } from "./value";
 
 ///////////////////////////
@@ -291,7 +290,12 @@ export interface FunctionBytecode {
   numLocals?: number;
   name?: string;
   maxStackDepth?: number;
-  injectCtxTypeId?: TypeId;
+  /**
+   * Type-table index of the context struct type injected as the function's
+   * implicit first argument. Absent when the function takes no injected
+   * context.
+   */
+  injectCtxTypeIdx?: number;
 }
 
 /**
@@ -302,11 +306,7 @@ export interface FunctionBytecode {
 export interface ConstantPools {
   /** Raw `number` values pushed by `PUSH_CONST_NUM` (wrapped into `NumberValue` at runtime). */
   numbers: List<number>;
-  /**
-   * Raw `string` values pushed by `PUSH_CONST_STR`, and used directly
-   * (without `Value` wrapping) as the typeId payload for `INSTANCE_OF.a`,
-   * `LIST_NEW.b`, `MAP_NEW.b`, `STRUCT_NEW.b`, and `STRUCT_COPY_EXCEPT.b`.
-   */
+  /** Raw `string` values pushed by `PUSH_CONST_STR`. */
   strings: List<string>;
   /**
    * Residual heterogeneous pool addressed by `PUSH_CONST_VAL`. Carries every

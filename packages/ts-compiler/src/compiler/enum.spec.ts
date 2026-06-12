@@ -263,6 +263,7 @@ describe("enum value literals", () => {
     const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirTypeId)) {
       types.addEnumType("Direction", {
+        atomId: 1024,
         symbols: List.from([
           { key: "north", label: "North", value: "north" },
           { key: "south", label: "South", value: "south" },

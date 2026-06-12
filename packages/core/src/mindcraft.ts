@@ -438,6 +438,12 @@ function assertRegisteredTypeId(actual: string, expected: string, name: string):
   return actual;
 }
 
+function rejectStructuralAtomId(definition: MindcraftTypeDefinition): void {
+  if (definition.atomId !== undefined) {
+    throw new Error(`Structural type '${definition.name}' must not declare an atomId (got ${definition.atomId})`);
+  }
+}
+
 function autoRegisterAssignment(services: BrainServices, typeId: TypeId): void {
   if (services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId])) {
     return;
@@ -449,6 +455,7 @@ function autoRegisterAssignment(services: BrainServices, typeId: TypeId): void {
 function registerMindcraftTypeDefinition(services: BrainServices, definition: MindcraftTypeDefinition): string {
   const nullableDef = definition as NullableTypeDef;
   if (definition.nullable && nullableDef.baseTypeId !== undefined) {
+    rejectStructuralAtomId(definition);
     return assertRegisteredTypeId(
       services.runtime.types.addNullableType(nullableDef.baseTypeId),
       nullableDef.typeId,
@@ -461,31 +468,31 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
   switch (definition.coreType) {
     case NativeType.Void:
       return assertRegisteredTypeId(
-        services.runtime.types.addVoidType(definition.name),
+        services.runtime.types.addVoidType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     case NativeType.Nil:
       return assertRegisteredTypeId(
-        services.runtime.types.addNilType(definition.name),
+        services.runtime.types.addNilType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     case NativeType.Boolean:
       return assertRegisteredTypeId(
-        services.runtime.types.addBooleanType(definition.name),
+        services.runtime.types.addBooleanType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     case NativeType.Number:
       return assertRegisteredTypeId(
-        services.runtime.types.addNumberType(definition.name),
+        services.runtime.types.addNumberType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     case NativeType.String:
       return assertRegisteredTypeId(
-        services.runtime.types.addStringType(definition.name),
+        services.runtime.types.addStringType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
@@ -496,6 +503,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
           symbols: enumDef.symbols,
           defaultKey: enumDef.defaultKey,
           functionIds: enumDef.functionIds,
+          atomId: enumDef.atomId,
         }),
         enumDef.typeId,
         enumDef.name
@@ -505,7 +513,10 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
     case NativeType.List: {
       const listDef = definition as ListTypeDef;
       registeredTypeId = assertRegisteredTypeId(
-        services.runtime.types.addListType(listDef.name, { elementTypeId: listDef.elementTypeId }),
+        services.runtime.types.addListType(listDef.name, {
+          elementTypeId: listDef.elementTypeId,
+          atomId: listDef.atomId,
+        }),
         listDef.typeId,
         listDef.name
       );
@@ -517,6 +528,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         services.runtime.types.addMapType(mapDef.name, {
           keyTypeId: mapDef.keyTypeId,
           valueTypeId: mapDef.valueTypeId,
+          atomId: mapDef.atomId,
         }),
         mapDef.typeId,
         mapDef.name
@@ -533,6 +545,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
           fieldSetter: structDef.fieldSetter,
           snapshotNative: structDef.snapshotNative,
           methods: structDef.methods,
+          atomId: structDef.atomId,
         }),
         structDef.typeId,
         structDef.name
@@ -558,13 +571,14 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
     }
     case NativeType.Any:
       return assertRegisteredTypeId(
-        services.runtime.types.addAnyType(definition.name),
+        services.runtime.types.addAnyType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     case NativeType.Function: {
       const functionDef = definition as FunctionTypeDef;
       if (functionDef.paramTypeIds !== undefined && functionDef.returnTypeId !== undefined) {
+        rejectStructuralAtomId(definition);
         return assertRegisteredTypeId(
           services.runtime.types.getOrCreateFunctionType({
             paramTypeIds: functionDef.paramTypeIds,
@@ -575,13 +589,14 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         );
       }
       return assertRegisteredTypeId(
-        services.runtime.types.addFunctionType(definition.name),
+        services.runtime.types.addFunctionType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     }
     case NativeType.Union: {
       const unionDef = definition as UnionTypeDef;
+      rejectStructuralAtomId(definition);
       return assertRegisteredTypeId(
         services.runtime.types.getOrCreateUnionType(unionDef.memberTypeIds),
         unionDef.typeId,

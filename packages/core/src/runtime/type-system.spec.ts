@@ -8,6 +8,7 @@ import {
   type BooleanValue,
   type BrainSyncFunctionEntry,
   CoreOpId,
+  CoreTypeAtomId,
   CoreTypeIds,
   CoreTypeNames,
   type EnumFunctionIds,
@@ -23,6 +24,7 @@ import {
   type NullableTypeDef,
   nativeTypeToString,
   type StructTypeDef,
+  TARGET_TYPE_ATOM_BASE,
   type UnionTypeDef,
   type Value,
 } from "@mindcraft-lang/core/runtime";
@@ -38,13 +40,19 @@ function mkEnumFunctionIds(): EnumFunctionIds {
   return { toString: base, toNumber: base + 1, equalTo: base + 2, notEqualTo: base + 3 };
 }
 
+let nextTypeAtomId = 20000;
+
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
+
 function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?: string): string {
   const registry = services.runtime.types;
   const existing = registry.resolveByName(name);
   if (existing) {
     return existing;
   }
-  return registry.addEnumType(name, { symbols, defaultKey, functionIds: mkEnumFunctionIds() });
+  return registry.addEnumType(name, { atomId: mkTestAtomId(), symbols, defaultKey, functionIds: mkEnumFunctionIds() });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -188,6 +196,7 @@ describe("enum type registration", () => {
 
     assert.throws(() => {
       registry.addEnumType("TypeSystemSpecMissingEnumValue", {
+        atomId: mkTestAtomId(),
         symbols: List.from([malformedSymbol]),
         defaultKey: "North",
       });
@@ -211,6 +220,7 @@ describe("enum type registration", () => {
 
     assert.throws(() => {
       registry.addEnumType("TypeSystemSpecEmptyEnumWithDefault", {
+        atomId: mkTestAtomId(),
         symbols: List.empty<EnumSymbolDef>(),
         defaultKey: "North",
       });
@@ -222,6 +232,7 @@ describe("enum type registration", () => {
 
     assert.throws(() => {
       registry.addEnumType("TypeSystemSpecMissingDefaultKey", {
+        atomId: mkTestAtomId(),
         symbols: List.from([{ key: "North", label: "North", value: "north" }]),
       });
     }, /requires defaultKey/);
@@ -231,6 +242,7 @@ describe("enum type registration", () => {
     const registry = services.runtime.types;
     assert.throws(() => {
       registry.addEnumType("TypeSystemSpecHeterogeneousEnum", {
+        atomId: mkTestAtomId(),
         symbols: List.from([
           { key: "Zero", label: "Zero", value: 0 },
           { key: "One", label: "One", value: "one" },
@@ -621,12 +633,14 @@ describe("isStructurallyCompatible", () => {
   test("same TypeId is always compatible", () => {
     const registry = services.runtime.types;
     const typeA = registry.addStructType("IdenticalA", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     const typeB = registry.addStructType("IdenticalB", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -639,12 +653,14 @@ describe("isStructurallyCompatible", () => {
   test("struct with extra fields is compatible with struct with fewer fields", () => {
     const registry = services.runtime.types;
     const point2D = registry.addStructType("Point2D", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     const point3D = registry.addStructType("Point3D", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -658,12 +674,14 @@ describe("isStructurallyCompatible", () => {
   test("struct missing a required field is NOT compatible", () => {
     const registry = services.runtime.types;
     const withName = registry.addStructType("WithName", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "name", typeId: CoreTypeIds.String, fieldIndex: 0 },
         { name: "age", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     const withoutName = registry.addStructType("WithoutName", {
+      atomId: mkTestAtomId(),
       fields: List.from([{ name: "age", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
     });
     assert.equal(registry.isStructurallyCompatible(withoutName, withName), false);
@@ -672,6 +690,7 @@ describe("isStructurallyCompatible", () => {
   test("nominal struct is NOT compatible with any other struct", () => {
     const registry = services.runtime.types;
     const screenCoord = registry.addStructType("ScreenCoord", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -679,6 +698,7 @@ describe("isStructurallyCompatible", () => {
       nominal: true,
     });
     const worldCoord = registry.addStructType("WorldCoord", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -686,6 +706,7 @@ describe("isStructurallyCompatible", () => {
       nominal: true,
     });
     const plainCoord = registry.addStructType("PlainCoord", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -700,21 +721,25 @@ describe("isStructurallyCompatible", () => {
   test("recursive compatibility for nested struct fields", () => {
     const registry = services.runtime.types;
     const innerA = registry.addStructType("InnerA", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "val", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "label", typeId: CoreTypeIds.String, fieldIndex: 1 },
       ]),
     });
     const innerB = registry.addStructType("InnerB", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "val", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "label", typeId: CoreTypeIds.String, fieldIndex: 1 },
       ]),
     });
     const outerA = registry.addStructType("OuterA", {
+      atomId: mkTestAtomId(),
       fields: List.from([{ name: "inner", typeId: innerA, fieldIndex: 0 }]),
     });
     const outerB = registry.addStructType("OuterB", {
+      atomId: mkTestAtomId(),
       fields: List.from([{ name: "inner", typeId: innerB, fieldIndex: 0 }]),
     });
     assert.equal(registry.isStructurallyCompatible(outerA, outerB), true);
@@ -723,15 +748,19 @@ describe("isStructurallyCompatible", () => {
   test("recursive incompatibility for nested struct fields with different types", () => {
     const registry = services.runtime.types;
     const innerC = registry.addStructType("InnerC", {
+      atomId: mkTestAtomId(),
       fields: List.from([{ name: "val", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
     });
     const innerD = registry.addStructType("InnerD", {
+      atomId: mkTestAtomId(),
       fields: List.from([{ name: "val", typeId: CoreTypeIds.String, fieldIndex: 0 }]),
     });
     const outerC = registry.addStructType("OuterC", {
+      atomId: mkTestAtomId(),
       fields: List.from([{ name: "inner", typeId: innerC, fieldIndex: 0 }]),
     });
     const outerD = registry.addStructType("OuterD", {
+      atomId: mkTestAtomId(),
       fields: List.from([{ name: "inner", typeId: innerD, fieldIndex: 0 }]),
     });
     assert.equal(registry.isStructurallyCompatible(outerC, outerD), false);
@@ -756,14 +785,16 @@ describe("removeUserTypes", () => {
 
   test("removes enum types with module-qualified names and clears derived artifacts", () => {
     const registry = services.runtime.types;
-    const typeId = registry.addEnumType("/user-enum.ts::TrafficLight", {
-      symbols: List.from([
-        { key: "stop", label: "Stop", value: 0 },
-        { key: "go", label: "Go", value: 1 },
-      ]),
-      defaultKey: "stop",
-      functionIds: mkEnumFunctionIds(),
-    });
+    const typeId = registry.withOwner("dynamic", () =>
+      registry.addEnumType("/user-enum.ts::TrafficLight", {
+        symbols: List.from([
+          { key: "stop", label: "Stop", value: 0 },
+          { key: "go", label: "Go", value: 1 },
+        ]),
+        defaultKey: "stop",
+        functionIds: mkEnumFunctionIds(),
+      })
+    );
 
     assert.ok(registry.get(typeId));
     assert.ok(registry.resolveByName("/user-enum.ts::TrafficLight"));
@@ -784,9 +815,11 @@ describe("removeUserTypes", () => {
 
   test("removes struct types with module-qualified names (contains ::)", () => {
     const registry = services.runtime.types;
-    const typeId = registry.addStructType("/user-code.ts::UserClass", {
-      fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
-    });
+    const typeId = registry.withOwner("dynamic", () =>
+      registry.addStructType("/user-code.ts::UserClass", {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+      })
+    );
     assert.ok(registry.get(typeId));
     assert.ok(registry.resolveByName("/user-code.ts::UserClass"));
 
@@ -799,6 +832,7 @@ describe("removeUserTypes", () => {
   test("preserves struct types with bare names (no ::)", () => {
     const registry = services.runtime.types;
     const hostId = registry.addStructType("AppVector2RM", {
+      atomId: mkTestAtomId(),
       fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
     });
     assert.ok(registry.get(hostId));
@@ -812,6 +846,7 @@ describe("removeUserTypes", () => {
   test("preserves enum types with bare names (no ::)", () => {
     const registry = services.runtime.types;
     const hostId = registry.addEnumType("HostStatusRM", {
+      atomId: mkTestAtomId(),
       symbols: List.from([
         { key: "ready", label: "Ready", value: "ready" },
         { key: "busy", label: "Busy", value: "busy" },
@@ -850,6 +885,7 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
   test("addStructType stores author-assigned fieldIndex", () => {
     const registry = services.runtime.types;
     const typeId = registry.addStructType("FieldIndexA", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -886,6 +922,7 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
   test("addStructFields stores author-assigned fieldIndex extending the struct", () => {
     const registry = services.runtime.types;
     const typeId = registry.addStructType("FieldIndexC", {
+      atomId: mkTestAtomId(),
       fields: List.from([{ name: "first", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
     });
     registry.addStructFields(
@@ -911,6 +948,7 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
   test("forEach iteration order matches fieldIndex", () => {
     const registry = services.runtime.types;
     const typeId = registry.addStructType("FieldIndexD", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "alpha", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "beta", typeId: CoreTypeIds.Number, fieldIndex: 1 },
@@ -931,6 +969,7 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
     const registry = services.runtime.types;
     assert.throws(() =>
       registry.addStructType("DupFieldId", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
           { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 0 },
@@ -943,6 +982,7 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
     const registry = services.runtime.types;
     assert.throws(() =>
       registry.addStructType("NegFieldId", {
+        atomId: mkTestAtomId(),
         fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: -1 }]),
       })
     );
@@ -951,6 +991,7 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
   test("rejects addStructFields whose fieldIndex collides with an existing field", () => {
     const registry = services.runtime.types;
     const typeId = registry.addStructType("CollideFieldId", {
+      atomId: mkTestAtomId(),
       fields: List.from([{ name: "first", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
     });
     assert.throws(() =>
@@ -961,6 +1002,7 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
   test("allows a sparse fieldIndex (a retired field leaves a hole)", () => {
     const registry = services.runtime.types;
     const typeId = registry.addStructType("SparseFieldId", {
+      atomId: mkTestAtomId(),
       fields: List.from([
         { name: "first", typeId: CoreTypeIds.Number, fieldIndex: 0 },
         { name: "third", typeId: CoreTypeIds.Number, fieldIndex: 2 },
@@ -969,5 +1011,138 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
     const def = registry.get(typeId) as StructTypeDef;
     assert.equal(def.fieldIndexByName.get("first"), 0);
     assert.equal(def.fieldIndexByName.get("third"), 2);
+  });
+});
+
+describe("type-atom ids", () => {
+  before(() => {
+    services = __test__createBrainServices();
+  });
+
+  test("core types register under their declared atom ids", () => {
+    const registry = services.runtime.types;
+    assert.equal(registry.resolveByAtomId(CoreTypeAtomId.Number), CoreTypeIds.Number);
+    assert.equal(registry.resolveByAtomId(CoreTypeAtomId.String), CoreTypeIds.String);
+    assert.equal(registry.get(CoreTypeIds.Boolean)?.atomId, CoreTypeAtomId.Boolean);
+  });
+
+  test("resolveByAtomId returns undefined for an unassigned atom id", () => {
+    const registry = services.runtime.types;
+    assert.equal(registry.resolveByAtomId(999), undefined);
+  });
+
+  test("a target registration without an atomId is rejected", () => {
+    const registry = services.runtime.types;
+    assert.throws(() => registry.addStructType("AtomMissing", { fields: List.empty() }), /requires an atomId/);
+  });
+
+  test("a core registration without an atomId is rejected", () => {
+    const registry = services.runtime.types;
+    assert.throws(
+      () => registry.withOwner("core", () => registry.addStructType("AtomMissingCore", { fields: List.empty() })),
+      /requires an atomId/
+    );
+  });
+
+  test("a dynamic registration with an atomId is rejected", () => {
+    const registry = services.runtime.types;
+    assert.throws(
+      () =>
+        registry.withOwner("dynamic", () =>
+          registry.addStructType("/user.ts::AtomForbidden", { atomId: mkTestAtomId(), fields: List.empty() })
+        ),
+      /must not declare an atomId/
+    );
+  });
+
+  test("a dynamic registration without an atomId succeeds", () => {
+    const registry = services.runtime.types;
+    const typeId = registry.withOwner("dynamic", () =>
+      registry.addStructType("/user.ts::AtomFree", { fields: List.empty() })
+    );
+    assert.equal(registry.get(typeId)?.atomId, undefined);
+  });
+
+  test("a duplicate atomId is rejected", () => {
+    const registry = services.runtime.types;
+    const atomId = mkTestAtomId();
+    registry.addStructType("AtomFirst", { atomId, fields: List.empty() });
+    assert.throws(() => registry.addStructType("AtomSecond", { atomId, fields: List.empty() }), /reuses atomId/);
+  });
+
+  test("a negative atomId is rejected", () => {
+    const registry = services.runtime.types;
+    assert.throws(
+      () => registry.addStructType("AtomNegative", { atomId: -1, fields: List.empty() }),
+      /non-negative integer/
+    );
+  });
+
+  test("a non-integer atomId is rejected", () => {
+    const registry = services.runtime.types;
+    assert.throws(
+      () => registry.addStructType("AtomFractional", { atomId: 1024.5, fields: List.empty() }),
+      /non-negative integer/
+    );
+  });
+
+  test("a core atomId at or above TARGET_TYPE_ATOM_BASE is rejected", () => {
+    const registry = services.runtime.types;
+    assert.throws(
+      () =>
+        registry.withOwner("core", () =>
+          registry.addStructType("AtomCoreHigh", { atomId: TARGET_TYPE_ATOM_BASE, fields: List.empty() })
+        ),
+      /outside the core range/
+    );
+  });
+
+  test("a target atomId below TARGET_TYPE_ATOM_BASE is rejected", () => {
+    const registry = services.runtime.types;
+    assert.throws(
+      () => registry.addStructType("AtomTargetLow", { atomId: 512, fields: List.empty() }),
+      /below the target range base/
+    );
+  });
+
+  test("withOwner restores the previous owner after the body returns", () => {
+    const registry = services.runtime.types;
+    registry.withOwner("dynamic", () => {
+      registry.addStructType("/user.ts::AtomNested", { fields: List.empty() });
+    });
+    // Back under the default target owner, an atom-less registration throws again.
+    assert.throws(() => registry.addStructType("AtomAfterNesting", { fields: List.empty() }), /requires an atomId/);
+  });
+
+  test("reserveStructType registers a program-local struct without an atomId", () => {
+    const registry = services.runtime.types;
+    const typeId = registry.reserveStructType("/user.ts::AtomReserved");
+    registry.finalizeStructType(typeId, { fields: List.empty() });
+    assert.equal(registry.get(typeId)?.atomId, undefined);
+  });
+
+  test("finalizeStructType rejects a shape carrying an atomId", () => {
+    const registry = services.runtime.types;
+    const typeId = registry.reserveStructType("/user.ts::AtomFinalize");
+    assert.throws(
+      () => registry.finalizeStructType(typeId, { atomId: mkTestAtomId(), fields: List.empty() }),
+      /must not declare an atomId/
+    );
+  });
+
+  test("an enum registers its atomId alongside its symbols", () => {
+    const registry = services.runtime.types;
+    const atomId = mkTestAtomId();
+    const typeId = registry.addEnumType("AtomEnum", {
+      atomId,
+      symbols: List.from([
+        { key: "a", label: "A", value: "a" },
+        { key: "b", label: "B", value: "b" },
+      ]),
+      defaultKey: "a",
+      functionIds: mkEnumFunctionIds(),
+    });
+    assert.equal(registry.get(typeId)?.atomId, atomId);
+    assert.equal(registry.resolveByAtomId(atomId), typeId);
   });
 });

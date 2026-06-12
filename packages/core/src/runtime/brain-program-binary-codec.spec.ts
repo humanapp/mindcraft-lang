@@ -12,10 +12,16 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import { stream } from "@mindcraft-lang/core";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
+  BINARY_PROGRAM_FORMAT_VERSION,
   type BrainProgramInstructionJson,
+  type BrainProgramTypeEntryJson,
   type BrainProgramValueJson,
   binaryProgramByteReport,
+  ContextTypeIds,
+  CoreTypeAtomId,
+  CoreTypeIds,
   type LinkedBrainProgramJson,
   linkedBrainProgramFromBytes,
   linkedBrainProgramFromJson,
@@ -33,6 +39,8 @@ import {
 const { MemoryStream, byteArrayFromUint8Array, byteArrayToUint8Array } = stream;
 
 const PROFILE_ID = 7;
+
+const typeRegistry = __test__createBrainServices().runtime.types;
 
 // ---- Fixtures ----
 
@@ -55,9 +63,10 @@ function sampleProgramJson(): LinkedBrainProgramJson {
           ],
           numParams: 1,
           numLocals: 1,
-          injectCtxTypeId: "struct:<Context>",
+          injectCtxTypeIdx: 0,
         },
       ],
+      types: [{ tag: "atom", typeId: ContextTypeIds.Context, atomId: CoreTypeAtomId.Context }],
       constantPools: {
         numbers: [0, 255, 0.5, -0.25],
         strings: ["microbit", "buttonA", "display"],
@@ -142,13 +151,15 @@ function leanNormalize(json: LinkedBrainProgramJson, precision: NumberPrecision)
         code: fn.code.map((instr) => ({ ...instr })),
         numParams: fn.numParams,
         numLocals: fn.numLocals ?? fn.numParams,
-        ...(fn.injectCtxTypeId !== undefined ? { injectCtxTypeId: fn.injectCtxTypeId } : {}),
+        ...(fn.injectCtxTypeIdx !== undefined ? { injectCtxTypeIdx: fn.injectCtxTypeIdx } : {}),
       })),
       constantPools: {
         numbers: p.constantPools.numbers.map((n) => round(n, precision)),
         strings: p.constantPools.strings,
         values: p.constantPools.values.map((v) => normalizeValue(v, precision)),
       },
+      // The binary form always carries a TYPS section; an absent table decodes empty.
+      types: p.types ?? [],
       variableNames: p.variableNames,
       // entryPoint is dropped.
       ...(p.actions !== undefined ? { actions: p.actions } : {}),
@@ -161,8 +172,8 @@ function leanNormalize(json: LinkedBrainProgramJson, precision: NumberPrecision)
 
 function encodeDecode(json: LinkedBrainProgramJson, precision: NumberPrecision) {
   const program = linkedBrainProgramFromJson(json);
-  const bytes = linkedBrainProgramToBytes(program, { profileId: PROFILE_ID, precision });
-  return linkedBrainProgramFromBytes(bytes, { precision });
+  const bytes = linkedBrainProgramToBytes(program, { profileId: PROFILE_ID, precision, typeRegistry });
+  return linkedBrainProgramFromBytes(bytes, { precision, typeRegistry });
 }
 
 // ---- Tests ----
@@ -243,6 +254,24 @@ function makeInstr(op: number, schema: readonly OperandSpec[], includeOptional: 
 }
 
 describe("binary .mcprogram codec -- every value variant", () => {
+  // A coherent type table exercising every entry kind the value pool can
+  // reference: atoms, parameterized list/map, and program-local struct/enum.
+  const NUMBER_LIST_TYPE_ID = `list:<List<${CoreTypeIds.Number}>>`;
+  const ANY_MAP_TYPE_ID = `map:<Map<${CoreTypeIds.Any},${CoreTypeIds.Any}>>`;
+  const NESTED_LIST_TYPE_ID = `list:<List<${NUMBER_LIST_TYPE_ID}>>`;
+  const POINT_TYPE_ID = "struct:</spec.ts::Point>";
+  const COLOR_TYPE_ID = "enum:</spec.ts::Color>";
+
+  const valueTypeEntries: BrainProgramTypeEntryJson[] = [
+    { tag: "atom", typeId: CoreTypeIds.Number, atomId: CoreTypeAtomId.Number },
+    { tag: "atom", typeId: CoreTypeIds.Any, atomId: CoreTypeAtomId.Any },
+    { tag: "list", typeId: NUMBER_LIST_TYPE_ID, elem: 0 },
+    { tag: "map", typeId: ANY_MAP_TYPE_ID, key: 1, value: 1 },
+    { tag: "list", typeId: NESTED_LIST_TYPE_ID, elem: 2 },
+    { tag: "struct", typeId: POINT_TYPE_ID, name: "/spec.ts::Point", maxFieldId: 1 },
+    { tag: "enum", typeId: COLOR_TYPE_ID, name: "/spec.ts::Color", symbols: ["Red", "Green"] },
+  ];
+
   test("round-trips nested containers, both map key kinds, enums, and closures", () => {
     const values: BrainProgramValueJson[] = [
       { t: NativeType.Unknown },
@@ -253,10 +282,10 @@ describe("binary .mcprogram codec -- every value variant", () => {
       { t: NativeType.Number, v: 42 },
       { t: NativeType.Number, v: -7 },
       { t: NativeType.String, v: "hello" },
-      { t: NativeType.Enum, typeId: "enum:Color", v: "Red" },
+      { t: NativeType.Enum, typeId: COLOR_TYPE_ID, v: "Red" },
       {
         t: NativeType.List,
-        typeId: "list:number",
+        typeId: NUMBER_LIST_TYPE_ID,
         v: [
           { t: NativeType.Number, v: 1 },
           { t: NativeType.Number, v: 2 },
@@ -264,7 +293,7 @@ describe("binary .mcprogram codec -- every value variant", () => {
       },
       {
         t: NativeType.Map,
-        typeId: "map:any",
+        typeId: ANY_MAP_TYPE_ID,
         v: [
           { key: 1, value: { t: NativeType.String, v: "one" } },
           { key: "k", value: { t: NativeType.Number, v: 9 } },
@@ -272,7 +301,7 @@ describe("binary .mcprogram codec -- every value variant", () => {
       },
       {
         t: NativeType.Struct,
-        typeId: "struct:Point",
+        typeId: POINT_TYPE_ID,
         v: [
           { t: NativeType.Number, v: 3 },
           { t: NativeType.Number, v: 4 },
@@ -289,10 +318,10 @@ describe("binary .mcprogram codec -- every value variant", () => {
       },
       {
         t: NativeType.List,
-        typeId: "list:nested",
+        typeId: NESTED_LIST_TYPE_ID,
         v: [
-          { t: NativeType.List, typeId: "list:number", v: [{ t: NativeType.Number, v: 1 }] },
-          { t: NativeType.Map, typeId: "map:s", v: [{ key: "a", value: { t: NativeType.Nil } }] },
+          { t: NativeType.List, typeId: NUMBER_LIST_TYPE_ID, v: [{ t: NativeType.Number, v: 1 }] },
+          { t: NativeType.Map, typeId: ANY_MAP_TYPE_ID, v: [{ key: "a", value: { t: NativeType.Nil } }] },
         ],
       },
     ];
@@ -301,13 +330,54 @@ describe("binary .mcprogram codec -- every value variant", () => {
         version: 1,
         functions: [],
         constantPools: { numbers: [], strings: [], values },
+        types: valueTypeEntries,
         variableNames: [],
       },
       pages: [],
     };
     const decoded = encodeDecode(json, "f32");
-    const decodedValues = linkedBrainProgramToJson(decoded.program).program.constantPools.values;
-    assert.deepEqual(decodedValues, values);
+    const decodedProgram = linkedBrainProgramToJson(decoded.program).program;
+    assert.deepEqual(decodedProgram.constantPools.values, values);
+    assert.deepEqual(decodedProgram.types, valueTypeEntries);
+  });
+
+  test("rejects an enum constant whose ordinal is out of range", () => {
+    const json: LinkedBrainProgramJson = {
+      program: {
+        version: 1,
+        functions: [],
+        constantPools: {
+          numbers: [],
+          strings: [],
+          values: [{ t: NativeType.Enum, typeId: COLOR_TYPE_ID, v: "Red" }],
+        },
+        types: valueTypeEntries,
+        variableNames: [],
+      },
+      pages: [],
+    };
+    const program = linkedBrainProgramFromJson(json);
+    const bytes = linkedBrainProgramToBytes(program, { profileId: PROFILE_ID, precision: "f32", typeRegistry });
+    // The enum ordinal is the last var-uint of the only CVAL entry; CVAL is the
+    // section before FUNC, so corrupt it through a decode-visible mutation:
+    // re-encode with a one-symbol table and read with the two-symbol decoder is
+    // not expressible, so instead decode a hand-corrupted ordinal.
+    const u8 = new Uint8Array(byteArrayToUint8Array(bytes) as Uint8Array);
+    // Find the encoded ordinal byte: the CVAL entry is tag(5=Enum) typeIdx(6) ordinal(0).
+    // Locate the byte sequence [5, 6, 0] and bump the ordinal.
+    let patched = false;
+    for (let i = 0; i + 2 < u8.length; i++) {
+      if (u8[i] === NativeType.Enum && u8[i + 1] === 6 && u8[i + 2] === 0) {
+        u8[i + 2] = 9;
+        patched = true;
+        break;
+      }
+    }
+    assert.ok(patched, "expected to locate the encoded enum ordinal");
+    assert.throws(
+      () => linkedBrainProgramFromBytes(byteArrayFromUint8Array(u8), { precision: "f32", typeRegistry }),
+      /ENUM_ORDINAL_OUT_OF_RANGE/
+    );
   });
 });
 
@@ -341,9 +411,9 @@ describe("binary .mcprogram codec -- numeric precision", () => {
     };
     const program = linkedBrainProgramFromJson(json);
     const bytes = linkedBrainProgramToBytes(program, { profileId: PROFILE_ID, precision: "f64" });
-    assert.throws(() => linkedBrainProgramFromBytes(bytes, { precision: "f32" }), /F64_ON_F32_TARGET/);
+    assert.throws(() => linkedBrainProgramFromBytes(bytes, { precision: "f32", typeRegistry }), /F64_ON_F32_TARGET/);
 
-    const f64 = linkedBrainProgramFromBytes(bytes, { precision: "f64" });
+    const f64 = linkedBrainProgramFromBytes(bytes, { precision: "f64", typeRegistry });
     assert.equal(linkedBrainProgramToJson(f64.program).program.constantPools.numbers[0], 0.1);
   });
 });
@@ -357,7 +427,7 @@ describe("binary .mcprogram codec -- diagnostics", () => {
     const u8 = new Uint8Array(byteArrayToUint8Array(bytes) as Uint8Array);
     u8[0] = u8[0] ^ 0xff;
     assert.throws(
-      () => linkedBrainProgramFromBytes(byteArrayFromUint8Array(u8), { precision: "f32" }),
+      () => linkedBrainProgramFromBytes(byteArrayFromUint8Array(u8), { precision: "f32", typeRegistry }),
       /INVALID_MAGIC/
     );
   });
@@ -371,7 +441,7 @@ describe("binary .mcprogram codec -- diagnostics", () => {
     // The format version is the byte immediately after the magic.
     u8[MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC.length] = 99;
     assert.throws(
-      () => linkedBrainProgramFromBytes(byteArrayFromUint8Array(u8), { precision: "f32" }),
+      () => linkedBrainProgramFromBytes(byteArrayFromUint8Array(u8), { precision: "f32", typeRegistry }),
       /UNSUPPORTED_FORMAT_VERSION/
     );
   });
@@ -381,13 +451,13 @@ describe("binary .mcprogram codec -- diagnostics", () => {
     for (let i = 0; i < MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC.length; i++) {
       s.writeRawU8(MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC[i]);
     }
-    s.writeRawU8(1); // format version
+    s.writeRawU8(BINARY_PROGRAM_FORMAT_VERSION);
     // profileId encoded as six continuation-flagged bytes -> overflow on read.
     for (let i = 0; i < 6; i++) {
       s.writeRawU8(0x80);
     }
     s.writeRawU8(0x00);
-    assert.throws(() => linkedBrainProgramFromBytes(s.toBytes(), { precision: "f32" }), /varint/);
+    assert.throws(() => linkedBrainProgramFromBytes(s.toBytes(), { precision: "f32", typeRegistry }), /varint/);
   });
 
   test("the encoder rejects an instruction with extra operands", () => {
@@ -456,6 +526,101 @@ describe("binary .mcprogram codec -- diagnostics", () => {
   });
 });
 
+describe("binary .mcprogram codec -- TYPS diagnostics", () => {
+  const NUMBER_LIST_TYPE_ID = `list:<List<${CoreTypeIds.Number}>>`;
+
+  function typedProgramJson(types: BrainProgramTypeEntryJson[]): LinkedBrainProgramJson {
+    return {
+      program: {
+        version: 1,
+        functions: [],
+        constantPools: { numbers: [], strings: [], values: [] },
+        types,
+        variableNames: [],
+      },
+      pages: [],
+    };
+  }
+
+  function encodeToU8(types: BrainProgramTypeEntryJson[]): Uint8Array {
+    const bytes = linkedBrainProgramToBytes(linkedBrainProgramFromJson(typedProgramJson(types)), {
+      profileId: PROFILE_ID,
+      precision: "f32",
+      typeRegistry,
+    });
+    return new Uint8Array(byteArrayToUint8Array(bytes) as Uint8Array);
+  }
+
+  function decodeU8(u8: Uint8Array) {
+    return linkedBrainProgramFromBytes(byteArrayFromUint8Array(u8), { precision: "f32", typeRegistry });
+  }
+
+  /**
+   * Returns a stream positioned at the first TYPS entry's tag byte: past the
+   * magic, the envelope header, the CSTR section, and the TYPS entry count.
+   */
+  function seekToTypsEntries(u8: Uint8Array) {
+    const s = new MemoryStream(byteArrayFromUint8Array(u8));
+    for (let i = 0; i < MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC.length; i++) {
+      s.readRawU8();
+    }
+    s.readRawU8(); // format version
+    s.readVarUint(); // profileId
+    s.readRawU8(); // presence bitmask
+    const totalStrings = s.readVarUint();
+    s.readVarUint(); // constStringCount
+    for (let i = 0; i < totalStrings; i++) {
+      s.readVarString();
+    }
+    s.readVarUint(); // TYPS entry count
+    return s;
+  }
+
+  test("rejects an unknown TYPS entry tag", () => {
+    const u8 = encodeToU8([
+      { tag: "struct", typeId: "struct:</diag.ts::Point>", name: "/diag.ts::Point", maxFieldId: 1 },
+    ]);
+    const tagOffset = seekToTypsEntries(u8).tellRead();
+    assert.equal(u8[tagOffset], 6); // struct entry tag byte
+    u8[tagOffset] = 0xee;
+    assert.throws(() => decodeU8(u8), /INVALID_TYPE_ENTRY_TAG/);
+  });
+
+  test("rejects a child reference at or beyond its own entry index", () => {
+    const u8 = encodeToU8([
+      { tag: "atom", typeId: CoreTypeIds.Number, atomId: CoreTypeAtomId.Number },
+      { tag: "list", typeId: NUMBER_LIST_TYPE_ID, elem: 0 },
+    ]);
+    const s = seekToTypsEntries(u8);
+    s.readRawU8(); // atom entry tag
+    s.readVarUint(); // atomId
+    s.readRawU8(); // list entry tag
+    const elemOffset = s.tellRead();
+    assert.equal(u8[elemOffset], 0); // elem var-uint references entry 0
+    u8[elemOffset] = 1; // self-reference: child index == own index
+    assert.throws(() => decodeU8(u8), /TYPE_FORWARD_REFERENCE/);
+  });
+
+  test("rejects an atom id that is not registered in the decoding runtime", () => {
+    const u8 = encodeToU8([{ tag: "atom", typeId: CoreTypeIds.Number, atomId: CoreTypeAtomId.Number }]);
+    const s = seekToTypsEntries(u8);
+    s.readRawU8(); // atom entry tag
+    const atomIdOffset = s.tellRead();
+    assert.equal(u8[atomIdOffset], CoreTypeAtomId.Number);
+    // 99 is a single-byte var-uint in the core range with no registration.
+    assert.equal(typeRegistry.resolveByAtomId(99), undefined);
+    u8[atomIdOffset] = 99;
+    assert.throws(() => decodeU8(u8), /UNKNOWN_TYPE_ATOM/);
+  });
+
+  test("rejects an envelope version below the reader's format", () => {
+    const u8 = encodeToU8([]);
+    // The format version is the byte immediately after the magic.
+    u8[MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC.length] = 1;
+    assert.throws(() => decodeU8(u8), /UNSUPPORTED_FORMAT_VERSION/);
+  });
+});
+
 describe("binary .mcprogram codec -- section byte report", () => {
   test("accounts for every byte across magic, envelope, and sections", () => {
     const bytes = linkedBrainProgramToBytes(linkedBrainProgramFromJson(sampleProgramJson()), {
@@ -466,7 +631,7 @@ describe("binary .mcprogram codec -- section byte report", () => {
     assert.equal(report.totalBytes, bytes.length());
 
     const tags = report.sections.map((section) => section.tag);
-    for (const expected of ["FUNC", "CNUM", "CSTR", "CVAL", "VARS", "ACTS", "RULF", "RANC", "PAGE"]) {
+    for (const expected of ["FUNC", "TYPS", "CNUM", "CSTR", "CVAL", "VARS", "ACTS", "RULF", "RANC", "PAGE"]) {
       assert.ok(tags.includes(expected), `expected a ${expected} section`);
     }
 

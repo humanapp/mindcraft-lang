@@ -22,7 +22,7 @@ import {
   Vector2,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
-import { SimFuncId } from "./abi-ids";
+import { SimFuncId, SimTypeAtomId } from "./abi-ids";
 import type { Actor } from "./actor";
 import { getSelf } from "./execution-context-types";
 
@@ -207,6 +207,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     coreType: NativeType.Struct,
     typeId: SimTypeIds.Vector2,
     name: SimTypeNames.Vector2,
+    atomId: SimTypeAtomId.Vector2,
     fields: Vector2Fields,
     accessors: true,
     variableFactory: true,
@@ -220,6 +221,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     coreType: NativeType.Struct,
     typeId: SimTypeIds.ActorRef,
     name: SimTypeNames.ActorRef,
+    atomId: SimTypeAtomId.ActorRef,
     fields: List.from([
       { name: "id", typeId: CoreTypeIds.Number, readOnly: true, fieldIndex: ActorRefField.Id },
       { name: "position", typeId: SimTypeIds.Vector2, fieldIndex: ActorRefField.Position },

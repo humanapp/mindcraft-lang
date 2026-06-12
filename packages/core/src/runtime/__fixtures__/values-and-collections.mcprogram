@@ -58,12 +58,12 @@
         },
         {
           "t": 5,
-          "typeId": "enum:Color",
+          "typeId": "enum:</fixture.ts::Color>",
           "v": "Red"
         },
         {
           "t": 6,
-          "typeId": "list:number",
+          "typeId": "list:<List<number:<number>>>",
           "v": [
             {
               "t": 3,
@@ -77,7 +77,7 @@
         },
         {
           "t": 7,
-          "typeId": "map:any",
+          "typeId": "map:<Map<any:<any>,any:<any>>>",
           "v": [
             {
               "key": 1,
@@ -97,7 +97,7 @@
         },
         {
           "t": 8,
-          "typeId": "struct:Point",
+          "typeId": "struct:</fixture.ts::Point>",
           "v": [
             {
               "t": 3,
@@ -129,6 +129,70 @@
         }
       ]
     },
+    "types": [
+      {
+        "tag": "atom",
+        "typeId": "number:<number>",
+        "atomId": 3
+      },
+      {
+        "tag": "atom",
+        "typeId": "any:<any>",
+        "atomId": 5
+      },
+      {
+        "tag": "atom",
+        "typeId": "string:<string>",
+        "atomId": 4
+      },
+      {
+        "tag": "list",
+        "typeId": "list:<List<number:<number>>>",
+        "elem": 0
+      },
+      {
+        "tag": "map",
+        "typeId": "map:<Map<any:<any>,any:<any>>>",
+        "key": 1,
+        "value": 1
+      },
+      {
+        "tag": "union",
+        "typeId": "union:<number:<number>,string:<string>>",
+        "members": [
+          0,
+          2
+        ]
+      },
+      {
+        "tag": "function",
+        "typeId": "function:<Function<(number:<number>)=>number:<number>>>",
+        "params": [
+          0
+        ],
+        "result": 0
+      },
+      {
+        "tag": "nullable",
+        "typeId": "number:<number?>",
+        "base": 0
+      },
+      {
+        "tag": "struct",
+        "typeId": "struct:</fixture.ts::Point>",
+        "name": "/fixture.ts::Point",
+        "maxFieldId": 1
+      },
+      {
+        "tag": "enum",
+        "typeId": "enum:</fixture.ts::Color>",
+        "name": "/fixture.ts::Color",
+        "symbols": [
+          "Red",
+          "Green"
+        ]
+      }
+    ],
     "variableNames": []
   },
   "pages": []

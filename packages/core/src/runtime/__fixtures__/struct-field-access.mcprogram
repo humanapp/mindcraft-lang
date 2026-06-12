@@ -47,7 +47,7 @@
         ],
         "numParams": 1,
         "numLocals": 2,
-        "injectCtxTypeId": "struct:<Context>"
+        "injectCtxTypeIdx": 0
       }
     ],
     "constantPools": {
@@ -59,6 +59,13 @@
       ],
       "values": []
     },
+    "types": [
+      {
+        "tag": "atom",
+        "typeId": "struct:<Context>",
+        "atomId": 11
+      }
+    ],
     "variableNames": []
   },
   "pages": []

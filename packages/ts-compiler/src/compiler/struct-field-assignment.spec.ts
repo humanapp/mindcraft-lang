@@ -27,6 +27,11 @@ import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 
 let services: BrainServices;
 
+let nextTypeAtomId = 1024;
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
+
 function toVmServices(b: BrainServices) {
   return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
     .runtime;
@@ -73,6 +78,7 @@ describe("struct field assignment", () => {
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "x", typeId: numTypeId, fieldIndex: 0 },
           { name: "y", typeId: numTypeId, fieldIndex: 1 },
@@ -83,6 +89,7 @@ describe("struct field assignment", () => {
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "position", typeId: vec2TypeId, fieldIndex: 0 },
           { name: "health", typeId: numTypeId, fieldIndex: 1 },
@@ -207,6 +214,7 @@ describe("struct field assignment with fieldSetter", () => {
     const nativeTypeId = mkTypeId(NativeType.Struct, "NativeWidget");
     if (!types.get(nativeTypeId)) {
       types.addStructType("NativeWidget", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "value", typeId: numTypeId, fieldIndex: 0 },
           { name: "id", typeId: numTypeId, readOnly: true, fieldIndex: 1 },
@@ -283,6 +291,7 @@ describe("struct field assignment diagnostics", () => {
     const readOnlyTypeId = mkTypeId(NativeType.Struct, "Sensor_ReadOnly");
     if (!types.get(readOnlyTypeId)) {
       types.addStructType("Sensor_ReadOnly", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "value", typeId: numTypeId, readOnly: true, fieldIndex: 0 },
           { name: "mutable", typeId: numTypeId, fieldIndex: 1 },
@@ -356,6 +365,7 @@ describe("struct field compound assignment", () => {
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "x", typeId: numTypeId, fieldIndex: 0 },
           { name: "y", typeId: numTypeId, fieldIndex: 1 },
@@ -476,6 +486,7 @@ describe("struct field assignment integration", () => {
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "x", typeId: numTypeId, fieldIndex: 0 },
           { name: "y", typeId: numTypeId, fieldIndex: 1 },
@@ -486,6 +497,7 @@ describe("struct field assignment integration", () => {
     const unitTypeId = mkTypeId(NativeType.Struct, "Unit");
     if (!types.get(unitTypeId)) {
       types.addStructType("Unit", {
+        atomId: mkTestAtomId(),
         fields: List.from([
           { name: "hp", typeId: numTypeId, fieldIndex: 0 },
           { name: "armor", typeId: numTypeId, readOnly: true, fieldIndex: 1 },

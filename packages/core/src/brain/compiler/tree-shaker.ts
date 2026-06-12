@@ -7,10 +7,11 @@ import type { ConstantPools, FunctionBytecode, Instr } from "../../runtime/bytec
 import { Op } from "../../runtime/bytecode";
 import type { BytecodeExecutableAction } from "../../runtime/context";
 import type { LinkedBrainProgram, PageMetadata } from "../../runtime/host-bindings";
-import type { Program } from "../../runtime/program";
+import type { Program, ProgramTypeEntry } from "../../runtime/program";
+import { remapProgramTypeEntry } from "../../runtime/program";
 import { NativeType } from "../../runtime/type-defs";
 import type { Value } from "../../runtime/value";
-import { isFunctionValue } from "../../runtime/value";
+import { forEachValueTypeId, isFunctionValue } from "../../runtime/value";
 
 function requireActions(program: Program): List<BytecodeExecutableAction> {
   const actions = program.actions;
@@ -93,16 +94,21 @@ interface ReachableConstSets {
   values: UniqueSet<number>;
   numbers: UniqueSet<number>;
   strings: UniqueSet<number>;
+  types: UniqueSet<number>;
 }
 
 function markReachableConstants(program: Program, reachableFuncs: UniqueSet<number>): ReachableConstSets {
   const values = new UniqueSet<number>();
   const numbers = new UniqueSet<number>();
   const strings = new UniqueSet<number>();
+  const types = new UniqueSet<number>();
 
   for (let i = 0; i < program.functions.size(); i++) {
     if (!reachableFuncs.has(i)) continue;
     const fn = program.functions.get(i);
+    if (fn.injectCtxTypeIdx !== undefined) {
+      types.add(fn.injectCtxTypeIdx);
+    }
     for (let j = 0; j < fn.code.size(); j++) {
       const ins = fn.code.get(j);
       if (ins.op === Op.PUSH_CONST_VAL && ins.a !== undefined) {
@@ -115,7 +121,7 @@ function markReachableConstants(program: Program, reachableFuncs: UniqueSet<numb
         strings.add(ins.a);
       }
       if (ins.op === Op.INSTANCE_OF && ins.a !== undefined) {
-        strings.add(ins.a);
+        types.add(ins.a);
       }
       if (
         (ins.op === Op.LIST_NEW ||
@@ -124,12 +130,48 @@ function markReachableConstants(program: Program, reachableFuncs: UniqueSet<numb
           ins.op === Op.STRUCT_COPY_EXCEPT) &&
         ins.b !== undefined
       ) {
-        strings.add(ins.b);
+        types.add(ins.b);
       }
     }
   }
 
-  return { values, numbers, strings };
+  expandReachableTypes(program, values, types);
+
+  return { values, numbers, strings, types };
+}
+
+/**
+ * Grow `types` to cover the type-table entries referenced by reachable
+ * constant values (recursively through nested values) and, transitively, the
+ * structural children of every reachable entry. Children precede parents in
+ * the table, so one descending pass closes the child relation.
+ */
+function expandReachableTypes(program: Program, reachableValues: UniqueSet<number>, types: UniqueSet<number>): void {
+  const typeTable = program.types ?? List.empty<ProgramTypeEntry>();
+  if (typeTable.size() === 0) return;
+
+  const indexByTypeId = Dict.empty<string, number>();
+  for (let i = 0; i < typeTable.size(); i++) {
+    indexByTypeId.set(typeTable.get(i)!.typeId, i);
+  }
+
+  for (let i = 0; i < program.constantPools.values.size(); i++) {
+    if (!reachableValues.has(i)) continue;
+    forEachValueTypeId(program.constantPools.values.get(i), (typeId) => {
+      const idx = indexByTypeId.get(typeId);
+      if (idx !== undefined) {
+        types.add(idx);
+      }
+    });
+  }
+
+  for (let i = typeTable.size() - 1; i >= 0; i--) {
+    if (!types.has(i)) continue;
+    remapProgramTypeEntry(typeTable.get(i)!, (child) => {
+      types.add(child);
+      return child;
+    });
+  }
 }
 
 function markReachableVariableNames(program: Program, reachableFuncs: UniqueSet<number>): UniqueSet<number> {
@@ -178,6 +220,7 @@ interface ConstRemaps {
   values: Dict<number, number>;
   numbers: Dict<number, number>;
   strings: Dict<number, number>;
+  types: Dict<number, number>;
 }
 
 function remapInstruction(
@@ -212,7 +255,7 @@ function remapInstruction(
     return ins;
   }
 
-  if (op === Op.PUSH_CONST_STR || op === Op.INSTANCE_OF) {
+  if (op === Op.PUSH_CONST_STR) {
     if (ins.a !== undefined) {
       const newA = consts.strings.get(ins.a) ?? ins.a;
       if (newA !== ins.a) return { ...ins, a: newA };
@@ -220,9 +263,17 @@ function remapInstruction(
     return ins;
   }
 
+  if (op === Op.INSTANCE_OF) {
+    if (ins.a !== undefined) {
+      const newA = consts.types.get(ins.a) ?? ins.a;
+      if (newA !== ins.a) return { ...ins, a: newA };
+    }
+    return ins;
+  }
+
   if (op === Op.LIST_NEW || op === Op.MAP_NEW || op === Op.STRUCT_NEW || op === Op.STRUCT_COPY_EXCEPT) {
     if (ins.b !== undefined) {
-      const newB = consts.strings.get(ins.b) ?? ins.b;
+      const newB = consts.types.get(ins.b) ?? ins.b;
       if (newB !== ins.b) return { ...ins, b: newB };
     }
     return ins;
@@ -277,6 +328,7 @@ function constantKey(v: Value): string | undefined {
 interface DedupResult {
   functions: List<FunctionBytecode>;
   constantPools: ConstantPools;
+  types: List<ProgramTypeEntry>;
 }
 
 function dedupValues(constants: List<Value>): {
@@ -354,12 +406,45 @@ function dedupStrings(constants: List<string>): {
   return { newConstants, remap, changed };
 }
 
-function deduplicateConstants(functions: List<FunctionBytecode>, pools: ConstantPools): DedupResult | undefined {
+function dedupTypes(types: List<ProgramTypeEntry>): {
+  newTypes: List<ProgramTypeEntry>;
+  remap: Dict<number, number>;
+  changed: boolean;
+} {
+  const seen = Dict.empty<string, number>();
+  const remap = Dict.empty<number, number>();
+  const newTypes = List.empty<ProgramTypeEntry>();
+  let changed = false;
+  for (let i = 0; i < types.size(); i++) {
+    const entry = types.get(i)!;
+    const existing = seen.get(entry.typeId);
+    if (existing !== undefined) {
+      remap.set(i, existing);
+      changed = true;
+      continue;
+    }
+    // Children precede their parent, so their final indices are already in
+    // the remap when the parent is rewritten.
+    const rewritten = remapProgramTypeEntry(entry, (child) => remap.get(child) ?? child);
+    if (rewritten !== entry) changed = true;
+    seen.set(entry.typeId, newTypes.size());
+    remap.set(i, newTypes.size());
+    newTypes.push(rewritten);
+  }
+  return { newTypes, remap, changed };
+}
+
+function deduplicateConstants(
+  functions: List<FunctionBytecode>,
+  pools: ConstantPools,
+  types: List<ProgramTypeEntry>
+): DedupResult | undefined {
   const r = dedupValues(pools.values);
   const n = dedupNumbers(pools.numbers);
   const s = dedupStrings(pools.strings);
+  const t = dedupTypes(types);
 
-  if (!r.changed && !n.changed && !s.changed) return undefined;
+  if (!r.changed && !n.changed && !s.changed && !t.changed) return undefined;
 
   if (r.changed) {
     logger.debug(
@@ -376,8 +461,11 @@ function deduplicateConstants(functions: List<FunctionBytecode>, pools: Constant
       `[tree-shaker] deduplicated ${pools.strings.size() - s.newConstants.size()}/${pools.strings.size()} string constants`
     );
   }
+  if (t.changed) {
+    logger.debug(`[tree-shaker] deduplicated ${types.size() - t.newTypes.size()}/${types.size()} type-table entries`);
+  }
 
-  const remaps: ConstRemaps = { values: r.remap, numbers: n.remap, strings: s.remap };
+  const remaps: ConstRemaps = { values: r.remap, numbers: n.remap, strings: s.remap, types: t.remap };
 
   const newFunctions = List.empty<FunctionBytecode>();
   for (let i = 0; i < functions.size(); i++) {
@@ -390,7 +478,18 @@ function deduplicateConstants(functions: List<FunctionBytecode>, pools: Constant
       if (remapped !== ins) changed = true;
       newCode.push(remapped);
     }
-    newFunctions.push(changed ? { ...fn, code: newCode } : fn);
+    const newInjectCtxTypeIdx =
+      fn.injectCtxTypeIdx !== undefined ? (t.remap.get(fn.injectCtxTypeIdx) ?? fn.injectCtxTypeIdx) : undefined;
+    if (newInjectCtxTypeIdx !== fn.injectCtxTypeIdx) changed = true;
+    newFunctions.push(
+      changed
+        ? {
+            ...fn,
+            code: newCode,
+            ...(newInjectCtxTypeIdx === undefined ? {} : { injectCtxTypeIdx: newInjectCtxTypeIdx }),
+          }
+        : fn
+    );
   }
 
   return {
@@ -400,6 +499,7 @@ function deduplicateConstants(functions: List<FunctionBytecode>, pools: Constant
       strings: s.newConstants,
       values: r.newConstants,
     },
+    types: t.newTypes,
   };
 }
 
@@ -422,7 +522,7 @@ function remapInstructionForDedup(ins: Instr, consts: ConstRemaps): Instr {
     return ins;
   }
 
-  if (op === Op.PUSH_CONST_STR || op === Op.INSTANCE_OF) {
+  if (op === Op.PUSH_CONST_STR) {
     if (ins.a !== undefined) {
       const newA = consts.strings.get(ins.a) ?? ins.a;
       if (newA !== ins.a) return { ...ins, a: newA };
@@ -430,9 +530,17 @@ function remapInstructionForDedup(ins: Instr, consts: ConstRemaps): Instr {
     return ins;
   }
 
+  if (op === Op.INSTANCE_OF) {
+    if (ins.a !== undefined) {
+      const newA = consts.types.get(ins.a) ?? ins.a;
+      if (newA !== ins.a) return { ...ins, a: newA };
+    }
+    return ins;
+  }
+
   if (op === Op.LIST_NEW || op === Op.MAP_NEW || op === Op.STRUCT_NEW || op === Op.STRUCT_COPY_EXCEPT) {
     if (ins.b !== undefined) {
-      const newB = consts.strings.get(ins.b) ?? ins.b;
+      const newB = consts.types.get(ins.b) ?? ins.b;
       if (newB !== ins.b) return { ...ins, b: newB };
     }
     return ins;
@@ -444,6 +552,7 @@ function remapInstructionForDedup(ins: Instr, consts: ConstRemaps): Instr {
 /** Strip unreachable functions, constants, and variable names from `linked` and dedupe constants. */
 export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram {
   const program = linked.program;
+  const programTypes = program.types ?? List.empty<ProgramTypeEntry>();
   const reachableFuncs = markReachableFunctions(program, linked.pages);
   const reachableConsts = markReachableConstants(program, reachableFuncs);
   const reachableVars = markReachableVariableNames(program, reachableFuncs);
@@ -452,16 +561,18 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
   const valuesDead = reachableConsts.values.size() < program.constantPools.values.size();
   const numbersDead = reachableConsts.numbers.size() < program.constantPools.numbers.size();
   const stringsDead = reachableConsts.strings.size() < program.constantPools.strings.size();
+  const typesDead = reachableConsts.types.size() < programTypes.size();
   const varsDead = reachableVars.size() < program.variableNames.size();
 
-  if (!funcsDead && !valuesDead && !numbersDead && !stringsDead && !varsDead) {
-    const dedup = deduplicateConstants(program.functions, program.constantPools);
+  if (!funcsDead && !valuesDead && !numbersDead && !stringsDead && !typesDead && !varsDead) {
+    const dedup = deduplicateConstants(program.functions, program.constantPools, programTypes);
     if (dedup) {
       return {
         program: {
           ...program,
           functions: dedup.functions,
           constantPools: dedup.constantPools,
+          types: dedup.types,
         },
         ruleIndex: linked.ruleIndex,
         pages: linked.pages,
@@ -494,6 +605,10 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
     const removed = program.constantPools.strings.size() - reachableConsts.strings.size();
     logger.debug(`[tree-shaker] removed ${removed}/${program.constantPools.strings.size()} string constants`);
   }
+  if (typesDead) {
+    const removed = programTypes.size() - reachableConsts.types.size();
+    logger.debug(`[tree-shaker] removed ${removed}/${programTypes.size()} type-table entries`);
+  }
 
   if (varsDead) {
     const shakenVarNames: string[] = [];
@@ -513,6 +628,7 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
     values: buildRemapTable(program.constantPools.values.size(), reachableConsts.values),
     numbers: buildRemapTable(program.constantPools.numbers.size(), reachableConsts.numbers),
     strings: buildRemapTable(program.constantPools.strings.size(), reachableConsts.strings),
+    types: buildRemapTable(programTypes.size(), reachableConsts.types),
   };
   const varRemap = buildRemapTable(program.variableNames.size(), reachableVars);
 
@@ -524,7 +640,19 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
     for (let j = 0; j < fn.code.size(); j++) {
       newCode.push(remapInstruction(fn.code.get(j), funcRemap, constRemap, varRemap));
     }
-    newFunctions.push({ ...fn, code: newCode });
+    newFunctions.push({
+      ...fn,
+      code: newCode,
+      ...(fn.injectCtxTypeIdx === undefined
+        ? {}
+        : { injectCtxTypeIdx: constRemap.types.get(fn.injectCtxTypeIdx) ?? fn.injectCtxTypeIdx }),
+    });
+  }
+
+  const newTypes = List.empty<ProgramTypeEntry>();
+  for (let i = 0; i < programTypes.size(); i++) {
+    if (!reachableConsts.types.has(i)) continue;
+    newTypes.push(remapProgramTypeEntry(programTypes.get(i)!, (child) => constRemap.types.get(child) ?? child));
   }
 
   const newValues = List.empty<Value>();
@@ -605,11 +733,13 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
     strings: newStrings,
     values: newValues,
   };
+  let resultTypes = newTypes;
 
-  const dedup = deduplicateConstants(newFunctions, resultPools);
+  const dedup = deduplicateConstants(newFunctions, resultPools, newTypes);
   if (dedup) {
     resultFunctions = dedup.functions;
     resultPools = dedup.constantPools;
+    resultTypes = dedup.types;
   }
 
   const newRuleFuncIds = new UniqueSet<number>();
@@ -638,6 +768,7 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
       version: program.version,
       functions: resultFunctions,
       constantPools: resultPools,
+      types: resultTypes,
       variableNames: newVariableNames,
       entryPoint: newEntryPoint,
       actions: newActions,

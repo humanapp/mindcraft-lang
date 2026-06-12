@@ -49,16 +49,18 @@ import { registerCoreTypes } from "./type-system";
 export function registerCoreRuntimeComponents(services: BrainServices) {
   services.runtime.functions.withOwner("core", () => {
     services.runtime.actions.withOwner("core", () => {
-      registerCoreTypes(services);
-      registerContextTypes(services);
-      registerCoreActuators(services);
-      registerCoreSensors(services);
-      registerCoreConversions(services);
-      registerCoreOperators(services);
-      registerElementAccessBuiltins(services);
-      registerMapBuiltins(services);
-      registerMathBuiltins(services);
-      registerStringBuiltins(services);
+      services.runtime.types.withOwner("core", () => {
+        registerCoreTypes(services);
+        registerContextTypes(services);
+        registerCoreActuators(services);
+        registerCoreSensors(services);
+        registerCoreConversions(services);
+        registerCoreOperators(services);
+        registerElementAccessBuiltins(services);
+        registerMapBuiltins(services);
+        registerMathBuiltins(services);
+        registerStringBuiltins(services);
+      });
     });
   });
 }

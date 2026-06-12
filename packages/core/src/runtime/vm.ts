@@ -11,6 +11,7 @@ import { Op } from "./bytecode";
 import type { BytecodeExecutableAction, ExecutionContext, HostActionBinding } from "./context";
 import type { VmEvents } from "./events";
 import type { Program } from "./program";
+import { resolveProgramTypeId } from "./program";
 import type { RuntimeLangServices } from "./services";
 import type { ITypeRegistry } from "./type-defs";
 import { NativeType, type StructTypeDef, type TypeId } from "./type-defs";
@@ -742,11 +743,12 @@ export class VM implements IVM {
 
   private execInstanceOf(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const value = this.pop(fiber);
-    const constIdx = ins.a ?? 0;
-    if (constIdx < 0 || constIdx >= this.prog.constantPools.strings.size()) {
-      throw new Error(`INSTANCE_OF: string-constant index ${constIdx} out of bounds`);
+    const typeIdx = ins.a ?? 0;
+    const types = this.prog.types;
+    if (!types || typeIdx < 0 || typeIdx >= types.size()) {
+      throw new Error(`INSTANCE_OF: type-table index ${typeIdx} out of bounds`);
     }
-    const targetTypeId = this.prog.constantPools.strings.get(constIdx)!;
+    const targetTypeId = types.get(typeIdx)!.typeId;
     const result = isStructValue(value) && value.typeId === targetTypeId;
     this.push(fiber, V.bool(result));
     frame.pc++;
@@ -1265,8 +1267,8 @@ export class VM implements IVM {
   // List operations
   private execListNew(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     let typeId: TypeId = "list:<unknown>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
-      typeId = this.prog.constantPools.strings.get(ins.b)!;
+    if (ins.b !== undefined) {
+      typeId = resolveProgramTypeId(this.prog.types, ins.b);
     }
     this.push(fiber, V.list(List.empty<Value>(), typeId));
     frame.pc++;
@@ -1405,8 +1407,8 @@ export class VM implements IVM {
   // Map operations
   private execMapNew(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     let typeId: TypeId = "map:<unknown>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
-      typeId = this.prog.constantPools.strings.get(ins.b)!;
+    if (ins.b !== undefined) {
+      typeId = resolveProgramTypeId(this.prog.types, ins.b);
     }
     this.push(fiber, V.map(new ValueDict(), typeId));
     frame.pc++;
@@ -1501,26 +1503,15 @@ export class VM implements IVM {
   }
 
   private execStructNew(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    const numFields = ins.a ?? 0;
+    if (ins.a !== undefined && ins.a !== 0) {
+      throw new Error(`STRUCT_NEW: reserved operand a must be 0 (got ${ins.a})`);
+    }
     let typeId = "struct:<anonymous>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
-      typeId = this.prog.constantPools.strings.get(ins.b)!;
+    if (ins.b !== undefined) {
+      typeId = resolveProgramTypeId(this.prog.types, ins.b);
     }
 
     const fields = this.makeStructFields(typeId);
-
-    for (let i = 0; i < numFields; i++) {
-      const value = this.pop(fiber);
-      const fieldName = this.pop(fiber);
-      if (!isStringValue(fieldName)) {
-        throw new Error("STRUCT_NEW: field name must be string");
-      }
-      const fieldIndex = this.findStructField(typeId, fieldName.v);
-      if (fieldIndex !== undefined) {
-        fields.set(fieldIndex, value);
-      }
-    }
-
     this.push(fiber, V.struct(fields, typeId));
     frame.pc++;
     return undefined;
@@ -1603,8 +1594,8 @@ export class VM implements IVM {
     }
 
     let typeId = "struct:<anonymous>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
-      typeId = this.prog.constantPools.strings.get(ins.b)!;
+    if (ins.b !== undefined) {
+      typeId = resolveProgramTypeId(this.prog.types, ins.b);
     }
 
     let resultTypeId = typeId;
@@ -1693,7 +1684,7 @@ export class VM implements IVM {
     executionContext: ExecutionContext,
     label: string
   ): ReadonlyList<Value> {
-    if (fn.injectCtxTypeId !== undefined) {
+    if (fn.injectCtxTypeIdx !== undefined) {
       const expectedArgs = fn.numParams - 1;
       if (args.size() !== expectedArgs) {
         throw new Error(
@@ -1701,7 +1692,10 @@ export class VM implements IVM {
         );
       }
 
-      const ctxStruct = mkNativeStructValue(fn.injectCtxTypeId, executionContext);
+      const ctxStruct = mkNativeStructValue(
+        resolveProgramTypeId(this.prog.types, fn.injectCtxTypeIdx),
+        executionContext
+      );
       const effectiveArgs = List.empty<Value>();
       effectiveArgs.push(ctxStruct);
       for (let i = 0; i < args.size(); i++) {

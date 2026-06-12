@@ -2191,26 +2191,46 @@ function lowerObjectRestElement(
   ctx: LowerContext
 ): void {
   const restType = ctx.checker.getTypeAtLocation(element.name);
-  const typeId = tsTypeToTypeId(restType, ctx.checker, ctx.services) ?? "struct:<anonymous>";
+  const typeId = tsTypeToTypeId(restType, ctx.checker, ctx.services);
 
-  ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
-
-  let numExclude = 0;
+  let hasComputedKeys = false;
   for (const other of pattern.elements) {
-    if (other === element) continue;
-    const computedKeyLocal = computedKeyLocals.get(other);
-    if (computedKeyLocal !== undefined) {
-      ctx.ir.push({ kind: "LoadLocal", index: computedKeyLocal });
-      numExclude++;
-    } else if (other.propertyName && ts.isIdentifier(other.propertyName)) {
-      ctx.ir.push({ kind: "PushConst", value: mkStringValue(other.propertyName.text) });
-      numExclude++;
-    } else if (ts.isIdentifier(other.name)) {
-      ctx.ir.push({ kind: "PushConst", value: mkStringValue(other.name.text) });
-      numExclude++;
+    if (other !== element && computedKeyLocals.has(other)) {
+      hasComputedKeys = true;
     }
   }
-  ctx.ir.push({ kind: "StructCopyExcept", numExclude, typeId });
+  const restDef = typeId === undefined ? undefined : ctx.services.runtime.types.get(typeId);
+  const restStruct =
+    restDef !== undefined && restDef.coreType === NativeType.Struct ? (restDef as StructTypeDef) : undefined;
+  const sourceTypeId = tsTypeToTypeId(ctx.checker.getTypeAtLocation(pattern), ctx.checker, ctx.services);
+  const sourceDef = sourceTypeId === undefined ? undefined : ctx.services.runtime.types.get(sourceTypeId);
+  const sourceStruct =
+    sourceDef !== undefined && sourceDef.coreType === NativeType.Struct ? (sourceDef as StructTypeDef) : undefined;
+
+  if (!hasComputedKeys && (restStruct !== undefined || sourceStruct !== undefined)) {
+    lowerStaticRestCopy(restStruct, sourceStruct, element, pattern, srcLocal, ctx);
+  } else {
+    // Dynamic fallback: the excluded keys (or the rest type itself) are only
+    // known at runtime, so the copy stays name-keyed via STRUCT_COPY_EXCEPT.
+    ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+
+    let numExclude = 0;
+    for (const other of pattern.elements) {
+      if (other === element) continue;
+      const computedKeyLocal = computedKeyLocals.get(other);
+      if (computedKeyLocal !== undefined) {
+        ctx.ir.push({ kind: "LoadLocal", index: computedKeyLocal });
+        numExclude++;
+      } else if (other.propertyName && ts.isIdentifier(other.propertyName)) {
+        ctx.ir.push({ kind: "PushConst", value: mkStringValue(other.propertyName.text) });
+        numExclude++;
+      } else if (ts.isIdentifier(other.name)) {
+        ctx.ir.push({ kind: "PushConst", value: mkStringValue(other.name.text) });
+        numExclude++;
+      }
+    }
+    ctx.ir.push({ kind: "StructCopyExcept", numExclude, typeId });
+  }
 
   if (ts.isIdentifier(element.name)) {
     const localIdx = ctx.scopeStack.declareLocal(element.name.text);
@@ -2224,6 +2244,50 @@ function lowerObjectRestElement(
     ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
     lowerArrayBindingPattern(element.name, tempLocal, ctx);
   }
+}
+
+/**
+ * Build a statically-keyed rest struct by field id: construct the result
+ * type, then copy each kept field from the source by id. The result type is
+ * the resolved rest type when the checker produced one, else the source type
+ * (matching the dynamic fallback's typing, with excluded fields left unset).
+ * Leaves the rest struct on the stack.
+ */
+function lowerStaticRestCopy(
+  restStruct: StructTypeDef | undefined,
+  sourceStruct: StructTypeDef | undefined,
+  element: ts.BindingElement,
+  pattern: ts.ObjectBindingPattern,
+  srcLocal: number,
+  ctx: LowerContext
+): void {
+  const excluded = new Set<string>();
+  for (const other of pattern.elements) {
+    if (other === element) continue;
+    if (other.propertyName && ts.isIdentifier(other.propertyName)) {
+      excluded.add(other.propertyName.text);
+    } else if (ts.isIdentifier(other.name)) {
+      excluded.add(other.name.text);
+    }
+  }
+
+  const resultStruct = restStruct ?? (sourceStruct as StructTypeDef);
+  const copied = (restStruct ?? sourceStruct ?? resultStruct).fields;
+
+  ctx.ir.push({ kind: "StructNew", typeId: resultStruct.typeId });
+  copied.forEach((field) => {
+    if (restStruct === undefined && excluded.has(field.name)) return;
+    const dstFieldIndex = resultStruct.fieldIndexByName.get(field.name);
+    if (dstFieldIndex === undefined) return;
+    const srcFieldIndex = sourceStruct?.fieldIndexByName.get(field.name);
+    ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+    if (srcFieldIndex !== undefined) {
+      ctx.ir.push({ kind: "GetField", fieldName: field.name, fieldIndex: srcFieldIndex });
+    } else {
+      ctx.ir.push({ kind: "GetField", fieldName: field.name });
+    }
+    ctx.ir.push({ kind: "StructSet", fieldIndex: dstFieldIndex });
+  });
 }
 
 function lowerArrayDestructuring(
@@ -8119,15 +8183,19 @@ function registerUserEnumType(
 
   try {
     if (symbols.isEmpty()) {
-      registry.addEnumType(qualifiedName, { symbols });
+      registry.withOwner("dynamic", () => {
+        registry.addEnumType(qualifiedName, { symbols });
+      });
       return;
     }
 
     services.runtime.functions.withOwner("dynamic", () => {
-      registry.addEnumType(qualifiedName, {
-        symbols,
-        defaultKey: symbols.get(0).key,
-        functionIds: nextUserEnumFunctionIds(services),
+      registry.withOwner("dynamic", () => {
+        registry.addEnumType(qualifiedName, {
+          symbols,
+          defaultKey: symbols.get(0).key,
+          functionIds: nextUserEnumFunctionIds(services),
+        });
       });
     });
   } catch (error) {
@@ -9233,7 +9301,9 @@ function registerClassStructType(
 
   const methods = extractClassMethodDecls(ci.node, checker, diagnostics, services);
 
-  registry.addStructType(qualName, { fields, methods });
+  registry.withOwner("dynamic", () => {
+    registry.addStructType(qualName, { fields, methods });
+  });
 }
 
 function reserveInterfaceStructType(

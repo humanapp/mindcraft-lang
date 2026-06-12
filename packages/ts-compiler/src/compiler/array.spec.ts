@@ -6,7 +6,9 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
+  CoreTypeIds,
   HandleTable,
+  type Instr,
   isListValue,
   type ListValue,
   mkNumberValue,
@@ -14,6 +16,7 @@ import {
   NativeType,
   NIL_VALUE,
   type NumberValue,
+  Op,
   type StringValue,
   type Value,
   VmStatus,
@@ -40,7 +43,7 @@ function ensureSetup(): void {
     const numListName = "NumberList";
     const numListTypeId = mkTypeId(NativeType.List, numListName);
     if (!types.get(numListTypeId)) {
-      types.addListType(numListName, { elementTypeId: numTypeId });
+      types.addListType(numListName, { atomId: 1025, elementTypeId: numTypeId });
     }
 
     ambientSource = buildAmbientDeclarations(services.runtime.types);
@@ -1212,12 +1215,13 @@ describe("Generic function body - struct field access", () => {
     const numListName = "NumberList";
     const numListTypeId = mkTypeId(NativeType.List, numListName);
     if (!types.get(numListTypeId)) {
-      types.addListType(numListName, { elementTypeId: numTypeId });
+      types.addListType(numListName, { atomId: 1026, elementTypeId: numTypeId });
     }
 
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
+        atomId: 1024,
         fields: List.from([
           { name: "x", typeId: numTypeId, fieldIndex: 0 },
           { name: "y", typeId: numTypeId, fieldIndex: 1 },
@@ -1934,5 +1938,53 @@ function outer(...nums: number[]): number {
       `return outer(5, 10, 15);`
     );
     assert.equal(v, 30);
+  });
+});
+
+describe("type-table emission", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("LIST_NEW carries a type-table index, not a pooled typeId string", () => {
+    const result = compileUserTile(
+      sensorReturningNumber(`
+      const xs: number[] = [];
+      return xs.length;
+    `),
+      {
+        ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+        services,
+      }
+    );
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+    const prog = result.program!;
+
+    let listNew: Instr | undefined;
+    prog.functions.forEach((fn) => {
+      fn.code.forEach((instr) => {
+        if (instr.op === Op.LIST_NEW) {
+          listNew = instr;
+        }
+      });
+    });
+    assert.ok(listNew, "expected a LIST_NEW instruction");
+    const typeIdx = listNew!.b;
+    assert.ok(typeIdx !== undefined, "expected LIST_NEW to carry a type operand");
+
+    const expectedTypeId = services.runtime.types.instantiate("List", List.from([CoreTypeIds.Number]));
+    assert.ok(prog.types, "expected a program type table");
+    const entry = prog.types!.get(typeIdx!);
+    assert.ok(entry, "the LIST_NEW type operand must index into the type table");
+    assert.equal(entry!.typeId, expectedTypeId);
+
+    let pooledTypeId = false;
+    prog.constantPools.strings.forEach((s) => {
+      if (s === expectedTypeId) {
+        pooledTypeId = true;
+      }
+    });
+    assert.equal(pooledTypeId, false, "the typeId string must not be in the constant string pool");
   });
 });

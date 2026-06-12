@@ -1,5 +1,6 @@
 import type { Dict } from "../platform/dict";
 import type { List } from "../platform/list";
+import type { StableIdOwner } from "./abi-ids";
 import type { StructFieldGetterFn, StructFieldSetterFn, StructSnapshotNativeFn } from "./vm-types";
 
 // ----------------------------------------------------
@@ -73,6 +74,14 @@ export interface TypeDef {
   name: string;
   nullable?: boolean;
   autoInstantiated?: boolean;
+  /**
+   * Author-assigned stable type-atom id. Required for every nominal type
+   * registered by a `core` or `target` owner (core ids below
+   * `TARGET_TYPE_ATOM_BASE`, target ids at or above it); absent on
+   * auto-instantiated structural types and on program-local (`dynamic`)
+   * types. Once assigned, never changed or reused.
+   */
+  atomId?: number;
 }
 
 /** Primitive value backing an {@link EnumSymbolDef}. */
@@ -103,11 +112,21 @@ export interface EnumFunctionIds {
   notEqualTo: number;
 }
 
-/** Shape fields specific to enum types. `functionIds` is required when `symbols` is non-empty. */
+/**
+ * Shape fields specific to enum types. `functionIds` is required when
+ * `symbols` is non-empty.
+ *
+ * For an enum registered with an {@link atomId}, the declared order of
+ * `symbols` is ABI: enum values serialize as ordinals into this list. The
+ * list is append-only -- never reorder or remove a symbol of a registered
+ * core/target enum; add new symbols at the end.
+ */
 export interface EnumTypeShape {
   symbols: List<EnumSymbolDef>;
   defaultKey?: string;
   functionIds?: EnumFunctionIds;
+  /** Stable type-atom id; see {@link TypeDef.atomId} for the assignment rules. */
+  atomId?: number;
 }
 
 /** A registered enum type. */
@@ -116,6 +135,8 @@ export type EnumTypeDef = TypeDef & EnumTypeShape;
 /** Shape fields specific to list types. */
 export interface ListTypeShape {
   elementTypeId: TypeId;
+  /** Stable type-atom id; see {@link TypeDef.atomId} for the assignment rules. */
+  atomId?: number;
 }
 
 /** A registered list type. */
@@ -125,6 +146,8 @@ export type ListTypeDef = TypeDef & ListTypeShape;
 export interface MapTypeShape {
   keyTypeId: TypeId;
   valueTypeId: TypeId;
+  /** Stable type-atom id; see {@link TypeDef.atomId} for the assignment rules. */
+  atomId?: number;
 }
 
 /** A registered map type. */
@@ -185,6 +208,8 @@ export interface StructTypeShape {
   snapshotNative?: StructSnapshotNativeFn;
   /** If provided, struct methods callable via HOST_CALL on instances of this type. */
   methods?: List<StructMethodDecl>;
+  /** Stable type-atom id; see {@link TypeDef.atomId} for the assignment rules. */
+  atomId?: number;
 }
 
 /**
@@ -230,17 +255,30 @@ export interface TypeConstructor {
   construct(registry: ITypeRegistry, args: List<TypeId>): TypeDef;
 }
 
-/** Mutable registry of {@link TypeDef}s, keyed by {@link TypeId} and resolvable by name. */
+/**
+ * Mutable registry of {@link TypeDef}s, keyed by {@link TypeId} and resolvable
+ * by name or by stable type-atom id.
+ *
+ * Named registrations (`add*Type`) validate their `atomId` against the active
+ * owner scope set by {@link withOwner}: `core` and `target` owners must supply
+ * one in their partition of the atom space, `dynamic` owners must not supply
+ * one. Auto-instantiated structural types (`instantiate`,
+ * `getOrCreateUnionType`, `getOrCreateFunctionType`, `addNullableType`) and
+ * program-local structs (`reserveStructType`/`finalizeStructType`) never
+ * carry an atom id.
+ */
 export interface ITypeRegistry {
+  withOwner<T>(owner: StableIdOwner, body: () => T): T;
   get(id: TypeId): TypeDef | undefined;
   getEnumSymbol(typeId: TypeId, key: string): EnumSymbolDef | undefined;
   resolveByName(name: string): TypeId | undefined;
+  resolveByAtomId(atomId: number): TypeId | undefined;
   entries(): Iterable<[TypeId, TypeDef]>;
-  addVoidType(name: string): TypeId;
-  addNilType(name: string): TypeId;
-  addBooleanType(name: string): TypeId;
-  addNumberType(name: string): TypeId;
-  addStringType(name: string): TypeId;
+  addVoidType(name: string, atomId?: number): TypeId;
+  addNilType(name: string, atomId?: number): TypeId;
+  addBooleanType(name: string, atomId?: number): TypeId;
+  addNumberType(name: string, atomId?: number): TypeId;
+  addStringType(name: string, atomId?: number): TypeId;
   addEnumType(name: string, shape: EnumTypeShape): TypeId;
   addListType(name: string, shape: ListTypeShape): TypeId;
   addMapType(name: string, shape: MapTypeShape): TypeId;
@@ -249,8 +287,8 @@ export interface ITypeRegistry {
   finalizeStructType(typeId: TypeId, shape: StructTypeShape): void;
   addStructMethods(typeId: TypeId, methods: List<StructMethodDecl>): void;
   addStructFields(typeId: TypeId, fields: List<StructFieldInput>, fieldGetter?: StructFieldGetterFn): void;
-  addAnyType(name: string): TypeId;
-  addFunctionType(name: string): TypeId;
+  addAnyType(name: string, atomId?: number): TypeId;
+  addFunctionType(name: string, atomId?: number): TypeId;
   addNullableType(baseTypeId: TypeId): TypeId;
   registerConstructor(ctor: TypeConstructor): void;
   instantiate(constructorName: string, args: List<TypeId>): TypeId;
