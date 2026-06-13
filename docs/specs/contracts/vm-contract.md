@@ -1209,11 +1209,18 @@ reproduce it exactly.
   knobs.
 - **Rule respawn.** Completed **and faulted** root-rule fibers
   respawn on the next think; a fault kills the fiber, not the rule.
-- **`maxFibers` is a count cap on concurrently live fibers**, checked
-  at spawn. Exhaustion is a loud, deterministic fault -- an
-  `OverflowError` from a host-side `spawn`/`addFiber`, surfacing as a
-  `StackOverflow` fault on the spawning fiber when the spawn came
-  from bytecode (`ACTION_CALL_ASYNC`) -- never a silent skip.
+- **`maxFibers` is a generous runaway-spawn guard, not a memory cap.**
+  Fibers are allocated on demand; the count is bounded structurally by
+  available memory (a fixed-capacity port faults `StackOverflow` at
+  spawn when fiber memory is exhausted) and, above that, by `maxFibers`
+  -- a deliberately generous ceiling far beyond any reasonable brain
+  (default 10000; the microbit-v2 profile pins 100). Exhausting it is a
+  loud, deterministic fault -- an `OverflowError` from a host-side
+  `spawn`/`addFiber`, surfacing as a `StackOverflow` fault on the
+  spawning fiber when the spawn came from bytecode -- never a silent
+  skip. On a constrained device, memory is reached first, so the guard
+  binds only once per-fiber stacks are small enough that the count
+  could otherwise run away.
 
 ---
 
@@ -1268,7 +1275,7 @@ Only `code` is contractual.
 | `Cancelled`      | 2       | A handle is cancelled, or `cancelFiber` is invoked on a runnable/waiting fiber.                                                                                                                         |
 | `HostError`      | 3       | An async handle rejects without an explicit error, or the host async path fails.                                                                                                                        |
 | `ScriptError`    | 4       | Bytecode-level fault: missing frame, PC out of bounds, unknown opcode, dispatch-time exception, `THROW` of a non-error value.                                                                           |
-| `StackOverflow`  | 5       | A configured capacity cap is exceeded: operand stack (`maxStackSize`), frame depth (`maxFrameDepth`), handler stack (`maxHandlers`), pending handles (`maxHandles`), or scheduler fibers (`maxFibers`). |
+| `StackOverflow`  | 5       | A configured capacity cap is exceeded: operand stack (`maxStackSize`), frame depth (`maxFrameDepth`), handler stack (`maxHandlers`), pending handles (`maxHandles`), or the `maxFibers` runaway-spawn guard. |
 | `StackUnderflow` | 6       | An opcode handler attempts to `pop` or `peek` from an empty operand stack. Indicates malformed bytecode (the compiler should never emit such a sequence).                                               |
 
 The runtime never compares against the string label. Render the label at
@@ -1297,7 +1304,7 @@ out of `runFiber`). Three are per-fiber (`VmConfig`); two are global
 | `maxFrameDepth` | `VmConfig` (per fiber) | 256                 | A `CALL` / `CALL_INDIRECT` / `CALL_INDIRECT_ARGS` / `ACTION_CALL` would push a frame past this depth.                                                |
 | `maxHandlers`   | `VmConfig` (per fiber) | 64                  | A `TRY` would install a handler past this depth on the handler stack.                                                                                |
 | `maxHandles`    | `HandleTable` ctor arg | 100000 (production) | `HandleTable.createPending()` is invoked when the table already holds this many entries.                                                             |
-| `maxFibers`     | `SchedulerConfig`      | 10000               | `FiberScheduler.addFiber()` (and therefore `spawn()` and async-action fiber creation) is invoked when the scheduler already tracks this many fibers. |
+| `maxFibers`     | `SchedulerConfig`      | 10000               | `FiberScheduler.addFiber()` (and therefore `spawn()` and async-action fiber creation) is invoked when the scheduler already tracks this many fibers. A generous runaway guard; the microbit-v2 profile pins 100. |
 
 Both kinds of violation surface to the offending fiber as
 `ErrorCode.StackOverflow` (or `ErrorCode.StackUnderflow` for operand
@@ -1363,15 +1370,16 @@ Per cap, an embed host should weigh:
   `ErrorCode.StackOverflow` from `HandleTable.createPending`.
   Set to `0` to forbid async actions entirely; the host then must
   also refuse to register any async functions.
-- **`maxFibers`** -- bounds the global fiber pool owned by the
-  scheduler. Weigh: expected count of concurrent fibers (one root
-  fiber per brain, plus one per active `spawn` and per active
-  async-action call). Per-fiber cost on a fixed-array port is one
-  fiber record plus that fiber's pre-allocated stacks (sized by
-  `maxStackSize` / `maxFrameDepth` / `maxHandlers` above).
-  Overflow raises `ErrorCode.StackOverflow` from
-  `FiberScheduler.addFiber`. Fault gate on the TS VM; sizing
-  input on a fixed-array port.
+- **`maxFibers`** -- a generous runaway-spawn guard on the global fiber
+  pool owned by the scheduler, not a memory-sizing knob. Fibers are
+  allocated on demand, so a fixed-capacity port already faults
+  `ErrorCode.StackOverflow` at spawn when fiber memory is exhausted;
+  `maxFibers` is a deliberately large ceiling above that (default
+  10000, microbit-v2 profile 100) catching a runaway spawn loop
+  deterministically. Overflow raises `ErrorCode.StackOverflow` from
+  `FiberScheduler.addFiber`. On a constrained device, memory binds
+  first, so the guard matters once per-fiber stacks are small enough
+  for the count to otherwise run away.
 
 Treat the per-cap costs above as ordering, not absolutes; measured
 byte costs for a specific MCU build vary by platform and compiler

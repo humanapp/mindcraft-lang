@@ -3144,29 +3144,6 @@ describe("VM -- overflow faults", () => {
     assert.ok(isOverflowError(caught), "expected OverflowError to be thrown");
   });
 
-  test("FiberScheduler.spawn throws OverflowError when fiber pool is full", () => {
-    // Long-running program (infinite loop) so fibers stay RUNNABLE and occupy slots.
-    const prog = mkProgram([mkFunc([{ op: Op.JMP, a: 0 }])]);
-    const vm = new VM(prog, toVmServices(services));
-    const scheduler = new FiberScheduler(vm, {
-      defaultBudget: 1,
-      autoGcHandles: true,
-      maxFibers: 3,
-    });
-
-    scheduler.spawn(0, List.empty(), mkCtx());
-    scheduler.spawn(0, List.empty(), mkCtx());
-    scheduler.spawn(0, List.empty(), mkCtx());
-
-    let caught: unknown;
-    try {
-      scheduler.spawn(0, List.empty(), mkCtx());
-    } catch (e) {
-      caught = e;
-    }
-    assert.ok(isOverflowError(caught), "expected OverflowError to be thrown");
-  });
-
   test("operand stack underflow surfaces as ErrorCode.StackUnderflow", () => {
     // POP on an empty operand stack: malformed bytecode that hits the
     // pop() underflow guard.

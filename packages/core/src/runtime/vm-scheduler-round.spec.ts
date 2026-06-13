@@ -4,8 +4,7 @@
  * `FiberScheduler.tick()` is a round: every fiber in the runnable queue at
  * tick entry gets exactly one budget slice, and anything enqueued during
  * the tick (spawns, YIELD or budget-exhaustion re-enqueues) joins the next
- * round. These tests pin that guarantee and the loud `maxFibers` spawn
- * fault.
+ * round. These tests pin that guarantee and the loud `maxFibers` spawn fault.
  */
 
 import assert from "node:assert/strict";

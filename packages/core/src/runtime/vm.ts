@@ -2163,9 +2163,9 @@ export interface SchedulerConfig {
   hookBudget: number;
   autoGcHandles: boolean;
   /**
-   * Maximum number of fibers tracked by the scheduler at any one time.
-   * Checked at spawn; exceeding it throws an {@link OverflowError}, which
-   * surfaces as a `StackOverflow` fault when the spawn came from bytecode.
+   * Maximum number of fibers the scheduler tracks at once. Checked at spawn;
+   * exceeding it throws an {@link OverflowError}, surfacing as a `StackOverflow`
+   * fault when the spawn came from bytecode.
    */
   maxFibers: number;
 }
