@@ -1275,7 +1275,7 @@ Only `code` is contractual.
 | `Cancelled`      | 2       | A handle is cancelled, or `cancelFiber` is invoked on a runnable/waiting fiber.                                                                                                                         |
 | `HostError`      | 3       | An async handle rejects without an explicit error, or the host async path fails.                                                                                                                        |
 | `ScriptError`    | 4       | Bytecode-level fault: missing frame, PC out of bounds, unknown opcode, dispatch-time exception, `THROW` of a non-error value.                                                                           |
-| `StackOverflow`  | 5       | A configured capacity cap is exceeded: operand stack (`maxStackSize`), frame depth (`maxFrameDepth`), handler stack (`maxHandlers`), pending handles (`maxHandles`), or the `maxFibers` runaway-spawn guard. |
+| `StackOverflow`  | 5       | A configured capacity cap is exceeded: operand stack (`maxStackSize`), total locals (`maxLocalsSize`), frame depth (`maxFrameDepth`), handler stack (`maxHandlers`), pending handles (`maxHandles`), or the `maxFibers` runaway-spawn guard. |
 | `StackUnderflow` | 6       | An opcode handler attempts to `pop` or `peek` from an empty operand stack. Indicates malformed bytecode (the compiler should never emit such a sequence).                                               |
 
 The runtime never compares against the string label. Render the label at
@@ -1292,15 +1292,16 @@ to `FAULT` and any associated async-action handle is rejected.
 
 ## Limits
 
-The runtime exposes five capacity caps. Crossing any of them surfaces
+The runtime exposes six capacity caps. Crossing any of them surfaces
 as an `ErrorCode.StackOverflow` fault on the offending fiber (the host
 fault callback receives a normal `ErrorValue`; the runtime never throws
-out of `runFiber`). Three are per-fiber (`VmConfig`); two are global
+out of `runFiber`). Four are per-fiber (`VmConfig`); two are global
 (host-owned).
 
 | Cap             | Owner                  | Default             | Triggered when                                                                                                                                       |
 | --------------- | ---------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `maxStackSize`  | `VmConfig` (per fiber) | 4096                | The operand stack would grow past this many values.                                                                                                  |
+| `maxLocalsSize` | `VmConfig` (per fiber) | 4096                | A frame push (`CALL` / `CALL_INDIRECT` / `CALL_INDIRECT_ARGS` / `ACTION_CALL` / the entry frame) would carry the fiber's total live locals, summed across every frame, past this many values. |
 | `maxFrameDepth` | `VmConfig` (per fiber) | 256                 | A `CALL` / `CALL_INDIRECT` / `CALL_INDIRECT_ARGS` / `ACTION_CALL` would push a frame past this depth.                                                |
 | `maxHandlers`   | `VmConfig` (per fiber) | 64                  | A `TRY` would install a handler past this depth on the handler stack.                                                                                |
 | `maxHandles`    | `HandleTable` ctor arg | 100000 (production) | `HandleTable.createPending()` is invoked when the table already holds this many entries.                                                             |
@@ -1348,6 +1349,12 @@ Per cap, an embed host should weigh:
   fixed-array port is one `Value` (tagged union). Overflow raises
   `ErrorCode.StackOverflow`. Fault gate on the TS VM; sizing input
   on a fixed-array port.
+- **`maxLocalsSize`** -- bounds the combined locals of all live frames
+  of a single fiber (each frame contributes its `numLocals`). Weigh:
+  deepest call chain multiplied by the per-function local count. Per-slot
+  cost on a fixed-array port is one `Value`. Overflow raises
+  `ErrorCode.StackOverflow` at the frame push that would cross it. Fault
+  gate on the TS VM; sizing input on a fixed-array port.
 - **`maxFrameDepth`** -- bounds the call-frame stack of a single
   fiber. Weigh: deepest call chain (recursion, mutual recursion,
   action-call chains via `ACTION_CALL`). Per-frame cost on a

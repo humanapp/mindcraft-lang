@@ -110,6 +110,8 @@ export interface VmOptions extends Partial<VmConfig> {
 export const DEFAULT_VM_CONFIG: VmConfig = {
   maxFrameDepth: 256,
   maxStackSize: 4096,
+  // Large default (matches maxStackSize); device profiles override it.
+  maxLocalsSize: 4096,
   maxHandlers: 64,
   maxHandles: 100000,
   defaultBudget: 1000,
@@ -286,6 +288,7 @@ export class VM implements IVM {
     const configOverrides: Partial<VmConfig> = {};
     if (options?.maxFrameDepth !== undefined) configOverrides.maxFrameDepth = options.maxFrameDepth;
     if (options?.maxStackSize !== undefined) configOverrides.maxStackSize = options.maxStackSize;
+    if (options?.maxLocalsSize !== undefined) configOverrides.maxLocalsSize = options.maxLocalsSize;
     if (options?.maxHandlers !== undefined) configOverrides.maxHandlers = options.maxHandlers;
     if (options?.maxHandles !== undefined) configOverrides.maxHandles = options.maxHandles;
     if (options?.defaultBudget !== undefined) configOverrides.defaultBudget = options.defaultBudget;
@@ -321,6 +324,11 @@ export class VM implements IVM {
     const vstack = List.empty<Value>();
     const base = 0;
 
+    // Root frame: the entry function's locals alone must fit the cap.
+    const rootNumLocals = fn.numLocals ?? fn.numParams;
+    if (rootNumLocals > this.config.maxLocalsSize) {
+      throwOverflow(`Stack overflow: locals limit ${SU.toString(this.config.maxLocalsSize)} exceeded`);
+    }
     const locals = this.allocLocals(fn, effectiveArgs);
     const ruleFuncId = this.resolveDirectRuleFuncId(executionContext, funcId);
 
@@ -786,6 +794,7 @@ export class VM implements IVM {
     if (argc !== callee.numParams) {
       throw new Error(`CALL_INDIRECT: argc ${SU.toString(argc)} != numParams ${SU.toString(callee.numParams)}`);
     }
+    this.assertLocalsCapacity(fiber, callee.numLocals ?? callee.numParams);
 
     const caller = this.topFrame(fiber);
     if (caller) caller.pc++;
@@ -841,6 +850,7 @@ export class VM implements IVM {
     while (args.size() < needed) {
       args.push(V.nil());
     }
+    this.assertLocalsCapacity(fiber, callee.numLocals ?? callee.numParams);
 
     const caller = this.topFrame(fiber);
     if (caller) caller.pc++;
@@ -1815,6 +1825,7 @@ export class VM implements IVM {
       `ACTION_CALL:${action.descriptor.key}`
     );
     const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, callerFrame);
+    this.assertLocalsCapacity(fiber, fn.numLocals ?? fn.numParams);
     const base = fiber.vstack.size();
     const locals = this.allocLocals(fn, effectiveArgs);
 
@@ -2013,6 +2024,21 @@ export class VM implements IVM {
     return locals;
   }
 
+  /**
+   * Faults with an {@link OverflowError} when pushing a frame with `numLocals`
+   * locals would carry the fiber's total live locals (summed across every live
+   * frame) past `maxLocalsSize`.
+   */
+  private assertLocalsCapacity(fiber: Fiber, numLocals: number): void {
+    let total = 0;
+    for (let i = 0; i < fiber.frames.size(); i++) {
+      total += fiber.frames.get(i)!.locals.size();
+    }
+    if (total + numLocals > this.config.maxLocalsSize) {
+      throwOverflow(`Stack overflow: locals limit ${SU.toString(this.config.maxLocalsSize)} exceeded`);
+    }
+  }
+
   private doCall(fiber: Fiber, calleeId: number, argc: number): void {
     if (calleeId < 0 || calleeId >= this.prog.functions.size()) {
       throw new Error(`CALL: function ${calleeId} out of bounds`);
@@ -2026,6 +2052,7 @@ export class VM implements IVM {
     if (argc !== callee.numParams) {
       throw new Error(`CALL: argc ${argc} != numParams ${callee.numParams}`);
     }
+    this.assertLocalsCapacity(fiber, callee.numLocals ?? callee.numParams);
 
     // Pop arguments from stack in correct order
     const args = List.empty<Value>();

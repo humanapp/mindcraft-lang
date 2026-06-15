@@ -12,6 +12,7 @@ import { createRuntimeServices } from "./runtime-services";
 import type { PlatformServices } from "./services";
 import { NIL_VALUE, type Value } from "./value";
 import { DEFAULT_SCHEDULER_CONFIG, FiberScheduler, type SchedulerConfig, VM } from "./vm";
+import type { VmConfig } from "./vm-types";
 import { FiberState, VmStatus } from "./vm-types";
 
 /**
@@ -146,7 +147,8 @@ export class BrainRuntime implements IBrainRuntime {
     contextData: unknown = undefined,
     previousVariables?: VariableSnapshot,
     vmEvents?: VmEvents,
-    schedulerConfig?: Partial<SchedulerConfig>
+    schedulerConfig?: Partial<SchedulerConfig> &
+      Partial<Pick<VmConfig, "maxStackSize" | "maxLocalsSize" | "maxFrameDepth" | "maxHandlers">>
   ) {
     this.program = program;
     this.pageMetadata = pageMetadata;
@@ -178,7 +180,15 @@ export class BrainRuntime implements IBrainRuntime {
       },
     };
 
-    this.vm = new VM(program, services.runtime, vmEvents ? { events: vmEvents } : undefined);
+    // Thread the per-fiber caps into the VM config; undefined entries fall back
+    // to the VM defaults.
+    this.vm = new VM(program, services.runtime, {
+      events: vmEvents,
+      maxStackSize: schedulerConfig?.maxStackSize,
+      maxLocalsSize: schedulerConfig?.maxLocalsSize,
+      maxFrameDepth: schedulerConfig?.maxFrameDepth,
+      maxHandlers: schedulerConfig?.maxHandlers,
+    });
     this.schedulerConfig = { ...DEFAULT_SCHEDULER_CONFIG, ...schedulerConfig };
     this.scheduler = new FiberScheduler(this.vm, this.schedulerConfig);
 

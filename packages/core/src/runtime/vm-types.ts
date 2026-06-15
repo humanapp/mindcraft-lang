@@ -76,6 +76,8 @@ export interface VmConfig {
   maxFrameDepth: number;
   /** Maximum operand stack size per fiber */
   maxStackSize: number;
+  /** Maximum total locals across all live frames per fiber */
+  maxLocalsSize: number;
   /** Maximum number of handlers per fiber */
   maxHandlers: number;
   /** Maximum number of pending handles */
