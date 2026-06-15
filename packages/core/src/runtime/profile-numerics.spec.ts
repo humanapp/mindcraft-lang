@@ -84,8 +84,12 @@ describe("f32 profile numerics -- operator results round to binary32", () => {
     assertNumberIs(callNumeric(f32Services, CoreFuncId.OpModuloNumber, a, b), f(a % b));
   });
 
-  test("power result rounds to f32", () => {
-    assertNumberIs(callNumeric(f32Services, CoreFuncId.OpPowerNumber, 2, 0.5), f(2 ** 0.5));
+  test("integer power is exact and the result is a binary32 value", () => {
+    assertNumberIs(callNumeric(f32Services, CoreFuncId.OpPowerNumber, 2, 10), 1024);
+    assertNumberIs(callNumeric(f32Services, CoreFuncId.OpPowerNumber, 10, 2), 100);
+    const root = (callNumeric(f32Services, CoreFuncId.OpPowerNumber, 2, 0.5) as NumberValue).v;
+    assert.ok(Object.is(root, f(root)), "result is a binary32 value");
+    assert.ok(Math.abs(root - Math.SQRT2) < 1e-6, `expected near sqrt(2), got ${root}`);
   });
 
   test("negate result rounds to f32", () => {

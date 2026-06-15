@@ -1,5 +1,7 @@
 import { MathOps } from "../platform/math";
 import { StringUtils as SU } from "../platform/string";
+import { formatF32 } from "./binary32-format";
+import * as f32 from "./binary32-transcendental";
 import type { NumberPrecision } from "./brain-program-binary-codec";
 
 /**
@@ -95,32 +97,30 @@ export function createF64ProfileNumerics(): ProfileNumerics {
  * Creates the f32 {@link ProfileNumerics}: IEEE-754 binary32 result
  * semantics, modeling a single-precision FPU.
  *
- * `round` and `sqrt` are bit-exact: on f32-representable inputs,
- * rounding the double-precision result of `+ - * / %` and `sqrt` to f32
- * is the correctly-rounded f32 result.
+ * `round` and `sqrt` are correctly-rounded binary32: on f32-representable
+ * inputs, rounding the double-precision result of `+ - * / %` and `sqrt` to
+ * f32 is the correctly-rounded f32 result.
  *
- * The transcendental slots (`pow`, `sin`, ...), `formatNumber`, and
- * `parseNumber` are not yet pinned to a device reference implementation:
- * they delegate to the host's double-precision math and round numeric
- * results to f32, so their low-order result bits may differ from a
- * device's libm until the pinned implementations land.
+ * The transcendental slots (`pow`, `sin`, ...) and `formatNumber` are
+ * single-precision implementations whose every step rounds to binary32.
+ * `parseNumber` parses with `parseFloat` and rounds the result to f32.
  */
 export function createF32ProfileNumerics(): ProfileNumerics {
   const fround = MathOps.fround;
   return {
     round: (x: number) => fround(x),
-    pow: (base: number, exponent: number) => fround(MathOps.pow(base, exponent)),
-    sin: (x: number) => fround(MathOps.sin(x)),
-    cos: (x: number) => fround(MathOps.cos(x)),
-    tan: (x: number) => fround(MathOps.tan(x)),
-    asin: (x: number) => fround(MathOps.asin(x)),
-    acos: (x: number) => fround(MathOps.acos(x)),
-    atan: (x: number) => fround(MathOps.atan(x)),
-    atan2: (y: number, x: number) => fround(MathOps.atan2(y, x)),
-    exp: (x: number) => fround(MathOps.exp(x)),
-    log: (x: number) => fround(MathOps.log(x)),
+    pow: (base: number, exponent: number) => f32.pow(base, exponent),
+    sin: (x: number) => f32.sin(x),
+    cos: (x: number) => f32.cos(x),
+    tan: (x: number) => f32.tan(x),
+    asin: (x: number) => f32.asin(x),
+    acos: (x: number) => f32.acos(x),
+    atan: (x: number) => f32.atan(x),
+    atan2: (y: number, x: number) => f32.atan2(y, x),
+    exp: (x: number) => f32.exp(x),
+    log: (x: number) => f32.log(x),
     sqrt: (x: number) => fround(MathOps.sqrt(x)),
-    formatNumber: (x: number) => SU.toString(x),
+    formatNumber: (x: number) => formatF32(x),
     parseNumber: (text: string) => {
       const n = MathOps.parseFloat(text);
       return MathOps.isNaN(n) ? 0 : fround(n);
