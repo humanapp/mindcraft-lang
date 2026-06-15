@@ -6,6 +6,14 @@ import type { ConstantPools, FunctionBytecode } from "./bytecode";
 import type { BytecodeExecutableAction } from "./context";
 import type { TypeId } from "./type-defs";
 
+/** One field of a program-local struct type: a field name and its numeric field id (storage slot). */
+export interface ProgramStructField {
+  /** The field's source name. */
+  readonly name: string;
+  /** The field's numeric id, which is also its storage slot. */
+  readonly fieldIndex: number;
+}
+
 /**
  * One entry of a program's type table. Each entry describes one distinct type
  * the program references; child references (`elem`, `key`, `value`,
@@ -30,9 +38,11 @@ export type ProgramTypeEntry =
    * A program-local struct. Identity is the table position; `name` is the
    * registered type name (the `::`-qualified or anonymous compiler name).
    * `maxFieldId` is the highest declared field id, or -1 for a fieldless
-   * struct; field storage holds `maxFieldId + 1` slots.
+   * struct; field storage holds `maxFieldId + 1` slots. `fields` is the field
+   * name -> id map; it may be empty for a struct the program only accesses by
+   * static field id.
    */
-  | { tag: "struct"; typeId: TypeId; name: string; maxFieldId: number }
+  | { tag: "struct"; typeId: TypeId; name: string; maxFieldId: number; fields: List<ProgramStructField> }
   /**
    * A program-local enum. `symbols` lists the enum's symbol keys in declared
    * order; enum values reference symbols by ordinal into this list.

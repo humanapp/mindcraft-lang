@@ -46,7 +46,7 @@
  *   type <idx> union <memberCount> <memberIdx>...
  *   type <idx> function <paramCount> <paramIdx>... <resultIdx>
  *   type <idx> nullable <baseIdx>
- *   type <idx> struct "<name>" slots <slotCount>
+ *   type <idx> struct "<name>" slots <slotCount> fields <count> "<field>" <id>...
  *   type <idx> enum "<name>" symbols <count> "<symbol>"...
  * numbers <count>
  *   number <idx> <bits>
@@ -108,7 +108,7 @@ import { type ITypeRegistry, NativeType } from "./type-defs";
 import type { Value } from "./value";
 
 /** Current canonical program dump format version. */
-export const CANONICAL_PROGRAM_DUMP_FORMAT_VERSION = 1;
+export const CANONICAL_PROGRAM_DUMP_FORMAT_VERSION = 2;
 
 /** Options controlling {@link linkedBrainProgramToCanonicalDump}. */
 export interface CanonicalProgramDumpOptions {
@@ -227,8 +227,16 @@ function typeEntryLine(idx: number, entry: ProgramTypeEntry): string {
     }
     case "nullable":
       return `${head} nullable ${hexU32(entry.base)}`;
-    case "struct":
-      return `${head} struct ${quoted(entry.name)} slots ${hexU32(entry.maxFieldId + 1)}`;
+    case "struct": {
+      let line = `${head} struct ${quoted(entry.name)} slots ${hexU32(entry.maxFieldId + 1)} fields ${hexU32(
+        entry.fields.size()
+      )}`;
+      for (let i = 0; i < entry.fields.size(); i++) {
+        const field = entry.fields.get(i)!;
+        line += ` ${quoted(field.name)} ${hexU32(field.fieldIndex)}`;
+      }
+      return line;
+    }
     case "enum": {
       let line = `${head} enum ${quoted(entry.name)} symbols ${hexU32(entry.symbols.size())}`;
       for (let i = 0; i < entry.symbols.size(); i++) {

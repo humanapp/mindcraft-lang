@@ -169,7 +169,18 @@ describe("VM -- closed struct field opcodes", () => {
         strings: List.empty<string>(),
         values: List.from([mkNumberValue(42)]),
       },
-      types: List.from<ProgramTypeEntry>([{ tag: "struct", typeId, name: "IndexedPair", maxFieldId: 1 }]),
+      types: List.from<ProgramTypeEntry>([
+        {
+          tag: "struct",
+          typeId,
+          name: "IndexedPair",
+          maxFieldId: 1,
+          fields: List.from([
+            { name: "left", fieldIndex: 0 },
+            { name: "right", fieldIndex: 1 },
+          ]),
+        },
+      ]),
       variableNames: List.empty<string>(),
       entryPoint: 0,
     };

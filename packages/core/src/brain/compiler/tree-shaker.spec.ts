@@ -58,7 +58,7 @@ function mkPage(pageIndex: number, rootRuleFuncIds: number[]): PageMetadata {
 }
 
 function mkStructEntry(name: string, maxFieldId = 0): ProgramTypeEntry {
-  return { tag: "struct", typeId: `struct:<${name}>`, name, maxFieldId };
+  return { tag: "struct", typeId: `struct:<${name}>`, name, maxFieldId, fields: List.empty() };
 }
 
 function mkBytecodeAction(entryFuncId: number, activationFuncId?: number): BytecodeExecutableAction {

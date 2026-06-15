@@ -66,7 +66,13 @@ export type BrainProgramTypeEntryJson =
       readonly result: number;
     }
   | { readonly tag: "nullable"; readonly typeId: string; readonly base: number }
-  | { readonly tag: "struct"; readonly typeId: string; readonly name: string; readonly maxFieldId: number }
+  | {
+      readonly tag: "struct";
+      readonly typeId: string;
+      readonly name: string;
+      readonly maxFieldId: number;
+      readonly fields?: readonly { readonly name: string; readonly fieldIndex: number }[];
+    }
   | {
       readonly tag: "enum";
       readonly typeId: string;
@@ -256,8 +262,15 @@ function typeEntryFromJson(json: BrainProgramTypeEntryJson): ProgramTypeEntry {
     case "nullable":
     case "list":
     case "map":
-    case "struct":
       return json;
+    case "struct":
+      return {
+        tag: "struct",
+        typeId: json.typeId,
+        name: json.name,
+        maxFieldId: json.maxFieldId,
+        fields: List.from(json.fields ?? []),
+      };
     case "union":
       return { tag: "union", typeId: json.typeId, members: List.from(json.members) };
     case "function":
@@ -275,8 +288,15 @@ function typeEntryToJson(entry: ProgramTypeEntry): BrainProgramTypeEntryJson {
     case "nullable":
     case "list":
     case "map":
-    case "struct":
       return entry;
+    case "struct":
+      return {
+        tag: "struct",
+        typeId: entry.typeId,
+        name: entry.name,
+        maxFieldId: entry.maxFieldId,
+        fields: entry.fields.toArray(),
+      };
     case "union":
       return { tag: "union", typeId: entry.typeId, members: entry.members.toArray() };
     case "function":

@@ -157,7 +157,16 @@ const VALUES_TYPES: readonly BrainProgramTypeEntryJson[] = [
   { tag: "union", typeId: NUMBER_OR_STRING_TYPE_ID, members: [0, 2] },
   { tag: "function", typeId: NUMBER_TO_NUMBER_TYPE_ID, params: [0], result: 0 },
   { tag: "nullable", typeId: NULLABLE_NUMBER_TYPE_ID, base: 0 },
-  { tag: "struct", typeId: POINT_TYPE_ID, name: "/fixture.ts::Point", maxFieldId: 1 },
+  {
+    tag: "struct",
+    typeId: POINT_TYPE_ID,
+    name: "/fixture.ts::Point",
+    maxFieldId: 1,
+    fields: [
+      { name: "x", fieldIndex: 0 },
+      { name: "y", fieldIndex: 1 },
+    ],
+  },
   { tag: "enum", typeId: COLOR_TYPE_ID, name: "/fixture.ts::Color", symbols: ["Red", "Green"] },
 ];
 

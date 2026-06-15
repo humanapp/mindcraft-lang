@@ -1,7 +1,7 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
-import type { ProgramTypeEntry } from "../../runtime/program";
+import type { ProgramStructField, ProgramTypeEntry } from "../../runtime/program";
 import {
   type EnumTypeDef,
   type FunctionTypeDef,
@@ -91,12 +91,14 @@ export class ProgramTypeTableBuilder {
         case NativeType.Struct: {
           const structDef = def as StructTypeDef;
           let maxFieldId = -1;
+          const fields = List.empty<ProgramStructField>();
           structDef.fields.forEach((field) => {
             if (field.fieldIndex > maxFieldId) {
               maxFieldId = field.fieldIndex;
             }
+            fields.push({ name: field.name, fieldIndex: field.fieldIndex });
           });
-          entry = { tag: "struct", typeId, name: def.name, maxFieldId };
+          entry = { tag: "struct", typeId, name: def.name, maxFieldId, fields };
           break;
         }
         case NativeType.Enum: {

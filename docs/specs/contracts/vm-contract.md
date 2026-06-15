@@ -795,10 +795,13 @@ field name is on the stack). They resolve the name to its numeric
 `fieldId` through `StructTypeDef.fieldIndexByName`, then dispatch
 through the same id-based path as `STRUCT_GET_FIELD` /
 `STRUCT_SET_FIELD` (the registered `fieldGetter` / `fieldSetter`
-receives the numeric `fieldId`, not the name). A name that resolves
-to no field reads as `nil` (`GET_FIELD`) or is a no-op (`SET_FIELD`);
-a non-struct source reads as `nil` (`GET_FIELD`) or faults
-(`SET_FIELD`).
+receives the numeric `fieldId`, not the name). For a program-local
+struct the name -> id map travels in the program type table (the TYPS
+`struct.fields`, see [Program type table](#program-type-table)), so a
+separately-built VM resolves the same id without a host type registry.
+A name that resolves to no field reads as `nil` (`GET_FIELD`) or is a
+no-op (`SET_FIELD`); a non-struct source reads as `nil` (`GET_FIELD`)
+or faults (`SET_FIELD`).
 
 `SET_FIELD` deep-copies struct values before storing them, the same
 way `STORE_VAR_SLOT` does, so a struct field set through the name-keyed
@@ -875,10 +878,14 @@ the entry's own index, so a single forward pass interns the table):
   sorted member order.
 - `function { params, result }` -- structural function type.
 - `nullable { base }` -- nullable wrapper.
-- `struct { name, maxFieldId }` -- a program-local struct. Identity
-  is the table position; `name` is carried for round-trip; field
-  storage holds `maxFieldId + 1` slots (`maxFieldId` is -1 for a
-  fieldless struct).
+- `struct { name, maxFieldId, fields }` -- a program-local struct.
+  Identity is the table position; `name` is carried for round-trip;
+  field storage holds `maxFieldId + 1` slots (`maxFieldId` is -1 for a
+  fieldless struct). `fields` is the field name -> id map (a list of
+  `{ name, fieldIndex }` pairs) the dynamic computed-key opcodes
+  (`GET_FIELD` / `SET_FIELD` / `STRUCT_COPY_EXCEPT`) resolve names
+  against; a struct accessed only by static field id may carry none.
+  Static `.field` access stays id-based and reads no names.
 - `enum { name, symbols }` -- a program-local enum; `symbols` lists
   the symbol keys in declared order and defines the ordinals used by
   enum constant values.
@@ -895,7 +902,7 @@ local handles) and compares types as integers.
 
 #### TYPS binary section
 
-The binary `.mcprogram` form (format version 2) encodes the table as
+The binary `.mcprogram` form (format version 3) encodes the table as
 the `TYPS` section, positioned after `CSTR` and before `CNUM` so the
 later sections can reference it. Layout: a var-uint entry count, then
 per entry a tag byte followed by its fields (all var-uints):
@@ -908,7 +915,7 @@ per entry a tag byte followed by its fields (all var-uints):
 | 3   | union    | `memberCount`, members |
 | 4   | function | `paramCount`, params, `result` |
 | 5   | nullable | `base` |
-| 6   | struct   | `nameIdx` (CSTR), `slotCount` (= `maxFieldId + 1`) |
+| 6   | struct   | `nameIdx` (CSTR), `slotCount` (= `maxFieldId + 1`), `fieldCount`, then per field `nameIdx` (CSTR) and `fieldId` |
 | 7   | enum     | `nameIdx` (CSTR), `symbolCount`, symbol CSTR indices |
 
 TypeId strings are never written; the decoder reconstructs them

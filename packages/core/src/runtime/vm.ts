@@ -10,7 +10,7 @@ import type { FunctionBytecode, Instr } from "./bytecode";
 import { Op } from "./bytecode";
 import type { BytecodeExecutableAction, ExecutionContext, HostActionBinding } from "./context";
 import type { VmEvents } from "./events";
-import type { Program } from "./program";
+import type { Program, ProgramStructField } from "./program";
 import { resolveProgramTypeId } from "./program";
 import type { RuntimeLangServices } from "./services";
 import type { ITypeRegistry } from "./type-defs";
@@ -1488,16 +1488,57 @@ export class VM implements IVM {
   }
 
   // Struct operations
+
+  /**
+   * The program-local struct type-table entry for `typeId`, or undefined when
+   * the program type table has no struct entry with that typeId.
+   */
+  private programStructEntry(typeId: TypeId): { maxFieldId: number; fields: List<ProgramStructField> } | undefined {
+    const types = this.prog.types;
+    if (types === undefined) {
+      return undefined;
+    }
+    for (let i = 0; i < types.size(); i++) {
+      const entry = types.get(i)!;
+      if (entry.tag === "struct" && entry.typeId === typeId) {
+        return entry;
+      }
+    }
+    return undefined;
+  }
+
+  /** Field name -> id list for `typeId`, from the runtime registry when present, else the program type table. */
+  private structFieldList(typeId: TypeId): List<ProgramStructField> | undefined {
+    const typeDef = this.runtime.types.get(typeId) as StructTypeDef | undefined;
+    if (typeDef !== undefined) {
+      return typeDef.fields.map((field) => ({ name: field.name, fieldIndex: field.fieldIndex }));
+    }
+    return this.programStructEntry(typeId)?.fields;
+  }
+
   private findStructField(typeId: TypeId, fieldName: string): number | undefined {
     const typeDef = this.runtime.types.get(typeId) as StructTypeDef | undefined;
-    return typeDef?.fieldIndexByName.get(fieldName);
+    const fromRegistry = typeDef?.fieldIndexByName.get(fieldName);
+    if (fromRegistry !== undefined) {
+      return fromRegistry;
+    }
+    const fields = this.programStructEntry(typeId)?.fields;
+    if (fields !== undefined) {
+      for (let i = 0; i < fields.size(); i++) {
+        const field = fields.get(i)!;
+        if (field.name === fieldName) {
+          return field.fieldIndex;
+        }
+      }
+    }
+    return undefined;
   }
 
   private makeStructFields(typeId: TypeId): List<Value> {
     const fields = List.empty<Value>();
     const typeDef = this.runtime.types.get(typeId) as StructTypeDef | undefined;
-    // Storage is sized to the highest field id + 1, so a field whose id is
-    // its storage slot can be addressed directly; retired ids leave nil holes.
+    // Storage holds the highest field id + 1 slots; a field id indexes its slot
+    // directly and retired ids leave nil holes.
     let slotCount = 0;
     if (typeDef !== undefined) {
       typeDef.fields.forEach((field) => {
@@ -1505,6 +1546,11 @@ export class VM implements IVM {
           slotCount = field.fieldIndex + 1;
         }
       });
+    } else {
+      const entry = this.programStructEntry(typeId);
+      if (entry !== undefined) {
+        slotCount = entry.maxFieldId + 1;
+      }
     }
     for (let i = 0; i < slotCount; i++) {
       fields.push(NIL_VALUE);
@@ -1610,17 +1656,17 @@ export class VM implements IVM {
 
     let resultTypeId = typeId;
     let fields = this.makeStructFields(resultTypeId);
-    const sourceDef = this.runtime.types.get(source.typeId) as StructTypeDef | undefined;
-    if (source.v && sourceDef && fields.size() === 0) {
+    const sourceFields = this.structFieldList(source.typeId);
+    if (source.v && sourceFields && fields.size() === 0) {
       resultTypeId = source.typeId;
       fields = List.empty<Value>();
       for (let i = 0; i < source.v.size(); i++) {
         fields.push(source.v.get(i));
       }
     }
-    if (source.v && sourceDef) {
-      for (let i = 0; i < sourceDef.fields.size(); i++) {
-        const field = sourceDef.fields.get(i);
+    if (source.v && sourceFields) {
+      for (let i = 0; i < sourceFields.size(); i++) {
+        const field = sourceFields.get(i)!;
         if (exclude.has(field.name)) {
           if (resultTypeId === source.typeId) {
             fields.set(field.fieldIndex, NIL_VALUE);

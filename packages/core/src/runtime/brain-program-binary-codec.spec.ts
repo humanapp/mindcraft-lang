@@ -268,7 +268,16 @@ describe("binary .mcprogram codec -- every value variant", () => {
     { tag: "list", typeId: NUMBER_LIST_TYPE_ID, elem: 0 },
     { tag: "map", typeId: ANY_MAP_TYPE_ID, key: 1, value: 1 },
     { tag: "list", typeId: NESTED_LIST_TYPE_ID, elem: 2 },
-    { tag: "struct", typeId: POINT_TYPE_ID, name: "/spec.ts::Point", maxFieldId: 1 },
+    {
+      tag: "struct",
+      typeId: POINT_TYPE_ID,
+      name: "/spec.ts::Point",
+      maxFieldId: 1,
+      fields: [
+        { name: "x", fieldIndex: 0 },
+        { name: "y", fieldIndex: 1 },
+      ],
+    },
     { tag: "enum", typeId: COLOR_TYPE_ID, name: "/spec.ts::Color", symbols: ["Red", "Green"] },
   ];
 

@@ -121,7 +121,7 @@ export type BrainProgramBinaryCodecErrorCode =
   (typeof BrainProgramBinaryCodecErrorCode)[keyof typeof BrainProgramBinaryCodecErrorCode];
 
 /** Current binary `.mcprogram` envelope/format version. */
-export const BINARY_PROGRAM_FORMAT_VERSION = 2;
+export const BINARY_PROGRAM_FORMAT_VERSION = 3;
 
 /** The file magic identifying a binary `.mcprogram`, as a cross-platform list of bytes. */
 const MAGIC = List.from(MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC as readonly number[]);
@@ -214,6 +214,9 @@ function buildStringInterner(linked: LinkedBrainProgram): StringInterner {
       const entry = types.get(i)!;
       if (entry.tag === "struct") {
         interner.intern(entry.name);
+        for (let j = 0; j < entry.fields.size(); j++) {
+          interner.intern(entry.fields.get(j)!.name);
+        }
       } else if (entry.tag === "enum") {
         interner.intern(entry.name);
         for (let j = 0; j < entry.symbols.size(); j++) {
@@ -461,12 +464,20 @@ function writeTypsSection(s: MemoryStream, types: List<ProgramTypeEntry>, intern
         s.writeRawU8(TYPE_ENTRY_TAG_NULLABLE);
         s.writeVarUint(entry.base);
         break;
-      case "struct":
+      case "struct": {
         s.writeRawU8(TYPE_ENTRY_TAG_STRUCT);
         s.writeVarUint(interner.intern(entry.name));
         // Field storage slot count; maxFieldId is -1 for a fieldless struct.
         s.writeVarUint(entry.maxFieldId + 1);
+        // Field name -> id map for the dynamic computed-key opcodes.
+        s.writeVarUint(entry.fields.size());
+        for (let j = 0; j < entry.fields.size(); j++) {
+          const field = entry.fields.get(j)!;
+          s.writeVarUint(interner.intern(field.name));
+          s.writeVarUint(field.fieldIndex);
+        }
         break;
+      }
       case "enum": {
         s.writeRawU8(TYPE_ENTRY_TAG_ENUM);
         s.writeVarUint(interner.intern(entry.name));
@@ -871,7 +882,12 @@ type RawTypeEntry =
   | { readonly tag: typeof TYPE_ENTRY_TAG_UNION; readonly members: List<number> }
   | { readonly tag: typeof TYPE_ENTRY_TAG_FUNCTION; readonly params: List<number>; readonly result: number }
   | { readonly tag: typeof TYPE_ENTRY_TAG_NULLABLE; readonly base: number }
-  | { readonly tag: typeof TYPE_ENTRY_TAG_STRUCT; readonly name: string; readonly slotCount: number }
+  | {
+      readonly tag: typeof TYPE_ENTRY_TAG_STRUCT;
+      readonly name: string;
+      readonly slotCount: number;
+      readonly fields: List<{ readonly name: string; readonly fieldIndex: number }>;
+    }
   | { readonly tag: typeof TYPE_ENTRY_TAG_ENUM; readonly name: string; readonly symbols: List<string> };
 
 function readTypsSectionRaw(s: MemoryStream, strings: StringTable): List<RawTypeEntry> {
@@ -922,9 +938,18 @@ function readTypsSectionRaw(s: MemoryStream, strings: StringTable): List<RawType
       case TYPE_ENTRY_TAG_NULLABLE:
         entries.push({ tag, base: child(i) });
         break;
-      case TYPE_ENTRY_TAG_STRUCT:
-        entries.push({ tag, name: strings.get(s.readVarUint()), slotCount: s.readVarUint() });
+      case TYPE_ENTRY_TAG_STRUCT: {
+        const name = strings.get(s.readVarUint());
+        const slotCount = s.readVarUint();
+        const fieldCount = s.readVarUint();
+        const fields = List.empty<{ name: string; fieldIndex: number }>();
+        for (let j = 0; j < fieldCount; j++) {
+          const fieldName = strings.get(s.readVarUint());
+          fields.push({ name: fieldName, fieldIndex: s.readVarUint() });
+        }
+        entries.push({ tag, name, slotCount, fields });
         break;
+      }
       case TYPE_ENTRY_TAG_ENUM: {
         const name = strings.get(s.readVarUint());
         const symbolCount = s.readVarUint();
@@ -1043,7 +1068,13 @@ function resolveTypsEntries(rawEntries: List<RawTypeEntry>, registry: ITypeRegis
       }
       case TYPE_ENTRY_TAG_STRUCT: {
         const typeId = mkTypeId(NativeType.Struct, raw.name);
-        entries.push({ tag: "struct", typeId, name: raw.name, maxFieldId: raw.slotCount - 1 });
+        entries.push({
+          tag: "struct",
+          typeId,
+          name: raw.name,
+          maxFieldId: raw.slotCount - 1,
+          fields: raw.fields.toArray(),
+        });
         typeIds.push(typeId);
         names.push(raw.name);
         coreTypes.push(NativeType.Struct);

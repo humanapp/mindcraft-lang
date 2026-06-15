@@ -181,7 +181,17 @@
         "tag": "struct",
         "typeId": "struct:</fixture.ts::Point>",
         "name": "/fixture.ts::Point",
-        "maxFieldId": 1
+        "maxFieldId": 1,
+        "fields": [
+          {
+            "name": "x",
+            "fieldIndex": 0
+          },
+          {
+            "name": "y",
+            "fieldIndex": 1
+          }
+        ]
       },
       {
         "tag": "enum",
