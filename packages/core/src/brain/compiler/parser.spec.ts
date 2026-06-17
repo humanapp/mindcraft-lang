@@ -1083,7 +1083,7 @@ describe("anonymous choice type discrimination", () => {
   });
 });
 
-// ---- Field id resolution from the object's type (Phase 3) ----
+// ---- Field id resolution from the object's type ----
 //
 // Accessor tokens can desync from the object they sit on (an edit changes a
 // variable's type but the stored accessor token is not re-bound). These tests

@@ -2316,7 +2316,7 @@ describe("Brain -- slot-keyed variable storage", () => {
   });
 });
 
-// ---- Field access emits id-based opcodes (Phase 3) ----
+// ---- Field access emits id-based opcodes ----
 
 describe("Field access emits id-based opcodes", () => {
   function compileToInstrs(whenTiles: unknown[], doTiles: unknown[]): Instr[] {
