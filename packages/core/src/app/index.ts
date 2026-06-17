@@ -111,6 +111,7 @@ export {
   setRuleVariable,
 } from "../runtime/context";
 export type {
+  AsyncHandle,
   ListValue,
   MapValue,
   NumberValue,
