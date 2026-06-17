@@ -92,8 +92,8 @@ describe("HOST_ACTION_CALL dispatch", () => {
       binding: "host",
       id: 3202,
       descriptor: { key: "asyncEcho", kind: "sensor", callDef: mkCallDef({ type: "seq", items: [] }), isAsync: true },
-      execAsync: (_ctx, _args, handleId) => {
-        handles.resolve(handleId, mkNumberValue(99));
+      execAsync: (_ctx, _args, handle) => {
+        handle.resolve(mkNumberValue(99));
       },
     };
     actions.register(binding);

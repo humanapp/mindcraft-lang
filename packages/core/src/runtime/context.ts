@@ -1,7 +1,7 @@
 import type { ReadonlyList } from "../platform/list";
 import type { ActionDescriptor } from "./function-defs";
 import type { PlatformServices } from "./services";
-import type { HandleId, Value } from "./value";
+import type { AsyncHandle, Value } from "./value";
 
 /** Action binding implemented by a host (sync or async) function. */
 export interface HostActionBinding {
@@ -40,7 +40,7 @@ export interface HostActionBinding {
    */
   onPageExited?: (ctx: ExecutionContext) => void;
   execSync?: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
-  execAsync?: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
+  execAsync?: (ctx: ExecutionContext, args: ReadonlyList<Value>, handle: AsyncHandle) => void;
 }
 
 /**

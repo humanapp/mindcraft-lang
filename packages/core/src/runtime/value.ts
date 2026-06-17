@@ -147,6 +147,28 @@ export type StructValue = { t: NativeType.Struct; typeId: TypeId; v?: List<Value
 /** Brain runtime function value: function id plus optional captured upvalues. */
 export type FunctionValue = { t: NativeType.Function; funcId: number; captures?: List<Value> };
 
+/**
+ * Settle handle for one pending async operation, bound to a single
+ * {@link HandleId}. An async host function or action body retains this across
+ * the async boundary and calls exactly one of {@link resolve}, {@link reject},
+ * or {@link cancel} when the work completes. Settling a handle that is no longer
+ * pending -- already settled, cancelled with its awaiting fiber, or collected --
+ * is a no-op.
+ */
+export interface AsyncHandle {
+  /** The bound handle id, the value the dispatching opcode pushed for `AWAIT`. */
+  readonly id: HandleId;
+
+  /** Settles the handle as resolved, carrying `value` to the awaiting fiber. */
+  resolve(value: Value): void;
+
+  /** Settles the handle as rejected; the awaiting fiber throws an error of `code`. */
+  reject(code: ErrorCode, message?: string): void;
+
+  /** Settles the handle as cancelled; the awaiting fiber throws `ErrorCode.Cancelled`. */
+  cancel(message?: string): void;
+}
+
 /** Tagged-union of all brain runtime values, including VM-internal `handle` and `err`. */
 export type Value =
   | UnknownValue

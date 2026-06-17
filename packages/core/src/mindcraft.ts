@@ -59,7 +59,7 @@ import type {
 } from "./runtime";
 import { CoreOpId, NativeType } from "./runtime";
 import type { ExecutionContext, HostActionBinding } from "./runtime/context";
-import type { HandleId, Value } from "./runtime/value";
+import type { AsyncHandle, Value } from "./runtime/value";
 
 /** Tile definition value. Alias for {@link IBrainTileDef}. */
 export type TileDefinitionInput = IBrainTileDef;
@@ -141,7 +141,7 @@ export type AsyncHostActionFn = {
   onInitialized?: (ctx: ExecutionContext) => void;
   onPageEntered?: (ctx: ExecutionContext) => void;
   onPageExited?: (ctx: ExecutionContext) => void;
-  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
+  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handle: AsyncHandle) => void;
 };
 
 type HostActionOptionsBase = {

@@ -17,6 +17,7 @@ import { Dict, List, type ReadonlyList } from "@mindcraft-lang/core";
 import { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
+  type AsyncHandle,
   BrainActionRegistry,
   BYTECODE_VERSION,
   ContextTypeIds,
@@ -1512,8 +1513,8 @@ describe("VM -- action calls", () => {
         callDef: mkCallDef({ type: "bag", items: [] }),
         isAsync: true,
       },
-      execAsync: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, handleId: number) => {
-        handles.resolve(handleId, mkNumberValue(654));
+      execAsync: (_ctx, _args, handle) => {
+        handle.resolve(mkNumberValue(654));
       },
     };
     const { runtime, actionId } = vmServicesWithAction(services, action);
@@ -3392,8 +3393,8 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
       "$$test_v4_1_async_capture",
       true,
       {
-        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: number) => {
-          captured = { args, handleId };
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>, handle: AsyncHandle) => {
+          captured = { args, handleId: handle.id };
         },
       },
       callDef

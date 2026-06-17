@@ -5,7 +5,7 @@ import type { List, ReadonlyList } from "../platform/list";
 import { Time } from "../platform/time";
 import { UniqueSet } from "../platform/uniqueset";
 import type { ExecutionContext } from "./context";
-import { ErrorCode, type ErrorValue, type HandleId, type StructValue, type Value } from "./value";
+import { type AsyncHandle, ErrorCode, type ErrorValue, type HandleId, type StructValue, type Value } from "./value";
 
 ///////////////////////////
 // Capacity-violation signaling
@@ -123,19 +123,19 @@ export type HostSyncFn = {
  * -- `args.get(getSlotId(callDef, ...))` -- not by name. Unsupplied
  * slots are filled with `NIL_VALUE`; check via `isNilValue`.
  *
- * **Lifetime:** the wrapper is owned. Free to retain `args` and
- * close over individual values across the async boundary; resolve or
- * reject the handle whenever the async work completes.
+ * **Lifetime:** the wrapper is owned. Free to retain `args` and `handle` and
+ * close over individual values across the async boundary; settle the handle
+ * via {@link AsyncHandle} whenever the async work completes.
  *
  * @param ctx - Execution context providing access to variables, rule, etc.
  * @param args - Positional snapshot of arguments, indexed by slotId.
- * @param handleId - Handle ID for resolving the async operation
+ * @param handle - Bound settle handle for resolving the async operation
  */
 export type HostAsyncFn = {
   onInitialized?: (ctx: ExecutionContext) => void;
   onPageEntered?: (ctx: ExecutionContext) => void;
   onPageExited?: (ctx: ExecutionContext) => void;
-  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
+  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handle: AsyncHandle) => void;
 };
 
 /**

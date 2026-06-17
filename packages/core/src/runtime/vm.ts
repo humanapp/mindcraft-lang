@@ -15,7 +15,7 @@ import { resolveProgramTypeId } from "./program";
 import type { RuntimeLangServices } from "./services";
 import type { ITypeRegistry } from "./type-defs";
 import { NativeType, type StructTypeDef, type TypeId } from "./type-defs";
-import type { ErrorValue, HandleId, StructValue, Value } from "./value";
+import type { AsyncHandle, ErrorValue, HandleId, StructValue, Value } from "./value";
 import {
   ErrorCode,
   FALSE_VALUE,
@@ -940,6 +940,28 @@ export class VM implements IVM {
     return undefined;
   }
 
+  /**
+   * Builds the {@link AsyncHandle} handed to an async host body for `id`. Each
+   * settle method is a no-op when the handle is no longer pending (already
+   * settled, cancelled with its fiber, or cleared on shutdown).
+   */
+  private makeAsyncHandle(id: HandleId): AsyncHandle {
+    const handles = this.handles;
+    const pending = (): boolean => handles.get(id)?.state === HandleState.PENDING;
+    return {
+      id,
+      resolve: (value: Value): void => {
+        if (pending()) handles.resolve(id, value);
+      },
+      reject: (code: ErrorCode, message = ""): void => {
+        if (pending()) handles.reject(id, { code, message });
+      },
+      cancel: (message?: string): void => {
+        if (pending()) handles.cancel(id, message);
+      },
+    };
+  }
+
   private execHostCallAsync(fiber: Fiber, ins: Instr, frame: Frame, _scheduler: Scheduler): VmRunResult | undefined {
     this.assertCanSuspend(fiber, Op.HOST_CALL_ASYNC);
 
@@ -970,7 +992,7 @@ export class VM implements IVM {
 
     this.bindExecutionContext(fiber, frame, callSiteId);
 
-    fnEntry.fn.exec(fiber.executionContext, args, hid);
+    fnEntry.fn.exec(fiber.executionContext, args, this.makeAsyncHandle(hid));
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
@@ -1143,7 +1165,7 @@ export class VM implements IVM {
     this.bindExecutionContext(fiber, frame, callSiteId);
 
     try {
-      action.execAsync(fiber.executionContext, args, hid);
+      action.execAsync(fiber.executionContext, args, this.makeAsyncHandle(hid));
     } catch (error) {
       this.handles.delete(hid);
       throw error;
