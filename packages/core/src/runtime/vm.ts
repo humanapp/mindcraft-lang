@@ -2342,7 +2342,11 @@ export class FiberScheduler implements IFiberScheduler {
       }
     }
 
-    if (this.config.autoGcHandles && h.state !== HandleState.PENDING) {
+    // A settle with waiters has been consumed by their resume, so it can be
+    // collected now. A settle with no waiters happened before its AWAIT (a
+    // handle resolved during dispatch); it must survive for that AWAIT to read,
+    // so it is left for the think-boundary sweep in gc() after AWAIT consumes it.
+    if (this.config.autoGcHandles && waiters.size() > 0 && h.state !== HandleState.PENDING) {
       this.vm.handles.delete(handleId);
     }
   };
@@ -2448,6 +2452,12 @@ export class FiberScheduler implements IFiberScheduler {
         this.fibers.delete(id);
         removed++;
       }
+    }
+    // Sweep settled handles consumed by an AWAIT this round but left live because
+    // they had no waiter when they settled (resolved during dispatch). Pending
+    // handles and those still awaited are retained.
+    if (this.config.autoGcHandles) {
+      removed += this.vm.handles.gc();
     }
     return removed;
   }
