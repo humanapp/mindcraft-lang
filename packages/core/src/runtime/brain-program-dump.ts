@@ -88,7 +88,12 @@
  *                             entry's value node one level deeper)
  * struct <typeIdx> <count>
  * function <funcId> captures <count|->
+ * buffer <byteCount> <hexbytes>
  * ```
+ *
+ * A `buffer` node renders its byte count then, only when the count is
+ * non-zero, a single token of the raw bytes as two lowercase hex digits per
+ * byte with no separators.
  *
  * Instruction operands follow the opcode's `OPERAND_SCHEMA` entry: required
  * operands always render; an absent optional trailing operand renders `-`.
@@ -344,6 +349,20 @@ function emitValue(
           emitValue(w, depth + 1, "", captures.get(i), types, precision);
         }
       }
+      return;
+    }
+    case NativeType.Buffer: {
+      const latin1 = value.v.toStringLatin1();
+      const count = value.v.length();
+      let line = `${head}buffer ${hexU32(count)}`;
+      if (count > 0) {
+        let run = "";
+        for (let i = 0; i < count; i++) {
+          run += hexPadded(StringUtils.charCodeAt(latin1, i) & 0xff, 2);
+        }
+        line += ` ${run}`;
+      }
+      w.line(depth, line);
       return;
     }
     default:

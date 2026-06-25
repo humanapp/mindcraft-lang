@@ -346,6 +346,10 @@ export enum LoweringDiagCode {
   UnsupportedStringMethod = 3130,
   /** String method called with wrong number of arguments */
   StringMethodWrongArgCount = 3131,
+  /** Buffer constructor or method is not supported */
+  UnsupportedBufferMethod = 3135,
+  /** Buffer constructor or method called with wrong number of arguments */
+  BufferMethodWrongArgCount = 3136,
   /** Class declaration has no name */
   ClassDeclarationMissingName = 3140,
   /** Cannot resolve the type of a class field */

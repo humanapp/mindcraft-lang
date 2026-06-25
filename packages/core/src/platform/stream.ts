@@ -96,3 +96,10 @@ export declare function byteArrayFromUint8Array(src: unknown): IByteArray;
  * Implementation provided by platform-specific module.
  */
 export declare function byteArrayToUint8Array(bytes: IByteArray): unknown;
+
+/**
+ * Creates an IByteArray from a latin1 string, mapping each character's low 8
+ * bits to one byte (1 char => 1 byte). Implementation provided by the
+ * platform-specific module.
+ */
+export declare function byteArrayFromStringLatin1(s: string): IByteArray;

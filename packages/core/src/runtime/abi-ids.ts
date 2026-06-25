@@ -179,6 +179,11 @@ export enum CoreFuncId {
   StrTrim = 93,
   StrSplit = 94,
   StrConcat = 95,
+  BufferFrom = 96,
+  BufferFromHex = 97,
+  BufferFromString = 98,
+  BufferLength = 99,
+  BufferGet = 100,
 }
 
 /**

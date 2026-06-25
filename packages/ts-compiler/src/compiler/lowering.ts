@@ -3254,10 +3254,16 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
     if (lowerArrayFromCall(expr, expr.expression, ctx)) {
       return;
     }
+    if (lowerBufferConstructorCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerMathCall(expr, expr.expression, ctx)) {
       return;
     }
     if (lowerStringMethodCall(expr, expr.expression, ctx)) {
+      return;
+    }
+    if (lowerBufferMethodCall(expr, expr.expression, ctx)) {
       return;
     }
     if (lowerThisStaticMethodCall(expr, expr.expression, ctx)) {
@@ -7843,6 +7849,104 @@ function lowerMathCall(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   }
 
   ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedMathMethod, `Math.${methodName}() is not supported`, expr));
+  return true;
+}
+
+function isBufferGlobal(expr: ts.Expression, ctx: LowerContext): boolean {
+  if (!ts.isIdentifier(expr) || expr.text !== "Buffer") return false;
+  const sym = ctx.checker.getSymbolAtLocation(expr);
+  if (!sym) return false;
+  const decls = sym.getDeclarations();
+  if (!decls || decls.length === 0) return false;
+  for (const d of decls) {
+    if (ts.isVariableDeclaration(d) || ts.isInterfaceDeclaration(d)) {
+      const sf = d.getSourceFile();
+      if (sf.isDeclarationFile || sf.fileName.includes("lib.")) return true;
+    }
+  }
+  return false;
+}
+
+function isBufferType(type: ts.Type): boolean {
+  const sym = type.getSymbol();
+  if (!sym || sym.name !== "Buffer") return false;
+  const decls = sym.getDeclarations();
+  if (!decls || decls.length === 0) return false;
+  for (const d of decls) {
+    if (ts.isInterfaceDeclaration(d) && d.getSourceFile().isDeclarationFile) return true;
+  }
+  return false;
+}
+
+function lowerBufferConstructorCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  if (!isBufferGlobal(propAccess.expression, ctx)) return false;
+
+  const methodName = propAccess.name.text;
+  const constructors = new Map<string, string>([
+    ["from", "$$buf_from"],
+    ["fromHex", "$$buf_fromHex"],
+    ["fromString", "$$buf_fromString"],
+  ]);
+  const fnName = constructors.get(methodName);
+  if (!fnName) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UnsupportedBufferMethod, `Buffer.${methodName}() is not supported`, expr)
+    );
+    return true;
+  }
+
+  if (expr.arguments.length !== 1) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.BufferMethodWrongArgCount, `Buffer.${methodName}() requires exactly 1 argument`, expr)
+    );
+    return true;
+  }
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "HostCall", fnName, argc: 1 });
+  return true;
+}
+
+function lowerBufferMethodCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  const objType = ctx.checker.getTypeAtLocation(propAccess.expression);
+  if (!isBufferType(objType)) return false;
+
+  const methodName = propAccess.name.text;
+
+  if (methodName === "length") {
+    if (expr.arguments.length !== 0) {
+      ctx.diagnostics.push(makeDiag(LoweringDiagCode.BufferMethodWrongArgCount, ".length() takes no arguments", expr));
+      return true;
+    }
+    lowerExpression(propAccess.expression, ctx);
+    ctx.ir.push({ kind: "HostCall", fnName: "$$buf_length", argc: 1 });
+    return true;
+  }
+
+  if (methodName === "get") {
+    if (expr.arguments.length !== 1) {
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.BufferMethodWrongArgCount, ".get() requires exactly 1 argument", expr)
+      );
+      return true;
+    }
+    lowerExpression(propAccess.expression, ctx);
+    lowerExpression(expr.arguments[0], ctx);
+    ctx.ir.push({ kind: "HostCall", fnName: "$$buf_get", argc: 2 });
+    return true;
+  }
+
+  ctx.diagnostics.push(
+    makeDiag(LoweringDiagCode.UnsupportedBufferMethod, `Buffer.${methodName}() is not supported`, expr)
+  );
   return true;
 }
 

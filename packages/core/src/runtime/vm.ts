@@ -239,6 +239,8 @@ function isTruthy(v: Value): boolean {
       return true;
     case NativeType.Function:
       return true;
+    case NativeType.Buffer:
+      return v.v.length() > 0;
     case "handle":
       return true;
     case "err":

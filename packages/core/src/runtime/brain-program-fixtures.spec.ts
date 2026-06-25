@@ -232,10 +232,64 @@ const VALUES_AND_COLLECTIONS: LinkedBrainProgramJson = {
   pages: [],
 };
 
+// Buffer program constants: the empty buffer, a single byte, the boundary byte
+// values (0/127/128/255), a longer 32-byte run, and a repeated/altered triple
+// for content-equality coverage. Buffers carry no typeId, so the type table is
+// empty. The constant wire form is a value tag (NativeType.Buffer = 12) then a
+// var-uint byte length then that many raw bytes. This fixture is the cross-VM
+// decode vector for the buffer value type.
+const BUFFER_LONG_HEX = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+
+const BUFFER_VECTORS: LinkedBrainProgramJson = {
+  program: {
+    version: 1,
+    functions: [
+      {
+        code: [
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.POP },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
+          { op: Op.POP },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
+          { op: Op.POP },
+          { op: Op.PUSH_CONST_VAL, a: 3 },
+          { op: Op.POP },
+          { op: Op.PUSH_CONST_VAL, a: 4 },
+          { op: Op.POP },
+          { op: Op.PUSH_CONST_VAL, a: 5 },
+          { op: Op.POP },
+          { op: Op.PUSH_CONST_VAL, a: 6 },
+          { op: Op.POP },
+          { op: Op.RET },
+        ],
+        numParams: 0,
+        numLocals: 0,
+      },
+    ],
+    constantPools: {
+      numbers: [],
+      strings: [],
+      values: [
+        { t: NativeType.Buffer, v: "" },
+        { t: NativeType.Buffer, v: "2a" },
+        { t: NativeType.Buffer, v: "007f80ff" },
+        { t: NativeType.Buffer, v: BUFFER_LONG_HEX },
+        { t: NativeType.Buffer, v: "010203" },
+        { t: NativeType.Buffer, v: "010203" },
+        { t: NativeType.Buffer, v: "010204" },
+      ],
+    },
+    types: [],
+    variableNames: [],
+  },
+  pages: [],
+};
+
 const FIXTURES: ReadonlyArray<{ name: string; program: LinkedBrainProgramJson }> = [
   { name: "struct-field-access", program: STRUCT_FIELD_ACCESS },
   { name: "control-flow", program: CONTROL_FLOW },
   { name: "values-and-collections", program: VALUES_AND_COLLECTIONS },
+  { name: "buffer-vectors", program: BUFFER_VECTORS },
 ];
 
 // ---- Lean normalization (mirrors the binary codec's documented invariant) ----

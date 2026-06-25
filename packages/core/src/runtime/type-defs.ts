@@ -25,6 +25,7 @@ export enum NativeType {
   Any = 9,
   Union = 10,
   Function = 11,
+  Buffer = 12,
 }
 
 /** Stable lower-case name for a {@link NativeType} (e.g. `NativeType.Number` -> `"number"`). */
@@ -56,6 +57,8 @@ export function nativeTypeToString(coreType: NativeType): string {
       return "union";
     case NativeType.Function:
       return "function";
+    case NativeType.Buffer:
+      return "buffer";
     default:
       return "invalid";
   }

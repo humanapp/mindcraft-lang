@@ -281,7 +281,7 @@ describe("binary .mcprogram codec -- every value variant", () => {
     { tag: "enum", typeId: COLOR_TYPE_ID, name: "/spec.ts::Color", symbols: ["Red", "Green"] },
   ];
 
-  test("round-trips nested containers, both map key kinds, enums, and closures", () => {
+  test("round-trips nested containers, both map key kinds, enums, closures, and buffers", () => {
     const values: BrainProgramValueJson[] = [
       { t: NativeType.Unknown },
       { t: NativeType.Void },
@@ -333,6 +333,9 @@ describe("binary .mcprogram codec -- every value variant", () => {
           { t: NativeType.Map, typeId: ANY_MAP_TYPE_ID, v: [{ key: "a", value: { t: NativeType.Nil } }] },
         ],
       },
+      { t: NativeType.Buffer, v: "" },
+      { t: NativeType.Buffer, v: "2a" },
+      { t: NativeType.Buffer, v: "007f80ff" },
     ];
     const json: LinkedBrainProgramJson = {
       program: {

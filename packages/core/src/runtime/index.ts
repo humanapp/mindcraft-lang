@@ -4,6 +4,7 @@ export * from "./brain-program-binary-codec";
 export * from "./brain-program-codec";
 export * from "./brain-program-dump";
 export * from "./brain-runtime";
+export * from "./buffer-builtins";
 export * from "./bytecode";
 export * from "./call-spec";
 export * from "./callsite-store";
@@ -37,6 +38,7 @@ export * from "./vm-types";
 
 import type { BrainServices } from "../brain/services";
 import { registerCoreActuators } from "./actuators";
+import { registerBufferBuiltins } from "./buffer-builtins";
 import { registerContextTypes } from "./context-types";
 import { registerCoreConversions } from "./conversions";
 import { registerElementAccessBuiltins } from "./element-access-builtins";
@@ -62,6 +64,7 @@ export function registerCoreRuntimeComponents(services: BrainServices) {
         registerMapBuiltins(services);
         registerMathBuiltins(services);
         registerStringBuiltins(services);
+        registerBufferBuiltins(services);
       });
     });
   });

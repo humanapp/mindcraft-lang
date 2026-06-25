@@ -125,6 +125,18 @@ interface StringConstructor {
 }
 declare var String: StringConstructor;
 
+interface Buffer {
+  length(): number;
+  get(index: number): number;
+}
+
+interface BufferConstructor {
+  from(values: number[]): Buffer;
+  fromHex(hex: string): Buffer;
+  fromString(value: string): Buffer;
+}
+declare var Buffer: BufferConstructor;
+
 interface Boolean {
   valueOf(): boolean;
 }

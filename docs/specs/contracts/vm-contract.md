@@ -844,12 +844,32 @@ parallel sub-pools each have an independent index space:
   lives in the [program type table](#program-type-table).
 - `constantPools.values: List<Value>` -- residual pool for tagged values
   that do not fit the typed pools (e.g. `BoolValue`, `NilValue`,
-  `FunctionValue`, `StructValue`). Pushed by `PUSH_CONST_VAL`.
+  `FunctionValue`, `StructValue`, `BufferValue`). Pushed by `PUSH_CONST_VAL`.
 
 Pool indices are independent: a `PUSH_CONST_NUM 3` and a
 `PUSH_CONST_STR 3` reference unrelated entries. The linker and
 tree-shaker remap each pool independently; cross-pool offsets are
 carried as a `ConstantOffsets` aggregate.
+
+### Buffer values
+
+A `BufferValue` is an immutable sequence of raw bytes (each `0-255`),
+the `NativeType.Buffer = 12` native type (appended after
+`Function = 11`). It carries no typeId and no nested values; equality is
+byte-for-byte content equality. The reference VM backs it with the
+platform `IByteArray`; an integer-identity port mirrors the byte run
+(constant buffers may borrow the program-image byte slab; host-built
+buffers own a managed byte run). There are no buffer opcodes: a buffer
+enters the VM only as a `PUSH_CONST_VAL` constant (host-function access
+to buffers is a separate host-function surface, not part of this
+opcode contract).
+
+In the binary `.mcprogram` value encoding (the `CVAL` section, format
+version 3), a buffer is the value tag byte `12`, then a var-uint byte
+count, then exactly that many raw bytes (distinct from the UTF-8
+length-prefixed string encoding). The tag and encoding are append-only:
+a buffer-free program never emits them, and the format version is
+unchanged.
 
 ### Program type table
 

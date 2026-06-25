@@ -4,6 +4,7 @@ import { List } from "../platform/list";
 import { MathOps } from "../platform/math";
 import type { IByteArray } from "../platform/stream";
 import { MemoryStream } from "../platform/stream";
+import { StringUtils } from "../platform/string";
 import { TypeUtils } from "../platform/types";
 import type { UniqueSet } from "../platform/uniqueset";
 import {
@@ -666,6 +667,15 @@ function writeValue(
       }
       return;
     }
+    case NativeType.Buffer: {
+      const latin1 = value.v.toStringLatin1();
+      const count = value.v.length();
+      s.writeVarUint(count);
+      for (let i = 0; i < count; i++) {
+        s.writeRawU8(StringUtils.charCodeAt(latin1, i) & 0xff);
+      }
+      return;
+    }
     default:
       // Unreachable: Any/Union are type tags, never runtime values.
       throw codecError(BrainProgramBinaryCodecErrorCode.UNENCODABLE_VALUE, "value is not a serializable NativeType");
@@ -1264,6 +1274,14 @@ function readValue(
       }
       return { t: NativeType.Function, funcId, captures };
     }
+    case NativeType.Buffer: {
+      const count = s.readVarUint();
+      let hex = "";
+      for (let i = 0; i < count; i++) {
+        hex += byteToHex(s.readRawU8());
+      }
+      return { t: NativeType.Buffer, v: hex };
+    }
     default:
       throw codecError(BrainProgramBinaryCodecErrorCode.INVALID_VALUE_TAG, `invalid value tag ${tag}`);
   }
@@ -1465,6 +1483,14 @@ function operandSchemaFor(op: number): List<OperandSpec> {
     throw codecError(BrainProgramBinaryCodecErrorCode.UNKNOWN_OPCODE, `no operand schema for opcode ${op}`);
   }
   return List.from(raw);
+}
+
+const HEX_DIGITS = "0123456789abcdef";
+
+/** Lowercase two-digit hex of a byte (0-255). */
+function byteToHex(byte: number): string {
+  const b = byte & 0xff;
+  return StringUtils.charAt(HEX_DIGITS, (b >> 4) & 0xf) + StringUtils.charAt(HEX_DIGITS, b & 0xf);
 }
 
 function writeValueTag(s: MemoryStream, tag: NativeType): void {

@@ -717,6 +717,14 @@ export function byteArrayFromUint8Array(src: Uint8Array): IByteArray {
 }
 
 /**
+ * Creates an IByteArray from a latin1 string, mapping each character's low 8
+ * bits to one byte (1 char => 1 byte).
+ */
+export function byteArrayFromStringLatin1(s: string): IByteArray {
+  return NodeByteArray.fromStringLatin1(s);
+}
+
+/**
  * Extracts a Uint8Array from an IByteArray.
  * For NodeByteArray, returns the underlying array directly (no copy).
  * For other implementations, converts via latin1 string.

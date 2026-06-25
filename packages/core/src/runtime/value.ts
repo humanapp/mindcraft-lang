@@ -1,6 +1,8 @@
 import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
 import { List } from "../platform/list";
+import { byteArrayFromStringLatin1, type IByteArray } from "../platform/stream";
+import { StringUtils } from "../platform/string";
 import { NativeType, type StructTypeDef, type TypeId } from "./type-defs";
 
 ///////////////////////////
@@ -146,6 +148,12 @@ export type MapValue = { t: NativeType.Map; typeId: TypeId; v: ValueDict };
 export type StructValue = { t: NativeType.Struct; typeId: TypeId; v?: List<Value>; native?: unknown };
 /** Brain runtime function value: function id plus optional captured upvalues. */
 export type FunctionValue = { t: NativeType.Function; funcId: number; captures?: List<Value> };
+/**
+ * Brain runtime buffer value: an immutable sequence of raw bytes (each 0-255),
+ * backed by an {@link IByteArray}. The bytes are never mutated after
+ * construction; equality is content-based (see {@link buffersEqual}).
+ */
+export type BufferValue = { t: NativeType.Buffer; v: IByteArray };
 
 /**
  * Settle handle for one pending async operation, bound to a single
@@ -182,6 +190,7 @@ export type Value =
   | MapValue
   | StructValue
   | FunctionValue
+  | BufferValue
   | { t: "handle"; id: HandleId } // VM-internal type
   | { t: "err"; e: ErrorValue }; // VM-internal type
 
@@ -252,6 +261,72 @@ export function mkFunctionValue(funcId: number, captures?: List<Value>): Functio
   return { t: NativeType.Function, funcId };
 }
 
+/** Build a {@link BufferValue} wrapping `bytes`; the bytes are treated as immutable. */
+export function mkBufferValue(bytes: IByteArray): BufferValue {
+  return { t: NativeType.Buffer, v: bytes };
+}
+
+/** Number of bytes in `buffer`. */
+export function bufferLength(buffer: BufferValue): number {
+  return buffer.v.length();
+}
+
+/** Byte (0-255) at `index`, or undefined when `index` is outside `[0, length)`. */
+export function bufferByteAt(buffer: BufferValue, index: number): number | undefined {
+  if (index < 0 || index >= buffer.v.length()) {
+    return undefined;
+  }
+  return StringUtils.charCodeAt(buffer.v.slice(index, index + 1).toStringLatin1(), 0) & 0xff;
+}
+
+/** Whether `a` and `b` hold byte-for-byte identical content. */
+export function buffersEqual(a: BufferValue, b: BufferValue): boolean {
+  return a.v.compare(b.v) === 0;
+}
+
+const BUFFER_HEX_DIGITS = "0123456789abcdef";
+
+function hexDigitValue(charCode: number): number {
+  if (charCode >= 48 && charCode <= 57) {
+    return charCode - 48;
+  }
+  if (charCode >= 97 && charCode <= 102) {
+    return charCode - 87;
+  }
+  if (charCode >= 65 && charCode <= 70) {
+    return charCode - 55;
+  }
+  throw new Error(`invalid hex digit char code ${charCode}`);
+}
+
+/** Lowercase hex of a buffer's bytes (two digits per byte); empty for an empty buffer. */
+export function bufferToHex(buffer: BufferValue): string {
+  const latin1 = buffer.v.toStringLatin1();
+  const count = buffer.v.length();
+  let out = "";
+  for (let i = 0; i < count; i++) {
+    const byte = StringUtils.charCodeAt(latin1, i) & 0xff;
+    out += StringUtils.charAt(BUFFER_HEX_DIGITS, (byte >> 4) & 0xf) + StringUtils.charAt(BUFFER_HEX_DIGITS, byte & 0xf);
+  }
+  return out;
+}
+
+/**
+ * Build a {@link BufferValue} from a hex string of two digits per byte. Accepts
+ * lower- or upper-case digits; throws on a non-hex character. An odd-length
+ * input reads one digit past its end and throws.
+ */
+export function mkBufferValueFromHex(hex: string): BufferValue {
+  const length = StringUtils.length(hex);
+  let latin1 = "";
+  for (let i = 0; i < length; i += 2) {
+    const hi = hexDigitValue(StringUtils.charCodeAt(hex, i));
+    const lo = hexDigitValue(StringUtils.charCodeAt(hex, i + 1));
+    latin1 += StringUtils.fromCharCode(((hi << 4) | lo) & 0xff);
+  }
+  return mkBufferValue(byteArrayFromStringLatin1(latin1));
+}
+
 // Value extractors
 /** Return the boolean payload, or undefined if `v` is not a {@link BooleanValue}. */
 export function extractBooleanValue(v: Value | undefined): boolean | undefined {
@@ -277,6 +352,13 @@ export function extractStringValue(v: Value | undefined): string | undefined {
 /** Return the list payload, or undefined if `v` is not a {@link ListValue}. */
 export function extractListValue(v: Value | undefined): List<Value> | undefined {
   if (v && v.t === NativeType.List) {
+    return v.v;
+  }
+  return undefined;
+}
+/** Return the byte storage, or undefined if `v` is not a {@link BufferValue}. */
+export function extractBufferValue(v: Value | undefined): IByteArray | undefined {
+  if (v && v.t === NativeType.Buffer) {
     return v.v;
   }
   return undefined;
@@ -330,6 +412,10 @@ export function isStructValue(v: Value | undefined): v is StructValue {
 /** Type guard for {@link FunctionValue}. */
 export function isFunctionValue(v: Value | undefined): v is FunctionValue {
   return v?.t === NativeType.Function;
+}
+/** Type guard for {@link BufferValue}. */
+export function isBufferValue(v: Value | undefined): v is BufferValue {
+  return v?.t === NativeType.Buffer;
 }
 /** Type guard for VM-internal error values. */
 export function isErrValue(v: Value | undefined): v is { t: "err"; e: ErrorValue } {

@@ -4,10 +4,12 @@ import { TypeUtils } from "../platform/types";
 import { dictToJsonEntries, listFromJson, listToJson } from "./json-container-codec";
 import { NativeType } from "./type-defs";
 import {
+  bufferToHex,
   type ErrorValue,
   FALSE_VALUE,
   type FunctionValue,
   type MapValue,
+  mkBufferValueFromHex,
   mkFunctionValue,
   mkListValue,
   mkNumberValue,
@@ -106,6 +108,10 @@ const RUNTIME_VALUE_JSON_CODECS = {
           : listFromJson(json.captures as readonly BrainProgramValueJson[], brainValueFromJson)
       ),
     toJson: functionValueToJson,
+  },
+  [NativeType.Buffer]: {
+    fromJson: (json) => mkBufferValueFromHex(json.v as string),
+    toJson: (value) => ({ t: NativeType.Buffer, v: bufferToHex(value) }),
   },
   handle: {
     fromJson: (json) => ({

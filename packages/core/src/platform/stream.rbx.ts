@@ -809,3 +809,11 @@ export function byteArrayToBuffer(bytes: IByteArray): RobloxBuffer {
 // provide aliases (in Roblox they work with buffer)
 export const byteArrayFromUint8Array = byteArrayFromBuffer;
 export const byteArrayToUint8Array = byteArrayToBuffer;
+
+/**
+ * Creates an IByteArray from a latin1 string, mapping each character's low 8
+ * bits to one byte (1 char => 1 byte).
+ */
+export function byteArrayFromStringLatin1(s: string): IByteArray {
+  return RobloxByteArray.fromStringLatin1(s);
+}
