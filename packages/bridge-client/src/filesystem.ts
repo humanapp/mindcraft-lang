@@ -309,8 +309,8 @@ class FileTree {
   private _files = new Map<string, TreeFileEntryWithContent>();
 
   constructor(
-    public readonly path: string,
-    public readonly name: string
+    public path: string,
+    public name: string
   ) {}
 
   read(fullPath: string): string {
@@ -374,12 +374,69 @@ class FileTree {
     const newName = newSegs[newSegs.length - 1];
     oldSegs = oldSegs.slice(0, -1);
     newSegs = newSegs.slice(0, -1);
+
+    // A directory is moved by re-keying its subtree in place; a file is moved by
+    // writing it at the new path and deleting the old entry.
+    const oldParent = this.getDir(oldSegs);
+    if (oldParent?._dirs.has(oldName)) {
+      this.renameDirInternal(oldParent, oldFullPath, oldName, newSegs, newFullPath, newName);
+      return;
+    }
+
     const oldEntry = this.readEntryInternal(oldSegs, oldFullPath, oldName);
     if (oldEntry.isReadonly) {
       throw new ProtocolError(ErrorCode.FILE_READ_ONLY, `File is read-only: ${oldFullPath}`);
     }
     this.writeInternal(newSegs, newFullPath, newName, oldEntry.content, oldEntry.isReadonly, oldEntry.etag);
     this.deleteInternal(oldSegs, oldFullPath, oldName);
+  }
+
+  /** Resolve the directory at `segs` relative to this node, or undefined if any segment is missing. */
+  private getDir(segs: string[]): FileTree | undefined {
+    if (segs.length === 0) {
+      return this;
+    }
+    const [next, ...rest] = segs;
+    return this._dirs.get(next)?.getDir(rest);
+  }
+
+  private renameDirInternal(
+    oldParent: FileTree,
+    oldFullPath: string,
+    oldName: string,
+    newParentSegs: string[],
+    newFullPath: string,
+    newName: string
+  ): void {
+    if (newFullPath.startsWith(`${oldFullPath}/`)) {
+      throw new ProtocolError(ErrorCode.INVALID_PATH, `Cannot move a directory into itself: ${newFullPath}`);
+    }
+    const subtree = oldParent._dirs.get(oldName);
+    if (!subtree) {
+      throw new ProtocolError(ErrorCode.DIRECTORY_NOT_FOUND, `Directory not found: ${oldFullPath}`);
+    }
+    const newParent = this.getDir(newParentSegs);
+    if (!newParent) {
+      throw new ProtocolError(ErrorCode.DIRECTORY_NOT_FOUND, `Directory not found: ${newFullPath}`);
+    }
+    if (newParent._dirs.has(newName) || newParent._files.has(newName)) {
+      throw new ProtocolError(ErrorCode.DIRECTORY_ALREADY_EXISTS, `Directory already exists: ${newFullPath}`);
+    }
+    oldParent._dirs.delete(oldName);
+    subtree.rekey(newFullPath, newName);
+    newParent._dirs.set(newName, subtree);
+  }
+
+  /** Recursively rewrite this node's path/name and every descendant entry's path to sit under `newPath`. */
+  private rekey(newPath: string, newName: string): void {
+    this.path = newPath;
+    this.name = newName;
+    for (const file of this._files.values()) {
+      file.path = newPath ? `${newPath}/${file.name}` : file.name;
+    }
+    for (const [childName, child] of this._dirs) {
+      child.rekey(newPath ? `${newPath}/${childName}` : childName, childName);
+    }
   }
 
   stat(fullPath: string): StatResult {
