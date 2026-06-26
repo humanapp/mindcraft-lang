@@ -159,7 +159,7 @@ export type MapTypeDef = TypeDef & MapTypeShape;
 /** Declaration of a method callable on instances of a struct type. */
 export interface StructMethodDecl {
   name: string;
-  params: List<{ name: string; typeId: TypeId }>;
+  params: List<{ name: string; typeId: TypeId; optional?: boolean }>;
   returnTypeId: TypeId;
   isAsync?: boolean;
 }
@@ -282,6 +282,7 @@ export interface ITypeRegistry {
   addBooleanType(name: string, atomId?: number): TypeId;
   addNumberType(name: string, atomId?: number): TypeId;
   addStringType(name: string, atomId?: number): TypeId;
+  addBufferType(name: string, atomId?: number): TypeId;
   addEnumType(name: string, shape: EnumTypeShape): TypeId;
   addListType(name: string, shape: ListTypeShape): TypeId;
   addMapType(name: string, shape: MapTypeShape): TypeId;

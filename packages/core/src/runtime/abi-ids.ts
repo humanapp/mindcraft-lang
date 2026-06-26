@@ -69,6 +69,7 @@ export enum CoreTypeAtomId {
   EngineContext = 9,
   RuleContext = 10,
   Context = 11,
+  Buffer = 12,
 }
 
 /**

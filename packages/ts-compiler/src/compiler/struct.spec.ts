@@ -5,6 +5,7 @@ import { type BrainServices, compiler } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
+  type AsyncHandle,
   type BooleanValue,
   ContextTypeIds,
   CoreTypeIds,
@@ -1135,7 +1136,7 @@ describe("struct method calls", () => {
         6104,
         "Widget.fetchData",
         true,
-        { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, _handleId: number) => {} },
+        { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, _handle: AsyncHandle) => {} },
         emptyCallDef
       );
     }

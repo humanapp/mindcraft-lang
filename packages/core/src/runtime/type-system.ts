@@ -37,7 +37,7 @@ import {
   type TypeId,
   type UnionTypeDef,
 } from "./type-defs";
-import { type EnumValue, mkBooleanValue, type Value } from "./value";
+import { type BufferValue, bufferToHex, type EnumValue, isBufferValue, mkBooleanValue, type Value } from "./value";
 import type { StructFieldGetterFn } from "./vm-types";
 
 /**
@@ -244,6 +244,21 @@ export class TypeRegistry implements ITypeRegistry {
       coreType: NativeType.String,
       typeId,
       codec: new StringCodec(),
+      name,
+      atomId,
+    });
+    return typeId;
+  }
+
+  addBufferType(name: string, atomId?: number): TypeId {
+    this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
+    const typeId = mkTypeId(NativeType.Buffer, name);
+    this.validateTypeNotRegistered(typeId);
+    this.add({
+      coreType: NativeType.Buffer,
+      typeId,
+      codec: new BufferCodec(),
       name,
       atomId,
     });
@@ -852,7 +867,7 @@ export class TypeRegistry implements ITypeRegistry {
 // ----------------------------------------------------
 // Register core types
 
-/** Register the built-in core types (`Void`, `Nil`, `Boolean`, `Number`, `String`, `Any`, `Function`, list/map constructors) on `services.runtime.types`. */
+/** Register the built-in core types (`Void`, `Nil`, `Boolean`, `Number`, `String`, `Buffer`, `Any`, `Function`, list/map constructors) on `services.runtime.types`. */
 export function registerCoreTypes(services: BrainServices) {
   const typeRegistry = services.runtime.types;
   typeRegistry.addVoidType(CoreTypeNames.Void, CoreTypeAtomId.Void);
@@ -860,6 +875,7 @@ export function registerCoreTypes(services: BrainServices) {
   typeRegistry.addBooleanType(CoreTypeNames.Boolean, CoreTypeAtomId.Boolean);
   typeRegistry.addNumberType(CoreTypeNames.Number, CoreTypeAtomId.Number);
   typeRegistry.addStringType(CoreTypeNames.String, CoreTypeAtomId.String);
+  typeRegistry.addBufferType(CoreTypeNames.Buffer, CoreTypeAtomId.Buffer);
   typeRegistry.addAnyType(CoreTypeNames.Any, CoreTypeAtomId.Any);
   typeRegistry.addFunctionType(CoreTypeNames.Function, CoreTypeAtomId.Function);
   typeRegistry.addListType("AnyList", {
@@ -900,6 +916,12 @@ class NumberCodec implements TypeCodec {
 class StringCodec implements TypeCodec {
   stringify(value: string): string {
     return value;
+  }
+}
+
+class BufferCodec implements TypeCodec {
+  stringify(value: unknown): string {
+    return isBufferValue(value as Value) ? bufferToHex(value as BufferValue) : "buffer";
   }
 }
 

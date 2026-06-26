@@ -440,6 +440,8 @@ function typeDefToTs(def: TypeDef, registry: ITypeRegistry): string {
       return "number";
     case NativeType.String:
       return "string";
+    case NativeType.Buffer:
+      return "Buffer";
     case NativeType.Any:
       return "MindcraftValue";
     case NativeType.Struct:
@@ -508,7 +510,7 @@ function generateStructInterface(def: StructTypeDef, registry: ITypeRegistry): s
   def.methods?.forEach((method) => {
     const params: string[] = [];
     method.params.forEach((p) => {
-      params.push(`${p.name}: ${typeIdToTs(p.typeId, registry)}`);
+      params.push(`${p.name}${p.optional ? "?" : ""}: ${typeIdToTs(p.typeId, registry)}`);
     });
     const returnType = typeIdToTs(method.returnTypeId, registry);
     const fullReturn = method.isAsync ? `Promise<${returnType}>` : returnType;
@@ -610,7 +612,7 @@ function generateStructAugmentation(def: StructTypeDef, baseDef: StructTypeDef, 
     if (hasMethod(baseDef, method.name)) return;
     const params: string[] = [];
     method.params.forEach((p) => {
-      params.push(`${p.name}: ${typeIdToTs(p.typeId, registry)}`);
+      params.push(`${p.name}${p.optional ? "?" : ""}: ${typeIdToTs(p.typeId, registry)}`);
     });
     const returnType = typeIdToTs(method.returnTypeId, registry);
     const fullReturn = method.isAsync ? `Promise<${returnType}>` : returnType;

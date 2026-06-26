@@ -15,6 +15,7 @@ export const CoreTypeNames = {
   String: "string",
   Any: "any",
   Function: "function",
+  Buffer: "buffer",
 };
 
 /** {@link TypeId}s for the brain's built-in primitive types. */
@@ -27,4 +28,5 @@ export const CoreTypeIds = {
   String: mkTypeId(NativeType.String, CoreTypeNames.String),
   Any: mkTypeId(NativeType.Any, CoreTypeNames.Any),
   Function: mkTypeId(NativeType.Function, CoreTypeNames.Function),
+  Buffer: mkTypeId(NativeType.Buffer, CoreTypeNames.Buffer),
 };
