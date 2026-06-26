@@ -19,6 +19,7 @@ export type {
   ExtractedRepeated,
   ExtractedSeq,
   ProjectCompileResult,
+  StdlibSourceFile,
 } from "./compiler/compile.js";
 export { collectParams, compileUserTile, isCompilerControlledPath, UserTileProject } from "./compiler/compile.js";
 export type { TsDiagCode } from "./compiler/diag-codes.js";

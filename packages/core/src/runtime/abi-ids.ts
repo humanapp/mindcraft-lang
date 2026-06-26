@@ -40,8 +40,15 @@ export const DYNAMIC_FUNC_ID_BASE = 65536;
 /** First host-action id owned by the active target; core action ids are below this. */
 export const TARGET_ACTION_ID_BASE = 1024;
 
-/** First type-atom id owned by the active target; core type atoms are below this. */
+/** First type-atom id owned by a target; core type atoms are below this. Each target's atoms are dense from here, disambiguated across targets by the program's device profile id. */
 export const TARGET_TYPE_ATOM_BASE = 1024;
+
+/**
+ * First type-atom id of the shared tier: nominal types common to every target
+ * (e.g. `Image`), dense from here. Above every target's own atom range, so
+ * shared atoms are identified independently of any target.
+ */
+export const SHARED_TYPE_ATOM_BASE = 2048;
 
 /**
  * Stable type-atom ids of the core nominal types: the scalar types, the named

@@ -42,10 +42,29 @@ export interface AmbientFile {
   content: string;
 }
 
+/**
+ * A compilable `.ts` stdlib source module contributed by a target. It is
+ * mounted in the compiler's virtual file map, resolvable as an importable
+ * module, and lowered/emitted through the ordinary import pipeline when user
+ * code imports it.
+ */
+export interface StdlibSourceFile {
+  /**
+   * Virtual `.ts` path at which the source is mounted. User code imports it by
+   * this path minus the `.ts` extension (path `mindcraft/microbit.ts` is
+   * imported as `"mindcraft/microbit"`).
+   */
+  path: string;
+  /** Full TypeScript source. */
+  content: string;
+}
+
 /** Options passed to the user-tile compiler. */
 export interface CompileOptions {
   /** Ordered ambient declaration files available to the TypeScript compiler. */
   ambientFiles: readonly AmbientFile[];
+  /** Compilable `.ts` stdlib source modules a target contributes, resolvable by user import. */
+  stdlibFiles?: readonly StdlibSourceFile[];
   services: BrainServices;
 }
 

@@ -5,6 +5,7 @@ import type { MindcraftEnvironment } from "@mindcraft-lang/core";
 import {
   type AmbientFile,
   createWorkspaceCompiler,
+  type StdlibSourceFile,
   type WorkspaceCompiler as TsWorkspaceCompiler,
   type WorkspaceCompileResult,
 } from "@mindcraft-lang/ts-compiler";
@@ -303,6 +304,8 @@ export interface CreateProjectCompilerOptions {
   filesystem: ProjectFileSystem;
   /** Ordered ambient declaration files exposed to the compiler and remote VFS peers. */
   ambientFiles: readonly AmbientFile[];
+  /** Compilable stdlib source modules exposed to the compiler and remote VFS peers. */
+  stdlibFiles?: readonly StdlibSourceFile[];
   /** Read-only example projects materialized under the examples folder. */
   examples?: readonly ExampleDefinition[];
   onDidCompile?: (result: WorkspaceCompileResult) => void;
@@ -326,9 +329,9 @@ export interface ProjectCompilerHandle {
  * input includes the live project files plus any injected examples.
  */
 export function createProjectCompiler(options: CreateProjectCompilerOptions): ProjectCompilerHandle {
-  const { ambientFiles, environment, filesystem } = options;
+  const { ambientFiles, stdlibFiles, environment, filesystem } = options;
 
-  const compiler = createWorkspaceCompiler({ ambientFiles, environment });
+  const compiler = createWorkspaceCompiler({ ambientFiles, stdlibFiles, environment });
 
   if (options.onDidCompile) {
     compiler.onDidCompile(options.onDidCompile);

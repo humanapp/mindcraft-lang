@@ -31,6 +31,7 @@ export type {
   ExtractedSeq,
   LocalInfo,
   ScopeInfo,
+  StdlibSourceFile,
   SuspendSiteInfo,
 } from "./types.js";
 

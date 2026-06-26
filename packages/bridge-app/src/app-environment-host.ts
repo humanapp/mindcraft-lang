@@ -15,7 +15,7 @@ import {
 import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
 import { createMindcraftEnvironment, Dict, logger } from "@mindcraft-lang/core/app";
 import type { IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
-import type { AmbientFile, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+import type { AmbientFile, StdlibSourceFile, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { createBridgeProject, createProjectCompiler } from "./compilation.js";
@@ -37,6 +37,8 @@ export interface AppEnvironmentHostOptions {
   modules: readonly MindcraftModule[];
   /** Ordered ambient declaration files supplied to the project compiler and remote VFS. */
   ambientFiles: readonly AmbientFile[];
+  /** Compilable stdlib source modules supplied to the project compiler and remote VFS. */
+  stdlibFiles?: readonly StdlibSourceFile[];
   /** Identifies the host application when writing `mindcraft.json`. */
   host: MindcraftJsonHostInfo;
   /** Read-only example projects materialized under the examples folder. */
@@ -83,6 +85,7 @@ export class AppEnvironmentHost {
 
   private readonly host: MindcraftJsonHostInfo;
   private readonly ambientFiles: readonly AmbientFile[];
+  private readonly stdlibFiles: readonly StdlibSourceFile[];
   private readonly onDidCompileCallback?: (
     result: WorkspaceCompileResult,
     tileResult: UserTileApplyResult | undefined
@@ -129,6 +132,7 @@ export class AppEnvironmentHost {
     this.projectManager = options.projectManager;
     this.host = options.host;
     this.ambientFiles = options.ambientFiles;
+    this.stdlibFiles = options.stdlibFiles ?? [];
     this.onDidCompileCallback = options.onDidCompile;
     this._bridgeUrl = options.bridgeUrl;
     this._loadBindingToken = options.loadBindingToken ?? (() => undefined);
@@ -211,6 +215,7 @@ export class AppEnvironmentHost {
       environment: this.env,
       filesystem: this.projectFileSystem,
       ambientFiles: this.ambientFiles,
+      stdlibFiles: this.stdlibFiles,
       examples: [...this._examples],
       onDidCompile: (result) => {
         logWorkspaceCompile(result);

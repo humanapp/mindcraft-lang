@@ -2,7 +2,7 @@ import type { CompiledActionBundle, MindcraftEnvironment } from "@mindcraft-lang
 import type { DiagnosticSeverity } from "@mindcraft-lang/core/brain";
 import type { ProjectCompileResult } from "./compiler/compile.js";
 import { COMPILER_CONTROLLED_TSCONFIG_PATH, UserTileProject } from "./compiler/project.js";
-import type { AmbientFile, CompileDiagnostic } from "./compiler/types.js";
+import type { AmbientFile, CompileDiagnostic, StdlibSourceFile } from "./compiler/types.js";
 import { buildCompiledActionBundle } from "./runtime/action-bundle.js";
 
 /** A file in a {@link WorkspaceSnapshot}: `content` plus the `etag` used for optimistic concurrency. */
@@ -91,6 +91,8 @@ export interface CreateWorkspaceCompilerOptions {
   environment: MindcraftEnvironment;
   /** Ordered ambient declaration files available to the TypeScript compiler and remote VFS peers. */
   ambientFiles: readonly AmbientFile[];
+  /** Compilable `.ts` stdlib source modules the target contributes, resolvable by user import. */
+  stdlibFiles?: readonly StdlibSourceFile[];
 }
 
 /** Driver for incremental workspace compilation. Receives snapshot/change inputs and emits diagnostics and a bundle. */
@@ -158,6 +160,7 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
   constructor(private readonly options: CreateWorkspaceCompilerOptions) {
     this.project = new UserTileProject({
       ambientFiles: options.ambientFiles,
+      stdlibFiles: options.stdlibFiles,
       services: options.environment.brainServices,
     });
   }
@@ -216,6 +219,9 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
   getCompilerControlledFiles(): ReadonlyMap<string, string> {
     const files = new Map<string, string>();
     for (const file of this.options.ambientFiles) {
+      files.set(file.path, file.content);
+    }
+    for (const file of this.options.stdlibFiles ?? []) {
       files.set(file.path, file.content);
     }
     files.set(COMPILER_CONTROLLED_TSCONFIG_PATH, TSCONFIG_CONTENT);

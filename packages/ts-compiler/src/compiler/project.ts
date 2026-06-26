@@ -31,6 +31,7 @@ import type {
   ExtractedParam,
   LocalInfo,
   ScopeInfo,
+  StdlibSourceFile,
   SuspendSiteInfo,
   UserAuthoredProgram,
 } from "./types.js";
@@ -137,13 +138,16 @@ function normalizeWorkspacePath(path: string): string {
 export interface CompilerControlledPathOptions {
   /** Ambient declaration files supplied by the host environment. */
   ambientFiles?: readonly Pick<AmbientFile, "path">[];
+  /** Stdlib source modules supplied by the host environment. */
+  stdlibFiles?: readonly Pick<StdlibSourceFile, "path">[];
 }
 
-/** True for paths the workspace compiler synthesizes or receives as host ambient declarations. */
+/** True for paths the workspace compiler synthesizes, or receives as host ambient declarations or stdlib source. */
 export function isCompilerControlledPath(path: string, options?: CompilerControlledPathOptions): boolean {
   const normalized = normalizeWorkspacePath(path);
   if (normalized === COMPILER_CONTROLLED_TSCONFIG_PATH) return true;
-  return options?.ambientFiles?.some((file) => normalizeWorkspacePath(file.path) === normalized) ?? false;
+  if (options?.ambientFiles?.some((file) => normalizeWorkspacePath(file.path) === normalized)) return true;
+  return options?.stdlibFiles?.some((file) => normalizeWorkspacePath(file.path) === normalized) ?? false;
 }
 
 const EXAMPLES_PREFIX = "__examples__/";
@@ -161,12 +165,14 @@ function isExamplePath(path: string): boolean {
 export class UserTileProject {
   private _files = new Map<string, string>();
   private readonly _ambientFiles: readonly AmbientFile[];
+  private readonly _stdlibFiles: readonly StdlibSourceFile[];
   private readonly _services: BrainServices;
 
   constructor(options: UserTileProjectOptions) {
     this._ambientFiles = options.ambientFiles ?? [
       { path: DEFAULT_AMBIENT_PATH, content: buildAmbientDeclarations(options.services.runtime.types) },
     ];
+    this._stdlibFiles = ("stdlibFiles" in options ? options.stdlibFiles : undefined) ?? [];
     this._services = options.services;
   }
 
@@ -212,9 +218,18 @@ export class UserTileProject {
       ambientCompilerPaths.add(compilerPath);
     }
 
+    // Stdlib source is mounted in the compiler file map; it is compiled only
+    // when user code actually imports it.
+    for (const file of this._stdlibFiles) {
+      compilerFiles.set(toCompilerPath(file.path), file.content);
+    }
+
     const userRootFiles: string[] = [];
     for (const [vfsPath, content] of this._files) {
-      if (isCompilerControlledPath(vfsPath, { ambientFiles: this._ambientFiles }) || isExamplePath(vfsPath)) {
+      if (
+        isCompilerControlledPath(vfsPath, { ambientFiles: this._ambientFiles, stdlibFiles: this._stdlibFiles }) ||
+        isExamplePath(vfsPath)
+      ) {
         continue;
       }
       const cp = toCompilerPath(vfsPath);
@@ -801,16 +816,23 @@ function resolveImportedSourceFile(
   if (!ts.isStringLiteral(importDecl.moduleSpecifier)) return undefined;
   const specifier = importDecl.moduleSpecifier.text;
 
-  let resolvedPath: string | undefined;
-  if (specifier.startsWith("./") || specifier.startsWith("../")) {
+  const isRelative = specifier.startsWith("./") || specifier.startsWith("../");
+  let base: string;
+  if (isRelative) {
     const containingDir = containingFile.fileName.substring(0, containingFile.fileName.lastIndexOf("/"));
-    const base = resolvePath(containingDir, specifier);
-    const candidates = [`${base}.ts`, `${base}.d.ts`, `${base}/index.ts`, `${base}/index.d.ts`];
-    for (const c of candidates) {
-      if (compilerFiles.has(c)) {
-        resolvedPath = c;
-        break;
-      }
+    base = resolvePath(containingDir, specifier);
+  } else {
+    // A bare specifier addresses a mounted stdlib source module (or an ambient
+    // `declare module`, which is not a file and falls through to undefined).
+    base = `/${specifier}`;
+  }
+
+  let resolvedPath: string | undefined;
+  const candidates = [`${base}.ts`, `${base}.d.ts`, `${base}/index.ts`, `${base}/index.d.ts`];
+  for (const c of candidates) {
+    if (compilerFiles.has(c)) {
+      resolvedPath = c;
+      break;
     }
   }
 
