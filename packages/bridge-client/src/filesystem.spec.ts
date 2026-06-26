@@ -260,6 +260,51 @@ describe("FileSystem", () => {
       pf.write("d/f.txt", "x");
       assert.throws(() => pf.rename("d/f.txt", "missing/f.txt"), { code: ErrorCode.DIRECTORY_NOT_FOUND });
     });
+
+    it("renames an empty directory", () => {
+      pf.mkdir("old");
+      pf.rename("old", "new");
+      assert.equal(pf.stat("new").kind, "directory");
+      assert.throws(() => pf.stat("old"), { code: ErrorCode.PATH_NOT_FOUND });
+    });
+
+    it("renames a directory and re-keys its descendants", () => {
+      pf.mkdir("old");
+      pf.mkdir("old/sub");
+      pf.write("old/a.txt", "a");
+      pf.write("old/sub/b.txt", "b");
+      const etagBefore = (pf.stat("old/sub/b.txt") as { etag: string }).etag;
+
+      pf.rename("old", "new");
+
+      assert.equal(pf.read("new/a.txt"), "a");
+      assert.equal(pf.read("new/sub/b.txt"), "b");
+      assert.equal((pf.stat("new/sub/b.txt") as { etag: string }).etag, etagBefore);
+      assert.equal((pf.stat("new/sub") as { path: string }).path, "new/sub");
+      assert.throws(() => pf.stat("old"), { code: ErrorCode.PATH_NOT_FOUND });
+    });
+
+    it("moves a directory into a different parent", () => {
+      pf.mkdir("src");
+      pf.mkdir("dst");
+      pf.mkdir("src/folder");
+      pf.write("src/folder/f.txt", "data");
+      pf.rename("src/folder", "dst/folder");
+      assert.equal(pf.read("dst/folder/f.txt"), "data");
+      assert.throws(() => pf.stat("src/folder"), { code: ErrorCode.PATH_NOT_FOUND });
+    });
+
+    it("throws when the destination directory name is taken", () => {
+      pf.mkdir("a");
+      pf.mkdir("b");
+      assert.throws(() => pf.rename("a", "b"), { code: ErrorCode.DIRECTORY_ALREADY_EXISTS });
+    });
+
+    it("throws when moving a directory into its own descendant", () => {
+      pf.mkdir("a");
+      pf.mkdir("a/b");
+      assert.throws(() => pf.rename("a", "a/b/c"), { code: ErrorCode.INVALID_PATH });
+    });
   });
 
   // -- list -----------------------------------------------------------------
