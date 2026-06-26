@@ -183,6 +183,13 @@ interface LowerContext {
   optionalChainSubstitution?: { targetExpr: ts.Expression; localIndex: number };
   classInfos: ClassInfo[];
   hoistedFunctionNodes?: Set<ts.Node>;
+  /**
+   * When the body being lowered cannot suspend, the clause naming it for an
+   * async-host-call diagnostic (e.g. "a synchronous `onExecute`"). Absent for a
+   * suspendable body (an `async onExecute`) and for plain helper and closure
+   * bodies.
+   */
+  nonSuspendableContext?: string;
 }
 
 function allocLabel(ctx: LowerContext): number {
@@ -1268,6 +1275,7 @@ function lowerOnPageEnteredBody(
     currentFunctionName: `${descriptor.name}.onPageEntered`,
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
     classInfos,
+    nonSuspendableContext: "`onPageEntered` (page handlers cannot suspend)",
   };
 
   const body = funcNode.body;
@@ -1355,6 +1363,7 @@ function lowerOnPageExitedBody(
     currentFunctionName: `${descriptor.name}.onPageExited`,
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
     classInfos,
+    nonSuspendableContext: "`onPageExited` (page handlers cannot suspend)",
   };
 
   const body = funcNode.body;
@@ -1533,6 +1542,9 @@ function lowerOnExecuteBody(
     currentFunctionName: `${descriptor.name}.onExecute`,
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
     classInfos,
+    nonSuspendableContext: descriptor.execIsAsync
+      ? undefined
+      : "a synchronous `onExecute`. Declare `onExecute` as `async` and `await` the call",
   };
 
   const body = funcNode.body;
@@ -1709,6 +1721,7 @@ function generateModuleInitWithImports(
     closureFunctions,
     currentFunctionName: "<module-init>",
     classInfos,
+    nonSuspendableContext: "a module-level initializer",
   };
 
   for (const moduleName of moduleInitOrder) {
@@ -1945,6 +1958,17 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     ctx.ir.push({ kind: "Return" });
   } else if (ts.isExpressionStatement(stmt)) {
     lowerExpression(stmt.expression, ctx);
+    const lastNode = ctx.ir[ctx.ir.length - 1];
+    if (lastNode?.kind === "HostCallAsync" && ctx.nonSuspendableContext === undefined) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.UnawaitedAsyncCall,
+          `The result of async action \`${lastNode.fnName}\` is discarded. Add \`await\` to wait for it to complete.`,
+          stmt.expression,
+          "warning"
+        )
+      );
+    }
     ctx.ir.push({ kind: "Pop" });
   } else if (ts.isVariableStatement(stmt)) {
     lowerVariableDeclarationList(stmt.declarationList, ctx);
@@ -3251,6 +3275,9 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
   }
 
   if (ts.isPropertyAccessExpression(expr.expression)) {
+    if (lowerPromiseMethodCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerArrayFromCall(expr, expr.expression, ctx)) {
       return;
     }
@@ -3405,6 +3432,33 @@ function lowerStaticMethodCall(
   return false;
 }
 
+/**
+ * Rejects a method call whose receiver is an async result (a `Promise` or
+ * `PromiseLike`), reporting `UnsupportedAsyncResultMethod` at `expr`. Returns
+ * true and pushes a nil placeholder when it handles the call; false when the
+ * receiver is not an async result.
+ */
+function lowerPromiseMethodCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
+  const sym = receiverType.aliasSymbol ?? receiverType.getSymbol();
+  const typeName = sym?.getName();
+  if (typeName !== "Promise" && typeName !== "PromiseLike") return false;
+
+  ctx.diagnostics.push(
+    makeDiag(
+      LoweringDiagCode.UnsupportedAsyncResultMethod,
+      `\`.${propAccess.name.text}()\` is not supported on an async result. Use \`await\` to obtain the resolved value.`,
+      expr
+    )
+  );
+  ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+  return true;
+}
+
 function lowerStructMethodCall(
   expr: ts.CallExpression,
   propAccess: ts.PropertyAccessExpression,
@@ -3443,11 +3497,24 @@ function lowerStructMethodCall(
   lowerExpression(propAccess.expression, ctx);
   const argc = lowerCallArgumentsWithTargetTypes(expr, ctx) + 1;
   if (fnEntry.isAsync) {
-    ctx.ir.push({ kind: "HostCallAsync", fnName, argc });
+    emitHostCallAsync(ctx, expr, fnName, argc);
   } else {
     ctx.ir.push({ kind: "HostCall", fnName, argc });
   }
   return true;
+}
+
+/**
+ * Emits a `HostCallAsync` for an async host function. When the enclosing body
+ * cannot suspend, also reports an error at `node`.
+ */
+function emitHostCallAsync(ctx: LowerContext, node: ts.Node, fnName: string, argc: number): void {
+  const context = ctx.nonSuspendableContext;
+  if (context !== undefined) {
+    const message = `\`${fnName}\` is an async action and cannot be called from ${context}.`;
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.AsyncHostCallInNonSuspendableContext, message, node));
+  }
+  ctx.ir.push({ kind: "HostCallAsync", fnName, argc });
 }
 
 interface CaptureInfo {
@@ -10109,9 +10176,14 @@ function lowerClassDeclaration(
   return entries;
 }
 
-function makeDiag(code: LoweringDiagCode, message: string, node: ts.Node): CompileDiagnostic {
+function makeDiag(
+  code: LoweringDiagCode,
+  message: string,
+  node: ts.Node,
+  severity: CompileDiagnostic["severity"] = "error"
+): CompileDiagnostic {
   const sourceFile = node.getSourceFile();
-  const diag: CompileDiagnostic = { code, message, severity: "error" };
+  const diag: CompileDiagnostic = { code, message, severity };
   if (sourceFile) {
     const start = sourceFile.getLineAndCharacterOfPosition(node.getStart());
     const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());

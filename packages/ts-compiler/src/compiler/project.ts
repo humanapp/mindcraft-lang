@@ -350,9 +350,10 @@ export class UserTileProject {
       imported.interfaces,
       imported.typeAliases
     );
-    if (programResult.diagnostics.length > 0) {
+    if (programResult.diagnostics.some((d) => d.severity === "error")) {
       return { diagnostics: programResult.diagnostics };
     }
+    const lowerWarnings = programResult.diagnostics.filter((d) => d.severity !== "error");
 
     const pool = new compiler.ConstantPool(services.runtime.types);
     const emittedFunctions: ReturnType<typeof emitFunction>["bytecode"][] = [];
@@ -480,7 +481,7 @@ export class UserTileProject {
       tags,
     };
 
-    return { diagnostics: metaDiags, program, descriptor, functionDebugInfo };
+    return { diagnostics: [...lowerWarnings, ...metaDiags], program, descriptor, functionDebugInfo };
   }
 }
 

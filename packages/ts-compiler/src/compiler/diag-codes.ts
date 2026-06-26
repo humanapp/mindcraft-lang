@@ -404,6 +404,12 @@ export enum LoweringDiagCode {
   ReadOnlyFieldAssignment = 3171,
   /** onPageExited function has no body */
   OnPageExitedHasNoBody = 3172,
+  /** Async host call lowered into a body that cannot suspend (sync onExecute, page hook, or module initializer) */
+  AsyncHostCallInNonSuspendableContext = 3173,
+  /** A method (e.g. `.then`/`.catch`) is called on an async result */
+  UnsupportedAsyncResultMethod = 3174,
+  /** An async action's result is discarded without `await` (warning) */
+  UnawaitedAsyncCall = 3175,
 }
 
 /**

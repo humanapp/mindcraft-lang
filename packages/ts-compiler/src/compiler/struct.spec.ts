@@ -1347,8 +1347,8 @@ export default Sensor({
   args: [
     param("w", { type: "Widget" }),
   ],
-  onExecute(ctx: Context, args: { w: Widget }): number {
-    args.w.fetchData("http://example.com");
+  async onExecute(ctx: Context, args: { w: Widget }): Promise<number> {
+    await args.w.fetchData("http://example.com");
     return 0;
   },
 });
