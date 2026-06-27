@@ -1,13 +1,15 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
-import type { List, ReadonlyList } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import { logger } from "../../platform/logger";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
-import type { ActionDescriptor, ActionRef, BrainActionResolver } from "../../runtime";
-import { type BrainActionArgSlot, CoreOpId, NativeType } from "../../runtime";
+import type { ActionDescriptor, ActionRef, BrainActionResolver, ITypeRegistry, TypeId } from "../../runtime";
+import { type BrainActionArgSlot, CoreOpId, CoreTypeIds, NativeType } from "../../runtime";
 import { NIL_VALUE, type Value } from "../../runtime/value";
+import type { ITileCatalog } from "../interfaces";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
+import type { BrainTileParameterDef } from "../tiles";
 import type { ConstantPool } from "./constant-pool";
 import { CompilationDiagCode, type DiagCode, LinkDiagCode } from "./diagnostics";
 import type {
@@ -50,6 +52,10 @@ interface CompilationContext {
   typeEnv: TypeEnv;
   /** Constant pool for managing literal values */
   constantPool: ConstantPool;
+  /** Type registry, used to instantiate the `List<T>` type of a repeated arg slot. */
+  typeRegistry: ITypeRegistry;
+  /** Tile catalogs, used to resolve a repeated slot's parameter element type. */
+  catalogs: ReadonlyList<ITileCatalog>;
   /** Counter for assigning unique call-site IDs to host and action call instructions */
   nextCallSiteId: { value: number };
   /** Diagnostics collected during compilation */
@@ -534,25 +540,10 @@ export class ExprCompiler implements ExprVisitor<void> {
       this.emitter.stackSetRel(argc - 1 - slotId);
     };
 
-    // Emit anonymous arguments
-    for (let i = 0; i < anons.size(); i++) {
-      const slot = anons.get(i);
-      emitSlotEntry(slot.slotId, () => {
-        acceptExprVisitor(slot.expr, this);
-        this.emitConversionIfNeeded(slot.expr.nodeId);
-      });
-    }
-
-    // Emit named parameters
-    for (let i = 0; i < parameters.size(); i++) {
-      const slot = parameters.get(i);
-      emitSlotEntry(slot.slotId, () => {
-        acceptExprVisitor(slot.expr, this);
-        // The conversion is stored on the ParameterExpr node (same node
-        // that validateActionCallSlot checks), not on the inner value node.
-        this.emitConversionIfNeeded(slot.expr.nodeId);
-      });
-    }
+    // Emit anonymous arguments, then named parameters. Both accept repeated
+    // slots, whose same-slot values are gathered into one `List<T>`.
+    this.emitSlotExprs(anons, argSlots, emitSlotEntry);
+    this.emitSlotExprs(parameters, argSlots, emitSlotEntry);
 
     // Emit modifiers -- count occurrences per slotId so repeated modifiers
     // produce a numeric count value instead of a boolean flag.
@@ -570,6 +561,87 @@ export class ExprCompiler implements ExprVisitor<void> {
     });
 
     return argc;
+  }
+
+  /**
+   * Emit a list of slot expressions (the anonymous args or the named
+   * parameters) into their positional slots. A non-repeated slot takes the
+   * single value of its entry. A repeated slot (one from a `repeat` call-spec)
+   * gathers every entry that shares its slotId, in source order, into one
+   * `List<T>` value built with `LIST_NEW` + a `LIST_PUSH` per element; the list
+   * is emitted once, at the first entry of that slot, and the slot's remaining
+   * entries are folded into it. Per-element type conversions are applied to each
+   * element before its `LIST_PUSH`, exactly as a non-repeated slot converts its
+   * single value.
+   */
+  private emitSlotExprs(
+    slotExprs: ReadonlyList<SlotExpr>,
+    argSlots: ReadonlyList<BrainActionArgSlot>,
+    emitSlotEntry: (slotId: number, emitValue: () => void) => void
+  ): void {
+    const gathered = new Dict<number, boolean>();
+    for (let i = 0; i < slotExprs.size(); i++) {
+      const slot = slotExprs.get(i);
+      const argSlot = argSlots.get(slot.slotId);
+      if (argSlot?.repeated) {
+        if (gathered.get(slot.slotId)) {
+          continue;
+        }
+        gathered.set(slot.slotId, true);
+        emitSlotEntry(slot.slotId, () => {
+          this.emitter.listNew(this.repeatedSlotListTypeIdx(argSlot, slotExprs));
+          for (let j = 0; j < slotExprs.size(); j++) {
+            const entry = slotExprs.get(j);
+            if (entry.slotId !== slot.slotId) {
+              continue;
+            }
+            acceptExprVisitor(entry.expr, this);
+            this.emitConversionIfNeeded(entry.expr.nodeId);
+            this.emitter.listPush();
+          }
+        });
+      } else {
+        emitSlotEntry(slot.slotId, () => {
+          acceptExprVisitor(slot.expr, this);
+          // The conversion is stored on the entry's node (the ParameterExpr for
+          // a named parameter, the value node for an anonymous arg) -- the same
+          // node validateActionCallSlot annotates.
+          this.emitConversionIfNeeded(slot.expr.nodeId);
+        });
+      }
+    }
+  }
+
+  /**
+   * Resolve the constant-pool type-table index for a repeated slot's gathered
+   * `List<T>`. The element type `T` is the slot parameter tile's `dataType`;
+   * when the tile cannot be resolved it falls back to the first gathered
+   * entry's inferred type, then to `Any`.
+   */
+  private repeatedSlotListTypeIdx(argSlot: BrainActionArgSlot, slotExprs: ReadonlyList<SlotExpr>): number {
+    let elementTypeId: TypeId | undefined = this.resolveParameterDataType(argSlot.argSpec.tileId);
+    if (elementTypeId === undefined) {
+      for (let i = 0; i < slotExprs.size(); i++) {
+        const entry = slotExprs.get(i);
+        if (entry.slotId === argSlot.slotId) {
+          elementTypeId = this.context.typeEnv.get(entry.expr.nodeId)?.inferred;
+          break;
+        }
+      }
+    }
+    const listTypeId = this.context.typeRegistry.instantiate("List", List.from([elementTypeId ?? CoreTypeIds.Any]));
+    return this.context.constantPool.addType(listTypeId);
+  }
+
+  /** The `dataType` of the parameter tile with `tileId`, or undefined when not a parameter tile. */
+  private resolveParameterDataType(tileId: string): TypeId | undefined {
+    for (let i = 0; i < this.context.catalogs.size(); i++) {
+      const tileDef = this.context.catalogs.get(i).get(tileId);
+      if (tileDef?.kind === "parameter") {
+        return (tileDef as BrainTileParameterDef).dataType;
+      }
+    }
+    return undefined;
   }
 
   // ==========================================

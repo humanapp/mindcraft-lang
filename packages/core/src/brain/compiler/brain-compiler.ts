@@ -420,6 +420,8 @@ export class BrainCompiler {
       actionResolver: this.actionResolver,
       typeEnv,
       constantPool: this.constantPool,
+      typeRegistry: this.typeRegistry,
+      catalogs: this.catalogs,
       nextCallSiteId: this.nextCallSiteIdCounter,
       diags: List.empty<CompilationDiag>(),
     };

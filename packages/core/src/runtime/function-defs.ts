@@ -99,6 +99,12 @@ export interface BrainActionArgSlot {
   readonly slotId: number;
   readonly argSpec: BrainActionCallArgSpec;
   readonly choiceGroup?: number;
+  /**
+   * True when the slot comes from a `repeat` spec, so multiple tiles can fill
+   * it. A repeated anonymous/parameter slot gathers its values into a
+   * `List<T>`; a repeated modifier slot instead counts its occurrences.
+   */
+  readonly repeated?: boolean;
 }
 
 /** Compiled call definition: the original {@link BrainActionCallSpec} tree plus its flattened arg slots. */
@@ -150,14 +156,15 @@ let nextChoiceGroupId = 0;
 /** Flatten a {@link BrainActionCallSpec} into ordered, slot-indexed args. */
 export function callSpecToArgSlots(callSpec: BrainActionCallSpec): ReadonlyList<BrainActionArgSlot> {
   const argList = List.empty<BrainActionArgSlot>();
-  callSpecToArgSlotsImpl(callSpec, argList, undefined);
+  callSpecToArgSlotsImpl(callSpec, argList, undefined, undefined);
   return argList.asReadonly();
 }
 
 function callSpecToArgSlotsImpl(
   callSpec: BrainActionCallSpec,
   argList: List<BrainActionArgSlot>,
-  choiceGroup: number | undefined
+  choiceGroup: number | undefined,
+  repeated: true | undefined
 ) {
   switch (callSpec.type) {
     case "arg":
@@ -165,35 +172,36 @@ function callSpecToArgSlotsImpl(
         slotId: argList.size(),
         argSpec: callSpec,
         choiceGroup,
+        repeated,
       });
       break;
     case "seq":
       for (const item of callSpec.items) {
-        callSpecToArgSlotsImpl(item, argList, choiceGroup);
+        callSpecToArgSlotsImpl(item, argList, choiceGroup, repeated);
       }
       break;
     case "choice": {
       const groupId = nextChoiceGroupId++;
       for (const option of callSpec.options) {
-        callSpecToArgSlotsImpl(option, argList, groupId);
+        callSpecToArgSlotsImpl(option, argList, groupId, repeated);
       }
       break;
     }
     case "optional":
-      callSpecToArgSlotsImpl(callSpec.item, argList, choiceGroup);
+      callSpecToArgSlotsImpl(callSpec.item, argList, choiceGroup, repeated);
       break;
     case "repeat":
-      callSpecToArgSlotsImpl(callSpec.item, argList, choiceGroup);
+      callSpecToArgSlotsImpl(callSpec.item, argList, choiceGroup, true);
       break;
     case "bag":
       for (const item of callSpec.items) {
-        callSpecToArgSlotsImpl(item, argList, choiceGroup);
+        callSpecToArgSlotsImpl(item, argList, choiceGroup, repeated);
       }
       break;
     case "conditional":
-      callSpecToArgSlotsImpl(callSpec.then, argList, choiceGroup);
+      callSpecToArgSlotsImpl(callSpec.then, argList, choiceGroup, repeated);
       if (callSpec.else) {
-        callSpecToArgSlotsImpl(callSpec.else, argList, choiceGroup);
+        callSpecToArgSlotsImpl(callSpec.else, argList, choiceGroup, repeated);
       }
       break;
     default: {
