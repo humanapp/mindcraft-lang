@@ -1,6 +1,6 @@
-import { CoreCapabilityBits, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import { CoreCapabilityBits, type IBrainActionTileDef, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, Clock } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
 import { adjustColor, saturateColor } from "../lib/color";
 import { glassEffect } from "../lib/glass-effect";
@@ -38,6 +38,8 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
     const isParamTile = tileDef.kind === "parameter";
     const isFactoryTile = tileDef.kind === "factory";
     const isUserTile = tileDef.capabilities().get(CoreCapabilityBits.UserTile) !== 0;
+    const isActionTile = tileDef.kind === "sensor" || tileDef.kind === "actuator";
+    const isAsyncAction = isActionTile && (tileDef as IBrainActionTileDef).action.isAsync === true;
     let tileTypeIcon: string | undefined;
     let tileTypeName: string | undefined;
 
@@ -104,6 +106,18 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
 
     return (
       <div className="relative self-center hover:scale-105 transition-transform duration-100">
+        {isAsyncAction && (
+          <span
+            className="group/clock absolute -top-1.5 -left-1.5 z-30 flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-slate-200 border-slate-300 text-slate-600"
+            role="img"
+            aria-label="May take time to complete"
+          >
+            <Clock className="w-4 h-4" />
+            <span className="absolute bottom-full left-0 mb-1 hidden group-hover/clock:block whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg pointer-events-none">
+              May take time to complete
+            </span>
+          </span>
+        )}
         {badge && (
           <span
             className={`group/badge absolute -top-1.5 -right-1.5 z-30 flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto ${
