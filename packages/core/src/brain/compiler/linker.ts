@@ -182,6 +182,7 @@ function remapInstruction(
   switch (instr.op) {
     case Op.CALL:
     case Op.MAKE_CLOSURE:
+    case Op.SPAWN_RULE:
       if (instr.a !== undefined) {
         return { ...instr, a: instr.a + funcOffset };
       }

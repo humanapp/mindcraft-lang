@@ -656,6 +656,9 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     // Child rule DO: actuator reads rule var "fromParent" via
     // getRuleVariable; because the child has its own funcId, this exercises
     // IBrainRule.getVariable<T>'s ancestor walk inside the dense shim.
+    // The child runs in its own fiber, spawned when the parent fires, so it
+    // takes effect one think later: think 1 fires the parent and spawns the
+    // child; the child reads the parent's rule var on think 2.
     const brainVarName = "rulevar-parent-child-out";
 
     const sensorDef = defineHost(
@@ -701,7 +704,7 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const childRule = parentRule.appendNewRule();
     childRule.do().appendTile(actuator as never);
 
-    const brain = runBrain(brainDef);
+    const brain = runBrain(brainDef, 2);
 
     const out = brain.getVariable(brainVarName);
     assert.ok(out !== undefined, "child actuator should have written to brain var");
@@ -745,6 +748,47 @@ describe("Brain behavioral -- multi-page", () => {
     brain.requestPageChange(1);
     brain.think(32);
     assert.equal(extractNumberValue(brain.getVariable(v.varName)), 2);
+  });
+
+  test("switching pages cancels a firing child-rule subtree and keeps running", () => {
+    const childMark = mkVar("cascade-child");
+    const pageMark = mkVar("cascade-page");
+    const brainDef = new BrainDef(services);
+
+    // Page 0: a parent rule whose child rule assigns the child marker. The child
+    // runs in its own fiber, spawned when the parent fires.
+    const p0 = brainDef.appendNewPage();
+    assert.ok(p0.success);
+    const parent = p0.value!.page.children().get(0)! as BrainRuleDef;
+    const child = parent.appendNewRule();
+    child.do().appendTile(childMark as never);
+    child.do().appendTile(opAssign as never);
+    child.do().appendTile(mkLiteral(1) as never);
+
+    // Page 1: a rule that assigns the page marker.
+    const p1 = brainDef.appendNewPage();
+    assert.ok(p1.success);
+    const rule1 = p1.value!.page.children().get(0)!;
+    rule1.do().appendTile(pageMark as never);
+    rule1.do().appendTile(opAssign as never);
+    rule1.do().appendTile(mkLiteral(2) as never);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+
+    // Two thinks on page 0: the parent fires and spawns the child, then the child
+    // runs the next think and sets its marker.
+    brain.think(16);
+    brain.think(32);
+    assert.equal(extractNumberValue(brain.getVariable(childMark.varName)), 1);
+
+    // Switch to page 1 while page 0's child subtree is live, then keep thinking.
+    // The cascade cancels the child subtree; the brain continues on page 1.
+    brain.requestPageChange(1);
+    brain.think(48);
+    brain.think(64);
+    assert.equal(extractNumberValue(brain.getVariable(pageMark.varName)), 2);
   });
 });
 

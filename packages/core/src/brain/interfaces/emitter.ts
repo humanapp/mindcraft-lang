@@ -119,6 +119,13 @@ export interface IBytecodeEmitter {
   call(funcId: number, argc: number): void;
 
   /**
+   * Spawn a fire-and-forget child-rule fiber running `funcId`. Pushes nothing
+   * onto the operand stack; the spawning fiber continues at the next
+   * instruction.
+   */
+  spawnRule(funcId: number): void;
+
+  /**
    * Call function indirectly via FunctionValue on the stack.
    * Pops argc arguments, then pops a FunctionValue, calls the function by funcId.
    */

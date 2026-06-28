@@ -486,6 +486,7 @@ non-empty strings, and non-empty collections are truthy.
 | -------- | ------- | ------------------------------------- | -------------------------------------- | ------ |
 | `CALL`   | 30      | `funcId` (`a`), `argc` (`b`)          | `[arg0, ..., arg(argc-1)] -> []`       | `ScriptError` if `funcId` is out of bounds or `argc != callee.numParams`. `StackOverflow` if frame depth would exceed `maxFrameDepth`. |
 | `RET`    | 31      | none                                  | `[retv] -> []` (caller frame: `[] -> [retv]`) | -      |
+| `SPAWN_RULE` | 32  | `funcId` (`a`)                        | `[] -> []`                             | `StackOverflow` on fiber-pool exhaustion. |
 
 `CALL` pops `argc` values right-to-left into the callee's local-slot
 0..argc-1, pushes a new frame whose `pc` starts at 0, and resumes
@@ -497,6 +498,21 @@ the caller's stack base, and pushes the return value onto the
 caller's operand stack. If `RET` runs in the root frame, the fiber
 transitions to `DONE` and any owning async-action handle is
 resolved with the return value.
+
+`SPAWN_RULE` spawns a child-rule fiber running `funcId` (a rule entry)
+and enqueues it, then continues at the next instruction in the spawning
+fiber without awaiting and without pushing anything. The compiler emits
+one `SPAWN_RULE` per child rule at the parent rule's tail, after the
+parent's `DO` section (including any async action and its `AWAIT`) and
+before the WHEN-false skip target, so a child rule is reached only if its
+parent fired and only after the parent's own slice -- including the
+resolution of the parent's own `AWAIT` -- is complete. Every rule at
+every nesting level runs in its own fiber: sibling child rules are
+concurrent, and a child's `AWAIT` parks only that child. The spawned
+child rides the spawn -> next-round -> resume path, so it takes effect
+the next think per nesting level (the same cadence as `YIELD` and
+async-actuator continuations); see [Fiber scheduling](#fiber-scheduling)
+for the re-fire quiescence and cancellation rules.
 
 ### Host calls
 
@@ -1239,7 +1255,34 @@ reproduce it exactly.
   build mirrors them as build constants; they are not free tuning
   knobs.
 - **Rule respawn.** Completed **and faulted** root-rule fibers
-  respawn on the next think; a fault kills the fiber, not the rule.
+  respawn on the next think; a fault kills the fiber, not the rule. A
+  root rule does **not** respawn while any live (runnable or waiting)
+  child-rule fiber belongs to its subtree: the rule quiesces -- it does
+  not re-fire its `WHEN`/`DO` -- while a descendant child it spawned is
+  still in flight (e.g. parked awaiting), and re-fires only once the
+  whole subtree has settled. Subtree membership is the static rule
+  ancestry: a child-rule fiber carries the funcId of the root rule it
+  descends from.
+- **Every rule is a fiber.** Root rules are spawned one per
+  `rootRuleFuncIds` entry on page activation. Child rules (nested in a
+  parent's `DO`) are spawned by the parent's `SPAWN_RULE` at its tail,
+  fire-and-forget, and run in their own fibers -- so a child rule's
+  `AWAIT` parks only that child and sibling child rules are concurrent.
+  A child fiber resumes across the think boundary on the existing spawn
+  -> next-round path, so it takes effect the next think per nesting
+  level. The scheduler round model is otherwise unchanged.
+- **Cancellation cascade.** Deactivating, restarting, or switching away
+  from the active page cancels its root-rule fibers and, via the cascade,
+  every live child-rule fiber spawned beneath them. Exactly one page is
+  active, so every live child-rule fiber descends from one of its roots;
+  cancelling each removes it from the run queue, so the cascade is safe
+  when a host body triggers it mid-round. No child fiber is orphaned.
+- **Handle-completion resume timing.** A fiber made runnable by a handle
+  settling joins the run queue and runs in the next round, never the
+  current one (the round rule). A handle that settles while a round runs
+  (an async-action child completing) resumes its waiter for the next
+  round; a handle settled out of band between thinks resumes its waiter
+  before the next round opens.
 - **`maxFibers` is a generous runaway-spawn guard, not a memory cap.**
   Fibers are allocated on demand; the count is bounded structurally by
   available memory (a fixed-capacity port faults `StackOverflow` at

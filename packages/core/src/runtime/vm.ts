@@ -454,6 +454,8 @@ export class VM implements IVM {
           return this.execCall(fiber, ins, frame);
         case Op.RET:
           return this.execRet(fiber, scheduler);
+        case Op.SPAWN_RULE:
+          return this.execSpawnRule(fiber, ins, frame, scheduler);
         case Op.HOST_CALL:
           return this.execHostCall(fiber, ins, frame);
         case Op.HOST_CALL_ASYNC:
@@ -910,6 +912,21 @@ export class VM implements IVM {
       this.events?.onFiberDone?.({ fiberId: fiber.id, retv });
       return { status: VmStatus.DONE, result: retv };
     }
+    return undefined;
+  }
+
+  private execSpawnRule(fiber: Fiber, ins: Instr, frame: Frame, scheduler: Scheduler): undefined {
+    const childFuncId = ins.a ?? 0;
+    if (!scheduler.spawnChildRule) {
+      throw new Error("SPAWN_RULE: scheduler cannot spawn child-rule fibers");
+    }
+    // Fire-and-forget: spawn the child rule in its own fiber, tagged with this
+    // subtree's root rule (this fiber's own root, or its rule funcId when it is
+    // the root), and continue without awaiting. The child runs in a later round
+    // (the round-tick rule). Nothing is pushed.
+    const subtreeRootFuncId = fiber.rootRuleFuncId ?? fiber.frames.get(0)!.funcId;
+    scheduler.spawnChildRule(childFuncId, subtreeRootFuncId, fiber.executionContext);
+    frame.pc++;
     return undefined;
   }
 
@@ -2360,6 +2377,48 @@ export class FiberScheduler implements IFiberScheduler {
     const fiber = this.getFiber(fiberId);
     if (fiber) {
       this.vm.cancelFiber(fiber, this);
+    }
+  }
+
+  /**
+   * Spawns a fire-and-forget child-rule fiber for `funcId`, tagged with
+   * `subtreeRootFuncId` (the funcId of the root rule whose subtree it belongs
+   * to), and enqueues it for the next round.
+   */
+  spawnChildRule(funcId: number, subtreeRootFuncId: number, executionContext: ExecutionContext): void {
+    const fiberId = this.nextFiberId++;
+    const fiber = this.vm.spawnFiber(fiberId, funcId, List.empty(), executionContext);
+    fiber.rootRuleFuncId = subtreeRootFuncId;
+    this.addFiber(fiber);
+  }
+
+  hasLiveDescendantOfRoot(rootRuleFuncId: number): boolean {
+    for (const [, fiber] of this.fibers.entries().toArray()) {
+      if (
+        fiber.rootRuleFuncId === rootRuleFuncId &&
+        (fiber.state === FiberState.RUNNABLE || fiber.state === FiberState.WAITING)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Cancels every live child-rule fiber (those carrying a `rootRuleFuncId`). The
+   * page-scoped cancellation cascade: exactly one page is active, so every live
+   * child-rule fiber descends from one of its root rules. Cancelling marks each
+   * `CANCELLED`; `tick` skips cancelled fibers still in the run queue, so the
+   * cascade is safe mid-round.
+   */
+  cancelChildRuleFibers(): void {
+    for (const [, fiber] of this.fibers.entries().toArray()) {
+      if (
+        fiber.rootRuleFuncId !== undefined &&
+        (fiber.state === FiberState.RUNNABLE || fiber.state === FiberState.WAITING)
+      ) {
+        this.vm.cancelFiber(fiber, this);
+      }
     }
   }
 

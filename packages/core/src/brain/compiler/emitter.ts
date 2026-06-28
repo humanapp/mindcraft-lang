@@ -161,6 +161,11 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.CALL, a: funcId, b: argc });
   }
 
+  /** Spawn a fire-and-forget child-rule fiber running `funcId`. Pushes nothing. */
+  spawnRule(funcId: number): void {
+    this.emit({ op: Op.SPAWN_RULE, a: funcId });
+  }
+
   /** Call function indirectly via FunctionValue on the stack. */
   callIndirect(argc: number): void {
     this.emit({ op: Op.CALL_INDIRECT, a: argc });

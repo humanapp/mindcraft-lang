@@ -684,7 +684,8 @@ export class BrainRuntime implements IBrainRuntime {
   }
 
   /**
-   * Cancel all active fibers for the current page.
+   * Cancel all active fibers for the current page: every root-rule fiber and,
+   * via the cascade, every child-rule fiber spawned beneath them.
    */
   private cancelActiveFibers(): void {
     for (let i = 0; i < this.activeRuleFiberIds.size(); i++) {
@@ -693,6 +694,7 @@ export class BrainRuntime implements IBrainRuntime {
         this.scheduler.cancel(entry.fiberId);
       }
     }
+    this.scheduler.cancelChildRuleFibers();
   }
 
   /**
@@ -749,7 +751,11 @@ export class BrainRuntime implements IBrainRuntime {
 
     for (let i = 0; i < this.activeRuleFiberIds.size(); i++) {
       const entry = this.activeRuleFiberIds.get(i)!;
-      const needsRespawn = this.shouldRespawnFiber(entry.fiberId);
+      // A root rule re-fires only once it is dead and no descendant child-rule
+      // fiber is still in flight (the rule quiesces while a child it spawned is
+      // parked).
+      const needsRespawn =
+        this.shouldRespawnFiber(entry.fiberId) && !this.scheduler.hasLiveDescendantOfRoot(entry.funcId);
 
       if (needsRespawn) {
         const newFiberId = this.scheduler.spawn(entry.funcId, List.empty(), this.executionContext);

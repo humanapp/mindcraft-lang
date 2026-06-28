@@ -265,6 +265,12 @@ export interface Fiber {
    * `cancelAsyncActionHandle`. Never holds an authoring-object reference.
    */
   asyncResultHandleId?: HandleId;
+  /**
+   * Function id of the root rule whose subtree this child-rule fiber belongs to,
+   * set when spawned by `SPAWN_RULE`. `undefined` for root-rule, async-action
+   * child, and hook fibers, so its presence marks a child-rule fiber.
+   */
+  rootRuleFuncId?: number;
 }
 
 ///////////////////////////
@@ -418,6 +424,12 @@ export interface Scheduler {
    * (`ACTION_CALL_ASYNC` bytecode branch).
    */
   addFiber?: (fiber: Fiber) => void;
+  /**
+   * Spawns a fire-and-forget child-rule fiber for `funcId`, tagged with
+   * `subtreeRootFuncId` (its root rule), and enqueued for the next round.
+   * Present only on schedulers that support child-rule spawning (`SPAWN_RULE`).
+   */
+  spawnChildRule?: (funcId: number, subtreeRootFuncId: number, executionContext: ExecutionContext) => void;
 }
 
 ///////////////////////////
@@ -509,6 +521,15 @@ export interface IFiberScheduler extends Scheduler {
   addFiber(fiber: Fiber): void;
 
   /**
+   * Spawn a fire-and-forget child-rule fiber for `funcId`, tagged with its root
+   * rule, and enqueued for the next round.
+   * @param funcId - Rule entry function to run
+   * @param subtreeRootFuncId - Funcid of the root rule whose subtree it belongs to
+   * @param executionContext - Execution context for the child fiber
+   */
+  spawnChildRule(funcId: number, subtreeRootFuncId: number, executionContext: ExecutionContext): void;
+
+  /**
    * Remove a fiber from the scheduler
    * @param fiberId - ID of fiber to remove
    */
@@ -519,6 +540,22 @@ export interface IFiberScheduler extends Scheduler {
    * @param fiberId - ID of fiber to cancel
    */
   cancel(fiberId: number): void;
+
+  /**
+   * Cancel every live child-rule fiber (those spawned via `SPAWN_RULE`). Used
+   * by the page-scoped cancellation cascade when the active page deactivates,
+   * restarts, or is switched away; exactly one page is active, so every live
+   * child-rule fiber belongs to it. Root-rule, async-action child, and hook
+   * fibers are left untouched.
+   */
+  cancelChildRuleFibers(): void;
+
+  /**
+   * Returns true when a live (runnable or waiting) child-rule fiber belongs to
+   * the subtree of the root rule `rootRuleFuncId`. Used to hold a root rule's
+   * re-fire while any of its descendant child rules is still in flight.
+   */
+  hasLiveDescendantOfRoot(rootRuleFuncId: number): boolean;
 
   /**
    * Execute one scheduler tick: every fiber runnable at tick entry gets

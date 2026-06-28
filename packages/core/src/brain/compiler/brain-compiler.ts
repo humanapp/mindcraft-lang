@@ -47,7 +47,7 @@ interface RuleCompileResult {
   /** Variable names used by this rule (for LOAD_VAR_SLOT/STORE_VAR_SLOT) */
   variableNames: ReadonlyList<string>;
 
-  /** Function IDs of child rules that need to be CALLed */
+  /** Function IDs of child rules that the parent spawns as fibers */
   childFuncIds: List<number>;
 }
 
@@ -57,7 +57,7 @@ interface RuleCompileResult {
  * Architecture:
  * - Each rule becomes a single function in the program
  * - Functions are assigned IDs in depth-first traversal order
- * - Parent rules CALL their child rules after DO section completes
+ * - Parent rules spawn their child rules as fibers after the DO section completes
  * - All rules share a single constant pool
  * - Variables are resolved at Brain level (shared across all rules)
  *
@@ -66,12 +66,12 @@ interface RuleCompileResult {
  * func[rule]:
  *   WHEN_START
  *   ... when bytecode ...
- *   WHEN_END              ; jumps to skip_label if false
+ *   WHEN_END               ; jumps to skip_label if false
  *   DO_START
  *   ... do bytecode ...
  *   DO_END
- *   CALL child_rule_0, 0  ; execute children in order
- *   CALL child_rule_1, 0
+ *   SPAWN_RULE child_rule_0  ; spawn children in order, fire-and-forget
+ *   SPAWN_RULE child_rule_1
  *   ...
  * skip_label:
  *   RET
@@ -256,7 +256,7 @@ export class BrainCompiler {
 
   /**
    * Recursively collect all action call sites from a set of rule functions and
-   * their children (via CALL instructions). Host call sites
+   * their children (via SPAWN_RULE instructions). Host call sites
    * (`HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC`) are recorded with their
    * stable `actionId`; bytecode call sites (`ACTION_CALL` / `ACTION_CALL_ASYNC`)
    * with their program-local `actionSlot`.
@@ -281,7 +281,7 @@ export class BrainCompiler {
           out.push({ binding: "bytecode", actionSlot: ins.a ?? 0, callSiteId: ins.c ?? 0 });
         } else if (ins.op === Op.HOST_ACTION_CALL || ins.op === Op.HOST_ACTION_CALL_ASYNC) {
           out.push({ binding: "host", actionId: ins.a ?? 0, callSiteId: ins.c ?? 0 });
-        } else if (ins.op === Op.CALL) {
+        } else if (ins.op === Op.SPAWN_RULE) {
           childFuncIds.push(ins.a ?? 0);
         }
       }
@@ -369,12 +369,12 @@ export class BrainCompiler {
     this.emitExprs(doParseResult.exprs, emitter, typeEnv, false);
     emitter.doEnd();
 
-    // Emit CALL for each child rule (only if WHEN was true, i.e., we're before endLabel)
+    // Spawn each child rule in its own fiber (only if WHEN was true, i.e., we're
+    // before endLabel). Each child rule runs concurrently with its siblings and
+    // resumes across the think boundary; the parent does not wait for it.
     for (let i = 0; i < childFuncIds.size(); i++) {
       const childFuncId = childFuncIds.get(i)!;
-      emitter.call(childFuncId, 0);
-      // Pop the return value from child (children don't return meaningful values)
-      emitter.pop();
+      emitter.spawnRule(childFuncId);
     }
 
     // Mark end label (jumped to if WHEN was false - skips DO and children)

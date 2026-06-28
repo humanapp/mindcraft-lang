@@ -75,7 +75,7 @@ function markReachableFunctions(program: Program, pages: List<PageMetadata>): Un
 
     for (let i = 0; i < code.size(); i++) {
       const ins = code.get(i);
-      if (ins.op === Op.CALL || ins.op === Op.MAKE_CLOSURE) {
+      if (ins.op === Op.CALL || ins.op === Op.MAKE_CLOSURE || ins.op === Op.SPAWN_RULE) {
         if (ins.a !== undefined) {
           enqueue(ins.a);
         }
@@ -231,7 +231,7 @@ function remapInstruction(
 ): Instr {
   const op = ins.op;
 
-  if (op === Op.CALL || op === Op.MAKE_CLOSURE) {
+  if (op === Op.CALL || op === Op.MAKE_CLOSURE || op === Op.SPAWN_RULE) {
     if (ins.a !== undefined) {
       const newA = funcRemap.get(ins.a) ?? ins.a;
       if (newA !== ins.a) return { ...ins, a: newA };

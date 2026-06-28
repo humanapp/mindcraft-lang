@@ -38,6 +38,8 @@ export enum Op {
   // Function calls
   CALL = 30,
   RET,
+  /** Spawns a fire-and-forget child-rule fiber for `funcId` (operand `a`). */
+  SPAWN_RULE = 32,
 
   // Host calls (positional arg buffer on stack: vstack[top-argc+1 .. top])
   HOST_CALL = 40,
@@ -173,6 +175,7 @@ export const OPERAND_SCHEMA: Readonly<Record<Op, readonly OperandSpec[]>> = {
   [Op.JMP_IF_TRUE]: [SVAR],
   [Op.CALL]: [UVAR, UVAR],
   [Op.RET]: [],
+  [Op.SPAWN_RULE]: [UVAR],
   [Op.HOST_CALL]: [UVAR, UVAR, UVAR],
   [Op.HOST_CALL_ASYNC]: [UVAR, UVAR, UVAR],
   [Op.ACTION_CALL]: [UVAR, UVAR, UVAR],
