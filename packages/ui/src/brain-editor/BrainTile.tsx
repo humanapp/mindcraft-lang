@@ -1,6 +1,6 @@
 import { CoreCapabilityBits, type IBrainActionTileDef, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
-import { CircleAlert, Clock } from "lucide-react";
+import { CircleAlert, ClockFading } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
 import { adjustColor, saturateColor } from "../lib/color";
 import { glassEffect } from "../lib/glass-effect";
@@ -112,7 +112,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
             role="img"
             aria-label="May take time to complete"
           >
-            <Clock className="w-4 h-4" />
+            <ClockFading className="w-4 h-4" />
             <span className="absolute bottom-full left-0 mb-1 hidden group-hover/clock:block whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg pointer-events-none">
               May take time to complete
             </span>
