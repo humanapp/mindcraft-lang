@@ -969,13 +969,13 @@ export class VM implements IVM {
     const pending = (): boolean => handles.get(id)?.state === HandleState.PENDING;
     return {
       id,
-      resolve: (value: Value): void => {
+      resolve(value: Value): void {
         if (pending()) handles.resolve(id, value);
       },
-      reject: (code: ErrorCode, message = ""): void => {
+      reject(code: ErrorCode, message = ""): void {
         if (pending()) handles.reject(id, { code, message });
       },
-      cancel: (message?: string): void => {
+      cancel(message?: string): void {
         if (pending()) handles.cancel(id, message);
       },
     };
