@@ -1,6 +1,7 @@
 import { List } from "@mindcraft-lang/core";
 import { type BrainServices, compiler } from "@mindcraft-lang/core/brain";
 import type { ITypeRegistry } from "@mindcraft-lang/core/runtime";
+import { mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
@@ -64,11 +65,35 @@ export interface ProjectCompileResult {
   results: Map<string, CompileResult>;
   /** TypeScript pre-emit diagnostics, keyed by workspace path. */
   tsErrors: Map<string, CompileDiagnostic[]>;
+  /**
+   * Updated source text for files whose declaration was missing a stable `id`
+   * and had one minted during this compile, keyed by workspace path. The host
+   * should persist each entry back to the source file so the id is stable on
+   * subsequent compiles. Empty when every declaration already had an id.
+   */
+  sourceRewrites: Map<string, string>;
 }
 
 export const COMPILER_CONTROLLED_TSCONFIG_PATH = "tsconfig.json";
 const DEFAULT_AMBIENT_PATH = "ambient.d.ts";
-type UserTileProjectOptions = CompileOptions | { services: BrainServices; ambientFiles?: undefined };
+type UserTileProjectOptions =
+  | CompileOptions
+  | { services: BrainServices; ambientFiles?: undefined; generateActionId?: () => string };
+
+const ACTION_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const ACTION_ID_LENGTH = 16;
+
+/** Placeholder a tile's docs markdown may contain; replaced with the tile's resolved tile id during compilation. */
+// biome-ignore lint/suspicious/noTemplateCurlyInString: literal docs placeholder, not a template expression
+const DOCS_TILE_ID_PLACEHOLDER = "${tileId}";
+
+function defaultActionId(): string {
+  let result = "";
+  for (let i = 0; i < ACTION_ID_LENGTH; i++) {
+    result += ACTION_ID_ALPHABET.charAt(Math.floor(Math.random() * ACTION_ID_ALPHABET.length));
+  }
+  return result;
+}
 
 const checkerOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ES2016,
@@ -107,8 +132,8 @@ function toVfsPath(compilerPath: string): string {
   return compilerPath;
 }
 
-function buildUserActionKey(kind: "sensor" | "actuator", name: string): string {
-  return `user.${kind}.${name}`;
+function buildUserActionKey(kind: "sensor" | "actuator", id: string): string {
+  return `user.${kind}.${id}`;
 }
 
 function resolveRelativePath(sourceFilePath: string, relativePath: string): string {
@@ -167,6 +192,7 @@ export class UserTileProject {
   private readonly _ambientFiles: readonly AmbientFile[];
   private readonly _stdlibFiles: readonly StdlibSourceFile[];
   private readonly _services: BrainServices;
+  private readonly _generateActionId: () => string;
 
   constructor(options: UserTileProjectOptions) {
     this._ambientFiles = options.ambientFiles ?? [
@@ -174,6 +200,7 @@ export class UserTileProject {
     ];
     this._stdlibFiles = ("stdlibFiles" in options ? options.stdlibFiles : undefined) ?? [];
     this._services = options.services;
+    this._generateActionId = options.generateActionId ?? defaultActionId;
   }
 
   setFiles(files: ReadonlyMap<string, string>): void {
@@ -240,7 +267,7 @@ export class UserTileProject {
     }
 
     if (userRootFiles.length === 0) {
-      return { results: new Map(), tsErrors: new Map() };
+      return { results: new Map(), tsErrors: new Map(), sourceRewrites: new Map() };
     }
 
     const host = createVirtualCompilerHost(compilerFiles, checkerOptions);
@@ -282,11 +309,12 @@ export class UserTileProject {
     }
 
     if (tsErrors.size > 0) {
-      return { results: new Map(), tsErrors };
+      return { results: new Map(), tsErrors, sourceRewrites: new Map() };
     }
 
     const checker = tsProgram.getTypeChecker();
     const results = new Map<string, CompileResult>();
+    const sourceRewrites = new Map<string, string>();
 
     const services = this._services;
     services.runtime.types.removeUserTypes();
@@ -311,12 +339,14 @@ export class UserTileProject {
         checker,
         tsProgram,
         compilerFiles,
-        services
+        services,
+        vfsPath,
+        sourceRewrites
       );
       results.set(vfsPath, result);
     }
 
-    return { results, tsErrors };
+    return { results, tsErrors, sourceRewrites };
   }
 
   private _compileEntryPoint(
@@ -325,7 +355,9 @@ export class UserTileProject {
     checker: ts.TypeChecker,
     tsProgram: ts.Program,
     compilerFiles: Map<string, string>,
-    services: BrainServices
+    services: BrainServices,
+    vfsPath: string,
+    sourceRewrites: Map<string, string>
   ): CompileResult {
     const validationDiags = validateAst(sourceFile);
     if (validationDiags.length > 0) {
@@ -417,6 +449,15 @@ export class UserTileProject {
 
     const debugMetadata = assembleDebugMetadata(funcs, functionDebugInfo, compilerFiles);
 
+    const actionId = descriptor.id ?? this._generateActionId();
+    const actionKey = buildUserActionKey(descriptor.kind, actionId);
+    const actionTileId = descriptor.kind === "sensor" ? mkSensorTileId(actionKey) : mkActuatorTileId(actionKey);
+    if (descriptor.id === undefined) {
+      const text = sourceFile.text;
+      const offset = descriptor.idInsertOffset;
+      sourceRewrites.set(vfsPath, `${text.slice(0, offset)}\n  id: ${JSON.stringify(actionId)},${text.slice(offset)}`);
+    }
+
     const metaDiags: CompileDiagnostic[] = [];
     let iconUrl: string | undefined;
     let docsMarkdown: string | undefined;
@@ -443,7 +484,7 @@ export class UserTileProject {
       const vfsDocs = toVfsPath(resolvedDocs);
       const docsContent = this._files.get(vfsDocs);
       if (docsContent !== undefined) {
-        docsMarkdown = docsContent;
+        docsMarkdown = docsContent.split(DOCS_TILE_ID_PLACEHOLDER).join(actionTileId);
       } else {
         metaDiags.push({
           code: CompileDiagCode.MetadataFileNotFound,
@@ -461,7 +502,8 @@ export class UserTileProject {
       types: pool.typeEntries(),
       variableNames: List.empty(),
       entryPoint: programResult.entryFuncId,
-      key: buildUserActionKey(descriptor.kind, descriptor.name),
+      key: actionKey,
+      id: actionId,
       kind: descriptor.kind,
       name: descriptor.name,
       callDef,

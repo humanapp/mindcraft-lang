@@ -393,6 +393,8 @@ declare module "mindcraft" {
   export function seq(...items: ArgSpec[]): SeqSpec;
 
   export interface SensorConfig {
+    /** Stable identifier for this action, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
+    id?: string;
     name: string;
     label?: string;
     icon?: string;
@@ -405,6 +407,8 @@ declare module "mindcraft" {
   }
 
   export interface ActuatorConfig {
+    /** Stable identifier for this action, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
+    id?: string;
     name: string;
     label?: string;
     icon?: string;

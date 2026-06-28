@@ -31,15 +31,17 @@ import {
   isRecord,
 } from "@mindcraft-lang/ts-compiler";
 
-const METADATA_CACHE_VERSION = 3 as const;
+const METADATA_CACHE_VERSION = 4 as const;
 
 /** Cached metadata describing a user-authored sensor or actuator tile. */
 export interface UserTileMetadata {
   /** Stable key used to identify the tile across compiles. */
   key: string;
+  /** Opaque stable id from the source declaration. */
+  id: string;
   /** Whether the tile is a sensor or an actuator. */
   kind: "sensor" | "actuator";
-  /** Source-level identifier of the user's function. */
+  /** Display name of the user's action. */
   name: string;
   /** Brain-action call signature derived from the source. */
   callSpec: BrainActionCallSpec;
@@ -96,6 +98,7 @@ function isUserTileMetadata(value: unknown): value is UserTileMetadata {
   return (
     isRecord(value) &&
     typeof value.key === "string" &&
+    typeof value.id === "string" &&
     (value.kind === "sensor" || value.kind === "actuator") &&
     typeof value.name === "string" &&
     isCallSpec(value.callSpec) &&
@@ -112,6 +115,7 @@ function isUserTileMetadata(value: unknown): value is UserTileMetadata {
 function metadataFromProgram(program: UserAuthoredProgram): UserTileMetadata {
   return {
     key: program.key,
+    id: program.id,
     kind: program.kind,
     name: program.name,
     callSpec: program.callDef.callSpec as BrainActionCallSpec,
@@ -230,8 +234,8 @@ function resolveTypeId(types: ITypeRegistry, typeName: string): string | undefin
   return types.resolveByName(typeName);
 }
 
-function getParameterId(tileName: string, param: ExtractedParam): string {
-  return param.anonymous ? `anon.${param.type}` : `user.${tileName}.${param.name}`;
+function getParameterId(actionId: string, param: ExtractedParam): string {
+  return param.anonymous ? `anon.${param.type}` : `user.${actionId}.${param.name}`;
 }
 
 function buildHydratedSnapshot(
@@ -255,7 +259,7 @@ function buildHydratedSnapshot(
           break;
         }
 
-        const parameterId = getParameterId(entry.name, param);
+        const parameterId = getParameterId(entry.id, param);
         parameterTiles.push(
           new BrainTileParameterDef(parameterId, typeId, {
             hidden: param.anonymous,

@@ -120,6 +120,8 @@ export enum DescriptorDiagCode {
   TagsMustBeArrayLiteral = 2023,
   /** tags array element is not a string literal */
   TagElementMustBeStringLiteral = 2024,
+  /** id property value is not a string literal */
+  IdMustBeStringLiteral = 2026,
 
   /** args value is not an array literal */
   ArgsMustBeArrayLiteral = 2030,

@@ -1,6 +1,6 @@
 ```brain noframe when
 {
-  "tileId": "tile.actuator->user.actuator.teleport",
+  "tileId": "${tileId}",
   "catalog": []
 }
 ```

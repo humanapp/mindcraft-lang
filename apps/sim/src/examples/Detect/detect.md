@@ -1,6 +1,6 @@
 ```brain noframe when
 {
-  "tileId": "tile.sensor->user.sensor.detect",
+  "tileId": "${tileId}",
   "catalog": []
 }
 ```

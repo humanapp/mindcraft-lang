@@ -106,6 +106,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
     return { diagnostics };
   }
 
+  let id: string | undefined;
   let name: string | undefined;
   let args: ExtractedArgSpec[] = [];
   let onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction | undefined;
@@ -122,6 +123,14 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   for (const prop of arg.properties) {
     if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
       switch (prop.name.text) {
+        case "id":
+          if (ts.isStringLiteral(prop.initializer)) {
+            id = prop.initializer.text;
+          } else {
+            addDiag(DescriptorDiagCode.IdMustBeStringLiteral, prop.initializer, "`id` must be a string literal.");
+          }
+          break;
+
         case "name":
           if (ts.isStringLiteral(prop.initializer)) {
             name = prop.initializer.text;
@@ -243,6 +252,8 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   return {
     descriptor: {
       kind,
+      id,
+      idInsertOffset: arg.getStart(sourceFile) + 1,
       name: name!,
       returnType: kind === "sensor" ? returnType : undefined,
       args,

@@ -218,6 +218,7 @@ export class AppEnvironmentHost {
       stdlibFiles: this.stdlibFiles,
       examples: [...this._examples],
       onDidCompile: (result) => {
+        this.persistMintedActionIds(result.projectResult.sourceRewrites);
         logWorkspaceCompile(result);
         const tileResult = applyCompiledUserTiles(this.env, result, this.userTileStorageOptions());
         if (tileResult) {
@@ -229,6 +230,22 @@ export class AppEnvironmentHost {
     });
     syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest, this.host);
     this._compiler.initialize();
+  }
+
+  /**
+   * Persist source files whose user-action declaration had a stable `id` minted
+   * during compilation. Writes the updated text to the project file system and
+   * to the compiler's in-memory view.
+   */
+  private persistMintedActionIds(sourceRewrites: ReadonlyMap<string, string>): void {
+    if (sourceRewrites.size === 0) {
+      return;
+    }
+    for (const [path, content] of sourceRewrites) {
+      const newEtag = `idgen-${Date.now()}`;
+      this.projectFileSystem.applyLocalChange({ action: "write", path, content, newEtag });
+      this._compiler?.compiler.applyWorkspaceChange({ action: "write", path, content, newEtag });
+    }
   }
 
   // ---------------------------------------------------------------------------

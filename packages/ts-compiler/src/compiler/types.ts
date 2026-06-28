@@ -16,6 +16,8 @@ export interface CompileDiagnostic {
 
 /** Compiler output for a single user tile: a {@link UserActionArtifact} extended with extracted descriptor metadata. */
 export interface UserAuthoredProgram extends UserActionArtifact {
+  /** Opaque stable identifier from the source declaration. */
+  id: string;
   name: string;
   args: ExtractedArgSpec[];
   debugMetadata?: DebugMetadata;
@@ -66,6 +68,8 @@ export interface CompileOptions {
   /** Compilable `.ts` stdlib source modules a target contributes, resolvable by user import. */
   stdlibFiles?: readonly StdlibSourceFile[];
   services: BrainServices;
+  /** Mints a fresh stable action id when a source declaration has none. Defaults to a random opaque token. */
+  generateActionId?: () => string;
 }
 
 /** A 1-based source range produced by the descriptor extractor. */
@@ -79,6 +83,10 @@ export interface SourceSpan {
 /** Descriptor extracted from a `Sensor({...})` or `Actuator({...})` default export. */
 export interface ExtractedDescriptor {
   kind: "sensor" | "actuator";
+  /** Stable id from the source `id` field, or `undefined` when the declaration omits it (the compiler then mints one). */
+  id?: string;
+  /** Absolute source offset just inside the config object's opening brace, where a minted `id` is inserted on write-back. */
+  idInsertOffset: number;
   name: string;
   returnType: string | undefined;
   args: ExtractedArgSpec[];

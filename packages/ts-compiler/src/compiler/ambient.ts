@@ -380,6 +380,8 @@ const AMBIENT_MODULE_END = `
   export function seq(...items: ArgSpec[]): SeqSpec;
 
   export interface SensorConfig {
+    /** Stable identifier for this action, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
+    id?: string;
     name: string;
     label?: string;
     icon?: string;
@@ -392,6 +394,8 @@ const AMBIENT_MODULE_END = `
   }
 
   export interface ActuatorConfig {
+    /** Stable identifier for this action, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
+    id?: string;
     name: string;
     label?: string;
     icon?: string;

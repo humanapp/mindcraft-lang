@@ -44,6 +44,7 @@ describe("buildCompiledActionBundle", () => {
 import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
+  id: "snscan",
   name: "scan",
   onExecute(ctx: Context): number {
     return 1;
@@ -57,6 +58,7 @@ export default Sensor({
 import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
+  id: "acmove",
   name: "move",
   args: [
     param("target", { type: "number", anonymous: true }),
@@ -72,6 +74,7 @@ export default Actuator({
 import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
+  id: "acturn",
   name: "turn",
   args: [
     param("angle", { type: "number", anonymous: true }),
@@ -88,12 +91,16 @@ export default Actuator({
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
 
     assert.ok(bundle);
-    assert.deepEqual(bundle.actions.keys().toArray(), ["user.actuator.move", "user.actuator.turn", "user.sensor.scan"]);
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkSensorTileId("user.sensor.scan")));
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId("user.actuator.move")));
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId("user.actuator.turn")));
+    assert.deepEqual(bundle.actions.keys().toArray(), [
+      "user.actuator.acmove",
+      "user.actuator.acturn",
+      "user.sensor.snscan",
+    ]);
+    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkSensorTileId("user.sensor.snscan")));
+    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId("user.actuator.acmove")));
+    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId("user.actuator.acturn")));
     assert.equal(bundle.tiles.filter((tile) => tile.tileId === mkParameterTileId("anon.number")).length, 1);
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkParameterTileId("user.turn.label")));
+    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkParameterTileId("user.acturn.label")));
   });
 
   test("returns no bundle when the compile output still has diagnostics", () => {
@@ -157,6 +164,7 @@ export default Actuator({
 import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
+  id: "snprobe",
   name: "probe",
   onExecute(ctx: Context): number {
     return 2;
@@ -170,7 +178,7 @@ export default Sensor({
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
 
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.probe"));
+    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snprobe"));
     assert.ok(sensorTile);
 
     const brainDef = BrainDef.emptyBrainDef(services, "Probe Brain");
@@ -202,7 +210,7 @@ export default Sensor({
     if (!isBrainBuildError(thrown)) {
       assert.fail("expected a BrainBuildError");
     }
-    assert.ok(thrown.diagnostics.toArray().some((diag) => diag.message.includes("user.sensor.probe")));
+    assert.ok(thrown.diagnostics.toArray().some((diag) => diag.message.includes("user.sensor.snprobe")));
 
     environment.replaceActionBundle(bundle);
 

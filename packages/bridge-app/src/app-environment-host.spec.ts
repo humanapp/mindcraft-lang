@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   type ActiveProject,
   AppHostError,
+  createInMemoryProjectFileSystem,
   type ProjectCollection,
   type ProjectCollectionUnlockResult,
   type ProjectFileChange,
@@ -10,6 +13,7 @@ import {
   type ProjectFileSystem,
   type ProjectManager,
 } from "@mindcraft-lang/app-host";
+import { coreModule } from "@mindcraft-lang/core/app";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 
 class EmptyProjectFileSystem implements ProjectFileSystem {
@@ -85,6 +89,86 @@ function installEmptyLocalStorage(): () => void {
     Reflect.deleteProperty(globalThis, "localStorage");
   };
 }
+
+const CORE_AMBIENT = readFileSync(
+  fileURLToPath(new URL("../../core/ambient/mindcraft.core.d.ts", import.meta.url)),
+  "utf8"
+);
+
+const NO_ID_SENSOR_SOURCE = `import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "scan",
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`;
+
+function stubProjectManager(filesystem: ProjectFileSystem): ProjectManager {
+  return {
+    activeProject: {
+      manifest: {
+        id: "p1",
+        projectCollectionId: "collection-1",
+        name: "p1",
+        description: "",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      filesystem,
+    } as ActiveProject,
+    activeProjectCollection: createProjectCollection(),
+    async init(): Promise<void> {},
+    async getProjectCollectionState(): Promise<{ access: "ready" }> {
+      return { access: "ready" };
+    },
+    async ensureDefaultProject(): Promise<void> {},
+    async saveAppData(): Promise<void> {},
+    async loadAppData(): Promise<string | undefined> {
+      return undefined;
+    },
+    dispose(): void {},
+  } as unknown as ProjectManager;
+}
+
+describe("AppEnvironmentHost user-action id write-back", () => {
+  it("mints a stable id for an id-less tile and writes it back into the source on compile", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem();
+    filesystem.applyLocalChange({
+      action: "write",
+      path: "tiles/scan.ts",
+      content: NO_ID_SENSOR_SOURCE,
+      newEtag: "e1",
+    });
+
+    const host = new AppEnvironmentHost({
+      projectManager: stubProjectManager(filesystem),
+      modules: [coreModule()],
+      ambientFiles: [{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }],
+      host: { name: "test", version: "0.0.0" },
+    });
+
+    try {
+      await host.initialize("p1");
+
+      const written = filesystem.exportSnapshot().get("tiles/scan.ts");
+      assert.ok(written && written.kind === "file");
+      const idMatch = written.content.match(/id: "([A-Za-z0-9]{16})"/);
+      assert.ok(idMatch, `expected a minted id written back into the source, got:\n${written.content}`);
+      assert.match(written.content, /name: "scan"/);
+
+      const metadata = host.lastUserTileMetadata;
+      assert.ok(metadata && metadata.length === 1);
+      assert.equal(metadata[0].id, idMatch[1]);
+      assert.equal(metadata[0].key, `user.sensor.${idMatch[1]}`);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
 
 describe("AppEnvironmentHost project transitions", () => {
   it("does not emit project unloading when switching fails before the active project changes", async () => {

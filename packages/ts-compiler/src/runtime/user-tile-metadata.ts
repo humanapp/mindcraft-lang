@@ -25,10 +25,10 @@ function buildActionDescriptor(program: UserAuthoredProgram): ActionDescriptor {
   };
 }
 
-function getParameterId(tileName: string, param: ExtractedParam): string {
+function getParameterId(actionId: string, param: ExtractedParam): string {
   if (param.anonymous) return `anon.${param.type}`;
   if (param.name.startsWith("parameter.")) return param.name;
-  return `user.${tileName}.${param.name}`;
+  return `user.${actionId}.${param.name}`;
 }
 
 function buildParameterTiles(
@@ -38,7 +38,7 @@ function buildParameterTiles(
   const parameterTiles = new Map<string, BrainTileParameterDef>();
 
   for (const param of collectParams(program.args)) {
-    const parameterId = getParameterId(program.name, param);
+    const parameterId = getParameterId(program.id, param);
     if (param.name.startsWith("parameter.")) continue;
     const tileId = mkParameterTileId(parameterId);
     if (parameterTiles.has(tileId)) {

@@ -55,6 +55,7 @@ export default Sensor({
 import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
+  id: "regactuator",
   name: "phase6-reg-actuator",
   args: [
     param("distance", { type: "number" }),
@@ -70,8 +71,8 @@ export default Actuator({
 
     const { tiles } = services.edit;
     assert.ok(tiles.has(mkActuatorTileId(program.key)), "actuator tile metadata should be registered");
-    assert.ok(tiles.has(mkParameterTileId("user.phase6-reg-actuator.distance")));
-    assert.ok(tiles.has(mkParameterTileId("user.phase6-reg-actuator.label")));
+    assert.ok(tiles.has(mkParameterTileId("user.regactuator.distance")));
+    assert.ok(tiles.has(mkParameterTileId("user.regactuator.label")));
     assert.ok(tiles.has(mkParameterTileId("anon.number")));
   });
 
@@ -80,6 +81,7 @@ export default Actuator({
 import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
+  id: "regunknownparam",
   name: "phase6-reg-unknown-param",
   args: [
     param("target", { type: "number" }),
@@ -93,7 +95,7 @@ export default Actuator({
 
     assert.throws(
       () => registerUserTile(program, services),
-      /Unknown parameter type "vector2" for "user\.actuator\.phase6-reg-unknown-param"/
+      /Unknown parameter type "vector2" for "user\.actuator\.regunknownparam"/
     );
   });
 
