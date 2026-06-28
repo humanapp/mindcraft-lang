@@ -3281,6 +3281,9 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
     if (lowerArrayFromCall(expr, expr.expression, ctx)) {
       return;
     }
+    if (lowerArrayIsArrayCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerBufferConstructorCall(expr, expr.expression, ctx)) {
       return;
     }
@@ -7869,6 +7872,19 @@ function lowerArrayFromCall(
 
   ctx.ir.push({ kind: "Label", labelId: loopEnd });
   ctx.ir.push({ kind: "LoadLocal", index: resultListLocal });
+  return true;
+}
+
+function lowerArrayIsArrayCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  if (!isArrayGlobal(propAccess.expression, ctx)) return false;
+  if (propAccess.name.text !== "isArray") return false;
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.List });
   return true;
 }
 

@@ -851,6 +851,57 @@ describe("Array.from", () => {
   });
 });
 
+describe("Array.isArray", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("Array.isArray([1, 2, 3]) -> true", () => {
+    const v = compileAndRunBoolean(`
+      return Array.isArray([1, 2, 3] as number[]);
+    `);
+    assert.equal(v, true);
+  });
+
+  test("Array.isArray of a list variable -> true", () => {
+    const v = compileAndRunBoolean(`
+      const arr: number[] = [1, 2, 3];
+      return Array.isArray(arr);
+    `);
+    assert.equal(v, true);
+  });
+
+  test("Array.isArray(5) -> false", () => {
+    const v = compileAndRunBoolean(`
+      return Array.isArray(5);
+    `);
+    assert.equal(v, false);
+  });
+
+  test('Array.isArray("hello") -> false', () => {
+    const v = compileAndRunBoolean(`
+      return Array.isArray("hello");
+    `);
+    assert.equal(v, false);
+  });
+
+  test("Array.isArray of a struct -> false", () => {
+    const v = compileAndRunBoolean(`
+      const obj = { x: 10, y: 20 };
+      return Array.isArray(obj);
+    `);
+    assert.equal(v, false);
+  });
+
+  test("Array.isArray of nil -> false", () => {
+    const v = compileAndRunBoolean(`
+      const x: number | null = null;
+      return Array.isArray(x);
+    `);
+    assert.equal(v, false);
+  });
+});
+
 describe("callback index parameter", () => {
   before(() => {
     ensureSetup();
