@@ -44,6 +44,7 @@ import {
   extractStringValue,
   getCallSiteState,
   getRuleVariable,
+  getWhenResult,
   type HandleId,
   type HostAsyncFn,
   type IBrain,
@@ -511,6 +512,36 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const out = brain.getVariable(brainVarName);
     assert.ok(out !== undefined, "brain var should be set by actuator");
     assert.equal(extractNumberValue(out), 42, "actuator must read the same value the sensor stashed");
+  });
+
+  test("WHEN_END captures the WHEN result into the rule's __whenResult variable", () => {
+    const brainVarName = "whenresult-out";
+
+    // Actuator: reads getWhenResult(ctx) and writes it into a brain var so the
+    // test can assert the WHEN side's value was captured at WHEN_END.
+    const actuatorDef = defineHost(
+      createHostActuator({
+        key: "test-whenresult-read",
+        actionId: 5007,
+        fnId: 6007,
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        fn: {
+          exec: (ctx) => {
+            ctx.services.brain.brainVars.setByName(brainVarName, getWhenResult(ctx));
+            return VOID_VALUE;
+          },
+        },
+      })
+    );
+
+    const actuator = actuatorDef.tile as BrainTileActuatorDef;
+    // WHEN side evaluates to 42 (truthy, so the DO runs); the VM must capture it.
+    const brainDef = buildBrain([mkLiteral(42)], [actuator]);
+    const brain = runBrain(brainDef);
+
+    const out = brain.getVariable(brainVarName);
+    assert.ok(out !== undefined, "actuator should have read __whenResult");
+    assert.equal(extractNumberValue(out), 42, "WHEN_END must capture the WHEN result (42)");
   });
 
   test("rule var read returns NIL_VALUE when never written", () => {

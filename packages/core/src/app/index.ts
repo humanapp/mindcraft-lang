@@ -102,11 +102,13 @@ export type { AppServices, IRngServices } from "../runtime";
 export { APP_CAPABILITY_BIT_OFFSET, CoreCapabilityBits } from "../brain/interfaces";
 export type { StructFieldGetterFn, StructTypeDef } from "../runtime";
 export { getSlotId } from "../runtime";
+export { formatF32 } from "../runtime/binary32-format";
 export type { ExecutionContext } from "../runtime/context";
 export {
   clearCallSiteState,
   getCallSiteState,
   getRuleVariable,
+  getWhenResult,
   setCallSiteState,
   setRuleVariable,
 } from "../runtime/context";

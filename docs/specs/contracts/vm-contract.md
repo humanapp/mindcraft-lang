@@ -599,9 +599,13 @@ diagnostics and debug walkers; conforming VMs must execute them
 without observable side effect.
 
 `WHEN_END` is the conditional gate. It pops the result of the
-WHEN expression block; if truthy, execution continues into the
-DO block (PC advances by one); if falsy, PC advances by `endRel`,
-skipping the DO block and any nested boundaries.
+WHEN expression block and writes it into the current rule's reserved
+`__whenResult` rule variable (every rule captures, before the gate
+below), so a DO-side actuator that received no explicit argument can
+read it back. Then, if the result is truthy, execution continues into
+the DO block (PC advances by one); if falsy, PC advances by `endRel`,
+skipping the DO block and any nested boundaries. The capture is a
+side effect only; the stack effect is unchanged.
 
 ### Frame locals
 

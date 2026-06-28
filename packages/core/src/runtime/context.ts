@@ -192,6 +192,18 @@ export function setRuleVariable(ctx: ExecutionContext, name: string, value: Valu
   ctx.services.brain.ruleVars.setByName(ctx.currentRuleFuncId, name, value);
 }
 
+/**
+ * Read the value the WHEN side of the current rule last evaluated to. The VM
+ * captures it into the reserved `__whenResult` rule variable at every
+ * `WHEN_END`. Returns `NIL_VALUE` when execution is not inside any rule or the
+ * current rule has not run its WHEN section.
+ *
+ * @param ctx - The execution context
+ */
+export function getWhenResult(ctx: ExecutionContext): Value {
+  return ctx.services.brain.ruleVars.getByName(ctx.currentRuleFuncId, "__whenResult");
+}
+
 // ============================================================================
 // Call-Site Host State Helper Functions
 // ============================================================================

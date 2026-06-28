@@ -1277,6 +1277,11 @@ export class VM implements IVM {
     // WHEN always pushes exactly one value - pop it and check truthiness
     const whenResult = this.pop(fiber);
 
+    // Capture the WHEN result into the rule's reserved __whenResult variable.
+    // Every rule captures, regardless of the truthiness gate below.
+    const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, frame);
+    fiber.executionContext.services.brain.ruleVars.setByName(ruleFuncId, "__whenResult", whenResult);
+
     if (!isTruthy(whenResult)) {
       // WHEN evaluated to falsy - skip DO section and children
       const offset = ins.a ?? 0;
