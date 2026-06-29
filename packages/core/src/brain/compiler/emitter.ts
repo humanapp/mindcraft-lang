@@ -272,6 +272,18 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   }
 
   /**
+   * Mark the end of a presence-gated WHEN boundary.
+   * Skips to skipLabel when the WHEN result (popped from stack) is nil (absent);
+   * a present value, including a falsy one, falls through to the DO section.
+   *
+   * @param skipLabel - Label to jump to when the WHEN result is nil (typically after the DO section)
+   */
+  whenEndPresent(skipLabel: number): void {
+    this.emit({ op: Op.WHEN_END_PRESENT, a: 0 }); // placeholder for relative offset
+    this.addFixup(skipLabel, "a");
+  }
+
+  /**
    * Mark the start of a DO boundary.
    */
   doStart(): void {

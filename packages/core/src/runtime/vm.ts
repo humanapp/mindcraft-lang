@@ -486,6 +486,8 @@ export class VM implements IVM {
           return this.execWhenStart(fiber, ins, frame);
         case Op.WHEN_END:
           return this.execWhenEnd(fiber, ins, frame);
+        case Op.WHEN_END_PRESENT:
+          return this.execWhenEndPresent(fiber, ins, frame);
         case Op.DO_START:
           return this.execDoStart(fiber, ins, frame);
         case Op.DO_END:
@@ -1305,6 +1307,26 @@ export class VM implements IVM {
       frame.pc += offset; // Jump to end label
     } else {
       // WHEN evaluated to truthy - continue to DO section
+      frame.pc++;
+    }
+    return undefined;
+  }
+
+  private execWhenEndPresent(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    // WHEN always pushes exactly one value - pop it and check presence (non-nil).
+    const whenResult = this.pop(fiber);
+
+    // Capture the WHEN result into the rule's reserved __whenResult variable,
+    // identically to execWhenEnd. Every rule captures, regardless of the gate.
+    const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, frame);
+    fiber.executionContext.services.brain.ruleVars.setByName(ruleFuncId, "__whenResult", whenResult);
+
+    if (whenResult.t === NativeType.Nil) {
+      // No value this think (absent) - skip DO section and children.
+      const offset = ins.a ?? 0;
+      frame.pc += offset; // Jump to end label
+    } else {
+      // A value is present (including a falsy 0 / "" / false) - run DO.
       frame.pc++;
     }
     return undefined;

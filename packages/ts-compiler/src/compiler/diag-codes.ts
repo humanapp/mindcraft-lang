@@ -165,6 +165,10 @@ export enum DescriptorDiagCode {
   SeqRequiresArguments = 2050,
   /** onPageExited property is not a function */
   OnPageExitedMustBeFunction = 2051,
+  /** capabilities property value is not an array literal */
+  CapabilitiesMustBeArrayLiteral = 2052,
+  /** capabilities array element is not a known capability identifier or string literal */
+  CapabilityElementUnknown = 2053,
 }
 
 /**

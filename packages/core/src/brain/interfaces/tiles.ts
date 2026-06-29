@@ -220,6 +220,13 @@ export const APP_CAPABILITY_BIT_OFFSET = 32;
 export const CoreCapabilityBits = {
   PageSensor: 0,
   UserTile: 1,
+  /**
+   * Marks a value-bearing event sensor: it delivers a data value when it fires
+   * and returns nil when there is no value this think (absent). A bare WHEN that
+   * is exactly such a sensor is presence-gated (fires on a delivered falsy value,
+   * skips only on nil); nil must be excluded from the sensor's value domain.
+   */
+  PresenceGated: 2,
 } as const;
 
 // ----------------------------------------------------

@@ -20,7 +20,13 @@ import {
   List,
   type ReadonlyList,
 } from "@mindcraft-lang/core";
-import { Brain, type BrainServices, mkVariableTileId, TilePlacement } from "@mindcraft-lang/core/brain";
+import {
+  Brain,
+  type BrainServices,
+  CoreCapabilityBits,
+  mkVariableTileId,
+  TilePlacement,
+} from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
@@ -42,6 +48,7 @@ import {
   extractBooleanValue,
   extractNumberValue,
   extractStringValue,
+  FALSE_VALUE,
   getCallSiteState,
   getRuleVariable,
   getWhenResult,
@@ -52,6 +59,7 @@ import {
   mkCallDef,
   mkNumberValue,
   mkSensorTileId,
+  mkStringValue,
   NativeType,
   NIL_VALUE,
   Op,
@@ -62,6 +70,7 @@ import {
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/runtime";
+import { BitSet } from "@mindcraft-lang/core/util";
 
 let services: BrainServices;
 let opAdd: BrainTileOperatorDef;
@@ -234,6 +243,140 @@ describe("Brain behavioral -- WHEN condition", () => {
     const brain = runBrain(brainDef);
 
     assert.equal(extractNumberValue(brain.getVariable(v.varName)), 99);
+  });
+});
+
+describe("Brain behavioral -- presence gate", () => {
+  let presenceIdCounter = 0;
+
+  /**
+   * Register a host sensor whose delivered value is set through the returned
+   * `deliver`. When `presenceGated` is true the sensor's tile carries the
+   * {@link CoreCapabilityBits.PresenceGated} capability.
+   */
+  function makeSensor(
+    outputType: string,
+    presenceGated: boolean
+  ): { tile: BrainTileSensorDef; deliver: (v: Value) => void } {
+    presenceIdCounter += 1;
+    const holder: { value: Value } = { value: NIL_VALUE };
+    const def = createHostSensor({
+      key: `test-presence-sensor-${presenceIdCounter}`,
+      actionId: 7100 + presenceIdCounter,
+      fnId: 8100 + presenceIdCounter,
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      outputType,
+      fn: { exec: () => holder.value },
+      capabilities: presenceGated ? new BitSet().set(CoreCapabilityBits.PresenceGated) : undefined,
+    });
+    services.runtime.functions.register(
+      def.function.id,
+      def.function.name,
+      def.function.isAsync,
+      def.function.fn,
+      def.function.callDef
+    );
+    services.runtime.actions.register({
+      binding: "host",
+      descriptor: def.descriptor,
+      id: def.actionId,
+      execSync: (def.actionFn as { exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value }).exec,
+    });
+    const capabilities = presenceGated ? new BitSet().set(CoreCapabilityBits.PresenceGated) : undefined;
+    const tile = new BrainTileSensorDef(def.descriptor.key, def.descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      capabilities,
+    });
+    return {
+      tile,
+      deliver: (v) => {
+        holder.value = v;
+      },
+    };
+  }
+
+  /** Compile `brainDef` and return whether the first page's root rule emits `op`. */
+  function rootRuleEmits(brainDef: BrainDef, op: Op): boolean {
+    const program = compileBrain(
+      brainDef,
+      List.from([services.edit.tiles, brainDef.catalog()]),
+      services.shared.conversions,
+      services.runtime.actions,
+      services.runtime.types
+    ).program!;
+    const page = program.pages.get(0)!;
+    const rootFunc = program.functions.get(page.rootRuleFuncIds.get(0)!)!;
+    return rootFunc.code.findIndex((ins) => ins.op === op) !== -1;
+  }
+
+  test("bare presence-gated sensor fires its DO on a delivered 0", () => {
+    const v = mkVar("presence-zero");
+    const sensor = makeSensor(CoreTypeIds.Number, true);
+    sensor.deliver(mkNumberValue(0));
+    const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1, "DO must run on a present falsy 0");
+  });
+
+  test("bare presence-gated sensor fires its DO on a delivered empty string", () => {
+    const v = mkVar("presence-empty");
+    const sensor = makeSensor(CoreTypeIds.String, true);
+    sensor.deliver(mkStringValue(""));
+    const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1, "DO must run on a present empty string");
+  });
+
+  test("bare presence-gated sensor fires its DO on a delivered false", () => {
+    const v = mkVar("presence-false");
+    const sensor = makeSensor(CoreTypeIds.Boolean, true);
+    sensor.deliver(FALSE_VALUE);
+    const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1, "DO must run on a present false");
+  });
+
+  test("bare presence-gated sensor skips its DO when the value is nil (absent)", () => {
+    const v = mkVar("presence-nil");
+    const sensor = makeSensor(CoreTypeIds.Number, true);
+    sensor.deliver(NIL_VALUE);
+    const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
+    assert.equal(brain.getVariable(v.varName), undefined, "DO must be skipped when the sensor delivers nil");
+  });
+
+  test("a non-presence-gated sensor delivering 0 stays truthiness-gated and skips its DO", () => {
+    const v = mkVar("truthy-zero");
+    const sensor = makeSensor(CoreTypeIds.Number, false);
+    sensor.deliver(mkNumberValue(0));
+    const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
+    assert.equal(brain.getVariable(v.varName), undefined, "0 is falsy, so a truthiness-gated rule must not fire");
+  });
+
+  test("WHEN_END_PRESENT is emitted only for a bare presence-gated sensor WHEN root", () => {
+    const presence = makeSensor(CoreTypeIds.Number, true);
+    presence.deliver(mkNumberValue(0));
+    const bare = buildBrain([presence.tile], [mkVar("emit-bare"), opAssign, mkLiteral(1)]);
+    assert.ok(rootRuleEmits(bare, Op.WHEN_END_PRESENT), "bare presence-gated sensor emits WHEN_END_PRESENT");
+    assert.ok(!rootRuleEmits(bare, Op.WHEN_END), "bare presence-gated sensor does not also emit WHEN_END");
+
+    const expr = makeSensor(CoreTypeIds.Number, true);
+    expr.deliver(mkNumberValue(0));
+    const compound = buildBrain([expr.tile, opGt, mkLiteral(100)], [mkVar("emit-expr"), opAssign, mkLiteral(1)]);
+    assert.ok(
+      rootRuleEmits(compound, Op.WHEN_END),
+      "a presence-gated sensor inside an expression stays truthiness-gated"
+    );
+    assert.ok(!rootRuleEmits(compound, Op.WHEN_END_PRESENT), "an expression WHEN root does not emit WHEN_END_PRESENT");
+
+    const plain = makeSensor(CoreTypeIds.Number, false);
+    plain.deliver(mkNumberValue(1));
+    const plainBrain = buildBrain([plain.tile], [mkVar("emit-plain"), opAssign, mkLiteral(1)]);
+    assert.ok(rootRuleEmits(plainBrain, Op.WHEN_END), "a non-presence sensor emits WHEN_END");
+    assert.ok(!rootRuleEmits(plainBrain, Op.WHEN_END_PRESENT), "a non-presence sensor does not emit WHEN_END_PRESENT");
+
+    const boolBrain = buildBrain([mkBoolLiteral(true)], [mkVar("emit-bool"), opAssign, mkLiteral(1)]);
+    assert.ok(rootRuleEmits(boolBrain, Op.WHEN_END), "a boolean-condition rule emits WHEN_END");
+    assert.ok(
+      !rootRuleEmits(boolBrain, Op.WHEN_END_PRESENT),
+      "a boolean-condition rule does not emit WHEN_END_PRESENT"
+    );
   });
 });
 

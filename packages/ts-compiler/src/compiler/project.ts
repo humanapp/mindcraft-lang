@@ -521,6 +521,7 @@ export class UserTileProject {
       iconUrl,
       docsMarkdown,
       tags,
+      capabilities: descriptor.capabilities,
     };
 
     return { diagnostics: [...lowerWarnings, ...metaDiags], program, descriptor, functionDebugInfo };

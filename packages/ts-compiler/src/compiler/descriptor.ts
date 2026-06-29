@@ -2,6 +2,9 @@ import ts from "typescript";
 import { DescriptorDiagCode } from "./diag-codes.js";
 import type { CompileDiagnostic, ExtractedArgSpec, ExtractedDescriptor, ExtractedParam, SourceSpan } from "./types.js";
 
+/** Capability identifiers a sensor may declare in its `capabilities` config field. */
+const KNOWN_CAPABILITIES: ReadonlySet<string> = new Set(["PresenceGated"]);
+
 /** Result of {@link extractDescriptor}: the descriptor (when extraction succeeded) plus any diagnostics. */
 export interface ExtractionResult {
   descriptor?: ExtractedDescriptor;
@@ -119,6 +122,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   let docs: string | undefined;
   let docsSpan: SourceSpan | undefined;
   let tags: string[] | undefined;
+  let capabilities: string[] | undefined;
 
   for (const prop of arg.properties) {
     if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
@@ -220,6 +224,30 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
             addDiag(DescriptorDiagCode.TagsMustBeArrayLiteral, prop.initializer, "`tags` must be an array literal.");
           }
           break;
+
+        case "capabilities":
+          if (ts.isArrayLiteralExpression(prop.initializer)) {
+            capabilities = [];
+            for (const elem of prop.initializer.elements) {
+              const capName = ts.isIdentifier(elem) ? elem.text : ts.isStringLiteral(elem) ? elem.text : undefined;
+              if (capName !== undefined && KNOWN_CAPABILITIES.has(capName)) {
+                capabilities.push(capName);
+              } else {
+                addDiag(
+                  DescriptorDiagCode.CapabilityElementUnknown,
+                  elem,
+                  "Each element of `capabilities` must be a known capability (e.g. `PresenceGated`)."
+                );
+              }
+            }
+          } else {
+            addDiag(
+              DescriptorDiagCode.CapabilitiesMustBeArrayLiteral,
+              prop.initializer,
+              "`capabilities` must be an array literal."
+            );
+          }
+          break;
       }
     } else if (ts.isMethodDeclaration(prop) && ts.isIdentifier(prop.name)) {
       if (prop.name.text === "onExecute") {
@@ -267,6 +295,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
       docs,
       docsSpan,
       tags,
+      capabilities,
     },
     diagnostics: [],
   };

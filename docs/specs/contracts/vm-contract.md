@@ -603,10 +603,11 @@ async-action handle is rejected with the error.
 
 | Mnemonic     | Numeric | Operands              | Stack effect          | Faults |
 | ------------ | ------- | --------------------- | --------------------- | ------ |
-| `WHEN_START` | 70      | none                  | `[] -> []`            | -      |
-| `WHEN_END`   | 71      | `endRel: i16` (`a`)   | `[whenResult] -> []`  | -      |
-| `DO_START`   | 72      | none                  | `[] -> []`            | -      |
-| `DO_END`     | 73      | none                  | `[] -> []`            | -      |
+| `WHEN_START`       | 70      | none                  | `[] -> []`            | -      |
+| `WHEN_END`         | 71      | `endRel: i16` (`a`)   | `[whenResult] -> []`  | -      |
+| `DO_START`         | 72      | none                  | `[] -> []`            | -      |
+| `DO_END`           | 73      | none                  | `[] -> []`            | -      |
+| `WHEN_END_PRESENT` | 74      | `endRel: i16` (`a`)   | `[whenResult] -> []`  | -      |
 
 `WHEN_START` and `DO_START` / `DO_END` are pure markers: they
 advance the PC by one and have no other effect. They exist so the
@@ -622,6 +623,20 @@ read it back. Then, if the result is truthy, execution continues into
 the DO block (PC advances by one); if falsy, PC advances by `endRel`,
 skipping the DO block and any nested boundaries. The capture is a
 side effect only; the stack effect is unchanged.
+
+`WHEN_END_PRESENT` is the presence-gated form of the WHEN boundary. It
+captures `__whenResult` identically to `WHEN_END` (every rule captures,
+before the gate), with the same operand and stack effect. It differs only
+in the gate condition: the DO block runs when the WHEN result is *present*
+(any non-nil value, including a falsy `0`, `""`, `false`, or empty
+collection), and is skipped by `endRel` only when the result is nil
+(absent). Both gate modes are static, compile-time properties of the rule:
+the compiler emits `WHEN_END_PRESENT` only when a rule's WHEN root
+expression is exactly a sensor whose tile declares the `PresenceGated`
+capability, and `WHEN_END` for every other rule. A presence-gated sensor
+used inside an expression (e.g. `(sensor) > 100`) is not the bare root, so
+that rule emits `WHEN_END` and gates on truthiness of the expression
+result. `isTruthy` is unchanged.
 
 ### Frame locals
 

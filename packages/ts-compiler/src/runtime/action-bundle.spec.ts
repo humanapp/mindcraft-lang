@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment, type HydratedTileMetadataSnapshot } from "@mindcraft-lang/core";
-import { type BrainServices, isBrainBuildError } from "@mindcraft-lang/core/brain";
+import { type BrainServices, CoreCapabilityBits, isBrainBuildError } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
+import { CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId, Op } from "@mindcraft-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import type { ExtractedParam } from "../compiler/types.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";
@@ -101,6 +101,60 @@ export default Actuator({
     assert.ok(bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId("user.actuator.acturn")));
     assert.equal(bundle.tiles.filter((tile) => tile.tileId === mkParameterTileId("anon.number")).length, 1);
     assert.ok(bundle.tiles.some((tile) => tile.tileId === mkParameterTileId("user.acturn.label")));
+  });
+
+  test("a user sensor declaring capabilities: [PresenceGated] carries the bit and emits WHEN_END_PRESENT", () => {
+    const result = compileProject(
+      new Map([
+        [
+          "rx.ts",
+          `
+import { Sensor, PresenceGated, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "snrx",
+  name: "rx",
+  capabilities: [PresenceGated],
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`,
+        ],
+      ])
+    );
+
+    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
+    assert.ok(bundle);
+
+    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snrx"));
+    assert.ok(sensorTile);
+    assert.equal(
+      sensorTile.capabilities().get(CoreCapabilityBits.PresenceGated),
+      1,
+      "the declared capability must land on the generated tile def"
+    );
+
+    // The brain compiler reads that bit from the user tile and emits
+    // WHEN_END_PRESENT for a bare WHEN, identically to a built-in sensor.
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    environment.hydrateTileMetadata({ revision: bundle.revision, tiles: bundle.tiles });
+    environment.replaceActionBundle(bundle);
+
+    const brainDef = BrainDef.emptyBrainDef(services, "Presence Brain");
+    brainDef.pages().get(0)!.children().get(0)!.when().appendTile(sensorTile);
+    const brain = environment.createBrain(environment.deserializeBrainJson(brainDef.toJson()));
+    assert.equal(brain.status, "active");
+
+    const program = brain.getProgram();
+    assert.ok(program);
+    const page = brain.getPages().get(0)!;
+    const rootFunc = program.functions.get(page.rootRuleFuncIds.get(0)!)!;
+    assert.notEqual(
+      rootFunc.code.findIndex((ins) => ins.op === Op.WHEN_END_PRESENT),
+      -1,
+      "a bare user presence-gated sensor must emit WHEN_END_PRESENT"
+    );
   });
 
   test("returns no bundle when the compile output still has diagnostics", () => {

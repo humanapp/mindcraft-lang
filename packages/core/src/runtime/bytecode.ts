@@ -67,6 +67,16 @@ export enum Op {
   WHEN_END,
   DO_START,
   DO_END,
+  /**
+   * Presence-gated WHEN boundary. Captures `__whenResult` exactly as `WHEN_END`
+   * does, then gates the DO section on the WHEN-result being present (non-nil):
+   * a delivered falsy value (0, "", false, empty collection) runs DO; only nil
+   * (absent) skips by the signed `a` offset. Same operand schema as `WHEN_END`
+   * (one signed skip offset). The compiler emits this when the WHEN root
+   * expression is exactly a sensor whose tile carries the `PresenceGated`
+   * capability.
+   */
+  WHEN_END_PRESENT = 74,
 
   // List operations
   LIST_NEW = 90,
@@ -155,8 +165,8 @@ const UVAR_OPT: OperandSpec = { encoding: "uvar", optional: true };
  * Per-opcode operand layout for binary instruction serialization, transcribed
  * from the operand columns of `docs/specs/contracts/vm-contract.md`. Each opcode
  * maps to its operands as a contiguous prefix of `a, b, c`, in order. `svar`
- * marks the five signed rel-offset opcodes (`JMP`, `JMP_IF_FALSE`,
- * `JMP_IF_TRUE`, `WHEN_END`, `TRY`); the optional trailing `b` marks the four
+ * marks the six signed rel-offset opcodes (`JMP`, `JMP_IF_FALSE`,
+ * `JMP_IF_TRUE`, `WHEN_END`, `WHEN_END_PRESENT`, `TRY`); the optional trailing `b` marks the four
  * typeId-carrying constructors (`LIST_NEW`, `MAP_NEW`, `STRUCT_NEW`,
  * `STRUCT_COPY_EXCEPT`); every other operand is `uvar`.
  */
@@ -191,6 +201,7 @@ export const OPERAND_SCHEMA: Readonly<Record<Op, readonly OperandSpec[]>> = {
   [Op.WHEN_END]: [SVAR],
   [Op.DO_START]: [],
   [Op.DO_END]: [],
+  [Op.WHEN_END_PRESENT]: [SVAR],
   [Op.LIST_NEW]: [UVAR, UVAR_OPT],
   [Op.LIST_PUSH]: [],
   [Op.LIST_GET]: [],

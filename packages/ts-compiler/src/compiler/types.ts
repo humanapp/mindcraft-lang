@@ -25,6 +25,8 @@ export interface UserAuthoredProgram extends UserActionArtifact {
   iconUrl?: string;
   docsMarkdown?: string;
   tags?: string[];
+  /** Capability identifiers declared in the source config, forwarded onto the generated tile def's capability BitSet. */
+  capabilities?: string[];
 }
 
 /** A {@link UserAuthoredProgram} plus the offsets at which the linker placed its functions, constants, and variables in the merged brain program. */
@@ -100,6 +102,8 @@ export interface ExtractedDescriptor {
   docs?: string;
   docsSpan?: SourceSpan;
   tags?: string[];
+  /** Capability identifiers declared in the `capabilities` config field. */
+  capabilities?: string[];
 }
 
 /** Modifier arg spec extracted from a `modifier(...)` call. */

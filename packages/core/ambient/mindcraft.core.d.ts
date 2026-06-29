@@ -392,6 +392,16 @@ declare module "mindcraft" {
   export function conditional(condition: string, thenItem: ArgSpec, elseItem?: ArgSpec): ConditionalSpec;
   export function seq(...items: ArgSpec[]): SeqSpec;
 
+  /** A capability a sensor can declare in its config. */
+  type Capability = "PresenceGated";
+  /**
+   * Marks a value-bearing event sensor: `onExecute` returns the delivered
+   * value when the sensor fires and `null` when there is no value this
+   * evaluation (absent). A bare WHEN that is exactly such a sensor fires on a
+   * delivered falsy value (0, "", false) and skips only when the value is absent.
+   */
+  export const PresenceGated: Capability;
+
   export interface SensorConfig {
     /** Stable identifier for this action, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
     id?: string;
@@ -400,6 +410,8 @@ declare module "mindcraft" {
     icon?: string;
     docs?: string;
     tags?: string[];
+    /** Capabilities this sensor declares, e.g. `[PresenceGated]`. */
+    capabilities?: Capability[];
     args?: ArgSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): unknown;
     onPageEntered?(ctx: Context): void;

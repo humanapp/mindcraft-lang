@@ -15,6 +15,7 @@ import type {
 import { BYTECODE_VERSION, type FunctionBytecode, type Instr, Op } from "../../runtime/bytecode";
 import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
 import type { IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog } from "../interfaces";
+import { CoreCapabilityBits } from "../interfaces";
 import { ConstantPool } from "./constant-pool";
 import type { BrainBuildDiagnostic, BrainBuildResult } from "./diagnostics";
 import { BytecodeEmitter } from "./emitter";
@@ -35,6 +36,17 @@ function replaceAllSlashes(str: string): string {
     result += charCode === 47 ? "_" : SU.fromCharCode(charCode);
   }
   return result;
+}
+
+/**
+ * True when `expr` is exactly a sensor tile whose def carries the
+ * {@link CoreCapabilityBits.PresenceGated} capability. Used to select
+ * `WHEN_END_PRESENT` for a rule whose WHEN root is a bare presence-gated value
+ * sensor; a sensor nested inside an expression is not the root and reports
+ * false.
+ */
+function isBarePresenceGatedSensor(expr: Expr): boolean {
+  return expr.kind === "sensor" && expr.tileDef.capabilities().get(CoreCapabilityBits.PresenceGated) === 1;
 }
 
 /**
@@ -359,10 +371,15 @@ export class BrainCompiler {
     const emitter = new BytecodeEmitter();
     const endLabel = emitter.label();
 
-    // Emit WHEN section
+    // Emit WHEN section. A bare presence-gated value sensor as the WHEN root
+    // gates DO on presence (non-nil); every other WHEN gates on truthiness.
     emitter.whenStart();
     this.emitExprs(whenParseResult.exprs, emitter, typeEnv, true);
-    emitter.whenEnd(endLabel);
+    if (isBarePresenceGatedSensor(whenParseResult.exprs.get(0))) {
+      emitter.whenEndPresent(endLabel);
+    } else {
+      emitter.whenEnd(endLabel);
+    }
 
     // Emit DO section
     emitter.doStart();

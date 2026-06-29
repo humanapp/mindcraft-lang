@@ -75,6 +75,11 @@ export function buildUserTileMetadata(
   };
 
   const userTileCaps = new BitSet().set(CoreCapabilityBits.UserTile);
+  for (const capability of program.capabilities ?? []) {
+    if (capability === "PresenceGated") {
+      userTileCaps.set(CoreCapabilityBits.PresenceGated);
+    }
+  }
 
   const actionTile =
     program.kind === "sensor"
