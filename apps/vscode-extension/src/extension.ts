@@ -38,6 +38,17 @@ export function activate(context: vscode.ExtensionContext) {
     treeDataProvider: sessionsProvider,
   });
 
+  // Read-only examples enter the project VFS via the connect-time bridge sync, which
+  // can land after the view has already rendered. Re-query whenever the view becomes
+  // visible so synced entries appear without a manual explorer refresh.
+  context.subscriptions.push(
+    treeView.onDidChangeVisibility((e) => {
+      if (e.visible) {
+        sessionsProvider.refresh();
+      }
+    })
+  );
+
   registerCommands(context, projectManager);
   createStatusBarItem(context, projectManager);
 
