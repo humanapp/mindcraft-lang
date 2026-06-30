@@ -142,6 +142,7 @@ async function createFileFromTemplate(
   const writeFs = projectManager.project.files.toRemote;
   writeFs.mkdir(targetFolder);
   writeFs.write(`${targetFolder}/${fileName}`, content);
+  projectManager.notifyLocalCreate([targetFolder, `${targetFolder}/${fileName}`]);
 
   const fileUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${targetFolder}/${fileName}` });
   await vscode.commands.executeCommand("vscode.open", fileUri);
@@ -241,13 +242,16 @@ async function copyExampleToWorkspace(projectManager: ProjectManager, arg?: stri
   for (const file of fileEntries) {
     writeFs.write(`${targetFolder}/${file.name}`, file.content);
   }
+  projectManager.notifyLocalCreate([targetFolder, ...fileEntries.map((file) => `${targetFolder}/${file.name}`)]);
 
   vscode.window.showInformationMessage(`Copied example '${folder}' to workspace as '${targetFolder}'.`);
 
-  const mainTsName = `${folder.toLowerCase()}.ts`;
-  const mainFile = fileEntries.find((f) => f.name.toLowerCase() === mainTsName);
-  if (mainFile) {
-    const fileUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${targetFolder}/${mainFile.name}` });
+  // Open the example's first TypeScript file (by name) so the user lands on its code.
+  const firstTsFile = fileEntries
+    .filter((file) => file.name.endsWith(".ts"))
+    .sort((a, b) => a.name.localeCompare(b.name))[0];
+  if (firstTsFile) {
+    const fileUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${targetFolder}/${firstTsFile.name}` });
     await vscode.commands.executeCommand("vscode.open", fileUri);
   }
 }
