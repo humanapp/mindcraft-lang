@@ -416,6 +416,19 @@ export enum LoweringDiagCode {
   UnsupportedAsyncResultMethod = 3174,
   /** An async action's result is discarded without `await` (warning) */
   UnawaitedAsyncCall = 3175,
+
+  /** A `System({...})` config `name` is missing or not a string literal */
+  SystemNameNotStringLiteral = 3180,
+  /** A `System({...})` config `state` is missing or not an object literal */
+  SystemStateNotObject = 3181,
+  /** A `System({...})` `init` or `think` member is not a method or inline function */
+  SystemLifecycleNotFunction = 3182,
+  /** A `System({...})` config member (other than name/state/init/think) is not a method */
+  SystemMemberNotMethod = 3183,
+  /** A `System({...})` `state` shape cannot be lowered to a struct of VM-representable fields */
+  SystemStateUnresolvable = 3184,
+  /** A `const X = System({...})` binding's declaration symbol cannot be resolved */
+  SystemBindingUnresolvable = 3185,
 }
 
 /**

@@ -50,6 +50,16 @@ export class BrainRuntime implements IBrainRuntime {
   private varSlotByName: Dict<string, number> = new Dict<string, number>();
 
   /**
+   * Brain-global System state storage, indexed by the linker-assigned store
+   * slot (the operand of `LOAD_SYSTEM_VAR` / `STORE_SYSTEM_VAR`). One slot per
+   * registered System; shared across all callsites and not reachable from brain
+   * code. Writes are by reference (no deep copy), so a System's state struct
+   * mutates in place. Grows lazily on out-of-range writes; reads of an unwritten
+   * slot observe `NIL_VALUE`.
+   */
+  private systemStore: List<Value | undefined> = List.empty();
+
+  /**
    * The linked program loaded into the VM.
    */
   private readonly program: Program;
@@ -201,6 +211,12 @@ export class BrainRuntime implements IBrainRuntime {
       setVariableBySlot(slotId: number, value: Value): void {
         runtime.setVariableBySlot(slotId, value);
       },
+      getSystemVarBySlot(slotId: number): Value {
+        return runtime.getSystemVarBySlot(slotId);
+      },
+      setSystemVarBySlot(slotId: number, value: Value): void {
+        runtime.setSystemVarBySlot(slotId, value);
+      },
       time: 0,
       dt: 0,
       currentTick: 0,
@@ -315,6 +331,29 @@ export class BrainRuntime implements IBrainRuntime {
       this.variables.push(undefined);
     }
     this.variables.set(slotId, value);
+  }
+
+  /**
+   * Read a System's state by its store slot. Returns `NIL_VALUE` if the slot is
+   * out of range or has never been written. Called by the VM on `LOAD_SYSTEM_VAR`.
+   */
+  getSystemVarBySlot(slotId: number): Value {
+    if (slotId < 0 || slotId >= this.systemStore.size()) return NIL_VALUE;
+    const v = this.systemStore.get(slotId);
+    return v === undefined ? NIL_VALUE : v;
+  }
+
+  /**
+   * Write a System's state by its store slot. Grows the store lazily. Writes by
+   * reference (no deep copy): a System's state struct mutates in place. Called
+   * by the VM on `STORE_SYSTEM_VAR`.
+   */
+  setSystemVarBySlot(slotId: number, value: Value): void {
+    if (slotId < 0) return;
+    while (this.systemStore.size() <= slotId) {
+      this.systemStore.push(undefined);
+    }
+    this.systemStore.set(slotId, value);
   }
 
   /**
@@ -576,6 +615,8 @@ export class BrainRuntime implements IBrainRuntime {
     this.lastThinkTime = 0;
     this.interrupted = false;
 
+    this.runSystemInits();
+
     if (this.pageMetadata.size() > 0) {
       this.activatePage(0);
     }
@@ -764,7 +805,59 @@ export class BrainRuntime implements IBrainRuntime {
     }
 
     this.scheduler.tick();
+    this.runSystemThinks();
     this.scheduler.gc();
+  }
+
+  /**
+   * Run every registered System's `init` once, in registration order. State
+   * persists for the brain instance lifetime; `init` runs before the first
+   * page activation, rule, or `think`.
+   */
+  private runSystemInits(): void {
+    const systems = this.program.systems;
+    if (!systems) return;
+    for (let i = 0; i < systems.size(); i++) {
+      const initFuncId = systems.get(i)!.initFuncId;
+      if (initFuncId !== undefined) {
+        this.runSystemFunction(initFuncId, "init");
+      }
+    }
+  }
+
+  /**
+   * Run every registered System's `think` once, in registration order. Runs
+   * every think regardless of the active page; state persists across page
+   * switches.
+   */
+  private runSystemThinks(): void {
+    const systems = this.program.systems;
+    if (!systems) return;
+    for (let i = 0; i < systems.size(); i++) {
+      const thinkFuncId = systems.get(i)!.thinkFuncId;
+      if (thinkFuncId !== undefined) {
+        this.runSystemFunction(thinkFuncId, "think");
+      }
+    }
+  }
+
+  /**
+   * Spawn a synchronous fiber for a System lifecycle function and run it to
+   * completion. The function receives the injected `ctx` as its sole argument.
+   * Throws a platform {@link Error} if the fiber faults or suspends (a System
+   * `init` / `think` may not await).
+   */
+  private runSystemFunction(funcId: number, label: string): void {
+    const fiber = this.vm.spawnFiber(this.nextInlineFiberId--, funcId, List.empty(), this.executionContext);
+    fiber.instrBudget = this.schedulerConfig.hookBudget;
+
+    const result = this.vm.runFiber(fiber, this.scheduler);
+    if (result.status === VmStatus.FAULT) {
+      throw new Error(`System ${label} faulted: ${result.error.message}`);
+    }
+    if (result.status !== VmStatus.DONE) {
+      throw new Error(`System ${label} cannot suspend`);
+    }
   }
 
   /**

@@ -444,6 +444,10 @@ export class VM implements IVM {
           return this.execLoadVar(fiber, ins, frame);
         case Op.STORE_VAR_SLOT:
           return this.execStoreVar(fiber, ins, frame);
+        case Op.LOAD_SYSTEM_VAR:
+          return this.execLoadSystemVar(fiber, ins, frame);
+        case Op.STORE_SYSTEM_VAR:
+          return this.execStoreSystemVar(fiber, ins, frame);
         case Op.JMP:
           return this.execJmp(fiber, ins, frame);
         case Op.JMP_IF_FALSE:
@@ -658,6 +662,20 @@ export class VM implements IVM {
     }
     const value = deepCopyValue(this.pop(fiber), this.runtime.types, fiber.executionContext);
     fiber.executionContext.setVariableBySlot(slotId, value);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execLoadSystemVar(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const slotId = ins.a ?? 0;
+    this.push(fiber, fiber.executionContext.getSystemVarBySlot(slotId));
+    frame.pc++;
+    return undefined;
+  }
+
+  private execStoreSystemVar(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const slotId = ins.a ?? 0;
+    fiber.executionContext.setSystemVarBySlot(slotId, this.pop(fiber));
     frame.pc++;
     return undefined;
   }

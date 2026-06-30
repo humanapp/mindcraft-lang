@@ -107,6 +107,30 @@ export function remapProgramTypeEntry(entry: ProgramTypeEntry, mapIdx: (idx: num
 }
 
 /**
+ * One registered System (a user-code shared singleton) in a linked program.
+ * The runtime runs `initFuncId` once at startup and `thinkFuncId` every think,
+ * in registration order. State lives at `storeSlot` in the brain-global System
+ * store (addressed by `LOAD_SYSTEM_VAR` / `STORE_SYSTEM_VAR`).
+ */
+export interface SystemRegistration {
+  /** Display / debug name carried from the `System({ name })` config. */
+  readonly name: string;
+  /** Slot in the brain-global System store holding this System's state. */
+  readonly storeSlot: number;
+  /**
+   * Function id run once at brain startup, before any rule or `think`. Builds
+   * the initial state struct into `storeSlot` and runs the user `init`. Absent
+   * when the System declares neither initial state nor an `init`.
+   */
+  readonly initFuncId?: number;
+  /**
+   * Function id run every think, after rule evaluation and before GC,
+   * regardless of the active page. Absent when the System declares no `think`.
+   */
+  readonly thinkFuncId?: number;
+}
+
+/**
  * Compiled program. Constants are split into typed sub-pools for compactness
  * and ease of porting to fixed-size native vectors. See {@link ConstantPools}
  * for pool semantics.
@@ -153,6 +177,32 @@ export interface Program {
    * definition; treated as empty in that case.
    */
   ruleAncestors?: Dict<number, number>;
+  /**
+   * Registered Systems (user-code shared singletons) reachable from this
+   * brain's used tiles. The runtime runs each entry's `initFuncId` once at
+   * startup and `thinkFuncId` every think, in list order. Absent on programs
+   * that reference no System; treated as empty in that case.
+   */
+  systems?: List<SystemRegistration>;
+}
+
+/**
+ * One System referenced by a single user-tile artifact, with program-local ids
+ * the linker remaps. `identity` is the cross-module store key; the linker maps
+ * it to one brain-global store slot and registers each System once across all
+ * artifacts that reference it.
+ */
+export interface ArtifactSystem {
+  /** Stable cross-module identity (`<declaring-file>::<binding-name>`). */
+  readonly identity: string;
+  /** Display / debug name from the `System({ name })` config. */
+  readonly name: string;
+  /** Artifact-local System store slot (operand of `LOAD_SYSTEM_VAR` / `STORE_SYSTEM_VAR`). */
+  readonly localSlot: number;
+  /** Artifact-local func id of the generated init wrapper. */
+  readonly initFuncId: number;
+  /** Artifact-local func id of the generated think wrapper, if a `think` is declared. */
+  readonly thinkFuncId?: number;
 }
 
 /**
@@ -183,4 +233,10 @@ export interface ProgramArtifact extends Program {
   numStateSlots: number;
   isAsync: boolean;
   revisionId: string;
+  /**
+   * Systems referenced by this artifact, each with artifact-local ids the
+   * linker remaps and registers (once per identity) across all artifacts.
+   * Absent / empty when the artifact references no System.
+   */
+  artifactSystems?: List<ArtifactSystem>;
 }

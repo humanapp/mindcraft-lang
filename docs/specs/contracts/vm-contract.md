@@ -215,6 +215,10 @@ static-allocation, no-GC implementation.
 - `services: PlatformServices` -- the runtime service aggregate below.
 - `getVariableBySlot(slotId)` / `setVariableBySlot(slotId, value)` --
   slot-indexed brain-global access; back `LOAD_VAR_SLOT` / `STORE_VAR_SLOT`.
+- `getSystemVarBySlot(slotId)` / `setSystemVarBySlot(slotId, value)` --
+  slot-indexed access to the brain-global System store; back
+  `LOAD_SYSTEM_VAR` / `STORE_SYSTEM_VAR`. The setter writes by reference (no
+  deep-copy); reads of an unwritten slot return `NIL_VALUE`.
 - `currentCallSiteId?: number` -- bound before every host call and lifecycle
   hook dispatch; `undefined` outside those boundaries.
 - `currentRuleFuncId?: number` -- `undefined` means no active rule; `0` is
@@ -439,6 +443,8 @@ buffers at call sites; see [Calling convention](#calling-convention).
 | ---------------- | ------- | -------------- | --------------- | ------ |
 | `LOAD_VAR_SLOT`  | 10      | `slotId` (`a`) | `[] -> [value]` | `ScriptError` if `slotId >= program.variableNames.size()`. |
 | `STORE_VAR_SLOT` | 11      | `slotId` (`a`) | `[value] -> []` | `ScriptError` if `slotId >= program.variableNames.size()`. |
+| `LOAD_SYSTEM_VAR`  | 12    | `slotId` (`a`) | `[] -> [value]` | -- (out-of-range / unwritten reads observe `NIL_VALUE`). |
+| `STORE_SYSTEM_VAR` | 13    | `slotId` (`a`) | `[value] -> []` | -- (grows the store lazily on out-of-range writes). |
 
 Variable access is slot-keyed at dispatch time. `slotId` is a
 program-scoped index into `Program.variableNames`; the runtime hosts
@@ -461,6 +467,48 @@ writes through a name not present in `variableNames` allocates a
 fresh slot at the end of the value list; that slot is not addressable
 from bytecode (no `LOAD_VAR_SLOT` operand can target it) and is
 dropped on the next variable-table install (i.e. hot-reload).
+
+#### System namespace
+
+`LOAD_SYSTEM_VAR` / `STORE_SYSTEM_VAR` address a separate, brain-global System
+store -- one value slot per registered System (a user-code shared singleton),
+backing `ctx.getSystemVarBySlot` / `ctx.setSystemVarBySlot`. The store is
+distinct from the `variableNames` pool: System slots have their own index space,
+are not present in `variableNames`, and are not reachable from brain-editor
+code. `slotId` is a program-scoped index assigned by the linker, which resolves
+each System's exported-symbol identity to one shared store slot across every
+artifact that references it.
+
+Unlike `STORE_VAR_SLOT`, `STORE_SYSTEM_VAR` writes **by reference -- no
+deep-copy**. A System's state is held in place, so a struct field written
+through a method (`STRUCT_SET_FIELD` on the loaded state struct) persists in the
+store without a store-back. `LOAD_SYSTEM_VAR` of an unwritten or out-of-range
+slot yields `NIL_VALUE`; the store grows lazily on out-of-range writes. The
+store is sized to the program's registered System count (carve-on-demand), not a
+fixed cap.
+
+A linked program carries a `systems` registry: one entry per reachable System,
+each with a `storeSlot` and an optional `initFuncId` and `thinkFuncId`. The
+entries are kept in registration order. A System is included in a program only
+when reachable -- the tree-shaker marks a System's wrappers reachable when a
+reachable function references its `storeSlot` -- so a brain that touches no code
+referencing a System neither registers nor runs it.
+
+The orchestrator runs the registry in two phases, both **page-independent** (a
+System is a brain-level service, not owned by a page):
+
+- **Startup-init:** before the first page activation, rule, or `think`, run each
+  registered System's `initFuncId` once, in registration order. The init
+  function builds the initial state struct into the System slot and then runs
+  the user `init`.
+- **Per-think tick:** every `think`, after rule evaluation (`scheduler.tick()`)
+  and before GC, run each registered System's `thinkFuncId`, in registration
+  order, regardless of the active page.
+
+Both wrapper functions receive the injected context as their sole argument and
+must run to completion without suspending (they may not `AWAIT`). System state
+persists for the brain-instance lifetime; a page switch neither resets nor
+re-inits it.
 
 ### Control flow
 

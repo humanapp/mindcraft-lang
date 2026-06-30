@@ -125,6 +125,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
       while (slots.size() <= slotId) slots.push(NIL_VALUE);
       slots.set(slotId, value);
     },
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -3272,6 +3274,8 @@ describe("VM -- slot-keyed variable dispatch", () => {
         while (slots.size() <= slotId) slots.push(NIL_VALUE);
         slots.set(slotId, value);
       },
+      getSystemVarBySlot: () => NIL_VALUE,
+      setSystemVarBySlot: () => {},
       time: 0,
       dt: 0,
       currentTick: 0,

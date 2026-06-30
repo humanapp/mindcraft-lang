@@ -11,7 +11,7 @@ import type {
   ResolvedAction,
   UnlinkedBrainProgram,
 } from "../../runtime/host-bindings";
-import type { ProgramArtifact, ProgramTypeEntry } from "../../runtime/program";
+import type { ProgramArtifact, ProgramTypeEntry, SystemRegistration } from "../../runtime/program";
 import { remapProgramTypeEntry } from "../../runtime/program";
 import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
@@ -177,9 +177,19 @@ function remapInstruction(
   funcOffset: number,
   constOffsets: ConstantOffsets,
   typeOffset: number,
-  variableOffset: number
+  variableOffset: number,
+  systemSlotRemap: Dict<number, number>
 ): Instr {
   switch (instr.op) {
+    case Op.LOAD_SYSTEM_VAR:
+    case Op.STORE_SYSTEM_VAR:
+      if (instr.a !== undefined) {
+        const globalSlot = systemSlotRemap.get(instr.a);
+        if (globalSlot !== undefined && globalSlot !== instr.a) {
+          return { ...instr, a: globalSlot };
+        }
+      }
+      return instr;
     case Op.CALL:
     case Op.MAKE_CLOSURE:
     case Op.SPAWN_RULE:
@@ -231,12 +241,15 @@ function remapInstructions(
   funcOffset: number,
   constOffsets: ConstantOffsets,
   typeOffset: number,
-  variableOffset: number
+  variableOffset: number,
+  systemSlotRemap: Dict<number, number>
 ): List<Instr> {
   const remapped = List.empty<Instr>();
 
   for (let i = 0; i < code.size(); i++) {
-    remapped.push(remapInstruction(code.get(i)!, funcOffset, constOffsets, typeOffset, variableOffset));
+    remapped.push(
+      remapInstruction(code.get(i)!, funcOffset, constOffsets, typeOffset, variableOffset, systemSlotRemap)
+    );
   }
 
   return remapped;
@@ -254,7 +267,9 @@ function appendArtifactTables(
   functions: List<FunctionBytecode>,
   pools: MutableConstantPools,
   types: List<ProgramTypeEntry>,
-  variableNames: List<string>
+  variableNames: List<string>,
+  systemSlotByIdentity: Dict<string, number>,
+  systemRegistry: List<SystemRegistration>
 ): BytecodeExecutableAction {
   const funcOffset = functions.size();
   const constOffsets: ConstantOffsets = {
@@ -264,6 +279,28 @@ function appendArtifactTables(
   };
   const typeOffset = types.size();
   const variableOffset = variableNames.size();
+
+  // Resolve this artifact's local System slots to brain-global slots by
+  // identity, registering each System once (the first artifact that wins).
+  const systemSlotRemap = new Dict<number, number>();
+  const artifactSystems = artifact.artifactSystems;
+  if (artifactSystems) {
+    for (let i = 0; i < artifactSystems.size(); i++) {
+      const sys = artifactSystems.get(i)!;
+      let globalSlot = systemSlotByIdentity.get(sys.identity);
+      if (globalSlot === undefined) {
+        globalSlot = systemRegistry.size();
+        systemSlotByIdentity.set(sys.identity, globalSlot);
+        systemRegistry.push({
+          name: sys.name,
+          storeSlot: globalSlot,
+          initFuncId: sys.initFuncId + funcOffset,
+          thinkFuncId: sys.thinkFuncId !== undefined ? sys.thinkFuncId + funcOffset : undefined,
+        });
+      }
+      systemSlotRemap.set(sys.localSlot, globalSlot);
+    }
+  }
 
   const artifactTypes = artifact.types ?? List.empty<ProgramTypeEntry>();
   for (let i = 0; i < artifactTypes.size(); i++) {
@@ -289,7 +326,7 @@ function appendArtifactTables(
   for (let i = 0; i < artifact.functions.size(); i++) {
     const fn = artifact.functions.get(i)!;
     functions.push({
-      code: remapInstructions(fn.code, funcOffset, constOffsets, typeOffset, variableOffset),
+      code: remapInstructions(fn.code, funcOffset, constOffsets, typeOffset, variableOffset, systemSlotRemap),
       numParams: fn.numParams,
       numLocals: fn.numLocals,
       name: fn.name,
@@ -333,6 +370,8 @@ export function linkBrainProgram(
   const types = List.empty<ProgramTypeEntry>();
   const variableNames = List.empty<string>();
   const actions = List.empty<BytecodeExecutableAction>();
+  const systemRegistry = List.empty<SystemRegistration>();
+  const systemSlotByIdentity = new Dict<string, number>();
   const diagnostics = List.empty<BrainBuildDiagnostic>();
 
   for (let i = 0; i < program.functions.size(); i++) {
@@ -390,7 +429,18 @@ export function linkBrainProgram(
       });
       continue;
     }
-    actions.push(appendArtifactTables(resolved.descriptor, resolved.artifact, functions, pools, types, variableNames));
+    actions.push(
+      appendArtifactTables(
+        resolved.descriptor,
+        resolved.artifact,
+        functions,
+        pools,
+        types,
+        variableNames,
+        systemSlotByIdentity,
+        systemRegistry
+      )
+    );
   }
 
   if (!diagnostics.isEmpty()) {
@@ -413,6 +463,7 @@ export function linkBrainProgram(
         actions,
         ruleFuncIds: program.ruleFuncIds,
         ruleAncestors: program.ruleAncestors,
+        systems: systemRegistry.isEmpty() ? undefined : systemRegistry,
       },
       ruleIndex: program.ruleIndex,
       pages: program.pages,

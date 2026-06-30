@@ -134,6 +134,12 @@ export function emitFunction(
       case "StoreCallsiteVar":
         emitter.storeCallsiteVar(node.index);
         break;
+      case "LoadSystemVar":
+        emitter.loadSystemVar(node.index);
+        break;
+      case "StoreSystemVar":
+        emitter.storeSystemVar(node.index);
+        break;
       case "Return":
         emitter.ret();
         break;
@@ -557,6 +563,7 @@ function stackEffect(node: IrNode): { pops: number; pushes: number } {
     case "PushConst":
     case "LoadLocal":
     case "LoadCallsiteVar":
+    case "LoadSystemVar":
     case "PushFunctionRef":
     case "LoadCapture":
     case "MapNew":
@@ -566,6 +573,7 @@ function stackEffect(node: IrNode): { pops: number; pushes: number } {
 
     case "StoreLocal":
     case "StoreCallsiteVar":
+    case "StoreSystemVar":
     case "Pop":
     case "JumpIfFalse":
     case "JumpIfTrue":

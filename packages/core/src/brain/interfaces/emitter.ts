@@ -391,6 +391,23 @@ export interface IBytecodeEmitter {
   storeCallsiteVar(slotIdx: number): void;
 
   // ==========================================
+  // System (shared-singleton) variables
+  // ==========================================
+
+  /**
+   * Load a System's state from the brain-global System store onto the stack.
+   * @param slotIdx System store slot (program-local until linked)
+   */
+  loadSystemVar(slotIdx: number): void;
+
+  /**
+   * Store the top stack value into the brain-global System store (by reference,
+   * no copy).
+   * @param slotIdx System store slot (program-local until linked)
+   */
+  storeSystemVar(slotIdx: number): void;
+
+  // ==========================================
   // Finalization
   // ==========================================
 

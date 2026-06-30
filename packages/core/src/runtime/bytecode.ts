@@ -30,6 +30,13 @@ export enum Op {
   LOAD_VAR_SLOT = 10,
   STORE_VAR_SLOT,
 
+  // System variables: a brain-global, internal store separate from the
+  // variableNames pool. One value slot per registered System; shared across all
+  // callsites and not reachable from brain code. STORE_SYSTEM_VAR writes by
+  // reference (no deep copy), so a System's state struct mutates in place.
+  LOAD_SYSTEM_VAR = 12,
+  STORE_SYSTEM_VAR,
+
   // Control flow
   JMP = 20,
   JMP_IF_FALSE,
@@ -180,6 +187,8 @@ export const OPERAND_SCHEMA: Readonly<Record<Op, readonly OperandSpec[]>> = {
   [Op.STACK_SET_REL]: [UVAR],
   [Op.LOAD_VAR_SLOT]: [UVAR],
   [Op.STORE_VAR_SLOT]: [UVAR],
+  [Op.LOAD_SYSTEM_VAR]: [UVAR],
+  [Op.STORE_SYSTEM_VAR]: [UVAR],
   [Op.JMP]: [SVAR],
   [Op.JMP_IF_FALSE]: [SVAR],
   [Op.JMP_IF_TRUE]: [SVAR],

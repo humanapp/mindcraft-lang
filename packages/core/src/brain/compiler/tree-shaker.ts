@@ -7,7 +7,7 @@ import type { ConstantPools, FunctionBytecode, Instr } from "../../runtime/bytec
 import { Op } from "../../runtime/bytecode";
 import type { BytecodeExecutableAction } from "../../runtime/context";
 import type { LinkedBrainProgram, PageMetadata } from "../../runtime/host-bindings";
-import type { Program, ProgramTypeEntry } from "../../runtime/program";
+import type { Program, ProgramTypeEntry, SystemRegistration } from "../../runtime/program";
 import { remapProgramTypeEntry } from "../../runtime/program";
 import { NativeType } from "../../runtime/type-defs";
 import type { Value } from "../../runtime/value";
@@ -68,6 +68,17 @@ function markReachableFunctions(program: Program, pages: List<PageMetadata>): Un
     }
   }
 
+  // A reachable LOAD/STORE_SYSTEM_VAR for a System's store slot marks that
+  // System's init and think wrappers as reachable.
+  const systemBySlot = new Dict<number, SystemRegistration>();
+  const systems = program.systems;
+  if (systems) {
+    for (let i = 0; i < systems.size(); i++) {
+      const sys = systems.get(i)!;
+      systemBySlot.set(sys.storeSlot, sys);
+    }
+  }
+
   while (worklist.size() > 0) {
     const funcId = worklist.pop()!;
     const fn = program.functions.get(funcId);
@@ -83,6 +94,13 @@ function markReachableFunctions(program: Program, pages: List<PageMetadata>): Un
       if (ins.op === Op.PUSH_CONST_VAL && ins.a !== undefined) {
         const constVal = program.constantPools.values.get(ins.a);
         markFuncIdsInValue(constVal);
+      }
+      if ((ins.op === Op.LOAD_SYSTEM_VAR || ins.op === Op.STORE_SYSTEM_VAR) && ins.a !== undefined) {
+        const sys = systemBySlot.get(ins.a);
+        if (sys) {
+          if (sys.initFuncId !== undefined) enqueue(sys.initFuncId);
+          if (sys.thinkFuncId !== undefined) enqueue(sys.thinkFuncId);
+        }
       }
     }
   }
@@ -191,6 +209,23 @@ function markReachableVariableNames(program: Program, reachableFuncs: UniqueSet<
   return reachable;
 }
 
+function markReachableSystemSlots(program: Program, reachableFuncs: UniqueSet<number>): UniqueSet<number> {
+  const reachable = new UniqueSet<number>();
+
+  for (let i = 0; i < program.functions.size(); i++) {
+    if (!reachableFuncs.has(i)) continue;
+    const fn = program.functions.get(i);
+    for (let j = 0; j < fn.code.size(); j++) {
+      const ins = fn.code.get(j);
+      if ((ins.op === Op.LOAD_SYSTEM_VAR || ins.op === Op.STORE_SYSTEM_VAR) && ins.a !== undefined) {
+        reachable.add(ins.a);
+      }
+    }
+  }
+
+  return reachable;
+}
+
 function buildRemapTable(totalItems: number, reachable: UniqueSet<number>): Dict<number, number> {
   const remap = Dict.empty<number, number>();
   let nextId = 0;
@@ -227,9 +262,18 @@ function remapInstruction(
   ins: Instr,
   funcRemap: Dict<number, number>,
   consts: ConstRemaps,
-  varRemap: Dict<number, number>
+  varRemap: Dict<number, number>,
+  systemSlotRemap: Dict<number, number>
 ): Instr {
   const op = ins.op;
+
+  if (op === Op.LOAD_SYSTEM_VAR || op === Op.STORE_SYSTEM_VAR) {
+    if (ins.a !== undefined) {
+      const newA = systemSlotRemap.get(ins.a) ?? ins.a;
+      if (newA !== ins.a) return { ...ins, a: newA };
+    }
+    return ins;
+  }
 
   if (op === Op.CALL || op === Op.MAKE_CLOSURE || op === Op.SPAWN_RULE) {
     if (ins.a !== undefined) {
@@ -631,6 +675,8 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
     types: buildRemapTable(programTypes.size(), reachableConsts.types),
   };
   const varRemap = buildRemapTable(program.variableNames.size(), reachableVars);
+  const reachableSystemSlots = markReachableSystemSlots(program, reachableFuncs);
+  const systemSlotRemap = buildRemapTable(program.systems?.size() ?? 0, reachableSystemSlots);
 
   const newFunctions = List.empty<FunctionBytecode>();
   for (let i = 0; i < program.functions.size(); i++) {
@@ -638,7 +684,7 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
     const fn = program.functions.get(i);
     const newCode = List.empty<Instr>();
     for (let j = 0; j < fn.code.size(); j++) {
-      newCode.push(remapInstruction(fn.code.get(j), funcRemap, constRemap, varRemap));
+      newCode.push(remapInstruction(fn.code.get(j), funcRemap, constRemap, varRemap, systemSlotRemap));
     }
     newFunctions.push({
       ...fn,
@@ -763,6 +809,26 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
     });
   }
 
+  // Keep only Systems whose store slot survives, compacting slots and remapping
+  // their wrapper func ids. A System whose slot no reachable code references is
+  // dropped (its wrappers are already unreachable and pruned above).
+  let newSystems: List<SystemRegistration> | undefined;
+  if (program.systems !== undefined) {
+    const kept = List.empty<SystemRegistration>();
+    for (let i = 0; i < program.systems.size(); i++) {
+      const sys = program.systems.get(i)!;
+      const newSlot = systemSlotRemap.get(sys.storeSlot);
+      if (newSlot === undefined) continue;
+      kept.push({
+        name: sys.name,
+        storeSlot: newSlot,
+        initFuncId: sys.initFuncId !== undefined ? funcRemap.get(sys.initFuncId) : undefined,
+        thinkFuncId: sys.thinkFuncId !== undefined ? funcRemap.get(sys.thinkFuncId) : undefined,
+      });
+    }
+    newSystems = kept.isEmpty() ? undefined : kept;
+  }
+
   return {
     program: {
       version: program.version,
@@ -774,6 +840,7 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
       actions: newActions,
       ruleFuncIds: newRuleFuncIds,
       ruleAncestors: newRuleAncestors,
+      systems: newSystems,
     },
     ruleIndex: newRuleIndex,
     pages: newPages,

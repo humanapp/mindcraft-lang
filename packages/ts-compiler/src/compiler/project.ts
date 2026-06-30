@@ -515,6 +515,7 @@ export class UserTileProject {
       activationFuncId: programResult.activationFuncId,
       deactivationFuncId: programResult.deactivationFuncId,
       revisionId: generateRevisionId(),
+      artifactSystems: programResult.systems.length > 0 ? List.from(programResult.systems) : undefined,
       args: qualifiedArgs,
       debugMetadata,
       label,

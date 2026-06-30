@@ -293,6 +293,8 @@ type Record<K extends keyof any, T> = { [P in K]: T };
 type Exclude<T, U> = T extends U ? never : T;
 type Extract<T, U> = T extends U ? T : never;
 type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
+/** Marker that binds `this` to `T` inside the methods of a contextually-typed object literal. */
+interface ThisType<T> {}
 type NonNullable<T> = T & {};
 type Parameters<T extends (...args: any) => any> = T extends (...args: infer P) => any ? P : never;
 type ConstructorParameters<T extends abstract new (...args: any) => any> = T extends abstract new (
@@ -434,4 +436,28 @@ declare module "mindcraft" {
 
   export function Sensor(config: SensorConfig): unknown;
   export function Actuator(config: ActuatorConfig): unknown;
+
+  /**
+   * Lifecycle config for a {@link System}. `init` and `think` plus any extra
+   * methods run with `this` bound to the System's state `S`.
+   */
+  export interface SystemConfig<S> {
+    /** Display / debug name for this System. */
+    name: string;
+    /** Initial state: a plain object of VM-representable values (numbers, strings, booleans, small structs). */
+    state: S;
+    /** Runs once at brain startup, before any rule or think. `this` is the state. */
+    init?(ctx: Context): void;
+    /** Runs every think, after rule evaluation, regardless of the active page. `this` is the state. */
+    think?(ctx: Context): void;
+  }
+
+  /**
+   * Declare a System: one shared, brain-global singleton with persistent state,
+   * a one-time `init`, a per-think `think`, and methods. Every reference to the
+   * returned binding -- in this module or an importing one -- coordinates through
+   * the single instance. Methods and `init`/`think` read and write state via
+   * `this`.
+   */
+  export function System<S, M>(config: SystemConfig<S> & M & ThisType<S>): S & M;
 }

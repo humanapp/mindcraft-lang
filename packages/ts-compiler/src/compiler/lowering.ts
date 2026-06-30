@@ -97,6 +97,44 @@ interface ClassInfo {
   staticSetterFuncIds: Map<string, number>;
 }
 
+/** A function-like config member of a `System({...})` (method shorthand, function, or arrow). */
+type SystemFnNode = ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction;
+
+/**
+ * A `const X = System({...})` binding collected during lowering. Holds the
+ * program-local store slot, the registered state struct type, and the func ids
+ * for the user `init` / `think` bodies, the generated wrappers the runtime
+ * calls, and each method (a struct-receiver function over the state).
+ */
+interface SystemBinding {
+  /** Stable cross-module identity (`<declaring-file>::<binding-name>`); the store key. */
+  identity: string;
+  /** Display / debug name from `config.name`. */
+  name: string;
+  /** Program-local System store slot. */
+  localSlot: number;
+  /** Registered state struct type id, or `undefined` when the state shape did not resolve. */
+  stateTypeId: TypeId | undefined;
+  /** The `state` initializer expression, lowered into the store by the init wrapper. */
+  stateNode: ts.Expression;
+  /** Generated ctx-injected init wrapper func id (builds state, then calls the user `init`). */
+  initWrapperFuncId: number;
+  /** Generated ctx-injected think wrapper func id, when a `think` is declared. */
+  thinkWrapperFuncId?: number;
+  /** User `init` body func id (struct-receiver + ctx), when declared. */
+  userInitFuncId?: number;
+  /** User `init` body node, when declared. */
+  initNode?: SystemFnNode;
+  /** User `think` body func id (struct-receiver + ctx), when declared. */
+  userThinkFuncId?: number;
+  /** User `think` body node, when declared. */
+  thinkNode?: SystemFnNode;
+  /** Method name -> struct-receiver func id. */
+  methodFuncIds: Map<string, number>;
+  /** Method name -> body node. */
+  methodNodes: Map<string, SystemFnNode>;
+}
+
 interface InterfaceInfo {
   node: ts.InterfaceDeclaration;
   name: string;
@@ -153,6 +191,27 @@ export interface ProgramLoweringResult {
   numStateSlots: number;
   functionTable: Map<string, number>;
   diagnostics: CompileDiagnostic[];
+  /**
+   * Systems (user-code shared singletons) referenced by this program, each with
+   * its program-local store slot and generated init/think wrapper func ids. The
+   * linker resolves `identity` to a brain-global store slot and registers each
+   * System once across all artifacts.
+   */
+  systems: LoweredSystem[];
+}
+
+/** A System referenced by a lowered program, carrying program-local ids for the linker to remap. */
+export interface LoweredSystem {
+  /** Stable cross-module identity (`<declaring-file>::<binding-name>`); the store key. */
+  identity: string;
+  /** Display / debug name from the `System({ name })` config. */
+  name: string;
+  /** Program-local System store slot (operand of `LOAD_SYSTEM_VAR` / `STORE_SYSTEM_VAR`). */
+  localSlot: number;
+  /** Program-local func id of the generated ctx-injected init wrapper. */
+  initFuncId: number;
+  /** Program-local func id of the generated ctx-injected think wrapper, if a `think` is declared. */
+  thinkFuncId?: number;
 }
 
 interface LoopContext {
@@ -177,11 +236,24 @@ interface LowerContext {
   funcIdCounter: { value: number };
   closureFunctions: Map<number, FunctionEntry>;
   thisLocalIndex?: number;
+  /**
+   * Registered struct type id of `this` inside a System method body. Set only
+   * when lowering a System `init` / `think` / method, whose `this` is the
+   * anonymous state struct the TS type resolver does not map to a registry name.
+   */
+  thisStructTypeId?: TypeId;
   staticClassInfo?: ClassInfo;
   currentFunctionName: string;
   currentReturnTypeId?: TypeId;
   optionalChainSubstitution?: { targetExpr: ts.Expression; localIndex: number };
   classInfos: ClassInfo[];
+  /**
+   * System bindings in scope, keyed by the resolved declaration symbol of the
+   * `const X = System({...})` variable. A reference to such a symbol lowers to
+   * `LOAD_SYSTEM_VAR`; a `X.method(...)` call lowers to a struct-receiver call
+   * over the System's state. Absent in contexts that cannot reach a System.
+   */
+  systemBindings?: Map<ts.Symbol, SystemBinding>;
   hoistedFunctionNodes?: Set<ts.Node>;
   /**
    * When the body being lowered cannot suspend, the clause naming it for an
@@ -862,6 +934,31 @@ export function lowerProgram(
   // Callsite vars are distinct per user tile instance, persist across invocations.
   let nextCallsiteVar = 0;
 
+  // `const X = System({...})` bindings: a brain-global store separate from
+  // callsite vars. Collected here (local and imported), then registered below.
+  const systemBindings = new Map<ts.Symbol, SystemBinding>();
+  const systemDecls: { symbol: ts.Symbol; declName: string; config: ts.ObjectLiteralExpression }[] = [];
+  let nextSystemSlot = 0;
+  const collectSystemDecl = (nameNode: ts.Identifier, initializer: ts.Expression | undefined): boolean => {
+    const config = systemConfigObject(initializer);
+    if (!config) return false;
+    const symbol = checker.getSymbolAtLocation(nameNode);
+    if (!symbol) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SystemBindingUnresolvable,
+          `Cannot resolve the declaration of System '${nameNode.text}'.`,
+          nameNode
+        )
+      );
+      return true;
+    }
+    if (!systemBindings.has(symbol) && !systemDecls.some((d) => d.symbol === symbol)) {
+      systemDecls.push({ symbol, declName: nameNode.text, config });
+    }
+    return true;
+  };
+
   const entryFuncId = funcIdCounter.value++;
 
   for (const stmt of sourceFile.statements) {
@@ -947,6 +1044,7 @@ export function lowerProgram(
     } else if (ts.isVariableStatement(stmt) && !isInsideDescriptor(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
         if (ts.isIdentifier(decl.name)) {
+          if (collectSystemDecl(decl.name, decl.initializer)) continue;
           callsiteVars.set(decl.name.text, nextCallsiteVar++);
         }
       }
@@ -955,6 +1053,16 @@ export function lowerProgram(
 
   if (importedVariables) {
     for (const iv of importedVariables) {
+      const declNode = iv.initializer?.parent;
+      if (
+        iv.initializer &&
+        declNode &&
+        ts.isVariableDeclaration(declNode) &&
+        ts.isIdentifier(declNode.name) &&
+        collectSystemDecl(declNode.name, iv.initializer)
+      ) {
+        continue;
+      }
       if (!callsiteVars.has(iv.name)) {
         callsiteVars.set(iv.name, nextCallsiteVar++);
       }
@@ -1090,6 +1198,53 @@ export function lowerProgram(
     deactivationFuncId = funcIdCounter.value++;
   }
 
+  // Register each System's state struct type and reserve its func ids (methods,
+  // user init/think bodies, and the generated wrappers) before any body is
+  // lowered, so references resolve and func ids stay contiguous. Reservation
+  // order here must match the push order in the System body-lowering pass below.
+  const orderedSystemBindings: SystemBinding[] = [];
+  for (const decl of systemDecls) {
+    const parts = extractSystemConfig(decl.config, diagnostics);
+    if (!parts) continue;
+    const stateDef = autoRegisterAnonymousStruct(checker.getTypeAtLocation(parts.stateNode), checker, services);
+    if (!stateDef) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SystemStateUnresolvable,
+          "`System` `state` must be a non-empty object of VM-representable fields (numbers, strings, booleans, structs).",
+          parts.stateNode
+        )
+      );
+      continue;
+    }
+    const localSlot = nextSystemSlot++;
+    const methodFuncIds = new Map<string, number>();
+    parts.methodNodes.forEach((_node, methodName) => {
+      methodFuncIds.set(methodName, funcIdCounter.value++);
+    });
+    const userInitFuncId = parts.initNode ? funcIdCounter.value++ : undefined;
+    const userThinkFuncId = parts.thinkNode ? funcIdCounter.value++ : undefined;
+    const initWrapperFuncId = funcIdCounter.value++;
+    const thinkWrapperFuncId = parts.thinkNode ? funcIdCounter.value++ : undefined;
+    const binding: SystemBinding = {
+      identity: `${decl.config.getSourceFile().fileName}::${decl.declName}`,
+      name: parts.name,
+      localSlot,
+      stateTypeId: stateDef.typeId,
+      stateNode: parts.stateNode,
+      initWrapperFuncId,
+      thinkWrapperFuncId,
+      userInitFuncId,
+      initNode: parts.initNode,
+      userThinkFuncId,
+      thinkNode: parts.thinkNode,
+      methodFuncIds,
+      methodNodes: parts.methodNodes,
+    };
+    systemBindings.set(decl.symbol, binding);
+    orderedSystemBindings.push(binding);
+  }
+
   const functions: FunctionEntry[] = [];
 
   registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics, services);
@@ -1127,7 +1282,8 @@ export function lowerProgram(
     funcIdCounter,
     closureFunctions,
     services,
-    classInfos
+    classInfos,
+    systemBindings
   );
   functions.push(onExecEntry);
 
@@ -1141,7 +1297,8 @@ export function lowerProgram(
       funcIdCounter,
       closureFunctions,
       services,
-      classInfos
+      classInfos,
+      systemBindings
     );
     functions.push(entry);
   }
@@ -1171,7 +1328,8 @@ export function lowerProgram(
       funcIdCounter,
       closureFunctions,
       services,
-      classInfos
+      classInfos,
+      systemBindings
     );
     functions.push(entry);
   }
@@ -1188,7 +1346,8 @@ export function lowerProgram(
       importedVariables ?? [],
       moduleInitOrder ?? [],
       classInfos,
-      services
+      services,
+      systemBindings
     );
     functions.push(initEntry);
   }
@@ -1208,9 +1367,101 @@ export function lowerProgram(
       funcIdCounter,
       closureFunctions,
       services,
-      classInfos
+      classInfos,
+      systemBindings
     );
     functions.push(exitEntry);
+  }
+
+  // System bodies and generated wrappers. Pushed after the page hooks and
+  // before closures so each entry's array index equals its reserved func id.
+  const systems: LoweredSystem[] = [];
+  for (const binding of orderedSystemBindings) {
+    binding.methodNodes.forEach((node, methodName) => {
+      functions.push(
+        lowerSystemFnEntry(
+          node,
+          `${binding.name}.${methodName}`,
+          checker,
+          callsiteVars,
+          functionTable,
+          diagnostics,
+          funcIdCounter,
+          closureFunctions,
+          services,
+          classInfos,
+          systemBindings,
+          binding.stateTypeId
+        )
+      );
+    });
+    if (binding.initNode) {
+      functions.push(
+        lowerSystemFnEntry(
+          binding.initNode,
+          `${binding.name}.init`,
+          checker,
+          callsiteVars,
+          functionTable,
+          diagnostics,
+          funcIdCounter,
+          closureFunctions,
+          services,
+          classInfos,
+          systemBindings,
+          binding.stateTypeId
+        )
+      );
+    }
+    if (binding.thinkNode) {
+      functions.push(
+        lowerSystemFnEntry(
+          binding.thinkNode,
+          `${binding.name}.think`,
+          checker,
+          callsiteVars,
+          functionTable,
+          diagnostics,
+          funcIdCounter,
+          closureFunctions,
+          services,
+          classInfos,
+          systemBindings,
+          binding.stateTypeId
+        )
+      );
+    }
+    functions.push(
+      generateSystemInitWrapper(
+        binding,
+        checker,
+        callsiteVars,
+        functionTable,
+        diagnostics,
+        funcIdCounter,
+        closureFunctions,
+        services,
+        classInfos,
+        systemBindings
+      )
+    );
+    if (binding.thinkNode && binding.thinkWrapperFuncId !== undefined && binding.userThinkFuncId !== undefined) {
+      functions.push(
+        generateSystemThinkWrapper(
+          binding.name,
+          binding.localSlot,
+          binding.userThinkFuncId,
+          binding.thinkNode.parameters.length > 0
+        )
+      );
+    }
+    systems.push({
+      identity: binding.identity,
+      name: binding.name,
+      localSlot: binding.localSlot,
+      initFuncId: binding.initWrapperFuncId,
+      thinkFuncId: binding.thinkWrapperFuncId,
+    });
   }
 
   const closureEntries = Array.from(closureFunctions.entries())
@@ -1227,6 +1478,7 @@ export function lowerProgram(
     numStateSlots: nextCallsiteVar,
     functionTable,
     diagnostics,
+    systems,
   };
 }
 
@@ -1239,7 +1491,8 @@ function lowerOnPageEnteredBody(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
-  classInfos: ClassInfo[]
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const funcNode = descriptor.onPageEnteredNode!;
@@ -1275,6 +1528,7 @@ function lowerOnPageEnteredBody(
     currentFunctionName: `${descriptor.name}.onPageEntered`,
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
     classInfos,
+    systemBindings,
     nonSuspendableContext: "`onPageEntered` (page handlers cannot suspend)",
   };
 
@@ -1327,7 +1581,8 @@ function lowerOnPageExitedBody(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
-  classInfos: ClassInfo[]
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const funcNode = descriptor.onPageExitedNode!;
@@ -1363,6 +1618,7 @@ function lowerOnPageExitedBody(
     currentFunctionName: `${descriptor.name}.onPageExited`,
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
     classInfos,
+    systemBindings,
     nonSuspendableContext: "`onPageExited` (page handlers cannot suspend)",
   };
 
@@ -1430,6 +1686,360 @@ function generateActivationFunction(name: string, userOnPageEnteredFuncId: numbe
   };
 }
 
+/** Returns the `System({...})` config object literal when `expr` is a `System(...)` call, else undefined. */
+function systemConfigObject(expr: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined {
+  if (!expr || !ts.isCallExpression(expr)) return undefined;
+  if (!ts.isIdentifier(expr.expression) || expr.expression.text !== "System") return undefined;
+  const arg = expr.arguments[0];
+  return arg && ts.isObjectLiteralExpression(arg) ? arg : undefined;
+}
+
+function propertyNameText(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) return name.text;
+  return undefined;
+}
+
+/** A System's config members split into state, lifecycle, and methods. */
+interface SystemConfigParts {
+  name: string;
+  stateNode: ts.Expression;
+  initNode?: SystemFnNode;
+  thinkNode?: SystemFnNode;
+  methodNodes: Map<string, SystemFnNode>;
+}
+
+/** Pull a function-like config member out of a method shorthand or a property whose value is a function/arrow. */
+function systemMemberFn(member: ts.ObjectLiteralElementLike): SystemFnNode | undefined {
+  if (ts.isMethodDeclaration(member)) return member;
+  if (ts.isPropertyAssignment(member)) {
+    const init = member.initializer;
+    if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) return init;
+  }
+  return undefined;
+}
+
+/**
+ * Parse a `System({...})` config object literal into its parts. Every member is
+ * validated: a malformed or unrecognized member (spread, computed key, getter,
+ * a non-string `name`, a non-object `state`, a non-function `init`/`think`/
+ * method) reports a diagnostic. Returns `undefined` when `name` or `state` is
+ * missing or invalid (the System cannot be built); otherwise returns the parts,
+ * with any individually-invalid `init`/`think`/method omitted.
+ */
+function extractSystemConfig(
+  config: ts.ObjectLiteralExpression,
+  diagnostics: CompileDiagnostic[]
+): SystemConfigParts | undefined {
+  let name: string | undefined;
+  let stateNode: ts.Expression | undefined;
+  let initNode: SystemFnNode | undefined;
+  let thinkNode: SystemFnNode | undefined;
+  const methodNodes = new Map<string, SystemFnNode>();
+  let sawName = false;
+  let sawState = false;
+
+  for (const member of config.properties) {
+    if (!member.name) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SystemMemberNotMethod,
+          "Spread members are not supported in a `System` config.",
+          member
+        )
+      );
+      continue;
+    }
+    const key = propertyNameText(member.name);
+    if (key === undefined) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SystemMemberNotMethod,
+          "Computed member names are not supported in a `System` config.",
+          member.name
+        )
+      );
+      continue;
+    }
+
+    if (key === "name") {
+      sawName = true;
+      if (ts.isPropertyAssignment(member) && ts.isStringLiteralLike(member.initializer)) {
+        name = member.initializer.text;
+      } else {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.SystemNameNotStringLiteral,
+            "`System` config `name` must be a string literal.",
+            member
+          )
+        );
+      }
+      continue;
+    }
+    if (key === "state") {
+      sawState = true;
+      if (ts.isPropertyAssignment(member)) {
+        stateNode = member.initializer;
+      } else {
+        diagnostics.push(
+          makeDiag(LoweringDiagCode.SystemStateNotObject, "`System` config `state` must be an object.", member)
+        );
+      }
+      continue;
+    }
+    if (key === "init" || key === "think") {
+      const fn = systemMemberFn(member);
+      if (fn) {
+        if (key === "init") initNode = fn;
+        else thinkNode = fn;
+      } else {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.SystemLifecycleNotFunction,
+            `\`System\` config \`${key}\` must be a method or inline function.`,
+            member
+          )
+        );
+      }
+      continue;
+    }
+    const fn = systemMemberFn(member);
+    if (fn) {
+      methodNodes.set(key, fn);
+    } else {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SystemMemberNotMethod,
+          `\`System\` member '${key}' must be a method (use a method or inline function).`,
+          member
+        )
+      );
+    }
+  }
+
+  if (name === undefined) {
+    if (!sawName) {
+      diagnostics.push(
+        makeDiag(LoweringDiagCode.SystemNameNotStringLiteral, "`System` config requires a string `name`.", config)
+      );
+    }
+    return undefined;
+  }
+  if (stateNode === undefined) {
+    if (!sawState) {
+      diagnostics.push(
+        makeDiag(LoweringDiagCode.SystemStateNotObject, "`System` config requires a `state` object.", config)
+      );
+    }
+    return undefined;
+  }
+  return { name, stateNode, initNode, thinkNode, methodNodes };
+}
+
+/**
+ * Lower a System function-like member (method, `init`, or `think`) as a
+ * struct-receiver function: `this` (the state struct) at local 0, the source
+ * parameters at locals 1..N. Mirrors class-method lowering.
+ */
+function lowerSystemFnEntry(
+  fnNode: SystemFnNode,
+  name: string,
+  checker: ts.TypeChecker,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  diagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices,
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>,
+  thisStructTypeId: TypeId | undefined
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  const params = fnNode.parameters;
+  const userParamCount = params.length;
+  const totalParamCount = userParamCount + 1;
+
+  const paramLocals = new Map<string, number>();
+  for (let i = 0; i < userParamCount; i++) {
+    const p = params[i];
+    if (ts.isIdentifier(p.name)) paramLocals.set(p.name.text, i + 1);
+  }
+
+  const scopeStack = new ScopeStack(totalParamCount);
+  const funcScopeId = scopeStack.initFunctionScope(0, name);
+  scopeStack.addParameterMetadata("this", 0, funcScopeId);
+  for (let i = 0; i < userParamCount; i++) {
+    const p = params[i];
+    if (ts.isIdentifier(p.name)) scopeStack.addParameterMetadata(p.name.text, i + 1, funcScopeId);
+  }
+
+  const ctx: LowerContext = {
+    services,
+    checker,
+    paramsSymbol: undefined,
+    paramLocals,
+    scopeStack,
+    ir,
+    diagnostics,
+    loopStack: [],
+    breakStack: [],
+    nextLabelId: 0,
+    callsiteVars,
+    functionTable,
+    funcIdCounter,
+    closureFunctions,
+    thisLocalIndex: 0,
+    thisStructTypeId,
+    currentFunctionName: name,
+    currentReturnTypeId: resolveSignatureReturnTypeId(fnNode, checker, services),
+    classInfos,
+    systemBindings,
+    nonSuspendableContext: "a System method (System `init`, `think`, and methods cannot suspend)",
+  };
+
+  for (let i = 0; i < userParamCount; i++) {
+    const p = params[i];
+    if (ts.isObjectBindingPattern(p.name)) {
+      lowerObjectBindingPattern(p.name, i + 1, ctx);
+    } else if (ts.isArrayBindingPattern(p.name)) {
+      lowerArrayBindingPattern(p.name, i + 1, ctx);
+    }
+  }
+
+  const body = fnNode.body;
+  if (body && ts.isBlock(body)) {
+    lowerStatements(body.statements, ctx);
+    ir.push({ kind: "PushConst", value: NIL_VALUE });
+    ir.push({ kind: "Return" });
+  } else if (body) {
+    lowerExpressionWithExpectedType(body, ctx.currentReturnTypeId, "return statement", body, ctx);
+    ir.push({ kind: "Return" });
+  } else {
+    ir.push({ kind: "PushConst", value: NIL_VALUE });
+    ir.push({ kind: "Return" });
+  }
+
+  scopeStack.finalizeFunctionScope(ir.length);
+  return {
+    ir,
+    numParams: totalParamCount,
+    numLocals: scopeStack.nextLocal,
+    name,
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
+    isGenerated: false,
+    sourceFileName: fnNode.getSourceFile()?.fileName,
+    functionSpan: spanFromNode(fnNode),
+  };
+}
+
+/**
+ * Generate the ctx-injected init wrapper the runtime calls once at startup: it
+ * builds the initial state struct from the `state` literal, stores it into the
+ * System slot, then calls the user `init` (if any) with `(state, ctx)`.
+ */
+function generateSystemInitWrapper(
+  binding: SystemBinding,
+  checker: ts.TypeChecker,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  diagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices,
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  const scopeStack = new ScopeStack(1);
+  scopeStack.initFunctionScope(0, `${binding.name}.<init>`);
+
+  const ctx: LowerContext = {
+    services,
+    checker,
+    paramsSymbol: undefined,
+    paramLocals: new Map<string, number>(),
+    scopeStack,
+    ir,
+    diagnostics,
+    loopStack: [],
+    breakStack: [],
+    nextLabelId: 0,
+    callsiteVars,
+    functionTable,
+    funcIdCounter,
+    closureFunctions,
+    currentFunctionName: `${binding.name}.<init>`,
+    classInfos,
+    systemBindings,
+    nonSuspendableContext: "a System `init` (cannot suspend)",
+  };
+
+  // Build the initial state struct from the `state` literal against the
+  // registered state struct def when known, else lower the expression directly.
+  const stateDef =
+    binding.stateTypeId !== undefined
+      ? (services.runtime.types.get(binding.stateTypeId) as StructTypeDef | undefined)
+      : undefined;
+  if (stateDef && ts.isObjectLiteralExpression(binding.stateNode)) {
+    lowerObjectLiteralAsStruct(binding.stateNode, stateDef, ctx);
+  } else {
+    lowerExpression(binding.stateNode, ctx);
+  }
+  ir.push({ kind: "StoreSystemVar", index: binding.localSlot });
+
+  if (binding.userInitFuncId !== undefined) {
+    const hasCtx = (binding.initNode?.parameters.length ?? 0) > 0;
+    ir.push({ kind: "LoadSystemVar", index: binding.localSlot });
+    if (hasCtx) ir.push({ kind: "LoadLocal", index: 0 });
+    ir.push({ kind: "Call", funcIndex: binding.userInitFuncId, argc: hasCtx ? 2 : 1 });
+    ir.push({ kind: "Pop" });
+  }
+
+  ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ir.push({ kind: "Return" });
+
+  scopeStack.finalizeFunctionScope(ir.length);
+  return {
+    ir,
+    numParams: 1,
+    numLocals: scopeStack.nextLocal,
+    name: `${binding.name}.<init>`,
+    injectCtxTypeId: ContextTypeIds.Context,
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
+    isGenerated: true,
+  };
+}
+
+/**
+ * Generate the ctx-injected think wrapper the runtime calls every think: it
+ * loads the System's state and calls the user `think` with `(state, ctx)`.
+ */
+function generateSystemThinkWrapper(
+  name: string,
+  localSlot: number,
+  userThinkFuncId: number,
+  hasCtx: boolean
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  ir.push({ kind: "LoadSystemVar", index: localSlot });
+  if (hasCtx) ir.push({ kind: "LoadLocal", index: 0 });
+  ir.push({ kind: "Call", funcIndex: userThinkFuncId, argc: hasCtx ? 2 : 1 });
+  ir.push({ kind: "Pop" });
+  ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ir.push({ kind: "Return" });
+  return {
+    ir,
+    numParams: 1,
+    numLocals: 1,
+    name: `${name}.<think>`,
+    injectCtxTypeId: ContextTypeIds.Context,
+    isGenerated: true,
+  };
+}
+
 function isInsideDescriptor(stmt: ts.VariableStatement): boolean {
   return stmt.parent !== undefined && !ts.isSourceFile(stmt.parent);
 }
@@ -1438,7 +2048,9 @@ function hasTopLevelInitializers(sourceFile: ts.SourceFile): boolean {
   for (const stmt of sourceFile.statements) {
     if (ts.isVariableStatement(stmt) && ts.isSourceFile(stmt.parent)) {
       for (const decl of stmt.declarationList.declarations) {
-        if (decl.initializer && ts.isIdentifier(decl.name)) {
+        // System bindings have no callsite-var slot; their state is built by the
+        // System init wrapper, not the module-scope initializer.
+        if (decl.initializer && ts.isIdentifier(decl.name) && !systemConfigObject(decl.initializer)) {
           return true;
         }
       }
@@ -1463,7 +2075,8 @@ function lowerOnExecuteBody(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
-  classInfos: ClassInfo[]
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const argSlots = collectArgSlots(descriptor.args);
@@ -1542,6 +2155,7 @@ function lowerOnExecuteBody(
     currentFunctionName: `${descriptor.name}.onExecute`,
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
     classInfos,
+    systemBindings,
     nonSuspendableContext: descriptor.execIsAsync
       ? undefined
       : "a synchronous `onExecute`. Declare `onExecute` as `async` and `await` the call",
@@ -1598,7 +2212,8 @@ function lowerHelperFunction(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
-  classInfos: ClassInfo[]
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const paramLocals = new Map<string, number>();
@@ -1640,6 +2255,7 @@ function lowerHelperFunction(
     currentFunctionName: funcName,
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
     classInfos,
+    systemBindings,
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -1698,7 +2314,8 @@ function generateModuleInitWithImports(
   importedVariables: ImportedVariable[],
   moduleInitOrder: string[],
   classInfos: ClassInfo[],
-  services: BrainServices
+  services: BrainServices,
+  systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const scopeStack = new ScopeStack(0);
@@ -1721,6 +2338,7 @@ function generateModuleInitWithImports(
     closureFunctions,
     currentFunctionName: "<module-init>",
     classInfos,
+    systemBindings,
     nonSuspendableContext: "a module-level initializer",
   };
 
@@ -1927,7 +2545,8 @@ function hoistNestedFunctionDeclarations(stmts: ts.NodeArray<ts.Statement>, ctx:
       ctx.funcIdCounter,
       ctx.closureFunctions,
       ctx.services,
-      ctx.classInfos
+      ctx.classInfos,
+      ctx.systemBindings ?? new Map<ts.Symbol, SystemBinding>()
     );
     ctx.closureFunctions.set(funcId, entry);
     ctx.ir.push({ kind: "PushFunctionRef", funcName: name });
@@ -3067,6 +3686,12 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
     }
   }
 
+  const systemBinding = resolveSystemBinding(expr, ctx);
+  if (systemBinding) {
+    ctx.ir.push({ kind: "LoadSystemVar", index: systemBinding.localSlot });
+    return;
+  }
+
   const csvIdx = ctx.callsiteVars.get(expr.text);
   if (csvIdx !== undefined) {
     ctx.ir.push({ kind: "LoadCallsiteVar", index: csvIdx });
@@ -3302,6 +3927,9 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
     if (lowerStaticMethodCall(expr, expr.expression, ctx)) {
       return;
     }
+    if (lowerSystemMethodCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerStructMethodCall(expr, expr.expression, ctx)) {
       return;
     }
@@ -3459,6 +4087,44 @@ function lowerPromiseMethodCall(
     )
   );
   ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+  return true;
+}
+
+/** Resolve an identifier to its System binding (following import aliases), or undefined. */
+function resolveSystemBinding(idNode: ts.Identifier, ctx: LowerContext): SystemBinding | undefined {
+  if (!ctx.systemBindings) return undefined;
+  let sym = ctx.checker.getSymbolAtLocation(idNode);
+  if (!sym) return undefined;
+  if (sym.flags & ts.SymbolFlags.Alias) {
+    sym = ctx.checker.getAliasedSymbol(sym);
+  }
+  return ctx.systemBindings.get(sym);
+}
+
+/**
+ * Lower `Movement.method(...)` where `Movement` is a System binding: load the
+ * System's state struct as the receiver, then call the method (a struct-receiver
+ * function over the state) with the state plus the call arguments.
+ */
+function lowerSystemMethodCall(expr: ts.CallExpression, callee: ts.LeftHandSideExpression, ctx: LowerContext): boolean {
+  if (!ts.isPropertyAccessExpression(callee)) return false;
+  if (!ts.isIdentifier(callee.expression)) return false;
+  const binding = resolveSystemBinding(callee.expression, ctx);
+  if (!binding) return false;
+
+  const methodName = callee.name.text;
+  const funcId = binding.methodFuncIds.get(methodName);
+  if (funcId === undefined) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UnsupportedFunctionCall, `System '${binding.name}' has no method '${methodName}'`, expr)
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return true;
+  }
+
+  ctx.ir.push({ kind: "LoadSystemVar", index: binding.localSlot });
+  const argc = lowerCallArgumentsWithTargetTypes(expr, ctx) + 1;
+  ctx.ir.push({ kind: "Call", funcIndex: funcId, argc });
   return true;
 }
 
@@ -3684,6 +4350,7 @@ function lowerClosureExpression(
     currentFunctionName: closureName,
     currentReturnTypeId: resolveSignatureReturnTypeId(expr, ctx.checker, ctx.services),
     classInfos: ctx.classInfos,
+    systemBindings: ctx.systemBindings,
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -4216,8 +4883,7 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
     return;
   }
 
-  const thisType = ctx.checker.getTypeAtLocation(propAccess.expression);
-  const structDef = resolveStructType(thisType, ctx.services, ctx.checker);
+  const structDef = resolveThisReceiverStructDef(propAccess.expression, ctx);
   if (structDef) {
     const className = bareClassName(structDef.name);
     const ci = ctx.classInfos.find((c) => c.name === className);
@@ -8162,7 +8828,10 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     }
   }
 
-  const structDef = resolveStructType(objType, ctx.services, ctx.checker);
+  const structDef =
+    expr.expression.kind === ts.SyntaxKind.ThisKeyword && ctx.thisStructTypeId !== undefined
+      ? resolveThisReceiverStructDef(expr.expression, ctx)
+      : resolveStructType(objType, ctx.services, ctx.checker);
   if (structDef) {
     const fieldName = expr.name.text;
     const className = bareClassName(structDef.name);
@@ -8257,6 +8926,19 @@ function resolveStructType(
   const def = registry.get(typeId);
   if (!def || def.coreType !== NativeType.Struct) return undefined;
   return def as StructTypeDef;
+}
+
+/**
+ * Resolve the struct def of a `this.field` receiver. When `this` is a System
+ * state struct, uses the state struct id carried on the context
+ * (`ctx.thisStructTypeId`); otherwise resolves from the receiver's TS type.
+ */
+function resolveThisReceiverStructDef(receiver: ts.Expression, ctx: LowerContext): StructTypeDef | undefined {
+  if (receiver.kind === ts.SyntaxKind.ThisKeyword && ctx.thisStructTypeId !== undefined) {
+    const def = ctx.services.runtime.types.get(ctx.thisStructTypeId);
+    if (def && def.coreType === NativeType.Struct) return def as StructTypeDef;
+  }
+  return resolveStructType(ctx.checker.getTypeAtLocation(receiver), ctx.services, ctx.checker);
 }
 
 function resolveEnumDeclaration(sym: ts.Symbol, checker?: ts.TypeChecker): ts.EnumDeclaration | undefined {

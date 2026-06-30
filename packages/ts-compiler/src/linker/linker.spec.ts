@@ -33,6 +33,8 @@ function mkCtx(
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,

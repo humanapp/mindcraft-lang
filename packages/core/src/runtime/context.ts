@@ -122,6 +122,27 @@ export interface ExecutionContext {
   setVariableBySlot(slotId: number, value: Value): void;
 
   /**
+   * Read a System's state by its compiler-assigned store slot. The slot index
+   * is the operand of `LOAD_SYSTEM_VAR` and indexes the brain-global System
+   * store, a namespace separate from `variableNames`. Returns the slot's
+   * current value, or `NIL_VALUE` if the slot has never been written.
+   *
+   * @param slotId - System store slot assigned by the linker
+   */
+  getSystemVarBySlot(slotId: number): Value;
+
+  /**
+   * Write a System's state by its compiler-assigned store slot. The slot index
+   * is the operand of `STORE_SYSTEM_VAR`. The value is written by reference
+   * (no deep copy), so a System's state struct mutates in place across
+   * methods, `think`, and callsites.
+   *
+   * @param slotId - System store slot assigned by the linker
+   * @param value - The value to store
+   */
+  setSystemVarBySlot(slotId: number, value: Value): void;
+
+  /**
    * Optional application-specific data attached to the execution context.
    * Allows host functions (sensors, actuators) to reach environment-specific
    * state without coupling the core VM to application-specific types.

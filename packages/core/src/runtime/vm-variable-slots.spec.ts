@@ -26,6 +26,8 @@ test("STORE_VAR_SLOT and LOAD_VAR_SLOT round-trip a value through the execution 
       }
       slots.set(slotId, value);
     },
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,

@@ -456,6 +456,18 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   }
 
   // ==========================================
+  // System (shared-singleton) variables
+  // ==========================================
+
+  loadSystemVar(slotIdx: number): void {
+    this.emit({ op: Op.LOAD_SYSTEM_VAR, a: slotIdx });
+  }
+
+  storeSystemVar(slotIdx: number): void {
+    this.emit({ op: Op.STORE_SYSTEM_VAR, a: slotIdx });
+  }
+
+  // ==========================================
   // Type introspection
   // ==========================================
 

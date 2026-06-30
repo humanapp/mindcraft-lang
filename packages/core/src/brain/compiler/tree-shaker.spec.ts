@@ -854,6 +854,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
       while (slots.size() <= slotId) slots.push(undefined);
       slots.set(slotId, value);
     },
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
