@@ -25,6 +25,7 @@ import { List, type ReadonlyList } from "./platform/list";
 import { TypeUtils } from "./platform/types";
 import type {
   ActionDescriptor,
+  ActionOutputSpec,
   AppServices,
   BrainActionCallDef,
   BrainActionResolver,
@@ -189,9 +190,11 @@ function adaptAsyncActionFn(fn: AsyncHostActionFn): HostAsyncFn {
   };
 }
 
-/** Options for {@link createHostSensor}. Sensors return a value of `outputType`. */
+/** Options for {@link createHostSensor}. Sensors return a value of `outputType` and may expose named `outputs`. */
 export type CreateHostSensorOptions = (SyncHostActionOptions | AsyncHostActionOptions) & {
   readonly outputType: TypeId;
+  /** Named, typed outputs this sensor exposes as inline output value-tiles. */
+  readonly outputs?: readonly ActionOutputSpec[];
 };
 
 /** Options for {@link createHostActuator}. Actuators do not return a value. */
@@ -206,6 +209,7 @@ export function createHostSensor(options: CreateHostSensorOptions): HostSensorDe
     callDef: options.callDef,
     isAsync,
     outputType: options.outputType,
+    outputs: options.outputs,
   };
   const hostFn: HostFn = options.isAsync
     ? adaptAsyncActionFn(options.fn)

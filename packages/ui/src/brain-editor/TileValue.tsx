@@ -1,5 +1,10 @@
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import type {
+  BrainTileAccessorDef,
+  BrainTileLiteralDef,
+  BrainTileOutputDef,
+  BrainTileVariableDef,
+} from "@mindcraft-lang/core/brain/tiles";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { formatValue } from "./tile-value-utils";
 
@@ -55,6 +60,19 @@ export function TileValue({ tileDef }: TileValueProps) {
     return (
       <span className={`${fontClass} ${textSizeClass}`} style={{ color: textColor }}>
         {formatValue(value, valueType, customLiteralTypes)}
+      </span>
+    );
+  }
+
+  if (tileDef.kind === "output") {
+    const outputDef = tileDef as BrainTileOutputDef;
+    const label = outputDef.metadata?.label ?? outputDef.outputName;
+    const fontClass = "font-math";
+    const textSizeClass = "text-2xl";
+
+    return (
+      <span className={`${fontClass} italic ${textSizeClass}`} style={{ color: textColor }}>
+        {label}
       </span>
     );
   }

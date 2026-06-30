@@ -8,6 +8,8 @@ export {
   CoreParameterId,
   mkActuatorTileId,
   mkModifierTileId,
+  mkOutputTileId,
+  mkOutputVarKey,
   mkParameterTileId,
   mkSensorTileId,
   mkTileId,
@@ -37,6 +39,7 @@ export type BrainTileKind =
   | "modifier"
   | "accessor"
   | "page"
+  | "output"
   | "missing";
 
 /** Identifies which side(s) of a rule (`when`, `do`, or both) a tile is allowed on. */
@@ -228,6 +231,15 @@ export const CoreCapabilityBits = {
    */
   PresenceGated: 2,
 } as const;
+
+/**
+ * First capability bit reserved for sensor-output gating. Each distinct output
+ * identity (`(typeId, name)`) is interned to one bit at or above this offset at
+ * tile registration; the declaring sensors provide it and the single output
+ * tile for that identity requires it. These bits are edit-time only and are not
+ * serialized. The band starts above the app range (32) to leave 32-63 for apps.
+ */
+export const OUTPUT_CAPABILITY_BIT_OFFSET = 64;
 
 // ----------------------------------------------------
 // Core Tile IDs

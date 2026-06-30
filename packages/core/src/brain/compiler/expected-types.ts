@@ -10,6 +10,7 @@ import type {
   FieldAccessExpr,
   LiteralExpr,
   ModifierExpr,
+  OutputExpr,
   ParameterExpr,
   SensorExpr,
   UnaryOpExpr,
@@ -46,6 +47,10 @@ class ExpectedTypeVisitor implements ExprVisitor<void> {
     const typeInfo = this.ensureTypeInfo(expr.nodeId);
     typeInfo.isLVal = true;
     typeInfo.expected = expr.tileDef.varType;
+  }
+  visitOutput(expr: OutputExpr): void {
+    const typeInfo = this.ensureTypeInfo(expr.nodeId);
+    typeInfo.inferred = expr.tileDef.outputType;
   }
   visitAssignment(expr: AssignmentExpr): void {
     // For assignments, propagate expected type to the value expression

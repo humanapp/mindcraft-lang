@@ -26,6 +26,7 @@ import {
   type BrainTileLiteralDef,
   type BrainTileModifierDef,
   type BrainTileOperatorDef,
+  type BrainTileOutputDef,
   BrainTilePageDef,
   type BrainTileParameterDef,
   type BrainTileSensorDef,
@@ -122,6 +123,7 @@ class BrainParser {
     this.nudHandlers = new Dict<BrainTileKind, NudHandler>([
       ["literal", (tok, startPos, opts) => this.parseNudLiteral(tok, startPos, opts)],
       ["variable", (tok, startPos, opts) => this.parseNudVariable(tok, startPos, opts)],
+      ["output", (tok, startPos, opts) => this.parseNudOutput(tok, startPos, opts)],
       ["operator", (tok, startPos, opts) => this.parseNudOperator(tok, startPos, opts)],
       ["controlFlow", (tok, startPos, opts) => this.parseNudControlFlow(tok, startPos, opts)],
       ["sensor", (tok, startPos, opts) => this.parseNudSensor(tok, startPos, opts)],
@@ -885,6 +887,15 @@ class BrainParser {
       nodeId: this.nextNodeId(),
       kind: "variable",
       tileDef: tok as BrainTileVariableDef,
+      span: { from: startPos, to: this.i },
+    };
+  }
+
+  private parseNudOutput(tok: IBrainTileDef, startPos: number, opts: ParseOpts): Expr {
+    return {
+      nodeId: this.nextNodeId(),
+      kind: "output",
+      tileDef: tok as BrainTileOutputDef,
       span: { from: startPos, to: this.i },
     };
   }

@@ -26,6 +26,7 @@ export type {
   ExtractedDescriptor,
   ExtractedModifier,
   ExtractedOptional,
+  ExtractedOutput,
   ExtractedParam,
   ExtractedRepeated,
   ExtractedSeq,

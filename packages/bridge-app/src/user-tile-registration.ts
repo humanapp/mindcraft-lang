@@ -9,16 +9,20 @@ import type {
 import {
   BitSet,
   BrainTileActuatorDef,
+  BrainTileOutputDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
   CoreCapabilityBits,
   logger,
   mkActuatorTileId,
   mkCallDef,
+  mkOutputVarKey,
   mkSensorTileId,
+  OutputCapabilityAllocator,
 } from "@mindcraft-lang/core/app";
 import type {
   ExtractedArgSpec,
+  ExtractedOutput,
   ExtractedParam,
   UserAuthoredProgram,
   WorkspaceCompileResult,
@@ -31,7 +35,7 @@ import {
   isRecord,
 } from "@mindcraft-lang/ts-compiler";
 
-const METADATA_CACHE_VERSION = 4 as const;
+const METADATA_CACHE_VERSION = 5 as const;
 
 /** Cached metadata describing a user-authored sensor or actuator tile. */
 export interface UserTileMetadata {
@@ -49,6 +53,8 @@ export interface UserTileMetadata {
   args: ExtractedArgSpec[];
   /** For sensors, the typeId of the value the tile produces. */
   outputType?: string;
+  /** For sensors, the declared named outputs surfaced as inline output value-tiles. */
+  outputs?: ExtractedOutput[];
   /** Whether the tile's call returns a `Promise`. */
   isAsync: boolean;
   /** Optional human-readable label for the tile. */
@@ -94,6 +100,22 @@ type LoadedHydratedMetadata = {
   droppedEntries: number;
 };
 
+function isOutput(value: unknown): value is ExtractedOutput {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.type === "string" &&
+    isOptionalString(value.label) &&
+    isOptionalString(value.icon) &&
+    isOptionalString(value.docs) &&
+    isOptionalStringArray(value.tags)
+  );
+}
+
+function isOptionalOutputArray(value: unknown): value is ExtractedOutput[] | undefined {
+  return value === undefined || (Array.isArray(value) && value.every(isOutput));
+}
+
 function isUserTileMetadata(value: unknown): value is UserTileMetadata {
   return (
     isRecord(value) &&
@@ -104,6 +126,7 @@ function isUserTileMetadata(value: unknown): value is UserTileMetadata {
     isCallSpec(value.callSpec) &&
     Array.isArray(value.args) &&
     isOptionalString(value.outputType) &&
+    isOptionalOutputArray(value.outputs) &&
     typeof value.isAsync === "boolean" &&
     isOptionalString(value.label) &&
     isOptionalString(value.iconUrl) &&
@@ -121,6 +144,7 @@ function metadataFromProgram(program: UserAuthoredProgram): UserTileMetadata {
     callSpec: program.callDef.callSpec as BrainActionCallSpec,
     args: program.args,
     outputType: program.outputType,
+    outputs: program.outputs,
     isAsync: program.isAsync,
     label: program.label,
     iconUrl: program.iconUrl,
@@ -246,6 +270,7 @@ function buildHydratedSnapshot(
   return env.withServices((services) => {
     const { types } = services.runtime;
     const tiles = new Map<string, TileDefinitionInput>();
+    const outputCapabilities = new OutputCapabilityAllocator();
 
     for (const entry of metadata) {
       const parameterTiles: TileDefinitionInput[] = [];
@@ -279,6 +304,9 @@ function buildHydratedSnapshot(
         outputType: undefined as string | undefined,
       };
 
+      const userTileCaps = new BitSet().set(CoreCapabilityBits.UserTile);
+      const outputTiles: TileDefinitionInput[] = [];
+
       if (entry.kind === "sensor") {
         const outputType = entry.outputType ? resolveTypeId(types, entry.outputType) : undefined;
         if (!outputType) {
@@ -286,9 +314,40 @@ function buildHydratedSnapshot(
           continue;
         }
         descriptor.outputType = outputType;
+
+        for (const output of entry.outputs ?? []) {
+          const outputTypeId = resolveTypeId(types, output.type);
+          if (!outputTypeId) {
+            logger.warn(`[user-tile-registration] unknown output type "${output.type}" for "${entry.key}"`);
+            canRegister = false;
+            break;
+          }
+          const bit = outputCapabilities.alloc(mkOutputVarKey(outputTypeId, output.name));
+          userTileCaps.set(bit);
+          outputTiles.push(
+            new BrainTileOutputDef(outputTypeId, output.name, {
+              requirements: new BitSet().set(bit),
+              metadata: {
+                label: output.label ?? output.name,
+                iconUrl: output.icon,
+                docsMarkdown: output.docs,
+                tags: output.tags,
+              },
+            })
+          );
+        }
+        if (!canRegister) {
+          continue;
+        }
       }
 
       for (const tile of parameterTiles) {
+        if (!tiles.has(tile.tileId)) {
+          tiles.set(tile.tileId, tile);
+        }
+      }
+
+      for (const tile of outputTiles) {
         if (!tiles.has(tile.tileId)) {
           tiles.set(tile.tileId, tile);
         }
@@ -300,8 +359,6 @@ function buildHydratedSnapshot(
         docsMarkdown: entry.docsMarkdown,
         tags: entry.tags,
       };
-
-      const userTileCaps = new BitSet().set(CoreCapabilityBits.UserTile);
 
       const actionTile =
         entry.kind === "sensor"

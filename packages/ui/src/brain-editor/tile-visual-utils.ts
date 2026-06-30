@@ -4,6 +4,7 @@ import {
   applyDisplayFormat,
   type BrainTileAccessorDef,
   type BrainTileLiteralDef,
+  type BrainTileOutputDef,
   type BrainTileVariableDef,
   getCatalogFallbackLabel,
 } from "@mindcraft-lang/core/brain/tiles";
@@ -25,6 +26,10 @@ function defaultTileLabel(tileDef: IBrainTileDef): string {
 
   if (tileDef.kind === "accessor") {
     return (tileDef as BrainTileAccessorDef).fieldName;
+  }
+
+  if (tileDef.kind === "output") {
+    return (tileDef as BrainTileOutputDef).outputName;
   }
 
   return getCatalogFallbackLabel(tileDef);

@@ -11,6 +11,7 @@ import type {
   FieldAccessExpr,
   LiteralExpr,
   ModifierExpr,
+  OutputExpr,
   ParameterExpr,
   SensorExpr,
   UnaryOpExpr,
@@ -35,6 +36,9 @@ class ExprMapperVisitor implements ExprVisitor<void> {
     this.nodes.set(expr.nodeId, expr);
   }
   visitVariable(expr: VariableExpr): void {
+    this.nodes.set(expr.nodeId, expr);
+  }
+  visitOutput(expr: OutputExpr): void {
     this.nodes.set(expr.nodeId, expr);
   }
   visitAssignment(expr: AssignmentExpr): void {

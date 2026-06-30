@@ -49,6 +49,7 @@ import {
   BrainTileLiteralDef,
   BrainTileModifierDef,
   type BrainTileOperatorDef,
+  BrainTileOutputDef,
   BrainTilePageDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
@@ -2257,6 +2258,39 @@ describe("Capability requirements filtering", () => {
     );
 
     services.edit.tiles.delete(reqLitDef.tileId);
+  });
+
+  test("An output tile is suggested only when a declaring sensor's gating capability is present", () => {
+    const outputBit = 64;
+    const outputDef = new BrainTileOutputDef(CoreTypeIds.Number, "rssi", {
+      requirements: new BitSet().set(outputBit),
+      metadata: { label: "signal strength" },
+    });
+    services.edit.tiles.registerTileDef(outputDef);
+
+    // Absent declaring sensor (empty capabilities) -> not surfaced.
+    const without = suggestTiles(
+      { ruleSide: RuleSide.When, availableCapabilities: new BitSet() },
+      catalogList(),
+      services
+    );
+    assert.ok(
+      listFind(without.exact, (s) => s.tileDef.tileId === outputDef.tileId) === undefined,
+      "output tile must be hidden without a declaring sensor"
+    );
+
+    // Declaring sensor present (its provided bit available) -> surfaced.
+    const withSensor = suggestTiles(
+      { ruleSide: RuleSide.When, availableCapabilities: new BitSet().set(outputBit) },
+      catalogList(),
+      services
+    );
+    assert.ok(
+      listFind(withSensor.exact, (s) => s.tileDef.tileId === outputDef.tileId) !== undefined,
+      "output tile must surface downstream of a declaring sensor"
+    );
+
+    services.edit.tiles.delete(outputDef.tileId);
   });
 
   test("Test 61: Multi-bit requirements need all bits present", () => {

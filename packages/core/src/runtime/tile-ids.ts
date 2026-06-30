@@ -44,6 +44,24 @@ export function mkModifierTileId(modifierId: string): string {
   return mkTileId("modifier", modifierId);
 }
 
+/**
+ * Tile id for a sensor output value-tile, keyed by output identity (the
+ * `typeId` of the value plus the output `name`). Two sensors declaring the same
+ * `(typeId, name)` produce the same id and therefore share a single tile.
+ */
+export function mkOutputTileId(typeId: string, name: string): string {
+  return mkTileId("out", `${typeId}.${name}`);
+}
+
+/**
+ * Backing rule-variable key for a sensor output, keyed by output identity. The
+ * `setOutput` write and the output tile read both resolve to this key, so a
+ * shared `(typeId, name)` identity round-trips through one rule variable.
+ */
+export function mkOutputVarKey(typeId: string, name: string): string {
+  return `__out.${typeId}.${name}`;
+}
+
 export enum CoreParameterId {
   AnonymousBoolean = "anon.boolean",
   AnonymousNumber = "anon.number",

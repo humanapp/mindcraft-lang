@@ -25,6 +25,7 @@ import { resolveTileVisual } from "./tile-visual-utils";
 type TileGroup =
   | "actuator"
   | "sensor"
+  | "output"
   | "function"
   | "parameter+modifier"
   | "variable"
@@ -43,6 +44,7 @@ function allTileGroups<const T extends readonly TileGroup[]>(
 const groupNames: Record<TileGroup, string> = {
   actuator: "Actuators",
   sensor: "Sensors",
+  output: "Outputs",
   function: "Functions",
   "parameter+modifier": "Parameters",
   variable: "Variables",
@@ -156,6 +158,7 @@ export function BrainTilePickerDialog({
           return "operator+controlFlow";
         case "actuator":
         case "sensor":
+        case "output":
         case "variable":
         case "accessor":
         case "literal":
@@ -176,6 +179,7 @@ export function BrainTilePickerDialog({
           "page",
           "literal",
           "variable",
+          "output",
           "function",
           "actuator",
           "sensor",
@@ -187,6 +191,7 @@ export function BrainTilePickerDialog({
       : allTileGroups([
           "actuator",
           "sensor",
+          "output",
           "function",
           "parameter+modifier",
           "variable",

@@ -8,6 +8,7 @@ import {
   DYNAMIC_FUNC_ID_BASE,
   type EnumFunctionIds,
   mkNumberValue,
+  mkOutputVarKey,
   mkStringValue,
   NativeType,
   NIL_VALUE,
@@ -260,6 +261,19 @@ interface LowerContext {
    * over the System's state. Absent in contexts that cannot reach a System.
    */
   systemBindings?: Map<ts.Symbol, SystemBinding>;
+  /**
+   * Declared outputs of the enclosing sensor, mapping each output name to its
+   * resolved value {@link TypeId}. A `setOutput(ctx, name, value)` call resolves
+   * `name` here to form the backing rule-variable key. Set only when lowering a
+   * sensor `onExecute` that declares `outputs`; absent elsewhere, so `setOutput`
+   * outside a sensor body is diagnosed.
+   */
+  sensorOutputs?: Map<string, TypeId>;
+  /**
+   * Every output name the enclosing sensor declares, including any whose declared
+   * type did not resolve. Set alongside {@link sensorOutputs}.
+   */
+  sensorOutputNames?: Set<string>;
   hoistedFunctionNodes?: Set<ts.Node>;
   /**
    * When the body being lowered cannot suspend, the clause naming it for an
@@ -2132,6 +2146,28 @@ function lowerOnExecuteBody(
     }
   }
 
+  let sensorOutputs: Map<string, TypeId> | undefined;
+  let sensorOutputNames: Set<string> | undefined;
+  if (descriptor.kind === "sensor" && descriptor.outputs && descriptor.outputs.length > 0) {
+    sensorOutputs = new Map<string, TypeId>();
+    sensorOutputNames = new Set<string>();
+    for (const output of descriptor.outputs) {
+      sensorOutputNames.add(output.name);
+      const typeId = resolveOutputTypeId(output.type, services);
+      if (typeId === undefined) {
+        sharedDiagnostics.push(
+          makeDiag(
+            LoweringDiagCode.OutputTypeUnresolvable,
+            `Sensor output \`${output.name}\` declares type \`${output.type}\`, which is not a known type.`,
+            funcNode
+          )
+        );
+        continue;
+      }
+      sensorOutputs.set(output.name, typeId);
+    }
+  }
+
   const scopeStack = new ScopeStack(nextLocal);
   const funcScopeId = scopeStack.initFunctionScope(0, `${descriptor.name}.onExecute`);
 
@@ -2167,6 +2203,8 @@ function lowerOnExecuteBody(
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
     classInfos,
     systemBindings,
+    sensorOutputs,
+    sensorOutputNames,
     nonSuspendableContext: descriptor.execIsAsync
       ? undefined
       : "a synchronous `onExecute`. Declare `onExecute` as `async` and `await` the call",
@@ -3900,7 +3938,116 @@ function lowerOptionalChainCall(expr: ts.CallExpression, ctx: LowerContext): voi
   ctx.ir.push({ kind: "Label", labelId: endLabel });
 }
 
+/** Resolve a declared output type name to a registry {@link TypeId}, matching the registration-side resolution. */
+function resolveOutputTypeId(typeName: string, services: BrainServices): TypeId | undefined {
+  const types = services.runtime.types;
+  if (types.get(typeName)) return typeName;
+  return types.resolveByName(typeName);
+}
+
+/**
+ * Lower a `setOutput(ctx, name, value)` intrinsic call. Resolves `name` against
+ * the enclosing sensor's declared outputs to form the backing rule-variable key
+ * (see {@link mkOutputVarKey}), then emits a RuleContextSetVariable host call:
+ * arg slot 0 is the ignored receiver, slot 1 the constant key, slot 2 the value.
+ * Leaves the call's nil result on the stack (the expression statement pops it).
+ */
+function lowerSetOutputCall(expr: ts.CallExpression, ctx: LowerContext): void {
+  if (expr.arguments.length !== 3) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.SetOutputWrongArgCount,
+        "`setOutput` requires exactly three arguments: (ctx, name, value).",
+        expr
+      )
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+
+  const nameArg = expr.arguments[1];
+  if (!ts.isStringLiteral(nameArg)) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.SetOutputNameNotStringLiteral, "`setOutput` name must be a string literal.", nameArg)
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+
+  const outputName = nameArg.text;
+  if (ctx.sensorOutputs === undefined) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.SetOutputOutsideSensor,
+        "`setOutput` is only valid inside a sensor `onExecute` that declares `outputs`.",
+        expr
+      )
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+
+  const typeId = ctx.sensorOutputs.get(outputName);
+  if (typeId === undefined) {
+    // A declared output whose type did not resolve is already reported at its
+    // declaration; only a genuinely undeclared name is flagged here.
+    if (!ctx.sensorOutputNames?.has(outputName)) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SetOutputUnknownOutput,
+          `\`setOutput\` names output \`${outputName}\`, which is not declared in this sensor's \`outputs\`.`,
+          nameArg
+        )
+      );
+    }
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+
+  ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ctx.ir.push({ kind: "PushConst", value: mkStringValue(mkOutputVarKey(typeId, outputName)) });
+  const valueExpr = expr.arguments[2];
+  lowerExpression(valueExpr, ctx);
+  coerceSetOutputValue(valueExpr, typeId, outputName, ctx);
+  ctx.ir.push({ kind: "HostCall", fnName: "RuleContext.setVariable", argc: 3 });
+}
+
+/**
+ * Coerce the just-lowered `setOutput` value (on top of the operand stack) to the
+ * output's declared type. A value already of the declared type, or `nil` (clearing
+ * an output), passes through unchanged; a single-step-convertible value is
+ * converted; any other type is diagnosed and the value left as lowered.
+ */
+function coerceSetOutputValue(
+  valueExpr: ts.Expression,
+  declaredTypeId: TypeId,
+  outputName: string,
+  ctx: LowerContext
+): void {
+  const valueTypeId = resolveExpressionTypeId(valueExpr, ctx);
+  if (valueTypeId === undefined || valueTypeId === declaredTypeId || valueTypeId === CoreTypeIds.Nil) {
+    return;
+  }
+  const conversion = resolveSingleStepConversion(valueTypeId, declaredTypeId, ctx.services);
+  if (conversion) {
+    emitSingleStepConversion(conversion.fnName, ctx);
+    return;
+  }
+  ctx.diagnostics.push(
+    makeDiag(
+      LoweringDiagCode.SetOutputValueTypeMismatch,
+      `\`setOutput\` value of type \`${valueTypeId}\` does not match output \`${outputName}\`'s declared type \`${declaredTypeId}\`.`,
+      valueExpr
+    )
+  );
+}
+
 function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): void {
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "setOutput") {
+    lowerSetOutputCall(expr, ctx);
+    return;
+  }
+
   if (ts.isIdentifier(expr.expression)) {
     const funcId = ctx.functionTable.get(expr.expression.text);
     if (funcId !== undefined) {

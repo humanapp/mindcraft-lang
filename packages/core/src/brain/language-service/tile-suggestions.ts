@@ -31,6 +31,7 @@ import type { BrainTileControlFlowDef } from "../tiles/controlflow";
 import type { BrainTileFactoryDef } from "../tiles/factories";
 import type { BrainTileLiteralDef } from "../tiles/literals";
 import type { BrainTileOperatorDef } from "../tiles/operators";
+import type { BrainTileOutputDef } from "../tiles/outputs";
 import type { BrainTilePageDef } from "../tiles/pagetiles";
 import type { BrainTileParameterDef } from "../tiles/parameters";
 import type { BrainTileSensorDef } from "../tiles/sensors";
@@ -140,6 +141,8 @@ export function getTileOutputType(tileDef: IBrainTileDef): TypeId | undefined {
       return (tileDef as BrainTileVariableDef).varType;
     case "sensor":
       return (tileDef as BrainTileSensorDef).outputType;
+    case "output":
+      return (tileDef as BrainTileOutputDef).outputType;
     case "factory":
       return (tileDef as BrainTileFactoryDef).producedDataType;
     case "parameter":
@@ -742,6 +745,7 @@ function isCompleteValueExpr(expr: Expr): expr is Expr & { span: Span } {
   switch (expr.kind) {
     case "literal":
     case "variable":
+    case "output":
     case "sensor":
     case "fieldAccess":
       return true;
@@ -976,6 +980,8 @@ function getExprOutputType(
       return expr.tileDef.varType;
     case "sensor":
       return expr.tileDef.outputType;
+    case "output":
+      return expr.tileDef.outputType;
     case "actuator":
       return CoreTypeIds.Void;
     case "assignment":
@@ -1064,6 +1070,7 @@ function isValueProducingTile(tileDef: IBrainTileDef): boolean {
   switch (tileDef.kind) {
     case "literal":
     case "variable":
+    case "output":
     case "sensor":
     case "factory":
     case "page":
@@ -1121,6 +1128,7 @@ function findReplacementRole(expr: Expr, tileIndex: number, parentRole: Replacem
     case "empty":
     case "literal":
     case "variable":
+    case "output":
     case "modifier":
       // Leaf nodes -- the role is whatever the parent says
       return parentRole;
@@ -1519,6 +1527,7 @@ export function suggestTiles(
 
     case "literal":
     case "variable":
+    case "output":
     case "binaryOp":
     case "assignment":
     case "fieldAccess":

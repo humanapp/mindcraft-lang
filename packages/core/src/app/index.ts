@@ -38,12 +38,15 @@ export {
   BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileModifierDef,
+  BrainTileOutputDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
+  buildDescriptorOutputTiles,
   createAccessorTileDef,
   createVariableFactoryTileDef,
   getCatalogFallbackLabel,
+  OutputCapabilityAllocator,
 } from "../brain/tiles";
 
 // -- Tile ID constructors -------------------------------------------------------
@@ -56,6 +59,8 @@ export {
   mkLiteralTileId,
   mkModifierTileId,
   mkOperatorTileId,
+  mkOutputTileId,
+  mkOutputVarKey,
   mkPageTileId,
   mkParameterTileId,
   mkSensorTileId,
@@ -111,6 +116,7 @@ export {
   getWhenResult,
   setCallSiteState,
   setRuleVariable,
+  setSensorOutput,
 } from "../runtime/context";
 export type {
   AsyncHandle,

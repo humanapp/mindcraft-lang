@@ -27,6 +27,8 @@ export interface UserAuthoredProgram extends UserActionArtifact {
   tags?: string[];
   /** Capability identifiers declared in the source config, forwarded onto the generated tile def's capability BitSet. */
   capabilities?: string[];
+  /** Named, typed outputs declared on a sensor; each surfaces as a derived inline output value-tile. */
+  outputs?: ExtractedOutput[];
 }
 
 /** A {@link UserAuthoredProgram} plus the offsets at which the linker placed its functions, constants, and variables in the merged brain program. */
@@ -104,6 +106,22 @@ export interface ExtractedDescriptor {
   tags?: string[];
   /** Capability identifiers declared in the `capabilities` config field. */
   capabilities?: string[];
+  /** Output declarations from the `outputs` config field (sensors only). */
+  outputs?: ExtractedOutput[];
+}
+
+/**
+ * One entry of a sensor's `outputs` config: a named, typed value the sensor
+ * exposes as an inline output tile. The `(type, name)` pair is the output
+ * identity; `type` is a declared type name resolved to a TypeId at registration.
+ */
+export interface ExtractedOutput {
+  name: string;
+  type: string;
+  label?: string;
+  icon?: string;
+  docs?: string;
+  tags?: string[];
 }
 
 /** Modifier arg spec extracted from a `modifier(...)` call. */

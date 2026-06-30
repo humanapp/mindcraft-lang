@@ -21,6 +21,7 @@ import type {
   FieldAccessExpr,
   LiteralExpr,
   ModifierExpr,
+  OutputExpr,
   ParameterExpr,
   SensorExpr,
   UnaryOpExpr,
@@ -267,6 +268,11 @@ class InferredTypeVisitor implements ExprVisitor<void> {
   visitVariable(expr: VariableExpr): void {
     const typeInfo = this.ensureTypeInfo(expr.nodeId);
     typeInfo.inferred = expr.tileDef.varType;
+  }
+
+  visitOutput(expr: OutputExpr): void {
+    const typeInfo = this.ensureTypeInfo(expr.nodeId);
+    typeInfo.inferred = expr.tileDef.outputType;
   }
 
   visitAssignment(expr: AssignmentExpr): void {

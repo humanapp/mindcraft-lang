@@ -1,6 +1,8 @@
 import type { ReadonlyList } from "../platform/list";
 import type { ActionDescriptor } from "./function-defs";
 import type { PlatformServices } from "./services";
+import { mkOutputVarKey } from "./tile-ids";
+import type { TypeId } from "./type-defs";
 import type { AsyncHandle, Value } from "./value";
 
 /** Action binding implemented by a host (sync or async) function. */
@@ -211,6 +213,21 @@ export function getRuleVariable<T extends Value = Value>(ctx: ExecutionContext, 
  */
 export function setRuleVariable(ctx: ExecutionContext, name: string, value: Value): void {
   ctx.services.brain.ruleVars.setByName(ctx.currentRuleFuncId, name, value);
+}
+
+/**
+ * Write a built-in sensor's named, typed output for the current evaluation. Sugar
+ * over {@link setRuleVariable} keyed by {@link mkOutputVarKey}; the matching
+ * output value-tile reads the same backing rule variable. Pass `NIL_VALUE` to
+ * clear an output.
+ *
+ * @param ctx - The execution context
+ * @param typeId - The output's resolved {@link TypeId}
+ * @param name - The output name as declared on the sensor's descriptor
+ * @param value - The value to store
+ */
+export function setSensorOutput(ctx: ExecutionContext, typeId: TypeId, name: string, value: Value): void {
+  setRuleVariable(ctx, mkOutputVarKey(typeId, name), value);
 }
 
 /**

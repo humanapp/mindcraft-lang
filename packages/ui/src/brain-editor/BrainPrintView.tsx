@@ -23,7 +23,11 @@ function PrintTile({ tileDef, side }: PrintTileProps) {
     (side === RuleSide.When ? visual?.colorDef?.when : side === RuleSide.Do ? visual?.colorDef?.do : undefined) ||
     "#475569";
 
-  const isValueTile = tileDef.kind === "literal" || tileDef.kind === "variable" || tileDef.kind === "accessor";
+  const isValueTile =
+    tileDef.kind === "literal" ||
+    tileDef.kind === "variable" ||
+    tileDef.kind === "accessor" ||
+    tileDef.kind === "output";
   const isFactoryTile = tileDef.kind === "factory";
   const isParamTile = tileDef.kind === "parameter";
   let tileTypeIcon: string | undefined;

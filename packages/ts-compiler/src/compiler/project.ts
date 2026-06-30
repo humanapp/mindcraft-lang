@@ -523,6 +523,7 @@ export class UserTileProject {
       docsMarkdown,
       tags,
       capabilities: descriptor.capabilities,
+      outputs: descriptor.outputs,
     };
 
     return { diagnostics: [...lowerWarnings, ...metaDiags], program, descriptor, functionDebugInfo };

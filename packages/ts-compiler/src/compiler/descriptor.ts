@@ -1,6 +1,13 @@
 import ts from "typescript";
 import { DescriptorDiagCode } from "./diag-codes.js";
-import type { CompileDiagnostic, ExtractedArgSpec, ExtractedDescriptor, ExtractedParam, SourceSpan } from "./types.js";
+import type {
+  CompileDiagnostic,
+  ExtractedArgSpec,
+  ExtractedDescriptor,
+  ExtractedOutput,
+  ExtractedParam,
+  SourceSpan,
+} from "./types.js";
 
 /** Capability identifiers a sensor may declare in its `capabilities` config field. */
 const KNOWN_CAPABILITIES: ReadonlySet<string> = new Set(["PresenceGated"]);
@@ -123,6 +130,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   let docsSpan: SourceSpan | undefined;
   let tags: string[] | undefined;
   let capabilities: string[] | undefined;
+  let outputs: ExtractedOutput[] | undefined;
 
   for (const prop of arg.properties) {
     if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
@@ -248,6 +256,10 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
             );
           }
           break;
+
+        case "outputs":
+          outputs = extractOutputs(prop.initializer, addDiag);
+          break;
       }
     } else if (ts.isMethodDeclaration(prop) && ts.isIdentifier(prop.name)) {
       if (prop.name.text === "onExecute") {
@@ -296,9 +308,151 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
       docsSpan,
       tags,
       capabilities,
+      outputs,
     },
     diagnostics: [],
   };
+}
+
+/** Extract and validate the `outputs` array of a sensor config. Each malformed entry yields a precise diagnostic; valid entries are returned. */
+function extractOutputs(
+  node: ts.Expression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): ExtractedOutput[] {
+  if (!ts.isArrayLiteralExpression(node)) {
+    addDiag(DescriptorDiagCode.OutputsMustBeArrayLiteral, node, "`outputs` must be an array literal.");
+    return [];
+  }
+
+  const result: ExtractedOutput[] = [];
+  const seenNames = new Set<string>();
+  for (const elem of node.elements) {
+    const output = extractOutput(elem, addDiag);
+    if (!output) continue;
+    if (seenNames.has(output.name)) {
+      addDiag(
+        DescriptorDiagCode.DuplicateOutputName,
+        elem,
+        `Duplicate output name \`${output.name}\`. Output names must be unique within a sensor.`
+      );
+      continue;
+    }
+    seenNames.add(output.name);
+    result.push(output);
+  }
+  return result;
+}
+
+/** Extract a single `outputs` entry: a `{ name, type, label?, icon?, docs?, tags? }` object literal. */
+function extractOutput(
+  node: ts.Expression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): ExtractedOutput | undefined {
+  if (!ts.isObjectLiteralExpression(node)) {
+    addDiag(DescriptorDiagCode.OutputEntryMustBeObjectLiteral, node, "Each `outputs` entry must be an object literal.");
+    return undefined;
+  }
+
+  let name: string | undefined;
+  let type: string | undefined;
+  let label: string | undefined;
+  let icon: string | undefined;
+  let docs: string | undefined;
+  let tags: string[] | undefined;
+
+  for (const prop of node.properties) {
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const propName = getPropertyName(prop);
+    switch (propName) {
+      case "name":
+        if (ts.isStringLiteral(prop.initializer)) {
+          name = prop.initializer.text;
+        } else {
+          addDiag(
+            DescriptorDiagCode.OutputNameMustBeStringLiteral,
+            prop.initializer,
+            "Output `name` must be a string literal."
+          );
+        }
+        break;
+      case "type":
+        if (ts.isStringLiteral(prop.initializer)) {
+          type = prop.initializer.text;
+        } else {
+          addDiag(
+            DescriptorDiagCode.OutputTypeMustBeStringLiteral,
+            prop.initializer,
+            "Output `type` must be a string literal."
+          );
+        }
+        break;
+      case "label":
+        if (ts.isStringLiteral(prop.initializer)) {
+          label = prop.initializer.text;
+        } else {
+          addDiag(
+            DescriptorDiagCode.OutputLabelMustBeStringLiteral,
+            prop.initializer,
+            "Output `label` must be a string literal."
+          );
+        }
+        break;
+      case "icon":
+        if (ts.isStringLiteral(prop.initializer)) {
+          icon = prop.initializer.text;
+        } else {
+          addDiag(
+            DescriptorDiagCode.OutputIconMustBeStringLiteral,
+            prop.initializer,
+            "Output `icon` must be a string literal."
+          );
+        }
+        break;
+      case "docs":
+        if (ts.isStringLiteral(prop.initializer)) {
+          docs = prop.initializer.text;
+        } else {
+          addDiag(
+            DescriptorDiagCode.OutputDocsMustBeStringLiteral,
+            prop.initializer,
+            "Output `docs` must be a string literal."
+          );
+        }
+        break;
+      case "tags":
+        if (ts.isArrayLiteralExpression(prop.initializer)) {
+          tags = [];
+          for (const tagElem of prop.initializer.elements) {
+            if (ts.isStringLiteral(tagElem)) {
+              tags.push(tagElem.text);
+            } else {
+              addDiag(
+                DescriptorDiagCode.OutputTagElementMustBeStringLiteral,
+                tagElem,
+                "Each element of an output's `tags` must be a string literal."
+              );
+            }
+          }
+        } else {
+          addDiag(
+            DescriptorDiagCode.OutputTagsMustBeArrayLiteral,
+            prop.initializer,
+            "Output `tags` must be an array literal."
+          );
+        }
+        break;
+    }
+  }
+
+  if (name === undefined) {
+    addDiag(DescriptorDiagCode.OutputNameRequired, node, "Each `outputs` entry must have a `name` property.");
+  }
+  if (type === undefined) {
+    addDiag(DescriptorDiagCode.OutputTypeRequired, node, "Each `outputs` entry must have a `type` property.");
+  }
+  if (name === undefined || type === undefined) return undefined;
+
+  return { name, type, label, icon, docs, tags };
 }
 
 function extractArgs(

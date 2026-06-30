@@ -169,6 +169,30 @@ export enum DescriptorDiagCode {
   CapabilitiesMustBeArrayLiteral = 2052,
   /** capabilities array element is not a known capability identifier or string literal */
   CapabilityElementUnknown = 2053,
+  /** outputs property value is not an array literal */
+  OutputsMustBeArrayLiteral = 2054,
+  /** an outputs array element is not an object literal */
+  OutputEntryMustBeObjectLiteral = 2055,
+  /** an output's name is not a string literal */
+  OutputNameMustBeStringLiteral = 2056,
+  /** an output entry is missing the required name property */
+  OutputNameRequired = 2057,
+  /** an output's type is not a string literal */
+  OutputTypeMustBeStringLiteral = 2058,
+  /** an output entry is missing the required type property */
+  OutputTypeRequired = 2059,
+  /** an output's label is not a string literal */
+  OutputLabelMustBeStringLiteral = 2060,
+  /** an output's icon is not a string literal */
+  OutputIconMustBeStringLiteral = 2061,
+  /** an output's docs is not a string literal */
+  OutputDocsMustBeStringLiteral = 2062,
+  /** an output's tags property is not an array literal */
+  OutputTagsMustBeArrayLiteral = 2063,
+  /** an output's tags array element is not a string literal */
+  OutputTagElementMustBeStringLiteral = 2064,
+  /** two outputs on the same sensor share a name (output names must be unique per sensor) */
+  DuplicateOutputName = 2065,
 }
 
 /**
@@ -431,6 +455,19 @@ export enum LoweringDiagCode {
   SystemBindingUnresolvable = 3185,
   /** A System method reference is read as a value; a System method must be called */
   SystemMethodUsedAsValue = 3186,
+
+  /** `setOutput(ctx, name, value)` was not called with exactly three arguments */
+  SetOutputWrongArgCount = 3187,
+  /** `setOutput`'s name argument is not a string literal */
+  SetOutputNameNotStringLiteral = 3188,
+  /** `setOutput` names an output not declared in the enclosing sensor's `outputs` */
+  SetOutputUnknownOutput = 3189,
+  /** `setOutput` is used outside a sensor `onExecute` (no outputs are in scope) */
+  SetOutputOutsideSensor = 3190,
+  /** A declared sensor output's type name does not resolve to a known type */
+  OutputTypeUnresolvable = 3191,
+  /** A `setOutput` value's type does not match (and is not convertible to) the output's declared type */
+  SetOutputValueTypeMismatch = 3192,
 }
 
 /**

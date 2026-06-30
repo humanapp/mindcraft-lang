@@ -1,5 +1,6 @@
 import { type CompiledActionBundle, Dict } from "@mindcraft-lang/core";
 import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
+import { OutputCapabilityAllocator } from "@mindcraft-lang/core/brain/tiles";
 import type { ProjectCompileResult } from "../compiler/compile.js";
 import type { UserAuthoredProgram } from "../compiler/types.js";
 import { buildUserTileMetadata, type UserTileTypeResolver } from "./user-tile-metadata.js";
@@ -80,15 +81,17 @@ export function buildCompiledActionBundle(
   const programs = collectPrograms(result);
   const actions = new Dict<string, UserAuthoredProgram>();
   const tileMap = new Map<string, IBrainTileDef>();
+  const outputCapabilities = new OutputCapabilityAllocator();
 
   for (const program of programs) {
-    const metadata = buildUserTileMetadata(program, resolveTypeId);
+    const metadata = buildUserTileMetadata(program, resolveTypeId, outputCapabilities);
     if (!metadata) {
       return undefined;
     }
 
     actions.set(program.key, program);
     addTiles(tileMap, metadata.parameterTiles);
+    addTiles(tileMap, metadata.outputTiles);
     addTiles(tileMap, [metadata.actionTile]);
   }
 

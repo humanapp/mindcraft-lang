@@ -37,6 +37,8 @@ import {
   BrainTileOperatorDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
+  buildDescriptorOutputTiles,
+  OutputCapabilityAllocator,
 } from "@mindcraft-lang/core/brain/tiles";
 import type { ExecutionContext, Instr, UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import {
@@ -66,6 +68,7 @@ import {
   param,
   setCallSiteState,
   setRuleVariable,
+  setSensorOutput,
   TRUE_VALUE,
   type Value,
   VOID_VALUE,
@@ -655,6 +658,57 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const out = brain.getVariable(brainVarName);
     assert.ok(out !== undefined, "brain var should be set by actuator");
     assert.equal(extractNumberValue(out), 42, "actuator must read the same value the sensor stashed");
+  });
+
+  test("a built-in sensor's ActionDescriptor outputs derive an inline tile that round-trips the written value", () => {
+    const outVarName = "builtin-output-out";
+
+    // Built-in sensor declares a numeric `count` output and writes it via setSensorOutput.
+    const sensorDef = defineHost(
+      createHostSensor({
+        key: "test-output-sensor",
+        actionId: 5101,
+        fnId: 6101,
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        outputType: CoreTypeIds.Boolean,
+        outputs: [{ name: "count", type: CoreTypeIds.Number, label: "count" }],
+        fn: {
+          exec: (ctx) => {
+            setSensorOutput(ctx, CoreTypeIds.Number, "count", mkNumberValue(42));
+            return TRUE_VALUE;
+          },
+        },
+      })
+    );
+
+    const sensor = new BrainTileSensorDef(sensorDef.descriptor.key, sensorDef.descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+
+    // Derive the output tiles from the descriptor exactly as registration does.
+    const sensorCaps = new BitSet();
+    const outputTiles = buildDescriptorOutputTiles(
+      sensorDef.descriptor.outputs!,
+      new OutputCapabilityAllocator(),
+      sensorCaps
+    );
+    assert.equal(outputTiles.length, 1, "one output tile per declared output");
+    const countTile = outputTiles[0];
+    assert.equal(countTile.kind, "output");
+    assert.equal(countTile.outputType, CoreTypeIds.Number);
+    // The sensor provides the gating bit the tile requires.
+    assert.equal(sensorCaps.get(countTile.requirements().ntz()), 1, "the sensor provides the output's gating bit");
+
+    // DO: outVar = count-output-tile -- reads back the value the sensor wrote.
+    const outVar = mkVar(outVarName);
+    const brainDef = buildBrain([sensor], [outVar, opAssign, countTile]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(
+      extractNumberValue(brain.getVariable(outVarName)),
+      42,
+      "the output value must round-trip from the sensor write to the output tile read"
+    );
   });
 
   test("WHEN_END captures the WHEN result into the rule's __whenResult variable", () => {

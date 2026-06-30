@@ -5,7 +5,7 @@ import { logger } from "../../platform/logger";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
 import type { ActionDescriptor, ActionRef, BrainActionResolver, ITypeRegistry, TypeId } from "../../runtime";
-import { type BrainActionArgSlot, CoreOpId, CoreTypeIds, NativeType } from "../../runtime";
+import { type BrainActionArgSlot, CoreFuncId, CoreOpId, CoreTypeIds, NativeType } from "../../runtime";
 import { NIL_VALUE, type Value } from "../../runtime/value";
 import type { ITileCatalog } from "../interfaces";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
@@ -23,6 +23,7 @@ import type {
   FieldAccessExpr,
   LiteralExpr,
   ModifierExpr,
+  OutputExpr,
   ParameterExpr,
   SensorExpr,
   SlotExpr,
@@ -364,6 +365,15 @@ export class ExprCompiler implements ExprVisitor<void> {
     const varName = expr.tileDef.varName;
     const varNameIdx = this.getOrCreateVariableIndex(varName);
     this.emitter.loadVarSlot(varNameIdx);
+  }
+
+  visitOutput(expr: OutputExpr): void {
+    // Read the sensor output's backing rule variable. RuleContextGetVariable
+    // takes the name in arg slot 1 and ignores slot 0 (the method receiver), so
+    // slot 0 is a nil filler and slot 1 is the constant output key.
+    this.pushNil();
+    this.pushStringConstant(expr.tileDef.outputKey);
+    this.emitter.hostCall(CoreFuncId.RuleContextGetVariable, 2, this.nextCallSiteId());
   }
 
   /**

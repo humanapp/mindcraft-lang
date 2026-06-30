@@ -404,6 +404,23 @@ declare module "mindcraft" {
    */
   export const PresenceGated: Capability;
 
+  /**
+   * One named, typed output a sensor exposes. The `(type, name)` pair is the
+   * output identity: it derives a downstream inline value-tile and the backing
+   * rule variable that `setOutput` writes and the tile reads. Two sensors that
+   * declare the same identity share one tile and one variable.
+   */
+  export interface OutputSpec {
+    /** Output name; the second half of the output identity. */
+    name: string;
+    /** Output value type, e.g. `"string"`, `"number"`; the first half of the output identity. */
+    type: MindcraftType;
+    label?: string;
+    icon?: string;
+    docs?: string;
+    tags?: string[];
+  }
+
   export interface SensorConfig {
     /** Stable identifier for this action, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
     id?: string;
@@ -415,6 +432,8 @@ declare module "mindcraft" {
     /** Capabilities this sensor declares, e.g. `[PresenceGated]`. */
     capabilities?: Capability[];
     args?: ArgSpec[];
+    /** Named, typed outputs this sensor exposes; each surfaces downstream as an inline value-tile written via `setOutput`. */
+    outputs?: OutputSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): unknown;
     onPageEntered?(ctx: Context): void;
     onPageExited?(ctx: Context): void;
@@ -436,6 +455,14 @@ declare module "mindcraft" {
 
   export function Sensor(config: SensorConfig): unknown;
   export function Actuator(config: ActuatorConfig): unknown;
+
+  /**
+   * Write one of the enclosing sensor's declared outputs for this evaluation.
+   * `name` must be a string literal matching an entry of the sensor's
+   * `outputs`; `value` is stored where the matching output tile reads it. Pass
+   * `null` to clear an output. Valid only inside a sensor `onExecute`.
+   */
+  export function setOutput(ctx: Context, name: string, value: unknown): void;
 
   /**
    * Lifecycle config for a {@link System}. `init` and `think` plus any extra

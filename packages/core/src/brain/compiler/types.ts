@@ -14,6 +14,7 @@ import type {
   BrainTileLiteralDef,
   BrainTileModifierDef,
   BrainTileOperatorDef,
+  BrainTileOutputDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
@@ -93,6 +94,13 @@ export type VariableExpr = {
   tileDef: BrainTileVariableDef;
   span: Span;
 };
+/** AST node for a sensor output value-tile (an inline read of a backing rule variable). */
+export type OutputExpr = {
+  nodeId: number;
+  kind: "output";
+  tileDef: BrainTileOutputDef;
+  span: Span;
+};
 /** AST node for an assignment to a variable or struct field. */
 export type AssignmentExpr = {
   nodeId: number;
@@ -170,6 +178,7 @@ export type Expr =
   | UnaryOpExpr
   | LiteralExpr
   | VariableExpr
+  | OutputExpr
   | AssignmentExpr
   | ParameterExpr
   | ModifierExpr
@@ -194,6 +203,7 @@ export interface ExprVisitor<T> {
   visitUnaryOp(expr: UnaryOpExpr): T;
   visitLiteral(expr: LiteralExpr): T;
   visitVariable(expr: VariableExpr): T;
+  visitOutput(expr: OutputExpr): T;
   visitAssignment(expr: AssignmentExpr): T;
   visitParameter(expr: ParameterExpr): T;
   visitModifier(expr: ModifierExpr): T;
@@ -222,6 +232,8 @@ export function acceptExprVisitor<T>(expr: Expr, visitor: ExprVisitor<T>): T {
       return visitor.visitLiteral(expr);
     case "variable":
       return visitor.visitVariable(expr);
+    case "output":
+      return visitor.visitOutput(expr);
     case "assignment":
       return visitor.visitAssignment(expr);
     case "parameter":

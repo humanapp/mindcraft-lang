@@ -34,7 +34,11 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
       (side === RuleSide.When ? visual?.colorDef?.when : side === RuleSide.Do ? visual?.colorDef?.do : undefined) ||
       "#475569";
 
-    const isValueTile = tileDef.kind === "literal" || tileDef.kind === "variable" || tileDef.kind === "accessor";
+    const isValueTile =
+      tileDef.kind === "literal" ||
+      tileDef.kind === "variable" ||
+      tileDef.kind === "accessor" ||
+      tileDef.kind === "output";
     const isParamTile = tileDef.kind === "parameter";
     const isFactoryTile = tileDef.kind === "factory";
     const isUserTile = tileDef.capabilities().get(CoreCapabilityBits.UserTile) !== 0;

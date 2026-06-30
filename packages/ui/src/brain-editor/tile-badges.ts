@@ -9,6 +9,7 @@ import type {
   FieldAccessExpr,
   LiteralExpr,
   ModifierExpr,
+  OutputExpr,
   ParameterExpr,
   ParseResult,
   SensorExpr,
@@ -212,6 +213,9 @@ class MarkAllVisitor implements ExprVisitor<void> {
   visitVariable(expr: VariableExpr): void {
     this.markAndRecurse(expr);
   }
+  visitOutput(expr: OutputExpr): void {
+    this.markAndRecurse(expr);
+  }
   visitAssignment(expr: AssignmentExpr): void {
     this.markAndRecurse(expr);
     acceptExprVisitor(expr.target, this);
@@ -281,6 +285,7 @@ class WarningCollector implements ExprVisitor<void> {
 
   visitLiteral(_expr: LiteralExpr): void {}
   visitVariable(_expr: VariableExpr): void {}
+  visitOutput(_expr: OutputExpr): void {}
 
   visitAssignment(expr: AssignmentExpr): void {
     acceptExprVisitor(expr.target, this);
@@ -355,6 +360,9 @@ class NodeMapCollector implements ExprVisitor<void> {
     this.add(expr);
   }
   visitVariable(expr: VariableExpr): void {
+    this.add(expr);
+  }
+  visitOutput(expr: OutputExpr): void {
     this.add(expr);
   }
   visitAssignment(expr: AssignmentExpr): void {
