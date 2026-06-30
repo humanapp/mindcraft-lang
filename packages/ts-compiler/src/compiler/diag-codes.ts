@@ -429,6 +429,8 @@ export enum LoweringDiagCode {
   SystemStateUnresolvable = 3184,
   /** A `const X = System({...})` binding's declaration symbol cannot be resolved */
   SystemBindingUnresolvable = 3185,
+  /** A System method reference is read as a value; a System method must be called */
+  SystemMethodUsedAsValue = 3186,
 }
 
 /**

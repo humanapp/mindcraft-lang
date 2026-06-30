@@ -171,6 +171,42 @@ export default Sensor({
     assert.equal(num(brain, v.varName), 9, "method writes persist and accumulate across thinks");
   });
 
+  test("helper methods (sibling calls) and field operators work naturally inside a System", () => {
+    const [readCount] = compileTiles(
+      {
+        "helpers.ts": `
+import { System, Sensor, type Context } from "mindcraft";
+
+const Acc = System({
+  name: "helpers",
+  state: { count: 0 },
+  init(ctx: Context) { this.reset(); },          // init calls a method
+  think(ctx: Context) { this.step(); },          // think calls a method
+  reset() { this.count = 10; },
+  step() { this.count++; this.bump(); },         // postfix ++ then a sibling call
+  bump() { this.count += 4; --this.count; },     // compound += then prefix --
+});
+
+export default Sensor({
+  name: "helpers read",
+  onExecute(ctx: Context): number { return Acc.count; },
+});
+`,
+      },
+      ["helpers.ts"]
+    );
+
+    const v = mkVar("helpers-out");
+    const { brainDef, rule } = newBrain();
+    rule.do().appendTile(v as never);
+    rule.do().appendTile(opAssign as never);
+    rule.do().appendTile(readCount as never);
+    const brain = runBrain(brainDef, 3);
+    // init->reset sets 10; each think: step (++ -> +1) then bump (+=4, -- -> +3) = net +4.
+    // reads: think1=10, think2=14, think3=18.
+    assert.equal(num(brain, v.varName), 18, "sibling method calls and ++/--/+= all run");
+  });
+
   test("cross-module: a System exported from one module, used by two importing tiles, shares one store", () => {
     // The System (with its per-think tick) is defined in lib/movement.ts; two
     // reader tiles in different modules import it. They always observe equal,
@@ -422,6 +458,26 @@ const S = System({ name: label, state: { count: 0 } });
 export default Sensor({ name: "t4", onExecute(ctx: Context): number { return S.count; } });
 `,
       LoweringDiagCode.SystemNameNotStringLiteral
+    );
+
+    // An external System method read as a value (not called).
+    expectLoweringDiagnostic(
+      `
+import { System, Sensor, type Context } from "mindcraft";
+const S = System({ name: "s", state: { count: 0 }, drive() { this.count = 1; } });
+export default Sensor({ name: "t5", onExecute(ctx: Context): number { const f = S.drive; f; return S.count; } });
+`,
+      LoweringDiagCode.SystemMethodUsedAsValue
+    );
+
+    // A sibling System method read as a value inside a method body.
+    expectLoweringDiagnostic(
+      `
+import { System, Sensor, type Context } from "mindcraft";
+const S = System({ name: "s", state: { count: 0 }, drive() { this.count = 1; }, go() { const f = this.drive; f; } });
+export default Sensor({ name: "t6", onExecute(ctx: Context): number { return S.count; } });
+`,
+      LoweringDiagCode.SystemMethodUsedAsValue
     );
   });
 });

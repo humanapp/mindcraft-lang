@@ -242,6 +242,12 @@ interface LowerContext {
    * anonymous state struct the TS type resolver does not map to a registry name.
    */
   thisStructTypeId?: TypeId;
+  /**
+   * The enclosing System's method name -> func id map, used to dispatch a
+   * `this.method(...)` sibling call. Set alongside {@link thisStructTypeId} when
+   * lowering a System `init` / `think` / method body.
+   */
+  thisSystemMethodFuncIds?: Map<string, number>;
   staticClassInfo?: ClassInfo;
   currentFunctionName: string;
   currentReturnTypeId?: TypeId;
@@ -1391,7 +1397,8 @@ export function lowerProgram(
           services,
           classInfos,
           systemBindings,
-          binding.stateTypeId
+          binding.stateTypeId,
+          binding.methodFuncIds
         )
       );
     });
@@ -1409,7 +1416,8 @@ export function lowerProgram(
           services,
           classInfos,
           systemBindings,
-          binding.stateTypeId
+          binding.stateTypeId,
+          binding.methodFuncIds
         )
       );
     }
@@ -1427,7 +1435,8 @@ export function lowerProgram(
           services,
           classInfos,
           systemBindings,
-          binding.stateTypeId
+          binding.stateTypeId,
+          binding.methodFuncIds
         )
       );
     }
@@ -1853,7 +1862,8 @@ function lowerSystemFnEntry(
   services: BrainServices,
   classInfos: ClassInfo[],
   systemBindings: Map<ts.Symbol, SystemBinding>,
-  thisStructTypeId: TypeId | undefined
+  thisStructTypeId: TypeId | undefined,
+  thisSystemMethodFuncIds: Map<string, number>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const params = fnNode.parameters;
@@ -1891,6 +1901,7 @@ function lowerSystemFnEntry(
     closureFunctions,
     thisLocalIndex: 0,
     thisStructTypeId,
+    thisSystemMethodFuncIds,
     currentFunctionName: name,
     currentReturnTypeId: resolveSignatureReturnTypeId(fnNode, checker, services),
     classInfos,
@@ -4102,17 +4113,38 @@ function resolveSystemBinding(idNode: ts.Identifier, ctx: LowerContext): SystemB
 }
 
 /**
- * Lower `Movement.method(...)` where `Movement` is a System binding: load the
- * System's state struct as the receiver, then call the method (a struct-receiver
- * function over the state) with the state plus the call arguments.
+ * Lower a System method call -- either `Movement.method(...)` (external, the
+ * receiver loaded from the System store) or `this.method(...)` (a sibling call
+ * inside a System body, the receiver loaded from the `this` local) -- to a call
+ * of the method's struct-receiver function with the state plus the arguments.
  */
 function lowerSystemMethodCall(expr: ts.CallExpression, callee: ts.LeftHandSideExpression, ctx: LowerContext): boolean {
   if (!ts.isPropertyAccessExpression(callee)) return false;
+  const methodName = callee.name.text;
+
+  if (
+    callee.expression.kind === ts.SyntaxKind.ThisKeyword &&
+    ctx.thisSystemMethodFuncIds !== undefined &&
+    ctx.thisLocalIndex !== undefined
+  ) {
+    const funcId = ctx.thisSystemMethodFuncIds.get(methodName);
+    if (funcId === undefined) {
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.UnsupportedFunctionCall, `System has no method '${methodName}'`, expr)
+      );
+      ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+      return true;
+    }
+    ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+    const argc = lowerCallArgumentsWithTargetTypes(expr, ctx) + 1;
+    ctx.ir.push({ kind: "Call", funcIndex: funcId, argc });
+    return true;
+  }
+
   if (!ts.isIdentifier(callee.expression)) return false;
   const binding = resolveSystemBinding(callee.expression, ctx);
   if (!binding) return false;
 
-  const methodName = callee.name.text;
   const funcId = binding.methodFuncIds.get(methodName);
   if (funcId === undefined) {
     ctx.diagnostics.push(
@@ -5419,6 +5451,24 @@ function lowerPostfixIncDecStaticGetterSetter(
   ctx.ir.push({ kind: "Pop" });
 }
 
+/**
+ * Resolve a `this.field` operand to its System state-struct field id when
+ * lowering inside a System body. Returns `undefined` outside a System body or
+ * when the field is not on the state struct.
+ */
+function resolveSystemThisField(
+  operand: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): { fieldName: string; fieldIndex: number } | undefined {
+  if (operand.expression.kind !== ts.SyntaxKind.ThisKeyword) return undefined;
+  if (ctx.thisStructTypeId === undefined || ctx.thisLocalIndex === undefined) return undefined;
+  const structDef = resolveThisReceiverStructDef(operand.expression, ctx);
+  if (!structDef) return undefined;
+  const field = findStructField(structDef, operand.name.text);
+  if (!field) return undefined;
+  return { fieldName: operand.name.text, fieldIndex: field.fieldIndex };
+}
+
 function resolveInstanceGetterSetterPair(
   operand: ts.PropertyAccessExpression,
   ctx: LowerContext
@@ -5580,16 +5630,31 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
       loadEmit = () => ctx.ir.push({ kind: "LoadCallsiteVar", index });
       storeEmit = () => ctx.ir.push({ kind: "StoreCallsiteVar", index });
     } else {
-      const incDecResult = lowerPrefixIncDecInstanceGetterSetter(expr, expr.operand, ctx);
-      if (incDecResult !== undefined) return;
-      ctx.diagnostics.push(
-        makeDiag(
-          LoweringDiagCode.IncrDecrTargetNotVariable,
-          "Increment/decrement target must be a variable",
-          expr.operand
-        )
-      );
-      return;
+      const sysField = resolveSystemThisField(expr.operand, ctx);
+      if (sysField) {
+        const thisLocal = ctx.thisLocalIndex!;
+        loadEmit = () => {
+          ctx.ir.push({ kind: "LoadLocal", index: thisLocal });
+          ctx.ir.push({ kind: "GetField", fieldName: sysField.fieldName, fieldIndex: sysField.fieldIndex });
+        };
+        storeEmit = () => {
+          ctx.ir.push({ kind: "LoadLocal", index: thisLocal });
+          ctx.ir.push({ kind: "Swap" });
+          ctx.ir.push({ kind: "StructSet", fieldIndex: sysField.fieldIndex });
+          ctx.ir.push({ kind: "Pop" });
+        };
+      } else {
+        const incDecResult = lowerPrefixIncDecInstanceGetterSetter(expr, expr.operand, ctx);
+        if (incDecResult !== undefined) return;
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.IncrDecrTargetNotVariable,
+            "Increment/decrement target must be a variable",
+            expr.operand
+          )
+        );
+        return;
+      }
     }
   } else if (ts.isIdentifier(expr.operand)) {
     const target = resolveVarTarget(expr.operand.text, ctx);
@@ -5665,16 +5730,31 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
       loadEmit = () => ctx.ir.push({ kind: "LoadCallsiteVar", index });
       storeEmit = () => ctx.ir.push({ kind: "StoreCallsiteVar", index });
     } else {
-      const incDecResult = lowerPostfixIncDecInstanceGetterSetter(expr, expr.operand, ctx);
-      if (incDecResult !== undefined) return;
-      ctx.diagnostics.push(
-        makeDiag(
-          LoweringDiagCode.IncrDecrTargetNotVariable,
-          "Increment/decrement target must be a variable",
-          expr.operand
-        )
-      );
-      return;
+      const sysField = resolveSystemThisField(expr.operand, ctx);
+      if (sysField) {
+        const thisLocal = ctx.thisLocalIndex!;
+        loadEmit = () => {
+          ctx.ir.push({ kind: "LoadLocal", index: thisLocal });
+          ctx.ir.push({ kind: "GetField", fieldName: sysField.fieldName, fieldIndex: sysField.fieldIndex });
+        };
+        storeEmit = () => {
+          ctx.ir.push({ kind: "LoadLocal", index: thisLocal });
+          ctx.ir.push({ kind: "Swap" });
+          ctx.ir.push({ kind: "StructSet", fieldIndex: sysField.fieldIndex });
+          ctx.ir.push({ kind: "Pop" });
+        };
+      } else {
+        const incDecResult = lowerPostfixIncDecInstanceGetterSetter(expr, expr.operand, ctx);
+        if (incDecResult !== undefined) return;
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.IncrDecrTargetNotVariable,
+            "Increment/decrement target must be a variable",
+            expr.operand
+          )
+        );
+        return;
+      }
     }
   } else if (ts.isIdentifier(expr.operand)) {
     const target = resolveVarTarget(expr.operand.text, ctx);
@@ -8710,6 +8790,24 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
         return;
       }
     }
+  }
+
+  // A System method name in a non-call position is read as a value; a method has
+  // no value representation. A call routes through `lowerSystemMethodCall`.
+  if (
+    expr.expression.kind === ts.SyntaxKind.ThisKeyword
+      ? ctx.thisSystemMethodFuncIds?.has(expr.name.text)
+      : ts.isIdentifier(expr.expression) &&
+        resolveSystemBinding(expr.expression, ctx)?.methodFuncIds.has(expr.name.text)
+  ) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.SystemMethodUsedAsValue,
+        `System method '${expr.name.text}' must be called, not read as a value.`,
+        expr
+      )
+    );
+    return;
   }
 
   if (isMathGlobal(expr.expression, ctx)) {

@@ -426,16 +426,16 @@ const AMBIENT_MODULE_END = `
 
   /**
    * Lifecycle config for a {@link System}. \`init\` and \`think\` plus any extra
-   * methods run with \`this\` bound to the System's state \`S\`.
+   * methods run with \`this\` bound to the System's state \`S\` and its methods \`M\`.
    */
   export interface SystemConfig<S> {
     /** Display / debug name for this System. */
     name: string;
     /** Initial state: a plain object of VM-representable values (numbers, strings, booleans, small structs). */
     state: S;
-    /** Runs once at brain startup, before any rule or think. \`this\` is the state. */
+    /** Runs once at brain startup, before any rule or think. \`this\` is the state and methods. */
     init?(ctx: Context): void;
-    /** Runs every think, after rule evaluation, regardless of the active page. \`this\` is the state. */
+    /** Runs every think, after rule evaluation, regardless of the active page. \`this\` is the state and methods. */
     think?(ctx: Context): void;
   }
 
@@ -443,10 +443,10 @@ const AMBIENT_MODULE_END = `
    * Declare a System: one shared, brain-global singleton with persistent state,
    * a one-time \`init\`, a per-think \`think\`, and methods. Every reference to the
    * returned binding -- in this module or an importing one -- coordinates through
-   * the single instance. Methods and \`init\`/\`think\` read and write state via
-   * \`this\`.
+   * the single instance. Inside \`init\`/\`think\`/methods, \`this\` reads and writes
+   * state fields and calls sibling methods.
    */
-  export function System<S, M>(config: SystemConfig<S> & M & ThisType<S>): S & M;
+  export function System<S, M>(config: SystemConfig<S> & M & ThisType<S & M>): S & M;
 }
 `;
 
