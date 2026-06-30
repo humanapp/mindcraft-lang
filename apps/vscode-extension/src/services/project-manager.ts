@@ -362,6 +362,21 @@ export class ProjectManager implements vscode.Disposable {
     this._fsProvider.fireChanges([{ type: vscode.FileChangeType.Changed, uri }]);
   }
 
+  /**
+   * Fire `Created` file-view events for `paths` written locally through the
+   * project filesystem, so the explorer reflects writes that bypass the VS Code
+   * FileSystemProvider API and would otherwise not surface until a manual refresh.
+   *
+   * @param paths - VFS-root-relative paths (no leading slash) that were just created.
+   */
+  notifyLocalCreate(paths: readonly string[]): void {
+    const events = paths.map((path) => ({
+      type: vscode.FileChangeType.Created,
+      uri: vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${path}` }),
+    }));
+    this._fsProvider.fireChanges(events);
+  }
+
   private hasWorkspaceFolder(): boolean {
     return this.findWorkspaceFolderIndex() !== -1;
   }
