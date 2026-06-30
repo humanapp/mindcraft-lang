@@ -7,7 +7,7 @@ import type { BytecodeExecutableAction } from "./context";
 import { type ActionDescriptor, mkCallDef } from "./function-defs";
 import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
 import { dictFromJsonEntries, dictToJsonEntries, listFromJson, listToJson } from "./json-container-codec";
-import type { Program, ProgramTypeEntry } from "./program";
+import type { Program, ProgramTypeEntry, SystemRegistration } from "./program";
 import type { BrainProgramValueJson } from "./value-codec";
 import { brainValueFromJson, brainValueToJson } from "./value-codec";
 
@@ -129,6 +129,21 @@ export interface BrainProgramRuleAncestorJsonEntry {
   readonly parentRuleFuncId: number;
 }
 
+/** JSON-safe representation of one registered System (user-code shared singleton). */
+export interface BrainProgramSystemRegistrationJson {
+  /** Display / debug name from the `System({ name })` config. */
+  readonly name: string;
+
+  /** Slot in the brain-global System store holding this System's state. */
+  readonly storeSlot: number;
+
+  /** Function id run once at brain startup; absent when the System declares no `init`. */
+  readonly initFuncId?: number;
+
+  /** Function id run every think; absent when the System declares no `think`. */
+  readonly thinkFuncId?: number;
+}
+
 /** JSON-safe representation of one linked VM program. */
 export interface BrainProgramJson {
   /** Bytecode format version. */
@@ -157,6 +172,9 @@ export interface BrainProgramJson {
 
   /** Parent rule lookup entries. */
   readonly ruleAncestors?: readonly BrainProgramRuleAncestorJsonEntry[];
+
+  /** Registered Systems (user-code shared singletons) reachable from this brain. */
+  readonly systems?: readonly BrainProgramSystemRegistrationJson[];
 }
 
 /**
@@ -236,8 +254,34 @@ function brainProgramFromJson(json: BrainProgramJson): Program {
       entry.parentRuleFuncId,
     ]);
   }
+  if (json.systems !== undefined) {
+    program.systems = listFromJson(json.systems, systemRegistrationFromJson);
+  }
 
   return program;
+}
+
+function systemRegistrationFromJson(json: BrainProgramSystemRegistrationJson): SystemRegistration {
+  const registration: { name: string; storeSlot: number; initFuncId?: number; thinkFuncId?: number } = {
+    name: json.name,
+    storeSlot: json.storeSlot,
+  };
+  if (json.initFuncId !== undefined) {
+    registration.initFuncId = json.initFuncId;
+  }
+  if (json.thinkFuncId !== undefined) {
+    registration.thinkFuncId = json.thinkFuncId;
+  }
+  return registration;
+}
+
+function systemRegistrationToJson(registration: SystemRegistration): BrainProgramSystemRegistrationJson {
+  return {
+    name: registration.name,
+    storeSlot: registration.storeSlot,
+    ...(registration.initFuncId !== undefined ? { initFuncId: registration.initFuncId } : {}),
+    ...(registration.thinkFuncId !== undefined ? { thinkFuncId: registration.thinkFuncId } : {}),
+  };
 }
 
 function functionBytecodeFromJson(json: BrainProgramFunctionBytecodeJson): FunctionBytecode {
@@ -413,6 +457,7 @@ function brainProgramToJson(program: Program): BrainProgramJson {
           })),
         }
       : {}),
+    ...(program.systems !== undefined ? { systems: listToJson(program.systems, systemRegistrationToJson) } : {}),
   };
 }
 

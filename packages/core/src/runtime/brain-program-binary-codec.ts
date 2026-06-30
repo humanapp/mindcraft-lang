@@ -15,6 +15,7 @@ import {
   type BrainProgramJson,
   type BrainProgramJsonObject,
   type BrainProgramRuleAncestorJsonEntry,
+  type BrainProgramSystemRegistrationJson,
   type BrainProgramTypeEntryJson,
   type LinkedBrainProgramActionCallSiteJsonEntry,
   type LinkedBrainProgramJson,
@@ -25,7 +26,7 @@ import { type Instr, instrOperandMismatch, OPERAND_SCHEMA, type OperandSpec } fr
 import type { BytecodeExecutableAction } from "./context";
 import { CoreTypeNames, mkTypeId } from "./core-types";
 import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
-import type { Program, ProgramTypeEntry } from "./program";
+import type { Program, ProgramTypeEntry, SystemRegistration } from "./program";
 import { MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC } from "./program-image";
 import { type EnumTypeDef, type ITypeRegistry, NativeType, type TypeId } from "./type-defs";
 import type { Value } from "./value";
@@ -153,12 +154,17 @@ const ACTION_FLAG_INITIALIZER = 1;
 const ACTION_FLAG_ACTIVATION = 2;
 const ACTION_FLAG_DEACTIVATION = 4;
 
+// Per-System presence flags for the optional init/think function ids.
+const SYSTEM_FLAG_INIT = 1;
+const SYSTEM_FLAG_THINK = 2;
+
 // Presence-bitmask bits for the optional sections. A set bit means the
 // corresponding program field is present (possibly empty); a clear bit
 // hydrates `undefined`.
 const PRESENCE_ACTS = 1;
 const PRESENCE_RULF = 2;
 const PRESENCE_RANC = 4;
+const PRESENCE_SYST = 8;
 
 function codecError(code: BrainProgramBinaryCodecErrorCode, message: string): Error {
   return new Error(`[${code}] ${message}`);
@@ -237,6 +243,13 @@ function buildStringInterner(linked: LinkedBrainProgram): StringInterner {
     interner.intern(variableNames.get(i));
   }
 
+  const systems = program.systems;
+  if (systems !== undefined) {
+    for (let i = 0; i < systems.size(); i++) {
+      interner.intern(systems.get(i).name);
+    }
+  }
+
   const pages = linked.pages;
   for (let i = 0; i < pages.size(); i++) {
     interner.intern(pages.get(i).pageId);
@@ -282,9 +295,9 @@ function internValueStrings(value: Value, interner: StringInterner): void {
  * Serializes a linked brain program to the binary `.mcprogram` form: a 2-byte
  * magic, a 1-byte format version, the numeric profile id, a 1-byte presence
  * bitmask, then the positional sections `CSTR`, `TYPS`, `CNUM`, `CVAL`,
- * `FUNC`, `VARS`, the present optional sections (`ACTS`, `RULF`, `RANC`), and
- * `PAGE`. Sections carry no tags or lengths; each is self-delimiting by its
- * leading count.
+ * `FUNC`, `VARS`, the present optional sections (`ACTS`, `RULF`, `RANC`,
+ * `SYST`), and `PAGE`. Sections carry no tags or lengths; each is
+ * self-delimiting by its leading count.
  *
  * Type identity travels by type-table index: typed instruction operands,
  * `injectCtxTypeIdx`, and constant-value typeIds reference `TYPS` entries, and
@@ -319,6 +332,7 @@ export function linkedBrainProgramToBytes(
   if (linkedProgram.actions !== undefined) presence |= PRESENCE_ACTS;
   if (linkedProgram.ruleFuncIds !== undefined) presence |= PRESENCE_RULF;
   if (linkedProgram.ruleAncestors !== undefined) presence |= PRESENCE_RANC;
+  if (linkedProgram.systems !== undefined) presence |= PRESENCE_SYST;
 
   const s = new MemoryStream();
   for (let i = 0; i < MAGIC.size(); i++) {
@@ -343,6 +357,9 @@ export function linkedBrainProgramToBytes(
   }
   if (linkedProgram.ruleAncestors !== undefined) {
     writeRancSection(s, linkedProgram.ruleAncestors);
+  }
+  if (linkedProgram.systems !== undefined) {
+    writeSystSection(s, linkedProgram.systems, interner);
   }
   writePageSection(s, program.pages, interner);
   return s.toBytes();
@@ -723,6 +740,21 @@ function writeRancSection(s: MemoryStream, ruleAncestors: Dict<number, number>):
   }
 }
 
+function writeSystSection(s: MemoryStream, systems: List<SystemRegistration>, interner: StringInterner): void {
+  s.writeVarUint(systems.size());
+  for (let i = 0; i < systems.size(); i++) {
+    const system = systems.get(i);
+    let flags = 0;
+    if (system.initFuncId !== undefined) flags |= SYSTEM_FLAG_INIT;
+    if (system.thinkFuncId !== undefined) flags |= SYSTEM_FLAG_THINK;
+    s.writeRawU8(flags);
+    s.writeVarUint(interner.intern(system.name));
+    s.writeVarUint(system.storeSlot);
+    if (system.initFuncId !== undefined) s.writeVarUint(system.initFuncId);
+    if (system.thinkFuncId !== undefined) s.writeVarUint(system.thinkFuncId);
+  }
+}
+
 function writePageSection(s: MemoryStream, pages: List<PageMetadata>, interner: StringInterner): void {
   s.writeVarUint(pages.size());
   for (let i = 0; i < pages.size(); i++) {
@@ -808,6 +840,7 @@ export function linkedBrainProgramFromBytes(
   const actions = (presence & PRESENCE_ACTS) !== 0 ? readActsSection(s) : undefined;
   const ruleFuncIds = (presence & PRESENCE_RULF) !== 0 ? readRulfSection(s) : undefined;
   const ruleAncestors = (presence & PRESENCE_RANC) !== 0 ? readRancSection(s) : undefined;
+  const systems = (presence & PRESENCE_SYST) !== 0 ? readSystSection(s, strings) : undefined;
   const pages = readPageSection(s, strings);
 
   const constantPools: BrainProgramConstantPoolsJson = {
@@ -824,6 +857,7 @@ export function linkedBrainProgramFromBytes(
     ...(actions !== undefined ? { actions } : {}),
     ...(ruleFuncIds !== undefined ? { ruleFuncIds } : {}),
     ...(ruleAncestors !== undefined ? { ruleAncestors } : {}),
+    ...(systems !== undefined ? { systems } : {}),
   };
   const linkedJson: LinkedBrainProgramJson = { program: programJson, pages };
   return { profileId, program: linkedBrainProgramFromJson(linkedJson) };
@@ -1336,6 +1370,24 @@ function readRancSection(s: MemoryStream): BrainProgramRuleAncestorJsonEntry[] {
   return entries;
 }
 
+function readSystSection(s: MemoryStream, strings: StringTable): BrainProgramSystemRegistrationJson[] {
+  const count = s.readVarUint();
+  const systems: BrainProgramSystemRegistrationJson[] = [];
+  for (let i = 0; i < count; i++) {
+    const flags = s.readRawU8();
+    const name = strings.get(s.readVarUint());
+    const storeSlot = s.readVarUint();
+    const system: { name: string; storeSlot: number; initFuncId?: number; thinkFuncId?: number } = {
+      name,
+      storeSlot,
+    };
+    if ((flags & SYSTEM_FLAG_INIT) !== 0) system.initFuncId = s.readVarUint();
+    if ((flags & SYSTEM_FLAG_THINK) !== 0) system.thinkFuncId = s.readVarUint();
+    systems.push(system);
+  }
+  return systems;
+}
+
 function readPageSection(s: MemoryStream, strings: StringTable): LinkedBrainProgramPageMetadataJson[] {
   const count = s.readVarUint();
   const pages: LinkedBrainProgramPageMetadataJson[] = [];
@@ -1458,6 +1510,11 @@ export function binaryProgramByteReport(bytes: IByteArray): BinaryProgramByteRep
   if ((presence & PRESENCE_RANC) !== 0) {
     measure("RANC", () => {
       readRancSection(s);
+    });
+  }
+  if ((presence & PRESENCE_SYST) !== 0) {
+    measure("SYST", () => {
+      readSystSection(s, strings);
     });
   }
   measure("PAGE", () => {

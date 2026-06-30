@@ -165,6 +165,7 @@ function leanNormalize(json: LinkedBrainProgramJson, precision: NumberPrecision)
       ...(p.actions !== undefined ? { actions: p.actions } : {}),
       ...(p.ruleFuncIds !== undefined ? { ruleFuncIds: p.ruleFuncIds } : {}),
       ...(p.ruleAncestors !== undefined ? { ruleAncestors: p.ruleAncestors } : {}),
+      ...(p.systems !== undefined ? { systems: p.systems } : {}),
     },
     pages: json.pages.map((page) => ({ ...page, pageName: "" })),
   };
@@ -630,6 +631,54 @@ describe("binary .mcprogram codec -- TYPS diagnostics", () => {
     // The format version is the byte immediately after the magic.
     u8[MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC.length] = 1;
     assert.throws(() => decodeU8(u8), /UNSUPPORTED_FORMAT_VERSION/);
+  });
+});
+
+describe("binary .mcprogram codec -- systems registry", () => {
+  /**
+   * The sample program plus a `systems` registry exercising all four
+   * init/think presence combinations: both, init-only, think-only, neither.
+   */
+  function systemsProgramJson(): LinkedBrainProgramJson {
+    const base = sampleProgramJson();
+    return {
+      ...base,
+      program: {
+        ...base.program,
+        systems: [
+          { name: "movement", storeSlot: 0, initFuncId: 1, thinkFuncId: 1 },
+          { name: "edges", storeSlot: 1, initFuncId: 0 },
+          { name: "ticker", storeSlot: 2, thinkFuncId: 1 },
+          { name: "bare", storeSlot: 3 },
+        ],
+      },
+    };
+  }
+
+  test("round-trips the systems registry through serialize -> deserialize (f32)", () => {
+    const json = systemsProgramJson();
+    const decoded = encodeDecode(json, "f32");
+    assert.deepEqual(linkedBrainProgramToJson(decoded.program), leanNormalize(json, "f32"));
+  });
+
+  test("a program with no systems decodes with the field absent", () => {
+    const decoded = encodeDecode(sampleProgramJson(), "f32");
+    assert.equal(linkedBrainProgramToJson(decoded.program).program.systems, undefined);
+  });
+
+  test("the SYST section accounts for its bytes in the byte report", () => {
+    const bytes = linkedBrainProgramToBytes(linkedBrainProgramFromJson(systemsProgramJson()), {
+      profileId: PROFILE_ID,
+      precision: "f32",
+    });
+    const report = binaryProgramByteReport(bytes);
+    const tags = report.sections.map((section) => section.tag);
+    assert.ok(tags.includes("SYST"), "expected a SYST section");
+    let sum = report.magicBytes + report.headerBytes;
+    for (const section of report.sections) {
+      sum += section.bodyBytes;
+    }
+    assert.equal(sum, report.totalBytes);
   });
 });
 
