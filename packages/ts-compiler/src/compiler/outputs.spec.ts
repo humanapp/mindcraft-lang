@@ -4,6 +4,7 @@ import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { CoreTypeIds, mkOutputTileId, mkOutputVarKey } from "@mindcraft-lang/core/runtime";
 import { buildCompiledActionBundle } from "../runtime/action-bundle.js";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { DescriptorDiagCode, LoweringDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
@@ -123,7 +124,7 @@ describe("setOutput lowering", () => {
     });
     const entry = result.results.get("rx.ts");
     assert.ok(entry);
-    assert.ok(entry.diagnostics.some((d) => d.code === LoweringDiagCode.SetOutputUnknownOutput));
+    expectDiagnostic(entry.diagnostics, LoweringDiagCode.SetOutputUnknownOutput);
   });
 
   test("setOutput with a non-string-literal name is diagnosed", () => {
@@ -137,7 +138,7 @@ describe("setOutput lowering", () => {
     });
     const entry = result.results.get("rx.ts");
     assert.ok(entry);
-    assert.ok(entry.diagnostics.some((d) => d.code === LoweringDiagCode.SetOutputNameNotStringLiteral));
+    expectDiagnostic(entry.diagnostics, LoweringDiagCode.SetOutputNameNotStringLiteral);
   });
 
   test("setOutput in an actuator (no outputs in scope) is diagnosed", () => {
@@ -156,7 +157,7 @@ export default Actuator({
     });
     const entry = result.results.get("act.ts");
     assert.ok(entry);
-    assert.ok(entry.diagnostics.some((d) => d.code === LoweringDiagCode.SetOutputOutsideSensor));
+    expectDiagnostic(entry.diagnostics, LoweringDiagCode.SetOutputOutsideSensor);
   });
 
   test("an output whose declared type does not resolve is diagnosed, not silently skipped", () => {
@@ -165,7 +166,7 @@ export default Actuator({
     });
     const entry = result.results.get("rx.ts");
     assert.ok(entry);
-    assert.ok(entry.diagnostics.some((d) => d.code === LoweringDiagCode.OutputTypeUnresolvable));
+    expectDiagnostic(entry.diagnostics, LoweringDiagCode.OutputTypeUnresolvable);
   });
 
   test("setOutput to a declared-but-unresolvable output is not misreported as undeclared", () => {
@@ -174,7 +175,7 @@ export default Actuator({
     });
     const entry = result.results.get("rx.ts");
     assert.ok(entry);
-    assert.ok(entry.diagnostics.some((d) => d.code === LoweringDiagCode.OutputTypeUnresolvable));
+    expectDiagnostic(entry.diagnostics, LoweringDiagCode.OutputTypeUnresolvable);
     assert.ok(!entry.diagnostics.some((d) => d.code === LoweringDiagCode.SetOutputUnknownOutput));
   });
 
@@ -189,7 +190,7 @@ export default Actuator({
     });
     const entry = result.results.get("rx.ts");
     assert.ok(entry);
-    assert.ok(entry.diagnostics.some((d) => d.code === LoweringDiagCode.SetOutputValueTypeMismatch));
+    expectDiagnostic(entry.diagnostics, LoweringDiagCode.SetOutputValueTypeMismatch);
   });
 
   test("a setOutput value convertible to the declared type compiles (coerced)", () => {

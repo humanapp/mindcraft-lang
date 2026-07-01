@@ -14,6 +14,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 
@@ -336,7 +337,7 @@ describe("Math diagnostics", () => {
   test("Math.max(1) with too few args produces lowering diagnostic", () => {
     const source = sensorReturningNumber("return Math.max(1);");
     const result = compileUserTile(source, { services });
-    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.MathMinMaxRequiresTwoArgs));
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.MathMinMaxRequiresTwoArgs);
   });
 
   test("Math.pow(1, 2, 3) with too many args produces TS error", () => {

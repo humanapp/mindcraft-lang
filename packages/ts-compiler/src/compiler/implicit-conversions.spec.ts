@@ -33,6 +33,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -203,10 +204,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0, "expected a lowering diagnostic");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.NoOperatorOverload),
-      `Expected no-overload diagnostic but got: ${JSON.stringify(result.diagnostics)}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.NoOperatorOverload);
   });
 
   test("binary lowering reports ambiguous implicit conversions", () => {
@@ -227,10 +225,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0, "expected an ambiguity diagnostic");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.AmbiguousImplicitBinaryConversion),
-      `Expected ambiguity diagnostic but got: ${JSON.stringify(result.diagnostics)}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.AmbiguousImplicitBinaryConversion);
   });
 
   test("enum values concatenate with strings through enum-to-string conversion", () => {
@@ -432,9 +427,6 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0, "expected a lowering diagnostic");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.NoConversionToTargetType),
-      `Expected target-type conversion diagnostic but got: ${JSON.stringify(result.diagnostics)}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.NoConversionToTargetType);
   });
 });

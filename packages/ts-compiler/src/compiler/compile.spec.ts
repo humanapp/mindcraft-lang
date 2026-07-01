@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, DescriptorDiagCode, LoweringDiagCode, ValidatorDiagCode } from "./diag-codes.js";
 import type { ExtractedOptional, ExtractedParam } from "./types.js";
@@ -138,7 +139,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.ForInOnUnsupportedType));
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.ForInOnUnsupportedType);
   });
 
   test("eval reference produces diagnostic", () => {
@@ -235,7 +236,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.EnumObjectUsageNotSupported));
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.EnumObjectUsageNotSupported);
   });
 
   test("let and const pass validation", () => {

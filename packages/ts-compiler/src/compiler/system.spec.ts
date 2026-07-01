@@ -13,6 +13,7 @@ import {
 import { CoreTypeIds, extractNumberValue, type IBrain, type Value } from "@mindcraft-lang/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { LoweringDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
@@ -65,8 +66,7 @@ function expectLoweringDiagnostic(source: string, code: LoweringDiagCode): void 
   assert.equal(result.tsErrors.size, 0, `unexpected TS errors: ${JSON.stringify([...result.tsErrors])}`);
   const entry = result.results.get("tile.ts");
   assert.ok(entry, "expected a result for tile.ts");
-  const codes = entry!.diagnostics.map((d) => d.code);
-  assert.ok(codes.includes(code), `expected diagnostic ${code}, got ${JSON.stringify(entry!.diagnostics)}`);
+  expectDiagnostic(entry!.diagnostics, code);
 }
 
 function mkVar(name: string): BrainTileVariableDef {
@@ -663,10 +663,7 @@ export default Sensor({ name: "use bad", onExecute(ctx: Context): number { retur
     const entry = result.results.get("tiles/use-bad.ts");
     assert.ok(entry, "expected a result for tiles/use-bad.ts");
     const codes = entry!.diagnostics.map((d) => d.code);
-    assert.ok(
-      codes.includes(LoweringDiagCode.SystemModuleReferenceNotCarryable),
-      `expected SystemModuleReferenceNotCarryable, got ${JSON.stringify(entry!.diagnostics)}`
-    );
+    expectDiagnostic(entry!.diagnostics, LoweringDiagCode.SystemModuleReferenceNotCarryable);
     assert.ok(
       !codes.includes(LoweringDiagCode.UndefinedVariable),
       "must not surface a raw Undefined variable diagnostic"
@@ -708,10 +705,7 @@ export default Sensor({ name: "use mode", onExecute(ctx: Context): number { retu
     const entry = result.results.get("tiles/use-mode.ts");
     assert.ok(entry, "expected a result for tiles/use-mode.ts");
     const codes = entry!.diagnostics.map((d) => d.code);
-    assert.ok(
-      codes.includes(LoweringDiagCode.SystemModuleReferenceNotCarryable),
-      `expected SystemModuleReferenceNotCarryable, got ${JSON.stringify(entry!.diagnostics)}`
-    );
+    expectDiagnostic(entry!.diagnostics, LoweringDiagCode.SystemModuleReferenceNotCarryable);
     assert.ok(
       !codes.includes(LoweringDiagCode.UndefinedVariable),
       "must not surface a raw Undefined variable diagnostic"
@@ -1021,11 +1015,9 @@ export default Sensor({ name: "r", onExecute(ctx: Context): number { return Sys.
     );
     const result = project.compileAll();
     assert.equal(result.tsErrors.size, 0, `unexpected TS errors: ${JSON.stringify([...result.tsErrors])}`);
-    const codes = result.results.get("tile.ts")!.diagnostics.map((d) => d.code);
-    assert.ok(
-      codes.includes(LoweringDiagCode.SystemModuleReferenceNotCarryable),
-      `expected SystemModuleReferenceNotCarryable, got ${JSON.stringify(codes)}`
-    );
+    const diagnostics = result.results.get("tile.ts")!.diagnostics;
+    const codes = diagnostics.map((d) => d.code);
+    expectDiagnostic(diagnostics, LoweringDiagCode.SystemModuleReferenceNotCarryable);
     assert.ok(!codes.includes(LoweringDiagCode.UndefinedVariable), "must not surface a raw Undefined variable");
   });
 
@@ -1057,11 +1049,9 @@ export default Sensor({ name: "r", onExecute(ctx: Context): number { return Sys.
     );
     const result = project.compileAll();
     assert.equal(result.tsErrors.size, 0, `unexpected TS errors: ${JSON.stringify([...result.tsErrors])}`);
-    const codes = result.results.get("tile.ts")!.diagnostics.map((d) => d.code);
-    assert.ok(
-      codes.includes(LoweringDiagCode.SystemModuleReferenceNotCarryable),
-      `expected SystemModuleReferenceNotCarryable, got ${JSON.stringify(codes)}`
-    );
+    const diagnostics = result.results.get("tile.ts")!.diagnostics;
+    const codes = diagnostics.map((d) => d.code);
+    expectDiagnostic(diagnostics, LoweringDiagCode.SystemModuleReferenceNotCarryable);
     assert.ok(!codes.includes(LoweringDiagCode.UndefinedVariable), "must not surface a raw Undefined variable");
   });
 });

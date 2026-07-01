@@ -15,6 +15,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 import { LoweringDiagCode } from "./diag-codes.js";
@@ -274,8 +275,7 @@ export default Sensor({
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
-    const collisionDiag = result.diagnostics.find((d) => d.code === LoweringDiagCode.TypeAliasCollidesWithAmbientType);
-    assert.ok(collisionDiag, "should emit TypeAliasCollidesWithAmbientType diagnostic");
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.TypeAliasCollidesWithAmbientType);
   });
 
   test("non-object type alias is silently skipped", () => {

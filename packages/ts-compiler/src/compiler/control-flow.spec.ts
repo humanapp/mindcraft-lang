@@ -33,6 +33,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -1807,6 +1808,6 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     // Arrow with non-block expression body should trip OnPageExitedHasNoBody.
-    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.OnPageExitedHasNoBody));
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.OnPageExitedHasNoBody);
   });
 });

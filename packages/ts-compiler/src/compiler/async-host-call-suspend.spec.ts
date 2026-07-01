@@ -5,6 +5,7 @@ import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import { type AsyncHandle, ContextTypeIds, CoreTypeIds, type Value } from "@mindcraft-lang/core/runtime";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 import { LoweringDiagCode } from "./diag-codes.js";
@@ -74,8 +75,7 @@ export default Actuator({
 });
 `;
     const result = compile(source);
-    const diag = result.diagnostics.find((d) => d.code === LoweringDiagCode.AsyncHostCallInNonSuspendableContext);
-    assert.ok(diag, `Expected AsyncHostCallInNonSuspendableContext, got: ${JSON.stringify(result.diagnostics)}`);
+    const diag = expectDiagnostic(result.diagnostics, LoweringDiagCode.AsyncHostCallInNonSuspendableContext);
     assert.equal(spannedText(source, diag), `ctx.scrollText("hi")`);
     assert.match(diag.message, /`Context\.scrollText` is an async action/);
     assert.match(diag.message, /synchronous `onExecute`/);
@@ -110,8 +110,7 @@ export default Actuator({
 });
 `;
     const result = compile(source);
-    const diag = result.diagnostics.find((d) => d.code === LoweringDiagCode.AsyncHostCallInNonSuspendableContext);
-    assert.ok(diag, `Expected AsyncHostCallInNonSuspendableContext, got: ${JSON.stringify(result.diagnostics)}`);
+    const diag = expectDiagnostic(result.diagnostics, LoweringDiagCode.AsyncHostCallInNonSuspendableContext);
     assert.equal(spannedText(source, diag), `ctx.scrollText("hi")`);
     assert.match(diag.message, /cannot be called from `onPageEntered`/);
   });
@@ -129,8 +128,7 @@ export default Actuator({
 });
 `;
     const result = compile(source);
-    const diag = result.diagnostics.find((d) => d.code === LoweringDiagCode.AsyncHostCallInNonSuspendableContext);
-    assert.ok(diag, `Expected AsyncHostCallInNonSuspendableContext, got: ${JSON.stringify(result.diagnostics)}`);
+    const diag = expectDiagnostic(result.diagnostics, LoweringDiagCode.AsyncHostCallInNonSuspendableContext);
     assert.match(diag.message, /cannot be called from `onPageExited`/);
   });
 
@@ -146,8 +144,7 @@ export default Actuator({
 });
 `;
     const result = compile(source);
-    const diag = result.diagnostics.find((d) => d.code === LoweringDiagCode.UnsupportedAsyncResultMethod);
-    assert.ok(diag, `Expected UnsupportedAsyncResultMethod, got: ${JSON.stringify(result.diagnostics)}`);
+    const diag = expectDiagnostic(result.diagnostics, LoweringDiagCode.UnsupportedAsyncResultMethod);
     assert.equal(spannedText(source, diag), `ctx.scrollText("hi").then(() => {})`);
     assert.match(diag.message, /`\.then\(\)` is not supported on an async result\. Use `await`/);
     assert.equal(
@@ -168,8 +165,7 @@ export default Actuator({
 });
 `;
     const result = compile(source);
-    const diag = result.diagnostics.find((d) => d.code === LoweringDiagCode.UnsupportedAsyncResultMethod);
-    assert.ok(diag, `Expected UnsupportedAsyncResultMethod, got: ${JSON.stringify(result.diagnostics)}`);
+    const diag = expectDiagnostic(result.diagnostics, LoweringDiagCode.UnsupportedAsyncResultMethod);
     assert.match(diag.message, /`\.catch\(\)` is not supported on an async result/);
   });
 
@@ -185,8 +181,7 @@ export default Actuator({
 });
 `;
     const result = compile(source);
-    const diag = result.diagnostics.find((d) => d.code === LoweringDiagCode.UnawaitedAsyncCall);
-    assert.ok(diag, `Expected UnawaitedAsyncCall, got: ${JSON.stringify(result.diagnostics)}`);
+    const diag = expectDiagnostic(result.diagnostics, LoweringDiagCode.UnawaitedAsyncCall);
     assert.equal(diag.severity, "warning");
     assert.equal(spannedText(source, diag), `ctx.scrollText("hi")`);
     assert.match(diag.message, /result of async action `Context\.scrollText` is discarded/);
@@ -221,7 +216,7 @@ export default Actuator({
 });
 `;
     const result = compile(source);
-    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.AsyncHostCallInNonSuspendableContext));
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.AsyncHostCallInNonSuspendableContext);
     assert.equal(
       result.diagnostics.some((d) => d.code === LoweringDiagCode.UnawaitedAsyncCall),
       false,

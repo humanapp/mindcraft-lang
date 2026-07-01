@@ -33,6 +33,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -728,10 +729,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.CannotConvertToString),
-      `Expected diagnostic about type determination but got: ${JSON.stringify(result.diagnostics)}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.CannotConvertToString);
   });
 
   test("template literal with null interpolation produces no-conversion diagnostic", () => {
@@ -747,10 +745,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.NoConversionToString),
-      `Expected no-conversion diagnostic but got: ${JSON.stringify(result.diagnostics)}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.NoConversionToString);
   });
 });
 

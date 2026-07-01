@@ -20,6 +20,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 import { LoweringDiagCode } from "./diag-codes.js";
@@ -279,8 +280,7 @@ export default Sensor({
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
-    const collisionDiag = result.diagnostics.find((d) => d.code === LoweringDiagCode.InterfaceCollidesWithAmbientType);
-    assert.ok(collisionDiag, "should emit InterfaceCollidesWithAmbientType diagnostic");
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.InterfaceCollidesWithAmbientType);
   });
 
   test("interface with index signature emits diagnostic", () => {
@@ -303,8 +303,11 @@ export default Sensor({
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
-    const indexDiag = result.diagnostics.find((d) => d.code === LoweringDiagCode.UnsupportedInterfaceMember);
-    assert.ok(indexDiag, "should emit UnsupportedInterfaceMember diagnostic for index signatures");
+    expectDiagnostic(
+      result.diagnostics,
+      LoweringDiagCode.UnsupportedInterfaceMember,
+      "should emit UnsupportedInterfaceMember diagnostic for index signatures"
+    );
   });
 
   test("interface with call signature emits diagnostic", () => {
@@ -327,8 +330,11 @@ export default Sensor({
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
-    const callDiag = result.diagnostics.find((d) => d.code === LoweringDiagCode.UnsupportedInterfaceMember);
-    assert.ok(callDiag, "should emit UnsupportedInterfaceMember diagnostic for call signatures");
+    expectDiagnostic(
+      result.diagnostics,
+      LoweringDiagCode.UnsupportedInterfaceMember,
+      "should emit UnsupportedInterfaceMember diagnostic for call signatures"
+    );
   });
 
   test("interface with boolean and string fields", () => {

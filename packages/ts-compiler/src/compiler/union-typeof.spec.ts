@@ -33,6 +33,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -367,10 +368,7 @@ export default Sensor({
       services,
     });
     assert.ok(result.diagnostics.length > 0, "expected a diagnostic for unsupported typeof comparison");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.UnsupportedTypeofComparison),
-      `expected diagnostic about unsupported typeof, got: ${JSON.stringify(result.diagnostics)}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.UnsupportedTypeofComparison);
   });
 
   test("typeof in if-statement for runtime narrowing", () => {

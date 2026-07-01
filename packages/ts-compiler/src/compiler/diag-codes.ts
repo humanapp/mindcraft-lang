@@ -224,8 +224,8 @@ export enum LoweringDiagCode {
   ContinueOutsideLoop = 3012,
   /** Destructuring declaration is missing an initializer */
   DestructuringMissingInitializer = 3020,
-  /** Rest (...) patterns in destructuring are not supported */
-  RestPatternsNotSupported = 3021,
+  /** Free slot -- available for reuse. */
+  Unused3021 = 3021,
   /** Destructuring in onExecute parameter position is not supported */
   DestructuringInOnExecuteNotSupported = 3024,
   /** Rest element must be the last element in an array destructuring pattern */
@@ -380,8 +380,8 @@ export enum LoweringDiagCode {
   UnsupportedBufferMethod = 3135,
   /** Buffer constructor or method called with wrong number of arguments */
   BufferMethodWrongArgCount = 3136,
-  /** Class declaration has no name */
-  ClassDeclarationMissingName = 3140,
+  /** Free slot -- available for reuse. */
+  Unused3140 = 3140,
   /** Cannot resolve the type of a class field */
   UnresolvableClassFieldType = 3141,
   /** `this` keyword used outside of a class constructor or method */
@@ -402,12 +402,12 @@ export enum LoweringDiagCode {
   UnresolvableInterfaceFieldType = 3150,
   /** Interface has unsupported members (index signatures, call signatures, etc.) */
   UnsupportedInterfaceMember = 3151,
-  /** Generic interfaces are not supported */
-  GenericInterfaceNotSupported = 3152,
+  /** Free slot -- available for reuse. */
+  Unused3152 = 3152,
   /** User interface name collides with an ambient (runtime-registered) type */
   InterfaceCollidesWithAmbientType = 3153,
-  /** Generic type aliases are not supported */
-  GenericTypeAliasNotSupported = 3154,
+  /** Free slot -- available for reuse. */
+  Unused3154 = 3154,
   /** User type alias name collides with an ambient (runtime-registered) type */
   TypeAliasCollidesWithAmbientType = 3155,
   /** Class objects cannot be used as runtime values; only property access and `new` are supported */

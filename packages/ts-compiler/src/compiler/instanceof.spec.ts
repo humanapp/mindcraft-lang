@@ -14,6 +14,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { compileUserTile } from "./compile.js";
 import { LoweringDiagCode } from "./diag-codes.js";
 
@@ -174,9 +175,6 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, { services });
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.InstanceofRhsNotClass),
-      `Expected InstanceofRhsNotClass diagnostic, got: ${JSON.stringify(result.diagnostics)}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.InstanceofRhsNotClass);
   });
 });

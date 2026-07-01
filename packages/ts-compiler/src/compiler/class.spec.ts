@@ -33,6 +33,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -536,10 +537,7 @@ export default Sensor({
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.UnresolvableClassFieldType),
-      `Expected UnresolvableClassFieldType diagnostic, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.UnresolvableClassFieldType);
   });
 
   test("static method registered in function table with dollar separator", () => {
@@ -638,9 +636,10 @@ export default Sensor({
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.ClassObjectUsageNotSupported),
-      `Expected ClassObjectUsageNotSupported diagnostic for bare 'this' in static method, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
+    expectDiagnostic(
+      result.diagnostics,
+      LoweringDiagCode.ClassObjectUsageNotSupported,
+      "expected ClassObjectUsageNotSupported for bare 'this' in static method"
     );
   });
 
@@ -722,10 +721,7 @@ export default Sensor({
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.ClassObjectUsageNotSupported),
-      `Expected ClassObjectUsageNotSupported, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.ClassObjectUsageNotSupported);
   });
 
   test("static method reference via ClassName.method compiles without diagnostics", () => {
@@ -2450,10 +2446,7 @@ export default Sensor({
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.AssignmentTargetNotVariable),
-      `Expected AssignmentTargetNotVariable, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.AssignmentTargetNotVariable);
   });
 
   test("prefix increment on static method produces a diagnostic", () => {
