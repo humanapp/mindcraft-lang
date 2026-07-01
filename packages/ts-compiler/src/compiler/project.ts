@@ -1,9 +1,11 @@
 import { List } from "@mindcraft-lang/core";
 import { type BrainServices, compiler } from "@mindcraft-lang/core/brain";
-import type { ITypeRegistry } from "@mindcraft-lang/core/runtime";
-import { mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
+import type { BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
+import type { ITypeRegistry, TypeId } from "@mindcraft-lang/core/runtime";
+import { mkActuatorTileId, mkModifierTileId, mkParameterTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
 import { buildAmbientDeclarations } from "./ambient.js";
+import { collectModifiers, collectParams } from "./arg-spec-utils.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { extractDescriptor } from "./descriptor.js";
 import { CompileDiagCode } from "./diag-codes.js";
@@ -348,6 +350,8 @@ export class UserTileProject {
       results.set(vfsPath, result);
     }
 
+    reconcileSharedUserTiles(results, services);
+
     return { results, tsErrors, sourceRewrites };
   }
 
@@ -430,7 +434,8 @@ export class UserTileProject {
       ? qualifyDescriptorType(descriptor.returnType, sourceFile, services.runtime.types)
       : undefined;
 
-    const callDef = buildCallDef(descriptor.name, qualifiedArgs);
+    const actionId = descriptor.id ?? this._generateActionId();
+    const callDef = buildCallDef(actionId, qualifiedArgs);
     const outputType = qualifiedReturnType ? services.runtime.types.resolveByName(qualifiedReturnType) : undefined;
     if (qualifiedReturnType && !outputType) {
       return {
@@ -453,7 +458,6 @@ export class UserTileProject {
 
     const debugMetadata = assembleDebugMetadata(funcs, functionDebugInfo, compilerFiles);
 
-    const actionId = descriptor.id ?? this._generateActionId();
     const actionKey = buildUserActionKey(descriptor.kind, actionId);
     const actionTileId = descriptor.kind === "sensor" ? mkSensorTileId(actionKey) : mkActuatorTileId(actionKey);
     if (descriptor.id === undefined) {
@@ -532,6 +536,90 @@ export class UserTileProject {
 
     return { diagnostics: [...lowerWarnings, ...metaDiags], program, descriptor, functionDebugInfo };
   }
+}
+
+/**
+ * Cross-program reconciliation of the shared (unscoped-prefix) user tile ids,
+ * each of which names one tile shared across every declaring sensor. Walks every
+ * compiled program to surface disagreements the register-if-absent dedup would
+ * otherwise hide, as per-file diagnostics: a `parameter.` id declared with
+ * conflicting types, a `parameter.` id whose type does not resolve, and a bare
+ * `modifier.` reference that names no declared or registered modifier. Programs
+ * are visited in `key` order, matching the bundle's `key`-sorted registration.
+ */
+function reconcileSharedUserTiles(results: Map<string, CompileResult>, services: BrainServices): void {
+  const entries: { path: string; program: UserAuthoredProgram }[] = [];
+  for (const [path, result] of results) {
+    if (result.program) entries.push({ path, program: result.program });
+  }
+  entries.sort((left, right) => left.program.key.localeCompare(right.program.key));
+
+  const declaredSharedModifiers = new Set<string>();
+  for (const { program } of entries) {
+    for (const modifier of collectModifiers(program.args)) {
+      if (modifier.id.startsWith("modifier.") && modifier.label !== "") {
+        declaredSharedModifiers.add(modifier.id);
+      }
+    }
+  }
+
+  const sharedParamTypes = new Map<string, { typeId: TypeId; typeName: string }>();
+
+  for (const { path, program } of entries) {
+    const diagnostics = results.get(path)!.diagnostics;
+
+    for (const modifier of collectModifiers(program.args)) {
+      if (!modifier.id.startsWith("modifier.") || modifier.label !== "") continue;
+      if (declaredSharedModifiers.has(modifier.id)) continue;
+      if (services.edit.tiles.has(mkModifierTileId(modifier.id))) continue;
+      diagnostics.push({
+        code: CompileDiagCode.UnregisteredModifierReference,
+        message: `Modifier "${modifier.id}" is not registered and this reference declares no \`label\` to define it.`,
+        severity: "error",
+      });
+    }
+
+    for (const param of collectParams(program.args)) {
+      if (param.anonymous || !param.name.startsWith("parameter.")) continue;
+      const typeId = services.runtime.types.resolveByName(param.type);
+      if (typeId === undefined) {
+        diagnostics.push({
+          code: CompileDiagCode.SharedParameterUnresolvedType,
+          message: `Shared parameter "${param.name}" has unresolved type "${param.type}", so its shared tile cannot be built.`,
+          severity: "error",
+        });
+        continue;
+      }
+
+      const known = sharedParamTypes.get(param.name);
+      if (known === undefined) {
+        const registered = services.edit.tiles.get(mkParameterTileId(param.name));
+        const registeredType =
+          registered?.kind === "parameter" ? (registered as BrainTileParameterDef).dataType : undefined;
+        if (registeredType !== undefined) {
+          const registeredName = services.runtime.types.get(registeredType)?.name ?? "a registered tile";
+          sharedParamTypes.set(param.name, { typeId: registeredType, typeName: registeredName });
+          if (registeredType !== typeId) {
+            diagnostics.push(sharedParamConflictDiagnostic(param.name, param.type, registeredName));
+          }
+        } else {
+          sharedParamTypes.set(param.name, { typeId, typeName: param.type });
+        }
+        continue;
+      }
+      if (known.typeId !== typeId) {
+        diagnostics.push(sharedParamConflictDiagnostic(param.name, param.type, known.typeName));
+      }
+    }
+  }
+}
+
+function sharedParamConflictDiagnostic(paramId: string, thisType: string, priorType: string): CompileDiagnostic {
+  return {
+    code: CompileDiagCode.SharedParameterTypeConflict,
+    message: `Shared parameter "${paramId}" is declared here as "${thisType}" but was already declared as "${priorType}". A shared parameter id must have one type.`,
+    severity: "error",
+  };
 }
 
 function qualifyDescriptorType(typeName: string, sourceFile: ts.SourceFile, types: ITypeRegistry): string {

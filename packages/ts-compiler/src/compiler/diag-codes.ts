@@ -513,6 +513,12 @@ export enum CompileDiagCode {
   InvalidEnumDeclaration = 5005,
   /** A metadata file (icon or docs) referenced by a tile config was not found */
   MetadataFileNotFound = 5006,
+  /** A shared `parameter.` id is declared with a type that conflicts with an earlier declaration or a registered tile */
+  SharedParameterTypeConflict = 5007,
+  /** A bare shared `modifier.` reference names a modifier that is neither declared with a label nor already registered */
+  UnregisteredModifierReference = 5008,
+  /** A shared `parameter.` id is declared with a type name that does not resolve, so its shared tile cannot be materialized */
+  SharedParameterUnresolvedType = 5009,
 }
 
 /**

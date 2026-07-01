@@ -3,6 +3,7 @@ import { before, describe, test } from "node:test";
 import { List, runtime } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { BrainTileModifierDef } from "@mindcraft-lang/core/brain/tiles";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
@@ -602,6 +603,35 @@ describe("descriptor arg spec extraction diagnostics", () => {
     services = __test__createBrainServices();
   });
 
+  /**
+   * Compile an actuator whose `args` array holds the given element source and
+   * return its diagnostics. The element source may include TypeScript directive
+   * comments to reach extractor checks that TypeScript would otherwise reject first.
+   */
+  function argDiagnostics(argElement: string) {
+    const source = `
+import { Actuator, type Context, choice, conditional, modifier, optional, param, repeated, seq } from "mindcraft";
+
+export default Actuator({
+  name: "test",
+  args: [
+${argElement}
+  ],
+  onExecute(ctx: Context): void {},
+});
+`;
+    return compileUserTile(source, { services }).diagnostics;
+  }
+
+  /** Assert that compiling an actuator with `argElement` emits `code`. */
+  function assertArgDiag(argElement: string, code: DescriptorDiagCode) {
+    const diagnostics = argDiagnostics(argElement);
+    assert.ok(
+      diagnostics.some((d) => d.code === code),
+      `expected ${DescriptorDiagCode[code]}, got ${JSON.stringify(diagnostics)}`
+    );
+  }
+
   test("args as non-array expression produces diagnostic", () => {
     const source = `
 import { Actuator, type Context } from "mindcraft";
@@ -616,36 +646,121 @@ export default Actuator({
     assert.ok(result.diagnostics.some((d) => d.code === DescriptorDiagCode.ArgsMustBeArrayLiteral));
   });
 
-  test("non-call expression in args array produces diagnostic", () => {
-    const source = `
-import { Actuator, type Context } from "mindcraft";
-
-export default Actuator({
-  name: "test",
-  args: [
-    "not-a-call" as any,
-  ],
-  onExecute(ctx: Context): void {},
-});
-`;
-    const result = compileUserTile(source, { services });
-    assert.ok(result.diagnostics.some((d) => d.code === DescriptorDiagCode.ArgSpecMustBeCallExpression));
+  test("non-call expression in args array", () => {
+    assertArgDiag(`    "not-a-call" as any,`, DescriptorDiagCode.ArgSpecMustBeCallExpression);
   });
 
-  test("param missing type property produces diagnostic", () => {
-    const source = `
-import { Actuator, type Context, param } from "mindcraft";
+  test("callee that is not a recognized arg spec function", () => {
+    assertArgDiag(`    (param as any)("x"),`, DescriptorDiagCode.UnrecognizedArgSpecCall);
+  });
 
-export default Actuator({
-  name: "test",
-  args: [
-    param("x", {} as any),
-  ],
-  onExecute(ctx: Context): void {},
-});
-`;
-    const result = compileUserTile(source, { services });
-    assert.ok(result.diagnostics.length > 0);
+  test("modifier id that is not a string literal", () => {
+    assertArgDiag(`    modifier(123 as any),`, DescriptorDiagCode.ModifierIdMustBeStringLiteral);
+  });
+
+  test("custom modifier without an opts object", () => {
+    assertArgDiag(`    modifier("custom"),`, DescriptorDiagCode.ModifierOptsMustBeObjectLiteral);
+  });
+
+  test("modifier label that is not a string literal", () => {
+    assertArgDiag(
+      `    modifier("custom", { label: 123 as any }),`,
+      DescriptorDiagCode.ModifierLabelMustBeStringLiteral
+    );
+  });
+
+  test("custom modifier opts missing the label", () => {
+    assertArgDiag(
+      `    // @ts-ignore missing required modifier label\n    modifier("custom", { icon: "i.svg" }),`,
+      DescriptorDiagCode.ModifierLabelRequired
+    );
+  });
+
+  test("modifier icon that is not a string literal", () => {
+    assertArgDiag(
+      `    modifier("custom", { label: "L", icon: 123 as any }),`,
+      DescriptorDiagCode.ModifierIconMustBeStringLiteral
+    );
+  });
+
+  test("param name that is not a string literal", () => {
+    assertArgDiag(`    param(123 as any, { type: "number" }),`, DescriptorDiagCode.ParamNameMustBeStringLiteral);
+  });
+
+  test("param opts that is not an object literal", () => {
+    assertArgDiag(`    param("x", "nope" as any),`, DescriptorDiagCode.ParamOptsMustBeObjectLiteral);
+  });
+
+  test("param type that is not a string literal", () => {
+    assertArgDiag(`    param("x", { type: 123 as any }),`, DescriptorDiagCode.ParamTypeMustBeStringLiteral);
+  });
+
+  test("param default that is not a literal value", () => {
+    assertArgDiag(`    param("x", { type: "number", default: [] }),`, DescriptorDiagCode.ParamDefaultMustBeLiteral);
+  });
+
+  test("param anonymous that is not a boolean literal", () => {
+    assertArgDiag(
+      `    param("x", { type: "number", anonymous: 1 as any }),`,
+      DescriptorDiagCode.ParamAnonymousMustBeBoolean
+    );
+  });
+
+  test("param opts missing the type property", () => {
+    assertArgDiag(
+      `    // @ts-ignore missing required param type\n    param("x", { default: 5 }),`,
+      DescriptorDiagCode.ParamDefinitionMissingType
+    );
+  });
+
+  test("choice with no arguments", () => {
+    assertArgDiag(`    choice(),`, DescriptorDiagCode.ChoiceRequiresArguments);
+  });
+
+  test("optional with a number of arguments other than one", () => {
+    assertArgDiag(
+      `    // @ts-ignore optional requires exactly one argument\n    optional(),`,
+      DescriptorDiagCode.OptionalRequiresOneArgument
+    );
+  });
+
+  test("repeated with no arguments", () => {
+    assertArgDiag(
+      `    // @ts-ignore repeated requires at least one argument\n    repeated(),`,
+      DescriptorDiagCode.RepeatedRequiresModifier
+    );
+  });
+
+  test("repeated opts that is not an object literal", () => {
+    assertArgDiag(
+      `    repeated(modifier("m", { label: "M" }), "nope" as any),`,
+      DescriptorDiagCode.RepeatedOptsMustBeObjectLiteral
+    );
+  });
+
+  test("repeated bound that is not a numeric literal", () => {
+    assertArgDiag(
+      `    repeated(modifier("m", { label: "M" }), { min: "x" as any }),`,
+      DescriptorDiagCode.RepeatedBoundMustBeNumericLiteral
+    );
+  });
+
+  test("conditional with fewer than two arguments", () => {
+    assertArgDiag(
+      `    // @ts-ignore conditional requires condition and thenItem\n    conditional("c"),`,
+      DescriptorDiagCode.ConditionalRequiresAtLeastTwoArguments
+    );
+  });
+
+  test("conditional condition that is not a string literal", () => {
+    assertArgDiag(
+      `    conditional(123 as any, param("x", { type: "number" })),`,
+      DescriptorDiagCode.ConditionalConditionMustBeStringLiteral
+    );
+  });
+
+  test("seq with no arguments", () => {
+    assertArgDiag(`    seq(),`, DescriptorDiagCode.SeqRequiresArguments);
   });
 });
 
@@ -1603,6 +1718,9 @@ export default Sensor({
   });
 
   test("existing modifier ref without opts compiles", () => {
+    services.edit.tiles.registerTileDef(
+      new BrainTileModifierDef("modifier.distance.nearby", { metadata: { label: "nearby" } })
+    );
     const source = `
 import { Sensor, modifier, type Context } from "mindcraft";
 

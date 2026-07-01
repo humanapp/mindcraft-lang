@@ -20,7 +20,7 @@ export function registerUserTile(program: UserAuthoredProgram, services: BrainSe
     throw new Error(`Unknown parameter type "${unresolvedTypeName ?? "unknown"}" for "${program.key}"`);
   }
 
-  const { actionDescriptor, actionTile, parameterTiles } = metadata;
+  const { actionDescriptor, actionTile, parameterTiles, modifierTiles } = metadata;
   const actionBinding: BytecodeResolvedAction = {
     binding: "bytecode",
     descriptor: actionDescriptor,
@@ -36,6 +36,12 @@ export function registerUserTile(program: UserAuthoredProgram, services: BrainSe
   for (const parameterTile of parameterTiles) {
     if (!tiles.has(parameterTile.tileId)) {
       tiles.registerTileDef(parameterTile);
+    }
+  }
+
+  for (const modifierTile of modifierTiles) {
+    if (!tiles.has(modifierTile.tileId)) {
+      tiles.registerTileDef(modifierTile);
     }
   }
 

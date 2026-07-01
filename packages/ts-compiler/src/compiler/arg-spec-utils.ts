@@ -52,6 +52,39 @@ export function collectParams(args: readonly ExtractedArgSpec[]): ExtractedParam
   return result;
 }
 
+/** Flatten an arg spec tree into the list of {@link ExtractedModifier}s, in slot order. */
+export function collectModifiers(args: readonly ExtractedArgSpec[]): ExtractedModifier[] {
+  const result: ExtractedModifier[] = [];
+  for (const spec of args) collectModifiersFromSpec(spec, result);
+  return result;
+}
+
+function collectModifiersFromSpec(spec: ExtractedArgSpec, out: ExtractedModifier[]): void {
+  switch (spec.kind) {
+    case "modifier":
+      out.push(spec);
+      break;
+    case "param":
+      break;
+    case "choice":
+      for (const item of spec.items) collectModifiersFromSpec(item, out);
+      break;
+    case "optional":
+      collectModifiersFromSpec(spec.item, out);
+      break;
+    case "repeated":
+      collectModifiersFromSpec(spec.item, out);
+      break;
+    case "conditional":
+      collectModifiersFromSpec(spec.thenItem, out);
+      if (spec.elseItem) collectModifiersFromSpec(spec.elseItem, out);
+      break;
+    case "seq":
+      for (const item of spec.items) collectModifiersFromSpec(item, out);
+      break;
+  }
+}
+
 function collectParamsFromSpec(spec: ExtractedArgSpec, out: ExtractedParam[]): void {
   switch (spec.kind) {
     case "param":

@@ -89,6 +89,7 @@ export function buildCompiledActionBundle(
 
     actions.set(program.key, program);
     addTiles(tileMap, metadata.parameterTiles);
+    addTiles(tileMap, metadata.modifierTiles);
     addTiles(tileMap, metadata.outputTiles);
     addTiles(tileMap, [metadata.actionTile]);
   }
