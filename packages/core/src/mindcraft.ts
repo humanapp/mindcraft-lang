@@ -58,7 +58,7 @@ import type {
   UserActionArtifact,
   VmEvents,
 } from "./runtime";
-import { CoreOpId, NativeType } from "./runtime";
+import { CoreOpId, mkOutputVarKey, NativeType } from "./runtime";
 import type { ExecutionContext, HostActionBinding } from "./runtime/context";
 import type { AsyncHandle, Value } from "./runtime/value";
 
@@ -222,6 +222,9 @@ export function createHostSensor(options: CreateHostSensorOptions): HostSensorDe
     tile: new BrainTileSensorDef(options.key, descriptor, {
       metadata: options.metadata,
       capabilities: options.capabilities,
+      providedOutputs: options.outputs
+        ? List.from(options.outputs.map((output) => mkOutputVarKey(output.type, output.name)))
+        : undefined,
     }),
   };
 }

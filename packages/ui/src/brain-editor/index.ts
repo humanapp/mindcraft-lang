@@ -50,7 +50,7 @@ export {
 export { DisplayFormatPicker } from "./DisplayFormatPicker";
 export { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
 // Hooks
-export { useRuleCapabilities } from "./hooks/useRuleCapabilities";
+export { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 export { useTileSelection } from "./hooks/useTileSelection";
 export { RenameVariableDialog } from "./RenameVariableDialog";
 // Clipboard utilities

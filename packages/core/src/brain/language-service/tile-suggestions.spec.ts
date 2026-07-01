@@ -9,7 +9,7 @@ import { CoreHostActions } from "@mindcraft-lang/core/runtime";
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList } from "@mindcraft-lang/core";
+import { List, type ReadonlyList, UniqueSet } from "@mindcraft-lang/core";
 import {
   type BrainServices,
   CoreControlFlowId,
@@ -2260,17 +2260,15 @@ describe("Capability requirements filtering", () => {
     services.edit.tiles.delete(reqLitDef.tileId);
   });
 
-  test("An output tile is suggested only when a declaring sensor's gating capability is present", () => {
-    const outputBit = 64;
+  test("An output tile is suggested only when a declaring sensor provides its identity key", () => {
     const outputDef = new BrainTileOutputDef(CoreTypeIds.Number, "rssi", {
-      requirements: new BitSet().set(outputBit),
       metadata: { label: "signal strength" },
     });
     services.edit.tiles.registerTileDef(outputDef);
 
-    // Absent declaring sensor (empty capabilities) -> not surfaced.
+    // Absent declaring sensor (empty provided-key set) -> not surfaced.
     const without = suggestTiles(
-      { ruleSide: RuleSide.When, availableCapabilities: new BitSet() },
+      { ruleSide: RuleSide.When, availableOutputKeys: new UniqueSet<string>() },
       catalogList(),
       services
     );
@@ -2279,9 +2277,9 @@ describe("Capability requirements filtering", () => {
       "output tile must be hidden without a declaring sensor"
     );
 
-    // Declaring sensor present (its provided bit available) -> surfaced.
+    // Declaring sensor present (its provided key available) -> surfaced.
     const withSensor = suggestTiles(
-      { ruleSide: RuleSide.When, availableCapabilities: new BitSet().set(outputBit) },
+      { ruleSide: RuleSide.When, availableOutputKeys: new UniqueSet<string>([outputDef.outputKey]) },
       catalogList(),
       services
     );
@@ -2291,6 +2289,32 @@ describe("Capability requirements filtering", () => {
     );
 
     services.edit.tiles.delete(outputDef.tileId);
+  });
+
+  test("Output tiles with distinct identities gate independently", () => {
+    // Two number outputs differing only by name resolve to distinct identity keys.
+    const valueOut = new BrainTileOutputDef(CoreTypeIds.Number, "value", { metadata: { label: "value" } });
+    const speedOut = new BrainTileOutputDef(CoreTypeIds.Number, "speed", { metadata: { label: "speed" } });
+    services.edit.tiles.registerTileDef(valueOut);
+    services.edit.tiles.registerTileDef(speedOut);
+
+    // Only the "value" identity is provided; "speed" must stay hidden.
+    const result = suggestTiles(
+      { ruleSide: RuleSide.When, availableOutputKeys: new UniqueSet<string>([valueOut.outputKey]) },
+      catalogList(),
+      services
+    );
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === valueOut.tileId) !== undefined,
+      "the provided output tile must surface"
+    );
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === speedOut.tileId) === undefined,
+      "a different-identity output tile must not surface from another output's key"
+    );
+
+    services.edit.tiles.delete(valueOut.tileId);
+    services.edit.tiles.delete(speedOut.tileId);
   });
 
   test("Test 61: Multi-bit requirements need all bits present", () => {

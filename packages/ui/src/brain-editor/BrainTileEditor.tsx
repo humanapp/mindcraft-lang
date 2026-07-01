@@ -25,7 +25,7 @@ import {
   ReplaceTileCommand,
 } from "./commands";
 import { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
-import { useRuleCapabilities } from "./hooks/useRuleCapabilities";
+import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
 import { RenameVariableDialog } from "./RenameVariableDialog";
 import type { TileBadge } from "./tile-badges";
@@ -46,6 +46,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
   const availableCapabilities = useRuleCapabilities(ruleDef);
+  const availableOutputKeys = useRuleOutputKeys(ruleDef);
   const { onTileHelp, brainServices } = useBrainEditorConfig();
 
   const isNumericLiteral =
@@ -208,6 +209,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
               replaceTileIndex={isInsert ? undefined : tileIndex}
               existingTiles={isInsert ? tileSet.tiles().slice(0, tileIndex) : tileSet.tiles()}
               availableCapabilities={availableCapabilities}
+              availableOutputKeys={availableOutputKeys}
               onTileSelected={handleTileSelected}
               onCancel={handlePickerCancel}
             />

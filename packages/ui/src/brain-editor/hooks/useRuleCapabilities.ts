@@ -1,4 +1,4 @@
-import { BitSet, type ReadonlyBitSet } from "@mindcraft-lang/core";
+import { BitSet, type ReadonlyBitSet, UniqueSet } from "@mindcraft-lang/core";
 import type { IBrainRuleDef, IBrainTileSet } from "@mindcraft-lang/core/brain";
 import { useMemo } from "react";
 
@@ -47,4 +47,42 @@ function collectRuleHierarchyCapabilities(ruleDef: IBrainRuleDef): ReadonlyBitSe
 export function useRuleCapabilities(ruleDef: IBrainRuleDef, updateCounter?: number): ReadonlyBitSet {
   // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter forces re-evaluation when tiles change
   return useMemo(() => collectRuleHierarchyCapabilities(ruleDef), [ruleDef, updateCounter]);
+}
+
+/** Add every output identity key provided by the tiles of one tile set into the accumulator. */
+function orTileSetOutputKeys(tileSet: IBrainTileSet, result: UniqueSet<string>): void {
+  const tiles = tileSet.tiles();
+  for (let i = 0; i < tiles.size(); i++) {
+    const keys = tiles.get(i).providedOutputs();
+    for (let j = 0; j < keys.size(); j++) {
+      result.add(keys.get(j));
+    }
+  }
+}
+
+/**
+ * Collects the output identity keys provided by every tile in the given rule and
+ * its ancestor rules. An output value-tile is offered only when its `outputKey`
+ * is among these (a declaring sensor is present in the hierarchy).
+ */
+function collectRuleHierarchyOutputKeys(ruleDef: IBrainRuleDef): UniqueSet<string> {
+  const result = new UniqueSet<string>();
+  let current: IBrainRuleDef | undefined = ruleDef;
+  while (current) {
+    orTileSetOutputKeys(current.when(), result);
+    orTileSetOutputKeys(current.do(), result);
+    current = current.ancestor();
+  }
+  return result;
+}
+
+/**
+ * React hook that memoizes the output identity keys provided across the rule
+ * hierarchy. Returns a `UniqueSet<string>` suitable for `InsertionContext.availableOutputKeys`.
+ *
+ * @param updateCounter - Pass an external counter to re-compute when tiles change.
+ */
+export function useRuleOutputKeys(ruleDef: IBrainRuleDef, updateCounter?: number): UniqueSet<string> {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter forces re-evaluation when tiles change
+  return useMemo(() => collectRuleHierarchyOutputKeys(ruleDef), [ruleDef, updateCounter]);
 }

@@ -118,6 +118,12 @@ export interface InsertionContext {
    */
   availableCapabilities?: ReadonlyBitSet;
   /**
+   * The output identity keys (see `mkOutputVarKey`) provided by sensors in the
+   * current rule hierarchy. An output tile is excluded unless its `outputKey` is
+   * a member. When undefined, no output-identity filtering is performed.
+   */
+  availableOutputKeys?: UniqueSet<string>;
+  /**
    * Number of unmatched open parentheses preceding the insertion point.
    * When > 0, the close paren tile is suggested after complete expressions
    * and non-inline sensors and actuators are excluded (only inline sensors
@@ -168,19 +174,26 @@ function isPlacementValid(tileDef: IBrainTileDef, ruleSide: RuleSide): boolean {
 }
 
 /**
- * Checks if a tile's requirements are satisfied by the available capabilities.
- * A tile's requirements must be a subset of the available capabilities.
- * Returns true if no requirements exist, or if availableCapabilities is undefined
- * (no capability filtering).
+ * Checks if a tile is admissible given the rule hierarchy's available
+ * capabilities and provided output identities. The tile's `requirements()` bits
+ * must be a subset of `availableCapabilities`, and an output tile's `outputKey`
+ * must be a member of `availableOutputKeys` (i.e. a declaring sensor is present).
+ * An undefined `availableCapabilities`/`availableOutputKeys` disables that filter.
  */
-function areRequirementsMet(tileDef: IBrainTileDef, availableCapabilities: ReadonlyBitSet | undefined): boolean {
+function areRequirementsMet(
+  tileDef: IBrainTileDef,
+  availableCapabilities: ReadonlyBitSet | undefined,
+  availableOutputKeys: UniqueSet<string> | undefined
+): boolean {
   const requirements = tileDef.requirements();
-  if (requirements.isEmpty()) return true;
-  if (availableCapabilities === undefined) return true;
-  // Check that every bit set in requirements is also set in availableCapabilities
-  const msb = requirements.msb();
-  for (let i = 0; i <= msb; i++) {
-    if (requirements.get(i) === 1 && availableCapabilities.get(i) === 0) return false;
+  if (!requirements.isEmpty() && availableCapabilities !== undefined) {
+    const msb = requirements.msb();
+    for (let i = 0; i <= msb; i++) {
+      if (requirements.get(i) === 1 && availableCapabilities.get(i) === 0) return false;
+    }
+  }
+  if (tileDef.kind === "output" && availableOutputKeys !== undefined) {
+    if (!availableOutputKeys.has((tileDef as BrainTileOutputDef).outputKey)) return false;
   }
   return true;
 }
@@ -1407,6 +1420,7 @@ export function suggestTiles(
           result,
           undefined,
           context.availableCapabilities,
+          context.availableOutputKeys,
           context.unclosedParenDepth
         );
       }
@@ -1472,6 +1486,7 @@ export function suggestTiles(
             result,
             undefined,
             context.availableCapabilities,
+            context.availableOutputKeys,
             context.unclosedParenDepth
           );
         }
@@ -1713,7 +1728,7 @@ function suggestExpressionTiles(
       if (!isPlacementValid(tileDef, context.ruleSide)) continue;
 
       // Check capability requirements
-      if (!areRequirementsMet(tileDef, context.availableCapabilities)) continue;
+      if (!areRequirementsMet(tileDef, context.availableCapabilities, context.availableOutputKeys)) continue;
 
       // Deduplicate across catalogs
       if (seen.has(tileDef.tileId)) continue;
@@ -1794,7 +1809,7 @@ function suggestInfixOperators(
       if (!isPlacementValid(tileDef, context.ruleSide)) continue;
 
       // Check capability requirements
-      if (!areRequirementsMet(tileDef, context.availableCapabilities)) continue;
+      if (!areRequirementsMet(tileDef, context.availableCapabilities, context.availableOutputKeys)) continue;
 
       if (seen.has(tileDef.tileId)) continue;
       seen.add(tileDef.tileId);
@@ -1895,7 +1910,7 @@ function suggestAccessorTiles(
       if (!isPlacementValid(tileDef, context.ruleSide)) continue;
 
       // Check capability requirements
-      if (!areRequirementsMet(tileDef, context.availableCapabilities)) continue;
+      if (!areRequirementsMet(tileDef, context.availableCapabilities, context.availableOutputKeys)) continue;
 
       if (seen.has(tileDef.tileId)) continue;
       seen.add(tileDef.tileId);
@@ -1944,8 +1959,8 @@ function suggestPrefixOperatorsForValue(
 
       if (!isPlacementValid(tileDef, ruleSide)) continue;
 
-      // Check capability requirements
-      if (!areRequirementsMet(tileDef, availableCapabilities)) continue;
+      // Operator tiles only (filtered above); no output-identity gate applies.
+      if (!areRequirementsMet(tileDef, availableCapabilities, undefined)) continue;
 
       if (seen.has(tileDef.tileId)) continue;
 
@@ -2002,7 +2017,7 @@ function suggestPrefixOperators(
       if (!isPlacementValid(tileDef, context.ruleSide)) continue;
 
       // Check capability requirements
-      if (!areRequirementsMet(tileDef, context.availableCapabilities)) continue;
+      if (!areRequirementsMet(tileDef, context.availableCapabilities, context.availableOutputKeys)) continue;
 
       if (seen.has(tileDef.tileId)) continue;
       seen.add(tileDef.tileId);
@@ -2071,6 +2086,7 @@ function suggestForReplacementRole(
         result,
         role.excludeSlotId,
         context.availableCapabilities,
+        context.availableOutputKeys,
         context.unclosedParenDepth
       );
       break;
@@ -2101,6 +2117,7 @@ function suggestActionCallTiles(
   result: TileSuggestionResult,
   excludeSlotId?: number,
   availableCapabilities?: ReadonlyBitSet,
+  availableOutputKeys?: UniqueSet<string>,
   unclosedParenDepth?: number
 ): void {
   const callDef = actionExpr.tileDef.action.callDef;
@@ -2140,8 +2157,8 @@ function suggestActionCallTiles(
     } else if (!valuePending) {
       // Named parameter or modifier tile: suggest it directly, but only when
       // no parameter/anonymous value is pending completion.
-      // Also check capability requirements.
-      if (!areRequirementsMet(argTileDef, availableCapabilities)) continue;
+      // Named call-spec tiles are never output tiles, so no output-identity gate applies.
+      if (!areRequirementsMet(argTileDef, availableCapabilities, undefined)) continue;
       result.exact.push({
         tileDef: argTileDef,
         compatibility: TileCompatibility.Exact,
@@ -2209,7 +2226,8 @@ function suggestActionCallTiles(
       conversions,
       types,
       result,
-      availableCapabilities
+      availableCapabilities,
+      availableOutputKeys
     );
     // Prefix operators can start value sub-expressions (e.g., [negative] [1]).
     suggestPrefixOperatorsForValue(ruleSide, catalogs, valueExpectedTypes, result, availableCapabilities);
@@ -2231,7 +2249,8 @@ function suggestExpressionsForAnonymousSlots(
   conversions: IConversionRegistry,
   types: ITypeRegistry,
   result: TileSuggestionResult,
-  availableCapabilities?: ReadonlyBitSet
+  availableCapabilities?: ReadonlyBitSet,
+  availableOutputKeys?: UniqueSet<string>
 ): void {
   const seen = new UniqueSet<string>();
 
@@ -2256,8 +2275,8 @@ function suggestExpressionsForAnonymousSlots(
       // Check placement
       if (!isPlacementValid(tileDef, ruleSide)) continue;
 
-      // Check capability requirements
-      if (!areRequirementsMet(tileDef, availableCapabilities)) continue;
+      // Check capability + output-identity requirements
+      if (!areRequirementsMet(tileDef, availableCapabilities, availableOutputKeys)) continue;
 
       // Deduplicate
       if (seen.has(tileDef.tileId)) continue;

@@ -239,16 +239,16 @@ describe("derived output tiles", () => {
     const sensorTile = bundle.tiles.find((t) => t.tileId === "tile.sensor->user.sensor.snrx");
     assert.ok(sensorTile);
 
-    // The sensor PROVIDES each output's gating bit; each output tile REQUIRES exactly its own.
-    const valueBit = valueTile.requirements().ntz();
-    const rssiBit = rssiTile.requirements().ntz();
-    assert.notEqual(valueBit, rssiBit, "distinct identities get distinct bits");
-    assert.equal(sensorTile.capabilities().get(valueBit), 1);
-    assert.equal(sensorTile.capabilities().get(rssiBit), 1);
-    assert.equal(valueTile.requirements().cardinality(), 1);
+    // The sensor advertises each output's identity key; each output tile reads its own.
+    const valueKey = mkOutputVarKey(CoreTypeIds.String, "value");
+    const rssiKey = mkOutputVarKey(CoreTypeIds.Number, "rssi");
+    assert.notEqual(valueKey, rssiKey, "distinct identities get distinct keys");
+    assert.ok(sensorTile.providedOutputs().indexOf(valueKey) >= 0, "the sensor provides the value output key");
+    assert.ok(sensorTile.providedOutputs().indexOf(rssiKey) >= 0, "the sensor provides the rssi output key");
+    assert.equal(sensorTile.providedOutputs().size(), 2, "the sensor provides exactly its declared outputs");
   });
 
-  test("two sensors declaring the same (type, name) share one output tile and one gating bit", () => {
+  test("two sensors declaring the same (type, name) share one output tile and one provided key", () => {
     const result = compileProject({
       "see.ts": sensorSource(
         "snsee",
@@ -270,12 +270,12 @@ describe("derived output tiles", () => {
     const valueTiles = bundle.tiles.filter((t) => t.tileId === valueTileId);
     assert.equal(valueTiles.length, 1, "a shared identity surfaces a single tile");
 
-    const bit = valueTiles[0].requirements().ntz();
+    const sharedKey = mkOutputVarKey(CoreTypeIds.String, "value");
     const see = bundle.tiles.find((t) => t.tileId === "tile.sensor->user.sensor.snsee");
     const hear = bundle.tiles.find((t) => t.tileId === "tile.sensor->user.sensor.snhear");
     assert.ok(see && hear);
-    assert.equal(see.capabilities().get(bit), 1, "see provides the shared bit");
-    assert.equal(hear.capabilities().get(bit), 1, "hear provides the shared bit");
+    assert.ok(see.providedOutputs().indexOf(sharedKey) >= 0, "see provides the shared output key");
+    assert.ok(hear.providedOutputs().indexOf(sharedKey) >= 0, "hear provides the shared output key");
   });
 
   test("the same name with different types is non-colliding: two distinct tiles", () => {

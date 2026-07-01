@@ -46,7 +46,6 @@ export {
   createAccessorTileDef,
   createVariableFactoryTileDef,
   getCatalogFallbackLabel,
-  OutputCapabilityAllocator,
 } from "../brain/tiles";
 
 // -- Tile ID constructors -------------------------------------------------------

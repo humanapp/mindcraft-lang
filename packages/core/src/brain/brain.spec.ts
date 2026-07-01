@@ -38,7 +38,6 @@ import {
   BrainTileSensorDef,
   BrainTileVariableDef,
   buildDescriptorOutputTiles,
-  OutputCapabilityAllocator,
 } from "@mindcraft-lang/core/brain/tiles";
 import type { ExecutionContext, Instr, UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import {
@@ -686,18 +685,16 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     });
 
     // Derive the output tiles from the descriptor exactly as registration does.
-    const sensorCaps = new BitSet();
-    const outputTiles = buildDescriptorOutputTiles(
-      sensorDef.descriptor.outputs!,
-      new OutputCapabilityAllocator(),
-      sensorCaps
-    );
+    const outputTiles = buildDescriptorOutputTiles(sensorDef.descriptor.outputs!);
     assert.equal(outputTiles.length, 1, "one output tile per declared output");
     const countTile = outputTiles[0];
     assert.equal(countTile.kind, "output");
     assert.equal(countTile.outputType, CoreTypeIds.Number);
-    // The sensor provides the gating bit the tile requires.
-    assert.equal(sensorCaps.get(countTile.requirements().ntz()), 1, "the sensor provides the output's gating bit");
+    // The sensor advertises the output tile's identity key that gates it downstream.
+    assert.ok(
+      sensorDef.tile.providedOutputs().indexOf(countTile.outputKey) >= 0,
+      "the sensor provides the output tile's identity key"
+    );
 
     // DO: outVar = count-output-tile -- reads back the value the sensor wrote.
     const outVar = mkVar(outVarName);

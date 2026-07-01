@@ -1,12 +1,12 @@
+import { List } from "@mindcraft-lang/core";
 import { CoreCapabilityBits, type ITileMetadata } from "@mindcraft-lang/core/brain";
 import {
   BrainTileActuatorDef,
   BrainTileOutputDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
-  OutputCapabilityAllocator,
 } from "@mindcraft-lang/core/brain/tiles";
-import { type ActionDescriptor, mkOutputVarKey, mkParameterTileId, type TypeId } from "@mindcraft-lang/core/runtime";
+import { type ActionDescriptor, mkParameterTileId, type TypeId } from "@mindcraft-lang/core/runtime";
 import { BitSet } from "@mindcraft-lang/core/util";
 import { collectParams } from "../compiler/arg-spec-utils.js";
 import type { ExtractedParam, UserAuthoredProgram } from "../compiler/types.js";
@@ -65,16 +65,12 @@ function buildParameterTiles(
 }
 
 /**
- * Build the inline output value-tiles for a sensor's declared outputs, allocating
- * a per-identity gating capability for each and recording each bit in `sensorCaps`
- * so the declaring sensor provides it. Returns undefined when an output's type
- * cannot be resolved.
+ * Build the inline output value-tiles for a sensor's declared outputs. Returns
+ * undefined when an output's type cannot be resolved.
  */
 function buildOutputTiles(
   program: UserAuthoredProgram,
-  resolveTypeId: UserTileTypeResolver,
-  outputCapabilities: OutputCapabilityAllocator,
-  sensorCaps: BitSet
+  resolveTypeId: UserTileTypeResolver
 ): readonly BrainTileOutputDef[] | undefined {
   const outputTiles: BrainTileOutputDef[] = [];
   for (const output of program.outputs ?? []) {
@@ -82,15 +78,13 @@ function buildOutputTiles(
     if (!typeId) {
       return undefined;
     }
-    const bit = outputCapabilities.alloc(mkOutputVarKey(typeId, output.name));
-    sensorCaps.set(bit);
     const metadata: ITileMetadata = {
       label: output.label ?? output.name,
       iconUrl: output.icon,
       docsMarkdown: output.docs,
       tags: output.tags,
     };
-    outputTiles.push(new BrainTileOutputDef(typeId, output.name, { requirements: new BitSet().set(bit), metadata }));
+    outputTiles.push(new BrainTileOutputDef(typeId, output.name, { metadata }));
   }
   return outputTiles;
 }
@@ -98,13 +92,11 @@ function buildOutputTiles(
 /**
  * Build the action descriptor, action tile, parameter tiles, and output tiles for
  * a compiled user tile. Returns undefined when a parameter or output type cannot
- * be resolved. Pass a shared `outputCapabilities` allocator across all tiles of a
- * registration pass so sensors declaring the same output identity share one bit.
+ * be resolved.
  */
 export function buildUserTileMetadata(
   program: UserAuthoredProgram,
-  resolveTypeId: UserTileTypeResolver,
-  outputCapabilities: OutputCapabilityAllocator = new OutputCapabilityAllocator()
+  resolveTypeId: UserTileTypeResolver
 ): BuiltUserTileMetadata | undefined {
   const actionDescriptor = buildActionDescriptor(program);
   const parameterTiles = buildParameterTiles(program, resolveTypeId);
@@ -128,16 +120,17 @@ export function buildUserTileMetadata(
 
   let outputTiles: readonly BrainTileOutputDef[] = [];
   if (program.kind === "sensor") {
-    const built = buildOutputTiles(program, resolveTypeId, outputCapabilities, userTileCaps);
+    const built = buildOutputTiles(program, resolveTypeId);
     if (!built) {
       return undefined;
     }
     outputTiles = built;
   }
 
+  const providedOutputs = List.from(outputTiles.map((tile) => tile.outputKey));
   const actionTile =
     program.kind === "sensor"
-      ? new BrainTileSensorDef(program.key, actionDescriptor, { metadata, capabilities: userTileCaps })
+      ? new BrainTileSensorDef(program.key, actionDescriptor, { metadata, capabilities: userTileCaps, providedOutputs })
       : new BrainTileActuatorDef(program.key, actionDescriptor, { metadata, capabilities: userTileCaps });
 
   return {

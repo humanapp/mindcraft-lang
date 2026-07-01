@@ -13,12 +13,12 @@ import {
   BrainTileParameterDef,
   BrainTileSensorDef,
   CoreCapabilityBits,
+  List,
   logger,
   mkActuatorTileId,
   mkCallDef,
   mkOutputVarKey,
   mkSensorTileId,
-  OutputCapabilityAllocator,
 } from "@mindcraft-lang/core/app";
 import type {
   ExtractedArgSpec,
@@ -270,7 +270,6 @@ function buildHydratedSnapshot(
   return env.withServices((services) => {
     const { types } = services.runtime;
     const tiles = new Map<string, TileDefinitionInput>();
-    const outputCapabilities = new OutputCapabilityAllocator();
 
     for (const entry of metadata) {
       const parameterTiles: TileDefinitionInput[] = [];
@@ -306,6 +305,7 @@ function buildHydratedSnapshot(
 
       const userTileCaps = new BitSet().set(CoreCapabilityBits.UserTile);
       const outputTiles: TileDefinitionInput[] = [];
+      const providedOutputKeys = new List<string>();
 
       if (entry.kind === "sensor") {
         const outputType = entry.outputType ? resolveTypeId(types, entry.outputType) : undefined;
@@ -322,11 +322,9 @@ function buildHydratedSnapshot(
             canRegister = false;
             break;
           }
-          const bit = outputCapabilities.alloc(mkOutputVarKey(outputTypeId, output.name));
-          userTileCaps.set(bit);
+          providedOutputKeys.push(mkOutputVarKey(outputTypeId, output.name));
           outputTiles.push(
             new BrainTileOutputDef(outputTypeId, output.name, {
-              requirements: new BitSet().set(bit),
               metadata: {
                 label: output.label ?? output.name,
                 iconUrl: output.icon,
@@ -362,7 +360,11 @@ function buildHydratedSnapshot(
 
       const actionTile =
         entry.kind === "sensor"
-          ? new BrainTileSensorDef(entry.key, descriptor, { metadata: tileMetadata, capabilities: userTileCaps })
+          ? new BrainTileSensorDef(entry.key, descriptor, {
+              metadata: tileMetadata,
+              capabilities: userTileCaps,
+              providedOutputs: providedOutputKeys,
+            })
           : new BrainTileActuatorDef(entry.key, descriptor, { metadata: tileMetadata, capabilities: userTileCaps });
       tiles.set(actionTile.tileId, actionTile);
     }

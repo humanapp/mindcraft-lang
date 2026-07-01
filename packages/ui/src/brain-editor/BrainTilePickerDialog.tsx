@@ -1,4 +1,4 @@
-import { List, type ReadonlyBitSet, type ReadonlyList } from "@mindcraft-lang/core";
+import { List, type ReadonlyBitSet, type ReadonlyList, type UniqueSet } from "@mindcraft-lang/core";
 import {
   CoreCapabilityBits,
   type IBrainTileDef,
@@ -76,6 +76,7 @@ export interface BrainTilePickerDialogProps {
   expr?: Expr;
   replaceTileIndex?: number;
   availableCapabilities?: ReadonlyBitSet;
+  availableOutputKeys?: UniqueSet<string>;
   existingTiles?: ReadonlyList<IBrainTileDef>;
   onTileSelected: (tileDef: IBrainTileDef) => boolean;
   onCancel: () => void;
@@ -96,6 +97,7 @@ export function BrainTilePickerDialog({
   expr: exprProp,
   replaceTileIndex,
   availableCapabilities,
+  availableOutputKeys,
   existingTiles,
   onTileSelected,
   onCancel,
@@ -129,6 +131,7 @@ export function BrainTilePickerDialog({
       expr,
       replaceTileIndex,
       availableCapabilities,
+      availableOutputKeys,
       unclosedParenDepth,
     };
     const result = brainServices
@@ -234,7 +237,17 @@ export function BrainTilePickerDialog({
       conversionByKind: sortEntries(Array.from(convGroups.entries())),
       hasConversions: result.withConversion.size() > 0,
     };
-  }, [side, expectedType, exprProp, replaceTileIndex, availableCapabilities, existingTiles, catalogs, brainServices]);
+  }, [
+    side,
+    expectedType,
+    exprProp,
+    replaceTileIndex,
+    availableCapabilities,
+    availableOutputKeys,
+    existingTiles,
+    catalogs,
+    brainServices,
+  ]);
 
   const filterGroups = (groups: [TileGroup, TileSuggestion[]][]): [TileGroup, TileSuggestion[]][] => {
     if (filter.length === 0) return groups;

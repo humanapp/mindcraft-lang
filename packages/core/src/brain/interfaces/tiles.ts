@@ -1,3 +1,4 @@
+import type { ReadonlyList } from "../../platform/list";
 import { MathOps } from "../../platform/math";
 import { StringUtils as SU } from "../../platform/string";
 import type { TileId } from "../../runtime/tile-ids";
@@ -77,6 +78,8 @@ export interface BrainTileDefCreateOptions {
   persist?: boolean;
   capabilities?: BitSet;
   requirements?: BitSet;
+  /** Output identity keys (see `mkOutputVarKey`) this tile provides; sensors declaring outputs set these so their output value-tiles surface downstream. */
+  providedOutputs?: ReadonlyList<string>;
   metadata?: ITileMetadata;
 }
 
@@ -154,6 +157,8 @@ export interface IBrainTileDef {
   persist?: boolean;
   capabilities(): ReadonlyBitSet;
   requirements(): ReadonlyBitSet;
+  /** Output identity keys this tile provides (empty for tiles that declare no outputs). */
+  providedOutputs(): ReadonlyList<string>;
 }
 
 export interface IBrainActionTileDef extends IBrainTileDef {
@@ -231,15 +236,6 @@ export const CoreCapabilityBits = {
    */
   PresenceGated: 2,
 } as const;
-
-/**
- * First capability bit reserved for sensor-output gating. Each distinct output
- * identity (`(typeId, name)`) is interned to one bit at or above this offset at
- * tile registration; the declaring sensors provide it and the single output
- * tile for that identity requires it. These bits are edit-time only and are not
- * serialized. The band starts above the app range (32) to leave 32-63 for apps.
- */
-export const OUTPUT_CAPABILITY_BIT_OFFSET = 64;
 
 // ----------------------------------------------------
 // Core Tile IDs
