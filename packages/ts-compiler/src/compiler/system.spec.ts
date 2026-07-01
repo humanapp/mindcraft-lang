@@ -480,4 +480,588 @@ export default Sensor({ name: "t6", onExecute(ctx: Context): number { return S.c
       LoweringDiagCode.SystemMethodUsedAsValue
     );
   });
+
+  test("cross-module: an imported System body may reference its defining module's const and function", () => {
+    // The System's `think` references BOTH a module-level `const` (BASE) and a
+    // module-level `function` (bump) declared beside it in lib/dev.ts, and bump
+    // itself references BASE (a transitive helper reference). A tile in a
+    // DIFFERENT module imports the System and reads the thinked value.
+    const [readValue] = compileTiles(
+      {
+        "lib/dev.ts": `
+import { System, type Context } from "mindcraft";
+
+const BASE = 20;
+function bump(n: number): number { return n + BASE + 7; }
+
+export const Dev = System({
+  name: "dev",
+  state: { value: 0 },
+  think(ctx: Context) { this.value = bump(0); },
+});
+`,
+        "tiles/read-value.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Dev } from "../lib/dev";
+
+export default Sensor({
+  name: "dev read value",
+  onExecute(ctx: Context): number { return Dev.value; },
+});
+`,
+      },
+      ["tiles/read-value.ts"]
+    );
+
+    const v = mkVar("dev-out");
+    const { brainDef, rule } = newBrain();
+    rule.do().appendTile(v as never);
+    rule.do().appendTile(opAssign as never);
+    rule.do().appendTile(readValue as never);
+    const brain = runBrain(brainDef, 2);
+    // think sets value = bump(0) = 0 + BASE(20) + 7 = 27; tick2 reads it back.
+    assert.equal(
+      num(brain, v.varName),
+      27,
+      "the const (20) and function (+7) both round-trip across the module boundary"
+    );
+  });
+
+  test("cross-module: a System body may reference its defining module's exported const", () => {
+    // An `export`ed module-level const referenced by a System `think` is inlined
+    // at the reference site the same as a non-exported one; its per-callsite slot
+    // is not bound in the System fiber.
+    const [readValue] = compileTiles(
+      {
+        "lib/rate.ts": `
+import { System, type Context } from "mindcraft";
+
+export const RATE = 6;
+
+export const Rated = System({
+  name: "rated",
+  state: { total: 0 },
+  think(ctx: Context) { this.total = this.total + RATE; },
+});
+`,
+        "tiles/read-rate.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Rated } from "../lib/rate";
+
+export default Sensor({
+  name: "rated read",
+  onExecute(ctx: Context): number { return Rated.total; },
+});
+`,
+      },
+      ["tiles/read-rate.ts"]
+    );
+
+    const v = mkVar("rate-out");
+    const { brainDef, rule } = newBrain();
+    rule.do().appendTile(v as never);
+    rule.do().appendTile(opAssign as never);
+    rule.do().appendTile(readValue as never);
+    const brain = runBrain(brainDef, 3);
+    // think adds RATE(6) each tick; reads lag one tick: 0, 6, 12.
+    assert.equal(num(brain, v.varName), 12, "the exported const inlines and accumulates in the System fiber");
+  });
+
+  test("cross-module module-level refs: two importing modules, two brains, both correct", () => {
+    // Real multiplicity: the same System is imported by two tiles in two
+    // different modules and exercised in two independent brains. Both must
+    // resolve the defining module's `const`/`function` and read equal values.
+    const [readA, readB] = compileTiles(
+      {
+        "lib/arb.ts": `
+import { System, type Context } from "mindcraft";
+
+const STEP = 4;
+function scale(n: number): number { return n * STEP; }
+
+export const Arb = System({
+  name: "arb",
+  state: { total: 0 },
+  think(ctx: Context) { this.total = this.total + scale(1); },
+});
+`,
+        "tiles/a.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Arb } from "../lib/arb";
+export default Sensor({ name: "arb read a", onExecute(ctx: Context): number { return Arb.total; } });
+`,
+        "tiles/b.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Arb } from "../lib/arb";
+export default Sensor({ name: "arb read b", onExecute(ctx: Context): number { return Arb.total; } });
+`,
+      },
+      ["tiles/a.ts", "tiles/b.ts"]
+    );
+
+    // Brain 1 uses reader A.
+    {
+      const v = mkVar("arb-a");
+      const { brainDef, rule } = newBrain();
+      rule.do().appendTile(v as never);
+      rule.do().appendTile(opAssign as never);
+      rule.do().appendTile(readA as never);
+      const brain = runBrain(brainDef, 3);
+      // think adds scale(1)=STEP(4) each tick; reads lag one tick: 0,4,8.
+      assert.equal(num(brain, "arb-a"), 8, "brain 1 accumulates STEP each think");
+      const systems = brain.getProgram()?.systems;
+      assert.ok(systems && systems.size() === 1, "brain 1 registers exactly one System");
+    }
+
+    // Brain 2 uses reader B (a different importing module).
+    {
+      const v = mkVar("arb-b");
+      const { brainDef, rule } = newBrain();
+      rule.do().appendTile(v as never);
+      rule.do().appendTile(opAssign as never);
+      rule.do().appendTile(readB as never);
+      const brain = runBrain(brainDef, 3);
+      assert.equal(num(brain, "arb-b"), 8, "brain 2 (second importing module) reads the same climbing total");
+      const systems = brain.getProgram()?.systems;
+      assert.ok(systems && systems.size() === 1, "brain 2 registers exactly one System");
+    }
+  });
+
+  test("cross-module: a System body reference to a non-carryable module binding reports a precise diagnostic", () => {
+    // A module-level `let` in the defining module cannot be carried into an
+    // importer (mutable per-callsite module state has no brain-global meaning in
+    // a System body). The reference must produce a precise diagnostic anchored
+    // to the offending identifier, not a raw "Undefined variable".
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
+    const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+    project.setFiles(
+      new Map([
+        [
+          "lib/bad.ts",
+          `
+import { System, type Context } from "mindcraft";
+let counter = 0;
+export const Bad = System({
+  name: "bad",
+  state: { value: 0 },
+  think(ctx: Context) { this.value = counter; },
+});
+`,
+        ],
+        [
+          "tiles/use-bad.ts",
+          `
+import { Sensor, type Context } from "mindcraft";
+import { Bad } from "../lib/bad";
+export default Sensor({ name: "use bad", onExecute(ctx: Context): number { return Bad.value; } });
+`,
+        ],
+      ])
+    );
+    const result = project.compileAll();
+    assert.equal(result.tsErrors.size, 0, `unexpected TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("tiles/use-bad.ts");
+    assert.ok(entry, "expected a result for tiles/use-bad.ts");
+    const codes = entry!.diagnostics.map((d) => d.code);
+    assert.ok(
+      codes.includes(LoweringDiagCode.SystemModuleReferenceNotCarryable),
+      `expected SystemModuleReferenceNotCarryable, got ${JSON.stringify(entry!.diagnostics)}`
+    );
+    assert.ok(
+      !codes.includes(LoweringDiagCode.UndefinedVariable),
+      "must not surface a raw Undefined variable diagnostic"
+    );
+  });
+
+  test("cross-module: a System body reference to a non-exported module enum reports a precise diagnostic", () => {
+    // A non-exported enum in the defining module cannot be carried into an
+    // importer (only `const` values and `function` declarations are). The
+    // reference must produce a precise diagnostic, not a raw "Undefined variable".
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
+    const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+    project.setFiles(
+      new Map([
+        [
+          "lib/mode.ts",
+          `
+import { System, type Context } from "mindcraft";
+enum Mode { Idle = 0, Run = 1 }
+export const Machine = System({
+  name: "machine",
+  state: { value: 0 },
+  think(ctx: Context) { this.value = Mode.Run; },
+});
+`,
+        ],
+        [
+          "tiles/use-mode.ts",
+          `
+import { Sensor, type Context } from "mindcraft";
+import { Machine } from "../lib/mode";
+export default Sensor({ name: "use mode", onExecute(ctx: Context): number { return Machine.value; } });
+`,
+        ],
+      ])
+    );
+    const result = project.compileAll();
+    assert.equal(result.tsErrors.size, 0, `unexpected TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("tiles/use-mode.ts");
+    assert.ok(entry, "expected a result for tiles/use-mode.ts");
+    const codes = entry!.diagnostics.map((d) => d.code);
+    assert.ok(
+      codes.includes(LoweringDiagCode.SystemModuleReferenceNotCarryable),
+      `expected SystemModuleReferenceNotCarryable, got ${JSON.stringify(entry!.diagnostics)}`
+    );
+    assert.ok(
+      !codes.includes(LoweringDiagCode.UndefinedVariable),
+      "must not surface a raw Undefined variable diagnostic"
+    );
+  });
+
+  test("co-located: a System referencing a module const (direct and via a local helper) runs", () => {
+    // The System and its consuming tile live in ONE module. `init` reads a
+    // module-level `const` directly; `think` reads it through a local helper
+    // function. Both must resolve in the System fiber (no runtime fault).
+    const [readValue] = compileTiles(
+      {
+        "colocated.ts": `
+import { System, Sensor, type Context } from "mindcraft";
+
+const RATE = 6;
+function scaled(): number { return RATE * 2; }
+
+const Sys = System({
+  name: "colocated",
+  state: { total: 0 },
+  init(ctx: Context) { this.total = RATE; },
+  think(ctx: Context) { this.total = this.total + scaled(); },
+});
+
+export default Sensor({
+  name: "colocated read",
+  onExecute(ctx: Context): number { return Sys.total; },
+});
+`,
+      },
+      ["colocated.ts"]
+    );
+
+    const v = mkVar("colocated-out");
+    const { brainDef, rule } = newBrain();
+    rule.do().appendTile(v as never);
+    rule.do().appendTile(opAssign as never);
+    rule.do().appendTile(readValue as never);
+    const brain = runBrain(brainDef, 3);
+    // init sets total = RATE(6); each think adds scaled() = RATE*2 = 12. Reads lag
+    // one tick: think1 reads 6, think2 reads 18, think3 reads 30.
+    assert.equal(
+      num(brain, v.varName),
+      30,
+      "co-located const (direct + via a local helper) inlines in the System fiber"
+    );
+  });
+
+  test("a System reference to a non-primitive module const reports a precise diagnostic", () => {
+    // A module-level `const` holding an object cannot be reproduced inline (each
+    // reference would build a distinct instance). Referencing it from a System
+    // reports a precise diagnostic, not a runtime fault and not a raw 3010.
+    expectLoweringDiagnostic(
+      `
+import { System, Sensor, type Context } from "mindcraft";
+const CFG = { addr: 16 };
+const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = CFG.addr; } });
+export default Sensor({ name: "t", onExecute(ctx: Context): number { return Sys.v; } });
+`,
+      LoweringDiagCode.SystemModuleReferenceNotCarryable
+    );
+  });
+
+  test("two modules with a same-named private helper, both reached by one tile, do not collide", () => {
+    // Each module's System references its OWN private `fmt`. Both are carried into
+    // the importing tile; the identity key keeps them distinct so each System's
+    // `fmt` resolves to the right helper (no Duplicate imported symbol error).
+    const [readAB] = compileTiles(
+      {
+        "mods/a.ts": `
+import { System, type Context } from "mindcraft";
+function fmt(n: number): number { return n + 1; }
+export const A = System({ name: "a", state: { v: 0 }, think(ctx: Context) { this.v = fmt(0); } });
+`,
+        "mods/b.ts": `
+import { System, type Context } from "mindcraft";
+function fmt(n: number): number { return n + 2; }
+export const B = System({ name: "b", state: { v: 0 }, think(ctx: Context) { this.v = fmt(0); } });
+`,
+        "tiles/read-ab.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { A } from "../mods/a";
+import { B } from "../mods/b";
+export default Sensor({ name: "read ab", onExecute(ctx: Context): number { return A.v + B.v; } });
+`,
+      },
+      ["tiles/read-ab.ts"]
+    );
+
+    const v = mkVar("ab-out");
+    const { brainDef, rule } = newBrain();
+    rule.do().appendTile(v as never);
+    rule.do().appendTile(opAssign as never);
+    rule.do().appendTile(readAB as never);
+    const brain = runBrain(brainDef, 2);
+    // A.think -> A.v = fmt_a(0) = 1; B.think -> B.v = fmt_b(0) = 2; tile reads 1 + 2 = 3.
+    assert.equal(num(brain, v.varName), 3, "each System's private fmt resolves to its own module's helper");
+  });
+
+  test("an exported helper called by a System reads its module's private const", () => {
+    // The System's `think` calls an exported `helper` whose body reads a
+    // non-exported `const`. The private const is carried and inlined so it
+    // resolves when `helper` runs in the System fiber.
+    const [readValue] = compileTiles(
+      {
+        "lib/dev.ts": `
+import { System, type Context } from "mindcraft";
+const SECRET = 9;
+export function helper(): number { return SECRET; }
+export const Dev = System({
+  name: "dev",
+  state: { v: 0 },
+  think(ctx: Context) { this.v = helper(); },
+});
+`,
+        "tiles/read.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Dev } from "../lib/dev";
+export default Sensor({ name: "dev read", onExecute(ctx: Context): number { return Dev.v; } });
+`,
+      },
+      ["tiles/read.ts"]
+    );
+
+    const v = mkVar("helper-const-out");
+    const { brainDef, rule } = newBrain();
+    rule.do().appendTile(v as never);
+    rule.do().appendTile(opAssign as never);
+    rule.do().appendTile(readValue as never);
+    const brain = runBrain(brainDef, 2);
+    // think sets v = helper() = SECRET(9); tick2 reads it back.
+    assert.equal(num(brain, v.varName), 9, "the private const inside the exported helper resolves in the System fiber");
+  });
+
+  test("an exported function reading its module's private const works in ordinary tile code", () => {
+    // No System involved: an imported exported `compute` reads a non-exported
+    // `const`. The private const is carried so the re-lowered `compute` resolves
+    // it.
+    const [readValue] = compileTiles(
+      {
+        "lib/calc.ts": `
+const SECRET = 5;
+export function compute(): number { return SECRET + 1; }
+`,
+        "tiles/use.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { compute } from "../lib/calc";
+export default Sensor({ name: "use compute", onExecute(ctx: Context): number { return compute(); } });
+`,
+      },
+      ["tiles/use.ts"]
+    );
+
+    const v = mkVar("compute-out");
+    const { brainDef, rule } = newBrain();
+    rule.do().appendTile(v as never);
+    rule.do().appendTile(opAssign as never);
+    rule.do().appendTile(readValue as never);
+    const brain = runBrain(brainDef, 1);
+    assert.equal(
+      num(brain, v.varName),
+      6,
+      "the private const inside the exported function resolves in ordinary tile code"
+    );
+  });
+
+  test("an exported helper reading an exported const, called by a System, resolves in the System fiber", () => {
+    // The System reaches the exported `const` one hop through an exported
+    // `helper`; the strict System pass traverses the helper and inlines the const
+    // so it resolves in the System fiber (no runtime fault).
+    const [readValue] = compileTiles(
+      {
+        "lib/rate.ts": `
+import { System, type Context } from "mindcraft";
+export const RATE = 7;
+export function helper(): number { return RATE; }
+export const Sys = System({
+  name: "s",
+  state: { v: 0 },
+  think(ctx: Context) { this.v = helper(); },
+});
+`,
+        "tiles/read.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Sys } from "../lib/rate";
+export default Sensor({ name: "read", onExecute(ctx: Context): number { return Sys.v; } });
+`,
+      },
+      ["tiles/read.ts"]
+    );
+
+    const v = mkVar("rate-via-helper-out");
+    const { brainDef, rule } = newBrain();
+    rule.do().appendTile(v as never);
+    rule.do().appendTile(opAssign as never);
+    rule.do().appendTile(readValue as never);
+    const brain = runBrain(brainDef, 2);
+    // think sets v = helper() = RATE(7); tick2 reads it back.
+    assert.equal(
+      num(brain, v.varName),
+      7,
+      "the exported const reached through an exported helper inlines in the System fiber"
+    );
+  });
+
+  test("cross-module const reachability: a co-located System reads a const imported into its own module", () => {
+    // The System lives in the entry tile module and reads a `const` imported from
+    // another module. The const (defined in a third file) must inline in the
+    // System fiber even though it is foreign to the System's module.
+    const [readValue] = compileTiles(
+      {
+        "lib/config.ts": `export const SPEED = 42;`,
+        "tile.ts": `
+import { System, Sensor, type Context } from "mindcraft";
+import { SPEED } from "./lib/config";
+const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = SPEED; } });
+export default Sensor({ name: "read", onExecute(ctx: Context): number { return Sys.v; } });
+`,
+      },
+      ["tile.ts"]
+    );
+    const v = mkVar("xmod-local-out");
+    const { brainDef, rule } = newBrain();
+    rule.do().appendTile(v as never);
+    rule.do().appendTile(opAssign as never);
+    rule.do().appendTile(readValue as never);
+    const brain = runBrain(brainDef, 2);
+    assert.equal(num(brain, v.varName), 42, "a const imported into the System's module inlines in the System fiber");
+  });
+
+  test("cross-module const reachability: an imported System reaches a const in a third module", () => {
+    // The System's own module imports the const from a third module; the const
+    // must inline in the System fiber across both module hops.
+    const [readValue] = compileTiles(
+      {
+        "lib/cfg.ts": `export const SPEED = 55;`,
+        "lib/mv.ts": `
+import { System, type Context } from "mindcraft";
+import { SPEED } from "./cfg";
+export const Mv = System({ name: "mv", state: { v: 0 }, think(ctx: Context) { this.v = SPEED; } });
+`,
+        "tile.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Mv } from "./lib/mv";
+export default Sensor({ name: "read", onExecute(ctx: Context): number { return Mv.v; } });
+`,
+      },
+      ["tile.ts"]
+    );
+    const v = mkVar("xmod-third-out");
+    const { brainDef, rule } = newBrain();
+    rule.do().appendTile(v as never);
+    rule.do().appendTile(opAssign as never);
+    rule.do().appendTile(readValue as never);
+    const brain = runBrain(brainDef, 2);
+    assert.equal(num(brain, v.varName), 55, "a third-module const inlines in the System fiber across module hops");
+  });
+
+  test("an ambient global (Math) used inside a System body resolves", () => {
+    // Whole-program reference resolution must leave ambient (.d.ts) bindings to
+    // their own machinery; a `Math` call in a System `think` runs, not diagnosed.
+    const [readValue] = compileTiles(
+      {
+        "tile.ts": `
+import { System, Sensor, type Context } from "mindcraft";
+const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = Math.max(3, 7); } });
+export default Sensor({ name: "read", onExecute(ctx: Context): number { return Sys.v; } });
+`,
+      },
+      ["tile.ts"]
+    );
+    const v = mkVar("ambient-out");
+    const { brainDef, rule } = newBrain();
+    rule.do().appendTile(v as never);
+    rule.do().appendTile(opAssign as never);
+    rule.do().appendTile(readValue as never);
+    const brain = runBrain(brainDef, 2);
+    assert.equal(num(brain, v.varName), 7, "an ambient global resolves in a System body");
+  });
+
+  test("a non-primitive const reached THROUGH a helper into a System reports a precise diagnostic", () => {
+    // The strict System pass traverses the exported helper and catches the
+    // non-primitive const one hop away -- a diagnostic, not a runtime fault.
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
+    const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+    project.setFiles(
+      new Map([
+        [
+          "lib.ts",
+          `
+import { System, type Context } from "mindcraft";
+const CFG = { addr: 5 };
+export function h(): number { return CFG.addr; }
+export const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = h(); } });
+`,
+        ],
+        [
+          "tile.ts",
+          `
+import { Sensor, type Context } from "mindcraft";
+import { Sys } from "./lib";
+export default Sensor({ name: "r", onExecute(ctx: Context): number { return Sys.v; } });
+`,
+        ],
+      ])
+    );
+    const result = project.compileAll();
+    assert.equal(result.tsErrors.size, 0, `unexpected TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const codes = result.results.get("tile.ts")!.diagnostics.map((d) => d.code);
+    assert.ok(
+      codes.includes(LoweringDiagCode.SystemModuleReferenceNotCarryable),
+      `expected SystemModuleReferenceNotCarryable, got ${JSON.stringify(codes)}`
+    );
+    assert.ok(!codes.includes(LoweringDiagCode.UndefinedVariable), "must not surface a raw Undefined variable");
+  });
+
+  test("a module `let` reached THROUGH a called function into a System reports a precise diagnostic", () => {
+    // The `let` boundary must fire transitively: the System calls a helper whose
+    // body reads a module-level `let`. Diagnosed, not a silent fault.
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
+    const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+    project.setFiles(
+      new Map([
+        [
+          "lib.ts",
+          `
+import { System, type Context } from "mindcraft";
+let counter = 0;
+function step(): number { return counter; }
+export const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = step(); } });
+`,
+        ],
+        [
+          "tile.ts",
+          `
+import { Sensor, type Context } from "mindcraft";
+import { Sys } from "./lib";
+export default Sensor({ name: "r", onExecute(ctx: Context): number { return Sys.v; } });
+`,
+        ],
+      ])
+    );
+    const result = project.compileAll();
+    assert.equal(result.tsErrors.size, 0, `unexpected TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const codes = result.results.get("tile.ts")!.diagnostics.map((d) => d.code);
+    assert.ok(
+      codes.includes(LoweringDiagCode.SystemModuleReferenceNotCarryable),
+      `expected SystemModuleReferenceNotCarryable, got ${JSON.stringify(codes)}`
+    );
+    assert.ok(!codes.includes(LoweringDiagCode.UndefinedVariable), "must not surface a raw Undefined variable");
+  });
 });

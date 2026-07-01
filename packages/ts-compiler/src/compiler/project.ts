@@ -9,6 +9,7 @@ import { extractDescriptor } from "./descriptor.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { emitFunction } from "./emit.js";
 import type {
+  CarriedPrivateFunction,
   FunctionEntry,
   ImportedClass,
   ImportedEnum,
@@ -16,8 +17,9 @@ import type {
   ImportedInterface,
   ImportedTypeAlias,
   ImportedVariable,
+  InlinedSystemConst,
 } from "./lowering.js";
-import { lowerProgram, qualifiedClassName } from "./lowering.js";
+import { collectSystemModuleBindings, lowerProgram, qualifiedClassName } from "./lowering.js";
 import type {
   AmbientFile,
   CallSiteInfo,
@@ -380,7 +382,9 @@ export class UserTileProject {
       imported.classes,
       imported.enums,
       imported.interfaces,
-      imported.typeAliases
+      imported.typeAliases,
+      imported.inlinedSystemConsts,
+      imported.carriedPrivateFunctions
     );
     if (programResult.diagnostics.some((d) => d.severity === "error")) {
       return { diagnostics: programResult.diagnostics };
@@ -671,6 +675,8 @@ interface CollectResult {
   interfaces: ImportedInterface[];
   typeAliases: ImportedTypeAlias[];
   moduleInitOrder: string[];
+  inlinedSystemConsts: InlinedSystemConst[];
+  carriedPrivateFunctions: CarriedPrivateFunction[];
   diagnostics: CompileDiagnostic[];
 }
 
@@ -688,12 +694,14 @@ function collectImports(
   const typeAliases: ImportedTypeAlias[] = [];
   const diagnostics: CompileDiagnostic[] = [];
   const visitedFiles = new Set<string>();
+  const visitedModuleFiles: ts.SourceFile[] = [];
   const moduleInitOrder: string[] = [];
   visitedFiles.add(entryFile.fileName);
 
   function visitFile(sourceFile: ts.SourceFile): void {
     if (visitedFiles.has(sourceFile.fileName)) return;
     visitedFiles.add(sourceFile.fileName);
+    visitedModuleFiles.push(sourceFile);
 
     for (const stmt of sourceFile.statements) {
       if (ts.isImportDeclaration(stmt)) {
@@ -770,6 +778,15 @@ function collectImports(
     }
   }
 
+  // An imported System's `init` / `think` / method bodies are re-lowered in this
+  // importer; carry the defining module's referenced top-level `function`
+  // declarations (re-lowered here) and inline its referenced `const` values so
+  // those references resolve here too.
+  const systemModuleBindings = collectSystemModuleBindings(visitedModuleFiles, checker);
+  const carriedPrivateFunctions = systemModuleBindings.privateFunctions;
+  const inlinedSystemConsts = systemModuleBindings.inlinedConsts;
+  diagnostics.push(...systemModuleBindings.diagnostics);
+
   const funcSources = new Map<string, string>();
   for (const fn of functions) {
     const source = fn.node.getSourceFile().fileName;
@@ -844,7 +861,18 @@ function collectImports(
     }
   }
 
-  return { functions, variables, classes, enums, interfaces, typeAliases, moduleInitOrder, diagnostics };
+  return {
+    functions,
+    variables,
+    classes,
+    enums,
+    interfaces,
+    typeAliases,
+    moduleInitOrder,
+    inlinedSystemConsts,
+    carriedPrivateFunctions,
+    diagnostics,
+  };
 }
 
 function hasExportModifier(node: ts.Node): boolean {

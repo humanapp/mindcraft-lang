@@ -468,6 +468,13 @@ export enum LoweringDiagCode {
   OutputTypeUnresolvable = 3191,
   /** A `setOutput` value's type does not match (and is not convertible to) the output's declared type */
   SetOutputValueTypeMismatch = 3192,
+  /**
+   * A System body references a top-level binding of its defining module that is
+   * neither a `const` value nor a `function` (for example a module-level `let`
+   * or a class); only `const` values and `function` declarations can be used
+   * across the module boundary.
+   */
+  SystemModuleReferenceNotCarryable = 3193,
 }
 
 /**

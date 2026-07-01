@@ -276,6 +276,28 @@ interface LowerContext {
   sensorOutputNames?: Set<string>;
   hoistedFunctionNodes?: Set<ts.Node>;
   /**
+   * Defining-module `const` bindings an imported System body references, keyed by
+   * declaration symbol. A reference resolving to such a symbol re-lowers the
+   * const's initializer inline; the per-callsite slot backing a module-level
+   * const is not bound in the fiber that runs a System's `init` / `think` /
+   * methods. Set on System `init` / `think` / method bodies, a System's `init`
+   * state wrapper, and the helper functions they call.
+   */
+  inlineConsts?: Map<ts.Symbol, ts.Expression>;
+  /**
+   * Const symbols currently being inlined, guarding the re-lowering recursion in
+   * {@link lowerIdentifier} against a cyclic `const` reference. Created alongside
+   * {@link inlineConsts}.
+   */
+  inliningConsts?: Set<ts.Symbol>;
+  /**
+   * Carried non-exported functions in scope, keyed by declaration symbol to their
+   * function-table identity key. A call or reference whose callee resolves to such
+   * a symbol looks up the identity key, keeping same-named private helpers from
+   * different modules distinct. Set on the same bodies as {@link inlineConsts}.
+   */
+  carriedFunctionKeys?: Map<ts.Symbol, string>;
+  /**
    * When the body being lowered cannot suspend, the clause naming it for an
    * async-host-call diagnostic (e.g. "a synchronous `onExecute`"). Absent for a
    * suspendable body (an `async onExecute`) and for plain helper and closure
@@ -936,7 +958,9 @@ export function lowerProgram(
   importedClasses?: ImportedClass[],
   importedEnums?: ImportedEnum[],
   importedInterfaces?: ImportedInterface[],
-  importedTypeAliases?: ImportedTypeAlias[]
+  importedTypeAliases?: ImportedTypeAlias[],
+  inlinedSystemConsts?: InlinedSystemConst[],
+  carriedPrivateFunctions?: CarriedPrivateFunction[]
 ): ProgramLoweringResult {
   const diagnostics: CompileDiagnostic[] = [];
   const callsiteVars = new Map<string, number>();
@@ -953,6 +977,19 @@ export function lowerProgram(
   // as "callsite variables" -- a separate namespace from function-local variables.
   // Callsite vars are distinct per user tile instance, persist across invocations.
   let nextCallsiteVar = 0;
+
+  // Defining-module `const` bindings an imported System body references, keyed by
+  // declaration symbol; re-lowered inline wherever the System body or a helper it
+  // calls references them.
+  const inlineConsts = new Map<ts.Symbol, ts.Expression>();
+  for (const ic of inlinedSystemConsts ?? []) {
+    inlineConsts.set(ic.symbol, ic.initializer);
+  }
+
+  // Carried non-exported functions, keyed by declaration symbol -> function-table
+  // identity key, so a call inside a re-lowered body resolves to the right helper
+  // even when two modules define same-named private helpers. Populated below.
+  const carriedFunctionKeys = new Map<ts.Symbol, string>();
 
   // `const X = System({...})` bindings: a brain-global store separate from
   // callsite vars. Collected here (local and imported), then registered below.
@@ -1100,6 +1137,19 @@ export function lowerProgram(
       if (imp.localName !== declaredName && !functionTable.has(imp.localName)) {
         functionTable.set(imp.localName, functionTable.get(declaredName)!);
       }
+    }
+  }
+
+  if (carriedPrivateFunctions) {
+    for (const cpf of carriedPrivateFunctions) {
+      const name = cpf.node.name?.text;
+      if (!name) continue;
+      const key = carriedFunctionKey(cpf.node.getSourceFile().fileName, name);
+      if (!functionTable.has(key)) {
+        functionTable.set(key, funcIdCounter.value++);
+        helperNodes.push(cpf.node);
+      }
+      carriedFunctionKeys.set(cpf.symbol, key);
     }
   }
 
@@ -1265,6 +1315,16 @@ export function lowerProgram(
     orderedSystemBindings.push(binding);
   }
 
+  // Co-located Systems (defined in this module) reference module-level `const`s
+  // whose per-callsite backing store is not bound in the System fiber; add them
+  // to the inline map.
+  const coLocatedSystemConfigs = systemDecls
+    .filter((decl) => decl.config.getSourceFile() === sourceFile)
+    .map((decl) => decl.config);
+  for (const ic of collectCoLocatedSystemConsts(coLocatedSystemConfigs, checker, diagnostics)) {
+    inlineConsts.set(ic.symbol, ic.initializer);
+  }
+
   const functions: FunctionEntry[] = [];
 
   registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics, services);
@@ -1318,7 +1378,9 @@ export function lowerProgram(
       closureFunctions,
       services,
       classInfos,
-      systemBindings
+      systemBindings,
+      inlineConsts,
+      carriedFunctionKeys
     );
     functions.push(entry);
   }
@@ -1412,7 +1474,9 @@ export function lowerProgram(
           classInfos,
           systemBindings,
           binding.stateTypeId,
-          binding.methodFuncIds
+          binding.methodFuncIds,
+          inlineConsts,
+          carriedFunctionKeys
         )
       );
     });
@@ -1431,7 +1495,9 @@ export function lowerProgram(
           classInfos,
           systemBindings,
           binding.stateTypeId,
-          binding.methodFuncIds
+          binding.methodFuncIds,
+          inlineConsts,
+          carriedFunctionKeys
         )
       );
     }
@@ -1450,7 +1516,9 @@ export function lowerProgram(
           classInfos,
           systemBindings,
           binding.stateTypeId,
-          binding.methodFuncIds
+          binding.methodFuncIds,
+          inlineConsts,
+          carriedFunctionKeys
         )
       );
     }
@@ -1465,7 +1533,9 @@ export function lowerProgram(
         closureFunctions,
         services,
         classInfos,
-        systemBindings
+        systemBindings,
+        inlineConsts,
+        carriedFunctionKeys
       )
     );
     if (binding.thinkNode && binding.thinkWrapperFuncId !== undefined && binding.userThinkFuncId !== undefined) {
@@ -1859,6 +1929,353 @@ function extractSystemConfig(
   return { name, stateNode, initNode, thinkNode, methodNodes };
 }
 
+/** True when `node` carries an `export` modifier. */
+function hasExportModifierNode(node: ts.Node): boolean {
+  if (!ts.canHaveModifiers(node)) return false;
+  const mods = ts.getModifiers(node);
+  return mods?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+}
+
+/** True when `id` sits inside a type node (a type-position reference). */
+function isInTypeContext(id: ts.Identifier): boolean {
+  let n: ts.Node | undefined = id.parent;
+  while (n) {
+    if (ts.isTypeNode(n)) return true;
+    if (ts.isSourceFile(n) || ts.isBlock(n) || ts.isStatement(n)) return false;
+    n = n.parent;
+  }
+  return false;
+}
+
+/** True when `id` is a value-reference position (not a declaration name, member name, or property key). */
+function isValueReferenceIdentifier(id: ts.Identifier): boolean {
+  const parent = id.parent;
+  if (ts.isPropertyAccessExpression(parent) && parent.name === id) return false;
+  if (ts.isQualifiedName(parent) && parent.right === id) return false;
+  if (ts.isPropertyAssignment(parent) && parent.name === id) return false;
+  if (
+    (ts.isMethodDeclaration(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isGetAccessorDeclaration(parent) ||
+      ts.isSetAccessorDeclaration(parent)) &&
+    parent.name === id
+  ) {
+    return false;
+  }
+  if (ts.isParameter(parent) && parent.name === id) return false;
+  if (ts.isBindingElement(parent) && (parent.name === id || parent.propertyName === id)) return false;
+  if (ts.isVariableDeclaration(parent) && parent.name === id) return false;
+  if (ts.isFunctionDeclaration(parent) && parent.name === id) return false;
+  if (isInTypeContext(id)) return false;
+  return true;
+}
+
+/**
+ * True when `decl`'s initializer has a primitive value type (number, string,
+ * boolean, or an enum member). A primitive-valued `const` can be re-lowered
+ * inline at each reference; a `const` holding a struct, array, or object cannot
+ * (each site would build a distinct instance).
+ */
+function isPrimitiveValuedConst(decl: ts.VariableDeclaration, checker: ts.TypeChecker): boolean {
+  if (!decl.initializer) return false;
+  const flags = checker.getTypeAtLocation(decl.initializer).flags;
+  const primitive =
+    ts.TypeFlags.NumberLike | ts.TypeFlags.StringLike | ts.TypeFlags.BooleanLike | ts.TypeFlags.EnumLike;
+  return (flags & primitive) !== 0;
+}
+
+/**
+ * Classify a value-reference `id` against its defining `moduleFile`. When `id`
+ * resolves to a top-level `function` declaration, `onFunction` is invoked (the
+ * caller carries a non-exported one and traverses an exported one); when it
+ * resolves to a primitive-valued `const`, `onConst` is invoked. When
+ * `diagnostics` is provided, a reference to a top-level binding that cannot be
+ * used from a System fiber -- a module-level `let`/`var`, a co-located System, a
+ * non-primitive `const`, or a class/enum -- pushes a
+ * {@link LoweringDiagCode.SystemModuleReferenceNotCarryable} diagnostic; passing
+ * `undefined` leaves those references alone (they resolve normally in an ordinary
+ * fiber). Any reference resolving outside `moduleFile`, to a nested local, or to
+ * a member is left alone.
+ */
+function classifySystemModuleReference(
+  id: ts.Identifier,
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[] | undefined,
+  onFunction: (decl: ts.FunctionDeclaration, symbol: ts.Symbol) => void,
+  onConst: (decl: ts.VariableDeclaration, symbol: ts.Symbol) => void
+): void {
+  const symbol = resolveAliasedSymbol(checker.getSymbolAtLocation(id), checker);
+  if (!symbol) return;
+  const decls = symbol.getDeclarations();
+  if (!decls || decls.length === 0) return;
+  for (const decl of decls) {
+    // Ambient (.d.ts) bindings are host-provided and resolve through their own
+    // machinery; only user-module top-level bindings are inlined / carried.
+    if (!isUserSourceDecl(decl)) continue;
+    const declFile = decl.getSourceFile();
+
+    if (ts.isFunctionDeclaration(decl) && decl.parent === declFile) {
+      onFunction(decl, symbol);
+      return;
+    }
+
+    if (ts.isVariableDeclaration(decl)) {
+      const list = decl.parent;
+      if (
+        ts.isVariableDeclarationList(list) &&
+        ts.isVariableStatement(list.parent) &&
+        list.parent.parent === declFile
+      ) {
+        const isConst = (list.flags & ts.NodeFlags.Const) !== 0;
+        if (isConst && !systemConfigObject(decl.initializer)) {
+          if (isPrimitiveValuedConst(decl, checker)) {
+            onConst(decl, symbol);
+          } else {
+            diagnostics?.push(
+              makeDiag(
+                LoweringDiagCode.SystemModuleReferenceNotCarryable,
+                `A System body references '${id.text}', a module-level \`const\` holding a non-primitive value (a struct, array, or object); reference it through a \`function\` or store it in System state.`,
+                id
+              )
+            );
+          }
+          return;
+        }
+        const kind = !isConst ? "a mutable ('let'/'var') binding" : "a co-located System";
+        diagnostics?.push(
+          makeDiag(
+            LoweringDiagCode.SystemModuleReferenceNotCarryable,
+            `A System body references '${id.text}', ${kind} in its defining module; only module-level \`const\` values and \`function\` declarations can be used from a System body.`,
+            id
+          )
+        );
+        return;
+      }
+      return;
+    }
+
+    if (decl.parent === declFile && !hasExportModifierNode(decl)) {
+      diagnostics?.push(
+        makeDiag(
+          LoweringDiagCode.SystemModuleReferenceNotCarryable,
+          `A System body references '${id.text}', a module-level binding that cannot be carried; only \`const\` values and \`function\` declarations are supported.`,
+          id
+        )
+      );
+    }
+    return;
+  }
+}
+
+/**
+ * A defining-module `const` an imported System body references, re-lowered inline
+ * at each reference site in the importing module. The store where module-level
+ * consts live (per-callsite state) is not bound in the fiber that runs a System's
+ * `init` / `think` / methods.
+ */
+export interface InlinedSystemConst {
+  /** Declaration symbol of the `const` (resolved against the shared checker); the reference key. */
+  symbol: ts.Symbol;
+  /** The `const`'s initializer expression, re-lowered inline at each reference. */
+  initializer: ts.Expression;
+}
+
+/**
+ * A non-exported `function` an imported System body (or a helper it calls)
+ * references, re-lowered into the importer. It is registered in the function
+ * table under its {@link carriedFunctionKey} identity key and its call sites
+ * resolve by declaration symbol, so same-named private helpers from different
+ * modules do not collide.
+ */
+export interface CarriedPrivateFunction {
+  /** Declaration symbol of the function (resolved against the shared checker); the call-site key. */
+  symbol: ts.Symbol;
+  /** The function declaration, re-lowered into the importer. */
+  node: ts.FunctionDeclaration;
+}
+
+/** The function-table key for a carried private function declared in `fileName` with name `name`. */
+function carriedFunctionKey(fileName: string, name: string): string {
+  return `${fileName}::${name}`;
+}
+
+/**
+ * BFS the closure of defining-module bindings that `seedNodes` (System config
+ * literals or function bodies) reference, transitively following function bodies
+ * and const initializers. Each referenced top-level `function` invokes
+ * `onFunction` and each carryable `const` invokes `onConst`, both given an
+ * `enqueue` to push a body / initializer node for further traversal. References
+ * resolve whole-program (a binding is classified against its own defining file).
+ * When `diagnoseNonCarryable` is true, a reference to a binding that cannot be
+ * used from a System fiber (a `let`, a non-primitive `const`, a class/enum) is
+ * diagnosed; when false those references are left alone (they resolve normally in
+ * an ordinary fiber).
+ */
+function walkSystemBindingClosure(
+  seedNodes: ts.Node[],
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[],
+  diagnoseNonCarryable: boolean,
+  onFunction: (decl: ts.FunctionDeclaration, symbol: ts.Symbol, enqueue: (node: ts.Node) => void) => void,
+  onConst: (decl: ts.VariableDeclaration, symbol: ts.Symbol, enqueue: (node: ts.Node) => void) => void
+): void {
+  const visited = new Set<ts.Node>();
+  const worklist: ts.Node[] = [...seedNodes];
+  const enqueue = (node: ts.Node): void => {
+    worklist.push(node);
+  };
+  while (worklist.length > 0) {
+    const node = worklist.pop();
+    if (!node || visited.has(node)) continue;
+    visited.add(node);
+    const visitNode = (n: ts.Node): void => {
+      if (ts.isIdentifier(n)) {
+        if (isValueReferenceIdentifier(n)) {
+          classifySystemModuleReference(
+            n,
+            checker,
+            diagnoseNonCarryable ? diagnostics : undefined,
+            (fnDecl, symbol) => onFunction(fnDecl, symbol, enqueue),
+            (constDecl, symbol) => onConst(constDecl, symbol, enqueue)
+          );
+        }
+        return;
+      }
+      ts.forEachChild(n, visitNode);
+    };
+    visitNode(node);
+  }
+}
+
+/**
+ * Collect the module-level `const` bindings that co-located Systems (Systems
+ * defined in the same module as their consuming tile) reference, transitively
+ * through the functions they call, for the inline map. Their per-callsite backing
+ * store is not bound in a System fiber. Non-carryable references are diagnosed.
+ */
+function collectCoLocatedSystemConsts(
+  systemConfigs: ts.ObjectLiteralExpression[],
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[]
+): InlinedSystemConst[] {
+  if (systemConfigs.length === 0) return [];
+  const constsToInline = new Set<ts.VariableDeclaration>();
+  const inlinedConsts: InlinedSystemConst[] = [];
+  walkSystemBindingClosure(
+    systemConfigs,
+    checker,
+    diagnostics,
+    true,
+    (fnDecl, _symbol, enqueue) => {
+      if (fnDecl.body) enqueue(fnDecl.body);
+    },
+    (constDecl, symbol, enqueue) => {
+      if (!constsToInline.has(constDecl) && constDecl.initializer) {
+        constsToInline.add(constDecl);
+        inlinedConsts.push({ symbol, initializer: constDecl.initializer });
+        enqueue(constDecl.initializer);
+      }
+    }
+  );
+  return inlinedConsts;
+}
+
+/**
+ * Collect the defining-module top-level bindings that exported Systems in
+ * `visitedModuleFiles` reference, so an importing module re-lowering a System
+ * body can resolve them. The compiler re-lowers a System's `state` / `init` /
+ * `think` / method bodies in every importing module; those bodies may reference
+ * top-level `const` values and `function` declarations declared beside the
+ * System, which a plain named import does not pull in. Walks each module's
+ * exported System configs (transitively, following functions into consts and
+ * back) and returns:
+ * - `privateFunctions`: referenced non-exported `function` declarations, carried
+ *   into the importer under an identity key that keeps same-named helpers from
+ *   different modules distinct;
+ * - `inlinedConsts`: referenced `const` bindings, re-lowered inline at each
+ *   reference site; their per-callsite backing store is not bound in a System fiber.
+ * A reference to a top-level binding that is neither a carryable `const` nor a
+ * `function` yields a diagnostic.
+ */
+export function collectSystemModuleBindings(
+  visitedModuleFiles: ts.SourceFile[],
+  checker: ts.TypeChecker
+): {
+  privateFunctions: CarriedPrivateFunction[];
+  inlinedConsts: InlinedSystemConst[];
+  diagnostics: CompileDiagnostic[];
+} {
+  const privateFunctions: CarriedPrivateFunction[] = [];
+  const inlinedConsts: InlinedSystemConst[] = [];
+  const diagnostics: CompileDiagnostic[] = [];
+
+  for (const moduleFile of visitedModuleFiles) {
+    const systemConfigs: ts.ObjectLiteralExpression[] = [];
+    const exportedFunctionBodies: ts.Node[] = [];
+    for (const stmt of moduleFile.statements) {
+      if (ts.isVariableStatement(stmt) && hasExportModifierNode(stmt)) {
+        for (const decl of stmt.declarationList.declarations) {
+          const config = systemConfigObject(decl.initializer);
+          if (config) systemConfigs.push(config);
+        }
+      } else if (ts.isFunctionDeclaration(stmt) && hasExportModifierNode(stmt) && stmt.body) {
+        exportedFunctionBodies.push(stmt.body);
+      }
+    }
+    if (systemConfigs.length === 0 && exportedFunctionBodies.length === 0) continue;
+
+    const fnsToCarry = new Set<ts.FunctionDeclaration>();
+    const constsToCarry = new Set<ts.VariableDeclaration>();
+    const carryFunction = (
+      fnDecl: ts.FunctionDeclaration,
+      symbol: ts.Symbol,
+      enqueue: (node: ts.Node) => void
+    ): void => {
+      // An exported function is already collected by the import walker; traverse
+      // its body so consts it reaches still resolve, without re-carrying it.
+      if (hasExportModifierNode(fnDecl)) {
+        if (fnDecl.body) enqueue(fnDecl.body);
+        return;
+      }
+      if (!fnsToCarry.has(fnDecl) && fnDecl.body) {
+        fnsToCarry.add(fnDecl);
+        privateFunctions.push({ symbol, node: fnDecl });
+        enqueue(fnDecl.body);
+      }
+    };
+    const carryConst = (
+      constDecl: ts.VariableDeclaration,
+      symbol: ts.Symbol,
+      enqueue: (node: ts.Node) => void
+    ): void => {
+      if (!constsToCarry.has(constDecl) && constDecl.initializer) {
+        constsToCarry.add(constDecl);
+        inlinedConsts.push({ symbol, initializer: constDecl.initializer });
+        enqueue(constDecl.initializer);
+      }
+    };
+    // System roots: strict -- consts reached from a System fiber (exported or not)
+    // must inline, and non-carryable references are diagnosed.
+    walkSystemBindingClosure(systemConfigs, checker, diagnostics, true, carryFunction, carryConst);
+    // Exported-function roots: lenient -- carry only the non-exported bindings a
+    // re-lowered function needs; exported consts keep their callsite-var backing.
+    walkSystemBindingClosure(
+      exportedFunctionBodies,
+      checker,
+      diagnostics,
+      false,
+      carryFunction,
+      (constDecl, symbol, enqueue) => {
+        const stmt = constDecl.parent.parent;
+        if (ts.isVariableStatement(stmt) && hasExportModifierNode(stmt)) return;
+        carryConst(constDecl, symbol, enqueue);
+      }
+    );
+  }
+
+  return { privateFunctions, inlinedConsts, diagnostics };
+}
+
 /**
  * Lower a System function-like member (method, `init`, or `think`) as a
  * struct-receiver function: `this` (the state struct) at local 0, the source
@@ -1877,7 +2294,9 @@ function lowerSystemFnEntry(
   classInfos: ClassInfo[],
   systemBindings: Map<ts.Symbol, SystemBinding>,
   thisStructTypeId: TypeId | undefined,
-  thisSystemMethodFuncIds: Map<string, number>
+  thisSystemMethodFuncIds: Map<string, number>,
+  inlineConsts: Map<ts.Symbol, ts.Expression>,
+  carriedFunctionKeys: Map<ts.Symbol, string>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const params = fnNode.parameters;
@@ -1920,6 +2339,9 @@ function lowerSystemFnEntry(
     currentReturnTypeId: resolveSignatureReturnTypeId(fnNode, checker, services),
     classInfos,
     systemBindings,
+    inlineConsts,
+    inliningConsts: new Set<ts.Symbol>(),
+    carriedFunctionKeys,
     nonSuspendableContext: "a System method (System `init`, `think`, and methods cannot suspend)",
   };
 
@@ -1974,7 +2396,9 @@ function generateSystemInitWrapper(
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
   classInfos: ClassInfo[],
-  systemBindings: Map<ts.Symbol, SystemBinding>
+  systemBindings: Map<ts.Symbol, SystemBinding>,
+  inlineConsts: Map<ts.Symbol, ts.Expression>,
+  carriedFunctionKeys: Map<ts.Symbol, string>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const scopeStack = new ScopeStack(1);
@@ -1998,6 +2422,9 @@ function generateSystemInitWrapper(
     currentFunctionName: `${binding.name}.<init>`,
     classInfos,
     systemBindings,
+    inlineConsts,
+    inliningConsts: new Set<ts.Symbol>(),
+    carriedFunctionKeys,
     nonSuspendableContext: "a System `init` (cannot suspend)",
   };
 
@@ -2262,7 +2689,9 @@ function lowerHelperFunction(
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
   classInfos: ClassInfo[],
-  systemBindings: Map<ts.Symbol, SystemBinding>
+  systemBindings: Map<ts.Symbol, SystemBinding>,
+  inlineConsts: Map<ts.Symbol, ts.Expression>,
+  carriedFunctionKeys: Map<ts.Symbol, string>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const paramLocals = new Map<string, number>();
@@ -2305,6 +2734,9 @@ function lowerHelperFunction(
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
     classInfos,
     systemBindings,
+    inlineConsts,
+    inliningConsts: new Set<ts.Symbol>(),
+    carriedFunctionKeys,
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -2595,7 +3027,9 @@ function hoistNestedFunctionDeclarations(stmts: ts.NodeArray<ts.Statement>, ctx:
       ctx.closureFunctions,
       ctx.services,
       ctx.classInfos,
-      ctx.systemBindings ?? new Map<ts.Symbol, SystemBinding>()
+      ctx.systemBindings ?? new Map<ts.Symbol, SystemBinding>(),
+      ctx.inlineConsts ?? new Map<ts.Symbol, ts.Expression>(),
+      ctx.carriedFunctionKeys ?? new Map<ts.Symbol, string>()
     );
     ctx.closureFunctions.set(funcId, entry);
     ctx.ir.push({ kind: "PushFunctionRef", funcName: name });
@@ -3741,9 +4175,19 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
     return;
   }
 
+  if (ctx.inlineConsts && lowerInlinedConstReference(expr, ctx)) {
+    return;
+  }
+
   const csvIdx = ctx.callsiteVars.get(expr.text);
   if (csvIdx !== undefined) {
     ctx.ir.push({ kind: "LoadCallsiteVar", index: csvIdx });
+    return;
+  }
+
+  const carriedKey = resolveCarriedFunctionKey(expr, ctx);
+  if (carriedKey !== undefined) {
+    ctx.ir.push({ kind: "PushFunctionRef", funcName: carriedKey });
     return;
   }
 
@@ -4049,7 +4493,8 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
   }
 
   if (ts.isIdentifier(expr.expression)) {
-    const funcId = ctx.functionTable.get(expr.expression.text);
+    const carriedKey = resolveCarriedFunctionKey(expr.expression, ctx);
+    const funcId = ctx.functionTable.get(carriedKey ?? expr.expression.text);
     if (funcId !== undefined) {
       const argc = lowerCallArgumentsWithTargetTypes(expr, ctx);
       ctx.ir.push({ kind: "Call", funcIndex: funcId, argc });
@@ -4257,6 +4702,63 @@ function resolveSystemBinding(idNode: ts.Identifier, ctx: LowerContext): SystemB
     sym = ctx.checker.getAliasedSymbol(sym);
   }
   return ctx.systemBindings.get(sym);
+}
+
+/**
+ * The function-table identity key for `idNode` when it resolves to a carried
+ * non-exported function (see {@link LowerContext.carriedFunctionKeys}), else
+ * undefined. A call site inside a re-lowered body resolves to the right helper by
+ * declaration symbol, keeping same-named private helpers from different modules
+ * distinct.
+ */
+function resolveCarriedFunctionKey(idNode: ts.Identifier, ctx: LowerContext): string | undefined {
+  const keys = ctx.carriedFunctionKeys;
+  if (!keys || keys.size === 0) return undefined;
+  let sym = ctx.checker.getSymbolAtLocation(idNode);
+  if (!sym) return undefined;
+  if (sym.flags & ts.SymbolFlags.Alias) {
+    sym = ctx.checker.getAliasedSymbol(sym);
+  }
+  return keys.get(sym);
+}
+
+/**
+ * When `id` resolves to a defining-module `const` carried for inlining (see
+ * {@link LowerContext.inlineConsts}), re-lower the const's initializer inline and
+ * return true. A cyclic `const` reference reached through this re-lowering pushes
+ * {@link LoweringDiagCode.SystemModuleReferenceNotCarryable} and emits a nil.
+ * Returns false when `id` is not a carried inline const.
+ */
+function lowerInlinedConstReference(id: ts.Identifier, ctx: LowerContext): boolean {
+  const inlineConsts = ctx.inlineConsts;
+  if (!inlineConsts || inlineConsts.size === 0) return false;
+  let sym = ctx.checker.getSymbolAtLocation(id);
+  if (!sym) return false;
+  if (sym.flags & ts.SymbolFlags.Alias) {
+    sym = ctx.checker.getAliasedSymbol(sym);
+  }
+  const initializer = inlineConsts.get(sym);
+  if (!initializer) return false;
+
+  const inlining = ctx.inliningConsts ?? new Set<ts.Symbol>();
+  if (inlining.has(sym)) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.SystemModuleReferenceNotCarryable,
+        `A System body references '${id.text}', a module-level \`const\` whose initializer refers back to itself; a cyclic \`const\` cannot be inlined into a System body.`,
+        id
+      )
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return true;
+  }
+  inlining.add(sym);
+  const prevInlining = ctx.inliningConsts;
+  ctx.inliningConsts = inlining;
+  lowerExpression(initializer, ctx);
+  ctx.inliningConsts = prevInlining;
+  inlining.delete(sym);
+  return true;
 }
 
 /**
