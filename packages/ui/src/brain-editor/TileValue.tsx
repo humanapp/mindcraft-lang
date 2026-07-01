@@ -71,7 +71,7 @@ export function TileValue({ tileDef }: TileValueProps) {
     const textSizeClass = "text-2xl";
 
     return (
-      <span className={`${fontClass} italic ${textSizeClass}`} style={{ color: textColor }}>
+      <span className={`${fontClass} ${textSizeClass}`} style={{ color: textColor }}>
         {label}
       </span>
     );
