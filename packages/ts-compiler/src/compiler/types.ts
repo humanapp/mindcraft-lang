@@ -84,9 +84,9 @@ export interface SourceSpan {
   endColumn: number;
 }
 
-/** Descriptor extracted from a `Sensor({...})` or `Actuator({...})` default export. */
+/** Descriptor extracted from a `Sensor({...})`, `Actuator({...})`, or `Conversion({...})` default export. */
 export interface ExtractedDescriptor {
-  kind: "sensor" | "actuator";
+  kind: "sensor" | "actuator" | "conversion";
   /** Stable id from the source `id` field, or `undefined` when the declaration omits it (the compiler then mints one). */
   id?: string;
   /** Absolute source offset just inside the config object's opening brace, where a minted `id` is inserted on write-back. */
@@ -108,6 +108,19 @@ export interface ExtractedDescriptor {
   capabilities?: string[];
   /** Output declarations from the `outputs` config field (sensors only). */
   outputs?: ExtractedOutput[];
+  /** Conversion members from a `Conversion({...})` config (conversions only). `onExecuteNode` is the `convert` function. */
+  conversion?: ExtractedConversionParts;
+}
+
+/**
+ * The type-naming and cost members of a `Conversion({...})` config. The
+ * `from`/`to` expressions are resolved to canonical type names during
+ * compilation, where a type checker is available.
+ */
+export interface ExtractedConversionParts {
+  fromNode: ts.Expression;
+  toNode: ts.Expression;
+  cost: number;
 }
 
 /**

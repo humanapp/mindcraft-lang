@@ -7,6 +7,7 @@ import {
   conversionFnName,
   DYNAMIC_FUNC_ID_BASE,
   type EnumFunctionIds,
+  isBytecodeConversion,
   mkNumberValue,
   mkOutputVarKey,
   mkStringValue,
@@ -516,6 +517,12 @@ function resolveSingleStepConversion(
   const conversionPath = services.shared.conversions.findBestPath(fromTypeId, toTypeId, 1);
   const conversion = conversionPath?.get(0);
   if (!conversion) {
+    return undefined;
+  }
+
+  // A bytecode conversion lives in another artifact; user-code expressions can
+  // only reach host-function conversions, so it does not apply here.
+  if (isBytecodeConversion(conversion)) {
     return undefined;
   }
 
@@ -2518,6 +2525,96 @@ function argSlotPropertyName(slot: ArgSlot): string {
   return lastDot >= 0 ? id.substring(lastDot + 1) : id;
 }
 
+/**
+ * Lower a conversion's `convert` function as the artifact entry. The single
+ * declared parameter is the positional argument of the conversion's
+ * `ACTION_CALL` site (local 0); no execution context is injected.
+ */
+function lowerConvertBody(
+  descriptor: ExtractedDescriptor,
+  checker: ts.TypeChecker,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  sharedDiagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices,
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  const funcNode = descriptor.onExecuteNode;
+  const funcName = `${descriptor.name}.convert`;
+
+  const paramLocals = new Map<string, number>();
+  const valueParam = funcNode.parameters[0];
+  if (valueParam && ts.isIdentifier(valueParam.name)) {
+    paramLocals.set(valueParam.name.text, 0);
+  } else if (valueParam) {
+    sharedDiagnostics.push(
+      makeDiag(
+        LoweringDiagCode.DestructuringInOnExecuteNotSupported,
+        "Destructuring in convert parameters is not supported",
+        valueParam
+      )
+    );
+  }
+
+  const scopeStack = new ScopeStack(1);
+  const funcScopeId = scopeStack.initFunctionScope(0, funcName);
+  if (valueParam && ts.isIdentifier(valueParam.name)) {
+    scopeStack.addParameterMetadata(valueParam.name.text, 0, funcScopeId);
+  }
+
+  const ctx: LowerContext = {
+    services,
+    checker,
+    paramsSymbol: undefined,
+    paramLocals,
+    scopeStack,
+    ir,
+    diagnostics: sharedDiagnostics,
+    loopStack: [],
+    breakStack: [],
+    nextLabelId: 0,
+    callsiteVars,
+    functionTable,
+    funcIdCounter,
+    closureFunctions,
+    currentFunctionName: funcName,
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    classInfos,
+    systemBindings,
+    nonSuspendableContext: "a conversion `convert` (conversions are synchronous)",
+  };
+
+  const body = funcNode.body;
+  if (!body || !ts.isBlock(body)) {
+    sharedDiagnostics.push({
+      code: LoweringDiagCode.OnExecuteHasNoBody,
+      message: "convert function has no body",
+      severity: "error",
+    });
+  } else {
+    lowerStatements(body.statements, ctx);
+    ir.push({ kind: "PushConst", value: NIL_VALUE });
+    ir.push({ kind: "Return" });
+  }
+
+  scopeStack.finalizeFunctionScope(ir.length);
+  return {
+    ir,
+    numParams: 1,
+    numLocals: scopeStack.nextLocal,
+    name: funcName,
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
+    isGenerated: false,
+    sourceFileName: funcNode.getSourceFile()?.fileName,
+    functionSpan: spanFromNode(funcNode),
+  };
+}
+
 function lowerOnExecuteBody(
   descriptor: ExtractedDescriptor,
   checker: ts.TypeChecker,
@@ -2530,6 +2627,21 @@ function lowerOnExecuteBody(
   classInfos: ClassInfo[],
   systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
+  if (descriptor.kind === "conversion") {
+    return lowerConvertBody(
+      descriptor,
+      checker,
+      callsiteVars,
+      functionTable,
+      sharedDiagnostics,
+      funcIdCounter,
+      closureFunctions,
+      services,
+      classInfos,
+      systemBindings
+    );
+  }
+
   const ir: IrNode[] = [];
   const argSlots = collectArgSlots(descriptor.args);
   const hasArgs = argSlots.length > 0;

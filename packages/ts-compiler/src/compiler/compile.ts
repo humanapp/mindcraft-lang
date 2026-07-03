@@ -53,7 +53,8 @@ export function compileUserTile(source: string, options: CompileOptions | { serv
     diagnostics: [
       {
         code: DescriptorDiagCode.MissingDefaultExport,
-        message: "Missing default export. Expected `export default Sensor({...})` or `export default Actuator({...})`.",
+        message:
+          "Missing default export. Expected `export default Sensor({...})`, `Actuator({...})`, or `Conversion({...})`.",
         severity: "error" as const,
         line: 1,
         column: 1,

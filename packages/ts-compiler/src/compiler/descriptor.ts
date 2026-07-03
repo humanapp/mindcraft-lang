@@ -3,6 +3,7 @@ import { DescriptorDiagCode } from "./diag-codes.js";
 import type {
   CompileDiagnostic,
   ExtractedArgSpec,
+  ExtractedConversionParts,
   ExtractedDescriptor,
   ExtractedOutput,
   ExtractedParam,
@@ -18,7 +19,7 @@ export interface ExtractionResult {
   diagnostics: CompileDiagnostic[];
 }
 
-/** Walk the source file's default export and extract a {@link ExtractedDescriptor} from a `Sensor({...})` or `Actuator({...})` call. */
+/** Walk the source file's default export and extract a {@link ExtractedDescriptor} from a `Sensor({...})`, `Actuator({...})`, or `Conversion({...})` call. */
 export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   const diagnostics: CompileDiagnostic[] = [];
 
@@ -58,7 +59,8 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   if (!defaultExport) {
     diagnostics.push({
       code: DescriptorDiagCode.MissingDefaultExport,
-      message: "Missing default export. Expected `export default Sensor({...})` or `export default Actuator({...})`.",
+      message:
+        "Missing default export. Expected `export default Sensor({...})`, `Actuator({...})`, or `Conversion({...})`.",
       severity: "error",
       line: 1,
       column: 1,
@@ -71,7 +73,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
     addDiag(
       DescriptorDiagCode.InvalidDefaultExport,
       expr,
-      "Default export must be a call to `Sensor({...})` or `Actuator({...})`."
+      "Default export must be a call to `Sensor({...})`, `Actuator({...})`, or `Conversion({...})`."
     );
     return { diagnostics };
   }
@@ -80,22 +82,20 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
     addDiag(
       DescriptorDiagCode.InvalidDefaultExport,
       expr.expression,
-      "Default export must be a call to `Sensor({...})` or `Actuator({...})`."
+      "Default export must be a call to `Sensor({...})`, `Actuator({...})`, or `Conversion({...})`."
     );
     return { diagnostics };
   }
 
   const callee = expr.expression.text;
-  if (callee !== "Sensor" && callee !== "Actuator") {
+  if (callee !== "Sensor" && callee !== "Actuator" && callee !== "Conversion") {
     addDiag(
       DescriptorDiagCode.InvalidDefaultExport,
       expr.expression,
-      "Default export must be a call to `Sensor({...})` or `Actuator({...})`."
+      "Default export must be a call to `Sensor({...})`, `Actuator({...})`, or `Conversion({...})`."
     );
     return { diagnostics };
   }
-
-  const kind: "sensor" | "actuator" = callee === "Sensor" ? "sensor" : "actuator";
 
   if (expr.arguments.length !== 1) {
     addDiag(
@@ -115,6 +115,12 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
     );
     return { diagnostics };
   }
+
+  if (callee === "Conversion") {
+    return extractConversionDescriptor(sourceFile, arg, addDiag, diagnostics);
+  }
+
+  const kind: "sensor" | "actuator" = callee === "Sensor" ? "sensor" : "actuator";
 
   let id: string | undefined;
   let name: string | undefined;
@@ -309,6 +315,127 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
       tags,
       capabilities,
       outputs,
+    },
+    diagnostics: [],
+  };
+}
+
+/**
+ * Extract a conversion descriptor from a `Conversion({...})` config object.
+ * Validates member shapes (`from`/`to` present, `cost` a positive numeric
+ * literal, `convert` a synchronous single-parameter function); the `from`/`to`
+ * expressions are carried unresolved and resolve to type names during
+ * compilation. The `convert` function is carried as the descriptor's
+ * `onExecuteNode`.
+ */
+function extractConversionDescriptor(
+  sourceFile: ts.SourceFile,
+  arg: ts.ObjectLiteralExpression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void,
+  diagnostics: CompileDiagnostic[]
+): ExtractionResult {
+  let id: string | undefined;
+  let fromNode: ts.Expression | undefined;
+  let toNode: ts.Expression | undefined;
+  let cost: number | undefined;
+  let costSeen = false;
+  let convertSeen = false;
+  let convertNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction | undefined;
+
+  const checkConvertNode = (node: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction): void => {
+    const isAsync = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+    if (isAsync) {
+      addDiag(DescriptorDiagCode.ConversionConvertMustBeSync, node, "`convert` must be a synchronous function.");
+      return;
+    }
+    if (node.parameters.length !== 1) {
+      addDiag(
+        DescriptorDiagCode.ConversionConvertParamCount,
+        node,
+        "`convert` must take exactly one parameter (the value to convert)."
+      );
+      return;
+    }
+    convertNode = node;
+  };
+
+  for (const prop of arg.properties) {
+    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+      switch (prop.name.text) {
+        case "id":
+          if (ts.isStringLiteral(prop.initializer)) {
+            id = prop.initializer.text;
+          } else {
+            addDiag(DescriptorDiagCode.IdMustBeStringLiteral, prop.initializer, "`id` must be a string literal.");
+          }
+          break;
+        case "from":
+          fromNode = prop.initializer;
+          break;
+        case "to":
+          toNode = prop.initializer;
+          break;
+        case "cost":
+          costSeen = true;
+          if (ts.isNumericLiteral(prop.initializer) && Number.parseFloat(prop.initializer.text) > 0) {
+            cost = Number.parseFloat(prop.initializer.text);
+          } else {
+            addDiag(
+              DescriptorDiagCode.ConversionCostMustBePositiveNumber,
+              prop.initializer,
+              "`cost` must be a positive numeric literal."
+            );
+          }
+          break;
+        case "convert":
+          convertSeen = true;
+          if (ts.isFunctionExpression(prop.initializer) || ts.isArrowFunction(prop.initializer)) {
+            checkConvertNode(prop.initializer);
+          } else {
+            addDiag(
+              DescriptorDiagCode.ConversionConvertMustBeFunction,
+              prop.initializer,
+              "`convert` must be a function."
+            );
+          }
+          break;
+      }
+    } else if (ts.isMethodDeclaration(prop) && ts.isIdentifier(prop.name) && prop.name.text === "convert") {
+      convertSeen = true;
+      checkConvertNode(prop);
+    }
+  }
+
+  if (fromNode === undefined) {
+    addDiag(DescriptorDiagCode.ConversionTypeRequired, arg, "`from` property is required.");
+  }
+  if (toNode === undefined) {
+    addDiag(DescriptorDiagCode.ConversionTypeRequired, arg, "`to` property is required.");
+  }
+  if (!costSeen) {
+    addDiag(DescriptorDiagCode.ConversionCostMustBePositiveNumber, arg, "`cost` property is required.");
+  }
+  if (!convertSeen) {
+    addDiag(DescriptorDiagCode.ConversionConvertRequired, arg, "`convert` function is required.");
+  }
+
+  if (diagnostics.length > 0) {
+    return { diagnostics };
+  }
+
+  return {
+    descriptor: {
+      kind: "conversion",
+      id,
+      idInsertOffset: arg.getStart(sourceFile) + 1,
+      name: "conversion",
+      returnType: undefined,
+      args: [],
+      execIsAsync: false,
+      onExecuteNode: convertNode!,
+      onPageEnteredNode: null,
+      onPageExitedNode: null,
+      conversion: { fromNode: fromNode!, toNode: toNode!, cost: cost! },
     },
     diagnostics: [],
   };

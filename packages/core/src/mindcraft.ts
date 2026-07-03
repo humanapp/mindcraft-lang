@@ -844,6 +844,8 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   readonly appServices: AppServices;
   private readonly bundleCatalog = new TileCatalog();
   private readonly bundleResolver = new Dict<string, CompiledActionArtifact>();
+  /** `(fromType, toType)` pairs this environment registered from the active bundle's conversion artifacts. */
+  private readonly bundleConversionPairs = new List<{ fromType: TypeId; toType: TypeId }>();
   private readonly trackedBrains = List.empty<ManagedMindcraftBrain>();
   private readonly invalidatedBrains = List.empty<ManagedMindcraftBrain>();
   private readonly invalidationListeners = List.empty<(event: BrainInvalidationEvent) => void>();
@@ -915,6 +917,8 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
       const key = nextKeys.get(i)!;
       this.bundleResolver.set(key, nextActions.get(key)!);
     }
+
+    this.replaceBundleConversions(nextActions);
 
     const invalidated = List.empty<MindcraftBrain>();
     if (hasChangedActions) {
@@ -1086,6 +1090,42 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     catalog.clear();
     for (let i = 0; i < tiles.size(); i++) {
       catalog.add(tiles.get(i)!);
+    }
+  }
+
+  /**
+   * Sync the shared conversion registry to the bundle's conversion artifacts:
+   * drop every pair the previous bundle registered, then register each
+   * artifact carrying conversion metadata. Registration is if-absent -- a pair
+   * already held by another registration (a host conversion or an earlier
+   * artifact in key order) keeps it; the compiler reports the conflict.
+   */
+  private replaceBundleConversions(nextActions: Dict<string, CompiledActionArtifact>): void {
+    const conversions = this.brainServices.shared.conversions;
+    for (let i = 0; i < this.bundleConversionPairs.size(); i++) {
+      const pair = this.bundleConversionPairs.get(i)!;
+      conversions.remove(pair.fromType, pair.toType);
+    }
+    this.bundleConversionPairs.clear();
+
+    const keys = nextActions.keys();
+    for (let i = 0; i < keys.size(); i++) {
+      const artifact = nextActions.get(keys.get(i)!)!;
+      const info = artifact.conversion;
+      if (!info) {
+        continue;
+      }
+      if (conversions.get(info.fromType, info.toType)) {
+        continue;
+      }
+      conversions.register({
+        binding: "bytecode",
+        fromType: info.fromType,
+        toType: info.toType,
+        cost: info.cost,
+        descriptor: descriptorFromArtifact(artifact),
+      });
+      this.bundleConversionPairs.push({ fromType: info.fromType, toType: info.toType });
     }
   }
 

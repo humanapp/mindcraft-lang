@@ -48,7 +48,13 @@ export function runBrainLinkPipeline(
     return { diagnostics };
   }
 
-  const linked = linkBrainProgram(compiled.program, brainDef, linkEnvironment.catalogs, linkEnvironment.actionResolver);
+  const linked = linkBrainProgram(
+    compiled.program,
+    brainDef,
+    linkEnvironment.catalogs,
+    linkEnvironment.actionResolver,
+    conversions
+  );
   appendAll(diagnostics, linked.diagnostics);
   if (!linked.program) {
     return { diagnostics };

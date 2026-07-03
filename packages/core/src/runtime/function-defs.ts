@@ -116,8 +116,8 @@ export type BrainActionCallDef = {
 /** Stable string key identifying a registered action. */
 export type ActionKey = string;
 
-/** The action kind  */
-export type ActionKind = "sensor" | "actuator";
+/** The action kind. A `conversion` action backs a registered value conversion and has no tile surface. */
+export type ActionKind = "sensor" | "actuator" | "conversion";
 
 /**
  * One named, typed output a built-in sensor exposes. The `(type, name)` pair is

@@ -5,7 +5,14 @@ import { logger } from "../../platform/logger";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
 import type { ActionDescriptor, ActionRef, BrainActionResolver, ITypeRegistry, TypeId } from "../../runtime";
-import { type BrainActionArgSlot, CoreFuncId, CoreOpId, CoreTypeIds, NativeType } from "../../runtime";
+import {
+  type BrainActionArgSlot,
+  CoreFuncId,
+  CoreOpId,
+  CoreTypeIds,
+  isBytecodeConversion,
+  NativeType,
+} from "../../runtime";
 import { NIL_VALUE, type Value } from "../../runtime/value";
 import type { ITileCatalog } from "../interfaces";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
@@ -146,11 +153,13 @@ export class ExprCompiler implements ExprVisitor<void> {
   }
 
   /**
-   * Emit a type-conversion host call if the node's TypeInfo has a
-   * conversion. The value to convert must already be on top of the
-   * stack: that single value is the conversion's slot-0 buffer, so the
-   * compiler emits `HOST_CALL convFnId, 1, csId` directly. Stack
-   * effect: `[value] -> [converted_value]`.
+   * Emit a type-conversion call if the node's TypeInfo has a conversion.
+   * The value to convert must already be on top of the stack: that single
+   * value is the conversion's slot-0 buffer. A host-function conversion
+   * emits `HOST_CALL convFnId, 1, csId`; a bytecode conversion emits
+   * `ACTION_CALL actionSlot, 1, csId` against the program-local action slot
+   * keyed by the conversion's action key, bound to the compiled convert
+   * function at link. Stack effect: `[value] -> [converted_value]`.
    */
   private emitConversionIfNeeded(nodeId: number): void {
     const typeInfo = this.context.typeEnv.get(nodeId);
@@ -159,6 +168,11 @@ export class ExprCompiler implements ExprVisitor<void> {
     }
 
     const conversion = typeInfo.conversion;
+    if (isBytecodeConversion(conversion)) {
+      const actionSlot = this.getOrCreateActionSlot(conversion.descriptor.key);
+      this.emitter.actionCall(actionSlot, 1, this.nextCallSiteId());
+      return;
+    }
     this.emitter.hostCall(conversion.id, 1, this.nextCallSiteId());
   }
 

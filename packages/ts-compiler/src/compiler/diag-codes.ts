@@ -193,6 +193,18 @@ export enum DescriptorDiagCode {
   OutputTagElementMustBeStringLiteral = 2064,
   /** two outputs on the same sensor share a name (output names must be unique per sensor) */
   DuplicateOutputName = 2065,
+  /** a Conversion config is missing the required from or to member */
+  ConversionTypeRequired = 2066,
+  /** a Conversion config's cost is missing or not a positive numeric literal */
+  ConversionCostMustBePositiveNumber = 2067,
+  /** a Conversion config is missing the required convert member */
+  ConversionConvertRequired = 2068,
+  /** a Conversion config's convert member is not a function */
+  ConversionConvertMustBeFunction = 2069,
+  /** a Conversion config's convert function does not take exactly one parameter */
+  ConversionConvertParamCount = 2070,
+  /** a Conversion config's convert function is async (conversions are synchronous) */
+  ConversionConvertMustBeSync = 2071,
 }
 
 /**
@@ -519,6 +531,10 @@ export enum CompileDiagCode {
   UnregisteredModifierReference = 5008,
   /** A shared `parameter.` id is declared with a type name that does not resolve, so its shared tile cannot be materialized */
   SharedParameterUnresolvedType = 5009,
+  /** A Conversion's `from` or `to` does not name a known type (unresolvable name or invalid type token) */
+  ConversionTypeUnresolved = 5010,
+  /** A Conversion declares a `(from, to)` pair that another registration already holds */
+  DuplicateConversionPair = 5011,
 }
 
 /**

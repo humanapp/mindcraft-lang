@@ -9,6 +9,7 @@ import { UniqueSet } from "../platform/uniqueset";
 import { CoreFuncId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
 import type { Conversion, IConversionRegistry } from "./conversion-defs";
+import { isBytecodeConversion } from "./conversion-defs";
 import { CoreTypeIds } from "./core-types";
 import type { IFunctionRegistry } from "./function-defs";
 import { mkCallDef } from "./function-defs";
@@ -34,13 +35,14 @@ export class ConversionRegistry implements IConversionRegistry {
    * @param conv - The conversion to register, defining how to convert from one type to another
    */
   register(conv: Conversion): Conversion {
-    const name = conversionFnName(conv.fromType, conv.toType);
-    const existing = this.functions.get(name);
-    if (existing) {
+    if (this.conversions.get(conv.fromType)?.get(conv.toType)) {
       throw new Error(`ConversionRegistry.register: conversion from ${conv.fromType} to ${conv.toType} already exists`);
     }
-    const callDef = conv.callDef ?? anonConversionCallDef;
-    this.functions.register(conv.id, name, false, conv.fn, callDef);
+    if (!isBytecodeConversion(conv)) {
+      const name = conversionFnName(conv.fromType, conv.toType);
+      const callDef = conv.callDef ?? anonConversionCallDef;
+      this.functions.register(conv.id, name, false, conv.fn, callDef);
+    }
     const conversion: Conversion = { ...conv };
 
     // Store in conversions map for pathfinding
@@ -64,8 +66,18 @@ export class ConversionRegistry implements IConversionRegistry {
       this.conversions.delete(fromType);
     }
 
-    this.functions.unregister(conversionFnName(fromType, toType));
+    if (!isBytecodeConversion(existing)) {
+      this.functions.unregister(conversionFnName(fromType, toType));
+    }
     return true;
+  }
+
+  forEach(callback: (conv: Conversion) => void): void {
+    this.conversions.forEach((toDict) => {
+      toDict.forEach((conversion) => {
+        callback(conversion);
+      });
+    });
   }
 
   get(fromType: TypeId, toType: TypeId): Conversion | undefined {

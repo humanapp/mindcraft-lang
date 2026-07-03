@@ -58,11 +58,24 @@ export interface BrainActionMetadata {
 }
 
 /**
+ * Value-conversion metadata carried by a compiled `conversion` artifact: the
+ * `(fromType, toType)` registry pair and the path-search cost.
+ */
+export interface ArtifactConversionInfo {
+  fromType: TypeId;
+  toType: TypeId;
+  cost: number;
+}
+
+/**
  * Compiled user-authored action: bytecode-relevant {@link ProgramArtifact}
  * fields combined with the brain-side action metadata that names and shapes
  * the action call site.
  */
-export interface UserActionArtifact extends ProgramArtifact, BrainActionMetadata {}
+export interface UserActionArtifact extends ProgramArtifact, BrainActionMetadata {
+  /** Present on `conversion`-kind artifacts: the pair and cost to register in the conversion registry. */
+  conversion?: ArtifactConversionInfo;
+}
 
 /** Action binding implemented by a compiled bytecode artifact. */
 export interface BytecodeResolvedAction {

@@ -2,7 +2,13 @@ import { List } from "@mindcraft-lang/core";
 import { type BrainServices, compiler } from "@mindcraft-lang/core/brain";
 import type { BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 import type { ITypeRegistry, TypeId } from "@mindcraft-lang/core/runtime";
-import { mkActuatorTileId, mkModifierTileId, mkParameterTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
+import {
+  isBytecodeConversion,
+  mkActuatorTileId,
+  mkModifierTileId,
+  mkParameterTileId,
+  mkSensorTileId,
+} from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { collectModifiers, collectParams } from "./arg-spec-utils.js";
@@ -20,8 +26,10 @@ import type {
   ImportedTypeAlias,
   ImportedVariable,
   InlinedSystemConst,
+  ProgramLoweringResult,
 } from "./lowering.js";
 import { collectSystemModuleBindings, lowerProgram, qualifiedClassName } from "./lowering.js";
+import { resolveTypeNameExpression } from "./type-ref.js";
 import type {
   AmbientFile,
   CallSiteInfo,
@@ -136,7 +144,7 @@ function toVfsPath(compilerPath: string): string {
   return compilerPath;
 }
 
-function buildUserActionKey(kind: "sensor" | "actuator", id: string): string {
+function buildUserActionKey(kind: "sensor" | "actuator" | "conversion", id: string): string {
   return `user.${kind}.${id}`;
 }
 
@@ -351,6 +359,7 @@ export class UserTileProject {
     }
 
     reconcileSharedUserTiles(results, services);
+    reconcileConversionPairs(results, services);
 
     return { results, tsErrors, sourceRewrites };
   }
@@ -427,6 +436,23 @@ export class UserTileProject {
         callSites: emitResult.callSites,
         suspendSites: emitResult.suspendSites,
       });
+    }
+
+    if (descriptor.kind === "conversion") {
+      return this._assembleConversionProgram(
+        sourceFile,
+        descriptor,
+        checker,
+        services,
+        vfsPath,
+        sourceRewrites,
+        programResult,
+        pool,
+        emittedFunctions,
+        functionDebugInfo,
+        compilerFiles,
+        lowerWarnings
+      );
     }
 
     const qualifiedArgs = qualifyArgSpecTypes(descriptor.args, sourceFile, services.runtime.types);
@@ -536,6 +562,124 @@ export class UserTileProject {
 
     return { diagnostics: [...lowerWarnings, ...metaDiags], program, descriptor, functionDebugInfo };
   }
+
+  /**
+   * Assemble the {@link UserAuthoredProgram} for a compiled `Conversion({...})`
+   * declaration: resolve `from`/`to` to registered types, mint the stable id
+   * when absent, and attach the conversion registry metadata. Conversions
+   * surface no tiles, so no tile metadata is produced.
+   */
+  private _assembleConversionProgram(
+    sourceFile: ts.SourceFile,
+    descriptor: ExtractedDescriptor,
+    checker: ts.TypeChecker,
+    services: BrainServices,
+    vfsPath: string,
+    sourceRewrites: Map<string, string>,
+    programResult: ProgramLoweringResult,
+    pool: InstanceType<typeof compiler.ConstantPool>,
+    emittedFunctions: ReturnType<typeof emitFunction>["bytecode"][],
+    functionDebugInfo: FunctionDebugInfo[],
+    compilerFiles: Map<string, string>,
+    lowerWarnings: CompileDiagnostic[]
+  ): CompileResult {
+    const conversionParts = descriptor.conversion!;
+    const diags: CompileDiagnostic[] = [];
+
+    const resolveConversionType = (
+      node: ts.Expression,
+      member: string
+    ): { name: string; typeId: TypeId } | undefined => {
+      const resolved = resolveTypeNameExpression(node, checker);
+      if ("error" in resolved) {
+        diags.push({
+          code: CompileDiagCode.ConversionTypeUnresolved,
+          message: `Conversion \`${member}\` ${resolved.error}.`,
+          severity: "error",
+          ...spanOfNode(sourceFile, node),
+        });
+        return undefined;
+      }
+      const typeId = services.runtime.types.resolveByName(resolved.name);
+      if (typeId === undefined) {
+        diags.push({
+          code: CompileDiagCode.ConversionTypeUnresolved,
+          message: `Conversion \`${member}\` names unknown type "${resolved.name}".`,
+          severity: "error",
+          ...spanOfNode(sourceFile, node),
+        });
+        return undefined;
+      }
+      return { name: resolved.name, typeId };
+    };
+
+    const fromType = resolveConversionType(conversionParts.fromNode, "from");
+    const toType = resolveConversionType(conversionParts.toNode, "to");
+    if (!fromType || !toType) {
+      return { diagnostics: [...lowerWarnings, ...diags] };
+    }
+
+    const actionId = descriptor.id ?? this._generateActionId();
+    if (descriptor.id === undefined) {
+      const text = sourceFile.text;
+      const offset = descriptor.idInsertOffset;
+      sourceRewrites.set(vfsPath, `${text.slice(0, offset)}\n  id: ${JSON.stringify(actionId)},${text.slice(offset)}`);
+    }
+
+    const args: ExtractedArgSpec[] = [{ kind: "param", name: "value", type: fromType.name, anonymous: true }];
+    const callDef = buildCallDef(actionId, args);
+
+    const funcs = programResult.functions;
+    for (const func of funcs) {
+      if (!func.sourceFileName) {
+        func.sourceFileName = sourceFile.fileName;
+      }
+    }
+    const debugMetadata = assembleDebugMetadata(funcs, functionDebugInfo, compilerFiles);
+
+    const program: UserAuthoredProgram = {
+      version: 1,
+      functions: List.from(emittedFunctions),
+      constantPools: pool.toPools(),
+      types: pool.typeEntries(),
+      variableNames: List.empty(),
+      entryPoint: programResult.entryFuncId,
+      key: buildUserActionKey("conversion", actionId),
+      id: actionId,
+      kind: "conversion",
+      name: `${fromType.name} to ${toType.name}`,
+      callDef,
+      outputType: toType.typeId,
+      isAsync: false,
+      numStateSlots: programResult.numStateSlots,
+      entryFuncId: programResult.entryFuncId,
+      initializerFuncId: programResult.initializerFuncId,
+      activationFuncId: programResult.activationFuncId,
+      deactivationFuncId: programResult.deactivationFuncId,
+      revisionId: generateRevisionId(),
+      artifactSystems: programResult.systems.length > 0 ? List.from(programResult.systems) : undefined,
+      args,
+      debugMetadata,
+      conversion: { fromType: fromType.typeId, toType: toType.typeId, cost: conversionParts.cost },
+    };
+
+    return { diagnostics: [...lowerWarnings], program, descriptor, functionDebugInfo };
+  }
+}
+
+/** 1-based source span of `node` in `sourceFile`, in {@link CompileDiagnostic} fields. */
+function spanOfNode(
+  sourceFile: ts.SourceFile,
+  node: ts.Node
+): Pick<CompileDiagnostic, "line" | "column" | "endLine" | "endColumn"> {
+  const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+  const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
+  return {
+    line: start.line + 1,
+    column: start.character + 1,
+    endLine: end.line + 1,
+    endColumn: end.character + 1,
+  };
 }
 
 /**
@@ -612,6 +756,56 @@ function reconcileSharedUserTiles(results: Map<string, CompileResult>, services:
       }
     }
   }
+}
+
+/**
+ * Cross-program reconciliation of conversion `(fromType, toType)` pairs. Each
+ * pair may have one registration: a second declaration of an already-claimed
+ * pair -- by another conversion program in this project or by an existing
+ * registry entry (a host conversion or a conversion registered under a
+ * different key) -- gets a per-file conflict diagnostic. Programs are visited
+ * in `key` order, matching the bundle's `key`-sorted registration, so the
+ * key-first declaration wins and later ones report.
+ */
+function reconcileConversionPairs(results: Map<string, CompileResult>, services: BrainServices): void {
+  const entries: { path: string; program: UserAuthoredProgram }[] = [];
+  for (const [path, result] of results) {
+    if (result.program?.conversion) entries.push({ path, program: result.program });
+  }
+  entries.sort((left, right) => left.program.key.localeCompare(right.program.key));
+
+  const claimedByPair = new Map<string, string>();
+  for (const { path, program } of entries) {
+    const info = program.conversion!;
+    const pairKey = `${info.fromType}|${info.toType}`;
+    const diagnostics = results.get(path)!.diagnostics;
+
+    const projectHolder = claimedByPair.get(pairKey);
+    if (projectHolder !== undefined && projectHolder !== program.key) {
+      diagnostics.push(duplicateConversionPairDiagnostic(program, services));
+      continue;
+    }
+
+    const registered = services.shared.conversions.get(info.fromType, info.toType);
+    if (registered && !(isBytecodeConversion(registered) && registered.descriptor.key === program.key)) {
+      diagnostics.push(duplicateConversionPairDiagnostic(program, services));
+      continue;
+    }
+
+    claimedByPair.set(pairKey, program.key);
+  }
+}
+
+function duplicateConversionPairDiagnostic(program: UserAuthoredProgram, services: BrainServices): CompileDiagnostic {
+  const info = program.conversion!;
+  const types = services.runtime.types;
+  const fromName = types.get(info.fromType)?.name ?? info.fromType;
+  const toName = types.get(info.toType)?.name ?? info.toType;
+  return {
+    code: CompileDiagCode.DuplicateConversionPair,
+    message: `A conversion from "${fromName}" to "${toName}" is already registered. Each (from, to) pair may have one conversion.`,
+    severity: "error",
+  };
 }
 
 function sharedParamConflictDiagnostic(paramId: string, thisType: string, priorType: string): CompileDiagnostic {

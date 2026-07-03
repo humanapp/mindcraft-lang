@@ -82,6 +82,13 @@ export function buildCompiledActionBundle(
   const tileMap = new Map<string, IBrainTileDef>();
 
   for (const program of programs) {
+    // A conversion has no tile surface; its artifact rides the bundle's
+    // action table alone and registers via its conversion metadata.
+    if (program.kind === "conversion") {
+      actions.set(program.key, program);
+      continue;
+    }
+
     const metadata = buildUserTileMetadata(program, resolveTypeId);
     if (!metadata) {
       return undefined;

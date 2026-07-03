@@ -487,4 +487,45 @@ declare module "mindcraft" {
    * state fields and calls sibling methods.
    */
   export function System<S, M>(config: SystemConfig<S> & M & ThisType<S & M>): S & M;
+
+  /**
+   * Value token naming a registered Mindcraft type. `T` is the TS-side value
+   * type the token names; a surface that accepts a TypeRef infers its argument
+   * and return types from the token.
+   */
+  export interface TypeRef<T> {
+    readonly __typeRefBrand: T;
+  }
+
+  /** Token for the core `number` type. */
+  export const NumberType: TypeRef<number>;
+  /** Token for the core `string` type. */
+  export const StringType: TypeRef<string>;
+  /** Token for the core `boolean` type. */
+  export const BooleanType: TypeRef<boolean>;
+  /** Token for the core `buffer` type. */
+  export const BufferType: TypeRef<Buffer>;
+
+  /** Configuration for a {@link Conversion} declaration. */
+  export interface ConversionConfig<F, T> {
+    /** Stable identifier for this conversion, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
+    id?: string;
+    /** Source type, named by an imported TypeRef token (preferred) or a type name. */
+    from: TypeRef<F> | MindcraftType;
+    /** Target type, named by an imported TypeRef token (preferred) or a type name. */
+    to: TypeRef<T> | MindcraftType;
+    /** Relative cost used to pick among conversion paths; a small positive integer. */
+    cost: number;
+    /** Computes the `to`-typed value from a `from`-typed value. Must be synchronous. */
+    convert(value: F): T;
+  }
+
+  /**
+   * Declare an implicit value conversion from `from`-typed values to
+   * `to`-typed values. The brain compiler inserts it wherever a `from`-typed
+   * value fills a `to`-expected slot; `convert` compiles as a user function
+   * and runs once per inserted conversion. One declaration registers one
+   * `(from, to)` pair program-wide.
+   */
+  export function Conversion<F, T>(config: ConversionConfig<F, T>): unknown;
 }

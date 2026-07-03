@@ -115,7 +115,7 @@ describe("linkBrainProgram", () => {
     const constOffset = unlinked.constantPools.values.size();
     const variableOffset = unlinked.variableNames.size();
 
-    const linked = linkBrainProgram(unlinked, brainDef, catalogs, resolver);
+    const linked = linkBrainProgram(unlinked, brainDef, catalogs, resolver, services.shared.conversions);
     const executable = linked.program!.program;
 
     assert.equal(executable.actions!.size(), 1);

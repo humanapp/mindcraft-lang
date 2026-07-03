@@ -4,6 +4,8 @@ import { List, type ReadonlyList } from "../../platform/list";
 import type { ConstantOffsets, FunctionBytecode, Instr } from "../../runtime/bytecode";
 import { Op } from "../../runtime/bytecode";
 import type { BytecodeExecutableAction } from "../../runtime/context";
+import type { IConversionRegistry } from "../../runtime/conversion-defs";
+import { isBytecodeConversion } from "../../runtime/conversion-defs";
 import type { ActionDescriptor } from "../../runtime/function-defs";
 import type {
   BrainActionResolver,
@@ -56,7 +58,8 @@ function collectRuleDescriptors(ruleDef: IBrainRuleDef, descriptors: Dict<string
 
 function buildActionDescriptorIndex(
   brainDef: IBrainDef,
-  catalogs: ReadonlyList<ITileCatalog>
+  catalogs: ReadonlyList<ITileCatalog>,
+  conversions: IConversionRegistry
 ): Dict<string, ActionDescriptor> {
   const descriptors = new Dict<string, ActionDescriptor>();
 
@@ -80,6 +83,14 @@ function buildActionDescriptorIndex(
       addDescriptor(descriptors, tileDef.action);
     }
   }
+
+  // Bytecode conversions have no tile; their call sites resolve through the
+  // descriptor each registry entry carries.
+  conversions.forEach((conv) => {
+    if (isBytecodeConversion(conv)) {
+      addDescriptor(descriptors, conv.descriptor);
+    }
+  });
 
   return descriptors;
 }
@@ -358,9 +369,10 @@ export function linkBrainProgram(
   program: UnlinkedBrainProgram,
   brainDef: IBrainDef,
   catalogs: ReadonlyList<ITileCatalog>,
-  resolver: BrainActionResolver
+  resolver: BrainActionResolver,
+  conversions: IConversionRegistry
 ): BrainBuildResult {
-  const descriptorIndex = buildActionDescriptorIndex(brainDef, catalogs);
+  const descriptorIndex = buildActionDescriptorIndex(brainDef, catalogs, conversions);
   const functions = List.empty<FunctionBytecode>();
   const pools: MutableConstantPools = {
     numbers: List.empty<number>(),

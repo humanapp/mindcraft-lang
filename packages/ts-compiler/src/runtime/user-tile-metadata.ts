@@ -133,6 +133,9 @@ export function buildUserTileMetadata(
   program: UserAuthoredProgram,
   resolveTypeId: UserTileTypeResolver
 ): BuiltUserTileMetadata | undefined {
+  if (program.kind === "conversion") {
+    throw new Error(`Conversion "${program.key}" has no tile metadata`);
+  }
   const actionDescriptor = buildActionDescriptor(program);
   const parameterTiles = buildParameterTiles(program, resolveTypeId);
   if (!parameterTiles) {

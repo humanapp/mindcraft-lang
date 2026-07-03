@@ -12,14 +12,18 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import { parseRule } from "@mindcraft-lang/core/brain/compiler";
 import { BrainTileActuatorDef, BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import {
+  type Conversion,
   CoreParameterId,
   CoreTypeIds,
+  conversionFnName,
   type EnumFunctionIds,
   type EnumSymbolDef,
   type EnumValue,
   type ExecutionContext,
+  isBytecodeConversion,
   mkActionDescriptor,
   mkCallDef,
+  mkTypeId,
   NativeType,
   NIL_VALUE,
   type NumberValue,
@@ -78,6 +82,7 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
 function execEnumConversion(fromType: string, toType: string, input: EnumValue) {
   const conversion = services.shared.conversions.get(fromType, toType);
   assert.ok(conversion, `Expected conversion ${fromType} -> ${toType}`);
+  assert.ok(!isBytecodeConversion(conversion), `Expected a host-fn conversion ${fromType} -> ${toType}`);
 
   return conversion.fn.exec(mkCtx(), List.from([input as Value]));
 }
@@ -192,6 +197,78 @@ describe("Conversion: action call arguments", () => {
     true,
     CoreTypeIds.Number
   );
+});
+
+describe("Conversion: bytecode-backed registrations", () => {
+  const fromType = mkTypeId(NativeType.Struct, "ConversionSpecFakeFrom");
+  const toType = mkTypeId(NativeType.Struct, "ConversionSpecFakeTo");
+
+  function mkBytecodeConversion(): Conversion {
+    return {
+      binding: "bytecode",
+      fromType,
+      toType,
+      cost: 2,
+      descriptor: {
+        key: "user.conversion.convspec00000001",
+        kind: "conversion",
+        callDef: mkCallDef(param("anon.number", { anonymous: true })),
+        isAsync: false,
+        outputType: toType,
+      },
+    };
+  }
+
+  test("registers and resolves by pair without a host-function registration", () => {
+    const conv = services.shared.conversions.register(mkBytecodeConversion());
+    try {
+      assert.ok(isBytecodeConversion(conv));
+
+      const found = services.shared.conversions.get(fromType, toType);
+      assert.ok(found);
+      assert.ok(isBytecodeConversion(found));
+      assert.equal(found.descriptor.key, "user.conversion.convspec00000001");
+
+      assert.equal(
+        services.runtime.functions.get(conversionFnName(fromType, toType)),
+        undefined,
+        "a bytecode conversion registers no host function"
+      );
+
+      const path = services.shared.conversions.findBestPath(fromType, toType, 1);
+      assert.ok(path);
+      assert.equal(path.size(), 1);
+    } finally {
+      services.shared.conversions.remove(fromType, toType);
+    }
+  });
+
+  test("a second registration of an already-held pair throws", () => {
+    services.shared.conversions.register(mkBytecodeConversion());
+    try {
+      assert.throws(() => services.shared.conversions.register(mkBytecodeConversion()), /already exists/);
+    } finally {
+      services.shared.conversions.remove(fromType, toType);
+    }
+  });
+
+  test("remove drops the pair and forEach no longer visits it", () => {
+    services.shared.conversions.register(mkBytecodeConversion());
+    let visits = 0;
+    services.shared.conversions.forEach((conv) => {
+      if (conv.fromType === fromType && conv.toType === toType) visits++;
+    });
+    assert.equal(visits, 1);
+
+    assert.equal(services.shared.conversions.remove(fromType, toType), true);
+    assert.equal(services.shared.conversions.get(fromType, toType), undefined);
+
+    visits = 0;
+    services.shared.conversions.forEach((conv) => {
+      if (conv.fromType === fromType && conv.toType === toType) visits++;
+    });
+    assert.equal(visits, 0);
+  });
 });
 
 describe("Conversion: enum values", () => {
