@@ -121,7 +121,7 @@ export function resolveTypeNameExpression(expr: ts.Expression, checker: ts.TypeC
 }
 
 /** True when `node` is declared inside an ambient `declare module "mindcraft"` block. */
-function isMindcraftModuleDeclaration(node: ts.Node): boolean {
+export function isMindcraftModuleDeclaration(node: ts.Node): boolean {
   let current: ts.Node | undefined = node;
   while (current) {
     if (ts.isModuleDeclaration(current) && ts.isStringLiteral(current.name) && current.name.text === "mindcraft") {

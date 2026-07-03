@@ -26,6 +26,7 @@ import type { IrNode, IrSourceSpan } from "./ir.js";
 import { type LocalMetadata, type ScopeMetadata, ScopeStack } from "./scope.js";
 import {
   ambientTypeTokenName,
+  isMindcraftModuleDeclaration,
   qualifiedClassName,
   resolveTypeNameExpression,
   shorthandValueExpression,
@@ -1040,10 +1041,12 @@ export function lowerProgram(
     return true;
   };
 
-  // `const X = StructType({...})` bindings: each registers a program-local
-  // struct type keyed by its `<file>::<binding>` identity, register-if-absent
-  // so every collecting program resolves to the one type.
+  // `const X = StructType({...})` bindings: gathered here across the entry
+  // module and every imported module, then resolved and registered as one set
+  // (register-if-absent, keyed by `<file>::<binding>` identity). Field
+  // resolution never depends on declaration or import-visit order.
   const structTypes: ArtifactStructTypeInfo[] = [];
+  const pendingStructTypeDecls: PendingStructTypeDecl[] = [];
   const collectedStructIdentities = new Set<string>();
   const collectStructTypeDecl = (nameNode: ts.Identifier, initializer: ts.Expression | undefined): boolean => {
     const call = structTypeCallExpression(initializer);
@@ -1062,27 +1065,7 @@ export function lowerProgram(
     const identity = qualifiedClassName(config.getSourceFile().fileName, nameNode.text);
     if (collectedStructIdentities.has(identity)) return true;
     collectedStructIdentities.add(identity);
-    const parts = extractStructTypeConfig(config, checker, services, diagnostics);
-    if (!parts) return true;
-    const registry = services.runtime.types;
-    let typeId = registry.resolveByName(identity);
-    if (typeId === undefined) {
-      typeId = registry.withOwner("dynamic", () =>
-        registry.addStructType(identity, {
-          fields: List.from(
-            parts.fields.map((field, index) => ({ name: field.name, typeId: field.typeId, fieldIndex: index }))
-          ),
-        })
-      );
-    }
-    structTypes.push({
-      identity,
-      name: parts.name,
-      typeId,
-      accessors: parts.accessors,
-      variables: parts.variables,
-      fields: parts.fields,
-    });
+    pendingStructTypeDecls.push({ identity, declName: nameNode.text, config });
     return true;
   };
 
@@ -1203,6 +1186,8 @@ export function lowerProgram(
       collectStructTypeDecl(decl.nameNode, decl.initializer);
     }
   }
+
+  structTypes.push(...registerCollectedStructTypes(pendingStructTypeDecls, checker, services, diagnostics));
 
   if (importedFunctions) {
     for (const imp of importedFunctions) {
@@ -1407,8 +1392,13 @@ export function lowerProgram(
 
   registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics, services);
 
+  // Reserve all user-declared named types before finalizing any: a field
+  // naming another user class, interface, or type alias resolves to its
+  // qualified reservation regardless of declaration or import-visit order.
+  const reservedClasses: { info: ClassInfo; typeId: string }[] = [];
   for (const ci of classInfos) {
-    registerClassStructType(ci, checker, diagnostics, services);
+    const typeId = reserveClassStructType(ci, services);
+    if (typeId) reservedClasses.push({ info: ci, typeId });
   }
 
   const reservedInterfaces: { info: InterfaceInfo; typeId: string }[] = [];
@@ -1421,6 +1411,10 @@ export function lowerProgram(
   for (const tai of typeAliasInfos) {
     const typeId = reserveTypeAliasStructType(tai, checker, diagnostics, services);
     if (typeId) reservedTypeAliases.push({ info: tai, typeId });
+  }
+
+  for (const { info, typeId } of reservedClasses) {
+    finalizeClassStructType(info, typeId, checker, diagnostics, services);
   }
 
   for (const { info, typeId } of reservedInterfaces) {
@@ -2018,25 +2012,24 @@ export interface ImportedStructTypeDecl {
   initializer: ts.Expression;
 }
 
-/** Validated members of a `StructType({...})` config. */
+/** Validated members of a `StructType({...})` config. Field types are canonical registry names, not yet resolved against the registry. */
 interface StructTypeConfigParts {
   name: string;
   accessors: boolean;
   variables: boolean;
-  fields: { name: string; typeId: TypeId }[];
+  fields: { name: string; typeName: string; typeExpr: ts.Expression }[];
 }
 
 /**
  * Extract and validate a `StructType({...})` config: a string `name`, a
- * non-empty `fields` object of `name: type` entries (types resolved through
- * the type-name expression forms), and optional boolean-literal `accessors`
- * and `variables`. Each malformed member pushes its own diagnostic; returns
- * undefined when any member fails.
+ * non-empty `fields` object of `name: type` entries (types normalized to
+ * canonical registry names through the type-name expression forms), and
+ * optional boolean-literal `accessors` and `variables`. Each malformed member
+ * pushes its own diagnostic; returns undefined when any member fails.
  */
 export function extractStructTypeConfig(
   config: ts.ObjectLiteralExpression,
   checker: ts.TypeChecker,
-  services: BrainServices,
   diagnostics: CompileDiagnostic[]
 ): StructTypeConfigParts | undefined {
   let name: string | undefined;
@@ -2151,7 +2144,7 @@ export function extractStructTypeConfig(
     failed = true;
   }
 
-  const fields: { name: string; typeId: TypeId }[] = [];
+  const fields: { name: string; typeName: string; typeExpr: ts.Expression }[] = [];
   if (fieldsNode) {
     for (const prop of fieldsNode.properties) {
       let fieldName: string | undefined;
@@ -2208,19 +2201,7 @@ export function extractStructTypeConfig(
         failed = true;
         continue;
       }
-      const fieldTypeId = services.runtime.types.resolveByName(resolved.name);
-      if (fieldTypeId === undefined) {
-        diagnostics.push(
-          makeDiag(
-            LoweringDiagCode.StructTypeFieldTypeUnresolvable,
-            `\`StructType\` field '${fieldName}' names unknown type "${resolved.name}".`,
-            typeExpr
-          )
-        );
-        failed = true;
-        continue;
-      }
-      fields.push({ name: fieldName, typeId: fieldTypeId });
+      fields.push({ name: fieldName, typeName: resolved.name, typeExpr });
     }
 
     if (fields.length === 0 && !failed) {
@@ -2239,6 +2220,139 @@ export function extractStructTypeConfig(
     return undefined;
   }
   return { name, accessors, variables, fields };
+}
+
+/** A `const X = StructType({...})` declaration gathered during collection, awaiting resolution and registration. */
+interface PendingStructTypeDecl {
+  /** Cross-module identity: `<declaring-file>::<binding-name>`. */
+  identity: string;
+  /** The declared binding name, used in diagnostics. */
+  declName: string;
+  config: ts.ObjectLiteralExpression;
+}
+
+/**
+ * Resolve and register every gathered `StructType({...})` declaration against
+ * the completed set, in dependency order; a struct-typed field resolves no
+ * matter where its declaration sits. A field naming a declaration on the
+ * current visit path closes a containment cycle and fails with
+ * {@link LoweringDiagCode.StructTypeRecursiveField}; a field naming a
+ * declaration that failed for its own reasons fails without a second
+ * diagnostic. Returns artifact metadata for every registered declaration in
+ * collection order.
+ */
+function registerCollectedStructTypes(
+  pending: PendingStructTypeDecl[],
+  checker: ts.TypeChecker,
+  services: BrainServices,
+  diagnostics: CompileDiagnostic[]
+): ArtifactStructTypeInfo[] {
+  const registry = services.runtime.types;
+  const extracted = new Map<string, { decl: PendingStructTypeDecl; parts: StructTypeConfigParts }>();
+  const failed = new Set<string>();
+  for (const decl of pending) {
+    const parts = extractStructTypeConfig(decl.config, checker, diagnostics);
+    if (parts) {
+      extracted.set(decl.identity, { decl, parts });
+    } else {
+      failed.add(decl.identity);
+    }
+  }
+
+  const registered = new Map<string, ArtifactStructTypeInfo>();
+  const VISITING = 1;
+  const DONE = 2;
+  const visitState = new Map<string, number>();
+  const visitPath: string[] = [];
+
+  const declNameOf = (identity: string): string => extracted.get(identity)?.decl.declName ?? identity;
+
+  const finalize = (identity: string): void => {
+    if (failed.has(identity)) return;
+    const entry = extracted.get(identity)!;
+    const fields: { name: string; typeId: TypeId }[] = [];
+    for (const field of entry.parts.fields) {
+      const fieldTypeId = registry.resolveByName(field.typeName);
+      if (fieldTypeId === undefined) {
+        // A field naming a declaration that already failed carries no second
+        // diagnostic; that declaration's own diagnostic names the root cause.
+        if (!failed.has(field.typeName)) {
+          diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.StructTypeFieldTypeUnresolvable,
+              `\`StructType\` field '${field.name}' names unknown type "${field.typeName}".`,
+              field.typeExpr
+            )
+          );
+        }
+        failed.add(identity);
+        continue;
+      }
+      fields.push({ name: field.name, typeId: fieldTypeId });
+    }
+    if (failed.has(identity)) return;
+    let typeId = registry.resolveByName(identity);
+    if (typeId === undefined) {
+      typeId = registry.withOwner("dynamic", () =>
+        registry.addStructType(identity, {
+          fields: List.from(
+            fields.map((field, index) => ({ name: field.name, typeId: field.typeId, fieldIndex: index }))
+          ),
+        })
+      );
+    }
+    registered.set(identity, {
+      identity,
+      name: entry.parts.name,
+      typeId,
+      accessors: entry.parts.accessors,
+      variables: entry.parts.variables,
+      fields,
+    });
+  };
+
+  const visit = (identity: string): void => {
+    if (visitState.get(identity) === DONE) return;
+    visitState.set(identity, VISITING);
+    visitPath.push(identity);
+    const entry = extracted.get(identity)!;
+    for (const field of entry.parts.fields) {
+      const dep = extracted.get(field.typeName);
+      if (!dep) continue;
+      if (visitState.get(field.typeName) === VISITING) {
+        const cycle = visitPath.slice(visitPath.indexOf(field.typeName));
+        const pathNames = [identity, ...cycle.slice(0, -1), identity].map(declNameOf);
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeRecursiveField,
+            `\`StructType\` '${declNameOf(identity)}' field '${field.name}' creates a containment cycle: ${pathNames.join(" -> ")}. A struct value cannot contain its own type.`,
+            field.typeExpr
+          )
+        );
+        for (const member of cycle) {
+          failed.add(member);
+        }
+        continue;
+      }
+      visit(field.typeName);
+    }
+    visitPath.pop();
+    visitState.set(identity, DONE);
+    finalize(identity);
+  };
+
+  for (const decl of pending) {
+    if (extracted.has(decl.identity)) {
+      visit(decl.identity);
+    }
+  }
+
+  const infos: ArtifactStructTypeInfo[] = [];
+  for (const decl of pending) {
+    const info = registered.get(decl.identity);
+    if (info) infos.push(info);
+  }
+  return infos;
 }
 
 /** True when `node` carries an `export` modifier. */
@@ -11008,6 +11122,42 @@ function tryResolveEnumValue(expr: ts.StringLiteral, ctx: LowerContext): Value |
   return { t: NativeType.Enum, typeId, v: expr.text };
 }
 
+/**
+ * Resolve a TS type that is the instance type of a user `StructType({...})`
+ * declaration to the declared struct's registered type id. An instance type
+ * surfaces as a `StructValueOf<F>` instantiation of the ambient `mindcraft`
+ * alias; `F`'s declaration site sits inside the declaring
+ * `const X = StructType({...})`, which names the registered identity.
+ * Returns undefined when the type is not such an instance type or the
+ * declaration is not registered.
+ */
+function resolveDeclaredStructInstanceTypeId(type: ts.Type, services: BrainServices): TypeId | undefined {
+  const alias = type.aliasSymbol;
+  if (!alias) return undefined;
+  if (alias.getName() !== "StructValueOf") return undefined;
+  const aliasDecl = alias.getDeclarations()?.[0];
+  if (!aliasDecl || !isMindcraftModuleDeclaration(aliasDecl)) return undefined;
+  const argType =
+    type.aliasTypeArguments && type.aliasTypeArguments.length > 0 ? type.aliasTypeArguments[0] : undefined;
+  const argDecl = argType?.getSymbol()?.getDeclarations()?.[0];
+  if (!argDecl) return undefined;
+
+  let node: ts.Node | undefined = argDecl;
+  while (node && !ts.isSourceFile(node)) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && structTypeConfigObject(node.initializer)) {
+      const identity = qualifiedClassName(node.getSourceFile().fileName, node.name.text);
+      const typeId = services.runtime.types.resolveByName(identity);
+      if (typeId !== undefined) {
+        const def = services.runtime.types.get(typeId);
+        if (def && def.coreType === NativeType.Struct) return typeId;
+      }
+      return undefined;
+    }
+    node = node.parent;
+  }
+  return undefined;
+}
+
 function tsTypeToTypeId(
   type: ts.Type,
   checker: ts.TypeChecker | undefined,
@@ -11122,6 +11272,10 @@ function tsTypeToTypeId(
     if (!hasPrimitive) {
       return autoRegisterIntersectionType(type, checker, services);
     }
+  }
+  const declaredStructId = resolveDeclaredStructInstanceTypeId(type, services);
+  if (declaredStructId) {
+    return declaredStructId;
   }
   const sym = type.aliasSymbol ?? type.getSymbol();
   if (sym) {
@@ -11466,25 +11620,27 @@ function extractClassMethodDecls(
   return methods;
 }
 
-function registerClassStructType(
+function reserveClassStructType(ci: ClassInfo, services: BrainServices): string | undefined {
+  const registry = services.runtime.types;
+  const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
+  const existing = registry.resolveByName(qualName);
+  if (existing) return undefined;
+
+  return registry.withOwner("dynamic", () => registry.reserveStructType(qualName));
+}
+
+function finalizeClassStructType(
   ci: ClassInfo,
+  typeId: string,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
   services: BrainServices
 ): void {
-  const registry = services.runtime.types;
-  const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
-  const existing = registry.resolveByName(qualName);
-  if (existing) return;
-
   const fields = extractClassFields(ci.node, checker, diagnostics, services);
   if (!fields) return;
 
   const methods = extractClassMethodDecls(ci.node, checker, diagnostics, services);
-
-  registry.withOwner("dynamic", () => {
-    registry.addStructType(qualName, { fields, methods });
-  });
+  services.runtime.types.finalizeStructType(typeId, { fields, methods });
 }
 
 function reserveInterfaceStructType(

@@ -658,7 +658,6 @@ describe("StructType declarations: diagnostics", () => {
   }
 
   test("a duplicate field name is reported by the extractor", () => {
-    const services = __test__createBrainServices();
     const source = `const Position = StructType({
   name: "position",
   fields: { x: "number", x: "number" },
@@ -674,7 +673,7 @@ describe("StructType declarations: diagnostics", () => {
     assert.ok(config, "expected the StructType config object");
 
     const diagnostics: CompileResult["diagnostics"] = [];
-    const parts = extractStructTypeConfig(config, program.getTypeChecker(), services, diagnostics);
+    const parts = extractStructTypeConfig(config, program.getTypeChecker(), diagnostics);
     assert.equal(parts, undefined);
     expectDiagnostic(diagnostics, LoweringDiagCode.StructTypeDuplicateField);
   });

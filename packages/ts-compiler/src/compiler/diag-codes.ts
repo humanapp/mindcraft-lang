@@ -5,7 +5,7 @@
  * Codes are organized by compiler phase:
  * - 1000-1099: Validator diagnostics (forbidden syntax)
  * - 2000-2099: Descriptor extraction diagnostics
- * - 3000-3199: Lowering diagnostics
+ * - 3000-3999: Lowering diagnostics
  * - 4000-4099: Emit diagnostics
  * - 5000-5099: Compile orchestration diagnostics
  */
@@ -214,7 +214,7 @@ export enum DescriptorDiagCode {
 }
 
 /**
- * Lowering diagnostic codes (3000-3199)
+ * Lowering diagnostic codes (3000-3999)
  *
  * Emitted during AST-to-IR lowering when a construct cannot be
  * translated to the user-tile instruction set.
@@ -510,6 +510,8 @@ export enum LoweringDiagCode {
   StructTypeDuplicateField = 3198,
   /** A `StructType(...)` call's config argument is not a single inline object literal */
   StructTypeConfigNotObjectLiteral = 3199,
+  /** A `StructType({...})` field contains its own struct type, directly or through other struct fields */
+  StructTypeRecursiveField = 3200,
 }
 
 /**
