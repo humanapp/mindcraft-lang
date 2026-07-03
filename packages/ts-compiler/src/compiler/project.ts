@@ -23,13 +23,14 @@ import type {
   ImportedEnum,
   ImportedFunction,
   ImportedInterface,
+  ImportedStructTypeDecl,
   ImportedTypeAlias,
   ImportedVariable,
   InlinedSystemConst,
   ProgramLoweringResult,
 } from "./lowering.js";
 import { collectSystemModuleBindings, lowerProgram, qualifiedClassName } from "./lowering.js";
-import { resolveTypeNameExpression } from "./type-ref.js";
+import { resolveTypeNameExpression, structTypeCallExpression } from "./type-ref.js";
 import type {
   AmbientFile,
   CallSiteInfo,
@@ -337,7 +338,7 @@ export class UserTileProject {
 
       if (!hasDefaultExport(sourceFile)) continue;
 
-      const extractionResult = extractDescriptor(sourceFile);
+      const extractionResult = extractDescriptor(sourceFile, checker);
       if (!extractionResult.descriptor) {
         const vfsPath = toVfsPath(compilerPath);
         results.set(vfsPath, { diagnostics: extractionResult.diagnostics });
@@ -360,6 +361,7 @@ export class UserTileProject {
 
     reconcileSharedUserTiles(results, services);
     reconcileConversionPairs(results, services);
+    reconcileStableIds(results);
 
     return { results, tsErrors, sourceRewrites };
   }
@@ -384,6 +386,11 @@ export class UserTileProject {
       return { diagnostics: imported.diagnostics };
     }
 
+    const typeRefDiags = resolveDescriptorTypeRefs(descriptor, checker, sourceFile);
+    if (typeRefDiags.length > 0) {
+      return { diagnostics: typeRefDiags };
+    }
+
     const programResult = lowerProgram(
       sourceFile,
       descriptor,
@@ -397,7 +404,8 @@ export class UserTileProject {
       imported.interfaces,
       imported.typeAliases,
       imported.inlinedSystemConsts,
-      imported.carriedPrivateFunctions
+      imported.carriedPrivateFunctions,
+      imported.structTypeDecls
     );
     if (programResult.diagnostics.some((d) => d.severity === "error")) {
       return { diagnostics: programResult.diagnostics };
@@ -550,6 +558,7 @@ export class UserTileProject {
       deactivationFuncId: programResult.deactivationFuncId,
       revisionId: generateRevisionId(),
       artifactSystems: programResult.systems.length > 0 ? List.from(programResult.systems) : undefined,
+      structTypes: programResult.structTypes.length > 0 ? programResult.structTypes : undefined,
       args: qualifiedArgs,
       debugMetadata,
       label,
@@ -618,6 +627,15 @@ export class UserTileProject {
     if (!fromType || !toType) {
       return { diagnostics: [...lowerWarnings, ...diags] };
     }
+    if (fromType.typeId === toType.typeId) {
+      diags.push({
+        code: CompileDiagCode.ConversionSameType,
+        message: `Conversion \`from\` and \`to\` both name "${fromType.name}"; a conversion must change the value's type.`,
+        severity: "error",
+        ...spanOfNode(sourceFile, conversionParts.toNode),
+      });
+      return { diagnostics: [...lowerWarnings, ...diags] };
+    }
 
     const actionId = descriptor.id ?? this._generateActionId();
     if (descriptor.id === undefined) {
@@ -658,6 +676,7 @@ export class UserTileProject {
       deactivationFuncId: programResult.deactivationFuncId,
       revisionId: generateRevisionId(),
       artifactSystems: programResult.systems.length > 0 ? List.from(programResult.systems) : undefined,
+      structTypes: programResult.structTypes.length > 0 ? programResult.structTypes : undefined,
       args,
       debugMetadata,
       conversion: { fromType: fromType.typeId, toType: toType.typeId, cost: conversionParts.cost },
@@ -796,6 +815,33 @@ function reconcileConversionPairs(results: Map<string, CompileResult>, services:
   }
 }
 
+/**
+ * Cross-program reconciliation of stable ids. Each declaration's `id` must be
+ * unique across the project: a duplicate collides the derived action key and
+ * the `user.<id>.*` private tile scope, so every declaration after the first
+ * claimant (in path order) gets a per-file conflict diagnostic naming the
+ * claimant.
+ */
+function reconcileStableIds(results: Map<string, CompileResult>): void {
+  const claimedByPath = new Map<string, string>();
+  const paths = [...results.keys()].sort();
+  for (const path of paths) {
+    const result = results.get(path)!;
+    const program = result.program;
+    if (!program) continue;
+    const claimant = claimedByPath.get(program.id);
+    if (claimant === undefined) {
+      claimedByPath.set(program.id, path);
+      continue;
+    }
+    result.diagnostics.push({
+      code: CompileDiagCode.DuplicateActionId,
+      message: `Stable id "${program.id}" is already used by ${claimant}. Each declaration must have its own id; delete this one to have a fresh id minted.`,
+      severity: "error",
+    });
+  }
+}
+
 function duplicateConversionPairDiagnostic(program: UserAuthoredProgram, services: BrainServices): CompileDiagnostic {
   const info = program.conversion!;
   const types = services.runtime.types;
@@ -814,6 +860,82 @@ function sharedParamConflictDiagnostic(paramId: string, thisType: string, priorT
     message: `Shared parameter "${paramId}" is declared here as "${thisType}" but was already declared as "${priorType}". A shared parameter id must have one type.`,
     severity: "error",
   };
+}
+
+/**
+ * Resolve the descriptor's type-reference members (`returnType`, output
+ * `type`, param `type` written as identifiers) to their canonical registry
+ * names, rewriting each member in place. A reference that names no type
+ * yields an {@link CompileDiagCode.UnresolvedTypeReference} diagnostic.
+ */
+function resolveDescriptorTypeRefs(
+  descriptor: ExtractedDescriptor,
+  checker: ts.TypeChecker,
+  sourceFile: ts.SourceFile
+): CompileDiagnostic[] {
+  const diagnostics: CompileDiagnostic[] = [];
+
+  const resolveNode = (node: ts.Expression, member: string): string | undefined => {
+    const resolved = resolveTypeNameExpression(node, checker);
+    if ("error" in resolved) {
+      diagnostics.push({
+        code: CompileDiagCode.UnresolvedTypeReference,
+        message: `\`${member}\` ${resolved.error}.`,
+        severity: "error",
+        ...spanOfNode(sourceFile, node),
+      });
+      return undefined;
+    }
+    return resolved.name;
+  };
+
+  if (descriptor.returnTypeNode) {
+    const name = resolveNode(descriptor.returnTypeNode, "returnType");
+    if (name !== undefined) {
+      descriptor.returnType = name;
+    }
+  }
+
+  for (const output of descriptor.outputs ?? []) {
+    if (!output.typeNode) continue;
+    const name = resolveNode(output.typeNode, `output '${output.name}' type`);
+    if (name !== undefined) {
+      output.type = name;
+    }
+  }
+
+  const visitSpec = (spec: ExtractedArgSpec): void => {
+    switch (spec.kind) {
+      case "param": {
+        if (spec.typeNode) {
+          const name = resolveNode(spec.typeNode, `param '${spec.name}' type`);
+          if (name !== undefined) {
+            spec.type = name;
+          }
+        }
+        break;
+      }
+      case "modifier":
+        break;
+      case "choice":
+      case "seq":
+        for (const item of spec.items) visitSpec(item);
+        break;
+      case "optional":
+      case "repeated":
+        visitSpec(spec.item);
+        break;
+      case "conditional":
+        visitSpec(spec.thenItem);
+        if (spec.elseItem) visitSpec(spec.elseItem);
+        break;
+    }
+  };
+  for (const spec of descriptor.args) {
+    visitSpec(spec);
+  }
+
+  return diagnostics;
 }
 
 function qualifyDescriptorType(typeName: string, sourceFile: ts.SourceFile, types: ITypeRegistry): string {
@@ -959,6 +1081,8 @@ interface CollectResult {
   moduleInitOrder: string[];
   inlinedSystemConsts: InlinedSystemConst[];
   carriedPrivateFunctions: CarriedPrivateFunction[];
+  /** Every `const X = StructType(...)` in a visited module, exported or not. */
+  structTypeDecls: ImportedStructTypeDecl[];
   diagnostics: CompileDiagnostic[];
 }
 
@@ -974,6 +1098,7 @@ function collectImports(
   const enums: ImportedEnum[] = [];
   const interfaces: ImportedInterface[] = [];
   const typeAliases: ImportedTypeAlias[] = [];
+  const structTypeDecls: ImportedStructTypeDecl[] = [];
   const diagnostics: CompileDiagnostic[] = [];
   const visitedFiles = new Set<string>();
   const visitedModuleFiles: ts.SourceFile[] = [];
@@ -997,6 +1122,16 @@ function collectImports(
     for (const stmt of sourceFile.statements) {
       if (ts.isFunctionDeclaration(stmt) && stmt.name && hasExportModifier(stmt)) {
         functions.push({ localName: stmt.name.text, node: stmt });
+      }
+      if (ts.isVariableStatement(stmt)) {
+        // StructType declarations are collectible regardless of export: a
+        // module-private binding is still reachable from the module's own
+        // exported helpers.
+        for (const decl of stmt.declarationList.declarations) {
+          if (ts.isIdentifier(decl.name) && decl.initializer && structTypeCallExpression(decl.initializer)) {
+            structTypeDecls.push({ nameNode: decl.name, initializer: decl.initializer });
+          }
+        }
       }
       if (ts.isVariableStatement(stmt) && hasExportModifier(stmt)) {
         for (const decl of stmt.declarationList.declarations) {
@@ -1153,6 +1288,7 @@ function collectImports(
     moduleInitOrder,
     inlinedSystemConsts,
     carriedPrivateFunctions,
+    structTypeDecls,
     diagnostics,
   };
 }

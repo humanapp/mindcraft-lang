@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { DescriptorDiagCode } from "./diag-codes.js";
+import { shorthandValueExpression } from "./type-ref.js";
 import type {
   CompileDiagnostic,
   ExtractedArgSpec,
@@ -20,7 +21,7 @@ export interface ExtractionResult {
 }
 
 /** Walk the source file's default export and extract a {@link ExtractedDescriptor} from a `Sensor({...})`, `Actuator({...})`, or `Conversion({...})` call. */
-export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
+export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChecker): ExtractionResult {
   const diagnostics: CompileDiagnostic[] = [];
 
   function addDiag(code: DescriptorDiagCode, node: ts.Node, message: string): void {
@@ -117,13 +118,15 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   }
 
   if (callee === "Conversion") {
-    return extractConversionDescriptor(sourceFile, arg, addDiag, diagnostics);
+    return extractConversionDescriptor(sourceFile, checker, arg, addDiag, diagnostics);
   }
 
   const kind: "sensor" | "actuator" = callee === "Sensor" ? "sensor" : "actuator";
 
   let id: string | undefined;
   let name: string | undefined;
+  let configReturnType: string | undefined;
+  let returnTypeNode: ts.Expression | undefined;
   let args: ExtractedArgSpec[] = [];
   let onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction | undefined;
   let execIsAsync = false;
@@ -139,135 +142,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   let outputs: ExtractedOutput[] | undefined;
 
   for (const prop of arg.properties) {
-    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-      switch (prop.name.text) {
-        case "id":
-          if (ts.isStringLiteral(prop.initializer)) {
-            id = prop.initializer.text;
-          } else {
-            addDiag(DescriptorDiagCode.IdMustBeStringLiteral, prop.initializer, "`id` must be a string literal.");
-          }
-          break;
-
-        case "name":
-          if (ts.isStringLiteral(prop.initializer)) {
-            name = prop.initializer.text;
-          } else {
-            addDiag(DescriptorDiagCode.NameMustBeStringLiteral, prop.initializer, "`name` must be a string literal.");
-          }
-          break;
-
-        case "args":
-          args = extractArgs(prop.initializer, addDiag);
-          break;
-
-        case "onExecute":
-          if (ts.isFunctionExpression(prop.initializer) || ts.isArrowFunction(prop.initializer)) {
-            onExecuteNode = prop.initializer;
-            execIsAsync = prop.initializer.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
-          } else {
-            addDiag(DescriptorDiagCode.OnExecuteMustBeFunction, prop.initializer, "`onExecute` must be a function.");
-          }
-          break;
-
-        case "onPageEntered":
-          if (ts.isFunctionExpression(prop.initializer) || ts.isArrowFunction(prop.initializer)) {
-            onPageEnteredNode = prop.initializer;
-          } else {
-            addDiag(
-              DescriptorDiagCode.OnPageEnteredMustBeFunction,
-              prop.initializer,
-              "`onPageEntered` must be a function."
-            );
-          }
-          break;
-
-        case "onPageExited":
-          if (ts.isFunctionExpression(prop.initializer) || ts.isArrowFunction(prop.initializer)) {
-            onPageExitedNode = prop.initializer;
-          } else {
-            addDiag(
-              DescriptorDiagCode.OnPageExitedMustBeFunction,
-              prop.initializer,
-              "`onPageExited` must be a function."
-            );
-          }
-          break;
-
-        case "label":
-          if (ts.isStringLiteral(prop.initializer)) {
-            label = prop.initializer.text;
-          } else {
-            addDiag(DescriptorDiagCode.LabelMustBeStringLiteral, prop.initializer, "`label` must be a string literal.");
-          }
-          break;
-
-        case "icon":
-          if (ts.isStringLiteral(prop.initializer)) {
-            icon = prop.initializer.text;
-            iconSpan = spanOf(prop.initializer);
-          } else {
-            addDiag(DescriptorDiagCode.IconMustBeStringLiteral, prop.initializer, "`icon` must be a string literal.");
-          }
-          break;
-
-        case "docs":
-          if (ts.isStringLiteral(prop.initializer)) {
-            docs = prop.initializer.text;
-            docsSpan = spanOf(prop.initializer);
-          } else {
-            addDiag(DescriptorDiagCode.DocsMustBeStringLiteral, prop.initializer, "`docs` must be a string literal.");
-          }
-          break;
-
-        case "tags":
-          if (ts.isArrayLiteralExpression(prop.initializer)) {
-            tags = [];
-            for (const elem of prop.initializer.elements) {
-              if (ts.isStringLiteral(elem)) {
-                tags.push(elem.text);
-              } else {
-                addDiag(
-                  DescriptorDiagCode.TagElementMustBeStringLiteral,
-                  elem,
-                  "Each element of `tags` must be a string literal."
-                );
-              }
-            }
-          } else {
-            addDiag(DescriptorDiagCode.TagsMustBeArrayLiteral, prop.initializer, "`tags` must be an array literal.");
-          }
-          break;
-
-        case "capabilities":
-          if (ts.isArrayLiteralExpression(prop.initializer)) {
-            capabilities = [];
-            for (const elem of prop.initializer.elements) {
-              const capName = ts.isIdentifier(elem) ? elem.text : ts.isStringLiteral(elem) ? elem.text : undefined;
-              if (capName !== undefined && KNOWN_CAPABILITIES.has(capName)) {
-                capabilities.push(capName);
-              } else {
-                addDiag(
-                  DescriptorDiagCode.CapabilityElementUnknown,
-                  elem,
-                  "Each element of `capabilities` must be a known capability (e.g. `PresenceGated`)."
-                );
-              }
-            }
-          } else {
-            addDiag(
-              DescriptorDiagCode.CapabilitiesMustBeArrayLiteral,
-              prop.initializer,
-              "`capabilities` must be an array literal."
-            );
-          }
-          break;
-
-        case "outputs":
-          outputs = extractOutputs(prop.initializer, addDiag);
-          break;
-      }
-    } else if (ts.isMethodDeclaration(prop) && ts.isIdentifier(prop.name)) {
+    if (ts.isMethodDeclaration(prop) && ts.isIdentifier(prop.name)) {
       if (prop.name.text === "onExecute") {
         onExecuteNode = prop;
         execIsAsync = prop.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
@@ -276,6 +151,140 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
       } else if (prop.name.text === "onPageExited") {
         onPageExitedNode = prop;
       }
+      continue;
+    }
+    const member = configMember(prop, checker, addDiag);
+    if (!member) continue;
+    const value = member.value;
+    switch (member.name) {
+      case "id":
+        if (ts.isStringLiteral(value)) {
+          id = value.text;
+        } else {
+          addDiag(DescriptorDiagCode.IdMustBeStringLiteral, value, "`id` must be a string literal.");
+        }
+        break;
+
+      case "name":
+        if (ts.isStringLiteral(value)) {
+          name = value.text;
+        } else {
+          addDiag(DescriptorDiagCode.NameMustBeStringLiteral, value, "`name` must be a string literal.");
+        }
+        break;
+
+      case "returnType":
+        if (ts.isStringLiteral(value)) {
+          configReturnType = value.text;
+        } else if (ts.isIdentifier(value)) {
+          configReturnType = value.text;
+          returnTypeNode = value;
+        } else {
+          addDiag(
+            DescriptorDiagCode.ReturnTypeMustBeNameOrRef,
+            value,
+            "`returnType` must be a type name string literal or a type reference."
+          );
+        }
+        break;
+
+      case "args":
+        args = extractArgs(value, checker, addDiag);
+        break;
+
+      case "onExecute":
+        if (ts.isFunctionExpression(value) || ts.isArrowFunction(value)) {
+          onExecuteNode = value;
+          execIsAsync = value.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+        } else {
+          addDiag(DescriptorDiagCode.OnExecuteMustBeFunction, value, "`onExecute` must be a function.");
+        }
+        break;
+
+      case "onPageEntered":
+        if (ts.isFunctionExpression(value) || ts.isArrowFunction(value)) {
+          onPageEnteredNode = value;
+        } else {
+          addDiag(DescriptorDiagCode.OnPageEnteredMustBeFunction, value, "`onPageEntered` must be a function.");
+        }
+        break;
+
+      case "onPageExited":
+        if (ts.isFunctionExpression(value) || ts.isArrowFunction(value)) {
+          onPageExitedNode = value;
+        } else {
+          addDiag(DescriptorDiagCode.OnPageExitedMustBeFunction, value, "`onPageExited` must be a function.");
+        }
+        break;
+
+      case "label":
+        if (ts.isStringLiteral(value)) {
+          label = value.text;
+        } else {
+          addDiag(DescriptorDiagCode.LabelMustBeStringLiteral, value, "`label` must be a string literal.");
+        }
+        break;
+
+      case "icon":
+        if (ts.isStringLiteral(value)) {
+          icon = value.text;
+          iconSpan = spanOf(value);
+        } else {
+          addDiag(DescriptorDiagCode.IconMustBeStringLiteral, value, "`icon` must be a string literal.");
+        }
+        break;
+
+      case "docs":
+        if (ts.isStringLiteral(value)) {
+          docs = value.text;
+          docsSpan = spanOf(value);
+        } else {
+          addDiag(DescriptorDiagCode.DocsMustBeStringLiteral, value, "`docs` must be a string literal.");
+        }
+        break;
+
+      case "tags":
+        if (ts.isArrayLiteralExpression(value)) {
+          tags = [];
+          for (const elem of value.elements) {
+            if (ts.isStringLiteral(elem)) {
+              tags.push(elem.text);
+            } else {
+              addDiag(
+                DescriptorDiagCode.TagElementMustBeStringLiteral,
+                elem,
+                "Each element of `tags` must be a string literal."
+              );
+            }
+          }
+        } else {
+          addDiag(DescriptorDiagCode.TagsMustBeArrayLiteral, value, "`tags` must be an array literal.");
+        }
+        break;
+
+      case "capabilities":
+        if (ts.isArrayLiteralExpression(value)) {
+          capabilities = [];
+          for (const elem of value.elements) {
+            const capName = ts.isIdentifier(elem) ? elem.text : ts.isStringLiteral(elem) ? elem.text : undefined;
+            if (capName !== undefined && KNOWN_CAPABILITIES.has(capName)) {
+              capabilities.push(capName);
+            } else {
+              addDiag(
+                DescriptorDiagCode.CapabilityElementUnknown,
+                elem,
+                "Each element of `capabilities` must be a known capability (e.g. `PresenceGated`)."
+              );
+            }
+          }
+        } else {
+          addDiag(DescriptorDiagCode.CapabilitiesMustBeArrayLiteral, value, "`capabilities` must be an array literal.");
+        }
+        break;
+
+      case "outputs":
+        outputs = extractOutputs(value, checker, addDiag);
+        break;
     }
   }
 
@@ -288,7 +297,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
 
   let returnType: string | undefined;
   if (kind === "sensor" && onExecuteNode) {
-    returnType = extractReturnType(onExecuteNode, execIsAsync, addDiag);
+    returnType = configReturnType ?? extractReturnType(onExecuteNode, execIsAsync, addDiag);
   }
 
   if (diagnostics.length > 0) {
@@ -302,6 +311,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
       idInsertOffset: arg.getStart(sourceFile) + 1,
       name: name!,
       returnType: kind === "sensor" ? returnType : undefined,
+      returnTypeNode: kind === "sensor" ? returnTypeNode : undefined,
       args,
       execIsAsync,
       onExecuteNode: onExecuteNode!,
@@ -320,6 +330,49 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   };
 }
 
+/** Diagnostic sink shared by the extraction helpers. */
+type AddDiag = (code: DescriptorDiagCode, node: ts.Node, message: string) => void;
+
+/**
+ * Resolve one config object member to its name and value expression. A plain
+ * `name: value` member yields its initializer; a shorthand member yields the
+ * referenced declaration's initializer. A spread member or an unresolvable
+ * shorthand yields undefined after pushing its diagnostic; other member kinds
+ * yield undefined for the caller to handle.
+ */
+function configMember(
+  prop: ts.ObjectLiteralElementLike,
+  checker: ts.TypeChecker,
+  addDiag: AddDiag
+): { name: string; value: ts.Expression } | undefined {
+  if (ts.isSpreadAssignment(prop)) {
+    addDiag(
+      DescriptorDiagCode.ConfigMemberNotInline,
+      prop,
+      "Config members must be written inline; spread is not supported."
+    );
+    return undefined;
+  }
+  if (ts.isPropertyAssignment(prop)) {
+    const name = getPropertyName(prop);
+    if (name === undefined) return undefined;
+    return { name, value: prop.initializer };
+  }
+  if (ts.isShorthandPropertyAssignment(prop)) {
+    const value = shorthandValueExpression(prop, checker);
+    if (!value) {
+      addDiag(
+        DescriptorDiagCode.ShorthandMemberUnresolvable,
+        prop,
+        `Shorthand \`${prop.name.text}\` does not resolve to a declared value.`
+      );
+      return undefined;
+    }
+    return { name: prop.name.text, value };
+  }
+  return undefined;
+}
+
 /**
  * Extract a conversion descriptor from a `Conversion({...})` config object.
  * Validates member shapes (`from`/`to` present, `cost` a positive numeric
@@ -330,6 +383,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
  */
 function extractConversionDescriptor(
   sourceFile: ts.SourceFile,
+  checker: ts.TypeChecker,
   arg: ts.ObjectLiteralExpression,
   addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void,
   diagnostics: CompileDiagnostic[]
@@ -360,49 +414,48 @@ function extractConversionDescriptor(
   };
 
   for (const prop of arg.properties) {
-    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-      switch (prop.name.text) {
-        case "id":
-          if (ts.isStringLiteral(prop.initializer)) {
-            id = prop.initializer.text;
-          } else {
-            addDiag(DescriptorDiagCode.IdMustBeStringLiteral, prop.initializer, "`id` must be a string literal.");
-          }
-          break;
-        case "from":
-          fromNode = prop.initializer;
-          break;
-        case "to":
-          toNode = prop.initializer;
-          break;
-        case "cost":
-          costSeen = true;
-          if (ts.isNumericLiteral(prop.initializer) && Number.parseFloat(prop.initializer.text) > 0) {
-            cost = Number.parseFloat(prop.initializer.text);
-          } else {
-            addDiag(
-              DescriptorDiagCode.ConversionCostMustBePositiveNumber,
-              prop.initializer,
-              "`cost` must be a positive numeric literal."
-            );
-          }
-          break;
-        case "convert":
-          convertSeen = true;
-          if (ts.isFunctionExpression(prop.initializer) || ts.isArrowFunction(prop.initializer)) {
-            checkConvertNode(prop.initializer);
-          } else {
-            addDiag(
-              DescriptorDiagCode.ConversionConvertMustBeFunction,
-              prop.initializer,
-              "`convert` must be a function."
-            );
-          }
-          break;
-      }
-    } else if (ts.isMethodDeclaration(prop) && ts.isIdentifier(prop.name) && prop.name.text === "convert") {
+    if (ts.isMethodDeclaration(prop) && ts.isIdentifier(prop.name) && prop.name.text === "convert") {
       convertSeen = true;
       checkConvertNode(prop);
+      continue;
+    }
+    const member = configMember(prop, checker, addDiag);
+    if (!member) continue;
+    const value = member.value;
+    switch (member.name) {
+      case "id":
+        if (ts.isStringLiteral(value)) {
+          id = value.text;
+        } else {
+          addDiag(DescriptorDiagCode.IdMustBeStringLiteral, value, "`id` must be a string literal.");
+        }
+        break;
+      case "from":
+        fromNode = value;
+        break;
+      case "to":
+        toNode = value;
+        break;
+      case "cost":
+        costSeen = true;
+        if (ts.isNumericLiteral(value) && Number.parseFloat(value.text) > 0) {
+          cost = Number.parseFloat(value.text);
+        } else {
+          addDiag(
+            DescriptorDiagCode.ConversionCostMustBePositiveNumber,
+            value,
+            "`cost` must be a positive numeric literal."
+          );
+        }
+        break;
+      case "convert":
+        convertSeen = true;
+        if (ts.isFunctionExpression(value) || ts.isArrowFunction(value)) {
+          checkConvertNode(value);
+        } else {
+          addDiag(DescriptorDiagCode.ConversionConvertMustBeFunction, value, "`convert` must be an inline function.");
+        }
+        break;
     }
   }
 
@@ -442,10 +495,7 @@ function extractConversionDescriptor(
 }
 
 /** Extract and validate the `outputs` array of a sensor config. Each malformed entry yields a precise diagnostic; valid entries are returned. */
-function extractOutputs(
-  node: ts.Expression,
-  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
-): ExtractedOutput[] {
+function extractOutputs(node: ts.Expression, checker: ts.TypeChecker, addDiag: AddDiag): ExtractedOutput[] {
   if (!ts.isArrayLiteralExpression(node)) {
     addDiag(DescriptorDiagCode.OutputsMustBeArrayLiteral, node, "`outputs` must be an array literal.");
     return [];
@@ -454,7 +504,7 @@ function extractOutputs(
   const result: ExtractedOutput[] = [];
   const seenNames = new Set<string>();
   for (const elem of node.elements) {
-    const output = extractOutput(elem, addDiag);
+    const output = extractOutput(elem, checker, addDiag);
     if (!output) continue;
     if (seenNames.has(output.name)) {
       addDiag(
@@ -471,10 +521,7 @@ function extractOutputs(
 }
 
 /** Extract a single `outputs` entry: a `{ name, type, label?, icon?, docs?, tags? }` object literal. */
-function extractOutput(
-  node: ts.Expression,
-  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
-): ExtractedOutput | undefined {
+function extractOutput(node: ts.Expression, checker: ts.TypeChecker, addDiag: AddDiag): ExtractedOutput | undefined {
   if (!ts.isObjectLiteralExpression(node)) {
     addDiag(DescriptorDiagCode.OutputEntryMustBeObjectLiteral, node, "Each `outputs` entry must be an object literal.");
     return undefined;
@@ -482,74 +529,63 @@ function extractOutput(
 
   let name: string | undefined;
   let type: string | undefined;
+  let typeNode: ts.Expression | undefined;
   let label: string | undefined;
   let icon: string | undefined;
   let docs: string | undefined;
   let tags: string[] | undefined;
 
   for (const prop of node.properties) {
-    if (!ts.isPropertyAssignment(prop)) continue;
-    const propName = getPropertyName(prop);
-    switch (propName) {
+    const member = configMember(prop, checker, addDiag);
+    if (!member) continue;
+    const value = member.value;
+    switch (member.name) {
       case "name":
-        if (ts.isStringLiteral(prop.initializer)) {
-          name = prop.initializer.text;
+        if (ts.isStringLiteral(value)) {
+          name = value.text;
         } else {
-          addDiag(
-            DescriptorDiagCode.OutputNameMustBeStringLiteral,
-            prop.initializer,
-            "Output `name` must be a string literal."
-          );
+          addDiag(DescriptorDiagCode.OutputNameMustBeStringLiteral, value, "Output `name` must be a string literal.");
         }
         break;
       case "type":
-        if (ts.isStringLiteral(prop.initializer)) {
-          type = prop.initializer.text;
+        if (ts.isStringLiteral(value)) {
+          type = value.text;
+        } else if (ts.isIdentifier(value)) {
+          type = value.text;
+          typeNode = value;
         } else {
           addDiag(
             DescriptorDiagCode.OutputTypeMustBeStringLiteral,
-            prop.initializer,
-            "Output `type` must be a string literal."
+            value,
+            "Output `type` must be a type name string literal or a type reference."
           );
         }
         break;
       case "label":
-        if (ts.isStringLiteral(prop.initializer)) {
-          label = prop.initializer.text;
+        if (ts.isStringLiteral(value)) {
+          label = value.text;
         } else {
-          addDiag(
-            DescriptorDiagCode.OutputLabelMustBeStringLiteral,
-            prop.initializer,
-            "Output `label` must be a string literal."
-          );
+          addDiag(DescriptorDiagCode.OutputLabelMustBeStringLiteral, value, "Output `label` must be a string literal.");
         }
         break;
       case "icon":
-        if (ts.isStringLiteral(prop.initializer)) {
-          icon = prop.initializer.text;
+        if (ts.isStringLiteral(value)) {
+          icon = value.text;
         } else {
-          addDiag(
-            DescriptorDiagCode.OutputIconMustBeStringLiteral,
-            prop.initializer,
-            "Output `icon` must be a string literal."
-          );
+          addDiag(DescriptorDiagCode.OutputIconMustBeStringLiteral, value, "Output `icon` must be a string literal.");
         }
         break;
       case "docs":
-        if (ts.isStringLiteral(prop.initializer)) {
-          docs = prop.initializer.text;
+        if (ts.isStringLiteral(value)) {
+          docs = value.text;
         } else {
-          addDiag(
-            DescriptorDiagCode.OutputDocsMustBeStringLiteral,
-            prop.initializer,
-            "Output `docs` must be a string literal."
-          );
+          addDiag(DescriptorDiagCode.OutputDocsMustBeStringLiteral, value, "Output `docs` must be a string literal.");
         }
         break;
       case "tags":
-        if (ts.isArrayLiteralExpression(prop.initializer)) {
+        if (ts.isArrayLiteralExpression(value)) {
           tags = [];
-          for (const tagElem of prop.initializer.elements) {
+          for (const tagElem of value.elements) {
             if (ts.isStringLiteral(tagElem)) {
               tags.push(tagElem.text);
             } else {
@@ -561,11 +597,7 @@ function extractOutput(
             }
           }
         } else {
-          addDiag(
-            DescriptorDiagCode.OutputTagsMustBeArrayLiteral,
-            prop.initializer,
-            "Output `tags` must be an array literal."
-          );
+          addDiag(DescriptorDiagCode.OutputTagsMustBeArrayLiteral, value, "Output `tags` must be an array literal.");
         }
         break;
     }
@@ -579,13 +611,14 @@ function extractOutput(
   }
   if (name === undefined || type === undefined) return undefined;
 
-  return { name, type, label, icon, docs, tags };
+  const result: ExtractedOutput = { name, type, label, icon, docs, tags };
+  if (typeNode) {
+    result.typeNode = typeNode;
+  }
+  return result;
 }
 
-function extractArgs(
-  node: ts.Expression,
-  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
-): ExtractedArgSpec[] {
+function extractArgs(node: ts.Expression, checker: ts.TypeChecker, addDiag: AddDiag): ExtractedArgSpec[] {
   if (!ts.isArrayLiteralExpression(node)) {
     addDiag(DescriptorDiagCode.ArgsMustBeArrayLiteral, node, "`args` must be an array literal.");
     return [];
@@ -593,16 +626,13 @@ function extractArgs(
 
   const result: ExtractedArgSpec[] = [];
   for (const elem of node.elements) {
-    const spec = extractArgSpec(elem, addDiag);
+    const spec = extractArgSpec(elem, checker, addDiag);
     if (spec) result.push(spec);
   }
   return result;
 }
 
-function extractArgSpec(
-  node: ts.Expression,
-  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
-): ExtractedArgSpec | undefined {
+function extractArgSpec(node: ts.Expression, checker: ts.TypeChecker, addDiag: AddDiag): ExtractedArgSpec | undefined {
   if (!ts.isCallExpression(node)) {
     addDiag(
       DescriptorDiagCode.ArgSpecMustBeCallExpression,
@@ -620,19 +650,19 @@ function extractArgSpec(
   const callee = node.expression.text;
   switch (callee) {
     case "modifier":
-      return extractModifierSpec(node, addDiag);
+      return extractModifierSpec(node, checker, addDiag);
     case "param":
-      return extractParamSpec(node, addDiag);
+      return extractParamSpec(node, checker, addDiag);
     case "choice":
-      return extractChoiceSpec(node, addDiag);
+      return extractChoiceSpec(node, checker, addDiag);
     case "optional":
-      return extractOptionalSpec(node, addDiag);
+      return extractOptionalSpec(node, checker, addDiag);
     case "repeated":
-      return extractRepeatedSpec(node, addDiag);
+      return extractRepeatedSpec(node, checker, addDiag);
     case "conditional":
-      return extractConditionalSpec(node, addDiag);
+      return extractConditionalSpec(node, checker, addDiag);
     case "seq":
-      return extractSeqSpec(node, addDiag);
+      return extractSeqSpec(node, checker, addDiag);
     default:
       addDiag(
         DescriptorDiagCode.UnrecognizedArgSpecCall,
@@ -645,7 +675,8 @@ function extractArgSpec(
 
 function extractModifierSpec(
   node: ts.CallExpression,
-  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+  checker: ts.TypeChecker,
+  addDiag: AddDiag
 ): ExtractedArgSpec | undefined {
   const args = node.arguments;
   if (args.length < 1 || !ts.isStringLiteral(args[0])) {
@@ -686,25 +717,26 @@ function extractModifierSpec(
   let icon: string | undefined;
 
   for (const prop of args[1].properties) {
-    if (!ts.isPropertyAssignment(prop)) continue;
-    const propName = getPropertyName(prop);
-    if (propName === "label") {
-      if (ts.isStringLiteral(prop.initializer)) {
-        label = prop.initializer.text;
+    const member = configMember(prop, checker, addDiag);
+    if (!member) continue;
+    const value = member.value;
+    if (member.name === "label") {
+      if (ts.isStringLiteral(value)) {
+        label = value.text;
       } else {
         addDiag(
           DescriptorDiagCode.ModifierLabelMustBeStringLiteral,
-          prop.initializer,
+          value,
           "`modifier()` label must be a string literal."
         );
       }
-    } else if (propName === "icon") {
-      if (ts.isStringLiteral(prop.initializer)) {
-        icon = prop.initializer.text;
+    } else if (member.name === "icon") {
+      if (ts.isStringLiteral(value)) {
+        icon = value.text;
       } else {
         addDiag(
           DescriptorDiagCode.ModifierIconMustBeStringLiteral,
-          prop.initializer,
+          value,
           "`modifier()` icon must be a string literal."
         );
       }
@@ -721,7 +753,8 @@ function extractModifierSpec(
 
 function extractParamSpec(
   node: ts.CallExpression,
-  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+  checker: ts.TypeChecker,
+  addDiag: AddDiag
 ): ExtractedParam | undefined {
   const args = node.arguments;
   if (args.length < 2 || !ts.isStringLiteral(args[0])) {
@@ -745,45 +778,42 @@ function extractParamSpec(
   }
 
   let type: string | undefined;
+  let typeNode: ts.Expression | undefined;
   let defaultValue: number | string | boolean | null | undefined;
   let hasDefault = false;
   let anonymous = false;
 
   for (const prop of args[1].properties) {
-    if (!ts.isPropertyAssignment(prop)) continue;
-    const propName = getPropertyName(prop);
+    const member = configMember(prop, checker, addDiag);
+    if (!member) continue;
+    const value = member.value;
 
-    if (propName === "type") {
-      if (ts.isStringLiteral(prop.initializer)) {
-        type = prop.initializer.text;
+    if (member.name === "type") {
+      if (ts.isStringLiteral(value)) {
+        type = value.text;
+      } else if (ts.isIdentifier(value)) {
+        type = value.text;
+        typeNode = value;
       } else {
         addDiag(
           DescriptorDiagCode.ParamTypeMustBeStringLiteral,
-          prop.initializer,
-          "Param `type` must be a string literal."
+          value,
+          "Param `type` must be a type name string literal or a type reference."
         );
       }
-    } else if (propName === "default") {
+    } else if (member.name === "default") {
       hasDefault = true;
-      defaultValue = extractLiteralValue(prop.initializer);
-      if (defaultValue === undefined && !isNullishLiteral(prop.initializer)) {
-        addDiag(
-          DescriptorDiagCode.ParamDefaultMustBeLiteral,
-          prop.initializer,
-          "Param `default` must be a literal value."
-        );
+      defaultValue = extractLiteralValue(value);
+      if (defaultValue === undefined && !isNullishLiteral(value)) {
+        addDiag(DescriptorDiagCode.ParamDefaultMustBeLiteral, value, "Param `default` must be a literal value.");
       }
-    } else if (propName === "anonymous") {
-      if (prop.initializer.kind === ts.SyntaxKind.TrueKeyword) {
+    } else if (member.name === "anonymous") {
+      if (value.kind === ts.SyntaxKind.TrueKeyword) {
         anonymous = true;
-      } else if (prop.initializer.kind === ts.SyntaxKind.FalseKeyword) {
+      } else if (value.kind === ts.SyntaxKind.FalseKeyword) {
         anonymous = false;
       } else {
-        addDiag(
-          DescriptorDiagCode.ParamAnonymousMustBeBoolean,
-          prop.initializer,
-          "Param `anonymous` must be a boolean literal."
-        );
+        addDiag(DescriptorDiagCode.ParamAnonymousMustBeBoolean, value, "Param `anonymous` must be a boolean literal.");
       }
     }
   }
@@ -794,6 +824,9 @@ function extractParamSpec(
   }
 
   const result: ExtractedParam = { kind: "param", name: paramName, type, anonymous };
+  if (typeNode) {
+    result.typeNode = typeNode;
+  }
   if (hasDefault) {
     result.defaultValue = defaultValue;
   }
@@ -802,7 +835,8 @@ function extractParamSpec(
 
 function extractChoiceSpec(
   node: ts.CallExpression,
-  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+  checker: ts.TypeChecker,
+  addDiag: AddDiag
 ): ExtractedArgSpec | undefined {
   const args = node.arguments;
   if (args.length === 0) {
@@ -820,7 +854,7 @@ function extractChoiceSpec(
 
   const items: ExtractedArgSpec[] = [];
   for (let i = startIdx; i < args.length; i++) {
-    const spec = extractArgSpec(args[i], addDiag);
+    const spec = extractArgSpec(args[i], checker, addDiag);
     if (spec) items.push(spec);
   }
 
@@ -834,28 +868,30 @@ function extractChoiceSpec(
 
 function extractOptionalSpec(
   node: ts.CallExpression,
-  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+  checker: ts.TypeChecker,
+  addDiag: AddDiag
 ): ExtractedArgSpec | undefined {
   if (node.arguments.length !== 1) {
     addDiag(DescriptorDiagCode.OptionalRequiresOneArgument, node, "`optional()` requires exactly one argument.");
     return undefined;
   }
 
-  const item = extractArgSpec(node.arguments[0], addDiag);
+  const item = extractArgSpec(node.arguments[0], checker, addDiag);
   if (!item) return undefined;
   return { kind: "optional", item };
 }
 
 function extractRepeatedSpec(
   node: ts.CallExpression,
-  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+  checker: ts.TypeChecker,
+  addDiag: AddDiag
 ): ExtractedArgSpec | undefined {
   if (node.arguments.length < 1) {
     addDiag(DescriptorDiagCode.RepeatedRequiresModifier, node, "`repeated()` requires at least one argument.");
     return undefined;
   }
 
-  const item = extractArgSpec(node.arguments[0], addDiag);
+  const item = extractArgSpec(node.arguments[0], checker, addDiag);
   if (!item) return undefined;
 
   let min: number | undefined;
@@ -871,25 +907,26 @@ function extractRepeatedSpec(
       return undefined;
     }
     for (const prop of node.arguments[1].properties) {
-      if (!ts.isPropertyAssignment(prop)) continue;
-      const propName = getPropertyName(prop);
-      if (propName === "min") {
-        if (ts.isNumericLiteral(prop.initializer)) {
-          min = Number.parseFloat(prop.initializer.text);
+      const member = configMember(prop, checker, addDiag);
+      if (!member) continue;
+      const value = member.value;
+      if (member.name === "min") {
+        if (ts.isNumericLiteral(value)) {
+          min = Number.parseFloat(value.text);
         } else {
           addDiag(
             DescriptorDiagCode.RepeatedBoundMustBeNumericLiteral,
-            prop.initializer,
+            value,
             "`repeated()` `min` must be a numeric literal."
           );
         }
-      } else if (propName === "max") {
-        if (ts.isNumericLiteral(prop.initializer)) {
-          max = Number.parseFloat(prop.initializer.text);
+      } else if (member.name === "max") {
+        if (ts.isNumericLiteral(value)) {
+          max = Number.parseFloat(value.text);
         } else {
           addDiag(
             DescriptorDiagCode.RepeatedBoundMustBeNumericLiteral,
-            prop.initializer,
+            value,
             "`repeated()` `max` must be a numeric literal."
           );
         }
@@ -902,7 +939,8 @@ function extractRepeatedSpec(
 
 function extractConditionalSpec(
   node: ts.CallExpression,
-  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+  checker: ts.TypeChecker,
+  addDiag: AddDiag
 ): ExtractedArgSpec | undefined {
   if (node.arguments.length < 2) {
     addDiag(
@@ -923,12 +961,12 @@ function extractConditionalSpec(
   }
   const condition = node.arguments[0].text;
 
-  const thenItem = extractArgSpec(node.arguments[1], addDiag);
+  const thenItem = extractArgSpec(node.arguments[1], checker, addDiag);
   if (!thenItem) return undefined;
 
   let elseItem: ExtractedArgSpec | undefined;
   if (node.arguments.length >= 3) {
-    elseItem = extractArgSpec(node.arguments[2], addDiag) ?? undefined;
+    elseItem = extractArgSpec(node.arguments[2], checker, addDiag) ?? undefined;
   }
 
   return { kind: "conditional", condition, thenItem, elseItem };
@@ -936,7 +974,8 @@ function extractConditionalSpec(
 
 function extractSeqSpec(
   node: ts.CallExpression,
-  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+  checker: ts.TypeChecker,
+  addDiag: AddDiag
 ): ExtractedArgSpec | undefined {
   if (node.arguments.length === 0) {
     addDiag(DescriptorDiagCode.SeqRequiresArguments, node, "`seq()` requires at least one argument.");
@@ -945,7 +984,7 @@ function extractSeqSpec(
 
   const items: ExtractedArgSpec[] = [];
   for (const a of node.arguments) {
-    const spec = extractArgSpec(a, addDiag);
+    const spec = extractArgSpec(a, checker, addDiag);
     if (spec) items.push(spec);
   }
   return { kind: "seq", items };

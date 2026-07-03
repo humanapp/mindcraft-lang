@@ -386,7 +386,10 @@ declare module "mindcraft" {
   type ArgSpec = ModifierSpec | ParamSpec | ChoiceSpec | OptionalSpec | RepeatedSpec | ConditionalSpec | SeqSpec;
 
   export function modifier(id: string, opts?: { label: string; icon?: string }): ModifierSpec;
-  export function param(name: string, opts: { type: MindcraftType; default?: unknown; anonymous?: boolean }): ParamSpec;
+  export function param(
+    name: string,
+    opts: { type: MindcraftType | TypeRef<unknown>; default?: unknown; anonymous?: boolean }
+  ): ParamSpec;
   export function choice(name: string, ...items: ArgSpec[]): ChoiceSpec;
   export function choice(...items: ArgSpec[]): ChoiceSpec;
   export function optional(item: ArgSpec): OptionalSpec;
@@ -413,8 +416,8 @@ declare module "mindcraft" {
   export interface OutputSpec {
     /** Output name; the second half of the output identity. */
     name: string;
-    /** Output value type, e.g. `"string"`, `"number"`; the first half of the output identity. */
-    type: MindcraftType;
+    /** Output value type, named by TypeRef token (preferred) or type name; the first half of the output identity. */
+    type: MindcraftType | TypeRef<unknown>;
     label?: string;
     icon?: string;
     docs?: string;
@@ -431,6 +434,8 @@ declare module "mindcraft" {
     tags?: string[];
     /** Capabilities this sensor declares, e.g. `[PresenceGated]`. */
     capabilities?: Capability[];
+    /** Return value type, named by TypeRef token (preferred) or type name; defaults to the `onExecute` return annotation. */
+    returnType?: MindcraftType | TypeRef<unknown>;
     args?: ArgSpec[];
     /** Named, typed outputs this sensor exposes; each surfaces downstream as an inline value-tile written via `setOutput`. */
     outputs?: OutputSpec[];
@@ -505,6 +510,50 @@ declare module "mindcraft" {
   export const BooleanType: TypeRef<boolean>;
   /** Token for the core `buffer` type. */
   export const BufferType: TypeRef<Buffer>;
+
+  /** Configuration for a {@link StructType} declaration. */
+  export interface StructTypeConfig<F> {
+    /** Display name (tiles, picker). */
+    name: string;
+    /** Field name -> field type, in declaration order; declaration order is storage order. */
+    fields: F;
+    /** When true, derive one accessor tile per field. */
+    accessors?: boolean;
+    /** When true, derive a "create variable" factory tile for the type. */
+    variables?: boolean;
+  }
+
+  /** The TS value type a struct field type spec names. */
+  type StructFieldValue<S> = S extends TypeRef<infer V>
+    ? V
+    : S extends keyof MindcraftTypeMap
+      ? MindcraftTypeMap[S]
+      : unknown;
+
+  /** The TS object type of a struct instance, derived from a fields config. */
+  type StructValueOf<F> = { -readonly [K in keyof F]: StructFieldValue<F[K]> };
+
+  /**
+   * Binding returned by a {@link StructType} declaration: a {@link TypeRef}
+   * naming the declared type, and a callable factory constructing instances
+   * (`Position({x: 1, y: 2})`).
+   */
+  export interface StructTypeBinding<T> extends TypeRef<T> {
+    (init: T): T;
+  }
+
+  /**
+   * Declare a struct type: a named record of typed fields usable across the
+   * tile surface. The returned binding names the type wherever a TypeRef is
+   * accepted and constructs instances when called. Every importer of the
+   * binding resolves to the one declared type.
+   */
+  export function StructType<const F extends Record<string, TypeRef<unknown> | MindcraftType>>(
+    config: StructTypeConfig<F>
+  ): StructTypeBinding<StructValueOf<F>>;
+
+  /** The TS instance type of a {@link StructType} binding: `StructOf<typeof Position>`. */
+  export type StructOf<R> = R extends TypeRef<infer T> ? T : never;
 
   /** Configuration for a {@link Conversion} declaration. */
   export interface ConversionConfig<F, T> {

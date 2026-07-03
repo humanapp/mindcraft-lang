@@ -24,7 +24,15 @@ import { type ArgSlot, collectArgSlots } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import { type LocalMetadata, type ScopeMetadata, ScopeStack } from "./scope.js";
-import type { CompileDiagnostic, ExtractedDescriptor } from "./types.js";
+import {
+  ambientTypeTokenName,
+  qualifiedClassName,
+  resolveTypeNameExpression,
+  shorthandValueExpression,
+  structTypeCallExpression,
+  structTypeConfigObject,
+} from "./type-ref.js";
+import type { ArtifactStructTypeInfo, CompileDiagnostic, ExtractedDescriptor } from "./types.js";
 
 const TRUE_VALUE: Value = { t: 2, v: true };
 const FALSE_VALUE: Value = { t: 2, v: false };
@@ -150,9 +158,7 @@ interface TypeAliasInfo {
 }
 
 /** Build the function-table key for a class declared in `fileName` with class name `className`. */
-export function qualifiedClassName(fileName: string, className: string): string {
-  return `${fileName}::${className}`;
-}
+export { qualifiedClassName } from "./type-ref.js";
 
 function resolveAliasedSymbol(symbol: ts.Symbol | undefined, checker?: ts.TypeChecker): ts.Symbol | undefined {
   if (!symbol || !checker || !(symbol.flags & ts.SymbolFlags.Alias)) {
@@ -200,6 +206,8 @@ export interface ProgramLoweringResult {
    * System once across all artifacts.
    */
   systems: LoweredSystem[];
+  /** Struct types this program declared or imported, in collection order. */
+  structTypes: ArtifactStructTypeInfo[];
 }
 
 /** A System referenced by a lowered program, carrying program-local ids for the linker to remap. */
@@ -486,6 +494,14 @@ function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): st
     const enumValue = tryResolveEnumValue(exprNode, ctx);
     if (enumValue && enumValue.t === NativeType.Enum) {
       return enumValue.typeId;
+    }
+  }
+
+  // A struct factory call produces the declared struct type.
+  if (ts.isCallExpression(exprNode) && ts.isIdentifier(exprNode.expression)) {
+    const structDef = resolveStructTypeFactory(exprNode.expression, ctx);
+    if (structDef) {
+      return structDef.typeId;
     }
   }
 
@@ -967,7 +983,8 @@ export function lowerProgram(
   importedInterfaces?: ImportedInterface[],
   importedTypeAliases?: ImportedTypeAlias[],
   inlinedSystemConsts?: InlinedSystemConst[],
-  carriedPrivateFunctions?: CarriedPrivateFunction[]
+  carriedPrivateFunctions?: CarriedPrivateFunction[],
+  importedStructTypeDecls?: ImportedStructTypeDecl[]
 ): ProgramLoweringResult {
   const diagnostics: CompileDiagnostic[] = [];
   const callsiteVars = new Map<string, number>();
@@ -1020,6 +1037,52 @@ export function lowerProgram(
     if (!systemBindings.has(symbol) && !systemDecls.some((d) => d.symbol === symbol)) {
       systemDecls.push({ symbol, declName: nameNode.text, config });
     }
+    return true;
+  };
+
+  // `const X = StructType({...})` bindings: each registers a program-local
+  // struct type keyed by its `<file>::<binding>` identity, register-if-absent
+  // so every collecting program resolves to the one type.
+  const structTypes: ArtifactStructTypeInfo[] = [];
+  const collectedStructIdentities = new Set<string>();
+  const collectStructTypeDecl = (nameNode: ts.Identifier, initializer: ts.Expression | undefined): boolean => {
+    const call = structTypeCallExpression(initializer);
+    if (!call) return false;
+    const config = structTypeConfigObject(initializer);
+    if (!config) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.StructTypeConfigNotObjectLiteral,
+          `\`StructType\` for '${nameNode.text}' requires a single inline object-literal config.`,
+          call
+        )
+      );
+      return true;
+    }
+    const identity = qualifiedClassName(config.getSourceFile().fileName, nameNode.text);
+    if (collectedStructIdentities.has(identity)) return true;
+    collectedStructIdentities.add(identity);
+    const parts = extractStructTypeConfig(config, checker, services, diagnostics);
+    if (!parts) return true;
+    const registry = services.runtime.types;
+    let typeId = registry.resolveByName(identity);
+    if (typeId === undefined) {
+      typeId = registry.withOwner("dynamic", () =>
+        registry.addStructType(identity, {
+          fields: List.from(
+            parts.fields.map((field, index) => ({ name: field.name, typeId: field.typeId, fieldIndex: index }))
+          ),
+        })
+      );
+    }
+    structTypes.push({
+      identity,
+      name: parts.name,
+      typeId,
+      accessors: parts.accessors,
+      variables: parts.variables,
+      fields: parts.fields,
+    });
     return true;
   };
 
@@ -1109,6 +1172,7 @@ export function lowerProgram(
       for (const decl of stmt.declarationList.declarations) {
         if (ts.isIdentifier(decl.name)) {
           if (collectSystemDecl(decl.name, decl.initializer)) continue;
+          if (collectStructTypeDecl(decl.name, decl.initializer)) continue;
           callsiteVars.set(decl.name.text, nextCallsiteVar++);
         }
       }
@@ -1118,18 +1182,25 @@ export function lowerProgram(
   if (importedVariables) {
     for (const iv of importedVariables) {
       const declNode = iv.initializer?.parent;
-      if (
-        iv.initializer &&
-        declNode &&
-        ts.isVariableDeclaration(declNode) &&
-        ts.isIdentifier(declNode.name) &&
-        collectSystemDecl(declNode.name, iv.initializer)
-      ) {
+      const importedDeclName =
+        iv.initializer && declNode && ts.isVariableDeclaration(declNode) && ts.isIdentifier(declNode.name)
+          ? declNode.name
+          : undefined;
+      if (importedDeclName && collectSystemDecl(importedDeclName, iv.initializer)) {
+        continue;
+      }
+      if (importedDeclName && collectStructTypeDecl(importedDeclName, iv.initializer)) {
         continue;
       }
       if (!callsiteVars.has(iv.name)) {
         callsiteVars.set(iv.name, nextCallsiteVar++);
       }
+    }
+  }
+
+  if (importedStructTypeDecls) {
+    for (const decl of importedStructTypeDecls) {
+      collectStructTypeDecl(decl.nameNode, decl.initializer);
     }
   }
 
@@ -1579,6 +1650,7 @@ export function lowerProgram(
     functionTable,
     diagnostics,
     systems,
+    structTypes,
   };
 }
 
@@ -1934,6 +2006,239 @@ function extractSystemConfig(
     return undefined;
   }
   return { name, stateNode, initNode, thinkNode, methodNodes };
+}
+
+/**
+ * A `const X = StructType(...)` declaration collected from an imported module
+ * (exported or not); the entry compile registers its type so references in
+ * re-lowered bodies resolve.
+ */
+export interface ImportedStructTypeDecl {
+  nameNode: ts.Identifier;
+  initializer: ts.Expression;
+}
+
+/** Validated members of a `StructType({...})` config. */
+interface StructTypeConfigParts {
+  name: string;
+  accessors: boolean;
+  variables: boolean;
+  fields: { name: string; typeId: TypeId }[];
+}
+
+/**
+ * Extract and validate a `StructType({...})` config: a string `name`, a
+ * non-empty `fields` object of `name: type` entries (types resolved through
+ * the type-name expression forms), and optional boolean-literal `accessors`
+ * and `variables`. Each malformed member pushes its own diagnostic; returns
+ * undefined when any member fails.
+ */
+export function extractStructTypeConfig(
+  config: ts.ObjectLiteralExpression,
+  checker: ts.TypeChecker,
+  services: BrainServices,
+  diagnostics: CompileDiagnostic[]
+): StructTypeConfigParts | undefined {
+  let name: string | undefined;
+  let accessors = false;
+  let variables = false;
+  let fieldsNode: ts.ObjectLiteralExpression | undefined;
+  let sawFields = false;
+  let failed = false;
+
+  const readBooleanMember = (memberName: string, value: ts.Expression): boolean => {
+    if (value.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (value.kind === ts.SyntaxKind.FalseKeyword) return false;
+    diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.StructTypeMemberInvalid,
+        `\`StructType\` \`${memberName}\` must be a boolean literal.`,
+        value
+      )
+    );
+    failed = true;
+    return false;
+  };
+
+  for (const prop of config.properties) {
+    if (ts.isSpreadAssignment(prop)) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.StructTypeMemberInvalid,
+          "`StructType` config members must be written inline; spread is not supported.",
+          prop
+        )
+      );
+      failed = true;
+      continue;
+    }
+
+    let memberName: string | undefined;
+    let value: ts.Expression | undefined;
+    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+      memberName = prop.name.text;
+      value = prop.initializer;
+    } else if (ts.isShorthandPropertyAssignment(prop)) {
+      memberName = prop.name.text;
+      if (memberName === "fields") {
+        sawFields = true;
+      }
+      value = shorthandValueExpression(prop, checker);
+      if (!value) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeMemberInvalid,
+            `\`StructType\` \`${memberName}\` does not resolve to a declared value.`,
+            prop
+          )
+        );
+        failed = true;
+        continue;
+      }
+    } else {
+      continue;
+    }
+
+    switch (memberName) {
+      case "name":
+        if (ts.isStringLiteral(value)) {
+          name = value.text;
+        } else {
+          diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.StructTypeNameNotStringLiteral,
+              "`StructType` `name` must be a string literal.",
+              value
+            )
+          );
+          failed = true;
+        }
+        break;
+      case "fields":
+        sawFields = true;
+        if (ts.isObjectLiteralExpression(value)) {
+          fieldsNode = value;
+        } else {
+          diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.StructTypeMemberInvalid,
+              "`StructType` `fields` must be an object literal of `name: type` entries.",
+              value
+            )
+          );
+          failed = true;
+        }
+        break;
+      case "accessors":
+        accessors = readBooleanMember("accessors", value);
+        break;
+      case "variables":
+        variables = readBooleanMember("variables", value);
+        break;
+    }
+  }
+
+  if (name === undefined && !failed) {
+    diagnostics.push(
+      makeDiag(LoweringDiagCode.StructTypeNameNotStringLiteral, "`StructType` config requires a string `name`.", config)
+    );
+    failed = true;
+  }
+  if (fieldsNode === undefined && !sawFields) {
+    diagnostics.push(
+      makeDiag(LoweringDiagCode.StructTypeMemberInvalid, "`StructType` config requires a `fields` object.", config)
+    );
+    failed = true;
+  }
+
+  const fields: { name: string; typeId: TypeId }[] = [];
+  if (fieldsNode) {
+    for (const prop of fieldsNode.properties) {
+      let fieldName: string | undefined;
+      let typeExpr: ts.Expression | undefined;
+      if (ts.isPropertyAssignment(prop) && (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name))) {
+        fieldName = prop.name.text;
+        typeExpr = prop.initializer;
+      } else if (ts.isShorthandPropertyAssignment(prop)) {
+        fieldName = prop.name.text;
+        typeExpr = shorthandValueExpression(prop, checker);
+      }
+      if (fieldName === undefined) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeMemberInvalid,
+            "Each `StructType` field must be a `name: type` entry.",
+            prop
+          )
+        );
+        failed = true;
+        continue;
+      }
+      if (typeExpr === undefined) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeFieldTypeUnresolvable,
+            `\`StructType\` field '${fieldName}' does not resolve to a declared type value.`,
+            prop
+          )
+        );
+        failed = true;
+        continue;
+      }
+      if (fields.some((field) => field.name === fieldName)) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeDuplicateField,
+            `\`StructType\` field '${fieldName}' is declared more than once.`,
+            prop
+          )
+        );
+        failed = true;
+        continue;
+      }
+      const resolved = resolveTypeNameExpression(typeExpr, checker);
+      if ("error" in resolved) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeFieldTypeUnresolvable,
+            `\`StructType\` field '${fieldName}' type ${resolved.error}.`,
+            typeExpr
+          )
+        );
+        failed = true;
+        continue;
+      }
+      const fieldTypeId = services.runtime.types.resolveByName(resolved.name);
+      if (fieldTypeId === undefined) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeFieldTypeUnresolvable,
+            `\`StructType\` field '${fieldName}' names unknown type "${resolved.name}".`,
+            typeExpr
+          )
+        );
+        failed = true;
+        continue;
+      }
+      fields.push({ name: fieldName, typeId: fieldTypeId });
+    }
+
+    if (fields.length === 0 && !failed) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.StructTypeMemberInvalid,
+          "`StructType` `fields` must declare at least one field.",
+          fieldsNode
+        )
+      );
+      failed = true;
+    }
+  }
+
+  if (failed || name === undefined) {
+    return undefined;
+  }
+  return { name, accessors, variables, fields };
 }
 
 /** True when `node` carries an `export` modifier. */
@@ -4338,6 +4643,14 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
     }
   }
 
+  // An ambient TypeRef token has no runtime binding; as a value it evaluates
+  // to its canonical type name, so module consts carrying tokens lower inertly.
+  const tokenName = ambientTypeTokenName(expr, ctx.checker);
+  if (tokenName !== undefined) {
+    ctx.ir.push({ kind: "PushConst", value: mkStringValue(tokenName) });
+    return;
+  }
+
   ctx.diagnostics.push(makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.text}`, expr));
 }
 
@@ -4605,6 +4918,14 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
   }
 
   if (ts.isIdentifier(expr.expression)) {
+    const structDef = resolveStructTypeFactory(expr.expression, ctx);
+    if (structDef) {
+      lowerStructFactoryCall(expr, structDef, ctx);
+      return;
+    }
+  }
+
+  if (ts.isIdentifier(expr.expression)) {
     const carriedKey = resolveCarriedFunctionKey(expr.expression, ctx);
     const funcId = ctx.functionTable.get(carriedKey ?? expr.expression.text);
     if (funcId !== undefined) {
@@ -4803,6 +5124,55 @@ function lowerPromiseMethodCall(
   );
   ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
   return true;
+}
+
+/**
+ * Resolve an identifier to the registered struct type of its `StructType({...})`
+ * declaration (following import aliases), or undefined when the identifier is
+ * not a StructType binding or its type is not registered.
+ */
+function resolveStructTypeFactory(idNode: ts.Identifier, ctx: LowerContext): StructTypeDef | undefined {
+  let sym = ctx.checker.getSymbolAtLocation(idNode);
+  if (!sym) return undefined;
+  if (sym.flags & ts.SymbolFlags.Alias) {
+    sym = ctx.checker.getAliasedSymbol(sym);
+  }
+  const decls = sym.getDeclarations();
+  const decl = decls && decls.length > 0 ? decls[0] : undefined;
+  if (!decl || !ts.isVariableDeclaration(decl) || !ts.isIdentifier(decl.name)) return undefined;
+  if (!structTypeConfigObject(decl.initializer)) return undefined;
+
+  const identity = qualifiedClassName(decl.getSourceFile().fileName, decl.name.text);
+  const typeId = ctx.services.runtime.types.resolveByName(identity);
+  if (typeId === undefined) return undefined;
+  const typeDef = ctx.services.runtime.types.get(typeId);
+  if (!typeDef || typeDef.coreType !== NativeType.Struct) return undefined;
+  return typeDef as StructTypeDef;
+}
+
+/**
+ * Lower a struct factory call `Position({...})`: an object-literal argument
+ * constructs the instance directly; any other struct-typed argument passes
+ * through.
+ */
+function lowerStructFactoryCall(expr: ts.CallExpression, structDef: StructTypeDef, ctx: LowerContext): void {
+  const arg = expr.arguments.length === 1 ? expr.arguments[0] : undefined;
+  if (!arg) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.UnsupportedFunctionCall,
+        `\`${structDef.name}\` construction takes exactly one argument (the field values).`,
+        expr
+      )
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+  if (ts.isObjectLiteralExpression(arg)) {
+    lowerObjectLiteralAsStruct(arg, structDef, ctx);
+    return;
+  }
+  lowerExpression(arg, ctx);
 }
 
 /** Resolve an identifier to its System binding (following import aliases), or undefined. */

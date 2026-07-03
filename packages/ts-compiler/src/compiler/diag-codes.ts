@@ -205,6 +205,12 @@ export enum DescriptorDiagCode {
   ConversionConvertParamCount = 2070,
   /** a Conversion config's convert function is async (conversions are synchronous) */
   ConversionConvertMustBeSync = 2071,
+  /** a sensor config's returnType is not a type name string literal or type reference identifier */
+  ReturnTypeMustBeNameOrRef = 2072,
+  /** a config object uses spread; members must be written inline */
+  ConfigMemberNotInline = 2073,
+  /** a shorthand config member does not resolve to a declared value */
+  ShorthandMemberUnresolvable = 2074,
 }
 
 /**
@@ -493,6 +499,17 @@ export enum LoweringDiagCode {
    * tested with an explicit `=== undefined` comparison.
    */
   NotOnNullablePrimitive = 3194,
+
+  /** A `StructType({...})` config `name` is missing or not a string literal */
+  StructTypeNameNotStringLiteral = 3195,
+  /** A `StructType({...})` config member is malformed: `fields` missing, empty, or not `name: type` entries, or `accessors`/`variables` not boolean literals */
+  StructTypeMemberInvalid = 3196,
+  /** A `StructType({...})` field's type does not name a known type */
+  StructTypeFieldTypeUnresolvable = 3197,
+  /** Two `StructType({...})` fields share a name */
+  StructTypeDuplicateField = 3198,
+  /** A `StructType(...)` call's config argument is not a single inline object literal */
+  StructTypeConfigNotObjectLiteral = 3199,
 }
 
 /**
@@ -541,6 +558,12 @@ export enum CompileDiagCode {
   ConversionTypeUnresolved = 5010,
   /** A Conversion declares a `(from, to)` pair that another registration already holds */
   DuplicateConversionPair = 5011,
+  /** A `returnType`, output `type`, or param `type` reference does not name a known type */
+  UnresolvedTypeReference = 5012,
+  /** A Conversion's `from` and `to` name the same type */
+  ConversionSameType = 5013,
+  /** Two declarations carry the same stable `id` */
+  DuplicateActionId = 5014,
 }
 
 /**

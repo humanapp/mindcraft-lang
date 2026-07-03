@@ -29,6 +29,29 @@ export interface UserAuthoredProgram extends UserActionArtifact {
   capabilities?: string[];
   /** Named, typed outputs declared on a sensor; each surfaces as a derived inline output value-tile. */
   outputs?: ExtractedOutput[];
+  /** Struct types this program declares or imports; accessor and variable-factory tiles derive from them at registration. */
+  structTypes?: ArtifactStructTypeInfo[];
+}
+
+/**
+ * One user-declared struct type collected while compiling a program: the
+ * registered type, its declared tile surface, and its fields. Registration
+ * derives accessor tiles and the variable-factory tile from it,
+ * register-if-absent by tile id.
+ */
+export interface ArtifactStructTypeInfo {
+  /** Cross-module identity: `<declaring-file>::<binding-name>`. */
+  identity: string;
+  /** Display name from the config. */
+  name: string;
+  /** Registered struct {@link TypeId}. */
+  typeId: string;
+  /** When true, one accessor tile per field derives at registration. */
+  accessors: boolean;
+  /** When true, a "create variable" factory tile derives at registration. */
+  variables: boolean;
+  /** Declared fields in storage order. */
+  fields: { name: string; typeId: string }[];
 }
 
 /** A {@link UserAuthoredProgram} plus the offsets at which the linker placed its functions, constants, and variables in the merged brain program. */
@@ -93,6 +116,8 @@ export interface ExtractedDescriptor {
   idInsertOffset: number;
   name: string;
   returnType: string | undefined;
+  /** Unresolved `returnType` config reference; resolves to `returnType` during compilation. */
+  returnTypeNode?: ts.Expression;
   args: ExtractedArgSpec[];
   execIsAsync: boolean;
   onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction;
@@ -131,6 +156,8 @@ export interface ExtractedConversionParts {
 export interface ExtractedOutput {
   name: string;
   type: string;
+  /** Unresolved `type` config reference; resolves to `type` during compilation. */
+  typeNode?: ts.Expression;
   label?: string;
   icon?: string;
   docs?: string;
@@ -150,6 +177,8 @@ export interface ExtractedParam {
   kind: "param";
   name: string;
   type: string;
+  /** Unresolved `type` config reference; resolves to `type` during compilation. */
+  typeNode?: ts.Expression;
   defaultValue?: number | string | boolean | null;
   anonymous: boolean;
 }

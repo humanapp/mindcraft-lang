@@ -1,11 +1,18 @@
 import { List } from "@mindcraft-lang/core";
-import { CoreCapabilityBits, type ITileMetadata } from "@mindcraft-lang/core/brain";
+import {
+  type BrainServices,
+  CoreCapabilityBits,
+  type IBrainTileDef,
+  type ITileMetadata,
+} from "@mindcraft-lang/core/brain";
 import {
   BrainTileActuatorDef,
   BrainTileModifierDef,
   BrainTileOutputDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
+  createAccessorTileDef,
+  createVariableFactoryTileDef,
 } from "@mindcraft-lang/core/brain/tiles";
 import { type ActionDescriptor, mkModifierTileId, mkParameterTileId, type TypeId } from "@mindcraft-lang/core/runtime";
 import { BitSet } from "@mindcraft-lang/core/util";
@@ -14,6 +21,28 @@ import type { ExtractedModifier, ExtractedParam, UserAuthoredProgram } from "../
 
 /** Resolve a parameter type name to a runtime `TypeId`, or `undefined` when the type is not registered. */
 export type UserTileTypeResolver = (typeName: string) => TypeId | undefined;
+
+/**
+ * Accessor tiles and variable-factory tiles derived from a program's declared
+ * struct types: one accessor per field for `accessors: true` declarations, one
+ * variable factory for `variables: true` declarations. Tile ids derive from
+ * the struct's registered type id, so every program collecting one declared
+ * type derives the identical tile set (register-if-absent by tile id).
+ */
+export function buildStructTypeTiles(program: UserAuthoredProgram, services?: BrainServices): readonly IBrainTileDef[] {
+  const tiles: IBrainTileDef[] = [];
+  for (const structType of program.structTypes ?? []) {
+    if (structType.accessors) {
+      for (const field of structType.fields) {
+        tiles.push(createAccessorTileDef(structType.typeId, field.name, field.typeId));
+      }
+    }
+    if (structType.variables) {
+      tiles.push(createVariableFactoryTileDef(structType.typeId, structType.typeId, {}, services));
+    }
+  }
+  return tiles;
+}
 
 /** Output of {@link buildUserTileMetadata}: the tile metadata pieces a brain needs to register a user tile. */
 export interface BuiltUserTileMetadata {

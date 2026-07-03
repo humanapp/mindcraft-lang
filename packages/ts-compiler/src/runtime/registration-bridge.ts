@@ -1,7 +1,17 @@
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import type { ActionDescriptor, BytecodeResolvedAction } from "@mindcraft-lang/core/runtime";
 import type { UserAuthoredProgram } from "../compiler/types.js";
-import { buildUserTileMetadata } from "./user-tile-metadata.js";
+import { buildStructTypeTiles, buildUserTileMetadata } from "./user-tile-metadata.js";
+
+/** Register a program's derived struct-type tiles (accessors, variable factories) that are not yet registered. */
+function registerStructTypeTiles(program: UserAuthoredProgram, services: BrainServices): void {
+  const { tiles } = services.edit;
+  for (const structTile of buildStructTypeTiles(program, services)) {
+    if (!tiles.has(structTile.tileId)) {
+      tiles.registerTileDef(structTile);
+    }
+  }
+}
 
 /**
  * Register a compiled user conversion into the brain services: its bytecode
@@ -45,6 +55,8 @@ export function registerUserConversion(program: UserAuthoredProgram, services: B
       descriptor,
     });
   }
+
+  registerStructTypeTiles(program, services);
 }
 
 /** Register a single compiled user tile (action descriptor, action tile, and parameter tiles) into the brain services. */
@@ -99,4 +111,6 @@ export function registerUserTile(program: UserAuthoredProgram, services: BrainSe
   if (!tiles.has(actionTile.tileId)) {
     tiles.registerTileDef(actionTile);
   }
+
+  registerStructTypeTiles(program, services);
 }

@@ -49,6 +49,7 @@ import { extractDescriptor } from "./descriptor.js";
 import { CompileDiagCode, DescriptorDiagCode, LoweringDiagCode } from "./diag-codes.js";
 import { type CompileResult, type ProjectCompileResult, UserTileProject } from "./project.js";
 import type { UserAuthoredProgram } from "./types.js";
+import { createVirtualCompilerHost } from "./virtual-host.js";
 
 const NUM_TO_BUF_ID = "convnumbuf000001";
 
@@ -232,8 +233,11 @@ function tileIds(entries: TileSuggestionResult["exact"]): Set<string> {
 }
 
 function extractFromSource(source: string) {
-  const sourceFile = ts.createSourceFile("conversion.ts", source, ts.ScriptTarget.ES2016, true);
-  return extractDescriptor(sourceFile);
+  const host = createVirtualCompilerHost(new Map([["/conversion.ts", source]]), { noLib: true, skipLibCheck: true });
+  const program = ts.createProgram(["/conversion.ts"], { noLib: true, skipLibCheck: true }, host);
+  const sourceFile = program.getSourceFile("/conversion.ts");
+  assert.ok(sourceFile);
+  return extractDescriptor(sourceFile, program.getTypeChecker());
 }
 
 describe("Conversion declarations: compilation and registration", () => {
@@ -759,6 +763,143 @@ export default Conversion({
 });
 `);
     assert.ok(badConvert.diagnostics.some((d) => d.code === DescriptorDiagCode.ConversionConvertMustBeFunction));
+  });
+});
+
+describe("config member forms: shorthand, spread, and stable ids", () => {
+  test("a conversion declared entirely through shorthand members compiles with its declared id", () => {
+    const services = __test__createBrainServices();
+    const source = `import { BufferType, Conversion, NumberType } from "mindcraft";
+
+const id = "convnumbuf000009";
+const from = NumberType;
+const to = BufferType;
+const cost = 2;
+const convert = (value: number): Buffer => {
+  return Buffer.from([7, value, value + 1]);
+};
+
+export default Conversion({ id, from, to, cost, convert });
+`;
+    const result = compileProject(services, { "conv.ts": source });
+    const program = compiledProgram(result, "conv.ts");
+    assert.equal(program.id, "convnumbuf000009", "the shorthand id is honored");
+    assert.equal(result.sourceRewrites.has("conv.ts"), false, "no id is minted or written back");
+    assert.ok(program.conversion);
+    assert.equal(program.conversion.fromType, CoreTypeIds.Number);
+    assert.equal(program.conversion.toType, CoreTypeIds.Buffer);
+    assert.equal(program.conversion.cost, 2);
+  });
+
+  test("sensor config members resolve through shorthand, including nested type refs", () => {
+    const services = __test__createBrainServices();
+    const source = `import { NumberType, Sensor, setOutput, type Context } from "mindcraft";
+
+const name = "seven up";
+const returnType = NumberType;
+const type = "string";
+
+export default Sensor({
+  name,
+  returnType,
+  outputs: [{ name: "value", type }],
+  onExecute(ctx: Context): number {
+    setOutput(ctx, "value", "hi");
+    return 7;
+  },
+});
+`;
+    const result = compileProject(services, { "sensor.ts": source });
+    const program = compiledProgram(result, "sensor.ts");
+    assert.equal(program.name, "seven up");
+    assert.equal(program.outputType, CoreTypeIds.Number, "the shorthand returnType ref resolved");
+    assert.equal(program.outputs?.[0]?.type, "string", "the shorthand output type ref resolved");
+  });
+
+  test("a spread config member is rejected", () => {
+    const services = __test__createBrainServices();
+    const source = `import { BufferType, Conversion, NumberType } from "mindcraft";
+
+const base = { cost: 2 };
+
+export default Conversion({
+  id: "convnumbuf000010",
+  from: NumberType,
+  to: BufferType,
+  ...base,
+  convert(value: number): Buffer {
+    return Buffer.from([value]);
+  },
+});
+`;
+    const result = compileProject(services, { "conv.ts": source });
+    const diags = entryDiagnostics(result, "conv.ts");
+    assert.ok(
+      diags.some((d) => d.code === DescriptorDiagCode.ConfigMemberNotInline),
+      `expected ConfigMemberNotInline, got ${JSON.stringify(diags)}`
+    );
+  });
+
+  test("a shorthand member that resolves to no declared value is rejected", () => {
+    const extraction = extractFromSource(`import { cost } from "./missing-module";
+
+export default Conversion({
+  id: "convnumbuf000011",
+  from: "number",
+  to: "buffer",
+  cost,
+  convert(value: number): Buffer {
+    return Buffer.from([value]);
+  },
+});
+`);
+    assert.ok(
+      extraction.diagnostics.some((d) => d.code === DescriptorDiagCode.ShorthandMemberUnresolvable),
+      `expected ShorthandMemberUnresolvable, got ${JSON.stringify(extraction.diagnostics)}`
+    );
+  });
+
+  test("a conversion whose from and to name the same type is rejected", () => {
+    const services = __test__createBrainServices();
+    const source = `import { Conversion, NumberType } from "mindcraft";
+
+export default Conversion({
+  id: "convnumnum000001",
+  from: NumberType,
+  to: "number",
+  cost: 1,
+  convert(value: number): number {
+    return value + 1;
+  },
+});
+`;
+    const result = compileProject(services, { "conv.ts": source });
+    const diags = entryDiagnostics(result, "conv.ts");
+    assert.ok(
+      diags.some((d) => d.code === CompileDiagCode.ConversionSameType),
+      `expected ConversionSameType, got ${JSON.stringify(diags)}`
+    );
+  });
+
+  test("two declarations sharing a stable id are rejected on the later file", () => {
+    const services = __test__createBrainServices();
+    const sensor = (name: string) => `import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "copypasted0000id",
+  name: ${JSON.stringify(name)},
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`;
+    const result = compileProject(services, { "a.ts": sensor("first"), "b.ts": sensor("second") });
+    assert.deepEqual(entryDiagnostics(result, "a.ts"), [], "the first claimant compiles clean");
+    const bDiags = entryDiagnostics(result, "b.ts");
+    assert.ok(
+      bDiags.some((d) => d.code === CompileDiagCode.DuplicateActionId),
+      `expected DuplicateActionId, got ${JSON.stringify(bDiags)}`
+    );
   });
 });
 

@@ -2,7 +2,7 @@ import { type CompiledActionBundle, Dict } from "@mindcraft-lang/core";
 import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type { ProjectCompileResult } from "../compiler/compile.js";
 import type { UserAuthoredProgram } from "../compiler/types.js";
-import { buildUserTileMetadata, type UserTileTypeResolver } from "./user-tile-metadata.js";
+import { buildStructTypeTiles, buildUserTileMetadata, type UserTileTypeResolver } from "./user-tile-metadata.js";
 
 /** Options for {@link buildCompiledActionBundle}. */
 export interface BuildCompiledActionBundleOptions {
@@ -82,8 +82,10 @@ export function buildCompiledActionBundle(
   const tileMap = new Map<string, IBrainTileDef>();
 
   for (const program of programs) {
-    // A conversion has no tile surface; its artifact rides the bundle's
-    // action table alone and registers via its conversion metadata.
+    addTiles(tileMap, buildStructTypeTiles(program, options.services));
+
+    // A conversion has no tile surface of its own; its artifact rides the
+    // bundle's action table and registers via its conversion metadata.
     if (program.kind === "conversion") {
       actions.set(program.key, program);
       continue;
