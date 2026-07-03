@@ -95,9 +95,10 @@ its dependencies register is an order bug waiting for a layout that exposes
 it.
 
 Current sequence: collection of module-level declarations across the entry and
-every imported module; `StructType` registration; System binding and state
-processing; enum registration; reservation of ALL classes, interfaces, and
-type aliases; then finalization of all three kinds; then body lowering.
+every imported module; `StructType` registration; enum registration;
+reservation of ALL classes, interfaces, and type aliases; finalization of all
+three kinds; then System binding and state processing (a resolution consumer:
+state field types resolve against the completed registry); then body lowering.
 
 Three registration mechanisms exist, and every named-type kind uses one of the
 first two:

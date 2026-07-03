@@ -1331,10 +1331,50 @@ export function lowerProgram(
     deactivationFuncId = funcIdCounter.value++;
   }
 
+  const functions: FunctionEntry[] = [];
+
+  registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics, services);
+
+  // Reserve all user-declared named types before finalizing any: a field
+  // naming another user class, interface, or type alias resolves to its
+  // qualified reservation regardless of declaration or import-visit order.
+  const reservedClasses: { info: ClassInfo; typeId: string }[] = [];
+  for (const ci of classInfos) {
+    const typeId = reserveClassStructType(ci, services);
+    if (typeId) reservedClasses.push({ info: ci, typeId });
+  }
+
+  const reservedInterfaces: { info: InterfaceInfo; typeId: string }[] = [];
+  for (const ii of interfaceInfos) {
+    const typeId = reserveInterfaceStructType(ii, checker, diagnostics, services);
+    if (typeId) reservedInterfaces.push({ info: ii, typeId });
+  }
+
+  const reservedTypeAliases: { info: TypeAliasInfo; typeId: string }[] = [];
+  for (const tai of typeAliasInfos) {
+    const typeId = reserveTypeAliasStructType(tai, checker, diagnostics, services);
+    if (typeId) reservedTypeAliases.push({ info: tai, typeId });
+  }
+
+  for (const { info, typeId } of reservedClasses) {
+    finalizeClassStructType(info, typeId, checker, diagnostics, services);
+  }
+
+  for (const { info, typeId } of reservedInterfaces) {
+    finalizeInterfaceStructType(info, typeId, checker, diagnostics, services);
+  }
+
+  for (const { info, typeId } of reservedTypeAliases) {
+    finalizeTypeAliasStructType(info, typeId, checker, diagnostics, services);
+  }
+
   // Register each System's state struct type and reserve its func ids (methods,
   // user init/think bodies, and the generated wrappers) before any body is
-  // lowered, so references resolve and func ids stay contiguous. Reservation
-  // order here must match the push order in the System body-lowering pass below.
+  // lowered, so references resolve and func ids stay contiguous. State field
+  // types resolve against the completed registry: every user-declared named
+  // type (StructType, enum, class, interface, type alias) registers above.
+  // Reservation order here must match the push order in the System
+  // body-lowering pass below.
   const orderedSystemBindings: SystemBinding[] = [];
   for (const decl of systemDecls) {
     const parts = extractSystemConfig(decl.config, diagnostics);
@@ -1344,7 +1384,7 @@ export function lowerProgram(
       diagnostics.push(
         makeDiag(
           LoweringDiagCode.SystemStateUnresolvable,
-          "`System` `state` must be a non-empty object of VM-representable fields (numbers, strings, booleans, structs).",
+          "`System` `state` must be a non-empty object of VM-representable fields (numbers, strings, booleans, enums, or struct values such as class, interface, type alias, or StructType instances).",
           parts.stateNode
         )
       );
@@ -1384,45 +1424,8 @@ export function lowerProgram(
   const coLocatedSystemConfigs = systemDecls
     .filter((decl) => decl.config.getSourceFile() === sourceFile)
     .map((decl) => decl.config);
-  for (const ic of collectCoLocatedSystemConsts(coLocatedSystemConfigs, checker, diagnostics)) {
+  for (const ic of collectCoLocatedSystemConsts(coLocatedSystemConfigs, sourceFile, checker, diagnostics)) {
     inlineConsts.set(ic.symbol, ic.initializer);
-  }
-
-  const functions: FunctionEntry[] = [];
-
-  registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics, services);
-
-  // Reserve all user-declared named types before finalizing any: a field
-  // naming another user class, interface, or type alias resolves to its
-  // qualified reservation regardless of declaration or import-visit order.
-  const reservedClasses: { info: ClassInfo; typeId: string }[] = [];
-  for (const ci of classInfos) {
-    const typeId = reserveClassStructType(ci, services);
-    if (typeId) reservedClasses.push({ info: ci, typeId });
-  }
-
-  const reservedInterfaces: { info: InterfaceInfo; typeId: string }[] = [];
-  for (const ii of interfaceInfos) {
-    const typeId = reserveInterfaceStructType(ii, checker, diagnostics, services);
-    if (typeId) reservedInterfaces.push({ info: ii, typeId });
-  }
-
-  const reservedTypeAliases: { info: TypeAliasInfo; typeId: string }[] = [];
-  for (const tai of typeAliasInfos) {
-    const typeId = reserveTypeAliasStructType(tai, checker, diagnostics, services);
-    if (typeId) reservedTypeAliases.push({ info: tai, typeId });
-  }
-
-  for (const { info, typeId } of reservedClasses) {
-    finalizeClassStructType(info, typeId, checker, diagnostics, services);
-  }
-
-  for (const { info, typeId } of reservedInterfaces) {
-    finalizeInterfaceStructType(info, typeId, checker, diagnostics, services);
-  }
-
-  for (const { info, typeId } of reservedTypeAliases) {
-    finalizeTypeAliasStructType(info, typeId, checker, diagnostics, services);
   }
 
   const onExecEntry = lowerOnExecuteBody(
@@ -2414,19 +2417,24 @@ function isPrimitiveValuedConst(decl: ts.VariableDeclaration, checker: ts.TypeCh
  * Classify a value-reference `id` against its defining `moduleFile`. When `id`
  * resolves to a top-level `function` declaration, `onFunction` is invoked (the
  * caller carries a non-exported one and traverses an exported one); when it
- * resolves to a primitive-valued `const`, `onConst` is invoked. When
- * `diagnostics` is provided, a reference to a top-level binding that cannot be
- * used from a System fiber -- a module-level `let`/`var`, a co-located System, a
- * non-primitive `const`, or a class/enum -- pushes a
- * {@link LoweringDiagCode.SystemModuleReferenceNotCarryable} diagnostic; passing
- * `undefined` leaves those references alone (they resolve normally in an ordinary
- * fiber). Any reference resolving outside `moduleFile`, to a nested local, or to
- * a member is left alone.
+ * resolves to a primitive-valued `const`, `onConst` is invoked. A reference to
+ * a `StructType({...})` binding is left alone: it resolves through the
+ * registered struct type in any fiber. A class or enum declared in `localFile`
+ * (the module whose compile lowers the System body) is left alone: it resolves
+ * through that compile's own class and enum registration. When `diagnostics` is
+ * provided, a reference to a top-level binding that cannot be used from a
+ * System fiber -- a module-level `let`/`var`, a co-located System, a
+ * non-primitive `const`, or a non-exported class/enum in another module --
+ * pushes a {@link LoweringDiagCode.SystemModuleReferenceNotCarryable}
+ * diagnostic; passing `undefined` leaves those references alone (they resolve
+ * normally in an ordinary fiber). Any reference resolving outside `moduleFile`,
+ * to a nested local, or to a member is left alone.
  */
 function classifySystemModuleReference(
   id: ts.Identifier,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[] | undefined,
+  localFile: ts.SourceFile | undefined,
   onFunction: (decl: ts.FunctionDeclaration, symbol: ts.Symbol) => void,
   onConst: (decl: ts.VariableDeclaration, symbol: ts.Symbol) => void
 ): void {
@@ -2453,6 +2461,9 @@ function classifySystemModuleReference(
         list.parent.parent === declFile
       ) {
         const isConst = (list.flags & ts.NodeFlags.Const) !== 0;
+        if (isConst && structTypeCallExpression(decl.initializer)) {
+          return;
+        }
         if (isConst && !systemConfigObject(decl.initializer)) {
           if (isPrimitiveValuedConst(decl, checker)) {
             onConst(decl, symbol);
@@ -2480,11 +2491,11 @@ function classifySystemModuleReference(
       return;
     }
 
-    if (decl.parent === declFile && !hasExportModifierNode(decl)) {
+    if (decl.parent === declFile && !hasExportModifierNode(decl) && declFile !== localFile) {
       diagnostics?.push(
         makeDiag(
           LoweringDiagCode.SystemModuleReferenceNotCarryable,
-          `A System body references '${id.text}', a module-level binding that cannot be carried; only \`const\` values and \`function\` declarations are supported.`,
+          `A System body references '${id.text}', a non-exported binding in its defining module; export it (or use a \`const\` value or \`function\`) so importing modules can resolve it.`,
           id
         )
       );
@@ -2542,6 +2553,7 @@ function walkSystemBindingClosure(
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
   diagnoseNonCarryable: boolean,
+  localFile: ts.SourceFile | undefined,
   onFunction: (decl: ts.FunctionDeclaration, symbol: ts.Symbol, enqueue: (node: ts.Node) => void) => void,
   onConst: (decl: ts.VariableDeclaration, symbol: ts.Symbol, enqueue: (node: ts.Node) => void) => void
 ): void {
@@ -2561,6 +2573,7 @@ function walkSystemBindingClosure(
             n,
             checker,
             diagnoseNonCarryable ? diagnostics : undefined,
+            localFile,
             (fnDecl, symbol) => onFunction(fnDecl, symbol, enqueue),
             (constDecl, symbol) => onConst(constDecl, symbol, enqueue)
           );
@@ -2575,12 +2588,14 @@ function walkSystemBindingClosure(
 
 /**
  * Collect the module-level `const` bindings that co-located Systems (Systems
- * defined in the same module as their consuming tile) reference, transitively
- * through the functions they call, for the inline map. Their per-callsite backing
- * store is not bound in a System fiber. Non-carryable references are diagnosed.
+ * defined in the same module as their consuming tile, `entryFile`) reference,
+ * transitively through the functions they call, for the inline map. Their
+ * per-callsite backing store is not bound in a System fiber. Non-carryable
+ * references are diagnosed.
  */
 function collectCoLocatedSystemConsts(
   systemConfigs: ts.ObjectLiteralExpression[],
+  entryFile: ts.SourceFile,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[]
 ): InlinedSystemConst[] {
@@ -2592,6 +2607,7 @@ function collectCoLocatedSystemConsts(
     checker,
     diagnostics,
     true,
+    entryFile,
     (fnDecl, _symbol, enqueue) => {
       if (fnDecl.body) enqueue(fnDecl.body);
     },
@@ -2682,7 +2698,7 @@ export function collectSystemModuleBindings(
     };
     // System roots: strict -- consts reached from a System fiber (exported or not)
     // must inline, and non-carryable references are diagnosed.
-    walkSystemBindingClosure(systemConfigs, checker, diagnostics, true, carryFunction, carryConst);
+    walkSystemBindingClosure(systemConfigs, checker, diagnostics, true, undefined, carryFunction, carryConst);
     // Exported-function roots: lenient -- carry only the non-exported bindings a
     // re-lowered function needs; exported consts keep their callsite-var backing.
     walkSystemBindingClosure(
@@ -2690,6 +2706,7 @@ export function collectSystemModuleBindings(
       checker,
       diagnostics,
       false,
+      undefined,
       carryFunction,
       (constDecl, symbol, enqueue) => {
         const stmt = constDecl.parent.parent;
@@ -11393,7 +11410,9 @@ function autoRegisterAnonymousStruct(
   const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
   const nameParts: string[] = [];
   for (const prop of props) {
-    const propType = checker.getTypeOfSymbol(prop);
+    // Literal field types widen to their declared types (an enum member
+    // becomes its enum), matching the object type TypeScript itself infers.
+    const propType = checker.getBaseTypeOfLiteralType(checker.getTypeOfSymbol(prop));
     if (propType.getCallSignatures().length > 0) return undefined;
     let fieldTypeId = tsTypeToTypeId(propType, checker, services);
     if (!fieldTypeId) return undefined;
