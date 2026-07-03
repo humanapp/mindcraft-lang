@@ -3667,7 +3667,7 @@ function lowerArrayRestElement(
 }
 
 function lowerIfStatement(stmt: ts.IfStatement, ctx: LowerContext): void {
-  lowerExpression(stmt.expression, ctx);
+  lowerCondition(stmt.expression, ctx);
 
   if (stmt.elseStatement) {
     const elseLabel = allocLabel(ctx);
@@ -3696,7 +3696,7 @@ function lowerWhileStatement(stmt: ts.WhileStatement, ctx: LowerContext): void {
 
   ctx.ir.push({ kind: "Label", labelId: loopStart });
   const condStart = ctx.ir.length;
-  lowerExpression(stmt.expression, ctx);
+  lowerCondition(stmt.expression, ctx);
   annotateFirstNode(ctx.ir, condStart, stmt.expression, true);
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
   lowerStatement(stmt.statement, ctx);
@@ -3717,7 +3717,7 @@ function lowerDoWhileStatement(stmt: ts.DoStatement, ctx: LowerContext): void {
   lowerStatement(stmt.statement, ctx);
   ctx.ir.push({ kind: "Label", labelId: continueTarget });
   const condStart = ctx.ir.length;
-  lowerExpression(stmt.expression, ctx);
+  lowerCondition(stmt.expression, ctx);
   annotateFirstNode(ctx.ir, condStart, stmt.expression, true);
   ctx.ir.push({ kind: "JumpIfTrue", labelId: loopStart });
   ctx.ir.push({ kind: "Label", labelId: loopEnd });
@@ -3747,7 +3747,7 @@ function lowerForStatement(stmt: ts.ForStatement, ctx: LowerContext): void {
 
   if (stmt.condition) {
     const condStart = ctx.ir.length;
-    lowerExpression(stmt.condition, ctx);
+    lowerCondition(stmt.condition, ctx);
     annotateFirstNode(ctx.ir, condStart, stmt.condition, true);
     ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
   }
@@ -6085,6 +6085,27 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
       );
       return;
     }
+    const nullableBase = nullableCoreType(operandTypeId, ctx.services);
+    if (nullableBase !== undefined && ALWAYS_TRUTHY_CORE_TYPES.includes(nullableBase)) {
+      // A present value of these types is always truthy, so `!x` is exactly
+      // the nil test.
+      ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+      return;
+    }
+    if (
+      nullableBase === NativeType.Boolean ||
+      nullableBase === NativeType.Number ||
+      nullableBase === NativeType.String
+    ) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.NotOnNullablePrimitive,
+          '`!` on a maybe-absent number, string, or boolean conflates absence with 0, "", or false; compare `=== undefined` to test absence',
+          expr
+        )
+      );
+      return;
+    }
     const fnName = resolveOperatorWithExpansion(CoreOpId.Not, [operandTypeId], ctx.services);
     if (!fnName) {
       ctx.diagnostics.push(
@@ -6557,14 +6578,73 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
   storeEmit();
 }
 
+/**
+ * The core type behind a nullable type id, or undefined when the id does not
+ * name a registered nullable type.
+ */
+function nullableCoreType(typeId: TypeId | undefined, services: BrainServices): NativeType | undefined {
+  if (!typeId) return undefined;
+  const def = services.runtime.types.get(typeId);
+  return def?.nullable ? def.coreType : undefined;
+}
+
+/** Core types whose present values are always truthy in TypeScript. */
+const ALWAYS_TRUTHY_CORE_TYPES: readonly NativeType[] = [
+  NativeType.Struct,
+  NativeType.List,
+  NativeType.Map,
+  NativeType.Buffer,
+  NativeType.Enum,
+  NativeType.Function,
+];
+
+/**
+ * True when a truthiness test on the expression is a presence test: the
+ * expression's type is nullable and any present value of its base type is
+ * truthy in TypeScript, so the test can only distinguish present from absent.
+ */
+function isPresenceConditionExpression(expr: ts.Expression, ctx: LowerContext): boolean {
+  const coreType = nullableCoreType(resolveExpressionTypeId(expr, ctx), ctx.services);
+  return coreType !== undefined && ALWAYS_TRUTHY_CORE_TYPES.includes(coreType);
+}
+
+/**
+ * Lowers a condition expression, leaving a value whose VM truthiness matches
+ * TypeScript truthiness. A presence-test condition (see
+ * {@link isPresenceConditionExpression}) lowers to an explicit nil test, since
+ * VM truthiness of a present empty list, map, or buffer would otherwise
+ * diverge from TypeScript.
+ */
+function lowerCondition(expr: ts.Expression, ctx: LowerContext): void {
+  lowerExpression(expr, ctx);
+  if (!isPresenceConditionExpression(expr, ctx)) {
+    return;
+  }
+  ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+  const notFn = resolveOperator(CoreOpId.Not, [CoreTypeIds.Boolean], ctx.services);
+  if (!notFn) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UnsupportedOperator, "Missing not() operator for presence condition", expr)
+    );
+    return;
+  }
+  ctx.ir.push({ kind: "HostCall", fnName: notFn, argc: 1 });
+}
+
 function lowerShortCircuit(expr: ts.BinaryExpression, ctx: LowerContext): void {
   const endLabel = allocLabel(ctx);
+  const isAnd = expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken;
   lowerExpression(expr.left, ctx);
-  // Dup before JumpIfFalse/JumpIfTrue because the conditional jump consumes the
-  // value it tests. The duplicate is what remains on the stack as the result when
-  // the short-circuit branch is taken (the left-hand value is the overall result).
+  // Dup before the branch test because the test consumes the value it examines.
+  // The duplicate is what remains on the stack as the result when the
+  // short-circuit branch is taken (the left-hand value is the overall result).
   ctx.ir.push({ kind: "Dup" });
-  if (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+  if (isPresenceConditionExpression(expr.left, ctx)) {
+    // Presence-typed left operand: short-circuit on nil-ness, matching
+    // TypeScript truthiness where any present object value is truthy.
+    ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+    ctx.ir.push(isAnd ? { kind: "JumpIfTrue", labelId: endLabel } : { kind: "JumpIfFalse", labelId: endLabel });
+  } else if (isAnd) {
     ctx.ir.push({ kind: "JumpIfFalse", labelId: endLabel });
   } else {
     ctx.ir.push({ kind: "JumpIfTrue", labelId: endLabel });
@@ -6577,7 +6657,7 @@ function lowerShortCircuit(expr: ts.BinaryExpression, ctx: LowerContext): void {
 function lowerConditionalExpression(expr: ts.ConditionalExpression, ctx: LowerContext): void {
   const elseLabel = allocLabel(ctx);
   const endLabel = allocLabel(ctx);
-  lowerExpression(expr.condition, ctx);
+  lowerCondition(expr.condition, ctx);
   ctx.ir.push({ kind: "JumpIfFalse", labelId: elseLabel });
   lowerExpression(expr.whenTrue, ctx);
   ctx.ir.push({ kind: "Jump", labelId: endLabel });
@@ -10590,6 +10670,9 @@ function tsTypeToTypeId(
   const enumTypeId = resolveRegisteredEnumTypeId(type, services, checker);
   if (enumTypeId) {
     return enumTypeId;
+  }
+  if (isBufferType(type)) {
+    return CoreTypeIds.Buffer;
   }
   const callSigs = type.getCallSignatures();
   if (callSigs.length > 0 && checker) {

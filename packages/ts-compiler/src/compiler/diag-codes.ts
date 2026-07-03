@@ -487,6 +487,12 @@ export enum LoweringDiagCode {
    * across the module boundary.
    */
   SystemModuleReferenceNotCarryable = 3193,
+
+  /**
+   * `!` applied to a maybe-absent number, string, or boolean; absence must be
+   * tested with an explicit `=== undefined` comparison.
+   */
+  NotOnNullablePrimitive = 3194,
 }
 
 /**
