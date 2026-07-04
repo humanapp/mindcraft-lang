@@ -235,6 +235,14 @@ interface LowerContext {
   checker: ts.TypeChecker;
   paramsSymbol: ts.Symbol | undefined;
   paramLocals: Map<string, number>;
+  /**
+   * Action arg property name -> its positional local slot (locals `1..N`), set
+   * for a sensor/actuator `onExecute` that declares args. Consulted only by the
+   * `args.<prop>` access path. Bare identifiers and assignment targets resolve
+   * against {@link scopeStack}; a local with the same name as an arg shadows it.
+   * Absent outside `onExecute`.
+   */
+  argLocals?: Map<string, number>;
   scopeStack: ScopeStack;
   ir: IrNode[];
   diagnostics: CompileDiagnostic[];
@@ -3106,6 +3114,7 @@ function lowerOnExecuteBody(
     paramLocals.set(ctxParam.name.text, 0);
   }
 
+  const argLocals = new Map<string, number>();
   let paramsSymbol: ts.Symbol | undefined;
   const nextLabelId = 0;
   if (hasArgs) {
@@ -3117,7 +3126,7 @@ function lowerOnExecuteBody(
     for (const slot of argSlots) {
       const name = argSlotPropertyName(slot);
       const localIdx = 1 + slot.slotId;
-      paramLocals.set(name, localIdx);
+      argLocals.set(name, localIdx);
     }
   }
 
@@ -3152,7 +3161,7 @@ function lowerOnExecuteBody(
   if (hasArgs) {
     for (const slot of argSlots) {
       const name = argSlotPropertyName(slot);
-      const idx = paramLocals.get(name);
+      const idx = argLocals.get(name);
       if (idx !== undefined) {
         scopeStack.addParameterMetadata(name, idx, funcScopeId);
       }
@@ -3164,6 +3173,7 @@ function lowerOnExecuteBody(
     checker,
     paramsSymbol,
     paramLocals,
+    argLocals,
     scopeStack,
     ir,
     diagnostics: sharedDiagnostics,
@@ -10142,7 +10152,7 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     const objSymbol = ctx.checker.getSymbolAtLocation(expr.expression);
     if (objSymbol === ctx.paramsSymbol) {
       const paramName = expr.name.text;
-      const localIdx = ctx.paramLocals.get(paramName);
+      const localIdx = ctx.argLocals?.get(paramName);
       if (localIdx !== undefined) {
         ctx.ir.push({ kind: "LoadLocal", index: localIdx });
         return;
