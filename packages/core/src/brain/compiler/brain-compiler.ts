@@ -372,13 +372,19 @@ export class BrainCompiler {
     const endLabel = emitter.label();
 
     // Emit WHEN section. A bare presence-gated value sensor as the WHEN root
-    // gates DO on presence (non-nil); every other WHEN gates on truthiness.
-    emitter.whenStart();
-    this.emitExprs(whenParseResult.exprs, emitter, typeEnv, true);
-    if (isBarePresenceGatedSensor(whenParseResult.exprs.get(0))) {
-      emitter.whenEndPresent(endLabel);
-    } else {
-      emitter.whenEnd(endLabel);
+    // gates DO on presence (non-nil); every other WHEN gates on truthiness. A
+    // rule with no WHEN condition captures no WHEN result and fires
+    // unconditionally: it emits no WHEN section, so getWhenResult in its DO reads
+    // no own slot and falls through to an enclosing rule's captured result.
+    const whenIsEmpty = whenParseResult.exprs.get(0).kind === "empty";
+    if (!whenIsEmpty) {
+      emitter.whenStart();
+      this.emitExprs(whenParseResult.exprs, emitter, typeEnv, true);
+      if (isBarePresenceGatedSensor(whenParseResult.exprs.get(0))) {
+        emitter.whenEndPresent(endLabel);
+      } else {
+        emitter.whenEnd(endLabel);
+      }
     }
 
     // Emit DO section

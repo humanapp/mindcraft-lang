@@ -357,6 +357,7 @@ declare module "mindcraft" {
     readonly brain: BrainContext;
     readonly engine: EngineContext;
     readonly rule: RuleContext;
+    getWhenResult(): MindcraftValue;
   }
 
   type MindcraftValue = MindcraftTypeMap[keyof MindcraftTypeMap];

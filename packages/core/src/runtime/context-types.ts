@@ -2,7 +2,7 @@ import type { BrainServices } from "../brain/services";
 import { List, type ReadonlyList } from "../platform/list";
 import { CoreFuncId, CoreTypeAtomId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
-import { getRuleVariable, setRuleVariable } from "./context";
+import { getRuleVariable, getWhenResult, setRuleVariable } from "./context";
 import { CoreTypeIds, mkTypeId } from "./core-types";
 import { mkCallDef } from "./function-defs";
 import { NativeType } from "./type-defs";
@@ -100,6 +100,13 @@ export function registerContextTypes(services: BrainServices) {
       { name: "engine", typeId: engineContextTypeId, fieldIndex: ContextField.Engine },
       { name: "rule", typeId: ruleContextTypeId, fieldIndex: ContextField.Rule },
     ]),
+    methods: List.from([
+      {
+        name: "getWhenResult",
+        params: List.empty(),
+        returnTypeId: CoreTypeIds.Any,
+      },
+    ]),
     fieldGetter: (source: StructValue, fieldId: number) => {
       const execCtx = source.native as ExecutionContext;
       switch (fieldId) {
@@ -177,6 +184,16 @@ export function registerContextTypes(services: BrainServices) {
         setRuleVariable(ctx, name, value);
         return NIL_VALUE;
       },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    CoreFuncId.ContextGetWhenResult,
+    "Context.getWhenResult",
+    false,
+    {
+      exec: (ctx: ExecutionContext) => getWhenResult(ctx),
     },
     emptyCallDef
   );

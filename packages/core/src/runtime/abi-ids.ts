@@ -192,6 +192,7 @@ export enum CoreFuncId {
   BufferFromString = 98,
   BufferLength = 99,
   BufferGet = 100,
+  ContextGetWhenResult = 101,
 }
 
 /**
