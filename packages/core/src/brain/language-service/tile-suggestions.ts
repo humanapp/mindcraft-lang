@@ -16,11 +16,13 @@ import type { ReadonlyBitSet } from "../../util/bitset";
 import { parseBrainTiles } from "../compiler/parser";
 import type { ActuatorExpr, Expr, FieldAccessExpr, SensorExpr, Span } from "../compiler/types";
 import {
+  ConsumesAnyWhenResult,
   CoreControlFlowId,
+  type IBrainRuleDef,
   type IBrainTileDef,
   type ITileCatalog,
   mkControlFlowTileId,
-  type RuleSide,
+  RuleSide,
   type TileId,
   TilePlacement,
 } from "../interfaces";
@@ -52,6 +54,22 @@ export enum TileCompatibility {
 }
 
 /**
+ * How a WHEN-result-consuming tile relates to the rule's WHEN-result type.
+ * Present only on suggestions whose tile declares `consumesWhenResult()`. It is
+ * advisory: the tile is offered regardless of the affinity.
+ */
+export enum WhenResultAffinity {
+  /** The tile consumes the WHEN result and its declared type accepts it (or it is a universal consumer). */
+  Fed = 0,
+  /**
+   * The tile consumes the WHEN result but the rule produces none, or produces one
+   * the declared type does not accept. The tile is still offered; this is a
+   * non-blocking signal.
+   */
+  Mismatch = 1,
+}
+
+/**
  * A single tile suggestion with type compatibility information.
  */
 export interface TileSuggestion {
@@ -61,6 +79,12 @@ export interface TileSuggestion {
   compatibility: TileCompatibility;
   /** Total conversion cost (0 for exact and unchecked matches) */
   conversionCost: number;
+  /**
+   * WHEN-result affinity, set only when the tile declares `consumesWhenResult()`
+   * and the insertion point is on the DO side. Undefined for tiles that do not
+   * consume the WHEN result.
+   */
+  whenResult?: WhenResultAffinity;
 }
 
 /**
@@ -130,6 +154,13 @@ export interface InsertionContext {
    * and value-producing tiles are valid inside grouped expressions).
    */
   unclosedParenDepth?: number;
+  /**
+   * The type of the rule's WHEN result (see `getRuleWhenResultType`), or
+   * undefined when the rule produces no WHEN result. On the DO side, tiles that
+   * declare `consumesWhenResult()` are annotated with a {@link WhenResultAffinity}
+   * against this type. It never excludes a tile from suggestions.
+   */
+  whenResultType?: TypeId;
 }
 
 // ---- Helpers ----
@@ -1331,6 +1362,93 @@ function findOwningSlotId(actionExpr: ActuatorExpr | SensorExpr, tileIndex: numb
   return bestBeforeId ?? bestAfterId;
 }
 
+// ---- WHEN Result ----
+
+/**
+ * Derives the type of a rule's WHEN result: the value the rule's WHEN side
+ * produces and the runtime captures for the DO side to consume.
+ *
+ * Reads only the WHEN side, typing its expression with `getExprOutputType`: a
+ * value-bearing event sensor (e.g. `radio receive buffer`) yields its `outputType`
+ * and a boolean or composed condition yields `Boolean`.
+ *
+ * An empty WHEN produces no result of its own; this walks the `ancestor()` chain
+ * to the nearest enclosing rule that produces one. Returns undefined when no
+ * enclosing rule produces a typable WHEN result.
+ */
+export function getRuleWhenResultType(ruleDef: IBrainRuleDef, services: BrainServices): TypeId | undefined {
+  const { operatorOverloads } = services.edit;
+  const { conversions } = services.shared;
+  let current: IBrainRuleDef | undefined = ruleDef;
+  while (current) {
+    const whenTiles = current.when().tiles();
+    if (whenTiles.size() > 0) {
+      const expr = parseTilesForSuggestions(whenTiles);
+      const outputType = getExprOutputType(expr, operatorOverloads, conversions);
+      if (outputType === undefined || outputType === CoreTypeIds.Unknown || outputType === CoreTypeIds.Void) {
+        return undefined;
+      }
+      return outputType;
+    }
+    current = current.ancestor();
+  }
+  return undefined;
+}
+
+/**
+ * Whether a value of `whenResultType` is accepted by a consumer declaring
+ * `declaredType`, by exact match or an available conversion.
+ */
+function whenResultTypeAccepts(
+  whenResultType: TypeId,
+  declaredType: TypeId,
+  conversions: IConversionRegistry
+): boolean {
+  if (whenResultType === declaredType) return true;
+  const path = conversions.findBestPath(whenResultType, declaredType);
+  return path !== undefined && path.size() > 0;
+}
+
+/**
+ * Classifies a consumer tile's declared WHEN-result type against the rule's
+ * actual WHEN-result type. Returns undefined for tiles that do not declare
+ * `consumesWhenResult()`.
+ */
+function classifyWhenResultAffinity(
+  tileDef: IBrainTileDef,
+  whenResultType: TypeId | undefined,
+  conversions: IConversionRegistry
+): WhenResultAffinity | undefined {
+  const declared = tileDef.consumesWhenResult();
+  if (declared === undefined) return undefined;
+  if (whenResultType === undefined) return WhenResultAffinity.Mismatch;
+  if (declared === ConsumesAnyWhenResult) return WhenResultAffinity.Fed;
+  return whenResultTypeAccepts(whenResultType, declared, conversions)
+    ? WhenResultAffinity.Fed
+    : WhenResultAffinity.Mismatch;
+}
+
+/**
+ * Annotates every suggestion whose tile declares `consumesWhenResult()` with a
+ * {@link WhenResultAffinity} against `whenResultType`. Suggestions for tiles that
+ * do not consume the WHEN result are left untouched.
+ */
+function annotateWhenResultConsumers(
+  result: TileSuggestionResult,
+  whenResultType: TypeId | undefined,
+  conversions: IConversionRegistry
+): void {
+  const annotate = (list: List<TileSuggestion>) => {
+    for (let i = 0; i < list.size(); i++) {
+      const suggestion = list.get(i);
+      const affinity = classifyWhenResultAffinity(suggestion.tileDef, whenResultType, conversions);
+      if (affinity !== undefined) suggestion.whenResult = affinity;
+    }
+  };
+  annotate(result.exact);
+  annotate(result.withConversion);
+}
+
 // ---- Main API ----
 
 /**
@@ -1370,6 +1488,14 @@ export function suggestTiles(
     withConversion: List.empty(),
   };
 
+  // Only DO-side insertion points carry a WHEN-result affinity.
+  const finalize = (): TileSuggestionResult => {
+    if ((context.ruleSide & RuleSide.Do) !== 0) {
+      annotateWhenResultConsumers(result, context.whenResultType, conversions);
+    }
+    return result;
+  };
+
   const expr: Expr = context.expr ?? { nodeId: 0, kind: "empty" };
 
   // ---- Replacement mode ----
@@ -1380,7 +1506,7 @@ export function suggestTiles(
     if (exprContainsTileIndex(expr, context.replaceTileIndex)) {
       const role = findReplacementRole(expr, context.replaceTileIndex, { kind: "expressionPosition" });
       suggestForReplacementRole(role, context, catalogs, conversions, types, operatorOverloads, result);
-      return result;
+      return finalize();
     }
     // Tile is outside the AST (e.g., a paren) -- fall through to append mode.
   }
@@ -1575,7 +1701,7 @@ export function suggestTiles(
       break;
   }
 
-  return result;
+  return finalize();
 }
 
 // ---- Close Paren ----

@@ -1,2 +1,2 @@
-export { useRuleCapabilities, useRuleOutputKeys } from "./useRuleCapabilities";
+export { useRuleCapabilities, useRuleOutputKeys, useRuleWhenResultType } from "./useRuleCapabilities";
 export { useTileSelection } from "./useTileSelection";

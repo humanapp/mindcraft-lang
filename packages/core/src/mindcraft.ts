@@ -160,6 +160,12 @@ type HostActionOptionsBase = {
   readonly callDef: BrainActionCallDef;
   readonly metadata?: ITileMetadata;
   readonly capabilities?: BrainTileDefCreateOptions["capabilities"];
+  /**
+   * Declares that this action's tile consumes the rule's WHEN result. Set to the
+   * expected `TypeId`, or `ConsumesAnyWhenResult` for a universal consumer. The
+   * editor uses it to offer and validate the tile against the WHEN-result type.
+   */
+  readonly consumesWhenResult?: BrainTileDefCreateOptions["consumesWhenResult"];
 };
 
 type SyncHostActionOptions = HostActionOptionsBase & {
@@ -222,6 +228,7 @@ export function createHostSensor(options: CreateHostSensorOptions): HostSensorDe
     tile: new BrainTileSensorDef(options.key, descriptor, {
       metadata: options.metadata,
       capabilities: options.capabilities,
+      consumesWhenResult: options.consumesWhenResult,
       providedOutputs: options.outputs
         ? List.from(options.outputs.map((output) => mkOutputVarKey(output.type, output.name)))
         : undefined,
@@ -249,6 +256,7 @@ export function createHostActuator(options: CreateHostActuatorOptions): HostActu
     tile: new BrainTileActuatorDef(options.key, descriptor, {
       metadata: options.metadata,
       capabilities: options.capabilities,
+      consumesWhenResult: options.consumesWhenResult,
     }),
   };
 }

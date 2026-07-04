@@ -1,13 +1,15 @@
 import { List } from "@mindcraft-lang/core";
 import { type BrainServices, compiler } from "@mindcraft-lang/core/brain";
 import type { BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
-import type { ITypeRegistry, TypeId } from "@mindcraft-lang/core/runtime";
+import type { FunctionBytecode, ITypeRegistry, TypeId } from "@mindcraft-lang/core/runtime";
 import {
+  CoreFuncId,
   isBytecodeConversion,
   mkActuatorTileId,
   mkModifierTileId,
   mkParameterTileId,
   mkSensorTileId,
+  Op,
 } from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -483,6 +485,24 @@ export class UserTileProject {
       };
     }
 
+    const qualifiedConsumesWhenResult = descriptor.consumesWhenResult
+      ? qualifyDescriptorType(descriptor.consumesWhenResult, sourceFile, services.runtime.types)
+      : undefined;
+    const consumesWhenResultType = qualifiedConsumesWhenResult
+      ? services.runtime.types.resolveByName(qualifiedConsumesWhenResult)
+      : undefined;
+    if (qualifiedConsumesWhenResult && !consumesWhenResultType) {
+      return {
+        diagnostics: [
+          {
+            code: CompileDiagCode.UnresolvedTypeReference,
+            message: `\`consumesWhenResult\` reference "${descriptor.consumesWhenResult}" does not name a known type.`,
+            severity: "error",
+          },
+        ],
+      };
+    }
+
     const funcs = programResult.functions;
     for (const func of funcs) {
       if (!func.sourceFileName) {
@@ -567,10 +587,26 @@ export class UserTileProject {
       tags,
       inline: descriptor.inline,
       presenceGated: descriptor.presenceGated,
+      consumesWhenResult: consumesWhenResultType,
       outputs: descriptor.outputs,
     };
 
-    return { diagnostics: [...lowerWarnings, ...metaDiags], program, descriptor, functionDebugInfo };
+    const whenResultDiags: CompileDiagnostic[] = [];
+    if (descriptor.consumesWhenResult === undefined && actionReadsWhenResult(emittedFunctions)) {
+      whenResultDiags.push({
+        code: CompileDiagCode.WhenResultReadWithoutDeclaration,
+        message:
+          "This action reads the WHEN result but does not declare `consumesWhenResult`; declare it so the editor can offer and validate the tile.",
+        severity: "warning",
+      });
+    }
+
+    return {
+      diagnostics: [...lowerWarnings, ...metaDiags, ...whenResultDiags],
+      program,
+      descriptor,
+      functionDebugInfo,
+    };
   }
 
   /**
@@ -897,6 +933,13 @@ function resolveDescriptorTypeRefs(
     }
   }
 
+  if (descriptor.consumesWhenResultNode) {
+    const name = resolveNode(descriptor.consumesWhenResultNode, "consumesWhenResult");
+    if (name !== undefined) {
+      descriptor.consumesWhenResult = name;
+    }
+  }
+
   for (const output of descriptor.outputs ?? []) {
     if (!output.typeNode) continue;
     const name = resolveNode(output.typeNode, `output '${output.name}' type`);
@@ -937,6 +980,24 @@ function resolveDescriptorTypeRefs(
   }
 
   return diagnostics;
+}
+
+/**
+ * Whether any emitted function issues a HOST_CALL to `Context.getWhenResult` --
+ * that is, the action reads the rule's WHEN result. Scans emitted bytecode, so
+ * it catches the read wherever it occurs, including through helper functions.
+ */
+function actionReadsWhenResult(functions: readonly FunctionBytecode[]): boolean {
+  for (const fn of functions) {
+    let reads = false;
+    fn.code.forEach((instr) => {
+      if (instr.op === Op.HOST_CALL && instr.a === CoreFuncId.ContextGetWhenResult) {
+        reads = true;
+      }
+    });
+    if (reads) return true;
+  }
+  return false;
 }
 
 function qualifyDescriptorType(typeName: string, sourceFile: ts.SourceFile, types: ITypeRegistry): string {

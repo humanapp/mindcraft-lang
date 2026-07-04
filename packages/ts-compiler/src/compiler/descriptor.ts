@@ -124,6 +124,8 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
   let name: string | undefined;
   let configReturnType: string | undefined;
   let returnTypeNode: ts.Expression | undefined;
+  let configConsumesWhenResult: string | undefined;
+  let consumesWhenResultNode: ts.Expression | undefined;
   let args: ExtractedArgSpec[] = [];
   let onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction | undefined;
   let execIsAsync = false;
@@ -183,6 +185,21 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
             DescriptorDiagCode.ReturnTypeMustBeNameOrRef,
             value,
             "`returnType` must be a type name string literal or a type reference."
+          );
+        }
+        break;
+
+      case "consumesWhenResult":
+        if (ts.isStringLiteral(value)) {
+          configConsumesWhenResult = value.text;
+        } else if (ts.isIdentifier(value)) {
+          configConsumesWhenResult = value.text;
+          consumesWhenResultNode = value;
+        } else {
+          addDiag(
+            DescriptorDiagCode.ConsumesWhenResultMustBeNameOrRef,
+            value,
+            "`consumesWhenResult` must be a type name string literal or a type reference."
           );
         }
         break;
@@ -319,6 +336,8 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
       name: name!,
       returnType: kind === "sensor" ? returnType : undefined,
       returnTypeNode: kind === "sensor" ? returnTypeNode : undefined,
+      consumesWhenResult: configConsumesWhenResult,
+      consumesWhenResultNode,
       args,
       execIsAsync,
       onExecuteNode: onExecuteNode!,

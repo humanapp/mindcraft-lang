@@ -426,6 +426,13 @@ const AMBIENT_MODULE_END = `
     presenceGated?: boolean;
     /** Return value type, named by TypeRef token (preferred) or type name; defaults to the \`onExecute\` return annotation. */
     returnType?: MindcraftType | TypeRef<unknown>;
+    /**
+     * Declares that this sensor consumes the rule's WHEN result, named by TypeRef
+     * token (preferred) or type name. The editor uses it to offer and validate the
+     * tile against the WHEN-result type. Declare it when \`onExecute\` reads
+     * \`ctx.getWhenResult()\`.
+     */
+    consumesWhenResult?: MindcraftType | TypeRef<unknown>;
     args?: ArgSpec[];
     /** Named, typed outputs this sensor exposes; each surfaces downstream as an inline value-tile written via \`setOutput\`. */
     outputs?: OutputSpec[];
@@ -442,6 +449,13 @@ const AMBIENT_MODULE_END = `
     icon?: string;
     docs?: string;
     tags?: string[];
+    /**
+     * Declares that this actuator consumes the rule's WHEN result, named by TypeRef
+     * token (preferred) or type name. The editor uses it to offer and validate the
+     * tile against the WHEN-result type. Declare it when \`onExecute\` reads
+     * \`ctx.getWhenResult()\`.
+     */
+    consumesWhenResult?: MindcraftType | TypeRef<unknown>;
     args?: ArgSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): void | Promise<void>;
     onPageEntered?(ctx: Context): void;

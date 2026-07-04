@@ -201,9 +201,14 @@ export function buildUserTileMetadata(
           metadata,
           capabilities: userTileCaps,
           providedOutputs,
+          consumesWhenResult: program.consumesWhenResult,
           placement: program.inline ? TilePlacement.EitherSide | TilePlacement.Inline : undefined,
         })
-      : new BrainTileActuatorDef(program.key, actionDescriptor, { metadata, capabilities: userTileCaps });
+      : new BrainTileActuatorDef(program.key, actionDescriptor, {
+          metadata,
+          capabilities: userTileCaps,
+          consumesWhenResult: program.consumesWhenResult,
+        });
 
   return {
     actionDescriptor,

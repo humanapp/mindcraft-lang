@@ -13,7 +13,7 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import { parseTilesForSuggestions, suggestTiles } from "@mindcraft-lang/core/brain/language-service";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
-import { CoreOpId, CoreTypeIds, mkSensorTileId } from "@mindcraft-lang/core/runtime";
+import { CoreOpId, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import { DescriptorDiagCode } from "../compiler/diag-codes.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";
@@ -350,5 +350,97 @@ export default Actuator({
 `;
     const { result } = compileOne("act-gate.ts", source);
     assert.ok(result.tsErrors.size > 0, "presenceGated is not a member of ActuatorConfig");
+  });
+});
+
+describe("SensorConfig / ActuatorConfig `consumesWhenResult`", () => {
+  test("consumesWhenResult on a sensor forwards the resolved type to the tile def", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "snwhen",
+  name: "when reader",
+  consumesWhenResult: "number",
+  onExecute(ctx: Context): number {
+    const result = ctx.getWhenResult();
+    return typeof result === "number" ? result : 0;
+  },
+});
+`;
+    const { services, result } = compileOne("when-sensor.ts", source);
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("when-sensor.ts");
+    assert.ok(entry?.program);
+    assert.equal(entry.program.consumesWhenResult, CoreTypeIds.Number, "program carries the resolved WHEN-result type");
+
+    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
+    assert.ok(bundle);
+    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snwhen"));
+    assert.ok(sensorTile);
+    assert.equal(sensorTile.consumesWhenResult(), CoreTypeIds.Number, "the sensor tile declares consumesWhenResult");
+  });
+
+  test("consumesWhenResult on an actuator forwards the resolved type to the tile def", () => {
+    const source = `
+import { Actuator, type Context } from "mindcraft";
+
+export default Actuator({
+  id: "acwhen",
+  name: "when actuator",
+  consumesWhenResult: "number",
+  onExecute(ctx: Context): void {
+    ctx.getWhenResult();
+  },
+});
+`;
+    const { services, result } = compileOne("when-actuator.ts", source);
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("when-actuator.ts");
+    assert.ok(entry?.program);
+    assert.equal(entry.program.consumesWhenResult, CoreTypeIds.Number);
+
+    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
+    assert.ok(bundle);
+    const actuatorTile = bundle.tiles.find((tile) => tile.tileId === mkActuatorTileId("user.actuator.acwhen"));
+    assert.ok(actuatorTile);
+    assert.equal(actuatorTile.consumesWhenResult(), CoreTypeIds.Number);
+  });
+
+  test("consumesWhenResult named by a TypeRef token resolves and forwards", () => {
+    const source = `
+import { NumberType, Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "snwhenref",
+  name: "when ref reader",
+  consumesWhenResult: NumberType,
+  onExecute(ctx: Context): number {
+    const result = ctx.getWhenResult();
+    return typeof result === "number" ? result : 0;
+  },
+});
+`;
+    const { services, result } = compileOne("when-ref.ts", source);
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("when-ref.ts");
+    assert.ok(entry?.program);
+    assert.equal(entry.program.consumesWhenResult, CoreTypeIds.Number, "the TypeRef token resolves to its TypeId");
+
+    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
+    assert.ok(bundle);
+    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snwhenref"));
+    assert.ok(sensorTile);
+    assert.equal(sensorTile.consumesWhenResult(), CoreTypeIds.Number);
+  });
+
+  test("a tile without consumesWhenResult reports no declared consumption", () => {
+    const { services, result } = compileOne("plain.ts", PLAIN_NUMBER_SENSOR);
+    assert.equal(result.tsErrors.size, 0);
+    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
+    assert.ok(bundle);
+    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snplain"));
+    assert.ok(sensorTile);
+    assert.equal(sensorTile.consumesWhenResult(), undefined);
   });
 });

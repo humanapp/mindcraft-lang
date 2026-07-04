@@ -7,6 +7,7 @@ import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
 import { CoreFuncId, HandleTable, NativeType, NIL_VALUE, Op, type Value, VmStatus } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { compileUserTile } from "./compile.js";
+import { CompileDiagCode, DescriptorDiagCode } from "./diag-codes.js";
 
 let services: BrainServices;
 
@@ -42,6 +43,7 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "when-result-reader",
+  consumesWhenResult: "number",
   onExecute(ctx: Context): number {
     const result = ctx.getWhenResult();
     return typeof result === "number" ? result : -1;
@@ -87,5 +89,136 @@ describe("ctx.getWhenResult()", () => {
     assert.ok(runResult.result);
     assert.equal(runResult.result!.t, NativeType.Number);
     assert.equal((runResult.result as { v: number }).v, -1);
+  });
+});
+
+const READER_WITHOUT_DECLARATION = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "when-reader-undeclared",
+  onExecute(ctx: Context): number {
+    const result = ctx.getWhenResult();
+    return typeof result === "number" ? result : 0;
+  },
+});
+`;
+
+const READER_WITH_DECLARATION = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "when-reader-declared",
+  consumesWhenResult: "number",
+  onExecute(ctx: Context): number {
+    const result = ctx.getWhenResult();
+    return typeof result === "number" ? result : 0;
+  },
+});
+`;
+
+const DECLARATION_WITHOUT_READ = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "when-declared-no-read",
+  consumesWhenResult: "number",
+  onExecute(ctx: Context): number {
+    return 7;
+  },
+});
+`;
+
+const ACTUATOR_READER_WITHOUT_DECLARATION = `
+import { Actuator, type Context } from "mindcraft";
+
+export default Actuator({
+  name: "when-actuator-undeclared",
+  onExecute(ctx: Context): void {
+    ctx.getWhenResult();
+  },
+});
+`;
+
+const DECLARATION_UNKNOWN_TYPE = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "when-declared-unknown",
+  consumesWhenResult: "no-such-type",
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`;
+
+const DECLARATION_NOT_NAME_OR_REF = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "when-declared-parenthesized",
+  consumesWhenResult: ("number"),
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`;
+
+describe("consumesWhenResult declaration", () => {
+  before(() => {
+    services = __test__createBrainServices();
+  });
+
+  function hasCode(diagnostics: readonly { code: number }[], code: number): boolean {
+    return diagnostics.some((d) => d.code === code);
+  }
+
+  test("warns when getWhenResult is read but consumesWhenResult is not declared", () => {
+    const compiled = compileUserTile(READER_WITHOUT_DECLARATION, { services });
+    const warning = compiled.diagnostics.find((d) => d.code === CompileDiagCode.WhenResultReadWithoutDeclaration);
+    assert.ok(warning, "expected the missing-declaration warning");
+    assert.equal(warning.severity, "warning");
+    assert.ok(compiled.program, "compilation still succeeds -- the warning does not block it");
+  });
+
+  test("warns for an actuator that reads getWhenResult without declaring consumesWhenResult", () => {
+    const compiled = compileUserTile(ACTUATOR_READER_WITHOUT_DECLARATION, { services });
+    assert.ok(
+      hasCode(compiled.diagnostics, CompileDiagCode.WhenResultReadWithoutDeclaration),
+      "an undeclared actuator reader must warn too"
+    );
+  });
+
+  test("does not warn when consumesWhenResult is declared", () => {
+    const compiled = compileUserTile(READER_WITH_DECLARATION, { services });
+    assert.ok(compiled.program);
+    assert.ok(
+      !hasCode(compiled.diagnostics, CompileDiagCode.WhenResultReadWithoutDeclaration),
+      "a declared reader must not warn"
+    );
+  });
+
+  test("does not warn when consumesWhenResult is declared but getWhenResult is not read", () => {
+    const compiled = compileUserTile(DECLARATION_WITHOUT_READ, { services });
+    assert.ok(compiled.program);
+    assert.ok(
+      !hasCode(compiled.diagnostics, CompileDiagCode.WhenResultReadWithoutDeclaration),
+      "a declaration without a read is allowed and must not warn"
+    );
+  });
+
+  test("errors when consumesWhenResult names a type that does not resolve", () => {
+    const compiled = compileUserTile(DECLARATION_UNKNOWN_TYPE, { services });
+    const error = compiled.diagnostics.find((d) => d.code === CompileDiagCode.UnresolvedTypeReference);
+    assert.ok(error, "expected the unresolved-type-reference error");
+    assert.equal(error.severity, "error");
+  });
+
+  test("errors when consumesWhenResult is neither a type name string literal nor a type reference", () => {
+    const compiled = compileUserTile(DECLARATION_NOT_NAME_OR_REF, { services });
+    assert.ok(
+      hasCode(compiled.diagnostics, DescriptorDiagCode.ConsumesWhenResultMustBeNameOrRef),
+      "a parenthesized value must be rejected precisely"
+    );
   });
 });

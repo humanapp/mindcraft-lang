@@ -165,8 +165,8 @@ export enum DescriptorDiagCode {
   SeqRequiresArguments = 2050,
   /** onPageExited property is not a function */
   OnPageExitedMustBeFunction = 2051,
-  /** Free slot -- available for reuse. */
-  Unused2052 = 2052,
+  /** a config's `consumesWhenResult` is not a type name string literal or type reference identifier */
+  ConsumesWhenResultMustBeNameOrRef = 2052,
   /** Free slot -- available for reuse. */
   Unused2053 = 2053,
   /** outputs property value is not an array literal */
@@ -566,12 +566,14 @@ export enum CompileDiagCode {
   ConversionTypeUnresolved = 5010,
   /** A Conversion declares a `(from, to)` pair that another registration already holds */
   DuplicateConversionPair = 5011,
-  /** A `returnType`, output `type`, or param `type` reference does not name a known type */
+  /** A `returnType`, output `type`, param `type`, or `consumesWhenResult` reference does not name a known type */
   UnresolvedTypeReference = 5012,
   /** A Conversion's `from` and `to` name the same type */
   ConversionSameType = 5013,
   /** Two declarations carry the same stable `id` */
   DuplicateActionId = 5014,
+  /** An action reads the WHEN result (`ctx.getWhenResult()`) but does not declare `consumesWhenResult` (warning) */
+  WhenResultReadWithoutDeclaration = 5015,
 }
 
 /**

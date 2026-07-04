@@ -77,6 +77,8 @@ export interface BrainTilePickerDialogProps {
   replaceTileIndex?: number;
   availableCapabilities?: ReadonlyBitSet;
   availableOutputKeys?: UniqueSet<string>;
+  /** The rule's WHEN-result type; feeds WHEN-result affinity on DO-side consumers. */
+  whenResultType?: TypeId;
   existingTiles?: ReadonlyList<IBrainTileDef>;
   onTileSelected: (tileDef: IBrainTileDef) => boolean;
   onCancel: () => void;
@@ -98,6 +100,7 @@ export function BrainTilePickerDialog({
   replaceTileIndex,
   availableCapabilities,
   availableOutputKeys,
+  whenResultType,
   existingTiles,
   onTileSelected,
   onCancel,
@@ -132,6 +135,7 @@ export function BrainTilePickerDialog({
       replaceTileIndex,
       availableCapabilities,
       availableOutputKeys,
+      whenResultType,
       unclosedParenDepth,
     };
     const result = brainServices
@@ -244,6 +248,7 @@ export function BrainTilePickerDialog({
     replaceTileIndex,
     availableCapabilities,
     availableOutputKeys,
+    whenResultType,
     existingTiles,
     catalogs,
     brainServices,

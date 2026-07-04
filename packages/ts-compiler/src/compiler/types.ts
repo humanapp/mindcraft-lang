@@ -1,5 +1,5 @@
 import type { BrainServices, DiagnosticSeverity } from "@mindcraft-lang/core/brain";
-import type { ConstantOffsets, UserActionArtifact } from "@mindcraft-lang/core/runtime";
+import type { ConstantOffsets, TypeId, UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
 
@@ -29,6 +29,8 @@ export interface UserAuthoredProgram extends UserActionArtifact {
   inline?: boolean;
   /** When true (sensors only), sets the generated tile def's PresenceGated capability bit. */
   presenceGated?: boolean;
+  /** Resolved {@link TypeId} of the WHEN result this tile consumes, forwarded to the generated tile def; undefined when not declared. */
+  consumesWhenResult?: TypeId;
   /** Named, typed outputs declared on a sensor; each surfaces as a derived inline output value-tile. */
   outputs?: ExtractedOutput[];
   /** Struct types this program declares or imports; accessor and variable-factory tiles derive from them at registration. */
@@ -120,6 +122,10 @@ export interface ExtractedDescriptor {
   returnType: string | undefined;
   /** Unresolved `returnType` config reference; resolves to `returnType` during compilation. */
   returnTypeNode?: ts.Expression;
+  /** Declared `consumesWhenResult` type name (sensor or actuator), or undefined when not declared. */
+  consumesWhenResult?: string;
+  /** Unresolved `consumesWhenResult` config reference; resolves to `consumesWhenResult` during compilation. */
+  consumesWhenResultNode?: ts.Expression;
   args: ExtractedArgSpec[];
   execIsAsync: boolean;
   onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction;

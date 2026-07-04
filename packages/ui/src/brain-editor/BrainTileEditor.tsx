@@ -25,7 +25,7 @@ import {
   ReplaceTileCommand,
 } from "./commands";
 import { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
-import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
+import { useRuleCapabilities, useRuleOutputKeys, useRuleWhenResultType } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
 import { RenameVariableDialog } from "./RenameVariableDialog";
 import type { TileBadge } from "./tile-badges";
@@ -48,6 +48,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
   const availableCapabilities = useRuleCapabilities(ruleDef);
   const availableOutputKeys = useRuleOutputKeys(ruleDef);
   const { onTileHelp, brainServices } = useBrainEditorConfig();
+  const whenResultType = useRuleWhenResultType(ruleDef, brainServices);
 
   const isNumericLiteral =
     tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.Number;
@@ -210,6 +211,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
               existingTiles={isInsert ? tileSet.tiles().slice(0, tileIndex) : tileSet.tiles()}
               availableCapabilities={availableCapabilities}
               availableOutputKeys={availableOutputKeys}
+              whenResultType={whenResultType}
               onTileSelected={handleTileSelected}
               onCancel={handlePickerCancel}
             />

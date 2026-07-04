@@ -1,5 +1,7 @@
 import { BitSet, type ReadonlyBitSet, UniqueSet } from "@mindcraft-lang/core";
-import type { IBrainRuleDef, IBrainTileSet } from "@mindcraft-lang/core/brain";
+import type { BrainServices, IBrainRuleDef, IBrainTileSet } from "@mindcraft-lang/core/brain";
+import { getRuleWhenResultType } from "@mindcraft-lang/core/brain/language-service";
+import type { TypeId } from "@mindcraft-lang/core/runtime";
 import { useMemo } from "react";
 
 /**
@@ -85,4 +87,24 @@ function collectRuleHierarchyOutputKeys(ruleDef: IBrainRuleDef): UniqueSet<strin
 export function useRuleOutputKeys(ruleDef: IBrainRuleDef, updateCounter?: number): UniqueSet<string> {
   // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter forces re-evaluation when tiles change
   return useMemo(() => collectRuleHierarchyOutputKeys(ruleDef), [ruleDef, updateCounter]);
+}
+
+/**
+ * React hook that memoizes the rule's WHEN-result type (see `getRuleWhenResultType`),
+ * including the empty-WHEN fall-through to the nearest ancestor that produces one.
+ * Returns a `TypeId` suitable for `InsertionContext.whenResultType`, or undefined
+ * when services are unavailable or the rule produces no WHEN result.
+ *
+ * @param updateCounter - Pass an external counter to re-compute when tiles change.
+ */
+export function useRuleWhenResultType(
+  ruleDef: IBrainRuleDef,
+  brainServices: BrainServices | undefined,
+  updateCounter?: number
+): TypeId | undefined {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter forces re-evaluation when tiles change
+  return useMemo(
+    () => (brainServices ? getRuleWhenResultType(ruleDef, brainServices) : undefined),
+    [ruleDef, brainServices, updateCounter]
+  );
 }

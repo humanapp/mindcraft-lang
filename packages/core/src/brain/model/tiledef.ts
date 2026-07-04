@@ -1,5 +1,5 @@
 import { List, type ReadonlyList } from "../../platform/list";
-import type { ActionDescriptor, TileId } from "../../runtime";
+import type { ActionDescriptor, TileId, TypeId } from "../../runtime";
 import { BitSet, type ReadonlyBitSet } from "../../util/bitset";
 import type {
   BrainTileDefCreateOptions,
@@ -25,6 +25,7 @@ export abstract class BrainTileDefBase implements IBrainTileDef {
   capabilities_?: BitSet;
   requirements_?: BitSet;
   providedOutputs_?: ReadonlyList<string>;
+  consumesWhenResult_?: TypeId;
 
   constructor(tileId: TileId, opts: BrainTileDefCreateOptions) {
     this.tileId = tileId;
@@ -35,6 +36,7 @@ export abstract class BrainTileDefBase implements IBrainTileDef {
     this.capabilities_ = opts.capabilities; // || lazy init in capabilities()
     this.requirements_ = opts.requirements; // || lazy init in requirements()
     this.providedOutputs_ = opts.providedOutputs;
+    this.consumesWhenResult_ = opts.consumesWhenResult;
     this.metadata = opts.metadata;
   }
 
@@ -48,6 +50,10 @@ export abstract class BrainTileDefBase implements IBrainTileDef {
 
   providedOutputs(): ReadonlyList<string> {
     return this.providedOutputs_ ?? emptyOutputs;
+  }
+
+  consumesWhenResult(): TypeId | undefined {
+    return this.consumesWhenResult_;
   }
 }
 

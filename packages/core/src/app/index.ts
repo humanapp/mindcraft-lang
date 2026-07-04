@@ -103,7 +103,12 @@ export type { AppServices, IRngServices } from "../runtime";
 
 // -- Runtime values & helpers ---------------------------------------------------
 
-export { APP_CAPABILITY_BIT_OFFSET, CoreCapabilityBits, TilePlacement } from "../brain/interfaces";
+export {
+  APP_CAPABILITY_BIT_OFFSET,
+  ConsumesAnyWhenResult,
+  CoreCapabilityBits,
+  TilePlacement,
+} from "../brain/interfaces";
 export type { StructFieldGetterFn, StructTypeDef } from "../runtime";
 export { getSlotId } from "../runtime";
 export { formatF32 } from "../runtime/binary32-format";
