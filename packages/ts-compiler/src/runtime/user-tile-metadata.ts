@@ -4,6 +4,7 @@ import {
   CoreCapabilityBits,
   type IBrainTileDef,
   type ITileMetadata,
+  TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import {
   BrainTileActuatorDef,
@@ -180,10 +181,8 @@ export function buildUserTileMetadata(
   };
 
   const userTileCaps = new BitSet().set(CoreCapabilityBits.UserTile);
-  for (const capability of program.capabilities ?? []) {
-    if (capability === "PresenceGated") {
-      userTileCaps.set(CoreCapabilityBits.PresenceGated);
-    }
+  if (program.presenceGated) {
+    userTileCaps.set(CoreCapabilityBits.PresenceGated);
   }
 
   let outputTiles: readonly BrainTileOutputDef[] = [];
@@ -198,7 +197,12 @@ export function buildUserTileMetadata(
   const providedOutputs = List.from(outputTiles.map((tile) => tile.outputKey));
   const actionTile =
     program.kind === "sensor"
-      ? new BrainTileSensorDef(program.key, actionDescriptor, { metadata, capabilities: userTileCaps, providedOutputs })
+      ? new BrainTileSensorDef(program.key, actionDescriptor, {
+          metadata,
+          capabilities: userTileCaps,
+          providedOutputs,
+          placement: program.inline ? TilePlacement.EitherSide | TilePlacement.Inline : undefined,
+        })
       : new BrainTileActuatorDef(program.key, actionDescriptor, { metadata, capabilities: userTileCaps });
 
   return {

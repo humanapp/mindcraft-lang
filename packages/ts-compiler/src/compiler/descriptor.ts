@@ -11,9 +11,6 @@ import type {
   SourceSpan,
 } from "./types.js";
 
-/** Capability identifiers a sensor may declare in its `capabilities` config field. */
-const KNOWN_CAPABILITIES: ReadonlySet<string> = new Set(["PresenceGated"]);
-
 /** Result of {@link extractDescriptor}: the descriptor (when extraction succeeded) plus any diagnostics. */
 export interface ExtractionResult {
   descriptor?: ExtractedDescriptor;
@@ -138,7 +135,9 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
   let docs: string | undefined;
   let docsSpan: SourceSpan | undefined;
   let tags: string[] | undefined;
-  let capabilities: string[] | undefined;
+  let inline = false;
+  let inlineNode: ts.Expression | undefined;
+  let presenceGated = false;
   let outputs: ExtractedOutput[] | undefined;
 
   for (const prop of arg.properties) {
@@ -262,23 +261,24 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
         }
         break;
 
-      case "capabilities":
-        if (ts.isArrayLiteralExpression(value)) {
-          capabilities = [];
-          for (const elem of value.elements) {
-            const capName = ts.isIdentifier(elem) ? elem.text : ts.isStringLiteral(elem) ? elem.text : undefined;
-            if (capName !== undefined && KNOWN_CAPABILITIES.has(capName)) {
-              capabilities.push(capName);
-            } else {
-              addDiag(
-                DescriptorDiagCode.CapabilityElementUnknown,
-                elem,
-                "Each element of `capabilities` must be a known capability (e.g. `PresenceGated`)."
-              );
-            }
-          }
+      case "inline":
+        inlineNode = value;
+        if (value.kind === ts.SyntaxKind.TrueKeyword) {
+          inline = true;
+        } else if (value.kind === ts.SyntaxKind.FalseKeyword) {
+          inline = false;
         } else {
-          addDiag(DescriptorDiagCode.CapabilitiesMustBeArrayLiteral, value, "`capabilities` must be an array literal.");
+          addDiag(DescriptorDiagCode.InlineMustBeBoolean, value, "`inline` must be a boolean literal.");
+        }
+        break;
+
+      case "presenceGated":
+        if (value.kind === ts.SyntaxKind.TrueKeyword) {
+          presenceGated = true;
+        } else if (value.kind === ts.SyntaxKind.FalseKeyword) {
+          presenceGated = false;
+        } else {
+          addDiag(DescriptorDiagCode.PresenceGatedMustBeBoolean, value, "`presenceGated` must be a boolean literal.");
         }
         break;
 
@@ -293,6 +293,13 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
   }
   if (onExecuteNode === undefined) {
     addDiag(DescriptorDiagCode.OnExecuteRequired, arg, "`onExecute` method is required.");
+  }
+  if (kind === "sensor" && inline && args.length > 0) {
+    addDiag(
+      DescriptorDiagCode.InlineSensorTakesNoArgs,
+      inlineNode ?? arg,
+      "An inline sensor takes no arguments; remove `args` or `inline: true`."
+    );
   }
 
   let returnType: string | undefined;
@@ -323,7 +330,8 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
       docs,
       docsSpan,
       tags,
-      capabilities,
+      inline: kind === "sensor" ? inline : undefined,
+      presenceGated: kind === "sensor" ? presenceGated : undefined,
       outputs,
     },
     diagnostics: [],

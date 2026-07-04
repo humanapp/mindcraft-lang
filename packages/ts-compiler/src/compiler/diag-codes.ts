@@ -165,10 +165,10 @@ export enum DescriptorDiagCode {
   SeqRequiresArguments = 2050,
   /** onPageExited property is not a function */
   OnPageExitedMustBeFunction = 2051,
-  /** capabilities property value is not an array literal */
-  CapabilitiesMustBeArrayLiteral = 2052,
-  /** capabilities array element is not a known capability identifier or string literal */
-  CapabilityElementUnknown = 2053,
+  /** Free slot -- available for reuse. */
+  Unused2052 = 2052,
+  /** Free slot -- available for reuse. */
+  Unused2053 = 2053,
   /** outputs property value is not an array literal */
   OutputsMustBeArrayLiteral = 2054,
   /** an outputs array element is not an object literal */
@@ -211,6 +211,12 @@ export enum DescriptorDiagCode {
   ConfigMemberNotInline = 2073,
   /** a shorthand config member does not resolve to a declared value */
   ShorthandMemberUnresolvable = 2074,
+  /** a sensor config's `inline` value is not a boolean literal */
+  InlineMustBeBoolean = 2075,
+  /** a sensor config's `presenceGated` value is not a boolean literal */
+  PresenceGatedMustBeBoolean = 2076,
+  /** a sensor config declares `inline: true` together with a non-empty `args` (inline sensors take no arguments) */
+  InlineSensorTakesNoArgs = 2077,
 }
 
 /**

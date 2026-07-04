@@ -400,16 +400,6 @@ declare module "mindcraft" {
   export function conditional(condition: string, thenItem: ArgSpec, elseItem?: ArgSpec): ConditionalSpec;
   export function seq(...items: ArgSpec[]): SeqSpec;
 
-  /** A capability a sensor can declare in its config. */
-  type Capability = "PresenceGated";
-  /**
-   * Marks a value-bearing event sensor: `onExecute` returns the delivered
-   * value when the sensor fires and `null` when there is no value this
-   * evaluation (absent). A bare WHEN that is exactly such a sensor fires on a
-   * delivered falsy value (0, "", false) and skips only when the value is absent.
-   */
-  export const PresenceGated: Capability;
-
   /**
    * One named, typed output a sensor exposes. The `(type, name)` pair is the
    * output identity: it derives a downstream inline value-tile and the backing
@@ -435,8 +425,19 @@ declare module "mindcraft" {
     icon?: string;
     docs?: string;
     tags?: string[];
-    /** Capabilities this sensor declares, e.g. `[PresenceGated]`. */
-    capabilities?: Capability[];
+    /**
+     * When true, this sensor reads as an inline value in a mid-rule value slot
+     * and the tile picker offers it in those positions. An inline sensor takes
+     * no arguments.
+     */
+    inline?: boolean;
+    /**
+     * When true, a bare WHEN that is exactly this sensor gates on value
+     * presence: it fires on a delivered falsy value (0, "", false) and skips
+     * only when `onExecute` returns null (absent). Exclude null from the
+     * sensor's value domain when set.
+     */
+    presenceGated?: boolean;
     /** Return value type, named by TypeRef token (preferred) or type name; defaults to the `onExecute` return annotation. */
     returnType?: MindcraftType | TypeRef<unknown>;
     args?: ArgSpec[];

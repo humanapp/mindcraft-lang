@@ -19,6 +19,7 @@ import {
   mkCallDef,
   mkOutputVarKey,
   mkSensorTileId,
+  TilePlacement,
 } from "@mindcraft-lang/core/app";
 import type {
   ExtractedArgSpec,
@@ -30,12 +31,13 @@ import type {
 import {
   collectParams,
   isCallSpec,
+  isOptionalBoolean,
   isOptionalString,
   isOptionalStringArray,
   isRecord,
 } from "@mindcraft-lang/ts-compiler";
 
-const METADATA_CACHE_VERSION = 5 as const;
+const METADATA_CACHE_VERSION = 6 as const;
 
 /** Cached metadata describing a user-authored sensor or actuator tile. */
 export interface UserTileMetadata {
@@ -65,6 +67,10 @@ export interface UserTileMetadata {
   docsMarkdown?: string;
   /** Optional categorization tags. */
   tags?: string[];
+  /** For sensors, when true the tile is placement-inline; the picker offers it in value-slot positions. */
+  inline?: boolean;
+  /** For sensors, when true the tile carries the PresenceGated capability; a bare WHEN gates on value presence. */
+  presenceGated?: boolean;
 }
 
 /**
@@ -131,11 +137,16 @@ function isUserTileMetadata(value: unknown): value is UserTileMetadata {
     isOptionalString(value.label) &&
     isOptionalString(value.iconUrl) &&
     isOptionalString(value.docsMarkdown) &&
-    isOptionalStringArray(value.tags)
+    isOptionalStringArray(value.tags) &&
+    isOptionalBoolean(value.inline) &&
+    isOptionalBoolean(value.presenceGated)
   );
 }
 
 function metadataFromProgram(program: UserAuthoredProgram): UserTileMetadata {
+  if (program.kind === "conversion") {
+    throw new Error(`Conversion "${program.key}" has no tile metadata`);
+  }
   return {
     key: program.key,
     id: program.id,
@@ -150,6 +161,8 @@ function metadataFromProgram(program: UserAuthoredProgram): UserTileMetadata {
     iconUrl: program.iconUrl,
     docsMarkdown: program.docsMarkdown,
     tags: program.tags,
+    inline: program.inline,
+    presenceGated: program.presenceGated,
   };
 }
 
@@ -304,6 +317,9 @@ function buildHydratedSnapshot(
       };
 
       const userTileCaps = new BitSet().set(CoreCapabilityBits.UserTile);
+      if (entry.presenceGated) {
+        userTileCaps.set(CoreCapabilityBits.PresenceGated);
+      }
       const outputTiles: TileDefinitionInput[] = [];
       const providedOutputKeys = new List<string>();
 
@@ -364,6 +380,7 @@ function buildHydratedSnapshot(
               metadata: tileMetadata,
               capabilities: userTileCaps,
               providedOutputs: providedOutputKeys,
+              placement: entry.inline ? TilePlacement.EitherSide | TilePlacement.Inline : undefined,
             })
           : new BrainTileActuatorDef(entry.key, descriptor, { metadata: tileMetadata, capabilities: userTileCaps });
       tiles.set(actionTile.tileId, actionTile);
@@ -381,7 +398,8 @@ export function collectMetadataFromCompile(result: WorkspaceCompileResult): User
   const metadata: UserTileMetadata[] = [];
 
   for (const compileResult of result.projectResult.results.values()) {
-    if (compileResult.program) {
+    // Conversions compile to a program but surface no tiles, so they contribute no tile metadata.
+    if (compileResult.program && compileResult.program.kind !== "conversion") {
       metadata.push(metadataFromProgram(compileResult.program));
     }
   }

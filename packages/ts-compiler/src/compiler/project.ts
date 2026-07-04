@@ -565,7 +565,8 @@ export class UserTileProject {
       iconUrl,
       docsMarkdown,
       tags,
-      capabilities: descriptor.capabilities,
+      inline: descriptor.inline,
+      presenceGated: descriptor.presenceGated,
       outputs: descriptor.outputs,
     };
 

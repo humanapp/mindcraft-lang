@@ -103,18 +103,18 @@ export default Actuator({
     assert.ok(bundle.tiles.some((tile) => tile.tileId === mkParameterTileId("user.acturn.label")));
   });
 
-  test("a user sensor declaring capabilities: [PresenceGated] carries the bit and emits WHEN_END_PRESENT", () => {
+  test("a user sensor declaring presenceGated: true carries the bit and emits WHEN_END_PRESENT", () => {
     const result = compileProject(
       new Map([
         [
           "rx.ts",
           `
-import { Sensor, PresenceGated, type Context } from "mindcraft";
+import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   id: "snrx",
   name: "rx",
-  capabilities: [PresenceGated],
+  presenceGated: true,
   onExecute(ctx: Context): number {
     return 0;
   },
