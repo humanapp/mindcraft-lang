@@ -187,6 +187,20 @@ export default Sensor({
     assert.equal(matches?.length, 1, "boolean should appear exactly once in MindcraftTypeMap");
   });
 
+  test("buffer joins MindcraftTypeMap exactly once under its lowercase registry key", () => {
+    const ambient = buildAmbientDeclarations(services.runtime.types);
+    const matches = ambient.match(/buffer: Buffer;/g);
+    assert.equal(matches?.length, 1, "buffer should appear exactly once in MindcraftTypeMap");
+  });
+
+  test("BufferConstructor exposes the isBuffer type guard", () => {
+    const ambient = buildAmbientDeclarations(services.runtime.types);
+    assert.ok(
+      ambient.includes("isBuffer(arg: any): arg is Buffer;"),
+      "ambient should declare Buffer.isBuffer as a Buffer type guard"
+    );
+  });
+
   test("function type emits arrow syntax in typeDefToTs", () => {
     const types = services.runtime.types;
     const fnId = types.getOrCreateFunctionType({

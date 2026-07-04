@@ -5,6 +5,7 @@ import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
 import {
+  type BooleanValue,
   HandleTable,
   NativeType,
   NIL_VALUE,
@@ -79,6 +80,25 @@ function compileAndRunNumber(body: string): number {
   return (result as NumberValue).v;
 }
 
+function sensorReturningBoolean(body: string): string {
+  return `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "buffer-test",
+  onExecute(ctx: Context): boolean {
+    ${body}
+  },
+});
+`;
+}
+
+function compileAndRunBoolean(body: string): boolean {
+  const result = compileAndRun(sensorReturningBoolean(body));
+  assert.equal(result.t, NativeType.Boolean);
+  return (result as BooleanValue).v;
+}
+
 describe("Buffer constructors and accessors", () => {
   before(() => {
     services = __test__createBrainServices();
@@ -109,5 +129,155 @@ describe("Buffer constructors and accessors", () => {
 
   test("Buffer.from([]).length() is 0", () => {
     assert.equal(compileAndRunNumber("return Buffer.from([]).length();"), 0);
+  });
+});
+
+describe("Buffer.isBuffer", () => {
+  before(() => {
+    services = __test__createBrainServices();
+  });
+
+  test("Buffer.isBuffer(Buffer.from(...)) -> true", () => {
+    assert.equal(compileAndRunBoolean("return Buffer.isBuffer(Buffer.from([1, 2, 3]));"), true);
+  });
+
+  test("Buffer.isBuffer(5) -> false", () => {
+    assert.equal(compileAndRunBoolean("return Buffer.isBuffer(5);"), false);
+  });
+
+  test('Buffer.isBuffer("hello") -> false', () => {
+    assert.equal(compileAndRunBoolean('return Buffer.isBuffer("hello");'), false);
+  });
+
+  test("Buffer.isBuffer of nil -> false", () => {
+    assert.equal(
+      compileAndRunBoolean(`
+        const x: number | null = null;
+        return Buffer.isBuffer(x);
+      `),
+      false
+    );
+  });
+
+  test("narrows a union to Buffer inside an if (true branch)", () => {
+    assert.equal(
+      compileAndRunNumber(`
+        const x: Buffer | number = Buffer.from([10, 20, 30]);
+        if (Buffer.isBuffer(x)) {
+          return x.get(0);
+        }
+        return -1;
+      `),
+      10
+    );
+  });
+
+  test("false branch keeps the non-buffer member of the union", () => {
+    assert.equal(
+      compileAndRunNumber(`
+        const x: Buffer | number = 42;
+        if (Buffer.isBuffer(x)) {
+          return x.get(0);
+        }
+        return x;
+      `),
+      42
+    );
+  });
+
+  test("narrows in a ternary condition", () => {
+    assert.equal(
+      compileAndRunNumber(`
+        const x: Buffer | number = Buffer.from([5, 6]);
+        return Buffer.isBuffer(x) ? x.get(1) : -1;
+      `),
+      6
+    );
+  });
+
+  test("narrows across && for a follow-on buffer read", () => {
+    assert.equal(
+      compileAndRunNumber(`
+        const x: Buffer | number = Buffer.from([9]);
+        if (Buffer.isBuffer(x) && x.get(0) === 9) {
+          return 1;
+        }
+        return 0;
+      `),
+      1
+    );
+  });
+
+  test("|| narrows its right operand to the non-buffer member", () => {
+    assert.equal(
+      compileAndRunNumber(`
+        const x: Buffer | number = 5;
+        if (Buffer.isBuffer(x) || x === 5) {
+          return 1;
+        }
+        return 0;
+      `),
+      1
+    );
+  });
+
+  test("narrows a nullable Buffer | undefined spelling", () => {
+    assert.equal(
+      compileAndRunNumber(`
+        const x: Buffer | undefined = Buffer.from([3, 4]);
+        if (Buffer.isBuffer(x)) {
+          return x.get(0);
+        }
+        return -1;
+      `),
+      3
+    );
+  });
+
+  test('typeof x === "number" excludes a buffer', () => {
+    assert.equal(
+      compileAndRunNumber(`
+        const x: Buffer | number = Buffer.from([1]);
+        return typeof x === "number" ? 1 : 0;
+      `),
+      0
+    );
+  });
+
+  test('typeof x === "number" still matches an actual number in the union', () => {
+    assert.equal(
+      compileAndRunNumber(`
+        const x: Buffer | number = 7;
+        return typeof x === "number" ? 1 : 0;
+      `),
+      1
+    );
+  });
+
+  test("a MindcraftValue list (AnyList) can hold a buffer and narrow it back", () => {
+    const result = compileAndRun(`
+import { Sensor, type Context, type AnyList } from "mindcraft";
+
+export default Sensor({
+  name: "buffer-test",
+  onExecute(ctx: Context): number {
+    const items: AnyList = [Buffer.from([1, 2]), 3];
+    const first = items[0];
+    return Buffer.isBuffer(first) ? first.get(1) : -1;
+  },
+});
+`);
+    assert.equal(result.t, NativeType.Number);
+    assert.equal((result as NumberValue).v, 2);
+  });
+
+  test("a Buffer is assignable to a ctx.rule variable slot (MindcraftValue)", () => {
+    assert.equal(
+      compileAndRunNumber(`
+        ctx.rule.setVariable("payload", Buffer.from([1, 2, 3]));
+        return 1;
+      `),
+      1
+    );
   });
 });

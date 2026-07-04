@@ -134,6 +134,7 @@ interface BufferConstructor {
   from(values: number[]): Buffer;
   fromHex(hex: string): Buffer;
   fromString(value: string): Buffer;
+  isBuffer(arg: any): arg is Buffer;
 }
 declare var Buffer: BufferConstructor;
 
@@ -341,6 +342,7 @@ declare module "mindcraft" {
     boolean: boolean;
     number: number;
     string: string;
+    buffer: Buffer;
 `;
 
 const AMBIENT_MODULE_END = `

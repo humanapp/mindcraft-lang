@@ -5076,6 +5076,9 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
     if (lowerArrayIsArrayCall(expr, expr.expression, ctx)) {
       return;
     }
+    if (lowerBufferIsBufferCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerBufferConstructorCall(expr, expr.expression, ctx)) {
       return;
     }
@@ -9973,6 +9976,19 @@ function lowerArrayIsArrayCall(
 
   lowerExpression(expr.arguments[0], ctx);
   ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.List });
+  return true;
+}
+
+function lowerBufferIsBufferCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  if (!isBufferGlobal(propAccess.expression, ctx)) return false;
+  if (propAccess.name.text !== "isBuffer") return false;
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Buffer });
   return true;
 }
 
