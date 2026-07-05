@@ -12,7 +12,6 @@ import { before, describe, test } from "node:test";
 import { List, type ReadonlyList, UniqueSet } from "@mindcraft-lang/core";
 import {
   type BrainServices,
-  ConsumesAnyWhenResult,
   CoreControlFlowId,
   type IBrainTileDef,
   type ITileCatalog,
@@ -43,9 +42,7 @@ import {
   parseTilesForSuggestions,
   suggestTiles,
   TileCompatibility,
-  type TileSuggestion,
   type TileSuggestionResult,
-  WhenResultAffinity,
 } from "@mindcraft-lang/core/brain/language-service";
 import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
@@ -3371,28 +3368,22 @@ describe("Right-spine operator rebinding", () => {
 // ---- WHEN-result consumption ----
 
 describe("WHEN-result consumption", () => {
-  // A universal (type-agnostic) consumer, mirroring the `display text` built-in.
-  let universalConsumerDef: BrainTileActuatorDef;
-  // A type-specific consumer that declares it consumes a Buffer WHEN result,
-  // usable on either side and inline (mirroring an inline decoder sensor).
+  // A type-specific consumer that requires a Buffer WHEN result, usable on either
+  // side and inline (mirroring the inline gamepad decoder sensor).
   let bufferConsumerDef: BrainTileSensorDef;
-  // A type-specific consumer that declares it consumes a Number WHEN result.
+  // A type-specific consumer that requires a Number WHEN result.
   let numberConsumerDef: BrainTileActuatorDef;
+  // A non-consumer inline sensor: declares no WHEN-result consumption, so it is
+  // never gated (mirroring the undeclared `display text` actuator).
+  let plainSensorDef: BrainTileSensorDef;
   // WHEN-side producers whose values type the rule's WHEN result.
   let bufferProducerDef: BrainTileSensorDef;
   let booleanProducerDef: BrainTileSensorDef;
+  let numberProducerDef: BrainTileSensorDef;
 
   before(() => {
     const emptyCall = mkCallDef(bag());
     const noop = { exec: () => VOID_VALUE };
-
-    const univFn = services.runtime.functions.register(4200, "test-when-universal", false, noop, emptyCall);
-    universalConsumerDef = new BrainTileActuatorDef("test-when-universal", mkActionDescriptor("actuator", univFn), {
-      metadata: { label: "show result" },
-      placement: TilePlacement.DoSide,
-      consumesWhenResult: ConsumesAnyWhenResult,
-    });
-    services.edit.tiles.registerTileDef(universalConsumerDef);
 
     const bufFn = services.runtime.functions.register(4201, "test-when-buffer-consumer", false, noop, emptyCall);
     bufferConsumerDef = new BrainTileSensorDef(
@@ -3414,6 +3405,14 @@ describe("WHEN-result consumption", () => {
     });
     services.edit.tiles.registerTileDef(numberConsumerDef);
 
+    const plainFn = services.runtime.functions.register(4206, "test-when-plain-sensor", false, noop, emptyCall);
+    plainSensorDef = new BrainTileSensorDef(
+      "test-when-plain-sensor",
+      mkActionDescriptor("sensor", plainFn, CoreTypeIds.Number),
+      { metadata: { label: "plain value" }, placement: TilePlacement.EitherSide | TilePlacement.Inline }
+    );
+    services.edit.tiles.registerTileDef(plainSensorDef);
+
     const bufSrcFn = services.runtime.functions.register(4203, "test-when-buffer-producer", false, noop, emptyCall);
     bufferProducerDef = new BrainTileSensorDef(
       "test-when-buffer-producer",
@@ -3429,12 +3428,20 @@ describe("WHEN-result consumption", () => {
       { metadata: { label: "is pressed" }, placement: TilePlacement.WhenSide }
     );
     services.edit.tiles.registerTileDef(booleanProducerDef);
+
+    const numSrcFn = services.runtime.functions.register(4205, "test-when-number-producer", false, noop, emptyCall);
+    numberProducerDef = new BrainTileSensorDef(
+      "test-when-number-producer",
+      mkActionDescriptor("sensor", numSrcFn, CoreTypeIds.Number),
+      { metadata: { label: "read number" }, placement: TilePlacement.WhenSide }
+    );
+    services.edit.tiles.registerTileDef(numberProducerDef);
   });
 
-  function suggestion(result: TileSuggestionResult, tileId: string): TileSuggestion | undefined {
+  function offered(result: TileSuggestionResult, tileId: string): boolean {
     return (
-      listFind(result.exact, (s) => s.tileDef.tileId === tileId) ??
-      listFind(result.withConversion, (s) => s.tileDef.tileId === tileId)
+      listFind(result.exact, (s) => s.tileDef.tileId === tileId) !== undefined ||
+      listFind(result.withConversion, (s) => s.tileDef.tileId === tileId) !== undefined
     );
   }
 
@@ -3445,82 +3452,94 @@ describe("WHEN-result consumption", () => {
     return pageResult.value!.page.children().get(0)! as BrainRuleDef;
   }
 
-  // -- suggestTiles annotation (offer/rank/validate) --
+  // -- A required consumer is offered only where a compatible WHEN result is available --
 
-  test("universal consumer is Fed on the DO side when the rule produces a WHEN result", () => {
-    const result = suggestTiles({ ruleSide: RuleSide.Do, whenResultType: CoreTypeIds.Buffer }, catalogList(), services);
-    const s = suggestion(result, universalConsumerDef.tileId);
-    assert.ok(s, "universal consumer should be offered on the DO side");
-    assert.equal(s.whenResult, WhenResultAffinity.Fed, "universal consumer accepts any WHEN result");
+  test("a Buffer consumer is not offered on the WHEN side of an empty root rule", () => {
+    const rule = firstRule();
+    const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: rule }, catalogList(), services);
+    assert.ok(!offered(result, bufferConsumerDef.tileId), "no ancestor WHEN result -> not a valid suggestion");
   });
 
-  test("universal consumer is Fed against a boolean WHEN result too", () => {
-    const result = suggestTiles(
-      { ruleSide: RuleSide.Do, whenResultType: CoreTypeIds.Boolean },
-      catalogList(),
-      services
+  test("a Buffer consumer is not offered on the DO side of an empty root rule", () => {
+    const rule = firstRule();
+    const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
+    assert.ok(!offered(result, bufferConsumerDef.tileId), "no WHEN result in scope -> not a valid suggestion");
+  });
+
+  test("a Buffer consumer is not offered on the WHEN side even when the rule's own WHEN produces a Buffer", () => {
+    const rule = firstRule();
+    rule.when().appendTile(bufferProducerDef);
+    const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: rule }, catalogList(), services);
+    assert.ok(
+      !offered(result, bufferConsumerDef.tileId),
+      "the rule's own WHEN result is not captured while its WHEN is edited"
     );
-    const s = suggestion(result, universalConsumerDef.tileId);
-    assert.ok(s);
-    assert.equal(s.whenResult, WhenResultAffinity.Fed);
   });
 
-  test("universal consumer carries a Mismatch signal when the rule produces no WHEN result -- but is still offered", () => {
-    const result = suggestTiles({ ruleSide: RuleSide.Do, whenResultType: undefined }, catalogList(), services);
-    const s = suggestion(result, universalConsumerDef.tileId);
-    assert.ok(s, "consumer is never dropped");
-    assert.equal(s.whenResult, WhenResultAffinity.Mismatch);
+  test("a Buffer consumer is offered on the DO side of a rule whose WHEN produces a Buffer", () => {
+    const rule = firstRule();
+    rule.when().appendTile(bufferProducerDef);
+    const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
+    assert.ok(offered(result, bufferConsumerDef.tileId), "the DO side reads the rule's own Buffer WHEN result");
   });
 
-  test("type-specific consumer is Fed on an exact WHEN-result-type match", () => {
-    const result = suggestTiles({ ruleSide: RuleSide.Do, whenResultType: CoreTypeIds.Buffer }, catalogList(), services);
-    const s = suggestion(result, bufferConsumerDef.tileId);
-    assert.ok(s, "buffer consumer should be offered");
-    assert.equal(s.whenResult, WhenResultAffinity.Fed);
+  test("a Buffer consumer is offered on a child rule's WHEN side when the ancestor produces a Buffer", () => {
+    const parent = firstRule();
+    parent.when().appendTile(bufferProducerDef);
+    const child = parent.appendNewRule();
+    const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: child }, catalogList(), services);
+    assert.ok(offered(result, bufferConsumerDef.tileId), "the child WHEN side reads the ancestor's Buffer result");
   });
 
-  test("type-specific consumer is Fed via a conversion from the WHEN-result type", () => {
-    // Boolean -> Number conversion exists, so a Number consumer accepts a boolean WHEN result.
-    const result = suggestTiles(
-      { ruleSide: RuleSide.Do, whenResultType: CoreTypeIds.Boolean },
-      catalogList(),
-      services
+  test("a Buffer consumer is offered on the DO side of an empty-WHEN child that falls through to a Buffer ancestor", () => {
+    const parent = firstRule();
+    parent.when().appendTile(bufferProducerDef);
+    const child = parent.appendNewRule();
+    const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: child }, catalogList(), services);
+    assert.ok(
+      offered(result, bufferConsumerDef.tileId),
+      "empty-WHEN child DO side falls through to the ancestor Buffer"
     );
-    const s = suggestion(result, numberConsumerDef.tileId);
-    assert.ok(s);
-    assert.equal(s.whenResult, WhenResultAffinity.Fed);
   });
 
-  test("type-specific consumer carries a Mismatch signal on an incompatible WHEN result -- but is still offered", () => {
-    const result = suggestTiles({ ruleSide: RuleSide.Do, whenResultType: CoreTypeIds.Number }, catalogList(), services);
-    const s = suggestion(result, bufferConsumerDef.tileId);
-    assert.ok(s, "buffer consumer is never dropped even when incompatible");
-    assert.equal(s.whenResult, WhenResultAffinity.Mismatch);
+  test("a Number consumer is offered on the DO side under a Number WHEN", () => {
+    const rule = firstRule();
+    rule.when().appendTile(numberProducerDef);
+    const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
+    assert.ok(offered(result, numberConsumerDef.tileId));
   });
 
-  test("type-specific consumer carries a Mismatch signal when the rule produces no WHEN result", () => {
-    const result = suggestTiles({ ruleSide: RuleSide.Do, whenResultType: undefined }, catalogList(), services);
-    const s = suggestion(result, bufferConsumerDef.tileId);
-    assert.ok(s);
-    assert.equal(s.whenResult, WhenResultAffinity.Mismatch);
+  test("a Number consumer is not offered on the DO side under a Buffer WHEN", () => {
+    const rule = firstRule();
+    rule.when().appendTile(bufferProducerDef);
+    const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
+    assert.ok(!offered(result, numberConsumerDef.tileId), "Buffer does not convert to Number");
   });
 
-  test("non-consumer tiles are never annotated", () => {
-    const result = suggestTiles({ ruleSide: RuleSide.Do, whenResultType: CoreTypeIds.Buffer }, catalogList(), services);
-    const nonConsumer = listFind(result.exact, (s) => s.tileDef.consumesWhenResult() === undefined);
-    assert.ok(nonConsumer, "expected at least one non-consumer suggestion");
-    assert.equal(nonConsumer.whenResult, undefined);
+  test("a Number consumer is offered on the DO side under a convertible (Boolean) WHEN", () => {
+    const rule = firstRule();
+    rule.when().appendTile(booleanProducerDef);
+    const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
+    assert.ok(offered(result, numberConsumerDef.tileId), "Boolean converts to Number, so the consumer is valid");
   });
 
-  test("consumers are not annotated on the WHEN side (the producing side)", () => {
-    const result = suggestTiles(
-      { ruleSide: RuleSide.When, whenResultType: CoreTypeIds.Buffer },
-      catalogList(),
-      services
-    );
-    const s = suggestion(result, bufferConsumerDef.tileId);
-    assert.ok(s, "the inline consumer is still offered on the WHEN side");
-    assert.equal(s.whenResult, undefined, "WHEN-side suggestions carry no WHEN-result affinity");
+  test("a non-consumer tile is offered on both sides of an empty root rule", () => {
+    const rule = firstRule();
+    const doResult = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
+    const whenResult = suggestTiles({ ruleSide: RuleSide.When, ruleDef: rule }, catalogList(), services);
+    assert.ok(offered(doResult, plainSensorDef.tileId), "a tile declaring no WHEN consumption is never gated (DO)");
+    assert.ok(offered(whenResult, plainSensorDef.tileId), "a tile declaring no WHEN consumption is never gated (WHEN)");
+  });
+
+  test("supplying a rule leaves non-consumer suggestions unchanged", () => {
+    const rule = firstRule();
+    const withRule = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
+    const withoutRule = suggestTiles({ ruleSide: RuleSide.Do }, catalogList(), services);
+    assert.ok(offered(withRule, plainSensorDef.tileId));
+    assert.equal(offered(withRule, plainSensorDef.tileId), offered(withoutRule, plainSensorDef.tileId));
+    // The required consumer is absent either way: no WHEN result is available on an empty DO side.
+    assert.ok(!offered(withRule, bufferConsumerDef.tileId));
+    assert.ok(!offered(withoutRule, bufferConsumerDef.tileId));
   });
 
   // -- getRuleWhenResultType (model helper + ancestor fall-through) --
@@ -3552,21 +3571,6 @@ describe("WHEN-result consumption", () => {
       getRuleWhenResultType(child, services),
       CoreTypeIds.Buffer,
       "child sees the parent's WHEN-result type"
-    );
-  });
-
-  test("empty-WHEN ancestor fall-through feeds a child rule's DO-side suggestions", () => {
-    const parent = firstRule();
-    parent.when().appendTile(bufferProducerDef);
-    const child = parent.appendNewRule();
-    const whenResultType = getRuleWhenResultType(child, services);
-    const result = suggestTiles({ ruleSide: RuleSide.Do, whenResultType }, catalogList(), services);
-    const s = suggestion(result, bufferConsumerDef.tileId);
-    assert.ok(s);
-    assert.equal(
-      s.whenResult,
-      WhenResultAffinity.Fed,
-      "the Buffer consumer is fed by the ancestor's Buffer WHEN result"
     );
   });
 });

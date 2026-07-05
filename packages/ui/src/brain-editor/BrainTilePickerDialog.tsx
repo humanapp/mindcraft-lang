@@ -1,6 +1,7 @@
 import { List, type ReadonlyBitSet, type ReadonlyList, type UniqueSet } from "@mindcraft-lang/core";
 import {
   CoreCapabilityBits,
+  type IBrainRuleDef,
   type IBrainTileDef,
   type ITileCatalog,
   type RuleSide,
@@ -77,8 +78,8 @@ export interface BrainTilePickerDialogProps {
   replaceTileIndex?: number;
   availableCapabilities?: ReadonlyBitSet;
   availableOutputKeys?: UniqueSet<string>;
-  /** The rule's WHEN-result type; feeds WHEN-result affinity on DO-side consumers. */
-  whenResultType?: TypeId;
+  /** The rule being edited; supplies the WHEN-result type that gates WHEN-result-consuming tiles. */
+  ruleDef?: IBrainRuleDef;
   existingTiles?: ReadonlyList<IBrainTileDef>;
   onTileSelected: (tileDef: IBrainTileDef) => boolean;
   onCancel: () => void;
@@ -100,7 +101,7 @@ export function BrainTilePickerDialog({
   replaceTileIndex,
   availableCapabilities,
   availableOutputKeys,
-  whenResultType,
+  ruleDef,
   existingTiles,
   onTileSelected,
   onCancel,
@@ -135,7 +136,7 @@ export function BrainTilePickerDialog({
       replaceTileIndex,
       availableCapabilities,
       availableOutputKeys,
-      whenResultType,
+      ruleDef,
       unclosedParenDepth,
     };
     const result = brainServices
@@ -248,7 +249,7 @@ export function BrainTilePickerDialog({
     replaceTileIndex,
     availableCapabilities,
     availableOutputKeys,
-    whenResultType,
+    ruleDef,
     existingTiles,
     catalogs,
     brainServices,

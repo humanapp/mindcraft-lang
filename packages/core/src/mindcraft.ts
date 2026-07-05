@@ -161,9 +161,9 @@ type HostActionOptionsBase = {
   readonly metadata?: ITileMetadata;
   readonly capabilities?: BrainTileDefCreateOptions["capabilities"];
   /**
-   * Declares that this action's tile consumes the rule's WHEN result. Set to the
-   * expected `TypeId`, or `ConsumesAnyWhenResult` for a universal consumer. The
-   * editor uses it to offer and validate the tile against the WHEN-result type.
+   * Declares that this action's tile requires the rule's WHEN result, set to the
+   * expected `TypeId`. The editor offers the tile only where a WHEN result of that
+   * type is available.
    */
   readonly consumesWhenResult?: BrainTileDefCreateOptions["consumesWhenResult"];
 };

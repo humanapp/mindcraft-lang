@@ -19,15 +19,8 @@ export {
   type TileId,
 } from "../../runtime/tile-ids";
 
-import { CoreTypeIds } from "../../runtime/core-types";
 import type { ActionDescriptor } from "../../runtime/function-defs";
 import type { TypeId } from "../../runtime/type-defs";
-
-/**
- * Universal-consumer marker for {@link IBrainTileDef.consumesWhenResult}: a tile
- * declaring this consumes the rule's WHEN result whatever its type.
- */
-export const ConsumesAnyWhenResult: TypeId = CoreTypeIds.Any;
 
 // ----------------------------------------------------
 // Core Types and Enums
@@ -88,10 +81,9 @@ export interface BrainTileDefCreateOptions {
   /** Output identity keys (see `mkOutputVarKey`) this tile provides; sensors declaring outputs set these so their output value-tiles surface downstream. */
   providedOutputs?: ReadonlyList<string>;
   /**
-   * Declares that this tile consumes the rule's WHEN result. The value is the
-   * `TypeId` the tile expects, or {@link ConsumesAnyWhenResult} for a
-   * type-agnostic (universal) consumer. Omit for a tile that does not consume
-   * the WHEN result.
+   * Declares that this tile requires the rule's WHEN result, set to the `TypeId`
+   * the tile expects. The editor offers the tile only where a WHEN result of that
+   * type is available. Omit for a tile that does not consume the WHEN result.
    */
   consumesWhenResult?: TypeId;
   metadata?: ITileMetadata;
@@ -174,9 +166,8 @@ export interface IBrainTileDef {
   /** Output identity keys this tile provides (empty for tiles that declare no outputs). */
   providedOutputs(): ReadonlyList<string>;
   /**
-   * The `TypeId` of the WHEN result this tile consumes, {@link ConsumesAnyWhenResult}
-   * for a universal (type-agnostic) consumer, or `undefined` for a tile that does
-   * not consume the WHEN result.
+   * The `TypeId` of the WHEN result this tile requires, or `undefined` for a tile
+   * that does not consume the WHEN result.
    */
   consumesWhenResult(): TypeId | undefined;
 }

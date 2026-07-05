@@ -16,7 +16,6 @@ import type { ReadonlyBitSet } from "../../util/bitset";
 import { parseBrainTiles } from "../compiler/parser";
 import type { ActuatorExpr, Expr, FieldAccessExpr, SensorExpr, Span } from "../compiler/types";
 import {
-  ConsumesAnyWhenResult,
   CoreControlFlowId,
   type IBrainRuleDef,
   type IBrainTileDef,
@@ -54,22 +53,6 @@ export enum TileCompatibility {
 }
 
 /**
- * How a WHEN-result-consuming tile relates to the rule's WHEN-result type.
- * Present only on suggestions whose tile declares `consumesWhenResult()`. It is
- * advisory: the tile is offered regardless of the affinity.
- */
-export enum WhenResultAffinity {
-  /** The tile consumes the WHEN result and its declared type accepts it (or it is a universal consumer). */
-  Fed = 0,
-  /**
-   * The tile consumes the WHEN result but the rule produces none, or produces one
-   * the declared type does not accept. The tile is still offered; this is a
-   * non-blocking signal.
-   */
-  Mismatch = 1,
-}
-
-/**
  * A single tile suggestion with type compatibility information.
  */
 export interface TileSuggestion {
@@ -79,12 +62,6 @@ export interface TileSuggestion {
   compatibility: TileCompatibility;
   /** Total conversion cost (0 for exact and unchecked matches) */
   conversionCost: number;
-  /**
-   * WHEN-result affinity, set only when the tile declares `consumesWhenResult()`
-   * and the insertion point is on the DO side. Undefined for tiles that do not
-   * consume the WHEN result.
-   */
-  whenResult?: WhenResultAffinity;
 }
 
 /**
@@ -155,12 +132,13 @@ export interface InsertionContext {
    */
   unclosedParenDepth?: number;
   /**
-   * The type of the rule's WHEN result (see `getRuleWhenResultType`), or
-   * undefined when the rule produces no WHEN result. On the DO side, tiles that
-   * declare `consumesWhenResult()` are annotated with a {@link WhenResultAffinity}
-   * against this type. It never excludes a tile from suggestions.
+   * The rule whose side is being edited. Supplies the WHEN-result type available
+   * at this insertion point (see `getRuleWhenResultType`), which gates tiles that
+   * declare `consumesWhenResult()`: on the DO side the rule's own WHEN result, on
+   * the WHEN side the ancestor's. When undefined, no WHEN result is available and
+   * WHEN-result-consuming tiles are not offered.
    */
-  whenResultType?: TypeId;
+  ruleDef?: IBrainRuleDef;
 }
 
 // ---- Helpers ----
@@ -1396,57 +1374,44 @@ export function getRuleWhenResultType(ruleDef: IBrainRuleDef, services: BrainSer
 }
 
 /**
- * Whether a value of `whenResultType` is accepted by a consumer declaring
- * `declaredType`, by exact match or an available conversion.
+ * The WHEN-result type available to a tile placed on `ruleSide` of `ruleDef`.
+ *
+ * A DO-side tile reads this rule's own WHEN result (with the empty-WHEN ancestor
+ * fall-through of `getRuleWhenResultType`). A WHEN-side tile reads the ancestor's
+ * WHEN result -- the rule's own result is not captured while its WHEN is still
+ * being evaluated -- so a root rule's WHEN side has none. Returns undefined when
+ * no rule is supplied or no enclosing rule produces a typable WHEN result.
  */
-function whenResultTypeAccepts(
-  whenResultType: TypeId,
-  declaredType: TypeId,
+function availableWhenResultType(
+  ruleDef: IBrainRuleDef | undefined,
+  ruleSide: RuleSide,
+  services: BrainServices
+): TypeId | undefined {
+  if (ruleDef === undefined) return undefined;
+  if (ruleSide === RuleSide.When) {
+    const ancestor = ruleDef.ancestor();
+    return ancestor ? getRuleWhenResultType(ancestor, services) : undefined;
+  }
+  return getRuleWhenResultType(ruleDef, services);
+}
+
+/**
+ * Whether a tile is valid with respect to the WHEN result available at an
+ * insertion point. A tile that declares `consumesWhenResult(T)` requires a WHEN
+ * result of type `T`: it is valid only when `availableType` is present and is
+ * `T` exactly or converts to `T`. A tile that declares nothing is always valid.
+ */
+function whenResultConsumerEligible(
+  tileDef: IBrainTileDef,
+  availableType: TypeId | undefined,
   conversions: IConversionRegistry
 ): boolean {
-  if (whenResultType === declaredType) return true;
-  const path = conversions.findBestPath(whenResultType, declaredType);
+  const required = tileDef.consumesWhenResult();
+  if (required === undefined) return true;
+  if (availableType === undefined) return false;
+  if (availableType === required) return true;
+  const path = conversions.findBestPath(availableType, required);
   return path !== undefined && path.size() > 0;
-}
-
-/**
- * Classifies a consumer tile's declared WHEN-result type against the rule's
- * actual WHEN-result type. Returns undefined for tiles that do not declare
- * `consumesWhenResult()`.
- */
-function classifyWhenResultAffinity(
-  tileDef: IBrainTileDef,
-  whenResultType: TypeId | undefined,
-  conversions: IConversionRegistry
-): WhenResultAffinity | undefined {
-  const declared = tileDef.consumesWhenResult();
-  if (declared === undefined) return undefined;
-  if (whenResultType === undefined) return WhenResultAffinity.Mismatch;
-  if (declared === ConsumesAnyWhenResult) return WhenResultAffinity.Fed;
-  return whenResultTypeAccepts(whenResultType, declared, conversions)
-    ? WhenResultAffinity.Fed
-    : WhenResultAffinity.Mismatch;
-}
-
-/**
- * Annotates every suggestion whose tile declares `consumesWhenResult()` with a
- * {@link WhenResultAffinity} against `whenResultType`. Suggestions for tiles that
- * do not consume the WHEN result are left untouched.
- */
-function annotateWhenResultConsumers(
-  result: TileSuggestionResult,
-  whenResultType: TypeId | undefined,
-  conversions: IConversionRegistry
-): void {
-  const annotate = (list: List<TileSuggestion>) => {
-    for (let i = 0; i < list.size(); i++) {
-      const suggestion = list.get(i);
-      const affinity = classifyWhenResultAffinity(suggestion.tileDef, whenResultType, conversions);
-      if (affinity !== undefined) suggestion.whenResult = affinity;
-    }
-  };
-  annotate(result.exact);
-  annotate(result.withConversion);
 }
 
 // ---- Main API ----
@@ -1488,13 +1453,10 @@ export function suggestTiles(
     withConversion: List.empty(),
   };
 
-  // Only DO-side insertion points carry a WHEN-result affinity.
-  const finalize = (): TileSuggestionResult => {
-    if ((context.ruleSide & RuleSide.Do) !== 0) {
-      annotateWhenResultConsumers(result, context.whenResultType, conversions);
-    }
-    return result;
-  };
+  // The WHEN-result type available at this insertion point gates tiles that
+  // declare `consumesWhenResult()`; a tile requiring an unavailable type is not
+  // offered.
+  const availableWhenResult = availableWhenResultType(context.ruleDef, context.ruleSide, services);
 
   const expr: Expr = context.expr ?? { nodeId: 0, kind: "empty" };
 
@@ -1505,8 +1467,17 @@ export function suggestTiles(
     // mode so the user sees infix operators and close paren suggestions.
     if (exprContainsTileIndex(expr, context.replaceTileIndex)) {
       const role = findReplacementRole(expr, context.replaceTileIndex, { kind: "expressionPosition" });
-      suggestForReplacementRole(role, context, catalogs, conversions, types, operatorOverloads, result);
-      return finalize();
+      suggestForReplacementRole(
+        role,
+        context,
+        catalogs,
+        conversions,
+        types,
+        operatorOverloads,
+        availableWhenResult,
+        result
+      );
+      return result;
     }
     // Tile is outside the AST (e.g., a paren) -- fall through to append mode.
   }
@@ -1515,7 +1486,7 @@ export function suggestTiles(
   switch (expr.kind) {
     case "empty":
     case "errorExpr":
-      suggestExpressionTiles(context, catalogs, conversions, types, result);
+      suggestExpressionTiles(context, catalogs, conversions, types, availableWhenResult, result);
       break;
 
     case "actuator":
@@ -1543,6 +1514,7 @@ export function suggestTiles(
           conversions,
           types,
           operatorOverloads,
+          availableWhenResult,
           result,
           undefined,
           context.availableCapabilities,
@@ -1609,6 +1581,7 @@ export function suggestTiles(
             conversions,
             types,
             operatorOverloads,
+            availableWhenResult,
             result,
             undefined,
             context.availableCapabilities,
@@ -1661,7 +1634,7 @@ export function suggestTiles(
         const ctx: InsertionContext = expectedType
           ? { ruleSide: context.ruleSide, expectedType, unclosedParenDepth: context.unclosedParenDepth }
           : context;
-        suggestExpressionTiles(ctx, catalogs, conversions, types, result, true, true);
+        suggestExpressionTiles(ctx, catalogs, conversions, types, availableWhenResult, result, true, true);
       }
       break;
     }
@@ -1691,7 +1664,7 @@ export function suggestTiles(
         const ctx: InsertionContext = expectedType
           ? { ruleSide: context.ruleSide, expectedType, unclosedParenDepth: context.unclosedParenDepth }
           : context;
-        suggestExpressionTiles(ctx, catalogs, conversions, types, result, true);
+        suggestExpressionTiles(ctx, catalogs, conversions, types, availableWhenResult, result, true);
       }
       break;
 
@@ -1701,7 +1674,7 @@ export function suggestTiles(
       break;
   }
 
-  return finalize();
+  return result;
 }
 
 // ---- Close Paren ----
@@ -1784,6 +1757,7 @@ function suggestExpressionTiles(
   catalogs: ReadonlyList<ITileCatalog>,
   conversions: IConversionRegistry,
   types: ITypeRegistry,
+  availableWhenResult: TypeId | undefined,
   result: TileSuggestionResult,
   valueOnly = false,
   allowNonInlineSensors = false
@@ -1855,6 +1829,9 @@ function suggestExpressionTiles(
 
       // Check capability requirements
       if (!areRequirementsMet(tileDef, context.availableCapabilities, context.availableOutputKeys)) continue;
+
+      // A WHEN-result consumer is valid only where its required WHEN result is available.
+      if (!whenResultConsumerEligible(tileDef, availableWhenResult, conversions)) continue;
 
       // Deduplicate across catalogs
       if (seen.has(tileDef.tileId)) continue;
@@ -2169,11 +2146,19 @@ function suggestForReplacementRole(
   conversions: IConversionRegistry,
   types: ITypeRegistry,
   operatorOverloads: IOperatorOverloads,
+  availableWhenResult: TypeId | undefined,
   result: TileSuggestionResult
 ): void {
   switch (role.kind) {
     case "expressionPosition":
-      suggestExpressionTiles({ ...context, unclosedParenDepth: undefined }, catalogs, conversions, types, result);
+      suggestExpressionTiles(
+        { ...context, unclosedParenDepth: undefined },
+        catalogs,
+        conversions,
+        types,
+        availableWhenResult,
+        result
+      );
       break;
 
     case "value": {
@@ -2183,7 +2168,7 @@ function suggestForReplacementRole(
         availableCapabilities: context.availableCapabilities,
         unclosedParenDepth: context.unclosedParenDepth,
       };
-      suggestExpressionTiles(ctx, catalogs, conversions, types, result, true);
+      suggestExpressionTiles(ctx, catalogs, conversions, types, availableWhenResult, result, true);
       break;
     }
 
@@ -2209,6 +2194,7 @@ function suggestForReplacementRole(
         conversions,
         types,
         operatorOverloads,
+        availableWhenResult,
         result,
         role.excludeSlotId,
         context.availableCapabilities,
@@ -2240,6 +2226,7 @@ function suggestActionCallTiles(
   conversions: IConversionRegistry,
   types: ITypeRegistry,
   operatorOverloads: IOperatorOverloads,
+  availableWhenResult: TypeId | undefined,
   result: TileSuggestionResult,
   excludeSlotId?: number,
   availableCapabilities?: ReadonlyBitSet,
@@ -2351,6 +2338,7 @@ function suggestActionCallTiles(
       catalogs,
       conversions,
       types,
+      availableWhenResult,
       result,
       availableCapabilities,
       availableOutputKeys
@@ -2374,6 +2362,7 @@ function suggestExpressionsForAnonymousSlots(
   catalogs: ReadonlyList<ITileCatalog>,
   conversions: IConversionRegistry,
   types: ITypeRegistry,
+  availableWhenResult: TypeId | undefined,
   result: TileSuggestionResult,
   availableCapabilities?: ReadonlyBitSet,
   availableOutputKeys?: UniqueSet<string>
@@ -2403,6 +2392,9 @@ function suggestExpressionsForAnonymousSlots(
 
       // Check capability + output-identity requirements
       if (!areRequirementsMet(tileDef, availableCapabilities, availableOutputKeys)) continue;
+
+      // A WHEN-result consumer is valid only where its required WHEN result is available.
+      if (!whenResultConsumerEligible(tileDef, availableWhenResult, conversions)) continue;
 
       // Deduplicate
       if (seen.has(tileDef.tileId)) continue;

@@ -32,7 +32,7 @@ import {
   PasteRuleAboveCommand,
   SetRuleCommentCommand,
 } from "./commands";
-import { useRuleCapabilities, useRuleOutputKeys, useRuleWhenResultType } from "./hooks/useRuleCapabilities";
+import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
 import { useRuleDragController } from "./RuleDragContext";
 import { copyRuleToClipboard, hasRuleInClipboard, onClipboardChanged } from "./rule-clipboard";
@@ -142,7 +142,6 @@ export function BrainRuleEditor({
 
   const availableCapabilities = useRuleCapabilities(ruleDef, updateCounter);
   const availableOutputKeys = useRuleOutputKeys(ruleDef, updateCounter);
-  const whenResultType = useRuleWhenResultType(ruleDef, brainServices, updateCounter);
 
   // Use the tile selection hook
   const {
@@ -582,7 +581,7 @@ export function BrainRuleEditor({
                 existingTiles={tileSet.tiles()}
                 availableCapabilities={availableCapabilities}
                 availableOutputKeys={availableOutputKeys}
-                whenResultType={whenResultType}
+                ruleDef={ruleDef}
                 onTileSelected={handleTileSelected}
                 onCancel={handleTilePickerCancel}
               />
