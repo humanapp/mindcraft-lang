@@ -1908,6 +1908,62 @@ describe("Accessor / struct field suggestions", () => {
     assert.ok(resultContains(result, accessorYDef.tileId), "standalone [$pos] should suggest Position.y");
     assert.ok(resultContains(result, accessorMagDef.tileId), "standalone [$pos] should suggest Position.mag");
   });
+
+  test("Test 80: Replace [=] after struct variable -> struct accessors offered", () => {
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const tiles = List.from<IBrainTileDef>([posVarDef, assignOpDef]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "assignment");
+
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, replaceTileIndex: 1 }, catalogList(), services);
+
+    assert.ok(resultContains(result, accessorXDef.tileId), "Replacing [=] should offer Position.x");
+    assert.ok(resultContains(result, accessorYDef.tileId), "Replacing [=] should offer Position.y");
+    assert.ok(resultContains(result, accessorMagDef.tileId), "Replacing [=] should offer Position.mag");
+
+    // The assignment operator is still offered where valid (l-value target).
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Assign)) !== undefined,
+      "Replacing [=] should still offer the assignment operator"
+    );
+  });
+
+  test("Test 81: Replace operator after NON-struct left -> no accessors offered", () => {
+    const numVarDef = new BrainTileVariableDef("test.numVar81", "num81", CoreTypeIds.Number, "var-num-81");
+    services.edit.tiles.registerTileDef(numVarDef);
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const tiles = List.from<IBrainTileDef>([numVarDef, assignOpDef]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "assignment");
+
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, replaceTileIndex: 1 }, catalogList(), services);
+
+    const hasAccessor = listFind(result.exact, (s) => s.tileDef.kind === "accessor") !== undefined;
+    assert.ok(!hasAccessor, "Replacing an operator after a Number left should NOT offer accessors");
+  });
+
+  test("Test 82: Replace binaryOp operator with struct left -> struct accessors offered", () => {
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const leftVar: VariableExpr = { nodeId: 1, kind: "variable", tileDef: posVarDef, span: { from: 0, to: 1 } };
+    const rightVar: VariableExpr = { nodeId: 2, kind: "variable", tileDef: posVarDef, span: { from: 2, to: 3 } };
+    const binaryExpr: BinaryOpExpr = {
+      nodeId: 0,
+      kind: "binaryOp",
+      operator: addOpDef,
+      left: leftVar,
+      right: rightVar,
+      span: { from: 0, to: 3 },
+    };
+
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Either, expr: binaryExpr, replaceTileIndex: 1 },
+      catalogList(),
+      services
+    );
+
+    assert.ok(resultContains(result, accessorXDef.tileId), "Replacing binaryOp operator should offer Position.x");
+    assert.ok(resultContains(result, accessorYDef.tileId), "Replacing binaryOp operator should offer Position.y");
+  });
 });
 
 // ---- Accessor suggestions after value sensors ----

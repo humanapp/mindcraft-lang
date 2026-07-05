@@ -2186,6 +2186,21 @@ function suggestForReplacementRole(
           : undefined;
       suggestInfixOperators(context, catalogs, conversions, result, leftType, operatorOverloads, role.leftExpr);
       suggestCloseParenIfNeeded(context, catalogs, result);
+      if (role.leftExpr) {
+        // Mirror the append path after a complete value: replacing the operator
+        // with an accessor of the left value's struct type is valid (e.g.,
+        // [pos] [=] -> [pos] [x]). Unrestricted accepted types offer all of the
+        // struct's accessors, as for a standalone value; suggestAccessorTiles
+        // no-ops when the left type is not a struct.
+        suggestAccessorTiles(
+          context,
+          catalogs,
+          types,
+          conversions,
+          result,
+          getExprOutputType(role.leftExpr, operatorOverloads, conversions) ?? getExprOutputType(role.leftExpr)
+        );
+      }
       break;
     }
 
