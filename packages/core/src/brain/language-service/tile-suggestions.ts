@@ -1538,7 +1538,11 @@ export function suggestTiles(
         suggestInfixOperators(context, catalogs, conversions, result, leftType, operatorOverloads, leftExpr);
         suggestCloseParenIfNeeded(context, catalogs, result);
         const trailingForAccessor = trailingPrimaryExpr(leftExpr);
-        const acceptedTypes = collectActionCallExpectedTypes(expr, catalogs, types);
+        // When the trailing value is the standalone action expression itself
+        // (a complete no-arg value sensor), no enclosing slot constrains its
+        // accessors -- offer them unrestricted, as for a variable or literal.
+        // When it is nested in a slot, restrict to the types that slot wants.
+        const acceptedTypes = leftExpr === expr ? undefined : collectActionCallExpectedTypes(expr, catalogs, types);
         suggestAccessorTiles(
           context,
           catalogs,
@@ -1601,7 +1605,11 @@ export function suggestTiles(
           suggestInfixOperators(context, catalogs, conversions, result, leftType, operatorOverloads, leftExpr);
           suggestCloseParenIfNeeded(context, catalogs, result);
           const trailingForAccessor = trailingPrimaryExpr(leftExpr);
-          const innerAcceptedTypes = collectActionCallExpectedTypes(innerExpr, catalogs, types);
+          // The operand sensor stands alone (no trailing slot value) when
+          // leftExpr fell back to the whole unary expression -- offer its
+          // accessors unrestricted; otherwise restrict to the slot's types.
+          const innerAcceptedTypes =
+            leftExpr === expr ? undefined : collectActionCallExpectedTypes(innerExpr, catalogs, types);
           suggestAccessorTiles(
             context,
             catalogs,

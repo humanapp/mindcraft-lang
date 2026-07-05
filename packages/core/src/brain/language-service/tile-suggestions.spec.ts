@@ -1910,6 +1910,154 @@ describe("Accessor / struct field suggestions", () => {
   });
 });
 
+// ---- Accessor suggestions after value sensors ----
+
+describe("Accessor suggestions after value sensors", () => {
+  let readingStructTypeId: string;
+  let accValueDef: BrainTileAccessorDef;
+  let accDataDef: BrainTileAccessorDef;
+  let readingSensorDef: BrainTileSensorDef;
+  let readingVarDef: BrainTileVariableDef;
+  let observeNumberDef: BrainTileActuatorDef;
+  let senseNumberDef: BrainTileSensorDef;
+  let notOpDef: BrainTileOperatorDef;
+
+  before(() => {
+    // A struct with a Number field and a Buffer field. Buffer does not convert
+    // to Number, so a Number-typed slot excludes the Buffer accessor -- letting
+    // the restriction tests distinguish "filtered" from "offered".
+    readingStructTypeId = services.runtime.types.addStructType("Reading", {
+      atomId: mkTestAtomId(),
+      fields: List.from([
+        { name: "value", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "data", typeId: CoreTypeIds.Buffer, fieldIndex: 1 },
+      ]),
+    });
+    accValueDef = new BrainTileAccessorDef(readingStructTypeId, "value", CoreTypeIds.Number, {
+      metadata: { label: "value" },
+    });
+    accDataDef = new BrainTileAccessorDef(readingStructTypeId, "data", CoreTypeIds.Buffer, {
+      metadata: { label: "data" },
+    });
+    services.edit.tiles.registerTileDef(accValueDef);
+    services.edit.tiles.registerTileDef(accDataDef);
+
+    // A complete no-arg inline value sensor that returns the struct, mirroring
+    // a gamepad's `stick position` sensor.
+    const readFn = services.runtime.functions.register(
+      4300,
+      "test-reading-sensor",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    readingSensorDef = new BrainTileSensorDef(
+      "test-reading-sensor",
+      mkActionDescriptor("sensor", readFn, readingStructTypeId),
+      { metadata: { label: "reading" }, placement: TilePlacement.EitherSide | TilePlacement.Inline }
+    );
+    services.edit.tiles.registerTileDef(readingSensorDef);
+
+    readingVarDef = new BrainTileVariableDef("test.readingVar", "my_reading", readingStructTypeId, "var-reading-1");
+    services.edit.tiles.registerTileDef(readingVarDef);
+    services.edit.operatorOverloads.binaryTypeOnly(
+      CoreOpId.Assign,
+      readingStructTypeId,
+      readingStructTypeId,
+      readingStructTypeId
+    );
+
+    // An actuator with a single anonymous Number value slot, mirroring `observe x`.
+    const anonNumberSpec = param(CoreParameterId.AnonymousNumber, {
+      name: "anonNum",
+      required: true,
+      anonymous: true,
+    });
+    const observeFn = services.runtime.functions.register(
+      4301,
+      "test-observe-number",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag(anonNumberSpec))
+    );
+    observeNumberDef = new BrainTileActuatorDef("test-observe-number", mkActionDescriptor("actuator", observeFn), {
+      metadata: { label: "observe number" },
+    });
+    services.edit.tiles.registerTileDef(observeNumberDef);
+
+    // A non-inline sensor with a single anonymous Number value slot. Non-inline
+    // sensors consume juxtaposed value args through parseActionCall, so this one
+    // holds a struct value in a Number slot.
+    const senseFn = services.runtime.functions.register(
+      4302,
+      "test-sense-number",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag(anonNumberSpec))
+    );
+    senseNumberDef = new BrainTileSensorDef(
+      "test-sense-number",
+      mkActionDescriptor("sensor", senseFn, CoreTypeIds.Number),
+      { metadata: { label: "sense number" }, placement: TilePlacement.EitherSide }
+    );
+    services.edit.tiles.registerTileDef(senseNumberDef);
+
+    notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+  });
+
+  test("no-arg value sensor -> its struct accessors are offered", () => {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([readingSensorDef]));
+    assert.equal(expr.kind, "sensor");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+
+    assert.ok(resultContains(result, accValueDef.tileId), "[reading] should offer the 'value' accessor");
+    assert.ok(resultContains(result, accDataDef.tileId), "[reading] should offer the 'data' accessor");
+  });
+
+  test("[not] [value sensor] -> its struct accessors are offered (unary-wrapped parity)", () => {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([notOpDef, readingSensorDef]));
+    assert.equal(expr.kind, "unaryOp");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+
+    assert.ok(resultContains(result, accValueDef.tileId), "[not] [reading] should offer the 'value' accessor");
+    assert.ok(resultContains(result, accDataDef.tileId), "[not] [reading] should offer the 'data' accessor");
+  });
+
+  test("struct value in an actuator Number slot -> only accessors the slot accepts", () => {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([observeNumberDef, readingSensorDef]));
+    assert.equal(expr.kind, "actuator");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+
+    assert.ok(resultContains(result, accValueDef.tileId), "'value' (Number) accessor should be offered");
+    assert.ok(
+      !resultContains(result, accDataDef.tileId),
+      "'data' (Buffer) accessor should NOT be offered -- the slot wants Number"
+    );
+  });
+
+  test("struct value in a sensor Number slot -> only accessors the slot accepts", () => {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([senseNumberDef, readingSensorDef]));
+    assert.equal(expr.kind, "sensor");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+
+    assert.ok(resultContains(result, accValueDef.tileId), "'value' (Number) accessor should be offered");
+    assert.ok(
+      !resultContains(result, accDataDef.tileId),
+      "'data' (Buffer) accessor should NOT be offered -- the slot wants Number"
+    );
+  });
+
+  test("value sensor as an assignment RHS -> no accessors (whole struct assigned)", () => {
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([readingVarDef, assignOpDef, readingSensorDef]));
+    assert.equal(expr.kind, "assignment");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+
+    const hasAccessor = listFind(result.exact, (s) => s.tileDef.kind === "accessor") !== undefined;
+    assert.ok(!hasAccessor, "[$reading] [:=] [reading] should NOT offer accessors -- the whole struct is assigned");
+  });
+});
+
 // ---- Test 47-58: Sub-expression filtering, prefix ops, non-inline sensors ----
 
 describe("Sub-expression filtering", () => {
