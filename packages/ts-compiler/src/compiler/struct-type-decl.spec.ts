@@ -33,6 +33,7 @@ import {
   BrainTileLiteralDef,
   BrainTileOperatorDef,
   BrainTileVariableDef,
+  getCatalogFallbackLabel,
   TileCatalog,
 } from "@mindcraft-lang/core/brain/tiles";
 import {
@@ -258,6 +259,27 @@ describe("StructType declarations: registration and identity", () => {
 
     // The sensor's return type resolved through the binding reference.
     assert.equal(program.outputType, typeId);
+  });
+
+  test("the variable-factory tile reads with the struct display name, not the raw type id", () => {
+    const services = __test__createBrainServices();
+    const result = compileProject(services, { "position.ts": POSITION_SOURCE, "stick.ts": STICK_SOURCE });
+    const stick = compiledProgram(result, "stick.ts");
+    registerUserTile(stick, services);
+
+    const typeId = positionTypeId(services);
+    const factory = services.edit.tiles.get(mkVariableFactoryTileId(typeId));
+    assert.ok(factory, "expected the variable factory tile to be registered");
+    assert.equal(
+      factory.metadata?.label,
+      stick.structTypes![0].name,
+      "the factory reads with the struct's display name"
+    );
+    assert.notEqual(
+      factory.metadata?.label,
+      getCatalogFallbackLabel(factory),
+      "the label must not collapse to the mangled type-id fallback"
+    );
   });
 
   test("two importing modules resolve to one type, one accessor tile set, one variable factory", () => {

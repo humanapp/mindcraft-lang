@@ -39,7 +39,14 @@ export function buildStructTypeTiles(program: UserAuthoredProgram, services?: Br
       }
     }
     if (structType.variables) {
-      tiles.push(createVariableFactoryTileDef(structType.typeId, structType.typeId, {}, services));
+      tiles.push(
+        createVariableFactoryTileDef(
+          structType.typeId,
+          structType.typeId,
+          { metadata: { label: structType.name } },
+          services
+        )
+      );
     }
   }
   return tiles;

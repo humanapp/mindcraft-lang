@@ -1,6 +1,6 @@
 import { Error } from "../../platform/error";
 import { StringUtils as SU } from "../../platform/string";
-import { CoreTypeIds, type TileId, type TypeId } from "../../runtime";
+import { CoreTypeIds, CoreTypeNames, type TileId, type TypeId } from "../../runtime";
 import {
   type BrainTileDefCreateOptions,
   CoreVariableFactoryId,
@@ -119,7 +119,22 @@ function manufactureVarTileDef(
 
 /** Register the built-in variable factories for `Boolean`, `Number`, and `String` types. */
 export function registerCoreVariableFactoryTileDefs(services: BrainServices) {
-  registerVariableFactoryTileDef(CoreVariableFactoryId.Boolean, CoreTypeIds.Boolean, {}, services);
-  registerVariableFactoryTileDef(CoreVariableFactoryId.Number, CoreTypeIds.Number, {}, services);
-  registerVariableFactoryTileDef(CoreVariableFactoryId.String, CoreTypeIds.String, {}, services);
+  registerVariableFactoryTileDef(
+    CoreVariableFactoryId.Boolean,
+    CoreTypeIds.Boolean,
+    { metadata: { label: CoreTypeNames.Boolean } },
+    services
+  );
+  registerVariableFactoryTileDef(
+    CoreVariableFactoryId.Number,
+    CoreTypeIds.Number,
+    { metadata: { label: CoreTypeNames.Number } },
+    services
+  );
+  registerVariableFactoryTileDef(
+    CoreVariableFactoryId.String,
+    CoreTypeIds.String,
+    { metadata: { label: CoreTypeNames.String } },
+    services
+  );
 }

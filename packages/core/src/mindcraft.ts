@@ -588,7 +588,12 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         }
       }
       if (structDef.variableFactory) {
-        registerVariableFactoryTileDef(registeredTypeId, registeredTypeId, {}, services);
+        registerVariableFactoryTileDef(
+          registeredTypeId,
+          registeredTypeId,
+          { metadata: { label: structDef.name } },
+          services
+        );
       }
       break;
     }

@@ -16,11 +16,17 @@ import {
   type BrainServices,
   type ITileCatalog,
   isBrainBuildError,
+  mkVariableFactoryTileId,
   mkVariableTileId,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileParameterDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import {
+  BrainTileParameterDef,
+  BrainTileSensorDef,
+  BrainTileVariableDef,
+  getCatalogFallbackLabel,
+} from "@mindcraft-lang/core/brain/tiles";
 import {
   BYTECODE_VERSION,
   CoreTypeIds,
@@ -152,6 +158,25 @@ function createAlphaModule(capture: {
         actionFn: { exec: () => TRUE_VALUE },
         tile: capture.sensorTile,
       });
+    },
+  };
+}
+
+function createVariableFactoryStructModule(capture: { typeId?: string }): MindcraftModule {
+  return {
+    id: "gamma-module",
+    install(api): void {
+      const gammaDef: StructTypeDef & { variableFactory: boolean } = {
+        coreType: NativeType.Struct,
+        typeId: mkTypeId(NativeType.Struct, "GammaThing"),
+        codec: noopCodec,
+        name: "GammaThing",
+        atomId: 1030,
+        fields: List.empty(),
+        fieldIndexByName: new Dict<string, number>(),
+        variableFactory: true,
+      };
+      capture.typeId = api.defineType(gammaDef);
     },
   };
 }
@@ -304,6 +329,23 @@ function assertBuildErrorIncludes(fn: () => unknown, substring: string): void {
 }
 
 describe("mindcraft environment", () => {
+  test("an app-registered struct variable factory reads with the type's display name", () => {
+    const capture: { typeId?: string } = {};
+    const environment = createMindcraftEnvironment({
+      modules: [coreModule(), createVariableFactoryStructModule(capture)],
+    });
+    const services = getEnvironmentServices(environment);
+
+    const factory = services.edit.tiles.get(mkVariableFactoryTileId(capture.typeId!));
+    assert.ok(factory, "expected the app struct variable factory tile to be registered");
+    assert.equal(factory.metadata?.label, "GammaThing", "the factory reads with the struct's display name");
+    assert.notEqual(
+      factory.metadata?.label,
+      getCatalogFallbackLabel(factory),
+      "the label must not collapse to the raw tile-id fallback"
+    );
+  });
+
   test("isolates module-owned registries between environments", () => {
     const capture: {
       sensorTile?: BrainTileSensorDef;
