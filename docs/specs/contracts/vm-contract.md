@@ -290,6 +290,25 @@ A synchronous throw is rolled back (the host opcode frees the handle in a
 later resolves, rejects, or cancels it. `HandleTable.gc()` only reclaims
 terminal handles that have no waiters.
 
+**Backpressure on handle exhaustion.** When an async dispatch
+(`HOST_CALL_ASYNC`, `ACTION_CALL_ASYNC`, `HOST_ACTION_CALL_ASYNC`) cannot
+allocate a handle because the `HandleTable` is at `maxHandles`, the fiber
+parks and retries the same dispatch on a later think; it does not fault. The
+op checks handle capacity BEFORE any side effect -- before snapshotting or
+popping args, before allocating the handle, before spawning a child fiber or
+calling `execAsync`, and before advancing the pc -- and, when full, returns
+the fiber to the run queue for the next round with its pc unchanged. Because
+nothing was consumed on the failed attempt, the retry is an exact
+re-execution of the identical instruction; once an in-flight async settles a
+slot, it succeeds. Excess concurrent async therefore spills across thinks in
+bounded waves, losing no action and bounding live handles to `maxHandles` at
+any breadth. A drained child rule that backpressures re-enters the NEXT round
+(not a same-think retry), since handles free only across thinks. Below the
+cap the path is unreachable, so a brain that never exhausts handles behaves
+identically. `maxHandles` is thus a latency knob, not a correctness cliff.
+(Fiber-pool exhaustion at `ACTION_CALL_ASYNC` is separate and still faults
+`StackOverflow`.)
+
 ### Id-spaces
 
 Rule ids and program-local bytecode action slots are compiler-assigned and
@@ -568,7 +587,7 @@ quiescence, and cancellation rules.
 | Mnemonic          | Numeric | Operands                                          | Stack effect                                | Faults |
 | ----------------- | ------- | ------------------------------------------------- | ------------------------------------------- | ------ |
 | `HOST_CALL`       | 40      | `fnId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if `fnId` is out of bounds; host-thrown errors propagate as `ScriptError`. |
-| `HOST_CALL_ASYNC` | 41      | `fnId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `HOST_CALL`; additionally `StackOverflow` if the handle table is full. |
+| `HOST_CALL_ASYNC` | 41      | `fnId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `HOST_CALL`; a full handle table backpressures (parks and retries next think), it does not fault. |
 
 Both opcodes bind `currentCallSiteId` and `currentRuleFuncId` on
 `ExecutionContext` before dispatch; see
@@ -580,9 +599,9 @@ shape, sync-vs-async lifetime contract, and the host re-entry rule.
 | Mnemonic            | Numeric | Operands                                              | Stack effect                                | Faults |
 | ------------------- | ------- | ----------------------------------------------------- | ------------------------------------------- | ------ |
 | `ACTION_CALL`            | 42      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if `actionSlot` is out of bounds or the program defines no actions. |
-| `ACTION_CALL_ASYNC`      | 43      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `ACTION_CALL`; additionally `StackOverflow` on handle-table or fiber-pool exhaustion. |
+| `ACTION_CALL_ASYNC`      | 43      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `ACTION_CALL`; a full handle table backpressures (parks and retries next think); `StackOverflow` only on fiber-pool exhaustion. |
 | `HOST_ACTION_CALL`       | 44      | `actionId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if no action holds `actionId`, the resolved action is not host-backed, it is async, or its `execSync` is missing. |
-| `HOST_ACTION_CALL_ASYNC` | 45      | `actionId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `HOST_ACTION_CALL` but faults if the action is sync or its `execAsync` is missing; additionally `StackOverflow` on handle-table exhaustion. |
+| `HOST_ACTION_CALL_ASYNC` | 45      | `actionId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `HOST_ACTION_CALL` but faults if the action is sync or its `execAsync` is missing; a full handle table backpressures (parks and retries next think), it does not fault. |
 
 `actionSlot` indexes `Program.actions`, which holds bytecode actions
 only; `ACTION_CALL` / `ACTION_CALL_ASYNC` fault if the indexed entry is

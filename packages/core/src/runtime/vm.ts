@@ -1018,6 +1018,15 @@ export class VM implements IVM {
       throwUnderflow(`HOST_CALL_ASYNC: argc ${argc} exceeds stack size ${stackSize}`);
     }
 
+    // Backpressure on handle exhaustion: with no free handle, yield without
+    // advancing the pc, so the fiber re-enters the run queue and re-executes this
+    // same dispatch next round. The check precedes every side effect (no args
+    // popped, no handle allocated, no action started, pc unchanged), so the retry
+    // is an exact re-execution once an in-flight async settles a slot.
+    if (!this.handles.hasCapacity()) {
+      return { status: VmStatus.YIELDED };
+    }
+
     const args = List.empty<Value>();
     for (let i = 0; i < argc; i++) {
       args.push(fiber.vstack.get(stackSize - argc + i)!);
@@ -1098,6 +1107,15 @@ export class VM implements IVM {
     const action = this.getExecutableAction(actionSlot, "ACTION_CALL_ASYNC");
     const actionKey = action.descriptor.key;
 
+    // Backpressure on handle exhaustion: with no free handle, yield without
+    // advancing the pc, so the fiber re-enters the run queue and re-executes this
+    // same dispatch next round. The check precedes every side effect (no args
+    // popped, no child fiber spawned, no handle allocated, pc unchanged), so the
+    // retry is an exact re-execution once an in-flight async settles a slot.
+    if (!this.handles.hasCapacity()) {
+      return { status: VmStatus.YIELDED };
+    }
+
     const args = this.snapshotStackArgs(fiber, argc, "ACTION_CALL_ASYNC");
     for (let i = 0; i < argc; i++) {
       fiber.vstack.pop();
@@ -1173,7 +1191,7 @@ export class VM implements IVM {
     return undefined;
   }
 
-  private execHostActionCallAsync(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+  private execHostActionCallAsync(fiber: Fiber, ins: Instr, frame: Frame): VmRunResult | undefined {
     this.assertCanSuspend(fiber, Op.HOST_ACTION_CALL_ASYNC);
 
     const actionId = ins.a ?? 0;
@@ -1188,6 +1206,15 @@ export class VM implements IVM {
     const action = this.resolveHostAction(actionId, true, "HOST_ACTION_CALL_ASYNC");
     if (!action.execAsync) {
       throw new Error(`HOST_ACTION_CALL_ASYNC: host action ${action.descriptor.key} is missing execAsync`);
+    }
+
+    // Backpressure on handle exhaustion: with no free handle, yield without
+    // advancing the pc, so the fiber re-enters the run queue and re-executes this
+    // same dispatch next round. The check precedes every side effect (no args
+    // popped, no handle allocated, no action started, pc unchanged), so the retry
+    // is an exact re-execution once an in-flight async settles a slot.
+    if (!this.handles.hasCapacity()) {
+      return { status: VmStatus.YIELDED };
     }
 
     const args = List.empty<Value>();

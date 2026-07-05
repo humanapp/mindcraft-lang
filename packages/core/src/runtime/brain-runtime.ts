@@ -158,7 +158,7 @@ export class BrainRuntime implements IBrainRuntime {
     previousVariables?: VariableSnapshot,
     vmEvents?: VmEvents,
     schedulerConfig?: Partial<SchedulerConfig> &
-      Partial<Pick<VmConfig, "maxStackSize" | "maxLocalsSize" | "maxFrameDepth" | "maxHandlers">>
+      Partial<Pick<VmConfig, "maxStackSize" | "maxLocalsSize" | "maxFrameDepth" | "maxHandlers" | "maxHandles">>
   ) {
     this.program = program;
     this.pageMetadata = pageMetadata;
@@ -198,6 +198,7 @@ export class BrainRuntime implements IBrainRuntime {
       maxLocalsSize: schedulerConfig?.maxLocalsSize,
       maxFrameDepth: schedulerConfig?.maxFrameDepth,
       maxHandlers: schedulerConfig?.maxHandlers,
+      maxHandles: schedulerConfig?.maxHandles,
     });
     this.schedulerConfig = { ...DEFAULT_SCHEDULER_CONFIG, ...schedulerConfig };
     this.scheduler = new FiberScheduler(this.vm, this.schedulerConfig);

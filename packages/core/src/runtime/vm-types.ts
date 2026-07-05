@@ -312,6 +312,15 @@ export class HandleTable {
 
   constructor(public readonly maxHandles: number) {}
 
+  /**
+   * True when a {@link createPending} would succeed right now: the live-handle
+   * count is below {@link maxHandles}. Non-mutating; an async dispatch checks it
+   * to decide whether to allocate or to park and retry next round.
+   */
+  hasCapacity(): boolean {
+    return this.handles.size() < this.maxHandles;
+  }
+
   createPending(): HandleId {
     if (this.handles.size() >= this.maxHandles) {
       throwOverflow(`Handle limit exceeded: ${this.maxHandles}`);
