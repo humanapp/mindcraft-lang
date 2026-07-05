@@ -850,9 +850,9 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     // Child rule DO: actuator reads rule var "fromParent" via
     // getRuleVariable; because the child has its own funcId, this exercises
     // IBrainRule.getVariable<T>'s ancestor walk inside the dense shim.
-    // The child runs in its own fiber, spawned when the parent fires, so it
-    // takes effect one think later: think 1 fires the parent and spawns the
-    // child; the child reads the parent's rule var on think 2.
+    // The child runs in its own fiber, spawned at the parent's tail; it drains
+    // in the same think as its parent (a synchronous cascade) and reads the
+    // parent's rule var on think 1.
     const brainVarName = "rulevar-parent-child-out";
 
     const sensorDef = defineHost(
@@ -898,7 +898,7 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const childRule = parentRule.appendNewRule();
     childRule.do().appendTile(actuator as never);
 
-    const brain = runBrain(brainDef, 2);
+    const brain = runBrain(brainDef, 1);
 
     const out = brain.getVariable(brainVarName);
     assert.ok(out !== undefined, "child actuator should have written to brain var");
@@ -945,19 +945,38 @@ describe("Brain behavioral -- multi-page", () => {
   });
 
   test("switching pages cancels a firing child-rule subtree and keeps running", () => {
-    const childMark = mkVar("cascade-child");
+    const childMarkName = "cascade-child";
     const pageMark = mkVar("cascade-page");
     const brainDef = new BrainDef(services);
 
-    // Page 0: a parent rule whose child rule assigns the child marker. The child
-    // runs in its own fiber, spawned when the parent fires.
+    // The child rule's DO is an async actuator that sets the child marker and
+    // then parks (leaves its handle pending), holding the child fiber live
+    // (WAITING) across thinks: a firing child-rule subtree the page-scoped
+    // cancellation cascade must reclaim on a page switch.
+    const parkFn = services.runtime.functions.register(
+      4110,
+      "test-cascade-park",
+      true,
+      { exec: () => {} },
+      mkCallDef({ type: "bag", items: [] })
+    );
+    const parkDescriptor = mkActionDescriptor("actuator", parkFn);
+    services.runtime.actions.register({
+      binding: "host",
+      id: 3110,
+      descriptor: parkDescriptor,
+      execAsync: (ctx: ExecutionContext) => {
+        ctx.services.brain.brainVars.setByName(childMarkName, mkNumberValue(1));
+      },
+    });
+    const parkTile = new BrainTileActuatorDef("test-cascade-park", parkDescriptor);
+
+    // Page 0: a parent rule whose child rule dispatches the parking actuator.
     const p0 = brainDef.appendNewPage();
     assert.ok(p0.success);
     const parent = p0.value!.page.children().get(0)! as BrainRuleDef;
     const child = parent.appendNewRule();
-    child.do().appendTile(childMark as never);
-    child.do().appendTile(opAssign as never);
-    child.do().appendTile(mkLiteral(1) as never);
+    child.do().appendTile(parkTile as never);
 
     // Page 1: a rule that assigns the page marker.
     const p1 = brainDef.appendNewPage();
@@ -971,17 +990,17 @@ describe("Brain behavioral -- multi-page", () => {
     brain.initialize();
     brain.startup();
 
-    // Two thinks on page 0: the parent fires and spawns the child, then the child
-    // runs the next think and sets its marker.
+    // One think on page 0: the parent fires, spawns the child, and the child
+    // drains in the same think, sets its marker, and parks on the actuator.
     brain.think(16);
-    brain.think(32);
-    assert.equal(extractNumberValue(brain.getVariable(childMark.varName)), 1);
+    assert.equal(extractNumberValue(brain.getVariable(childMarkName)), 1);
 
-    // Switch to page 1 while page 0's child subtree is live, then keep thinking.
-    // The cascade cancels the child subtree; the brain continues on page 1.
+    // Switch to page 1 while page 0's child subtree is still parked (live), then
+    // keep thinking. The cascade cancels the child subtree; the brain continues
+    // on page 1.
     brain.requestPageChange(1);
+    brain.think(32);
     brain.think(48);
-    brain.think(64);
     assert.equal(extractNumberValue(brain.getVariable(pageMark.varName)), 2);
   });
 });

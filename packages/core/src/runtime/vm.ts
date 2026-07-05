@@ -2342,6 +2342,11 @@ export class FiberScheduler implements IFiberScheduler {
   private config: SchedulerConfig;
   private fibers = new Dict<number, Fiber>();
   private runQueue = List.empty<number>();
+  // Child-rule fibers spawned during the current tick, held out of the run queue.
+  // They drain within this same tick (a synchronous same-think cascade). Empty
+  // whenever no SPAWN_RULE ran this tick, which keeps `tick()` byte-identical for
+  // a brain that spawns no child rules.
+  private pendingSpawns = List.empty<number>();
   private nextFiberId = 1;
 
   constructor(
@@ -2360,11 +2365,21 @@ export class FiberScheduler implements IFiberScheduler {
   }
 
   addFiber(fiber: Fiber): void {
+    this.registerFiber(fiber);
+    this.enqueueRunnable(fiber.id);
+  }
+
+  /**
+   * Records a newly constructed fiber in the fiber table, enforcing the
+   * `maxFibers` cap. Leaves the fiber out of the run queue; the caller decides
+   * whether it joins the run queue ({@link addFiber}) or the same-think spawn
+   * drain ({@link spawnChildRule}).
+   */
+  private registerFiber(fiber: Fiber): void {
     if (this.fibers.size() >= this.config.maxFibers) {
       throwOverflow(`Fiber limit exceeded: ${this.config.maxFibers}`);
     }
     this.fibers.set(fiber.id, fiber);
-    this.enqueueRunnable(fiber.id);
   }
 
   removeFiber(fiberId: number): void {
@@ -2423,13 +2438,15 @@ export class FiberScheduler implements IFiberScheduler {
   /**
    * Spawns a fire-and-forget child-rule fiber for `funcId`, tagged with
    * `subtreeRootFuncId` (the funcId of the root rule whose subtree it belongs
-   * to), and enqueues it for the next round.
+   * to), and holds it in the same-think spawn drain. The child runs later in the
+   * current `tick()`, after its parent's slice, as a synchronous cascade.
    */
   spawnChildRule(funcId: number, subtreeRootFuncId: number, executionContext: ExecutionContext): void {
     const fiberId = this.nextFiberId++;
     const fiber = this.vm.spawnFiber(fiberId, funcId, List.empty(), executionContext);
     fiber.rootRuleFuncId = subtreeRootFuncId;
-    this.addFiber(fiber);
+    this.registerFiber(fiber);
+    this.pendingSpawns.push(fiberId);
   }
 
   hasLiveDescendantOfRoot(rootRuleFuncId: number): boolean {
@@ -2464,11 +2481,14 @@ export class FiberScheduler implements IFiberScheduler {
 
   /**
    * Executes one round: every fiber in the runnable queue at entry receives
-   * exactly one `defaultBudget` slice, in FIFO order. Fibers enqueued while
-   * the round runs (spawns, `YIELD` or budget-exhaustion re-enqueues, handle
-   * resumes) stay queued and run in the next tick.
+   * exactly one `defaultBudget` slice, in FIFO order. After each slice, the
+   * child rules that slice spawned drain within this same tick as a synchronous
+   * cascade ({@link drainSpawnedSubtrees}). Fibers enqueued while the round runs
+   * for another reason -- a `YIELD` or budget-exhaustion re-enqueue, a handle
+   * resume -- stay queued and run in the next tick.
    *
-   * @returns Number of fibers that received a slice this tick.
+   * @returns Number of fibers that received a slice this tick, including drained
+   * child-rule fibers.
    */
   tick(): number {
     let executed = 0;
@@ -2483,21 +2503,66 @@ export class FiberScheduler implements IFiberScheduler {
       }
 
       fiber.instrBudget = this.config.defaultBudget;
-
       const result = this.vm.runFiber(fiber, this);
+      this.routeSliceResult(fiberId, result);
+      executed++;
 
-      switch (result.status) {
-        case VmStatus.YIELDED:
-          this.enqueueRunnable(fiberId);
-          break;
-        case VmStatus.WAITING:
-          break;
-        case VmStatus.DONE:
-        case VmStatus.FAULT:
-          break;
+      executed += this.drainSpawnedSubtrees();
+    }
+
+    return executed;
+  }
+
+  /**
+   * Routes the outcome of a single fiber slice. A `YIELDED` fiber (a `YIELD`
+   * opcode or budget exhaustion) re-enters the run queue for the next round. A
+   * `WAITING`, `DONE`, or `FAULT` fiber needs no queue action: the VM parked it
+   * on its handle or transitioned it terminal during the slice.
+   */
+  private routeSliceResult(fiberId: number, result: VmRunResult): void {
+    switch (result.status) {
+      case VmStatus.YIELDED:
+        this.enqueueRunnable(fiberId);
+        break;
+      case VmStatus.WAITING:
+      case VmStatus.DONE:
+      case VmStatus.FAULT:
+        break;
+    }
+  }
+
+  /**
+   * Runs the child-rule fibers spawned during the just-finished slice as a
+   * same-think synchronous cascade, depth-first: each child receives a budget
+   * slice, and any grandchildren it spawns drain immediately -- before that
+   * child's next sibling -- so one subtree completes before the next begins. A
+   * child that completes frees within this tick; a child that parks on `AWAIT`,
+   * yields, or exhausts its budget takes its normal next-round or handle-wait
+   * path, unchanged.
+   *
+   * @returns Number of child-rule slices run.
+   */
+  private drainSpawnedSubtrees(): number {
+    if (this.pendingSpawns.size() === 0) {
+      return 0;
+    }
+    let executed = 0;
+    const children = this.pendingSpawns;
+    this.pendingSpawns = List.empty<number>();
+
+    for (let i = 0; i < children.size(); i++) {
+      const childId = children.get(i)!;
+      const fiber = this.getFiber(childId);
+      if (!fiber || fiber.state !== FiberState.RUNNABLE) {
+        continue;
       }
 
+      fiber.instrBudget = this.config.defaultBudget;
+      const result = this.vm.runFiber(fiber, this);
+      this.routeSliceResult(childId, result);
       executed++;
+
+      executed += this.drainSpawnedSubtrees();
     }
 
     return executed;

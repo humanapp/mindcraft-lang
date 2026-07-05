@@ -548,19 +548,20 @@ transitions to `DONE` and any owning async-action handle is
 resolved with the return value.
 
 `SPAWN_RULE` spawns a child-rule fiber running `funcId` (a rule entry)
-and enqueues it, then continues at the next instruction in the spawning
-fiber without awaiting and without pushing anything. The compiler emits
-one `SPAWN_RULE` per child rule at the parent rule's tail, after the
-parent's `DO` section (including any async action and its `AWAIT`) and
-before the WHEN-false skip target, so a child rule is reached only if its
-parent fired and only after the parent's own slice -- including the
-resolution of the parent's own `AWAIT` -- is complete. Every rule at
-every nesting level runs in its own fiber: sibling child rules are
-concurrent, and a child's `AWAIT` parks only that child. The spawned
-child rides the spawn -> next-round -> resume path, so it takes effect
-the next think per nesting level (the same cadence as `YIELD` and
-async-actuator continuations); see [Fiber scheduling](#fiber-scheduling)
-for the re-fire quiescence and cancellation rules.
+and holds it in the tick's spawn drain, then continues at the next
+instruction in the spawning fiber without awaiting and without pushing
+anything. The compiler emits one `SPAWN_RULE` per child rule at the
+parent rule's tail, after the parent's `DO` section (including any async
+action and its `AWAIT`) and before the WHEN-false skip target, so a child
+rule is reached only if its parent fired and only after the parent's own
+slice -- including the resolution of the parent's own `AWAIT` -- is
+complete. Every rule at every nesting level runs in its own fiber:
+sibling child rules are concurrent, and a child's `AWAIT` parks only that
+child. The spawned child drains within the SAME think as its parent's
+slice, as a synchronous depth-first cascade -- unless it parks on `AWAIT`
+or `YIELD`, which keeps it cross-think; see
+[Fiber scheduling](#fiber-scheduling) for the drain order, re-fire
+quiescence, and cancellation rules.
 
 ### Host calls
 
@@ -1304,12 +1305,28 @@ reproduce it exactly.
 - **A tick is a round.** `FiberScheduler.tick()` snapshots the
   runnable queue at entry and gives every fiber in the snapshot
   exactly one budget slice (`instrBudget = defaultBudget`). Anything
-  enqueued while the round runs -- a new spawn, a `YIELD` or
-  budget-exhaustion re-enqueue, a handle-completion resume -- joins
-  the **next** round. There is no per-tick invocation cap: every
-  top-level rule on the active page evaluates every think by
-  construction, and `YIELD` deterministically resumes on the next
-  tick. Per-tick work is bounded by `liveFibers x defaultBudget`.
+  enqueued while the round runs -- a `YIELD` or budget-exhaustion
+  re-enqueue, a handle-completion resume -- joins the **next** round.
+  Fresh child-rule spawns are the exception: they drain within the same
+  tick (see **Synchronous child-rule cascade** below). There is no
+  per-tick invocation cap: every top-level rule on the active page
+  evaluates every think by construction, and `YIELD` deterministically
+  resumes on the next tick. Per-tick work is bounded by
+  `liveFibers x defaultBudget`.
+- **Synchronous child-rule cascade.** A `SPAWN_RULE` does not enqueue
+  its child into the run queue; it holds the child in a per-tick spawn
+  drain. After each fiber's slice, the tick drains that fiber's freshly
+  spawned children depth-first -- a child runs to completion or park,
+  its own freshly spawned grandchildren drain before the child's next
+  sibling, one subtree finishing before the next begins -- so a whole
+  synchronous rule hierarchy runs within one think, in causal order.
+  Placing an action in a child rule versus on its parent does not change
+  its timing. Only a child that completes frees within the think; a
+  child that reaches `AWAIT` (parked), `YIELD`, or budget exhaustion
+  takes its normal next-round / handle-wait path and resumes across the
+  think boundary, exactly like any other fiber. A brain that spawns no
+  child rules never populates the drain, so its tick is byte-identical
+  to a scheduler without it.
 - **Budgets are profile-pinned.** `defaultBudget` (TS default 1000)
   is the per-slice instruction budget. `hookBudget` (TS default
   10000) is the budget for page-lifecycle hook fibers, which run to
@@ -1331,15 +1348,17 @@ reproduce it exactly.
   parent's `DO`) are spawned by the parent's `SPAWN_RULE` at its tail,
   fire-and-forget, and run in their own fibers -- so a child rule's
   `AWAIT` parks only that child and sibling child rules are concurrent.
-  A child fiber resumes across the think boundary on the existing spawn
-  -> next-round path, so it takes effect the next think per nesting
-  level. The scheduler round model is otherwise unchanged.
+  A synchronous child rule drains within its parent's think (see
+  **Synchronous child-rule cascade**); only `AWAIT`, `YIELD`, and budget
+  exhaustion cross the think boundary.
 - **Cancellation cascade.** Deactivating, restarting, or switching away
   from the active page cancels its root-rule fibers and, via the cascade,
-  every live child-rule fiber spawned beneath them. Exactly one page is
+  every live child-rule fiber spawned beneath them -- including a child
+  still pending in the current tick's spawn drain. Exactly one page is
   active, so every live child-rule fiber descends from one of its roots;
   cancelling each removes it from the run queue, so the cascade is safe
-  when a host body triggers it mid-round. No child fiber is orphaned.
+  when a host body triggers it mid-round or mid-drain. No child fiber is
+  orphaned.
 - **Handle-completion resume timing.** A fiber made runnable by a handle
   settling joins the run queue and runs in the next round, never the
   current one (the round rule). A handle that settles while a round runs
