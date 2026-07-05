@@ -1964,6 +1964,146 @@ describe("Accessor / struct field suggestions", () => {
     assert.ok(resultContains(result, accessorXDef.tileId), "Replacing binaryOp operator should offer Position.x");
     assert.ok(resultContains(result, accessorYDef.tileId), "Replacing binaryOp operator should offer Position.y");
   });
+
+  test("Value slot after [$pos] [x] [=] applies the output-identity gate both ways", () => {
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    // A Number-typed output tile whose declaring sensor may or may not be in scope.
+    const receivedValueOut = new BrainTileOutputDef(CoreTypeIds.Number, "receivedValue", {
+      metadata: { label: "received value" },
+    });
+    services.edit.tiles.registerTileDef(receivedValueOut);
+
+    const tiles = List.from<IBrainTileDef>([posVarDef, accessorXDef, assignOpDef]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "assignment");
+
+    // Root rule: no output keys are provided. The output tile is type-compatible
+    // (Number matches the x field) but must be filtered because no declaring
+    // sensor is in scope.
+    const suppressed = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, availableOutputKeys: new UniqueSet<string>() },
+      catalogList(),
+      services
+    );
+    assert.ok(
+      !resultContains(suppressed, receivedValueOut.tileId),
+      "output tile must not leak into the value slot without a declaring sensor"
+    );
+
+    // The gate did not over-filter: plain Number value tiles are still offered.
+    const hasNumberValue =
+      listFind(
+        suppressed.exact,
+        (s) =>
+          (s.tileDef.kind === "literal" || s.tileDef.kind === "variable" || s.tileDef.kind === "factory") &&
+          getTileOutputType(s.tileDef) === CoreTypeIds.Number
+      ) !== undefined;
+    assert.ok(hasNumberValue, "type-compatible non-output value tiles remain offered in the value slot");
+
+    // Declaring sensor in scope (its output key available): the same tile surfaces.
+    const withKey = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, availableOutputKeys: new UniqueSet<string>([receivedValueOut.outputKey]) },
+      catalogList(),
+      services
+    );
+    assert.ok(
+      resultContains(withKey, receivedValueOut.tileId),
+      "output tile must surface in the value slot when its declaring sensor is in scope"
+    );
+
+    services.edit.tiles.delete(receivedValueOut.tileId);
+  });
+
+  test("Value slot after [$pos] [x] [=] applies capability gating both ways", () => {
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const requireBit = 7;
+    const guardedLit = new BrainTileLiteralDef(
+      CoreTypeIds.Number,
+      { t: 3, v: 77 },
+      {
+        metadata: { label: "cap-guarded-77" },
+        persist: false,
+        valueLabel: "cap-guarded-77",
+        requirements: new BitSet().set(requireBit),
+      },
+      services
+    );
+    services.edit.tiles.registerTileDef(guardedLit);
+
+    const tiles = List.from<IBrainTileDef>([posVarDef, accessorXDef, assignOpDef]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "assignment");
+
+    const withoutCap = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, availableCapabilities: new BitSet() },
+      catalogList(),
+      services
+    );
+    assert.ok(
+      !resultContains(withoutCap, guardedLit.tileId),
+      "capability-gated value tile is filtered when its capability is unavailable"
+    );
+
+    const withCap = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, availableCapabilities: new BitSet().set(requireBit) },
+      catalogList(),
+      services
+    );
+    assert.ok(
+      resultContains(withCap, guardedLit.tileId),
+      "capability-gated value tile is offered when its capability is available"
+    );
+
+    services.edit.tiles.delete(guardedLit.tileId);
+  });
+
+  test("Replacing the value tile in [$pos] [x] [=] [1] applies the output-identity gate both ways", () => {
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const numLitDef = services.edit.tiles
+      .getAll()
+      .toArray()
+      .find(
+        (t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Number
+      ) as BrainTileLiteralDef;
+    const rssiOut = new BrainTileOutputDef(CoreTypeIds.Number, "signalStrength", {
+      metadata: { label: "signal strength" },
+    });
+    services.edit.tiles.registerTileDef(rssiOut);
+
+    const tiles = List.from<IBrainTileDef>([posVarDef, accessorXDef, assignOpDef, numLitDef]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "assignment");
+
+    // Replace the RHS literal (flat index 3): the value replacement role.
+    const suppressed = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, replaceTileIndex: 3, availableOutputKeys: new UniqueSet<string>() },
+      catalogList(),
+      services
+    );
+    assert.ok(
+      !resultContains(suppressed, rssiOut.tileId),
+      "output tile must not leak when replacing the value with no declaring sensor in scope"
+    );
+
+    // With the declaring sensor in scope, the same replacement offers the tile --
+    // this also proves the replacement resolved to the value role (not infix).
+    const withKey = suggestTiles(
+      {
+        ruleSide: RuleSide.Do,
+        expr,
+        replaceTileIndex: 3,
+        availableOutputKeys: new UniqueSet<string>([rssiOut.outputKey]),
+      },
+      catalogList(),
+      services
+    );
+    assert.ok(
+      resultContains(withKey, rssiOut.tileId),
+      "output tile must surface when replacing the value with its declaring sensor in scope"
+    );
+
+    services.edit.tiles.delete(rssiOut.tileId);
+  });
 });
 
 // ---- Accessor suggestions after value sensors ----

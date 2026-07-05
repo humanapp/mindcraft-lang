@@ -1640,9 +1640,7 @@ export function suggestTiles(
         // Incomplete unaryOp: operand missing. Allow non-inline sensors since
         // they can now appear as operands of prefix operators (e.g., [not] [see]).
         const expectedType = incompleteExprExpectedType(expr, operatorOverloads, conversions);
-        const ctx: InsertionContext = expectedType
-          ? { ruleSide: context.ruleSide, expectedType, unclosedParenDepth: context.unclosedParenDepth }
-          : context;
+        const ctx: InsertionContext = expectedType ? { ...context, expectedType } : context;
         suggestExpressionTiles(ctx, catalogs, conversions, types, availableWhenResult, result, true, true);
       }
       break;
@@ -1670,9 +1668,7 @@ export function suggestTiles(
         );
       } else {
         const expectedType = incompleteExprExpectedType(expr, operatorOverloads, conversions);
-        const ctx: InsertionContext = expectedType
-          ? { ruleSide: context.ruleSide, expectedType, unclosedParenDepth: context.unclosedParenDepth }
-          : context;
+        const ctx: InsertionContext = expectedType ? { ...context, expectedType } : context;
         suggestExpressionTiles(ctx, catalogs, conversions, types, availableWhenResult, result, true);
       }
       break;
@@ -2170,10 +2166,8 @@ function suggestForReplacementRole(
 
     case "value": {
       const ctx: InsertionContext = {
-        ruleSide: context.ruleSide,
+        ...context,
         expectedType: role.expectedType ?? context.expectedType,
-        availableCapabilities: context.availableCapabilities,
-        unclosedParenDepth: context.unclosedParenDepth,
       };
       suggestExpressionTiles(ctx, catalogs, conversions, types, availableWhenResult, result, true);
       break;
