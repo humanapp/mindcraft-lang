@@ -1,4 +1,4 @@
-import { List } from "@mindcraft-lang/core";
+import { autoRegisterAssignment, List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import {
   ContextTypeIds,
@@ -2312,6 +2312,10 @@ function registerCollectedStructTypes(
         })
       );
     }
+    // Give the struct a type-only assignment overload so a variable of it is an
+    // assignment target the picker offers `[=]` after. Idempotent, so a warm
+    // registry re-registers to a no-op.
+    autoRegisterAssignment(services, typeId);
     registered.set(identity, {
       identity,
       name: entry.parts.name,

@@ -365,6 +365,11 @@ export class TypeRegistry implements ITypeRegistry {
     this.services_.edit.operatorOverloads.remove(CoreOpId.NotEqualTo, [typeId, typeId]);
   }
 
+  private unregisterStructArtifacts(typeId: TypeId): void {
+    if (!this.services_) return;
+    this.services_.edit.operatorOverloads.remove(CoreOpId.Assign, [typeId, typeId]);
+  }
+
   addListType(name: string, shape: ListTypeShape): TypeId {
     this.validateTypeName(name);
     this.validateAtomId(shape.atomId, name);
@@ -795,6 +800,9 @@ export class TypeRegistry implements ITypeRegistry {
       const def = this.defs.get(typeId);
       if (def?.coreType === NativeType.Enum) {
         this.unregisterEnumArtifacts(typeId);
+      }
+      if (def?.coreType === NativeType.Struct) {
+        this.unregisterStructArtifacts(typeId);
       }
       if (def) {
         this.nameToId.delete(def.name);

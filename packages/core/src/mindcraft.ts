@@ -467,11 +467,17 @@ function rejectStructuralAtomId(definition: MindcraftTypeDefinition): void {
   }
 }
 
-function autoRegisterAssignment(services: BrainServices, typeId: TypeId): void {
+/**
+ * Register the type-only `Assign` operator overload for `typeId`, giving a
+ * variable of that type an assignment target the brain-editor picker can offer.
+ * Assignment lowers to store instructions, so the overload carries no host
+ * function. Idempotent: a type that already resolves an `Assign` overload is
+ * left unchanged, so re-registration against a warm registry is a no-op.
+ */
+export function autoRegisterAssignment(services: BrainServices, typeId: TypeId): void {
   if (services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId])) {
     return;
   }
-  // Assignment compiles to store instructions; the overload is type-only.
   services.edit.operatorOverloads.binaryTypeOnly(CoreOpId.Assign, typeId, typeId, typeId);
 }
 

@@ -15,6 +15,7 @@ import {
   type IBrainTileDef,
   type ITileCatalog,
   mkAccessorTileId,
+  mkOperatorTileId,
   mkVariableFactoryTileId,
   mkVariableTileId,
   RuleSide,
@@ -37,6 +38,7 @@ import {
   TileCatalog,
 } from "@mindcraft-lang/core/brain/tiles";
 import {
+  CoreOpId,
   CoreTypeIds,
   extractNumberValue,
   type IBrain,
@@ -510,6 +512,97 @@ export default Sensor({
     const suggested = allSuggestedIds(suggestFor(services, [metadata.outputTiles[0]]));
     assert.ok(suggested.has(mkAccessorTileId(typeId, "x")), "the x accessor is offered on the output tile");
     assert.ok(suggested.has(mkAccessorTileId(typeId, "y")), "the y accessor is offered on the output tile");
+  });
+
+  test("the picker offers the assignment operator after a struct variable", () => {
+    const services = __test__createBrainServices();
+    compileAndRegister(services, { "position.ts": POSITION_SOURCE, "stick.ts": STICK_SOURCE }, ["stick.ts"]);
+    const typeId = positionTypeId(services);
+    const posVar = manufactureVariable(services, typeId, "assign-pos");
+
+    const expr: Expr = parseTilesForSuggestions(List.from<IBrainTileDef>([posVar]));
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Do, expr },
+      List.from<ITileCatalog>([services.edit.tiles]),
+      services
+    );
+    assert.ok(
+      allSuggestedIds(result).has(mkOperatorTileId(CoreOpId.Assign)),
+      "the assignment operator is offered after a struct variable"
+    );
+  });
+
+  test("the struct's assign overload is idempotent across a second compile against a warm registry", () => {
+    const services = __test__createBrainServices();
+    compileAndRegister(services, { "position.ts": POSITION_SOURCE, "stick.ts": STICK_SOURCE }, ["stick.ts"]);
+    // A second compile through the same warm services must not error or add a
+    // second overload.
+    compileAndRegister(services, { "position.ts": POSITION_SOURCE, "stick.ts": STICK_SOURCE }, ["stick.ts"]);
+    const typeId = positionTypeId(services);
+    const overload = services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId]);
+    assert.ok(overload, "the assign overload resolves after a warm re-compile");
+
+    const posVar = manufactureVariable(services, typeId, "warm-assign-pos");
+    const expr: Expr = parseTilesForSuggestions(List.from<IBrainTileDef>([posVar]));
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Do, expr },
+      List.from<ITileCatalog>([services.edit.tiles]),
+      services
+    );
+    assert.ok(
+      allSuggestedIds(result).has(mkOperatorTileId(CoreOpId.Assign)),
+      "the assignment operator is still offered after a warm re-compile"
+    );
+  });
+
+  test("deleting a struct from source clears its assign overload, and re-adding restores it", () => {
+    const services = __test__createBrainServices();
+    compileAndRegister(services, { "position.ts": POSITION_SOURCE, "stick.ts": STICK_SOURCE }, ["stick.ts"]);
+    const typeId = positionTypeId(services);
+    assert.ok(
+      services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId]),
+      "the struct's assign overload is registered while it is declared"
+    );
+
+    // Recompile a project that no longer declares the struct: the compile pass
+    // tears down the `::`-keyed user type and, with it, the assign overload.
+    const bareSensor = `import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "bare sensor",
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`;
+    compileProject(services, { "bare.ts": bareSensor });
+    assert.equal(
+      services.runtime.types.resolveByName(POSITION_IDENTITY),
+      undefined,
+      "the deleted struct type is gone from the registry"
+    );
+    assert.equal(
+      services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId]),
+      undefined,
+      "the deleted struct's assign overload is cleared, not orphaned"
+    );
+
+    // Re-adding the struct restores a working assignment target: the type
+    // resolves to the same deterministic id and the picker offers `[=]` again.
+    compileAndRegister(services, { "position.ts": POSITION_SOURCE, "stick.ts": STICK_SOURCE }, ["stick.ts"]);
+    const reAddedTypeId = positionTypeId(services);
+    assert.equal(reAddedTypeId, typeId, "the re-added struct resolves to the same deterministic type id");
+    const posVar = manufactureVariable(services, reAddedTypeId, "readd-pos");
+    const expr: Expr = parseTilesForSuggestions(List.from<IBrainTileDef>([posVar]));
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Do, expr },
+      List.from<ITileCatalog>([services.edit.tiles]),
+      services
+    );
+    assert.ok(
+      allSuggestedIds(result).has(mkOperatorTileId(CoreOpId.Assign)),
+      "the re-added struct offers the assignment operator again"
+    );
   });
 
   test("the picker offers accessors after a struct-returning sensor in a number-expected position", () => {
