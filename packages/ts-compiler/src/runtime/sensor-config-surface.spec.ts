@@ -15,7 +15,7 @@ import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import { CoreOpId, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
-import { DescriptorDiagCode } from "../compiler/diag-codes.js";
+import { CompileDiagCode, DescriptorDiagCode } from "../compiler/diag-codes.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";
 
 function resolveCoreTypeId(typeName: string): string | undefined {
@@ -442,5 +442,103 @@ export default Sensor({
     const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snplain"));
     assert.ok(sensorTile);
     assert.equal(sensorTile.consumesWhenResult(), undefined);
+  });
+
+  test("a sensor whose consumesWhenResult resolves to the top type is rejected", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "snwhenany",
+  name: "when any reader",
+  consumesWhenResult: "any",
+  onExecute(ctx: Context): number {
+    const result = ctx.getWhenResult();
+    return typeof result === "number" ? result : 0;
+  },
+});
+`;
+    const { result } = compileOne("when-any-sensor.ts", source);
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("when-any-sensor.ts");
+    assert.ok(entry, "expected a compile entry");
+    const error = entry.diagnostics.find((d) => d.code === CompileDiagCode.ConsumesWhenResultIsAny);
+    assert.ok(error, "expected the ConsumesWhenResultIsAny error");
+    assert.equal(error.severity, "error");
+    assert.equal(entry.program, undefined, "an unofferrable tile is a compile failure, not a forwarded declaration");
+  });
+
+  test("an actuator whose consumesWhenResult resolves to the top type is rejected", () => {
+    const source = `
+import { Actuator, type Context } from "mindcraft";
+
+export default Actuator({
+  id: "acwhenany",
+  name: "when any actuator",
+  consumesWhenResult: "any",
+  onExecute(ctx: Context): void {
+    ctx.getWhenResult();
+  },
+});
+`;
+    const { result } = compileOne("when-any-actuator.ts", source);
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("when-any-actuator.ts");
+    assert.ok(entry, "expected a compile entry");
+    const error = entry.diagnostics.find((d) => d.code === CompileDiagCode.ConsumesWhenResultIsAny);
+    assert.ok(error, "the actuator path rejects the top type too");
+    assert.equal(error.severity, "error");
+    assert.equal(entry.program, undefined, "an unofferrable tile is a compile failure, not a forwarded declaration");
+  });
+
+  test("a concrete consumesWhenResult TypeRef token resolves and is not mistaken for the top type", () => {
+    const source = `
+import { BufferType, Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "snwhenbuf",
+  name: "when buffer reader",
+  consumesWhenResult: BufferType,
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const { result } = compileOne("when-buffer-sensor.ts", source);
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("when-buffer-sensor.ts");
+    assert.ok(entry?.program, "a concrete type compiles clean");
+    assert.equal(entry.program.consumesWhenResult, CoreTypeIds.Buffer, "the concrete type is forwarded");
+    assert.ok(
+      !entry.diagnostics.some((d) => d.code === CompileDiagCode.ConsumesWhenResultIsAny),
+      "a concrete type must not trip the top-type check"
+    );
+  });
+
+  test("a concrete required type with no producer in scope still compiles clean", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "snwhennp",
+  name: "when no producer reader",
+  consumesWhenResult: "number",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const { result } = compileOne("when-no-producer.ts", source);
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("when-no-producer.ts");
+    assert.ok(
+      entry?.program,
+      "a concrete no-producer-yet consumer must compile -- the producer gate is not a compile error"
+    );
+    assert.equal(entry.program.consumesWhenResult, CoreTypeIds.Number);
+    assert.ok(
+      !entry.diagnostics.some((d) => d.code === CompileDiagCode.ConsumesWhenResultIsAny),
+      "no producer in scope is not the top-type category error"
+    );
   });
 });

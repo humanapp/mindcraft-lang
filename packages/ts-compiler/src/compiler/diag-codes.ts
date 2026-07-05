@@ -574,6 +574,8 @@ export enum CompileDiagCode {
   DuplicateActionId = 5014,
   /** An action reads the WHEN result (`ctx.getWhenResult()`) but does not declare `consumesWhenResult` (warning) */
   WhenResultReadWithoutDeclaration = 5015,
+  /** `consumesWhenResult` resolves to the top type (`any`), which no concrete WHEN result is exactly-or-convertible to, so the tile could never be offered */
+  ConsumesWhenResultIsAny = 5016,
 }
 
 /**

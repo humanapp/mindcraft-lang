@@ -4,6 +4,7 @@ import type { BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 import type { FunctionBytecode, ITypeRegistry, TypeId } from "@mindcraft-lang/core/runtime";
 import {
   CoreFuncId,
+  CoreTypeIds,
   isBytecodeConversion,
   mkActuatorTileId,
   mkModifierTileId,
@@ -497,6 +498,18 @@ export class UserTileProject {
           {
             code: CompileDiagCode.UnresolvedTypeReference,
             message: `\`consumesWhenResult\` reference "${descriptor.consumesWhenResult}" does not name a known type.`,
+            severity: "error",
+          },
+        ],
+      };
+    }
+    if (consumesWhenResultType === CoreTypeIds.Any) {
+      return {
+        diagnostics: [
+          {
+            code: CompileDiagCode.ConsumesWhenResultIsAny,
+            message:
+              "`consumesWhenResult` must name the concrete WHEN-result type this tile requires; `any` matches no WHEN result, so the tile would never be offered -- name the specific type, or remove `consumesWhenResult` to keep the tile always available.",
             severity: "error",
           },
         ],
