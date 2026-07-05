@@ -13,6 +13,7 @@ import {
   CoreControlFlowId,
   type IBrainTileDef,
   mkVariableTileId,
+  TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { parseRule } from "@mindcraft-lang/core/brain/compiler";
@@ -883,6 +884,106 @@ describe("Field access AST shape", () => {
     assert.ok(result.parseResult.diags.size() > 0, "should have diagnostic for read-only assignment");
     const diag = result.parseResult.diags.get(0);
     assert.equal(diag.code, 1014, "diagnostic code should be ReadOnlyFieldAssignment (1014)");
+  });
+});
+
+// ---- Assignment target l-value (base-aware) tests ----
+
+describe("Assignment target l-value (read-only sensor result)", () => {
+  let accessorX: BrainTileAccessorDef;
+  let accessorInner: BrainTileAccessorDef;
+  let structVar: BrainTileVariableDef;
+  let readOnlySensor: BrainTileSensorDef;
+  let writableSensor: BrainTileSensorDef;
+
+  before(() => {
+    const outerTypeId = mkTypeId(NativeType.Struct, "lvalue-outer");
+    const innerTypeId = mkTypeId(NativeType.Struct, "lvalue-inner");
+    accessorX = new BrainTileAccessorDef(innerTypeId, "x", CoreTypeIds.Number);
+    accessorInner = new BrainTileAccessorDef(outerTypeId, "inner", innerTypeId);
+    structVar = new BrainTileVariableDef(mkVariableTileId("lvalue-var"), "my_struct", innerTypeId, "lvalue-var");
+
+    const roFn = services.runtime.functions.register(
+      4901,
+      "lvalue-ro-sensor",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    readOnlySensor = new BrainTileSensorDef("lvalue-ro-sensor", mkActionDescriptor("sensor", roFn, innerTypeId), {
+      metadata: { label: "stick position" },
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+
+    const rwFn = services.runtime.functions.register(
+      4902,
+      "lvalue-rw-sensor",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    writableSensor = new BrainTileSensorDef("lvalue-rw-sensor", mkActionDescriptor("sensor", rwFn, innerTypeId), {
+      metadata: { label: "game actor" },
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      writableResult: true,
+    });
+  });
+
+  function parse(tiles: IBrainTileDef[]) {
+    return parseRule(
+      List.from(tiles),
+      List.empty<IBrainTileDef>(),
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    ).parseResult;
+  }
+
+  test("[sensor] [x] = [10] -> rejected with ReadOnlyResultFieldAssignment (1015)", () => {
+    const result = parse([readOnlySensor, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "errorExpr");
+    assert.ok(result.diags.size() > 0, "should have a diagnostic");
+    const diag = result.diags.get(0);
+    assert.equal(diag.code, 1015, "diagnostic code should be ReadOnlyResultFieldAssignment (1015)");
+    assert.ok(diag.message.indexOf("stick position") >= 0, "message should name the sensor");
+    assert.ok(diag.message.indexOf("read-only") >= 0, "message should say the result is read-only");
+  });
+
+  test("[writableSensor] [x] = [10] -> accepted (writableResult opt-in)", () => {
+    const result = parse([writableSensor, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "assignment");
+    assert.equal(result.diags.size(), 0, "should have no diagnostics");
+  });
+
+  test("[5] [x] = [10] -> rejected (literal base is not an l-value)", () => {
+    const result = parse([literal5, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "errorExpr");
+    const diag = result.diags.get(0);
+    assert.equal(diag.code, 1015, "literal base yields ReadOnlyResultFieldAssignment (1015)");
+  });
+
+  test("[$struct] [x] = [10] -> accepted (variable base)", () => {
+    const result = parse([structVar, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "assignment");
+    assert.equal(result.diags.size(), 0, "variable base is an l-value");
+  });
+
+  test("[sensor] [inner] [x] = [10] -> rejected (recurses through read-only base)", () => {
+    const result = parse([readOnlySensor, accessorInner, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "errorExpr");
+    assert.equal(result.diags.get(0).code, 1015);
+  });
+
+  test("[$struct] [inner] [x] = [10] -> accepted (variable root, all writable)", () => {
+    const result = parse([structVar, accessorInner, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "assignment");
+    assert.equal(result.diags.size(), 0);
   });
 });
 

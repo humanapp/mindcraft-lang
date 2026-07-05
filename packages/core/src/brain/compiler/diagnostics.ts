@@ -61,11 +61,14 @@ export enum ParseDiagCode {
   /** Unknown operator reference */
   UnknownOperator = 1012,
 
-  /** Invalid assignment target (left-hand side must be a variable) */
+  /** Invalid assignment target (left-hand side must be a variable or field access) */
   InvalidAssignmentTarget = 1013,
 
   /** Assignment to a read-only field access */
   ReadOnlyFieldAssignment = 1014,
+
+  /** Assignment to a field of a read-only base value (e.g. a sensor result) */
+  ReadOnlyResultFieldAssignment = 1015,
 }
 
 /**

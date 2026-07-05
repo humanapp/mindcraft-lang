@@ -1917,6 +1917,7 @@ describe("Accessor suggestions after value sensors", () => {
   let accValueDef: BrainTileAccessorDef;
   let accDataDef: BrainTileAccessorDef;
   let readingSensorDef: BrainTileSensorDef;
+  let writableReadingSensorDef: BrainTileSensorDef;
   let readingVarDef: BrainTileVariableDef;
   let observeNumberDef: BrainTileActuatorDef;
   let senseNumberDef: BrainTileSensorDef;
@@ -1957,6 +1958,26 @@ describe("Accessor suggestions after value sensors", () => {
       { metadata: { label: "reading" }, placement: TilePlacement.EitherSide | TilePlacement.Inline }
     );
     services.edit.tiles.registerTileDef(readingSensorDef);
+
+    // The same struct-returning no-arg sensor, but opted into a writable result:
+    // field writes on its result are permitted.
+    const writableReadFn = services.runtime.functions.register(
+      4303,
+      "test-writable-reading-sensor",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    writableReadingSensorDef = new BrainTileSensorDef(
+      "test-writable-reading-sensor",
+      mkActionDescriptor("sensor", writableReadFn, readingStructTypeId),
+      {
+        metadata: { label: "writable reading" },
+        placement: TilePlacement.EitherSide | TilePlacement.Inline,
+        writableResult: true,
+      }
+    );
+    services.edit.tiles.registerTileDef(writableReadingSensorDef);
 
     readingVarDef = new BrainTileVariableDef("test.readingVar", "my_reading", readingStructTypeId, "var-reading-1");
     services.edit.tiles.registerTileDef(readingVarDef);
@@ -2055,6 +2076,42 @@ describe("Accessor suggestions after value sensors", () => {
 
     const hasAccessor = listFind(result.exact, (s) => s.tileDef.kind === "accessor") !== undefined;
     assert.ok(!hasAccessor, "[$reading] [:=] [reading] should NOT offer accessors -- the whole struct is assigned");
+  });
+
+  test("[reading] [value] -> assign NOT offered (sensor result is read-only)", () => {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([readingSensorDef, accValueDef]));
+    assert.equal(expr.kind, "fieldAccess");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+
+    const assignTileId = mkOperatorTileId(CoreOpId.Assign);
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === assignTileId) === undefined,
+      "assign should NOT be offered after a field access on a read-only sensor result"
+    );
+  });
+
+  test("[writable reading] [value] -> assign offered (writableResult sensor)", () => {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([writableReadingSensorDef, accValueDef]));
+    assert.equal(expr.kind, "fieldAccess");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+
+    const assignTileId = mkOperatorTileId(CoreOpId.Assign);
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === assignTileId) !== undefined,
+      "assign should be offered after a field access on a writableResult sensor result"
+    );
+  });
+
+  test("[$reading] [value] -> assign offered (variable base, unchanged)", () => {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([readingVarDef, accValueDef]));
+    assert.equal(expr.kind, "fieldAccess");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+
+    const assignTileId = mkOperatorTileId(CoreOpId.Assign);
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === assignTileId) !== undefined,
+      "assign should still be offered after a field access on a variable"
+    );
   });
 });
 

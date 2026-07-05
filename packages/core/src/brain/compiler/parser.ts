@@ -33,7 +33,30 @@ import {
   type BrainTileVariableDef,
 } from "../tiles";
 import { ParseDiagCode } from "./diagnostics";
-import type { Expr, ParseDiag, ParseResult, SlotExpr } from "./types";
+import { isLValue } from "./lvalue";
+import type { Expr, FieldAccessExpr, ParseDiag, ParseResult, SlotExpr } from "./types";
+
+/**
+ * Build the diagnostic message for an assignment whose target is a writable
+ * field hanging off a read-only base. Names the specific read-only element in
+ * the access chain (a read-only field, or a sensor whose result is read-only)
+ * so the message describes the user's actual situation.
+ */
+function describeReadOnlyResultAssignment(target: FieldAccessExpr): string {
+  let cur: Expr = target.object;
+  while (cur.kind === "fieldAccess") {
+    if (cur.accessor.readOnly) {
+      const field = cur.accessor.metadata?.label ?? cur.accessor.fieldName;
+      return `Cannot assign to a field of read-only field "${field}"`;
+    }
+    cur = cur.object;
+  }
+  if (cur.kind === "sensor") {
+    const sensorLabel = cur.tileDef.metadata?.label ?? cur.tileDef.sensorId;
+    return `Cannot assign to a field of "${sensorLabel}" because its result is read-only`;
+  }
+  return `Cannot assign to a field of a read-only value`;
+}
 
 /**
  * Parsing options that control recursive descent behavior.
@@ -803,6 +826,23 @@ class BrainParser {
             nodeId: this.nextNodeId(),
             kind: "errorExpr",
             message: `Cannot assign to read-only field "${fieldLabel}"`,
+            span: { from: startPos, to: this.i },
+            expr: left,
+          };
+        }
+        // A writable field on a read-only base (e.g. a sensor result) is not an
+        // l-value; the field has storage but the base it hangs off does not.
+        if (left.kind === "fieldAccess" && !isLValue(left)) {
+          const message = describeReadOnlyResultAssignment(left);
+          this.diags.push({
+            code: ParseDiagCode.ReadOnlyResultFieldAssignment,
+            message,
+            span: { from: startPos, to: this.i },
+          });
+          return {
+            nodeId: this.nextNodeId(),
+            kind: "errorExpr",
+            message,
             span: { from: startPos, to: this.i },
             expr: left,
           };

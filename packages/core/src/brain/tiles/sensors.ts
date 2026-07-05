@@ -29,6 +29,12 @@ export class BrainTileSensorDef extends BrainActionTileBase {
   readonly outputType: TypeId;
 
   /**
+   * When true, the sensor's returned value is a writable l-value: a field write
+   * on its result is permitted. Defaults to false, making the result read-only.
+   */
+  readonly writableResult: boolean;
+
+  /**
    * Creates a new sensor tile definition.
    *
    * @param sensorId - Unique identifier for this sensor
@@ -47,6 +53,7 @@ export class BrainTileSensorDef extends BrainActionTileBase {
     super(mkSensorTileId(sensorId), action, opts);
     this.sensorId = sensorId;
     this.outputType = action.outputType;
+    this.writableResult = opts.writableResult ?? false;
   }
 }
 

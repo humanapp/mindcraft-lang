@@ -13,8 +13,9 @@ import {
   type TypeId,
 } from "../../runtime";
 import type { ReadonlyBitSet } from "../../util/bitset";
+import { isLValue } from "../compiler/lvalue";
 import { parseBrainTiles } from "../compiler/parser";
-import type { ActuatorExpr, Expr, FieldAccessExpr, SensorExpr, Span } from "../compiler/types";
+import type { ActuatorExpr, Expr, SensorExpr, Span } from "../compiler/types";
 import {
   CoreControlFlowId,
   type IBrainRuleDef,
@@ -1898,9 +1899,7 @@ function suggestInfixOperators(
   const seen = new UniqueSet<string>();
   const canFilter = leftOperandType !== undefined && operatorOverloads !== undefined;
   const lhsIsLValue =
-    leftExpr !== undefined &&
-    (leftExpr.kind === "variable" ||
-      (leftExpr.kind === "fieldAccess" && !(leftExpr as FieldAccessExpr).accessor.readOnly));
+    leftExpr !== undefined && (leftExpr.kind === "variable" || leftExpr.kind === "fieldAccess") && isLValue(leftExpr);
 
   for (let ci = 0; ci < catalogs.size(); ci++) {
     const catalog = catalogs.get(ci);

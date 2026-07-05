@@ -201,6 +201,8 @@ export type CreateHostSensorOptions = (SyncHostActionOptions | AsyncHostActionOp
   readonly outputType: TypeId;
   /** Named, typed outputs this sensor exposes as inline output value-tiles. */
   readonly outputs?: readonly ActionOutputSpec[];
+  /** When true, the sensor's returned value is a writable l-value; a field write on its result is permitted. Defaults to false. */
+  readonly writableResult?: boolean;
 };
 
 /** Options for {@link createHostActuator}. Actuators do not return a value. */
@@ -229,6 +231,7 @@ export function createHostSensor(options: CreateHostSensorOptions): HostSensorDe
       metadata: options.metadata,
       capabilities: options.capabilities,
       consumesWhenResult: options.consumesWhenResult,
+      writableResult: options.writableResult,
       providedOutputs: options.outputs
         ? List.from(options.outputs.map((output) => mkOutputVarKey(output.type, output.name)))
         : undefined,
