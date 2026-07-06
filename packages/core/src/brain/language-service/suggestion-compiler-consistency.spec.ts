@@ -8,9 +8,7 @@
  * - Under-offer: a tile the compiler accepts at a position (clean compile, or
  *   a completable incomplete expression) must be offered by suggestTiles.
  * - Over-offer: every offered tile must, when actually inserted, be accepted
- *   by the compiler (or be a completable incomplete step), and must satisfy
- *   the picker's own gate contract (placement, capabilities, output identity,
- *   WHEN result).
+ *   by the compiler (or be a completable incomplete step).
  *
  * Expectations are derived by performing the insertion and running the real
  * pipeline (parseRule for parse + type diagnostics, runBrainLinkPipeline for
@@ -31,6 +29,7 @@ import {
   CoreControlFlowId,
   type IBrainRuleDef,
   type IBrainTileDef,
+  type IBrainTileSet,
   type ITileCatalog,
   mkControlFlowTileId,
   mkOperatorTileId,
@@ -41,14 +40,16 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import type { Expr } from "@mindcraft-lang/core/brain/compiler";
 import {
   type BrainBuildDiagnostic,
+  collectProvidedCapabilities,
+  collectProvidedOutputKeys,
   ParseDiagCode,
   parseRule,
   runBrainLinkPipeline,
   TypeDiagCode,
 } from "@mindcraft-lang/core/brain/compiler";
 import {
+  availableWhenResultType,
   countUnclosedParens,
-  getRuleWhenResultType,
   getTileOutputType,
   type InsertionContext,
   parseTilesForSuggestions,
@@ -120,6 +121,8 @@ const probeTiles = {} as {
   replyActuator: BrainTileActuatorDef;
   /** DO-side actuator consuming a struct WHEN result (never satisfiable in corpus). */
   vecReplyActuator: BrainTileActuatorDef;
+  /** Inline either-side Boolean sensor consuming a Number WHEN result. */
+  echoSensor: BrainTileSensorDef;
   /** DO-side actuator: anonymous Number slot, optional named param, optional modifier. */
   driveActuator: BrainTileActuatorDef;
   drivePower: BrainTileParameterDef;
@@ -213,6 +216,7 @@ function registerProbeTiles(): void {
     CoreTypeIds.Number,
     42,
     {
+      metadata: { label: "gated 42" },
       requirements: new BitSet().set(PROBE_CAPABILITY_BIT),
     },
     services
@@ -231,6 +235,17 @@ function registerProbeTiles(): void {
     {
       metadata: { label: "vec reply" },
       consumesWhenResult: vecTypeId,
+    }
+  );
+
+  const echoFn = fns.register(4109, "probe-echo", false, { exec: () => NIL_VALUE }, mkCallDef(bag()));
+  probeTiles.echoSensor = new BrainTileSensorDef(
+    "probe-echo",
+    mkActionDescriptor("sensor", echoFn, CoreTypeIds.Boolean),
+    {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      metadata: { label: "echo" },
+      consumesWhenResult: CoreTypeIds.Number,
     }
   );
 
@@ -273,6 +288,7 @@ function registerProbeTiles(): void {
     probeTiles.beaconSensor,
     probeTiles.replyActuator,
     probeTiles.vecReplyActuator,
+    probeTiles.echoSensor,
     probeTiles.driveActuator,
     probeTiles.beepActuator,
   ];
@@ -437,6 +453,16 @@ function corpus(): CorpusEntry[] {
       },
     },
     {
+      name: "capability-provider-child",
+      build: () => {
+        const { brain, rule } = newBrain("capability-provider-child");
+        fill(rule, [t.beaconSensor], []);
+        const child = rule.appendNewRule();
+        fill(child, [], [t.driveActuator, t.gatedLit]);
+        return brain;
+      },
+    },
+    {
       name: "when-result-number",
       build: () => {
         const { brain, rule } = newBrain("when-result-number");
@@ -451,6 +477,29 @@ function corpus(): CorpusEntry[] {
         fill(rule, [t.numSensor], []);
         const child = rule.appendNewRule();
         fill(child, [t.seesSensor], [t.beepActuator]);
+        return brain;
+      },
+    },
+    {
+      // A child with an empty WHEN: its DO consumer reads the ancestor's WHEN
+      // result through the empty-WHEN fall-through.
+      name: "when-result-empty-child",
+      build: () => {
+        const { brain, rule } = newBrain("when-result-empty-child");
+        fill(rule, [t.numSensor], []);
+        const child = rule.appendNewRule();
+        fill(child, [], [t.replyActuator]);
+        return brain;
+      },
+    },
+    {
+      // A child whose WHEN-side consumer reads the ancestor's WHEN result.
+      name: "when-result-echo-child",
+      build: () => {
+        const { brain, rule } = newBrain("when-result-echo-child");
+        fill(rule, [t.numSensor], []);
+        const child = rule.appendNewRule();
+        fill(child, [t.echoSensor], [t.beepActuator]);
         return brain;
       },
     },
@@ -616,24 +665,112 @@ function tileListKey(tiles: ReadonlyList<IBrainTileDef>): string {
 }
 
 /**
+ * Output identity keys visible to one side of a rule from the rest of the
+ * hierarchy: the rule's other side plus every ancestor rule's WHEN and DO
+ * sides. The judged side's own providers are collected by parseRule from the
+ * tile list itself.
+ */
+function hierarchyProvidedKeysFor(rule: IBrainRuleDef, judgedSide: RuleSide): UniqueSet<string> {
+  const keys = new UniqueSet<string>();
+  const otherSide = judgedSide === RuleSide.When ? RuleSide.Do : RuleSide.When;
+  collectProvidedOutputKeys(rule.side(otherSide).tiles(), keys);
+  let ancestor = rule.ancestor();
+  while (ancestor) {
+    collectProvidedOutputKeys(ancestor.when().tiles(), keys);
+    collectProvidedOutputKeys(ancestor.do().tiles(), keys);
+    ancestor = ancestor.ancestor();
+  }
+  return keys;
+}
+
+/**
+ * Capability bits visible to one side of a rule from the rest of the
+ * hierarchy: the rule's other side plus every ancestor rule's WHEN and DO
+ * sides. The judged side's own providers are collected by parseRule from the
+ * tile list itself.
+ */
+function hierarchyCapabilitiesFor(rule: IBrainRuleDef, judgedSide: RuleSide): BitSet {
+  let caps = new BitSet();
+  const otherSide = judgedSide === RuleSide.When ? RuleSide.Do : RuleSide.When;
+  caps = collectProvidedCapabilities(rule.side(otherSide).tiles(), caps);
+  let ancestor = rule.ancestor();
+  while (ancestor) {
+    caps = collectProvidedCapabilities(ancestor.when().tiles(), caps);
+    caps = collectProvidedCapabilities(ancestor.do().tiles(), caps);
+    ancestor = ancestor.ancestor();
+  }
+  return caps;
+}
+
+/**
+ * The WHEN-result type available to tiles on one side of a rule, derived from
+ * the live rule tree the same way the picker and the compiler derive it.
+ */
+function whenResultAvailableFor(rule: IBrainRuleDef, side: RuleSide): TypeId | undefined {
+  return availableWhenResultType(rule, side, services.edit.operatorOverloads, services.shared.conversions);
+}
+
+/** Stable memo-key text for a capability set: its set bit indices. */
+function bitSetKey(bits: BitSet): string {
+  if (bits.isEmpty()) return "";
+  let key = "";
+  const msb = bits.msb();
+  for (let b = 0; b <= msb; b++) {
+    if (bits.get(b) === 1) key += `${b},`;
+  }
+  return key;
+}
+
+/**
  * Parse + type-check verdict for one side's tile list, judged in isolation
- * (the other side does not constrain what the inserted tile may be).
+ * (the other side does not constrain what the inserted tile may be) with the
+ * hierarchy's provided output keys, capability bits, and available WHEN-result
+ * type supplied for the output-provider, capability-requirement, and
+ * WHEN-result checks.
  * "complete" means no diagnostics beyond informational conversions;
  * "incomplete" means only unfinished-expression diagnostics were produced
  * (type diagnostics are ignored: the unfinished tail cannot type-check, so
  * acceptance is decided by the completion search instead);
  * "invalid" means a structural or type error was reported.
  */
-function sideVerdict(tiles: ReadonlyList<IBrainTileDef>, side: RuleSide): SideVerdict {
-  const key = `${side}|${tileListKey(tiles)}`;
+function sideVerdict(
+  tiles: ReadonlyList<IBrainTileDef>,
+  side: RuleSide,
+  providedKeys: UniqueSet<string>,
+  hierarchyCaps: BitSet,
+  whenResult: TypeId | undefined
+): SideVerdict {
+  const key = `${side}|${providedKeys.toArray().sort().join(",")}|${bitSetKey(hierarchyCaps)}|wr:${
+    whenResult ?? ""
+  }|${tileListKey(tiles)}`;
   const memoized = verdictMemo.get(key);
   if (memoized !== undefined) return memoized;
 
   const empty = List.empty<IBrainTileDef>();
   const result =
     side === RuleSide.When
-      ? parseRule(tiles, empty, catalogList(), services.shared.conversions, services.runtime.types)
-      : parseRule(empty, tiles, catalogList(), services.shared.conversions, services.runtime.types);
+      ? parseRule(
+          tiles,
+          empty,
+          catalogList(),
+          services.shared.conversions,
+          services.runtime.types,
+          providedKeys,
+          hierarchyCaps,
+          whenResult,
+          services.edit.operatorOverloads
+        )
+      : parseRule(
+          empty,
+          tiles,
+          catalogList(),
+          services.shared.conversions,
+          services.runtime.types,
+          providedKeys,
+          hierarchyCaps,
+          whenResult,
+          services.edit.operatorOverloads
+        );
   let verdict: Verdict = "complete";
   for (let i = 0; i < result.parseResult.diags.size(); i++) {
     const code = result.parseResult.diags.get(i).code as number;
@@ -691,12 +828,29 @@ function completionStepAllowed(prev: IBrainTileDef | undefined, next: IBrainTile
 
 const pipelineMemo = new Map<string, boolean>();
 
+/** Visit every rule side in the brain, walking pages and child rules. */
+function forEachRuleSide(brain: BrainDef, visit: (rule: IBrainRuleDef, side: RuleSide) => void): void {
+  const walkRule = (rule: IBrainRuleDef) => {
+    visit(rule, RuleSide.When);
+    visit(rule, RuleSide.Do);
+    const children = rule.children();
+    for (let i = 0; i < children.size(); i++) walkRule(children.get(i));
+  };
+  const pages = brain.pages();
+  for (let p = 0; p < pages.size(); p++) {
+    const rules = pages.get(p).children();
+    for (let r = 0; r < rules.size(); r++) walkRule(rules.get(r));
+  }
+}
+
 /**
  * Full compile + link + treeshake acceptance for the position's brain with
- * the mutated side applied, catching codegen- and link-level rejections. The
- * same rule's other side is temporarily cleared when it does not parse clean
- * on its own (a corpus rule captured mid-edit must not veto probes on its
- * sibling side).
+ * the mutated side applied, catching codegen- and link-level rejections.
+ * Every other rule side that does not parse complete -- captured mid-edit, or
+ * with its output provider removed by the probe -- is temporarily cleared: its
+ * diagnostic belongs to that side, not to the inserted tile, so it must not
+ * veto the probe. Clearing repeats until stable, since a cleared side also
+ * stops providing output keys.
  */
 function pipelineAccepts(pos: Position, mutated: ReadonlyList<IBrainTileDef>): boolean {
   const key = `${pos.ruleKey}|${sideName(pos.side)}|${tileListKey(mutated)}`;
@@ -704,14 +858,31 @@ function pipelineAccepts(pos: Position, mutated: ReadonlyList<IBrainTileDef>): b
   if (memoized !== undefined) return memoized;
 
   const tileSet = pos.rule.side(pos.side);
-  const otherSide = pos.side === RuleSide.When ? RuleSide.Do : RuleSide.When;
-  const otherSet = pos.rule.side(otherSide);
-  const clearOther = sideVerdict(otherSet.tiles(), otherSide).verdict !== "complete";
-
   const original = copyTiles(tileSet.tiles());
-  const otherOriginal = copyTiles(otherSet.tiles());
   setSideTiles(tileSet, mutated);
-  if (clearOther) setSideTiles(otherSet, List.empty<IBrainTileDef>());
+
+  const clearedSides: Array<{ set: IBrainTileSet; original: List<IBrainTileDef> }> = [];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    forEachRuleSide(pos.brain, (rule, side) => {
+      if (rule === pos.rule && side === pos.side) return;
+      const set = rule.side(side);
+      if (set.tiles().size() === 0) return;
+      const verdict = sideVerdict(
+        set.tiles(),
+        side,
+        hierarchyProvidedKeysFor(rule, side),
+        hierarchyCapabilitiesFor(rule, side),
+        whenResultAvailableFor(rule, side)
+      ).verdict;
+      if (verdict !== "complete") {
+        clearedSides.push({ set, original: copyTiles(set.tiles()) });
+        setSideTiles(set, List.empty<IBrainTileDef>());
+        changed = true;
+      }
+    });
+  }
 
   const result = runBrainLinkPipeline(
     pos.brain,
@@ -734,7 +905,7 @@ function pipelineAccepts(pos: Position, mutated: ReadonlyList<IBrainTileDef>): b
   }
 
   setSideTiles(tileSet, original);
-  if (clearOther) setSideTiles(otherSet, otherOriginal);
+  for (const cleared of clearedSides) setSideTiles(cleared.set, cleared.original);
 
   pipelineMemo.set(key, accepted);
   return accepted;
@@ -780,14 +951,17 @@ interface Acceptance {
  * with close-paren tiles, parses complete; the pipeline then confirms it.
  */
 function listAccepted(pos: Position, list: List<IBrainTileDef>): { ok: boolean; conversionFree: boolean } {
-  let v = sideVerdict(list, pos.side);
+  const providedKeys = hierarchyProvidedKeysFor(pos.rule, pos.side);
+  const hierarchyCaps = hierarchyCapabilitiesFor(pos.rule, pos.side);
+  const whenResult = whenResultAvailableFor(pos.rule, pos.side);
+  let v = sideVerdict(list, pos.side, providedKeys, hierarchyCaps, whenResult);
   if (v.verdict === "incomplete") {
     const depth = countUnclosedParens(list);
     if (depth > 0) {
       const closeParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
       const drained = copyTiles(list);
       for (let i = 0; i < depth; i++) drained.push(closeParen);
-      v = sideVerdict(drained, pos.side);
+      v = sideVerdict(drained, pos.side, providedKeys, hierarchyCaps, whenResult);
       if (v.verdict === "complete" && pipelineAccepts(pos, drained)) {
         return { ok: true, conversionFree: v.conversionFree };
       }
@@ -808,7 +982,10 @@ function listAccepted(pos: Position, list: List<IBrainTileDef>): { ok: boolean; 
  * - "rejected": no parse of the insertion is accepted.
  */
 function listAcceptance(pos: Position, mutated: List<IBrainTileDef>, insertPoints: number[]): Acceptance {
-  const direct = sideVerdict(mutated, pos.side);
+  const providedKeys = hierarchyProvidedKeysFor(pos.rule, pos.side);
+  const hierarchyCaps = hierarchyCapabilitiesFor(pos.rule, pos.side);
+  const whenResult = whenResultAvailableFor(pos.rule, pos.side);
+  const direct = sideVerdict(mutated, pos.side, providedKeys, hierarchyCaps, whenResult);
   if (direct.verdict === "complete") {
     return pipelineAccepts(pos, mutated)
       ? { status: "complete", conversionFree: direct.conversionFree }
@@ -829,7 +1006,7 @@ function listAcceptance(pos: Position, mutated: List<IBrainTileDef>, insertPoint
       if (r1.ok) {
         accepted = true;
         conversionFree = conversionFree || r1.conversionFree;
-      } else if (sideVerdict(mutated, pos.side).verdict === "incomplete") {
+      } else if (sideVerdict(mutated, pos.side, providedKeys, hierarchyCaps, whenResult).verdict === "incomplete") {
         for (const second of kit) {
           if (!completionStepAllowed(first, second)) continue;
           mutated.insert(insertAt + 1, second);
@@ -872,34 +1049,6 @@ function insertionAcceptance(pos: Position, tile: IBrainTileDef): Acceptance {
 /** Hidden and deprecated tiles are excluded from every offer set by contract. */
 function hiddenFiltered(tile: IBrainTileDef): boolean {
   return tile.hidden === true || tile.deprecated === true;
-}
-
-/** Capability requirements gate offers only; the compiler does not model capabilities (hole pinned below). */
-function capabilityGateFiltered(tile: IBrainTileDef, ctx: InsertionContext): boolean {
-  const requirements = tile.requirements();
-  if (requirements.isEmpty() || ctx.availableCapabilities === undefined) return false;
-  const msb = requirements.msb();
-  for (let b = 0; b <= msb; b++) {
-    if (requirements.get(b) === 1 && ctx.availableCapabilities.get(b) === 0) return true;
-  }
-  return false;
-}
-
-/** Output tiles are offered only under a providing sensor; the compiler reads the backing variable unchecked (hole pinned below). */
-function outputGateFiltered(tile: IBrainTileDef, ctx: InsertionContext): boolean {
-  if (tile.kind !== "output" || ctx.availableOutputKeys === undefined) return false;
-  return !ctx.availableOutputKeys.has((tile as BrainTileOutputDef).outputKey);
-}
-
-/** WHEN-result consumers are offered only where a compatible WHEN result exists; the compiler compiles the read unchecked (hole pinned below). */
-function whenResultGateFiltered(tile: IBrainTileDef, ctx: InsertionContext, conversions: IConversionRegistry): boolean {
-  const required = tile.consumesWhenResult();
-  if (required === undefined) return false;
-  const available = availableWhenResultTypeOf(ctx);
-  if (available === undefined) return true;
-  if (available === required) return false;
-  const path = conversions.findBestPath(available, required);
-  return path === undefined || path.size() === 0;
 }
 
 /** Factory tiles never land in a tile list: picking one instantiates a concrete variable/literal tile in the editor. */
@@ -998,16 +1147,6 @@ function accessorInsertionAccepted(tile: IBrainTileDef, pos: Position): boolean 
   );
 }
 
-/** The picker's WHEN-result availability, recomputed from the rule the same way suggestTiles derives it. */
-function availableWhenResultTypeOf(ctx: InsertionContext): TypeId | undefined {
-  if (ctx.ruleDef === undefined) return undefined;
-  if (ctx.ruleSide === RuleSide.When) {
-    const ancestor = ctx.ruleDef.ancestor();
-    return ancestor ? getRuleWhenResultType(ancestor, services) : undefined;
-  }
-  return getRuleWhenResultType(ctx.ruleDef, services);
-}
-
 // ---- Discrepancy collection ----
 
 interface Discrepancy {
@@ -1029,7 +1168,6 @@ function auditPosition(pos: Position, discrepancies: Discrepancy[]): void {
   const ctx = deriveContext(pos);
   const offered = offeredTileIds(ctx);
   const allTiles = services.edit.tiles.getAll();
-  const conversions = services.shared.conversions;
 
   // Error-recovery positions offer everything by contract; the compiler
   // cannot meaningfully accept or reject additions to an already-broken
@@ -1052,18 +1190,6 @@ function auditPosition(pos: Position, discrepancies: Discrepancy[]): void {
         report(tile.tileId, "over-offer", "hidden or deprecated tile offered");
         continue;
       }
-      if (capabilityGateFiltered(tile, ctx)) {
-        report(tile.tileId, "over-offer", "offered despite unmet capability requirement");
-        continue;
-      }
-      if (outputGateFiltered(tile, ctx)) {
-        report(tile.tileId, "over-offer", "output tile offered with no providing sensor in scope");
-        continue;
-      }
-      if (whenResultGateFiltered(tile, ctx, conversions)) {
-        report(tile.tileId, "over-offer", "WHEN-result consumer offered with no compatible WHEN result");
-        continue;
-      }
       if (factoryInstantiatesOnInsert(tile)) continue;
       if (tile.kind === "accessor") {
         if (!accessorInsertionAccepted(tile, pos)) {
@@ -1081,9 +1207,6 @@ function auditPosition(pos: Position, discrepancies: Discrepancy[]): void {
       }
     } else {
       if (hiddenFiltered(tile)) continue;
-      if (capabilityGateFiltered(tile, ctx)) continue;
-      if (outputGateFiltered(tile, ctx)) continue;
-      if (whenResultGateFiltered(tile, ctx, conversions)) continue;
       if (factoryInstantiatesOnInsert(tile)) continue;
       if (nilLiteralNeverOffered(tile)) continue;
       if (tile.kind === "accessor") {
@@ -1217,7 +1340,11 @@ function buildRule(when: IBrainTileDef[], doTiles: IBrainTileDef[]): RuleBuildOu
     List.from(doTiles),
     catalogList(),
     services.shared.conversions,
-    services.runtime.types
+    services.runtime.types,
+    undefined,
+    undefined,
+    undefined,
+    services.edit.operatorOverloads
   );
   for (let i = 0; i < parsed.parseResult.diags.size(); i++) {
     const diag = parsed.parseResult.diags.get(i);
@@ -1242,47 +1369,16 @@ function compilesClean(when: IBrainTileDef[], doTiles: IBrainTileDef[]): boolean
   return true;
 }
 
-// ---- Compiler validation holes (pinned) ----
-//
-// Constructs the picker's gates exclude but the compiler accepts clean. Each
-// is a compile-time validation gap in its own right; the audit above relies
-// on the corresponding normalization rule, and these tests pin the gap so a
-// compiler fix fails here and forces both the rule and this pin to be
-// revisited. Fixes belong to separate slices. (Accessor/base pairing and
-// rule-side placement are compiler-validated; see the next describe block.)
-
-describe("compiler validation holes backing the normalization rules", () => {
-  test("output tile compiles with no providing sensor in scope", () => {
-    assert.ok(
-      compilesClean([], [probeTiles.driveActuator, probeTiles.beaconOutput]),
-      "output read without a provider is expected to compile clean today (validation hole)"
-    );
-  });
-
-  test("WHEN-result consumer compiles with no WHEN result available", () => {
-    assert.ok(
-      compilesClean([], [probeTiles.replyActuator]),
-      "WHEN-result consumer without a WHEN result is expected to compile clean today (validation hole)"
-    );
-  });
-
-  test("capability-gated tile compiles with no capability provider", () => {
-    assert.ok(
-      compilesClean([], [probeTiles.driveActuator, probeTiles.gatedLit]),
-      "capability-gated tile without its provider is expected to compile clean today (validation hole)"
-    );
-  });
-});
-
 // ---- Compiler-validated gate dimensions ----
 //
-// Accessor/base pairing and rule-side placement are validated by the compiler
-// on both surfaces: parseRule reports the diagnostic, and the link pipeline
+// Accessor/base pairing, rule-side placement, output providers, capability
+// requirements, and WHEN-result consumption are validated by the compiler on
+// both surfaces: parseRule reports the diagnostic, and the link pipeline
 // rejects the brain with an error-severity diagnostic. The audit above relies
-// on this: the accessor and placement dimensions are judged by compiler
-// acceptance, not by re-deriving the picker's contract.
+// on this: every gate dimension is judged by compiler acceptance, not by
+// re-deriving the picker's contract.
 
-describe("compiler validation of accessor pairing and rule-side placement", () => {
+describe("compiler validation of accessor pairing, placement, output providers, capability requirements, and WHEN-result consumers", () => {
   test("accessor on a base of a non-struct type is rejected", () => {
     const outcome = buildRule([], [probeTiles.numLit, probeTiles.accX]);
     assert.ok(
@@ -1341,12 +1437,173 @@ describe("compiler validation of accessor pairing and rule-side placement", () =
     );
   });
 
-  test("placeholder degradation still compiles: missing tiles trip neither validation", () => {
+  test("output tile with no providing sensor in scope is rejected", () => {
+    const outcome = buildRule([], [probeTiles.driveActuator, probeTiles.beaconOutput]);
+    assert.ok(
+      outcome.parseCodes.includes(ParseDiagCode.OutputTileMissingProvider),
+      "parseRule reports OutputTileMissingProvider"
+    );
+    assert.ok(
+      outcome.pipelineErrorCodes.includes(ParseDiagCode.OutputTileMissingProvider),
+      "pipeline rejects with OutputTileMissingProvider"
+    );
+    assert.ok(
+      outcome.messages.some((m) => m.includes(`"signal"`) && m.includes("no providing sensor")),
+      "message names the output tile and the missing provider"
+    );
+  });
+
+  test("output tile with its providing sensor in the same rule compiles", () => {
+    assert.ok(
+      compilesClean([probeTiles.beaconSensor], [probeTiles.driveActuator, probeTiles.beaconOutput]),
+      "an output paired with its declaring sensor compiles clean"
+    );
+  });
+
+  test("output tile with its providing sensor in an ancestor rule compiles", () => {
+    const { brain, rule } = newBrain("ancestor-provider");
+    fill(rule, [probeTiles.beaconSensor], []);
+    const child = rule.appendNewRule();
+    fill(child, [], [probeTiles.driveActuator, probeTiles.beaconOutput]);
+    const result = runBrainLinkPipeline(
+      brain,
+      { catalogs: catalogList(), actionResolver: services.runtime.actions, typeRegistry: services.runtime.types },
+      services.shared.conversions
+    );
+    assert.ok(result.program !== undefined, "the pipeline produces a program");
+    for (let i = 0; i < result.diagnostics.size(); i++) {
+      assert.notEqual(result.diagnostics.get(i).severity, "error", result.diagnostics.get(i).message);
+    }
+  });
+
+  test("capability-gated tile with no provider in scope is rejected", () => {
+    const outcome = buildRule([], [probeTiles.driveActuator, probeTiles.gatedLit]);
+    assert.ok(
+      outcome.parseCodes.includes(ParseDiagCode.TileRequirementsNotProvided),
+      "parseRule reports TileRequirementsNotProvided"
+    );
+    assert.ok(
+      outcome.pipelineErrorCodes.includes(ParseDiagCode.TileRequirementsNotProvided),
+      "pipeline rejects with TileRequirementsNotProvided"
+    );
+    assert.ok(
+      outcome.messages.some((m) => m.includes(`"gated 42"`) && m.includes(`"beacon"`)),
+      "message names the gated tile and suggests the providing sensor by label"
+    );
+  });
+
+  test("capability-gated tile with its provider in the same rule compiles", () => {
+    assert.ok(
+      compilesClean([probeTiles.beaconSensor], [probeTiles.driveActuator, probeTiles.gatedLit]),
+      "a gated tile paired with its capability provider compiles clean"
+    );
+  });
+
+  test("capability-gated tile with its provider in an ancestor rule compiles", () => {
+    const { brain, rule } = newBrain("ancestor-capability-provider");
+    fill(rule, [probeTiles.beaconSensor], []);
+    const child = rule.appendNewRule();
+    fill(child, [], [probeTiles.driveActuator, probeTiles.gatedLit]);
+    const result = runBrainLinkPipeline(
+      brain,
+      { catalogs: catalogList(), actionResolver: services.runtime.actions, typeRegistry: services.runtime.types },
+      services.shared.conversions
+    );
+    assert.ok(result.program !== undefined, "the pipeline produces a program");
+    for (let i = 0; i < result.diagnostics.size(); i++) {
+      assert.notEqual(result.diagnostics.get(i).severity, "error", result.diagnostics.get(i).message);
+    }
+  });
+
+  test("WHEN-result consumer with no WHEN result available is rejected", () => {
+    const outcome = buildRule([], [probeTiles.replyActuator]);
+    assert.ok(
+      outcome.parseCodes.includes(ParseDiagCode.TileWhenResultUnavailable),
+      "parseRule reports TileWhenResultUnavailable"
+    );
+    assert.ok(
+      outcome.pipelineErrorCodes.includes(ParseDiagCode.TileWhenResultUnavailable),
+      "pipeline rejects with TileWhenResultUnavailable"
+    );
+    assert.ok(
+      outcome.messages.some((m) => m.includes(`"reply"`) && m.includes("WHEN")),
+      "message names the consumer tile and the WHEN result it needs"
+    );
+  });
+
+  test("WHEN-result consumer under an incompatible WHEN result is rejected", () => {
+    const outcome = buildRule([probeTiles.numSensor], [probeTiles.vecReplyActuator]);
+    assert.ok(
+      outcome.parseCodes.includes(ParseDiagCode.TileWhenResultUnavailable),
+      "parseRule reports TileWhenResultUnavailable"
+    );
+    assert.ok(
+      outcome.pipelineErrorCodes.includes(ParseDiagCode.TileWhenResultUnavailable),
+      "pipeline rejects with TileWhenResultUnavailable"
+    );
+    assert.ok(
+      outcome.messages.some((m) => m.includes(`"vec reply"`) && m.includes("ProbeVec")),
+      "message names the consumer tile and the required result type"
+    );
+  });
+
+  test("WHEN-result consumer on a root rule's WHEN side is rejected", () => {
+    const outcome = buildRule([probeTiles.echoSensor], [probeTiles.beepActuator]);
+    assert.ok(
+      outcome.parseCodes.includes(ParseDiagCode.TileWhenResultUnavailable),
+      "parseRule reports TileWhenResultUnavailable for a WHEN-side consumer with no enclosing rule"
+    );
+    assert.ok(
+      outcome.pipelineErrorCodes.includes(ParseDiagCode.TileWhenResultUnavailable),
+      "pipeline rejects a WHEN-side consumer with no enclosing rule"
+    );
+  });
+
+  test("WHEN-result consumer with its own compatible WHEN result compiles", () => {
+    assert.ok(
+      compilesClean([probeTiles.numSensor], [probeTiles.replyActuator]),
+      "a DO-side consumer under its own compatible WHEN compiles clean"
+    );
+  });
+
+  test("WHEN-result consumer under a WHEN result converting to its type compiles", () => {
+    assert.ok(
+      compilesClean([probeTiles.seesSensor], [probeTiles.replyActuator]),
+      "a Number consumer under a Boolean WHEN compiles through the Boolean -> Number conversion"
+    );
+  });
+
+  test("an ancestor's WHEN result satisfies a child rule's consumers on both sides", () => {
+    const { brain, rule } = newBrain("ancestor-when-result");
+    fill(rule, [probeTiles.numSensor], []);
+    const whenChild = rule.appendNewRule();
+    fill(whenChild, [probeTiles.echoSensor], [probeTiles.beepActuator]);
+    const doChild = rule.appendNewRule();
+    fill(doChild, [], [probeTiles.replyActuator]);
+    const result = runBrainLinkPipeline(
+      brain,
+      { catalogs: catalogList(), actionResolver: services.runtime.actions, typeRegistry: services.runtime.types },
+      services.shared.conversions
+    );
+    assert.ok(result.program !== undefined, "the pipeline produces a program");
+    for (let i = 0; i < result.diagnostics.size(); i++) {
+      assert.notEqual(result.diagnostics.get(i).severity, "error", result.diagnostics.get(i).message);
+    }
+  });
+
+  test("placeholder degradation still compiles: missing tiles trip no validation", () => {
     const missing = new BrainTileMissingDef("probe.gone", "sensor", "gone");
-    const outcome = buildRule([missing], [missing, probeTiles.accX]);
+    const missingOutput = new BrainTileMissingDef("tile.out->number:<number>.gone", "out", "gone output");
+    const outcome = buildRule([missing], [missing, probeTiles.accX, missingOutput]);
     assert.ok(outcome.pipelineClean, "a degraded rule still links to a program");
-    const newCodes = [TypeDiagCode.AccessorBaseTypeMismatch as number, ParseDiagCode.TilePlacementSideMismatch];
-    for (const code of newCodes) {
+    const validationCodes = [
+      TypeDiagCode.AccessorBaseTypeMismatch as number,
+      ParseDiagCode.TilePlacementSideMismatch,
+      ParseDiagCode.OutputTileMissingProvider,
+      ParseDiagCode.TileRequirementsNotProvided,
+      ParseDiagCode.TileWhenResultUnavailable,
+    ];
+    for (const code of validationCodes) {
       assert.ok(!outcome.pipelineErrorCodes.includes(code), `pipeline does not emit ${code} for placeholders`);
       assert.ok(!outcome.parseCodes.includes(code), `parseRule does not emit ${code} for placeholders`);
       assert.ok(!outcome.typeCodes.includes(code), `parseRule does not emit ${code} for placeholders`);

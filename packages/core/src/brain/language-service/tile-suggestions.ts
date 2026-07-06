@@ -12,9 +12,14 @@ import {
   type StructTypeDef,
   type TypeId,
 } from "../../runtime";
-import type { ReadonlyBitSet } from "../../util/bitset";
+import { BitSet, type ReadonlyBitSet } from "../../util/bitset";
 import { isLValue, isLValueTile } from "../compiler/lvalue";
-import { parseBrainTiles } from "../compiler/parser";
+import {
+  collectProvidedCapabilities,
+  collectProvidedOutputKeys,
+  parseBrainTiles,
+  whenResultConsumerEligible,
+} from "../compiler/parser";
 import type { ActuatorExpr, Expr, SensorExpr, Span } from "../compiler/types";
 import {
   CoreControlFlowId,
@@ -115,15 +120,17 @@ export interface InsertionContext {
   replaceTileIndex?: number;
   /**
    * The OR'd capabilities of all tiles in the current rule hierarchy that
-   * precede the insertion point. Tiles whose `requirements()` are not a
-   * subset of this set are excluded from suggestions. When undefined,
-   * no capability filtering is performed (all tiles pass).
+   * precede the insertion point. A tile with non-empty `requirements()` is
+   * offered only when this is present and covers every required bit; when
+   * undefined, no requirements-bearing tile is offered (fail closed). Tiles
+   * with empty requirements are unaffected.
    */
   availableCapabilities?: ReadonlyBitSet;
   /**
    * The output identity keys (see `mkOutputVarKey`) provided by sensors in the
-   * current rule hierarchy. An output tile is excluded unless its `outputKey` is
-   * a member. When undefined, no output-identity filtering is performed.
+   * current rule hierarchy. An output tile is offered only when this is present
+   * and contains its `outputKey`; when undefined, no output tile is offered
+   * (fail closed).
    */
   availableOutputKeys?: UniqueSet<string>;
   /**
@@ -186,10 +193,11 @@ function isPlacementValid(tileDef: IBrainTileDef, ruleSide: RuleSide): boolean {
 
 /**
  * Checks if a tile is admissible given the rule hierarchy's available
- * capabilities and provided output identities. The tile's `requirements()` bits
- * must be a subset of `availableCapabilities`, and an output tile's `outputKey`
- * must be a member of `availableOutputKeys` (i.e. a declaring sensor is present).
- * An undefined `availableCapabilities`/`availableOutputKeys` disables that filter.
+ * capabilities and provided output identities. Requirements-bearing tiles are
+ * fail-closed: a tile with non-empty `requirements()` passes only when
+ * `availableCapabilities` is present and covers every required bit. Output
+ * tiles are fail-closed: an output tile passes only when `availableOutputKeys`
+ * is present and contains its `outputKey` (a declaring sensor is in scope).
  */
 function areRequirementsMet(
   tileDef: IBrainTileDef,
@@ -197,13 +205,15 @@ function areRequirementsMet(
   availableOutputKeys: UniqueSet<string> | undefined
 ): boolean {
   const requirements = tileDef.requirements();
-  if (!requirements.isEmpty() && availableCapabilities !== undefined) {
+  if (!requirements.isEmpty()) {
+    if (availableCapabilities === undefined) return false;
     const msb = requirements.msb();
     for (let i = 0; i <= msb; i++) {
       if (requirements.get(i) === 1 && availableCapabilities.get(i) === 0) return false;
     }
   }
-  if (tileDef.kind === "output" && availableOutputKeys !== undefined) {
+  if (tileDef.kind === "output") {
+    if (availableOutputKeys === undefined) return false;
     if (!availableOutputKeys.has((tileDef as BrainTileOutputDef).outputKey)) return false;
   }
   return true;
@@ -1605,30 +1615,45 @@ function findOwningSlotId(actionExpr: ActuatorExpr | SensorExpr, tileIndex: numb
 // ---- WHEN Result ----
 
 /**
+ * The WHEN-result type a parsed WHEN expression produces: the value the
+ * runtime captures at WHEN_END for the DO side to consume. A value-bearing
+ * event sensor (e.g. `radio receive buffer`) yields its `outputType` and a
+ * boolean or composed condition yields `Boolean`. Returns undefined when the
+ * expression's type cannot be determined or is not a value (Unknown/Void).
+ */
+export function whenExprResultType(
+  expr: Expr,
+  operatorOverloads?: IOperatorOverloads,
+  conversions?: IConversionRegistry
+): TypeId | undefined {
+  const outputType = getExprOutputType(expr, operatorOverloads, conversions);
+  if (outputType === undefined || outputType === CoreTypeIds.Unknown || outputType === CoreTypeIds.Void) {
+    return undefined;
+  }
+  return outputType;
+}
+
+/**
  * Derives the type of a rule's WHEN result: the value the rule's WHEN side
  * produces and the runtime captures for the DO side to consume.
  *
- * Reads only the WHEN side, typing its expression with `getExprOutputType`: a
- * value-bearing event sensor (e.g. `radio receive buffer`) yields its `outputType`
- * and a boolean or composed condition yields `Boolean`.
+ * Reads only the WHEN side, typing its expression with `whenExprResultType`.
  *
  * An empty WHEN produces no result of its own; this walks the `ancestor()` chain
  * to the nearest enclosing rule that produces one. Returns undefined when no
  * enclosing rule produces a typable WHEN result.
  */
-export function getRuleWhenResultType(ruleDef: IBrainRuleDef, services: BrainServices): TypeId | undefined {
-  const { operatorOverloads } = services.edit;
-  const { conversions } = services.shared;
+export function getRuleWhenResultType(
+  ruleDef: IBrainRuleDef,
+  operatorOverloads?: IOperatorOverloads,
+  conversions?: IConversionRegistry
+): TypeId | undefined {
   let current: IBrainRuleDef | undefined = ruleDef;
   while (current) {
     const whenTiles = current.when().tiles();
     if (whenTiles.size() > 0) {
       const expr = parseTilesForSuggestions(whenTiles);
-      const outputType = getExprOutputType(expr, operatorOverloads, conversions);
-      if (outputType === undefined || outputType === CoreTypeIds.Unknown || outputType === CoreTypeIds.Void) {
-        return undefined;
-      }
-      return outputType;
+      return whenExprResultType(expr, operatorOverloads, conversions);
     }
     current = current.ancestor();
   }
@@ -1644,36 +1669,54 @@ export function getRuleWhenResultType(ruleDef: IBrainRuleDef, services: BrainSer
  * being evaluated -- so a root rule's WHEN side has none. Returns undefined when
  * no rule is supplied or no enclosing rule produces a typable WHEN result.
  */
-function availableWhenResultType(
+export function availableWhenResultType(
   ruleDef: IBrainRuleDef | undefined,
   ruleSide: RuleSide,
-  services: BrainServices
+  operatorOverloads?: IOperatorOverloads,
+  conversions?: IConversionRegistry
 ): TypeId | undefined {
   if (ruleDef === undefined) return undefined;
   if (ruleSide === RuleSide.When) {
     const ancestor = ruleDef.ancestor();
-    return ancestor ? getRuleWhenResultType(ancestor, services) : undefined;
+    return ancestor ? getRuleWhenResultType(ancestor, operatorOverloads, conversions) : undefined;
   }
-  return getRuleWhenResultType(ruleDef, services);
+  return getRuleWhenResultType(ruleDef, operatorOverloads, conversions);
+}
+
+// ---- Rule hierarchy gates ----
+
+/**
+ * The OR'd `capabilities()` of every tile in the rule's WHEN and DO sides and
+ * in all its ancestor rules. Supplies `InsertionContext.availableCapabilities`
+ * for positions inside the rule: capability-gated tiles (non-empty
+ * `requirements()`) are offered only under a providing tile in this set.
+ */
+export function collectRuleHierarchyCapabilities(ruleDef: IBrainRuleDef): ReadonlyBitSet {
+  let result = new BitSet();
+  let current: IBrainRuleDef | undefined = ruleDef;
+  while (current) {
+    result = collectProvidedCapabilities(current.when().tiles(), result);
+    result = collectProvidedCapabilities(current.do().tiles(), result);
+    current = current.ancestor();
+  }
+  return result;
 }
 
 /**
- * Whether a tile is valid with respect to the WHEN result available at an
- * insertion point. A tile that declares `consumesWhenResult(T)` requires a WHEN
- * result of type `T`: it is valid only when `availableType` is present and is
- * `T` exactly or converts to `T`. A tile that declares nothing is always valid.
+ * The output identity keys provided by every tile in the rule's WHEN and DO
+ * sides and in all its ancestor rules. Supplies
+ * `InsertionContext.availableOutputKeys` for positions inside the rule: an
+ * output tile is offered only when its `outputKey` is a member.
  */
-function whenResultConsumerEligible(
-  tileDef: IBrainTileDef,
-  availableType: TypeId | undefined,
-  conversions: IConversionRegistry
-): boolean {
-  const required = tileDef.consumesWhenResult();
-  if (required === undefined) return true;
-  if (availableType === undefined) return false;
-  if (availableType === required) return true;
-  const path = conversions.findBestPath(availableType, required);
-  return path !== undefined && path.size() > 0;
+export function collectRuleHierarchyOutputKeys(ruleDef: IBrainRuleDef): UniqueSet<string> {
+  const result = new UniqueSet<string>();
+  let current: IBrainRuleDef | undefined = ruleDef;
+  while (current) {
+    collectProvidedOutputKeys(current.when().tiles(), result);
+    collectProvidedOutputKeys(current.do().tiles(), result);
+    current = current.ancestor();
+  }
+  return result;
 }
 
 // ---- Main API ----
@@ -1720,7 +1763,12 @@ export function suggestTiles(
   // The WHEN-result type available at this insertion point gates tiles that
   // declare `consumesWhenResult()`; a tile requiring an unavailable type is not
   // offered.
-  const availableWhenResult = availableWhenResultType(context.ruleDef, context.ruleSide, services);
+  const availableWhenResult = availableWhenResultType(
+    context.ruleDef,
+    context.ruleSide,
+    operatorOverloads,
+    conversions
+  );
 
   const expr: Expr = context.expr ?? { nodeId: 0, kind: "empty" };
 

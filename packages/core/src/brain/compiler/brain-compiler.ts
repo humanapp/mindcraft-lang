@@ -8,6 +8,7 @@ import type {
   ActionRef,
   BrainActionResolver,
   IConversionRegistry,
+  IOperatorOverloads,
   ITypeRegistry,
   PageMetadata,
   UnlinkedBrainProgram,
@@ -16,12 +17,23 @@ import { BYTECODE_VERSION, type FunctionBytecode, type Instr, Op } from "../../r
 import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
 import type { IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog } from "../interfaces";
 import { CoreCapabilityBits, RuleSide } from "../interfaces";
+import {
+  availableWhenResultType,
+  collectRuleHierarchyCapabilities,
+  collectRuleHierarchyOutputKeys,
+} from "../language-service/tile-suggestions";
 import { ConstantPool } from "./constant-pool";
 import { type BrainBuildDiagnostic, type BrainBuildResult, TypeDiagCode } from "./diagnostics";
 import { BytecodeEmitter } from "./emitter";
 import { computeExpectedTypes } from "./expected-types";
 import { computeInferredTypes } from "./inferred-types";
-import { parseBrainTiles, validateTilePlacement } from "./parser";
+import {
+  parseBrainTiles,
+  validateCapabilityRequirements,
+  validateOutputProviders,
+  validateTilePlacement,
+  validateWhenResultConsumers,
+} from "./parser";
 import { type CompilationDiag, ExprCompiler } from "./rule-compiler";
 import { acceptExprVisitor, type Expr, type ParseDiag, type TypeEnv, type TypeInfo, type TypeInfoDiag } from "./types";
 
@@ -105,6 +117,8 @@ export class BrainCompiler {
   private actionResolver: BrainActionResolver;
   /** Type registry used during inference to resolve struct field ids from object types */
   private typeRegistry: ITypeRegistry;
+  /** Operator overload table of the brain under compilation, used to type WHEN expressions. */
+  private operatorOverloads?: IOperatorOverloads;
   /** Global variable name pool for LOAD_VAR_SLOT/STORE_VAR_SLOT instructions */
   private variableNames: List<string>;
   /** Maps variable names to their index in variableNames */
@@ -169,6 +183,7 @@ export class BrainCompiler {
     this.actionIndices = Dict.empty();
     this.nextCallSiteIdCounter = { value: 0 };
     this.compileDiags = List.empty();
+    this.operatorOverloads = brainDef.servicesOperatorOverloads();
 
     // First pass: assign function IDs to all rules (depth-first)
     const pageList = brainDef.pages();
@@ -370,6 +385,33 @@ export class BrainCompiler {
     // A tile whose placement excludes the side it appears on blocks the build.
     this.pushErrorDiags(validateTilePlacement(whenTiles, RuleSide.When));
     this.pushErrorDiags(validateTilePlacement(doTiles, RuleSide.Do));
+
+    // An output tile with no providing sensor in the rule hierarchy (this
+    // rule's WHEN and DO sides plus every ancestor rule's) blocks the build.
+    const providedOutputKeys = collectRuleHierarchyOutputKeys(ruleDef);
+    this.pushErrorDiags(validateOutputProviders(whenTiles, providedOutputKeys));
+    this.pushErrorDiags(validateOutputProviders(doTiles, providedOutputKeys));
+
+    // A tile whose required capabilities no tile in the rule hierarchy
+    // provides blocks the build.
+    const availableCapabilities = collectRuleHierarchyCapabilities(ruleDef);
+    this.pushErrorDiags(validateCapabilityRequirements(whenTiles, availableCapabilities, this.catalogs));
+    this.pushErrorDiags(validateCapabilityRequirements(doTiles, availableCapabilities, this.catalogs));
+
+    // A tile declaring `consumesWhenResult(T)` with no compatible WHEN result
+    // available on its side (the enclosing rule's result for the WHEN side,
+    // this rule's own for the DO side) blocks the build.
+    const whenSideWhenResult = availableWhenResultType(
+      ruleDef,
+      RuleSide.When,
+      this.operatorOverloads,
+      this.conversions
+    );
+    const doSideWhenResult = availableWhenResultType(ruleDef, RuleSide.Do, this.operatorOverloads, this.conversions);
+    this.pushErrorDiags(
+      validateWhenResultConsumers(whenTiles, whenSideWhenResult, this.conversions, this.typeRegistry)
+    );
+    this.pushErrorDiags(validateWhenResultConsumers(doTiles, doSideWhenResult, this.conversions, this.typeRegistry));
 
     // Parse WHEN and DO sides
     const whenParseResult = parseBrainTiles(whenTiles, -1, 0);

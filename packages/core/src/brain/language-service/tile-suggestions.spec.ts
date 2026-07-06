@@ -35,6 +35,8 @@ import type {
   VariableExpr,
 } from "@mindcraft-lang/core/brain/compiler";
 import {
+  collectRuleHierarchyCapabilities,
+  collectRuleHierarchyOutputKeys,
   countUnclosedParens,
   getRuleWhenResultType,
   getTileOutputType,
@@ -2754,11 +2756,11 @@ describe("Capability requirements filtering", () => {
     );
     services.edit.tiles.registerTileDef(reqLitDef);
 
-    // Undefined capabilities -> included (no filtering)
+    // No capability context at all -> excluded (fail closed)
     const result1 = suggestTiles({ ruleSide: RuleSide.When }, catalogList(), services);
     assert.ok(
-      listFind(result1.exact, (s) => s.tileDef.tileId === reqLitDef.tileId) !== undefined,
-      "Should be included when no filtering"
+      listFind(result1.exact, (s) => s.tileDef.tileId === reqLitDef.tileId) === undefined,
+      "Should be excluded when the capability context is absent"
     );
 
     // Empty capabilities -> excluded
@@ -2825,6 +2827,26 @@ describe("Capability requirements filtering", () => {
     assert.ok(
       listFind(withSensor.exact, (s) => s.tileDef.tileId === outputDef.tileId) !== undefined,
       "output tile must surface downstream of a declaring sensor"
+    );
+
+    services.edit.tiles.delete(outputDef.tileId);
+  });
+
+  test("Output tiles are fail-closed: no keys context means no output tiles", () => {
+    const outputDef = new BrainTileOutputDef(CoreTypeIds.Number, "rssi", {
+      metadata: { label: "signal strength" },
+    });
+    services.edit.tiles.registerTileDef(outputDef);
+
+    // No availableOutputKeys context at all -> the output tile is not offered.
+    const result = suggestTiles({ ruleSide: RuleSide.When }, catalogList(), services);
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === outputDef.tileId) === undefined,
+      "output tile must not be offered when the keys context is absent"
+    );
+    assert.ok(
+      listFind(result.withConversion, (s) => s.tileDef.tileId === outputDef.tileId) === undefined,
+      "output tile must not be offered via conversion when the keys context is absent"
     );
 
     services.edit.tiles.delete(outputDef.tileId);
@@ -4088,19 +4110,25 @@ describe("WHEN-result consumption", () => {
   test("getRuleWhenResultType types a value-bearing WHEN sensor", () => {
     const rule = firstRule();
     rule.when().appendTile(bufferProducerDef);
-    assert.equal(getRuleWhenResultType(rule, services), CoreTypeIds.Buffer);
+    assert.equal(
+      getRuleWhenResultType(rule, services.edit.operatorOverloads, services.shared.conversions),
+      CoreTypeIds.Buffer
+    );
   });
 
   test("getRuleWhenResultType types a boolean WHEN as Boolean", () => {
     const rule = firstRule();
     rule.when().appendTile(booleanProducerDef);
-    assert.equal(getRuleWhenResultType(rule, services), CoreTypeIds.Boolean);
+    assert.equal(
+      getRuleWhenResultType(rule, services.edit.operatorOverloads, services.shared.conversions),
+      CoreTypeIds.Boolean
+    );
   });
 
   test("getRuleWhenResultType returns undefined for a lone empty WHEN", () => {
     const rule = firstRule();
     assert.equal(rule.when().tiles().size(), 0);
-    assert.equal(getRuleWhenResultType(rule, services), undefined);
+    assert.equal(getRuleWhenResultType(rule, services.edit.operatorOverloads, services.shared.conversions), undefined);
   });
 
   test("getRuleWhenResultType falls through an empty child WHEN to the ancestor's result type", () => {
@@ -4109,7 +4137,7 @@ describe("WHEN-result consumption", () => {
     const child = parent.appendNewRule();
     assert.equal(child.when().tiles().size(), 0, "child WHEN is empty");
     assert.equal(
-      getRuleWhenResultType(child, services),
+      getRuleWhenResultType(child, services.edit.operatorOverloads, services.shared.conversions),
       CoreTypeIds.Buffer,
       "child sees the parent's WHEN-result type"
     );
@@ -4496,5 +4524,63 @@ describe("Sensor and operator parity in value positions", () => {
       "[+] extends the anonymous value; the displaced tiles re-parse as its right operand"
     );
     assert.ok(!offeredAnywhere(result, mkOperatorTileId(CoreOpId.And)), "no Number overload for [and]");
+  });
+});
+
+describe("Rule hierarchy gate derivation", () => {
+  const HIER_CAP_BIT = 11;
+
+  /** A no-arg Number sensor that provides `output` and the probe capability bit. */
+  function mkProviderSensor(fnId: number, id: string, output: BrainTileOutputDef): BrainTileSensorDef {
+    const fnEntry = services.runtime.functions.register(fnId, id, false, { exec: () => NIL_VALUE }, mkCallDef(bag()));
+    return new BrainTileSensorDef(id, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Number), {
+      metadata: { label: id },
+      capabilities: new BitSet().set(HIER_CAP_BIT),
+      providedOutputs: List.from([output.outputKey]),
+    });
+  }
+
+  test("collection covers the rule's WHEN and DO sides and all ancestor rules", () => {
+    const out = new BrainTileOutputDef(CoreTypeIds.Number, "hierSignal", { metadata: { label: "hier signal" } });
+    const provider = mkProviderSensor(4361, "test-hier-provider", out);
+
+    const brain = BrainDef.emptyBrainDef(services, "hier-walk");
+    const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
+    rule.when().appendTile(provider);
+    const child = rule.appendNewRule();
+
+    assert.ok(collectRuleHierarchyOutputKeys(rule).has(out.outputKey), "own WHEN side provides the key");
+    assert.ok(collectRuleHierarchyOutputKeys(child).has(out.outputKey), "an ancestor's WHEN side provides the key");
+    assert.equal(collectRuleHierarchyCapabilities(child).get(HIER_CAP_BIT), 1, "ancestor capability is visible");
+
+    const otherBrain = BrainDef.emptyBrainDef(services, "hier-empty");
+    const otherRule = otherBrain.pages().get(0).children().get(0) as BrainRuleDef;
+    assert.ok(!collectRuleHierarchyOutputKeys(otherRule).has(out.outputKey), "an unrelated rule sees no key");
+    assert.equal(
+      collectRuleHierarchyCapabilities(otherRule).get(HIER_CAP_BIT),
+      0,
+      "an unrelated rule sees no capability"
+    );
+  });
+
+  test("collection is a live walk: replacing the providing tile drops its keys", () => {
+    const out = new BrainTileOutputDef(CoreTypeIds.Number, "hierSwap", { metadata: { label: "hier swap" } });
+    const provider = mkProviderSensor(4362, "test-hier-swap-provider", out);
+
+    const brain = BrainDef.emptyBrainDef(services, "hier-swap");
+    const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
+    rule.when().appendTile(provider);
+    assert.ok(collectRuleHierarchyOutputKeys(rule).has(out.outputKey), "the provider's key is collected");
+    assert.equal(collectRuleHierarchyCapabilities(rule).get(HIER_CAP_BIT), 1, "the provider's capability is collected");
+
+    // Replace (not remove/append) the WHEN tile: a fresh collection reflects it.
+    const replacement = new BrainTileLiteralDef(CoreTypeIds.Boolean, true, {}, services);
+    rule.when().replaceTileAtIndex(0, replacement);
+    assert.ok(!collectRuleHierarchyOutputKeys(rule).has(out.outputKey), "the key disappears with its provider");
+    assert.equal(
+      collectRuleHierarchyCapabilities(rule).get(HIER_CAP_BIT),
+      0,
+      "the capability disappears with its provider"
+    );
   });
 });

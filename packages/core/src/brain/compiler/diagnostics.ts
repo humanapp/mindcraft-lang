@@ -72,6 +72,15 @@ export enum ParseDiagCode {
 
   /** Tile placed on a rule side its placement flags do not allow */
   TilePlacementSideMismatch = 1016,
+
+  /** Output value tile with no sensor providing its output key in the rule hierarchy */
+  OutputTileMissingProvider = 1017,
+
+  /** Tile whose required capabilities no tile in the rule hierarchy provides */
+  TileRequirementsNotProvided = 1018,
+
+  /** Tile requiring a WHEN result placed where no compatible WHEN result is available */
+  TileWhenResultUnavailable = 1019,
 }
 
 /**

@@ -497,6 +497,7 @@ export function BrainRuleEditor({
                 tileIndex={idx}
                 side={RuleSide.When}
                 ruleDef={ruleDef}
+                updateCounter={updateCounter}
                 commandHistory={commandHistory}
                 badge={whenBadges.get(idx)}
               />
@@ -547,6 +548,7 @@ export function BrainRuleEditor({
                 tileIndex={idx}
                 side={RuleSide.Do}
                 ruleDef={ruleDef}
+                updateCounter={updateCounter}
                 commandHistory={commandHistory}
                 badge={doBadges.get(idx)}
               />

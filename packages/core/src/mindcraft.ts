@@ -58,7 +58,7 @@ import type {
   UserActionArtifact,
   VmEvents,
 } from "./runtime";
-import { mkOutputVarKey, NativeType } from "./runtime";
+import { NativeType } from "./runtime";
 import type { ExecutionContext, HostActionBinding } from "./runtime/context";
 import type { AsyncHandle, Value } from "./runtime/value";
 
@@ -232,9 +232,6 @@ export function createHostSensor(options: CreateHostSensorOptions): HostSensorDe
       capabilities: options.capabilities,
       consumesWhenResult: options.consumesWhenResult,
       writableResult: options.writableResult,
-      providedOutputs: options.outputs
-        ? List.from(options.outputs.map((output) => mkOutputVarKey(output.type, output.name)))
-        : undefined,
     }),
   };
 }

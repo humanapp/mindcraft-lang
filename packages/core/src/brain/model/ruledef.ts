@@ -3,9 +3,11 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { task, type thread } from "../../platform/task";
+import { UniqueSet } from "../../platform/uniqueset";
 import type { IConversionRegistry } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
-import { parseRule } from "../compiler";
+import { BitSet } from "../../util/bitset";
+import { collectProvidedCapabilities, collectProvidedOutputKeys, parseRule } from "../compiler";
 import {
   type BrainRuleDefEvents,
   type IBrainDef,
@@ -15,6 +17,7 @@ import {
   type ITileCatalog,
   RuleSide,
 } from "../interfaces";
+import { getRuleWhenResultType } from "../language-service/tile-suggestions";
 import type { BrainPageDef } from "./pagedef";
 import { BrainTileSet } from "./tileset";
 
@@ -184,7 +187,34 @@ export class BrainRuleDef implements IBrainRuleDef {
       const typeRegistry = brain?.servicesTypeRegistry();
 
       if (conversions && typeRegistry) {
-        const typecheckResult = parseRule(whenTiles, doTiles, catalogs, conversions, typeRegistry);
+        // Output and capability providers in ancestor rules are visible to
+        // this rule's tiles, as is the nearest enclosing rule's WHEN result.
+        const inheritedOutputKeys = new UniqueSet<string>();
+        let inheritedCapabilities = new BitSet();
+        let ancestor = this.ancestor();
+        while (ancestor) {
+          collectProvidedOutputKeys(ancestor.when().tiles(), inheritedOutputKeys);
+          collectProvidedOutputKeys(ancestor.do().tiles(), inheritedOutputKeys);
+          inheritedCapabilities = collectProvidedCapabilities(ancestor.when().tiles(), inheritedCapabilities);
+          inheritedCapabilities = collectProvidedCapabilities(ancestor.do().tiles(), inheritedCapabilities);
+          ancestor = ancestor.ancestor();
+        }
+        const operatorOverloads = brain?.servicesOperatorOverloads();
+        const enclosing = this.ancestor();
+        const inheritedWhenResultType = enclosing
+          ? getRuleWhenResultType(enclosing, operatorOverloads, conversions)
+          : undefined;
+        const typecheckResult = parseRule(
+          whenTiles,
+          doTiles,
+          catalogs,
+          conversions,
+          typeRegistry,
+          inheritedOutputKeys,
+          inheritedCapabilities,
+          inheritedWhenResultType,
+          operatorOverloads
+        );
         this.when_.setTypecheckResult(typecheckResult);
         this.do_.setTypecheckResult(typecheckResult);
       }

@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
+import { List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { ParseDiagCode, type TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef, BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
-import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
+import {
+  BrainTileActuatorDef,
+  BrainTileLiteralDef,
+  BrainTileOutputDef,
+  BrainTileSensorDef,
+} from "@mindcraft-lang/core/brain/tiles";
+import { bag, CoreTypeIds, mkActionDescriptor, mkCallDef, NIL_VALUE } from "@mindcraft-lang/core/runtime";
+import { BitSet } from "@mindcraft-lang/core/util";
 
 let services: BrainServices;
 
@@ -145,6 +153,174 @@ describe("BrainRuleDef", () => {
       assert.equal(b.children().get(0), childOfB);
       assert.equal(childOfB.ancestor(), b);
       assert.equal(a.ancestor(), undefined);
+    });
+  });
+
+  describe("typecheck hierarchy providers", () => {
+    /** Parse diagnostic codes reported for one side of a rule by typecheck(). */
+    function typecheckSideDiags(rule: BrainRuleDef, side: "when" | "do"): number[] {
+      const codes: number[] = [];
+      const tileSet = side === "when" ? rule.when() : rule.do();
+      const unsub = tileSet.events().on("tileSet_typechecked", (data) => {
+        const result = data.typecheckResult as TypecheckResult;
+        const sideResult = side === "when" ? result.whenParseResult : result.doParseResult;
+        sideResult.diags.forEach((diag) => {
+          codes.push(diag.code as number);
+        });
+      });
+      rule.typecheck();
+      unsub();
+      return codes;
+    }
+
+    test("an ancestor's providing sensor satisfies a child rule's output tile", () => {
+      const out = new BrainTileOutputDef(CoreTypeIds.Number, "tcSignal", { metadata: { label: "tc signal" } });
+      const fnEntry = services.runtime.functions.register(
+        4401,
+        "test-tc-provider",
+        false,
+        { exec: () => NIL_VALUE },
+        mkCallDef(bag())
+      );
+      const provider = new BrainTileSensorDef(
+        "test-tc-provider",
+        mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Number),
+        { metadata: { label: "tc provider" }, providedOutputs: List.from([out.outputKey]) }
+      );
+
+      const brain = BrainDef.emptyBrainDef(services, "tc-provider-brain");
+      const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
+      rule.when().appendTile(provider);
+      const child = rule.appendNewRule();
+      child.do().appendTile(out);
+
+      const codes = typecheckSideDiags(child, "do");
+      assert.ok(
+        !codes.includes(ParseDiagCode.OutputTileMissingProvider),
+        "the ancestor's provider must satisfy the child's output tile"
+      );
+    });
+
+    test("an output tile with no provider anywhere in the hierarchy is diagnosed", () => {
+      const out = new BrainTileOutputDef(CoreTypeIds.Number, "tcOrphan", { metadata: { label: "tc orphan" } });
+      const brain = BrainDef.emptyBrainDef(services, "tc-orphan-brain");
+      const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
+      rule.do().appendTile(out);
+
+      const codes = typecheckSideDiags(rule, "do");
+      assert.ok(
+        codes.includes(ParseDiagCode.OutputTileMissingProvider),
+        "an orphan output tile must carry OutputTileMissingProvider"
+      );
+    });
+
+    test("an ancestor's capability provider satisfies a child rule's gated tile", () => {
+      const capabilityBit = 9;
+      const fnEntry = services.runtime.functions.register(
+        4402,
+        "test-tc-cap-provider",
+        false,
+        { exec: () => NIL_VALUE },
+        mkCallDef(bag())
+      );
+      const provider = new BrainTileSensorDef(
+        "test-tc-cap-provider",
+        mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Number),
+        { metadata: { label: "tc cap provider" }, capabilities: new BitSet().set(capabilityBit) }
+      );
+      const gated = new BrainTileLiteralDef(
+        CoreTypeIds.Number,
+        11,
+        { metadata: { label: "tc gated" }, persist: false, requirements: new BitSet().set(capabilityBit) },
+        services
+      );
+
+      const brain = BrainDef.emptyBrainDef(services, "tc-cap-provider-brain");
+      const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
+      rule.when().appendTile(provider);
+      const child = rule.appendNewRule();
+      child.do().appendTile(gated);
+
+      const codes = typecheckSideDiags(child, "do");
+      assert.ok(
+        !codes.includes(ParseDiagCode.TileRequirementsNotProvided),
+        "the ancestor's capability provider must satisfy the child's gated tile"
+      );
+    });
+
+    test("a gated tile with no capability provider anywhere in the hierarchy is diagnosed", () => {
+      const gated = new BrainTileLiteralDef(
+        CoreTypeIds.Number,
+        12,
+        { metadata: { label: "tc orphan gated" }, persist: false, requirements: new BitSet().set(10) },
+        services
+      );
+      const brain = BrainDef.emptyBrainDef(services, "tc-cap-orphan-brain");
+      const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
+      rule.do().appendTile(gated);
+
+      const codes = typecheckSideDiags(rule, "do");
+      assert.ok(
+        codes.includes(ParseDiagCode.TileRequirementsNotProvided),
+        "an orphan gated tile must carry TileRequirementsNotProvided"
+      );
+    });
+
+    /** A Number-producing WHEN sensor and a DO actuator consuming a Number WHEN result, registered under fresh function ids. */
+    function whenResultProbePair(baseFnId: number): { producer: BrainTileSensorDef; consumer: BrainTileActuatorDef } {
+      const producerFn = services.runtime.functions.register(
+        baseFnId,
+        `test-tc-when-producer-${baseFnId}`,
+        false,
+        { exec: () => NIL_VALUE },
+        mkCallDef(bag())
+      );
+      const producer = new BrainTileSensorDef(
+        `test-tc-when-producer-${baseFnId}`,
+        mkActionDescriptor("sensor", producerFn, CoreTypeIds.Number),
+        { metadata: { label: "tc when producer" } }
+      );
+      const consumerFn = services.runtime.functions.register(
+        baseFnId + 1,
+        `test-tc-when-consumer-${baseFnId}`,
+        false,
+        { exec: () => NIL_VALUE },
+        mkCallDef(bag())
+      );
+      const consumer = new BrainTileActuatorDef(
+        `test-tc-when-consumer-${baseFnId}`,
+        mkActionDescriptor("actuator", consumerFn),
+        { metadata: { label: "tc when consumer" }, consumesWhenResult: CoreTypeIds.Number }
+      );
+      return { producer, consumer };
+    }
+
+    test("an ancestor's WHEN result satisfies a child rule's consumer through the empty-WHEN fall-through", () => {
+      const { producer, consumer } = whenResultProbePair(4403);
+      const brain = BrainDef.emptyBrainDef(services, "tc-when-result-brain");
+      const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
+      rule.when().appendTile(producer);
+      const child = rule.appendNewRule();
+      child.do().appendTile(consumer);
+
+      const codes = typecheckSideDiags(child, "do");
+      assert.ok(
+        !codes.includes(ParseDiagCode.TileWhenResultUnavailable),
+        "the ancestor's WHEN result must satisfy the child's consumer"
+      );
+    });
+
+    test("a consumer with no compatible WHEN result anywhere in the hierarchy is diagnosed", () => {
+      const { consumer } = whenResultProbePair(4405);
+      const brain = BrainDef.emptyBrainDef(services, "tc-when-orphan-brain");
+      const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
+      rule.do().appendTile(consumer);
+
+      const codes = typecheckSideDiags(rule, "do");
+      assert.ok(
+        codes.includes(ParseDiagCode.TileWhenResultUnavailable),
+        "an orphan WHEN-result consumer must carry TileWhenResultUnavailable"
+      );
     });
   });
 });

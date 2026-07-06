@@ -10,12 +10,21 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { UniqueSet } from "../../platform/uniqueset";
-import { type BrainActionCallArgSpec, type BrainActionCallSpec, CoreOpId } from "../../runtime";
+import {
+  type BrainActionCallArgSpec,
+  type BrainActionCallSpec,
+  CoreOpId,
+  type IConversionRegistry,
+  type ITypeRegistry,
+  type TypeId,
+} from "../../runtime";
+import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
 import {
   type BrainTileKind,
   CoreControlFlowId,
   type IBrainActionTileDef,
   type IBrainTileDef,
+  type ITileCatalog,
   parseTileId,
   RuleSide,
   TilePlacement,
@@ -1228,6 +1237,187 @@ export function validateTilePlacement(tiles: ReadonlyList<IBrainTileDef>, side: 
         span: { from: i, to: i + 1 },
       });
     }
+  }
+  return diags;
+}
+
+/**
+ * Add the output identity keys (see `mkOutputVarKey`) provided by every tile in
+ * `tiles` to `keys`.
+ */
+export function collectProvidedOutputKeys(tiles: ReadonlyList<IBrainTileDef>, keys: UniqueSet<string>): void {
+  for (let i = 0; i < tiles.size(); i++) {
+    const provided = tiles.get(i).providedOutputs();
+    for (let j = 0; j < provided.size(); j++) {
+      keys.add(provided.get(j));
+    }
+  }
+}
+
+/**
+ * Validate that every output value-tile in a rule side's tile list has a
+ * providing tile: its `outputKey` must be a member of `providedKeys` (the keys
+ * provided across the rule's WHEN and DO sides and its ancestor rules). Returns
+ * one {@link ParseDiagCode.OutputTileMissingProvider} diagnostic per offending
+ * tile, spanning the tile's index in `tiles`.
+ */
+export function validateOutputProviders(
+  tiles: ReadonlyList<IBrainTileDef>,
+  providedKeys: UniqueSet<string>
+): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  for (let i = 0; i < tiles.size(); i++) {
+    const tile = tiles.get(i);
+    if (tile.kind !== "output") continue;
+    const outputDef = tile as BrainTileOutputDef;
+    if (providedKeys.has(outputDef.outputKey)) continue;
+    const label = tile.metadata?.label ?? outputDef.outputName;
+    diags.push({
+      code: ParseDiagCode.OutputTileMissingProvider,
+      message: `Output tile "${label}" has no providing sensor in this rule or an enclosing rule`,
+      span: { from: i, to: i + 1 },
+    });
+  }
+  return diags;
+}
+
+/**
+ * Whether a tile is valid with respect to the WHEN result available at its
+ * position. A tile that declares `consumesWhenResult(T)` requires a WHEN
+ * result of type `T`: it is valid only when `availableType` is present and is
+ * `T` exactly or converts to `T`. A tile that declares nothing is always valid.
+ */
+export function whenResultConsumerEligible(
+  tileDef: IBrainTileDef,
+  availableType: TypeId | undefined,
+  conversions: IConversionRegistry
+): boolean {
+  const required = tileDef.consumesWhenResult();
+  if (required === undefined) return true;
+  if (availableType === undefined) return false;
+  if (availableType === required) return true;
+  const path = conversions.findBestPath(availableType, required);
+  return path !== undefined && path.size() > 0;
+}
+
+/**
+ * Validate that every tile in a rule side's tile list that declares
+ * `consumesWhenResult(T)` has a compatible WHEN result available:
+ * `availableWhenResultType` must be present and be `T` exactly or convert to
+ * `T`. Returns one {@link ParseDiagCode.TileWhenResultUnavailable} diagnostic
+ * per offending tile, spanning the tile's index in `tiles`. The message names
+ * the required type by its registered name when `typeRegistry` knows it.
+ */
+export function validateWhenResultConsumers(
+  tiles: ReadonlyList<IBrainTileDef>,
+  availableWhenResultType: TypeId | undefined,
+  conversions: IConversionRegistry,
+  typeRegistry: ITypeRegistry
+): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  for (let i = 0; i < tiles.size(); i++) {
+    const tile = tiles.get(i);
+    if (whenResultConsumerEligible(tile, availableWhenResultType, conversions)) continue;
+    const required = tile.consumesWhenResult()!;
+    const label = tile.metadata?.label ?? tile.tileId;
+    const typeName = typeRegistry.get(required)?.name ?? required;
+    diags.push({
+      code: ParseDiagCode.TileWhenResultUnavailable,
+      message: `Tile "${label}" requires the WHEN to produce a ${typeName} result, but no compatible WHEN result is available here`,
+      span: { from: i, to: i + 1 },
+    });
+  }
+  return diags;
+}
+
+/**
+ * OR the `capabilities()` bits of every tile in `tiles` into `acc` and return
+ * the combined set.
+ */
+export function collectProvidedCapabilities(tiles: ReadonlyList<IBrainTileDef>, acc: BitSet): BitSet {
+  let result = acc;
+  for (let i = 0; i < tiles.size(); i++) {
+    const cap = tiles.get(i).capabilities();
+    if (!cap.isEmpty()) {
+      result = result.or(cap as BitSet);
+    }
+  }
+  return result;
+}
+
+/**
+ * Labels of the visible sensor tiles in `catalogs` whose `capabilities()`
+ * cover every bit in `neededBits`, deduplicated, in catalog order.
+ */
+function capabilityProviderLabels(neededBits: List<number>, catalogs: ReadonlyList<ITileCatalog>): List<string> {
+  const labels = List.empty<string>();
+  const seen = new UniqueSet<string>();
+  for (let ci = 0; ci < catalogs.size(); ci++) {
+    const all = catalogs.get(ci).getAll();
+    for (let i = 0; i < all.size(); i++) {
+      const tile = all.get(i);
+      if (tile.kind !== "sensor" || tile.hidden === true || tile.deprecated === true) continue;
+      const provided = tile.capabilities();
+      if (provided.isEmpty()) continue;
+      let coversAll = true;
+      for (let b = 0; b < neededBits.size(); b++) {
+        if (provided.get(neededBits.get(b)) === 0) {
+          coversAll = false;
+          break;
+        }
+      }
+      if (!coversAll) continue;
+      const label = tile.metadata?.label ?? tile.tileId;
+      if (seen.has(label)) continue;
+      seen.add(label);
+      labels.push(label);
+    }
+  }
+  return labels;
+}
+
+/**
+ * Validate that every tile in a rule side's tile list has its `requirements()`
+ * bits covered by `availableCapabilities` (the OR'd `capabilities()` of every
+ * tile in the rule's WHEN and DO sides and its ancestor rules). Returns one
+ * {@link ParseDiagCode.TileRequirementsNotProvided} diagnostic per offending
+ * tile, spanning the tile's index in `tiles`. The message suggests providing
+ * sensors by label when `catalogs` contains sensors covering the missing bits.
+ */
+export function validateCapabilityRequirements(
+  tiles: ReadonlyList<IBrainTileDef>,
+  availableCapabilities: ReadonlyBitSet,
+  catalogs: ReadonlyList<ITileCatalog>
+): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  for (let i = 0; i < tiles.size(); i++) {
+    const tile = tiles.get(i);
+    const requirements = tile.requirements();
+    if (requirements.isEmpty()) continue;
+    const uncovered = List.empty<number>();
+    const msb = requirements.msb();
+    for (let b = 0; b <= msb; b++) {
+      if (requirements.get(b) === 1 && availableCapabilities.get(b) === 0) {
+        uncovered.push(b);
+      }
+    }
+    if (uncovered.size() === 0) continue;
+    const label = tile.metadata?.label ?? tile.tileId;
+    const providers = capabilityProviderLabels(uncovered, catalogs);
+    let providerText = "";
+    for (let j = 0; j < providers.size(); j++) {
+      if (j > 0) providerText += " or ";
+      providerText += `"${providers.get(j)}"`;
+    }
+    const message =
+      providers.size() > 0
+        ? `Tile "${label}" requires a sensor like ${providerText} in this rule or an enclosing rule`
+        : `Tile "${label}" requires a providing sensor in this rule or an enclosing rule`;
+    diags.push({
+      code: ParseDiagCode.TileRequirementsNotProvided,
+      message,
+      span: { from: i, to: i + 1 },
+    });
   }
   return diags;
 }

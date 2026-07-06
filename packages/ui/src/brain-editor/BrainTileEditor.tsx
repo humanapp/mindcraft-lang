@@ -36,17 +36,27 @@ interface BrainTileEditorProps {
   tileIndex: number;
   side: RuleSide;
   ruleDef: BrainRuleDef;
+  /** The page editor's update counter; increments whenever tiles change. */
+  updateCounter: number;
   commandHistory: BrainCommandHistory;
   badge?: TileBadge;
 }
 
 /** A {@link BrainTile} wrapped with a context menu offering insert/replace/delete and tile-specific edit actions. */
-export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHistory, badge }: BrainTileEditorProps) {
+export function BrainTileEditor({
+  tileDef,
+  tileIndex,
+  side,
+  ruleDef,
+  updateCounter,
+  commandHistory,
+  badge,
+}: BrainTileEditorProps) {
   const [pickerMode, setPickerMode] = useState<"insert" | "replace" | null>(null);
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
-  const availableCapabilities = useRuleCapabilities(ruleDef);
-  const availableOutputKeys = useRuleOutputKeys(ruleDef);
+  const availableCapabilities = useRuleCapabilities(ruleDef, updateCounter);
+  const availableOutputKeys = useRuleOutputKeys(ruleDef, updateCounter);
   const { onTileHelp, brainServices } = useBrainEditorConfig();
 
   const isNumericLiteral =
