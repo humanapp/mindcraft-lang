@@ -1,3 +1,5 @@
+import type { IBrainTileDef } from "../interfaces";
+import type { BrainTileSensorDef } from "../tiles";
 import type { Expr } from "./types";
 
 /**
@@ -25,6 +27,23 @@ export function isLValue(expr: Expr): boolean {
       return !expr.accessor.readOnly && isLValue(expr.object);
     case "sensor":
       return expr.tileDef.writableResult === true;
+    default:
+      return false;
+  }
+}
+
+/**
+ * True when a tile, standing alone as an expression, denotes a writable
+ * storage location: a variable tile, or a sensor tile whose result is
+ * declared writable via `writableResult`. These are the leaf cases of
+ * {@link isLValue} expressed at the tile-definition level.
+ */
+export function isLValueTile(tileDef: IBrainTileDef): boolean {
+  switch (tileDef.kind) {
+    case "variable":
+      return true;
+    case "sensor":
+      return (tileDef as BrainTileSensorDef).writableResult === true;
     default:
       return false;
   }

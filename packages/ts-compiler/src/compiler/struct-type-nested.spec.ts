@@ -86,7 +86,7 @@ import { Position } from "./position";
 import { Sprite } from "./sprite";
 
 export default Sensor({
-  name: "spawn sprite",
+  name: "spawn sprite", inline: true,
   returnType: Sprite,
   onExecute(ctx: Context): Sprite {
     return Sprite({ pos: Position({ x: 3, y: 4 }), hp: 7 });
@@ -240,7 +240,7 @@ describe("nested StructType fields: declaration-order independence", () => {
 import { Position, Sprite } from "./defs";
 
 export default Sensor({
-  name: "spawn sprite",
+  name: "spawn sprite", inline: true,
   returnType: Sprite,
   onExecute(ctx: Context): Sprite {
     return Sprite({ pos: Position({ x: 3, y: 4 }), hp: 7 });
@@ -311,7 +311,7 @@ const Sprite = StructType({
 type Sprite = StructOf<typeof Sprite>;
 
 export default Sensor({
-  name: "spawn sprite",
+  name: "spawn sprite", inline: true,
   returnType: Sprite,
   onExecute(ctx: Context): Sprite {
     return Sprite({ pos: Position({ x: 3, y: 4 }), hp: 7 });

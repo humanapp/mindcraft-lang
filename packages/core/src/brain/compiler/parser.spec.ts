@@ -16,7 +16,7 @@ import {
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { parseRule } from "@mindcraft-lang/core/brain/compiler";
+import { parseRule, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
 import {
   BrainTileAccessorDef,
   BrainTileActuatorDef,
@@ -1186,10 +1186,11 @@ describe("anonymous choice type discrimination", () => {
 
 // ---- Field id resolution from the object's type ----
 //
-// Accessor tokens can desync from the object they sit on (an edit changes a
-// variable's type but the stored accessor token is not re-bound). These tests
-// pin that the field id is resolved during inference from the OBJECT's concrete
-// struct type -- never from the accessor's structTypeId/fieldTypeId.
+// An accessor must pair with a base of its own struct type; a mismatched
+// pairing is rejected with AccessorBaseTypeMismatch. For a matching pairing,
+// the field id and field type resolve during inference from the OBJECT's
+// concrete struct type in the live registry -- never from the accessor's
+// declared fieldTypeId, which can desync from the registered definition.
 
 describe("Field id resolution from object type", () => {
   let av2Var: BrainTileVariableDef;
@@ -1233,41 +1234,46 @@ describe("Field id resolution from object type", () => {
     entityPosAccessorWrongType = new BrainTileAccessorDef(entity, "pos", av3);
   });
 
-  test("stale binding: Av2 object + Av3 'x' accessor resolves to Av2's x id (0), not Av3's (1)", () => {
-    const result = parseRule(
-      List.from<IBrainTileDef>([av2Var, av3AccessorX]),
-      List.empty<IBrainTileDef>(),
-      List.from([services.edit.tiles]),
-      services.shared.conversions,
-      services.runtime.types
-    );
-    const expr = result.parseResult.exprs.get(0);
-    assert.equal(expr.kind, "fieldAccess");
-    assert.equal(result.typeInfo.typeEnv.get(expr.nodeId)?.fieldId, 0);
+  function typeDiagCodes(result: ReturnType<typeof parseRule>): number[] {
+    const codes: number[] = [];
+    for (let i = 0; i < result.typeInfo.diags.size(); i++) {
+      codes.push(result.typeInfo.diags.get(i).code as number);
+    }
+    return codes;
+  }
+
+  test("mismatched pairing: an accessor of a different struct type is rejected with no field id", () => {
+    for (const [objectVar, accessor] of [
+      [av2Var, av3AccessorX],
+      [av3Var, av2AccessorX],
+      [numVar, av2AccessorX],
+    ] as const) {
+      const result = parseRule(
+        List.from<IBrainTileDef>([objectVar, accessor]),
+        List.empty<IBrainTileDef>(),
+        List.from([services.edit.tiles]),
+        services.shared.conversions,
+        services.runtime.types
+      );
+      const expr = result.parseResult.exprs.get(0);
+      assert.equal(expr.kind, "fieldAccess");
+      assert.ok(typeDiagCodes(result).includes(TypeDiagCode.AccessorBaseTypeMismatch));
+      assert.equal(result.typeInfo.typeEnv.get(expr.nodeId)?.fieldId, undefined);
+    }
   });
 
-  test("symmetric: Av3 object + Av2 'x' accessor resolves to Av3's x id (1)", () => {
+  test("nested chain: fields resolve against each object's REAL type, not the accessor's declared field type", () => {
+    // entity.pos.x : pos's accessor declares its field type as Av3, but pos's
+    // real type is Av2, so the chain pairs and x resolves to Av2.x (0), not
+    // Av3.x (1).
     const result = parseRule(
-      List.from<IBrainTileDef>([av3Var, av2AccessorX]),
+      List.from<IBrainTileDef>([entityVar, entityPosAccessorWrongType, av2AccessorX]),
       List.empty<IBrainTileDef>(),
       List.from([services.edit.tiles]),
       services.shared.conversions,
       services.runtime.types
     );
-    const expr = result.parseResult.exprs.get(0);
-    assert.equal(result.typeInfo.typeEnv.get(expr.nodeId)?.fieldId, 1);
-  });
-
-  test("nested chain: the outer field resolves against the inner field's REAL type, not a stale inner accessor", () => {
-    // entity.pos.x : pos's accessor declares Av3, but pos's real type is Av2, so
-    // x must resolve to Av2.x (0), not Av3.x (1).
-    const result = parseRule(
-      List.from<IBrainTileDef>([entityVar, entityPosAccessorWrongType, av3AccessorX]),
-      List.empty<IBrainTileDef>(),
-      List.from([services.edit.tiles]),
-      services.shared.conversions,
-      services.runtime.types
-    );
+    assert.deepEqual(typeDiagCodes(result), []);
     const outer = result.parseResult.exprs.get(0);
     assert.equal(outer.kind, "fieldAccess");
     assert.equal(result.typeInfo.typeEnv.get(outer.nodeId)?.fieldId, 0);
@@ -1277,16 +1283,82 @@ describe("Field id resolution from object type", () => {
     }
   });
 
-  test("non-struct object: field id is undefined (emitter falls back to the name-keyed path)", () => {
+  test("unregistered struct type: field id is undefined (emitter falls back to the name-keyed path)", () => {
+    const phantomTypeId = mkTypeId(NativeType.Struct, "PhantomResolve");
+    const phantomVar = new BrainTileVariableDef(
+      mkVariableTileId("phantom-resolve"),
+      "phv",
+      phantomTypeId,
+      "phantom-resolve"
+    );
+    const phantomAccessorX = new BrainTileAccessorDef(phantomTypeId, "x", CoreTypeIds.Number);
     const result = parseRule(
-      List.from<IBrainTileDef>([numVar, av2AccessorX]),
+      List.from<IBrainTileDef>([phantomVar, phantomAccessorX]),
       List.empty<IBrainTileDef>(),
       List.from([services.edit.tiles]),
       services.shared.conversions,
       services.runtime.types
     );
+    assert.deepEqual(typeDiagCodes(result), []);
     const expr = result.parseResult.exprs.get(0);
     assert.equal(expr.kind, "fieldAccess");
     assert.equal(result.typeInfo.typeEnv.get(expr.nodeId)?.fieldId, undefined);
+  });
+});
+
+// ---- Continuation after a complete non-inline sensor ----
+
+describe("Continuation after a complete non-inline sensor", () => {
+  let plainStructSensor: BrainTileSensorDef;
+  let inlineStructSensor: BrainTileSensorDef;
+  let accessorF: BrainTileAccessorDef;
+
+  before(() => {
+    const structTypeId = services.runtime.types.addStructType("SensorReadingCont", {
+      atomId: mkTestAtomId(),
+      fields: List.from([{ name: "f", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+    });
+    accessorF = new BrainTileAccessorDef(structTypeId, "f", CoreTypeIds.Number);
+
+    const plainFnEntry = services.runtime.functions.register(
+      4020,
+      "reading-cont-plain",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    plainStructSensor = new BrainTileSensorDef(
+      "reading-cont-plain",
+      mkActionDescriptor("sensor", plainFnEntry, structTypeId)
+    );
+
+    const inlineFnEntry = services.runtime.functions.register(
+      4021,
+      "reading-cont-inline",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    inlineStructSensor = new BrainTileSensorDef(
+      "reading-cont-inline",
+      mkActionDescriptor("sensor", inlineFnEntry, structTypeId),
+      { placement: TilePlacement.EitherSide | TilePlacement.Inline }
+    );
+  });
+
+  test("[plain sensor] [f] - accessor cannot follow a non-inline sensor at top level", () => {
+    runParseTest({ name: "plain.f", tiles: [plainStructSensor, accessorF], shouldPass: false });
+  });
+
+  test("[plain sensor] [+] [5] - infix operator cannot follow a non-inline sensor at top level", () => {
+    runParseTest({ name: "plain+5", tiles: [plainStructSensor, opAdd, literal5], shouldPass: false });
+  });
+
+  test("[inline sensor] [f] - accessor follows an inline sensor", () => {
+    runParseTest({ name: "inline.f", tiles: [inlineStructSensor, accessorF], shouldPass: true });
+  });
+
+  test("[inline sensor] [f] [+] [5] - infix operator follows an inline sensor's field access", () => {
+    runParseTest({ name: "inline.f+5", tiles: [inlineStructSensor, accessorF, opAdd, literal5], shouldPass: true });
   });
 });

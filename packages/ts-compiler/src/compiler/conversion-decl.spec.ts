@@ -17,6 +17,7 @@ import {
   type ITileCatalog,
   mkVariableTileId,
   RuleSide,
+  TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { Expr } from "@mindcraft-lang/core/brain/compiler";
@@ -99,7 +100,7 @@ export default Sensor({
 const SEVEN_SOURCE = `import { type Context, Sensor } from "mindcraft";
 
 export default Sensor({
-  name: "seven",
+  name: "seven", inline: true,
   onExecute(ctx: Context): number {
     return 7;
   },
@@ -181,6 +182,16 @@ function num(brain: IBrain, name: string): number | undefined {
   return v === undefined ? undefined : extractNumberValue(v);
 }
 
+/**
+ * Widens a compiled sensor tile to either rule side. The user-code sensor
+ * surface has no placement control, and an argument-taking sensor cannot be
+ * inline, so a DO-side read of one is only reachable with a widened tile.
+ */
+function widenToEitherSide(tile: IBrainTileDef): IBrainTileDef {
+  tile.placement = TilePlacement.EitherSide;
+  return tile;
+}
+
 /** Appends `DO [<name> := decode packet(<literal>)]` to `rule`. */
 function appendDecodeAssignment(
   services: BrainServices,
@@ -193,7 +204,7 @@ function appendDecodeAssignment(
   const opAssign = new BrainTileOperatorDef("assign", {}, services);
   rule.do().appendTile(v as never);
   rule.do().appendTile(opAssign as never);
-  rule.do().appendTile(decoderTile as never);
+  rule.do().appendTile(widenToEitherSide(decoderTile) as never);
   rule.do().appendTile(mkNumberLiteral(services, literal) as never);
   return v;
 }

@@ -467,7 +467,11 @@ describe("Replace operand/operator in binary expression", () => {
     const ctx: InsertionContext = { ruleSide: RuleSide.Either, expr: binaryExpr, replaceTileIndex: 0 };
     const result = suggestTiles(ctx, catalogList(), services);
 
-    const hasLiteral = listFind(result.exact, (s) => s.tileDef.kind === "literal") !== undefined;
+    // The operand position is constrained to the types add's overloads accept;
+    // the Boolean literals reach Number/String via conversion.
+    const hasLiteral =
+      listFind(result.exact, (s) => s.tileDef.kind === "literal") !== undefined ||
+      listFind(result.withConversion, (s) => s.tileDef.kind === "literal") !== undefined;
     assert.ok(hasLiteral, "Replace left operand should include literal tiles");
 
     const hasOperator = listFind(result.exact, (s) => s.tileDef.kind === "operator") !== undefined;
@@ -531,15 +535,44 @@ describe("Replace operand/operator in binary expression", () => {
     const ctx: InsertionContext = { ruleSide: RuleSide.Either, expr: unaryExpr, replaceTileIndex: 0 };
     const result = suggestTiles(ctx, catalogList(), services);
 
-    const allOperators = listEvery(result.exact, (s) => s.tileDef.kind === "operator");
-    assert.ok(allOperators, "Replace prefix position should only suggest operators");
+    // The operand is a Boolean literal, so only prefix operators with a
+    // Boolean-operand overload are valid; the open paren can also stand here
+    // (it groups the operand), and a non-inline sensor can host the operand
+    // in an anonymous slot.
+    const allValid = listEvery(
+      result.exact,
+      (s) =>
+        s.tileDef.kind === "operator" ||
+        s.tileDef.kind === "sensor" ||
+        s.tileDef.tileId === mkControlFlowTileId(CoreControlFlowId.OpenParen)
+    );
+    assert.ok(allValid, "Replace prefix position should only suggest operators, sensors, and the open paren");
     assert.ok(result.exact.size() > 0, "Should suggest at least some prefix operators");
 
     const hasNot = listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Not)) !== undefined;
     const hasNegate =
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Negate)) !== undefined;
-    assert.ok(hasNot, "Should include 'not' as prefix operator");
-    assert.ok(hasNegate, "Should include 'negate' as prefix operator");
+    assert.ok(hasNot, "Should include 'not' (Boolean-operand overload)");
+    assert.ok(!hasNegate, "Should NOT include 'negate' (no Boolean-operand overload)");
+
+    // A non-inline sensor is valid here only when an anonymous slot can host
+    // the displaced operand: [timeout] takes the Boolean literal as its
+    // anonymous Number value (via conversion), while [on-page-entered] has
+    // no anonymous slot and would leave the operand dangling.
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === mkSensorTileId(CoreHostActions.Timeout.key)) !== undefined,
+      "Should include [timeout]: its anonymous slot hosts the displaced operand"
+    );
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === mkSensorTileId(CoreHostActions.OnPageEntered.key)) ===
+        undefined,
+      "Should NOT include [on-page-entered]: no anonymous slot to host the operand"
+    );
+
+    const hasOpenParen =
+      listFind(result.exact, (s) => s.tileDef.tileId === mkControlFlowTileId(CoreControlFlowId.OpenParen)) !==
+      undefined;
+    assert.ok(hasOpenParen, "Should include the open paren at a prefix-operator replacement");
 
     const hasAdd = listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Add)) !== undefined;
     assert.ok(!hasAdd, "Should NOT include infix 'add' in prefix position");
@@ -1349,6 +1382,55 @@ describe("Non-inline sensor operator suggestions", () => {
       "Fully filled non-inline sensor should have no conversion suggestions"
     );
   });
+
+  test("Test 30d: Complete non-inline sensor (no args) -> no infix operators", () => {
+    const plainFnEntry = services.runtime.functions.register(
+      4014,
+      "test-sense-plain",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    const plainSensorDef = new BrainTileSensorDef(
+      "test-sense-plain",
+      mkActionDescriptor("sensor", plainFnEntry, CoreTypeIds.Number),
+      { metadata: { label: "sense plain" } }
+    );
+    services.edit.tiles.registerTileDef(plainSensorDef);
+
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([plainSensorDef]));
+    assert.equal(expr.kind, "sensor");
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
+
+    const hasInfixOp = listFind(result.exact, (s) => s.tileDef.kind === "operator") !== undefined;
+    assert.ok(!hasInfixOp, "Complete non-inline sensor should NOT offer infix operators");
+    assert.equal(result.exact.size(), 0, "Complete non-inline sensor should suggest nothing");
+  });
+
+  test("Test 30e: Complete inline sensor (no args) -> infix operators offered", () => {
+    const inlineFnEntry = services.runtime.functions.register(
+      4015,
+      "test-sense-inline",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    const inlineSensorDef = new BrainTileSensorDef(
+      "test-sense-inline",
+      mkActionDescriptor("sensor", inlineFnEntry, CoreTypeIds.Number),
+      { metadata: { label: "sense inline" }, placement: TilePlacement.EitherSide | TilePlacement.Inline }
+    );
+    services.edit.tiles.registerTileDef(inlineSensorDef);
+
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([inlineSensorDef]));
+    assert.equal(expr.kind, "sensor");
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
+
+    assert.ok(
+      resultContains(result, mkOperatorTileId(CoreOpId.Add)),
+      "Complete inline sensor should offer the add infix operator"
+    );
+  });
 });
 
 // ---- Test 31-34: Operator overload filtering ----
@@ -1663,8 +1745,6 @@ describe("Accessor / struct field suggestions", () => {
 
     posVarDef = new BrainTileVariableDef("test.posVar", "my_position", posStructTypeId, "var-pos-1");
     services.edit.tiles.registerTileDef(posVarDef);
-
-    services.edit.operatorOverloads.binaryTypeOnly(CoreOpId.Assign, posStructTypeId, posStructTypeId, posStructTypeId);
   });
 
   test("Test 38: Struct variable -> accessor tiles suggested", () => {
@@ -2177,12 +2257,6 @@ describe("Accessor suggestions after value sensors", () => {
 
     readingVarDef = new BrainTileVariableDef("test.readingVar", "my_reading", readingStructTypeId, "var-reading-1");
     services.edit.tiles.registerTileDef(readingVarDef);
-    services.edit.operatorOverloads.binaryTypeOnly(
-      CoreOpId.Assign,
-      readingStructTypeId,
-      readingStructTypeId,
-      readingStructTypeId
-    );
 
     // An actuator with a single anonymous Number value slot, mirroring `observe x`.
     const anonNumberSpec = param(CoreParameterId.AnonymousNumber, {
@@ -2229,6 +2303,29 @@ describe("Accessor suggestions after value sensors", () => {
 
     assert.ok(resultContains(result, accValueDef.tileId), "[reading] should offer the 'value' accessor");
     assert.ok(resultContains(result, accDataDef.tileId), "[reading] should offer the 'data' accessor");
+  });
+
+  test("no-arg NON-inline value sensor -> no accessors (parser cannot attach them)", () => {
+    const plainReadFn = services.runtime.functions.register(
+      4304,
+      "test-reading-sensor-plain",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    const plainReadingSensorDef = new BrainTileSensorDef(
+      "test-reading-sensor-plain",
+      mkActionDescriptor("sensor", plainReadFn, readingStructTypeId),
+      { metadata: { label: "plain reading" }, placement: TilePlacement.EitherSide }
+    );
+    services.edit.tiles.registerTileDef(plainReadingSensorDef);
+
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([plainReadingSensorDef]));
+    assert.equal(expr.kind, "sensor");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+
+    const hasAccessor = listFind(result.exact, (s) => s.tileDef.kind === "accessor") !== undefined;
+    assert.ok(!hasAccessor, "[plain reading] should NOT offer accessors -- the parser cannot continue the sensor");
   });
 
   test("[not] [value sensor] -> its struct accessors are offered (unary-wrapped parity)", () => {
@@ -2522,7 +2619,7 @@ describe("Sub-expression filtering", () => {
     );
   });
 
-  test("Test 55: [not] [sensor] [near] -> [far] excluded, no infix ops", () => {
+  test("Test 55: [not] [sensor] [near] -> [far] excluded, Boolean infix ops offered", () => {
     const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
     const seeDef = services.edit.tiles.get(mkSensorTileId("test-see54")) as BrainTileSensorDef;
     const modNearDef = services.edit.tiles.get(mkModifierTileId("test.near54")) as BrainTileModifierDef;
@@ -2538,25 +2635,64 @@ describe("Sub-expression filtering", () => {
       "[far] should be excluded by choice"
     );
 
-    const hasInfix =
-      listFind(result.exact, (s) => {
-        if (s.tileDef.kind !== "operator") return false;
-        return (s.tileDef as BrainTileOperatorDef).op.parse.fixity === "infix";
-      }) !== undefined;
-    assert.ok(!hasInfix, "Should NOT offer infix operators after modifier");
+    // The operand sensor's required choice is satisfied, so the expression
+    // is complete and the parser accepts an infix continuation on the whole
+    // unary expression (Boolean).
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.And)) !== undefined,
+      "Should offer [and] after the completed operand sensor"
+    );
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Add)) === undefined,
+      "Should NOT offer [+] (no Boolean overload)"
+    );
   });
 
-  test("Test 56: Replace operand in [not] [sensor] -> expression tiles including sensors", () => {
+  test("Test 56: Replace operand in [not] [sensor] -> operator-compatible tiles only", () => {
     const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
     const sensorDef = services.edit.tiles.get(mkSensorTileId(CoreHostActions.OnPageEntered.key)) as BrainTileSensorDef;
+
+    // An inline Boolean sensor: a valid operand for `not`.
+    const boolReadFn = services.runtime.functions.register(
+      4056,
+      "test-bool-read-56",
+      false,
+      { exec: () => TRUE_VALUE },
+      mkCallDef(bag())
+    );
+    const boolReadDef = new BrainTileSensorDef(
+      "test-bool-read-56",
+      mkActionDescriptor("sensor", boolReadFn, CoreTypeIds.Boolean),
+      { placement: TilePlacement.EitherSide | TilePlacement.Inline, metadata: { label: "bool reading" } }
+    );
+    services.edit.tiles.registerTileDef(boolReadDef);
 
     const tiles = List.from<IBrainTileDef>([notOpDef, sensorDef]);
     const expr = parseTilesForSuggestions(tiles);
 
     const result = suggestTiles({ ruleSide: RuleSide.When, expr, replaceTileIndex: 1 }, catalogList(), services);
 
-    assert.ok(listFind(result.exact, (s) => s.tileDef.kind === "literal") !== undefined, "Should include literals");
-    assert.ok(listFind(result.exact, (s) => s.tileDef.kind === "sensor") !== undefined, "Should include sensors");
+    // Types the `not` overloads accept directly (Boolean or nil) are exact
+    // matches; convertible types (Number -> Boolean) are offered as
+    // conversions, matching the compiler's unary operand conversions.
+    assert.ok(
+      listFind(
+        result.exact,
+        (s) => s.tileDef.kind === "literal" && getTileOutputType(s.tileDef) === CoreTypeIds.Boolean
+      ) !== undefined,
+      "Should include Boolean literals"
+    );
+    assert.ok(
+      listFind(result.exact, (s) => s.tileDef.tileId === boolReadDef.tileId) !== undefined,
+      "Should include the inline Boolean sensor"
+    );
+    const randomTileId = mkSensorTileId(CoreHostActions.Random.key);
+    assert.ok(
+      listFind(result.withConversion, (s) => s.tileDef.tileId === randomTileId) !== undefined,
+      "Should include the Number-typed random sensor as a conversion"
+    );
+
+    services.edit.tiles.delete(boolReadDef.tileId);
   });
 
   test("Test 57: Replace modifier inside [not] [sensor] [mod] -> action call arg tiles", () => {
@@ -2802,11 +2938,15 @@ describe("Struct-specific operator and accessor behavior", () => {
 
     posVarDef = new BrainTileVariableDef("test.posVar62", "my_position", posStructTypeId, "var-pos-62");
     services.edit.tiles.registerTileDef(posVarDef);
-
-    services.edit.operatorOverloads.binaryTypeOnly(CoreOpId.Assign, posStructTypeId, posStructTypeId, posStructTypeId);
   });
 
-  test("Test 62: Struct variable with operatorOverloads -> assign + accessors", () => {
+  test("Test 62: Struct variable with no Assign overload -> assign + accessors", () => {
+    assert.equal(
+      services.edit.operatorOverloads.resolve(CoreOpId.Assign, [posStructTypeId, posStructTypeId]),
+      undefined,
+      "no Assign overload is registered for the struct"
+    );
+
     const varExpr: VariableExpr = { nodeId: 0, kind: "variable", tileDef: posVarDef, span: { from: 0, to: 0 } };
     const result = suggestTiles({ ruleSide: RuleSide.Do, expr: varExpr }, catalogList(), services);
 
@@ -3973,5 +4113,388 @@ describe("WHEN-result consumption", () => {
       CoreTypeIds.Buffer,
       "child sees the parent's WHEN-result type"
     );
+  });
+});
+
+// ---- Replacement roles carry position constraints ----
+
+describe("Replacement roles carry position constraints", () => {
+  let ptStructTypeId: string;
+  let ptAccNum: BrainTileAccessorDef;
+  let ptNumVar: BrainTileVariableDef;
+  let ptStrVar: BrainTileVariableDef;
+  let ptStructVar: BrainTileVariableDef;
+  let ptNumLit: BrainTileLiteralDef;
+  let ptNumSensor: BrainTileSensorDef;
+  let ptNilLit: IBrainTileDef;
+
+  before(() => {
+    ptStructTypeId = services.runtime.types.addStructType("PtReading", {
+      atomId: mkTestAtomId(),
+      fields: List.from([{ name: "level", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+    });
+    ptAccNum = new BrainTileAccessorDef(ptStructTypeId, "level", CoreTypeIds.Number, { metadata: { label: "level" } });
+    ptNumVar = new BrainTileVariableDef("pt.numVar", "pt_num", CoreTypeIds.Number, "pt-var-num");
+    ptStrVar = new BrainTileVariableDef("pt.strVar", "pt_str", CoreTypeIds.String, "pt-var-str");
+    ptStructVar = new BrainTileVariableDef("pt.structVar", "pt_reading", ptStructTypeId, "pt-var-struct");
+    ptNumLit = new BrainTileLiteralDef(CoreTypeIds.Number, 7, { metadata: { label: "7" } }, services);
+    const ptNumReadFn = services.runtime.functions.register(
+      4210,
+      "pt-num-read",
+      false,
+      { exec: () => NIL_VALUE },
+      mkCallDef(bag())
+    );
+    ptNumSensor = new BrainTileSensorDef("pt-num-read", mkActionDescriptor("sensor", ptNumReadFn, CoreTypeIds.Number), {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      metadata: { label: "pt num reading" },
+    });
+    for (const def of [ptAccNum, ptNumVar, ptStrVar, ptStructVar, ptNumLit, ptNumSensor]) {
+      services.edit.tiles.registerTileDef(def);
+    }
+    ptNilLit = services.edit.tiles
+      .getAll()
+      .toArray()
+      .find((t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Nil)!;
+  });
+
+  function offeredAnywhere(result: TileSuggestionResult, tileId: string): boolean {
+    return (
+      listFind(result.exact, (s) => s.tileDef.tileId === tileId) !== undefined ||
+      listFind(result.withConversion, (s) => s.tileDef.tileId === tileId) !== undefined
+    );
+  }
+
+  test("Replacing an assignment target offers only compatible l-values", () => {
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const tiles = List.from<IBrainTileDef>([ptNumVar, assignOpDef, ptNumLit]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "assignment");
+
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, replaceTileIndex: 0 }, catalogList(), services);
+
+    assert.ok(offeredAnywhere(result, ptNumVar.tileId), "a Number variable is a valid target for a Number value");
+    assert.ok(
+      offeredAnywhere(result, ptStructVar.tileId),
+      "a struct variable with a Number field is a valid target (refined with an accessor)"
+    );
+    assert.ok(
+      offeredAnywhere(result, ptStrVar.tileId),
+      "a String variable is offered: the assigned Number converts to String"
+    );
+    assert.ok(!offeredAnywhere(result, ptNumLit.tileId), "a literal is not an l-value");
+    assert.ok(!offeredAnywhere(result, ptNilLit.tileId), "nil is not an l-value");
+    assert.ok(!offeredAnywhere(result, ptNumSensor.tileId), "a plain sensor result is not writable");
+    assert.ok(
+      !offeredAnywhere(result, mkOperatorTileId(CoreOpId.Negate)) &&
+        !offeredAnywhere(result, mkOperatorTileId(CoreOpId.Not)),
+      "prefix operators do not produce l-values"
+    );
+  });
+
+  test("Replacing a field-access base under assignment respects isLValue recursion", () => {
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const tiles = List.from<IBrainTileDef>([ptStructVar, ptAccNum, assignOpDef, ptNumLit]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "assignment");
+
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, replaceTileIndex: 0 }, catalogList(), services);
+
+    assert.ok(offeredAnywhere(result, ptStructVar.tileId), "a variable base keeps the field access writable");
+    assert.ok(offeredAnywhere(result, ptNumVar.tileId), "any variable is a writable base");
+    assert.ok(!offeredAnywhere(result, ptNumLit.tileId), "a literal base makes the field access read-only");
+    assert.ok(!offeredAnywhere(result, ptNilLit.tileId), "nil is not a writable base");
+    assert.ok(!offeredAnywhere(result, ptNumSensor.tileId), "a sensor-result base is not writable");
+  });
+
+  test("Replacing a binary operand offers only operator-compatible types", () => {
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const tiles = List.from<IBrainTileDef>([ptNumLit, addOpDef, ptNumLit]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "binaryOp");
+
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, replaceTileIndex: 2 }, catalogList(), services);
+
+    assert.ok(offeredAnywhere(result, ptNumLit.tileId), "a Number literal fits add's Number overload");
+    assert.ok(
+      offeredAnywhere(result, ptStructVar.tileId),
+      "a struct with a Number field fits via an accessor refinement"
+    );
+    assert.ok(!offeredAnywhere(result, ptNilLit.tileId), "nil fits no add overload and has no conversion");
+    assert.ok(
+      offeredAnywhere(result, mkOperatorTileId(CoreOpId.Negate)),
+      "negate produces a Number, which add accepts"
+    );
+    assert.ok(
+      !offeredAnywhere(result, mkOperatorTileId(CoreOpId.Not)),
+      "not produces a Boolean, which no add overload accepts directly"
+    );
+  });
+
+  test("Replacing a unary operand offers direct and convertible types", () => {
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const boolLitDef = services.edit.tiles
+      .getAll()
+      .toArray()
+      .find((t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Boolean)!;
+    const tiles = List.from<IBrainTileDef>([notOpDef, boolLitDef]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "unaryOp");
+
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr, replaceTileIndex: 1 }, catalogList(), services);
+
+    assert.ok(offeredAnywhere(result, boolLitDef.tileId), "a Boolean literal is a direct operand for not");
+    assert.ok(offeredAnywhere(result, ptNilLit.tileId), "nil is a direct operand for not (nil overload)");
+    assert.ok(
+      offeredAnywhere(result, ptNumVar.tileId),
+      "a Number variable is offered: the compiler converts unary operands (Number -> Boolean)"
+    );
+    assert.ok(
+      offeredAnywhere(result, ptStrVar.tileId),
+      "a String variable is offered: the compiler converts unary operands (String -> Boolean)"
+    );
+  });
+
+  test("Close paren is not offered at an operator replacement whose right operand is present", () => {
+    const openParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const tiles = List.from<IBrainTileDef>([openParen, ptNumLit, addOpDef, ptNumLit]);
+    const expr = parseTilesForSuggestions(tiles);
+    const depth = countUnclosedParens(tiles, 2);
+    assert.equal(depth, 1);
+
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, replaceTileIndex: 2, unclosedParenDepth: depth },
+      catalogList(),
+      services
+    );
+
+    assert.ok(
+      !offeredAnywhere(result, mkControlFlowTileId(CoreControlFlowId.CloseParen)),
+      "the trailing operand cannot re-parse after a close paren"
+    );
+    assert.ok(offeredAnywhere(result, mkOperatorTileId(CoreOpId.Subtract)), "infix operators are still offered");
+  });
+});
+
+// ---- Sensor and operator parity in value positions ----
+
+describe("Sensor and operator parity in value positions", () => {
+  /** Non-inline Number sensor with no arguments, valid on either side. */
+  let vpNumSensor: BrainTileSensorDef;
+  /** Non-inline Boolean sensor whose only argument is an optional modifier. */
+  let vpOptSensor: BrainTileSensorDef;
+  let vpOptMod: BrainTileModifierDef;
+  /** Non-inline Boolean sensor with a required anonymous Number slot. */
+  let vpReqSensor: BrainTileSensorDef;
+  /** Actuator with a required anonymous Number slot and an optional named param. */
+  let vpDrive: BrainTileActuatorDef;
+  let vpPower: BrainTileParameterDef;
+  let vpNumVar: BrainTileVariableDef;
+  let vpNumLit: BrainTileLiteralDef;
+
+  before(() => {
+    vpNumLit = new BrainTileLiteralDef(CoreTypeIds.Number, 5, { metadata: { label: "5" } }, services);
+    vpNumVar = new BrainTileVariableDef("vp.numVar", "vp_num", CoreTypeIds.Number, "vp-var-num");
+
+    const numFn = services.runtime.functions.register(
+      4321,
+      "vp-num-sense",
+      false,
+      { exec: () => NIL_VALUE },
+      mkCallDef(bag())
+    );
+    vpNumSensor = new BrainTileSensorDef("vp-num-sense", mkActionDescriptor("sensor", numFn, CoreTypeIds.Number), {
+      placement: TilePlacement.EitherSide,
+      metadata: { label: "vp num" },
+    });
+
+    vpOptMod = new BrainTileModifierDef("vp.optMod", { metadata: { label: "opt" } });
+    const optFn = services.runtime.functions.register(
+      4322,
+      "vp-opt-sense",
+      false,
+      { exec: () => TRUE_VALUE },
+      mkCallDef(bag(optional(mod("vp.optMod"))))
+    );
+    vpOptSensor = new BrainTileSensorDef("vp-opt-sense", mkActionDescriptor("sensor", optFn, CoreTypeIds.Boolean), {
+      metadata: { label: "vp opt" },
+    });
+
+    const vpReqParam = new BrainTileParameterDef("vp.reqNum", CoreTypeIds.Number, { metadata: { label: "req num" } });
+    const reqFn = services.runtime.functions.register(
+      4323,
+      "vp-req-sense",
+      false,
+      { exec: () => TRUE_VALUE },
+      mkCallDef(seq(param("vp.reqNum", { name: "reqNum", required: true, anonymous: true })))
+    );
+    vpReqSensor = new BrainTileSensorDef("vp-req-sense", mkActionDescriptor("sensor", reqFn, CoreTypeIds.Boolean), {
+      metadata: { label: "vp req" },
+    });
+
+    vpPower = new BrainTileParameterDef("vp.power", CoreTypeIds.Number, { metadata: { label: "power" } });
+    const vpSpeed = new BrainTileParameterDef("vp.speed", CoreTypeIds.Number, { metadata: { label: "speed" } });
+    const driveFn = services.runtime.functions.register(
+      4324,
+      "vp-drive",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(
+        seq(param("vp.speed", { name: "speed", required: true, anonymous: true }), bag(optional(param("vp.power"))))
+      )
+    );
+    vpDrive = new BrainTileActuatorDef("vp-drive", mkActionDescriptor("actuator", driveFn), {
+      metadata: { label: "vp drive" },
+    });
+
+    for (const def of [
+      vpNumLit,
+      vpNumVar,
+      vpNumSensor,
+      vpOptMod,
+      vpOptSensor,
+      vpReqParam,
+      vpReqSensor,
+      vpPower,
+      vpSpeed,
+      vpDrive,
+    ]) {
+      services.edit.tiles.registerTileDef(def);
+    }
+  });
+
+  function offeredAnywhere(result: TileSuggestionResult, tileId: string): boolean {
+    return (
+      listFind(result.exact, (s) => s.tileDef.tileId === tileId) !== undefined ||
+      listFind(result.withConversion, (s) => s.tileDef.tileId === tileId) !== undefined
+    );
+  }
+
+  test("Non-inline sensor offered when replacing a prefix-op operand", () => {
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const tiles = List.from<IBrainTileDef>([notOpDef, vpOptSensor]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "unaryOp");
+
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr, replaceTileIndex: 1 }, catalogList(), services);
+
+    assert.ok(
+      offeredAnywhere(result, mkSensorTileId(CoreHostActions.OnPageEntered.key)),
+      "a non-inline Boolean sensor is a valid prefix-op operand"
+    );
+    assert.ok(
+      offeredAnywhere(result, vpNumSensor.tileId),
+      "a Number sensor is offered: the compiler converts unary operands (Number -> Boolean)"
+    );
+  });
+
+  test("Non-inline sensor offered when replacing a binary-op operand", () => {
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const tiles = List.from<IBrainTileDef>([vpNumLit, addOpDef, vpNumLit]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "binaryOp");
+
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr, replaceTileIndex: 2 }, catalogList(), services);
+
+    assert.ok(
+      offeredAnywhere(result, vpNumSensor.tileId),
+      "a non-inline Number sensor is a valid right operand for add"
+    );
+  });
+
+  test("Non-inline sensor NOT offered in non-operand value positions", () => {
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const assignTiles = List.from<IBrainTileDef>([vpNumVar, assignOpDef, vpNumLit]);
+    const assignExpr = parseTilesForSuggestions(assignTiles);
+    assert.equal(assignExpr.kind, "assignment");
+
+    const assignResult = suggestTiles(
+      { ruleSide: RuleSide.Do, expr: assignExpr, replaceTileIndex: 2 },
+      catalogList(),
+      services
+    );
+    assert.ok(
+      !offeredAnywhere(assignResult, vpNumSensor.tileId),
+      "an assignment value position does not offer non-inline sensors"
+    );
+
+    const slotTiles = List.from<IBrainTileDef>([vpDrive, vpNumLit]);
+    const slotExpr = parseTilesForSuggestions(slotTiles);
+    assert.equal(slotExpr.kind, "actuator");
+
+    const slotResult = suggestTiles(
+      { ruleSide: RuleSide.Do, expr: slotExpr, replaceTileIndex: 1 },
+      catalogList(),
+      services
+    );
+    assert.ok(
+      !offeredAnywhere(slotResult, vpNumSensor.tileId),
+      "an action call anonymous slot does not offer non-inline sensors"
+    );
+  });
+
+  test("At the expression head, only a sensor that can host the displaced value is offered", () => {
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const tiles = List.from<IBrainTileDef>([vpNumLit, addOpDef, vpNumLit]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "binaryOp");
+
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr, replaceTileIndex: 0 }, catalogList(), services);
+
+    assert.ok(
+      !offeredAnywhere(result, vpNumSensor.tileId),
+      "a sensor with no anonymous slot leaves the operator continuation dangling at the head"
+    );
+    assert.ok(
+      offeredAnywhere(result, mkSensorTileId(CoreHostActions.Timeout.key)),
+      "[timeout] hosts the displaced expression in its anonymous Number slot"
+    );
+  });
+
+  test("Infix operators offered after a prefix-op expr with only optional slots unfilled", () => {
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const tiles = List.from<IBrainTileDef>([notOpDef, vpOptSensor]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "unaryOp");
+
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
+
+    assert.ok(
+      offeredAnywhere(result, mkOperatorTileId(CoreOpId.And)),
+      "the expression is complete: unfilled optional slots do not block continuation"
+    );
+    assert.ok(!offeredAnywhere(result, mkOperatorTileId(CoreOpId.Add)), "no Boolean overload for [+]");
+    assert.ok(offeredAnywhere(result, vpOptMod.tileId), "the optional modifier is still offered alongside");
+  });
+
+  test("No infix operators while the operand has a required slot unfilled", () => {
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const tiles = List.from<IBrainTileDef>([notOpDef, vpReqSensor]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "unaryOp");
+
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
+
+    const hasInfix =
+      listFind(
+        result.exact,
+        (s) => s.tileDef.kind === "operator" && (s.tileDef as BrainTileOperatorDef).op.parse.fixity === "infix"
+      ) !== undefined;
+    assert.ok(!hasInfix, "the required anonymous slot must be filled before the expression can continue");
+  });
+
+  test("Named-arg replacement offers infix operators after a complete trailing value", () => {
+    const tiles = List.from<IBrainTileDef>([vpDrive, vpNumLit, vpPower, vpNumLit]);
+    const expr = parseTilesForSuggestions(tiles);
+    assert.equal(expr.kind, "actuator");
+
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, replaceTileIndex: 2 }, catalogList(), services);
+
+    assert.ok(
+      offeredAnywhere(result, mkOperatorTileId(CoreOpId.Add)),
+      "[+] extends the anonymous value; the displaced tiles re-parse as its right operand"
+    );
+    assert.ok(!offeredAnywhere(result, mkOperatorTileId(CoreOpId.And)), "no Number overload for [and]");
   });
 });

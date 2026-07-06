@@ -56,9 +56,7 @@ export type OpSpec = {
 
 /**
  * A registered operator overload bound to specific arg types. `fnEntry` is
- * the implementing host function; it is `undefined` for type-only overloads
- * (assignment), which participate in overload resolution but compile to
- * dedicated instructions instead of a host call.
+ * the implementing host function.
  */
 export type OpOverload = {
   argTypes: TypeId[];
@@ -108,11 +106,6 @@ export interface IOperatorOverloads {
    * author-assigned stable `fnId`.
    */
   unary(op: OpId, arg: TypeId, result: TypeId, fnId: number, fn: HostFn, isAsync: boolean): IRegisteredOperator;
-  /**
-   * Register a type-only binary overload with no host function. The overload
-   * participates in overload resolution and type checking only.
-   */
-  binaryTypeOnly(op: OpId, lhs: TypeId, rhs: TypeId, result: TypeId): IRegisteredOperator;
   remove(op: OpId, argTypes: TypeId[]): boolean;
   resolve(id: OpId, argTypes: TypeId[]): { overload: OpOverload; parse: OpParse } | undefined;
 }

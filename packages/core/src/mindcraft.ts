@@ -58,7 +58,7 @@ import type {
   UserActionArtifact,
   VmEvents,
 } from "./runtime";
-import { CoreOpId, mkOutputVarKey, NativeType } from "./runtime";
+import { mkOutputVarKey, NativeType } from "./runtime";
 import type { ExecutionContext, HostActionBinding } from "./runtime/context";
 import type { AsyncHandle, Value } from "./runtime/value";
 
@@ -470,20 +470,6 @@ function rejectStructuralAtomId(definition: MindcraftTypeDefinition): void {
   }
 }
 
-/**
- * Register the type-only `Assign` operator overload for `typeId`, giving a
- * variable of that type an assignment target the brain-editor picker can offer.
- * Assignment lowers to store instructions, so the overload carries no host
- * function. Idempotent: a type that already resolves an `Assign` overload is
- * left unchanged, so re-registration against a warm registry is a no-op.
- */
-export function autoRegisterAssignment(services: BrainServices, typeId: TypeId): void {
-  if (services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId])) {
-    return;
-  }
-  services.edit.operatorOverloads.binaryTypeOnly(CoreOpId.Assign, typeId, typeId, typeId);
-}
-
 function registerMindcraftTypeDefinition(services: BrainServices, definition: MindcraftTypeDefinition): string {
   const nullableDef = definition as NullableTypeDef;
   if (definition.nullable && nullableDef.baseTypeId !== undefined) {
@@ -644,7 +630,6 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
       throw new Error(`Unsupported mindcraft type '${definition.name}' (coreType: ${definition.coreType})`);
   }
 
-  autoRegisterAssignment(services, registeredTypeId);
   return registeredTypeId;
 }
 

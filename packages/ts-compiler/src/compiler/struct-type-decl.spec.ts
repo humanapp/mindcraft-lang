@@ -19,6 +19,7 @@ import {
   mkVariableFactoryTileId,
   mkVariableTileId,
   RuleSide,
+  TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { Expr } from "@mindcraft-lang/core/brain/compiler";
@@ -79,7 +80,7 @@ const STICK_SOURCE = `import { Sensor, type Context } from "mindcraft";
 import { Position } from "./position";
 
 export default Sensor({
-  name: "stick position",
+  name: "stick position", inline: true,
   returnType: Position,
   onExecute(ctx: Context): Position {
     return Position({ x: 3, y: 4 });
@@ -162,6 +163,16 @@ function manufactureVariable(services: BrainServices, typeId: TypeId, name: stri
 function accessorTile(services: BrainServices, typeId: TypeId, fieldName: string): IBrainTileDef {
   const tile = services.edit.tiles.get(mkAccessorTileId(typeId, fieldName));
   assert.ok(tile, `expected the '${fieldName}' accessor tile to be registered`);
+  return tile;
+}
+
+/**
+ * Widens a compiled sensor tile to either rule side. The user-code sensor
+ * surface has no placement control, and an argument-taking sensor cannot be
+ * inline, so a DO-side read of one is only reachable with a widened tile.
+ */
+function widenToEitherSide(tile: IBrainTileDef): IBrainTileDef {
+  tile.placement = TilePlacement.EitherSide;
   return tile;
 }
 
@@ -420,7 +431,7 @@ export default Sensor({
     brainDef.catalog().registerTileDef(posVar);
     appendTiles(rule, [posVar, opAssign, actionTileFor(services, stick)]);
     const readVar = mkNumVar("param-x");
-    appendTiles(page.appendNewRule(), [readVar, opAssign, actionTileFor(services, reader), posVar]);
+    appendTiles(page.appendNewRule(), [readVar, opAssign, widenToEitherSide(actionTileFor(services, reader)), posVar]);
 
     const brain = runBrain(brainDef, 1);
     assert.equal(num(brain, readVar.varName), 3, "the struct value crossed the anonymous param slot");
@@ -468,7 +479,7 @@ export default Sensor({
     assert.equal(conversion.conversion.fromType, typeId, "the conversion's from-type is the declared struct");
 
     const stickTile = actionTileFor(services, stick);
-    const decoderTile = actionTileFor(services, decoder);
+    const decoderTile = widenToEitherSide(actionTileFor(services, decoder));
     const opAssign = new BrainTileOperatorDef("assign", {}, services);
     const posVar = manufactureVariable(services, typeId, "packet-pos");
 
@@ -514,10 +525,15 @@ export default Sensor({
     assert.ok(suggested.has(mkAccessorTileId(typeId, "y")), "the y accessor is offered on the output tile");
   });
 
-  test("the picker offers the assignment operator after a struct variable", () => {
+  test("the picker offers the assignment operator after a struct variable with no Assign overload", () => {
     const services = __test__createBrainServices();
     compileAndRegister(services, { "position.ts": POSITION_SOURCE, "stick.ts": STICK_SOURCE }, ["stick.ts"]);
     const typeId = positionTypeId(services);
+    assert.equal(
+      services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId]),
+      undefined,
+      "no Assign overload is registered for the struct"
+    );
     const posVar = manufactureVariable(services, typeId, "assign-pos");
 
     const expr: Expr = parseTilesForSuggestions(List.from<IBrainTileDef>([posVar]));
@@ -532,15 +548,12 @@ export default Sensor({
     );
   });
 
-  test("the struct's assign overload is idempotent across a second compile against a warm registry", () => {
+  test("the picker still offers the assignment operator after a second compile against a warm registry", () => {
     const services = __test__createBrainServices();
     compileAndRegister(services, { "position.ts": POSITION_SOURCE, "stick.ts": STICK_SOURCE }, ["stick.ts"]);
-    // A second compile through the same warm services must not error or add a
-    // second overload.
+    // A second compile through the same warm services must not error.
     compileAndRegister(services, { "position.ts": POSITION_SOURCE, "stick.ts": STICK_SOURCE }, ["stick.ts"]);
     const typeId = positionTypeId(services);
-    const overload = services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId]);
-    assert.ok(overload, "the assign overload resolves after a warm re-compile");
 
     const posVar = manufactureVariable(services, typeId, "warm-assign-pos");
     const expr: Expr = parseTilesForSuggestions(List.from<IBrainTileDef>([posVar]));
@@ -555,17 +568,13 @@ export default Sensor({
     );
   });
 
-  test("deleting a struct from source clears its assign overload, and re-adding restores it", () => {
+  test("deleting a struct from source removes its type, and re-adding restores the same id", () => {
     const services = __test__createBrainServices();
     compileAndRegister(services, { "position.ts": POSITION_SOURCE, "stick.ts": STICK_SOURCE }, ["stick.ts"]);
     const typeId = positionTypeId(services);
-    assert.ok(
-      services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId]),
-      "the struct's assign overload is registered while it is declared"
-    );
 
     // Recompile a project that no longer declares the struct: the compile pass
-    // tears down the `::`-keyed user type and, with it, the assign overload.
+    // tears down the `::`-keyed user type.
     const bareSensor = `import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
@@ -580,11 +589,6 @@ export default Sensor({
       services.runtime.types.resolveByName(POSITION_IDENTITY),
       undefined,
       "the deleted struct type is gone from the registry"
-    );
-    assert.equal(
-      services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId]),
-      undefined,
-      "the deleted struct's assign overload is cleared, not orphaned"
     );
 
     // Re-adding the struct restores a working assignment target: the type
@@ -746,7 +750,7 @@ export type { Position };
 import { mkOrigin } from "./position";
 
 export default Sensor({
-  name: "origin x",
+  name: "origin x", inline: true,
   onExecute(ctx: Context): number {
     return mkOrigin().x;
   },
@@ -860,7 +864,7 @@ export type Position = StructOf<typeof Position>;
 import { Position } from "./position";
 
 export default Sensor({
-  name: "stick position",
+  name: "stick position", inline: true,
   onExecute(ctx: Context): Position {
     return Position({ x: 3, y: 4 });
   },

@@ -23,7 +23,6 @@ export type {
   TileDefinitionInput,
 } from "./mindcraft";
 export {
-  autoRegisterAssignment,
   coreModule,
   createHostActuator,
   createHostSensor,

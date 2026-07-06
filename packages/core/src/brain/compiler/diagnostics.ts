@@ -69,6 +69,9 @@ export enum ParseDiagCode {
 
   /** Assignment to a field of a read-only base value (e.g. a sensor result) */
   ReadOnlyResultFieldAssignment = 1015,
+
+  /** Tile placed on a rule side its placement flags do not allow */
+  TilePlacementSideMismatch = 1016,
 }
 
 /**
@@ -92,6 +95,9 @@ export enum TypeDiagCode {
 
   /** Data type conversion applied to match expected type */
   DataTypeConverted = 2005,
+
+  /** Field accessor applied to a base expression of a different type */
+  AccessorBaseTypeMismatch = 2006,
 }
 
 /**

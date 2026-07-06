@@ -115,7 +115,7 @@ const Counter = System({
 });
 
 export default Sensor({
-  name: "read count",
+  name: "read count", inline: true,
   onExecute(ctx: Context): number { return Counter.count; },
 });
 `,
@@ -150,7 +150,7 @@ const Acc = System({
 });
 
 export default Sensor({
-  name: "acc add and read",
+  name: "acc add and read", inline: true,
   onExecute(ctx: Context): number {
     Acc.add(3);
     return Acc.count;
@@ -188,7 +188,7 @@ const Acc = System({
 });
 
 export default Sensor({
-  name: "helpers read",
+  name: "helpers read", inline: true,
   onExecute(ctx: Context): number { return Acc.count; },
 });
 `,
@@ -228,7 +228,7 @@ import { Sensor, type Context } from "mindcraft";
 import { Counter } from "../lib/movement";
 
 export default Sensor({
-  name: "counter read a",
+  name: "counter read a", inline: true,
   onExecute(ctx: Context): number { return Counter.count; },
 });
 `,
@@ -237,7 +237,7 @@ import { Sensor, type Context } from "mindcraft";
 import { Counter } from "../lib/movement";
 
 export default Sensor({
-  name: "counter read b",
+  name: "counter read b", inline: true,
   onExecute(ctx: Context): number { return Counter.count; },
 });
 `,
@@ -280,7 +280,7 @@ const Ticker = System({
 });
 
 export default Sensor({
-  name: "read ticker",
+  name: "read ticker", inline: true,
   onExecute(ctx: Context): number { return Ticker.count; },
 });
 `,
@@ -335,7 +335,7 @@ const Counter = System({
 });
 
 export default Sensor({
-  name: "read named",
+  name: "read named", inline: true,
   onExecute(ctx: Context): number { return Counter.count; },
 });
 `,
@@ -376,7 +376,7 @@ const R = System({
 });
 
 export default Sensor({
-  name: "reach read",
+  name: "reach read", inline: true,
   onExecute(ctx: Context): number { return R.count; },
 });
 `,
@@ -384,7 +384,7 @@ export default Sensor({
 import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
-  name: "plain",
+  name: "plain", inline: true,
   onExecute(ctx: Context): number { return 7; },
 });
 `,
@@ -505,7 +505,7 @@ import { Sensor, type Context } from "mindcraft";
 import { Dev } from "../lib/dev";
 
 export default Sensor({
-  name: "dev read value",
+  name: "dev read value", inline: true,
   onExecute(ctx: Context): number { return Dev.value; },
 });
 `,
@@ -549,7 +549,7 @@ import { Sensor, type Context } from "mindcraft";
 import { Rated } from "../lib/rate";
 
 export default Sensor({
-  name: "rated read",
+  name: "rated read", inline: true,
   onExecute(ctx: Context): number { return Rated.total; },
 });
 `,
@@ -588,12 +588,12 @@ export const Arb = System({
         "tiles/a.ts": `
 import { Sensor, type Context } from "mindcraft";
 import { Arb } from "../lib/arb";
-export default Sensor({ name: "arb read a", onExecute(ctx: Context): number { return Arb.total; } });
+export default Sensor({ name: "arb read a", inline: true, onExecute(ctx: Context): number { return Arb.total; } });
 `,
         "tiles/b.ts": `
 import { Sensor, type Context } from "mindcraft";
 import { Arb } from "../lib/arb";
-export default Sensor({ name: "arb read b", onExecute(ctx: Context): number { return Arb.total; } });
+export default Sensor({ name: "arb read b", inline: true, onExecute(ctx: Context): number { return Arb.total; } });
 `,
       },
       ["tiles/a.ts", "tiles/b.ts"]
@@ -732,7 +732,7 @@ const Sys = System({
 });
 
 export default Sensor({
-  name: "colocated read",
+  name: "colocated read", inline: true,
   onExecute(ctx: Context): number { return Sys.total; },
 });
 `,
@@ -790,7 +790,7 @@ export const B = System({ name: "b", state: { v: 0 }, think(ctx: Context) { this
 import { Sensor, type Context } from "mindcraft";
 import { A } from "../mods/a";
 import { B } from "../mods/b";
-export default Sensor({ name: "read ab", onExecute(ctx: Context): number { return A.v + B.v; } });
+export default Sensor({ name: "read ab", inline: true, onExecute(ctx: Context): number { return A.v + B.v; } });
 `,
       },
       ["tiles/read-ab.ts"]
@@ -825,7 +825,7 @@ export const Dev = System({
         "tiles/read.ts": `
 import { Sensor, type Context } from "mindcraft";
 import { Dev } from "../lib/dev";
-export default Sensor({ name: "dev read", onExecute(ctx: Context): number { return Dev.v; } });
+export default Sensor({ name: "dev read", inline: true, onExecute(ctx: Context): number { return Dev.v; } });
 `,
       },
       ["tiles/read.ts"]
@@ -854,7 +854,7 @@ export function compute(): number { return SECRET + 1; }
         "tiles/use.ts": `
 import { Sensor, type Context } from "mindcraft";
 import { compute } from "../lib/calc";
-export default Sensor({ name: "use compute", onExecute(ctx: Context): number { return compute(); } });
+export default Sensor({ name: "use compute", inline: true, onExecute(ctx: Context): number { return compute(); } });
 `,
       },
       ["tiles/use.ts"]
@@ -892,7 +892,7 @@ export const Sys = System({
         "tiles/read.ts": `
 import { Sensor, type Context } from "mindcraft";
 import { Sys } from "../lib/rate";
-export default Sensor({ name: "read", onExecute(ctx: Context): number { return Sys.v; } });
+export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): number { return Sys.v; } });
 `,
       },
       ["tiles/read.ts"]
@@ -923,7 +923,7 @@ export default Sensor({ name: "read", onExecute(ctx: Context): number { return S
 import { System, Sensor, type Context } from "mindcraft";
 import { SPEED } from "./lib/config";
 const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = SPEED; } });
-export default Sensor({ name: "read", onExecute(ctx: Context): number { return Sys.v; } });
+export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): number { return Sys.v; } });
 `,
       },
       ["tile.ts"]
@@ -951,7 +951,7 @@ export const Mv = System({ name: "mv", state: { v: 0 }, think(ctx: Context) { th
         "tile.ts": `
 import { Sensor, type Context } from "mindcraft";
 import { Mv } from "./lib/mv";
-export default Sensor({ name: "read", onExecute(ctx: Context): number { return Mv.v; } });
+export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): number { return Mv.v; } });
 `,
       },
       ["tile.ts"]
@@ -973,7 +973,7 @@ export default Sensor({ name: "read", onExecute(ctx: Context): number { return M
         "tile.ts": `
 import { System, Sensor, type Context } from "mindcraft";
 const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = Math.max(3, 7); } });
-export default Sensor({ name: "read", onExecute(ctx: Context): number { return Sys.v; } });
+export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): number { return Sys.v; } });
 `,
       },
       ["tile.ts"]

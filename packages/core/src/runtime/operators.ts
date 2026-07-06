@@ -258,23 +258,6 @@ export class OperatorOverloads implements IOperatorOverloads {
     return reg;
   }
 
-  /**
-   * Registers a type-only binary overload with no host function. The
-   * overload participates in overload resolution and type checking only.
-   * @throws {Error} If the operator is not found in the table
-   */
-  binaryTypeOnly(op: OpId, lhs: TypeId, rhs: TypeId, resultType: TypeId): IRegisteredOperator {
-    const reg = this.table_.get(op);
-    if (!reg) {
-      throw new Error(`No such op ${op}`);
-    }
-    reg.add({
-      argTypes: [lhs, rhs],
-      resultType,
-    });
-    return reg;
-  }
-
   remove(op: OpId, argTypes: TypeId[]): boolean {
     const reg = this.table_.get(op);
     if (!reg) {
@@ -396,10 +379,11 @@ export function safeStrCompare(args: ReadonlyList<Value>, cmp: (a: string, b: st
 /**
  * Registers all core operators with their type-specific overloads.
  * This includes logical (and, or, not), arithmetic (+, -, *, /, negate),
- * comparison (<, <=, >, >=, ==, !=), and assignment operators for Boolean, Number, and String types.
+ * comparison (<, <=, >, >=, ==, !=), and assignment operators.
  * Numeric exec bodies capture `services.app.numerics` and compute results
  * at the profile's precision.
- * Note: Assignment is special-cased in the compiler and is a no-op at runtime. The overload is registered for the type system.
+ * Note: Assignment registers only its parse entry, no overloads; the compiler
+ * lowers it to store instructions for any type.
  */
 export function registerCoreOperators(services: BrainServices) {
   const operatorTable = services.runtime.operatorTable;
@@ -672,10 +656,6 @@ export function registerCoreOperators(services: BrainServices) {
     },
     false
   );
-  // Assignment is special-cased in the compiler (it lowers to store
-  // instructions), so its overloads are type-only: no host function.
-  operatorOverloads.binaryTypeOnly(CoreOpId.Assign, CoreTypeIds.Boolean, CoreTypeIds.Boolean, CoreTypeIds.Boolean);
-
   operatorOverloads.binary(
     CoreOpId.EqualTo,
     CoreTypeIds.Number,
@@ -730,8 +710,6 @@ export function registerCoreOperators(services: BrainServices) {
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a >= b) },
     false
   );
-  operatorOverloads.binaryTypeOnly(CoreOpId.Assign, CoreTypeIds.Number, CoreTypeIds.Number, CoreTypeIds.Number);
-
   operatorOverloads.binary(
     CoreOpId.Add,
     CoreTypeIds.String,
@@ -759,8 +737,6 @@ export function registerCoreOperators(services: BrainServices) {
     { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeStrCompare(args, (a, b) => a !== b) },
     false
   );
-  operatorOverloads.binaryTypeOnly(CoreOpId.Assign, CoreTypeIds.String, CoreTypeIds.String, CoreTypeIds.String);
-
   // -- Nil overloads ----------------------------------------------------------
 
   operatorOverloads.binary(

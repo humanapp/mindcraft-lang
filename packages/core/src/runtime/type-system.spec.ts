@@ -815,23 +815,20 @@ describe("removeUserTypes", () => {
     assert.equal(services.edit.operatorOverloads.resolve(CoreOpId.NotEqualTo, [typeId, typeId]), undefined);
   });
 
-  test("removes struct types with module-qualified names and clears their assign overload", () => {
+  test("removes struct types with module-qualified names", () => {
     const registry = services.runtime.types;
     const typeId = registry.withOwner("dynamic", () =>
       registry.addStructType("/user-code.ts::UserClass", {
         fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
       })
     );
-    services.edit.operatorOverloads.binaryTypeOnly(CoreOpId.Assign, typeId, typeId, typeId);
     assert.ok(registry.get(typeId));
     assert.ok(registry.resolveByName("/user-code.ts::UserClass"));
-    assert.ok(services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId]));
 
     registry.removeUserTypes();
 
     assert.equal(registry.get(typeId), undefined);
     assert.equal(registry.resolveByName("/user-code.ts::UserClass"), undefined);
-    assert.equal(services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId]), undefined);
   });
 
   test("preserves struct types with bare names (no ::)", () => {

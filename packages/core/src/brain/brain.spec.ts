@@ -396,7 +396,7 @@ describe("Brain behavioral -- variable read-back", () => {
 
 describe("Brain behavioral -- boolean logic", () => {
   test("AND: true && false -> false", () => {
-    const v = mkVar("band");
+    const v = mkVar("band", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkBoolLiteral(true), opAnd, mkBoolLiteral(false)]);
     const brain = runBrain(brainDef);
 
@@ -409,7 +409,7 @@ describe("Brain behavioral -- boolean logic", () => {
   });
 
   test("OR: false || true -> true", () => {
-    const v = mkVar("bor");
+    const v = mkVar("bor", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkBoolLiteral(false), opOr, mkBoolLiteral(true)]);
     const brain = runBrain(brainDef);
 
@@ -420,7 +420,7 @@ describe("Brain behavioral -- boolean logic", () => {
   });
 
   test("NOT: !true -> false", () => {
-    const v = mkVar("bnot");
+    const v = mkVar("bnot", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, opNot, mkBoolLiteral(true)]);
     const brain = runBrain(brainDef);
 
@@ -433,7 +433,7 @@ describe("Brain behavioral -- boolean logic", () => {
   test("short-circuit AND: false && X -> false without evaluating X", () => {
     // Test that AND short-circuits by using false && (side-effecting expression)
     // We test indirectly: false AND true = false
-    const v = mkVar("sc-and");
+    const v = mkVar("sc-and", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkBoolLiteral(false), opAnd, mkBoolLiteral(true)]);
     const brain = runBrain(brainDef);
 
@@ -443,7 +443,7 @@ describe("Brain behavioral -- boolean logic", () => {
   });
 
   test("short-circuit OR: true || X -> true without evaluating X", () => {
-    const v = mkVar("sc-or");
+    const v = mkVar("sc-or", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkBoolLiteral(true), opOr, mkBoolLiteral(false)]);
     const brain = runBrain(brainDef);
 
@@ -455,7 +455,7 @@ describe("Brain behavioral -- boolean logic", () => {
 
 describe("Brain behavioral -- comparison operators", () => {
   test("equality: 5 == 5 -> true", () => {
-    const v = mkVar("ceq");
+    const v = mkVar("ceq", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkLiteral(5), opEq, mkLiteral(5)]);
     const brain = runBrain(brainDef);
 
@@ -465,7 +465,7 @@ describe("Brain behavioral -- comparison operators", () => {
   });
 
   test("inequality: 5 != 3 -> true", () => {
-    const v = mkVar("cneq");
+    const v = mkVar("cneq", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkLiteral(5), opNeq, mkLiteral(3)]);
     const brain = runBrain(brainDef);
 
@@ -475,7 +475,7 @@ describe("Brain behavioral -- comparison operators", () => {
   });
 
   test("less than: 3 < 5 -> true", () => {
-    const v = mkVar("clt");
+    const v = mkVar("clt", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkLiteral(3), opLt, mkLiteral(5)]);
     const brain = runBrain(brainDef);
 
@@ -485,7 +485,7 @@ describe("Brain behavioral -- comparison operators", () => {
   });
 
   test("greater than: 5 > 3 -> true", () => {
-    const v = mkVar("cgt");
+    const v = mkVar("cgt", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkLiteral(5), opGt, mkLiteral(3)]);
     const brain = runBrain(brainDef);
 
@@ -518,7 +518,7 @@ describe("Brain behavioral -- sensors and actuators", () => {
     });
 
     const sensor = new BrainTileSensorDef(sensorId, action, {
-      placement: TilePlacement.Inline,
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
     });
 
     const v = mkVar("sensor-v");
@@ -647,7 +647,7 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     );
 
     const sensor = new BrainTileSensorDef(sensorDef.descriptor.key, sensorDef.descriptor, {
-      placement: TilePlacement.Inline,
+      placement: TilePlacement.WhenSide | TilePlacement.Inline,
     });
     const actuator = actuatorDef.tile as BrainTileActuatorDef;
 

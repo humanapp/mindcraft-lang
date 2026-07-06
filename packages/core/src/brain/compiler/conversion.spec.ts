@@ -7,12 +7,20 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { type BrainServices, type IBrainTileDef, mkOperatorTileId } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { parseRule } from "@mindcraft-lang/core/brain/compiler";
-import { BrainTileActuatorDef, BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
+import { parseRule, runBrainLinkPipeline, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
+import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import {
+  BrainTileAccessorDef,
+  BrainTileActuatorDef,
+  BrainTileLiteralDef,
+  BrainTileVariableDef,
+} from "@mindcraft-lang/core/brain/tiles";
 import {
   type Conversion,
+  CoreFuncId,
+  CoreOpId,
   CoreParameterId,
   CoreTypeIds,
   conversionFnName,
@@ -27,8 +35,10 @@ import {
   NativeType,
   NIL_VALUE,
   type NumberValue,
+  Op,
   param,
   type StringValue,
+  type TypeId,
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/runtime";
@@ -268,6 +278,197 @@ describe("Conversion: bytecode-backed registrations", () => {
       if (conv.fromType === fromType && conv.toType === toType) visits++;
     });
     assert.equal(visits, 0);
+  });
+});
+
+describe("Conversion: assignment values", () => {
+  let vecTypeId: TypeId;
+  let accX: BrainTileAccessorDef;
+  let numVar: BrainTileVariableDef;
+  let vecVar: BrainTileVariableDef;
+  let phantomVar: BrainTileVariableDef;
+  let phantomAccX: BrainTileAccessorDef;
+  let boolLit: BrainTileLiteralDef;
+
+  before(() => {
+    vecTypeId = services.runtime.types.addStructType("ConvAssignVec", {
+      atomId: mkTestAtomId(),
+      fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+    });
+    accX = new BrainTileAccessorDef(vecTypeId, "x", CoreTypeIds.Number, { metadata: { label: "x" } });
+    numVar = new BrainTileVariableDef("conv.assign.numVar", "conv_n", CoreTypeIds.Number, "conv-assign-num");
+    vecVar = new BrainTileVariableDef("conv.assign.vecVar", "conv_vec", vecTypeId, "conv-assign-vec");
+    // A struct type that is never registered in the type registry: its field
+    // ids cannot be resolved, so a field store on it takes the name-keyed path.
+    const phantomTypeId = mkTypeId(NativeType.Struct, "ConvAssignPhantom");
+    phantomVar = new BrainTileVariableDef("conv.assign.phantomVar", "conv_p", phantomTypeId, "conv-assign-phantom");
+    phantomAccX = new BrainTileAccessorDef(phantomTypeId, "x", CoreTypeIds.Number, { metadata: { label: "x" } });
+    boolLit = new BrainTileLiteralDef(CoreTypeIds.Boolean, true, {}, services);
+    for (const def of [accX, numVar, vecVar, phantomVar, phantomAccX, boolLit]) {
+      services.edit.tiles.registerTileDef(def);
+    }
+  });
+
+  function assignTile() {
+    return services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign))!;
+  }
+
+  function typecheckDo(tiles: IBrainTileDef[]) {
+    return parseRule(
+      List.empty<IBrainTileDef>(),
+      List.from(tiles),
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
+  }
+
+  function diagCodes(result: ReturnType<typeof typecheckDo>): number[] {
+    const codes: number[] = [];
+    for (let i = 0; i < result.typeInfo.diags.size(); i++) {
+      codes.push(result.typeInfo.diags.get(i).code as number);
+    }
+    return codes;
+  }
+
+  test("variable target: Boolean value converts to the variable's Number type", () => {
+    const result = typecheckDo([numVar, assignTile(), boolLit]);
+    assert.deepEqual(result.parseResult.diags.toArray(), []);
+    assert.deepEqual(diagCodes(result), [TypeDiagCode.DataTypeConverted]);
+
+    const expr = result.doParseResult.exprs.get(0);
+    assert.equal(expr.kind, "assignment");
+    if (expr.kind !== "assignment") return;
+    const valueTypeInfo = result.typeInfo.typeEnv.get(expr.value.nodeId);
+    assert.equal(valueTypeInfo?.conversion?.toType, CoreTypeIds.Number);
+    assert.equal(result.typeInfo.typeEnv.get(expr.nodeId)?.inferred, CoreTypeIds.Number);
+  });
+
+  test("field target: Boolean value converts to the field's Number type", () => {
+    const result = typecheckDo([vecVar, accX, assignTile(), boolLit]);
+    assert.deepEqual(result.parseResult.diags.toArray(), []);
+    assert.deepEqual(diagCodes(result), [TypeDiagCode.DataTypeConverted]);
+
+    const expr = result.doParseResult.exprs.get(0);
+    assert.equal(expr.kind, "assignment");
+    if (expr.kind !== "assignment") return;
+    const valueTypeInfo = result.typeInfo.typeEnv.get(expr.value.nodeId);
+    assert.equal(valueTypeInfo?.conversion?.toType, CoreTypeIds.Number);
+  });
+
+  test("no conversion path still rejects with DataTypeMismatch", () => {
+    const result = typecheckDo([numVar, assignTile(), vecVar]);
+    assert.deepEqual(diagCodes(result), [TypeDiagCode.DataTypeMismatch]);
+
+    const expr = result.doParseResult.exprs.get(0);
+    assert.equal(expr.kind, "assignment");
+    if (expr.kind !== "assignment") return;
+    assert.equal(result.typeInfo.typeEnv.get(expr.value.nodeId)?.conversion, undefined);
+  });
+
+  test("assignment conversions are emitted for variable, id-field, and name-keyed field targets", () => {
+    const brainDef = BrainDef.emptyBrainDef(services, "assignment conversion brain");
+    const page = brainDef.pages().get(0)!;
+
+    // Rule 1: [conv_n] [=] [true] -- variable store.
+    const rule1 = page.children().get(0)!;
+    rule1.do().appendTile(numVar);
+    rule1.do().appendTile(assignTile());
+    rule1.do().appendTile(boolLit);
+
+    // Rule 2: [conv_vec] [x] [=] [true] -- id-based field store (concrete struct).
+    const rule2 = page.appendNewRule()!;
+    rule2.do().appendTile(vecVar);
+    rule2.do().appendTile(accX);
+    rule2.do().appendTile(assignTile());
+    rule2.do().appendTile(boolLit);
+
+    // Rule 3: [conv_p] [x] [=] [true] -- name-keyed field store (the base's
+    // struct type is not in the registry, so no field id resolves and the
+    // emitter takes the SET_FIELD fallback).
+    const rule3 = page.appendNewRule()!;
+    rule3.do().appendTile(phantomVar);
+    rule3.do().appendTile(phantomAccX);
+    rule3.do().appendTile(assignTile());
+    rule3.do().appendTile(boolLit);
+
+    const result = runBrainLinkPipeline(
+      brainDef,
+      {
+        catalogs: List.from([services.edit.tiles]),
+        actionResolver: services.runtime.actions,
+        typeRegistry: services.runtime.types,
+      },
+      services.shared.conversions
+    );
+    assert.ok(result.program, "expected the brain to compile and link");
+
+    let conversionCalls = 0;
+    let idFieldStores = 0;
+    let namedFieldStores = 0;
+    const functions = result.program!.program.functions;
+    for (let i = 0; i < functions.size(); i++) {
+      const code = functions.get(i).code;
+      for (let j = 0; j < code.size(); j++) {
+        const instr = code.get(j);
+        if (instr.op === Op.HOST_CALL && instr.a === CoreFuncId.ConvBooleanToNumber) conversionCalls++;
+        if (instr.op === Op.STRUCT_SET_FIELD) idFieldStores++;
+        if (instr.op === Op.SET_FIELD) namedFieldStores++;
+      }
+    }
+    assert.equal(conversionCalls, 3, "each assignment target shape emits its conversion call");
+    assert.equal(idFieldStores, 1, "the concrete-struct target stores by field id");
+    assert.equal(namedFieldStores, 1, "the non-struct base target stores by field name");
+  });
+});
+
+describe("Conversion: unary operator operands", () => {
+  let uVecTypeId: TypeId;
+  let uVecVar: BrainTileVariableDef;
+  let uBoolLit: BrainTileLiteralDef;
+
+  before(() => {
+    uVecTypeId = services.runtime.types.addStructType("ConvUnaryVec", {
+      atomId: mkTestAtomId(),
+      fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+    });
+    uVecVar = new BrainTileVariableDef("conv.unary.vecVar", "conv_uvec", uVecTypeId, "conv-unary-vec");
+    uBoolLit = new BrainTileLiteralDef(CoreTypeIds.Boolean, true, {}, services);
+    for (const def of [uVecVar, uBoolLit]) {
+      services.edit.tiles.registerTileDef(def);
+    }
+  });
+
+  function typecheckDo(tiles: IBrainTileDef[]) {
+    return parseRule(
+      List.empty<IBrainTileDef>(),
+      List.from(tiles),
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
+  }
+
+  test("[neg] [true]: the Boolean operand converts to Number", () => {
+    const negTile = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Negate))!;
+    const result = typecheckDo([negTile, uBoolLit]);
+    assert.deepEqual(result.parseResult.diags.toArray(), []);
+    assert.equal(result.typeInfo.diags.size(), 1);
+    assert.equal(result.typeInfo.diags.get(0).code, TypeDiagCode.DataTypeConverted);
+
+    const expr = result.doParseResult.exprs.get(0);
+    assert.equal(expr.kind, "unaryOp");
+    if (expr.kind !== "unaryOp") return;
+    const operandTypeInfo = result.typeInfo.typeEnv.get(expr.operand.nodeId);
+    assert.equal(operandTypeInfo?.conversion?.toType, CoreTypeIds.Number);
+    assert.equal(result.typeInfo.typeEnv.get(expr.nodeId)?.inferred, CoreTypeIds.Number);
+  });
+
+  test("unary operand with no conversion path still rejects", () => {
+    const negTile = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Negate))!;
+    const result = typecheckDo([negTile, uVecVar]);
+    assert.equal(result.typeInfo.diags.size(), 1);
+    assert.equal(result.typeInfo.diags.get(0).code, TypeDiagCode.NoOverloadForUnaryOp);
   });
 });
 

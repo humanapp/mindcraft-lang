@@ -17,6 +17,7 @@ import {
   type IBrainActionTileDef,
   type IBrainTileDef,
   parseTileId,
+  RuleSide,
   TilePlacement,
 } from "../interfaces";
 import {
@@ -1205,4 +1206,28 @@ export function parseBrainTiles(
 ): ParseResult {
   const parser = new BrainParser(src, to, from, startNodeId);
   return parser.parse();
+}
+
+/**
+ * Validate that every tile in a rule side's tile list is allowed on that side
+ * by its placement flags. A tile with no placement flags is allowed on either
+ * side. Returns one {@link ParseDiagCode.TilePlacementSideMismatch} diagnostic
+ * per offending tile, spanning the tile's index in `tiles`.
+ */
+export function validateTilePlacement(tiles: ReadonlyList<IBrainTileDef>, side: RuleSide): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  for (let i = 0; i < tiles.size(); i++) {
+    const tile = tiles.get(i);
+    const placement = tile.placement;
+    if (placement !== undefined && (placement & side) === 0) {
+      const label = tile.metadata?.label ?? tile.tileId;
+      const sideName = side === RuleSide.When ? "WHEN" : "DO";
+      diags.push({
+        code: ParseDiagCode.TilePlacementSideMismatch,
+        message: `Tile "${label}" cannot be used on the ${sideName} side`,
+        span: { from: i, to: i + 1 },
+      });
+    }
+  }
+  return diags;
 }

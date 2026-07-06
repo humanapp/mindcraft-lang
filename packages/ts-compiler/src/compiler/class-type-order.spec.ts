@@ -127,7 +127,7 @@ const OUTER_ENTRY = `import { Sensor, type Context } from "mindcraft";
 import { Outer } from "./defs";
 
 export default Sensor({
-  name: "outer probe",
+  name: "outer probe", inline: true,
   onExecute(ctx: Context): number {
     const o = new Outer();
     return o.inner.x + o.tag;
@@ -185,7 +185,7 @@ class Outer {
 }
 
 export default Sensor({
-  name: "outer probe",
+  name: "outer probe", inline: true,
   onExecute(ctx: Context): number {
     const o = new Outer();
     return o.inner.x + o.tag;
@@ -236,7 +236,7 @@ class Rover {
 }
 
 export default Sensor({
-  name: "rover probe",
+  name: "rover probe", inline: true,
   onExecute(ctx: Context): number {
     const r = new Rover();
     return r.cfg.speed;
@@ -272,7 +272,7 @@ class Node {
 }
 
 export default Sensor({
-  name: "chain probe",
+  name: "chain probe", inline: true,
   onExecute(ctx: Context): number {
     const a = new Node();
     const b = new Node();

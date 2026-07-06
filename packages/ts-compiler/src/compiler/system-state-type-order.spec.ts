@@ -123,7 +123,7 @@ const PT_SYSTEM = `const Track = System({
 });
 
 export default Sensor({
-  name: "track read",
+  name: "track read", inline: true,
   onExecute(ctx: Context): number { return Track.pt.x; },
 });
 `;
@@ -140,7 +140,7 @@ const CFG_SYSTEM = `const Tune = System({
 });
 
 export default Sensor({
-  name: "tune read",
+  name: "tune read", inline: true,
   onExecute(ctx: Context): number { return Tune.cfg.speed; },
 });
 `;
@@ -157,7 +157,7 @@ const LIM_SYSTEM = `const Fill = System({
 });
 
 export default Sensor({
-  name: "fill read",
+  name: "fill read", inline: true,
   onExecute(ctx: Context): number { return Fill.lim.cap; },
 });
 `;
@@ -175,7 +175,7 @@ const MODE_SYSTEM = `const Drive = System({
 });
 
 export default Sensor({
-  name: "drive read",
+  name: "drive read", inline: true,
   onExecute(ctx: Context): number { return Drive.mode === Mode.Go ? 7 : 1; },
 });
 `;
@@ -193,7 +193,7 @@ const VEC_SYSTEM = `const Rove = System({
 });
 
 export default Sensor({
-  name: "rove read",
+  name: "rove read", inline: true,
   onExecute(ctx: Context): number { return Rove.pos.x + Rove.pos.y; },
 });
 `;
@@ -245,7 +245,7 @@ describe("System state field types: declaration-order independence", () => {
             /export default Sensor[\s\S]*$/,
             ""
           )}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Track } from "./lib";\n\nexport default Sensor({\n  name: "track read",\n  onExecute(ctx: Context): number { return Track.pt.x; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Track } from "./lib";\n\nexport default Sensor({\n  name: "track read", inline: true,\n  onExecute(ctx: Context): number { return Track.pt.x; },\n});\n`,
         },
         "tile.ts"
       );
@@ -308,7 +308,7 @@ describe("System state field types: declaration-order independence", () => {
             /export default Sensor[\s\S]*$/,
             ""
           )}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Tune } from "./lib";\n\nexport default Sensor({\n  name: "tune read",\n  onExecute(ctx: Context): number { return Tune.cfg.speed; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Tune } from "./lib";\n\nexport default Sensor({\n  name: "tune read", inline: true,\n  onExecute(ctx: Context): number { return Tune.cfg.speed; },\n});\n`,
         },
         "tile.ts"
       );
@@ -371,7 +371,7 @@ describe("System state field types: declaration-order independence", () => {
             /export default Sensor[\s\S]*$/,
             ""
           )}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Fill } from "./lib";\n\nexport default Sensor({\n  name: "fill read",\n  onExecute(ctx: Context): number { return Fill.lim.cap; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Fill } from "./lib";\n\nexport default Sensor({\n  name: "fill read", inline: true,\n  onExecute(ctx: Context): number { return Fill.lim.cap; },\n});\n`,
         },
         "tile.ts"
       );
@@ -429,7 +429,7 @@ describe("System state field types: declaration-order independence", () => {
             /export default Sensor[\s\S]*$/,
             ""
           )}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Drive } from "./lib";\nimport { Mode } from "./lib";\n\nexport default Sensor({\n  name: "drive read",\n  onExecute(ctx: Context): number { return Drive.mode === Mode.Go ? 7 : 1; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Drive } from "./lib";\nimport { Mode } from "./lib";\n\nexport default Sensor({\n  name: "drive read", inline: true,\n  onExecute(ctx: Context): number { return Drive.mode === Mode.Go ? 7 : 1; },\n});\n`,
         },
         "tile.ts"
       );
@@ -488,7 +488,7 @@ describe("System state field types: declaration-order independence", () => {
             /export default Sensor[\s\S]*$/,
             ""
           )}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Rove } from "./lib";\n\nexport default Sensor({\n  name: "rove read",\n  onExecute(ctx: Context): number { return Rove.pos.x + Rove.pos.y; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Rove } from "./lib";\n\nexport default Sensor({\n  name: "rove read", inline: true,\n  onExecute(ctx: Context): number { return Rove.pos.x + Rove.pos.y; },\n});\n`,
         },
         "tile.ts"
       );
@@ -526,7 +526,7 @@ const Links = System({
 });
 
 export default Sensor({
-  name: "links read",
+  name: "links read", inline: true,
   onExecute(ctx: Context): number {
     const h = Links.head;
     if (h === undefined) {
@@ -559,7 +559,7 @@ export default Sensor({
 });
 
 export default Sensor({
-  name: "track dbl",
+  name: "track dbl", inline: true,
   onExecute(ctx: Context): number { return Track.pt.dbl(); },
 });
 `,
@@ -581,7 +581,7 @@ export default Sensor({
 });
 
 export default Sensor({
-  name: "rove read",
+  name: "rove read", inline: true,
   onExecute(ctx: Context): number {
     const p = Rove.pos;
     if (p === undefined) {
@@ -609,7 +609,7 @@ export default Sensor({
 });
 
 export default Sensor({
-  name: "drive read",
+  name: "drive read", inline: true,
   onExecute(ctx: Context): number { return Drive.mode === Mode.Go ? 7 : 1; },
 });
 `,
@@ -634,7 +634,7 @@ export default Sensor({
 });
 
 export default Sensor({
-  name: "drive read",
+  name: "drive read", inline: true,
   onExecute(ctx: Context): number {
     const m = Drive.mode;
     if (m === undefined) {
@@ -662,7 +662,7 @@ export default Sensor({
 });
 
 export default Sensor({
-  name: "tune read",
+  name: "tune read", inline: true,
   onExecute(ctx: Context): number {
     const c = Tune.cfg;
     if (c === undefined) {
@@ -690,7 +690,7 @@ export default Sensor({
 });
 
 export default Sensor({
-  name: "fill read",
+  name: "fill read", inline: true,
   onExecute(ctx: Context): number {
     const l = Fill.lim;
     if (l === undefined) {
@@ -721,7 +721,7 @@ export default Sensor({
 });
 
 export default Sensor({
-  name: "drive read",
+  name: "drive read", inline: true,
   onExecute(ctx: Context): number { return Drive.mode === Mode.Go ? 7 : 1; },
 });
 `,
@@ -740,7 +740,7 @@ export default Sensor({
   think(ctx: Context) { this.pt = new Pt(this.pt.x + 1); },
 });
 `,
-        "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Track } from "./lib";\n\nexport default Sensor({\n  name: "track read",\n  onExecute(ctx: Context): number { return Track.pt.x; },\n});\n`,
+        "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Track } from "./lib";\n\nexport default Sensor({\n  name: "track read", inline: true,\n  onExecute(ctx: Context): number { return Track.pt.x; },\n});\n`,
       });
       assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
       const entry = result.results.get("tile.ts");
@@ -757,7 +757,7 @@ export default Sensor({
             "export const",
             "const"
           )}\nexport ${VEC_SYSTEM.replace(/export default Sensor[\s\S]*$/, "")}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Rove } from "./lib";\n\nexport default Sensor({\n  name: "rove read",\n  onExecute(ctx: Context): number { return Rove.pos.x + Rove.pos.y; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Rove } from "./lib";\n\nexport default Sensor({\n  name: "rove read", inline: true,\n  onExecute(ctx: Context): number { return Rove.pos.x + Rove.pos.y; },\n});\n`,
         },
         "tile.ts"
       );

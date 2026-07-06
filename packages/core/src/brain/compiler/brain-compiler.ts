@@ -15,15 +15,15 @@ import type {
 import { BYTECODE_VERSION, type FunctionBytecode, type Instr, Op } from "../../runtime/bytecode";
 import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
 import type { IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog } from "../interfaces";
-import { CoreCapabilityBits } from "../interfaces";
+import { CoreCapabilityBits, RuleSide } from "../interfaces";
 import { ConstantPool } from "./constant-pool";
-import type { BrainBuildDiagnostic, BrainBuildResult } from "./diagnostics";
+import { type BrainBuildDiagnostic, type BrainBuildResult, TypeDiagCode } from "./diagnostics";
 import { BytecodeEmitter } from "./emitter";
 import { computeExpectedTypes } from "./expected-types";
 import { computeInferredTypes } from "./inferred-types";
-import { parseBrainTiles } from "./parser";
+import { parseBrainTiles, validateTilePlacement } from "./parser";
 import { type CompilationDiag, ExprCompiler } from "./rule-compiler";
-import { acceptExprVisitor, type Expr, type TypeEnv, type TypeInfo } from "./types";
+import { acceptExprVisitor, type Expr, type ParseDiag, type TypeEnv, type TypeInfo, type TypeInfoDiag } from "./types";
 
 // Manual character-by-character iteration instead of String.replace() for
 // Roblox-TS compatibility -- Roblox-TS doesn't support regex or string.replace.
@@ -339,12 +339,37 @@ export class BrainCompiler {
     }
   }
 
+  /** Push each diagnostic as an error-severity build diagnostic. */
+  private pushErrorDiags(diags: ReadonlyList<ParseDiag>): void {
+    for (let i = 0; i < diags.size(); i++) {
+      const diag = diags.get(i)!;
+      this.compileDiags.push({ code: diag.code, severity: "error", message: diag.message });
+    }
+  }
+
+  /**
+   * Push the blocking validation errors from a side's inference diagnostics.
+   * Other inference diagnostics do not block the build here.
+   */
+  private pushBlockingTypeErrors(diags: ReadonlyList<TypeInfoDiag>): void {
+    for (let i = 0; i < diags.size(); i++) {
+      const diag = diags.get(i)!;
+      if (diag.code === TypeDiagCode.AccessorBaseTypeMismatch) {
+        this.compileDiags.push({ code: diag.code, severity: "error", message: diag.message });
+      }
+    }
+  }
+
   /**
    * Compile a rule's WHEN/DO body and emit CALL instructions for children.
    */
   private compileRuleBody(ruleDef: IBrainRuleDef, childFuncIds: List<number>): RuleCompileResult {
     const whenTiles = ruleDef.when().tiles();
     const doTiles = ruleDef.do().tiles();
+
+    // A tile whose placement excludes the side it appears on blocks the build.
+    this.pushErrorDiags(validateTilePlacement(whenTiles, RuleSide.When));
+    this.pushErrorDiags(validateTilePlacement(doTiles, RuleSide.Do));
 
     // Parse WHEN and DO sides
     const whenParseResult = parseBrainTiles(whenTiles, -1, 0);
@@ -361,10 +386,14 @@ export class BrainCompiler {
     }
 
     for (let i = 0; i < whenParseResult.exprs.size(); i++) {
-      computeInferredTypes(whenParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions, this.typeRegistry);
+      this.pushBlockingTypeErrors(
+        computeInferredTypes(whenParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions, this.typeRegistry)
+      );
     }
     for (let i = 0; i < doParseResult.exprs.size(); i++) {
-      computeInferredTypes(doParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions, this.typeRegistry);
+      this.pushBlockingTypeErrors(
+        computeInferredTypes(doParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions, this.typeRegistry)
+      );
     }
 
     // Create emitter for this rule's function

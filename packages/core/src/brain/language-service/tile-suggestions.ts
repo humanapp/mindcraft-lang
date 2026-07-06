@@ -13,7 +13,7 @@ import {
   type TypeId,
 } from "../../runtime";
 import type { ReadonlyBitSet } from "../../util/bitset";
-import { isLValue } from "../compiler/lvalue";
+import { isLValue, isLValueTile } from "../compiler/lvalue";
 import { parseBrainTiles } from "../compiler/parser";
 import type { ActuatorExpr, Expr, SensorExpr, Span } from "../compiler/types";
 import {
@@ -100,7 +100,8 @@ export interface InsertionContext {
    * - `actuator` with trailing complete value -> infix operators + remaining call spec tiles
    * - `actuator` fully complete -> suggest nothing
    * - `sensor` with unfilled slots or parameters needing values -> suggest call spec tiles
-   * - `sensor` with trailing complete value or fully complete -> infix operators + remaining call spec tiles
+   * - `sensor` with trailing complete value, or fully complete and inline -> infix
+   *   operators + remaining call spec tiles
    * - value expr (literal, variable, binaryOp, unaryOp, assignment) -> suggest infix operators
    * - `errorExpr` -> suggest all tiles (recovery)
    */
@@ -330,6 +331,41 @@ function structFieldTypeCompatibility(
 }
 
 /**
+ * Classifies a tile's output type against an expected type without consulting
+ * the conversion registry. An exact match is Exact; a struct output with a
+ * field of exactly the expected type is Conversion with cost 1 (one accessor
+ * step refines the value); anything else is incompatible. No constraint or an
+ * unknown output type is Unchecked.
+ */
+function classifyExactOrFieldCompatibility(
+  outputType: TypeId | undefined,
+  expectedType: TypeId | undefined,
+  types: ITypeRegistry
+): { compatibility: TileCompatibility; cost: number } | undefined {
+  if (!hasTypeConstraint(expectedType) || !outputType || outputType === CoreTypeIds.Unknown) {
+    return { compatibility: TileCompatibility.Unchecked, cost: 0 };
+  }
+  if (outputType === expectedType) {
+    return { compatibility: TileCompatibility.Exact, cost: 0 };
+  }
+  if (structHasExactField(outputType, expectedType!, types)) {
+    return { compatibility: TileCompatibility.Conversion, cost: 1 };
+  }
+  return undefined;
+}
+
+/** True when `structTypeId` is a struct type with a field of exactly `fieldType`. */
+function structHasExactField(structTypeId: TypeId, fieldType: TypeId, types: ITypeRegistry): boolean {
+  const typeDef = types.get(structTypeId);
+  if (!typeDef || typeDef.coreType !== NativeType.Struct) return false;
+  const fields = (typeDef as StructTypeDef).fields;
+  for (let i = 0; i < fields.size(); i++) {
+    if (fields.get(i).typeId === fieldType) return true;
+  }
+  return false;
+}
+
+/**
  * Collects the slot IDs that have already been filled in an action expr.
  * Optionally excludes a single slot ID (used for replacement scenarios).
  */
@@ -458,6 +494,59 @@ function findNamedSpec(spec: BrainActionCallSpec, name: string): BrainActionCall
       const found = findNamedSpec(spec.then, name);
       if (found !== undefined) return found;
       return spec.else !== undefined ? findNamedSpec(spec.else, name) : undefined;
+    }
+    default: {
+      const _exhaustive: never = spec;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Whether the call spec still requires an argument that has no fill,
+ * mirroring the parser's required-argument semantics: `optional` items are
+ * never required, an `arg` with `required: false` may stay unfilled, a
+ * `repeat` requires a fill only when its `min` is positive, a `choice`
+ * requires a fill in one of its options (and its filled option must itself
+ * be satisfied), and a `conditional` applies only to its active branch.
+ *
+ * @param rootSpec The root call spec, used for conditional condition lookup.
+ */
+function hasUnfilledRequiredArg(
+  spec: BrainActionCallSpec,
+  argSlots: ReadonlyList<BrainActionArgSlot>,
+  filledSlotIds: ReadonlyList<number>,
+  rootSpec: BrainActionCallSpec
+): boolean {
+  switch (spec.type) {
+    case "arg": {
+      if (spec.required === false) return false;
+      const slot = findArgSlotByTileId(spec.tileId, argSlots);
+      return slot !== undefined && !isSlotFilled(slot.slotId, filledSlotIds);
+    }
+    case "seq":
+    case "bag":
+      for (const item of spec.items) {
+        if (hasUnfilledRequiredArg(item, argSlots, filledSlotIds, rootSpec)) return true;
+      }
+      return false;
+    case "optional":
+      return false;
+    case "repeat":
+      return (spec.min ?? 0) > 0 && !specHasAnyFill(spec.item, argSlots, filledSlotIds);
+    case "choice": {
+      for (const option of spec.options) {
+        if (specHasAnyFill(option, argSlots, filledSlotIds)) {
+          return hasUnfilledRequiredArg(option, argSlots, filledSlotIds, rootSpec);
+        }
+      }
+      return true;
+    }
+    case "conditional": {
+      const condSpec = findNamedSpec(rootSpec, spec.condition);
+      const conditionMet = condSpec !== undefined && specHasAnyFill(condSpec, argSlots, filledSlotIds);
+      if (conditionMet) return hasUnfilledRequiredArg(spec.then, argSlots, filledSlotIds, rootSpec);
+      return spec.else !== undefined && hasUnfilledRequiredArg(spec.else, argSlots, filledSlotIds, rootSpec);
     }
     default: {
       const _exhaustive: never = spec;
@@ -986,6 +1075,26 @@ function trailingValueExpr(actionExpr: ActuatorExpr | SensorExpr): Expr | undefi
 }
 
 /**
+ * The complete slot value of an action call that ends exactly at
+ * `tileIndex`: the value an infix operator placed at that index would
+ * extend. Searches anonymous slot values and parameter values; returns
+ * undefined when no complete value ends there.
+ */
+function slotValueEndingAt(actionExpr: ActuatorExpr | SensorExpr, tileIndex: number): Expr | undefined {
+  for (let i = 0; i < actionExpr.anons.size(); i++) {
+    const slotExpr = actionExpr.anons.get(i).expr;
+    if (isCompleteValueExpr(slotExpr) && slotExpr.span.to === tileIndex) return slotExpr;
+  }
+  for (let i = 0; i < actionExpr.parameters.size(); i++) {
+    const slotExpr = actionExpr.parameters.get(i).expr;
+    if (slotExpr.kind === "parameter" && isCompleteValueExpr(slotExpr.value) && slotExpr.value.span.to === tileIndex) {
+      return slotExpr.value;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Determines the output type of an expression, if it can be statically
  * determined from the AST and operator overload table. Returns undefined
  * for expressions whose type cannot be resolved (e.g., unknown operators,
@@ -1035,21 +1144,22 @@ function getExprOutputType(
 }
 
 /**
- * Checks whether an infix operator has any overload that directly accepts
- * the given left operand type. Returns true if an exact LHS match exists,
- * or false if no overload is compatible.
+ * Checks whether an operator has any overload that directly accepts the
+ * given type as its first operand (the left operand of an infix operator,
+ * or the single operand of a prefix operator). Returns true if an exact
+ * match exists, or false if no overload is compatible.
  *
  * Unlike value-tile suggestions, operators do NOT use conversion-based
  * matching. Suggesting `subtract` when the LHS is a String (via
  * String->Number conversion) is confusing -- only operators with a
- * direct overload for the LHS type are offered.
+ * direct overload for the operand type are offered.
  */
-function operatorHasLhsOverload(opDef: BrainTileOperatorDef, leftOperandType: TypeId): boolean {
+function operatorHasFirstOperandOverload(opDef: BrainTileOperatorDef, operandType: TypeId): boolean {
   const allOverloads = opDef.op.overloads();
   for (let i = 0; i < allOverloads.size(); i++) {
     const overload = allOverloads.get(i);
-    const lhsArgType = overload.argTypes[0];
-    if (lhsArgType === leftOperandType) return true;
+    const firstArgType = overload.argTypes[0];
+    if (firstArgType === operandType) return true;
   }
   return false;
 }
@@ -1085,6 +1195,14 @@ function effectiveLhsType(
 }
 
 /**
+ * Whether a tile carries the Inline placement flag. Inline tiles participate
+ * in Pratt expressions, so infix operators and accessors can follow them.
+ */
+function hasInlinePlacement(tileDef: IBrainTileDef): boolean {
+  return tileDef.placement !== undefined && (tileDef.placement & TilePlacement.Inline) !== 0;
+}
+
+/**
  * Whether a tile can produce a value in an expression position.
  * Excludes operators (context-dependent), control flow, modifiers,
  * and parameters (action-call only).
@@ -1106,6 +1224,38 @@ function isValueProducingTile(tileDef: IBrainTileDef): boolean {
 // ---- Replacement Context ----
 
 /**
+ * The constraint a value replacement position imposes on candidate tiles,
+ * derived from the enclosing AST node. A `value` role without a constraint
+ * offers all value-producing tiles unchecked.
+ */
+type ValueConstraint =
+  /** A single expected type; convertible and struct-field matches are offered. */
+  | { kind: "typed"; expectedType: TypeId }
+  /**
+   * Operand of an operator. `types` are the operand types the operator's
+   * overloads accept at this position, narrowed by the other operand's type
+   * when it is known. The compiler applies operand conversions (binary and
+   * unary alike), so convertible and struct-field matches are offered.
+   */
+  | { kind: "operand"; types: ReadonlyList<TypeId> }
+  /**
+   * Target of an assignment, or the base chain of a field-access target.
+   * Only l-value tiles are valid here (see `isLValueTile`). When `valueType`
+   * is known the tile must match it exactly, be reachable from it through a
+   * registered conversion (assignment converts the value into the target's
+   * type), or reach it through a single exact-typed field accessor step on
+   * either side. An undefined `valueType` leaves the type unchecked.
+   */
+  | { kind: "assignTarget"; valueType?: TypeId }
+  /**
+   * Base of a field-access chain outside an assignment target. Value tiles
+   * are not type-restricted (the field read re-applies to the new base), but
+   * a prefix operator placed here receives the chain's field value as its
+   * operand and must accept `fieldType`.
+   */
+  | { kind: "accessorBase"; fieldType: TypeId };
+
+/**
  * Describes the structural role of a tile being replaced in the AST.
  * Used to determine what tiles are valid replacements.
  */
@@ -1113,15 +1263,55 @@ type ReplacementRole =
   /** Top-level or unknown position -- suggest all placement-compatible tiles. */
   | { kind: "expressionPosition" }
   /** Value-producing position (operand, assignment value, parameter value, etc.). */
-  | { kind: "value"; expectedType?: TypeId }
-  /** Infix operator position in a binary expression. */
-  | { kind: "infixOperator"; leftExpr?: Expr }
+  | { kind: "value"; constraint?: ValueConstraint }
+  /** Infix operator position in a binary expression or assignment. */
+  | { kind: "infixOperator"; leftExpr?: Expr; rightExpr?: Expr }
   /** Prefix operator position in a unary expression. */
-  | { kind: "prefixOperator" }
+  | { kind: "prefixOperator"; operandExpr?: Expr }
   /** Parameter, modifier, or anonymous slot tile inside an action call. */
   | { kind: "actionCallArg"; actionExpr: ActuatorExpr | SensorExpr; excludeSlotId?: number }
   /** Accessor tile position in a field access expression. */
   | { kind: "accessorPosition"; structTypeId: TypeId };
+
+/**
+ * Builds the operand constraint for one side of an operator from its
+ * registered overloads: the set of types the overloads accept at
+ * `operandIndex`. When `otherType` is known, only overloads whose other
+ * operand accepts it (exactly or via conversion) contribute. Returns
+ * undefined when no overload survives, leaving the position unconstrained.
+ */
+function operandConstraint(
+  operator: BrainTileOperatorDef,
+  operandIndex: number,
+  otherType: TypeId | undefined,
+  conversions: IConversionRegistry
+): ValueConstraint | undefined {
+  const overloads = operator.op.overloads();
+  const operandTypes = List.empty<TypeId>();
+  for (let i = 0; i < overloads.size(); i++) {
+    const overload = overloads.get(i);
+    const ownType = overload.argTypes[operandIndex];
+    if (ownType === undefined) continue;
+    if (otherType !== undefined) {
+      const otherSideType = overload.argTypes[1 - operandIndex];
+      if (otherSideType === undefined) continue;
+      if (otherSideType !== otherType) {
+        const path = conversions.findBestPath(otherType, otherSideType);
+        if (path === undefined || path.size() === 0) continue;
+      }
+    }
+    let alreadyIncluded = false;
+    for (let j = 0; j < operandTypes.size(); j++) {
+      if (operandTypes.get(j) === ownType) {
+        alreadyIncluded = true;
+        break;
+      }
+    }
+    if (!alreadyIncluded) operandTypes.push(ownType);
+  }
+  if (operandTypes.size() === 0) return undefined;
+  return { kind: "operand", types: operandTypes.asReadonly() };
+}
 
 /**
  * Whether an expr's span contains the given tile index (half-open interval).
@@ -1140,13 +1330,22 @@ function exprContainsTileIndex(expr: Expr, tileIndex: number): boolean {
 /**
  * Walks the AST using span information to determine the structural role
  * of the tile at `tileIndex`. This tells us what kinds of tiles are valid
- * replacements for the tile at that position.
+ * replacements for the tile at that position. Value positions carry the
+ * constraint the enclosing node imposes (see `ValueConstraint`).
  *
  * @param expr - The root expression to walk
  * @param tileIndex - The index of the tile being replaced in the flat tile list
  * @param parentRole - The role assigned by the parent node (passed down recursively)
+ * @param operatorOverloads - Overload table used to type operands and derive constraints
+ * @param conversions - Conversion registry used when narrowing operator overloads
  */
-function findReplacementRole(expr: Expr, tileIndex: number, parentRole: ReplacementRole): ReplacementRole {
+function findReplacementRole(
+  expr: Expr,
+  tileIndex: number,
+  parentRole: ReplacementRole,
+  operatorOverloads: IOperatorOverloads,
+  conversions: IConversionRegistry
+): ReplacementRole {
   switch (expr.kind) {
     case "empty":
     case "literal":
@@ -1158,48 +1357,101 @@ function findReplacementRole(expr: Expr, tileIndex: number, parentRole: Replacem
 
     case "errorExpr":
       if (expr.expr && exprContainsTileIndex(expr.expr, tileIndex)) {
-        return findReplacementRole(expr.expr, tileIndex, parentRole);
+        return findReplacementRole(expr.expr, tileIndex, parentRole, operatorOverloads, conversions);
       }
       return parentRole;
 
     case "binaryOp": {
       if (exprContainsTileIndex(expr.left, tileIndex)) {
-        return findReplacementRole(expr.left, tileIndex, { kind: "value" });
+        const rightType = getExprOutputType(expr.right, operatorOverloads, conversions);
+        return findReplacementRole(
+          expr.left,
+          tileIndex,
+          { kind: "value", constraint: operandConstraint(expr.operator, 0, rightType, conversions) },
+          operatorOverloads,
+          conversions
+        );
       }
       if (exprContainsTileIndex(expr.right, tileIndex)) {
-        return findReplacementRole(expr.right, tileIndex, { kind: "value" });
+        const leftType = getExprOutputType(expr.left, operatorOverloads, conversions);
+        return findReplacementRole(
+          expr.right,
+          tileIndex,
+          { kind: "value", constraint: operandConstraint(expr.operator, 1, leftType, conversions) },
+          operatorOverloads,
+          conversions
+        );
       }
       // Tile is the operator itself
-      return { kind: "infixOperator", leftExpr: expr.left };
+      return { kind: "infixOperator", leftExpr: expr.left, rightExpr: expr.right };
     }
 
     case "unaryOp": {
       if (exprContainsTileIndex(expr.operand, tileIndex)) {
-        return findReplacementRole(expr.operand, tileIndex, { kind: "value" });
+        return findReplacementRole(
+          expr.operand,
+          tileIndex,
+          { kind: "value", constraint: operandConstraint(expr.operator, 0, undefined, conversions) },
+          operatorOverloads,
+          conversions
+        );
       }
       // Tile is the prefix operator itself
-      return { kind: "prefixOperator" };
+      return { kind: "prefixOperator", operandExpr: expr.operand };
     }
 
     case "assignment": {
       if (exprContainsTileIndex(expr.target, tileIndex)) {
-        return findReplacementRole(expr.target, tileIndex, { kind: "value" });
+        return findReplacementRole(
+          expr.target,
+          tileIndex,
+          {
+            kind: "value",
+            constraint: {
+              kind: "assignTarget",
+              valueType: getExprOutputType(expr.value, operatorOverloads, conversions),
+            },
+          },
+          operatorOverloads,
+          conversions
+        );
       }
       if (exprContainsTileIndex(expr.value, tileIndex)) {
         const expectedType =
           expr.target.kind === "fieldAccess" ? expr.target.accessor.fieldTypeId : expr.target.tileDef.varType;
-        return findReplacementRole(expr.value, tileIndex, {
-          kind: "value",
-          expectedType,
-        });
+        return findReplacementRole(
+          expr.value,
+          tileIndex,
+          { kind: "value", constraint: { kind: "typed", expectedType } },
+          operatorOverloads,
+          conversions
+        );
       }
       // The = operator tile -- suggest infix operators
-      return { kind: "infixOperator", leftExpr: expr.target };
+      return { kind: "infixOperator", leftExpr: expr.target, rightExpr: expr.value };
     }
 
     case "fieldAccess": {
       if (exprContainsTileIndex(expr.object, tileIndex)) {
-        return findReplacementRole(expr.object, tileIndex, { kind: "value" });
+        // The base keeps an assignment-target requirement from the parent
+        // (a writable field on a read-only base is not writable), and a
+        // nested chain keeps the outermost accessor's field type -- that is
+        // the type the whole chain produces.
+        let constraint: ValueConstraint;
+        if (parentRole.kind === "value" && parentRole.constraint?.kind === "assignTarget") {
+          constraint = { kind: "assignTarget" };
+        } else if (parentRole.kind === "value" && parentRole.constraint?.kind === "accessorBase") {
+          constraint = parentRole.constraint;
+        } else {
+          constraint = { kind: "accessorBase", fieldType: expr.accessor.fieldTypeId };
+        }
+        return findReplacementRole(
+          expr.object,
+          tileIndex,
+          { kind: "value", constraint },
+          operatorOverloads,
+          conversions
+        );
       }
       // The accessor tile itself -- suggest other accessors for the same struct
       return { kind: "accessorPosition", structTypeId: expr.accessor.structTypeId };
@@ -1207,10 +1459,13 @@ function findReplacementRole(expr: Expr, tileIndex: number, parentRole: Replacem
 
     case "parameter": {
       if (exprContainsTileIndex(expr.value, tileIndex)) {
-        return findReplacementRole(expr.value, tileIndex, {
-          kind: "value",
-          expectedType: expr.tileDef.dataType,
-        });
+        return findReplacementRole(
+          expr.value,
+          tileIndex,
+          { kind: "value", constraint: { kind: "typed", expectedType: expr.tileDef.dataType } },
+          operatorOverloads,
+          conversions
+        );
       }
       // The parameter tile itself -- role is determined by the parent (action call arg)
       return parentRole;
@@ -1229,33 +1484,39 @@ function findReplacementRole(expr: Expr, tileIndex: number, parentRole: Replacem
           // only the single slot the parser happened to assign. For example,
           // choice(AnonNumber, AnonString) should offer both Number-typed
           // and String-typed tiles as exact matches when replacing either slot.
-          return findReplacementRole(slot.expr, tileIndex, {
-            kind: "actionCallArg",
-            actionExpr: expr,
-            excludeSlotId: slot.slotId,
-          });
+          return findReplacementRole(
+            slot.expr,
+            tileIndex,
+            { kind: "actionCallArg", actionExpr: expr, excludeSlotId: slot.slotId },
+            operatorOverloads,
+            conversions
+          );
         }
       }
       // Check parameter slots
       for (let i = 0; i < expr.parameters.size(); i++) {
         const slot = expr.parameters.get(i);
         if (exprContainsTileIndex(slot.expr, tileIndex)) {
-          return findReplacementRole(slot.expr, tileIndex, {
-            kind: "actionCallArg",
-            actionExpr: expr,
-            excludeSlotId: slot.slotId,
-          });
+          return findReplacementRole(
+            slot.expr,
+            tileIndex,
+            { kind: "actionCallArg", actionExpr: expr, excludeSlotId: slot.slotId },
+            operatorOverloads,
+            conversions
+          );
         }
       }
       // Check modifier slots
       for (let i = 0; i < expr.modifiers.size(); i++) {
         const slot = expr.modifiers.get(i);
         if (exprContainsTileIndex(slot.expr, tileIndex)) {
-          return findReplacementRole(slot.expr, tileIndex, {
-            kind: "actionCallArg",
-            actionExpr: expr,
-            excludeSlotId: slot.slotId,
-          });
+          return findReplacementRole(
+            slot.expr,
+            tileIndex,
+            { kind: "actionCallArg", actionExpr: expr, excludeSlotId: slot.slotId },
+            operatorOverloads,
+            conversions
+          );
         }
       }
       // If the tile is at the action tile's own position, the user is
@@ -1430,7 +1691,9 @@ function whenResultConsumerEligible(
  * - **Actuator/sensor with unfilled slots** -- call spec tiles + infix operators if trailing value
  * - **Actuator/sensor with trailing complete value** -- infix operators (extend the value expr)
  * - **Complete actuator** (no unfilled slots, no trailing value) -- nothing (Void return)
- * - **Complete sensor** (no unfilled slots) -- infix operators (produces a value)
+ * - **Complete inline sensor** (no unfilled slots) -- infix operators (produces a value)
+ * - **Complete non-inline sensor** (no unfilled slots, no trailing value) -- nothing
+ *   (the parser cannot continue it with an operator or accessor at the top level)
  * - **Value expr** (literal, variable, binaryOp, unaryOp, assignment) -- infix operators
  * - **Error expr** -- all tiles (recovery)
  *
@@ -1467,7 +1730,13 @@ export function suggestTiles(
     // paren that the parser consumed transparently), fall through to append
     // mode so the user sees infix operators and close paren suggestions.
     if (exprContainsTileIndex(expr, context.replaceTileIndex)) {
-      const role = findReplacementRole(expr, context.replaceTileIndex, { kind: "expressionPosition" });
+      const role = findReplacementRole(
+        expr,
+        context.replaceTileIndex,
+        { kind: "expressionPosition" },
+        operatorOverloads,
+        conversions
+      );
       suggestForReplacementRole(
         role,
         context,
@@ -1529,10 +1798,11 @@ export function suggestTiles(
       // For a complete inline sensor (no arg slots), also offer infix ops -- inline sensors
       // are parsed inside the Pratt expression loop so infix operators can follow them.
       // Non-inline sensors are parsed via parseActionCall which returns directly to parseTop,
-      // so infix operators cannot follow them at the top level (they'd start a new expression).
+      // so neither infix operators nor accessors can follow them at the top level (they'd
+      // start a new expression).
       if (
         trailingValueExpr(expr) !== undefined ||
-        (expr.kind === "sensor" && !needsSlots && callDef.argSlots.size() === 0)
+        (expr.kind === "sensor" && !needsSlots && callDef.argSlots.size() === 0 && hasInlinePlacement(expr.tileDef))
       ) {
         const leftExpr = trailingValueExpr(expr) ?? expr;
         const leftType = operatorOverloads ? getExprOutputType(leftExpr, operatorOverloads, conversions) : undefined;
@@ -1595,12 +1865,20 @@ export function suggestTiles(
           );
         }
 
-        // If the trailing child is a complete value or the sensor is fully complete
-        // with no arg slots, offer infix operators on the whole unaryOp expression.
-        if (
-          trailingValueExpr(innerExpr) !== undefined ||
-          (innerExpr.kind === "sensor" && !needsSlots && callDef.argSlots.size() === 0)
-        ) {
+        // If the trailing child is a complete value or the operand sensor is
+        // complete, offer infix operators on the whole unaryOp expression.
+        // The sensor counts as complete when no required slot is unfilled and
+        // no placed value is pending -- unfilled optional slots do not block
+        // continuation, matching the parser.
+        // No Inline placement gate here: a prefix operator's operand is parsed inside
+        // a Pratt expression, so operators and accessors can follow the sensor even
+        // when it is non-inline.
+        const operandComplete =
+          innerExpr.kind === "sensor" &&
+          !hasParametersNeedingValues(innerExpr) &&
+          !hasIncompleteAnonValues(innerExpr) &&
+          !hasUnfilledRequiredArg(callDef.callSpec, callDef.argSlots, filledSlotIds, callDef.callSpec);
+        if (trailingValueExpr(innerExpr) !== undefined || operandComplete) {
           const leftExpr = trailingValueExpr(innerExpr) ?? expr;
           const leftType = operatorOverloads ? getExprOutputType(leftExpr, operatorOverloads, conversions) : undefined;
           suggestInfixOperators(context, catalogs, conversions, result, leftType, operatorOverloads, leftExpr);
@@ -1756,6 +2034,11 @@ function suggestOpenParen(
  * insertion point is the operand of a prefix operator (e.g., [not] _),
  * where non-inline sensors can appear because the parser supports them
  * in expression NUD position.
+ *
+ * When `prefixOperandType` is set, prefix operators are only included when
+ * they have an overload accepting that operand type exactly. Used at the
+ * base of a field-access chain, where a prefix operator placed there
+ * receives the chain's field value as its operand.
  */
 function suggestExpressionTiles(
   context: InsertionContext,
@@ -1765,7 +2048,8 @@ function suggestExpressionTiles(
   availableWhenResult: TypeId | undefined,
   result: TileSuggestionResult,
   valueOnly = false,
-  allowNonInlineSensors = false
+  allowNonInlineSensors = false,
+  prefixOperandType?: TypeId
 ): void {
   const seen = new UniqueSet<string>();
 
@@ -1809,6 +2093,17 @@ function suggestExpressionTiles(
           }
           if (!anyMatch) continue;
         }
+
+        // At the base of a field-access chain, a prefix operator receives the
+        // chain's field value as its operand; only operators with an overload
+        // accepting that type exactly are included.
+        if (
+          opDef.op.parse.fixity === "prefix" &&
+          prefixOperandType !== undefined &&
+          !operatorHasFirstOperandOverload(opDef, prefixOperandType)
+        ) {
+          continue;
+        }
       }
 
       // In value-only mode (sub-expression position), skip non-inline sensors
@@ -1821,7 +2116,7 @@ function suggestExpressionTiles(
       // expressions (parens are parsed via Pratt NUD, not parseActionCall).
       const insideParens = (context.unclosedParenDepth ?? 0) > 0;
       if (((valueOnly && !allowNonInlineSensors) || insideParens) && tileDef.kind === "sensor") {
-        if (tileDef.placement === undefined || (tileDef.placement & TilePlacement.Inline) === 0) continue;
+        if (!hasInlinePlacement(tileDef)) continue;
       }
 
       // In value-only mode, skip actuators (they return Void, not a value).
@@ -1881,7 +2176,8 @@ function suggestExpressionTiles(
  * not the overall expression's type. This allows e.g. `[a] [>] [b] [*]` where
  * `*` binds with `[b]` (Number) even though `>` produces Boolean.
  *
- * The assignment operator is excluded unless `leftExpr` is an l-value (variable).
+ * The assignment operator is offered iff `leftExpr` is an l-value; it is
+ * exempt from overload filtering.
  */
 function suggestInfixOperators(
   context: InsertionContext,
@@ -1909,7 +2205,9 @@ function suggestInfixOperators(
       const opDef = tileDef as BrainTileOperatorDef;
       if (opDef.op.parse.fixity !== "infix") continue;
 
-      // Assignment requires an l-value on the left (variable)
+      // Assignment is gated by the l-value check alone; it never consults
+      // operator overloads (the compiler lowers assignment to store
+      // instructions for any type).
       if (opDef.op.id === CoreOpId.Assign && !lhsIsLValue) continue;
 
       if (!isPlacementValid(tileDef, context.ruleSide)) continue;
@@ -1920,32 +2218,25 @@ function suggestInfixOperators(
       if (seen.has(tileDef.tileId)) continue;
       seen.add(tileDef.tileId);
 
-      if (canFilter) {
+      if (canFilter && opDef.op.id !== CoreOpId.Assign) {
         // Check the overall expression type first (covers same/lower precedence operators).
         // For higher-precedence operators that would rebind with the right operand of a
         // binaryOp, also check the effective LHS type at the rebinding point.
-        let matched = operatorHasLhsOverload(opDef, leftOperandType);
+        let matched = operatorHasFirstOperandOverload(opDef, leftOperandType);
         if (!matched && leftExpr !== undefined && leftExpr.kind === "binaryOp") {
           const reboundLhsType = effectiveLhsType(leftExpr, opDef.op.parse.precedence, operatorOverloads, conversions);
           if (reboundLhsType !== undefined && reboundLhsType !== leftOperandType) {
-            matched = operatorHasLhsOverload(opDef, reboundLhsType);
+            matched = operatorHasFirstOperandOverload(opDef, reboundLhsType);
           }
         }
         if (!matched) continue;
-
-        result.exact.push({
-          tileDef,
-          compatibility: TileCompatibility.Unchecked,
-          conversionCost: 0,
-        });
-      } else {
-        // No overload info -- fall back to Unchecked
-        result.exact.push({
-          tileDef,
-          compatibility: TileCompatibility.Unchecked,
-          conversionCost: 0,
-        });
       }
+
+      result.exact.push({
+        tileDef,
+        compatibility: TileCompatibility.Unchecked,
+        conversionCost: 0,
+      });
     }
   }
 }
@@ -2099,12 +2390,16 @@ function suggestPrefixOperatorsForValue(
 
 /**
  * Suggests prefix operator tiles for replacement in a unary expression.
- * Only includes operators with `fixity === "prefix"` that pass placement checks.
+ * Only includes operators with `fixity === "prefix"` that pass placement
+ * checks. When `operandType` is provided, only operators with an overload
+ * accepting that operand type exactly are included -- conversion-based
+ * matching is not used for operators.
  */
 function suggestPrefixOperators(
   context: InsertionContext,
   catalogs: ReadonlyList<ITileCatalog>,
-  result: TileSuggestionResult
+  result: TileSuggestionResult,
+  operandType?: TypeId
 ): void {
   const seen = new UniqueSet<string>();
 
@@ -2119,6 +2414,8 @@ function suggestPrefixOperators(
 
       const opDef = tileDef as BrainTileOperatorDef;
       if (opDef.op.parse.fixity !== "prefix") continue;
+
+      if (operandType !== undefined && !operatorHasFirstOperandOverload(opDef, operandType)) continue;
 
       if (!isPlacementValid(tileDef, context.ruleSide)) continue;
 
@@ -2137,7 +2434,174 @@ function suggestPrefixOperators(
   }
 }
 
+// ---- Assignment Target Position ----
+
+/**
+ * Suggests tiles for a position an assignment writes to: the target itself,
+ * or the base of a field-access target. Only l-value tiles are offered (see
+ * `isLValueTile`). When `valueType` is known a tile matches it exactly,
+ * through a registered conversion from the value's type to the tile's type
+ * (assignment converts the value into the target's type), through a field of
+ * the tile's struct type with exactly that type (the target is refined with
+ * an accessor), or through a field of the value's struct type with exactly
+ * the tile's type (the assigned value is refined instead). An undefined
+ * `valueType` offers all l-value tiles unchecked.
+ */
+function suggestAssignmentTargetTiles(
+  context: InsertionContext,
+  catalogs: ReadonlyList<ITileCatalog>,
+  conversions: IConversionRegistry,
+  types: ITypeRegistry,
+  availableWhenResult: TypeId | undefined,
+  valueType: TypeId | undefined,
+  result: TileSuggestionResult
+): void {
+  const seen = new UniqueSet<string>();
+
+  for (let ci = 0; ci < catalogs.size(); ci++) {
+    const catalog = catalogs.get(ci);
+    const allTiles = catalog.getAll();
+    for (let ti = 0; ti < allTiles.size(); ti++) {
+      const tileDef = allTiles.get(ti);
+
+      if (tileDef.hidden || tileDef.deprecated) continue;
+      if (!isLValueTile(tileDef)) continue;
+
+      if (!isPlacementValid(tileDef, context.ruleSide)) continue;
+
+      // Check capability requirements
+      if (!areRequirementsMet(tileDef, context.availableCapabilities, context.availableOutputKeys)) continue;
+
+      // A WHEN-result consumer is valid only where its required WHEN result is available.
+      if (!whenResultConsumerEligible(tileDef, availableWhenResult, conversions)) continue;
+
+      if (seen.has(tileDef.tileId)) continue;
+      seen.add(tileDef.tileId);
+
+      const outputType = getTileOutputType(tileDef);
+      let typeResult = classifyExactOrFieldCompatibility(outputType, valueType, types);
+      if (typeResult === undefined && outputType !== undefined && hasTypeConstraint(valueType)) {
+        // The assigned value converts into the target tile's type.
+        const path = conversions.findBestPath(valueType!, outputType);
+        if (path !== undefined && path.size() > 0) {
+          let cost = 0;
+          for (let i = 0; i < path.size(); i++) {
+            cost += path.get(i).cost;
+          }
+          typeResult = { compatibility: TileCompatibility.Conversion, cost };
+        } else if (structHasExactField(valueType!, outputType, types)) {
+          typeResult = { compatibility: TileCompatibility.Conversion, cost: 1 };
+        }
+      }
+      if (!typeResult) continue;
+
+      const suggestion: TileSuggestion = {
+        tileDef,
+        compatibility: typeResult.compatibility,
+        conversionCost: typeResult.cost,
+      };
+
+      if (typeResult.compatibility === TileCompatibility.Conversion) {
+        result.withConversion.push(suggestion);
+      } else {
+        result.exact.push(suggestion);
+      }
+    }
+  }
+}
+
+// ---- Value-Absorbing Sensors ----
+
+/**
+ * True when the sensor's call spec has an anonymous slot whose parameter
+ * type accepts one of `valueTypes`, exactly or via conversion.
+ */
+function sensorAnonymousSlotAccepts(
+  sensorDef: BrainTileSensorDef,
+  valueTypes: ReadonlyList<TypeId>,
+  catalogs: ReadonlyList<ITileCatalog>,
+  conversions: IConversionRegistry,
+  types: ITypeRegistry
+): boolean {
+  const argSlots = sensorDef.action.callDef.argSlots;
+  for (let i = 0; i < argSlots.size(); i++) {
+    const slot = argSlots.get(i);
+    if (!slot.argSpec.anonymous) continue;
+    const argTileDef = findTileInCatalogs(slot.argSpec.tileId, catalogs);
+    if (!argTileDef || argTileDef.kind !== "parameter") continue;
+    const slotType = (argTileDef as BrainTileParameterDef).dataType;
+    for (let vi = 0; vi < valueTypes.size(); vi++) {
+      if (classifyTypeCompatibility(valueTypes.get(vi), slotType, conversions, types) !== undefined) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Suggests non-inline sensors that can stand where the side's expression
+ * currently starts by hosting the displaced value: the sensor begins a new
+ * action call and the tiles after it re-parse as the value of one of its
+ * anonymous slots. Only sensors with an anonymous slot that accepts one of
+ * `absorbedTypes` (exactly or via conversion) are offered. Inline sensors
+ * do not parse juxtaposed arguments and are excluded.
+ */
+function suggestValueAbsorbingSensors(
+  context: InsertionContext,
+  catalogs: ReadonlyList<ITileCatalog>,
+  conversions: IConversionRegistry,
+  types: ITypeRegistry,
+  availableWhenResult: TypeId | undefined,
+  absorbedTypes: ReadonlyList<TypeId>,
+  result: TileSuggestionResult
+): void {
+  const seen = new UniqueSet<string>();
+
+  for (let ci = 0; ci < catalogs.size(); ci++) {
+    const catalog = catalogs.get(ci);
+    const allTiles = catalog.getAll();
+    for (let ti = 0; ti < allTiles.size(); ti++) {
+      const tileDef = allTiles.get(ti);
+
+      if (tileDef.hidden || tileDef.deprecated) continue;
+      if (tileDef.kind !== "sensor" || hasInlinePlacement(tileDef)) continue;
+
+      if (!isPlacementValid(tileDef, context.ruleSide)) continue;
+
+      // Check capability requirements
+      if (!areRequirementsMet(tileDef, context.availableCapabilities, context.availableOutputKeys)) continue;
+
+      // A WHEN-result consumer is valid only where its required WHEN result is available.
+      if (!whenResultConsumerEligible(tileDef, availableWhenResult, conversions)) continue;
+
+      if (seen.has(tileDef.tileId)) continue;
+
+      if (!sensorAnonymousSlotAccepts(tileDef as BrainTileSensorDef, absorbedTypes, catalogs, conversions, types)) {
+        continue;
+      }
+
+      seen.add(tileDef.tileId);
+      result.exact.push({
+        tileDef,
+        compatibility: TileCompatibility.Unchecked,
+        conversionCost: 0,
+      });
+    }
+  }
+}
+
 // ---- Replacement Dispatch ----
+
+/**
+ * Whether the tile being replaced is the first tile of the side's parsed
+ * expression. The head position is parsed by the top-level dispatcher,
+ * where a non-inline sensor starts an action call that no operator can
+ * continue.
+ */
+function replacementIsAtExpressionHead(context: InsertionContext): boolean {
+  const expr = context.expr;
+  if (expr === undefined || expr.kind === "empty" || context.replaceTileIndex === undefined) return false;
+  return expr.span !== undefined && expr.span.from === context.replaceTileIndex;
+}
 
 /**
  * Routes a replacement role to the appropriate suggestion function.
@@ -2165,9 +2629,77 @@ function suggestForReplacementRole(
       break;
 
     case "value": {
+      const constraint = role.constraint;
+      if (constraint?.kind === "assignTarget") {
+        suggestAssignmentTargetTiles(
+          context,
+          catalogs,
+          conversions,
+          types,
+          availableWhenResult,
+          constraint.valueType,
+          result
+        );
+        suggestOpenParen(context.ruleSide, catalogs, result);
+        break;
+      }
+      if (constraint?.kind === "operand") {
+        // An operand position parsed inside a Pratt expression accepts a
+        // non-inline sensor as a primary. The head of the side's expression
+        // does not: a sensor placed there starts an action call that no
+        // operator can continue, so only a sensor that can host the
+        // displaced value in an anonymous slot is offered.
+        const atExpressionHead = replacementIsAtExpressionHead(context);
+        suggestExpressionsForAnonymousSlots(
+          constraint.types,
+          context.ruleSide,
+          catalogs,
+          conversions,
+          types,
+          availableWhenResult,
+          result,
+          context.availableCapabilities,
+          context.availableOutputKeys,
+          !atExpressionHead
+        );
+        if (atExpressionHead) {
+          suggestValueAbsorbingSensors(
+            context,
+            catalogs,
+            conversions,
+            types,
+            availableWhenResult,
+            constraint.types,
+            result
+          );
+        }
+        suggestPrefixOperatorsForValue(
+          context.ruleSide,
+          catalogs,
+          constraint.types,
+          result,
+          context.availableCapabilities
+        );
+        suggestOpenParen(context.ruleSide, catalogs, result);
+        break;
+      }
+      if (constraint?.kind === "accessorBase") {
+        suggestExpressionTiles(
+          context,
+          catalogs,
+          conversions,
+          types,
+          availableWhenResult,
+          result,
+          true,
+          false,
+          constraint.fieldType
+        );
+        break;
+      }
       const ctx: InsertionContext = {
         ...context,
-        expectedType: role.expectedType ?? context.expectedType,
+        expectedType: constraint?.kind === "typed" ? constraint.expectedType : context.expectedType,
       };
       suggestExpressionTiles(ctx, catalogs, conversions, types, availableWhenResult, result, true);
       break;
@@ -2179,7 +2711,14 @@ function suggestForReplacementRole(
           ? getExprOutputType(role.leftExpr, operatorOverloads, conversions)
           : undefined;
       suggestInfixOperators(context, catalogs, conversions, result, leftType, operatorOverloads, role.leftExpr);
-      suggestCloseParenIfNeeded(context, catalogs, result);
+      // A close paren can only stand at an operator replacement when the
+      // operator has no parsed right operand: an operand left behind after
+      // the paren cannot re-parse.
+      const rightAbsent =
+        role.rightExpr === undefined || role.rightExpr.kind === "empty" || role.rightExpr.kind === "errorExpr";
+      if (rightAbsent) {
+        suggestCloseParenIfNeeded(context, catalogs, result);
+      }
       if (role.leftExpr) {
         // Mirror the append path after a complete value: replacing the operator
         // with an accessor of the left value's struct type is valid (e.g.,
@@ -2198,11 +2737,30 @@ function suggestForReplacementRole(
       break;
     }
 
-    case "prefixOperator":
-      suggestPrefixOperators(context, catalogs, result);
+    case "prefixOperator": {
+      const operandType = role.operandExpr
+        ? getExprOutputType(role.operandExpr, operatorOverloads, conversions)
+        : undefined;
+      suggestPrefixOperators(context, catalogs, result, operandType);
+      // A non-inline sensor can replace the prefix operator when one of its
+      // anonymous slots accepts the operand value: the operand re-parses as
+      // the sensor's argument.
+      if (operandType !== undefined) {
+        suggestValueAbsorbingSensors(
+          context,
+          catalogs,
+          conversions,
+          types,
+          availableWhenResult,
+          List.from([operandType]),
+          result
+        );
+      }
+      suggestOpenParen(context.ruleSide, catalogs, result);
       break;
+    }
 
-    case "actionCallArg":
+    case "actionCallArg": {
       suggestActionCallTiles(
         role.actionExpr,
         context.ruleSide,
@@ -2217,7 +2775,20 @@ function suggestForReplacementRole(
         context.availableOutputKeys,
         context.unclosedParenDepth
       );
+      // Replacement counterpart of the append path's trailing-value rule:
+      // when the replaced tile directly follows a complete slot value, an
+      // infix operator can extend that value (the displaced tiles re-parse
+      // as its right operand).
+      const leftValue =
+        context.replaceTileIndex !== undefined
+          ? slotValueEndingAt(role.actionExpr, context.replaceTileIndex)
+          : undefined;
+      if (leftValue !== undefined) {
+        const leftType = getExprOutputType(leftValue, operatorOverloads, conversions);
+        suggestInfixOperators(context, catalogs, conversions, result, leftType, operatorOverloads, leftValue);
+      }
       break;
+    }
 
     case "accessorPosition":
       suggestAccessorTiles(context, catalogs, types, conversions, result, role.structTypeId);
@@ -2367,10 +2938,14 @@ function suggestActionCallTiles(
 }
 
 /**
- * Suggests expression tiles that match one or more expected types from
- * anonymous action call slots. A tile is suggested if it matches any of
- * the expected types (exact or via conversion). The best compatibility
- * across all types is used for the suggestion.
+ * Suggests expression tiles that match one or more expected types. A tile
+ * is suggested if it matches any of the expected types (exact or via
+ * conversion). The best compatibility across all types is used for the
+ * suggestion.
+ *
+ * When `allowNonInlineSensors` is true, non-inline sensors are included.
+ * Used for operator operand positions parsed inside a Pratt expression,
+ * where the parser accepts a non-inline sensor as an expression primary.
  */
 function suggestExpressionsForAnonymousSlots(
   expectedTypes: ReadonlyList<TypeId>,
@@ -2381,7 +2956,8 @@ function suggestExpressionsForAnonymousSlots(
   availableWhenResult: TypeId | undefined,
   result: TileSuggestionResult,
   availableCapabilities?: ReadonlyBitSet,
-  availableOutputKeys?: UniqueSet<string>
+  availableOutputKeys?: UniqueSet<string>,
+  allowNonInlineSensors = false
 ): void {
   const seen = new UniqueSet<string>();
 
@@ -2397,11 +2973,10 @@ function suggestExpressionsForAnonymousSlots(
       // Only value-producing expression tiles
       if (!isValueProducingTile(tileDef)) continue;
 
-      // Skip non-inline sensors -- action call anonymous slots are sub-expression
-      // positions where only inline sensors are valid (parsed via Pratt NUD handler).
-      if (tileDef.kind === "sensor") {
-        if (tileDef.placement === undefined || (tileDef.placement & TilePlacement.Inline) === 0) continue;
-      }
+      // Skip non-inline sensors unless explicitly allowed -- action call
+      // anonymous slots offer only inline sensors, while operator operand
+      // positions also accept non-inline sensors.
+      if (tileDef.kind === "sensor" && !allowNonInlineSensors && !hasInlinePlacement(tileDef)) continue;
 
       // Check placement
       if (!isPlacementValid(tileDef, ruleSide)) continue;

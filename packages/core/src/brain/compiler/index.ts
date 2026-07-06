@@ -43,12 +43,12 @@ import { List, type ReadonlyList } from "../../platform/list";
 import type { IConversionRegistry, ITypeRegistry } from "../../runtime";
 import type { Instr } from "../../runtime/bytecode";
 import type { Value } from "../../runtime/value";
-import type { IBrainTileDef, ITileCatalog } from "../interfaces";
+import { type IBrainTileDef, type ITileCatalog, RuleSide } from "../interfaces";
 import { computeExpectedTypes } from "./expected-types";
 import { mapExprs } from "./expr-mapper";
 import { computeInferredTypes } from "./inferred-types";
-import { parseBrainTiles } from "./parser";
-import type { Expr, ParseResult, TypeEnv, TypeInfo, TypeInfoDiag } from "./types";
+import { parseBrainTiles, validateTilePlacement } from "./parser";
+import type { Expr, ParseDiag, ParseResult, TypeEnv, TypeInfo, TypeInfoDiag } from "./types";
 
 /** Combined parse + type-check result for a single rule's `when` and `do` sides. */
 export interface TypecheckResult {
@@ -75,6 +75,14 @@ export interface TypecheckResult {
   };
 }
 
+/** Returns `result` with `extra` appended to its diagnostics (or `result` unchanged when `extra` is empty). */
+function appendParseDiags(result: ParseResult, extra: ReadonlyList<ParseDiag>): ParseResult {
+  if (extra.size() === 0) {
+    return result;
+  }
+  return { ...result, diags: List.from(result.diags.toArray()).concat(List.from(extra.toArray())) };
+}
+
 /** Parse and type-check a rule's `when` and `do` tile lists, returning combined and per-side results. */
 export function parseRule(
   whenSrc: ReadonlyList<IBrainTileDef>,
@@ -83,9 +91,13 @@ export function parseRule(
   conversions: IConversionRegistry,
   typeRegistry: ITypeRegistry
 ): TypecheckResult {
-  // Parse WHEN and DO sides separately
-  const whenParseResult = parseBrainTiles(whenSrc);
-  const doParseResult = parseBrainTiles(doSrc, -1, 0, whenParseResult.nextNodeId);
+  // Parse WHEN and DO sides separately; each side also carries the placement
+  // diagnostics for tiles not allowed on that side.
+  const whenParseResult = appendParseDiags(parseBrainTiles(whenSrc), validateTilePlacement(whenSrc, RuleSide.When));
+  const doParseResult = appendParseDiags(
+    parseBrainTiles(doSrc, -1, 0, whenParseResult.nextNodeId),
+    validateTilePlacement(doSrc, RuleSide.Do)
+  );
 
   // Combine parse results
   const allExprs = List.from(whenParseResult.exprs.toArray()).concat(List.from(doParseResult.exprs.toArray()));

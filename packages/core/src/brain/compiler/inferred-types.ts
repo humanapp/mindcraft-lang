@@ -1,6 +1,7 @@
 import { List, type ReadonlyList } from "../../platform/list";
 import {
   type BrainActionArgSlot,
+  CoreTypeIds,
   CoreTypeNames,
   type IConversionRegistry,
   type ITypeRegistry,
@@ -228,7 +229,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       }
 
       // Since we can't enumerate all overloads, try converting to common types
-      const commonTypes = [CoreTypeNames.Number, CoreTypeNames.Boolean, CoreTypeNames.String];
+      const commonTypes = [CoreTypeIds.Number, CoreTypeIds.Boolean, CoreTypeIds.String];
 
       for (const targetType of commonTypes) {
         if (targetType === operandType) continue; // Already tried
@@ -285,17 +286,31 @@ class InferredTypeVisitor implements ExprVisitor<void> {
     acceptExprVisitor(expr.value, this);
     const valueTypeInfo = this.env.get(expr.value.nodeId);
 
-    // The assignment expression itself has the same type as the value
     const assignmentTypeInfo = this.ensureTypeInfo(expr.nodeId);
-    assignmentTypeInfo.inferred = valueTypeInfo?.inferred || CoreTypeNames.Unknown;
+
+    // The type the assignment stores: the value's type, or the target's type
+    // when a conversion bridges a mismatch.
+    let storedType = valueTypeInfo?.inferred || CoreTypeNames.Unknown;
 
     // Check type compatibility: target should accept the value type
     if (
       valueTypeInfo &&
       targetTypeInfo.inferred !== CoreTypeNames.Unknown &&
-      valueTypeInfo.inferred !== CoreTypeNames.Unknown
+      valueTypeInfo.inferred !== CoreTypeNames.Unknown &&
+      targetTypeInfo.inferred !== valueTypeInfo.inferred
     ) {
-      if (targetTypeInfo.inferred !== valueTypeInfo.inferred) {
+      // Try conversion before reporting mismatch
+      const convPath = this.conversions.findBestPath(valueTypeInfo.inferred, targetTypeInfo.inferred, 1);
+      if (convPath && convPath.size() > 0) {
+        const conversion = convPath.get(0);
+        valueTypeInfo.conversion = conversion;
+        storedType = targetTypeInfo.inferred;
+        this.diags.push({
+          code: TypeDiagCode.DataTypeConverted,
+          nodeId: expr.value.nodeId,
+          message: `Applied conversion from ${valueTypeInfo.inferred} to ${targetTypeInfo.inferred} for assignment (cost: ${conversion.cost})`,
+        });
+      } else {
         this.diags.push({
           code: TypeDiagCode.DataTypeMismatch,
           nodeId: expr.nodeId,
@@ -304,8 +319,10 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       }
     }
 
-    // Update the target variable's type based on the assigned value
-    targetTypeInfo.inferred = valueTypeInfo?.inferred || CoreTypeNames.Unknown;
+    // The assignment expression produces the stored value, and the target's
+    // type tracks it.
+    assignmentTypeInfo.inferred = storedType;
+    targetTypeInfo.inferred = storedType;
   }
 
   visitParameter(expr: ParameterExpr): void {
@@ -370,12 +387,29 @@ class InferredTypeVisitor implements ExprVisitor<void> {
     const typeInfo = this.ensureTypeInfo(expr.nodeId);
     acceptExprVisitor(expr.object, this);
 
-    // Resolve the field against the OBJECT's concrete struct type (not the
-    // accessor's structTypeId/fieldTypeId, which can desync from the object after
-    // edits). Look the field up by name so a sparse/author-assigned field id space
-    // is handled correctly, and set this node's type from the object's actual field
-    // so a nested chain stays reliable.
+    // The accessor must be applied to a base of its own struct type. A base
+    // whose type cannot be determined (an unfinished or error expression) is
+    // not judged here; its own diagnostics cover it.
     const objectTypeId = this.env.get(expr.object.nodeId)?.inferred;
+    const baseIsDeterminate =
+      objectTypeId !== undefined && objectTypeId !== CoreTypeNames.Unknown && objectTypeId !== CoreTypeIds.Unknown;
+    if (baseIsDeterminate && objectTypeId !== expr.accessor.structTypeId) {
+      const fieldLabel = expr.accessor.metadata?.label ?? expr.accessor.fieldName;
+      const structTypeName = this.typeRegistry.get(expr.accessor.structTypeId)?.name ?? expr.accessor.structTypeId;
+      const baseTypeName = this.typeRegistry.get(objectTypeId)?.name ?? objectTypeId;
+      this.diags.push({
+        code: TypeDiagCode.AccessorBaseTypeMismatch,
+        nodeId: expr.nodeId,
+        message: `Field "${fieldLabel}" belongs to ${structTypeName} and cannot be read from a value of type ${baseTypeName}`,
+      });
+      typeInfo.inferred = expr.accessor.fieldTypeId;
+      return;
+    }
+
+    // Resolve the field against the OBJECT's concrete struct type. Look the
+    // field up by name so a sparse/author-assigned field id space is handled
+    // correctly, and set this node's type from the object's actual field so a
+    // nested chain stays reliable.
     const objectDef = objectTypeId !== undefined ? this.typeRegistry.get(objectTypeId) : undefined;
     if (objectDef !== undefined && objectDef.coreType === NativeType.Struct) {
       const fields = (objectDef as StructTypeDef).fields;

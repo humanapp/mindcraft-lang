@@ -222,9 +222,8 @@ export class ExprCompiler implements ExprVisitor<void> {
 
   private emitBinaryOp(typeInfo: TypeInfo): void {
     // The 2-slot arg buffer is already in place on the stack. Emit
-    // HOST_CALL (or HOST_CALL_ASYNC + AWAIT) to consume it. Type-only
-    // overloads (no fnEntry) never reach here: assignment lowers through
-    // visitAssignment.
+    // HOST_CALL (or HOST_CALL_ASYNC + AWAIT) to consume it. Assignment never
+    // reaches here: it lowers through visitAssignment.
     const fnEntry = typeInfo.overload?.fnEntry;
     if (fnEntry) {
       if (fnEntry.isAsync) {
@@ -419,11 +418,13 @@ export class ExprCompiler implements ExprVisitor<void> {
       // Field assignment: object.field = value
       const fieldId = this.context.typeEnv.get(expr.target.nodeId)?.fieldId;
       if (fieldId !== undefined) {
-        // Id-based store. Deep-copy the value first to preserve the brain's struct
-        // value-semantics (STRUCT_DEEP_COPY is a runtime no-op for non-structs), then
-        // store by numeric id. STRUCT_SET_FIELD pops [struct, value].
+        // Id-based store. Convert the value into the field's type if inference
+        // annotated a conversion, deep-copy it to preserve the brain's struct
+        // value-semantics (STRUCT_DEEP_COPY is a runtime no-op for non-structs),
+        // then store by numeric id. STRUCT_SET_FIELD pops [struct, value].
         acceptExprVisitor(expr.target.object, this);
         acceptExprVisitor(expr.value, this);
+        this.emitConversionIfNeeded(expr.value.nodeId);
         this.emitter.structDeepCopy();
         this.emitter.structSetField(fieldId);
       } else {
@@ -432,6 +433,7 @@ export class ExprCompiler implements ExprVisitor<void> {
         acceptExprVisitor(expr.target.object, this);
         this.pushStringConstant(expr.target.accessor.fieldName);
         acceptExprVisitor(expr.value, this);
+        this.emitConversionIfNeeded(expr.value.nodeId);
         this.emitter.setField();
       }
     } else {
@@ -443,8 +445,10 @@ export class ExprCompiler implements ExprVisitor<void> {
       const varName = expr.target.tileDef.varName;
       const varNameIdx = this.getOrCreateVariableIndex(varName);
 
-      // Emit value expression (pushes result onto stack)
+      // Emit value expression (pushes result onto stack), converting it into
+      // the variable's type if inference annotated a conversion
       acceptExprVisitor(expr.value, this);
+      this.emitConversionIfNeeded(expr.value.nodeId);
 
       // Duplicate the value so assignment returns it
       this.emitter.dup();
