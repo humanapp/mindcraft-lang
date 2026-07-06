@@ -7,6 +7,7 @@ import {
   type ITypeRegistry,
   NativeType,
   type StructTypeDef,
+  type TypeId,
 } from "../../runtime";
 import type { IBrainTileDef, ITileCatalog } from "../interfaces";
 import type { BrainTileParameterDef } from "../tiles";
@@ -94,39 +95,61 @@ class InferredTypeVisitor implements ExprVisitor<void> {
     const parmTileDef = tileDef as BrainTileParameterDef;
     const slotTileType = parmTileDef.dataType;
 
-    // If this slot is part of a choice group, check if the type matches any option in the choice
-    if (slotDef.choiceGroup !== undefined) {
-      // Find all slots in this choice group
-      const choiceSlots = argSlots.filter((s) => s.choiceGroup === slotDef.choiceGroup);
-
-      // Check if any choice option accepts this type
-      let matchFound = false;
-      choiceSlots.forEach((choiceSlot) => {
-        const choiceTileDef = this.findTileDefById(choiceSlot.argSpec.tileId);
-        if (choiceTileDef && choiceTileDef.kind === "parameter") {
-          const choiceParmTileDef = choiceTileDef as BrainTileParameterDef;
-          if (typeInfo.inferred === choiceParmTileDef.dataType) {
-            matchFound = true;
-          }
+    // An anonymous slot in a choice group settles against the whole option
+    // set: an exact option match wins, otherwise the first option (in
+    // declaration order) reachable via a registered conversion takes the
+    // value with that conversion, otherwise the fill is a type mismatch.
+    if (slotDef.choiceGroup !== undefined && slotDef.argSpec.anonymous) {
+      // The group's anonymous options, in declaration order, with their types.
+      const options: { slot: BrainActionArgSlot; dataType: TypeId }[] = [];
+      argSlots.forEach((s) => {
+        if (s.choiceGroup !== slotDef.choiceGroup || !s.argSpec.anonymous) return;
+        const td = this.findTileDefById(s.argSpec.tileId);
+        if (td && td.kind === "parameter") {
+          options.push({ slot: s, dataType: (td as BrainTileParameterDef).dataType });
         }
       });
 
-      if (!matchFound) {
-        const expectedTypes: string[] = [];
-        choiceSlots.forEach((s) => {
-          const td = this.findTileDefById(s.argSpec.tileId);
-          if (td && td.kind === "parameter") {
-            expectedTypes.push((td as BrainTileParameterDef).dataType);
-          } else {
-            expectedTypes.push("invalid choice option"); // to indicate an invalid choice option
-          }
-        });
-        this.diags.push({
-          code: TypeDiagCode.DataTypeMismatch,
-          nodeId: slotEntry.expr.nodeId,
-          message: `${context} ${slotType} slot type mismatch: expected ${expectedTypes.join(" or ")}, got ${typeInfo.inferred}`,
-        });
+      // Exact option match wins; the value moves to that option's slot.
+      for (const option of options) {
+        if (typeInfo.inferred === option.dataType) {
+          slotEntry.slotId = option.slot.slotId;
+          return;
+        }
       }
+
+      // First conversion-reachable option in declaration order.
+      for (const option of options) {
+        const convPath = this.conversions.findBestPath(typeInfo.inferred, option.dataType, 1);
+        if (convPath && convPath.size() > 0) {
+          const conversion = convPath.get(0);
+          slotEntry.slotId = option.slot.slotId;
+          typeInfo.conversion = conversion;
+          this.diags.push({
+            code: TypeDiagCode.DataTypeConverted,
+            nodeId: slotEntry.expr.nodeId,
+            message: `Applied conversion from ${typeInfo.inferred} to ${option.dataType} for ${context} ${slotType} slot (cost: ${conversion.cost})`,
+          });
+          return;
+        }
+      }
+
+      // No option matches exactly or via conversion.
+      const expectedTypes: string[] = [];
+      argSlots.forEach((s) => {
+        if (s.choiceGroup !== slotDef.choiceGroup) return;
+        const td = this.findTileDefById(s.argSpec.tileId);
+        if (td && td.kind === "parameter") {
+          expectedTypes.push((td as BrainTileParameterDef).dataType);
+        } else {
+          expectedTypes.push("invalid choice option"); // to indicate an invalid choice option
+        }
+      });
+      this.diags.push({
+        code: TypeDiagCode.DataTypeMismatch,
+        nodeId: slotEntry.expr.nodeId,
+        message: `${context} ${slotType} slot type mismatch: expected ${expectedTypes.join(" or ")}, got ${typeInfo.inferred}`,
+      });
     } else if (typeInfo.inferred !== slotTileType) {
       // Non-choice slot: try conversion before reporting mismatch
       const convPath = this.conversions.findBestPath(typeInfo.inferred, slotTileType, 1);

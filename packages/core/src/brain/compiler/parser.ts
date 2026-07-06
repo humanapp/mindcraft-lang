@@ -578,7 +578,14 @@ class BrainParser {
   }
 
   /**
-   * Parse exactly one of the options
+   * Parse exactly one of the options.
+   *
+   * Options are first tried with the choice type filter, so a value whose
+   * type names one option lands in that option's slot. When no option matches
+   * under the filter, an outermost choice retries its options with the filter
+   * off: the value lands in the first anonymous option's slot, and type
+   * inference then settles the option -- converting the value into the first
+   * conversion-reachable option or reporting the type mismatch.
    */
   private parseChoiceSpec(
     spec: BrainActionCallSpec & { type: "choice" },
@@ -591,6 +598,16 @@ class BrainParser {
     for (const option of spec.options) {
       if (this.tryParseWithBacktrack(option, choiceOpts, ctx, outerCtx)) {
         return true;
+      }
+    }
+
+    // A nested choice keeps its enclosing choice's filter: the retry belongs
+    // to the outermost choice only.
+    if (!opts.choiceTypeFilter) {
+      for (const option of spec.options) {
+        if (this.tryParseWithBacktrack(option, opts, ctx, outerCtx)) {
+          return true;
+        }
       }
     }
 

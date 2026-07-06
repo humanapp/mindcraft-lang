@@ -4584,3 +4584,118 @@ describe("Rule hierarchy gate derivation", () => {
     );
   });
 });
+
+// ---- Multi-anonymous-slot action calls ----
+
+describe("Multi-anonymous-slot action calls", () => {
+  /** Actuator with two anonymous Number slots (both slots share the anon Number arg tile). */
+  let steerDef: BrainTileActuatorDef;
+  /** Inline no-arg value sensor returning a struct with a Number field. */
+  let axisSensorDef: BrainTileSensorDef;
+  /** Accessor for the struct's Number field. */
+  let accAxisDef: BrainTileAccessorDef;
+  /** Registered Number variable, the probe for second-slot value offers. */
+  let axisVarDef: BrainTileVariableDef;
+
+  before(() => {
+    const steerFn = services.runtime.functions.register(
+      4370,
+      "test-steer",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(
+        bag(
+          param(CoreParameterId.AnonymousNumber, { name: "x", required: true, anonymous: true }),
+          param(CoreParameterId.AnonymousNumber, { name: "y", required: true, anonymous: true })
+        )
+      )
+    );
+    steerDef = new BrainTileActuatorDef("test-steer", mkActionDescriptor("actuator", steerFn), {
+      metadata: { label: "steer" },
+    });
+    services.edit.tiles.registerTileDef(steerDef);
+
+    const axisStructTypeId = services.runtime.types.addStructType("AxisReading", {
+      atomId: mkTestAtomId(),
+      fields: List.from([{ name: "n", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+    });
+    accAxisDef = new BrainTileAccessorDef(axisStructTypeId, "n", CoreTypeIds.Number, { metadata: { label: "n" } });
+    services.edit.tiles.registerTileDef(accAxisDef);
+
+    const axisFn = services.runtime.functions.register(
+      4371,
+      "test-axis-reading",
+      false,
+      { exec: () => NIL_VALUE },
+      mkCallDef(bag())
+    );
+    axisSensorDef = new BrainTileSensorDef(
+      "test-axis-reading",
+      mkActionDescriptor("sensor", axisFn, axisStructTypeId),
+      {
+        placement: TilePlacement.EitherSide | TilePlacement.Inline,
+        metadata: { label: "axis reading" },
+      }
+    );
+    services.edit.tiles.registerTileDef(axisSensorDef);
+
+    axisVarDef = new BrainTileVariableDef("test.axisVar", "axis", CoreTypeIds.Number, "var-axis-1");
+    services.edit.tiles.registerTileDef(axisVarDef);
+  });
+
+  /** True when the tile is offered as an exact or a conversion match. */
+  function offered(result: TileSuggestionResult, tileId: string): boolean {
+    return (
+      resultContains(result, tileId) ||
+      listFind(result.withConversion, (s) => s.tileDef.tileId === tileId) !== undefined
+    );
+  }
+
+  test("literal in the first of two anonymous slots -> second-slot value tiles AND infix operators", () => {
+    const numLit = new BrainTileLiteralDef(CoreTypeIds.Number, 7, {}, services);
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([steerDef, numLit]));
+    assert.equal(expr.kind, "actuator");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+
+    assert.ok(offered(result, axisVarDef.tileId), "a Number variable should be offered for the second slot");
+    assert.ok(
+      offered(result, axisSensorDef.tileId),
+      "the struct inline sensor should be offered for the second slot (conversion via its Number field)"
+    );
+    assert.ok(
+      resultContains(result, mkOperatorTileId(CoreOpId.Add)),
+      "infix operators should extend the first slot's value"
+    );
+  });
+
+  test("accessor-refined sensor value in the first slot -> second-slot value tiles AND infix operators", () => {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([steerDef, axisSensorDef, accAxisDef]));
+    assert.equal(expr.kind, "actuator");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+
+    assert.ok(offered(result, axisVarDef.tileId), "a Number variable should be offered for the second slot");
+    assert.ok(
+      offered(result, axisSensorDef.tileId),
+      "the struct inline sensor should be offered for the second slot (conversion via its Number field)"
+    );
+    assert.ok(
+      resultContains(result, mkOperatorTileId(CoreOpId.Add)),
+      "infix operators should extend the first slot's value"
+    );
+  });
+
+  test("both anonymous slots filled -> only infix continuation, no value tiles", () => {
+    const numLit7 = new BrainTileLiteralDef(CoreTypeIds.Number, 7, {}, services);
+    const numLit9 = new BrainTileLiteralDef(CoreTypeIds.Number, 9, {}, services);
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([steerDef, numLit7, numLit9]));
+    assert.equal(expr.kind, "actuator");
+    assert.equal((expr as ActuatorExpr).anons.size(), 2, "the parser fills both anonymous slots");
+
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+    assert.ok(!offered(result, axisVarDef.tileId), "no value tile once every slot is filled");
+    assert.ok(
+      resultContains(result, mkOperatorTileId(CoreOpId.Add)),
+      "infix operators still extend the trailing value"
+    );
+  });
+});

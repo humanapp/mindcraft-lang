@@ -70,7 +70,9 @@ import {
 import {
   bag,
   CoreOpId,
+  CoreParameterId,
   CoreTypeIds,
+  choice,
   type IConversionRegistry,
   mkActionDescriptor,
   mkCallDef,
@@ -93,6 +95,10 @@ let services: BrainServices;
 let vecTypeId: TypeId;
 /** Struct type with a single Number field. */
 let rawTypeId: TypeId;
+/** Struct type with a Number field and a registered conversion to Buffer. */
+let sigTypeId: TypeId;
+/** Struct type whose only field is a struct: no primitive option reaches it. */
+let opaqueTypeId: TypeId;
 
 const probeTiles = {} as {
   numVar: BrainTileVariableDef;
@@ -129,6 +135,18 @@ const probeTiles = {} as {
   driveMod: BrainTileModifierDef;
   /** DO-side actuator with no arguments. */
   beepActuator: BrainTileActuatorDef;
+  /** Variable of the Buffer-convertible struct type. */
+  sigVar: BrainTileVariableDef;
+  /** Accessor for the Buffer-convertible struct's Number field. */
+  accSigX: BrainTileAccessorDef;
+  /** Inline no-arg value sensor returning the Buffer-convertible struct type. */
+  sigSensor: BrainTileSensorDef;
+  /** Variable of the struct type no choice option reaches. */
+  opaqueVar: BrainTileVariableDef;
+  /** DO-side actuator with one optional anonymous choice slot (Number, String, Boolean, or Buffer). */
+  sendActuator: BrainTileActuatorDef;
+  /** DO-side actuator with two anonymous Number slots sharing the anon Number arg tile. */
+  steerActuator: BrainTileActuatorDef;
 };
 
 const PROBE_CAPABILITY_BIT = 8;
@@ -275,6 +293,83 @@ function registerProbeTiles(): void {
     metadata: { label: "beep" },
   });
 
+  sigTypeId = types.addStructType("ProbeSig", {
+    atomId: 20003,
+    fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+  });
+  opaqueTypeId = types.addStructType("ProbeOpaque", {
+    atomId: 20004,
+    fields: List.from([{ name: "raw", typeId: rawTypeId, fieldIndex: 0 }]),
+  });
+  probeTiles.accSigX = new BrainTileAccessorDef(sigTypeId, "x", CoreTypeIds.Number, { metadata: { label: "sig x" } });
+  probeTiles.sigVar = new BrainTileVariableDef("probe.sigVar", "sig", sigTypeId, "probe-var-sig");
+  probeTiles.opaqueVar = new BrainTileVariableDef("probe.opaqueVar", "opaque", opaqueTypeId, "probe-var-opaque");
+
+  const sigSensorFn = fns.register(4110, "probe-sig-read", false, { exec: () => NIL_VALUE }, mkCallDef(bag()));
+  probeTiles.sigSensor = new BrainTileSensorDef(
+    "probe-sig-read",
+    mkActionDescriptor("sensor", sigSensorFn, sigTypeId),
+    {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      metadata: { label: "sig reading" },
+    }
+  );
+
+  // Host-fn struct -> Buffer conversion, so choice fills of the sig type link
+  // through the real pipeline.
+  services.shared.conversions.register({
+    id: 4210,
+    fromType: sigTypeId,
+    toType: CoreTypeIds.Buffer,
+    cost: 2,
+    fn: { exec: () => NIL_VALUE },
+  });
+
+  // The radio-send shape: one optional anonymous value slot over a choice of
+  // Number, String, Boolean, and Buffer options.
+  const bufferParam = new BrainTileParameterDef("probe.buffer", CoreTypeIds.Buffer, { hidden: true });
+  tiles.registerTileDef(bufferParam);
+  const sendFn = fns.register(
+    4111,
+    "probe-send",
+    false,
+    { exec: () => VOID_VALUE },
+    mkCallDef(
+      bag(
+        optional(
+          choice(
+            param(CoreParameterId.AnonymousNumber, { anonymous: true }),
+            param(CoreParameterId.AnonymousString, { anonymous: true }),
+            param(CoreParameterId.AnonymousBoolean, { anonymous: true }),
+            param("probe.buffer", { anonymous: true })
+          )
+        )
+      )
+    )
+  );
+  probeTiles.sendActuator = new BrainTileActuatorDef("probe-send", mkActionDescriptor("actuator", sendFn), {
+    metadata: { label: "send" },
+  });
+
+  // Two required anonymous Number slots: both arg nodes reference the same
+  // anon Number parameter tile, so the slots are distinguishable only by
+  // their spec-node identity.
+  const steerFn = fns.register(
+    4112,
+    "probe-steer",
+    false,
+    { exec: () => VOID_VALUE },
+    mkCallDef(
+      bag(
+        param(CoreParameterId.AnonymousNumber, { name: "x", required: true, anonymous: true }),
+        param(CoreParameterId.AnonymousNumber, { name: "y", required: true, anonymous: true })
+      )
+    )
+  );
+  probeTiles.steerActuator = new BrainTileActuatorDef("probe-steer", mkActionDescriptor("actuator", steerFn), {
+    metadata: { label: "steer" },
+  });
+
   tiles.registerTileDef(speedParam);
   for (const def of Object.values(probeTiles)) {
     tiles.registerTileDef(def);
@@ -291,6 +386,9 @@ function registerProbeTiles(): void {
     probeTiles.echoSensor,
     probeTiles.driveActuator,
     probeTiles.beepActuator,
+    probeTiles.sigSensor,
+    probeTiles.sendActuator,
+    probeTiles.steerActuator,
   ];
   let nextActionId = TARGET_ACTION_ID_BASE + 900;
   for (const tile of actionTiles) {
@@ -517,6 +615,71 @@ function corpus(): CorpusEntry[] {
       build: () => {
         const { brain, rule } = newBrain("raw-struct-var-do");
         fill(rule, [], [t.rawVar]);
+        return brain;
+      },
+    },
+    {
+      name: "choice-slot-open",
+      build: () => {
+        const { brain, rule } = newBrain("choice-slot-open");
+        fill(rule, [], [t.sendActuator]);
+        return brain;
+      },
+    },
+    {
+      // A struct value in the choice slot, taken by the Buffer option through
+      // the registered conversion.
+      name: "choice-slot-convertible",
+      build: () => {
+        const { brain, rule } = newBrain("choice-slot-convertible");
+        fill(rule, [], [t.sendActuator, t.sigVar]);
+        return brain;
+      },
+    },
+    {
+      // The same convertible struct produced by an inline sensor.
+      name: "choice-slot-convertible-sensor",
+      build: () => {
+        const { brain, rule } = newBrain("choice-slot-convertible-sensor");
+        fill(rule, [], [t.sendActuator, t.sigSensor]);
+        return brain;
+      },
+    },
+    {
+      // An exact option match in the choice slot.
+      name: "choice-slot-exact",
+      build: () => {
+        const { brain, rule } = newBrain("choice-slot-exact");
+        fill(rule, [], [t.sendActuator, t.strLit]);
+        return brain;
+      },
+    },
+    {
+      // Two anonymous Number slots with a literal in the first: the second
+      // slot's value tiles and the infix continuation are both legal.
+      name: "two-anon-first-literal",
+      build: () => {
+        const { brain, rule } = newBrain("two-anon-first-literal");
+        fill(rule, [], [t.steerActuator, t.numLit]);
+        return brain;
+      },
+    },
+    {
+      // The first anonymous slot holds an accessor-refined inline-sensor
+      // value ([vec reading][x] -> Number).
+      name: "two-anon-first-accessor",
+      build: () => {
+        const { brain, rule } = newBrain("two-anon-first-accessor");
+        fill(rule, [], [t.steerActuator, t.vecSensor, t.accX]);
+        return brain;
+      },
+    },
+    {
+      // Both anonymous slots filled: only the infix continuation remains.
+      name: "two-anon-complete",
+      build: () => {
+        const { brain, rule } = newBrain("two-anon-complete");
+        fill(rule, [], [t.steerActuator, t.numLit, t.numLit]);
         return brain;
       },
     },
@@ -812,9 +975,11 @@ function completionKit(): IBrainTileDef[] {
     probeTiles.boolLit,
     probeTiles.vecVar,
     probeTiles.rawVar,
+    probeTiles.sigVar,
     probeTiles.accX,
     probeTiles.accLabel,
     probeTiles.accRawX,
+    probeTiles.accSigX,
     closeParen,
   ];
 }
@@ -1031,12 +1196,26 @@ function listAcceptance(pos: Position, mutated: List<IBrainTileDef>, insertPoint
  * are tried both directly after the inserted tile (a prefix operator or a
  * struct value needs its continuation there) and at the end of the side (an
  * open group or trailing operator is finished there).
+ *
+ * An inserted open paren gets a second witness with its group seeded closed
+ * (`( 7 )`): the group alone consumes the two-tile completion depth, so a
+ * position whose remaining slots need further tiles would otherwise be
+ * judged rejected.
  */
 function insertionAcceptance(pos: Position, tile: IBrainTileDef): Acceptance {
   const mutated = mutatedSide(pos, tile);
   const afterTile = (pos.replaceIndex ?? mutated.size() - 1) + 1;
   const points = afterTile === mutated.size() ? [afterTile] : [afterTile, mutated.size()];
-  return listAcceptance(pos, mutated, points);
+  const direct = listAcceptance(pos, mutated, points);
+  if (direct.status !== "rejected") return direct;
+  if (tile.tileId === mkControlFlowTileId(CoreControlFlowId.OpenParen)) {
+    const closeParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
+    const seeded = mutatedSide(pos, tile);
+    seeded.insert(afterTile, probeTiles.numLit);
+    seeded.insert(afterTile + 1, closeParen);
+    return listAcceptance(pos, seeded, [seeded.size()]);
+  }
+  return direct;
 }
 
 // ---- Normalization rules ----
@@ -1096,9 +1275,15 @@ function isAccessorBaseReplacement(pos: Position): boolean {
   return pos.replaceIndex + 1 < tiles.size() && tiles.get(pos.replaceIndex + 1).kind === "accessor";
 }
 
-/** True for tile kinds the picker offers as expression starts (value tiles). */
-function isValueStartKind(tile: IBrainTileDef): boolean {
-  return tile.kind === "literal" || tile.kind === "variable" || tile.kind === "output" || tile.kind === "sensor";
+/** True for tiles the picker offers as value-expression starts: value tiles and the open paren (a grouped value start). */
+function isValueStartTile(tile: IBrainTileDef): boolean {
+  return (
+    tile.kind === "literal" ||
+    tile.kind === "variable" ||
+    tile.kind === "output" ||
+    tile.kind === "sensor" ||
+    tile.tileId === mkControlFlowTileId(CoreControlFlowId.OpenParen)
+  );
 }
 
 /** Acceptance of the insertion judged on the prefix through the inserted tile only, for replacement shapes whose suffix legitimately breaks. */
@@ -1198,7 +1383,7 @@ function auditPosition(pos: Position, discrepancies: Discrepancy[]): void {
         continue;
       }
       if (namedArgOfEnclosingCall(tile, pos)) continue;
-      if (isAccessorBaseReplacement(pos) && isValueStartKind(tile)) continue;
+      if (isAccessorBaseReplacement(pos) && isValueStartTile(tile)) continue;
       if (insertionAcceptance(pos, tile).status === "rejected") {
         if (isRootActionHeadReplacement(pos) || isParenReplacement(pos)) {
           if (prefixAcceptance(pos, tile).status !== "rejected") continue;

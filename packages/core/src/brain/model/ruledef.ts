@@ -177,8 +177,9 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   typecheck(): void {
-    // Compile this rule if either side is dirty
-    if (this.when_.isDirty() || this.do_.isDirty()) {
+    // Compile this rule if either side is dirty or has never been typechecked
+    // (e.g. a freshly deserialized rule).
+    if (this.when_.isDirty() || this.do_.isDirty() || !this.when_.typecheckResult() || !this.do_.typecheckResult()) {
       const catalogs = this.gatherCatalogs();
       const whenTiles = this.when_.tiles();
       const doTiles = this.do_.tiles();

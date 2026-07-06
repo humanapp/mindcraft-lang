@@ -2,6 +2,7 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { UniqueSet } from "../../platform/uniqueset";
 import {
   type BrainActionArgSlot,
+  type BrainActionCallArgSpec,
   type BrainActionCallSpec,
   CoreOpId,
   CoreTypeIds,
@@ -426,14 +427,17 @@ function countSlotFills(slotId: number, filledSlotIds: ReadonlyList<number>): nu
 }
 
 /**
- * Finds the BrainActionArgSlot for a given tileId in the flat argSlots list.
+ * Finds the BrainActionArgSlot for an arg node of the call spec tree. Slots
+ * are matched by spec-node identity: several arg nodes in one call spec may
+ * reference the same arg tile (e.g. two anonymous Number params), and each
+ * has its own slot.
  */
-function findArgSlotByTileId(
-  tileId: string,
+function findArgSlotBySpec(
+  spec: BrainActionCallArgSpec,
   argSlots: ReadonlyList<BrainActionArgSlot>
 ): BrainActionArgSlot | undefined {
   for (let i = 0; i < argSlots.size(); i++) {
-    if (argSlots.get(i).argSpec.tileId === tileId) return argSlots.get(i);
+    if (argSlots.get(i).argSpec === spec) return argSlots.get(i);
   }
   return undefined;
 }
@@ -448,7 +452,7 @@ function specHasAnyFill(
 ): boolean {
   switch (spec.type) {
     case "arg": {
-      const slot = findArgSlotByTileId(spec.tileId, argSlots);
+      const slot = findArgSlotBySpec(spec, argSlots);
       return slot !== undefined && isSlotFilled(slot.slotId, filledSlotIds);
     }
     case "seq":
@@ -531,7 +535,7 @@ function hasUnfilledRequiredArg(
   switch (spec.type) {
     case "arg": {
       if (spec.required === false) return false;
-      const slot = findArgSlotByTileId(spec.tileId, argSlots);
+      const slot = findArgSlotBySpec(spec, argSlots);
       return slot !== undefined && !isSlotFilled(slot.slotId, filledSlotIds);
     }
     case "seq":
@@ -590,7 +594,7 @@ function collectAvailableArgSlots(
 ): void {
   switch (spec.type) {
     case "arg": {
-      const slot = findArgSlotByTileId(spec.tileId, argSlots);
+      const slot = findArgSlotBySpec(spec, argSlots);
       if (slot === undefined) break;
       const fillCount = countSlotFills(slot.slotId, filledSlotIds);
       // Available if under the repeat max (undefined = no limit)
@@ -823,33 +827,47 @@ function collectActionCallExpectedTypes(
     const anonExpr = actionExpr.anons.get(i).expr;
     const slotId = actionExpr.anons.get(i).slotId;
 
-    // Find the slot's expected type from the call def
-    let slotExpectedType: TypeId | undefined;
+    // The types the slot accepts: its own parameter type, plus every sibling
+    // anonymous option's type when the slot belongs to a choice group (the
+    // compiler settles a choice fill against the whole option set).
+    const slotAcceptedTypes = List.empty<TypeId>();
     for (let j = 0; j < callDef.argSlots.size(); j++) {
       if (callDef.argSlots.get(j).slotId === slotId) {
-        const argTileDef = findTileInCatalogs(callDef.argSlots.get(j).argSpec.tileId, catalogs);
+        const slotDef = callDef.argSlots.get(j);
+        const argTileDef = findTileInCatalogs(slotDef.argSpec.tileId, catalogs);
         if (argTileDef && argTileDef.kind === "parameter") {
-          slotExpectedType = (argTileDef as BrainTileParameterDef).dataType;
+          slotAcceptedTypes.push((argTileDef as BrainTileParameterDef).dataType);
+        }
+        if (slotDef.choiceGroup !== undefined) {
+          for (let k = 0; k < callDef.argSlots.size(); k++) {
+            const sibling = callDef.argSlots.get(k);
+            if (sibling.choiceGroup !== slotDef.choiceGroup || sibling.slotId === slotId) continue;
+            if (!sibling.argSpec.anonymous) continue;
+            const siblingTileDef = findTileInCatalogs(sibling.argSpec.tileId, catalogs);
+            if (siblingTileDef && siblingTileDef.kind === "parameter") {
+              slotAcceptedTypes.push((siblingTileDef as BrainTileParameterDef).dataType);
+            }
+          }
         }
         break;
       }
     }
-    if (slotExpectedType === undefined) continue;
+    if (slotAcceptedTypes.size() === 0) continue;
 
     // Incomplete value -- user is building an expression
     if (anonExpr.kind !== "empty" && anonExpr.kind !== "errorExpr" && !isCompleteValueExpr(anonExpr)) {
-      expectedTypes.push(slotExpectedType);
+      expectedTypes.push(...slotAcceptedTypes.toArray());
       continue;
     }
 
     // Struct-pending-accessor: complete value whose type is a struct that
-    // doesn't match the expected type -- user needs to apply accessor tiles.
+    // doesn't match any accepted type -- user needs to apply accessor tiles.
     if (isCompleteValueExpr(anonExpr)) {
       const outputType = getExprOutputType(anonExpr);
-      if (outputType !== undefined && outputType !== slotExpectedType) {
+      if (outputType !== undefined && !slotAcceptedTypes.contains(outputType)) {
         const typeDef = types.get(outputType);
         if (typeDef && typeDef.coreType === NativeType.Struct) {
-          expectedTypes.push(slotExpectedType);
+          expectedTypes.push(...slotAcceptedTypes.toArray());
         }
       }
     }
@@ -1827,6 +1845,7 @@ export function suggestTiles(
         // Slots or parameter values still missing -- suggest call spec tiles
         suggestActionCallTiles(
           expr,
+          expr.span.to,
           context.ruleSide,
           catalogs,
           conversions,
@@ -1899,6 +1918,7 @@ export function suggestTiles(
         if (needsSlots) {
           suggestActionCallTiles(
             innerExpr,
+            expr.span.to,
             context.ruleSide,
             catalogs,
             conversions,
@@ -2811,6 +2831,7 @@ function suggestForReplacementRole(
     case "actionCallArg": {
       suggestActionCallTiles(
         role.actionExpr,
+        context.replaceTileIndex ?? role.actionExpr.span.to,
         context.ruleSide,
         catalogs,
         conversions,
@@ -2853,9 +2874,16 @@ function suggestForReplacementRole(
  * respecting grammar constraints (choice exclusion, repeat cardinality,
  * conditional dependencies). Also identifies anonymous slots needing value
  * expressions and parameters whose value is still incomplete.
+ *
+ * `insertionTileIndex` is the flat tile index the suggestion is for (the
+ * append index, or the replaced tile's index). When a complete slot value
+ * ends exactly there, prefix operators are not offered: the parser binds an
+ * operator token at that position to the preceding value expression, so a
+ * prefix operator cannot start the next slot's value.
  */
 function suggestActionCallTiles(
   actionExpr: ActuatorExpr | SensorExpr,
+  insertionTileIndex: number,
   ruleSide: RuleSide,
   catalogs: ReadonlyList<ITileCatalog>,
   conversions: IConversionRegistry,
@@ -2978,8 +3006,12 @@ function suggestActionCallTiles(
       availableCapabilities,
       availableOutputKeys
     );
-    // Prefix operators can start value sub-expressions (e.g., [negative] [1]).
-    suggestPrefixOperatorsForValue(ruleSide, catalogs, valueExpectedTypes, result, availableCapabilities);
+    // Prefix operators can start value sub-expressions (e.g., [negative] [1]),
+    // but not directly after a complete slot value: the parser reads the
+    // operator as a continuation of that value.
+    if (slotValueEndingAt(actionExpr, insertionTileIndex) === undefined) {
+      suggestPrefixOperatorsForValue(ruleSide, catalogs, valueExpectedTypes, result, availableCapabilities);
+    }
     // Open paren can start a grouped sub-expression (e.g., [duration] [(] [1] [+] [2] [)]).
     suggestOpenParen(ruleSide, catalogs, result);
   }
