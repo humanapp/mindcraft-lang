@@ -1,7 +1,7 @@
 /**
  * Entry-module publication and cross-project type resolution: public
  * `<namespace>::<name>` keys alias private registrations (one type id per
- * declaration), `@ext/<slug>` imports resolve to a dependency's entry module,
+ * declaration), `@ext/<owner>/<repo>` imports resolve to a dependency's entry module,
  * every name surface resolves an extension-imported type to the DECLARING
  * project's key, and the publication diagnostics (deep import, multiple
  * published names, unpublished type reference) emit precisely. The
@@ -40,8 +40,8 @@ import { MultiRootSession, type ProjectRoot } from "./project-set.js";
 import { publicSymbolKey, qualifiedClassName } from "./symbol-keys.js";
 import type { CompileDiagnostic, UserAuthoredProgram } from "./types.js";
 
-const POSITION_NS = "gh:acme/position";
-const GAMEPAD_NS = "gh:acme/gamepad";
+const POSITION_NS = "acme/position";
+const GAMEPAD_NS = "acme/gamepad";
 const HOST_NS = "host-store-0001";
 
 const POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "mindcraft";
@@ -59,7 +59,7 @@ const POSITION_ENTRY = `export { Position } from "./position";
 `;
 
 const GAMEPAD_STICK_SOURCE = `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/position";
+import { Position } from "@ext/acme/position";
 
 export default Sensor({
   name: "stick position", inline: true,
@@ -83,7 +83,7 @@ export const Seen = System({
 `;
 
 const HOST_MOVE_SOURCE = `import { Actuator, param, type Context } from "mindcraft";
-import { Position } from "@ext/position";
+import { Position } from "@ext/acme/position";
 import { Seen } from "./seen";
 
 export default Actuator({
@@ -112,8 +112,8 @@ function files(entries: Record<string, string>): ReadonlyMap<string, string> {
   return new Map(Object.entries(entries));
 }
 
-function dep(slug: string, namespace: string): ProjectDependency {
-  return { slug, namespace };
+function dep(coordinate: string): ProjectDependency {
+  return { coordinate };
 }
 
 function positionRoot(): ProjectRoot {
@@ -264,7 +264,7 @@ describe("entry-module publication", () => {
 
   test("every name-keyed kind publishes: enum, class, interface, type alias, StructType", () => {
     const { services, session } = newSession();
-    const ns = "gh:acme/kinds";
+    const ns = "acme/kinds";
     session.setRoots([
       {
         namespace: ns,
@@ -317,9 +317,9 @@ export const Vec = StructType({
         namespace: GAMEPAD_NS,
         files: files({
           "stick.ts": GAMEPAD_STICK_SOURCE,
-          "index.ts": `export { Position } from "@ext/position";\n`,
+          "index.ts": `export { Position } from "@ext/acme/position";\n`,
         }),
-        dependencies: [dep("position", POSITION_NS)],
+        dependencies: [dep(POSITION_NS)],
       },
     ]);
     const { roots } = session.compile();
@@ -374,7 +374,7 @@ describe("publication diagnostics", () => {
 
   test("a published type referencing an unpublished own type is rejected with the export-it fix", () => {
     const { session } = newSession();
-    const ns = "gh:acme/closure";
+    const ns = "acme/closure";
     session.setRoots([
       {
         namespace: ns,
@@ -406,7 +406,7 @@ export const Outer = StructType({
 
   test("a publishing project's tile referencing an unpublished own type is rejected at the tile", () => {
     const { session } = newSession();
-    const ns = "gh:acme/tile-closure";
+    const ns = "acme/tile-closure";
     session.setRoots([
       {
         namespace: ns,
@@ -444,7 +444,7 @@ export default Sensor({
   });
 
   test("a published System whose state references an unpublished type is rejected; exporting the type fixes it", () => {
-    const ns = "gh:acme/system-closure";
+    const ns = "acme/system-closure";
     const stateSource = (exportHidden: string) => `import { NumberType, StructType, System } from "mindcraft";
 
 ${exportHidden}const Hidden = StructType({
@@ -487,9 +487,9 @@ export const Nav = System({
 
   test("referencing another root's unpublished type is rejected; its published types are fine", () => {
     const { session } = newSession();
-    const consumerNs = "gh:acme/consumer";
+    const consumerNs = "acme/consumer";
     const consumerSource = `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/position";
+import { Position } from "@ext/acme/position";
 
 export default Sensor({
   name: "secret probe",
@@ -518,7 +518,7 @@ export const Secret = StructType({
       {
         namespace: consumerNs,
         files: files({ "probe.ts": consumerSource, "index.ts": `export {};\n` }),
-        dependencies: [dep("position", POSITION_NS)],
+        dependencies: [dep(POSITION_NS)],
       },
     ]);
     const { roots } = session.compile();
@@ -532,14 +532,14 @@ export const Secret = StructType({
 
   test("a deep extension import is rejected with the entry-surface fix", () => {
     const { session } = newSession();
-    const consumerNs = "gh:acme/deep";
+    const consumerNs = "acme/deep";
     session.setRoots([
       positionRoot(),
       {
         namespace: consumerNs,
         files: files({
           "main.ts": `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/position/position";
+import { Position } from "@ext/acme/position/position";
 
 export default Sensor({
   name: "deep probe",
@@ -551,16 +551,51 @@ export default Sensor({
 });
 `,
         }),
-        dependencies: [dep("position", POSITION_NS)],
+        dependencies: [dep(POSITION_NS)],
       },
     ]);
     const { roots } = session.compile();
     const diags = diagnosticsOf(roots.get(consumerNs)!, "main.ts");
     assert.equal(diags.length, 1, JSON.stringify(diags));
     assert.equal(diags[0].code, CompileDiagCode.ExtensionDeepImport);
-    assert.match(diags[0].message, /"@ext\/position\/position"/);
-    assert.match(diags[0].message, /import the extension's published surface from "@ext\/position"/i);
+    assert.match(diags[0].message, /"@ext\/acme\/position\/position"/);
+    assert.match(diags[0].message, /import the extension's published surface from "@ext\/acme\/position"/i);
     assert.ok(diags[0].line, "the diagnostic carries the import's source span");
+  });
+
+  test("a single-segment extension import names no coordinate and fails to resolve", () => {
+    const { session } = newSession();
+    const consumerNs = "acme/single";
+    session.setRoots([
+      positionRoot(),
+      {
+        namespace: consumerNs,
+        files: files({
+          "main.ts": `import { Sensor, type Context } from "mindcraft";
+import { Position } from "@ext/position";
+
+export default Sensor({
+  name: "single probe",
+  id: "singleProbe00001",
+  returnType: Position,
+  onExecute(ctx: Context): Position {
+    return Position({ x: 1, y: 2 });
+  },
+});
+`,
+        }),
+        dependencies: [dep(POSITION_NS)],
+      },
+    ]);
+    const { roots } = session.compile();
+    // A one-segment specifier is not an extension coordinate: it does not
+    // resolve to the mounted dependency and surfaces as an ordinary
+    // module-not-found TypeScript error, never a silent success.
+    const tsErrors = roots.get(consumerNs)!.tsErrors.get("main.ts") ?? [];
+    assert.ok(
+      tsErrors.some((diag) => /Cannot find module '@ext\/position'/.test(diag.message)),
+      `expected an unresolved-module error, got ${JSON.stringify(tsErrors)}`
+    );
   });
 });
 
@@ -571,13 +606,13 @@ describe("declaring-project-aware type resolution", () => {
     result: ProjectCompileResult;
   } {
     const { services, session } = newSession();
-    const consumerNs = "gh:acme/consumer";
+    const consumerNs = "acme/consumer";
     session.setRoots([
       positionRoot(),
       {
         namespace: consumerNs,
         files: files(consumerFiles),
-        dependencies: [dep("position", POSITION_NS)],
+        dependencies: [dep(POSITION_NS)],
       },
     ]);
     const { roots } = session.compile();
@@ -596,7 +631,7 @@ describe("declaring-project-aware type resolution", () => {
   test("an anonymous param type resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "reader.ts": `import { Sensor, param, type Context } from "mindcraft";
-import { Position } from "@ext/position";
+import { Position } from "@ext/acme/position";
 
 export default Sensor({
   name: "read x",
@@ -617,7 +652,7 @@ export default Sensor({
   test("a declared output type resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "spotter.ts": `import { Sensor, setOutput, type Context } from "mindcraft";
-import { Position } from "@ext/position";
+import { Position } from "@ext/acme/position";
 
 export default Sensor({
   name: "spotter",
@@ -640,7 +675,7 @@ export default Sensor({
   test("consumesWhenResult resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "chase.ts": `import { Actuator, type Context } from "mindcraft";
-import { Position } from "@ext/position";
+import { Position } from "@ext/acme/position";
 
 export default Actuator({
   name: "chase",
@@ -658,7 +693,7 @@ export default Actuator({
   test("a StructType field typed by an extension import resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "track.ts": `import { NumberType, Sensor, StructType, type Context, type StructOf } from "mindcraft";
-import { Position } from "@ext/position";
+import { Position } from "@ext/acme/position";
 
 export const Track = StructType({
   name: "track",
@@ -687,7 +722,7 @@ export default Sensor({
   test("a System state field typed by an extension import resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "nav.ts": `import { Sensor, System, type Context } from "mindcraft";
-import { Position } from "@ext/position";
+import { Position } from "@ext/acme/position";
 
 const Nav = System({
   name: "nav",
@@ -711,7 +746,7 @@ export default Sensor({
   test("a Conversion from-type resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "pos-to-buffer.ts": `import { BufferType, Conversion } from "mindcraft";
-import { Position } from "@ext/position";
+import { Position } from "@ext/acme/position";
 
 export default Conversion({
   id: "convPosBuf000001",
@@ -729,21 +764,21 @@ export default Conversion({
     assert.equal(program.conversion?.fromType, positionTypeId(services));
   });
 
-  test("two consumers naming the same dependency by different slugs resolve one type", () => {
+  test("two consumers importing the same dependency by its coordinate resolve one type", () => {
     const { services, session } = newSession();
-    const otherNs = "gh:acme/other";
+    const otherNs = "acme/other";
     session.setRoots([
       positionRoot(),
       {
         namespace: GAMEPAD_NS,
         files: files({ "stick.ts": GAMEPAD_STICK_SOURCE }),
-        dependencies: [dep("position", POSITION_NS)],
+        dependencies: [dep(POSITION_NS)],
       },
       {
         namespace: otherNs,
         files: files({
           "probe.ts": `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/pos";
+import { Position } from "@ext/acme/position";
 
 export default Sensor({
   name: "other probe",
@@ -755,7 +790,7 @@ export default Sensor({
 });
 `,
         }),
-        dependencies: [dep("pos", POSITION_NS)],
+        dependencies: [dep(POSITION_NS)],
       },
     ]);
     const { roots } = session.compile();
@@ -777,12 +812,12 @@ describe("cross-project composition end to end", () => {
       {
         namespace: GAMEPAD_NS,
         files: files({ "stick.ts": GAMEPAD_STICK_SOURCE }),
-        dependencies: [dep("position", POSITION_NS)],
+        dependencies: [dep(POSITION_NS)],
       },
       {
         namespace: HOST_NS,
         files: files({ "seen.ts": HOST_SEEN_SOURCE, "move.ts": HOST_MOVE_SOURCE, "read.ts": HOST_READ_SOURCE }),
-        dependencies: [dep("position", POSITION_NS), dep("gamepad", GAMEPAD_NS)],
+        dependencies: [dep(POSITION_NS), dep(GAMEPAD_NS)],
       },
     ]);
     const { roots } = session.compile();

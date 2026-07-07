@@ -307,9 +307,9 @@ export interface CreateProjectCompilerOptions {
   projectNamespace: string;
   /** Read-only content mounts exposed to the compiler and remote VFS peers. */
   mounts: readonly Mount[];
-  /** Extension dependencies of the project, each mapping an `@ext/<slug>` alias to a namespace. */
+  /** Extension dependencies of the project, each a `<owner>/<repo>` coordinate resolving its `@ext/<owner>/<repo>` imports. */
   dependencies?: readonly ProjectDependency[];
-  /** Read-only content of each dependency, mounted for `@ext/<slug>` resolution. */
+  /** Read-only content of each dependency, mounted for `@ext/<owner>/<repo>` resolution. */
   dependencyMounts?: readonly DependencyMount[];
   /** Read-only example projects materialized under the examples folder. */
   examples?: readonly ExampleDefinition[];

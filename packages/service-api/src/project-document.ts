@@ -35,7 +35,7 @@ export interface MindcraftProjectFile {
 /** Target metadata keyed by package name. */
 export type MindcraftProjectTargets = Readonly<Record<string, unknown>>;
 
-/** Extension dependencies keyed by slug; each value is an extension reference string. */
+/** Extension dependencies keyed by their `<owner>/<repo>` coordinate; each value is an extension reference string. */
 export type MindcraftProjectExtensions = Readonly<Record<string, string>>;
 
 /** Shared Mindcraft project document fields. */
@@ -61,7 +61,7 @@ export interface MindcraftProjectDocument {
   /** Target metadata keyed by package name. */
   readonly targets: MindcraftProjectTargets;
 
-  /** Extension dependencies keyed by slug. Absent means the project has no extensions. */
+  /** Extension dependencies keyed by their `<owner>/<repo>` coordinate. Absent means the project has no extensions. */
   readonly extensions?: MindcraftProjectExtensions;
 }
 
@@ -212,11 +212,11 @@ function readOptionalExtensions(
     return undefined;
   }
 
-  for (const [slug, reference] of Object.entries(value)) {
+  for (const [coordinate, reference] of Object.entries(value)) {
     if (typeof reference !== "string") {
       errors.push({
         code: MindcraftProjectDocumentValidationCode.INVALID_EXTENSION_REFERENCE,
-        path: `$.extensions[${JSON.stringify(slug)}]`,
+        path: `$.extensions[${JSON.stringify(coordinate)}]`,
         message: "Extension reference must be a string.",
       });
       return undefined;

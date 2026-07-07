@@ -27,6 +27,7 @@ import {
   type ProjectDependency,
   parseMountedCompilerPath,
   qualifiedDeclarationName,
+  splitExtensionSpecifier,
 } from "./extension-mounts.js";
 import type {
   CarriedPrivateFunction,
@@ -236,6 +237,8 @@ export class UserTileProject {
   private readonly _publishEntry: boolean;
   private _dependencies: readonly ProjectDependency[];
   private _dependencyMounts: readonly DependencyMount[];
+  /** Extension namespaces this project mounted at its last compile; a namespace dropped since then has its registrations torn down. */
+  private _mountedNamespaces = new Set<string>();
 
   constructor(options: UserTileProjectOptions) {
     this._ambientFiles = options.ambientFiles ?? [
@@ -252,8 +255,8 @@ export class UserTileProject {
 
   /**
    * Replace the project's extensions list and the mounted dependency content
-   * `@ext/<slug>` imports resolve against. `dependencyMounts` covers the
-   * transitive dependency closure.
+   * `@ext/<owner>/<repo>` imports resolve against. `dependencyMounts` covers
+   * the transitive dependency closure.
    */
   setDependencies(dependencies: readonly ProjectDependency[], dependencyMounts: readonly DependencyMount[]): void {
     this._dependencies = dependencies;
@@ -318,7 +321,7 @@ export class UserTileProject {
       isAmbientOrTsconfigPath(path) || stdlibWorkspacePaths.has(normalizeWorkspacePath(path));
 
     // Dependency content mounts under its namespace-derived prefix; it is
-    // compiled only when reached through an `@ext/<slug>` import. Ambient and
+    // compiled only when reached through an `@ext/<owner>/<repo>` import. Ambient and
     // tsconfig paths a dependency happens to carry are the consuming project's
     // to supply, never the dependency's.
     for (const mount of this._dependencyMounts) {
@@ -408,6 +411,17 @@ export class UserTileProject {
     const services = this._services;
     services.runtime.types.removeUserTypes(this._projectNamespace);
 
+    // A dependency mount dropped since the last compile (a re-resolution that
+    // removed an extension) leaves no type registrations behind: clear each
+    // namespace no longer in the mount set under its own namespace key.
+    const currentNamespaces = new Set(this._dependencyMounts.map((mount) => mount.namespace));
+    for (const namespace of this._mountedNamespaces) {
+      if (!currentNamespaces.has(namespace)) {
+        services.runtime.types.removeUserTypes(namespace);
+      }
+    }
+    this._mountedNamespaces = currentNamespaces;
+
     for (const compilerPath of userRootFiles) {
       const sourceFile = tsProgram.getSourceFile(compilerPath);
       if (!sourceFile) continue;
@@ -471,29 +485,33 @@ export class UserTileProject {
   }
 
   /**
-   * Resolver mapping an `@ext/<slug>` specifier to the mounted dependency's
-   * compiler-path base. A specifier in the project's own files resolves
-   * through the project's extensions list; a specifier inside a mounted
-   * dependency's files resolves through that dependency's own extensions
-   * list.
+   * Resolver mapping an `@ext/<owner>/<repo>` specifier to the mounted
+   * dependency's compiler-path base. A specifier in the project's own files
+   * resolves through the project's extensions list; a specifier inside a
+   * mounted dependency's files resolves through that dependency's own
+   * extensions list. A specifier with fewer than two coordinate segments, or
+   * one naming no listed dependency, resolves to nothing (the import surfaces
+   * later as an ordinary module-not-found diagnostic); a deeper path is
+   * rejected separately as a deep import.
    */
   private _extensionBaseResolver(): ModuleBaseResolver {
-    const ownSlugs = new Map(this._dependencies.map((dep) => [dep.slug, dep.namespace]));
-    const mountSlugs = new Map<string, Map<string, string>>();
+    const ownCoordinates = new Set(this._dependencies.map((dep) => dep.coordinate));
+    const mountCoordinates = new Map<string, Set<string>>();
     for (const mount of this._dependencyMounts) {
-      mountSlugs.set(mount.namespace, new Map((mount.dependencies ?? []).map((dep) => [dep.slug, dep.namespace])));
+      mountCoordinates.set(mount.namespace, new Set((mount.dependencies ?? []).map((dep) => dep.coordinate)));
     }
     return (specifier, containingFile) => {
       if (!specifier.startsWith(EXTENSION_IMPORT_PREFIX)) return undefined;
       const rest = specifier.slice(EXTENSION_IMPORT_PREFIX.length);
-      const slash = rest.indexOf("/");
-      const slug = slash < 0 ? rest : rest.slice(0, slash);
+      const { coordinate, deepPath } = splitExtensionSpecifier(rest);
+      if (coordinate === undefined) return undefined;
       const owner = parseMountedCompilerPath(containingFile);
-      const slugs = owner ? mountSlugs.get(owner.namespace) : ownSlugs;
-      const namespace = slugs?.get(slug);
-      if (namespace === undefined) return undefined;
-      const root = extensionMountRoot(namespace);
-      return slash < 0 ? root : `${root}${rest.slice(slash)}`;
+      const coordinates = owner ? mountCoordinates.get(owner.namespace) : ownCoordinates;
+      if (!coordinates?.has(coordinate)) return undefined;
+      // The coordinate is the dependency's namespace: symbols register and
+      // mount under the same `<owner>/<repo>` value.
+      const root = extensionMountRoot(coordinate);
+      return deepPath === undefined ? root : `${root}${deepPath}`;
     };
   }
 
@@ -912,9 +930,9 @@ function spanOfNode(
 }
 
 /**
- * Reject `@ext/<slug>/...` specifiers in the project's own files: only an
- * extension's entry surface (`@ext/<slug>`) is importable. Returns the
- * diagnostics keyed by the importing file's compiler path.
+ * Reject `@ext/<owner>/<repo>/...` specifiers in the project's own files: only
+ * an extension's entry surface (`@ext/<owner>/<repo>`) is importable. Returns
+ * the diagnostics keyed by the importing file's compiler path.
  */
 function scanExtensionDeepImports(
   tsProgram: ts.Program,
@@ -931,9 +949,8 @@ function scanExtensionDeepImports(
       const specifier = specifierNode.text;
       if (!specifier.startsWith(EXTENSION_IMPORT_PREFIX)) continue;
       const rest = specifier.slice(EXTENSION_IMPORT_PREFIX.length);
-      const slash = rest.indexOf("/");
-      if (slash < 0) continue;
-      const slug = rest.slice(0, slash);
+      const { coordinate, deepPath } = splitExtensionSpecifier(rest);
+      if (coordinate === undefined || deepPath === undefined) continue;
       let diags = byFile.get(compilerPath);
       if (!diags) {
         diags = [];
@@ -941,7 +958,7 @@ function scanExtensionDeepImports(
       }
       diags.push({
         code: CompileDiagCode.ExtensionDeepImport,
-        message: `"${specifier}" imports a module inside an extension. Import the extension's published surface from "@ext/${slug}".`,
+        message: `"${specifier}" imports a module inside an extension. Import the extension's published surface from "@ext/${coordinate}".`,
         severity: "error",
         ...spanOfNode(sourceFile, specifierNode),
       });
@@ -1895,7 +1912,7 @@ function resolveModuleSpecifier(
     const containingDir = containingFile.fileName.substring(0, containingFile.fileName.lastIndexOf("/"));
     base = resolvePath(containingDir, specifier);
   } else {
-    // A non-relative specifier addresses a dependency mount (`@ext/<slug>`),
+    // A non-relative specifier addresses a dependency mount (`@ext/<owner>/<repo>`),
     // a mounted stdlib source module, or an ambient `declare module`, which
     // is not a file and falls through to undefined.
     base = resolveModuleBase?.(specifier, containingFile.fileName) ?? `/${specifier}`;

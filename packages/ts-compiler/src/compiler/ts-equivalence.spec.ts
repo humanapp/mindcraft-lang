@@ -2329,7 +2329,7 @@ export const Outer = StructType({
     files: {},
     roots: [
       {
-        namespace: "corpus-deep-lib",
+        namespace: "corpus/deep-lib",
         files: new Map([
           ["position.ts", CORPUS_POSITION_SOURCE],
           ["index.ts", `export { Position } from "./position";\n`],
@@ -2341,7 +2341,7 @@ export const Outer = StructType({
           [
             "main.ts",
             `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/lib/position";
+import { Position } from "@ext/corpus/deep-lib/position";
 
 export default Sensor({
   name: "deep import probe", inline: true,
@@ -2353,7 +2353,7 @@ export default Sensor({
 `,
           ],
         ]),
-        dependencies: [{ slug: "lib", namespace: "corpus-deep-lib" }],
+        dependencies: [{ coordinate: "corpus/deep-lib" }],
       },
     ],
     observe: "corpus-deep-app",

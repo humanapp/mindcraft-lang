@@ -18,7 +18,6 @@ import { CoreTypeIds, coreModule, List } from "@mindcraft-lang/core/app";
 import { declarationMount } from "@mindcraft-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
-import { embeddedOrigin } from "./embedded-extensions.js";
 import type { StdlibImportRedirect } from "./stdlib-import-migration.js";
 
 class EmptyProjectFileSystem implements ProjectFileSystem {
@@ -692,13 +691,13 @@ describe("AppEnvironmentHost key-namespace migration", () => {
 // Embedded extensions and the stdlib import migration
 // ---------------------------------------------------------------------------
 
-const DEMO_SLUG = "demo-lib";
-const DEMO_ORIGIN = embeddedOrigin(DEMO_SLUG);
+const DEMO_REPO = "demo-lib";
+const DEMO_COORDINATE = `mindcraft-lang/${DEMO_REPO}`;
+const DEMO_REFERENCE = `embedded:${DEMO_REPO}`;
 
 /** A minimal embedded extension whose entry re-exports a pure helper. */
 const DEMO_EXTENSION: EmbeddedExtension = {
-  slug: DEMO_SLUG,
-  canonicalOrigin: DEMO_ORIGIN,
+  canonicalOrigin: DEMO_COORDINATE,
   files: [
     { path: "index.ts", content: 'export { level } from "./level";\n' },
     { path: "level.ts", content: "export function level(): number {\n  return 7;\n}\n" },
@@ -706,12 +705,19 @@ const DEMO_EXTENSION: EmbeddedExtension = {
 };
 
 const DEMO_REDIRECTS: readonly StdlibImportRedirect[] = [
-  { fromPrefix: "demolib", toSlug: DEMO_SLUG, backfillSlug: DEMO_SLUG, backfillReference: `embedded:${DEMO_SLUG}` },
+  {
+    fromSpecifiers: ["demolib"],
+    toCoordinate: DEMO_COORDINATE,
+    toReference: DEMO_REFERENCE,
+    interimManifestKeys: [],
+    interimOrigins: ["embedded:demolib"],
+    toOrigin: DEMO_COORDINATE,
+  },
 ];
 
 /** A sensor whose value comes from the embedded extension's helper, imported via `@ext`. */
 const EXT_SENSOR_SOURCE = `import { Sensor, type Context } from "mindcraft";
-import { level } from "@ext/demo-lib";
+import { level } from "@ext/mindcraft-lang/demo-lib";
 
 export default Sensor({
   id: "extSensor00000001",
@@ -757,7 +763,7 @@ describe("AppEnvironmentHost embedded extensions", () => {
     const appData = new Map<string, string>();
     const stub = stubProjectManagerWithAppData(filesystem, appData);
     (stub.projectManager.activeProject!.manifest as { extensions?: Record<string, string> }).extensions = {
-      [DEMO_SLUG]: `embedded:${DEMO_SLUG}`,
+      [DEMO_COORDINATE]: DEMO_REFERENCE,
     };
     const host = createEmbeddedExtensionHost(stub.projectManager);
 
@@ -798,11 +804,11 @@ describe("AppEnvironmentHost embedded extensions", () => {
       // The source import is rewritten in place to the extension entry surface.
       const rewritten = filesystem.exportSnapshot().get("level.ts");
       assert.ok(rewritten && rewritten.kind === "file");
-      assert.match(rewritten.content, /from "@ext\/demo-lib"/);
+      assert.match(rewritten.content, /from "@ext\/mindcraft-lang\/demo-lib"/);
       assert.doesNotMatch(rewritten.content, /demolib\/level/);
 
       // The manifest is backfilled with the extension dependency.
-      assert.deepEqual(updateCalls, [{ [DEMO_SLUG]: `embedded:${DEMO_SLUG}` }]);
+      assert.deepEqual(updateCalls, [{ [DEMO_COORDINATE]: DEMO_REFERENCE }]);
 
       // The migrated project compiles into a user tile.
       const metadata = host.lastUserTileMetadata;
@@ -820,7 +826,7 @@ describe("AppEnvironmentHost embedded extensions", () => {
     const appData = new Map<string, string>();
     const baseStub = stubProjectManagerWithAppData(filesystem, appData);
     (baseStub.projectManager.activeProject!.manifest as { extensions?: Record<string, string> }).extensions = {
-      [DEMO_SLUG]: `embedded:${DEMO_SLUG}`,
+      [DEMO_COORDINATE]: DEMO_REFERENCE,
     };
     let updateCount = 0;
     const projectManager = new Proxy(baseStub.projectManager, {

@@ -10,7 +10,7 @@ export interface ProjectManifest {
   readonly description: string;
   /** Optional URL or data URI for a thumbnail image. */
   readonly thumbnailUrl?: string;
-  /** Extension dependencies keyed by slug; each value is an extension reference string. */
+  /** Extension dependencies keyed by their `<owner>/<repo>` coordinate; each value is an extension reference string. */
   readonly extensions?: Readonly<Record<string, string>>;
   /** Present when the project has been tombstoned and hidden from public APIs. */
   readonly deleted?: true;

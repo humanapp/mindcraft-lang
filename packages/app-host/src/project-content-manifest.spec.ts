@@ -15,9 +15,9 @@ const VALID_MANIFEST = {
   name: "My Project",
   version: "1.2.3",
   extensions: {
-    position: "gh:example-org/mindcraft-position@v1.2.0",
-    stdlib: "embedded:microbit-stdlib",
-    scratch: "local:8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
+    "example-org/mindcraft-position": "gh:example-org/mindcraft-position@v1.2.0",
+    "mindcraft-lang/microbit-stdlib": "embedded:microbit-stdlib",
+    "author/scratch": "local:8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
   },
 };
 
@@ -159,24 +159,26 @@ describe("validateProjectContentManifest", () => {
     }
   });
 
-  it("rejects an invalid slug with INVALID_EXTENSION_SLUG", () => {
-    const result = validateProjectContentManifest({
-      name: "P",
-      version: "0.1.0",
-      extensions: { "-bad": "embedded:ok" },
-    });
-    assert.strictEqual(result.ok, false);
-    assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.INVALID_EXTENSION_SLUG]);
+  it("rejects an invalid coordinate with INVALID_EXTENSION_COORDINATE", () => {
+    for (const coordinate of ["-bad/repo", "no-slash", "owner/repo/extra"]) {
+      const result = validateProjectContentManifest({
+        name: "P",
+        version: "0.1.0",
+        extensions: { [coordinate]: "embedded:ok" },
+      });
+      assert.strictEqual(result.ok, false, `Expected rejection for coordinate "${coordinate}"`);
+      assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.INVALID_EXTENSION_COORDINATE]);
+    }
   });
 
-  it("rejects case-insensitive duplicate slugs with DUPLICATE_EXTENSION_SLUG", () => {
+  it("rejects case-insensitive duplicate coordinates with DUPLICATE_EXTENSION_COORDINATE", () => {
     const result = validateProjectContentManifest({
       name: "P",
       version: "0.1.0",
-      extensions: { Sonar: "embedded:one", sonar: "embedded:two" },
+      extensions: { "org/Sonar": "embedded:one", "org/sonar": "embedded:two" },
     });
     assert.strictEqual(result.ok, false);
-    assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.DUPLICATE_EXTENSION_SLUG]);
+    assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.DUPLICATE_EXTENSION_COORDINATE]);
   });
 
   it("rejects malformed and non-string references with INVALID_EXTENSION_REFERENCE", () => {
@@ -184,7 +186,7 @@ describe("validateProjectContentManifest", () => {
       const result = validateProjectContentManifest({
         name: "P",
         version: "0.1.0",
-        extensions: { position: reference },
+        extensions: { "org/position": reference },
       });
       assert.strictEqual(result.ok, false);
       assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.INVALID_EXTENSION_REFERENCE]);
@@ -195,13 +197,13 @@ describe("validateProjectContentManifest", () => {
     const result = validateProjectContentManifest({
       name: "P",
       version: "0.1.0",
-      extensions: { good: "embedded:fine", bad: "nope", "also/bad": "embedded:fine" },
+      extensions: { "org/good": "embedded:fine", "org/bad": "nope", "-also/bad": "embedded:fine" },
     });
     assert.strictEqual(result.ok, false);
     assert.strictEqual(result.errors.length, 2);
     assert.deepStrictEqual(result.errors.map((error) => error.path).sort(), [
-      '$.extensions["also/bad"]',
-      '$.extensions["bad"]',
+      '$.extensions["-also/bad"]',
+      '$.extensions["org/bad"]',
     ]);
   });
 });

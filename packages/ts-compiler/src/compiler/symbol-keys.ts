@@ -13,8 +13,8 @@
  *   the declaration's binding-keyed private key.
  *
  * The namespace is the owning project's identity: a host project's store id,
- * or an extension's origin (for example `gh:<owner>/<repo>`). A namespace may
- * itself contain `:`; keys stay parseable because a namespace never contains
+ * or an extension's `<owner>/<repo>` coordinate. A namespace may itself
+ * contain `:`; keys stay parseable because a namespace never contains
  * `:/`, and the id-keyed local part always starts with `user.`: the
  * namespace ends at the first `:/` for binding-keyed symbols and at the last
  * `:user.` for id-keyed symbols. Platform symbols (core types, host tiles,

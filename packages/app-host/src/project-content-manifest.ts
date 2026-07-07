@@ -30,10 +30,18 @@ export type ExtensionReference =
     };
 
 /**
- * Grammar for extension slugs and repository name segments: a leading ASCII
- * letter or digit followed by letters, digits, `.`, `_`, or `-`.
+ * Grammar for a repository name segment: a leading ASCII letter or digit
+ * followed by letters, digits, `.`, `_`, or `-`.
  */
 const NAME_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Grammar for an extension coordinate `<owner>/<repo>`: an owner segment (ASCII
+ * letters, digits, and `-`) and a repository segment, joined by a single slash.
+ * This is the extension's identity and the key a dependency is stored under,
+ * independent of the transport that delivers it.
+ */
+const COORDINATE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 const GH_REFERENCE_PATTERN = /^gh:([A-Za-z0-9][A-Za-z0-9-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)@([^\s/]+)$/;
 
@@ -43,8 +51,12 @@ const LOCAL_PROJECT_ID_PATTERN = /^[^\s/]+$/;
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
-function isExtensionSlug(value: unknown): value is string {
-  return typeof value === "string" && NAME_SEGMENT_PATTERN.test(value);
+function isRepoSegment(value: string): boolean {
+  return NAME_SEGMENT_PATTERN.test(value);
+}
+
+function isExtensionCoordinate(value: unknown): value is string {
+  return typeof value === "string" && COORDINATE_PATTERN.test(value);
 }
 
 /**
@@ -58,7 +70,7 @@ export function parseExtensionReference(reference: string): ExtensionReference |
   }
   if (reference.startsWith("embedded:")) {
     const slug = reference.slice("embedded:".length);
-    return isExtensionSlug(slug) ? { transport: "embedded", slug } : undefined;
+    return isRepoSegment(slug) ? { transport: "embedded", slug } : undefined;
   }
   if (reference.startsWith("local:")) {
     const projectId = reference.slice("local:".length);
@@ -89,9 +101,10 @@ export interface ProjectContentManifest {
   /** Semver version of the project's content. */
   readonly version: string;
   /**
-   * Extension dependencies keyed by slug; each value is an extension reference
-   * string. Slugs must be unique case-insensitively. Always present; an empty
-   * object means the project has no extensions.
+   * Extension dependencies keyed by their `<owner>/<repo>` coordinate; each
+   * value is an extension reference string naming the transport. Coordinates
+   * must be unique case-insensitively. Always present; an empty object means
+   * the project has no extensions.
    */
   readonly extensions: MindcraftProjectExtensions;
 }
@@ -103,8 +116,8 @@ export const ProjectContentManifestErrorCode = {
   INVALID_NAME: "PROJECT_MANIFEST_INVALID_NAME",
   INVALID_VERSION: "PROJECT_MANIFEST_INVALID_VERSION",
   INVALID_EXTENSIONS: "PROJECT_MANIFEST_INVALID_EXTENSIONS",
-  INVALID_EXTENSION_SLUG: "PROJECT_MANIFEST_INVALID_EXTENSION_SLUG",
-  DUPLICATE_EXTENSION_SLUG: "PROJECT_MANIFEST_DUPLICATE_EXTENSION_SLUG",
+  INVALID_EXTENSION_COORDINATE: "PROJECT_MANIFEST_INVALID_EXTENSION_COORDINATE",
+  DUPLICATE_EXTENSION_COORDINATE: "PROJECT_MANIFEST_DUPLICATE_EXTENSION_COORDINATE",
   INVALID_EXTENSION_REFERENCE: "PROJECT_MANIFEST_INVALID_EXTENSION_REFERENCE",
 } as const;
 
@@ -140,43 +153,44 @@ export type ProjectContentManifestParseResult =
     };
 
 /**
- * Validate an extensions map: slug grammar, case-insensitive slug uniqueness,
- * and reference form. Returns one error per rejected entry.
+ * Validate an extensions map: coordinate grammar (`<owner>/<repo>`),
+ * case-insensitive coordinate uniqueness, and reference form. Returns one
+ * error per rejected entry.
  */
 export function validateProjectExtensions(
   extensions: Readonly<Record<string, unknown>>
 ): readonly ProjectContentManifestError[] {
   const errors: ProjectContentManifestError[] = [];
-  const seenSlugs = new Set<string>();
+  const seenCoordinates = new Set<string>();
 
-  for (const [slug, reference] of Object.entries(extensions)) {
-    const path = `$.extensions[${JSON.stringify(slug)}]`;
-    if (!isExtensionSlug(slug)) {
+  for (const [coordinate, reference] of Object.entries(extensions)) {
+    const path = `$.extensions[${JSON.stringify(coordinate)}]`;
+    if (!isExtensionCoordinate(coordinate)) {
       errors.push({
-        code: ProjectContentManifestErrorCode.INVALID_EXTENSION_SLUG,
+        code: ProjectContentManifestErrorCode.INVALID_EXTENSION_COORDINATE,
         path,
-        message: `Extension slug "${slug}" must start with a letter or digit and contain only letters, digits, ".", "_", or "-".`,
+        message: `Extension coordinate "${coordinate}" must be "<owner>/<repo>", each segment starting with a letter or digit.`,
       });
       continue;
     }
 
-    const normalizedSlug = slug.toLowerCase();
-    if (seenSlugs.has(normalizedSlug)) {
+    const normalizedCoordinate = coordinate.toLowerCase();
+    if (seenCoordinates.has(normalizedCoordinate)) {
       errors.push({
-        code: ProjectContentManifestErrorCode.DUPLICATE_EXTENSION_SLUG,
+        code: ProjectContentManifestErrorCode.DUPLICATE_EXTENSION_COORDINATE,
         path,
-        message: `Extension slug "${slug}" duplicates another slug when compared case-insensitively.`,
+        message: `Extension coordinate "${coordinate}" duplicates another coordinate when compared case-insensitively.`,
       });
       continue;
     }
-    seenSlugs.add(normalizedSlug);
+    seenCoordinates.add(normalizedCoordinate);
 
     if (typeof reference !== "string" || parseExtensionReference(reference) === undefined) {
       errors.push({
         code: ProjectContentManifestErrorCode.INVALID_EXTENSION_REFERENCE,
         path,
         message:
-          `Extension reference for "${slug}" must be a string in the form ` +
+          `Extension reference for "${coordinate}" must be a string in the form ` +
           '"gh:<owner>/<repo>@<tag>", "embedded:<slug>", or "local:<project-id>".',
       });
     }

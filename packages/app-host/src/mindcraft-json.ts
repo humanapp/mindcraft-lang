@@ -18,7 +18,7 @@ export interface MindcraftJson {
   description: string;
   /** Optional URL or data URI of a project thumbnail image. */
   thumbnailUrl?: string;
-  /** Optional extension dependencies keyed by slug; each value is an extension reference string. */
+  /** Optional extension dependencies keyed by their `<owner>/<repo>` coordinate; each value is an extension reference string. */
   extensions?: Readonly<Record<string, string>>;
 }
 

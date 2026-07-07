@@ -32,12 +32,18 @@ export { AppEnvironmentHost } from "./app-environment-host.js";
 export type {
   EmbeddedExtension,
   EmbeddedExtensionFile,
+  ExtensionResolutionWarning,
+  ExtensionResolutionWarningKind,
   ResolvedExtensions,
 } from "./embedded-extensions.js";
-export { embeddedOrigin, resolveEmbeddedExtensions } from "./embedded-extensions.js";
+export { ExtensionResolutionCycleError, resolveEmbeddedExtensions } from "./embedded-extensions.js";
 
-export type { StdlibImportMigrationResult, StdlibImportRedirect } from "./stdlib-import-migration.js";
-export { migrateStdlibImports } from "./stdlib-import-migration.js";
+export type {
+  StdlibBrainOriginMigrationReport,
+  StdlibImportMigrationResult,
+  StdlibImportRedirect,
+} from "./stdlib-import-migration.js";
+export { migrateStdlibBrainOrigins, migrateStdlibImports } from "./stdlib-import-migration.js";
 
 export type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
 export {

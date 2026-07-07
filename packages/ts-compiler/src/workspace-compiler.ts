@@ -100,14 +100,15 @@ export interface CreateWorkspaceCompilerOptions {
    */
   mounts: readonly Mount[];
   /**
-   * Extension dependencies of the project being compiled, each pairing a local
-   * `@ext/<slug>` alias with the dependency's namespace. Empty when the project
-   * has no extensions.
+   * Extension dependencies of the project being compiled, each pairing a
+   * dependency's `@ext/<owner>/<repo>` coordinate with its namespace. Empty
+   * when the project has no extensions.
    */
   dependencies?: readonly ProjectDependency[];
   /**
    * Read-only content of each dependency named in {@link dependencies},
-   * including the transitive closure, mounted for `@ext/<slug>` resolution.
+   * including the transitive closure, mounted for `@ext/<owner>/<repo>`
+   * resolution.
    */
   dependencyMounts?: readonly DependencyMount[];
 }
@@ -116,6 +117,12 @@ export interface CreateWorkspaceCompilerOptions {
 export interface WorkspaceCompiler {
   replaceWorkspace(snapshot: WorkspaceSnapshot): void;
   applyWorkspaceChange(change: WorkspaceChange): void;
+  /**
+   * Replace the project's extension dependencies and their mounted content.
+   * A subsequent compile registers the new mounts and tears down the type
+   * registrations of any origin dropped since the previous compile.
+   */
+  setDependencies(dependencies: readonly ProjectDependency[], dependencyMounts: readonly DependencyMount[]): void;
   compile(): WorkspaceCompileResult;
   /** Subscribe to compile results. Returns a disposer. */
   onDidCompile(listener: (result: WorkspaceCompileResult) => void): () => void;
@@ -207,6 +214,10 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
       case "rmdir":
         break;
     }
+  }
+
+  setDependencies(dependencies: readonly ProjectDependency[], dependencyMounts: readonly DependencyMount[]): void {
+    this.project.setDependencies(dependencies, dependencyMounts);
   }
 
   compile(): WorkspaceCompileResult {

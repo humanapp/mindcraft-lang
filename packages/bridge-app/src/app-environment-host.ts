@@ -19,11 +19,11 @@ import type { Mount, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler"
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { createBridgeProject, createProjectCompiler } from "./compilation.js";
-import type { EmbeddedExtension } from "./embedded-extensions.js";
-import { resolveEmbeddedExtensions } from "./embedded-extensions.js";
+import type { EmbeddedExtension, ResolvedExtensions } from "./embedded-extensions.js";
+import { ExtensionResolutionCycleError, resolveEmbeddedExtensions } from "./embedded-extensions.js";
 import { migrateBrainKeyNamespaces } from "./key-namespace-migration.js";
 import type { StdlibImportRedirect } from "./stdlib-import-migration.js";
-import { migrateStdlibImports } from "./stdlib-import-migration.js";
+import { migrateStdlibBrainOrigins, migrateStdlibImports } from "./stdlib-import-migration.js";
 import type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
 import { applyCompiledUserTiles, hydrateUserTilesFromCache } from "./user-tile-registration.js";
 
@@ -43,17 +43,20 @@ export interface AppEnvironmentHostOptions {
   /** Read-only content mounts supplied to the project compiler and remote VFS. */
   mounts: readonly Mount[];
   /**
-   * Extensions bundled with the host application. A project's `embedded:<slug>`
-   * dependency resolves against this record, delivering the extension's content
-   * to the compiler as a mounted dependency. Empty when the app bundles none.
+   * Extensions bundled with the host application. A project's `embedded:<repo>`
+   * dependency resolves against this record by the origin's repository segment,
+   * delivering the extension's content to the compiler as a mounted dependency
+   * keyed by its `<owner>/<repo>` coordinate. Empty when the app bundles none.
    */
   embeddedExtensions?: readonly EmbeddedExtension[];
   /**
-   * Redirects from legacy workspace-path stdlib imports to embedded extensions,
-   * applied once per project at load: user-code import specifiers are rewritten
-   * to the `@ext/<slug>` form and the extension dependency is backfilled into
-   * the manifest. Non-destructive and idempotent. Empty when the host has no
-   * legacy stdlib to migrate.
+   * Redirects that carry a project onto an embedded extension's final
+   * `<owner>/<repo>` coordinate, applied once per project at load: user-code
+   * import specifiers (legacy workspace-path or interim entry form) are
+   * rewritten to the `@ext/<owner>/<repo>` form, the coordinate dependency is
+   * backfilled into the manifest, interim manifest keys are removed, and
+   * interim saved-brain origins are rewritten. Non-destructive and idempotent.
+   * Empty when the host has no legacy stdlib to migrate.
    */
   stdlibImportRedirects?: readonly StdlibImportRedirect[];
   /** Identifies the host application when writing `mindcraft.json`. */
@@ -235,12 +238,11 @@ export class AppEnvironmentHost {
   // ---------------------------------------------------------------------------
 
   /**
-   * Migrate the active project's user-code imports and manifest extensions from
-   * legacy workspace-path stdlib imports to the embedded-extension form. Runs
-   * once per project load before the compiler starts. Non-destructive: applies
-   * changes to the in-memory project (auto-saved) and backfills the manifest
-   * only when a redirect is configured and something is missing; a project
-   * already migrated is a no-op.
+   * Migrate the active project's user-code imports and manifest extensions onto
+   * the embedded extension's final `<owner>/<repo>` coordinate. Runs once per
+   * project load before the compiler starts. Non-destructive: applies changes
+   * to the in-memory project (auto-saved), backfilling the coordinate and
+   * removing any interim manifest key; a project already migrated is a no-op.
    */
   private async migrateStdlibImportsForActiveProject(): Promise<void> {
     if (this.stdlibImportRedirects.length === 0) {
@@ -269,17 +271,43 @@ export class AppEnvironmentHost {
         newEtag: `stdlib-migration-${Date.now()}`,
       });
     }
-    if (Object.keys(result.manifestBackfill).length > 0) {
+    if (Object.keys(result.manifestBackfill).length > 0 || result.manifestRemovals.length > 0) {
       const extensions = { ...this.projectManager.activeProject!.manifest.extensions, ...result.manifestBackfill };
+      for (const interimKey of result.manifestRemovals) {
+        delete extensions[interimKey];
+      }
       await this.projectManager.updateActive({ extensions });
     }
   }
 
+  /**
+   * Resolve the active project's extension dependency graph against the host's
+   * embed record. Logs any conflict warnings. A dependency cycle is a mechanics
+   * failure: it is logged and resolution falls back to no extension
+   * dependencies, so the project still loads and unresolved imports surface as
+   * ordinary compiler diagnostics.
+   */
+  private resolveExtensions(): Pick<ResolvedExtensions, "dependencies" | "dependencyMounts"> {
+    try {
+      const resolved = resolveEmbeddedExtensions(
+        this.projectManager.activeProject!.manifest.extensions,
+        this.embeddedExtensions
+      );
+      for (const warning of resolved.warnings) {
+        logger.warn(`[extension-resolution] ${warning.message}`);
+      }
+      return resolved;
+    } catch (err) {
+      if (err instanceof ExtensionResolutionCycleError) {
+        logger.warn(`[extension-resolution] ${err.message}`);
+        return { dependencies: [], dependencyMounts: [] };
+      }
+      throw err;
+    }
+  }
+
   private initCompiler(): void {
-    const { dependencies, dependencyMounts } = resolveEmbeddedExtensions(
-      this.projectManager.activeProject!.manifest.extensions,
-      this.embeddedExtensions
-    );
+    const { dependencies, dependencyMounts } = this.resolveExtensions();
     this._compiler = createProjectCompiler({
       environment: this.env,
       filesystem: this.projectFileSystem,
@@ -409,21 +437,25 @@ export class AppEnvironmentHost {
   }
 
   /**
-   * Run the key-namespace migration over one brain's plain JSON, in place.
-   * Returns true when the migration rewrote a reference.
+   * Run the saved-brain migrations over one brain's plain JSON, in place: the
+   * prior stdlib origin rename onto the extension's final `<owner>/<repo>`
+   * coordinate origin, then the key-namespace migration that prefixes bare
+   * pre-namespace references with the host project's namespace. Returns true
+   * when either migration rewrote a reference.
    */
   private migrateBrainJson(key: string, json: unknown): boolean {
     const namespace = this.projectManager.activeProject?.manifest.id;
     if (!namespace) {
       return false;
     }
+    const originReport = migrateStdlibBrainOrigins(json, this.stdlibImportRedirects);
     const report = migrateBrainKeyNamespaces(json, namespace, {
       isPlatformTileId: (tileId) => this.env.brainServices.edit.tiles.has(tileId),
     });
     for (const unknownKey of report.unknownKeys) {
       logger.warn(`[key-namespace-migration] brain "${key}": unrecognized reference left unmigrated: ${unknownKey}`);
     }
-    return report.changed;
+    return originReport.changed || report.changed;
   }
 
   private deserializeBrainForKey(key: string, json: unknown): IBrainDef | undefined {

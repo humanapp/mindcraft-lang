@@ -14,14 +14,14 @@ import type { AmbientFile } from "./types.js";
 
 /** One compilation root of a multi-root session: a project's namespace and source files. */
 export interface ProjectRoot {
-  /** The root's project namespace: a host project's store id or an extension's origin. */
+  /** The root's project namespace: a host project's store id or an extension's `<owner>/<repo>` coordinate. */
   namespace: string;
   /** The root's source files, keyed by workspace path. */
   files: ReadonlyMap<string, string>;
   /**
-   * The root's extensions list. Each entry's namespace must be present in
-   * the resolved set; each entry's slug names the dependency in the root's
-   * `@ext/<slug>` imports.
+   * The root's extensions list. Each entry's coordinate must match a root in
+   * the resolved set (a root's namespace) and names the dependency in the
+   * root's `@ext/<owner>/<repo>` imports.
    */
   dependencies?: readonly ProjectDependency[];
 }
@@ -81,9 +81,9 @@ export class MultiRootSession {
     }
     for (const root of roots) {
       for (const dependency of root.dependencies ?? []) {
-        if (!byNamespace.has(dependency.namespace)) {
+        if (!byNamespace.has(dependency.coordinate)) {
           throw new Error(
-            `Root "${root.namespace}" depends on "${dependency.namespace}", which is not in the resolved set`
+            `Root "${root.namespace}" depends on "${dependency.coordinate}", which is not in the resolved set`
           );
         }
       }
@@ -200,9 +200,9 @@ function transitiveMounts(root: ProjectRoot, byNamespace: ReadonlyMap<string, Pr
   const seen = new Set<string>();
   const visit = (dependencies: readonly ProjectDependency[] | undefined): void => {
     for (const dependency of dependencies ?? []) {
-      if (seen.has(dependency.namespace)) continue;
-      seen.add(dependency.namespace);
-      const dependencyRoot = byNamespace.get(dependency.namespace)!;
+      if (seen.has(dependency.coordinate)) continue;
+      seen.add(dependency.coordinate);
+      const dependencyRoot = byNamespace.get(dependency.coordinate)!;
       mounts.push({
         namespace: dependencyRoot.namespace,
         files: dependencyRoot.files,
@@ -232,7 +232,7 @@ function sortByDependencies(roots: readonly ProjectRoot[]): string[] {
     let progressed = false;
     for (const root of roots) {
       if (placed.has(root.namespace)) continue;
-      if (dependencies.get(root.namespace)!.some((dependency) => !placed.has(dependency.namespace))) continue;
+      if (dependencies.get(root.namespace)!.some((dependency) => !placed.has(dependency.coordinate))) continue;
       order.push(root.namespace);
       placed.add(root.namespace);
       progressed = true;

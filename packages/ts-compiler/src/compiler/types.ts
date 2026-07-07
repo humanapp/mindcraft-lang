@@ -106,7 +106,7 @@ export interface CompileOptions {
   services: BrainServices;
   /** Mints a fresh stable action id when a source declaration has none. Defaults to a random opaque token. */
   generateActionId?: () => string;
-  /** The project's extensions list: each entry maps an `@ext/<slug>` import alias to a dependency namespace. */
+  /** The project's extensions list: each entry maps an `@ext/<owner>/<repo>` coordinate to a dependency namespace. */
   dependencies?: readonly ProjectDependency[];
   /** Dependency projects' content mounted read-only into this compilation, transitively covering `dependencies`. */
   dependencyMounts?: readonly DependencyMount[];

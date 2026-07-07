@@ -757,9 +757,9 @@ describe("importProjectDocument", () => {
 
 describe("project extensions interchange", () => {
   const EXTENSIONS = {
-    position: "gh:example-org/mindcraft-position@v1.2.0",
-    stdlib: "embedded:microbit-stdlib",
-    scratch: "local:8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
+    "example-org/mindcraft-position": "gh:example-org/mindcraft-position@v1.2.0",
+    "mindcraft-lang/microbit-stdlib": "embedded:microbit-stdlib",
+    "author/scratch": "local:8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
   };
 
   let store: MemoryProjectStore;
@@ -881,7 +881,7 @@ describe("project extensions interchange", () => {
   });
 
   it("rejects non-string extension references with the document validation code", async () => {
-    const file = makeFile(makeSharedProjectDoc({ extensions: { position: 42 } }));
+    const file = makeFile(makeSharedProjectDoc({ extensions: { "org/position": 42 } }));
 
     const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
 
@@ -896,7 +896,7 @@ describe("project extensions interchange", () => {
   });
 
   it("rejects malformed extension references with the content manifest code", async () => {
-    const file = makeFile(makeSharedProjectDoc({ extensions: { position: "not-a-ref" } }));
+    const file = makeFile(makeSharedProjectDoc({ extensions: { "org/position": "not-a-ref" } }));
 
     const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
 
@@ -911,8 +911,8 @@ describe("project extensions interchange", () => {
     assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
-  it("rejects invalid extension slugs with the content manifest code", async () => {
-    const file = makeFile(makeSharedProjectDoc({ extensions: { "bad/slug": "embedded:fine" } }));
+  it("rejects invalid extension coordinates with the content manifest code", async () => {
+    const file = makeFile(makeSharedProjectDoc({ extensions: { "bad-coordinate": "embedded:fine" } }));
 
     const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
 
@@ -920,7 +920,8 @@ describe("project extensions interchange", () => {
     assert.ok(
       result.diagnostics.some(
         (diagnostic) =>
-          diagnostic.severity === "error" && diagnostic.code === ProjectContentManifestErrorCode.INVALID_EXTENSION_SLUG
+          diagnostic.severity === "error" &&
+          diagnostic.code === ProjectContentManifestErrorCode.INVALID_EXTENSION_COORDINATE
       )
     );
   });

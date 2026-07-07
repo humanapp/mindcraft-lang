@@ -580,7 +580,7 @@ export enum CompileDiagCode {
   ParameterUnresolvedType = 5017,
   /** A shared `modifier.` id is declared with a label that conflicts with an earlier declaration or a registered tile */
   SharedModifierLabelConflict = 5018,
-  /** An `@ext/<slug>/...` import names a module inside an extension; only the entry surface `@ext/<slug>` is importable */
+  /** An `@ext/<owner>/<repo>/...` import names a module inside an extension; only the entry surface `@ext/<owner>/<repo>` is importable */
   ExtensionDeepImport = 5019,
   /** The entry module exports one declaration under two or more names; a declaration is published under exactly one name */
   MultiplePublishedNames = 5020,
