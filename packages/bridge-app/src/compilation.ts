@@ -3,9 +3,10 @@ import { EXAMPLES_FOLDER } from "@mindcraft-lang/app-host";
 import type { AppClientMessage, CompileDiagnosticEntry, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core";
 import {
-  type AmbientFile,
   createWorkspaceCompiler,
-  type StdlibSourceFile,
+  type DependencyMount,
+  type Mount,
+  type ProjectDependency,
   type WorkspaceCompiler as TsWorkspaceCompiler,
   type WorkspaceCompileResult,
 } from "@mindcraft-lang/ts-compiler";
@@ -304,10 +305,12 @@ export interface CreateProjectCompilerOptions {
   filesystem: ProjectFileSystem;
   /** Namespace of the project being compiled (its store id); prefixes every symbol key minted from the project's content. */
   projectNamespace: string;
-  /** Ordered ambient declaration files exposed to the compiler and remote VFS peers. */
-  ambientFiles: readonly AmbientFile[];
-  /** Compilable stdlib source modules exposed to the compiler and remote VFS peers. */
-  stdlibFiles?: readonly StdlibSourceFile[];
+  /** Read-only content mounts exposed to the compiler and remote VFS peers. */
+  mounts: readonly Mount[];
+  /** Extension dependencies of the project, each mapping an `@ext/<slug>` alias to a namespace. */
+  dependencies?: readonly ProjectDependency[];
+  /** Read-only content of each dependency, mounted for `@ext/<slug>` resolution. */
+  dependencyMounts?: readonly DependencyMount[];
   /** Read-only example projects materialized under the examples folder. */
   examples?: readonly ExampleDefinition[];
   onDidCompile?: (result: WorkspaceCompileResult) => void;
@@ -331,9 +334,15 @@ export interface ProjectCompilerHandle {
  * input includes the live project files plus any injected examples.
  */
 export function createProjectCompiler(options: CreateProjectCompilerOptions): ProjectCompilerHandle {
-  const { ambientFiles, stdlibFiles, environment, filesystem, projectNamespace } = options;
+  const { mounts, environment, filesystem, projectNamespace, dependencies, dependencyMounts } = options;
 
-  const compiler = createWorkspaceCompiler({ projectNamespace, ambientFiles, stdlibFiles, environment });
+  const compiler = createWorkspaceCompiler({
+    projectNamespace,
+    mounts,
+    environment,
+    dependencies,
+    dependencyMounts,
+  });
 
   if (options.onDidCompile) {
     compiler.onDidCompile(options.onDidCompile);

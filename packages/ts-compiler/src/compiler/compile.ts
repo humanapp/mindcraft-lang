@@ -4,12 +4,7 @@ import { UserTileProject } from "./project.js";
 import type { CompileOptions } from "./types.js";
 
 export { collectParams } from "./arg-spec-utils.js";
-export type {
-  CompileResult,
-  CompilerControlledPathOptions,
-  FunctionDebugInfo,
-  ProjectCompileResult,
-} from "./project.js";
+export type { CompileResult, FunctionDebugInfo, ProjectCompileResult } from "./project.js";
 export { isCompilerControlledPath, UserTileProject } from "./project.js";
 export type {
   AmbientFile,

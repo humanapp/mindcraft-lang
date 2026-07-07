@@ -48,6 +48,7 @@ import {
   qualifiedClassName,
   systemConfigObject,
 } from "./lowering.js";
+import { isMountedPath, type Mount } from "./mounts.js";
 import { publishEntryModule } from "./publication.js";
 import { userActionKey } from "./symbol-keys.js";
 import { resolveTypeNameExpression, structTypeCallExpression } from "./type-ref.js";
@@ -202,20 +203,15 @@ function normalizeWorkspacePath(path: string): string {
   return path.startsWith("/") ? path.slice(1) : path;
 }
 
-/** Options for identifying compiler-controlled files in a host workspace. */
-export interface CompilerControlledPathOptions {
-  /** Ambient declaration files supplied by the host environment. */
-  ambientFiles?: readonly Pick<AmbientFile, "path">[];
-  /** Stdlib source modules supplied by the host environment. */
-  stdlibFiles?: readonly Pick<StdlibSourceFile, "path">[];
-}
-
-/** True for paths the workspace compiler synthesizes, or receives as host ambient declarations or stdlib source. */
-export function isCompilerControlledPath(path: string, options?: CompilerControlledPathOptions): boolean {
+/**
+ * True for paths the workspace never owns: the compiler-synthesized
+ * `tsconfig.json` and any file a mount provides. Such paths are surfaced
+ * read-only and are not persisted in the project store.
+ */
+export function isCompilerControlledPath(path: string, mounts: readonly Mount[]): boolean {
   const normalized = normalizeWorkspacePath(path);
   if (normalized === COMPILER_CONTROLLED_TSCONFIG_PATH) return true;
-  if (options?.ambientFiles?.some((file) => normalizeWorkspacePath(file.path) === normalized)) return true;
-  return options?.stdlibFiles?.some((file) => normalizeWorkspacePath(file.path) === normalized) ?? false;
+  return isMountedPath(path, mounts);
 }
 
 const EXAMPLES_PREFIX = "__examples__/";
@@ -308,15 +304,26 @@ export class UserTileProject {
 
     // Stdlib source is mounted in the compiler file map; it is compiled only
     // when user code actually imports it.
+    const stdlibWorkspacePaths = new Set<string>();
     for (const file of this._stdlibFiles) {
       compilerFiles.set(toCompilerPath(file.path), file.content);
+      stdlibWorkspacePaths.add(normalizeWorkspacePath(file.path));
     }
 
+    const isAmbientOrTsconfigPath = (path: string): boolean =>
+      normalizeWorkspacePath(path) === COMPILER_CONTROLLED_TSCONFIG_PATH ||
+      ambientCompilerPaths.has(toCompilerPath(path));
+
+    const isCompilerSuppliedPath = (path: string): boolean =>
+      isAmbientOrTsconfigPath(path) || stdlibWorkspacePaths.has(normalizeWorkspacePath(path));
+
     // Dependency content mounts under its namespace-derived prefix; it is
-    // compiled only when reached through an `@ext/<slug>` import.
+    // compiled only when reached through an `@ext/<slug>` import. Ambient and
+    // tsconfig paths a dependency happens to carry are the consuming project's
+    // to supply, never the dependency's.
     for (const mount of this._dependencyMounts) {
       for (const [path, content] of mount.files) {
-        if (isCompilerControlledPath(path, { ambientFiles: this._ambientFiles }) || isExamplePath(path)) {
+        if (isAmbientOrTsconfigPath(path) || isExamplePath(path)) {
           continue;
         }
         compilerFiles.set(mountedCompilerPath(mount.namespace, toCompilerPath(path)), content);
@@ -326,10 +333,7 @@ export class UserTileProject {
 
     const userRootFiles: string[] = [];
     for (const [vfsPath, content] of this._files) {
-      if (
-        isCompilerControlledPath(vfsPath, { ambientFiles: this._ambientFiles, stdlibFiles: this._stdlibFiles }) ||
-        isExamplePath(vfsPath)
-      ) {
+      if (isCompilerSuppliedPath(vfsPath) || isExamplePath(vfsPath)) {
         continue;
       }
       const cp = toCompilerPath(vfsPath);

@@ -1,8 +1,10 @@
 import type { CompiledActionBundle, MindcraftEnvironment } from "@mindcraft-lang/core";
 import type { DiagnosticSeverity } from "@mindcraft-lang/core/brain";
 import type { ProjectCompileResult } from "./compiler/compile.js";
+import type { DependencyMount, ProjectDependency } from "./compiler/extension-mounts.js";
+import { declarationMounts, type Mount, mountedFiles, sourceMounts } from "./compiler/mounts.js";
 import { COMPILER_CONTROLLED_TSCONFIG_PATH, UserTileProject } from "./compiler/project.js";
-import type { AmbientFile, CompileDiagnostic, StdlibSourceFile } from "./compiler/types.js";
+import type { CompileDiagnostic } from "./compiler/types.js";
 import { buildCompiledActionBundle } from "./runtime/action-bundle.js";
 
 /** A file in a {@link WorkspaceSnapshot}: `content` plus the `etag` used for optimistic concurrency. */
@@ -91,10 +93,23 @@ export interface CreateWorkspaceCompilerOptions {
   environment: MindcraftEnvironment;
   /** Namespace of the project being compiled (its store id, or an extension origin); prefixes every symbol key minted from the project's content. */
   projectNamespace: string;
-  /** Ordered ambient declaration files available to the TypeScript compiler and remote VFS peers. */
-  ambientFiles: readonly AmbientFile[];
-  /** Compilable `.ts` stdlib source modules the target contributes, resolvable by user import. */
-  stdlibFiles?: readonly StdlibSourceFile[];
+  /**
+   * Read-only content mounts available to the TypeScript compiler and remote
+   * VFS peers. Declaration mounts are always in scope; source mounts are
+   * resolvable by user import.
+   */
+  mounts: readonly Mount[];
+  /**
+   * Extension dependencies of the project being compiled, each pairing a local
+   * `@ext/<slug>` alias with the dependency's namespace. Empty when the project
+   * has no extensions.
+   */
+  dependencies?: readonly ProjectDependency[];
+  /**
+   * Read-only content of each dependency named in {@link dependencies},
+   * including the transitive closure, mounted for `@ext/<slug>` resolution.
+   */
+  dependencyMounts?: readonly DependencyMount[];
 }
 
 /** Driver for incremental workspace compilation. Receives snapshot/change inputs and emits diagnostics and a bundle. */
@@ -162,9 +177,11 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
   constructor(private readonly options: CreateWorkspaceCompilerOptions) {
     this.project = new UserTileProject({
       projectNamespace: options.projectNamespace,
-      ambientFiles: options.ambientFiles,
-      stdlibFiles: options.stdlibFiles,
+      ambientFiles: mountedFiles(declarationMounts(options.mounts)),
+      stdlibFiles: mountedFiles(sourceMounts(options.mounts)),
       services: options.environment.brainServices,
+      dependencies: options.dependencies,
+      dependencyMounts: options.dependencyMounts,
     });
   }
 
@@ -221,10 +238,7 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
 
   getCompilerControlledFiles(): ReadonlyMap<string, string> {
     const files = new Map<string, string>();
-    for (const file of this.options.ambientFiles) {
-      files.set(file.path, file.content);
-    }
-    for (const file of this.options.stdlibFiles ?? []) {
+    for (const file of mountedFiles(this.options.mounts)) {
       files.set(file.path, file.content);
     }
     files.set(COMPILER_CONTROLLED_TSCONFIG_PATH, TSCONFIG_CONTENT);

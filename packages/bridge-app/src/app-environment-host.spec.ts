@@ -15,7 +15,11 @@ import {
 } from "@mindcraft-lang/app-host";
 import type { IBrainDef } from "@mindcraft-lang/core/app";
 import { CoreTypeIds, coreModule, List } from "@mindcraft-lang/core/app";
+import { declarationMount } from "@mindcraft-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
+import type { EmbeddedExtension } from "./embedded-extensions.js";
+import { embeddedOrigin } from "./embedded-extensions.js";
+import type { StdlibImportRedirect } from "./stdlib-import-migration.js";
 
 class EmptyProjectFileSystem implements ProjectFileSystem {
   exportSnapshot(): ProjectFileSnapshot {
@@ -147,7 +151,7 @@ describe("AppEnvironmentHost user-action id write-back", () => {
     const host = new AppEnvironmentHost({
       projectManager: stubProjectManager(filesystem),
       modules: [coreModule()],
-      ambientFiles: [{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }],
+      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
       host: { name: "test", version: "0.0.0" },
     });
 
@@ -191,7 +195,7 @@ describe("AppEnvironmentHost project transitions", () => {
     const host = new AppEnvironmentHost({
       projectManager,
       modules: [],
-      ambientFiles: [],
+      mounts: [],
       host: { name: "test", version: "0.0.0" },
     });
     let unloadingCalls = 0;
@@ -256,7 +260,7 @@ describe("AppEnvironmentHost project transitions", () => {
     const host = new AppEnvironmentHost({
       projectManager,
       modules: [],
-      ambientFiles: [],
+      mounts: [],
       host: { name: "test", version: "0.0.0" },
     });
     const unloadingProjectIds: Array<string | undefined> = [];
@@ -323,7 +327,7 @@ describe("AppEnvironmentHost project transitions", () => {
     const host = new AppEnvironmentHost({
       projectManager: projectManagerStub as unknown as ProjectManager,
       modules: [coreModule()],
-      ambientFiles: [],
+      mounts: [],
       host: { name: "test", version: "0.0.0" },
     });
 
@@ -539,7 +543,7 @@ function createHost(projectManager: ProjectManager): AppEnvironmentHost {
   return new AppEnvironmentHost({
     projectManager,
     modules: [coreModule()],
-    ambientFiles: [{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }],
+    mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
     host: { name: "test", version: "0.0.0" },
   });
 }
@@ -683,6 +687,166 @@ describe("AppEnvironmentHost key-namespace migration", () => {
 // ---------------------------------------------------------------------------
 // Brain persistence across project switches
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Embedded extensions and the stdlib import migration
+// ---------------------------------------------------------------------------
+
+const DEMO_SLUG = "demo-lib";
+const DEMO_ORIGIN = embeddedOrigin(DEMO_SLUG);
+
+/** A minimal embedded extension whose entry re-exports a pure helper. */
+const DEMO_EXTENSION: EmbeddedExtension = {
+  slug: DEMO_SLUG,
+  canonicalOrigin: DEMO_ORIGIN,
+  files: [
+    { path: "index.ts", content: 'export { level } from "./level";\n' },
+    { path: "level.ts", content: "export function level(): number {\n  return 7;\n}\n" },
+  ],
+};
+
+const DEMO_REDIRECTS: readonly StdlibImportRedirect[] = [
+  { fromPrefix: "demolib", toSlug: DEMO_SLUG, backfillSlug: DEMO_SLUG, backfillReference: `embedded:${DEMO_SLUG}` },
+];
+
+/** A sensor whose value comes from the embedded extension's helper, imported via `@ext`. */
+const EXT_SENSOR_SOURCE = `import { Sensor, type Context } from "mindcraft";
+import { level } from "@ext/demo-lib";
+
+export default Sensor({
+  id: "extSensor00000001",
+  name: "level",
+  onExecute(ctx: Context): number {
+    return level();
+  },
+});
+`;
+
+/** The same sensor written against the legacy workspace-path import. */
+const LEGACY_SENSOR_SOURCE = `import { Sensor, type Context } from "mindcraft";
+import { level } from "demolib/level";
+
+export default Sensor({
+  id: "extSensor00000001",
+  name: "level",
+  onExecute(ctx: Context): number {
+    return level();
+  },
+});
+`;
+
+function createEmbeddedExtensionHost(
+  projectManager: ProjectManager,
+  options?: { redirects?: readonly StdlibImportRedirect[] }
+): AppEnvironmentHost {
+  return new AppEnvironmentHost({
+    projectManager,
+    modules: [coreModule()],
+    mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+    embeddedExtensions: [DEMO_EXTENSION],
+    stdlibImportRedirects: options?.redirects,
+    host: { name: "test", version: "0.0.0" },
+  });
+}
+
+describe("AppEnvironmentHost embedded extensions", () => {
+  it("compiles user code that imports an embedded extension via @ext", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem();
+    filesystem.applyLocalChange({ action: "write", path: "level.ts", content: EXT_SENSOR_SOURCE, newEtag: "e1" });
+    const appData = new Map<string, string>();
+    const stub = stubProjectManagerWithAppData(filesystem, appData);
+    (stub.projectManager.activeProject!.manifest as { extensions?: Record<string, string> }).extensions = {
+      [DEMO_SLUG]: `embedded:${DEMO_SLUG}`,
+    };
+    const host = createEmbeddedExtensionHost(stub.projectManager);
+
+    try {
+      await host.initialize(PROJECT_ID);
+      const metadata = host.lastUserTileMetadata;
+      assert.ok(metadata && metadata.length === 1, "the @ext-importing sensor must compile into a user tile");
+      assert.equal(metadata[0].id, "extSensor00000001");
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("migrates a legacy stdlib import to @ext, backfills the manifest, and compiles", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem();
+    filesystem.applyLocalChange({ action: "write", path: "level.ts", content: LEGACY_SENSOR_SOURCE, newEtag: "e1" });
+    const appData = new Map<string, string>();
+    const updateCalls: Array<Record<string, string> | undefined> = [];
+    const baseStub = stubProjectManagerWithAppData(filesystem, appData);
+    const projectManager = new Proxy(baseStub.projectManager, {
+      get(target, prop, receiver) {
+        if (prop === "updateActive") {
+          return async (patch: { extensions?: Record<string, string> }): Promise<void> => {
+            updateCalls.push(patch.extensions);
+            (target.activeProject!.manifest as { extensions?: Record<string, string> }).extensions = patch.extensions;
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const host = createEmbeddedExtensionHost(projectManager, { redirects: DEMO_REDIRECTS });
+
+    try {
+      await host.initialize(PROJECT_ID);
+
+      // The source import is rewritten in place to the extension entry surface.
+      const rewritten = filesystem.exportSnapshot().get("level.ts");
+      assert.ok(rewritten && rewritten.kind === "file");
+      assert.match(rewritten.content, /from "@ext\/demo-lib"/);
+      assert.doesNotMatch(rewritten.content, /demolib\/level/);
+
+      // The manifest is backfilled with the extension dependency.
+      assert.deepEqual(updateCalls, [{ [DEMO_SLUG]: `embedded:${DEMO_SLUG}` }]);
+
+      // The migrated project compiles into a user tile.
+      const metadata = host.lastUserTileMetadata;
+      assert.ok(metadata && metadata.length === 1, "the migrated sensor must compile");
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("is a no-op for a project already on @ext with the dependency present", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem();
+    filesystem.applyLocalChange({ action: "write", path: "level.ts", content: EXT_SENSOR_SOURCE, newEtag: "e1" });
+    const appData = new Map<string, string>();
+    const baseStub = stubProjectManagerWithAppData(filesystem, appData);
+    (baseStub.projectManager.activeProject!.manifest as { extensions?: Record<string, string> }).extensions = {
+      [DEMO_SLUG]: `embedded:${DEMO_SLUG}`,
+    };
+    let updateCount = 0;
+    const projectManager = new Proxy(baseStub.projectManager, {
+      get(target, prop, receiver) {
+        if (prop === "updateActive") {
+          return async (): Promise<void> => {
+            updateCount++;
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const host = createEmbeddedExtensionHost(projectManager, { redirects: DEMO_REDIRECTS });
+
+    try {
+      await host.initialize(PROJECT_ID);
+      const unchanged = filesystem.exportSnapshot().get("level.ts");
+      assert.ok(unchanged && unchanged.kind === "file");
+      assert.equal(unchanged.content, EXT_SENSOR_SOURCE, "an already-migrated source is left byte-identical");
+      assert.equal(updateCount, 0, "a project already carrying the dependency triggers no manifest update");
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
 
 describe("AppEnvironmentHost brain persistence across project switches", () => {
   it("preserves the stored bytes of a brain that fails to deserialize", async () => {

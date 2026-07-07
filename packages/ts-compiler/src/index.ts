@@ -8,7 +8,6 @@ export type {
   CompileDiagnostic,
   CompileOptions,
   CompileResult,
-  CompilerControlledPathOptions,
   ExtractedArgSpec,
   ExtractedChoice,
   ExtractedConditional,
@@ -33,6 +32,15 @@ export {
 } from "./compiler/diag-codes.js";
 export type { DependencyMount, ProjectDependency } from "./compiler/extension-mounts.js";
 export { EXTENSION_IMPORT_PREFIX } from "./compiler/extension-mounts.js";
+export type { Mount, MountFile, MountKind } from "./compiler/mounts.js";
+export {
+  declarationMount,
+  declarationMounts,
+  isMountedPath,
+  mountedFiles,
+  sourceMount,
+  sourceMounts,
+} from "./compiler/mounts.js";
 export type {
   SharedModifierDeclaration,
   SharedParameterDeclaration,

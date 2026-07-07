@@ -22,7 +22,7 @@ import {
   mkSensorTileId,
 } from "@mindcraft-lang/core/app";
 import type { DocsTileEntry } from "@mindcraft-lang/docs";
-import { isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
+import { declarationMount, isCompilerControlledPath, type Mount } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
@@ -32,6 +32,9 @@ import { name as simName, version as simVersion } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
 import { simAmbientFiles } from "./sim-ambient-files";
 import { initVfsServiceWorker } from "./vfs-service-worker";
+
+/** Platform content mounts for the sim: the ambient declarations exposed to the compiler and remote VFS. */
+const simMounts: readonly Mount[] = [declarationMount(simAmbientFiles)];
 
 // -- AppSettings --
 
@@ -300,12 +303,12 @@ export class SimEnvironmentStore {
     const host = new AppEnvironmentHost({
       projectManager: new ProjectManager(projectStore, {
         filesystemOptions: {
-          shouldExclude: (path) => isCompilerControlledPath(path, { ambientFiles: simAmbientFiles }),
+          shouldExclude: (path) => isCompilerControlledPath(path, simMounts),
         },
         lock: createWebLocksProjectLock(simName),
       }),
       modules: [coreModule(), createSimModule()],
-      ambientFiles: simAmbientFiles,
+      mounts: simMounts,
       host: { name: simName, version: simVersion },
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,

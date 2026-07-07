@@ -29,6 +29,16 @@ export { createAppBridge } from "./app-bridge.js";
 export type { AppEnvironmentHostOptions } from "./app-environment-host.js";
 export { AppEnvironmentHost } from "./app-environment-host.js";
 
+export type {
+  EmbeddedExtension,
+  EmbeddedExtensionFile,
+  ResolvedExtensions,
+} from "./embedded-extensions.js";
+export { embeddedOrigin, resolveEmbeddedExtensions } from "./embedded-extensions.js";
+
+export type { StdlibImportMigrationResult, StdlibImportRedirect } from "./stdlib-import-migration.js";
+export { migrateStdlibImports } from "./stdlib-import-migration.js";
+
 export type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
 export {
   applyCompiledUserTiles,

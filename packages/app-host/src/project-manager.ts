@@ -155,6 +155,12 @@ export interface ProjectManagerOptions {
   lock?: ProjectLock;
   /** Debounce delay before persisting project files after a change. Defaults to 2000 ms. */
   autoSaveDelayMs?: number;
+  /**
+   * Extension dependencies keyed by slug, seeded into every newly created
+   * project's manifest. Each value is an extension reference string. Empty or
+   * omitted when the host designates no default extensions.
+   */
+  defaultExtensions?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -167,6 +173,7 @@ export class ProjectManager {
   private readonly filesystemOptions: InMemoryProjectFileSystemOptions;
   private readonly lock: ProjectLock | undefined;
   private readonly autoSaveDelayMs: number;
+  private readonly defaultExtensions: Readonly<Record<string, string>> | undefined;
   private readonly projectCollectionBroadcast: ProjectCollectionBroadcast;
   private readonly projectCollectionBroadcastUnsub: () => void;
   private readonly activeProjectListeners = new Set<(project: ActiveProject | undefined) => void>();
@@ -189,6 +196,10 @@ export class ProjectManager {
     this.filesystemOptions = options?.filesystemOptions ?? {};
     this.lock = options?.lock;
     this.autoSaveDelayMs = options?.autoSaveDelayMs ?? 2000;
+    this.defaultExtensions =
+      options?.defaultExtensions && Object.keys(options.defaultExtensions).length > 0
+        ? options.defaultExtensions
+        : undefined;
     this.projectCollectionBroadcast = createProjectCollectionBroadcast(store.keyPrefix);
     this.projectCollectionBroadcastUnsub = this.projectCollectionBroadcast.subscribe((message) => {
       void this.handleProjectCollectionBroadcast(message);
@@ -236,7 +247,8 @@ export class ProjectManager {
     options?: ProjectTransitionOptions
   ): Promise<ProjectManifest> {
     const collection = await this.ensureActiveProjectCollectionReady();
-    const manifest = await this.store.createProject(collection.projectCollectionId, name);
+    const created = await this.store.createProject(collection.projectCollectionId, name);
+    const manifest = await this.seedDefaultExtensions(created);
     await this.notifyProjectListChangedForCollection(collection.projectCollectionId);
     const active = await this.tryOpen(manifest.id, shouldNotifyProjectCollectionState, options);
     if (!active) {
@@ -246,6 +258,19 @@ export class ProjectManager {
       );
     }
     return manifest;
+  }
+
+  /**
+   * Seed the host's default extensions into a freshly created project's
+   * manifest. Returns the updated manifest, or the original when the host
+   * designates no defaults.
+   */
+  private async seedDefaultExtensions(manifest: ProjectManifest): Promise<ProjectManifest> {
+    if (!this.defaultExtensions) {
+      return manifest;
+    }
+    await this.store.updateProject(manifest.id, { extensions: this.defaultExtensions });
+    return { ...manifest, extensions: this.defaultExtensions };
   }
 
   async createFromSnapshot(
@@ -921,7 +946,8 @@ export class ProjectManager {
   ): Promise<ProjectCollectionProjectCommitResult> {
     const collection = await this.requireProjectCollection(projectCollectionId);
     this.assertProjectCollectionReady(collection);
-    const project = await this.store.createProject(collection.projectCollectionId, name);
+    const created = await this.store.createProject(collection.projectCollectionId, name);
+    const project = await this.seedDefaultExtensions(created);
     let result: ProjectCollectionProjectCommitResult;
     try {
       result = await this.commitProjectCollectionProject(collection, project, options);

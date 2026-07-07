@@ -15,11 +15,15 @@ import {
 import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
 import { createMindcraftEnvironment, Dict, logger } from "@mindcraft-lang/core/app";
 import type { IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
-import type { AmbientFile, StdlibSourceFile, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+import type { Mount, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { createBridgeProject, createProjectCompiler } from "./compilation.js";
+import type { EmbeddedExtension } from "./embedded-extensions.js";
+import { resolveEmbeddedExtensions } from "./embedded-extensions.js";
 import { migrateBrainKeyNamespaces } from "./key-namespace-migration.js";
+import type { StdlibImportRedirect } from "./stdlib-import-migration.js";
+import { migrateStdlibImports } from "./stdlib-import-migration.js";
 import type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
 import { applyCompiledUserTiles, hydrateUserTilesFromCache } from "./user-tile-registration.js";
 
@@ -36,10 +40,22 @@ export interface AppEnvironmentHostOptions {
   projectManager: ProjectManager;
   /** Mindcraft modules to register with the environment. */
   modules: readonly MindcraftModule[];
-  /** Ordered ambient declaration files supplied to the project compiler and remote VFS. */
-  ambientFiles: readonly AmbientFile[];
-  /** Compilable stdlib source modules supplied to the project compiler and remote VFS. */
-  stdlibFiles?: readonly StdlibSourceFile[];
+  /** Read-only content mounts supplied to the project compiler and remote VFS. */
+  mounts: readonly Mount[];
+  /**
+   * Extensions bundled with the host application. A project's `embedded:<slug>`
+   * dependency resolves against this record, delivering the extension's content
+   * to the compiler as a mounted dependency. Empty when the app bundles none.
+   */
+  embeddedExtensions?: readonly EmbeddedExtension[];
+  /**
+   * Redirects from legacy workspace-path stdlib imports to embedded extensions,
+   * applied once per project at load: user-code import specifiers are rewritten
+   * to the `@ext/<slug>` form and the extension dependency is backfilled into
+   * the manifest. Non-destructive and idempotent. Empty when the host has no
+   * legacy stdlib to migrate.
+   */
+  stdlibImportRedirects?: readonly StdlibImportRedirect[];
   /** Identifies the host application when writing `mindcraft.json`. */
   host: MindcraftJsonHostInfo;
   /** Read-only example projects materialized under the examples folder. */
@@ -85,8 +101,9 @@ export class AppEnvironmentHost {
   readonly projectManager: ProjectManager;
 
   private readonly host: MindcraftJsonHostInfo;
-  private readonly ambientFiles: readonly AmbientFile[];
-  private readonly stdlibFiles: readonly StdlibSourceFile[];
+  private readonly mounts: readonly Mount[];
+  private readonly embeddedExtensions: readonly EmbeddedExtension[];
+  private readonly stdlibImportRedirects: readonly StdlibImportRedirect[];
   private readonly onDidCompileCallback?: (
     result: WorkspaceCompileResult,
     tileResult: UserTileApplyResult | undefined
@@ -132,8 +149,9 @@ export class AppEnvironmentHost {
   constructor(options: AppEnvironmentHostOptions) {
     this.projectManager = options.projectManager;
     this.host = options.host;
-    this.ambientFiles = options.ambientFiles;
-    this.stdlibFiles = options.stdlibFiles ?? [];
+    this.mounts = options.mounts;
+    this.embeddedExtensions = options.embeddedExtensions ?? [];
+    this.stdlibImportRedirects = options.stdlibImportRedirects ?? [];
     this.onDidCompileCallback = options.onDidCompile;
     this._bridgeUrl = options.bridgeUrl;
     this._loadBindingToken = options.loadBindingToken ?? (() => undefined);
@@ -207,6 +225,7 @@ export class AppEnvironmentHost {
         this.userTileStorageOptions(),
         this.projectManager.activeProject!.manifest.id
       )) ?? undefined;
+    await this.migrateStdlibImportsForActiveProject();
     this.initCompiler();
     await this.loadBrainsFromProject();
   }
@@ -215,13 +234,59 @@ export class AppEnvironmentHost {
   // Compilation (always available, independent of bridge)
   // ---------------------------------------------------------------------------
 
+  /**
+   * Migrate the active project's user-code imports and manifest extensions from
+   * legacy workspace-path stdlib imports to the embedded-extension form. Runs
+   * once per project load before the compiler starts. Non-destructive: applies
+   * changes to the in-memory project (auto-saved) and backfills the manifest
+   * only when a redirect is configured and something is missing; a project
+   * already migrated is a no-op.
+   */
+  private async migrateStdlibImportsForActiveProject(): Promise<void> {
+    if (this.stdlibImportRedirects.length === 0) {
+      return;
+    }
+    const snapshot = this.projectFileSystem.exportSnapshot();
+    const files = new Map<string, string>();
+    for (const [path, entry] of snapshot) {
+      if (entry.kind === "file" && entry.content !== undefined) {
+        files.set(path, entry.content);
+      }
+    }
+    const result = migrateStdlibImports(
+      files,
+      this.projectManager.activeProject!.manifest.extensions,
+      this.stdlibImportRedirects
+    );
+    if (!result.changed) {
+      return;
+    }
+    for (const [path, content] of result.changedFiles) {
+      this.projectFileSystem.applyLocalChange({
+        action: "write",
+        path,
+        content,
+        newEtag: `stdlib-migration-${Date.now()}`,
+      });
+    }
+    if (Object.keys(result.manifestBackfill).length > 0) {
+      const extensions = { ...this.projectManager.activeProject!.manifest.extensions, ...result.manifestBackfill };
+      await this.projectManager.updateActive({ extensions });
+    }
+  }
+
   private initCompiler(): void {
+    const { dependencies, dependencyMounts } = resolveEmbeddedExtensions(
+      this.projectManager.activeProject!.manifest.extensions,
+      this.embeddedExtensions
+    );
     this._compiler = createProjectCompiler({
       environment: this.env,
       filesystem: this.projectFileSystem,
       projectNamespace: this.projectManager.activeProject!.manifest.id,
-      ambientFiles: this.ambientFiles,
-      stdlibFiles: this.stdlibFiles,
+      mounts: this.mounts,
+      dependencies,
+      dependencyMounts,
       examples: [...this._examples],
       onDidCompile: (result) => {
         this.persistMintedActionIds(result.projectResult.sourceRewrites);
@@ -526,6 +591,7 @@ export class AppEnvironmentHost {
         this.userTileStorageOptions(),
         this.projectManager.activeProject!.manifest.id
       )) ?? undefined;
+    await this.migrateStdlibImportsForActiveProject();
     this.initCompiler();
     await this.loadBrainsFromProject();
 

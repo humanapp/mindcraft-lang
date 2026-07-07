@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment, List, type MindcraftModule } from "@mindcraft-lang/core";
 import { type EnumTypeDef, mkTypeId, NativeType } from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./compiler/ambient.js";
+import { declarationMount, type Mount } from "./compiler/mounts.js";
 import type { AmbientFile } from "./compiler/types.js";
 import { TEST_PROJECT_NAMESPACE } from "./testing/index.js";
 import { createWorkspaceCompiler, type WorkspaceCompileResult } from "./workspace-compiler.js";
@@ -51,6 +52,10 @@ function ambientFilesFor(environment: ReturnType<typeof createMindcraftEnvironme
   ];
 }
 
+function mountsFor(environment: ReturnType<typeof createMindcraftEnvironment>): readonly Mount[] {
+  return [declarationMount(ambientFilesFor(environment))];
+}
+
 describe("createWorkspaceCompiler", () => {
   test("binds ambient generation and bundle output to the provided environment", () => {
     const environment = createMindcraftEnvironment({
@@ -58,7 +63,7 @@ describe("createWorkspaceCompiler", () => {
     });
     const compiler = createWorkspaceCompiler({
       projectNamespace: TEST_PROJECT_NAMESPACE,
-      ambientFiles: ambientFilesFor(environment),
+      mounts: mountsFor(environment),
       environment,
     });
     let heardResult: WorkspaceCompileResult | undefined;
@@ -103,7 +108,7 @@ export default Sensor({
     });
     const compiler = createWorkspaceCompiler({
       projectNamespace: TEST_PROJECT_NAMESPACE,
-      ambientFiles: ambientFilesFor(environment),
+      mounts: mountsFor(environment),
       environment,
     });
 
@@ -175,7 +180,11 @@ export default Sensor({
       modules: [coreModule(), createFacingModule()],
     });
     const ambientFiles = ambientFilesFor(environment);
-    const compiler = createWorkspaceCompiler({ projectNamespace: TEST_PROJECT_NAMESPACE, ambientFiles, environment });
+    const compiler = createWorkspaceCompiler({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      mounts: [declarationMount(ambientFiles)],
+      environment,
+    });
     const controlledFiles = compiler.getCompilerControlledFiles();
 
     assert.equal(controlledFiles.get("mindcraft.core.d.ts"), ambientFiles[0]!.content);

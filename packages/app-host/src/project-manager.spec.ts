@@ -87,6 +87,38 @@ describe("ProjectManager", () => {
     });
   });
 
+  describe("default extensions", () => {
+    it("seeds the host default extensions into a newly created project's manifest", async () => {
+      const defaults = { "wodal-stdlib": "embedded:wodal-stdlib" };
+      const withDefaults = new ProjectManager(memStore, { defaultExtensions: defaults });
+      try {
+        const manifest = await withDefaults.create("Seeded");
+        assert.deepStrictEqual(manifest.extensions, defaults);
+        const stored = await memStore.getProject(manifest.id);
+        assert.deepStrictEqual(stored?.extensions, defaults);
+      } finally {
+        await withDefaults.close();
+        withDefaults.dispose();
+      }
+    });
+
+    it("creates a project with no extensions when the host designates none", async () => {
+      const manifest = await pm.create("Plain");
+      assert.strictEqual(manifest.extensions, undefined);
+    });
+
+    it("treats an empty default set as no defaults", async () => {
+      const withEmpty = new ProjectManager(memStore, { defaultExtensions: {} });
+      try {
+        const manifest = await withEmpty.create("Empty");
+        assert.strictEqual(manifest.extensions, undefined);
+      } finally {
+        await withEmpty.close();
+        withEmpty.dispose();
+      }
+    });
+  });
+
   describe("open / close", () => {
     it("opens a project by ID", async () => {
       const m = await pm.create("Openable");
