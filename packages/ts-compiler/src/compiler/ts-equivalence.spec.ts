@@ -2140,6 +2140,34 @@ export default Sensor({
     },
     entry: "b.ts",
   },
+  {
+    name: "shared-modifier-label-conflict",
+    files: {
+      "a.ts": `import { Sensor, modifier, optional, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "first label",
+  id: "modLabelA0000001",
+  args: [optional(modifier("modifier.corpus.gear", { label: "fast" }))],
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`,
+      "b.ts": `import { Sensor, modifier, optional, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "second label",
+  id: "modLabelB0000001",
+  args: [optional(modifier("modifier.corpus.gear", { label: "slow" }))],
+  onExecute(ctx: Context): number {
+    return 2;
+  },
+});
+`,
+    },
+    entry: "b.ts",
+  },
 ];
 
 /** Every error-severity diagnostic across all per-file results. */

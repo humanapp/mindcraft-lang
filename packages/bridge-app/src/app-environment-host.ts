@@ -352,7 +352,9 @@ export class AppEnvironmentHost {
     if (!namespace) {
       return false;
     }
-    const report = migrateBrainKeyNamespaces(json, namespace);
+    const report = migrateBrainKeyNamespaces(json, namespace, {
+      isPlatformTileId: (tileId) => this.env.brainServices.edit.tiles.has(tileId),
+    });
     for (const unknownKey of report.unknownKeys) {
       logger.warn(`[key-namespace-migration] brain "${key}": unrecognized reference left unmigrated: ${unknownKey}`);
     }
@@ -508,6 +510,9 @@ export class AppEnvironmentHost {
     this._brainCache.clear();
     this._pendingBrainRebuild = false;
     this.env.replaceActionBundle({ revision: "", tiles: [], actions: Dict.empty() });
+    // Compiles invalidate types per project namespace, so the outgoing
+    // project's registrations must be cleared here or they outlive it.
+    this.env.brainServices.runtime.types.removeUserTypes();
     this._lastUserTileMetadata = undefined;
     this.bumpDocRevision();
     this.teardownBridge();

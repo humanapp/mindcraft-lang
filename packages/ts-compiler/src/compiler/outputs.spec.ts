@@ -9,6 +9,7 @@ import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { DescriptorDiagCode, LoweringDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
+import { scopedOutputName } from "./symbol-keys.js";
 
 let services: BrainServices;
 
@@ -234,20 +235,21 @@ describe("derived output tiles", () => {
     const bundle = buildCompiledActionBundle(result, { services });
     assert.ok(bundle);
 
-    const valueTileId = mkOutputTileId(CoreTypeIds.String, "value");
-    const rssiTileId = mkOutputTileId(CoreTypeIds.Number, "rssi");
+    const valueTileId = mkOutputTileId(CoreTypeIds.String, scopedOutputName(TEST_PROJECT_NAMESPACE, "value"));
+    const rssiTileId = mkOutputTileId(CoreTypeIds.Number, scopedOutputName(TEST_PROJECT_NAMESPACE, "rssi"));
     const valueTile = bundle.tiles.find((t) => t.tileId === valueTileId);
     const rssiTile = bundle.tiles.find((t) => t.tileId === rssiTileId);
     assert.ok(valueTile, "expected a value output tile");
     assert.ok(rssiTile, "expected an rssi output tile");
     assert.equal(valueTile.kind, "output");
+    assert.equal(valueTile.metadata?.label, "value", "the tile label stays the bare declared name");
 
     const sensorTile = bundle.tiles.find((t) => t.tileId === `tile.sensor->${TEST_PROJECT_NAMESPACE}:user.sensor.snrx`);
     assert.ok(sensorTile);
 
     // The sensor advertises each output's identity key; each output tile reads its own.
-    const valueKey = mkOutputVarKey(CoreTypeIds.String, "value");
-    const rssiKey = mkOutputVarKey(CoreTypeIds.Number, "rssi");
+    const valueKey = mkOutputVarKey(CoreTypeIds.String, scopedOutputName(TEST_PROJECT_NAMESPACE, "value"));
+    const rssiKey = mkOutputVarKey(CoreTypeIds.Number, scopedOutputName(TEST_PROJECT_NAMESPACE, "rssi"));
     assert.notEqual(valueKey, rssiKey, "distinct identities get distinct keys");
     assert.ok(sensorTile.providedOutputs().indexOf(valueKey) >= 0, "the sensor provides the value output key");
     assert.ok(sensorTile.providedOutputs().indexOf(rssiKey) >= 0, "the sensor provides the rssi output key");
@@ -272,11 +274,11 @@ describe("derived output tiles", () => {
     const bundle = buildCompiledActionBundle(result, { services });
     assert.ok(bundle);
 
-    const valueTileId = mkOutputTileId(CoreTypeIds.String, "value");
+    const valueTileId = mkOutputTileId(CoreTypeIds.String, scopedOutputName(TEST_PROJECT_NAMESPACE, "value"));
     const valueTiles = bundle.tiles.filter((t) => t.tileId === valueTileId);
     assert.equal(valueTiles.length, 1, "a shared identity surfaces a single tile");
 
-    const sharedKey = mkOutputVarKey(CoreTypeIds.String, "value");
+    const sharedKey = mkOutputVarKey(CoreTypeIds.String, scopedOutputName(TEST_PROJECT_NAMESPACE, "value"));
     const see = bundle.tiles.find((t) => t.tileId === `tile.sensor->${TEST_PROJECT_NAMESPACE}:user.sensor.snsee`);
     const hear = bundle.tiles.find((t) => t.tileId === `tile.sensor->${TEST_PROJECT_NAMESPACE}:user.sensor.snhear`);
     assert.ok(see && hear);
@@ -292,8 +294,9 @@ describe("derived output tiles", () => {
     const bundle = buildCompiledActionBundle(result, { services });
     assert.ok(bundle);
 
-    assert.ok(bundle.tiles.some((t) => t.tileId === mkOutputTileId(CoreTypeIds.String, "value")));
-    assert.ok(bundle.tiles.some((t) => t.tileId === mkOutputTileId(CoreTypeIds.Number, "value")));
-    assert.notEqual(mkOutputVarKey(CoreTypeIds.String, "value"), mkOutputVarKey(CoreTypeIds.Number, "value"));
+    const scopedValue = scopedOutputName(TEST_PROJECT_NAMESPACE, "value");
+    assert.ok(bundle.tiles.some((t) => t.tileId === mkOutputTileId(CoreTypeIds.String, scopedValue)));
+    assert.ok(bundle.tiles.some((t) => t.tileId === mkOutputTileId(CoreTypeIds.Number, scopedValue)));
+    assert.notEqual(mkOutputVarKey(CoreTypeIds.String, scopedValue), mkOutputVarKey(CoreTypeIds.Number, scopedValue));
   });
 });

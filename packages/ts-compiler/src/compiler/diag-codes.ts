@@ -578,6 +578,8 @@ export enum CompileDiagCode {
   ConsumesWhenResultIsAny = 5016,
   /** A param `type` name does not resolve to a registered type, so the tile's parameter tiles cannot be built */
   ParameterUnresolvedType = 5017,
+  /** A shared `modifier.` id is declared with a label that conflicts with an earlier declaration or a registered tile */
+  SharedModifierLabelConflict = 5018,
 }
 
 /**

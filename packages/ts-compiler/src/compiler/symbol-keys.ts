@@ -42,3 +42,14 @@ export function userActionKey(
 export function privateArgTileId(projectNamespace: string, actionId: string, argName: string): string {
   return `${projectNamespace}:user.${actionId}.${argName}`;
 }
+
+/**
+ * Identity name of a user-declared sensor output: the declared output name
+ * scoped by the declaring project's namespace. The scoped name is the name
+ * half of the `(typeId, name)` output identity, so same-named outputs from
+ * different projects never share a tile or a backing rule variable. Call
+ * only for user-declared outputs.
+ */
+export function scopedOutputName(projectNamespace: string, outputName: string): string {
+  return `${projectNamespace}:${outputName}`;
+}

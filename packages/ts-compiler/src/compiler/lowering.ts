@@ -24,7 +24,7 @@ import { type ArgSlot, collectArgSlots } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import { type LocalMetadata, type ScopeMetadata, ScopeStack } from "./scope.js";
-import { qualifiedClassName } from "./symbol-keys.js";
+import { qualifiedClassName, scopedOutputName } from "./symbol-keys.js";
 import {
   ambientTypeTokenName,
   isMindcraftModuleDeclaration,
@@ -5132,7 +5132,10 @@ function lowerSetOutputCall(expr: ts.CallExpression, ctx: LowerContext): void {
   }
 
   ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
-  ctx.ir.push({ kind: "PushConst", value: mkStringValue(mkOutputVarKey(typeId, outputName)) });
+  ctx.ir.push({
+    kind: "PushConst",
+    value: mkStringValue(mkOutputVarKey(typeId, scopedOutputName(ctx.projectNamespace, outputName))),
+  });
   const valueExpr = expr.arguments[2];
   lowerExpression(valueExpr, ctx);
   coerceSetOutputValue(valueExpr, typeId, outputName, ctx);

@@ -124,6 +124,7 @@ export const BLOCKED: Readonly<Record<string, number>> = {
   "sensor-returns-imported-struct-instance-alias": CompileDiagCode.UnknownOutputType,
   "conversion-from-enum-ref": CompileDiagCode.TypeScriptError,
   "struct-field-typed-by-enum-binding": CompileDiagCode.TypeScriptError,
+  "shared-modifier-label-conflict": CompileDiagCode.SharedModifierLabelConflict,
 };
 
 /**

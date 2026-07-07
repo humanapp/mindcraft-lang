@@ -14,7 +14,7 @@ import {
   type ProjectManager,
 } from "@mindcraft-lang/app-host";
 import type { IBrainDef } from "@mindcraft-lang/core/app";
-import { coreModule } from "@mindcraft-lang/core/app";
+import { CoreTypeIds, coreModule, List } from "@mindcraft-lang/core/app";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 
 class EmptyProjectFileSystem implements ProjectFileSystem {
@@ -289,6 +289,60 @@ describe("AppEnvironmentHost project transitions", () => {
       "loaded",
     ]);
     assert.strictEqual(host.activeProjectManifest?.id, "active");
+  });
+
+  it("clears the outgoing project's user types on unload", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const activeProject = createActiveProject("active");
+    const projectManagerStub: {
+      activeProject: ActiveProject | undefined;
+      activeProjectCollection: ProjectCollection;
+      saveAppData(key: string, data: string): Promise<void>;
+      loadAppData(key: string): Promise<string | undefined>;
+      deleteAppData(key: string): Promise<void>;
+      lockProjectCollection(
+        projectCollectionId: string,
+        options?: { beforeActiveProjectChange?: () => void }
+      ): Promise<void>;
+    } = {
+      activeProject,
+      activeProjectCollection: createProjectCollection(),
+      async saveAppData(): Promise<void> {},
+      async loadAppData(): Promise<string | undefined> {
+        return undefined;
+      },
+      async deleteAppData(): Promise<void> {},
+      async lockProjectCollection(
+        _projectCollectionId: string,
+        options?: { beforeActiveProjectChange?: () => void }
+      ): Promise<void> {
+        options?.beforeActiveProjectChange?.();
+        projectManagerStub.activeProject = undefined;
+      },
+    };
+    const host = new AppEnvironmentHost({
+      projectManager: projectManagerStub as unknown as ProjectManager,
+      modules: [coreModule()],
+      ambientFiles: [],
+      host: { name: "test", version: "0.0.0" },
+    });
+
+    const types = host.env.brainServices.runtime.types;
+    const typeName = "active:/main.ts::Probe";
+    types.withOwner("dynamic", () =>
+      types.addStructType(typeName, {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+      })
+    );
+    assert.ok(types.resolveByName(typeName));
+
+    try {
+      await host.lockProjectCollection("collection-1");
+    } finally {
+      restoreLocalStorage();
+    }
+
+    assert.strictEqual(types.resolveByName(typeName), undefined);
   });
 });
 

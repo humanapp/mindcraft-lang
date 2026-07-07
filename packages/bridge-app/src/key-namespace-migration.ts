@@ -9,12 +9,18 @@
  *   `enum:<...>` type ids) become `<namespace>:<file>::<binding>`.
  * - Id-keyed action keys `user.<kind>.<id>` and private arg tile ids
  *   `user.<actionId>.<arg>` become `<namespace>:user.<...>`.
+ * - Output tile ids `tile.out-><typeId>.<name>` referencing a user-declared
+ *   output scope the name half: `<name>` becomes `<namespace>:<name>`.
+ *   Platform outputs are recognized by their registered tile id and pass
+ *   through untouched; the output-name rule applies only when the caller
+ *   supplies `isPlatformTileId`.
  *
  * Platform identifiers (host tile keys, `tile.op->...`, shared `modifier.*` /
- * `parameter.*` ids, core type ids) contain neither marker and pass through
- * unchanged. The migration is idempotent: already-namespaced references are
- * detected by the key grammar (a namespace never contains `:/`; id-keyed
- * local parts always start `user.`) and never re-prefixed. Strings that carry
+ * `parameter.*` ids, core type ids) contain no user-key marker and pass
+ * through unchanged. The migration is idempotent: already-namespaced
+ * references are detected by the key grammar (a namespace never contains
+ * `:/`; id-keyed local parts always start `user.`; a scoped output name
+ * starts with the namespace prefix) and never re-prefixed. Strings that carry
  * user-key markers but match no known shape are left untouched and reported.
  */
 
@@ -26,8 +32,20 @@ export interface KeyNamespaceMigrationReport {
   unknownKeys: readonly string[];
 }
 
+/** Options for {@link migrateBrainKeyNamespaces}. */
+export interface KeyNamespaceMigrationOptions {
+  /**
+   * True when a tile id names a platform-registered tile. Consulted for
+   * `tile.out->` references: a platform output keeps its bare name, any other
+   * output reference gets the project-namespace-scoped name. When omitted,
+   * output names are left untouched.
+   */
+  isPlatformTileId?: (tileId: string) => boolean;
+}
+
 interface MigrationState {
   readonly namespace: string;
+  readonly isPlatformTileId?: (tileId: string) => boolean;
   changed: boolean;
   readonly unknownKeys: Set<string>;
 }
@@ -77,6 +95,26 @@ function migrateTypeId(typeId: string, state: MigrationState): string {
     return typeId;
   }
   return `${typeId.slice(0, open + 2)}${migrated}>`;
+}
+
+/**
+ * Rewrite the name half of an output tile id. A platform-registered output
+ * (recognized by the saved tile id) and an already-scoped name pass through;
+ * any other output name gets the project-namespace prefix. Without an
+ * `isPlatformTileId` oracle every name passes through.
+ */
+function migrateOutputName(savedTileId: string, name: string, state: MigrationState): string {
+  if (state.isPlatformTileId === undefined) {
+    return name;
+  }
+  if (state.isPlatformTileId(savedTileId)) {
+    return name;
+  }
+  if (name.startsWith(`${state.namespace}:`)) {
+    return name;
+  }
+  state.changed = true;
+  return `${state.namespace}:${name}`;
 }
 
 /**
@@ -154,11 +192,13 @@ function migrateTileId(tileId: string, state: MigrationState): string {
         return tileId;
       }
       const typeId = payload.substring(0, typeEnd + 1);
-      const migrated = migrateTypeId(typeId, state);
-      if (migrated === typeId) {
+      const name = payload.substring(typeEnd + 2);
+      const migratedTypeId = migrateTypeId(typeId, state);
+      const migratedName = migrateOutputName(tileId, name, state);
+      if (migratedTypeId === typeId && migratedName === name) {
         return tileId;
       }
-      return `tile.out->${migrated}${payload.substring(typeEnd + 1)}`;
+      return `tile.out->${migratedTypeId}.${migratedName}`;
     }
 
     // Areas whose ids never reference user symbols.
@@ -235,8 +275,17 @@ interface PlainBrainJson {
  * changes nothing. Returns what changed and which marker-carrying strings
  * were left untouched as unclassifiable.
  */
-export function migrateBrainKeyNamespaces(json: unknown, projectNamespace: string): KeyNamespaceMigrationReport {
-  const state: MigrationState = { namespace: projectNamespace, changed: false, unknownKeys: new Set() };
+export function migrateBrainKeyNamespaces(
+  json: unknown,
+  projectNamespace: string,
+  options?: KeyNamespaceMigrationOptions
+): KeyNamespaceMigrationReport {
+  const state: MigrationState = {
+    namespace: projectNamespace,
+    isPlatformTileId: options?.isPlatformTileId,
+    changed: false,
+    unknownKeys: new Set(),
+  };
   const brain = json as PlainBrainJson;
 
   if (Array.isArray(brain.catalog)) {

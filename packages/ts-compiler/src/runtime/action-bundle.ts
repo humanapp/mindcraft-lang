@@ -22,26 +22,30 @@ function hashText(text: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-function hasBlockingDiagnostics(result: ProjectCompileResult): boolean {
-  if (result.tsErrors.size > 0) {
-    return true;
-  }
-
-  for (const compileResult of result.results.values()) {
-    if (compileResult.diagnostics.length > 0) {
+function hasBlockingDiagnostics(results: readonly ProjectCompileResult[]): boolean {
+  for (const result of results) {
+    if (result.tsErrors.size > 0) {
       return true;
+    }
+
+    for (const compileResult of result.results.values()) {
+      if (compileResult.diagnostics.length > 0) {
+        return true;
+      }
     }
   }
 
   return false;
 }
 
-function collectPrograms(result: ProjectCompileResult): readonly UserAuthoredProgram[] {
+function collectPrograms(results: readonly ProjectCompileResult[]): readonly UserAuthoredProgram[] {
   const programs: UserAuthoredProgram[] = [];
 
-  for (const compileResult of result.results.values()) {
-    if (compileResult.program) {
-      programs.push(compileResult.program);
+  for (const result of results) {
+    for (const compileResult of result.results.values()) {
+      if (compileResult.program) {
+        programs.push(compileResult.program);
+      }
     }
   }
 
@@ -71,13 +75,27 @@ export function buildCompiledActionBundle(
   result: ProjectCompileResult,
   options: BuildCompiledActionBundleOptions
 ): CompiledActionBundle | undefined {
-  if (hasBlockingDiagnostics(result)) {
+  return buildMultiRootActionBundle([result], options);
+}
+
+/**
+ * Build one {@link CompiledActionBundle} from the per-root compile results of
+ * a multi-root session, registering each tile if-absent across roots in
+ * program `key` order. Returns undefined when any root has blocking
+ * diagnostics.
+ */
+export function buildMultiRootActionBundle(
+  results: Iterable<ProjectCompileResult>,
+  options: BuildCompiledActionBundleOptions
+): CompiledActionBundle | undefined {
+  const resultList = [...results];
+  if (hasBlockingDiagnostics(resultList)) {
     return undefined;
   }
 
   const resolveTypeId =
     options.resolveTypeId ?? ((typeName: string) => options.services.runtime.types.resolveByName(typeName));
-  const programs = collectPrograms(result);
+  const programs = collectPrograms(resultList);
   const actions = new Dict<string, UserAuthoredProgram>();
   const tileMap = new Map<string, IBrainTileDef>();
 

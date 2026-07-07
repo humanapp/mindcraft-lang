@@ -18,7 +18,7 @@ import {
 import { type ActionDescriptor, mkModifierTileId, mkParameterTileId, type TypeId } from "@mindcraft-lang/core/runtime";
 import { BitSet } from "@mindcraft-lang/core/util";
 import { collectModifiers, collectParams } from "../compiler/arg-spec-utils.js";
-import { privateArgTileId } from "../compiler/symbol-keys.js";
+import { privateArgTileId, scopedOutputName } from "../compiler/symbol-keys.js";
 import type { ExtractedModifier, ExtractedParam, UserAuthoredProgram } from "../compiler/types.js";
 
 /** Resolve a parameter type name to a runtime `TypeId`, or `undefined` when the type is not registered. */
@@ -138,7 +138,9 @@ function buildModifierTiles(program: UserAuthoredProgram): readonly BrainTileMod
 }
 
 /**
- * Build the inline output value-tiles for a sensor's declared outputs. Returns
+ * Build the inline output value-tiles for a sensor's declared outputs. Output
+ * identity is the resolved type plus the output name scoped by the declaring
+ * project's namespace; the tile's label stays the bare declared name. Returns
  * undefined when an output's type cannot be resolved.
  */
 function buildOutputTiles(
@@ -157,7 +159,9 @@ function buildOutputTiles(
       docsMarkdown: output.docs,
       tags: output.tags,
     };
-    outputTiles.push(new BrainTileOutputDef(typeId, output.name, { metadata }));
+    outputTiles.push(
+      new BrainTileOutputDef(typeId, scopedOutputName(program.projectNamespace, output.name), { metadata })
+    );
   }
   return outputTiles;
 }

@@ -882,6 +882,74 @@ describe("removeUserTypes", () => {
     assert.ok(registry.get(CoreTypeIds.String));
     assert.ok(registry.get(CoreTypeIds.Boolean));
   });
+
+  test("a namespace argument removes only that project's types", () => {
+    const registry = services.runtime.types;
+    const projectA = registry.withOwner("dynamic", () =>
+      registry.addStructType("project-a:/main.ts::Vec", {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+      })
+    );
+    const projectB = registry.withOwner("dynamic", () =>
+      registry.addStructType("project-b:/main.ts::Vec", {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+      })
+    );
+
+    registry.removeUserTypes("project-a");
+
+    assert.equal(registry.get(projectA), undefined);
+    assert.equal(registry.resolveByName("project-a:/main.ts::Vec"), undefined);
+    assert.ok(registry.get(projectB));
+    assert.equal(registry.resolveByName("project-b:/main.ts::Vec"), projectB);
+
+    registry.removeUserTypes("project-b");
+    assert.equal(registry.get(projectB), undefined);
+  });
+
+  test("a namespace argument clears that project's enum artifacts and no other's", () => {
+    const registry = services.runtime.types;
+    const mkEnum = (name: string) =>
+      registry.withOwner("dynamic", () =>
+        registry.addEnumType(name, {
+          symbols: List.from([
+            { key: "on", label: "On", value: 0 },
+            { key: "off", label: "Off", value: 1 },
+          ]),
+          defaultKey: "on",
+        })
+      );
+    const enumA = mkEnum("project-a:/mode.ts::Mode");
+    const enumB = mkEnum("project-b:/mode.ts::Mode");
+
+    registry.removeUserTypes("project-a");
+
+    assert.equal(services.shared.conversions.get(enumA, CoreTypeIds.String), undefined);
+    assert.equal(services.edit.operatorOverloads.resolve(CoreOpId.EqualTo, [enumA, enumA]), undefined);
+    assert.ok(services.shared.conversions.get(enumB, CoreTypeIds.String));
+    assert.ok(services.edit.operatorOverloads.resolve(CoreOpId.EqualTo, [enumB, enumB]));
+  });
+
+  test("a namespace argument removes derived structural names referencing that namespace", () => {
+    const registry = services.runtime.types;
+    const base = registry.withOwner("dynamic", () =>
+      registry.addStructType("project-a:/main.ts::Inner", {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+      })
+    );
+    const derivedName = `{p:${base}}`;
+    const derived = registry.withOwner("dynamic", () =>
+      registry.addStructType(derivedName, {
+        fields: List.from([{ name: "p", typeId: base, fieldIndex: 0 }]),
+      })
+    );
+
+    registry.removeUserTypes("project-a");
+
+    assert.equal(registry.get(base), undefined);
+    assert.equal(registry.get(derived), undefined);
+    assert.equal(registry.resolveByName(derivedName), undefined);
+  });
 });
 
 describe("StructTypeDef.fields[i].fieldIndex", () => {

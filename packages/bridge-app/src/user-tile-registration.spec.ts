@@ -5,8 +5,15 @@ import {
   coreModule,
   createMindcraftEnvironment,
   type MindcraftEnvironment,
+  mkOutputTileId,
+  mkOutputVarKey,
 } from "@mindcraft-lang/core/app";
-import { buildCompiledActionBundle, UserTileProject, type WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+import {
+  buildCompiledActionBundle,
+  scopedOutputName,
+  UserTileProject,
+  type WorkspaceCompileResult,
+} from "@mindcraft-lang/ts-compiler";
 import { TEST_PROJECT_NAMESPACE } from "@mindcraft-lang/ts-compiler/testing";
 import {
   applyCompiledUserTiles,
@@ -94,7 +101,60 @@ describe("collectMetadataFromCompile", () => {
   });
 });
 
+const OUTPUT_SENSOR = `
+import { Sensor, setOutput, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "snrange",
+  name: "range",
+  outputs: [{ name: "distance", type: "number" }],
+  onExecute(ctx: Context): number {
+    setOutput(ctx, "distance", 5);
+    return 1;
+  },
+});
+`;
+
 describe("warm-start cache round-trip", () => {
+  test("a sensor output hydrates with the same namespace-scoped identity the compiler mints", async () => {
+    const source = { "sensor.ts": OUTPUT_SENSOR };
+
+    const authoringEnv = createMindcraftEnvironment({ modules: [coreModule()] });
+    const result = compile(authoringEnv, source);
+    assert.ok(result.bundle, "expected the output sensor to compile to a bundle");
+
+    const scopedName = scopedOutputName(TEST_PROJECT_NAMESPACE, "distance");
+    const outputTileId = mkOutputTileId(CoreTypeIds.Number, scopedName);
+    const outputKey = mkOutputVarKey(CoreTypeIds.Number, scopedName);
+    const compiledOutputTile = result.bundle.tiles.find((tile) => tile.tileId === outputTileId);
+    assert.ok(compiledOutputTile, "the compiled bundle carries the scoped output tile");
+
+    let savedJson: string | undefined;
+    const options: UserTileRegistrationOptions = {
+      loadMetadata: async () => savedJson,
+      saveMetadata: (json) => {
+        savedJson = json;
+      },
+    };
+    applyCompiledUserTiles(authoringEnv, result, options);
+    assert.ok(savedJson, "the compile should persist a metadata cache");
+
+    const warmStartEnv = createMindcraftEnvironment({ modules: [coreModule()] });
+    const restored = await hydrateUserTilesFromCache(warmStartEnv, options, TEST_PROJECT_NAMESPACE);
+    assert.ok(restored, "the cache should hydrate");
+
+    const hydratedCatalog = warmStartEnv.tileCatalogs()[1];
+    const hydratedOutputTile = hydratedCatalog.get(outputTileId);
+    assert.ok(hydratedOutputTile, "the hydrated catalog carries the scoped output tile");
+
+    const hydratedSensor = hydratedCatalog.get(`tile.sensor->${TEST_PROJECT_NAMESPACE}:user.sensor.snrange`);
+    assert.ok(hydratedSensor, "the hydrated catalog carries the sensor");
+    assert.ok(
+      hydratedSensor.providedOutputs().indexOf(outputKey) >= 0,
+      "the hydrated sensor provides the scoped output key"
+    );
+  });
+
   test("inline and presenceGated survive persist then rehydrate", async () => {
     const source = { "sensor.ts": INLINE_PRESENCE_SENSOR };
 

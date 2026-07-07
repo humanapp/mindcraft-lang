@@ -280,5 +280,11 @@ export interface ITypeRegistry {
   getOrCreateUnionType(memberTypeIds: List<TypeId>): TypeId;
   getOrCreateFunctionType(shape: FunctionTypeShape): TypeId;
   isStructurallyCompatible(sourceTypeId: TypeId, targetTypeId: TypeId): boolean;
-  removeUserTypes(): void;
+  /**
+   * Remove user-registered struct and enum types (module-qualified names
+   * containing `::`) and their derived enum artifacts. When
+   * `projectNamespace` is given, removes only the types whose name carries
+   * that project's namespace; other projects' registrations are untouched.
+   */
+  removeUserTypes(projectNamespace?: string): void;
 }

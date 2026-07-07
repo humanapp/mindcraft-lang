@@ -31,7 +31,14 @@ export {
   LoweringDiagCode,
   ValidatorDiagCode,
 } from "./compiler/diag-codes.js";
-export { privateArgTileId, qualifiedClassName, userActionKey } from "./compiler/symbol-keys.js";
+export type {
+  SharedModifierDeclaration,
+  SharedParameterDeclaration,
+  SharedTileSessionContext,
+} from "./compiler/project.js";
+export type { MultiRootCompileResult, MultiRootSessionOptions, ProjectRoot } from "./compiler/project-set.js";
+export { MultiRootSession } from "./compiler/project-set.js";
+export { privateArgTileId, qualifiedClassName, scopedOutputName, userActionKey } from "./compiler/symbol-keys.js";
 export type { LinkedUserProgram, UserAuthoredProgram } from "./compiler/types.js";
 export {
   isCallSpec,
@@ -44,7 +51,7 @@ export {
 export type { LinkResult } from "./linker/linker.js";
 export { linkUserPrograms } from "./linker/linker.js";
 export type { BuildCompiledActionBundleOptions } from "./runtime/action-bundle.js";
-export { buildCompiledActionBundle } from "./runtime/action-bundle.js";
+export { buildCompiledActionBundle, buildMultiRootActionBundle } from "./runtime/action-bundle.js";
 export type {
   CreateWorkspaceCompilerOptions,
   WorkspaceChange,

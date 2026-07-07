@@ -6,6 +6,13 @@ const NS = "p1";
 const OLD_STRUCT = "struct:</gamepad/position.ts::Position>";
 const NEW_STRUCT = `struct:<${NS}:/gamepad/position.ts::Position>`;
 
+/** Platform oracle over the fixture's registered platform tiles. */
+const PLATFORM_TILE_IDS = new Set(["tile.out->number:<number>.strength"]);
+
+function isPlatformTileId(tileId: string): boolean {
+  return PLATFORM_TILE_IDS.has(tileId);
+}
+
 interface PlainRule {
   version: number;
   when: string[];
@@ -71,7 +78,7 @@ describe("migrateBrainKeyNamespaces", () => {
       ]
     );
 
-    const report = migrateBrainKeyNamespaces(json, NS);
+    const report = migrateBrainKeyNamespaces(json, NS, { isPlatformTileId });
 
     assert.equal(report.changed, true);
     assert.deepEqual(report.unknownKeys, []);
@@ -93,8 +100,57 @@ describe("migrateBrainKeyNamespaces", () => {
       `tile.parameter->${NS}:user.steerActuator123.speed`,
       "tile.literal->number:<number>->50",
       `tile.var.factory->${NEW_STRUCT}`,
-      `tile.out->${NEW_STRUCT}.stick`,
+      `tile.out->${NEW_STRUCT}.${NS}:stick`,
     ]);
+  });
+
+  test("a user output over a platform type gets the namespace-scoped name", () => {
+    const json = brain(
+      [],
+      [rule(["tile.sensor->user.sensor.rangeSensor12345"], ["tile.out->number:<number>.distance"])]
+    );
+
+    const report = migrateBrainKeyNamespaces(json, NS, { isPlatformTileId });
+
+    assert.equal(report.changed, true);
+    assert.deepEqual(report.unknownKeys, []);
+    const migratedRule = (json.pages as Array<{ rules: PlainRule[] }>)[0].rules[0];
+    assert.deepEqual(migratedRule.do, [`tile.out->number:<number>.${NS}:distance`]);
+  });
+
+  test("a platform output reference keeps its bare name", () => {
+    const json = brain(
+      [],
+      [rule(["tile.sensor->microbit-v2.radio-receive-number"], ["tile.out->number:<number>.strength"])]
+    );
+    const before = JSON.stringify(json);
+
+    const report = migrateBrainKeyNamespaces(json, NS, { isPlatformTileId });
+
+    assert.equal(report.changed, false);
+    assert.equal(JSON.stringify(json), before);
+  });
+
+  test("output-name scoping is idempotent", () => {
+    const json = brain([], [rule([], [`tile.out->${OLD_STRUCT}.stick`, "tile.out->number:<number>.distance"])]);
+
+    const first = migrateBrainKeyNamespaces(json, NS, { isPlatformTileId });
+    assert.equal(first.changed, true);
+    const afterFirst = JSON.stringify(json);
+
+    const second = migrateBrainKeyNamespaces(json, NS, { isPlatformTileId });
+    assert.equal(second.changed, false);
+    assert.equal(JSON.stringify(json), afterFirst);
+  });
+
+  test("without a platform oracle, output names pass through and only type ids migrate", () => {
+    const json = brain([], [rule([], [`tile.out->${OLD_STRUCT}.stick`])]);
+
+    const report = migrateBrainKeyNamespaces(json, NS);
+
+    assert.equal(report.changed, true);
+    const migratedRule = (json.pages as Array<{ rules: PlainRule[] }>)[0].rules[0];
+    assert.deepEqual(migratedRule.do, [`tile.out->${NEW_STRUCT}.stick`]);
   });
 
   test("a platform-only brain passes through byte-identical", () => {
@@ -136,7 +192,7 @@ describe("migrateBrainKeyNamespaces", () => {
     );
     const before = JSON.stringify(json);
 
-    const report = migrateBrainKeyNamespaces(json, NS);
+    const report = migrateBrainKeyNamespaces(json, NS, { isPlatformTileId });
 
     assert.equal(report.changed, false);
     assert.deepEqual(report.unknownKeys, []);

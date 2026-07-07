@@ -36,6 +36,7 @@ import {
   isOptionalStringArray,
   isRecord,
   privateArgTileId,
+  scopedOutputName,
 } from "@mindcraft-lang/ts-compiler";
 
 const METADATA_CACHE_VERSION = 7 as const;
@@ -342,9 +343,10 @@ function buildHydratedSnapshot(
             canRegister = false;
             break;
           }
-          providedOutputKeys.push(mkOutputVarKey(outputTypeId, output.name));
+          const outputName = scopedOutputName(projectNamespace, output.name);
+          providedOutputKeys.push(mkOutputVarKey(outputTypeId, outputName));
           outputTiles.push(
-            new BrainTileOutputDef(outputTypeId, output.name, {
+            new BrainTileOutputDef(outputTypeId, outputName, {
               metadata: {
                 label: output.label ?? output.name,
                 iconUrl: output.icon,

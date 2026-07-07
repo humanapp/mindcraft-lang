@@ -752,11 +752,16 @@ export class TypeRegistry implements ITypeRegistry {
     return this.defs.entries().toArray();
   }
 
-  removeUserTypes(): void {
+  removeUserTypes(projectNamespace?: string): void {
+    // A namespaced user-type name carries `<namespace>:/` -- either as its own
+    // binding-keyed prefix or embedded in a derived structural name that
+    // references the namespace's types.
+    const namespaceMarker = projectNamespace === undefined ? undefined : `${projectNamespace}:/`;
     const toRemove = new List<TypeId>();
     this.defs.forEach((def) => {
       if (def.coreType !== NativeType.Struct && def.coreType !== NativeType.Enum) return;
       if (SU.indexOf(def.name, "::") < 0) return;
+      if (namespaceMarker !== undefined && SU.indexOf(def.name, namespaceMarker) < 0) return;
       toRemove.push(def.typeId);
     });
     toRemove.forEach((typeId) => {

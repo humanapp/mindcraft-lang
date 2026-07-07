@@ -246,15 +246,15 @@ export class UserTileProject {
     }
   }
 
-  compileAll(): ProjectCompileResult {
-    return this._compile();
+  compileAll(sessionContext?: SharedTileSessionContext): ProjectCompileResult {
+    return this._compile(sessionContext);
   }
 
-  compileAffected(): ProjectCompileResult {
-    return this._compile();
+  compileAffected(sessionContext?: SharedTileSessionContext): ProjectCompileResult {
+    return this._compile(sessionContext);
   }
 
-  private _compile(): ProjectCompileResult {
+  private _compile(sessionContext?: SharedTileSessionContext): ProjectCompileResult {
     checkTypeScriptVersion();
 
     const compilerFiles = new Map<string, string>();
@@ -337,7 +337,7 @@ export class UserTileProject {
     const sourceRewrites = new Map<string, string>();
 
     const services = this._services;
-    services.runtime.types.removeUserTypes();
+    services.runtime.types.removeUserTypes(this._projectNamespace);
 
     for (const compilerPath of userRootFiles) {
       const sourceFile = tsProgram.getSourceFile(compilerPath);
@@ -366,8 +366,8 @@ export class UserTileProject {
       results.set(vfsPath, result);
     }
 
-    reconcileSharedUserTiles(results, services);
-    reconcileConversionPairs(results, services);
+    reconcileSharedUserTiles(results, services, sessionContext);
+    reconcileConversionPairs(results, services, sessionContext);
     reconcileStableIds(results);
 
     return { results, tsErrors, sourceRewrites };
@@ -787,31 +787,149 @@ function spanOfNode(
 }
 
 /**
+ * A shared `modifier.` declaration visible to the shared-tile reconcile: the
+ * label it carries and the action key of the program that declared it.
+ */
+export interface SharedModifierDeclaration {
+  readonly label: string;
+  readonly declaredBy: string;
+}
+
+/**
+ * A shared `parameter.` declaration visible to the shared-tile reconcile: its
+ * resolved type and the action key of the program that declared it.
+ */
+export interface SharedParameterDeclaration {
+  readonly typeId: TypeId;
+  readonly typeName: string;
+  readonly declaredBy: string;
+}
+
+/**
+ * Shared-tile declarations already made by other roots of a multi-root
+ * compilation session. The cross-program reconcile consults these so shared
+ * `modifier.` / `parameter.` ids and conversion `(from, to)` pairs unify
+ * across roots and disagreements diagnose in the later root.
+ */
+export interface SharedTileSessionContext {
+  /** Shared `modifier.` id -> the declaration that claimed it. */
+  readonly sharedModifiers: ReadonlyMap<string, SharedModifierDeclaration>;
+  /** Shared `parameter.` id -> the declaration that claimed it. */
+  readonly sharedParameters: ReadonlyMap<string, SharedParameterDeclaration>;
+  /** Conversion pair key (see {@link conversionPairKey}) -> the claiming program's action key. */
+  readonly conversionPairs: ReadonlyMap<string, string>;
+}
+
+/** Mutable accumulator for a session's {@link SharedTileSessionContext}. */
+export interface SharedTileSessionContextDraft {
+  sharedModifiers: Map<string, SharedModifierDeclaration>;
+  sharedParameters: Map<string, SharedParameterDeclaration>;
+  conversionPairs: Map<string, string>;
+}
+
+/** An empty {@link SharedTileSessionContextDraft}. */
+export function emptySharedTileSessionContext(): SharedTileSessionContextDraft {
+  return { sharedModifiers: new Map(), sharedParameters: new Map(), conversionPairs: new Map() };
+}
+
+/** The claim key of a conversion `(fromType, toType)` pair. */
+export function conversionPairKey(fromType: TypeId, toType: TypeId): string {
+  return `${fromType}|${toType}`;
+}
+
+/**
+ * Fold the shared-tile declarations of one root's compiled programs into
+ * `draft`, first declaration (in program `key` order) winning. Call after the
+ * root compiles so later roots' reconciles see its declarations.
+ */
+export function addSharedTileDeclarations(
+  draft: SharedTileSessionContextDraft,
+  results: ReadonlyMap<string, CompileResult>,
+  services: BrainServices
+): void {
+  const programs: UserAuthoredProgram[] = [];
+  for (const result of results.values()) {
+    if (result.program) programs.push(result.program);
+  }
+  programs.sort((left, right) => left.key.localeCompare(right.key));
+
+  for (const program of programs) {
+    for (const modifier of collectModifiers(program.args)) {
+      if (!modifier.id.startsWith("modifier.") || modifier.label === "") continue;
+      if (!draft.sharedModifiers.has(modifier.id)) {
+        draft.sharedModifiers.set(modifier.id, { label: modifier.label, declaredBy: program.key });
+      }
+    }
+    for (const param of collectParams(program.args)) {
+      if (param.anonymous || !param.name.startsWith("parameter.")) continue;
+      const typeId = services.runtime.types.resolveByName(param.type);
+      if (typeId === undefined) continue;
+      if (!draft.sharedParameters.has(param.name)) {
+        draft.sharedParameters.set(param.name, { typeId, typeName: param.type, declaredBy: program.key });
+      }
+    }
+    if (program.conversion) {
+      const pairKey = conversionPairKey(program.conversion.fromType, program.conversion.toType);
+      if (!draft.conversionPairs.has(pairKey)) {
+        draft.conversionPairs.set(pairKey, program.key);
+      }
+    }
+  }
+}
+
+/**
  * Cross-program reconciliation of the shared (unscoped-prefix) user tile ids,
  * each of which names one tile shared across every declaring sensor. Walks every
  * compiled program to surface disagreements the register-if-absent dedup would
  * otherwise hide, as per-file diagnostics: a `parameter.` id declared with
- * conflicting types, a `parameter.` id whose type does not resolve, and a bare
- * `modifier.` reference that names no declared or registered modifier. Programs
- * are visited in `key` order, matching the bundle's `key`-sorted registration.
+ * conflicting types, a `parameter.` id whose type does not resolve, a
+ * `modifier.` id declared with conflicting labels, and a bare `modifier.`
+ * reference that names no declared or registered modifier. Programs are
+ * visited in `key` order, matching the bundle's `key`-sorted registration.
+ * `sessionContext`, when present, contributes the declarations other roots of
+ * a multi-root session already made.
  */
-function reconcileSharedUserTiles(results: Map<string, CompileResult>, services: BrainServices): void {
+function reconcileSharedUserTiles(
+  results: Map<string, CompileResult>,
+  services: BrainServices,
+  sessionContext?: SharedTileSessionContext
+): void {
   const entries: { path: string; program: UserAuthoredProgram }[] = [];
   for (const [path, result] of results) {
     if (result.program) entries.push({ path, program: result.program });
   }
   entries.sort((left, right) => left.program.key.localeCompare(right.program.key));
 
-  const declaredSharedModifiers = new Set<string>();
-  for (const { program } of entries) {
+  const declaredSharedModifiers = new Map<string, SharedModifierDeclaration>(sessionContext?.sharedModifiers ?? []);
+  for (const { path, program } of entries) {
+    const diagnostics = results.get(path)!.diagnostics;
     for (const modifier of collectModifiers(program.args)) {
-      if (modifier.id.startsWith("modifier.") && modifier.label !== "") {
-        declaredSharedModifiers.add(modifier.id);
+      if (!modifier.id.startsWith("modifier.") || modifier.label === "") continue;
+      const prior = declaredSharedModifiers.get(modifier.id);
+      if (prior !== undefined) {
+        if (prior.label !== modifier.label) {
+          diagnostics.push(sharedModifierLabelConflictDiagnostic(modifier.id, modifier.label, prior));
+        }
+        continue;
       }
+      const registered = services.edit.tiles.get(mkModifierTileId(modifier.id));
+      const registeredLabel = registered?.kind === "modifier" ? registered.metadata?.label : undefined;
+      if (registeredLabel !== undefined) {
+        const registeredDecl: SharedModifierDeclaration = { label: registeredLabel, declaredBy: "a registered tile" };
+        declaredSharedModifiers.set(modifier.id, registeredDecl);
+        if (registeredLabel !== modifier.label) {
+          diagnostics.push(sharedModifierLabelConflictDiagnostic(modifier.id, modifier.label, registeredDecl));
+        }
+        continue;
+      }
+      declaredSharedModifiers.set(modifier.id, { label: modifier.label, declaredBy: program.key });
     }
   }
 
   const sharedParamTypes = new Map<string, { typeId: TypeId; typeName: string }>();
+  for (const [name, declaration] of sessionContext?.sharedParameters ?? []) {
+    sharedParamTypes.set(name, { typeId: declaration.typeId, typeName: declaration.typeName });
+  }
 
   for (const { path, program } of entries) {
     const diagnostics = results.get(path)!.diagnostics;
@@ -871,17 +989,21 @@ function reconcileSharedUserTiles(results: Map<string, CompileResult>, services:
  * in `key` order, matching the bundle's `key`-sorted registration, so the
  * key-first declaration wins and later ones report.
  */
-function reconcileConversionPairs(results: Map<string, CompileResult>, services: BrainServices): void {
+function reconcileConversionPairs(
+  results: Map<string, CompileResult>,
+  services: BrainServices,
+  sessionContext?: SharedTileSessionContext
+): void {
   const entries: { path: string; program: UserAuthoredProgram }[] = [];
   for (const [path, result] of results) {
     if (result.program?.conversion) entries.push({ path, program: result.program });
   }
   entries.sort((left, right) => left.program.key.localeCompare(right.program.key));
 
-  const claimedByPair = new Map<string, string>();
+  const claimedByPair = new Map<string, string>(sessionContext?.conversionPairs ?? []);
   for (const { path, program } of entries) {
     const info = program.conversion!;
-    const pairKey = `${info.fromType}|${info.toType}`;
+    const pairKey = conversionPairKey(info.fromType, info.toType);
     const diagnostics = results.get(path)!.diagnostics;
 
     const projectHolder = claimedByPair.get(pairKey);
@@ -943,6 +1065,18 @@ function sharedParamConflictDiagnostic(paramId: string, thisType: string, priorT
   return {
     code: CompileDiagCode.SharedParameterTypeConflict,
     message: `Shared parameter "${paramId}" is declared here as "${thisType}" but was already declared as "${priorType}". A shared parameter id must have one type.`,
+    severity: "error",
+  };
+}
+
+function sharedModifierLabelConflictDiagnostic(
+  modifierId: string,
+  thisLabel: string,
+  prior: SharedModifierDeclaration
+): CompileDiagnostic {
+  return {
+    code: CompileDiagCode.SharedModifierLabelConflict,
+    message: `Shared modifier "${modifierId}" is declared here with label "${thisLabel}" but was already declared with label "${prior.label}" (by ${prior.declaredBy}). A shared modifier id must have one label.`,
     severity: "error",
   };
 }
