@@ -2,6 +2,7 @@ import type { BrainServices, DiagnosticSeverity } from "@mindcraft-lang/core/bra
 import type { ConstantOffsets, TypeId, UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
+import type { DependencyMount, ProjectDependency } from "./extension-mounts.js";
 
 /** A diagnostic produced by any phase of the user-tile compiler. Lines and columns are 1-based when present. */
 export interface CompileDiagnostic {
@@ -105,6 +106,16 @@ export interface CompileOptions {
   services: BrainServices;
   /** Mints a fresh stable action id when a source declaration has none. Defaults to a random opaque token. */
   generateActionId?: () => string;
+  /** The project's extensions list: each entry maps an `@ext/<slug>` import alias to a dependency namespace. */
+  dependencies?: readonly ProjectDependency[];
+  /** Dependency projects' content mounted read-only into this compilation, transitively covering `dependencies`. */
+  dependencyMounts?: readonly DependencyMount[];
+  /**
+   * Publish the entry module's exported name-keyed declarations under public
+   * `<namespace>::<name>` keys and enforce the publication rules (single
+   * published name, published type closure). Defaults to false.
+   */
+  publishEntry?: boolean;
 }
 
 /** A 1-based source range produced by the descriptor extractor. */

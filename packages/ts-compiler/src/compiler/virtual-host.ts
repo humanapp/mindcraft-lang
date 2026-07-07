@@ -15,8 +15,18 @@ function resolvePath(base: string, relative: string): string {
   return `/${segments.join("/")}`;
 }
 
+/**
+ * Resolves a non-relative import specifier to the compiler-path base its file
+ * candidates derive from, or undefined to fall back to the default mapping.
+ */
+export type ModuleBaseResolver = (specifier: string, containingFile: string) => string | undefined;
+
 /** Build a minimal in-memory `ts.CompilerHost` backed by `files`. Used by {@link UserTileProject} to compile without touching disk. */
-export function createVirtualCompilerHost(files: Map<string, string>, options: ts.CompilerOptions): ts.CompilerHost {
+export function createVirtualCompilerHost(
+  files: Map<string, string>,
+  options: ts.CompilerOptions,
+  moduleBaseResolver?: ModuleBaseResolver
+): ts.CompilerHost {
   return {
     getSourceFile(fileName, languageVersion) {
       const content = files.get(fileName);
@@ -40,7 +50,7 @@ export function createVirtualCompilerHost(files: Map<string, string>, options: t
           const containingDir = containingFile.substring(0, containingFile.lastIndexOf("/"));
           base = resolvePath(containingDir, name);
         } else {
-          base = `/${name}`;
+          base = moduleBaseResolver?.(name, containingFile) ?? `/${name}`;
         }
         const candidates = [`${base}.d.ts`, `${base}.ts`, `${base}/index.d.ts`, `${base}/index.ts`];
         for (const candidate of candidates) {

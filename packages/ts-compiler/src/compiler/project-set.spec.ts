@@ -23,6 +23,7 @@ import {
 import { buildMultiRootActionBundle } from "../runtime/action-bundle.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
+import type { ProjectDependency } from "./extension-mounts.js";
 import { type ProjectCompileResult, UserTileProject } from "./project.js";
 import { MultiRootSession, type ProjectRoot } from "./project-set.js";
 import { scopedOutputName } from "./symbol-keys.js";
@@ -126,15 +127,23 @@ function files(entries: Record<string, string>): ReadonlyMap<string, string> {
   return new Map(Object.entries(entries));
 }
 
+function dep(slug: string, namespace: string): ProjectDependency {
+  return { slug, namespace };
+}
+
 function threeRootSet(): ProjectRoot[] {
   return [
-    { namespace: HOST_NS, files: files({ "main.ts": HOST_SOURCE }), dependencies: [EXT_A_NS, EXT_B_NS] },
+    {
+      namespace: HOST_NS,
+      files: files({ "main.ts": HOST_SOURCE }),
+      dependencies: [dep("robot-a", EXT_A_NS), dep("robot-b", EXT_B_NS)],
+    },
     {
       namespace: EXT_A_NS,
       files: files({ "range.ts": EXT_A_SENSOR, "conv.ts": EXT_A_CONVERSION }),
-      dependencies: [SHARED_NS],
+      dependencies: [dep("shared", SHARED_NS)],
     },
-    { namespace: EXT_B_NS, files: files({ "probe.ts": EXT_B_SENSOR }), dependencies: [SHARED_NS] },
+    { namespace: EXT_B_NS, files: files({ "probe.ts": EXT_B_SENSOR }), dependencies: [dep("shared", SHARED_NS)] },
     { namespace: SHARED_NS, files: files({ "main.ts": SHARED_SOURCE }) },
   ];
 }
@@ -337,7 +346,7 @@ describe("multi-root compilation session", () => {
     const bVecTypeId = types.resolveByName(`${EXT_B_NS}:/probe.ts::BVec`)!;
     const withoutB = threeRootSet().filter((root) => root.namespace !== EXT_B_NS);
     for (const root of withoutB) {
-      if (root.namespace === HOST_NS) root.dependencies = [EXT_A_NS];
+      if (root.namespace === HOST_NS) root.dependencies = [dep("robot-a", EXT_A_NS)];
     }
     session.setRoots(withoutB);
     session.compile();
@@ -362,7 +371,7 @@ export default Sensor({
 `;
     session.setRoots([
       ...withoutB,
-      { namespace: EXT_B_NS, files: files({ "probe.ts": changedB }), dependencies: [SHARED_NS] },
+      { namespace: EXT_B_NS, files: files({ "probe.ts": changedB }), dependencies: [dep("shared", SHARED_NS)] },
     ]);
     const { roots } = session.compile();
     assertClean(roots.get(EXT_B_NS)!, EXT_B_NS);
@@ -456,7 +465,7 @@ export default Sensor({
       {
         namespace: EXT_B_NS,
         files: files({ "main.ts": modifierSensor("modSensorB00001") }),
-        dependencies: [EXT_A_NS],
+        dependencies: [dep("robot-a", EXT_A_NS)],
       },
     ]);
     const { roots } = session.compile();

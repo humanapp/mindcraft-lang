@@ -275,6 +275,12 @@ export interface ITypeRegistry {
   addAnyType(name: string, atomId?: number): TypeId;
   addFunctionType(name: string, atomId?: number): TypeId;
   addNullableType(baseTypeId: TypeId): TypeId;
+  /**
+   * Register `alias` as an additional name resolving to `typeId`. The alias
+   * mints no type: {@link resolveByName} returns the aliased type's id, and
+   * the alias is dropped when the aliased type is removed.
+   */
+  addTypeNameAlias(alias: string, typeId: TypeId): void;
   registerConstructor(ctor: TypeConstructor): void;
   instantiate(constructorName: string, args: List<TypeId>): TypeId;
   getOrCreateUnionType(memberTypeIds: List<TypeId>): TypeId;

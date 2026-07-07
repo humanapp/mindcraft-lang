@@ -19,6 +19,15 @@ import { buildCallDef } from "./call-def-builder.js";
 import { extractDescriptor } from "./descriptor.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { emitFunction } from "./emit.js";
+import {
+  type DependencyMount,
+  EXTENSION_IMPORT_PREFIX,
+  extensionMountRoot,
+  mountedCompilerPath,
+  type ProjectDependency,
+  parseMountedCompilerPath,
+  qualifiedDeclarationName,
+} from "./extension-mounts.js";
 import type {
   CarriedPrivateFunction,
   FunctionEntry,
@@ -32,7 +41,14 @@ import type {
   InlinedSystemConst,
   ProgramLoweringResult,
 } from "./lowering.js";
-import { collectSystemModuleBindings, lowerProgram, qualifiedClassName } from "./lowering.js";
+import {
+  collectSystemModuleBindings,
+  type GatheredNamedDeclarations,
+  lowerProgram,
+  qualifiedClassName,
+  systemConfigObject,
+} from "./lowering.js";
+import { publishEntryModule } from "./publication.js";
 import { userActionKey } from "./symbol-keys.js";
 import { resolveTypeNameExpression, structTypeCallExpression } from "./type-ref.js";
 import type {
@@ -54,7 +70,7 @@ import type {
   UserAuthoredProgram,
 } from "./types.js";
 import { validateAst } from "./validator.js";
-import { createVirtualCompilerHost } from "./virtual-host.js";
+import { createVirtualCompilerHost, type ModuleBaseResolver } from "./virtual-host.js";
 
 /** Per-function debug info attached to a {@link CompileResult}. */
 export interface FunctionDebugInfo {
@@ -89,6 +105,12 @@ export interface ProjectCompileResult {
    * subsequent compiles. Empty when every declaration already had an id.
    */
   sourceRewrites: Map<string, string>;
+  /**
+   * Public key -> type id for every symbol the project's entry module
+   * published this compile. Present only when the project compiles with
+   * `publishEntry`.
+   */
+  publishedTypes?: ReadonlyMap<string, TypeId>;
 }
 
 export const COMPILER_CONTROLLED_TSCONFIG_PATH = "tsconfig.json";
@@ -100,6 +122,9 @@ type UserTileProjectOptions =
       services: BrainServices;
       ambientFiles?: undefined;
       generateActionId?: () => string;
+      dependencies?: readonly ProjectDependency[];
+      dependencyMounts?: readonly DependencyMount[];
+      publishEntry?: boolean;
     };
 
 const ACTION_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -212,6 +237,9 @@ export class UserTileProject {
   private readonly _services: BrainServices;
   private readonly _projectNamespace: string;
   private readonly _generateActionId: () => string;
+  private readonly _publishEntry: boolean;
+  private _dependencies: readonly ProjectDependency[];
+  private _dependencyMounts: readonly DependencyMount[];
 
   constructor(options: UserTileProjectOptions) {
     this._ambientFiles = options.ambientFiles ?? [
@@ -221,6 +249,19 @@ export class UserTileProject {
     this._services = options.services;
     this._projectNamespace = options.projectNamespace;
     this._generateActionId = options.generateActionId ?? defaultActionId;
+    this._publishEntry = options.publishEntry ?? false;
+    this._dependencies = options.dependencies ?? [];
+    this._dependencyMounts = options.dependencyMounts ?? [];
+  }
+
+  /**
+   * Replace the project's extensions list and the mounted dependency content
+   * `@ext/<slug>` imports resolve against. `dependencyMounts` covers the
+   * transitive dependency closure.
+   */
+  setDependencies(dependencies: readonly ProjectDependency[], dependencyMounts: readonly DependencyMount[]): void {
+    this._dependencies = dependencies;
+    this._dependencyMounts = dependencyMounts;
   }
 
   setFiles(files: ReadonlyMap<string, string>): void {
@@ -271,6 +312,18 @@ export class UserTileProject {
       compilerFiles.set(toCompilerPath(file.path), file.content);
     }
 
+    // Dependency content mounts under its namespace-derived prefix; it is
+    // compiled only when reached through an `@ext/<slug>` import.
+    for (const mount of this._dependencyMounts) {
+      for (const [path, content] of mount.files) {
+        if (isCompilerControlledPath(path, { ambientFiles: this._ambientFiles }) || isExamplePath(path)) {
+          continue;
+        }
+        compilerFiles.set(mountedCompilerPath(mount.namespace, toCompilerPath(path)), content);
+      }
+    }
+    const resolveExtensionBase = this._extensionBaseResolver();
+
     const userRootFiles: string[] = [];
     for (const [vfsPath, content] of this._files) {
       if (
@@ -290,8 +343,20 @@ export class UserTileProject {
       return { results: new Map(), tsErrors: new Map(), sourceRewrites: new Map() };
     }
 
-    const host = createVirtualCompilerHost(compilerFiles, checkerOptions);
+    const host = createVirtualCompilerHost(compilerFiles, checkerOptions, resolveExtensionBase);
     const tsProgram = ts.createProgram([...ambientCompilerPaths, ...userRootFiles], checkerOptions, host);
+
+    if (this._dependencies.length > 0 || this._dependencyMounts.length > 0) {
+      const deepImportDiags = scanExtensionDeepImports(tsProgram, userRootFiles);
+      if (deepImportDiags.size > 0) {
+        const results = new Map<string, CompileResult>();
+        for (const [compilerPath, diagnostics] of deepImportDiags) {
+          results.set(toVfsPath(compilerPath), { diagnostics });
+        }
+        return { results, tsErrors: new Map(), sourceRewrites: new Map() };
+      }
+    }
+
     const tsDiagnostics = ts.getPreEmitDiagnostics(tsProgram);
 
     const tsErrors = new Map<string, CompileDiagnostic[]>();
@@ -361,7 +426,8 @@ export class UserTileProject {
         compilerFiles,
         services,
         vfsPath,
-        sourceRewrites
+        sourceRewrites,
+        resolveExtensionBase
       );
       results.set(vfsPath, result);
     }
@@ -370,7 +436,61 @@ export class UserTileProject {
     reconcileConversionPairs(results, services, sessionContext);
     reconcileStableIds(results);
 
-    return { results, tsErrors, sourceRewrites };
+    let publishedTypes: ReadonlyMap<string, TypeId> | undefined;
+    if (this._publishEntry) {
+      const programsByFile = new Map<string, UserAuthoredProgram>();
+      for (const [path, result] of results) {
+        if (result.program) programsByFile.set(path, result.program);
+      }
+      const publication = publishEntryModule({
+        tsProgram,
+        checker,
+        services,
+        projectNamespace: this._projectNamespace,
+        programsByFile,
+        sessionPublishedTypeIds: sessionContext?.publishedTypeIds,
+        gatherEntryDeclarations: (entry) =>
+          gatherEntryNamedDeclarations(entry, checker, tsProgram, compilerFiles, resolveExtensionBase),
+      });
+      for (const [path, diagnostics] of publication.diagnosticsByFile) {
+        const existing = results.get(path);
+        if (existing) {
+          existing.diagnostics.push(...diagnostics);
+        } else {
+          results.set(path, { diagnostics });
+        }
+      }
+      publishedTypes = publication.publishedTypes;
+    }
+
+    return { results, tsErrors, sourceRewrites, publishedTypes };
+  }
+
+  /**
+   * Resolver mapping an `@ext/<slug>` specifier to the mounted dependency's
+   * compiler-path base. A specifier in the project's own files resolves
+   * through the project's extensions list; a specifier inside a mounted
+   * dependency's files resolves through that dependency's own extensions
+   * list.
+   */
+  private _extensionBaseResolver(): ModuleBaseResolver {
+    const ownSlugs = new Map(this._dependencies.map((dep) => [dep.slug, dep.namespace]));
+    const mountSlugs = new Map<string, Map<string, string>>();
+    for (const mount of this._dependencyMounts) {
+      mountSlugs.set(mount.namespace, new Map((mount.dependencies ?? []).map((dep) => [dep.slug, dep.namespace])));
+    }
+    return (specifier, containingFile) => {
+      if (!specifier.startsWith(EXTENSION_IMPORT_PREFIX)) return undefined;
+      const rest = specifier.slice(EXTENSION_IMPORT_PREFIX.length);
+      const slash = rest.indexOf("/");
+      const slug = slash < 0 ? rest : rest.slice(0, slash);
+      const owner = parseMountedCompilerPath(containingFile);
+      const slugs = owner ? mountSlugs.get(owner.namespace) : ownSlugs;
+      const namespace = slugs?.get(slug);
+      if (namespace === undefined) return undefined;
+      const root = extensionMountRoot(namespace);
+      return slash < 0 ? root : `${root}${rest.slice(slash)}`;
+    };
   }
 
   private _compileEntryPoint(
@@ -381,14 +501,15 @@ export class UserTileProject {
     compilerFiles: Map<string, string>,
     services: BrainServices,
     vfsPath: string,
-    sourceRewrites: Map<string, string>
+    sourceRewrites: Map<string, string>,
+    resolveModuleBase: ModuleBaseResolver
   ): CompileResult {
     const validationDiags = validateAst(sourceFile);
     if (validationDiags.length > 0) {
       return { diagnostics: validationDiags };
     }
 
-    const imported = collectImports(sourceFile, checker, tsProgram, compilerFiles);
+    const imported = collectImports(sourceFile, checker, tsProgram, compilerFiles, resolveModuleBase);
     if (imported.diagnostics.length > 0) {
       return { diagnostics: imported.diagnostics };
     }
@@ -787,6 +908,95 @@ function spanOfNode(
 }
 
 /**
+ * Reject `@ext/<slug>/...` specifiers in the project's own files: only an
+ * extension's entry surface (`@ext/<slug>`) is importable. Returns the
+ * diagnostics keyed by the importing file's compiler path.
+ */
+function scanExtensionDeepImports(
+  tsProgram: ts.Program,
+  userRootFiles: readonly string[]
+): Map<string, CompileDiagnostic[]> {
+  const byFile = new Map<string, CompileDiagnostic[]>();
+  for (const compilerPath of userRootFiles) {
+    const sourceFile = tsProgram.getSourceFile(compilerPath);
+    if (!sourceFile) continue;
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isImportDeclaration(stmt) && !ts.isExportDeclaration(stmt)) continue;
+      const specifierNode = stmt.moduleSpecifier;
+      if (!specifierNode || !ts.isStringLiteral(specifierNode)) continue;
+      const specifier = specifierNode.text;
+      if (!specifier.startsWith(EXTENSION_IMPORT_PREFIX)) continue;
+      const rest = specifier.slice(EXTENSION_IMPORT_PREFIX.length);
+      const slash = rest.indexOf("/");
+      if (slash < 0) continue;
+      const slug = rest.slice(0, slash);
+      let diags = byFile.get(compilerPath);
+      if (!diags) {
+        diags = [];
+        byFile.set(compilerPath, diags);
+      }
+      diags.push({
+        code: CompileDiagCode.ExtensionDeepImport,
+        message: `"${specifier}" imports a module inside an extension. Import the extension's published surface from "@ext/${slug}".`,
+        severity: "error",
+        ...spanOfNode(sourceFile, specifierNode),
+      });
+    }
+  }
+  return byFile;
+}
+
+/**
+ * Gather the name-keyed declarations publication registers for an entry
+ * module: the entry's own top-level declarations plus the exported
+ * declarations of every module reachable from it, matching what a tile
+ * compile rooted at the same file would register.
+ */
+function gatherEntryNamedDeclarations(
+  entryFile: ts.SourceFile,
+  checker: ts.TypeChecker,
+  tsProgram: ts.Program,
+  compilerFiles: Map<string, string>,
+  resolveModuleBase: ModuleBaseResolver
+): GatheredNamedDeclarations {
+  const imported = collectImports(entryFile, checker, tsProgram, compilerFiles, resolveModuleBase);
+  const gathered: GatheredNamedDeclarations = {
+    structTypes: [...imported.structTypeDecls],
+    enums: [...imported.enums],
+    classes: [...imported.classes],
+    interfaces: [...imported.interfaces],
+    typeAliases: [...imported.typeAliases],
+    systemConfigs: [],
+  };
+  for (const iv of imported.variables) {
+    const config = systemConfigObject(iv.initializer);
+    if (config) gathered.systemConfigs.push(config);
+  }
+  for (const stmt of entryFile.statements) {
+    if (ts.isEnumDeclaration(stmt)) {
+      gathered.enums.push({ node: stmt, name: stmt.name.text, sourceFile: entryFile });
+    } else if (ts.isClassDeclaration(stmt) && stmt.name) {
+      gathered.classes.push({ node: stmt, name: stmt.name.text, sourceFile: entryFile });
+    } else if (ts.isInterfaceDeclaration(stmt)) {
+      gathered.interfaces.push({ node: stmt, name: stmt.name.text, sourceFile: entryFile });
+    } else if (ts.isTypeAliasDeclaration(stmt)) {
+      gathered.typeAliases.push({ node: stmt, name: stmt.name.text, sourceFile: entryFile });
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
+        if (structTypeCallExpression(decl.initializer)) {
+          gathered.structTypes.push({ nameNode: decl.name, initializer: decl.initializer });
+          continue;
+        }
+        const config = systemConfigObject(decl.initializer);
+        if (config) gathered.systemConfigs.push(config);
+      }
+    }
+  }
+  return gathered;
+}
+
+/**
  * A shared `modifier.` declaration visible to the shared-tile reconcile: the
  * label it carries and the action key of the program that declared it.
  */
@@ -818,6 +1028,8 @@ export interface SharedTileSessionContext {
   readonly sharedParameters: ReadonlyMap<string, SharedParameterDeclaration>;
   /** Conversion pair key (see {@link conversionPairKey}) -> the claiming program's action key. */
   readonly conversionPairs: ReadonlyMap<string, string>;
+  /** Type ids the roots compiled before this one published from their entry modules. */
+  readonly publishedTypeIds?: ReadonlySet<TypeId>;
 }
 
 /** Mutable accumulator for a session's {@link SharedTileSessionContext}. */
@@ -825,11 +1037,17 @@ export interface SharedTileSessionContextDraft {
   sharedModifiers: Map<string, SharedModifierDeclaration>;
   sharedParameters: Map<string, SharedParameterDeclaration>;
   conversionPairs: Map<string, string>;
+  publishedTypeIds: Set<TypeId>;
 }
 
 /** An empty {@link SharedTileSessionContextDraft}. */
 export function emptySharedTileSessionContext(): SharedTileSessionContextDraft {
-  return { sharedModifiers: new Map(), sharedParameters: new Map(), conversionPairs: new Map() };
+  return {
+    sharedModifiers: new Map(),
+    sharedParameters: new Map(),
+    conversionPairs: new Map(),
+    publishedTypeIds: new Set(),
+  };
 }
 
 /** The claim key of a conversion `(fromType, toType)` pair. */
@@ -842,6 +1060,13 @@ export function conversionPairKey(fromType: TypeId, toType: TypeId): string {
  * `draft`, first declaration (in program `key` order) winning. Call after the
  * root compiles so later roots' reconciles see its declarations.
  */
+/** Fold one root's entry-published type ids into `draft` so later roots' closure checks see them. */
+export function addPublishedTypeIds(draft: SharedTileSessionContextDraft, result: ProjectCompileResult): void {
+  for (const typeId of result.publishedTypes?.values() ?? []) {
+    draft.publishedTypeIds.add(typeId);
+  }
+}
+
 export function addSharedTileDeclarations(
   draft: SharedTileSessionContextDraft,
   results: ReadonlyMap<string, CompileResult>,
@@ -1218,7 +1443,7 @@ function annotationDeclaredTypeName(
   const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
   const declaration = target.getDeclarations()?.[0];
   if (!declaration) return undefined;
-  return qualifiedClassName(projectNamespace, declaration.getSourceFile().fileName, target.getName());
+  return qualifiedDeclarationName(projectNamespace, declaration.getSourceFile().fileName, target.getName());
 }
 
 function qualifyArgSpecTypes(
@@ -1372,7 +1597,8 @@ function collectImports(
   entryFile: ts.SourceFile,
   checker: ts.TypeChecker,
   tsProgram: ts.Program,
-  compilerFiles: Map<string, string>
+  compilerFiles: Map<string, string>,
+  resolveModuleBase?: ModuleBaseResolver
 ): CollectResult {
   const functions: ImportedFunction[] = [];
   const variables: ImportedVariable[] = [];
@@ -1387,16 +1613,63 @@ function collectImports(
   const moduleInitOrder: string[] = [];
   visitedFiles.add(entryFile.fileName);
 
+  // A declaration exported by a separate `export { X }` statement -- in its
+  // own module or through a re-export (`export { X } from "./impl"`) --
+  // carries no export modifier; it is collected by resolving the export
+  // specifier to its declaration.
+  function collectNamedExport(specifier: ts.ExportSpecifier): void {
+    const symbol = checker.getSymbolAtLocation(specifier.name);
+    if (!symbol) return;
+    const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+    const decl = target.getDeclarations()?.[0];
+    if (!decl || decl.getSourceFile().isDeclarationFile) return;
+    if (ts.isFunctionDeclaration(decl) && decl.name) {
+      if (!functions.some((f) => f.node === decl)) {
+        functions.push({ localName: decl.name.text, node: decl });
+      }
+    } else if (ts.isClassDeclaration(decl) && decl.name) {
+      if (!classes.some((c) => c.node === decl)) {
+        classes.push({ node: decl, name: decl.name.text, sourceFile: decl.getSourceFile() });
+      }
+    } else if (ts.isEnumDeclaration(decl)) {
+      if (!enums.some((e) => e.node === decl)) {
+        enums.push({ node: decl, name: decl.name.text, sourceFile: decl.getSourceFile() });
+      }
+    } else if (ts.isInterfaceDeclaration(decl)) {
+      if (!interfaces.some((i) => i.node === decl)) {
+        interfaces.push({ node: decl, name: decl.name.text, sourceFile: decl.getSourceFile() });
+      }
+    } else if (ts.isTypeAliasDeclaration(decl)) {
+      if (!typeAliases.some((ta) => ta.node === decl)) {
+        typeAliases.push({ node: decl, name: decl.name.text, sourceFile: decl.getSourceFile() });
+      }
+    } else if (ts.isVariableDeclaration(decl) && ts.isIdentifier(decl.name)) {
+      const sourceModule = decl.getSourceFile().fileName;
+      const name = decl.name.text;
+      if (!variables.some((v) => v.name === name && v.sourceModule === sourceModule)) {
+        variables.push({ name, initializer: decl.initializer, sourceModule });
+      }
+    }
+  }
+
   function visitFile(sourceFile: ts.SourceFile): void {
     if (visitedFiles.has(sourceFile.fileName)) return;
     visitedFiles.add(sourceFile.fileName);
     visitedModuleFiles.push(sourceFile);
 
     for (const stmt of sourceFile.statements) {
-      if (ts.isImportDeclaration(stmt)) {
-        const importedFile = resolveImportedSourceFile(stmt, sourceFile, tsProgram, compilerFiles);
+      if (ts.isImportDeclaration(stmt) || (ts.isExportDeclaration(stmt) && stmt.moduleSpecifier)) {
+        const importedFile = resolveImportedSourceFile(stmt, sourceFile, tsProgram, compilerFiles, resolveModuleBase);
         if (importedFile) {
           visitFile(importedFile);
+        }
+      }
+    }
+
+    for (const stmt of sourceFile.statements) {
+      if (ts.isExportDeclaration(stmt) && stmt.exportClause && ts.isNamedExports(stmt.exportClause)) {
+        for (const specifier of stmt.exportClause.elements) {
+          collectNamedExport(specifier);
         }
       }
     }
@@ -1444,11 +1717,18 @@ function collectImports(
   }
 
   for (const stmt of entryFile.statements) {
+    if (ts.isExportDeclaration(stmt) && stmt.moduleSpecifier) {
+      const reExportedFile = resolveImportedSourceFile(stmt, entryFile, tsProgram, compilerFiles, resolveModuleBase);
+      if (reExportedFile) {
+        visitFile(reExportedFile);
+      }
+      continue;
+    }
     if (!ts.isImportDeclaration(stmt)) continue;
     const importClause = stmt.importClause;
     if (!importClause) continue;
 
-    const importedFile = resolveImportedSourceFile(stmt, entryFile, tsProgram, compilerFiles);
+    const importedFile = resolveImportedSourceFile(stmt, entryFile, tsProgram, compilerFiles, resolveModuleBase);
     if (importedFile) {
       visitFile(importedFile);
     }
@@ -1582,23 +1862,39 @@ function hasExportModifier(node: ts.Node): boolean {
 }
 
 function resolveImportedSourceFile(
-  importDecl: ts.ImportDeclaration,
+  importDecl: ts.ImportDeclaration | ts.ExportDeclaration,
   containingFile: ts.SourceFile,
   tsProgram: ts.Program,
-  compilerFiles: Map<string, string>
+  compilerFiles: Map<string, string>,
+  resolveModuleBase?: ModuleBaseResolver
 ): ts.SourceFile | undefined {
-  if (!ts.isStringLiteral(importDecl.moduleSpecifier)) return undefined;
-  const specifier = importDecl.moduleSpecifier.text;
+  if (!importDecl.moduleSpecifier || !ts.isStringLiteral(importDecl.moduleSpecifier)) return undefined;
+  return resolveModuleSpecifier(
+    importDecl.moduleSpecifier.text,
+    containingFile,
+    tsProgram,
+    compilerFiles,
+    resolveModuleBase
+  );
+}
 
+function resolveModuleSpecifier(
+  specifier: string,
+  containingFile: ts.SourceFile,
+  tsProgram: ts.Program,
+  compilerFiles: Map<string, string>,
+  resolveModuleBase?: ModuleBaseResolver
+): ts.SourceFile | undefined {
   const isRelative = specifier.startsWith("./") || specifier.startsWith("../");
   let base: string;
   if (isRelative) {
     const containingDir = containingFile.fileName.substring(0, containingFile.fileName.lastIndexOf("/"));
     base = resolvePath(containingDir, specifier);
   } else {
-    // A bare specifier addresses a mounted stdlib source module (or an ambient
-    // `declare module`, which is not a file and falls through to undefined).
-    base = `/${specifier}`;
+    // A non-relative specifier addresses a dependency mount (`@ext/<slug>`),
+    // a mounted stdlib source module, or an ambient `declare module`, which
+    // is not a file and falls through to undefined.
+    base = resolveModuleBase?.(specifier, containingFile.fileName) ?? `/${specifier}`;
   }
 
   let resolvedPath: string | undefined;

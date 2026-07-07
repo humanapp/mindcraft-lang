@@ -89,6 +89,7 @@ function buildFieldIndexByName(fields: List<StructFieldDef>): Dict<string, numbe
 export class TypeRegistry implements ITypeRegistry {
   private defs = new Dict<TypeId, TypeDef>();
   private nameToId = new Dict<string, TypeId>();
+  private aliasToId = new Dict<string, TypeId>();
   private atomToId = new Dict<number, TypeId>();
   private constructors = new Dict<string, TypeConstructor>();
   private compatCache = new Dict<string, boolean>();
@@ -741,7 +742,14 @@ export class TypeRegistry implements ITypeRegistry {
   }
 
   resolveByName(name: string): TypeId | undefined {
-    return this.nameToId.get(name);
+    const direct = this.nameToId.get(name);
+    if (direct !== undefined) return direct;
+    return this.aliasToId.get(name);
+  }
+
+  addTypeNameAlias(alias: string, typeId: TypeId): void {
+    this.validateTypeName(alias);
+    this.aliasToId.set(alias, typeId);
   }
 
   resolveByAtomId(atomId: number): TypeId | undefined {
@@ -775,6 +783,17 @@ export class TypeRegistry implements ITypeRegistry {
       this.defs.delete(typeId);
     });
     if (toRemove.size() > 0) {
+      // Aliases follow their aliased type: an alias whose target was removed
+      // resolves to nothing and is dropped.
+      const deadAliases = new List<string>();
+      this.aliasToId.forEach((typeId, alias) => {
+        if (!this.defs.has(typeId)) {
+          deadAliases.push(alias);
+        }
+      });
+      deadAliases.forEach((alias) => {
+        this.aliasToId.delete(alias);
+      });
       this.compatCache = new Dict<string, boolean>();
     }
   }

@@ -22,9 +22,10 @@ import {
 import ts from "typescript";
 import { type ArgSlot, collectArgSlots } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
+import { qualifiedDeclarationName } from "./extension-mounts.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import { type LocalMetadata, type ScopeMetadata, ScopeStack } from "./scope.js";
-import { qualifiedClassName, scopedOutputName } from "./symbol-keys.js";
+import { scopedOutputName } from "./symbol-keys.js";
 import {
   ambientTypeTokenName,
   isMindcraftModuleDeclaration,
@@ -1139,7 +1140,7 @@ export function lowerProgram(
       );
       return true;
     }
-    const identity = qualifiedClassName(projectNamespace, config.getSourceFile().fileName, nameNode.text);
+    const identity = qualifiedDeclarationName(projectNamespace, config.getSourceFile().fileName, nameNode.text);
     if (collectedStructIdentities.has(identity)) return true;
     collectedStructIdentities.add(identity);
     pendingStructTypeDecls.push({ identity, declName: nameNode.text, config });
@@ -1488,7 +1489,7 @@ export function lowerProgram(
     const initWrapperFuncId = funcIdCounter.value++;
     const thinkWrapperFuncId = parts.thinkNode ? funcIdCounter.value++ : undefined;
     const binding: SystemBinding = {
-      identity: qualifiedClassName(projectNamespace, decl.config.getSourceFile().fileName, decl.declName),
+      identity: qualifiedDeclarationName(projectNamespace, decl.config.getSourceFile().fileName, decl.declName),
       name: parts.name,
       localSlot,
       stateTypeId: stateDef.typeId,
@@ -1960,7 +1961,7 @@ function generateActivationFunction(name: string, userOnPageEnteredFuncId: numbe
 }
 
 /** Returns the `System({...})` config object literal when `expr` is a `System(...)` call, else undefined. */
-function systemConfigObject(expr: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined {
+export function systemConfigObject(expr: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined {
   if (!expr || !ts.isCallExpression(expr)) return undefined;
   if (!ts.isIdentifier(expr.expression) || expr.expression.text !== "System") return undefined;
   const arg = expr.arguments[0];
@@ -2462,6 +2463,103 @@ function registerCollectedStructTypes(
     if (info) infos.push(info);
   }
   return infos;
+}
+
+/** Name-keyed declarations gathered from a set of a project's modules. */
+export interface GatheredNamedDeclarations {
+  structTypes: ImportedStructTypeDecl[];
+  enums: ImportedEnum[];
+  classes: ImportedClass[];
+  interfaces: ImportedInterface[];
+  typeAliases: ImportedTypeAlias[];
+  /** `const X = System({...})` config objects; each System's state struct registers. */
+  systemConfigs: ts.ObjectLiteralExpression[];
+}
+
+/** Registry facts produced by {@link registerGatheredNamedDeclarations}. */
+export interface GatheredRegistrationResult {
+  /** Each gathered System config's registered state struct type. */
+  systemStateTypes: Map<ts.ObjectLiteralExpression, TypeId>;
+}
+
+/**
+ * Register every gathered name-keyed declaration into the live registry with
+ * the sequence a tile compile uses: `StructType` declarations
+ * (gather-then-register in dependency order), enums, then reserve-all /
+ * finalize-all classes, interfaces, and type aliases, then System state
+ * structs. Registration is register-if-absent throughout, so a declaration a
+ * tile compile already registered resolves to its existing id.
+ */
+export function registerGatheredNamedDeclarations(
+  gathered: GatheredNamedDeclarations,
+  checker: ts.TypeChecker,
+  services: BrainServices,
+  projectNamespace: string,
+  diagnostics: CompileDiagnostic[]
+): GatheredRegistrationResult {
+  const pending: PendingStructTypeDecl[] = [];
+  const seenIdentities = new Set<string>();
+  for (const decl of gathered.structTypes) {
+    const config = structTypeConfigObject(decl.initializer);
+    if (!config) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.StructTypeConfigNotObjectLiteral,
+          `\`StructType\` for '${decl.nameNode.text}' requires a single inline object-literal config.`,
+          decl.initializer
+        )
+      );
+      continue;
+    }
+    const identity = qualifiedDeclarationName(projectNamespace, config.getSourceFile().fileName, decl.nameNode.text);
+    if (seenIdentities.has(identity)) continue;
+    seenIdentities.add(identity);
+    pending.push({ identity, declName: decl.nameNode.text, config });
+  }
+  registerCollectedStructTypes(pending, checker, services, projectNamespace, diagnostics);
+
+  registerUserEnumTypes([], gathered.enums, checker, diagnostics, services, projectNamespace);
+
+  const reservedClasses: { info: ImportedClass; typeId: string }[] = [];
+  for (const ci of gathered.classes) {
+    const typeId = reserveClassStructType(ci, services, projectNamespace);
+    if (typeId) reservedClasses.push({ info: ci, typeId });
+  }
+  const reservedInterfaces: { info: InterfaceInfo; typeId: string }[] = [];
+  for (const ii of gathered.interfaces) {
+    const typeId = reserveInterfaceStructType(ii, checker, diagnostics, services, projectNamespace);
+    if (typeId) reservedInterfaces.push({ info: ii, typeId });
+  }
+  const reservedTypeAliases: { info: TypeAliasInfo; typeId: string }[] = [];
+  for (const tai of gathered.typeAliases) {
+    const typeId = reserveTypeAliasStructType(tai, checker, diagnostics, services, projectNamespace);
+    if (typeId) reservedTypeAliases.push({ info: tai, typeId });
+  }
+  for (const { info, typeId } of reservedClasses) {
+    finalizeClassStructType(info, typeId, checker, diagnostics, services, projectNamespace);
+  }
+  for (const { info, typeId } of reservedInterfaces) {
+    finalizeInterfaceStructType(info, typeId, checker, diagnostics, services, projectNamespace);
+  }
+  for (const { info, typeId } of reservedTypeAliases) {
+    finalizeTypeAliasStructType(info, typeId, checker, diagnostics, services, projectNamespace);
+  }
+
+  const systemStateTypes = new Map<ts.ObjectLiteralExpression, TypeId>();
+  for (const config of gathered.systemConfigs) {
+    const parts = extractSystemConfig(config, diagnostics);
+    if (!parts) continue;
+    const stateDef = autoRegisterAnonymousStruct(
+      checker.getTypeAtLocation(parts.stateNode),
+      checker,
+      services,
+      projectNamespace
+    );
+    if (stateDef) {
+      systemStateTypes.set(config, stateDef.typeId);
+    }
+  }
+  return { systemStateTypes };
 }
 
 /** True when `node` carries an `export` modifier. */
@@ -5406,7 +5504,7 @@ function resolveStructTypeFactory(idNode: ts.Identifier, ctx: LowerContext): Str
   if (!decl || !ts.isVariableDeclaration(decl) || !ts.isIdentifier(decl.name)) return undefined;
   if (!structTypeConfigObject(decl.initializer)) return undefined;
 
-  const identity = qualifiedClassName(ctx.projectNamespace, decl.getSourceFile().fileName, decl.name.text);
+  const identity = qualifiedDeclarationName(ctx.projectNamespace, decl.getSourceFile().fileName, decl.name.text);
   const typeId = ctx.services.runtime.types.resolveByName(identity);
   if (typeId === undefined) return undefined;
   const typeDef = ctx.services.runtime.types.get(typeId);
@@ -10479,7 +10577,7 @@ function resolveRegistryName(
   const name = resolvedSym.getName();
   const decls = resolvedSym.getDeclarations();
   if (decls && decls.length > 0 && isUserSourceDecl(decls[0])) {
-    const qualName = qualifiedClassName(projectNamespace, decls[0].getSourceFile().fileName, name);
+    const qualName = qualifiedDeclarationName(projectNamespace, decls[0].getSourceFile().fileName, name);
     if (services.runtime.types.resolveByName(qualName)) {
       return qualName;
     }
@@ -10570,7 +10668,11 @@ function registerUserEnumTypes(
   const seenNames = new Set<string>();
 
   for (const enumNode of localEnumNodes) {
-    const qualifiedName = qualifiedClassName(projectNamespace, enumNode.getSourceFile().fileName, enumNode.name.text);
+    const qualifiedName = qualifiedDeclarationName(
+      projectNamespace,
+      enumNode.getSourceFile().fileName,
+      enumNode.name.text
+    );
     if (seenNames.has(qualifiedName)) {
       continue;
     }
@@ -10579,7 +10681,11 @@ function registerUserEnumTypes(
   }
 
   for (const importedEnum of importedEnums) {
-    const qualifiedName = qualifiedClassName(projectNamespace, importedEnum.sourceFile.fileName, importedEnum.name);
+    const qualifiedName = qualifiedDeclarationName(
+      projectNamespace,
+      importedEnum.sourceFile.fileName,
+      importedEnum.name
+    );
     if (seenNames.has(qualifiedName)) {
       continue;
     }
@@ -10596,7 +10702,11 @@ function registerUserEnumType(
   projectNamespace: string
 ): void {
   const registry = services.runtime.types;
-  const qualifiedName = qualifiedClassName(projectNamespace, enumNode.getSourceFile().fileName, enumNode.name.text);
+  const qualifiedName = qualifiedDeclarationName(
+    projectNamespace,
+    enumNode.getSourceFile().fileName,
+    enumNode.name.text
+  );
   if (registry.resolveByName(qualifiedName)) {
     return;
   }
@@ -11315,7 +11425,7 @@ function resolveDeclaredStructInstanceTypeId(
   let node: ts.Node | undefined = argDecl;
   while (node && !ts.isSourceFile(node)) {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && structTypeConfigObject(node.initializer)) {
-      const identity = qualifiedClassName(projectNamespace, node.getSourceFile().fileName, node.name.text);
+      const identity = qualifiedDeclarationName(projectNamespace, node.getSourceFile().fileName, node.name.text);
       const typeId = services.runtime.types.resolveByName(identity);
       if (typeId !== undefined) {
         const def = services.runtime.types.get(typeId);
@@ -11805,9 +11915,13 @@ function extractClassMethodDecls(
   return methods;
 }
 
-function reserveClassStructType(ci: ClassInfo, services: BrainServices, projectNamespace: string): string | undefined {
+function reserveClassStructType(
+  ci: ImportedClass,
+  services: BrainServices,
+  projectNamespace: string
+): string | undefined {
   const registry = services.runtime.types;
-  const qualName = qualifiedClassName(projectNamespace, ci.sourceFile.fileName, ci.name);
+  const qualName = qualifiedDeclarationName(projectNamespace, ci.sourceFile.fileName, ci.name);
   const existing = registry.resolveByName(qualName);
   if (existing) return undefined;
 
@@ -11815,7 +11929,7 @@ function reserveClassStructType(ci: ClassInfo, services: BrainServices, projectN
 }
 
 function finalizeClassStructType(
-  ci: ClassInfo,
+  ci: ImportedClass,
   typeId: string,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
@@ -11837,7 +11951,7 @@ function reserveInterfaceStructType(
   projectNamespace: string
 ): string | undefined {
   const registry = services.runtime.types;
-  const qualName = qualifiedClassName(projectNamespace, ii.sourceFile.fileName, ii.name);
+  const qualName = qualifiedDeclarationName(projectNamespace, ii.sourceFile.fileName, ii.name);
 
   if (registry.resolveByName(ii.name)) {
     diagnostics.push(
@@ -11886,7 +12000,7 @@ function reserveTypeAliasStructType(
   projectNamespace: string
 ): string | undefined {
   const registry = services.runtime.types;
-  const qualName = qualifiedClassName(projectNamespace, tai.sourceFile.fileName, tai.name);
+  const qualName = qualifiedDeclarationName(projectNamespace, tai.sourceFile.fileName, tai.name);
 
   if (registry.resolveByName(tai.name)) {
     diagnostics.push(
@@ -12006,7 +12120,7 @@ function lowerClassDeclaration(
   const entries: FunctionEntry[] = [];
 
   const registry = services.runtime.types;
-  const qualName = qualifiedClassName(projectNamespace, ci.sourceFile.fileName, ci.name);
+  const qualName = qualifiedDeclarationName(projectNamespace, ci.sourceFile.fileName, ci.name);
   const typeId = registry.resolveByName(qualName);
 
   const ctor = ci.node.members.find(ts.isConstructorDeclaration);

@@ -1,6 +1,8 @@
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { buildAmbientDeclarations } from "./ambient.js";
+import type { DependencyMount, ProjectDependency } from "./extension-mounts.js";
 import {
+  addPublishedTypeIds,
   addSharedTileDeclarations,
   emptySharedTileSessionContext,
   type ProjectCompileResult,
@@ -16,8 +18,12 @@ export interface ProjectRoot {
   namespace: string;
   /** The root's source files, keyed by workspace path. */
   files: ReadonlyMap<string, string>;
-  /** Namespaces of roots this root depends on. Each must be present in the resolved set. */
-  dependencies?: readonly string[];
+  /**
+   * The root's extensions list. Each entry's namespace must be present in
+   * the resolved set; each entry's slug names the dependency in the root's
+   * `@ext/<slug>` imports.
+   */
+  dependencies?: readonly ProjectDependency[];
 }
 
 /** Result of {@link MultiRootSession.compile}: per-root compile results keyed by namespace. */
@@ -75,8 +81,10 @@ export class MultiRootSession {
     }
     for (const root of roots) {
       for (const dependency of root.dependencies ?? []) {
-        if (!byNamespace.has(dependency)) {
-          throw new Error(`Root "${root.namespace}" depends on "${dependency}", which is not in the resolved set`);
+        if (!byNamespace.has(dependency.namespace)) {
+          throw new Error(
+            `Root "${root.namespace}" depends on "${dependency.namespace}", which is not in the resolved set`
+          );
         }
       }
     }
@@ -97,6 +105,7 @@ export class MultiRootSession {
           projectNamespace: root.namespace,
           services: this._options.services,
           ambientFiles: this._ambientFiles(),
+          publishEntry: true,
         });
         entry = { root, project };
         this._roots.set(root.namespace, entry);
@@ -104,6 +113,7 @@ export class MultiRootSession {
         entry.root = root;
       }
       entry.project.setFiles(root.files);
+      entry.project.setDependencies(root.dependencies ?? [], transitiveMounts(root, byNamespace));
     }
   }
 
@@ -136,6 +146,7 @@ export class MultiRootSession {
       const entry = this._roots.get(namespace)!;
       entry.result = entry.project.compileAll(contextView(draft));
       addSharedTileDeclarations(draft, entry.result.results, this._options.services);
+      addPublishedTypeIds(draft, entry.result);
     }
     return { roots: this.results() };
   }
@@ -157,6 +168,7 @@ export class MultiRootSession {
       const prior = this._roots.get(priorNamespace)?.result;
       if (prior) {
         addSharedTileDeclarations(draft, prior.results, this._options.services);
+        addPublishedTypeIds(draft, prior);
       }
     }
     entry.result = entry.project.compileAll(contextView(draft));
@@ -178,7 +190,29 @@ function contextView(draft: SharedTileSessionContextDraft): SharedTileSessionCon
     sharedModifiers: draft.sharedModifiers,
     sharedParameters: draft.sharedParameters,
     conversionPairs: draft.conversionPairs,
+    publishedTypeIds: draft.publishedTypeIds,
   };
+}
+
+/** The mounts covering `root`'s transitive dependency closure within the resolved set. */
+function transitiveMounts(root: ProjectRoot, byNamespace: ReadonlyMap<string, ProjectRoot>): DependencyMount[] {
+  const mounts: DependencyMount[] = [];
+  const seen = new Set<string>();
+  const visit = (dependencies: readonly ProjectDependency[] | undefined): void => {
+    for (const dependency of dependencies ?? []) {
+      if (seen.has(dependency.namespace)) continue;
+      seen.add(dependency.namespace);
+      const dependencyRoot = byNamespace.get(dependency.namespace)!;
+      mounts.push({
+        namespace: dependencyRoot.namespace,
+        files: dependencyRoot.files,
+        dependencies: dependencyRoot.dependencies,
+      });
+      visit(dependencyRoot.dependencies);
+    }
+  };
+  visit(root.dependencies);
+  return mounts;
 }
 
 /**
@@ -187,7 +221,7 @@ function contextView(draft: SharedTileSessionContextDraft): SharedTileSessionCon
  * dependency cycle.
  */
 function sortByDependencies(roots: readonly ProjectRoot[]): string[] {
-  const dependencies = new Map<string, readonly string[]>();
+  const dependencies = new Map<string, readonly ProjectDependency[]>();
   for (const root of roots) {
     dependencies.set(root.namespace, root.dependencies ?? []);
   }
@@ -198,7 +232,7 @@ function sortByDependencies(roots: readonly ProjectRoot[]): string[] {
     let progressed = false;
     for (const root of roots) {
       if (placed.has(root.namespace)) continue;
-      if (dependencies.get(root.namespace)!.some((dependency) => !placed.has(dependency))) continue;
+      if (dependencies.get(root.namespace)!.some((dependency) => !placed.has(dependency.namespace))) continue;
       order.push(root.namespace);
       placed.add(root.namespace);
       progressed = true;

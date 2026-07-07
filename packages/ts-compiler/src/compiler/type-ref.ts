@@ -1,6 +1,6 @@
 import { CoreTypeNames } from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
-import { qualifiedClassName } from "./symbol-keys.js";
+import { qualifiedDeclarationName } from "./extension-mounts.js";
 
 /**
  * Canonical registry name for each ambient TypeRef token exported by the
@@ -100,14 +100,14 @@ export function resolveTypeNameExpression(
 
   if (ts.isEnumDeclaration(declaration)) {
     return {
-      name: qualifiedClassName(projectNamespace, declaration.getSourceFile().fileName, declaration.name.text),
+      name: qualifiedDeclarationName(projectNamespace, declaration.getSourceFile().fileName, declaration.name.text),
     };
   }
 
   if (ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)) {
     if (structTypeConfigObject(declaration.initializer)) {
       return {
-        name: qualifiedClassName(projectNamespace, declaration.getSourceFile().fileName, declaration.name.text),
+        name: qualifiedDeclarationName(projectNamespace, declaration.getSourceFile().fileName, declaration.name.text),
       };
     }
     if (structTypeCallExpression(declaration.initializer)) {

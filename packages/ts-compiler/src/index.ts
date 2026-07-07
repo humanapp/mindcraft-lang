@@ -31,6 +31,8 @@ export {
   LoweringDiagCode,
   ValidatorDiagCode,
 } from "./compiler/diag-codes.js";
+export type { DependencyMount, ProjectDependency } from "./compiler/extension-mounts.js";
+export { EXTENSION_IMPORT_PREFIX } from "./compiler/extension-mounts.js";
 export type {
   SharedModifierDeclaration,
   SharedParameterDeclaration,
@@ -38,7 +40,13 @@ export type {
 } from "./compiler/project.js";
 export type { MultiRootCompileResult, MultiRootSessionOptions, ProjectRoot } from "./compiler/project-set.js";
 export { MultiRootSession } from "./compiler/project-set.js";
-export { privateArgTileId, qualifiedClassName, scopedOutputName, userActionKey } from "./compiler/symbol-keys.js";
+export {
+  privateArgTileId,
+  publicSymbolKey,
+  qualifiedClassName,
+  scopedOutputName,
+  userActionKey,
+} from "./compiler/symbol-keys.js";
 export type { LinkedUserProgram, UserAuthoredProgram } from "./compiler/types.js";
 export {
   isCallSpec,

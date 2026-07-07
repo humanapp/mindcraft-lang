@@ -907,6 +907,46 @@ describe("removeUserTypes", () => {
     assert.equal(registry.get(projectB), undefined);
   });
 
+  test("an alias resolves to the aliased type and follows it through removal", () => {
+    const registry = services.runtime.types;
+    const typeId = registry.withOwner("dynamic", () =>
+      registry.addStructType("project-c:/main.ts::Vec", {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+      })
+    );
+
+    registry.addTypeNameAlias("project-c::Vec", typeId);
+    assert.equal(registry.resolveByName("project-c::Vec"), typeId);
+    assert.equal(registry.resolveByName("project-c:/main.ts::Vec"), typeId, "the private name keeps resolving");
+
+    registry.removeUserTypes("project-c");
+    assert.equal(registry.resolveByName("project-c::Vec"), undefined, "the alias is dropped with its target");
+    assert.equal(registry.resolveByName("project-c:/main.ts::Vec"), undefined);
+  });
+
+  test("an alias to another project's type survives removing an unrelated namespace", () => {
+    const registry = services.runtime.types;
+    const typeId = registry.withOwner("dynamic", () =>
+      registry.addStructType("project-d:/main.ts::Vec", {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+      })
+    );
+    const otherId = registry.withOwner("dynamic", () =>
+      registry.addStructType("project-e:/main.ts::Vec", {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+      })
+    );
+    registry.addTypeNameAlias("project-d::Vec", typeId);
+
+    registry.removeUserTypes("project-e");
+
+    assert.equal(registry.get(otherId), undefined);
+    assert.equal(registry.resolveByName("project-d::Vec"), typeId);
+
+    registry.removeUserTypes("project-d");
+    assert.equal(registry.resolveByName("project-d::Vec"), undefined);
+  });
+
   test("a namespace argument clears that project's enum artifacts and no other's", () => {
     const registry = services.runtime.types;
     const mkEnum = (name: string) =>

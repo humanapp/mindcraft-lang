@@ -92,6 +92,9 @@ export const WORKS: readonly string[] = [
   "switch-statement",
   "static-class-member",
   "class-getter-setter",
+  "separate-statement-export-class",
+  "re-export-from-barrel",
+  "entry-publishes-re-exported-type",
 ];
 
 /** Corpus entries pinned as failing with the recorded diagnostic code. */
@@ -125,13 +128,14 @@ export const BLOCKED: Readonly<Record<string, number>> = {
   "conversion-from-enum-ref": CompileDiagCode.TypeScriptError,
   "struct-field-typed-by-enum-binding": CompileDiagCode.TypeScriptError,
   "shared-modifier-label-conflict": CompileDiagCode.SharedModifierLabelConflict,
+  "entry-duplicate-export-name": CompileDiagCode.TypeScriptError,
+  "entry-publishes-declaration-under-two-aliases": CompileDiagCode.MultiplePublishedNames,
+  "published-type-references-unpublished-type": CompileDiagCode.UnpublishedTypeReference,
+  "extension-deep-import": CompileDiagCode.ExtensionDeepImport,
 };
 
 /**
  * Corpus entries in the forbidden third state, each mapped to a one-line
  * description of the current divergence.
  */
-export const QUARANTINED: Readonly<Record<string, string>> = {
-  "separate-statement-export-class":
-    "A class exported by a separate `export { X }` statement is not collected as an exported class, so an importer's `new X()` fails 3143 Unknown class even though TypeScript accepts the import.",
-};
+export const QUARANTINED: Readonly<Record<string, string>> = {};

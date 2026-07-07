@@ -41,7 +41,8 @@ import { BLOCKED, QUARANTINED, WORKS } from "../testsupport/ts-equivalence-manif
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { type ProjectCompileResult, UserTileProject } from "./project.js";
-import { qualifiedClassName } from "./symbol-keys.js";
+import { MultiRootSession, type ProjectRoot } from "./project-set.js";
+import { publicSymbolKey, qualifiedClassName } from "./symbol-keys.js";
 import type { CompileDiagnostic, UserAuthoredProgram } from "./types.js";
 
 /** Compile outcome handed to a WORKS entry's assertion. */
@@ -59,6 +60,15 @@ interface CorpusEntry {
   files: Record<string, string>;
   /** Path of the tile entry file whose compiled program is observed. */
   entry: string;
+  /**
+   * Project roots compiled through a publication-enabled multi-root session.
+   * When present, `files` is unused and the observed result is `observe`'s.
+   * Namespaces must be unique across corpus entries (the registry session is
+   * shared).
+   */
+  roots?: ProjectRoot[];
+  /** Namespace whose compile result the entry observes; required with `roots`. */
+  observe?: string;
   /**
    * Asserts the observable TypeScript-semantics outcome. Required for WORKS
    * and QUARANTINED entries.
@@ -82,21 +92,35 @@ function services(): BrainServices {
   return sharedServices;
 }
 
-/** Compile `files` through a fresh {@link UserTileProject} over the shared services. */
-function compileFiles(files: Record<string, string>): { services: BrainServices; result: ProjectCompileResult } {
+/** Compile an entry over the shared services: a fresh {@link UserTileProject}, or a {@link MultiRootSession} for root-set entries. */
+function compileFiles(entry: Pick<CorpusEntry, "files" | "roots" | "observe">): {
+  services: BrainServices;
+  result: ProjectCompileResult;
+} {
   const svc = services();
+  if (entry.roots) {
+    const session = new MultiRootSession({
+      services: svc,
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientContent! }],
+    });
+    session.setRoots(entry.roots);
+    const { roots } = session.compile();
+    const result = roots.get(entry.observe!);
+    assert.ok(result, `expected a compile result for root ${entry.observe}`);
+    return { services: svc, result };
+  }
   const project = new UserTileProject({
     projectNamespace: TEST_PROJECT_NAMESPACE,
     ambientFiles: [{ path: "ambient.d.ts", content: ambientContent! }],
     services: svc,
   });
-  project.setFiles(new Map(Object.entries(files)));
+  project.setFiles(new Map(Object.entries(entry.files)));
   return { services: svc, result: project.compileAll() };
 }
 
 /** Compile a WORKS entry, asserting a clean compile, and return its outcome. */
 function compileWorks(entry: CorpusEntry): WorksOutcome {
-  const { services: svc, result } = compileFiles(entry.files);
+  const { services: svc, result } = compileFiles(entry);
   assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
   const compiled = result.results.get(entry.entry);
   assert.ok(compiled, `expected a compile result for ${entry.entry}`);
@@ -212,6 +236,27 @@ const MODE_ENUM = `export enum Mode {
   Stop = 0,
   Go = 2,
 }
+`;
+
+const CORPUS_POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "mindcraft";
+
+export const Position = StructType({
+  name: "position",
+  fields: { x: NumberType, y: NumberType },
+});
+export type Position = StructOf<typeof Position>;
+`;
+
+const CORPUS_STICK_SOURCE = `import { Sensor, type Context } from "mindcraft";
+import { Position } from "./position";
+
+export default Sensor({
+  name: "stick position", inline: true,
+  returnType: Position,
+  onExecute(ctx: Context): Position {
+    return Position({ x: 3, y: 4 });
+  },
+});
 `;
 
 /**
@@ -1470,7 +1515,7 @@ export default Conversion({
     expectWorks: (o) => {
       const firstTypeId = o.program.structTypes?.[0]?.typeId;
       assert.ok(firstTypeId, "expected the struct on the first compile");
-      const again = compileFiles(WARM_REGISTRY_FILES);
+      const again = compileFiles({ files: WARM_REGISTRY_FILES });
       assert.equal(again.result.tsErrors.size, 0);
       const reProgram = again.result.results.get("entry.ts")?.program;
       assert.ok(reProgram, "the warm-registry compile produces a program");
@@ -1766,6 +1811,62 @@ export default Sensor({
     },
     entry: "entry.ts",
     expectWorks: runsToNumber(9),
+  },
+  {
+    name: "re-export-from-barrel",
+    files: {
+      "impl.ts": `class Greeter {
+  n: number;
+  constructor() {
+    this.n = 9;
+  }
+}
+
+export { Greeter };
+`,
+      "barrel.ts": `export { Greeter } from "./impl";
+`,
+      "entry.ts": `${SENSOR_IMPORT}import { Greeter } from "./barrel";
+
+export default Sensor({
+  name: "barrel probe", inline: true,
+  onExecute(ctx: Context): number {
+    return new Greeter().n;
+  },
+});
+`,
+    },
+    entry: "entry.ts",
+    expectWorks: runsToNumber(9),
+  },
+  {
+    name: "entry-publishes-re-exported-type",
+    files: {},
+    roots: [
+      {
+        namespace: "corpus-pub-works",
+        files: new Map([
+          ["position.ts", CORPUS_POSITION_SOURCE],
+          ["index.ts", `export { Position } from "./position";\n`],
+          ["stick.ts", CORPUS_STICK_SOURCE],
+        ]),
+      },
+    ],
+    observe: "corpus-pub-works",
+    entry: "stick.ts",
+    expectWorks: (o) => {
+      const publicId = o.services.runtime.types.resolveByName(publicSymbolKey("corpus-pub-works", "Position"));
+      assert.ok(publicId, "the entry-published type resolves by its public key");
+      assert.equal(
+        o.services.runtime.types.resolveByName(qualifiedClassName("corpus-pub-works", "/position.ts", "Position")),
+        publicId,
+        "the public key aliases the private registration"
+      );
+      assert.equal(o.program.outputType, publicId, "the sensor's return type is the published type");
+      const value = makeRunner(o)();
+      assert.ok(value && isStructValue(value), `expected a struct value, got ${JSON.stringify(value)}`);
+      assert.equal(value.typeId, publicId, "the returned value carries the published type");
+    },
   },
   // -- blocked: TypeScript's own errors -------------------------------------
   {
@@ -2168,6 +2269,96 @@ export default Sensor({
     },
     entry: "b.ts",
   },
+  {
+    name: "entry-duplicate-export-name",
+    files: {
+      "a.ts": `export const Widget = 1;\n`,
+      "b.ts": `export const Widget = 2;\n`,
+      "index.ts": `export { Widget } from "./a";\nexport { Widget } from "./b";\n`,
+      "entry.ts": numberSensor("return 1;"),
+    },
+    entry: "entry.ts",
+    tsError: /Duplicate identifier 'Widget'/,
+  },
+  {
+    name: "entry-publishes-declaration-under-two-aliases",
+    files: {},
+    roots: [
+      {
+        namespace: "corpus-pub-alias",
+        files: new Map([
+          ["position.ts", CORPUS_POSITION_SOURCE],
+          ["index.ts", `export { Position, Position as Pos } from "./position";\n`],
+        ]),
+      },
+    ],
+    observe: "corpus-pub-alias",
+    entry: "index.ts",
+  },
+  {
+    name: "published-type-references-unpublished-type",
+    files: {},
+    roots: [
+      {
+        namespace: "corpus-pub-closure",
+        files: new Map([
+          [
+            "types.ts",
+            `import { NumberType, StructType } from "mindcraft";
+
+const Inner = StructType({
+  name: "inner",
+  fields: { n: NumberType },
+});
+
+export const Outer = StructType({
+  name: "outer",
+  fields: { inner: Inner },
+});
+`,
+          ],
+          ["index.ts", `export { Outer } from "./types";\n`],
+        ]),
+      },
+    ],
+    observe: "corpus-pub-closure",
+    entry: "index.ts",
+  },
+  {
+    name: "extension-deep-import",
+    files: {},
+    roots: [
+      {
+        namespace: "corpus-deep-lib",
+        files: new Map([
+          ["position.ts", CORPUS_POSITION_SOURCE],
+          ["index.ts", `export { Position } from "./position";\n`],
+        ]),
+      },
+      {
+        namespace: "corpus-deep-app",
+        files: new Map([
+          [
+            "main.ts",
+            `import { Sensor, type Context } from "mindcraft";
+import { Position } from "@ext/lib/position";
+
+export default Sensor({
+  name: "deep import probe", inline: true,
+  returnType: Position,
+  onExecute(ctx: Context): Position {
+    return Position({ x: 1, y: 2 });
+  },
+});
+`,
+          ],
+        ]),
+        dependencies: [{ slug: "lib", namespace: "corpus-deep-lib" }],
+      },
+    ],
+    observe: "corpus-deep-app",
+    entry: "main.ts",
+  },
 ];
 
 /** Every error-severity diagnostic across all per-file results. */
@@ -2184,7 +2375,7 @@ function allErrorDiagnostics(result: ProjectCompileResult): CompileDiagnostic[] 
 }
 
 function assertBlocked(entry: CorpusEntry, code: number): void {
-  const { result } = compileFiles(entry.files);
+  const { result } = compileFiles(entry);
 
   if (code === CompileDiagCode.TypeScriptError) {
     const tsMessages = [...result.tsErrors.values()].flat().map((d) => d.message);
