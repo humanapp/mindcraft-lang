@@ -15,6 +15,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 
@@ -95,6 +96,7 @@ export default Sensor({
 
 function compileAndRun(source: string): Value {
   const result = compileUserTile(source, {
+    projectNamespace: TEST_PROJECT_NAMESPACE,
     ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
     services,
   });
@@ -361,6 +363,7 @@ describe("map unsupported method diagnostic", () => {
       return 0;
     `);
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });

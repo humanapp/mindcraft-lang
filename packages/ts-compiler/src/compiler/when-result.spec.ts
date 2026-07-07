@@ -6,6 +6,7 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
 import { CoreFuncId, HandleTable, NativeType, NIL_VALUE, Op, type Value, VmStatus } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, DescriptorDiagCode } from "./diag-codes.js";
 
@@ -57,7 +58,7 @@ describe("ctx.getWhenResult()", () => {
   });
 
   test("lowers to a HOST_CALL of Context.getWhenResult with only the receiver argument", () => {
-    const compiled = compileUserTile(WHEN_RESULT_SENSOR, { services });
+    const compiled = compileUserTile(WHEN_RESULT_SENSOR, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(compiled.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(compiled.diagnostics)}`);
     assert.ok(compiled.program, "expected a compiled program");
 
@@ -74,7 +75,7 @@ describe("ctx.getWhenResult()", () => {
   });
 
   test("returns nil when there is no enclosing rule (no WHEN result captured)", () => {
-    const compiled = compileUserTile(WHEN_RESULT_SENSOR, { services });
+    const compiled = compileUserTile(WHEN_RESULT_SENSOR, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(compiled.diagnostics, []);
     assert.ok(compiled.program);
 
@@ -174,7 +175,10 @@ describe("consumesWhenResult declaration", () => {
   }
 
   test("warns when getWhenResult is read but consumesWhenResult is not declared", () => {
-    const compiled = compileUserTile(READER_WITHOUT_DECLARATION, { services });
+    const compiled = compileUserTile(READER_WITHOUT_DECLARATION, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      services,
+    });
     const warning = compiled.diagnostics.find((d) => d.code === CompileDiagCode.WhenResultReadWithoutDeclaration);
     assert.ok(warning, "expected the missing-declaration warning");
     assert.equal(warning.severity, "warning");
@@ -182,7 +186,10 @@ describe("consumesWhenResult declaration", () => {
   });
 
   test("warns for an actuator that reads getWhenResult without declaring consumesWhenResult", () => {
-    const compiled = compileUserTile(ACTUATOR_READER_WITHOUT_DECLARATION, { services });
+    const compiled = compileUserTile(ACTUATOR_READER_WITHOUT_DECLARATION, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      services,
+    });
     assert.ok(
       hasCode(compiled.diagnostics, CompileDiagCode.WhenResultReadWithoutDeclaration),
       "an undeclared actuator reader must warn too"
@@ -190,7 +197,7 @@ describe("consumesWhenResult declaration", () => {
   });
 
   test("does not warn when consumesWhenResult is declared", () => {
-    const compiled = compileUserTile(READER_WITH_DECLARATION, { services });
+    const compiled = compileUserTile(READER_WITH_DECLARATION, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(compiled.program);
     assert.ok(
       !hasCode(compiled.diagnostics, CompileDiagCode.WhenResultReadWithoutDeclaration),
@@ -199,7 +206,7 @@ describe("consumesWhenResult declaration", () => {
   });
 
   test("does not warn when consumesWhenResult is declared but getWhenResult is not read", () => {
-    const compiled = compileUserTile(DECLARATION_WITHOUT_READ, { services });
+    const compiled = compileUserTile(DECLARATION_WITHOUT_READ, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(compiled.program);
     assert.ok(
       !hasCode(compiled.diagnostics, CompileDiagCode.WhenResultReadWithoutDeclaration),
@@ -208,14 +215,17 @@ describe("consumesWhenResult declaration", () => {
   });
 
   test("errors when consumesWhenResult names a type that does not resolve", () => {
-    const compiled = compileUserTile(DECLARATION_UNKNOWN_TYPE, { services });
+    const compiled = compileUserTile(DECLARATION_UNKNOWN_TYPE, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     const error = compiled.diagnostics.find((d) => d.code === CompileDiagCode.UnresolvedTypeReference);
     assert.ok(error, "expected the unresolved-type-reference error");
     assert.equal(error.severity, "error");
   });
 
   test("errors when consumesWhenResult is neither a type name string literal nor a type reference", () => {
-    const compiled = compileUserTile(DECLARATION_NOT_NAME_OR_REF, { services });
+    const compiled = compileUserTile(DECLARATION_NOT_NAME_OR_REF, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      services,
+    });
     assert.ok(
       hasCode(compiled.diagnostics, DescriptorDiagCode.ConsumesWhenResultMustBeNameOrRef),
       "a parenthesized value must be rejected precisely"

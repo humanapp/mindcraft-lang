@@ -55,6 +55,20 @@ describe("parseMindcraftJson", () => {
   it("returns undefined when name is a number", () => {
     assert.strictEqual(parseMindcraftJson(JSON.stringify({ ...VALID, name: 42 })), undefined);
   });
+
+  it("parses an extensions map", () => {
+    const withExtensions = { ...VALID, extensions: { position: "gh:example-org/mindcraft-position@v1.2.0" } };
+    assert.deepStrictEqual(parseMindcraftJson(JSON.stringify(withExtensions)), withExtensions);
+  });
+
+  it("returns undefined when extensions is not an object", () => {
+    assert.strictEqual(parseMindcraftJson(JSON.stringify({ ...VALID, extensions: 5 })), undefined);
+    assert.strictEqual(parseMindcraftJson(JSON.stringify({ ...VALID, extensions: ["a"] })), undefined);
+  });
+
+  it("returns undefined when an extension reference is not a string", () => {
+    assert.strictEqual(parseMindcraftJson(JSON.stringify({ ...VALID, extensions: { position: 42 } })), undefined);
+  });
 });
 
 describe("serializeMindcraftJson", () => {

@@ -18,6 +18,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";
 import type { UserAuthoredProgram } from "./types.js";
@@ -57,7 +58,11 @@ function mkScheduler(): Scheduler {
 
 function compileProject(files: Record<string, string>) {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }

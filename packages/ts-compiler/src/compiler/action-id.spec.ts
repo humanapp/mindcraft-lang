@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { UserTileProject } from "./project.js";
 
 let services: BrainServices;
@@ -20,7 +21,7 @@ ${idLine}  name: ${JSON.stringify(opts.name)},
 }
 
 function compile(files: ReadonlyMap<string, string>, generateActionId?: () => string) {
-  const project = new UserTileProject({ services, generateActionId });
+  const project = new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services, generateActionId });
   project.setFiles(files);
   return project.compileAll();
 }
@@ -37,7 +38,7 @@ describe("user-action stable id", () => {
     const program = result.results.get(path)?.program;
     assert.ok(program);
     assert.match(program.id, /^[A-Za-z0-9]{16}$/);
-    assert.equal(program.key, `user.sensor.${program.id}`);
+    assert.equal(program.key, `${TEST_PROJECT_NAMESPACE}:user.sensor.${program.id}`);
 
     const rewritten = result.sourceRewrites.get(path);
     assert.ok(rewritten, "a source rewrite should be emitted for a declaration missing an id");
@@ -48,7 +49,7 @@ describe("user-action stable id", () => {
     const path = "scan.ts";
     const result = compile(new Map([[path, sensorSource({ id: "myStableId", name: "scan" })]]));
 
-    assert.equal(result.results.get(path)?.program?.key, "user.sensor.myStableId");
+    assert.equal(result.results.get(path)?.program?.key, `${TEST_PROJECT_NAMESPACE}:user.sensor.myStableId`);
     assert.equal(result.sourceRewrites.size, 0);
   });
 
@@ -67,7 +68,7 @@ describe("user-action stable id", () => {
     const path = "scan.ts";
     const minted = compile(new Map([[path, sensorSource({ id: "keepme", name: "scan" })]]));
     const original = minted.results.get(path)!.program!;
-    assert.equal(original.key, "user.sensor.keepme");
+    assert.equal(original.key, `${TEST_PROJECT_NAMESPACE}:user.sensor.keepme`);
 
     const renamed = compile(new Map([[path, sensorSource({ id: "keepme", name: "radar" })]]));
     const after = renamed.results.get(path)!.program!;
@@ -90,7 +91,7 @@ describe("user-action stable id", () => {
   test("the id generator is injectable for deterministic output", () => {
     const path = "scan.ts";
     const result = compile(new Map([[path, sensorSource({ name: "scan" })]]), () => "fixedActionId01");
-    assert.equal(result.results.get(path)?.program?.key, "user.sensor.fixedActionId01");
+    assert.equal(result.results.get(path)?.program?.key, `${TEST_PROJECT_NAMESPACE}:user.sensor.fixedActionId01`);
     assert.match(result.sourceRewrites.get(path)!, /id: "fixedActionId01"/);
   });
 
@@ -108,7 +109,7 @@ export default Sensor({
 `;
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal docs placeholder under test
     const docsTemplate = "before ${tileId} after";
-    const project = new UserTileProject({ services });
+    const project = new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services });
     project.setFiles(
       new Map([
         ["scan.ts", source],
@@ -116,6 +117,9 @@ export default Sensor({
       ])
     );
     const result = project.compileAll();
-    assert.equal(result.results.get("scan.ts")?.program?.docsMarkdown, "before tile.sensor->user.sensor.docid after");
+    assert.equal(
+      result.results.get("scan.ts")?.program?.docsMarkdown,
+      `before tile.sensor->${TEST_PROJECT_NAMESPACE}:user.sensor.docid after`
+    );
   });
 });

@@ -2,6 +2,7 @@ import type {
   MindcraftProjectDocument,
   MindcraftProjectDocumentValidationCode,
   MindcraftProjectDocumentValidationError,
+  MindcraftProjectExtensions,
   MindcraftProjectFile,
   MindcraftProjectTargets,
 } from "@mindcraft-lang/service-api";
@@ -13,6 +14,8 @@ import {
 import { AppHostErrorCode, appHostError } from "./app-host-error.js";
 import { EXAMPLES_FOLDER } from "./examples.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
+import type { ProjectContentManifestErrorCode } from "./project-content-manifest.js";
+import { validateProjectExtensions } from "./project-content-manifest.js";
 import type { ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectManager } from "./project-manager.js";
@@ -21,6 +24,7 @@ import type { ProjectManifest } from "./project-manifest.js";
 
 export type {
   MindcraftProjectDocument,
+  MindcraftProjectExtensions,
   MindcraftProjectFile,
   MindcraftProjectTargets,
 } from "@mindcraft-lang/service-api";
@@ -52,7 +56,7 @@ export type ImportDiagnosticCode = (typeof ImportDiagnosticCode)[keyof typeof Im
 export interface ImportDiagnostic {
   severity: "error" | "warning";
   /** Stable identifier for app-host import diagnostics. */
-  code?: ImportDiagnosticCode | MindcraftProjectDocumentValidationCode;
+  code?: ImportDiagnosticCode | MindcraftProjectDocumentValidationCode | ProjectContentManifestErrorCode;
   message: string;
 }
 
@@ -112,6 +116,14 @@ interface ExportProjectData {
   thumbnailUrl?: string;
   files: MindcraftProjectFile[];
   brains: Record<string, unknown>;
+  extensions?: MindcraftProjectExtensions;
+}
+
+/** Treats an empty extensions map as absent. */
+function normalizeExtensions(
+  extensions: MindcraftProjectExtensions | undefined
+): MindcraftProjectExtensions | undefined {
+  return extensions && Object.keys(extensions).length > 0 ? extensions : undefined;
 }
 
 /**
@@ -153,6 +165,7 @@ async function buildExportProjectData(
     thumbnailUrl: manifest.thumbnailUrl,
     files,
     brains,
+    extensions: normalizeExtensions(manifest.extensions),
   };
 }
 
@@ -184,6 +197,7 @@ export async function buildProjectExportDocument(
     files: common.files,
     brains: common.brains,
     targets,
+    ...(common.extensions !== undefined ? { extensions: common.extensions } : {}),
   };
 }
 
@@ -337,7 +351,8 @@ async function persistSharedProjectDocument(
     document.description,
     snapshot,
     appData,
-    document.thumbnailUrl
+    document.thumbnailUrl,
+    normalizeExtensions(document.extensions)
   );
 
   return { success: true, projectId: manifest.id, diagnostics: warnings };
@@ -464,6 +479,21 @@ export async function importProjectDocument(
       const parsed = parseMindcraftProjectDocument(text);
       if (!parsed.ok) {
         return validationErrorResult(parsed.errors);
+      }
+
+      if (parsed.document.extensions) {
+        const extensionErrors = validateProjectExtensions(parsed.document.extensions);
+        if (extensionErrors.length > 0) {
+          return {
+            success: false,
+            projectId: undefined,
+            diagnostics: extensionErrors.map((error) => ({
+              severity: "error",
+              code: error.code,
+              message: `${error.path}: ${error.message}`,
+            })),
+          };
+        }
       }
 
       const appResult = options?.targetsCallback?.(parsed.document.targets, parsed.document.targets[hostName]);

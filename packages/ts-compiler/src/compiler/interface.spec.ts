@@ -20,10 +20,12 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 import { LoweringDiagCode } from "./diag-codes.js";
+import { qualifiedClassName } from "./symbol-keys.js";
 
 let services: BrainServices;
 
@@ -77,13 +79,14 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
     const registry = services.runtime.types;
-    const typeId = registry.resolveByName("/user-code.ts::Point");
+    const typeId = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/user-code.ts", "Point"));
     assert.ok(typeId, "Point struct type should be registered");
     const def = registry.get(typeId!);
     assert.ok(def, "Point type def should exist");
@@ -116,13 +119,14 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
     const registry = services.runtime.types;
-    const typeId = registry.resolveByName("/user-code.ts::Config");
+    const typeId = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/user-code.ts", "Config"));
     assert.ok(typeId, "Config struct type should be registered");
     const structDef = registry.get(typeId!) as StructTypeDef;
 
@@ -159,6 +163,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -206,6 +211,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -245,6 +251,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -277,6 +284,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -300,6 +308,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -327,6 +336,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -357,6 +367,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });

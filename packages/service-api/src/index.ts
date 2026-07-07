@@ -30,6 +30,7 @@ export type {
   MindcraftProjectDocument,
   MindcraftProjectDocumentParseResult,
   MindcraftProjectDocumentValidationError,
+  MindcraftProjectExtensions,
   MindcraftProjectFile,
   MindcraftProjectTargets,
 } from "./project-document.js";

@@ -7,6 +7,7 @@ import {
   type MindcraftEnvironment,
 } from "@mindcraft-lang/core/app";
 import { buildCompiledActionBundle, UserTileProject, type WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+import { TEST_PROJECT_NAMESPACE } from "@mindcraft-lang/ts-compiler/testing";
 import {
   applyCompiledUserTiles,
   collectMetadataFromCompile,
@@ -28,7 +29,7 @@ function resolveCoreTypeId(typeName: string): string | undefined {
 }
 
 function compile(env: MindcraftEnvironment, files: Record<string, string>): WorkspaceCompileResult {
-  const project = new UserTileProject({ services: env.brainServices });
+  const project = new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services: env.brainServices });
   project.setFiles(new Map(Object.entries(files)));
   const projectResult = project.compileAll();
   const bundle = buildCompiledActionBundle(projectResult, {
@@ -78,7 +79,7 @@ describe("collectMetadataFromCompile", () => {
 
     const metadata = collectMetadataFromCompile(result);
     assert.equal(metadata.length, 1, "only the sensor produces metadata; the conversion is excluded");
-    assert.equal(metadata[0].key, "user.sensor.snstick");
+    assert.equal(metadata[0].key, `${TEST_PROJECT_NAMESPACE}:user.sensor.snstick`);
   });
 
   test("inline and presenceGated flow onto the tile metadata", () => {
@@ -86,7 +87,7 @@ describe("collectMetadataFromCompile", () => {
     const result = compile(env, { "sensor.ts": INLINE_PRESENCE_SENSOR });
     const metadata = collectMetadataFromCompile(result);
 
-    const sensor = metadata.find((m) => m.key === "user.sensor.snstick");
+    const sensor = metadata.find((m) => m.key === `${TEST_PROJECT_NAMESPACE}:user.sensor.snstick`);
     assert.ok(sensor, "expected the sensor metadata entry");
     assert.equal(sensor.inline, true);
     assert.equal(sensor.presenceGated, true);
@@ -113,10 +114,10 @@ describe("warm-start cache round-trip", () => {
 
     // A cold environment restoring only from the persisted cache.
     const warmStartEnv = createMindcraftEnvironment({ modules: [coreModule()] });
-    const restored = await hydrateUserTilesFromCache(warmStartEnv, options);
+    const restored = await hydrateUserTilesFromCache(warmStartEnv, options, TEST_PROJECT_NAMESPACE);
     assert.ok(restored, "the cache should hydrate");
 
-    const sensor = restored.find((m) => m.key === "user.sensor.snstick");
+    const sensor = restored.find((m) => m.key === `${TEST_PROJECT_NAMESPACE}:user.sensor.snstick`);
     assert.ok(sensor, "expected the sensor to survive the cache");
     assert.equal(sensor.inline, true, "inline must survive the warm-start cache");
     assert.equal(sensor.presenceGated, true, "presenceGated must survive the warm-start cache");

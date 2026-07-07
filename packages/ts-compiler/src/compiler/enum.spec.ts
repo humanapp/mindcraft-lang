@@ -33,10 +33,12 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, LoweringDiagCode, ValidatorDiagCode } from "./diag-codes.js";
+import { qualifiedClassName } from "./symbol-keys.js";
 import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
@@ -119,12 +121,12 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
     const prog = result.program!;
-    const typeId = mkTypeId(NativeType.Enum, "/user-code.ts::Direction");
+    const typeId = mkTypeId(NativeType.Enum, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/user-code.ts", "Direction"));
     assert.equal(prog.outputType, typeId);
 
     const handles = new HandleTable(100);
@@ -168,7 +170,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -207,7 +209,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -239,7 +241,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -273,7 +275,7 @@ describe("enum value literals", () => {
           { key: "west", label: "West", value: "west" },
         ]),
         defaultKey: "north",
-        functionIds: { toString: 30104, toNumber: 30105, equalTo: 30106, notEqualTo: 30107 },
+        functionIds: { toString: 30104, toNumber: 30105 },
       });
     }
   });
@@ -292,6 +294,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -334,6 +337,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -372,6 +376,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -410,6 +415,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -448,6 +454,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -488,6 +495,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -528,6 +536,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });

@@ -5,6 +5,7 @@ import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import { type AsyncHandle, ContextTypeIds, CoreTypeIds, type Value } from "@mindcraft-lang/core/runtime";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -16,6 +17,7 @@ let services: BrainServices;
 function compile(source: string) {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
   return compileUserTile(source, {
+    projectNamespace: TEST_PROJECT_NAMESPACE,
     ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
     services,
   });

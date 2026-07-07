@@ -320,8 +320,15 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
   }
 
   let returnType: string | undefined;
+  let returnTypeAnnotation: ts.TypeNode | undefined;
   if (kind === "sensor" && onExecuteNode) {
-    returnType = configReturnType ?? extractReturnType(onExecuteNode, execIsAsync, addDiag);
+    if (configReturnType !== undefined) {
+      returnType = configReturnType;
+    } else {
+      const annotated = extractReturnType(onExecuteNode, execIsAsync, addDiag);
+      returnType = annotated?.name;
+      returnTypeAnnotation = annotated?.node;
+    }
   }
 
   if (diagnostics.length > 0) {
@@ -336,6 +343,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
       name: name!,
       returnType: kind === "sensor" ? returnType : undefined,
       returnTypeNode: kind === "sensor" ? returnTypeNode : undefined,
+      returnTypeAnnotation,
       consumesWhenResult: configConsumesWhenResult,
       consumesWhenResultNode,
       args,
@@ -1021,7 +1029,7 @@ function extractReturnType(
   funcNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction,
   isAsync: boolean,
   addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
-): string | undefined {
+): { name: string; node: ts.TypeNode } | undefined {
   const typeNode = funcNode.type;
   if (!typeNode) {
     addDiag(
@@ -1056,7 +1064,7 @@ function extractReturnType(
     return undefined;
   }
 
-  return returnTypeName;
+  return { name: returnTypeName, node: effectiveType };
 }
 
 function extractTypeNodeText(typeNode: ts.TypeNode): string | undefined {

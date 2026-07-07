@@ -25,15 +25,21 @@ import {
 } from "@mindcraft-lang/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { LoweringDiagCode } from "./diag-codes.js";
 import { type ProjectCompileResult, UserTileProject } from "./project.js";
+import { qualifiedClassName } from "./symbol-keys.js";
 import type { UserAuthoredProgram } from "./types.js";
 
 function compileProject(services: BrainServices, files: Record<string, string>): ProjectCompileResult {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -150,8 +156,12 @@ describe("class struct types: declaration-order independence", () => {
       { "defs.ts": `${INNER_BLOCK}\n${OUTER_BLOCK}`, "stick.ts": OUTER_ENTRY },
       "stick.ts"
     );
-    assertComposedShape(services, "/defs.ts::Inner", "/defs.ts::Outer");
-    const inner = classStructDef(services, "/defs.ts::Inner");
+    assertComposedShape(
+      services,
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Inner"),
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Outer")
+    );
+    const inner = classStructDef(services, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Inner"));
     assert.ok(
       inner.def.methods?.find((m) => m.name === "double"),
       "the class's method declarations register on the struct type"
@@ -166,7 +176,11 @@ describe("class struct types: declaration-order independence", () => {
       { "defs.ts": `${OUTER_BLOCK}\n${INNER_BLOCK}`, "stick.ts": OUTER_ENTRY },
       "stick.ts"
     );
-    assertComposedShape(services, "/defs.ts::Inner", "/defs.ts::Outer");
+    assertComposedShape(
+      services,
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Inner"),
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Outer")
+    );
     assert.equal(runSensorToNumber(services, program, "below"), 10, "the composed value reads back end to end");
   });
 
@@ -193,7 +207,11 @@ export default Sensor({
 });
 `;
     const program = compileAndRegister(services, { "inner.ts": INNER_BLOCK, "stick.ts": entrySource }, "stick.ts");
-    assertComposedShape(services, "/inner.ts::Inner", "/stick.ts::Outer");
+    assertComposedShape(
+      services,
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/inner.ts", "Inner"),
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/stick.ts", "Outer")
+    );
     assert.equal(runSensorToNumber(services, program, "entry"), 10, "the composed value reads back end to end");
   });
 
@@ -211,7 +229,11 @@ export default Sensor({
       { "defs.ts": `${OUTER_BLOCK}\n${methodlessInner}`, "stick.ts": OUTER_ENTRY },
       "stick.ts"
     );
-    assertComposedShape(services, "/defs.ts::Inner", "/defs.ts::Outer");
+    assertComposedShape(
+      services,
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Inner"),
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Outer")
+    );
     assert.equal(
       services.runtime.types.resolveByName("Inner"),
       undefined,
@@ -253,8 +275,8 @@ export default Sensor({
     );
     const program = compiledProgram(result, "stick.ts");
     registerUserTile(program, services);
-    const settings = classStructDef(services, "/stick.ts::Settings");
-    const rover = classStructDef(services, "/stick.ts::Rover");
+    const settings = classStructDef(services, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/stick.ts", "Settings"));
+    const rover = classStructDef(services, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/stick.ts", "Rover"));
     assert.equal(fieldTypeId(rover.def, "cfg"), settings.typeId, "the field carries the interface's qualified type");
     assert.equal(runSensorToNumber(services, program, "rover"), 2, "the composed value reads back end to end");
   });
@@ -286,7 +308,7 @@ export default Sensor({
 });
 `;
     const program = compileAndRegister(services, { "stick.ts": entrySource }, "stick.ts");
-    const node = classStructDef(services, "/stick.ts::Node");
+    const node = classStructDef(services, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/stick.ts", "Node"));
     const nextTypeId = fieldTypeId(node.def, "next");
     const nextDef = services.runtime.types.get(nextTypeId);
     assert.ok(nextDef);

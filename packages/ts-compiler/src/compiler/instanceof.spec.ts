@@ -14,6 +14,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { compileUserTile } from "./compile.js";
 import { LoweringDiagCode } from "./diag-codes.js";
@@ -47,7 +48,7 @@ function mkScheduler(): Scheduler {
 }
 
 function compileAndRun(source: string): Value {
-  const result = compileUserTile(source, { services });
+  const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
   assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   assert.ok(result.program, "expected program");
 
@@ -174,7 +175,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     expectDiagnostic(result.diagnostics, LoweringDiagCode.InstanceofRhsNotClass);
   });
 });

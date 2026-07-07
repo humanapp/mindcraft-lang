@@ -24,13 +24,18 @@ import { buildAmbientDeclarations } from "../compiler/ambient.js";
 import { CompileDiagCode } from "../compiler/diag-codes.js";
 import type { ProjectCompileResult } from "../compiler/project.js";
 import { UserTileProject } from "../compiler/project.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";
 
 let services: BrainServices;
 
 function compileProject(files: Record<string, string>): ProjectCompileResult {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -196,11 +201,11 @@ export default Sensor({
     const bundle = buildBundle(result);
     const suggested = suggestedTileIds(bundle, [sensorTile(bundle, "private tile")]);
     assert.ok(
-      suggested.has(mkModifierTileId(`user.${actionId}.boost`)),
+      suggested.has(mkModifierTileId(`${TEST_PROJECT_NAMESPACE}:user.${actionId}.boost`)),
       "the private modifier is offered under the stable-id scope"
     );
     assert.ok(
-      suggested.has(mkParameterTileId(`user.${actionId}.distance`)),
+      suggested.has(mkParameterTileId(`${TEST_PROJECT_NAMESPACE}:user.${actionId}.distance`)),
       "the named private param is offered under the stable-id scope"
     );
   });

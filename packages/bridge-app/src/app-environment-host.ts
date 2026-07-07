@@ -19,6 +19,7 @@ import type { AmbientFile, StdlibSourceFile, WorkspaceCompileResult } from "@min
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { createBridgeProject, createProjectCompiler } from "./compilation.js";
+import { migrateBrainKeyNamespaces } from "./key-namespace-migration.js";
 import type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
 import { applyCompiledUserTiles, hydrateUserTilesFromCache } from "./user-tile-registration.js";
 
@@ -201,7 +202,11 @@ export class AppEnvironmentHost {
     }
     await this.projectManager.ensureDefaultProject(defaultProjectName);
     this._lastUserTileMetadata =
-      (await hydrateUserTilesFromCache(this.env, this.userTileStorageOptions())) ?? undefined;
+      (await hydrateUserTilesFromCache(
+        this.env,
+        this.userTileStorageOptions(),
+        this.projectManager.activeProject!.manifest.id
+      )) ?? undefined;
     this.initCompiler();
     await this.loadBrainsFromProject();
   }
@@ -214,6 +219,7 @@ export class AppEnvironmentHost {
     this._compiler = createProjectCompiler({
       environment: this.env,
       filesystem: this.projectFileSystem,
+      projectNamespace: this.projectManager.activeProject!.manifest.id,
       ambientFiles: this.ambientFiles,
       stdlibFiles: this.stdlibFiles,
       examples: [...this._examples],
@@ -267,21 +273,11 @@ export class AppEnvironmentHost {
   }
 
   async loadBrainFromProject(key: string): Promise<IBrainDef | undefined> {
-    try {
-      const raw = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
-      if (!raw) return undefined;
-      const record = JSON.parse(raw) as Record<string, unknown>;
-      const json = record[key];
-      if (!json) return undefined;
-      const brainDef = this.env.deserializeBrainJsonFromPlain(json);
-      if (brainDef.pages().size() === 0) {
-        brainDef.appendNewPage();
-      }
-      return brainDef;
-    } catch (err) {
-      logger.warn(`Failed to load brain "${key}":`, err);
-      return undefined;
-    }
+    const record = await this.loadBrainRecord();
+    const json = record[key];
+    if (!json) return undefined;
+    this.migrateBrainJson(key, json);
+    return this.deserializeBrainForKey(key, json);
   }
 
   /**
@@ -306,7 +302,9 @@ export class AppEnvironmentHost {
   }
 
   private async saveAllBrains(): Promise<void> {
-    const record: Record<string, unknown> = {};
+    // Overlay the cache onto the stored record: an entry that failed to
+    // deserialize on load has no cache slot, and its stored bytes must survive.
+    const record = await this.loadBrainRecord();
     for (const [key, def] of this._brainCache) {
       record[key] = def.toJson();
     }
@@ -325,11 +323,52 @@ export class AppEnvironmentHost {
 
   private async loadBrainsFromProject(): Promise<void> {
     const record = await this.loadBrainRecord();
-    for (const key of Object.keys(record)) {
-      const def = await this.loadBrainFromProject(key);
+    let migrated = false;
+    let loadFailed = false;
+    for (const [key, json] of Object.entries(record)) {
+      migrated = this.migrateBrainJson(key, json) || migrated;
+    }
+    for (const [key, json] of Object.entries(record)) {
+      const def = this.deserializeBrainForKey(key, json);
       if (def) {
         this._brainCache.set(key, def);
+      } else {
+        loadFailed = true;
       }
+    }
+    // Persist the migrated record only when every brain in it deserialized;
+    // a failed load leaves the stored pre-migration bytes untouched.
+    if (migrated && !loadFailed) {
+      await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
+    }
+  }
+
+  /**
+   * Run the key-namespace migration over one brain's plain JSON, in place.
+   * Returns true when the migration rewrote a reference.
+   */
+  private migrateBrainJson(key: string, json: unknown): boolean {
+    const namespace = this.projectManager.activeProject?.manifest.id;
+    if (!namespace) {
+      return false;
+    }
+    const report = migrateBrainKeyNamespaces(json, namespace);
+    for (const unknownKey of report.unknownKeys) {
+      logger.warn(`[key-namespace-migration] brain "${key}": unrecognized reference left unmigrated: ${unknownKey}`);
+    }
+    return report.changed;
+  }
+
+  private deserializeBrainForKey(key: string, json: unknown): IBrainDef | undefined {
+    try {
+      const brainDef = this.env.deserializeBrainJsonFromPlain(json);
+      if (brainDef.pages().size() === 0) {
+        brainDef.appendNewPage();
+      }
+      return brainDef;
+    } catch (err) {
+      logger.warn(`Failed to load brain "${key}":`, err);
+      return undefined;
     }
   }
 
@@ -477,7 +516,11 @@ export class AppEnvironmentHost {
   private async completeProjectTransition(): Promise<void> {
     this.completeProjectUnload();
     this._lastUserTileMetadata =
-      (await hydrateUserTilesFromCache(this.env, this.userTileStorageOptions())) ?? undefined;
+      (await hydrateUserTilesFromCache(
+        this.env,
+        this.userTileStorageOptions(),
+        this.projectManager.activeProject!.manifest.id
+      )) ?? undefined;
     this.initCompiler();
     await this.loadBrainsFromProject();
 

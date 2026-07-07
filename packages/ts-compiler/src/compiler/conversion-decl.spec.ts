@@ -45,6 +45,7 @@ import {
 import ts from "typescript";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { extractDescriptor } from "./descriptor.js";
 import { CompileDiagCode, DescriptorDiagCode, LoweringDiagCode } from "./diag-codes.js";
@@ -109,7 +110,11 @@ export default Sensor({
 
 function compileProject(services: BrainServices, files: Record<string, string>): ProjectCompileResult {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -258,7 +263,7 @@ describe("Conversion declarations: compilation and registration", () => {
     const program = compiledProgram(result, "conv.ts");
 
     assert.equal(program.kind, "conversion");
-    assert.equal(program.key, `user.conversion.${NUM_TO_BUF_ID}`);
+    assert.equal(program.key, `${TEST_PROJECT_NAMESPACE}:user.conversion.${NUM_TO_BUF_ID}`);
     assert.equal(program.outputType, CoreTypeIds.Buffer);
     assert.ok(program.conversion);
     assert.equal(program.conversion.fromType, CoreTypeIds.Number);
@@ -342,7 +347,7 @@ describe("Conversion declarations: compilation and registration", () => {
     const rewritten = result.sourceRewrites.get("conv.ts");
     assert.ok(rewritten, "expected an id write-back for the id-less declaration");
     assert.ok(rewritten.includes(`id: ${JSON.stringify(program.id)}`));
-    assert.equal(program.key, `user.conversion.${program.id}`);
+    assert.equal(program.key, `${TEST_PROJECT_NAMESPACE}:user.conversion.${program.id}`);
   });
 
   test("findBestPath composes the user conversion with a host conversion", () => {

@@ -3,6 +3,7 @@ import {
   appHostError,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_COLLECTION_NAME,
+  MINDCRAFT_JSON_PATH,
   normalizeProjectCollectionName,
   type ProjectCollection,
   type ProjectCollectionTabSession,
@@ -189,7 +190,7 @@ export class MemoryProjectStore implements ProjectStore {
 
   async updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
+    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl" | "extensions">>
   ): Promise<void> {
     await this.requireLiveProject(id);
     const idx = this.data.projects.findIndex((project) => project.id === id);
@@ -230,6 +231,7 @@ export class MemoryProjectStore implements ProjectStore {
       name: newName,
       description: source.description,
       ...(source.thumbnailUrl === undefined ? {} : { thumbnailUrl: source.thumbnailUrl }),
+      ...(source.extensions === undefined ? {} : { extensions: source.extensions }),
       createdAt: now,
       updatedAt: now,
     };
@@ -253,6 +255,7 @@ export class MemoryProjectStore implements ProjectStore {
 
   async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
     await this.requireLiveProject(id);
+    snapshot.delete(MINDCRAFT_JSON_PATH);
     this.data.projectFiles.set(id, snapshot);
   }
 

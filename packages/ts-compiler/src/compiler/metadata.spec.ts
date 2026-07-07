@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode, DescriptorDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
@@ -10,7 +11,11 @@ let services: BrainServices;
 
 function compileProject(files: Record<string, string>) {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }

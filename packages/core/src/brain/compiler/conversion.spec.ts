@@ -62,8 +62,8 @@ let nextEnumFnId = 20000;
 
 function mkEnumFunctionIds(): EnumFunctionIds {
   const base = nextEnumFnId;
-  nextEnumFnId += 4;
-  return { toString: base, toNumber: base + 1, equalTo: base + 2, notEqualTo: base + 3 };
+  nextEnumFnId += 2;
+  return { toString: base, toNumber: base + 1 };
 }
 
 let nextTypeAtomId = 20000;

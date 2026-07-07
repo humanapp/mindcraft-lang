@@ -33,6 +33,7 @@ import type {
   ProgramLoweringResult,
 } from "./lowering.js";
 import { collectSystemModuleBindings, lowerProgram, qualifiedClassName } from "./lowering.js";
+import { userActionKey } from "./symbol-keys.js";
 import { resolveTypeNameExpression, structTypeCallExpression } from "./type-ref.js";
 import type {
   AmbientFile,
@@ -94,7 +95,12 @@ export const COMPILER_CONTROLLED_TSCONFIG_PATH = "tsconfig.json";
 const DEFAULT_AMBIENT_PATH = "ambient.d.ts";
 type UserTileProjectOptions =
   | CompileOptions
-  | { services: BrainServices; ambientFiles?: undefined; generateActionId?: () => string };
+  | {
+      projectNamespace: string;
+      services: BrainServices;
+      ambientFiles?: undefined;
+      generateActionId?: () => string;
+    };
 
 const ACTION_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const ACTION_ID_LENGTH = 16;
@@ -146,10 +152,6 @@ function toCompilerPath(vfsPath: string): string {
 function toVfsPath(compilerPath: string): string {
   if (compilerPath.startsWith("/")) return compilerPath.slice(1);
   return compilerPath;
-}
-
-function buildUserActionKey(kind: "sensor" | "actuator" | "conversion", id: string): string {
-  return `user.${kind}.${id}`;
 }
 
 function resolveRelativePath(sourceFilePath: string, relativePath: string): string {
@@ -208,6 +210,7 @@ export class UserTileProject {
   private readonly _ambientFiles: readonly AmbientFile[];
   private readonly _stdlibFiles: readonly StdlibSourceFile[];
   private readonly _services: BrainServices;
+  private readonly _projectNamespace: string;
   private readonly _generateActionId: () => string;
 
   constructor(options: UserTileProjectOptions) {
@@ -216,6 +219,7 @@ export class UserTileProject {
     ];
     this._stdlibFiles = ("stdlibFiles" in options ? options.stdlibFiles : undefined) ?? [];
     this._services = options.services;
+    this._projectNamespace = options.projectNamespace;
     this._generateActionId = options.generateActionId ?? defaultActionId;
   }
 
@@ -389,7 +393,7 @@ export class UserTileProject {
       return { diagnostics: imported.diagnostics };
     }
 
-    const typeRefDiags = resolveDescriptorTypeRefs(descriptor, checker, sourceFile);
+    const typeRefDiags = resolveDescriptorTypeRefs(descriptor, checker, sourceFile, this._projectNamespace);
     if (typeRefDiags.length > 0) {
       return { diagnostics: typeRefDiags };
     }
@@ -399,6 +403,7 @@ export class UserTileProject {
       descriptor,
       checker,
       services,
+      this._projectNamespace,
       imported.functions,
       imported.variables,
       imported.moduleInitOrder,
@@ -466,20 +471,48 @@ export class UserTileProject {
       );
     }
 
-    const qualifiedArgs = qualifyArgSpecTypes(descriptor.args, sourceFile, services.runtime.types);
+    const qualifiedArgs = qualifyArgSpecTypes(
+      descriptor.args,
+      sourceFile,
+      services.runtime.types,
+      this._projectNamespace
+    );
+    // Shared `parameter.` ids are excluded: their types are checked by the
+    // cross-program shared-tile reconcile, which also detects conflicts.
+    const unresolvedParams = collectParams(qualifiedArgs).filter(
+      (param) =>
+        (param.anonymous || !param.name.startsWith("parameter.")) &&
+        services.runtime.types.resolveByName(param.type) === undefined
+    );
+    if (unresolvedParams.length > 0) {
+      return {
+        diagnostics: unresolvedParams.map((param) => ({
+          code: CompileDiagCode.ParameterUnresolvedType,
+          message: `Parameter "${param.name}" declares type "${param.type}", which does not resolve to a registered type. Reference the type by its imported binding (a TypeRef token, a StructType binding, or an enum) or declare it in this module.`,
+          severity: "error" as const,
+        })),
+      };
+    }
     const qualifiedReturnType = descriptor.returnType
-      ? qualifyDescriptorType(descriptor.returnType, sourceFile, services.runtime.types)
+      ? qualifyDescriptorType(
+          descriptor.returnType,
+          sourceFile,
+          services.runtime.types,
+          this._projectNamespace,
+          descriptor.returnTypeAnnotation,
+          checker
+        )
       : undefined;
 
     const actionId = descriptor.id ?? this._generateActionId();
-    const callDef = buildCallDef(actionId, qualifiedArgs);
+    const callDef = buildCallDef(this._projectNamespace, actionId, qualifiedArgs);
     const outputType = qualifiedReturnType ? services.runtime.types.resolveByName(qualifiedReturnType) : undefined;
     if (qualifiedReturnType && !outputType) {
       return {
         diagnostics: [
           {
             code: CompileDiagCode.UnknownOutputType,
-            message: `Unknown output type: "${descriptor.returnType}"`,
+            message: `Sensor return type "${descriptor.returnType}" does not resolve to a registered type.`,
             severity: "error",
           },
         ],
@@ -487,7 +520,7 @@ export class UserTileProject {
     }
 
     const qualifiedConsumesWhenResult = descriptor.consumesWhenResult
-      ? qualifyDescriptorType(descriptor.consumesWhenResult, sourceFile, services.runtime.types)
+      ? qualifyDescriptorType(descriptor.consumesWhenResult, sourceFile, services.runtime.types, this._projectNamespace)
       : undefined;
     const consumesWhenResultType = qualifiedConsumesWhenResult
       ? services.runtime.types.resolveByName(qualifiedConsumesWhenResult)
@@ -525,7 +558,7 @@ export class UserTileProject {
 
     const debugMetadata = assembleDebugMetadata(funcs, functionDebugInfo, compilerFiles);
 
-    const actionKey = buildUserActionKey(descriptor.kind, actionId);
+    const actionKey = userActionKey(this._projectNamespace, descriptor.kind, actionId);
     const actionTileId = descriptor.kind === "sensor" ? mkSensorTileId(actionKey) : mkActuatorTileId(actionKey);
     if (descriptor.id === undefined) {
       const text = sourceFile.text;
@@ -579,6 +612,7 @@ export class UserTileProject {
       entryPoint: programResult.entryFuncId,
       key: actionKey,
       id: actionId,
+      projectNamespace: this._projectNamespace,
       kind: descriptor.kind,
       name: descriptor.name,
       callDef,
@@ -649,7 +683,7 @@ export class UserTileProject {
       node: ts.Expression,
       member: string
     ): { name: string; typeId: TypeId } | undefined => {
-      const resolved = resolveTypeNameExpression(node, checker);
+      const resolved = resolveTypeNameExpression(node, checker, this._projectNamespace);
       if ("error" in resolved) {
         diags.push({
           code: CompileDiagCode.ConversionTypeUnresolved,
@@ -663,7 +697,7 @@ export class UserTileProject {
       if (typeId === undefined) {
         diags.push({
           code: CompileDiagCode.ConversionTypeUnresolved,
-          message: `Conversion \`${member}\` names unknown type "${resolved.name}".`,
+          message: `Conversion \`${member}\` type "${resolved.name}" does not resolve to a registered type.`,
           severity: "error",
           ...spanOfNode(sourceFile, node),
         });
@@ -695,7 +729,7 @@ export class UserTileProject {
     }
 
     const args: ExtractedArgSpec[] = [{ kind: "param", name: "value", type: fromType.name, anonymous: true }];
-    const callDef = buildCallDef(actionId, args);
+    const callDef = buildCallDef(this._projectNamespace, actionId, args);
 
     const funcs = programResult.functions;
     for (const func of funcs) {
@@ -712,8 +746,9 @@ export class UserTileProject {
       types: pool.typeEntries(),
       variableNames: List.empty(),
       entryPoint: programResult.entryFuncId,
-      key: buildUserActionKey("conversion", actionId),
+      key: userActionKey(this._projectNamespace, "conversion", actionId),
       id: actionId,
+      projectNamespace: this._projectNamespace,
       kind: "conversion",
       name: `${fromType.name} to ${toType.name}`,
       callDef,
@@ -921,12 +956,13 @@ function sharedParamConflictDiagnostic(paramId: string, thisType: string, priorT
 function resolveDescriptorTypeRefs(
   descriptor: ExtractedDescriptor,
   checker: ts.TypeChecker,
-  sourceFile: ts.SourceFile
+  sourceFile: ts.SourceFile,
+  projectNamespace: string
 ): CompileDiagnostic[] {
   const diagnostics: CompileDiagnostic[] = [];
 
   const resolveNode = (node: ts.Expression, member: string): string | undefined => {
-    const resolved = resolveTypeNameExpression(node, checker);
+    const resolved = resolveTypeNameExpression(node, checker, projectNamespace);
     if ("error" in resolved) {
       diagnostics.push({
         code: CompileDiagCode.UnresolvedTypeReference,
@@ -1013,44 +1049,81 @@ function actionReadsWhenResult(functions: readonly FunctionBytecode[]): boolean 
   return false;
 }
 
-function qualifyDescriptorType(typeName: string, sourceFile: ts.SourceFile, types: ITypeRegistry): string {
-  const qualified = qualifiedClassName(sourceFile.fileName, typeName);
+function qualifyDescriptorType(
+  typeName: string,
+  sourceFile: ts.SourceFile,
+  types: ITypeRegistry,
+  projectNamespace: string,
+  annotation?: ts.TypeNode,
+  checker?: ts.TypeChecker
+): string {
+  if (annotation && checker) {
+    const declared = annotationDeclaredTypeName(annotation, checker, projectNamespace);
+    if (declared && types.resolveByName(declared)) return declared;
+  }
+  const qualified = qualifiedClassName(projectNamespace, sourceFile.fileName, typeName);
   if (types.resolveByName(qualified)) return qualified;
   if (types.resolveByName(typeName)) return typeName;
   return typeName;
 }
 
+/**
+ * The module-qualified registry name of the named type a return type
+ * annotation references, derived from the referenced symbol's declaring
+ * module. Returns undefined for annotations that are not a plain type
+ * reference (keywords, unions) or whose symbol has no declaration.
+ */
+function annotationDeclaredTypeName(
+  annotation: ts.TypeNode,
+  checker: ts.TypeChecker,
+  projectNamespace: string
+): string | undefined {
+  if (!ts.isTypeReferenceNode(annotation) || !ts.isIdentifier(annotation.typeName)) return undefined;
+  const symbol = checker.getSymbolAtLocation(annotation.typeName);
+  if (!symbol) return undefined;
+  const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+  const declaration = target.getDeclarations()?.[0];
+  if (!declaration) return undefined;
+  return qualifiedClassName(projectNamespace, declaration.getSourceFile().fileName, target.getName());
+}
+
 function qualifyArgSpecTypes(
   args: ExtractedArgSpec[],
   sourceFile: ts.SourceFile,
-  types: ITypeRegistry
+  types: ITypeRegistry,
+  projectNamespace: string
 ): ExtractedArgSpec[] {
-  return args.map((spec) => qualifyArgSpec(spec, sourceFile, types));
+  return args.map((spec) => qualifyArgSpec(spec, sourceFile, types, projectNamespace));
 }
 
-function qualifyArgSpec(spec: ExtractedArgSpec, sourceFile: ts.SourceFile, types: ITypeRegistry): ExtractedArgSpec {
+function qualifyArgSpec(
+  spec: ExtractedArgSpec,
+  sourceFile: ts.SourceFile,
+  types: ITypeRegistry,
+  projectNamespace: string
+): ExtractedArgSpec {
   switch (spec.kind) {
     case "param": {
-      const qualifiedType = qualifyDescriptorType(spec.type, sourceFile, types);
+      const qualifiedType = qualifyDescriptorType(spec.type, sourceFile, types, projectNamespace);
       if (qualifiedType === spec.type) return spec;
       return { ...spec, type: qualifiedType };
     }
     case "modifier":
       return spec;
     case "choice":
-      return { ...spec, items: spec.items.map((item) => qualifyArgSpec(item, sourceFile, types)) };
+      return { ...spec, items: spec.items.map((item) => qualifyArgSpec(item, sourceFile, types, projectNamespace)) };
     case "optional":
-      return { ...spec, item: qualifyArgSpec(spec.item, sourceFile, types) };
+      return { ...spec, item: qualifyArgSpec(spec.item, sourceFile, types, projectNamespace) };
     case "repeated":
-      return { ...spec, item: qualifyArgSpec(spec.item, sourceFile, types) };
+      return { ...spec, item: qualifyArgSpec(spec.item, sourceFile, types, projectNamespace) };
     case "conditional":
       return {
         ...spec,
-        thenItem: qualifyArgSpec(spec.thenItem, sourceFile, types),
-        elseItem: spec.elseItem ? qualifyArgSpec(spec.elseItem, sourceFile, types) : undefined,
+        thenItem: qualifyArgSpec(spec.thenItem, sourceFile, types, projectNamespace),
+        elseItem: spec.elseItem ? qualifyArgSpec(spec.elseItem, sourceFile, types, projectNamespace) : undefined,
       };
     case "seq":
-      return { ...spec, items: spec.items.map((item) => qualifyArgSpec(item, sourceFile, types)) };
+      return { ...spec, items: spec.items.map((item) => qualifyArgSpec(item, sourceFile, types, projectNamespace)) };
   }
 }
 

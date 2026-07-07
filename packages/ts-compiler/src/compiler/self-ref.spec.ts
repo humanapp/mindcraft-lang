@@ -14,8 +14,10 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
+import { qualifiedClassName } from "./symbol-keys.js";
 
 let services: BrainServices;
 
@@ -70,13 +72,14 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
     const registry = services.runtime.types;
-    const typeId = registry.resolveByName("/user-code.ts::TreeNode");
+    const typeId = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/user-code.ts", "TreeNode"));
     assert.ok(typeId, "TreeNode struct type should be registered");
     const def = registry.get(typeId!) as StructTypeDef;
     assert.equal(def.coreType, NativeType.Struct);
@@ -111,6 +114,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -156,14 +160,15 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
     const registry = services.runtime.types;
-    const nodeAId = registry.resolveByName("/user-code.ts::NodeA");
-    const nodeBId = registry.resolveByName("/user-code.ts::NodeB");
+    const nodeAId = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/user-code.ts", "NodeA"));
+    const nodeBId = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/user-code.ts", "NodeB"));
     assert.ok(nodeAId, "NodeA should be registered");
     assert.ok(nodeBId, "NodeB should be registered");
 
@@ -210,6 +215,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -252,6 +258,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -299,6 +306,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });

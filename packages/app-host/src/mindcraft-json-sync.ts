@@ -11,14 +11,51 @@ export interface MindcraftJsonHostInfo {
   version: string;
 }
 
-type SyncedManifestFields = { name: string; description: string; thumbnailUrl?: string };
+type SyncedManifestFields = {
+  name: string;
+  description: string;
+  thumbnailUrl?: string;
+  extensions?: Readonly<Record<string, string>>;
+};
+
+/** Treats an empty extensions map as absent. */
+function normalizeExtensions(
+  extensions: Readonly<Record<string, string>> | undefined
+): Readonly<Record<string, string>> | undefined {
+  return extensions && Object.keys(extensions).length > 0 ? extensions : undefined;
+}
+
+function extensionsEqual(
+  a: Readonly<Record<string, string>> | undefined,
+  b: Readonly<Record<string, string>> | undefined
+): boolean {
+  const normalizedA = normalizeExtensions(a);
+  const normalizedB = normalizeExtensions(b);
+  if (normalizedA === undefined || normalizedB === undefined) {
+    return normalizedA === normalizedB;
+  }
+  const keysA = Object.keys(normalizedA);
+  return (
+    keysA.length === Object.keys(normalizedB).length && keysA.every((key) => normalizedA[key] === normalizedB[key])
+  );
+}
 
 function syncedFieldsFromManifest(manifest: ProjectManifest): SyncedManifestFields {
-  return { name: manifest.name, description: manifest.description, thumbnailUrl: manifest.thumbnailUrl };
+  return {
+    name: manifest.name,
+    description: manifest.description,
+    thumbnailUrl: manifest.thumbnailUrl,
+    extensions: normalizeExtensions(manifest.extensions),
+  };
 }
 
 function syncedFieldsMatch(a: SyncedManifestFields, b: SyncedManifestFields): boolean {
-  return a.name === b.name && a.description === b.description && a.thumbnailUrl === b.thumbnailUrl;
+  return (
+    a.name === b.name &&
+    a.description === b.description &&
+    a.thumbnailUrl === b.thumbnailUrl &&
+    extensionsEqual(a.extensions, b.extensions)
+  );
 }
 
 /**
@@ -93,6 +130,10 @@ export function diffMindcraftJsonToManifest(
   }
   if (parsed.thumbnailUrl !== manifest.thumbnailUrl) {
     patch.thumbnailUrl = parsed.thumbnailUrl;
+    hasChanges = true;
+  }
+  if (!extensionsEqual(parsed.extensions, manifest.extensions)) {
+    patch.extensions = parsed.extensions ?? {};
     hasChanges = true;
   }
 

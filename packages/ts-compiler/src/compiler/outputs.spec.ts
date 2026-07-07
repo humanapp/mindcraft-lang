@@ -4,6 +4,7 @@ import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { CoreTypeIds, mkOutputTileId, mkOutputVarKey } from "@mindcraft-lang/core/runtime";
 import { buildCompiledActionBundle } from "../runtime/action-bundle.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { DescriptorDiagCode, LoweringDiagCode } from "./diag-codes.js";
@@ -13,7 +14,11 @@ let services: BrainServices;
 
 function compileProject(files: Record<string, string>) {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -237,7 +242,7 @@ describe("derived output tiles", () => {
     assert.ok(rssiTile, "expected an rssi output tile");
     assert.equal(valueTile.kind, "output");
 
-    const sensorTile = bundle.tiles.find((t) => t.tileId === "tile.sensor->user.sensor.snrx");
+    const sensorTile = bundle.tiles.find((t) => t.tileId === `tile.sensor->${TEST_PROJECT_NAMESPACE}:user.sensor.snrx`);
     assert.ok(sensorTile);
 
     // The sensor advertises each output's identity key; each output tile reads its own.
@@ -272,8 +277,8 @@ describe("derived output tiles", () => {
     assert.equal(valueTiles.length, 1, "a shared identity surfaces a single tile");
 
     const sharedKey = mkOutputVarKey(CoreTypeIds.String, "value");
-    const see = bundle.tiles.find((t) => t.tileId === "tile.sensor->user.sensor.snsee");
-    const hear = bundle.tiles.find((t) => t.tileId === "tile.sensor->user.sensor.snhear");
+    const see = bundle.tiles.find((t) => t.tileId === `tile.sensor->${TEST_PROJECT_NAMESPACE}:user.sensor.snsee`);
+    const hear = bundle.tiles.find((t) => t.tileId === `tile.sensor->${TEST_PROJECT_NAMESPACE}:user.sensor.snhear`);
     assert.ok(see && hear);
     assert.ok(see.providedOutputs().indexOf(sharedKey) >= 0, "see provides the shared output key");
     assert.ok(hear.providedOutputs().indexOf(sharedKey) >= 0, "hear provides the shared output key");

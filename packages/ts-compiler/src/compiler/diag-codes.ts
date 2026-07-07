@@ -576,6 +576,8 @@ export enum CompileDiagCode {
   WhenResultReadWithoutDeclaration = 5015,
   /** `consumesWhenResult` resolves to the top type (`any`), which no concrete WHEN result is exactly-or-convertible to, so the tile could never be offered */
   ConsumesWhenResultIsAny = 5016,
+  /** A param `type` name does not resolve to a registered type, so the tile's parameter tiles cannot be built */
+  ParameterUnresolvedType = 5017,
 }
 
 /**

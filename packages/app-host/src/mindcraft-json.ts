@@ -18,6 +18,8 @@ export interface MindcraftJson {
   description: string;
   /** Optional URL or data URI of a project thumbnail image. */
   thumbnailUrl?: string;
+  /** Optional extension dependencies keyed by slug; each value is an extension reference string. */
+  extensions?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -40,6 +42,16 @@ export function parseMindcraftJson(content: string): MindcraftJson | undefined {
     }
     if (parsed.thumbnailUrl !== undefined && typeof parsed.thumbnailUrl !== "string") {
       return undefined;
+    }
+    if (parsed.extensions !== undefined) {
+      if (parsed.extensions === null || typeof parsed.extensions !== "object" || Array.isArray(parsed.extensions)) {
+        return undefined;
+      }
+      for (const reference of Object.values(parsed.extensions)) {
+        if (typeof reference !== "string") {
+          return undefined;
+        }
+      }
     }
     return parsed as MindcraftJson;
   } catch {

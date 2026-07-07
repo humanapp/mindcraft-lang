@@ -109,10 +109,6 @@ export interface EnumFunctionIds {
   toString: number;
   /** FuncId of the enum->number conversion. Required for numeric-valued enums. */
   toNumber?: number;
-  /** FuncId of the `==` operator overload. */
-  equalTo: number;
-  /** FuncId of the `!=` operator overload. */
-  notEqualTo: number;
 }
 
 /**

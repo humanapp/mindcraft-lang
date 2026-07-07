@@ -47,7 +47,7 @@ export interface ProjectStore {
   /** Patch the mutable fields of a project's manifest. */
   updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
+    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl" | "extensions">>
   ): Promise<void>;
   /** Create a copy of `id` (project files and app data) under `newName`. */
   duplicateProject(id: string, newName: string): Promise<ProjectManifest>;
@@ -60,7 +60,11 @@ export interface ProjectStore {
 
   /** Load the persisted project file snapshot for `id`, or `undefined` if none. */
   loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined>;
-  /** Persist `snapshot` as the project file contents of `id`. */
+  /**
+   * Persist `snapshot` as the project file contents of `id`. The
+   * `mindcraft.json` entry is not persisted; that file is derived from the
+   * project manifest when the project is opened.
+   */
   saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void>;
 
   /** Load a per-project app-data value by key. */

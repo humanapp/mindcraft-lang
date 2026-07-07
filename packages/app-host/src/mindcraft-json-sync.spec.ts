@@ -144,6 +144,74 @@ describe("syncManifestToMindcraftJson", () => {
     assert.strictEqual(adapter._changes.length, 0);
   });
 
+  it("writes manifest extensions when creating mindcraft.json", () => {
+    const extensions = { position: "gh:example-org/mindcraft-position@v1.2.0" };
+    const ws = makeProjectFileSystem();
+    const manifest = makeManifest({ extensions });
+
+    syncManifestToMindcraftJson(ws, manifest, HOST);
+
+    const entry = ws.exportSnapshot().get(MINDCRAFT_JSON_PATH);
+    assert.ok(entry && entry.kind === "file");
+    const parsed = parseMindcraftJson(entry.content);
+    assert.ok(parsed);
+    assert.deepStrictEqual(parsed.extensions, extensions);
+  });
+
+  it("writes manifest extensions into an existing mindcraft.json", () => {
+    const extensions = { position: "gh:example-org/mindcraft-position@v1.2.0" };
+    const ws = projectFileSystemWithMindcraftJson({ name: "My Project", description: "A test project" });
+    const manifest = makeManifest({ extensions });
+
+    syncManifestToMindcraftJson(ws, manifest, HOST);
+
+    const entry = ws.exportSnapshot().get(MINDCRAFT_JSON_PATH);
+    assert.ok(entry && entry.kind === "file");
+    const parsed = parseMindcraftJson(entry.content);
+    assert.ok(parsed);
+    assert.deepStrictEqual(parsed.extensions, extensions);
+  });
+
+  it("removes file extensions the manifest does not have", () => {
+    const content = serializeMindcraftJson({
+      name: "My Project",
+      host: HOST,
+      version: "0.0.1",
+      description: "A test project",
+      extensions: { position: "gh:example-org/mindcraft-position@v1.2.0" },
+    });
+    const ws = makeProjectFileSystem(
+      new Map([[MINDCRAFT_JSON_PATH, { kind: "file", content, etag: "existing", isReadonly: false }]])
+    );
+
+    syncManifestToMindcraftJson(ws, makeManifest(), HOST);
+
+    const entry = ws.exportSnapshot().get(MINDCRAFT_JSON_PATH);
+    assert.ok(entry && entry.kind === "file");
+    const parsed = parseMindcraftJson(entry.content);
+    assert.ok(parsed);
+    assert.strictEqual(parsed.extensions, undefined);
+  });
+
+  it("does not write when extensions already match", () => {
+    const extensions = { position: "gh:example-org/mindcraft-position@v1.2.0" };
+    const content = serializeMindcraftJson({
+      name: "My Project",
+      host: HOST,
+      version: "0.0.1",
+      description: "A test project",
+      extensions,
+    });
+    const ws = makeProjectFileSystem(
+      new Map([[MINDCRAFT_JSON_PATH, { kind: "file", content, etag: "existing", isReadonly: false }]])
+    );
+    const adapter = ws as ProjectFileSystem & { _changes: ProjectFileChange[] };
+
+    syncManifestToMindcraftJson(ws, makeManifest({ extensions }), HOST);
+
+    assert.strictEqual(adapter._changes.length, 0);
+  });
+
   it("preserves non-synced fields (host, version) when updating", () => {
     const ws = projectFileSystemWithMindcraftJson({ name: "Old", description: "desc", version: "2.0.0" });
     const manifest = makeManifest({ name: "New", description: "desc" });
@@ -218,5 +286,47 @@ describe("diffMindcraftJsonToManifest", () => {
   it("returns undefined for valid JSON with missing fields", () => {
     const manifest = makeManifest();
     assert.strictEqual(diffMindcraftJsonToManifest('{"name": "test"}', manifest), undefined);
+  });
+
+  it("returns an extensions patch when the file adds extensions", () => {
+    const extensions = { position: "gh:example-org/mindcraft-position@v1.2.0" };
+    const manifest = makeManifest();
+    const content = serializeMindcraftJson({
+      name: manifest.name,
+      description: manifest.description,
+      host: HOST,
+      version: "0.0.1",
+      extensions,
+    });
+
+    const patch = diffMindcraftJsonToManifest(content, manifest);
+    assert.deepStrictEqual(patch, { extensions });
+  });
+
+  it("returns an empty extensions patch when the file removes extensions", () => {
+    const manifest = makeManifest({ extensions: { position: "gh:example-org/mindcraft-position@v1.2.0" } });
+    const content = serializeMindcraftJson({
+      name: manifest.name,
+      description: manifest.description,
+      host: HOST,
+      version: "0.0.1",
+    });
+
+    const patch = diffMindcraftJsonToManifest(content, manifest);
+    assert.deepStrictEqual(patch, { extensions: {} });
+  });
+
+  it("returns undefined when extensions match", () => {
+    const extensions = { position: "gh:example-org/mindcraft-position@v1.2.0" };
+    const manifest = makeManifest({ extensions });
+    const content = serializeMindcraftJson({
+      name: manifest.name,
+      description: manifest.description,
+      host: HOST,
+      version: "0.0.1",
+      extensions: { ...extensions },
+    });
+
+    assert.strictEqual(diffMindcraftJsonToManifest(content, manifest), undefined);
   });
 });

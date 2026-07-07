@@ -1,5 +1,6 @@
 import { CoreTypeNames } from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
+import { qualifiedClassName } from "./symbol-keys.js";
 
 /**
  * Canonical registry name for each ambient TypeRef token exported by the
@@ -14,11 +15,6 @@ const CORE_TYPE_REF_CANONICAL: ReadonlyMap<string, string> = new Map([
 
 /** Result of {@link resolveTypeNameExpression}: the canonical type name, or a message describing why the expression names no type. */
 export type ResolvedTypeName = { name: string } | { error: string };
-
-/** Registry name of a user-declared type: the declaring file joined with the binding name. */
-export function qualifiedClassName(fileName: string, className: string): string {
-  return `${fileName}::${className}`;
-}
 
 /** The canonical registry name of the ambient TypeRef token `idNode` references, or undefined. */
 export function ambientTypeTokenName(idNode: ts.Identifier, checker: ts.TypeChecker): string | undefined {
@@ -73,12 +69,16 @@ export function structTypeConfigObject(expr: ts.Expression | undefined): ts.Obje
  * Resolve a type-naming config expression to its canonical registry name.
  * Accepts a string literal (the name verbatim), an identifier bound to an
  * ambient TypeRef token imported from the `mindcraft` module, or an identifier
- * bound to a user `StructType({...})` declaration (resolving to its qualified
- * `<file>::<binding>` name). Every form yields the canonical name, so
- * name-keyed derivations (tile ids, registry lookups) are identical across
- * spellings.
+ * bound to a user `StructType({...})` or `enum` declaration (resolving to its
+ * qualified `<namespace>:<file>::<binding>` name). Every form yields the
+ * canonical name, so name-keyed derivations (tile ids, registry lookups) are
+ * identical across spellings.
  */
-export function resolveTypeNameExpression(expr: ts.Expression, checker: ts.TypeChecker): ResolvedTypeName {
+export function resolveTypeNameExpression(
+  expr: ts.Expression,
+  checker: ts.TypeChecker,
+  projectNamespace: string
+): ResolvedTypeName {
   if (ts.isStringLiteral(expr)) {
     return { name: expr.text };
   }
@@ -98,9 +98,17 @@ export function resolveTypeNameExpression(expr: ts.Expression, checker: ts.TypeC
     return { error: `\`${expr.text}\` has no resolvable declaration` };
   }
 
+  if (ts.isEnumDeclaration(declaration)) {
+    return {
+      name: qualifiedClassName(projectNamespace, declaration.getSourceFile().fileName, declaration.name.text),
+    };
+  }
+
   if (ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)) {
     if (structTypeConfigObject(declaration.initializer)) {
-      return { name: qualifiedClassName(declaration.getSourceFile().fileName, declaration.name.text) };
+      return {
+        name: qualifiedClassName(projectNamespace, declaration.getSourceFile().fileName, declaration.name.text),
+      };
     }
     if (structTypeCallExpression(declaration.initializer)) {
       return {
@@ -110,7 +118,9 @@ export function resolveTypeNameExpression(expr: ts.Expression, checker: ts.TypeC
   }
 
   if (!isMindcraftModuleDeclaration(declaration)) {
-    return { error: `\`${expr.text}\` is not a type token exported by \`mindcraft\` or a \`StructType\` binding` };
+    return {
+      error: `\`${expr.text}\` is not a type token exported by \`mindcraft\`, a \`StructType\` binding, or an enum`,
+    };
   }
 
   const canonical = CORE_TYPE_REF_CANONICAL.get(target.name);

@@ -20,7 +20,10 @@ import {
   importProjectDocument,
   MINDCRAFT_JSON_PATH,
   PROJECT_TARGETS_APP_DATA_KEY,
+  ProjectContentManifestErrorCode,
   ProjectManager,
+  parseMindcraftJson,
+  syncManifestToMindcraftJson,
 } from "@mindcraft-lang/app-host";
 import { MINDCRAFT_PROJECT_FORMAT, MindcraftProjectDocumentValidationCode } from "@mindcraft-lang/service-api";
 import { assertRejectsWithCode } from "./test-support/error-assertions.js";
@@ -749,6 +752,177 @@ describe("importProjectDocument", () => {
     assert.strictEqual(result.success, false);
     assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_UNEXPECTED_ERROR));
     assert.deepStrictEqual(await store.listProjects(activeCollectionId), before);
+  });
+});
+
+describe("project extensions interchange", () => {
+  const EXTENSIONS = {
+    position: "gh:example-org/mindcraft-position@v1.2.0",
+    stdlib: "embedded:microbit-stdlib",
+    scratch: "local:8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
+  };
+
+  let store: MemoryProjectStore;
+  let pm: ProjectManager;
+
+  beforeEach(async () => {
+    store = new MemoryProjectStore();
+    pm = new ProjectManager(store);
+    await pm.init();
+  });
+
+  afterEach(async () => {
+    await pm.close();
+  });
+
+  it("exports extensions from the project manifest", async () => {
+    const ws = makeProjectFileSystem();
+
+    const result = await buildProjectExportDocument(
+      makeManifest({ extensions: EXTENSIONS }),
+      ws,
+      async () => undefined
+    );
+
+    assert.deepStrictEqual(result.extensions, EXTENSIONS);
+  });
+
+  it("omits the extensions field when the manifest has none", async () => {
+    const ws = makeProjectFileSystem();
+
+    const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
+
+    assert.strictEqual("extensions" in result, false);
+  });
+
+  it("omits the extensions field when the manifest's extensions map is empty", async () => {
+    const ws = makeProjectFileSystem();
+
+    const result = await buildProjectExportDocument(makeManifest({ extensions: {} }), ws, async () => undefined);
+
+    assert.strictEqual("extensions" in result, false);
+  });
+
+  it("imports extensions into the project manifest", async () => {
+    const file = makeFile(makeSharedProjectDoc({ extensions: EXTENSIONS }));
+
+    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, true);
+    const manifest = await store.getProject(result.projectId!);
+    assert.ok(manifest);
+    assert.deepStrictEqual(manifest.extensions, EXTENSIONS);
+  });
+
+  it("projects imported extensions into mindcraft.json when the project is opened and synced", async () => {
+    const file = makeFile(makeSharedProjectDoc({ extensions: EXTENSIONS }));
+    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    assert.strictEqual(result.success, true);
+
+    const active = await pm.open(result.projectId!);
+    syncManifestToMindcraftJson(active.filesystem, active.manifest, { name: "test-app", version: "1.0.0" });
+
+    const entry = active.filesystem.exportSnapshot().get(MINDCRAFT_JSON_PATH);
+    assert.ok(entry && entry.kind === "file");
+    const parsed = parseMindcraftJson(entry.content);
+    assert.ok(parsed);
+    assert.deepStrictEqual(parsed.extensions, EXTENSIONS);
+  });
+
+  it("leaves the manifest without extensions when the document has none", async () => {
+    const file = makeFile(makeSharedProjectDoc());
+
+    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, true);
+    const manifest = await store.getProject(result.projectId!);
+    assert.strictEqual(manifest?.extensions, undefined);
+  });
+
+  it("round-trips extensions through import and export", async () => {
+    const original = makeSharedProjectDoc({ extensions: EXTENSIONS });
+    const imported = await importProjectDocument(makeFile(original), "test-app", "1.0.0", pm);
+    assert.strictEqual(imported.success, true);
+
+    await pm.open(imported.projectId!);
+    const exported = await buildActiveProjectExportDocument(pm);
+
+    assert.deepStrictEqual(exported.extensions, EXTENSIONS);
+  });
+
+  it("round-trips a document without extensions byte-stably", async () => {
+    const original = makeSharedProjectDoc({
+      files: [{ path: "src/main.ts", content: "hello" }],
+      brains: { main: { pages: [] } },
+      targets: { "test-app": { settings: true } },
+    });
+    const imported = await importProjectDocument(makeFile(original), "test-app", "1.0.0", pm);
+    assert.strictEqual(imported.success, true);
+
+    await pm.open(imported.projectId!);
+    const exported = await buildActiveProjectExportDocument(pm);
+
+    assert.strictEqual(JSON.stringify(exported), JSON.stringify(original));
+  });
+
+  it("rejects structurally invalid extensions with the document validation code", async () => {
+    const file = makeFile(makeSharedProjectDoc({ extensions: 5 }));
+
+    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(
+      result.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.severity === "error" &&
+          diagnostic.code === MindcraftProjectDocumentValidationCode.INVALID_EXTENSIONS
+      )
+    );
+  });
+
+  it("rejects non-string extension references with the document validation code", async () => {
+    const file = makeFile(makeSharedProjectDoc({ extensions: { position: 42 } }));
+
+    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(
+      result.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.severity === "error" &&
+          diagnostic.code === MindcraftProjectDocumentValidationCode.INVALID_EXTENSION_REFERENCE
+      )
+    );
+  });
+
+  it("rejects malformed extension references with the content manifest code", async () => {
+    const file = makeFile(makeSharedProjectDoc({ extensions: { position: "not-a-ref" } }));
+
+    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(
+      result.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.severity === "error" &&
+          diagnostic.code === ProjectContentManifestErrorCode.INVALID_EXTENSION_REFERENCE
+      )
+    );
+    assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
+  });
+
+  it("rejects invalid extension slugs with the content manifest code", async () => {
+    const file = makeFile(makeSharedProjectDoc({ extensions: { "bad/slug": "embedded:fine" } }));
+
+    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(
+      result.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.severity === "error" && diagnostic.code === ProjectContentManifestErrorCode.INVALID_EXTENSION_SLUG
+      )
+    );
   });
 });
 

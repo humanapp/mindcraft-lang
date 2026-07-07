@@ -13,6 +13,7 @@ import {
 import { CoreTypeIds, extractNumberValue, type IBrain, type Value } from "@mindcraft-lang/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { LoweringDiagCode } from "./diag-codes.js";
@@ -34,7 +35,11 @@ type ActionTile = BrainTileActuatorDef | BrainTileSensorDef;
  */
 function compileTiles(files: Record<string, string>, entryPaths: string[]): ActionTile[] {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   const result = project.compileAll();
   assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
@@ -60,7 +65,11 @@ function compileTiles(files: Record<string, string>, entryPaths: string[]): Acti
  */
 function expectLoweringDiagnostic(source: string, code: LoweringDiagCode): void {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map([["tile.ts", source]]));
   const result = project.compileAll();
   assert.equal(result.tsErrors.size, 0, `unexpected TS errors: ${JSON.stringify([...result.tsErrors])}`);
@@ -633,7 +642,11 @@ export default Sensor({ name: "arb read b", inline: true, onExecute(ctx: Context
     // a System body). The reference must produce a precise diagnostic anchored
     // to the offending identifier, not a raw "Undefined variable".
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
-    const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+    const project = new UserTileProject({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
     project.setFiles(
       new Map([
         [
@@ -675,7 +688,11 @@ export default Sensor({ name: "use bad", onExecute(ctx: Context): number { retur
     // importer (only `const` values and `function` declarations are). The
     // reference must produce a precise diagnostic, not a raw "Undefined variable".
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
-    const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+    const project = new UserTileProject({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
     project.setFiles(
       new Map([
         [
@@ -991,7 +1008,11 @@ export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): num
     // The strict System pass traverses the exported helper and catches the
     // non-primitive const one hop away -- a diagnostic, not a runtime fault.
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
-    const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+    const project = new UserTileProject({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
     project.setFiles(
       new Map([
         [
@@ -1025,7 +1046,11 @@ export default Sensor({ name: "r", onExecute(ctx: Context): number { return Sys.
     // The `let` boundary must fire transitively: the System calls a helper whose
     // body reads a module-level `let`. Diagnosed, not a silent fault.
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
-    const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+    const project = new UserTileProject({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
     project.setFiles(
       new Map([
         [

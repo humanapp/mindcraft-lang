@@ -302,6 +302,8 @@ export type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 export interface CreateProjectCompilerOptions {
   environment: MindcraftEnvironment;
   filesystem: ProjectFileSystem;
+  /** Namespace of the project being compiled (its store id); prefixes every symbol key minted from the project's content. */
+  projectNamespace: string;
   /** Ordered ambient declaration files exposed to the compiler and remote VFS peers. */
   ambientFiles: readonly AmbientFile[];
   /** Compilable stdlib source modules exposed to the compiler and remote VFS peers. */
@@ -329,9 +331,9 @@ export interface ProjectCompilerHandle {
  * input includes the live project files plus any injected examples.
  */
 export function createProjectCompiler(options: CreateProjectCompilerOptions): ProjectCompilerHandle {
-  const { ambientFiles, stdlibFiles, environment, filesystem } = options;
+  const { ambientFiles, stdlibFiles, environment, filesystem, projectNamespace } = options;
 
-  const compiler = createWorkspaceCompiler({ ambientFiles, stdlibFiles, environment });
+  const compiler = createWorkspaceCompiler({ projectNamespace, ambientFiles, stdlibFiles, environment });
 
   if (options.onDidCompile) {
     compiler.onDidCompile(options.onDidCompile);

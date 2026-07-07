@@ -13,7 +13,7 @@
  * - core owns `[0, TARGET_FUNC_ID_BASE)`
  * - the active target owns `[TARGET_FUNC_ID_BASE, DYNAMIC_FUNC_ID_BASE)`
  * - dynamically registered, program-dependent functions (user-declared enum
- *   conversions and operators) own `[DYNAMIC_FUNC_ID_BASE, ...)`
+ *   conversions) own `[DYNAMIC_FUNC_ID_BASE, ...)`
  *
  * The host-action id space partitions the same way at
  * `TARGET_ACTION_ID_BASE`, with no dynamic region.
@@ -31,9 +31,9 @@ export const TARGET_FUNC_ID_BASE = 1024;
 
 /**
  * First funcId of the dynamic region for program-dependent host functions
- * (user-declared enum conversions and operators). Ids at and above this
- * value are not part of the device ABI; they are stable only for a given
- * compiled program.
+ * (user-declared enum conversions). Ids at and above this value are not
+ * part of the device ABI; they are stable only for a given compiled
+ * program.
  */
 export const DYNAMIC_FUNC_ID_BASE = 65536;
 
@@ -193,6 +193,8 @@ export enum CoreFuncId {
   BufferLength = 99,
   BufferGet = 100,
   ContextGetWhenResult = 101,
+  OpEqualToEnum = 102,
+  OpNotEqualToEnum = 103,
 }
 
 /**

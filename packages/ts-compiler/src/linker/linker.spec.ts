@@ -24,6 +24,7 @@ import {
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { compileUserTile } from "../compiler/compile.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { linkUserPrograms } from "./linker.js";
 
 function mkCtx(
@@ -144,7 +145,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -181,7 +182,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -209,7 +210,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -250,7 +251,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -295,8 +296,8 @@ export default Sensor({
   },
 });
 `;
-    const result1 = compileUserTile(source1, { services });
-    const result2 = compileUserTile(source2, { services });
+    const result1 = compileUserTile(source1, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
+    const result2 = compileUserTile(source2, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result1.diagnostics, []);
     assert.deepStrictEqual(result2.diagnostics, []);
     assert.ok(result1.program);
@@ -354,7 +355,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -385,7 +386,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.program);
 
     const { linkedProgram } = linkUserPrograms(brainProg, [result.program!]);
@@ -429,7 +430,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 

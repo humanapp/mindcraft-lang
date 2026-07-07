@@ -6,6 +6,7 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";
 
 function resolveCoreTypeId(typeName: string): string | undefined {
@@ -36,7 +37,7 @@ export default Sensor({
 }
 
 function compile(source: string, services: BrainServices) {
-  const project = new UserTileProject({ services });
+  const project = new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services });
   project.setFiles(new Map([[TILE_PATH, source]]));
   return project.compileAll();
 }

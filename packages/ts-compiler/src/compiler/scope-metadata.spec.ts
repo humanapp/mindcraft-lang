@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { compileUserTile } from "./compile.js";
 
 let services: BrainServices;
@@ -29,7 +30,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -74,7 +75,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -110,7 +111,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -137,7 +138,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -162,7 +163,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -190,7 +191,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -223,7 +224,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -255,7 +256,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -287,7 +288,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -325,7 +326,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -360,7 +361,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -386,7 +387,7 @@ export default Actuator({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 

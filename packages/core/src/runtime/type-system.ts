@@ -1,13 +1,12 @@
 import type { BrainServices } from "../brain/services";
 import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
-import { List, type ReadonlyList } from "../platform/list";
+import { List } from "../platform/list";
 import { MathOps } from "../platform/math";
 import { StringUtils as SU } from "../platform/string";
 import { TypeUtils } from "../platform/types";
 import { UniqueSet } from "../platform/uniqueset";
-import { CoreTypeAtomId, type StableIdOwner, TARGET_TYPE_ATOM_BASE } from "./abi-ids";
-import type { ExecutionContext } from "./context";
+import { CoreFuncId, CoreTypeAtomId, type StableIdOwner, TARGET_TYPE_ATOM_BASE } from "./abi-ids";
 import { registerEnumConversions } from "./conversions";
 import { CoreTypeIds, CoreTypeNames, mkTypeId } from "./core-types";
 import { CoreOpId } from "./operator-defs";
@@ -37,7 +36,7 @@ import {
   type TypeId,
   type UnionTypeDef,
 } from "./type-defs";
-import { type BufferValue, bufferToHex, type EnumValue, isBufferValue, mkBooleanValue, type Value } from "./value";
+import { type BufferValue, bufferToHex, isBufferValue, type Value } from "./value";
 import type { StructFieldGetterFn } from "./vm-types";
 
 /**
@@ -273,7 +272,7 @@ export class TypeRegistry implements ITypeRegistry {
     const symbols = normalizeEnumSymbols(typeId, shape.symbols);
     const defaultKey = resolveEnumDefaultKey(typeId, symbols, shape.defaultKey);
     if (symbols.size() > 0 && !shape.functionIds) {
-      throw new Error(`Enum type ${typeId} requires functionIds for its conversion and operator host functions`);
+      throw new Error(`Enum type ${typeId} requires functionIds for its conversion host functions`);
     }
     // Register
     const enumTypeDef: EnumTypeDef = {
@@ -289,7 +288,7 @@ export class TypeRegistry implements ITypeRegistry {
     this.add(enumTypeDef);
     if (shape.functionIds) {
       this.registerEnumConversions(typeId, shape.functionIds);
-      this.registerEnumOperators(typeId, shape.functionIds);
+      this.registerEnumOperators(typeId);
     }
     return typeId;
   }
@@ -299,7 +298,12 @@ export class TypeRegistry implements ITypeRegistry {
     registerEnumConversions(typeId, this.services_, functionIds);
   }
 
-  private registerEnumOperators(typeId: TypeId, functionIds: EnumFunctionIds): void {
+  /**
+   * Adds the `==` / `!=` overload entries for an enum type. Both entries
+   * reference the shared core enum-equality host functions
+   * (`CoreFuncId.OpEqualToEnum` / `CoreFuncId.OpNotEqualToEnum`).
+   */
+  private registerEnumOperators(typeId: TypeId): void {
     if (!this.services_) return;
     const def = this.get(typeId);
     if (!def || def.coreType !== NativeType.Enum) {
@@ -308,61 +312,30 @@ export class TypeRegistry implements ITypeRegistry {
     if ((def as EnumTypeDef).symbols.size() === 0) {
       return;
     }
-    const overloads = this.services_.edit.operatorOverloads;
-    overloads.binary(
-      CoreOpId.EqualTo,
-      typeId,
-      typeId,
-      CoreTypeIds.Boolean,
-      functionIds.equalTo,
-      {
-        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
-          const a = args.get(0) as EnumValue;
-          const b = args.get(1) as EnumValue;
-          if (a.typeId !== typeId || b.typeId !== typeId) {
-            return mkBooleanValue(false);
-          }
-          const lhs = this.getEnumSymbol(typeId, a.v);
-          const rhs = this.getEnumSymbol(typeId, b.v);
-          if (!lhs || !rhs) {
-            return mkBooleanValue(false);
-          }
-          return mkBooleanValue(lhs.value === rhs.value);
-        },
-      },
-      false
-    );
-    overloads.binary(
-      CoreOpId.NotEqualTo,
-      typeId,
-      typeId,
-      CoreTypeIds.Boolean,
-      functionIds.notEqualTo,
-      {
-        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
-          const a = args.get(0) as EnumValue;
-          const b = args.get(1) as EnumValue;
-          if (a.typeId !== typeId || b.typeId !== typeId) {
-            return mkBooleanValue(false);
-          }
-          const lhs = this.getEnumSymbol(typeId, a.v);
-          const rhs = this.getEnumSymbol(typeId, b.v);
-          if (!lhs || !rhs) {
-            return mkBooleanValue(false);
-          }
-          return mkBooleanValue(lhs.value !== rhs.value);
-        },
-      },
-      false
-    );
+    const functions = this.services_.runtime.functions;
+    const eqEntry = functions.getSyncById(CoreFuncId.OpEqualToEnum);
+    const neEntry = functions.getSyncById(CoreFuncId.OpNotEqualToEnum);
+    if (!eqEntry || !neEntry) {
+      throw new Error(`Enum type ${typeId} requires the shared enum equality host functions to be registered`);
+    }
+    const opTable = this.services_.edit.operatorOverloads.table();
+    opTable
+      .get(CoreOpId.EqualTo)
+      ?.add({ argTypes: [typeId, typeId], resultType: CoreTypeIds.Boolean, fnEntry: eqEntry });
+    opTable
+      .get(CoreOpId.NotEqualTo)
+      ?.add({ argTypes: [typeId, typeId], resultType: CoreTypeIds.Boolean, fnEntry: neEntry });
   }
 
+  // The operator entries reference the shared core enum-equality functions;
+  // removing an enum type must leave those functions registered.
   private unregisterEnumArtifacts(typeId: TypeId): void {
     if (!this.services_) return;
     this.services_.shared.conversions.remove(typeId, CoreTypeIds.String);
     this.services_.shared.conversions.remove(typeId, CoreTypeIds.Number);
-    this.services_.edit.operatorOverloads.remove(CoreOpId.EqualTo, [typeId, typeId]);
-    this.services_.edit.operatorOverloads.remove(CoreOpId.NotEqualTo, [typeId, typeId]);
+    const opTable = this.services_.edit.operatorOverloads.table();
+    opTable.get(CoreOpId.EqualTo)?.remove([typeId, typeId]);
+    opTable.get(CoreOpId.NotEqualTo)?.remove([typeId, typeId]);
   }
 
   addListType(name: string, shape: ListTypeShape): TypeId {

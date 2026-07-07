@@ -7,6 +7,7 @@ import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId, Op } from "@mindcraft-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import type { ExtractedParam } from "../compiler/types.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";
 
 function resolveCoreTypeId(typeName: string): string | undefined {
@@ -23,7 +24,7 @@ function resolveCoreTypeId(typeName: string): string | undefined {
 }
 
 function compileProject(files: ReadonlyMap<string, string>) {
-  const project = new UserTileProject({ services });
+  const project = new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services });
   project.setFiles(files);
   return project.compileAll();
 }
@@ -92,15 +93,23 @@ export default Actuator({
 
     assert.ok(bundle);
     assert.deepEqual(bundle.actions.keys().toArray(), [
-      "user.actuator.acmove",
-      "user.actuator.acturn",
-      "user.sensor.snscan",
+      `${TEST_PROJECT_NAMESPACE}:user.actuator.acmove`,
+      `${TEST_PROJECT_NAMESPACE}:user.actuator.acturn`,
+      `${TEST_PROJECT_NAMESPACE}:user.sensor.snscan`,
     ]);
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkSensorTileId("user.sensor.snscan")));
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId("user.actuator.acmove")));
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId("user.actuator.acturn")));
+    assert.ok(
+      bundle.tiles.some((tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snscan`))
+    );
+    assert.ok(
+      bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId(`${TEST_PROJECT_NAMESPACE}:user.actuator.acmove`))
+    );
+    assert.ok(
+      bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId(`${TEST_PROJECT_NAMESPACE}:user.actuator.acturn`))
+    );
     assert.equal(bundle.tiles.filter((tile) => tile.tileId === mkParameterTileId("anon.number")).length, 1);
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkParameterTileId("user.acturn.label")));
+    assert.ok(
+      bundle.tiles.some((tile) => tile.tileId === mkParameterTileId(`${TEST_PROJECT_NAMESPACE}:user.acturn.label`))
+    );
   });
 
   test("a user sensor declaring presenceGated: true carries the bit and emits WHEN_END_PRESENT", () => {
@@ -127,7 +136,9 @@ export default Sensor({
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
 
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snrx"));
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snrx`)
+    );
     assert.ok(sensorTile);
     assert.equal(
       sensorTile.capabilities().get(CoreCapabilityBits.PresenceGated),
@@ -232,7 +243,9 @@ export default Sensor({
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
 
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snprobe"));
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snprobe`)
+    );
     assert.ok(sensorTile);
 
     const brainDef = BrainDef.emptyBrainDef(services, "Probe Brain");
@@ -264,7 +277,11 @@ export default Sensor({
     if (!isBrainBuildError(thrown)) {
       assert.fail("expected a BrainBuildError");
     }
-    assert.ok(thrown.diagnostics.toArray().some((diag) => diag.message.includes("user.sensor.snprobe")));
+    assert.ok(
+      thrown.diagnostics
+        .toArray()
+        .some((diag) => diag.message.includes(`${TEST_PROJECT_NAMESPACE}:user.sensor.snprobe`))
+    );
 
     environment.replaceActionBundle(bundle);
 

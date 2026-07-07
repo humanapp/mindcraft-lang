@@ -16,6 +16,7 @@ import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import { CoreOpId, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import { CompileDiagCode, DescriptorDiagCode } from "../compiler/diag-codes.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";
 
 function resolveCoreTypeId(typeName: string): string | undefined {
@@ -40,7 +41,7 @@ function compileOne(
   result: ReturnType<UserTileProject["compileAll"]>;
 } {
   const services = __test__createBrainServices();
-  const project = new UserTileProject({ services });
+  const project = new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services });
   project.setFiles(new Map([[fileName, source]]));
   return { services, result: project.compileAll() };
 }
@@ -81,7 +82,9 @@ describe("SensorConfig `inline`", () => {
 
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snstick"));
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snstick`)
+    );
     assert.ok(sensorTile, "expected the sensor tile in the bundle");
     assert.notEqual(sensorTile.placement, undefined);
     assert.ok(
@@ -99,7 +102,9 @@ describe("SensorConfig `inline`", () => {
 
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snplain"));
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snplain`)
+    );
     assert.ok(sensorTile);
     assert.equal(
       sensorTile.placement === undefined || (sensorTile.placement & TilePlacement.Inline) === 0,
@@ -177,7 +182,9 @@ export default Sensor({
 
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.sngate"));
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.sngate`)
+    );
     assert.ok(sensorTile);
     assert.equal(sensorTile.capabilities().get(CoreCapabilityBits.PresenceGated), 1);
   });
@@ -191,7 +198,9 @@ export default Sensor({
 
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snplain"));
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snplain`)
+    );
     assert.ok(sensorTile);
     assert.equal(sensorTile.capabilities().get(CoreCapabilityBits.PresenceGated), 0);
   });
@@ -217,7 +226,9 @@ export default Sensor({
 
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snoff"));
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snoff`)
+    );
     assert.ok(sensorTile);
     assert.equal(sensorTile.capabilities().get(CoreCapabilityBits.PresenceGated), 0);
   });
@@ -248,7 +259,7 @@ export default Sensor({
 describe("inline sensor picker offering", () => {
   test("an inline sensor is offered in a value slot while a non-inline sensor is not", () => {
     const services = __test__createBrainServices();
-    const project = new UserTileProject({ services });
+    const project = new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services });
     project.setFiles(
       new Map([
         ["stick.ts", INLINE_NUMBER_SENSOR],
@@ -272,8 +283,8 @@ describe("inline sensor picker offering", () => {
 
     const suggestions = suggestTiles({ ruleSide: RuleSide.When, expr }, List.from([services.edit.tiles]), services);
 
-    const inlineTileId = mkSensorTileId("user.sensor.snstick");
-    const plainTileId = mkSensorTileId("user.sensor.snplain");
+    const inlineTileId = mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snstick`);
+    const plainTileId = mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snplain`);
     const offered = (id: string) =>
       suggestions.exact.toArray().some((s) => s.tileDef.tileId === id) ||
       suggestions.withConversion.toArray().some((s) => s.tileDef.tileId === id);
@@ -287,7 +298,9 @@ describe("inline sensor picker offering", () => {
     assert.equal(result.tsErrors.size, 0);
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
-    const inlineTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snstick"));
+    const inlineTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snstick`)
+    );
     assert.ok(inlineTile);
 
     const brainDef = BrainDef.emptyBrainDef(services, "Inline Placement Brain");
@@ -376,7 +389,9 @@ export default Sensor({
 
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snwhen"));
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snwhen`)
+    );
     assert.ok(sensorTile);
     assert.equal(sensorTile.consumesWhenResult(), CoreTypeIds.Number, "the sensor tile declares consumesWhenResult");
   });
@@ -402,7 +417,9 @@ export default Actuator({
 
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
-    const actuatorTile = bundle.tiles.find((tile) => tile.tileId === mkActuatorTileId("user.actuator.acwhen"));
+    const actuatorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkActuatorTileId(`${TEST_PROJECT_NAMESPACE}:user.actuator.acwhen`)
+    );
     assert.ok(actuatorTile);
     assert.equal(actuatorTile.consumesWhenResult(), CoreTypeIds.Number);
   });
@@ -429,7 +446,9 @@ export default Sensor({
 
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snwhenref"));
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snwhenref`)
+    );
     assert.ok(sensorTile);
     assert.equal(sensorTile.consumesWhenResult(), CoreTypeIds.Number);
   });
@@ -439,7 +458,9 @@ export default Sensor({
     assert.equal(result.tsErrors.size, 0);
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.snplain"));
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snplain`)
+    );
     assert.ok(sensorTile);
     assert.equal(sensorTile.consumesWhenResult(), undefined);
   });

@@ -26,6 +26,21 @@ export {
   verifyProjectCollectionPin,
 } from "./project-collection-pin.js";
 export type {
+  ExtensionReference,
+  ProjectContentManifest,
+  ProjectContentManifestError,
+  ProjectContentManifestParseResult,
+} from "./project-content-manifest.js";
+export {
+  ProjectContentManifestErrorCode,
+  parseExtensionReference,
+  parseProjectContentManifest,
+  serializeExtensionReference,
+  serializeProjectContentManifest,
+  validateProjectContentManifest,
+  validateProjectExtensions,
+} from "./project-content-manifest.js";
+export type {
   ProjectDirectoryEntry,
   ProjectFileChange,
   ProjectFileEntry,

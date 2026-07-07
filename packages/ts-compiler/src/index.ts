@@ -31,6 +31,7 @@ export {
   LoweringDiagCode,
   ValidatorDiagCode,
 } from "./compiler/diag-codes.js";
+export { privateArgTileId, qualifiedClassName, userActionKey } from "./compiler/symbol-keys.js";
 export type { LinkedUserProgram, UserAuthoredProgram } from "./compiler/types.js";
 export {
   isCallSpec,

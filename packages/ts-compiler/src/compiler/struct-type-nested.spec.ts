@@ -46,14 +46,16 @@ import {
 } from "@mindcraft-lang/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { LoweringDiagCode } from "./diag-codes.js";
 import { type CompileResult, type ProjectCompileResult, UserTileProject } from "./project.js";
+import { qualifiedClassName } from "./symbol-keys.js";
 import type { ArtifactStructTypeInfo, UserAuthoredProgram } from "./types.js";
 
-const POSITION_IDENTITY = "/position.ts::Position";
-const SPRITE_IDENTITY = "/sprite.ts::Sprite";
+const POSITION_IDENTITY = qualifiedClassName(TEST_PROJECT_NAMESPACE, "/position.ts", "Position");
+const SPRITE_IDENTITY = qualifiedClassName(TEST_PROJECT_NAMESPACE, "/sprite.ts", "Sprite");
 
 /** The inner struct: a plain record of numbers. */
 const POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "mindcraft";
@@ -96,7 +98,11 @@ export default Sensor({
 
 function compileProject(services: BrainServices, files: Record<string, string>): ProjectCompileResult {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -268,7 +274,11 @@ export type Sprite = StructOf<typeof Sprite>;
       "stick.ts": defsEntry,
     });
     const program = compiledProgram(result, "stick.ts");
-    assertNestedShape(program, "/defs.ts::Position", "/defs.ts::Sprite");
+    assertNestedShape(
+      program,
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Position"),
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Sprite")
+    );
   });
 
   test("one module declaring inner below outer fails with TypeScript's own use-before-declaration error", () => {
@@ -320,7 +330,7 @@ export default Sensor({
 `;
     const result = compileProject(services, { "position.ts": POSITION_SOURCE, "spawn.ts": entryDeclaredOuter });
     const program = compiledProgram(result, "spawn.ts");
-    assertNestedShape(program, POSITION_IDENTITY, "/spawn.ts::Sprite");
+    assertNestedShape(program, POSITION_IDENTITY, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/spawn.ts", "Sprite"));
   });
 
   test("a third module composes structs from two sibling modules, either import order", () => {
@@ -373,9 +383,12 @@ export default Sensor({
         "spawn.ts": particleEntry,
       });
       const program = compiledProgram(result, "spawn.ts");
-      const particle = structInfo(program, "/particle.ts::Particle");
+      const particle = structInfo(program, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/particle.ts", "Particle"));
       assert.equal(particle.fields[0].typeId, structInfo(program, POSITION_IDENTITY).typeId);
-      assert.equal(particle.fields[1].typeId, structInfo(program, "/health.ts::Health").typeId);
+      assert.equal(
+        particle.fields[1].typeId,
+        structInfo(program, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/health.ts", "Health")).typeId
+      );
     }
   });
 });

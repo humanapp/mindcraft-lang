@@ -21,6 +21,7 @@ import { NativeType, type TypeId } from "./type-defs";
 import {
   type BooleanValue,
   FALSE_VALUE,
+  isEnumValue,
   mkBooleanValue,
   mkNumberValue,
   NIL_VALUE,
@@ -853,4 +854,42 @@ export function registerCoreOperators(services: BrainServices) {
       false
     );
   }
+
+  // -- Enum overloads ---------------------------------------------------------
+
+  // Shared host functions for enum `==` / `!=`: every enum type's overload
+  // entries point at these two ids. Equality is symbol identity within one
+  // enum type (same typeId, same symbol key); bad operands compare false.
+  services.runtime.functions.register(
+    CoreFuncId.OpEqualToEnum,
+    "$$op_eq_enum",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const a = args.get(0);
+        const b = args.get(1);
+        if (!isEnumValue(a) || !isEnumValue(b) || a.typeId !== b.typeId) {
+          return FALSE_VALUE;
+        }
+        return mkBooleanValue(a.v === b.v);
+      },
+    },
+    binaryCallDef
+  );
+  services.runtime.functions.register(
+    CoreFuncId.OpNotEqualToEnum,
+    "$$op_ne_enum",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const a = args.get(0);
+        const b = args.get(1);
+        if (!isEnumValue(a) || !isEnumValue(b) || a.typeId !== b.typeId) {
+          return FALSE_VALUE;
+        }
+        return mkBooleanValue(a.v !== b.v);
+      },
+    },
+    binaryCallDef
+  );
 }

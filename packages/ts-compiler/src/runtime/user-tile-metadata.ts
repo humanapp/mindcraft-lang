@@ -18,6 +18,7 @@ import {
 import { type ActionDescriptor, mkModifierTileId, mkParameterTileId, type TypeId } from "@mindcraft-lang/core/runtime";
 import { BitSet } from "@mindcraft-lang/core/util";
 import { collectModifiers, collectParams } from "../compiler/arg-spec-utils.js";
+import { privateArgTileId } from "../compiler/symbol-keys.js";
 import type { ExtractedModifier, ExtractedParam, UserAuthoredProgram } from "../compiler/types.js";
 
 /** Resolve a parameter type name to a runtime `TypeId`, or `undefined` when the type is not registered. */
@@ -57,7 +58,7 @@ export interface BuiltUserTileMetadata {
   actionDescriptor: ActionDescriptor;
   actionTile: BrainTileActuatorDef | BrainTileSensorDef;
   parameterTiles: readonly BrainTileParameterDef[];
-  /** Modifier tiles the tile's call spec places: private ones keyed `user.<id>.<modifier>`, shared ones by their unscoped `modifier.` id. */
+  /** Modifier tiles the tile's call spec places: private ones keyed `<namespace>:user.<id>.<modifier>`, shared ones by their unscoped `modifier.` id. */
   modifierTiles: readonly BrainTileModifierDef[];
   /** Inline output value-tiles derived from a sensor's `outputs` (empty for actuators or sensors without outputs). */
   outputTiles: readonly BrainTileOutputDef[];
@@ -73,16 +74,16 @@ function buildActionDescriptor(program: UserAuthoredProgram): ActionDescriptor {
   };
 }
 
-function getParameterId(actionId: string, param: ExtractedParam): string {
+function getParameterId(program: UserAuthoredProgram, param: ExtractedParam): string {
   if (param.anonymous) return `anon.${param.type}`;
   if (param.name.startsWith("parameter.")) return param.name;
-  return `user.${actionId}.${param.name}`;
+  return privateArgTileId(program.projectNamespace, program.id, param.name);
 }
 
-/** Resolve a modifier's tile id: shared `modifier.` ids stay unscoped; private ids are scoped by the stable action id. */
-function getModifierId(actionId: string, modifier: ExtractedModifier): string {
+/** Resolve a modifier's tile id: shared `modifier.` ids stay unscoped; private ids are scoped by the stable action id under the project namespace. */
+function getModifierId(program: UserAuthoredProgram, modifier: ExtractedModifier): string {
   if (modifier.id.startsWith("modifier.")) return modifier.id;
-  return `user.${actionId}.${modifier.id}`;
+  return privateArgTileId(program.projectNamespace, program.id, modifier.id);
 }
 
 function buildParameterTiles(
@@ -92,7 +93,7 @@ function buildParameterTiles(
   const parameterTiles = new Map<string, BrainTileParameterDef>();
 
   for (const param of collectParams(program.args)) {
-    const parameterId = getParameterId(program.id, param);
+    const parameterId = getParameterId(program, param);
     const tileId = mkParameterTileId(parameterId);
     if (parameterTiles.has(tileId)) {
       continue;
@@ -111,7 +112,7 @@ function buildParameterTiles(
 
 /**
  * Build the modifier tiles a user tile's call spec places. Materializes private
- * modifiers (keyed `user.<id>.<modifier>`) and shared modifiers declared with a
+ * modifiers (keyed `<namespace>:user.<id>.<modifier>`) and shared modifiers declared with a
  * label (keyed by their unscoped `modifier.` id). A bare shared reference (a
  * `modifier.` id with no label) references a modifier declared or registered
  * elsewhere and materializes nothing.
@@ -124,7 +125,7 @@ function buildModifierTiles(program: UserAuthoredProgram): readonly BrainTileMod
     if (isSharedReference) {
       continue;
     }
-    const modifierId = getModifierId(program.id, modifier);
+    const modifierId = getModifierId(program, modifier);
     const tileId = mkModifierTileId(modifierId);
     if (modifierTiles.has(tileId)) {
       continue;

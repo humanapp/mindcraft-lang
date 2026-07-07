@@ -7,6 +7,7 @@ import {
   conversionFnName,
   DYNAMIC_FUNC_ID_BASE,
   type EnumFunctionIds,
+  type EnumTypeDef,
   isBytecodeConversion,
   mkNumberValue,
   mkOutputVarKey,
@@ -24,10 +25,10 @@ import { type ArgSlot, collectArgSlots } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import { type LocalMetadata, type ScopeMetadata, ScopeStack } from "./scope.js";
+import { qualifiedClassName } from "./symbol-keys.js";
 import {
   ambientTypeTokenName,
   isMindcraftModuleDeclaration,
-  qualifiedClassName,
   resolveTypeNameExpression,
   shorthandValueExpression,
   structTypeCallExpression,
@@ -158,8 +159,7 @@ interface TypeAliasInfo {
   sourceFile: ts.SourceFile;
 }
 
-/** Build the function-table key for a class declared in `fileName` with class name `className`. */
-export { qualifiedClassName } from "./type-ref.js";
+export { qualifiedClassName } from "./symbol-keys.js";
 
 function resolveAliasedSymbol(symbol: ts.Symbol | undefined, checker?: ts.TypeChecker): ts.Symbol | undefined {
   if (!symbol || !checker || !(symbol.flags & ts.SymbolFlags.Alias)) {
@@ -232,6 +232,8 @@ interface LoopContext {
 
 interface LowerContext {
   services: BrainServices;
+  /** Namespace of the project being compiled; prefixes every symbol key minted from its content. */
+  projectNamespace: string;
   checker: ts.TypeChecker;
   paramsSymbol: ts.Symbol | undefined;
   paramLocals: Map<string, number>;
@@ -447,13 +449,14 @@ type TargetTypedConversionResolution =
 function resolveRegisteredEnumTypeIdFromSymbol(
   sym: ts.Symbol,
   services: BrainServices,
+  projectNamespace: string,
   checker?: ts.TypeChecker
 ): string | undefined {
   const resolvedSym = resolveAliasedSymbol(sym, checker);
   if (!resolvedSym) return undefined;
 
   const registry = services.runtime.types;
-  const typeId = registry.resolveByName(resolveRegistryName(resolvedSym, services, checker));
+  const typeId = registry.resolveByName(resolveRegistryName(resolvedSym, services, projectNamespace, checker));
   if (!typeId) return undefined;
 
   const typeDef = registry.get(typeId);
@@ -467,11 +470,58 @@ function resolveRegisteredEnumTypeIdFromSymbol(
 function resolveRegisteredEnumTypeId(
   type: ts.Type,
   services: BrainServices,
+  projectNamespace: string,
   checker?: ts.TypeChecker
 ): string | undefined {
   const sym = type.getSymbol() ?? type.aliasSymbol;
   if (!sym) return undefined;
-  return resolveRegisteredEnumTypeIdFromSymbol(sym, services, checker);
+  return resolveRegisteredEnumTypeIdFromSymbol(sym, services, projectNamespace, checker);
+}
+
+/**
+ * Resolve an enum-literal type (a single member type, the enum type itself,
+ * or a union of member literals of one enum) to the registered enum's typeId.
+ * Returns undefined for any other type, including a union that mixes members
+ * of different enums or non-enum constituents.
+ */
+function resolveEnumLiteralTypeId(
+  type: ts.Type,
+  services: BrainServices,
+  projectNamespace: string,
+  checker?: ts.TypeChecker
+): string | undefined {
+  if (type.isUnion()) {
+    let resolved: string | undefined;
+    for (const member of type.types) {
+      const memberId = resolveEnumMemberOwnerTypeId(member, services, projectNamespace, checker);
+      if (!memberId || (resolved !== undefined && resolved !== memberId)) {
+        return undefined;
+      }
+      resolved = memberId;
+    }
+    return resolved;
+  }
+  return resolveEnumMemberOwnerTypeId(type, services, projectNamespace, checker);
+}
+
+function resolveEnumMemberOwnerTypeId(
+  type: ts.Type,
+  services: BrainServices,
+  projectNamespace: string,
+  checker?: ts.TypeChecker
+): string | undefined {
+  if (!(type.flags & ts.TypeFlags.EnumLiteral)) {
+    return undefined;
+  }
+  const sym = resolveAliasedSymbol(type.getSymbol() ?? type.aliasSymbol, checker);
+  if (!sym) return undefined;
+  const memberDecl = sym.getDeclarations()?.find(ts.isEnumMember);
+  if (memberDecl && checker) {
+    const enumSym = checker.getSymbolAtLocation(memberDecl.parent.name);
+    if (!enumSym) return undefined;
+    return resolveRegisteredEnumTypeIdFromSymbol(enumSym, services, projectNamespace, checker);
+  }
+  return resolveRegisteredEnumTypeIdFromSymbol(sym, services, projectNamespace, checker);
 }
 
 function unwrapTypeResolutionExpression(expr: ts.Expression): ts.Expression {
@@ -495,7 +545,7 @@ function resolveDeclaredEnumTypeId(exprNode: ts.Expression, ctx: LowerContext): 
   }
 
   const declaredType = ctx.checker.getTypeOfSymbolAtLocation(symbol, declaration);
-  return resolveRegisteredEnumTypeId(declaredType, ctx.services, ctx.checker);
+  return resolveRegisteredEnumTypeId(declaredType, ctx.services, ctx.projectNamespace, ctx.checker);
 }
 
 function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): string | undefined {
@@ -527,7 +577,7 @@ function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): st
   }
 
   const exprType = ctx.checker.getTypeAtLocation(exprNode);
-  return tsTypeToTypeId(exprType, ctx.checker, ctx.services);
+  return tsTypeToTypeId(exprType, ctx.checker, ctx.services, ctx.projectNamespace);
 }
 
 function resolveSingleStepConversion(
@@ -709,19 +759,20 @@ function lowerExpressionWithExpectedType(
 function resolveSignatureReturnTypeId(
   signatureDecl: ts.SignatureDeclarationBase,
   checker: ts.TypeChecker,
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): TypeId | undefined {
   const signature = checker.getSignatureFromDeclaration(signatureDecl as ts.SignatureDeclaration);
   if (!signature) {
     return undefined;
   }
 
-  return tsTypeToTypeId(checker.getReturnTypeOfSignature(signature), checker, services);
+  return tsTypeToTypeId(checker.getReturnTypeOfSignature(signature), checker, services, projectNamespace);
 }
 
 function resolveVariableDeclarationTargetTypeId(decl: ts.VariableDeclaration, ctx: LowerContext): TypeId | undefined {
   const targetType = ctx.checker.getTypeAtLocation(decl.name);
-  return tsTypeToTypeId(targetType, ctx.checker, ctx.services);
+  return tsTypeToTypeId(targetType, ctx.checker, ctx.services, ctx.projectNamespace);
 }
 
 function resolveCallArgumentTargetTypeId(
@@ -752,7 +803,7 @@ function resolveCallArgumentTargetTypeId(
   const parameter = parameters[parameterIndex];
   const parameterLocation = parameter.valueDeclaration ?? parameter.declarations?.[0] ?? callExpr.expression;
   const parameterType = ctx.checker.getTypeOfSymbolAtLocation(parameter, parameterLocation);
-  return tsTypeToTypeId(parameterType, ctx.checker, ctx.services);
+  return tsTypeToTypeId(parameterType, ctx.checker, ctx.services, ctx.projectNamespace);
 }
 
 interface RestParamInfo {
@@ -984,6 +1035,7 @@ export function lowerProgram(
   descriptor: ExtractedDescriptor,
   checker: ts.TypeChecker,
   services: BrainServices,
+  projectNamespace: string,
   importedFunctions?: ImportedFunction[],
   importedVariables?: ImportedVariable[],
   moduleInitOrder?: string[],
@@ -998,7 +1050,11 @@ export function lowerProgram(
   const diagnostics: CompileDiagnostic[] = [];
   const callsiteVars = new Map<string, number>();
   const functionTable = new Map<string, number>();
-  const helperNodes: ts.FunctionDeclaration[] = [];
+  // Module-level function-table contributors (helpers and classes) in func-id
+  // reservation order. Body lowering walks this list in the same order, so each
+  // lowered entry's index in the function array equals its reserved func id.
+  const moduleFunctionDecls: ({ kind: "helper"; node: ts.FunctionDeclaration } | { kind: "class"; info: ClassInfo })[] =
+    [];
   const classInfos: ClassInfo[] = [];
   const interfaceInfos: InterfaceInfo[] = [];
   const typeAliasInfos: TypeAliasInfo[] = [];
@@ -1051,7 +1107,7 @@ export function lowerProgram(
 
   // `const X = StructType({...})` bindings: gathered here across the entry
   // module and every imported module, then resolved and registered as one set
-  // (register-if-absent, keyed by `<file>::<binding>` identity). Field
+  // (register-if-absent, keyed by `<namespace>:<file>::<binding>` identity). Field
   // resolution never depends on declaration or import-visit order.
   const structTypes: ArtifactStructTypeInfo[] = [];
   const pendingStructTypeDecls: PendingStructTypeDecl[] = [];
@@ -1070,7 +1126,7 @@ export function lowerProgram(
       );
       return true;
     }
-    const identity = qualifiedClassName(config.getSourceFile().fileName, nameNode.text);
+    const identity = qualifiedClassName(projectNamespace, config.getSourceFile().fileName, nameNode.text);
     if (collectedStructIdentities.has(identity)) return true;
     collectedStructIdentities.add(identity);
     pendingStructTypeDecls.push({ identity, declName: nameNode.text, config });
@@ -1082,7 +1138,7 @@ export function lowerProgram(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.name) {
       functionTable.set(stmt.name.text, funcIdCounter.value++);
-      helperNodes.push(stmt);
+      moduleFunctionDecls.push({ kind: "helper", node: stmt });
     } else if (ts.isEnumDeclaration(stmt)) {
       localEnumNodes.push(stmt);
     } else if (ts.isClassDeclaration(stmt) && stmt.name) {
@@ -1142,7 +1198,7 @@ export function lowerProgram(
           }
         }
       }
-      classInfos.push({
+      const info: ClassInfo = {
         node: stmt,
         name: className,
         sourceFile,
@@ -1154,7 +1210,9 @@ export function lowerProgram(
         setterFuncIds,
         staticGetterFuncIds,
         staticSetterFuncIds,
-      });
+      };
+      classInfos.push(info);
+      moduleFunctionDecls.push({ kind: "class", info });
     } else if (ts.isInterfaceDeclaration(stmt) && stmt.name) {
       interfaceInfos.push({ node: stmt, name: stmt.name.text, sourceFile });
     } else if (ts.isTypeAliasDeclaration(stmt) && stmt.name) {
@@ -1195,7 +1253,9 @@ export function lowerProgram(
     }
   }
 
-  structTypes.push(...registerCollectedStructTypes(pendingStructTypeDecls, checker, services, diagnostics));
+  structTypes.push(
+    ...registerCollectedStructTypes(pendingStructTypeDecls, checker, services, projectNamespace, diagnostics)
+  );
 
   if (importedFunctions) {
     for (const imp of importedFunctions) {
@@ -1203,7 +1263,7 @@ export function lowerProgram(
       if (!declaredName) continue;
       if (!functionTable.has(declaredName)) {
         functionTable.set(declaredName, funcIdCounter.value++);
-        helperNodes.push(imp.node);
+        moduleFunctionDecls.push({ kind: "helper", node: imp.node });
       }
       if (imp.localName !== declaredName && !functionTable.has(imp.localName)) {
         functionTable.set(imp.localName, functionTable.get(declaredName)!);
@@ -1218,7 +1278,7 @@ export function lowerProgram(
       const key = carriedFunctionKey(cpf.node.getSourceFile().fileName, name);
       if (!functionTable.has(key)) {
         functionTable.set(key, funcIdCounter.value++);
-        helperNodes.push(cpf.node);
+        moduleFunctionDecls.push({ kind: "helper", node: cpf.node });
       }
       carriedFunctionKeys.set(cpf.symbol, key);
     }
@@ -1284,7 +1344,7 @@ export function lowerProgram(
           }
         }
       }
-      classInfos.push({
+      const info: ClassInfo = {
         node: ic.node,
         name: className,
         sourceFile: ic.sourceFile,
@@ -1296,7 +1356,9 @@ export function lowerProgram(
         setterFuncIds,
         staticGetterFuncIds,
         staticSetterFuncIds,
-      });
+      };
+      classInfos.push(info);
+      moduleFunctionDecls.push({ kind: "class", info });
     }
   }
 
@@ -1341,39 +1403,39 @@ export function lowerProgram(
 
   const functions: FunctionEntry[] = [];
 
-  registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics, services);
+  registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics, services, projectNamespace);
 
   // Reserve all user-declared named types before finalizing any: a field
   // naming another user class, interface, or type alias resolves to its
   // qualified reservation regardless of declaration or import-visit order.
   const reservedClasses: { info: ClassInfo; typeId: string }[] = [];
   for (const ci of classInfos) {
-    const typeId = reserveClassStructType(ci, services);
+    const typeId = reserveClassStructType(ci, services, projectNamespace);
     if (typeId) reservedClasses.push({ info: ci, typeId });
   }
 
   const reservedInterfaces: { info: InterfaceInfo; typeId: string }[] = [];
   for (const ii of interfaceInfos) {
-    const typeId = reserveInterfaceStructType(ii, checker, diagnostics, services);
+    const typeId = reserveInterfaceStructType(ii, checker, diagnostics, services, projectNamespace);
     if (typeId) reservedInterfaces.push({ info: ii, typeId });
   }
 
   const reservedTypeAliases: { info: TypeAliasInfo; typeId: string }[] = [];
   for (const tai of typeAliasInfos) {
-    const typeId = reserveTypeAliasStructType(tai, checker, diagnostics, services);
+    const typeId = reserveTypeAliasStructType(tai, checker, diagnostics, services, projectNamespace);
     if (typeId) reservedTypeAliases.push({ info: tai, typeId });
   }
 
   for (const { info, typeId } of reservedClasses) {
-    finalizeClassStructType(info, typeId, checker, diagnostics, services);
+    finalizeClassStructType(info, typeId, checker, diagnostics, services, projectNamespace);
   }
 
   for (const { info, typeId } of reservedInterfaces) {
-    finalizeInterfaceStructType(info, typeId, checker, diagnostics, services);
+    finalizeInterfaceStructType(info, typeId, checker, diagnostics, services, projectNamespace);
   }
 
   for (const { info, typeId } of reservedTypeAliases) {
-    finalizeTypeAliasStructType(info, typeId, checker, diagnostics, services);
+    finalizeTypeAliasStructType(info, typeId, checker, diagnostics, services, projectNamespace);
   }
 
   // Register each System's state struct type and reserve its func ids (methods,
@@ -1387,7 +1449,12 @@ export function lowerProgram(
   for (const decl of systemDecls) {
     const parts = extractSystemConfig(decl.config, diagnostics);
     if (!parts) continue;
-    const stateDef = autoRegisterAnonymousStruct(checker.getTypeAtLocation(parts.stateNode), checker, services);
+    const stateDef = autoRegisterAnonymousStruct(
+      checker.getTypeAtLocation(parts.stateNode),
+      checker,
+      services,
+      projectNamespace
+    );
     if (!stateDef) {
       diagnostics.push(
         makeDiag(
@@ -1408,7 +1475,7 @@ export function lowerProgram(
     const initWrapperFuncId = funcIdCounter.value++;
     const thinkWrapperFuncId = parts.thinkNode ? funcIdCounter.value++ : undefined;
     const binding: SystemBinding = {
-      identity: `${decl.config.getSourceFile().fileName}::${decl.declName}`,
+      identity: qualifiedClassName(projectNamespace, decl.config.getSourceFile().fileName, decl.declName),
       name: parts.name,
       localSlot,
       stateTypeId: stateDef.typeId,
@@ -1445,42 +1512,47 @@ export function lowerProgram(
     funcIdCounter,
     closureFunctions,
     services,
+    projectNamespace,
     classInfos,
     systemBindings
   );
   functions.push(onExecEntry);
 
-  for (const helperNode of helperNodes) {
-    const entry = lowerHelperFunction(
-      helperNode,
-      checker,
-      callsiteVars,
-      functionTable,
-      diagnostics,
-      funcIdCounter,
-      closureFunctions,
-      services,
-      classInfos,
-      systemBindings,
-      inlineConsts,
-      carriedFunctionKeys
-    );
-    functions.push(entry);
-  }
-
-  for (const ci of classInfos) {
-    const classEntries = lowerClassDeclaration(
-      ci,
-      checker,
-      callsiteVars,
-      functionTable,
-      diagnostics,
-      funcIdCounter,
-      closureFunctions,
-      services,
-      classInfos
-    );
-    functions.push(...classEntries);
+  for (const decl of moduleFunctionDecls) {
+    if (decl.kind === "helper") {
+      functions.push(
+        lowerHelperFunction(
+          decl.node,
+          checker,
+          callsiteVars,
+          functionTable,
+          diagnostics,
+          funcIdCounter,
+          closureFunctions,
+          services,
+          projectNamespace,
+          classInfos,
+          systemBindings,
+          inlineConsts,
+          carriedFunctionKeys
+        )
+      );
+    } else {
+      functions.push(
+        ...lowerClassDeclaration(
+          decl.info,
+          checker,
+          callsiteVars,
+          functionTable,
+          diagnostics,
+          funcIdCounter,
+          closureFunctions,
+          services,
+          projectNamespace,
+          classInfos
+        )
+      );
+    }
   }
 
   if (descriptor.onPageEnteredNode) {
@@ -1493,6 +1565,7 @@ export function lowerProgram(
       funcIdCounter,
       closureFunctions,
       services,
+      projectNamespace,
       classInfos,
       systemBindings
     );
@@ -1512,6 +1585,7 @@ export function lowerProgram(
       moduleInitOrder ?? [],
       classInfos,
       services,
+      projectNamespace,
       systemBindings
     );
     functions.push(initEntry);
@@ -1532,6 +1606,7 @@ export function lowerProgram(
       funcIdCounter,
       closureFunctions,
       services,
+      projectNamespace,
       classInfos,
       systemBindings
     );
@@ -1554,6 +1629,7 @@ export function lowerProgram(
           funcIdCounter,
           closureFunctions,
           services,
+          projectNamespace,
           classInfos,
           systemBindings,
           binding.stateTypeId,
@@ -1575,6 +1651,7 @@ export function lowerProgram(
           funcIdCounter,
           closureFunctions,
           services,
+          projectNamespace,
           classInfos,
           systemBindings,
           binding.stateTypeId,
@@ -1596,6 +1673,7 @@ export function lowerProgram(
           funcIdCounter,
           closureFunctions,
           services,
+          projectNamespace,
           classInfos,
           systemBindings,
           binding.stateTypeId,
@@ -1615,6 +1693,7 @@ export function lowerProgram(
         funcIdCounter,
         closureFunctions,
         services,
+        projectNamespace,
         classInfos,
         systemBindings,
         inlineConsts,
@@ -1668,6 +1747,7 @@ function lowerOnPageEnteredBody(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
+  projectNamespace: string,
   classInfos: ClassInfo[],
   systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
@@ -1689,6 +1769,7 @@ function lowerOnPageEnteredBody(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals,
@@ -1703,7 +1784,7 @@ function lowerOnPageEnteredBody(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onPageEntered`,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services, projectNamespace),
     classInfos,
     systemBindings,
     nonSuspendableContext: "`onPageEntered` (page handlers cannot suspend)",
@@ -1758,6 +1839,7 @@ function lowerOnPageExitedBody(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
+  projectNamespace: string,
   classInfos: ClassInfo[],
   systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
@@ -1779,6 +1861,7 @@ function lowerOnPageExitedBody(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals,
@@ -1793,7 +1876,7 @@ function lowerOnPageExitedBody(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onPageExited`,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services, projectNamespace),
     classInfos,
     systemBindings,
     nonSuspendableContext: "`onPageExited` (page handlers cannot suspend)",
@@ -2041,6 +2124,7 @@ interface StructTypeConfigParts {
 export function extractStructTypeConfig(
   config: ts.ObjectLiteralExpression,
   checker: ts.TypeChecker,
+  projectNamespace: string,
   diagnostics: CompileDiagnostic[]
 ): StructTypeConfigParts | undefined {
   let name: string | undefined;
@@ -2200,7 +2284,7 @@ export function extractStructTypeConfig(
         failed = true;
         continue;
       }
-      const resolved = resolveTypeNameExpression(typeExpr, checker);
+      const resolved = resolveTypeNameExpression(typeExpr, checker, projectNamespace);
       if ("error" in resolved) {
         diagnostics.push(
           makeDiag(
@@ -2256,13 +2340,14 @@ function registerCollectedStructTypes(
   pending: PendingStructTypeDecl[],
   checker: ts.TypeChecker,
   services: BrainServices,
+  projectNamespace: string,
   diagnostics: CompileDiagnostic[]
 ): ArtifactStructTypeInfo[] {
   const registry = services.runtime.types;
   const extracted = new Map<string, { decl: PendingStructTypeDecl; parts: StructTypeConfigParts }>();
   const failed = new Set<string>();
   for (const decl of pending) {
-    const parts = extractStructTypeConfig(decl.config, checker, diagnostics);
+    const parts = extractStructTypeConfig(decl.config, checker, projectNamespace, diagnostics);
     if (parts) {
       extracted.set(decl.identity, { decl, parts });
     } else {
@@ -2742,6 +2827,7 @@ function lowerSystemFnEntry(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
+  projectNamespace: string,
   classInfos: ClassInfo[],
   systemBindings: Map<ts.Symbol, SystemBinding>,
   thisStructTypeId: TypeId | undefined,
@@ -2770,6 +2856,7 @@ function lowerSystemFnEntry(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals,
@@ -2787,7 +2874,7 @@ function lowerSystemFnEntry(
     thisStructTypeId,
     thisSystemMethodFuncIds,
     currentFunctionName: name,
-    currentReturnTypeId: resolveSignatureReturnTypeId(fnNode, checker, services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(fnNode, checker, services, projectNamespace),
     classInfos,
     systemBindings,
     inlineConsts,
@@ -2846,6 +2933,7 @@ function generateSystemInitWrapper(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
+  projectNamespace: string,
   classInfos: ClassInfo[],
   systemBindings: Map<ts.Symbol, SystemBinding>,
   inlineConsts: Map<ts.Symbol, ts.Expression>,
@@ -2857,6 +2945,7 @@ function generateSystemInitWrapper(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals: new Map<string, number>(),
@@ -2983,6 +3072,7 @@ function lowerConvertBody(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
+  projectNamespace: string,
   classInfos: ClassInfo[],
   systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
@@ -3012,6 +3102,7 @@ function lowerConvertBody(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals,
@@ -3026,7 +3117,7 @@ function lowerConvertBody(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: funcName,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services, projectNamespace),
     classInfos,
     systemBindings,
     nonSuspendableContext: "a conversion `convert` (conversions are synchronous)",
@@ -3068,6 +3159,7 @@ function lowerOnExecuteBody(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
+  projectNamespace: string,
   classInfos: ClassInfo[],
   systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
@@ -3081,6 +3173,7 @@ function lowerOnExecuteBody(
       funcIdCounter,
       closureFunctions,
       services,
+      projectNamespace,
       classInfos,
       systemBindings
     );
@@ -3142,7 +3235,7 @@ function lowerOnExecuteBody(
         sharedDiagnostics.push(
           makeDiag(
             LoweringDiagCode.OutputTypeUnresolvable,
-            `Sensor output \`${output.name}\` declares type \`${output.type}\`, which is not a known type.`,
+            `Sensor output \`${output.name}\` declares type \`${output.type}\`, which does not resolve to a registered type.`,
             funcNode
           )
         );
@@ -3170,6 +3263,7 @@ function lowerOnExecuteBody(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol,
     paramLocals,
@@ -3185,7 +3279,7 @@ function lowerOnExecuteBody(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onExecute`,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services, projectNamespace),
     classInfos,
     systemBindings,
     sensorOutputs,
@@ -3246,6 +3340,7 @@ function lowerHelperFunction(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
+  projectNamespace: string,
   classInfos: ClassInfo[],
   systemBindings: Map<ts.Symbol, SystemBinding>,
   inlineConsts: Map<ts.Symbol, ts.Expression>,
@@ -3275,6 +3370,7 @@ function lowerHelperFunction(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals,
@@ -3289,7 +3385,7 @@ function lowerHelperFunction(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: funcName,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services, projectNamespace),
     classInfos,
     systemBindings,
     inlineConsts,
@@ -3354,6 +3450,7 @@ function generateModuleInitWithImports(
   moduleInitOrder: string[],
   classInfos: ClassInfo[],
   services: BrainServices,
+  projectNamespace: string,
   systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
   const ir: IrNode[] = [];
@@ -3362,6 +3459,7 @@ function generateModuleInitWithImports(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals: new Map(),
@@ -3441,7 +3539,7 @@ function generateModuleInitWithImports(
 
       if (member.initializer) {
         const memberType = checker.getTypeAtLocation(member);
-        const fieldTypeId = tsTypeToTypeId(memberType, checker, services);
+        const fieldTypeId = tsTypeToTypeId(memberType, checker, services, projectNamespace);
         lowerExpressionWithExpectedType(
           member.initializer,
           fieldTypeId,
@@ -3451,7 +3549,7 @@ function generateModuleInitWithImports(
         );
       } else {
         const memberType = checker.getTypeAtLocation(member);
-        const fieldTypeId = tsTypeToTypeId(memberType, checker, services);
+        const fieldTypeId = tsTypeToTypeId(memberType, checker, services, projectNamespace);
         if (!fieldTypeId) {
           ctx.diagnostics.push(
             makeDiag(
@@ -3584,6 +3682,7 @@ function hoistNestedFunctionDeclarations(stmts: ts.NodeArray<ts.Statement>, ctx:
       ctx.funcIdCounter,
       ctx.closureFunctions,
       ctx.services,
+      ctx.projectNamespace,
       ctx.classInfos,
       ctx.systemBindings ?? new Map<ts.Symbol, SystemBinding>(),
       ctx.inlineConsts ?? new Map<ts.Symbol, ts.Expression>(),
@@ -3875,7 +3974,7 @@ function lowerObjectRestElement(
   ctx: LowerContext
 ): void {
   const restType = ctx.checker.getTypeAtLocation(element.name);
-  const typeId = tsTypeToTypeId(restType, ctx.checker, ctx.services);
+  const typeId = tsTypeToTypeId(restType, ctx.checker, ctx.services, ctx.projectNamespace);
 
   let hasComputedKeys = false;
   for (const other of pattern.elements) {
@@ -3886,7 +3985,12 @@ function lowerObjectRestElement(
   const restDef = typeId === undefined ? undefined : ctx.services.runtime.types.get(typeId);
   const restStruct =
     restDef !== undefined && restDef.coreType === NativeType.Struct ? (restDef as StructTypeDef) : undefined;
-  const sourceTypeId = tsTypeToTypeId(ctx.checker.getTypeAtLocation(pattern), ctx.checker, ctx.services);
+  const sourceTypeId = tsTypeToTypeId(
+    ctx.checker.getTypeAtLocation(pattern),
+    ctx.checker,
+    ctx.services,
+    ctx.projectNamespace
+  );
   const sourceDef = sourceTypeId === undefined ? undefined : ctx.services.runtime.types.get(sourceTypeId);
   const sourceStruct =
     sourceDef !== undefined && sourceDef.coreType === NativeType.Struct ? (sourceDef as StructTypeDef) : undefined;
@@ -4040,10 +4144,10 @@ function lowerArrayRestElement(
   ctx: LowerContext
 ): void {
   const restType = ctx.checker.getTypeAtLocation(element.name);
-  let listTypeId = tsTypeToTypeId(restType, ctx.checker, ctx.services);
+  let listTypeId = tsTypeToTypeId(restType, ctx.checker, ctx.services, ctx.projectNamespace);
   if (!listTypeId) {
     const srcType = ctx.checker.getTypeAtLocation(element.parent);
-    listTypeId = tsTypeToTypeId(srcType, ctx.checker, ctx.services) ?? "list:any";
+    listTypeId = tsTypeToTypeId(srcType, ctx.checker, ctx.services, ctx.projectNamespace) ?? "list:any";
   }
 
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
@@ -4262,7 +4366,7 @@ function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
     return;
   }
 
-  const structDef = resolveStructType(iteratedType, ctx.services, ctx.checker);
+  const structDef = resolveStructType(iteratedType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (structDef) {
     lowerForInOverKeyList(
       stmt,
@@ -4756,7 +4860,7 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
 
   const enumSymbol = resolveAliasedSymbol(ctx.checker.getSymbolAtLocation(expr), ctx.checker);
   if (enumSymbol && resolveEnumDeclaration(enumSymbol, ctx.checker)) {
-    const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.services, ctx.checker);
+    const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.services, ctx.projectNamespace, ctx.checker);
     if (typeId) {
       ctx.diagnostics.push(
         makeDiag(
@@ -5286,7 +5390,7 @@ function resolveStructTypeFactory(idNode: ts.Identifier, ctx: LowerContext): Str
   if (!decl || !ts.isVariableDeclaration(decl) || !ts.isIdentifier(decl.name)) return undefined;
   if (!structTypeConfigObject(decl.initializer)) return undefined;
 
-  const identity = qualifiedClassName(decl.getSourceFile().fileName, decl.name.text);
+  const identity = qualifiedClassName(ctx.projectNamespace, decl.getSourceFile().fileName, decl.name.text);
   const typeId = ctx.services.runtime.types.resolveByName(identity);
   if (typeId === undefined) return undefined;
   const typeDef = ctx.services.runtime.types.get(typeId);
@@ -5441,7 +5545,7 @@ function lowerStructMethodCall(
   ctx: LowerContext
 ): boolean {
   const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
-  const structDef = resolveStructType(receiverType, ctx.services, ctx.checker);
+  const structDef = resolveStructType(receiverType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (!structDef) return false;
 
   const methodName = propAccess.name.text;
@@ -5640,6 +5744,7 @@ function lowerClosureExpression(
 
   const closureCtx: LowerContext = {
     services: ctx.services,
+    projectNamespace: ctx.projectNamespace,
     checker: ctx.checker,
     paramsSymbol: undefined,
     paramLocals: closureParamLocals,
@@ -5655,7 +5760,7 @@ function lowerClosureExpression(
     funcIdCounter: ctx.funcIdCounter,
     closureFunctions: ctx.closureFunctions,
     currentFunctionName: closureName,
-    currentReturnTypeId: resolveSignatureReturnTypeId(expr, ctx.checker, ctx.services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(expr, ctx.checker, ctx.services, ctx.projectNamespace),
     classInfos: ctx.classInfos,
     systemBindings: ctx.systemBindings,
   };
@@ -5762,8 +5867,8 @@ function checkStructAssignmentCompat(lhsNode: ts.Node, rhsNode: ts.Node, diagNod
   const registry = ctx.services.runtime.types;
   const lhsType = ctx.checker.getTypeAtLocation(lhsNode);
   const rhsType = ctx.checker.getTypeAtLocation(rhsNode);
-  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
   if (!lhsTypeId || !rhsTypeId || lhsTypeId === rhsTypeId) return;
 
   const lhsDef = registry.get(lhsTypeId);
@@ -5844,7 +5949,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
     }
 
     const lhsObjType = ctx.checker.getTypeAtLocation(expr.left.expression);
-    const lhsStruct = resolveStructType(lhsObjType, ctx.services, ctx.checker);
+    const lhsStruct = resolveStructType(lhsObjType, ctx.services, ctx.projectNamespace, ctx.checker);
     if (lhsStruct) {
       const fName = expr.left.name.text;
       const clsName = bareClassName(lhsStruct.name);
@@ -5876,8 +5981,8 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
           }
           const lhsType = ctx.checker.getTypeAtLocation(expr.left);
           const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-          const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-          const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+          const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+          const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
           if (!lhsTypeId || !rhsTypeId) {
             ctx.diagnostics.push(
               makeDiag(
@@ -5964,8 +6069,8 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
         const lhsType = ctx.checker.getTypeAtLocation(expr.left);
         const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
         if (!lhsTypeId || !rhsTypeId) {
           ctx.diagnostics.push(
             makeDiag(
@@ -6048,8 +6153,8 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
       const lhsType = ctx.checker.getTypeAtLocation(expr.left);
       const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-      const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-      const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+      const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+      const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
       if (!lhsTypeId || !rhsTypeId) {
         ctx.diagnostics.push(
           makeDiag(
@@ -6143,8 +6248,8 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
     const lhsType = ctx.checker.getTypeAtLocation(expr.left);
     const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
 
     if (!lhsTypeId || !rhsTypeId) {
       ctx.diagnostics.push(
@@ -6221,8 +6326,8 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
         }
         const lhsType = ctx.checker.getTypeAtLocation(expr.left);
         const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
         if (!lhsTypeId || !rhsTypeId) {
           ctx.diagnostics.push(
             makeDiag(
@@ -6297,8 +6402,8 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
 
     const lhsType = ctx.checker.getTypeAtLocation(expr.left);
     const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
 
     if (!lhsTypeId || !rhsTypeId) {
       ctx.diagnostics.push(
@@ -6392,8 +6497,8 @@ function lowerStaticFieldAssignment(
         }
         const lhsType = ctx.checker.getTypeAtLocation(expr.left);
         const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
         if (!lhsTypeId || !rhsTypeId) {
           ctx.diagnostics.push(
             makeDiag(
@@ -6512,8 +6617,8 @@ function lowerStaticFieldAssignment(
 
     const lhsType = ctx.checker.getTypeAtLocation(expr.left);
     const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
 
     if (!lhsTypeId || !rhsTypeId) {
       ctx.diagnostics.push(
@@ -6592,7 +6697,7 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
   } else if (expr.operator === ts.SyntaxKind.ExclamationToken) {
     lowerExpression(expr.operand, ctx);
     const operandType = ctx.checker.getTypeAtLocation(expr.operand);
-    const operandTypeId = tsTypeToTypeId(operandType, ctx.checker, ctx.services);
+    const operandTypeId = tsTypeToTypeId(operandType, ctx.checker, ctx.services, ctx.projectNamespace);
     if (!operandTypeId) {
       ctx.diagnostics.push(
         makeDiag(LoweringDiagCode.CannotDetermineTypeForNotOperand, "Cannot determine type for `!` operand", expr)
@@ -6771,7 +6876,7 @@ function resolveInstanceGetterSetterPair(
 ): { getterFuncId: number; setterFuncId: number; isThis: boolean } | undefined {
   const fieldName = operand.name.text;
   const objType = ctx.checker.getTypeAtLocation(operand.expression);
-  const structDef = resolveStructType(objType, ctx.services, ctx.checker);
+  const structDef = resolveStructType(objType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (!structDef) return undefined;
   const className = bareClassName(structDef.name);
   const ci = ctx.classInfos.find((c) => c.name === className);
@@ -7366,7 +7471,7 @@ function lowerInstanceOf(expr: ts.BinaryExpression, ctx: LowerContext): void {
   }
 
   const instanceType = ctx.checker.getDeclaredTypeOfSymbol(resolvedSym);
-  const typeId = tsTypeToTypeId(instanceType, ctx.checker, ctx.services);
+  const typeId = tsTypeToTypeId(instanceType, ctx.checker, ctx.services, ctx.projectNamespace);
   if (!typeId) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.InstanceofRhsNotClass, "Cannot resolve type for instanceof check", expr.right)
@@ -7398,7 +7503,7 @@ function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext)
     if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
     return;
   }
-  if (resolveStructType(objType, ctx.services, ctx.checker)) {
+  if (resolveStructType(objType, ctx.services, ctx.projectNamespace, ctx.checker)) {
     lowerExpression(expr.expression, ctx);
     const guard = isOptChain ? emitNilGuard(ctx) : undefined;
     lowerExpression(expr.argumentExpression, ctx);
@@ -7499,8 +7604,8 @@ function lowerCompoundElementAccessAssignment(
 
   const lhsType = ctx.checker.getTypeAtLocation(elemAccess);
   const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
   if (!lhsTypeId || !rhsTypeId) {
     ctx.diagnostics.push(
       makeDiag(
@@ -8391,7 +8496,7 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
   ctx.ir.push({ kind: "LoadLocal", index: searchLocal });
 
   const searchType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
-  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services);
+  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services, ctx.projectNamespace);
   const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId], ctx.services) : undefined;
   if (!eqFn) {
     ctx.diagnostics.push(
@@ -8753,7 +8858,7 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
   ctx.ir.push({ kind: "LoadLocal", index: searchLocal });
 
   const searchType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
-  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services);
+  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services, ctx.projectNamespace);
   const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId], ctx.services) : undefined;
   if (!eqFn) {
     ctx.diagnostics.push(
@@ -9496,7 +9601,7 @@ function lowerListLastIndexOf(
   ctx.ir.push({ kind: "LoadLocal", index: searchLocal });
 
   const searchType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
-  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services);
+  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services, ctx.projectNamespace);
   const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId], ctx.services) : undefined;
   if (!eqFn) {
     ctx.diagnostics.push(
@@ -10297,7 +10402,7 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
   const structDef =
     expr.expression.kind === ts.SyntaxKind.ThisKeyword && ctx.thisStructTypeId !== undefined
       ? resolveThisReceiverStructDef(expr.expression, ctx)
-      : resolveStructType(objType, ctx.services, ctx.checker);
+      : resolveStructType(objType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (structDef) {
     const fieldName = expr.name.text;
     const className = bareClassName(structDef.name);
@@ -10348,12 +10453,17 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
   ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedPropertyAccess, "Unsupported property access", expr));
 }
 
-function resolveRegistryName(sym: ts.Symbol, services: BrainServices, checker?: ts.TypeChecker): string {
+function resolveRegistryName(
+  sym: ts.Symbol,
+  services: BrainServices,
+  projectNamespace: string,
+  checker?: ts.TypeChecker
+): string {
   const resolvedSym = resolveAliasedSymbol(sym, checker) ?? sym;
   const name = resolvedSym.getName();
   const decls = resolvedSym.getDeclarations();
   if (decls && decls.length > 0 && isUserSourceDecl(decls[0])) {
-    const qualName = qualifiedClassName(decls[0].getSourceFile().fileName, name);
+    const qualName = qualifiedClassName(projectNamespace, decls[0].getSourceFile().fileName, name);
     if (services.runtime.types.resolveByName(qualName)) {
       return qualName;
     }
@@ -10364,18 +10474,19 @@ function resolveRegistryName(sym: ts.Symbol, services: BrainServices, checker?: 
 function resolveStructType(
   type: ts.Type,
   services: BrainServices,
+  projectNamespace: string,
   checker?: ts.TypeChecker
 ): StructTypeDef | undefined {
   const registry = services.runtime.types;
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
     if (nonNullish.length === 1) {
-      return resolveStructType(nonNullish[0], services, checker);
+      return resolveStructType(nonNullish[0], services, projectNamespace, checker);
     }
     return undefined;
   }
   if (type.isIntersection() && checker) {
-    const typeId = tsTypeToTypeId(type, checker, services);
+    const typeId = tsTypeToTypeId(type, checker, services, projectNamespace);
     if (!typeId) return undefined;
     const def = registry.get(typeId);
     if (!def || def.coreType !== NativeType.Struct) return undefined;
@@ -10383,10 +10494,10 @@ function resolveStructType(
   }
   const sym = type.aliasSymbol ?? type.getSymbol();
   if (!sym) return undefined;
-  const resolvedName = resolveRegistryName(sym, services);
+  const resolvedName = resolveRegistryName(sym, services, projectNamespace);
   let typeId = registry.resolveByName(resolvedName);
   if (!typeId && checker) {
-    typeId = tsTypeToTypeId(type, checker, services) ?? undefined;
+    typeId = tsTypeToTypeId(type, checker, services, projectNamespace) ?? undefined;
   }
   if (!typeId) return undefined;
   const def = registry.get(typeId);
@@ -10404,7 +10515,7 @@ function resolveThisReceiverStructDef(receiver: ts.Expression, ctx: LowerContext
     const def = ctx.services.runtime.types.get(ctx.thisStructTypeId);
     if (def && def.coreType === NativeType.Struct) return def as StructTypeDef;
   }
-  return resolveStructType(ctx.checker.getTypeAtLocation(receiver), ctx.services, ctx.checker);
+  return resolveStructType(ctx.checker.getTypeAtLocation(receiver), ctx.services, ctx.projectNamespace, ctx.checker);
 }
 
 function resolveEnumDeclaration(sym: ts.Symbol, checker?: ts.TypeChecker): ts.EnumDeclaration | undefined {
@@ -10437,26 +10548,27 @@ function registerUserEnumTypes(
   importedEnums: ImportedEnum[],
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): void {
   const seenNames = new Set<string>();
 
   for (const enumNode of localEnumNodes) {
-    const qualifiedName = qualifiedClassName(enumNode.getSourceFile().fileName, enumNode.name.text);
+    const qualifiedName = qualifiedClassName(projectNamespace, enumNode.getSourceFile().fileName, enumNode.name.text);
     if (seenNames.has(qualifiedName)) {
       continue;
     }
     seenNames.add(qualifiedName);
-    registerUserEnumType(enumNode, checker, diagnostics, services);
+    registerUserEnumType(enumNode, checker, diagnostics, services, projectNamespace);
   }
 
   for (const importedEnum of importedEnums) {
-    const qualifiedName = qualifiedClassName(importedEnum.sourceFile.fileName, importedEnum.name);
+    const qualifiedName = qualifiedClassName(projectNamespace, importedEnum.sourceFile.fileName, importedEnum.name);
     if (seenNames.has(qualifiedName)) {
       continue;
     }
     seenNames.add(qualifiedName);
-    registerUserEnumType(importedEnum.node, checker, diagnostics, services);
+    registerUserEnumType(importedEnum.node, checker, diagnostics, services, projectNamespace);
   }
 }
 
@@ -10464,10 +10576,11 @@ function registerUserEnumType(
   enumNode: ts.EnumDeclaration,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): void {
   const registry = services.runtime.types;
-  const qualifiedName = qualifiedClassName(enumNode.getSourceFile().fileName, enumNode.name.text);
+  const qualifiedName = qualifiedClassName(projectNamespace, enumNode.getSourceFile().fileName, enumNode.name.text);
   if (registry.resolveByName(qualifiedName)) {
     return;
   }
@@ -10541,8 +10654,8 @@ function registerUserEnumType(
 
 /**
  * Derive the dynamic-range funcIds for the next user-declared enum: the k-th
- * user enum registered into the type registry takes the 4-id block at
- * `DYNAMIC_FUNC_ID_BASE + 4k`. The count is taken from the registry itself
+ * user enum registered into the type registry takes the 2-id block at
+ * `DYNAMIC_FUNC_ID_BASE + 2k`. The count is taken from the registry itself
  * (user enums are the module-qualified ones, removed by `removeUserTypes()`
  * before each project compile), so an unchanged project compiles to the same
  * ids every build.
@@ -10554,8 +10667,8 @@ function nextUserEnumFunctionIds(services: BrainServices): EnumFunctionIds {
       userEnumCount++;
     }
   }
-  const base = DYNAMIC_FUNC_ID_BASE + 4 * userEnumCount;
-  return { toString: base, toNumber: base + 1, equalTo: base + 2, notEqualTo: base + 3 };
+  const base = DYNAMIC_FUNC_ID_BASE + 2 * userEnumCount;
+  return { toString: base, toNumber: base + 1 };
 }
 
 type EnumPropertyAccessResolution = { kind: "member"; value: Value } | { kind: "unsupported" };
@@ -10574,7 +10687,7 @@ function resolveEnumPropertyAccess(
     return undefined;
   }
 
-  const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.services, ctx.checker);
+  const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.services, ctx.projectNamespace, ctx.checker);
   if (!typeId) {
     return undefined;
   }
@@ -10586,14 +10699,29 @@ function resolveEnumPropertyAccess(
   }
 
   const key = getEnumMemberKey(memberDecl);
-  if (!key || !ctx.services.runtime.types.getEnumSymbol(typeId, key)) {
+  const symbol = key ? ctx.services.runtime.types.getEnumSymbol(typeId, key) : undefined;
+  if (!key || !symbol) {
     return { kind: "unsupported" };
   }
 
+  // Runtime enum equality is symbol identity, so an alias member (a later key
+  // sharing an earlier key's value) lowers to the first key with that value,
+  // preserving TypeScript's value-equality for aliases.
+  const canonicalKey = canonicalEnumKeyForValue(typeId, symbol.value, ctx.services) ?? key;
+
   return {
     kind: "member",
-    value: { t: NativeType.Enum, typeId, v: key },
+    value: { t: NativeType.Enum, typeId, v: canonicalKey },
   };
+}
+
+function canonicalEnumKeyForValue(typeId: string, value: string | number, services: BrainServices): string | undefined {
+  const def = services.runtime.types.get(typeId);
+  if (!def || def.coreType !== NativeType.Enum) {
+    return undefined;
+  }
+  const first = (def as EnumTypeDef).symbols.find((symbol) => symbol.value === value);
+  return first?.key;
 }
 
 type StaticMemberAccessResolution =
@@ -10701,7 +10829,7 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
     return;
   }
 
-  const structDef = resolveStructType(resolvedType, ctx.services, ctx.checker);
+  const structDef = resolveStructType(resolvedType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (structDef) {
     if (isNativeBackedStruct(structDef)) {
       ctx.diagnostics.push(
@@ -10732,7 +10860,7 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
       let matchedMapId: string | undefined;
       let matchCount = 0;
       for (const member of nonNullish) {
-        const sd = resolveStructType(member, ctx.services, ctx.checker);
+        const sd = resolveStructType(member, ctx.services, ctx.projectNamespace, ctx.checker);
         if (sd && !isNativeBackedStruct(sd)) {
           matchedStruct = sd;
           matchCount++;
@@ -10756,7 +10884,7 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
   }
 
   if (!contextualType) {
-    const anonDef = autoRegisterAnonymousStruct(resolvedType, ctx.checker, ctx.services);
+    const anonDef = autoRegisterAnonymousStruct(resolvedType, ctx.checker, ctx.services, ctx.projectNamespace);
     if (anonDef) {
       lowerObjectLiteralAsStruct(expr, anonDef, ctx);
       return;
@@ -10840,7 +10968,7 @@ function lowerObjectLiteralAsStruct(
       lowerExpression(prop.expression, ctx);
       const tempLocal = ctx.scopeStack.allocLocal();
       ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
-      const sourceStruct = resolveStructType(spreadType, ctx.services, ctx.checker);
+      const sourceStruct = resolveStructType(spreadType, ctx.services, ctx.projectNamespace, ctx.checker);
       for (const sym of properties) {
         const targetField = findStructField(structDef, sym.name);
         // A spread source property that is not a field of the target struct has no
@@ -10923,12 +11051,12 @@ function lowerObjectLiteralAsMap(expr: ts.ObjectLiteralExpression, mapTypeId: st
       lowerExpression(prop.expression, ctx);
       const tempLocal = ctx.scopeStack.allocLocal();
       ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
-      const sourceIsStruct = !!resolveStructType(spreadType, ctx.services, ctx.checker);
+      const sourceIsStruct = !!resolveStructType(spreadType, ctx.services, ctx.projectNamespace, ctx.checker);
       for (const sym of properties) {
         ctx.ir.push({ kind: "PushConst", value: mkStringValue(sym.name) });
         ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
         if (sourceIsStruct) {
-          const sourceStruct = resolveStructType(spreadType, ctx.services, ctx.checker);
+          const sourceStruct = resolveStructType(spreadType, ctx.services, ctx.projectNamespace, ctx.checker);
           const sourceField = sourceStruct ? findStructField(sourceStruct, sym.name) : undefined;
           ctx.ir.push(
             sourceStruct && sourceField && isIndexedStruct(sourceStruct)
@@ -10989,8 +11117,9 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
       const typeArgs =
         (type as ts.TypeReference).typeArguments ?? ctx.checker.getTypeArguments(type as ts.TypeReference);
       if (typeArgs && typeArgs.length >= 2) {
-        const keyTypeId = tsTypeToTypeId(typeArgs[0], ctx.checker, ctx.services) ?? CoreTypeIds.String;
-        const valueTypeId = tsTypeToTypeId(typeArgs[1], ctx.checker, ctx.services);
+        const keyTypeId =
+          tsTypeToTypeId(typeArgs[0], ctx.checker, ctx.services, ctx.projectNamespace) ?? CoreTypeIds.String;
+        const valueTypeId = tsTypeToTypeId(typeArgs[1], ctx.checker, ctx.services, ctx.projectNamespace);
         if (valueTypeId) {
           return registry.instantiate("Map", List.from([keyTypeId, valueTypeId]));
         }
@@ -11006,7 +11135,7 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
 
   const indexType = type.getStringIndexType();
   if (indexType) {
-    const valueTypeId = tsTypeToTypeId(indexType, ctx.checker, ctx.services);
+    const valueTypeId = tsTypeToTypeId(indexType, ctx.checker, ctx.services, ctx.projectNamespace);
     if (valueTypeId) {
       return registry.instantiate("Map", List.from([CoreTypeIds.String, valueTypeId]));
     }
@@ -11043,7 +11172,7 @@ function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | unde
   if (!typeArgs || typeArgs.length === 0) return undefined;
 
   const elementType = typeArgs[0];
-  const elementTypeId = tsTypeToTypeId(elementType, ctx.checker, ctx.services);
+  const elementTypeId = tsTypeToTypeId(elementType, ctx.checker, ctx.services, ctx.projectNamespace);
   if (!elementTypeId) return undefined;
 
   return registry.instantiate("List", List.from([elementTypeId]));
@@ -11157,7 +11286,7 @@ function expandTypeIdMembers(typeId: string, services: BrainServices): string[] 
 function tryResolveEnumValue(expr: ts.StringLiteral, ctx: LowerContext): Value | undefined {
   const contextualType = ctx.checker.getContextualType(expr);
   if (!contextualType) return undefined;
-  const typeId = resolveRegisteredEnumTypeId(contextualType, ctx.services, ctx.checker);
+  const typeId = resolveRegisteredEnumTypeId(contextualType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (!typeId) return undefined;
   const registry = ctx.services.runtime.types;
   const typeDef = registry.get(typeId);
@@ -11174,7 +11303,11 @@ function tryResolveEnumValue(expr: ts.StringLiteral, ctx: LowerContext): Value |
  * Returns undefined when the type is not such an instance type or the
  * declaration is not registered.
  */
-function resolveDeclaredStructInstanceTypeId(type: ts.Type, services: BrainServices): TypeId | undefined {
+function resolveDeclaredStructInstanceTypeId(
+  type: ts.Type,
+  services: BrainServices,
+  projectNamespace: string
+): TypeId | undefined {
   const alias = type.aliasSymbol;
   if (!alias) return undefined;
   if (alias.getName() !== "StructValueOf") return undefined;
@@ -11188,7 +11321,7 @@ function resolveDeclaredStructInstanceTypeId(type: ts.Type, services: BrainServi
   let node: ts.Node | undefined = argDecl;
   while (node && !ts.isSourceFile(node)) {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && structTypeConfigObject(node.initializer)) {
-      const identity = qualifiedClassName(node.getSourceFile().fileName, node.name.text);
+      const identity = qualifiedClassName(projectNamespace, node.getSourceFile().fileName, node.name.text);
       const typeId = services.runtime.types.resolveByName(identity);
       if (typeId !== undefined) {
         const def = services.runtime.types.get(typeId);
@@ -11204,8 +11337,16 @@ function resolveDeclaredStructInstanceTypeId(type: ts.Type, services: BrainServi
 function tsTypeToTypeId(
   type: ts.Type,
   checker: ts.TypeChecker | undefined,
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): string | undefined {
+  // Enum member literals carry the NumberLike/StringLike flags of their
+  // underlying values, so enum-literal resolution must precede the primitive
+  // checks or an enum-typed expression collapses to number/string.
+  const enumLiteralTypeId = resolveEnumLiteralTypeId(type, services, projectNamespace, checker);
+  if (enumLiteralTypeId) {
+    return enumLiteralTypeId;
+  }
   if (type.flags & ts.TypeFlags.NumberLike) {
     return CoreTypeIds.Number;
   }
@@ -11225,12 +11366,12 @@ function tsTypeToTypeId(
     if (checker) {
       const constraint = checker.getBaseConstraintOfType(type);
       if (constraint) {
-        return tsTypeToTypeId(constraint, checker, services);
+        return tsTypeToTypeId(constraint, checker, services, projectNamespace);
       }
     }
     return CoreTypeIds.Any;
   }
-  const enumTypeId = resolveRegisteredEnumTypeId(type, services, checker);
+  const enumTypeId = resolveRegisteredEnumTypeId(type, services, projectNamespace, checker);
   if (enumTypeId) {
     return enumTypeId;
   }
@@ -11244,7 +11385,7 @@ function tsTypeToTypeId(
     let allResolved = true;
     for (const param of sig.parameters) {
       const paramType = checker.getTypeOfSymbol(param);
-      const paramTid = tsTypeToTypeId(paramType, checker, services);
+      const paramTid = tsTypeToTypeId(paramType, checker, services, projectNamespace);
       if (!paramTid) {
         allResolved = false;
         break;
@@ -11253,7 +11394,7 @@ function tsTypeToTypeId(
     }
     if (allResolved) {
       const retType = sig.getReturnType();
-      const retTid = tsTypeToTypeId(retType, checker, services);
+      const retTid = tsTypeToTypeId(retType, checker, services, projectNamespace);
       if (retTid) {
         return services.runtime.types.getOrCreateFunctionType({
           paramTypeIds,
@@ -11270,7 +11411,7 @@ function tsTypeToTypeId(
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
     const hasNullish = nonNullish.length < type.types.length;
     if (nonNullish.length === 1) {
-      const baseTypeId = tsTypeToTypeId(nonNullish[0], checker, services);
+      const baseTypeId = tsTypeToTypeId(nonNullish[0], checker, services, projectNamespace);
       if (!baseTypeId) return undefined;
       if (hasNullish) {
         return services.runtime.types.addNullableType(baseTypeId);
@@ -11280,7 +11421,7 @@ function tsTypeToTypeId(
     if (nonNullish.length >= 2) {
       const memberIds = new List<string>();
       for (const t of nonNullish) {
-        const id = tsTypeToTypeId(t, checker, services);
+        const id = tsTypeToTypeId(t, checker, services, projectNamespace);
         if (!id) return CoreTypeIds.Any;
         memberIds.push(id);
       }
@@ -11313,10 +11454,10 @@ function tsTypeToTypeId(
         )
     );
     if (!hasPrimitive) {
-      return autoRegisterIntersectionType(type, checker, services);
+      return autoRegisterIntersectionType(type, checker, services, projectNamespace);
     }
   }
-  const declaredStructId = resolveDeclaredStructInstanceTypeId(type, services);
+  const declaredStructId = resolveDeclaredStructInstanceTypeId(type, services, projectNamespace);
   if (declaredStructId) {
     return declaredStructId;
   }
@@ -11328,7 +11469,7 @@ function tsTypeToTypeId(
     if (symName === "Array" && checker) {
       const typeArgs = (type as ts.TypeReference).typeArguments ?? checker.getTypeArguments(type as ts.TypeReference);
       if (typeArgs && typeArgs.length > 0) {
-        const elementTypeId = tsTypeToTypeId(typeArgs[0], checker, services);
+        const elementTypeId = tsTypeToTypeId(typeArgs[0], checker, services, projectNamespace);
         if (elementTypeId) {
           return registry.instantiate("List", List.from([elementTypeId]));
         }
@@ -11338,19 +11479,19 @@ function tsTypeToTypeId(
     if (symName === "Map" && checker) {
       const typeArgs = (type as ts.TypeReference).typeArguments ?? checker.getTypeArguments(type as ts.TypeReference);
       if (typeArgs && typeArgs.length >= 2) {
-        const keyTypeId = tsTypeToTypeId(typeArgs[0], checker, services) ?? CoreTypeIds.String;
-        const valueTypeId = tsTypeToTypeId(typeArgs[1], checker, services);
+        const keyTypeId = tsTypeToTypeId(typeArgs[0], checker, services, projectNamespace) ?? CoreTypeIds.String;
+        const valueTypeId = tsTypeToTypeId(typeArgs[1], checker, services, projectNamespace);
         if (valueTypeId) {
           return registry.instantiate("Map", List.from([keyTypeId, valueTypeId]));
         }
       }
     }
 
-    const typeId = registry.resolveByName(resolveRegistryName(sym, services));
+    const typeId = registry.resolveByName(resolveRegistryName(sym, services, projectNamespace));
     if (typeId) return typeId;
 
     if (checker) {
-      const autoId = autoRegisterObjectType(type, sym, checker, services);
+      const autoId = autoRegisterObjectType(type, sym, checker, services, projectNamespace);
       if (autoId) return autoId;
     }
   }
@@ -11358,7 +11499,7 @@ function tsTypeToTypeId(
   if (checker) {
     const indexType = type.getStringIndexType();
     if (indexType) {
-      const valueTypeId = tsTypeToTypeId(indexType, checker, services);
+      const valueTypeId = tsTypeToTypeId(indexType, checker, services, projectNamespace);
       if (valueTypeId) {
         return services.runtime.types.instantiate("Map", List.from([CoreTypeIds.String, valueTypeId]));
       }
@@ -11371,11 +11512,12 @@ function tsTypeToTypeId(
 function autoRegisterIntersectionType(
   type: ts.IntersectionType,
   checker: ts.TypeChecker,
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): string | undefined {
   const aliasSym = type.aliasSymbol;
   if (aliasSym) {
-    const aliasName = resolveRegistryName(aliasSym, services);
+    const aliasName = resolveRegistryName(aliasSym, services, projectNamespace);
     const existing = services.runtime.types.resolveByName(aliasName);
     if (existing) return existing;
   }
@@ -11391,7 +11533,7 @@ function autoRegisterIntersectionType(
   for (const prop of props) {
     const propType = checker.getTypeOfSymbol(prop);
     if (propType.getCallSignatures().length > 0) return undefined;
-    let fieldTypeId = tsTypeToTypeId(propType, checker, services);
+    let fieldTypeId = tsTypeToTypeId(propType, checker, services, projectNamespace);
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
@@ -11402,11 +11544,11 @@ function autoRegisterIntersectionType(
 
   let structName: string;
   if (aliasSym) {
-    structName = resolveRegistryName(aliasSym, services);
+    structName = resolveRegistryName(aliasSym, services, projectNamespace);
   } else {
     const constituentNames: string[] = [];
     for (const t of type.types) {
-      const id = tsTypeToTypeId(t, checker, services);
+      const id = tsTypeToTypeId(t, checker, services, projectNamespace);
       if (!id) return undefined;
       constituentNames.push(id);
     }
@@ -11424,7 +11566,8 @@ function autoRegisterIntersectionType(
 function autoRegisterAnonymousStruct(
   type: ts.Type,
   checker: ts.TypeChecker,
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): StructTypeDef | undefined {
   const callSigs = type.getCallSignatures();
   if (callSigs.length > 0) return undefined;
@@ -11440,7 +11583,7 @@ function autoRegisterAnonymousStruct(
     // becomes its enum), matching the object type TypeScript itself infers.
     const propType = checker.getBaseTypeOfLiteralType(checker.getTypeOfSymbol(prop));
     if (propType.getCallSignatures().length > 0) return undefined;
-    let fieldTypeId = tsTypeToTypeId(propType, checker, services);
+    let fieldTypeId = tsTypeToTypeId(propType, checker, services, projectNamespace);
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
@@ -11470,7 +11613,8 @@ function autoRegisterObjectType(
   type: ts.Type,
   sym: ts.Symbol,
   checker: ts.TypeChecker,
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): string | undefined {
   const resolvedSym = resolveAliasedSymbol(sym, checker) ?? sym;
   const decls = resolvedSym.getDeclarations();
@@ -11507,7 +11651,7 @@ function autoRegisterObjectType(
   for (const prop of props) {
     const propType = checker.getTypeOfSymbol(prop);
     if (propType.getCallSignatures().length > 0) return undefined;
-    let fieldTypeId = tsTypeToTypeId(propType, checker, services);
+    let fieldTypeId = tsTypeToTypeId(propType, checker, services, projectNamespace);
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
@@ -11516,7 +11660,7 @@ function autoRegisterObjectType(
     fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
   }
 
-  const baseName = resolveRegistryName(sym, services);
+  const baseName = resolveRegistryName(sym, services, projectNamespace);
   const typeArgs =
     type.aliasTypeArguments ??
     (type as ts.TypeReference).typeArguments ??
@@ -11525,7 +11669,7 @@ function autoRegisterObjectType(
   if (typeArgs && typeArgs.length > 0) {
     const argIds: string[] = [];
     for (const ta of typeArgs) {
-      const argId = tsTypeToTypeId(ta, checker, services);
+      const argId = tsTypeToTypeId(ta, checker, services, projectNamespace);
       argIds.push(argId ?? "?");
     }
     structName = `${baseName}<${argIds.join(",")}>`;
@@ -11550,7 +11694,8 @@ function extractClassFields(
   classNode: ts.ClassDeclaration,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): List<{ name: string; typeId: TypeId; fieldIndex: number }> | undefined {
   const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
   const seen = new Set<string>();
@@ -11573,7 +11718,7 @@ function extractClassFields(
     seen.add(fieldName);
 
     const memberType = checker.getTypeAtLocation(member);
-    const fieldTypeId = tsTypeToTypeId(memberType, checker, services);
+    const fieldTypeId = tsTypeToTypeId(memberType, checker, services, projectNamespace);
     if (!fieldTypeId) {
       diagnostics.push(
         makeDiag(
@@ -11602,7 +11747,7 @@ function extractClassFields(
       seen.add(fieldName);
 
       const assignType = checker.getTypeAtLocation(expr.left);
-      const fieldTypeId = tsTypeToTypeId(assignType, checker, services);
+      const fieldTypeId = tsTypeToTypeId(assignType, checker, services, projectNamespace);
       if (!fieldTypeId) {
         diagnostics.push(
           makeDiag(
@@ -11624,7 +11769,8 @@ function extractClassMethodDecls(
   classNode: ts.ClassDeclaration,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): List<{ name: string; params: List<{ name: string; typeId: TypeId }>; returnTypeId: TypeId }> {
   const methods = new List<{
     name: string;
@@ -11652,12 +11798,12 @@ function extractClassMethodDecls(
     const params = new List<{ name: string; typeId: TypeId }>();
     for (const param of sig.parameters) {
       const paramType = checker.getTypeOfSymbol(param);
-      const paramTypeId = tsTypeToTypeId(paramType, checker, services) ?? CoreTypeIds.Any;
+      const paramTypeId = tsTypeToTypeId(paramType, checker, services, projectNamespace) ?? CoreTypeIds.Any;
       params.push({ name: param.getName(), typeId: paramTypeId });
     }
 
     const retType = sig.getReturnType();
-    const returnTypeId = tsTypeToTypeId(retType, checker, services) ?? CoreTypeIds.Void;
+    const returnTypeId = tsTypeToTypeId(retType, checker, services, projectNamespace) ?? CoreTypeIds.Void;
 
     methods.push({ name: member.name.text, params, returnTypeId });
   }
@@ -11665,9 +11811,9 @@ function extractClassMethodDecls(
   return methods;
 }
 
-function reserveClassStructType(ci: ClassInfo, services: BrainServices): string | undefined {
+function reserveClassStructType(ci: ClassInfo, services: BrainServices, projectNamespace: string): string | undefined {
   const registry = services.runtime.types;
-  const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
+  const qualName = qualifiedClassName(projectNamespace, ci.sourceFile.fileName, ci.name);
   const existing = registry.resolveByName(qualName);
   if (existing) return undefined;
 
@@ -11679,12 +11825,13 @@ function finalizeClassStructType(
   typeId: string,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): void {
-  const fields = extractClassFields(ci.node, checker, diagnostics, services);
+  const fields = extractClassFields(ci.node, checker, diagnostics, services, projectNamespace);
   if (!fields) return;
 
-  const methods = extractClassMethodDecls(ci.node, checker, diagnostics, services);
+  const methods = extractClassMethodDecls(ci.node, checker, diagnostics, services, projectNamespace);
   services.runtime.types.finalizeStructType(typeId, { fields, methods });
 }
 
@@ -11692,10 +11839,11 @@ function reserveInterfaceStructType(
   ii: InterfaceInfo,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): string | undefined {
   const registry = services.runtime.types;
-  const qualName = qualifiedClassName(ii.sourceFile.fileName, ii.name);
+  const qualName = qualifiedClassName(projectNamespace, ii.sourceFile.fileName, ii.name);
 
   if (registry.resolveByName(ii.name)) {
     diagnostics.push(
@@ -11726,10 +11874,11 @@ function finalizeInterfaceStructType(
   typeId: string,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): void {
   const type = checker.getTypeAtLocation(ii.node);
-  const fields = extractInterfaceFields(type, ii.node, checker, diagnostics, services);
+  const fields = extractInterfaceFields(type, ii.node, checker, diagnostics, services, projectNamespace);
   if (!fields) return;
 
   services.runtime.types.finalizeStructType(typeId, { fields });
@@ -11739,10 +11888,11 @@ function reserveTypeAliasStructType(
   tai: TypeAliasInfo,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): string | undefined {
   const registry = services.runtime.types;
-  const qualName = qualifiedClassName(tai.sourceFile.fileName, tai.name);
+  const qualName = qualifiedClassName(projectNamespace, tai.sourceFile.fileName, tai.name);
 
   if (registry.resolveByName(tai.name)) {
     diagnostics.push(
@@ -11772,10 +11922,11 @@ function finalizeTypeAliasStructType(
   typeId: string,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): void {
   const type = checker.getTypeAtLocation(tai.node);
-  const fields = extractInterfaceFields(type, tai.node, checker, diagnostics, services);
+  const fields = extractInterfaceFields(type, tai.node, checker, diagnostics, services, projectNamespace);
   if (!fields) return;
 
   services.runtime.types.finalizeStructType(typeId, { fields });
@@ -11786,7 +11937,8 @@ function extractInterfaceFields(
   node: ts.Node,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): List<{ name: string; typeId: TypeId; fieldIndex: number }> | undefined {
   const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
 
@@ -11823,7 +11975,7 @@ function extractInterfaceFields(
     const propType = checker.getTypeOfSymbol(prop);
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
 
-    let fieldTypeId = tsTypeToTypeId(propType, checker, services);
+    let fieldTypeId = tsTypeToTypeId(propType, checker, services, projectNamespace);
     if (!fieldTypeId) {
       diagnostics.push(
         makeDiag(
@@ -11854,12 +12006,13 @@ function lowerClassDeclaration(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
+  projectNamespace: string,
   classInfos: ClassInfo[]
 ): FunctionEntry[] {
   const entries: FunctionEntry[] = [];
 
   const registry = services.runtime.types;
-  const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
+  const qualName = qualifiedClassName(projectNamespace, ci.sourceFile.fileName, ci.name);
   const typeId = registry.resolveByName(qualName);
 
   const ctor = ci.node.members.find(ts.isConstructorDeclaration);
@@ -11888,6 +12041,7 @@ function lowerClassDeclaration(
 
   const ctorCtx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals: ctorParamLocals,
@@ -11903,7 +12057,7 @@ function lowerClassDeclaration(
     closureFunctions,
     thisLocalIndex: thisLocal,
     currentFunctionName: `${ci.name}$new`,
-    currentReturnTypeId: ctor ? resolveSignatureReturnTypeId(ctor, checker, services) : undefined,
+    currentReturnTypeId: ctor ? resolveSignatureReturnTypeId(ctor, checker, services, projectNamespace) : undefined,
     classInfos,
   };
 
@@ -11987,6 +12141,7 @@ function lowerClassDeclaration(
 
     const methodCtx: LowerContext = {
       services,
+      projectNamespace,
       checker,
       paramsSymbol: undefined,
       paramLocals: methodParamLocals,
@@ -12002,7 +12157,7 @@ function lowerClassDeclaration(
       closureFunctions,
       thisLocalIndex: 0,
       currentFunctionName: `${ci.name}.${methodName}`,
-      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services, projectNamespace),
       classInfos,
     };
 
@@ -12075,6 +12230,7 @@ function lowerClassDeclaration(
 
     const methodCtx: LowerContext = {
       services,
+      projectNamespace,
       checker,
       paramsSymbol: undefined,
       paramLocals: methodParamLocals,
@@ -12091,7 +12247,7 @@ function lowerClassDeclaration(
       thisLocalIndex: undefined,
       staticClassInfo: ci,
       currentFunctionName: `${ci.name}$${methodName}`,
-      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services, projectNamespace),
       classInfos,
     };
 
@@ -12125,20 +12281,8 @@ function lowerClassDeclaration(
     });
   }
 
-  for (const member of ci.node.members) {
-    if (!ts.isGetAccessorDeclaration(member)) continue;
-    if (!ts.isIdentifier(member.name)) {
-      diagnostics.push(
-        makeDiag(
-          LoweringDiagCode.ComputedClassMemberNameNotSupported,
-          "Computed property names are not supported in class declarations",
-          member.name
-        )
-      );
-      continue;
-    }
+  const lowerGetterEntry = (member: ts.GetAccessorDeclaration, propName: string): void => {
     const isStatic = hasStaticModifier(member);
-    const propName = member.name.text;
 
     if (isStatic) {
       const funcName = `${ci.name}$get_${propName}`;
@@ -12148,6 +12292,7 @@ function lowerClassDeclaration(
 
       const getterCtx: LowerContext = {
         services,
+        projectNamespace,
         checker,
         paramsSymbol: undefined,
         paramLocals: new Map(),
@@ -12164,7 +12309,7 @@ function lowerClassDeclaration(
         thisLocalIndex: undefined,
         staticClassInfo: ci,
         currentFunctionName: funcName,
-        currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+        currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services, projectNamespace),
         classInfos,
       };
 
@@ -12196,6 +12341,7 @@ function lowerClassDeclaration(
 
       const getterCtx: LowerContext = {
         services,
+        projectNamespace,
         checker,
         paramsSymbol: undefined,
         paramLocals: new Map(),
@@ -12211,7 +12357,7 @@ function lowerClassDeclaration(
         closureFunctions,
         thisLocalIndex: 0,
         currentFunctionName: funcName,
-        currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+        currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services, projectNamespace),
         classInfos,
       };
 
@@ -12235,22 +12381,10 @@ function lowerClassDeclaration(
         functionSpan: spanFromNode(member),
       });
     }
-  }
+  };
 
-  for (const member of ci.node.members) {
-    if (!ts.isSetAccessorDeclaration(member)) continue;
-    if (!ts.isIdentifier(member.name)) {
-      diagnostics.push(
-        makeDiag(
-          LoweringDiagCode.ComputedClassMemberNameNotSupported,
-          "Computed property names are not supported in class declarations",
-          member.name
-        )
-      );
-      continue;
-    }
+  const lowerSetterEntry = (member: ts.SetAccessorDeclaration, propName: string): void => {
     const isStatic = hasStaticModifier(member);
-    const propName = member.name.text;
 
     if (isStatic) {
       const funcName = `${ci.name}$set_${propName}`;
@@ -12277,6 +12411,7 @@ function lowerClassDeclaration(
 
       const setterCtx: LowerContext = {
         services,
+        projectNamespace,
         checker,
         paramsSymbol: undefined,
         paramLocals: setterParamLocals,
@@ -12343,6 +12478,7 @@ function lowerClassDeclaration(
 
       const setterCtx: LowerContext = {
         services,
+        projectNamespace,
         checker,
         paramsSymbol: undefined,
         paramLocals: setterParamLocals,
@@ -12381,6 +12517,27 @@ function lowerClassDeclaration(
         sourceFileName: ci.sourceFile.fileName,
         functionSpan: spanFromNode(member),
       });
+    }
+  };
+
+  // Accessors lower in member order, matching their func-id reservation order.
+  for (const member of ci.node.members) {
+    if (!ts.isGetAccessorDeclaration(member) && !ts.isSetAccessorDeclaration(member)) continue;
+    if (!ts.isIdentifier(member.name)) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ComputedClassMemberNameNotSupported,
+          "Computed property names are not supported in class declarations",
+          member.name
+        )
+      );
+      continue;
+    }
+    const propName = member.name.text;
+    if (ts.isGetAccessorDeclaration(member)) {
+      lowerGetterEntry(member, propName);
+    } else {
+      lowerSetterEntry(member, propName);
     }
   }
 

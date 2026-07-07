@@ -18,6 +18,8 @@ export interface CompileDiagnostic {
 export interface UserAuthoredProgram extends UserActionArtifact {
   /** Opaque stable identifier from the source declaration. */
   id: string;
+  /** Namespace of the project that compiled this program; prefixes every symbol key minted from the project's content. */
+  projectNamespace: string;
   name: string;
   args: ExtractedArgSpec[];
   debugMetadata?: DebugMetadata;
@@ -44,7 +46,7 @@ export interface UserAuthoredProgram extends UserActionArtifact {
  * register-if-absent by tile id.
  */
 export interface ArtifactStructTypeInfo {
-  /** Cross-module identity: `<declaring-file>::<binding-name>`. */
+  /** Cross-module identity: `<namespace>:<declaring-file>::<binding-name>`. */
   identity: string;
   /** Display name from the config. */
   name: string;
@@ -94,6 +96,8 @@ export interface StdlibSourceFile {
 
 /** Options passed to the user-tile compiler. */
 export interface CompileOptions {
+  /** Namespace of the project being compiled (its store id, or an extension origin); prefixes every symbol key minted from the project's content. */
+  projectNamespace: string;
   /** Ordered ambient declaration files available to the TypeScript compiler. */
   ambientFiles: readonly AmbientFile[];
   /** Compilable `.ts` stdlib source modules a target contributes, resolvable by user import. */
@@ -122,6 +126,8 @@ export interface ExtractedDescriptor {
   returnType: string | undefined;
   /** Unresolved `returnType` config reference; resolves to `returnType` during compilation. */
   returnTypeNode?: ts.Expression;
+  /** The `onExecute` return type annotation node (Promise-unwrapped); set when `returnType` came from the annotation. */
+  returnTypeAnnotation?: ts.TypeNode;
   /** Declared `consumesWhenResult` type name (sensor or actuator), or undefined when not declared. */
   consumesWhenResult?: string;
   /** Unresolved `consumesWhenResult` config reference; resolves to `consumesWhenResult` during compilation. */

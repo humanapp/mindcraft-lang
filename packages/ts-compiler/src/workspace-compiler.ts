@@ -89,6 +89,8 @@ export interface WorkspaceCompileResult {
 /** Options for {@link createWorkspaceCompiler}. */
 export interface CreateWorkspaceCompilerOptions {
   environment: MindcraftEnvironment;
+  /** Namespace of the project being compiled (its store id, or an extension origin); prefixes every symbol key minted from the project's content. */
+  projectNamespace: string;
   /** Ordered ambient declaration files available to the TypeScript compiler and remote VFS peers. */
   ambientFiles: readonly AmbientFile[];
   /** Compilable `.ts` stdlib source modules the target contributes, resolvable by user import. */
@@ -159,6 +161,7 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
 
   constructor(private readonly options: CreateWorkspaceCompilerOptions) {
     this.project = new UserTileProject({
+      projectNamespace: options.projectNamespace,
       ambientFiles: options.ambientFiles,
       stdlibFiles: options.stdlibFiles,
       services: options.environment.brainServices,

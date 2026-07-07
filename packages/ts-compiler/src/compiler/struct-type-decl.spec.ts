@@ -52,16 +52,18 @@ import ts from "typescript";
 import { buildCompiledActionBundle } from "../runtime/action-bundle.js";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 import { extractStructTypeConfig } from "./lowering.js";
 import { type CompileResult, type ProjectCompileResult, UserTileProject } from "./project.js";
+import { qualifiedClassName } from "./symbol-keys.js";
 import { structTypeConfigObject } from "./type-ref.js";
 import type { UserAuthoredProgram } from "./types.js";
 import { createVirtualCompilerHost } from "./virtual-host.js";
 
-const POSITION_IDENTITY = "/position.ts::Position";
+const POSITION_IDENTITY = qualifiedClassName(TEST_PROJECT_NAMESPACE, "/position.ts", "Position");
 
 /** The declared type under test: ref-form and string-form field types together. */
 const POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "mindcraft";
@@ -103,7 +105,11 @@ export default Sensor({
 
 function compileProject(services: BrainServices, files: Record<string, string>): ProjectCompileResult {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -792,7 +798,7 @@ describe("StructType declarations: diagnostics", () => {
     assert.ok(config, "expected the StructType config object");
 
     const diagnostics: CompileResult["diagnostics"] = [];
-    const parts = extractStructTypeConfig(config, program.getTypeChecker(), diagnostics);
+    const parts = extractStructTypeConfig(config, program.getTypeChecker(), TEST_PROJECT_NAMESPACE, diagnostics);
     assert.equal(parts, undefined);
     expectDiagnostic(diagnostics, LoweringDiagCode.StructTypeDuplicateField);
   });

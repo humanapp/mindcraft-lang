@@ -330,7 +330,7 @@ class IdbProjectStore implements ProjectStore {
 
   async updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
+    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl" | "extensions">>
   ): Promise<void> {
     const manifest = await this.requireLiveProject(id);
     await this.db.put("projects", {
@@ -392,6 +392,7 @@ class IdbProjectStore implements ProjectStore {
       name: newName,
       description: source.description,
       ...(source.thumbnailUrl === undefined ? {} : { thumbnailUrl: source.thumbnailUrl }),
+      ...(source.extensions === undefined ? {} : { extensions: source.extensions }),
       createdAt: now,
       updatedAt: now,
     };

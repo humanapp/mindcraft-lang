@@ -15,6 +15,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { compileUserTile } from "./compile.js";
 import { LoweringDiagCode } from "./diag-codes.js";
@@ -81,7 +82,7 @@ export default Sensor({
 
 /** Compiles `source` (asserting zero diagnostics) and runs onExecute with one arg. */
 function compileAndRunWithArg(source: string, arg: Value): Value {
-  const result = compileUserTile(source, { services });
+  const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
   assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   assert.ok(result.program, "expected program");
 
@@ -238,21 +239,21 @@ describe("optional-arg truthiness on primitive args", () => {
 
   test("`!n` on an optional number is diagnosed", () => {
     const source = optionalPrimitiveSensor("number", "number", "if (!n) { return undefined; } return n + 1;");
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.equal(result.diagnostics.length, 1);
     expectDiagnostic(result.diagnostics, LoweringDiagCode.NotOnNullablePrimitive);
   });
 
   test("`!s` on an optional string is diagnosed", () => {
     const source = optionalPrimitiveSensor("string", "string", "if (!n) { return undefined; } return 1;");
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.equal(result.diagnostics.length, 1);
     expectDiagnostic(result.diagnostics, LoweringDiagCode.NotOnNullablePrimitive);
   });
 
   test("`!flag` on an optional boolean is diagnosed", () => {
     const source = optionalPrimitiveSensor("boolean", "boolean", "if (!n) { return undefined; } return 1;");
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.equal(result.diagnostics.length, 1);
     expectDiagnostic(result.diagnostics, LoweringDiagCode.NotOnNullablePrimitive);
   });

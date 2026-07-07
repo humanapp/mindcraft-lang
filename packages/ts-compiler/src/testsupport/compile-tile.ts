@@ -3,6 +3,7 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import { buildAmbientDeclarations } from "../compiler/ambient.js";
 import { compileUserTile } from "../compiler/compile.js";
 import type { CompileDiagnostic } from "../compiler/types.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 
 let sharedServices: BrainServices | undefined;
 
@@ -24,6 +25,7 @@ export function compileTileDiagnostics(source: string): readonly CompileDiagnost
   const svc = services();
   const ambientSource = buildAmbientDeclarations(svc.runtime.types);
   return compileUserTile(source, {
+    projectNamespace: TEST_PROJECT_NAMESPACE,
     ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
     services: svc,
   }).diagnostics;

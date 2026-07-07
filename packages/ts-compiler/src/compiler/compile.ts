@@ -37,7 +37,10 @@ export type {
 } from "./types.js";
 
 /** Compile a single source string as a user tile. Convenience wrapper around {@link UserTileProject} for one-off compilation. */
-export function compileUserTile(source: string, options: CompileOptions | { services: BrainServices }) {
+export function compileUserTile(
+  source: string,
+  options: CompileOptions | { projectNamespace: string; services: BrainServices }
+) {
   const project = new UserTileProject(options);
   project.updateFile("user-code.ts", source);
   const result = project.compileAll();

@@ -253,11 +253,12 @@ export class ProjectManager {
     description: string,
     snapshot: ProjectFileSnapshot,
     appData?: Record<string, string>,
-    thumbnailUrl?: string
+    thumbnailUrl?: string,
+    extensions?: Readonly<Record<string, string>>
   ): Promise<ProjectManifest> {
     const collection = await this.requireActiveProjectCollectionReady();
     const manifest = await this.store.createProject(collection.projectCollectionId, name);
-    await this.store.updateProject(manifest.id, { description, thumbnailUrl });
+    await this.store.updateProject(manifest.id, { description, thumbnailUrl, extensions });
     await this.store.saveProjectFiles(manifest.id, snapshot);
     if (appData) {
       for (const [key, value] of Object.entries(appData)) {
@@ -379,7 +380,9 @@ export class ProjectManager {
     return manifest;
   }
 
-  async updateActive(updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>): Promise<void> {
+  async updateActive(
+    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl" | "extensions">>
+  ): Promise<void> {
     if (!this.currentActive) {
       throw appHostError(AppHostErrorCode.NO_ACTIVE_PROJECT, "No active project");
     }

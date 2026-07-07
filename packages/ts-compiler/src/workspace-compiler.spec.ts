@@ -4,6 +4,7 @@ import { coreModule, createMindcraftEnvironment, List, type MindcraftModule } fr
 import { type EnumTypeDef, mkTypeId, NativeType } from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./compiler/ambient.js";
 import type { AmbientFile } from "./compiler/types.js";
+import { TEST_PROJECT_NAMESPACE } from "./testing/index.js";
 import { createWorkspaceCompiler, type WorkspaceCompileResult } from "./workspace-compiler.js";
 
 const noopCodec = {
@@ -31,7 +32,7 @@ function createFacingModule(): MindcraftModule {
           { key: "south", label: "South", value: "south" },
         ]),
         defaultKey: "north",
-        functionIds: { toString: 30300, equalTo: 30302, notEqualTo: 30303 },
+        functionIds: { toString: 30300 },
       };
       api.defineType(definition);
     },
@@ -56,7 +57,11 @@ describe("createWorkspaceCompiler", () => {
     const environment = createMindcraftEnvironment({
       modules: [coreModule(), createFacingModule()],
     });
-    const compiler = createWorkspaceCompiler({ ambientFiles: ambientFilesFor(environment), environment });
+    const compiler = createWorkspaceCompiler({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      ambientFiles: ambientFilesFor(environment),
+      environment,
+    });
     let heardResult: WorkspaceCompileResult | undefined;
 
     compiler.onDidCompile((result: WorkspaceCompileResult) => {
@@ -97,7 +102,11 @@ export default Sensor({
     const environment = createMindcraftEnvironment({
       modules: [coreModule(), createFacingModule()],
     });
-    const compiler = createWorkspaceCompiler({ ambientFiles: ambientFilesFor(environment), environment });
+    const compiler = createWorkspaceCompiler({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      ambientFiles: ambientFilesFor(environment),
+      environment,
+    });
 
     compiler.replaceWorkspace(
       new Map([
@@ -167,7 +176,7 @@ export default Sensor({
       modules: [coreModule(), createFacingModule()],
     });
     const ambientFiles = ambientFilesFor(environment);
-    const compiler = createWorkspaceCompiler({ ambientFiles, environment });
+    const compiler = createWorkspaceCompiler({ projectNamespace: TEST_PROJECT_NAMESPACE, ambientFiles, environment });
     const controlledFiles = compiler.getCompilerControlledFiles();
 
     assert.equal(controlledFiles.get("mindcraft.core.d.ts"), ambientFiles[0]!.content);

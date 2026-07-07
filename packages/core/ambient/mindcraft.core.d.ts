@@ -362,6 +362,8 @@ declare module "mindcraft" {
 
   type MindcraftValue = MindcraftTypeMap[keyof MindcraftTypeMap];
   type MindcraftType = keyof MindcraftTypeMap | (string & {});
+  /** An `enum` binding used where a type is named; it names the enum's registered type. */
+  type EnumTypeRef = Record<string, string | number>;
 
   export interface MindcraftPlatformContext {}
 
@@ -391,7 +393,7 @@ declare module "mindcraft" {
   export function modifier(id: string, opts?: { label: string; icon?: string }): ModifierSpec;
   export function param(
     name: string,
-    opts: { type: MindcraftType | TypeRef<unknown>; default?: unknown; anonymous?: boolean }
+    opts: { type: MindcraftType | TypeRef<unknown> | EnumTypeRef; default?: unknown; anonymous?: boolean }
   ): ParamSpec;
   export function choice(name: string, ...items: ArgSpec[]): ChoiceSpec;
   export function choice(...items: ArgSpec[]): ChoiceSpec;
@@ -410,7 +412,7 @@ declare module "mindcraft" {
     /** Output name; the second half of the output identity. */
     name: string;
     /** Output value type, named by TypeRef token (preferred) or type name; the first half of the output identity. */
-    type: MindcraftType | TypeRef<unknown>;
+    type: MindcraftType | TypeRef<unknown> | EnumTypeRef;
     label?: string;
     icon?: string;
     docs?: string;
@@ -439,14 +441,14 @@ declare module "mindcraft" {
      */
     presenceGated?: boolean;
     /** Return value type, named by TypeRef token (preferred) or type name; defaults to the `onExecute` return annotation. */
-    returnType?: MindcraftType | TypeRef<unknown>;
+    returnType?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
     /**
      * Declares that this sensor consumes the rule's WHEN result, named by TypeRef
      * token (preferred) or type name. The editor uses it to offer and validate the
      * tile against the WHEN-result type. Declare it when `onExecute` reads
      * `ctx.getWhenResult()`.
      */
-    consumesWhenResult?: MindcraftType | TypeRef<unknown>;
+    consumesWhenResult?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
     args?: ArgSpec[];
     /** Named, typed outputs this sensor exposes; each surfaces downstream as an inline value-tile written via `setOutput`. */
     outputs?: OutputSpec[];
@@ -469,7 +471,7 @@ declare module "mindcraft" {
      * tile against the WHEN-result type. Declare it when `onExecute` reads
      * `ctx.getWhenResult()`.
      */
-    consumesWhenResult?: MindcraftType | TypeRef<unknown>;
+    consumesWhenResult?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
     args?: ArgSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): void | Promise<void>;
     onPageEntered?(ctx: Context): void;

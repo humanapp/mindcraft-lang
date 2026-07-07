@@ -325,9 +325,15 @@ registration: each id must be a non-negative integer, unique within its
 space, and inside its owner's reserved range. The shared funcId space is
 partitioned by owner: core owns `[0, TARGET_FUNC_ID_BASE)`, the active
 target owns `[TARGET_FUNC_ID_BASE, DYNAMIC_FUNC_ID_BASE)`, and dynamically
-registered program-dependent functions (user-declared enum conversions and
-operators) own `[DYNAMIC_FUNC_ID_BASE, ...)`; ids in the dynamic region are
-stable only for a given compiled program and are not part of the device ABI.
+registered program-dependent functions (user-declared enum conversions) own
+`[DYNAMIC_FUNC_ID_BASE, ...)`; ids in the dynamic region are stable only for
+a given compiled program and are not part of the device ABI. Enum `==` / `!=`
+overloads are not program-dependent: every enum type's overload entries
+dispatch to the shared core host functions `OpEqualToEnum` /
+`OpNotEqualToEnum`, which compare symbol identity (same enum type, same
+symbol; on the TS reference VM the symbol key, on an integer-identity port
+the symbol ordinal) and evaluate false for operands that are not two values
+of one enum type.
 The host-action space partitions at `TARGET_ACTION_ID_BASE` (core below,
 target at and above) and has no dynamic region. `TARGET_FUNC_ID_BASE = 1024`,
 `DYNAMIC_FUNC_ID_BASE = 65536`, and `TARGET_ACTION_ID_BASE = 1024` are

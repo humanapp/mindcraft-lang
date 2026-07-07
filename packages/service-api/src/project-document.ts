@@ -15,6 +15,8 @@ export const MindcraftProjectDocumentValidationCode = {
   INVALID_FILE_CONTENT: "MINDCRAFT_PROJECT_INVALID_FILE_CONTENT",
   INVALID_BRAINS: "MINDCRAFT_PROJECT_INVALID_BRAINS",
   INVALID_TARGETS: "MINDCRAFT_PROJECT_INVALID_TARGETS",
+  INVALID_EXTENSIONS: "MINDCRAFT_PROJECT_INVALID_EXTENSIONS",
+  INVALID_EXTENSION_REFERENCE: "MINDCRAFT_PROJECT_INVALID_EXTENSION_REFERENCE",
 } as const;
 
 /** Union of all {@link MindcraftProjectDocumentValidationCode} values. */
@@ -32,6 +34,9 @@ export interface MindcraftProjectFile {
 
 /** Target metadata keyed by package name. */
 export type MindcraftProjectTargets = Readonly<Record<string, unknown>>;
+
+/** Extension dependencies keyed by slug; each value is an extension reference string. */
+export type MindcraftProjectExtensions = Readonly<Record<string, string>>;
 
 /** Shared Mindcraft project document fields. */
 export interface MindcraftProjectDocument {
@@ -55,6 +60,9 @@ export interface MindcraftProjectDocument {
 
   /** Target metadata keyed by package name. */
   readonly targets: MindcraftProjectTargets;
+
+  /** Extension dependencies keyed by slug. Absent means the project has no extensions. */
+  readonly extensions?: MindcraftProjectExtensions;
 }
 
 /** Validation diagnostic for a rejected shared project document. */
@@ -158,6 +166,7 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
     MindcraftProjectDocumentValidationCode.INVALID_TARGETS,
     errors
   );
+  const extensions = readOptionalExtensions(value.extensions, errors);
 
   if (format !== undefined && format !== MINDCRAFT_PROJECT_FORMAT) {
     errors.push({
@@ -181,9 +190,40 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
       files: files as readonly MindcraftProjectFile[],
       brains: brains as Readonly<Record<string, unknown>>,
       targets: targets as MindcraftProjectTargets,
+      ...(extensions !== undefined ? { extensions } : {}),
     },
     errors: [],
   };
+}
+
+function readOptionalExtensions(
+  value: unknown,
+  errors: MindcraftProjectDocumentValidationError[]
+): MindcraftProjectExtensions | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    errors.push({
+      code: MindcraftProjectDocumentValidationCode.INVALID_EXTENSIONS,
+      path: "$.extensions",
+      message: "$.extensions must be an object when present.",
+    });
+    return undefined;
+  }
+
+  for (const [slug, reference] of Object.entries(value)) {
+    if (typeof reference !== "string") {
+      errors.push({
+        code: MindcraftProjectDocumentValidationCode.INVALID_EXTENSION_REFERENCE,
+        path: `$.extensions[${JSON.stringify(slug)}]`,
+        message: "Extension reference must be a string.",
+      });
+      return undefined;
+    }
+  }
+
+  return value as MindcraftProjectExtensions;
 }
 
 /** Tests whether a value is a valid shared-project file path. */

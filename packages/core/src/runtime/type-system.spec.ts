@@ -7,6 +7,7 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import {
   type BooleanValue,
   type BrainSyncFunctionEntry,
+  CoreFuncId,
   CoreOpId,
   CoreTypeAtomId,
   CoreTypeIds,
@@ -36,8 +37,8 @@ let nextEnumFnId = 20000;
 
 function mkEnumFunctionIds(): EnumFunctionIds {
   const base = nextEnumFnId;
-  nextEnumFnId += 4;
-  return { toString: base, toNumber: base + 1, equalTo: base + 2, notEqualTo: base + 3 };
+  nextEnumFnId += 2;
+  return { toString: base, toNumber: base + 1 };
 }
 
 let nextTypeAtomId = 20000;
@@ -254,7 +255,7 @@ describe("enum type registration", () => {
     }, /mixes string and number values/);
   });
 
-  test("duplicate numeric values are allowed and compare equal", () => {
+  test("enum equality is symbol identity: same key equal, distinct keys unequal", () => {
     const typeId = ensureEnumType(
       "TypeSystemSpecAliasNumericEnum",
       List.from([
@@ -264,8 +265,23 @@ describe("enum type registration", () => {
       "A"
     );
 
-    assert.equal(callEnumEqualityOperator(CoreOpId.EqualTo, typeId, "A", "B"), true);
-    assert.equal(callEnumEqualityOperator(CoreOpId.NotEqualTo, typeId, "A", "B"), false);
+    assert.equal(callEnumEqualityOperator(CoreOpId.EqualTo, typeId, "A", "A"), true);
+    assert.equal(callEnumEqualityOperator(CoreOpId.NotEqualTo, typeId, "A", "A"), false);
+    assert.equal(callEnumEqualityOperator(CoreOpId.EqualTo, typeId, "A", "B"), false);
+    assert.equal(callEnumEqualityOperator(CoreOpId.NotEqualTo, typeId, "A", "B"), true);
+  });
+
+  test("enum equality overloads reference the shared core enum funcIds", () => {
+    const typeId = ensureEnumType(
+      "TypeSystemSpecSharedFuncIdEnum",
+      List.from([{ key: "Only", label: "Only", value: 0 }]),
+      "Only"
+    );
+
+    const eq = services.edit.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId, typeId]);
+    const ne = services.edit.operatorOverloads.resolve(CoreOpId.NotEqualTo, [typeId, typeId]);
+    assert.equal(eq?.overload.fnEntry?.id, CoreFuncId.OpEqualToEnum);
+    assert.equal(ne?.overload.fnEntry?.id, CoreFuncId.OpNotEqualToEnum);
   });
 });
 

@@ -16,15 +16,21 @@ import { BrainTileOperatorDef, BrainTileVariableDef } from "@mindcraft-lang/core
 import { CoreTypeIds, extractNumberValue, type IBrain, NativeType, type Value } from "@mindcraft-lang/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { LoweringDiagCode } from "./diag-codes.js";
 import { type ProjectCompileResult, UserTileProject } from "./project.js";
+import { qualifiedClassName } from "./symbol-keys.js";
 import type { UserAuthoredProgram } from "./types.js";
 
 function compileProject(services: BrainServices, files: Record<string, string>): ProjectCompileResult {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -209,7 +215,7 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const classId = expectQualifiedOnly(services, "/tile.ts::Pt", "Pt");
+      const classId = expectQualifiedOnly(services, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/tile.ts", "Pt"), "Pt");
       expectStateField(services, "pt", classId);
       assert.equal(runSensorThinks(services, tile, "class-above", 2), 4, "the state field reads back across thinks");
     });
@@ -231,7 +237,7 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const classId = expectQualifiedOnly(services, "/defs.ts::Pt", "Pt");
+      const classId = expectQualifiedOnly(services, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Pt"), "Pt");
       expectStateField(services, "pt", classId);
       assert.equal(runSensorThinks(services, tile, "class-import", 2), 4, "the state field reads back across thinks");
     });
@@ -249,7 +255,7 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const classId = expectQualifiedOnly(services, "/lib.ts::Pt", "Pt");
+      const classId = expectQualifiedOnly(services, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/lib.ts", "Pt"), "Pt");
       expectStateField(services, "pt", classId);
       assert.equal(runSensorThinks(services, tile, "class-carried", 2), 4, "the state field reads back across thinks");
     });
@@ -265,7 +271,11 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const ifaceId = expectQualifiedOnly(services, "/tile.ts::Cfg", "Cfg");
+      const ifaceId = expectQualifiedOnly(
+        services,
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/tile.ts", "Cfg"),
+        "Cfg"
+      );
       expectStateField(services, "cfg", ifaceId);
       assert.equal(runSensorThinks(services, tile, "iface-above", 2), 4, "the state field reads back across thinks");
     });
@@ -279,7 +289,11 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const ifaceId = expectQualifiedOnly(services, "/tile.ts::Cfg", "Cfg");
+      const ifaceId = expectQualifiedOnly(
+        services,
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/tile.ts", "Cfg"),
+        "Cfg"
+      );
       expectStateField(services, "cfg", ifaceId);
       assert.equal(runSensorThinks(services, tile, "iface-below", 2), 4, "the state field reads back across thinks");
     });
@@ -294,7 +308,11 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const ifaceId = expectQualifiedOnly(services, "/defs.ts::Cfg", "Cfg");
+      const ifaceId = expectQualifiedOnly(
+        services,
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Cfg"),
+        "Cfg"
+      );
       expectStateField(services, "cfg", ifaceId);
       assert.equal(runSensorThinks(services, tile, "iface-import", 2), 4, "the state field reads back across thinks");
     });
@@ -312,7 +330,11 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const ifaceId = expectQualifiedOnly(services, "/lib.ts::Cfg", "Cfg");
+      const ifaceId = expectQualifiedOnly(
+        services,
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/lib.ts", "Cfg"),
+        "Cfg"
+      );
       expectStateField(services, "cfg", ifaceId);
       assert.equal(runSensorThinks(services, tile, "iface-carried", 2), 4, "the state field reads back across thinks");
     });
@@ -328,7 +350,11 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const aliasId = expectQualifiedOnly(services, "/tile.ts::Lim", "Lim");
+      const aliasId = expectQualifiedOnly(
+        services,
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/tile.ts", "Lim"),
+        "Lim"
+      );
       expectStateField(services, "lim", aliasId);
       assert.equal(runSensorThinks(services, tile, "alias-above", 2), 6, "the state field reads back across thinks");
     });
@@ -342,7 +368,11 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const aliasId = expectQualifiedOnly(services, "/tile.ts::Lim", "Lim");
+      const aliasId = expectQualifiedOnly(
+        services,
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/tile.ts", "Lim"),
+        "Lim"
+      );
       expectStateField(services, "lim", aliasId);
       assert.equal(runSensorThinks(services, tile, "alias-below", 2), 6, "the state field reads back across thinks");
     });
@@ -357,7 +387,11 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const aliasId = expectQualifiedOnly(services, "/defs.ts::Lim", "Lim");
+      const aliasId = expectQualifiedOnly(
+        services,
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Lim"),
+        "Lim"
+      );
       expectStateField(services, "lim", aliasId);
       assert.equal(runSensorThinks(services, tile, "alias-import", 2), 6, "the state field reads back across thinks");
     });
@@ -375,7 +409,11 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const aliasId = expectQualifiedOnly(services, "/lib.ts::Lim", "Lim");
+      const aliasId = expectQualifiedOnly(
+        services,
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/lib.ts", "Lim"),
+        "Lim"
+      );
       expectStateField(services, "lim", aliasId);
       assert.equal(runSensorThinks(services, tile, "alias-carried", 2), 6, "the state field reads back across thinks");
     });
@@ -391,7 +429,9 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const enumId = services.runtime.types.resolveByName("/tile.ts::Mode");
+      const enumId = services.runtime.types.resolveByName(
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/tile.ts", "Mode")
+      );
       assert.ok(enumId, "expected the enum to register under its qualified name");
       expectStateField(services, "mode", enumId);
       assert.equal(runSensorThinks(services, tile, "enum-above", 2), 7, "the state field reads back across thinks");
@@ -414,7 +454,9 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const enumId = services.runtime.types.resolveByName("/defs.ts::Mode");
+      const enumId = services.runtime.types.resolveByName(
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Mode")
+      );
       assert.ok(enumId, "expected the enum to register under its qualified name");
       expectStateField(services, "mode", enumId);
       assert.equal(runSensorThinks(services, tile, "enum-import", 2), 7, "the state field reads back across thinks");
@@ -433,7 +475,9 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const enumId = services.runtime.types.resolveByName("/lib.ts::Mode");
+      const enumId = services.runtime.types.resolveByName(
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/lib.ts", "Mode")
+      );
       assert.ok(enumId, "expected the enum to register under its qualified name");
       expectStateField(services, "mode", enumId);
       assert.equal(runSensorThinks(services, tile, "enum-carried", 2), 7, "the state field reads back across thinks");
@@ -450,7 +494,9 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const structId = services.runtime.types.resolveByName("/tile.ts::Vec2");
+      const structId = services.runtime.types.resolveByName(
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/tile.ts", "Vec2")
+      );
       assert.ok(structId, "expected the StructType to register under its declaration identity");
       expectStateField(services, "pos", structId);
       assert.equal(runSensorThinks(services, tile, "struct-above", 2), 4, "the state field reads back across thinks");
@@ -473,7 +519,9 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const structId = services.runtime.types.resolveByName("/defs.ts::Vec2");
+      const structId = services.runtime.types.resolveByName(
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/defs.ts", "Vec2")
+      );
       assert.ok(structId, "expected the StructType to register under its declaration identity");
       expectStateField(services, "pos", structId);
       assert.equal(runSensorThinks(services, tile, "struct-import", 2), 4, "the state field reads back across thinks");
@@ -492,7 +540,9 @@ describe("System state field types: declaration-order independence", () => {
         },
         "tile.ts"
       );
-      const structId = services.runtime.types.resolveByName("/lib.ts::Vec2");
+      const structId = services.runtime.types.resolveByName(
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/lib.ts", "Vec2")
+      );
       assert.ok(structId, "expected the StructType to register under its declaration identity");
       expectStateField(services, "pos", structId);
       assert.equal(runSensorThinks(services, tile, "struct-carried", 2), 4, "the state field reads back across thinks");
@@ -543,7 +593,7 @@ export default Sensor({
         },
         "tile.ts"
       );
-      expectQualifiedOnly(services, "/tile.ts::Chain", "Chain");
+      expectQualifiedOnly(services, qualifiedClassName(TEST_PROJECT_NAMESPACE, "/tile.ts", "Chain"), "Chain");
       assert.equal(runSensorThinks(services, tile, "self-ref", 3), 110, "the linked state reads back across thinks");
     });
 
@@ -616,7 +666,9 @@ export default Sensor({
         },
         "tile.ts"
       );
-      const enumId = services.runtime.types.resolveByName("/tile.ts::Mode");
+      const enumId = services.runtime.types.resolveByName(
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/tile.ts", "Mode")
+      );
       assert.ok(enumId, "expected the enum to register under its qualified name");
       expectStateField(services, "mode", enumId);
       assert.equal(runSensorThinks(services, tile, "enum-bare", 2), 7, "the state field reads back across thinks");
@@ -761,7 +813,9 @@ export default Sensor({
         },
         "tile.ts"
       );
-      const structId = services.runtime.types.resolveByName("/lib.ts::Vec2");
+      const structId = services.runtime.types.resolveByName(
+        qualifiedClassName(TEST_PROJECT_NAMESPACE, "/lib.ts", "Vec2")
+      );
       assert.ok(structId, "expected the StructType to register under its declaration identity");
       expectStateField(services, "pos", structId);
       assert.equal(runSensorThinks(services, tile, "private-struct", 2), 4, "the state field reads back across thinks");

@@ -45,6 +45,11 @@
       "types": "./dist/index.d.ts",
       "browser": "./dist/index.js",
       "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "browser": "./dist/testing/index.js",
+      "import": "./dist/testing/index.js"
     }
   },
   "scripts": {

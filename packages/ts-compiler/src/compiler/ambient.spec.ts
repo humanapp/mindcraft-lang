@@ -4,6 +4,7 @@ import { List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { mkTypeId, NativeType } from "@mindcraft-lang/core/runtime";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 
@@ -78,7 +79,11 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientFiles: [{ path: "ambient.d.ts", content: ambient }], services });
+    const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      ambientFiles: [{ path: "ambient.d.ts", content: ambient }],
+      services,
+    });
     assert.ok(result.diagnostics.length > 0, "should have diagnostics due to brand mismatch");
   });
 
@@ -98,7 +103,11 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientFiles: [{ path: "ambient.d.ts", content: ambient }], services });
+    const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      ambientFiles: [{ path: "ambient.d.ts", content: ambient }],
+      services,
+    });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
   });
@@ -154,7 +163,7 @@ export default Sensor({
           { key: "east", label: "East", value: "east" },
         ]),
         defaultKey: "north",
-        functionIds: { toString: 30204, toNumber: 30205, equalTo: 30206, notEqualTo: 30207 },
+        functionIds: { toString: 30204, toNumber: 30205 },
       });
     }
 
@@ -229,7 +238,7 @@ export default Sensor({
   },
 });
 `;
-    const sensorResult = compileUserTile(sensorSource, { services });
+    const sensorResult = compileUserTile(sensorSource, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     const sensorErrors = sensorResult.diagnostics.filter((d) => d.severity === "error");
     assert.deepStrictEqual(sensorErrors, []);
     assert.ok(sensorResult.program);
@@ -246,7 +255,7 @@ export default Actuator({
   onExecute(ctx: Context): void {},
 });
 `;
-    const actuatorResult = compileUserTile(actuatorSource, { services });
+    const actuatorResult = compileUserTile(actuatorSource, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     const actuatorErrors = actuatorResult.diagnostics.filter((d) => d.severity === "error");
     assert.deepStrictEqual(actuatorErrors, []);
     assert.ok(actuatorResult.program);

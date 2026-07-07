@@ -33,6 +33,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
@@ -115,7 +116,7 @@ describe("binary operator implicit conversions", () => {
           { key: "west", label: "West", value: "west" },
         ]),
         defaultKey: "north",
-        functionIds: { toString: 30004, toNumber: 30005, equalTo: 30006, notEqualTo: 30007 },
+        functionIds: { toString: 30004, toNumber: 30005 },
       });
     }
   });
@@ -135,7 +136,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -169,7 +170,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -202,7 +203,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0, "expected a lowering diagnostic");
     expectDiagnostic(result.diagnostics, LoweringDiagCode.NoOperatorOverload);
   });
@@ -223,7 +224,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0, "expected an ambiguity diagnostic");
     expectDiagnostic(result.diagnostics, LoweringDiagCode.AmbiguousImplicitBinaryConversion);
   });
@@ -245,6 +246,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -280,7 +282,7 @@ describe("target-typed implicit conversions", () => {
           { key: "stop", label: "Stop", value: "red" },
         ]),
         defaultKey: "go",
-        functionIds: { toString: 30008, toNumber: 30009, equalTo: 30010, notEqualTo: 30011 },
+        functionIds: { toString: 30008, toNumber: 30009 },
       });
     }
 
@@ -293,7 +295,7 @@ describe("target-typed implicit conversions", () => {
           { key: "fast", label: "Fast", value: 2 },
         ]),
         defaultKey: "idle",
-        functionIds: { toString: 30012, toNumber: 30013, equalTo: 30014, notEqualTo: 30015 },
+        functionIds: { toString: 30012, toNumber: 30013 },
       });
     }
   });
@@ -312,6 +314,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -350,6 +353,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -389,6 +393,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -425,7 +430,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0, "expected a lowering diagnostic");
     expectDiagnostic(result.diagnostics, LoweringDiagCode.NoConversionToTargetType);
   });

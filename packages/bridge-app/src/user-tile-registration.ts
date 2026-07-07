@@ -35,9 +35,10 @@ import {
   isOptionalString,
   isOptionalStringArray,
   isRecord,
+  privateArgTileId,
 } from "@mindcraft-lang/ts-compiler";
 
-const METADATA_CACHE_VERSION = 6 as const;
+const METADATA_CACHE_VERSION = 7 as const;
 
 /** Cached metadata describing a user-authored sensor or actuator tile. */
 export interface UserTileMetadata {
@@ -271,14 +272,17 @@ function resolveTypeId(types: ITypeRegistry, typeName: string): string | undefin
   return types.resolveByName(typeName);
 }
 
-function getParameterId(actionId: string, param: ExtractedParam): string {
-  return param.anonymous ? `anon.${param.type}` : `user.${actionId}.${param.name}`;
+function getParameterId(projectNamespace: string, actionId: string, param: ExtractedParam): string {
+  if (param.anonymous) return `anon.${param.type}`;
+  if (param.name.startsWith("parameter.")) return param.name;
+  return privateArgTileId(projectNamespace, actionId, param.name);
 }
 
 function buildHydratedSnapshot(
   env: MindcraftEnvironment,
   revision: string,
-  metadata: readonly UserTileMetadata[]
+  metadata: readonly UserTileMetadata[],
+  projectNamespace: string
 ): HydratedTileMetadataSnapshot {
   return env.withServices((services) => {
     const { types } = services.runtime;
@@ -296,7 +300,7 @@ function buildHydratedSnapshot(
           break;
         }
 
-        const parameterId = getParameterId(entry.id, param);
+        const parameterId = getParameterId(projectNamespace, entry.id, param);
         parameterTiles.push(
           new BrainTileParameterDef(parameterId, typeId, {
             hidden: param.anonymous,
@@ -410,12 +414,15 @@ export function collectMetadataFromCompile(result: WorkspaceCompileResult): User
 
 /**
  * Restore user tiles from the project's persisted metadata cache so the editor
- * can render them before the first compile finishes. Returns the cached
- * metadata, or `undefined` when no usable cache exists.
+ * can render them before the first compile finishes. `projectNamespace` is the
+ * active project's namespace (its store id); derived tile ids are scoped under
+ * it, matching the ids the compiler mints. Returns the cached metadata, or
+ * `undefined` when no usable cache exists.
  */
 export async function hydrateUserTilesFromCache(
   env: MindcraftEnvironment,
-  options: UserTileRegistrationOptions
+  options: UserTileRegistrationOptions,
+  projectNamespace: string
 ): Promise<readonly UserTileMetadata[] | undefined> {
   const json = await options.loadMetadata();
   const loaded = loadMetadataCache(json, () => options.saveMetadata(undefined));
@@ -429,7 +436,7 @@ export async function hydrateUserTilesFromCache(
     );
   }
 
-  const snapshot = buildHydratedSnapshot(env, loaded.revision, loaded.metadata);
+  const snapshot = buildHydratedSnapshot(env, loaded.revision, loaded.metadata, projectNamespace);
   if (snapshot.tiles.length === 0) {
     return undefined;
   }
