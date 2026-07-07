@@ -2,7 +2,7 @@ import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
 import { MathOps } from "../platform/math";
 import { StringUtils as SU } from "../platform/string";
-import { DYNAMIC_FUNC_ID_BASE, type StableIdOwner, TARGET_FUNC_ID_BASE } from "./abi-ids";
+import { type StableIdOwner, TARGET_FUNC_ID_BASE } from "./abi-ids";
 import type {
   BrainActionCallDef,
   BrainAsyncFunctionEntry,
@@ -81,14 +81,9 @@ export class FunctionRegistry implements IFunctionRegistry {
         `FunctionRegistry.register: core function '${name}' has id ${id} outside the core range [0, ${TARGET_FUNC_ID_BASE})`
       );
     }
-    if (this.owner === "target" && (id < TARGET_FUNC_ID_BASE || id >= DYNAMIC_FUNC_ID_BASE)) {
+    if (this.owner === "target" && id < TARGET_FUNC_ID_BASE) {
       throw new Error(
-        `FunctionRegistry.register: target function '${name}' has id ${id} outside the target range [${TARGET_FUNC_ID_BASE}, ${DYNAMIC_FUNC_ID_BASE})`
-      );
-    }
-    if (this.owner === "dynamic" && id < DYNAMIC_FUNC_ID_BASE) {
-      throw new Error(
-        `FunctionRegistry.register: dynamic function '${name}' has id ${id} below the dynamic range base ${DYNAMIC_FUNC_ID_BASE}`
+        `FunctionRegistry.register: target function '${name}' has id ${id} below the target range base ${TARGET_FUNC_ID_BASE}`
       );
     }
   }

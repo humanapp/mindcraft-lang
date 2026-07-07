@@ -111,9 +111,11 @@ function toVmServices(b: BrainServices) {
     .runtime;
 }
 
-function mkCtx(): ExecutionContext {
+function mkCtx(b: BrainServices): ExecutionContext {
   return {
-    services: __test__createPlatformServices(),
+    services: __test__createPlatformServices({
+      runtime: { functions: b.runtime.functions, types: b.runtime.types },
+    }),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     getSystemVarBySlot: () => NIL_VALUE,
@@ -144,7 +146,7 @@ function makeRunner(outcome: WorksOutcome): (args?: Value[]) => Value | undefine
   const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
   const runFn = (funcId: number, args: List<Value>): Value | undefined => {
     const vm = new runtime.VM(prog, vmServices, { handles });
-    const fiber = vm.spawnFiber(1, funcId, args, mkCtx());
+    const fiber = vm.spawnFiber(1, funcId, args, mkCtx(outcome.services));
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 10000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -583,6 +585,59 @@ export default Sensor({
     },
     entry: "entry.ts",
     expectWorks: runsToNumber(3),
+  },
+  {
+    name: "template-literal-embeds-enum-value",
+    files: {
+      "defs.ts": MODE_ENUM,
+      "entry.ts": `${SENSOR_IMPORT}import { Mode } from "./defs";
+
+export default Sensor({
+  name: "mode probe", inline: true,
+  onExecute(ctx: Context): number {
+    const text = \`mode=\${Mode.Go}\`;
+    return text === "mode=2" ? 1 : 0;
+  },
+});
+`,
+    },
+    entry: "entry.ts",
+    expectWorks: runsToNumber(1),
+  },
+  {
+    name: "enum-into-number-variable-store",
+    files: {
+      "defs.ts": MODE_ENUM,
+      "entry.ts": `${SENSOR_IMPORT}import { Mode } from "./defs";
+
+export default Sensor({
+  name: "mode probe", inline: true,
+  onExecute(ctx: Context): number {
+    let n: number = Mode.Stop;
+    n = Mode.Go;
+    return n + 1;
+  },
+});
+`,
+    },
+    entry: "entry.ts",
+    expectWorks: runsToNumber(3),
+  },
+  {
+    name: "string-global-converts-enum",
+    files: {
+      "defs.ts": MODE_ENUM,
+      "entry.ts": `${SENSOR_IMPORT}import { Mode } from "./defs";
+
+export default Sensor({
+  name: "mode probe", inline: true,
+  onExecute(ctx: Context): string {
+    return String(Mode.Go);
+  },
+});
+`,
+    },
+    entry: "entry.ts",
   },
   {
     name: "enum-relational-compare",

@@ -27,7 +27,6 @@ import {
   CoreTypeIds,
   choice,
   conversionFnName,
-  type EnumFunctionIds,
   type EnumSymbolDef,
   type EnumValue,
   type ExecutionContext,
@@ -58,14 +57,6 @@ before(() => {
   services = __test__createBrainServices();
 });
 
-let nextEnumFnId = 20000;
-
-function mkEnumFunctionIds(): EnumFunctionIds {
-  const base = nextEnumFnId;
-  nextEnumFnId += 2;
-  return { toString: base, toNumber: base + 1 };
-}
-
 let nextTypeAtomId = 20000;
 
 function mkTestAtomId(): number {
@@ -78,12 +69,12 @@ function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?:
   if (existing) {
     return existing;
   }
-  return registry.addEnumType(name, { atomId: mkTestAtomId(), symbols, defaultKey, functionIds: mkEnumFunctionIds() });
+  return registry.addEnumType(name, { atomId: mkTestAtomId(), symbols, defaultKey });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    services: __test__createPlatformServices(),
+    services: __test__createPlatformServices({ runtime: { types: services.runtime.types } }),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     getSystemVarBySlot: () => NIL_VALUE,
@@ -100,7 +91,9 @@ function execEnumConversion(fromType: string, toType: string, input: EnumValue) 
   assert.ok(conversion, `Expected conversion ${fromType} -> ${toType}`);
   assert.ok(!isBytecodeConversion(conversion), `Expected a host-fn conversion ${fromType} -> ${toType}`);
 
-  return conversion.fn.exec(mkCtx(), List.from([input as Value]));
+  const fnEntry = services.runtime.functions.getSyncById(conversion.id);
+  assert.ok(fnEntry, `Expected a registered host function for conversion ${fromType} -> ${toType}`);
+  return fnEntry.fn.exec(mkCtx(), List.from([input as Value]));
 }
 
 function testConversion(

@@ -16,26 +16,11 @@ import { List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { ConstantPool } from "@mindcraft-lang/core/brain/compiler";
-import type {
-  EnumFunctionIds,
-  ITypeRegistry,
-  ProgramTypeEntry,
-  TypeId,
-  UnionTypeDef,
-  Value,
-} from "@mindcraft-lang/core/runtime";
+import type { ITypeRegistry, ProgramTypeEntry, TypeId, UnionTypeDef, Value } from "@mindcraft-lang/core/runtime";
 import { CoreTypeIds, mkListValue, NativeType } from "@mindcraft-lang/core/runtime";
 
 let services: BrainServices;
 let registry: ITypeRegistry;
-
-let nextEnumFnId = 30000;
-
-function mkEnumFunctionIds(): EnumFunctionIds {
-  const base = nextEnumFnId;
-  nextEnumFnId += 2;
-  return { toString: base, toNumber: base + 1 };
-}
 
 function mkPool(): ConstantPool {
   return new ConstantPool(registry);
@@ -185,14 +170,17 @@ describe("ProgramTypeTableBuilder", () => {
           { key: "Blue", label: "Blue", value: 2 },
         ]),
         defaultKey: "Red",
-        functionIds: mkEnumFunctionIds(),
       })
     );
     const colorIdx = pool.addType(colorTypeId);
     const colorEntry = entryAt(pool, colorIdx, "enum");
     assert.equal(colorEntry.typeId, colorTypeId);
     assert.equal(colorEntry.name, "/type-table.spec.ts::Color");
-    assert.deepEqual(colorEntry.symbols.toArray(), ["Red", "Green", "Blue"]);
+    assert.deepEqual(colorEntry.symbols.toArray(), [
+      { key: "Red", value: 0 },
+      { key: "Green", value: 1 },
+      { key: "Blue", value: 2 },
+    ]);
   });
 
   test("interning a nested constant value interns every nested typeId", () => {
@@ -204,7 +192,6 @@ describe("ProgramTypeTableBuilder", () => {
           { key: "Sour", label: "Sour", value: 1 },
         ]),
         defaultKey: "Sweet",
-        functionIds: mkEnumFunctionIds(),
       })
     );
     const flavorListTypeId = registry.instantiate("List", List.from([flavorTypeId]));

@@ -517,7 +517,6 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         services.runtime.types.addEnumType(enumDef.name, {
           symbols: enumDef.symbols,
           defaultKey: enumDef.defaultKey,
-          functionIds: enumDef.functionIds,
           atomId: enumDef.atomId,
         }),
         enumDef.typeId,

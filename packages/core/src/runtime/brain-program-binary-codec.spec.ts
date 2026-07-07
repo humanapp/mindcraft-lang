@@ -262,6 +262,7 @@ describe("binary .mcprogram codec -- every value variant", () => {
   const NESTED_LIST_TYPE_ID = `list:<List<${NUMBER_LIST_TYPE_ID}>>`;
   const POINT_TYPE_ID = "struct:</spec.ts::Point>";
   const COLOR_TYPE_ID = "enum:</spec.ts::Color>";
+  const LABEL_TYPE_ID = "enum:</spec.ts::Label>";
 
   const valueTypeEntries: BrainProgramTypeEntryJson[] = [
     { tag: "atom", typeId: CoreTypeIds.Number, atomId: CoreTypeAtomId.Number },
@@ -279,7 +280,24 @@ describe("binary .mcprogram codec -- every value variant", () => {
         { name: "y", fieldIndex: 1 },
       ],
     },
-    { tag: "enum", typeId: COLOR_TYPE_ID, name: "/spec.ts::Color", symbols: ["Red", "Green"] },
+    {
+      tag: "enum",
+      typeId: COLOR_TYPE_ID,
+      name: "/spec.ts::Color",
+      symbols: [
+        { key: "Red", value: 0 },
+        { key: "Green", value: 1 },
+      ],
+    },
+    {
+      tag: "enum",
+      typeId: LABEL_TYPE_ID,
+      name: "/spec.ts::Label",
+      symbols: [
+        { key: "Ready", value: "ready" },
+        { key: "Busy", value: "busy" },
+      ],
+    },
   ];
 
   test("round-trips nested containers, both map key kinds, enums, closures, and buffers", () => {
@@ -293,6 +311,7 @@ describe("binary .mcprogram codec -- every value variant", () => {
       { t: NativeType.Number, v: -7 },
       { t: NativeType.String, v: "hello" },
       { t: NativeType.Enum, typeId: COLOR_TYPE_ID, v: "Red" },
+      { t: NativeType.Enum, typeId: LABEL_TYPE_ID, v: "Busy" },
       {
         t: NativeType.List,
         typeId: NUMBER_LIST_TYPE_ID,
@@ -390,6 +409,49 @@ describe("binary .mcprogram codec -- every value variant", () => {
     assert.throws(
       () => linkedBrainProgramFromBytes(byteArrayFromUint8Array(u8), { precision: "f32", typeRegistry }),
       /ENUM_ORDINAL_OUT_OF_RANGE/
+    );
+  });
+
+  test("rejects a TYPS enum value-kind byte outside 0/1", () => {
+    const json: LinkedBrainProgramJson = {
+      program: {
+        version: 1,
+        functions: [],
+        constantPools: { numbers: [], strings: [], values: [] },
+        types: [
+          {
+            tag: "enum",
+            typeId: "enum:</spec.ts::Solo>",
+            name: "/spec.ts::Solo",
+            symbols: [{ key: "One", value: 1 }],
+          },
+        ],
+        variableNames: [],
+      },
+      pages: [],
+    };
+    const program = linkedBrainProgramFromJson(json);
+    const bytes = linkedBrainProgramToBytes(program, { profileId: PROFILE_ID, precision: "f32", typeRegistry });
+    const u8 = new Uint8Array(byteArrayToUint8Array(bytes) as Uint8Array);
+
+    // Walk the envelope and CSTR section to the value-kind byte of the only
+    // TYPS entry: tag, nameIdx, symbolCount, then the kind byte (all leading
+    // var-uints here are single-byte).
+    let pos = 4 + 1; // magic + format version
+    while ((u8[pos] & 0x80) !== 0) pos++; // profileId var-uint
+    pos++;
+    pos++; // presence bitmask
+    const stringTotal = u8[pos];
+    pos += 2; // CSTR total + constStringCount
+    for (let i = 0; i < stringTotal; i++) {
+      pos += 1 + u8[pos]; // var-uint byte length + bytes
+    }
+    pos += 4; // TYPS count, entry tag, nameIdx, symbolCount
+    assert.equal(u8[pos], 0, "expected the numeric value-kind byte");
+    u8[pos] = 9;
+    assert.throws(
+      () => linkedBrainProgramFromBytes(byteArrayFromUint8Array(u8), { precision: "f32", typeRegistry }),
+      /INVALID_ENUM_VALUE_KIND/
     );
   });
 });

@@ -47,7 +47,7 @@
  *   type <idx> function <paramCount> <paramIdx>... <resultIdx>
  *   type <idx> nullable <baseIdx>
  *   type <idx> struct "<name>" slots <slotCount> fields <count> "<field>" <id>...
- *   type <idx> enum "<name>" symbols <count> "<symbol>"...
+ *   type <idx> enum "<name>" symbols <count> "<key>" <"value"|bits>...
  * numbers <count>
  *   number <idx> <bits>
  * values <count>
@@ -207,7 +207,7 @@ class DumpWriter {
   }
 }
 
-function typeEntryLine(idx: number, entry: ProgramTypeEntry): string {
+function typeEntryLine(idx: number, entry: ProgramTypeEntry, precision: NumberPrecision): string {
   const head = `type ${hexU32(idx)}`;
   switch (entry.tag) {
     case "atom":
@@ -245,7 +245,10 @@ function typeEntryLine(idx: number, entry: ProgramTypeEntry): string {
     case "enum": {
       let line = `${head} enum ${quoted(entry.name)} symbols ${hexU32(entry.symbols.size())}`;
       for (let i = 0; i < entry.symbols.size(); i++) {
-        line += ` ${quoted(entry.symbols.get(i)!)}`;
+        const symbol = entry.symbols.get(i)!;
+        const value = symbol.value;
+        const valueText = TypeUtils.isString(value) ? quoted(value) : numberBits(value, precision);
+        line += ` ${quoted(symbol.key)} ${valueText}`;
       }
       return line;
     }
@@ -404,7 +407,7 @@ export function linkedBrainProgramToCanonicalDump(
 
   w.line(0, `types ${hexU32(types.size())}`);
   for (let i = 0; i < types.size(); i++) {
-    w.line(1, typeEntryLine(i, types.get(i)!));
+    w.line(1, typeEntryLine(i, types.get(i)!, precision));
   }
 
   const numbers = p.constantPools.numbers;

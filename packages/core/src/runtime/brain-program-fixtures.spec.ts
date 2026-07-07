@@ -167,7 +167,15 @@ const VALUES_TYPES: readonly BrainProgramTypeEntryJson[] = [
       { name: "y", fieldIndex: 1 },
     ],
   },
-  { tag: "enum", typeId: COLOR_TYPE_ID, name: "/fixture.ts::Color", symbols: ["Red", "Green"] },
+  {
+    tag: "enum",
+    typeId: COLOR_TYPE_ID,
+    name: "/fixture.ts::Color",
+    symbols: [
+      { key: "Red", value: 0 },
+      { key: "Green", value: 1 },
+    ],
+  },
 ];
 
 const VALUES_POOL: readonly BrainProgramValueJson[] = [

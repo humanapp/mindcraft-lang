@@ -3,7 +3,6 @@ import { describe, test } from "node:test";
 
 import {
   type BrainActionCallDef,
-  DYNAMIC_FUNC_ID_BASE,
   FunctionRegistry,
   type HostSyncFn,
   mkCallDef,
@@ -71,15 +70,11 @@ describe("FunctionRegistry id validation", () => {
     assert.throws(() => registry.register(1024.5, "frac", false, noop, callDef), /non-negative integer/);
   });
 
-  test("rejects a target-owner id outside the target range", () => {
+  test("rejects a target-owner id below TARGET_FUNC_ID_BASE", () => {
     const registry = new FunctionRegistry();
     assert.throws(
       () => registry.register(TARGET_FUNC_ID_BASE - 1, "low", false, noop, callDef),
-      /outside the target range/
-    );
-    assert.throws(
-      () => registry.register(DYNAMIC_FUNC_ID_BASE, "high", false, noop, callDef),
-      /outside the target range/
+      /below the target range base/
     );
   });
 
@@ -88,17 +83,6 @@ describe("FunctionRegistry id validation", () => {
     assert.throws(
       () => registry.withOwner("core", () => registry.register(TARGET_FUNC_ID_BASE, "high", false, noop, callDef)),
       /outside the core range/
-    );
-  });
-
-  test("rejects a dynamic-owner id below DYNAMIC_FUNC_ID_BASE", () => {
-    const registry = new FunctionRegistry();
-    assert.throws(
-      () =>
-        registry.withOwner("dynamic", () =>
-          registry.register(DYNAMIC_FUNC_ID_BASE - 1, "low-dynamic", false, noop, callDef)
-        ),
-      /below the dynamic range base/
     );
   });
 
@@ -117,10 +101,8 @@ describe("FunctionRegistry id validation", () => {
     const registry = new FunctionRegistry();
     registry.withOwner("core", () => registry.register(0, "core-fn", false, noop, callDef));
     registry.register(TARGET_FUNC_ID_BASE, "target-fn", false, noop, callDef);
-    registry.withOwner("dynamic", () => registry.register(DYNAMIC_FUNC_ID_BASE, "dynamic-fn", false, noop, callDef));
 
     assert.equal(registry.getSyncById(0)?.name, "core-fn");
     assert.equal(registry.getSyncById(TARGET_FUNC_ID_BASE)?.name, "target-fn");
-    assert.equal(registry.getSyncById(DYNAMIC_FUNC_ID_BASE)?.name, "dynamic-fn");
   });
 });

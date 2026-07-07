@@ -35,7 +35,9 @@ function toVmServices(b: BrainServices) {
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    services: __test__createPlatformServices(),
+    services: __test__createPlatformServices({
+      runtime: { functions: services.runtime.functions, types: services.runtime.types },
+    }),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     getSystemVarBySlot: () => NIL_VALUE,

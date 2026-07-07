@@ -131,6 +131,9 @@ export function __test__createPlatformServices(options?: __test__PlatformService
         getRuleFuncIdForFunc(_funcId: number): number | undefined {
           return undefined;
         },
+        getEnumSymbolValue(_typeId: string, _key: string): string | number | undefined {
+          return undefined;
+        },
       },
       brainVars: options?.brainVars ?? __test__defaultBrainVars(),
       ruleVars: options?.ruleVars ?? __test__defaultRuleVars(),

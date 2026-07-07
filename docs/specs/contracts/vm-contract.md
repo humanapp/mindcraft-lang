@@ -323,24 +323,31 @@ and host action ids (the `actionId` operand of `HOST_ACTION_CALL` /
 declared as explicitly-valued enum members and validated by the registries at
 registration: each id must be a non-negative integer, unique within its
 space, and inside its owner's reserved range. The shared funcId space is
-partitioned by owner: core owns `[0, TARGET_FUNC_ID_BASE)`, the active
-target owns `[TARGET_FUNC_ID_BASE, DYNAMIC_FUNC_ID_BASE)`, and dynamically
-registered program-dependent functions (user-declared enum conversions) own
-`[DYNAMIC_FUNC_ID_BASE, ...)`; ids in the dynamic region are stable only for
-a given compiled program and are not part of the device ABI. Enum `==` / `!=`
-overloads are not program-dependent: every enum type's overload entries
-dispatch to the shared core host functions `OpEqualToEnum` /
-`OpNotEqualToEnum`, which compare symbol identity (same enum type, same
-symbol; on the TS reference VM the symbol key, on an integer-identity port
-the symbol ordinal) and evaluate false for operands that are not two values
-of one enum type.
+partitioned by owner: core owns `[0, TARGET_FUNC_ID_BASE)` and the active
+target owns `[TARGET_FUNC_ID_BASE, ...)`. There is no program-dependent
+funcId region: every funcId a serialized program carries is a core or target
+id, so a fresh runtime resolves all of them without any compile-session
+registrations. Enum operators and conversions are not program-dependent:
+every enum type's `==` / `!=` overload entries dispatch to the shared core
+host functions `OpEqualToEnum` / `OpNotEqualToEnum`, which compare symbol
+identity (same enum type, same symbol; on the TS reference VM the symbol
+key, on an integer-identity port the symbol ordinal) and evaluate false for
+operands that are not two values of one enum type; every enum type's
+enum->string and enum->number conversion entries dispatch to the shared core
+host functions `ConvEnumToString` / `ConvEnumToNumber`, which resolve the
+symbol's declared primitive value at runtime (through the runtime's type
+registry for registered enum types, else through the loaded program's type
+table, which carries per-symbol values) and fault the host call when the
+operand is not an enum value or its symbol value does not resolve.
+`ConvEnumToNumber` faults on a string-valued enum; the compiler only emits
+it for numeric-valued enums.
 The host-action space partitions at `TARGET_ACTION_ID_BASE` (core below,
-target at and above) and has no dynamic region. `TARGET_FUNC_ID_BASE = 1024`,
-`DYNAMIC_FUNC_ID_BASE = 65536`, and `TARGET_ACTION_ID_BASE = 1024` are
-exported from core (`runtime/abi-ids.ts`). An id, once assigned, is never
-changed or reused; removing a registration leaves a permanent gap. Serialized
-programs record these ids verbatim, so they are stable across separate builds
-by construction.
+target at and above). `TARGET_FUNC_ID_BASE = 1024` and
+`TARGET_ACTION_ID_BASE = 1024` are exported from core
+(`runtime/abi-ids.ts`). An id, once assigned, is never changed or reused;
+removing a registration leaves a permanent gap. Serialized programs record
+these ids verbatim, so they are stable across separate builds by
+construction.
 
 ### Orchestrator opacity
 
@@ -1016,12 +1023,18 @@ the entry's own index, so a single forward pass interns the table):
   against; a struct accessed only by static field id may carry none.
   Static `.field` access stays id-based and reads no names.
 - `enum { name, symbols }` -- a program-local enum; `symbols` lists
-  the symbol keys in declared order and defines the ordinals used by
-  enum constant values.
+  the symbols in declared order (defining the ordinals used by enum
+  constant values), each carrying its key and its declared primitive
+  value. All symbols of one enum share a value kind: all string or
+  all number (the registry rejects mixed enums at registration).
+  Numeric values are at the profile precision. The shared
+  `ConvEnumToString` / `ConvEnumToNumber` core host functions read
+  these values at runtime.
 
 For an enum type registered as an atom, the registered declaration's
 symbol order is the ordinal source and is ABI: append-only, never
-reordered, never reused.
+reordered, never reused; its symbol values resolve through the
+runtime's type registry.
 
 On the TS reference VM each entry resolves to its `TypeId` string and
 the runtime keeps string-keyed type identity; an integer-identity
@@ -1045,7 +1058,7 @@ per entry a tag byte followed by its fields (all var-uints):
 | 4   | function | `paramCount`, params, `result` |
 | 5   | nullable | `base` |
 | 6   | struct   | `nameIdx` (CSTR), `slotCount` (= `maxFieldId + 1`), `fieldCount`, then per field `nameIdx` (CSTR) and `fieldId` |
-| 7   | enum     | `nameIdx` (CSTR), `symbolCount`, symbol CSTR indices |
+| 7   | enum     | `nameIdx` (CSTR), `symbolCount`, then when `symbolCount > 0` a value-kind byte (`0` number, `1` string) followed per symbol by its key CSTR index and its value (a CNUM-format number entry for kind `0`, a CSTR index for kind `1`) |
 
 TypeId strings are never written; the decoder reconstructs them
 (atoms through the runtime's atom registrations, structural entries
@@ -1053,7 +1066,8 @@ through the deterministic composition rules, program-local entries
 through their carried names). A reader rejects: an unknown tag byte,
 a child reference at or beyond its entry's own index, an atom id not
 registered in the decoding runtime, an enum ordinal outside its
-type's symbol list, and a format version other than its own.
+type's symbol list, an enum value-kind byte other than `0`/`1`, and
+a format version other than its own.
 
 ---
 

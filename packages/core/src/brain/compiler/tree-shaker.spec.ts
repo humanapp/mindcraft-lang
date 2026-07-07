@@ -492,7 +492,10 @@ describe("treeshakeProgram", () => {
       tag: "enum",
       typeId: "enum:<ValEnum>",
       name: "ValEnum",
-      symbols: List.from(["A", "B"]),
+      symbols: List.from([
+        { key: "A", value: 0 },
+        { key: "B", value: 1 },
+      ]),
     };
     const prog = mkProgram({
       functions: [mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.RET)], 0, "main")],

@@ -198,8 +198,14 @@
         "typeId": "enum:</fixture.ts::Color>",
         "name": "/fixture.ts::Color",
         "symbols": [
-          "Red",
-          "Green"
+          {
+            "key": "Red",
+            "value": 0
+          },
+          {
+            "key": "Green",
+            "value": 1
+          }
         ]
       }
     ],

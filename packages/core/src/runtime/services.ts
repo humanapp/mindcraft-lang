@@ -19,6 +19,13 @@ export interface IProgramServices {
    * are not owned by any rule.
    */
   getRuleFuncIdForFunc(funcId: number): number | undefined;
+
+  /**
+   * Resolve an enum symbol's declared primitive value through the loaded
+   * program's type table. Returns `undefined` when the program's type table
+   * carries no enum entry for `typeId` or the entry has no symbol `key`.
+   */
+  getEnumSymbolValue(typeId: string, key: string): string | number | undefined;
 }
 
 /**

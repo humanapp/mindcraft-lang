@@ -11,17 +11,31 @@ import { NIL_VALUE, type Value } from "./value";
 export type RuleVariableStores = Dict<number, Dict<string, Value>>;
 
 /**
- * Build the {@link IProgramServices} accessor backed by the loaded
- * program's `ruleFuncIds`. Returns `funcId` for any function id that is a
- * rule entry, `undefined` otherwise. The only sentinel for "no rule" is
- * `undefined`; numeric `0` is a valid rule funcId.
+ * Build the {@link IProgramServices} accessor backed by the loaded program.
+ * Rule resolution reads `ruleFuncIds`: it returns `funcId` for any function
+ * id that is a rule entry, `undefined` otherwise (the only "no rule"
+ * sentinel; numeric `0` is a valid rule funcId). Enum symbol values resolve
+ * through the program's type table.
  */
 export function createProgramServices(program: Program): IProgramServices {
   const ruleFuncIds = program.ruleFuncIds;
+  const types = program.types;
   return {
     getRuleFuncIdForFunc(funcId: number): number | undefined {
       if (ruleFuncIds === undefined) return undefined;
       return ruleFuncIds.has(funcId) ? funcId : undefined;
+    },
+    getEnumSymbolValue(typeId: string, key: string): string | number | undefined {
+      if (types === undefined) return undefined;
+      for (let i = 0; i < types.size(); i++) {
+        const entry = types.get(i)!;
+        if (entry.tag !== "enum" || entry.typeId !== typeId) {
+          continue;
+        }
+        const symbol = entry.symbols.find((s) => s.key === key);
+        return symbol?.value;
+      }
+      return undefined;
     },
   };
 }

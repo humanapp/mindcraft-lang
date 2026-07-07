@@ -50,7 +50,9 @@ function toVmServices(b: BrainServices) {
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    services: __test__createPlatformServices(),
+    services: __test__createPlatformServices({
+      runtime: { functions: services.runtime.functions, types: services.runtime.types },
+    }),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     getSystemVarBySlot: () => NIL_VALUE,
@@ -275,7 +277,6 @@ describe("enum value literals", () => {
           { key: "west", label: "West", value: "west" },
         ]),
         defaultKey: "north",
-        functionIds: { toString: 30104, toNumber: 30105 },
       });
     }
   });

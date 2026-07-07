@@ -32,12 +32,33 @@ export type BytecodeConversion = {
   descriptor: ActionDescriptor;
 };
 
-/** A registered value-conversion overload: host-function or compiled-user-function backed. */
-export type Conversion = HostFnConversion | BytecodeConversion;
+/**
+ * A value conversion dispatching to a host function that is registered
+ * independently of any single `(fromType, toType)` pair and serves every
+ * conversion entry that references it. `id` must be the stable funcId of an
+ * already-registered sync host function; registering or removing the
+ * conversion entry leaves that function registered.
+ */
+export type SharedHostFnConversion = {
+  binding: "sharedHostFn";
+  /** Stable funcId of the shared host function implementing the conversion. */
+  id: number;
+  fromType: TypeId;
+  toType: TypeId;
+  cost: number;
+};
+
+/** A registered value-conversion overload: host-function, shared-host-function, or compiled-user-function backed. */
+export type Conversion = HostFnConversion | SharedHostFnConversion | BytecodeConversion;
 
 /** True when `conv` is a {@link BytecodeConversion}. */
 export function isBytecodeConversion(conv: Conversion): conv is BytecodeConversion {
   return (conv as BytecodeConversion).binding === "bytecode";
+}
+
+/** True when `conv` is a {@link SharedHostFnConversion}. */
+export function isSharedHostFnConversion(conv: Conversion): conv is SharedHostFnConversion {
+  return (conv as SharedHostFnConversion).binding === "sharedHostFn";
 }
 
 /** Registry of value-conversion overloads keyed by `(fromType, toType)`. */

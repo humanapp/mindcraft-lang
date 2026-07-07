@@ -11,7 +11,6 @@ import { registerEnumConversions } from "./conversions";
 import { CoreTypeIds, CoreTypeNames, mkTypeId } from "./core-types";
 import { CoreOpId } from "./operator-defs";
 import {
-  type EnumFunctionIds,
   type EnumPrimitiveValue,
   type EnumSymbolDef,
   type EnumTypeDef,
@@ -271,9 +270,6 @@ export class TypeRegistry implements ITypeRegistry {
     this.validateTypeNotRegistered(typeId);
     const symbols = normalizeEnumSymbols(typeId, shape.symbols);
     const defaultKey = resolveEnumDefaultKey(typeId, symbols, shape.defaultKey);
-    if (symbols.size() > 0 && !shape.functionIds) {
-      throw new Error(`Enum type ${typeId} requires functionIds for its conversion host functions`);
-    }
     // Register
     const enumTypeDef: EnumTypeDef = {
       coreType: NativeType.Enum,
@@ -282,20 +278,19 @@ export class TypeRegistry implements ITypeRegistry {
       name,
       symbols,
       defaultKey,
-      functionIds: shape.functionIds,
       atomId: shape.atomId,
     };
     this.add(enumTypeDef);
-    if (shape.functionIds) {
-      this.registerEnumConversions(typeId, shape.functionIds);
+    if (symbols.size() > 0) {
+      this.registerEnumConversions(typeId);
       this.registerEnumOperators(typeId);
     }
     return typeId;
   }
 
-  private registerEnumConversions(typeId: TypeId, functionIds: EnumFunctionIds): void {
+  private registerEnumConversions(typeId: TypeId): void {
     if (!this.services_) return;
-    registerEnumConversions(typeId, this.services_, functionIds);
+    registerEnumConversions(typeId, this.services_);
   }
 
   /**
@@ -327,8 +322,8 @@ export class TypeRegistry implements ITypeRegistry {
       ?.add({ argTypes: [typeId, typeId], resultType: CoreTypeIds.Boolean, fnEntry: neEntry });
   }
 
-  // The operator entries reference the shared core enum-equality functions;
-  // removing an enum type must leave those functions registered.
+  // The operator and conversion entries reference shared core host
+  // functions; removing an enum type must leave those functions registered.
   private unregisterEnumArtifacts(typeId: TypeId): void {
     if (!this.services_) return;
     this.services_.shared.conversions.remove(typeId, CoreTypeIds.String);

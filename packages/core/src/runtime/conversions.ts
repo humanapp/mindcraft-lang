@@ -9,12 +9,12 @@ import { UniqueSet } from "../platform/uniqueset";
 import { CoreFuncId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
 import type { Conversion, IConversionRegistry } from "./conversion-defs";
-import { isBytecodeConversion } from "./conversion-defs";
+import { isBytecodeConversion, isSharedHostFnConversion } from "./conversion-defs";
 import { CoreTypeIds } from "./core-types";
 import type { IFunctionRegistry } from "./function-defs";
 import { mkCallDef } from "./function-defs";
-import { type EnumFunctionIds, type EnumTypeDef, NativeType, type TypeId } from "./type-defs";
-import type { BooleanValue, EnumValue, NumberValue, StringValue, Value } from "./value";
+import { type EnumPrimitiveValue, type EnumTypeDef, NativeType, type TypeId } from "./type-defs";
+import type { BooleanValue, NumberValue, StringValue, Value } from "./value";
 
 /** Build the host function name used to register a conversion from `fromType` to `toType`. */
 export function conversionFnName(fromType: TypeId, toType: TypeId): string {
@@ -38,7 +38,13 @@ export class ConversionRegistry implements IConversionRegistry {
     if (this.conversions.get(conv.fromType)?.get(conv.toType)) {
       throw new Error(`ConversionRegistry.register: conversion from ${conv.fromType} to ${conv.toType} already exists`);
     }
-    if (!isBytecodeConversion(conv)) {
+    if (isSharedHostFnConversion(conv)) {
+      if (!this.functions.getSyncById(conv.id)) {
+        throw new Error(
+          `ConversionRegistry.register: conversion from ${conv.fromType} to ${conv.toType} references unregistered shared host function ${conv.id}`
+        );
+      }
+    } else if (!isBytecodeConversion(conv)) {
       const name = conversionFnName(conv.fromType, conv.toType);
       const callDef = conv.callDef ?? anonConversionCallDef;
       this.functions.register(conv.id, name, false, conv.fn, callDef);
@@ -66,7 +72,8 @@ export class ConversionRegistry implements IConversionRegistry {
       this.conversions.delete(fromType);
     }
 
-    if (!isBytecodeConversion(existing)) {
+    // Shared host functions outlive the conversion entries referencing them.
+    if (!isBytecodeConversion(existing) && !isSharedHostFnConversion(existing)) {
       this.functions.unregister(conversionFnName(fromType, toType));
     }
     return true;
@@ -170,8 +177,14 @@ const anonConversionCallDef = mkCallDef({
   anonymous: true,
 });
 
-/** Register the implicit/explicit conversions for an enum type (string<->enum, number<->enum). */
-export function registerEnumConversions(typeId: TypeId, services: BrainServices, functionIds: EnumFunctionIds) {
+/**
+ * Register the conversion entries for an enum type (enum->string, and
+ * enum->number for numeric-valued enums). Both entries reference the shared
+ * core enum-conversion host functions (`CoreFuncId.ConvEnumToString` /
+ * `CoreFuncId.ConvEnumToNumber`), which resolve the symbol's primitive value
+ * at runtime.
+ */
+export function registerEnumConversions(typeId: TypeId, services: BrainServices) {
   const enumType = services.runtime.types.get(typeId);
   if (!enumType || enumType.coreType !== NativeType.Enum) {
     throw new Error(`registerEnumConversions: type ${typeId} is not an enum`);
@@ -183,73 +196,97 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices,
     return;
   }
 
-  const numerics = services.app.numerics;
   if (!services.shared.conversions.get(typeId, CoreTypeIds.String)) {
     const stringCost = TypeUtils.isNumber(firstSymbol.value) ? 2 : 1;
     services.shared.conversions.register({
-      id: functionIds.toString,
+      binding: "sharedHostFn",
+      id: CoreFuncId.ConvEnumToString,
       fromType: typeId,
       toType: CoreTypeIds.String,
       cost: stringCost,
-      fn: {
-        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
-          const value = resolveEnumPrimitiveValue(typeId, args, services);
-          return {
-            t: NativeType.String,
-            v: TypeUtils.isString(value) ? value : numerics.formatNumber(value),
-          };
-        },
-      },
     });
   }
 
   if (TypeUtils.isNumber(firstSymbol.value) && !services.shared.conversions.get(typeId, CoreTypeIds.Number)) {
-    if (functionIds.toNumber === undefined) {
-      throw new Error(`Enum type ${typeId} has numeric values and requires functionIds.toNumber`);
-    }
     services.shared.conversions.register({
-      id: functionIds.toNumber,
+      binding: "sharedHostFn",
+      id: CoreFuncId.ConvEnumToNumber,
       fromType: typeId,
       toType: CoreTypeIds.Number,
       cost: 1,
-      fn: {
-        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
-          const value = resolveEnumPrimitiveValue(typeId, args, services);
-          if (!TypeUtils.isNumber(value)) {
-            throw new Error(`Enum conversion ${typeId} -> ${CoreTypeIds.Number} expected a numeric value`);
-          }
-          return {
-            t: NativeType.Number,
-            v: numerics.round(value),
-          };
-        },
-      },
     });
   }
 }
 
-function resolveEnumPrimitiveValue(
-  typeId: TypeId,
-  args: ReadonlyList<Value>,
-  services: BrainServices
-): string | number {
-  const enumValue = args.get(0) as EnumValue;
-  if (enumValue.t !== NativeType.Enum || enumValue.typeId !== typeId) {
-    throw new Error(`Enum conversion expected value of type ${typeId}`);
+/**
+ * Resolve an enum value's declared primitive value: through the runtime type
+ * registry for registered (core/target and compile-session) enum types, else
+ * through the loaded program's type table for program-local enums. Throws
+ * when the operand is not an enum value or its symbol resolves nowhere.
+ */
+function resolveEnumSymbolValue(ctx: ExecutionContext, value: Value): EnumPrimitiveValue {
+  if (value.t !== NativeType.Enum) {
+    throw new Error("Enum conversion expected an enum value");
   }
 
-  const symbol = services.runtime.types.getEnumSymbol(typeId, enumValue.v);
-  if (!symbol) {
-    throw new Error(`Unknown enum key ${enumValue.v} for type ${typeId}`);
+  const symbol = ctx.services.runtime.types.getEnumSymbol(value.typeId, value.v);
+  if (symbol) {
+    return symbol.value;
   }
 
-  return symbol.value;
+  const programValue = ctx.services.brain.program.getEnumSymbolValue(value.typeId, value.v);
+  if (programValue === undefined) {
+    throw new Error(`Unknown enum key ${value.v} for type ${value.typeId}`);
+  }
+  return programValue;
 }
 
-/** Register the built-in conversions between core primitive types (number<->string, boolean<->number, etc.). */
+/**
+ * Register the built-in conversions between core primitive types
+ * (number<->string, boolean<->number, etc.) and the shared enum-conversion
+ * host functions referenced by every enum type's conversion entries.
+ */
 export function registerCoreConversions(services: BrainServices) {
   const conversionRegistry = services.shared.conversions;
   const numerics = services.app.numerics;
+
+  // Shared host functions for enum->string / enum->number: every enum type's
+  // conversion entries dispatch to these two ids. The symbol's declared
+  // primitive value resolves at runtime through the executing VM's registry
+  // or the loaded program's type table.
+  services.runtime.functions.register(
+    CoreFuncId.ConvEnumToString,
+    "$$conv_enum_to_string",
+    false,
+    {
+      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const value = resolveEnumSymbolValue(ctx, args.get(0));
+        return {
+          t: NativeType.String,
+          v: TypeUtils.isString(value) ? value : ctx.services.app.numerics.formatNumber(value),
+        };
+      },
+    },
+    anonConversionCallDef
+  );
+  services.runtime.functions.register(
+    CoreFuncId.ConvEnumToNumber,
+    "$$conv_enum_to_number",
+    false,
+    {
+      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const value = resolveEnumSymbolValue(ctx, args.get(0));
+        if (!TypeUtils.isNumber(value)) {
+          throw new Error(`Enum conversion to number expected a numeric value, got key ${value}`);
+        }
+        return {
+          t: NativeType.Number,
+          v: ctx.services.app.numerics.round(value),
+        };
+      },
+    },
+    anonConversionCallDef
+  );
   // Number -> String conversion
   conversionRegistry.register({
     id: CoreFuncId.ConvNumberToString,

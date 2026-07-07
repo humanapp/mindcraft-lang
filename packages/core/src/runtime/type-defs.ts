@@ -99,21 +99,7 @@ export interface EnumSymbolDef {
 }
 
 /**
- * Author-assigned stable funcIds for the host functions registered with an
- * enum type. Each id follows the same rules as any other funcId: a
- * non-negative integer inside the declaring owner's range, never changed or
- * reused once assigned.
- */
-export interface EnumFunctionIds {
-  /** FuncId of the enum->string conversion. */
-  toString: number;
-  /** FuncId of the enum->number conversion. Required for numeric-valued enums. */
-  toNumber?: number;
-}
-
-/**
- * Shape fields specific to enum types. `functionIds` is required when
- * `symbols` is non-empty.
+ * Shape fields specific to enum types.
  *
  * For an enum registered with an {@link atomId}, the declared order of
  * `symbols` is ABI: enum values serialize as ordinals into this list. The
@@ -123,7 +109,6 @@ export interface EnumFunctionIds {
 export interface EnumTypeShape {
   symbols: List<EnumSymbolDef>;
   defaultKey?: string;
-  functionIds?: EnumFunctionIds;
   /** Stable type-atom id; see {@link TypeDef.atomId} for the assignment rules. */
   atomId?: number;
 }

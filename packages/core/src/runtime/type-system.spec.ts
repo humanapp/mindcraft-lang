@@ -12,7 +12,6 @@ import {
   CoreTypeAtomId,
   CoreTypeIds,
   CoreTypeNames,
-  type EnumFunctionIds,
   type EnumSymbolDef,
   type EnumTypeDef,
   type ExecutionContext,
@@ -33,14 +32,6 @@ import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__t
 
 let services: BrainServices;
 
-let nextEnumFnId = 20000;
-
-function mkEnumFunctionIds(): EnumFunctionIds {
-  const base = nextEnumFnId;
-  nextEnumFnId += 2;
-  return { toString: base, toNumber: base + 1 };
-}
-
 let nextTypeAtomId = 20000;
 
 function mkTestAtomId(): number {
@@ -53,7 +44,7 @@ function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?:
   if (existing) {
     return existing;
   }
-  return registry.addEnumType(name, { atomId: mkTestAtomId(), symbols, defaultKey, functionIds: mkEnumFunctionIds() });
+  return registry.addEnumType(name, { atomId: mkTestAtomId(), symbols, defaultKey });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -810,7 +801,6 @@ describe("removeUserTypes", () => {
           { key: "go", label: "Go", value: 1 },
         ]),
         defaultKey: "stop",
-        functionIds: mkEnumFunctionIds(),
       })
     );
 
@@ -870,7 +860,6 @@ describe("removeUserTypes", () => {
         { key: "busy", label: "Busy", value: "busy" },
       ]),
       defaultKey: "ready",
-      functionIds: mkEnumFunctionIds(),
     });
 
     registry.removeUserTypes();
@@ -1158,7 +1147,6 @@ describe("type-atom ids", () => {
         { key: "b", label: "B", value: "b" },
       ]),
       defaultKey: "a",
-      functionIds: mkEnumFunctionIds(),
     });
     assert.equal(registry.get(typeId)?.atomId, atomId);
     assert.equal(registry.resolveByAtomId(atomId), typeId);

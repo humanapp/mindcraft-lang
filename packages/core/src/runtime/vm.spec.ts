@@ -1754,7 +1754,10 @@ describe("VM -- action calls", () => {
       mkCtx({
         services: __test__createPlatformServices({
           runtime: { functions: services.runtime.functions, types: services.runtime.types },
-          program: { getRuleFuncIdForFunc: (funcId: number) => (funcId === 0 ? 0 : undefined) },
+          program: {
+            getRuleFuncIdForFunc: (funcId: number) => (funcId === 0 ? 0 : undefined),
+            getEnumSymbolValue: () => undefined,
+          },
         }),
       })
     );

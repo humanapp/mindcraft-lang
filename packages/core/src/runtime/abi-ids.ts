@@ -11,12 +11,10 @@
  * The shared `HOST_CALL` funcId space is partitioned by owner:
  *
  * - core owns `[0, TARGET_FUNC_ID_BASE)`
- * - the active target owns `[TARGET_FUNC_ID_BASE, DYNAMIC_FUNC_ID_BASE)`
- * - dynamically registered, program-dependent functions (user-declared enum
- *   conversions) own `[DYNAMIC_FUNC_ID_BASE, ...)`
+ * - the active target owns `[TARGET_FUNC_ID_BASE, ...)`
  *
  * The host-action id space partitions the same way at
- * `TARGET_ACTION_ID_BASE`, with no dynamic region.
+ * `TARGET_ACTION_ID_BASE`.
  *
  * The type-atom id space partitions at `TARGET_TYPE_ATOM_BASE`, also with no
  * dynamic region: program-local (user) types carry no atom id and are
@@ -28,14 +26,6 @@
 
 /** First funcId owned by the active target; core funcIds are below this. */
 export const TARGET_FUNC_ID_BASE = 1024;
-
-/**
- * First funcId of the dynamic region for program-dependent host functions
- * (user-declared enum conversions). Ids at and above this value are not
- * part of the device ABI; they are stable only for a given compiled
- * program.
- */
-export const DYNAMIC_FUNC_ID_BASE = 65536;
 
 /** First host-action id owned by the active target; core action ids are below this. */
 export const TARGET_ACTION_ID_BASE = 1024;
@@ -195,6 +185,8 @@ export enum CoreFuncId {
   ContextGetWhenResult = 101,
   OpEqualToEnum = 102,
   OpNotEqualToEnum = 103,
+  ConvEnumToString = 104,
+  ConvEnumToNumber = 105,
 }
 
 /**

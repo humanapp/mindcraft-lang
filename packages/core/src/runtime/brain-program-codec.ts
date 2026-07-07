@@ -77,7 +77,7 @@ export type BrainProgramTypeEntryJson =
       readonly tag: "enum";
       readonly typeId: string;
       readonly name: string;
-      readonly symbols: readonly string[];
+      readonly symbols: readonly { readonly key: string; readonly value: string | number }[];
     };
 
 /** JSON-safe representation of VM constant pools. */

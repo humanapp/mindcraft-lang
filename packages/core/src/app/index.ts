@@ -78,14 +78,8 @@ export { CoreOpId, CoreTypeIds } from "../runtime";
 
 // -- Stable ABI ids ---------------------------------------------------------------
 
-export type { EnumFunctionIds, HostActionIds, StableIdOwner } from "../runtime";
-export {
-  CoreFuncId,
-  CoreHostActions,
-  DYNAMIC_FUNC_ID_BASE,
-  TARGET_ACTION_ID_BASE,
-  TARGET_FUNC_ID_BASE,
-} from "../runtime";
+export type { HostActionIds, StableIdOwner } from "../runtime";
+export { CoreFuncId, CoreHostActions, TARGET_ACTION_ID_BASE, TARGET_FUNC_ID_BASE } from "../runtime";
 
 // -- Context type IDs (for extending EngineContext, BrainContext, etc.) ----------
 

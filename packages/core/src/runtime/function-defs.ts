@@ -277,10 +277,9 @@ export interface IFunctionRegistry {
   register(id: number, name: string, isAsync: boolean, fn: HostFn, callDef: BrainActionCallDef): BrainFunctionEntry;
   /**
    * Run `body` with registrations validated against `owner`'s id range:
-   * core `[0, TARGET_FUNC_ID_BASE)`, target
-   * `[TARGET_FUNC_ID_BASE, DYNAMIC_FUNC_ID_BASE)`, dynamic
-   * `[DYNAMIC_FUNC_ID_BASE, ...)`. The previous owner is restored when
-   * `body` returns or throws. The default owner is `target`.
+   * core `[0, TARGET_FUNC_ID_BASE)`, target `[TARGET_FUNC_ID_BASE, ...)`.
+   * The previous owner is restored when `body` returns or throws. The
+   * default owner is `target`.
    */
   withOwner<T>(owner: StableIdOwner, body: () => T): T;
   unregister(name: string): boolean;

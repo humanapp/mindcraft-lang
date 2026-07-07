@@ -14,6 +14,17 @@ export interface ProgramStructField {
   readonly fieldIndex: number;
 }
 
+/** One symbol of a program-local enum type: its key and its declared primitive value. */
+export interface ProgramEnumSymbol {
+  /** The symbol's source key. */
+  readonly key: string;
+  /**
+   * The symbol's declared primitive value. All symbols of one enum share a
+   * value kind (all string or all number).
+   */
+  readonly value: string | number;
+}
+
 /**
  * One entry of a program's type table. Each entry describes one distinct type
  * the program references; child references (`elem`, `key`, `value`,
@@ -44,10 +55,11 @@ export type ProgramTypeEntry =
    */
   | { tag: "struct"; typeId: TypeId; name: string; maxFieldId: number; fields: List<ProgramStructField> }
   /**
-   * A program-local enum. `symbols` lists the enum's symbol keys in declared
-   * order; enum values reference symbols by ordinal into this list.
+   * A program-local enum. `symbols` lists the enum's symbols (key and
+   * declared primitive value) in declared order; enum values reference
+   * symbols by ordinal into this list.
    */
-  | { tag: "enum"; typeId: TypeId; name: string; symbols: List<string> };
+  | { tag: "enum"; typeId: TypeId; name: string; symbols: List<ProgramEnumSymbol> };
 
 /**
  * Resolve a type-table index to its {@link TypeId} string. Throws if the

@@ -5,10 +5,9 @@ import {
   CoreOpId,
   CoreTypeIds,
   conversionFnName,
-  DYNAMIC_FUNC_ID_BASE,
-  type EnumFunctionIds,
   type EnumTypeDef,
   isBytecodeConversion,
+  isSharedHostFnConversion,
   mkNumberValue,
   mkOutputVarKey,
   mkStringValue,
@@ -599,6 +598,20 @@ function resolveSingleStepConversion(
   // only reach host-function conversions, so it does not apply here.
   if (isBytecodeConversion(conversion)) {
     return undefined;
+  }
+
+  // A shared-host-function conversion dispatches to a function registered
+  // independently of the (from, to) pair; resolve its name by funcId.
+  if (isSharedHostFnConversion(conversion)) {
+    const entry = services.runtime.functions.getSyncById(conversion.id);
+    if (!entry) {
+      return undefined;
+    }
+    return {
+      fromTypeId: conversion.fromType,
+      toTypeId: conversion.toType,
+      fnName: entry.name,
+    };
   }
 
   return {
@@ -10637,38 +10650,16 @@ function registerUserEnumType(
       return;
     }
 
-    services.runtime.functions.withOwner("dynamic", () => {
-      registry.withOwner("dynamic", () => {
-        registry.addEnumType(qualifiedName, {
-          symbols,
-          defaultKey: symbols.get(0).key,
-          functionIds: nextUserEnumFunctionIds(services),
-        });
+    registry.withOwner("dynamic", () => {
+      registry.addEnumType(qualifiedName, {
+        symbols,
+        defaultKey: symbols.get(0).key,
       });
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : `Invalid enum declaration '${enumNode.name.text}'`;
     diagnostics.push(makeCompileDiag(CompileDiagCode.InvalidEnumDeclaration, message, enumNode));
   }
-}
-
-/**
- * Derive the dynamic-range funcIds for the next user-declared enum: the k-th
- * user enum registered into the type registry takes the 2-id block at
- * `DYNAMIC_FUNC_ID_BASE + 2k`. The count is taken from the registry itself
- * (user enums are the module-qualified ones, removed by `removeUserTypes()`
- * before each project compile), so an unchanged project compiles to the same
- * ids every build.
- */
-function nextUserEnumFunctionIds(services: BrainServices): EnumFunctionIds {
-  let userEnumCount = 0;
-  for (const [, def] of services.runtime.types.entries()) {
-    if (def.coreType === NativeType.Enum && def.name.indexOf("::") >= 0) {
-      userEnumCount++;
-    }
-  }
-  const base = DYNAMIC_FUNC_ID_BASE + 2 * userEnumCount;
-  return { toString: base, toNumber: base + 1 };
 }
 
 type EnumPropertyAccessResolution = { kind: "member"; value: Value } | { kind: "unsupported" };

@@ -1,7 +1,7 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
-import type { ProgramStructField, ProgramTypeEntry } from "../../runtime/program";
+import type { ProgramEnumSymbol, ProgramStructField, ProgramTypeEntry } from "../../runtime/program";
 import {
   type EnumTypeDef,
   type FunctionTypeDef,
@@ -25,7 +25,7 @@ import { forEachValueTypeId, type Value } from "../../runtime/value";
  * Entry shape is decided from the live registry definition: types carrying an
  * `atomId` become atom refs, structural types (list/map/union/function/
  * nullable) decompose into child references, and program-local structs and
- * enums carry their name (and enum symbol keys) as data.
+ * enums carry their name (and enum symbols with their values) as data.
  */
 export class ProgramTypeTableBuilder {
   private entries: List<ProgramTypeEntry> = List.empty();
@@ -102,9 +102,9 @@ export class ProgramTypeTableBuilder {
           break;
         }
         case NativeType.Enum: {
-          const symbols = List.empty<string>();
+          const symbols = List.empty<ProgramEnumSymbol>();
           (def as EnumTypeDef).symbols.forEach((symbol) => {
-            symbols.push(symbol.key);
+            symbols.push({ key: symbol.key, value: symbol.value });
           });
           entry = { tag: "enum", typeId, name: def.name, symbols };
           break;
