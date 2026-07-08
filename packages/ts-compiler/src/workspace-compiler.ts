@@ -4,8 +4,9 @@ import type { ProjectCompileResult } from "./compiler/compile.js";
 import { type DependencyMount, extensionWorkspacePath, type ProjectDependency } from "./compiler/extension-mounts.js";
 import { declarationMounts, type Mount, mountedFiles, sourceMounts } from "./compiler/mounts.js";
 import { COMPILER_CONTROLLED_TSCONFIG_PATH, UserTileProject } from "./compiler/project.js";
+import { MultiRootSession, type ProjectRoot } from "./compiler/project-set.js";
 import type { CompileDiagnostic } from "./compiler/types.js";
-import { buildCompiledActionBundle } from "./runtime/action-bundle.js";
+import { buildMultiRootActionBundle } from "./runtime/action-bundle.js";
 
 /** A file in a {@link WorkspaceSnapshot}: `content` plus the `etag` used for optimistic concurrency. */
 export type WorkspaceFileEntry = {
@@ -83,7 +84,14 @@ export interface WorkspaceDiagnosticEntry {
 export interface WorkspaceCompileResult {
   /** Diagnostics keyed by workspace path. Files with no diagnostics are absent. */
   files: ReadonlyMap<string, readonly WorkspaceDiagnosticEntry[]>;
+  /** The host project's compile result. Diagnostics surfaced to the user come from here only. */
   projectResult: ProjectCompileResult;
+  /**
+   * Every compilation root whose tiles enter {@link bundle}: the host project
+   * followed by one result per installed extension. Equals `[projectResult]`
+   * when the project has no extensions.
+   */
+  rootResults: readonly ProjectCompileResult[];
   /** Compiled action bundle. Absent when the project has blocking diagnostics. */
   bundle?: CompiledActionBundle;
 }
@@ -184,6 +192,16 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
   private readonly compileListeners = new Set<(result: WorkspaceCompileResult) => void>();
   /** The dependency mounts materialized into the installed-extensions tree at the latest compile. */
   private _dependencyMounts: readonly DependencyMount[];
+  /**
+   * Session that compiles each installed extension under its own namespace
+   * scope. Present once the project has at least one extension; undefined
+   * otherwise.
+   */
+  private _extensionSession?: MultiRootSession;
+  /** The latest per-extension compile results, in dependency order; reused across host-only recompiles. */
+  private _extensionResults: readonly ProjectCompileResult[] = [];
+  /** Set when the resolved extension set changed since the last extension compile. */
+  private _extensionsDirty = true;
 
   constructor(private readonly options: CreateWorkspaceCompilerOptions) {
     this._dependencyMounts = options.dependencyMounts ?? [];
@@ -223,19 +241,26 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
 
   setDependencies(dependencies: readonly ProjectDependency[], dependencyMounts: readonly DependencyMount[]): void {
     this._dependencyMounts = dependencyMounts;
+    this._extensionsDirty = true;
     this.project.setDependencies(dependencies, dependencyMounts);
   }
 
   compile(): WorkspaceCompileResult {
+    // Extensions must be compiled before the host: the host's on-demand type
+    // resolution reads their registered tiles.
+    this.refreshExtensions();
+
     const projectResult = this.project.compileAll();
+    const rootResults = [projectResult, ...this._extensionResults];
     const files = buildDiagnosticSnapshot(projectResult);
-    const bundle = buildCompiledActionBundle(projectResult, {
+    const bundle = buildMultiRootActionBundle(rootResults, {
       services: this.options.environment.brainServices,
     });
 
     const result: WorkspaceCompileResult = {
       files,
       projectResult,
+      rootResults,
       bundle,
     };
 
@@ -244,6 +269,39 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
     }
 
     return result;
+  }
+
+  /** The resolved extension set as compilation roots, one per dependency mount. */
+  private extensionRoots(): ProjectRoot[] {
+    return this._dependencyMounts.map((mount) => ({
+      namespace: mount.namespace,
+      files: mount.files,
+      dependencies: mount.dependencies,
+    }));
+  }
+
+  /**
+   * Recompile the extension scopes when the resolved set changed. Dropping the
+   * last extension tears down every scope's registrations; an intermediate
+   * change tears down only the origins no longer present.
+   */
+  private refreshExtensions(): void {
+    if (!this._extensionsDirty) return;
+    this._extensionsDirty = false;
+
+    const roots = this.extensionRoots();
+    if (roots.length === 0) {
+      this._extensionSession?.setRoots([]);
+      this._extensionResults = [];
+      return;
+    }
+
+    if (!this._extensionSession) {
+      this._extensionSession = new MultiRootSession({ services: this.options.environment.brainServices });
+    }
+    this._extensionSession.setRoots(roots);
+    const { roots: results } = this._extensionSession.compile();
+    this._extensionResults = [...results.values()];
   }
 
   onDidCompile(listener: (result: WorkspaceCompileResult) => void): () => void {

@@ -39,7 +39,7 @@ import {
   scopedOutputName,
 } from "@mindcraft-lang/ts-compiler";
 
-const METADATA_CACHE_VERSION = 7 as const;
+const METADATA_CACHE_VERSION = 8 as const;
 
 /** Cached metadata describing a user-authored sensor or actuator tile. */
 export interface UserTileMetadata {
@@ -399,14 +399,20 @@ function buildHydratedSnapshot(
   });
 }
 
-/** Extract user-tile metadata from a project compile result, sorted by key. */
+/**
+ * Extract user-tile metadata from a compile result, sorted by key. Includes a
+ * metadata entry for every compilation root: the host project and each
+ * installed extension, each keyed under its own namespace.
+ */
 export function collectMetadataFromCompile(result: WorkspaceCompileResult): UserTileMetadata[] {
   const metadata: UserTileMetadata[] = [];
 
-  for (const compileResult of result.projectResult.results.values()) {
-    // Conversions compile to a program but surface no tiles, so they contribute no tile metadata.
-    if (compileResult.program && compileResult.program.kind !== "conversion") {
-      metadata.push(metadataFromProgram(compileResult.program));
+  for (const rootResult of result.rootResults) {
+    for (const compileResult of rootResult.results.values()) {
+      // Conversions compile to a program but surface no tiles, so they contribute no tile metadata.
+      if (compileResult.program && compileResult.program.kind !== "conversion") {
+        metadata.push(metadataFromProgram(compileResult.program));
+      }
     }
   }
 

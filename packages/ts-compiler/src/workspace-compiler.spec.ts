@@ -7,6 +7,7 @@ import type { DependencyMount, ProjectDependency } from "./compiler/extension-mo
 import { declarationMount, type Mount } from "./compiler/mounts.js";
 import { qualifiedClassName } from "./compiler/symbol-keys.js";
 import type { AmbientFile } from "./compiler/types.js";
+import { buildCompiledActionBundle, buildMultiRootActionBundle } from "./runtime/action-bundle.js";
 import { TEST_PROJECT_NAMESPACE } from "./testing/index.js";
 import { createWorkspaceCompiler, type WorkspaceCompileResult } from "./workspace-compiler.js";
 
@@ -340,5 +341,128 @@ export default Sensor({
     assert.equal(controlled.get(".extensions/acme/point/point.ts"), pointSource);
     assert.equal(controlled.get(".extensions/acme/a/index.ts"), aEntry);
     assert.equal(controlled.get(".extensions/acme/b/index.ts"), bEntry);
+  });
+
+  const BEEP_SOURCE = `import { Sensor, type Context } from "mindcraft";
+export default Sensor({
+  name: "ext beep",
+  id: "extBeep000000001",
+  onExecute(ctx: Context): number { return 1; },
+});
+`;
+  const HOST_SENSOR = `import { Sensor, type Context } from "mindcraft";
+export default Sensor({
+  name: "host thing",
+  id: "hostThing0000001",
+  onExecute(ctx: Context): number { return 2; },
+});
+`;
+  const EXT_ACTION_KEY = "acme/beeper:user.sensor.extBeep000000001";
+  const HOST_ACTION_KEY = `${TEST_PROJECT_NAMESPACE}:user.sensor.hostThing0000001`;
+
+  test("an installed extension's tiles enter the combined bundle; uninstalling removes them", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const beepMount: DependencyMount = {
+      namespace: "acme/beeper",
+      files: new Map([["/index.ts", BEEP_SOURCE]]),
+    };
+    const compiler = createWorkspaceCompiler({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      mounts: mountsFor(environment),
+      environment,
+      dependencies: [{ coordinate: "acme/beeper" }],
+      dependencyMounts: [beepMount],
+    });
+    compiler.replaceWorkspace(
+      new Map([["main.ts", { kind: "file", content: HOST_SENSOR, etag: "e1", isReadonly: false }]])
+    );
+
+    const installed = compiler.compile();
+    assert.ok(installed.bundle, "expected a bundle with the extension installed");
+    assert.ok(installed.bundle.actions.get(EXT_ACTION_KEY), "the extension's tile action is in the bundle");
+    assert.ok(installed.bundle.actions.get(HOST_ACTION_KEY), "the host's tile action is in the bundle");
+    assert.equal(installed.rootResults.length, 2, "the host and the one extension are both compilation roots");
+
+    // Uninstall: re-resolve to no extensions.
+    compiler.setDependencies([], []);
+    const uninstalled = compiler.compile();
+    assert.ok(uninstalled.bundle, "expected a bundle after uninstall");
+    assert.equal(
+      uninstalled.bundle.actions.get(EXT_ACTION_KEY),
+      undefined,
+      "the extension's tile action is gone once uninstalled"
+    );
+    assert.ok(uninstalled.bundle.actions.get(HOST_ACTION_KEY), "the host's own tile survives the uninstall");
+    assert.equal(uninstalled.rootResults.length, 1, "only the host remains a compilation root");
+  });
+
+  test("the combined bundle merges host and extension actions into one action table", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const beepMount: DependencyMount = {
+      namespace: "acme/beeper",
+      files: new Map([["/index.ts", BEEP_SOURCE]]),
+    };
+    const compiler = createWorkspaceCompiler({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      mounts: mountsFor(environment),
+      environment,
+      dependencies: [{ coordinate: "acme/beeper" }],
+      dependencyMounts: [beepMount],
+    });
+    compiler.replaceWorkspace(
+      new Map([["main.ts", { kind: "file", content: HOST_SENSOR, etag: "e1", isReadonly: false }]])
+    );
+    const result = compiler.compile();
+    assert.ok(result.bundle);
+
+    // The whole-program downstream (brain-link, treeshake, constant-dedup)
+    // consumes exactly one CompiledActionBundle: rebuilding it over all roots
+    // with the shared builder reproduces the same combined shape.
+    const rebuilt = buildMultiRootActionBundle(result.rootResults, {
+      services: environment.brainServices,
+    });
+    assert.ok(rebuilt);
+    assert.equal(rebuilt.revision, result.bundle.revision);
+    assert.deepEqual(
+      rebuilt.actions.keys().toArray().sort(),
+      result.bundle.actions.keys().toArray().sort(),
+      "one action table holds host and extension actions alike"
+    );
+    assert.deepEqual(
+      [EXT_ACTION_KEY, HOST_ACTION_KEY].filter((key) => result.bundle!.actions.get(key)),
+      [EXT_ACTION_KEY, HOST_ACTION_KEY],
+      "both origins share the single downstream action table"
+    );
+  });
+
+  test("a project without extensions produces the single-root bundle unchanged", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const compiler = createWorkspaceCompiler({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      mounts: mountsFor(environment),
+      environment,
+    });
+    compiler.replaceWorkspace(
+      new Map([["main.ts", { kind: "file", content: HOST_SENSOR, etag: "e1", isReadonly: false }]])
+    );
+    const result = compiler.compile();
+    assert.ok(result.bundle);
+    assert.equal(result.rootResults.length, 1, "the host is the only compilation root");
+
+    const singleRoot = buildCompiledActionBundle(result.projectResult, {
+      services: environment.brainServices,
+    });
+    assert.ok(singleRoot);
+    assert.equal(
+      result.bundle.revision,
+      singleRoot.revision,
+      "the bundle revision is identical to the single-root path"
+    );
+    assert.deepEqual(result.bundle.actions.keys().toArray().sort(), singleRoot.actions.keys().toArray().sort());
+    assert.deepEqual(
+      result.bundle.tiles.map((tile) => tile.tileId).sort(),
+      singleRoot.tiles.map((tile) => tile.tileId).sort(),
+      "the tiles are identical to the single-root path"
+    );
   });
 });
