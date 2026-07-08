@@ -123,6 +123,26 @@ describe("parseProjectContentManifest", () => {
     }
   });
 
+  it("carries a non-empty ambient string array through", () => {
+    const result = parseProjectContentManifest(
+      JSON.stringify({ name: "P", version: "0.1.0", ambient: ["mindcraft.core.d.ts", "mindcraft.wodal.d.ts"] })
+    );
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest.ambient, ["mindcraft.core.d.ts", "mindcraft.wodal.d.ts"]);
+    }
+  });
+
+  it("omits ambient when absent or empty", () => {
+    for (const ambient of [undefined, []]) {
+      const result = parseProjectContentManifest(JSON.stringify({ name: "P", version: "0.1.0", ambient }));
+      assert.strictEqual(result.ok, true);
+      if (result.ok) {
+        assert.strictEqual("ambient" in result.manifest, false);
+      }
+    }
+  });
+
   it("rejects invalid JSON with INVALID_JSON", () => {
     const result = parseProjectContentManifest("{not json");
     assert.strictEqual(result.ok, false);
@@ -159,6 +179,14 @@ describe("validateProjectContentManifest", () => {
     for (const version of ["1.0.0-alpha.1", "1.0.0+build.5", "1.0.0-rc.1+sha.abc"]) {
       const result = validateProjectContentManifest({ name: "P", version });
       assert.strictEqual(result.ok, true, `Expected acceptance for version "${version}"`);
+    }
+  });
+
+  it("rejects a non-array or non-string-element ambient field with INVALID_AMBIENT", () => {
+    for (const ambient of [5, "x", { a: 1 }, ["ok", 3]]) {
+      const result = validateProjectContentManifest({ name: "P", version: "0.1.0", ambient });
+      assert.strictEqual(result.ok, false);
+      assert.ok(errorCodes(result).includes(ProjectContentManifestErrorCode.INVALID_AMBIENT));
     }
   });
 
@@ -259,5 +287,26 @@ describe("serializeProjectContentManifest", () => {
     const serialized = serializeProjectContentManifest({ name: "P", version: "0.1.0", extensions: {} });
     assert.strictEqual(serialized.includes("description"), false);
     assert.strictEqual(serialized.includes("thumbnailUrl"), false);
+  });
+
+  it("round-trips a non-empty ambient list and omits it when empty", () => {
+    const manifest: ProjectContentManifest = {
+      name: "P",
+      version: "0.1.0",
+      extensions: {},
+      ambient: ["mindcraft.core.d.ts"],
+    };
+    const result = parseProjectContentManifest(serializeProjectContentManifest(manifest));
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest, manifest);
+    }
+    const emptySerialized = serializeProjectContentManifest({
+      name: "P",
+      version: "0.1.0",
+      extensions: {},
+      ambient: [],
+    });
+    assert.strictEqual(emptySerialized.includes("ambient"), false);
   });
 });

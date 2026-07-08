@@ -325,15 +325,22 @@ export class UserTileProject {
 
     // Resolved extension content materializes under the installed-extensions
     // tree keyed by its `<owner>/<repo>` coordinate; it is compiled only when
-    // reached through an `@ext/<owner>/<repo>` import. Ambient and tsconfig
-    // paths an extension happens to carry are the consuming project's to
-    // supply, never the extension's.
+    // reached through an `@ext/<owner>/<repo>` import. A file the mount declares
+    // as `ambient` is the exception: its materialized path joins the ambient
+    // compiler roots, always in scope for the type checker. A tsconfig path an
+    // extension happens to carry is the consuming project's to supply, never the
+    // extension's.
     for (const mount of this._dependencyMounts) {
+      const ambientRelativePaths = new Set((mount.ambient ?? []).map(normalizeWorkspacePath));
       for (const [path, content] of mount.files) {
-        if (isAmbientOrTsconfigPath(path) || isExamplePath(path)) {
+        if (normalizeWorkspacePath(path) === COMPILER_CONTROLLED_TSCONFIG_PATH || isExamplePath(path)) {
           continue;
         }
-        compilerFiles.set(extensionFilePath(mount.namespace, path), content);
+        const compilerPath = extensionFilePath(mount.namespace, path);
+        compilerFiles.set(compilerPath, content);
+        if (ambientRelativePaths.has(normalizeWorkspacePath(path))) {
+          ambientCompilerPaths.add(compilerPath);
+        }
       }
     }
     const resolveExtensionBase = this._extensionBaseResolver();

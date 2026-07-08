@@ -96,6 +96,14 @@ export interface ProjectContentManifest {
    * the project has no extensions.
    */
   readonly extensions: MindcraftProjectExtensions;
+  /**
+   * Content-relative paths of the `.d.ts` declaration files this content
+   * contributes as ambient declarations: type declarations the consumer's
+   * TypeScript environment includes globally (language globals and/or
+   * `declare module "mindcraft"` surfaces), pulled into scope by inclusion.
+   * Present only when the file carries a non-empty list.
+   */
+  readonly ambient?: readonly string[];
 }
 
 /** Stable identifiers for content manifest validation errors. */
@@ -103,6 +111,7 @@ export const ProjectContentManifestErrorCode = {
   INVALID_JSON: "PROJECT_MANIFEST_INVALID_JSON",
   INVALID_ROOT: "PROJECT_MANIFEST_INVALID_ROOT",
   INVALID_NAME: "PROJECT_MANIFEST_INVALID_NAME",
+  INVALID_AMBIENT: "PROJECT_MANIFEST_INVALID_AMBIENT",
   INVALID_EXTENSIONS: "PROJECT_MANIFEST_INVALID_EXTENSIONS",
   INVALID_EXTENSION_COORDINATE: "PROJECT_MANIFEST_INVALID_EXTENSION_COORDINATE",
   DUPLICATE_EXTENSION_COORDINATE: "PROJECT_MANIFEST_DUPLICATE_EXTENSION_COORDINATE",
@@ -215,9 +224,10 @@ export function parseProjectContentManifest(content: string): ProjectContentMani
 
 /**
  * Validate a parsed project content manifest. String `description` and
- * `thumbnailUrl` fields are carried through; other fields are ignored, and an
- * absent `extensions` field yields an empty extensions map. A missing or
- * non-semver `version` is read as the lowest content version (`"0.0.0"`).
+ * `thumbnailUrl` fields are carried through; a string-array `ambient` field is
+ * carried through when non-empty; other fields are ignored, and an absent
+ * `extensions` field yields an empty extensions map. A missing or non-semver
+ * `version` is read as the lowest content version (`"0.0.0"`).
  *
  * @param value - Parsed JSON value of a `mindcraft.json` file.
  */
@@ -246,6 +256,19 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
   }
 
   const version = isSemver(value.version) ? value.version : DEFAULT_CONTENT_VERSION;
+
+  let ambient: readonly string[] | undefined;
+  if (value.ambient !== undefined) {
+    if (!Array.isArray(value.ambient) || value.ambient.some((entry) => typeof entry !== "string")) {
+      errors.push({
+        code: ProjectContentManifestErrorCode.INVALID_AMBIENT,
+        path: "$.ambient",
+        message: "$.ambient must be an array of string paths when present.",
+      });
+    } else if (value.ambient.length > 0) {
+      ambient = value.ambient as readonly string[];
+    }
+  }
 
   let extensions: MindcraftProjectExtensions = {};
   if (value.extensions !== undefined) {
@@ -277,6 +300,7 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
       ...(typeof value.description === "string" ? { description: value.description } : {}),
       ...(typeof value.thumbnailUrl === "string" ? { thumbnailUrl: value.thumbnailUrl } : {}),
       extensions,
+      ...(ambient !== undefined ? { ambient } : {}),
     },
     errors: [],
   };
@@ -291,6 +315,7 @@ export function serializeProjectContentManifest(manifest: ProjectContentManifest
       ...(manifest.description !== undefined ? { description: manifest.description } : {}),
       ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
       ...(Object.keys(manifest.extensions).length > 0 ? { extensions: manifest.extensions } : {}),
+      ...(manifest.ambient !== undefined && manifest.ambient.length > 0 ? { ambient: manifest.ambient } : {}),
     },
     null,
     2

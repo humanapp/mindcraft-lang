@@ -34,6 +34,13 @@ export interface DependencyMount {
   files: ReadonlyMap<string, string>;
   /** The mounted project's own extensions list, resolving `@ext/<owner>/<repo>` imports inside its files. */
   dependencies?: readonly ProjectDependency[];
+  /**
+   * Namespace-relative paths of the mount's `.d.ts` files that are ambient
+   * declarations: included as compiler roots always in scope for the type
+   * checker. Each names one entry of {@link files}. Present only when the mount
+   * declares ambient files.
+   */
+  ambient?: readonly string[];
 }
 
 /** Import-specifier prefix for extension imports: `@ext/<owner>/<repo>` resolves to the dependency's entry module. */

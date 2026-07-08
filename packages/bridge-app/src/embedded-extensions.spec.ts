@@ -18,18 +18,24 @@ function coordinateFor(repo: string): string {
 /** An embedded extension whose content includes a `mindcraft.json` declaring its version and its own extensions. */
 function ext(
   repo: string,
-  options: { version?: string; extensions?: Record<string, string>; extra?: Record<string, string> } = {}
+  options: {
+    version?: string;
+    extensions?: Record<string, string>;
+    ambient?: string[];
+    extra?: Record<string, string>;
+  } = {}
 ): EmbeddedExtension {
   const files: { path: string; content: string }[] = [
     { path: "index.ts", content: `export const ${repo.replace(/[^A-Za-z0-9]/g, "_")} = 1;` },
   ];
-  if (options.version !== undefined || options.extensions !== undefined) {
+  if (options.version !== undefined || options.extensions !== undefined || options.ambient !== undefined) {
     files.push({
       path: "mindcraft.json",
       content: JSON.stringify({
         name: repo,
         version: options.version ?? "1.0.0",
         ...(options.extensions ? { extensions: options.extensions } : {}),
+        ...(options.ambient ? { ambient: options.ambient } : {}),
       }),
     });
   }
@@ -88,6 +94,18 @@ describe("resolveEmbeddedExtensions -- flat cases", () => {
       STDLIB,
     ]);
     assert.deepEqual(resolved.dependencies, []);
+  });
+
+  test("carries an extension's declared ambient list onto its mount and omits it when undeclared", () => {
+    const withAmbient = resolveEmbeddedExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, [
+      ext("a", { version: "1.0.0", ambient: ["mindcraft.a.d.ts"], extra: { "mindcraft.a.d.ts": "export {};" } }),
+    ]);
+    assert.deepEqual(mountFor(withAmbient.dependencyMounts, coordinateFor("a")).ambient, ["mindcraft.a.d.ts"]);
+
+    const withoutAmbient = resolveEmbeddedExtensions({ "mindcraft-lang/wodal": "embedded:mindcraft-lang/wodal" }, [
+      STDLIB,
+    ]);
+    assert.equal(mountFor(withoutAmbient.dependencyMounts, coordinateFor("wodal")).ambient, undefined);
   });
 
   test("returns empty results for an absent extensions list", () => {
@@ -229,6 +247,7 @@ function originCandidate(options: {
     depth: options.depth,
     files: new Map(),
     extensions: {},
+    ambient: [],
   };
 }
 

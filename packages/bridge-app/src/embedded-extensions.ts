@@ -104,6 +104,8 @@ export interface OriginCandidate {
   files: ReadonlyMap<string, string>;
   /** The candidate's own extensions list, resolving its `@ext/<owner>/<repo>` imports. */
   extensions: ExtensionsMap;
+  /** The candidate's declared ambient `.d.ts` files, as namespace-relative paths; empty when it declares none. */
+  ambient: readonly string[];
 }
 
 const ZERO_VERSION = "0.0.0";
@@ -132,23 +134,29 @@ function embeddedFiles(extension: EmbeddedExtension): Map<string, string> {
 }
 
 /**
- * Read an extension's own version and extensions list from the `mindcraft.json`
- * carried in its content. An extension without a manifest, or with an
- * unparseable one, contributes no dependencies and compares as `0.0.0`.
+ * Read an extension's own version, extensions list, and declared ambient `.d.ts`
+ * paths from the `mindcraft.json` carried in its content. An extension without a
+ * manifest, or with an unparseable one, contributes no dependencies and no
+ * ambient files and compares as `0.0.0`.
  */
 function readOwnManifest(files: ReadonlyMap<string, string>): {
   version: string;
   extensions: ExtensionsMap;
+  ambient: readonly string[];
 } {
   const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
   if (manifestContent === undefined) {
-    return { version: ZERO_VERSION, extensions: {} };
+    return { version: ZERO_VERSION, extensions: {}, ambient: [] };
   }
   const parsed = parseProjectContentManifest(manifestContent);
   if (!parsed.ok) {
-    return { version: ZERO_VERSION, extensions: {} };
+    return { version: ZERO_VERSION, extensions: {}, ambient: [] };
   }
-  return { version: parsed.manifest.version, extensions: parsed.manifest.extensions };
+  return {
+    version: parsed.manifest.version,
+    extensions: parsed.manifest.extensions,
+    ambient: parsed.manifest.ambient ?? [],
+  };
 }
 
 /** Resolve one embedded reference string against the embed record into an origin candidate at the given depth. */
@@ -174,6 +182,7 @@ function embeddedCandidate(
     depth,
     files,
     extensions: own.extensions,
+    ambient: own.ambient,
   };
 }
 
@@ -312,6 +321,7 @@ export function resolveEmbeddedExtensions(
       namespace: candidate.origin,
       files: candidate.files,
       dependencies,
+      ...(candidate.ambient.length > 0 ? { ambient: candidate.ambient } : {}),
     });
   }
 
