@@ -758,7 +758,7 @@ describe("importProjectDocument", () => {
 describe("project extensions interchange", () => {
   const EXTENSIONS = {
     "example-org/mindcraft-position": "gh:example-org/mindcraft-position@v1.2.0",
-    "mindcraft-lang/microbit-stdlib": "embedded:microbit-stdlib",
+    "mindcraft-lang/microbit-stdlib": "embedded:mindcraft-lang/microbit-stdlib",
     "author/scratch": "local:8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
   };
 
@@ -912,7 +912,7 @@ describe("project extensions interchange", () => {
   });
 
   it("rejects invalid extension coordinates with the content manifest code", async () => {
-    const file = makeFile(makeSharedProjectDoc({ extensions: { "bad-coordinate": "embedded:fine" } }));
+    const file = makeFile(makeSharedProjectDoc({ extensions: { "bad-coordinate": "embedded:org/fine" } }));
 
     const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
 

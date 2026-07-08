@@ -693,7 +693,7 @@ describe("AppEnvironmentHost key-namespace migration", () => {
 
 const DEMO_REPO = "demo-lib";
 const DEMO_COORDINATE = `mindcraft-lang/${DEMO_REPO}`;
-const DEMO_REFERENCE = `embedded:${DEMO_REPO}`;
+const DEMO_REFERENCE = `embedded:${DEMO_COORDINATE}`;
 
 /** A minimal embedded extension whose entry re-exports a pure helper. */
 const DEMO_EXTENSION: EmbeddedExtension = {

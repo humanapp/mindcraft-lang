@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ExtensionReference, ProjectContentManifest } from "@mindcraft-lang/app-host";
+import type { ProjectContentManifest } from "@mindcraft-lang/app-host";
 import {
   ProjectContentManifestErrorCode,
   parseExtensionReference,
   parseProjectContentManifest,
-  serializeExtensionReference,
   serializeProjectContentManifest,
   validateProjectContentManifest,
   validateProjectExtensions,
@@ -16,7 +15,7 @@ const VALID_MANIFEST = {
   version: "1.2.3",
   extensions: {
     "example-org/mindcraft-position": "gh:example-org/mindcraft-position@v1.2.0",
-    "mindcraft-lang/microbit-stdlib": "embedded:microbit-stdlib",
+    "mindcraft-lang/microbit-stdlib": "embedded:mindcraft-lang/microbit-stdlib",
     "author/scratch": "local:8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
   },
 };
@@ -35,11 +34,15 @@ describe("parseExtensionReference", () => {
     });
   });
 
-  it("parses an embedded reference", () => {
-    assert.deepStrictEqual(parseExtensionReference("embedded:microbit-stdlib"), {
+  it("parses an embedded reference carrying the full coordinate", () => {
+    assert.deepStrictEqual(parseExtensionReference("embedded:mindcraft-lang/microbit-stdlib"), {
       transport: "embedded",
-      slug: "microbit-stdlib",
+      coordinate: "mindcraft-lang/microbit-stdlib",
     });
+  });
+
+  it("rejects a repo-only embedded reference", () => {
+    assert.strictEqual(parseExtensionReference("embedded:microbit-stdlib"), undefined);
   });
 
   it("parses a local reference", () => {
@@ -59,7 +62,10 @@ describe("parseExtensionReference", () => {
       "gh:owner/repo@v1/extra",
       "gh:/repo@tag",
       "embedded:",
-      "embedded:has/slash",
+      "embedded:reponly",
+      "embedded:owner/repo/extra",
+      "embedded:/repo",
+      "embedded:owner/",
       "local:",
       "local:has whitespace",
       "",
@@ -67,19 +73,6 @@ describe("parseExtensionReference", () => {
     ];
     for (const reference of malformed) {
       assert.strictEqual(parseExtensionReference(reference), undefined, `Expected rejection for "${reference}"`);
-    }
-  });
-
-  it("round-trips through serializeExtensionReference", () => {
-    const references = [
-      "gh:example-org/mindcraft-position@v1.2.0",
-      "embedded:microbit-stdlib",
-      "local:8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
-    ];
-    for (const reference of references) {
-      const parsed = parseExtensionReference(reference) as ExtensionReference;
-      assert.ok(parsed);
-      assert.strictEqual(serializeExtensionReference(parsed), reference);
     }
   });
 });
@@ -164,7 +157,7 @@ describe("validateProjectContentManifest", () => {
       const result = validateProjectContentManifest({
         name: "P",
         version: "0.1.0",
-        extensions: { [coordinate]: "embedded:ok" },
+        extensions: { [coordinate]: "embedded:org/ok" },
       });
       assert.strictEqual(result.ok, false, `Expected rejection for coordinate "${coordinate}"`);
       assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.INVALID_EXTENSION_COORDINATE]);
@@ -175,7 +168,7 @@ describe("validateProjectContentManifest", () => {
     const result = validateProjectContentManifest({
       name: "P",
       version: "0.1.0",
-      extensions: { "org/Sonar": "embedded:one", "org/sonar": "embedded:two" },
+      extensions: { "org/Sonar": "embedded:org/one", "org/sonar": "embedded:org/two" },
     });
     assert.strictEqual(result.ok, false);
     assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.DUPLICATE_EXTENSION_COORDINATE]);
@@ -197,7 +190,7 @@ describe("validateProjectContentManifest", () => {
     const result = validateProjectContentManifest({
       name: "P",
       version: "0.1.0",
-      extensions: { "org/good": "embedded:fine", "org/bad": "nope", "-also/bad": "embedded:fine" },
+      extensions: { "org/good": "embedded:org/fine", "org/bad": "nope", "-also/bad": "embedded:org/fine" },
     });
     assert.strictEqual(result.ok, false);
     assert.strictEqual(result.errors.length, 2);

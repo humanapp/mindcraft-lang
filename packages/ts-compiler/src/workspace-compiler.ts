@@ -1,7 +1,7 @@
 import type { CompiledActionBundle, MindcraftEnvironment } from "@mindcraft-lang/core";
 import type { DiagnosticSeverity } from "@mindcraft-lang/core/brain";
 import type { ProjectCompileResult } from "./compiler/compile.js";
-import type { DependencyMount, ProjectDependency } from "./compiler/extension-mounts.js";
+import { type DependencyMount, extensionWorkspacePath, type ProjectDependency } from "./compiler/extension-mounts.js";
 import { declarationMounts, type Mount, mountedFiles, sourceMounts } from "./compiler/mounts.js";
 import { COMPILER_CONTROLLED_TSCONFIG_PATH, UserTileProject } from "./compiler/project.js";
 import type { CompileDiagnostic } from "./compiler/types.js";
@@ -127,8 +127,10 @@ export interface WorkspaceCompiler {
   /** Subscribe to compile results. Returns a disposer. */
   onDidCompile(listener: (result: WorkspaceCompileResult) => void): () => void;
   /**
-   * Files synthesized by the compiler (ambient declarations and `tsconfig.json`).
-   * The host should keep these in sync with the workspace.
+   * Files the compiler controls: ambient declarations, `tsconfig.json`, and the
+   * read-only installed-extensions tree (`.extensions/<owner>/<repo>/...`)
+   * materialized from the resolved extension set. The host should keep these in
+   * sync with the workspace and exclude them from the project's saved bytes.
    */
   getCompilerControlledFiles(): ReadonlyMap<string, string>;
 }
@@ -180,8 +182,11 @@ function snapshotToProjectFiles(snapshot: WorkspaceSnapshot): Map<string, string
 class WorkspaceCompilerController implements WorkspaceCompiler {
   private readonly project: UserTileProject;
   private readonly compileListeners = new Set<(result: WorkspaceCompileResult) => void>();
+  /** The dependency mounts materialized into the installed-extensions tree at the latest compile. */
+  private _dependencyMounts: readonly DependencyMount[];
 
   constructor(private readonly options: CreateWorkspaceCompilerOptions) {
+    this._dependencyMounts = options.dependencyMounts ?? [];
     this.project = new UserTileProject({
       projectNamespace: options.projectNamespace,
       ambientFiles: mountedFiles(declarationMounts(options.mounts)),
@@ -217,6 +222,7 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
   }
 
   setDependencies(dependencies: readonly ProjectDependency[], dependencyMounts: readonly DependencyMount[]): void {
+    this._dependencyMounts = dependencyMounts;
     this.project.setDependencies(dependencies, dependencyMounts);
   }
 
@@ -253,6 +259,13 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
       files.set(file.path, file.content);
     }
     files.set(COMPILER_CONTROLLED_TSCONFIG_PATH, TSCONFIG_CONTENT);
+    // The resolved extensions materialize as read-only source under the
+    // installed-extensions tree, one subtree per `<owner>/<repo>` coordinate.
+    for (const mount of this._dependencyMounts) {
+      for (const [path, content] of mount.files) {
+        files.set(extensionWorkspacePath(mount.namespace, path), content);
+      }
+    }
     return files;
   }
 }

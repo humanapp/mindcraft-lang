@@ -333,5 +333,12 @@ export default Sensor({
     // Neither dependent registers a parallel copy under its own namespace.
     assert.equal(types.resolveByName(qualifiedClassName("acme/a", "/point.ts", "Point")), undefined);
     assert.equal(types.resolveByName(qualifiedClassName("acme/b", "/point.ts", "Point")), undefined);
+
+    // Each resolved origin materializes as compiler-controlled source under its
+    // own `.extensions/<owner>/<repo>/` subtree.
+    const controlled = compiler.getCompilerControlledFiles();
+    assert.equal(controlled.get(".extensions/acme/point/point.ts"), pointSource);
+    assert.equal(controlled.get(".extensions/acme/a/index.ts"), aEntry);
+    assert.equal(controlled.get(".extensions/acme/b/index.ts"), bEntry);
   });
 });

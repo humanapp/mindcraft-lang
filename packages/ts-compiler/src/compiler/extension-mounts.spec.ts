@@ -8,11 +8,20 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { splitExtensionSpecifier } from "./extension-mounts.js";
+import { isCompilerControlledPath } from "./compile.js";
+import {
+  extensionFilePath,
+  extensionWorkspacePath,
+  isExtensionWorkspacePath,
+  parseExtensionCompilerPath,
+  qualifiedDeclarationName,
+  splitExtensionSpecifier,
+} from "./extension-mounts.js";
+import { qualifiedClassName } from "./symbol-keys.js";
 
 describe("splitExtensionSpecifier", () => {
   test("a bare owner segment names no coordinate", () => {
-    assert.deepEqual(splitExtensionSpecifier("wodal-lib"), {});
+    assert.deepEqual(splitExtensionSpecifier("wodal"), {});
   });
 
   test("the empty remainder names no coordinate", () => {
@@ -20,14 +29,14 @@ describe("splitExtensionSpecifier", () => {
   });
 
   test("exactly two segments is the coordinate, with no deep path", () => {
-    assert.deepEqual(splitExtensionSpecifier("mindcraft-lang/wodal-lib"), {
-      coordinate: "mindcraft-lang/wodal-lib",
+    assert.deepEqual(splitExtensionSpecifier("mindcraft-lang/wodal"), {
+      coordinate: "mindcraft-lang/wodal",
     });
   });
 
   test("a third segment is a deep path past the two-segment coordinate", () => {
-    assert.deepEqual(splitExtensionSpecifier("mindcraft-lang/wodal-lib/image"), {
-      coordinate: "mindcraft-lang/wodal-lib",
+    assert.deepEqual(splitExtensionSpecifier("mindcraft-lang/wodal/image"), {
+      coordinate: "mindcraft-lang/wodal",
       deepPath: "/image",
     });
   });
@@ -37,5 +46,56 @@ describe("splitExtensionSpecifier", () => {
       coordinate: "owner/repo",
       deepPath: "/nested/module",
     });
+  });
+});
+
+describe("installed-extension paths", () => {
+  test("a coordinate's file materializes at its `.extensions/<owner>/<repo>/` subtree", () => {
+    assert.equal(extensionFilePath("acme/point", "index.ts"), "/.extensions/acme/point/index.ts");
+    assert.equal(extensionFilePath("acme/point", "/nested/util.ts"), "/.extensions/acme/point/nested/util.ts");
+    assert.equal(extensionWorkspacePath("acme/point", "/index.ts"), ".extensions/acme/point/index.ts");
+  });
+
+  test("an extension compiler path parses back to its coordinate and coordinate-relative path", () => {
+    assert.deepEqual(parseExtensionCompilerPath("/.extensions/acme/point/index.ts"), {
+      namespace: "acme/point",
+      fileName: "/index.ts",
+    });
+    assert.deepEqual(parseExtensionCompilerPath("/.extensions/acme/point/nested/util.ts"), {
+      namespace: "acme/point",
+      fileName: "/nested/util.ts",
+    });
+  });
+
+  test("a project-local path is not an extension path", () => {
+    assert.equal(parseExtensionCompilerPath("/main.ts"), undefined);
+    assert.equal(parseExtensionCompilerPath("/.extensions/acme"), undefined);
+    assert.equal(isExtensionWorkspacePath("main.ts"), false);
+  });
+
+  test("the extensions tree is recognized workspace-relative and compiler-path", () => {
+    assert.equal(isExtensionWorkspacePath(".extensions"), true);
+    assert.equal(isExtensionWorkspacePath(".extensions/acme/point/index.ts"), true);
+    assert.equal(isExtensionWorkspacePath("/.extensions/acme/point/index.ts"), true);
+    assert.equal(isExtensionWorkspacePath(".extensionsfoo/x.ts"), false);
+  });
+
+  test("a declaration inside the extensions tree keys under its coordinate, not the host namespace", () => {
+    assert.equal(
+      qualifiedDeclarationName("host-guid", "/.extensions/acme/point/point.ts", "Point"),
+      qualifiedClassName("acme/point", "/point.ts", "Point")
+    );
+  });
+
+  test("a project-local declaration keys under the host namespace", () => {
+    assert.equal(
+      qualifiedDeclarationName("host-guid", "/main.ts", "Foo"),
+      qualifiedClassName("host-guid", "/main.ts", "Foo")
+    );
+  });
+
+  test("the extensions tree is compiler-controlled, so the project store excludes it from saved bytes", () => {
+    assert.equal(isCompilerControlledPath(".extensions/acme/point/index.ts", []), true);
+    assert.equal(isCompilerControlledPath("main.ts", []), false);
   });
 });

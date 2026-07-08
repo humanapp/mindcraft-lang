@@ -22,10 +22,11 @@ import { emitFunction } from "./emit.js";
 import {
   type DependencyMount,
   EXTENSION_IMPORT_PREFIX,
-  extensionMountRoot,
-  mountedCompilerPath,
+  extensionFilePath,
+  extensionRoot,
+  isExtensionWorkspacePath,
   type ProjectDependency,
-  parseMountedCompilerPath,
+  parseExtensionCompilerPath,
   qualifiedDeclarationName,
   splitExtensionSpecifier,
 } from "./extension-mounts.js";
@@ -206,12 +207,14 @@ function normalizeWorkspacePath(path: string): string {
 
 /**
  * True for paths the workspace never owns: the compiler-synthesized
- * `tsconfig.json` and any file a mount provides. Such paths are surfaced
+ * `tsconfig.json`, any file inside the installed-extensions tree
+ * (`.extensions/`), and any file a mount provides. Such paths are surfaced
  * read-only and are not persisted in the project store.
  */
 export function isCompilerControlledPath(path: string, mounts: readonly Mount[]): boolean {
   const normalized = normalizeWorkspacePath(path);
   if (normalized === COMPILER_CONTROLLED_TSCONFIG_PATH) return true;
+  if (isExtensionWorkspacePath(normalized)) return true;
   return isMountedPath(path, mounts);
 }
 
@@ -320,23 +323,27 @@ export class UserTileProject {
     const isCompilerSuppliedPath = (path: string): boolean =>
       isAmbientOrTsconfigPath(path) || stdlibWorkspacePaths.has(normalizeWorkspacePath(path));
 
-    // Dependency content mounts under its namespace-derived prefix; it is
-    // compiled only when reached through an `@ext/<owner>/<repo>` import. Ambient and
-    // tsconfig paths a dependency happens to carry are the consuming project's
-    // to supply, never the dependency's.
+    // Resolved extension content materializes under the installed-extensions
+    // tree keyed by its `<owner>/<repo>` coordinate; it is compiled only when
+    // reached through an `@ext/<owner>/<repo>` import. Ambient and tsconfig
+    // paths an extension happens to carry are the consuming project's to
+    // supply, never the extension's.
     for (const mount of this._dependencyMounts) {
       for (const [path, content] of mount.files) {
         if (isAmbientOrTsconfigPath(path) || isExamplePath(path)) {
           continue;
         }
-        compilerFiles.set(mountedCompilerPath(mount.namespace, toCompilerPath(path)), content);
+        compilerFiles.set(extensionFilePath(mount.namespace, path), content);
       }
     }
     const resolveExtensionBase = this._extensionBaseResolver();
 
     const userRootFiles: string[] = [];
     for (const [vfsPath, content] of this._files) {
-      if (isCompilerSuppliedPath(vfsPath) || isExamplePath(vfsPath)) {
+      // The resolved extension set is the source of truth for the
+      // installed-extensions tree; any `.extensions/` bytes that reach the
+      // project VFS are compiler-controlled and ignored as user source.
+      if (isCompilerSuppliedPath(vfsPath) || isExamplePath(vfsPath) || isExtensionWorkspacePath(vfsPath)) {
         continue;
       }
       const cp = toCompilerPath(vfsPath);
@@ -485,11 +492,12 @@ export class UserTileProject {
   }
 
   /**
-   * Resolver mapping an `@ext/<owner>/<repo>` specifier to the mounted
-   * dependency's compiler-path base. A specifier in the project's own files
-   * resolves through the project's extensions list; a specifier inside a
-   * mounted dependency's files resolves through that dependency's own
-   * extensions list. A specifier with fewer than two coordinate segments, or
+   * Resolver mapping an `@ext/<owner>/<repo>` specifier to the installed
+   * extension's compiler-path base under the `.extensions/` tree. A specifier
+   * in the project's own files resolves through the project's extensions list;
+   * a specifier inside an installed extension's files resolves through that
+   * extension's own extensions list. A specifier with fewer than two coordinate
+   * segments, or
    * one naming no listed dependency, resolves to nothing (the import surfaces
    * later as an ordinary module-not-found diagnostic); a deeper path is
    * rejected separately as a deep import.
@@ -505,12 +513,12 @@ export class UserTileProject {
       const rest = specifier.slice(EXTENSION_IMPORT_PREFIX.length);
       const { coordinate, deepPath } = splitExtensionSpecifier(rest);
       if (coordinate === undefined) return undefined;
-      const owner = parseMountedCompilerPath(containingFile);
+      const owner = parseExtensionCompilerPath(containingFile);
       const coordinates = owner ? mountCoordinates.get(owner.namespace) : ownCoordinates;
       if (!coordinates?.has(coordinate)) return undefined;
-      // The coordinate is the dependency's namespace: symbols register and
-      // mount under the same `<owner>/<repo>` value.
-      const root = extensionMountRoot(coordinate);
+      // The coordinate is the extension's namespace: its source installs under
+      // the same `<owner>/<repo>` value it registers under.
+      const root = extensionRoot(coordinate);
       return deepPath === undefined ? root : `${root}${deepPath}`;
     };
   }

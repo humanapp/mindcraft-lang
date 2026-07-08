@@ -439,7 +439,35 @@ export function createBridgeProject(options: CreateBridgeProjectOptions): Bridge
   };
 }
 
-function augmentProjectFileSystem(
+/** The directory portion of `path` (empty for a root-level path). */
+function parentDirectory(path: string): string {
+  const idx = path.lastIndexOf("/");
+  return idx <= 0 ? "" : path.slice(0, idx);
+}
+
+/**
+ * Ensure `dirPath` and each of its ancestors are present in `snapshot` as
+ * directory entries, adding any that are missing shallowest-first. An empty
+ * `dirPath` (a root-level path's parent) adds nothing.
+ */
+function ensureSnapshotDirectory(snapshot: ProjectFileSnapshot, dirPath: string): void {
+  const segments = dirPath.split("/").filter((segment) => segment.length > 0);
+  for (let i = 1; i <= segments.length; i++) {
+    const ancestor = segments.slice(0, i).join("/");
+    if (!snapshot.has(ancestor)) {
+      snapshot.set(ancestor, { kind: "directory" });
+    }
+  }
+}
+
+/**
+ * Wrap a {@link ProjectFileSystem} so its exported snapshot also carries the
+ * compiler-controlled files (ambient declarations, `tsconfig.json`, and the
+ * read-only installed-extensions tree) and the injected example projects, all
+ * marked read-only. Local and remote changes targeting those augmented paths
+ * are filtered out, leaving them read-only from the peer's side.
+ */
+export function augmentProjectFileSystem(
   filesystem: ProjectFileSystem,
   compiler: TsWorkspaceCompiler,
   getExamples: () => ExampleDefinition[]
@@ -475,17 +503,15 @@ function augmentProjectFileSystem(
       const snapshot = filesystem.exportSnapshot();
       const controlledFiles = compiler.getCompilerControlledFiles();
       for (const [path, content] of controlledFiles) {
+        ensureSnapshotDirectory(snapshot, parentDirectory(path));
         snapshot.set(path, { kind: "file", content, etag: "compiler-controlled", isReadonly: true });
       }
       for (const example of getExamples()) {
-        snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}`, { kind: "directory" });
+        ensureSnapshotDirectory(snapshot, `${EXAMPLES_FOLDER}/${example.folder}`);
         for (const file of example.files) {
-          snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}/${file.path}`, {
-            kind: "file",
-            content: file.content,
-            etag: "example",
-            isReadonly: true,
-          });
+          const path = `${EXAMPLES_FOLDER}/${example.folder}/${file.path}`;
+          ensureSnapshotDirectory(snapshot, parentDirectory(path));
+          snapshot.set(path, { kind: "file", content: file.content, etag: "example", isReadonly: true });
         }
       }
       return snapshot;

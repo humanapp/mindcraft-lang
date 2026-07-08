@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { DependencyMount } from "@mindcraft-lang/ts-compiler";
-import type { EmbeddedExtension } from "./embedded-extensions.js";
-import { ExtensionResolutionCycleError, resolveEmbeddedExtensions } from "./embedded-extensions.js";
+import type { EmbeddedExtension, OriginCandidate } from "./embedded-extensions.js";
+import {
+  ExtensionResolutionCycleError,
+  resolveEmbeddedExtensions,
+  unifyOriginCandidate,
+} from "./embedded-extensions.js";
 
 const OWNER = "mindcraft-lang";
 
@@ -43,7 +47,7 @@ function mountFor(mounts: readonly DependencyMount[], origin: string): Dependenc
 
 /** The Wodal standard library shape: an embedded extension with no `mindcraft.json`, hence no dependencies. */
 const STDLIB: EmbeddedExtension = {
-  canonicalOrigin: coordinateFor("wodal-lib"),
+  canonicalOrigin: coordinateFor("wodal"),
   files: [
     { path: "index.ts", content: "export {} from './image';" },
     { path: "image.ts", content: "export const image = 1;" },
@@ -51,12 +55,14 @@ const STDLIB: EmbeddedExtension = {
 };
 
 describe("resolveEmbeddedExtensions -- flat cases", () => {
-  test("resolves an embedded reference by repo segment to a coordinate dependency and a namespaced mount", () => {
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/wodal-lib": "embedded:wodal-lib" }, [STDLIB]);
-    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/wodal-lib" }]);
+  test("resolves an embedded reference by coordinate to a coordinate dependency and a namespaced mount", () => {
+    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/wodal": "embedded:mindcraft-lang/wodal" }, [
+      STDLIB,
+    ]);
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/wodal" }]);
     assert.equal(resolved.dependencyMounts.length, 1);
     const mount = resolved.dependencyMounts[0];
-    assert.equal(mount.namespace, "mindcraft-lang/wodal-lib");
+    assert.equal(mount.namespace, "mindcraft-lang/wodal");
     assert.equal(mount.files.get("/index.ts"), "export {} from './image';");
     assert.equal(mount.files.get("/image.ts"), "export const image = 1;");
     assert.deepEqual(mount.dependencies, []);
@@ -66,8 +72,8 @@ describe("resolveEmbeddedExtensions -- flat cases", () => {
   test("the coordinate derives from identity, not from the manifest key", () => {
     // A manifest key that disagrees with the resolved coordinate does not change
     // the imported coordinate: it is always the extension's own <owner>/<repo>.
-    const resolved = resolveEmbeddedExtensions({ "any/key": "embedded:wodal-lib" }, [STDLIB]);
-    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/wodal-lib" }]);
+    const resolved = resolveEmbeddedExtensions({ "any/key": "embedded:mindcraft-lang/wodal" }, [STDLIB]);
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/wodal" }]);
   });
 
   test("skips references of other transports", () => {
@@ -80,7 +86,9 @@ describe("resolveEmbeddedExtensions -- flat cases", () => {
   });
 
   test("skips an embedded reference with no matching bundled extension", () => {
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/other": "embedded:not-bundled" }, [STDLIB]);
+    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/other": "embedded:mindcraft-lang/not-bundled" }, [
+      STDLIB,
+    ]);
     assert.deepEqual(resolved.dependencies, []);
   });
 
@@ -92,13 +100,13 @@ describe("resolveEmbeddedExtensions -- flat cases", () => {
   });
 
   test("the stdlib default extension (no manifest) resolves identically regardless of embed-record noise", () => {
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/wodal-lib": "embedded:wodal-lib" }, [
+    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/wodal": "embedded:mindcraft-lang/wodal" }, [
       STDLIB,
       ext("unused-a", { version: "2.0.0" }),
     ]);
-    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/wodal-lib" }]);
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/wodal" }]);
     assert.equal(resolved.dependencyMounts.length, 1);
-    assert.equal(resolved.dependencyMounts[0].namespace, "mindcraft-lang/wodal-lib");
+    assert.equal(resolved.dependencyMounts[0].namespace, "mindcraft-lang/wodal");
     assert.deepEqual(resolved.dependencyMounts[0].dependencies, []);
     assert.deepEqual(resolved.warnings, []);
   });
@@ -108,11 +116,11 @@ describe("resolveEmbeddedExtensions -- transitive resolution", () => {
   test("an extension's own extensions resolve recursively, dependency mounts carry their own deps", () => {
     // A -> B -> C
     const embed = [
-      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/b": "embedded:b" } }),
-      ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:c" } }),
+      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/b": "embedded:mindcraft-lang/b" } }),
+      ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:mindcraft-lang/c" } }),
       ext("c", { version: "1.0.0" }),
     ];
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/a": "embedded:a" }, embed);
+    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, embed);
 
     assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/a" }]);
     const origins = resolved.dependencyMounts.map((m) => m.namespace).sort();
@@ -131,12 +139,12 @@ describe("resolveEmbeddedExtensions -- transitive resolution", () => {
   test("a diamond resolves one instance of the shared origin; both dependents reference the same origin", () => {
     // A -> C, B -> C; host -> A, B
     const embed = [
-      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:c" } }),
-      ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:c" } }),
+      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:mindcraft-lang/c" } }),
+      ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:mindcraft-lang/c" } }),
       ext("c", { version: "1.0.0" }),
     ];
     const resolved = resolveEmbeddedExtensions(
-      { "mindcraft-lang/a": "embedded:a", "mindcraft-lang/b": "embedded:b" },
+      { "mindcraft-lang/a": "embedded:mindcraft-lang/a", "mindcraft-lang/b": "embedded:mindcraft-lang/b" },
       embed
     );
 
@@ -155,15 +163,16 @@ describe("resolveEmbeddedExtensions -- transitive resolution", () => {
 describe("resolveEmbeddedExtensions -- shared origin", () => {
   test("the same embedded origin reached directly and transitively unifies to one mount, no warning", () => {
     // host -> c (depth 0); host -> a -> c (depth 1). Because an embedded
-    // reference is identity-derived (`embedded:<repo>` matches the embed entry
-    // whose origin repo segment is `<repo>`), both paths reach the same origin
-    // through the same reference and the same content: they unify silently.
+    // reference is identity-derived (`embedded:<owner>/<repo>` matches the embed
+    // entry whose coordinate is `<owner>/<repo>`), both paths reach the same
+    // origin through the same reference and the same content: they unify
+    // silently.
     const embed = [
-      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:c" } }),
+      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:mindcraft-lang/c" } }),
       ext("c", { version: "1.0.0" }),
     ];
     const resolved = resolveEmbeddedExtensions(
-      { "mindcraft-lang/c": "embedded:c", "mindcraft-lang/a": "embedded:a" },
+      { "mindcraft-lang/c": "embedded:mindcraft-lang/c", "mindcraft-lang/a": "embedded:mindcraft-lang/a" },
       embed
     );
 
@@ -180,11 +189,11 @@ describe("resolveEmbeddedExtensions -- cycle rejection", () => {
   test("a dependency cycle throws a precise cycle error naming the origins", () => {
     // A -> B -> A
     const embed = [
-      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/b": "embedded:b" } }),
-      ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/a": "embedded:a" } }),
+      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/b": "embedded:mindcraft-lang/b" } }),
+      ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/a": "embedded:mindcraft-lang/a" } }),
     ];
     assert.throws(
-      () => resolveEmbeddedExtensions({ "mindcraft-lang/a": "embedded:a" }, embed),
+      () => resolveEmbeddedExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, embed),
       (err: unknown) => {
         assert.ok(err instanceof ExtensionResolutionCycleError);
         assert.deepEqual(err.cycle, [coordinateFor("a"), coordinateFor("b"), coordinateFor("a")]);
@@ -194,10 +203,96 @@ describe("resolveEmbeddedExtensions -- cycle rejection", () => {
   });
 
   test("a self-cycle throws", () => {
-    const embed = [ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/a": "embedded:a" } })];
+    const embed = [ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/a": "embedded:mindcraft-lang/a" } })];
     assert.throws(
-      () => resolveEmbeddedExtensions({ "mindcraft-lang/a": "embedded:a" }, embed),
+      () => resolveEmbeddedExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, embed),
       ExtensionResolutionCycleError
     );
+  });
+});
+
+/**
+ * Build a bare origin candidate carrying only the fields conflict resolution
+ * reads. An embedded reference is identity-derived, so a version conflict or a
+ * reference tie-break cannot arise through `resolveEmbeddedExtensions`; these
+ * tests drive the resolution decision at its input level, where a remote
+ * transport's versioned references can disagree.
+ */
+function originCandidate(options: {
+  origin?: string;
+  version: string;
+  reference: string;
+  depth: number;
+}): OriginCandidate {
+  return {
+    origin: options.origin ?? coordinateFor("shared"),
+    version: options.version,
+    reference: options.reference,
+    depth: options.depth,
+    files: new Map(),
+    extensions: {},
+  };
+}
+
+describe("unifyOriginCandidate -- version conflict", () => {
+  test("the higher semantic version wins and the warning names both versions", () => {
+    const incumbent = originCandidate({ version: "1.0.0", reference: "gh:mindcraft-lang/shared@v1.0.0", depth: 0 });
+    const incoming = originCandidate({ version: "2.3.0", reference: "gh:mindcraft-lang/shared@v2.3.0", depth: 1 });
+
+    const { winner, warning } = unifyOriginCandidate(incoming, incumbent);
+
+    assert.equal(winner, incoming, "the higher version is selected");
+    assert.equal(winner.version, "2.3.0");
+    assert.ok(warning, "a disagreement records a warning");
+    assert.equal(warning.kind, "version-conflict");
+    assert.equal(warning.origin, coordinateFor("shared"));
+    assert.equal(warning.selectedVersion, "2.3.0");
+    assert.equal(warning.rejectedVersion, "1.0.0");
+    assert.equal(warning.selectedReference, "gh:mindcraft-lang/shared@v2.3.0");
+    assert.equal(warning.rejectedReference, "gh:mindcraft-lang/shared@v1.0.0");
+    assert.match(warning.message, /2\.3\.0/);
+    assert.match(warning.message, /1\.0\.0/);
+  });
+
+  test("a lower incoming version loses; the incumbent stays and the warning still names both", () => {
+    const incumbent = originCandidate({ version: "2.3.0", reference: "gh:mindcraft-lang/shared@v2.3.0", depth: 0 });
+    const incoming = originCandidate({ version: "1.0.0", reference: "gh:mindcraft-lang/shared@v1.0.0", depth: 1 });
+
+    const { winner, warning } = unifyOriginCandidate(incoming, incumbent);
+
+    assert.equal(winner, incumbent, "the incumbent's higher version is kept");
+    assert.ok(warning);
+    assert.equal(warning.kind, "version-conflict");
+    assert.equal(warning.selectedVersion, "2.3.0");
+    assert.equal(warning.rejectedVersion, "1.0.0");
+  });
+});
+
+describe("unifyOriginCandidate -- reference tie-break", () => {
+  test("at an equal version, the reference nearest the host project wins", () => {
+    const incumbent = originCandidate({ version: "1.0.0", reference: "gh:mindcraft-lang/shared@v1.0.0", depth: 2 });
+    const incoming = originCandidate({ version: "1.0.0", reference: "embedded:mindcraft-lang/shared", depth: 0 });
+
+    const { winner, warning } = unifyOriginCandidate(incoming, incumbent);
+
+    assert.equal(winner, incoming, "the shallower reference is selected");
+    assert.equal(winner.depth, 0);
+    assert.ok(warning, "an equal version reached by two references records a warning");
+    assert.equal(warning.kind, "reference-tiebreak");
+    assert.equal(warning.origin, coordinateFor("shared"));
+    assert.equal(warning.selectedReference, "embedded:mindcraft-lang/shared");
+    assert.equal(warning.rejectedReference, "gh:mindcraft-lang/shared@v1.0.0");
+    assert.equal(warning.selectedVersion, undefined);
+    assert.equal(warning.rejectedVersion, undefined);
+  });
+
+  test("identical version and reference unify onto the incumbent with no warning", () => {
+    const incumbent = originCandidate({ version: "1.0.0", reference: "embedded:mindcraft-lang/shared", depth: 0 });
+    const incoming = originCandidate({ version: "1.0.0", reference: "embedded:mindcraft-lang/shared", depth: 1 });
+
+    const { winner, warning } = unifyOriginCandidate(incoming, incumbent);
+
+    assert.equal(winner, incumbent);
+    assert.equal(warning, undefined);
   });
 });

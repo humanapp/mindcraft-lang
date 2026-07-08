@@ -287,7 +287,7 @@ export class AppEnvironmentHost {
    * dependencies, so the project still loads and unresolved imports surface as
    * ordinary compiler diagnostics.
    */
-  private resolveExtensions(): Pick<ResolvedExtensions, "dependencies" | "dependencyMounts"> {
+  private resolveExtensions(): ResolvedExtensions {
     try {
       const resolved = resolveEmbeddedExtensions(
         this.projectManager.activeProject!.manifest.extensions,
@@ -300,7 +300,7 @@ export class AppEnvironmentHost {
     } catch (err) {
       if (err instanceof ExtensionResolutionCycleError) {
         logger.warn(`[extension-resolution] ${err.message}`);
-        return { dependencies: [], dependencyMounts: [] };
+        return { dependencies: [], dependencyMounts: [], warnings: [] };
       }
       throw err;
     }

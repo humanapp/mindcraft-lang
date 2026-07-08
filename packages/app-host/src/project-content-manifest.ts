@@ -5,7 +5,7 @@ import type { MindcraftProjectExtensions } from "@mindcraft-lang/service-api";
  *
  * String forms:
  * - `gh:<owner>/<repo>@<tag>` -- a GitHub repository snapshot at an exact tag.
- * - `embedded:<slug>` -- an extension bundled with the host application.
+ * - `embedded:<owner>/<repo>` -- an extension bundled with the host application.
  * - `local:<project-id>` -- another project in the same project store.
  */
 export type ExtensionReference =
@@ -20,20 +20,14 @@ export type ExtensionReference =
     }
   | {
       readonly transport: "embedded";
-      /** Slug identifying the bundled extension in the host application's embed records. */
-      readonly slug: string;
+      /** `<owner>/<repo>` coordinate identifying the bundled extension in the host application's embed records. */
+      readonly coordinate: string;
     }
   | {
       readonly transport: "local";
       /** Project id of the source project. */
       readonly projectId: string;
     };
-
-/**
- * Grammar for a repository name segment: a leading ASCII letter or digit
- * followed by letters, digits, `.`, `_`, or `-`.
- */
-const NAME_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /**
  * Grammar for an extension coordinate `<owner>/<repo>`: an owner segment (ASCII
@@ -51,10 +45,6 @@ const LOCAL_PROJECT_ID_PATTERN = /^[^\s/]+$/;
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
-function isRepoSegment(value: string): boolean {
-  return NAME_SEGMENT_PATTERN.test(value);
-}
-
 function isExtensionCoordinate(value: unknown): value is string {
   return typeof value === "string" && COORDINATE_PATTERN.test(value);
 }
@@ -69,26 +59,14 @@ export function parseExtensionReference(reference: string): ExtensionReference |
     return { transport: "gh", owner: ghMatch[1], repo: ghMatch[2], tag: ghMatch[3] };
   }
   if (reference.startsWith("embedded:")) {
-    const slug = reference.slice("embedded:".length);
-    return isRepoSegment(slug) ? { transport: "embedded", slug } : undefined;
+    const coordinate = reference.slice("embedded:".length);
+    return isExtensionCoordinate(coordinate) ? { transport: "embedded", coordinate } : undefined;
   }
   if (reference.startsWith("local:")) {
     const projectId = reference.slice("local:".length);
     return LOCAL_PROJECT_ID_PATTERN.test(projectId) ? { transport: "local", projectId } : undefined;
   }
   return undefined;
-}
-
-/** Serialize an {@link ExtensionReference} to its canonical string form. */
-export function serializeExtensionReference(reference: ExtensionReference): string {
-  switch (reference.transport) {
-    case "gh":
-      return `gh:${reference.owner}/${reference.repo}@${reference.tag}`;
-    case "embedded":
-      return `embedded:${reference.slug}`;
-    case "local":
-      return `local:${reference.projectId}`;
-  }
 }
 
 /**
@@ -191,7 +169,7 @@ export function validateProjectExtensions(
         path,
         message:
           `Extension reference for "${coordinate}" must be a string in the form ` +
-          '"gh:<owner>/<repo>@<tag>", "embedded:<slug>", or "local:<project-id>".',
+          '"gh:<owner>/<repo>@<tag>", "embedded:<owner>/<repo>", or "local:<project-id>".',
       });
     }
   }

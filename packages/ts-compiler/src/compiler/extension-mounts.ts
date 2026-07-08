@@ -1,11 +1,11 @@
 /**
- * Dependency-mount path conventions for multi-root compilation. A consuming
- * project's compiler file map mounts each dependency's source files under a
- * namespace-derived prefix, so a declaration's compiler path identifies the
- * project that owns it. Symbol keys minted from a declaration always carry
- * the OWNING project's namespace and its project-relative path, never the
- * mount path, so a type imported through `@ext/<owner>/<repo>` resolves to the
- * declaring project's registration.
+ * Installed-extension path conventions for multi-root compilation. A consuming
+ * project's resolved extensions materialize as read-only source under the
+ * `.extensions/<owner>/<repo>/` tree, so a declaration's compiler path
+ * identifies the extension that owns it. Symbol keys minted from a declaration
+ * always carry the OWNING extension's coordinate namespace and its
+ * coordinate-relative path, never the install path, so a type imported through
+ * `@ext/<owner>/<repo>` resolves to the declaring extension's registration.
  */
 
 import { qualifiedClassName } from "./symbol-keys.js";
@@ -61,52 +61,84 @@ export function splitExtensionSpecifier(rest: string): { coordinate?: string; de
   return { coordinate: rest.slice(0, secondSlash), deepPath: rest.slice(secondSlash) };
 }
 
-const EXTENSION_MOUNT_PREFIX = "/__extensions__/";
+/**
+ * Workspace directory under which a project's resolved extensions materialize
+ * as read-only source, one `<owner>/<repo>` subtree per extension. The tree is
+ * compiler-controlled and reproducible: it is regenerated from the resolved
+ * extension set on load and excluded from the project's saved bytes.
+ */
+export const EXTENSIONS_DIR = ".extensions";
 
-/** Compiler-path root a dependency's files mount under in a consuming project. */
-export function extensionMountRoot(namespace: string): string {
-  return `${EXTENSION_MOUNT_PREFIX}${encodeURIComponent(namespace)}`;
+const EXTENSIONS_COMPILER_PREFIX = `/${EXTENSIONS_DIR}/`;
+
+/** Compiler-path root the source of the extension at `coordinate` materializes under. */
+export function extensionRoot(coordinate: string): string {
+  return `${EXTENSIONS_COMPILER_PREFIX}${coordinate}`;
 }
 
-/** Compiler path of a dependency file inside a consuming project's file map. */
-export function mountedCompilerPath(namespace: string, filePath: string): string {
-  const projectRelative = filePath.startsWith("/") ? filePath : `/${filePath}`;
-  return `${extensionMountRoot(namespace)}${projectRelative}`;
+/**
+ * Compiler path of an extension file: the extension's `coordinate` root joined
+ * with the file's coordinate-relative `filePath` (a leading slash is added when
+ * absent).
+ */
+export function extensionFilePath(coordinate: string, filePath: string): string {
+  const relative = filePath.startsWith("/") ? filePath : `/${filePath}`;
+  return `${extensionRoot(coordinate)}${relative}`;
 }
 
-/** A mounted compiler path split into its owning namespace and project-relative path. */
-export interface MountedFileParts {
-  /** Namespace of the project that owns the file. */
+/**
+ * Workspace-relative path (no leading slash) of an extension file, for the
+ * project VFS and workspace snapshots.
+ */
+export function extensionWorkspacePath(coordinate: string, filePath: string): string {
+  const relative = filePath.startsWith("/") ? filePath.slice(1) : filePath;
+  return `${EXTENSIONS_DIR}/${coordinate}/${relative}`;
+}
+
+/** True for a workspace path inside the installed-extensions tree. */
+export function isExtensionWorkspacePath(path: string): boolean {
+  const normalized = path.startsWith("/") ? path.slice(1) : path;
+  return normalized === EXTENSIONS_DIR || normalized.startsWith(`${EXTENSIONS_DIR}/`);
+}
+
+/** An extension compiler path split into its owning coordinate and coordinate-relative path. */
+export interface ExtensionPathParts {
+  /** The `<owner>/<repo>` coordinate of the extension that owns the file: its namespace. */
   namespace: string;
-  /** The file's compiler path inside its own project (starts with `/`). */
+  /** The file's path inside the extension (starts with `/`). */
   fileName: string;
 }
 
-/** Parse a compiler path under the dependency-mount prefix, or return undefined for a project-local path. */
-export function parseMountedCompilerPath(fileName: string): MountedFileParts | undefined {
-  if (!fileName.startsWith(EXTENSION_MOUNT_PREFIX)) return undefined;
-  const rest = fileName.slice(EXTENSION_MOUNT_PREFIX.length);
-  const slash = rest.indexOf("/");
-  if (slash < 0) return undefined;
-  return {
-    namespace: decodeURIComponent(rest.slice(0, slash)),
-    fileName: rest.slice(slash),
-  };
+/**
+ * Parse a compiler path under the installed-extensions tree into the owning
+ * `<owner>/<repo>` coordinate and the coordinate-relative path, or return
+ * undefined for a project-local path. A coordinate is exactly two segments;
+ * fewer names no extension.
+ */
+export function parseExtensionCompilerPath(fileName: string): ExtensionPathParts | undefined {
+  if (!fileName.startsWith(EXTENSIONS_COMPILER_PREFIX)) return undefined;
+  const rest = fileName.slice(EXTENSIONS_COMPILER_PREFIX.length);
+  const firstSlash = rest.indexOf("/");
+  if (firstSlash < 0) return undefined;
+  const secondSlash = rest.indexOf("/", firstSlash + 1);
+  if (secondSlash < 0) return undefined;
+  return { namespace: rest.slice(0, secondSlash), fileName: rest.slice(secondSlash) };
 }
 
 /**
  * Registry name of the type or System declared as `binding` in the file at
  * compiler path `fileName`: the declaring project's namespace and its
- * project-relative path. A project-local file keys under `localNamespace`;
- * a dependency-mounted file keys under the dependency's own namespace, so
- * every reference to the declaration -- from its own project or from a
- * consuming one -- resolves to one registration. A type imported through
- * `@ext/<owner>/<repo>` resolves to the declaring project's registration.
+ * project-relative path. A project-local file keys under `localNamespace`; a
+ * file inside the installed-extensions tree keys under its extension's own
+ * coordinate namespace, so every reference to the declaration -- from its own
+ * project or from a consuming one -- resolves to one registration. A type
+ * imported through `@ext/<owner>/<repo>` resolves to the declaring extension's
+ * registration.
  */
 export function qualifiedDeclarationName(localNamespace: string, fileName: string, binding: string): string {
-  const mounted = parseMountedCompilerPath(fileName);
-  if (mounted) {
-    return qualifiedClassName(mounted.namespace, mounted.fileName, binding);
+  const extension = parseExtensionCompilerPath(fileName);
+  if (extension) {
+    return qualifiedClassName(extension.namespace, extension.fileName, binding);
   }
   return qualifiedClassName(localNamespace, fileName, binding);
 }

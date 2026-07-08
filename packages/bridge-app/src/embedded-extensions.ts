@@ -21,8 +21,8 @@ export interface EmbeddedExtension {
   /**
    * Canonical `<owner>/<repo>` coordinate identifying this extension: its
    * identity, its compiler namespace, and the name it is imported and stored
-   * under. An `embedded:<repo>` manifest reference resolves to the embed entry
-   * whose coordinate's repository segment matches.
+   * under. An `embedded:<owner>/<repo>` manifest reference resolves to the embed
+   * entry whose coordinate matches.
    */
   canonicalOrigin: string;
   /** The extension's source files, delivered as a read-only dependency mount. */
@@ -91,12 +91,18 @@ export interface ResolvedExtensions {
  * extensions list, its declared version, the reference that reached it, and the
  * distance from the host project at which it was first reached.
  */
-interface OriginCandidate {
+export interface OriginCandidate {
+  /** The `<owner>/<repo>` coordinate this candidate resolves. */
   origin: string;
+  /** The candidate's declared semantic version, or `0.0.0` when it has no manifest. */
   version: string;
+  /** The reference string that reached this candidate. */
   reference: string;
+  /** The distance from the host project (0 for a direct dependency) at which this candidate was reached. */
   depth: number;
+  /** The candidate's origin-relative file map, with leading-slash paths. */
   files: ReadonlyMap<string, string>;
+  /** The candidate's own extensions list, resolving its `@ext/<owner>/<repo>` imports. */
   extensions: ExtensionsMap;
 }
 
@@ -149,13 +155,13 @@ function readOwnManifest(files: ReadonlyMap<string, string>): {
 function embeddedCandidate(
   reference: string,
   depth: number,
-  byRepoSegment: ReadonlyMap<string, EmbeddedExtension>
+  byCoordinate: ReadonlyMap<string, EmbeddedExtension>
 ): OriginCandidate | undefined {
   const parsed = parseExtensionReference(reference);
   if (parsed === undefined || parsed.transport !== "embedded") {
     return undefined;
   }
-  const extension = byRepoSegment.get(parsed.slug);
+  const extension = byCoordinate.get(parsed.coordinate);
   if (extension === undefined) {
     return undefined;
   }
@@ -178,10 +184,38 @@ interface ResolvedOrigin {
   dependencies: ProjectDependency[];
 }
 
-/** The repository segment (`<repo>`) of an `<owner>/<repo>` coordinate, used to match `embedded:<repo>` references. */
-function repoSegmentOf(coordinate: string): string {
-  const slash = coordinate.indexOf("/");
-  return slash < 0 ? coordinate : coordinate.slice(slash + 1);
+/** The outcome of unifying an incoming candidate against the incumbent already resolved for its origin. */
+export interface OriginUnification {
+  /** The candidate that wins the origin: higher version, or nearest-root at an equal version. */
+  readonly winner: OriginCandidate;
+  /** The conflict recorded when the two candidates disagree on version or reference; absent when they unify cleanly. */
+  readonly warning: ExtensionResolutionWarning | undefined;
+}
+
+/**
+ * Unify an incoming candidate for an origin against the incumbent already
+ * resolved for it, selecting the winner and reporting any conflict. The higher
+ * semantic version wins and records a `version-conflict` warning; at an equal
+ * version, a differing reference nearest the host project (smaller depth) wins
+ * and records a `reference-tiebreak` warning; an identical version and
+ * reference unify onto the incumbent with no warning.
+ */
+export function unifyOriginCandidate(incoming: OriginCandidate, incumbent: OriginCandidate): OriginUnification {
+  const versionOrder = compareSemver(incoming.version, incumbent.version);
+  if (versionOrder > 0) {
+    return { winner: incoming, warning: versionConflict(incoming, incumbent) };
+  }
+  if (versionOrder < 0) {
+    return { winner: incumbent, warning: versionConflict(incumbent, incoming) };
+  }
+  if (incoming.reference !== incumbent.reference) {
+    // Equal versions, different references: the reference nearest the host
+    // project wins. A strictly-shallower newcomer replaces the incumbent.
+    const winner = incoming.depth < incumbent.depth ? incoming : incumbent;
+    const loser = winner === incoming ? incumbent : incoming;
+    return { winner, warning: referenceTiebreak(winner, loser) };
+  }
+  return { winner: incumbent, warning: undefined };
 }
 
 /**
@@ -209,7 +243,7 @@ export function resolveEmbeddedExtensions(
   if (!extensions) {
     return { dependencies: [], dependencyMounts: [], warnings: [] };
   }
-  const byRepoSegment = new Map(embedRecord.map((extension) => [repoSegmentOf(extension.canonicalOrigin), extension]));
+  const byCoordinate = new Map(embedRecord.map((extension) => [extension.canonicalOrigin, extension]));
   const warnings: ExtensionResolutionWarning[] = [];
 
   // The project's direct dependencies: each dependency's `<owner>/<repo>`
@@ -219,7 +253,7 @@ export function resolveEmbeddedExtensions(
   const directDependencies: ProjectDependency[] = [];
   const rootCandidates: OriginCandidate[] = [];
   for (const reference of Object.values(extensions)) {
-    const candidate = embeddedCandidate(reference, 0, byRepoSegment);
+    const candidate = embeddedCandidate(reference, 0, byCoordinate);
     if (candidate === undefined) {
       continue;
     }
@@ -236,21 +270,12 @@ export function resolveEmbeddedExtensions(
       resolved.set(candidate.origin, { candidate, dependencies: [] });
       return;
     }
-    const versionOrder = compareSemver(candidate.version, existing.candidate.version);
-    if (versionOrder > 0) {
-      warnings.push(versionConflict(candidate, existing.candidate));
-      resolved.set(candidate.origin, { candidate, dependencies: existing.dependencies });
-    } else if (versionOrder < 0) {
-      warnings.push(versionConflict(existing.candidate, candidate));
-    } else if (candidate.reference !== existing.candidate.reference) {
-      // Equal versions, different references: the reference nearest the host
-      // project wins. A strictly-shallower newcomer replaces the incumbent.
-      const winner = candidate.depth < existing.candidate.depth ? candidate : existing.candidate;
-      const loser = winner === candidate ? existing.candidate : candidate;
-      warnings.push(referenceTiebreak(winner, loser));
-      if (winner === candidate) {
-        resolved.set(candidate.origin, { candidate, dependencies: existing.dependencies });
-      }
+    const { winner, warning } = unifyOriginCandidate(candidate, existing.candidate);
+    if (warning !== undefined) {
+      warnings.push(warning);
+    }
+    if (winner !== existing.candidate) {
+      resolved.set(candidate.origin, { candidate: winner, dependencies: existing.dependencies });
     }
   };
 
@@ -268,7 +293,7 @@ export function resolveEmbeddedExtensions(
     if (winner.candidate === candidate && !expanded.has(candidate.origin)) {
       expanded.add(candidate.origin);
       for (const reference of Object.values(candidate.extensions)) {
-        const child = embeddedCandidate(reference, candidate.depth + 1, byRepoSegment);
+        const child = embeddedCandidate(reference, candidate.depth + 1, byCoordinate);
         if (child === undefined) {
           continue;
         }

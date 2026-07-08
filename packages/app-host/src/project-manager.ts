@@ -156,9 +156,10 @@ export interface ProjectManagerOptions {
   /** Debounce delay before persisting project files after a change. Defaults to 2000 ms. */
   autoSaveDelayMs?: number;
   /**
-   * Extension dependencies keyed by slug, seeded into every newly created
-   * project's manifest. Each value is an extension reference string. Empty or
-   * omitted when the host designates no default extensions.
+   * Extension dependencies keyed by `<owner>/<repo>` coordinate, seeded into
+   * every newly created project's manifest. Each value is an extension
+   * reference string. Empty or omitted when the host designates no default
+   * extensions.
    */
   defaultExtensions?: Readonly<Record<string, string>>;
 }

@@ -35,7 +35,6 @@ export {
   ProjectContentManifestErrorCode,
   parseExtensionReference,
   parseProjectContentManifest,
-  serializeExtensionReference,
   serializeProjectContentManifest,
   validateProjectContentManifest,
   validateProjectExtensions,

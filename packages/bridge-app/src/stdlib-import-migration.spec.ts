@@ -3,12 +3,12 @@ import { describe, test } from "node:test";
 import type { StdlibImportRedirect } from "./stdlib-import-migration.js";
 import { migrateStdlibBrainOrigins, migrateStdlibImports } from "./stdlib-import-migration.js";
 
-const COORDINATE = "mindcraft-lang/wodal-lib";
-const REFERENCE = "embedded:wodal-lib";
+const COORDINATE = "mindcraft-lang/wodal";
+const REFERENCE = "embedded:mindcraft-lang/wodal";
 const INTERIM_ORIGIN = "embedded:wodal-stdlib";
 /** A saved-brain state from the transport-prefixed naming that predates the bare coordinate. */
-const PRIOR_GH_ORIGIN = "gh:mindcraft-lang/wodal-lib";
-const FINAL_ORIGIN = "mindcraft-lang/wodal-lib";
+const PRIOR_GH_ORIGIN = "gh:mindcraft-lang/wodal";
+const FINAL_ORIGIN = "mindcraft-lang/wodal";
 
 const REDIRECTS: readonly StdlibImportRedirect[] = [
   {
