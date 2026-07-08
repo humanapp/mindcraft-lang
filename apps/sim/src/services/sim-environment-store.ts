@@ -22,7 +22,7 @@ import {
   mkSensorTileId,
 } from "@mindcraft-lang/core/app";
 import type { DocsTileEntry } from "@mindcraft-lang/docs";
-import { declarationMount, isCompilerControlledPath, type Mount } from "@mindcraft-lang/ts-compiler";
+import { isCompilerControlledPath, type Mount } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
@@ -30,11 +30,15 @@ import type { Obstacle } from "@/brain/vision";
 import { loadExamples } from "@/examples";
 import { name as simName, version as simVersion } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
-import { simAmbientFiles } from "./sim-ambient-files";
+import { simDefaultExtensions, simEmbeddedExtensions } from "./sim-embedded-extensions";
 import { initVfsServiceWorker } from "./vfs-service-worker";
 
-/** Platform content mounts for the sim: the ambient declarations exposed to the compiler and remote VFS. */
-const simMounts: readonly Mount[] = [declarationMount(simAmbientFiles)];
+/**
+ * Platform content mounts for the sim, applied at the workspace root. Empty:
+ * the layer ambient `.d.ts` are carried by the resolved layer extensions as
+ * their own extension content.
+ */
+const simMounts: readonly Mount[] = [];
 
 // -- AppSettings --
 
@@ -306,9 +310,11 @@ export class SimEnvironmentStore {
           shouldExclude: (path) => isCompilerControlledPath(path, simMounts),
         },
         lock: createWebLocksProjectLock(simName),
+        defaultExtensions: simDefaultExtensions,
       }),
       modules: [coreModule(), createSimModule()],
       mounts: simMounts,
+      embeddedExtensions: simEmbeddedExtensions,
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,
       saveBindingToken,

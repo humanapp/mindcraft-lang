@@ -21,7 +21,8 @@ export { createAppBridge } from "./app-bridge.js";
 
 export type { AppEnvironmentHostOptions } from "./app-environment-host.js";
 export { AppEnvironmentHost } from "./app-environment-host.js";
-
+export type { CoreStdlibExtensionSource } from "./core-extension.js";
+export { buildCoreStdlibExtension, CORE_LIB_COORDINATE, CORE_LIB_REFERENCE } from "./core-extension.js";
 export type {
   EmbeddedExtension,
   EmbeddedExtensionFile,
