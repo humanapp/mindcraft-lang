@@ -1,6 +1,17 @@
 /** Shared Mindcraft project document format identifier. */
 export const MINDCRAFT_PROJECT_FORMAT = "mindcraft.project";
 
+/** Semver 2.0.0 version grammar (semver.org). */
+const SEMVER_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+
+/** Content version a document reads as when it lacks a valid semver `version`. */
+const DEFAULT_CONTENT_VERSION = "0.0.0";
+
+function isSemver(value: unknown): value is string {
+  return typeof value === "string" && SEMVER_PATTERN.test(value);
+}
+
 /** Validation code constants used by shared project document diagnostics. */
 export const MindcraftProjectDocumentValidationCode = {
   INVALID_JSON: "MINDCRAFT_PROJECT_INVALID_JSON",
@@ -45,6 +56,9 @@ export interface MindcraftProjectDocument {
 
   /** Human-readable project name. */
   readonly name: string;
+
+  /** Semver version of the project's own content, in package.json semantics. A document that lacks a valid semver reads as `"0.0.0"`. */
+  readonly version: string;
 
   /** Human-readable project description. */
   readonly description: string;
@@ -144,6 +158,7 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
   const errors: MindcraftProjectDocumentValidationError[] = [];
   const format = readString(value, "format", "$.format", MindcraftProjectDocumentValidationCode.INVALID_FORMAT, errors);
   const name = readString(value, "name", "$.name", MindcraftProjectDocumentValidationCode.INVALID_NAME, errors);
+  const version = isSemver(value.version) ? value.version : DEFAULT_CONTENT_VERSION;
   const description = readString(
     value,
     "description",
@@ -185,6 +200,7 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
     document: {
       format: MINDCRAFT_PROJECT_FORMAT,
       name: name as string,
+      version,
       description: description as string,
       ...(thumbnailUrl !== undefined ? { thumbnailUrl } : {}),
       files: files as readonly MindcraftProjectFile[],

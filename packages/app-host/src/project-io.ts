@@ -110,8 +110,12 @@ export type ImportProjectTargetsCallback = (
 /** App-data key used to store the shared project target map. */
 export const PROJECT_TARGETS_APP_DATA_KEY = "targets";
 
+/** Content version a legacy export reads as when it carries no semver `version`. */
+const DEFAULT_CONTENT_VERSION = "0.0.0";
+
 interface ExportProjectData {
   name: string;
+  version: string;
   description: string;
   thumbnailUrl?: string;
   files: MindcraftProjectFile[];
@@ -161,6 +165,7 @@ async function buildExportProjectData(
 
   return {
     name: manifest.name,
+    version: manifest.version,
     description: manifest.description,
     thumbnailUrl: manifest.thumbnailUrl,
     files,
@@ -192,6 +197,7 @@ export async function buildProjectExportDocument(
   return {
     format: MINDCRAFT_PROJECT_FORMAT,
     name: common.name,
+    version: common.version,
     description: common.description,
     ...(common.thumbnailUrl !== undefined ? { thumbnailUrl: common.thumbnailUrl } : {}),
     files: common.files,
@@ -352,7 +358,8 @@ async function persistSharedProjectDocument(
     snapshot,
     appData,
     document.thumbnailUrl,
-    normalizeExtensions(document.extensions)
+    normalizeExtensions(document.extensions),
+    document.version
   );
 
   return { success: true, projectId: manifest.id, diagnostics: warnings };
@@ -410,6 +417,7 @@ function makeLegacySharedDocument(
   return {
     format: MINDCRAFT_PROJECT_FORMAT,
     name: doc.name,
+    version: typeof doc.version === "string" ? doc.version : DEFAULT_CONTENT_VERSION,
     description: doc.description,
     ...(typeof doc.thumbnailUrl === "string" ? { thumbnailUrl: doc.thumbnailUrl } : {}),
     files,

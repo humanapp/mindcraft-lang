@@ -275,6 +275,71 @@ describe("buildProjectExportDocument", () => {
   });
 });
 
+describe("project content version interchange", () => {
+  let store: MemoryProjectStore;
+  let pm: ProjectManager;
+
+  beforeEach(async () => {
+    store = new MemoryProjectStore();
+    pm = new ProjectManager(store);
+    await pm.init();
+  });
+
+  afterEach(async () => {
+    await pm.close();
+  });
+
+  it("exports the manifest content version as a picked field", async () => {
+    const ws = makeProjectFileSystem();
+
+    const result = await buildProjectExportDocument(makeManifest({ version: "1.4.2" }), ws, async () => undefined);
+
+    assert.strictEqual(result.version, "1.4.2");
+  });
+
+  it("exports exactly the document keys and none of the local-only store fields", async () => {
+    const ws = makeProjectFileSystem();
+
+    const result = await buildProjectExportDocument(makeManifest({ version: "1.4.2" }), ws, async () => undefined);
+
+    assert.deepStrictEqual(Object.keys(result).sort(), [
+      "brains",
+      "description",
+      "files",
+      "format",
+      "name",
+      "targets",
+      "version",
+    ]);
+    for (const localOnly of ["id", "projectCollectionId", "deleted", "createdAt", "updatedAt"]) {
+      assert.strictEqual(localOnly in result, false);
+    }
+  });
+
+  it("round-trips the content version from export through import into the store", async () => {
+    const ws = makeProjectFileSystem();
+    const document = await buildProjectExportDocument(makeManifest({ version: "3.5.7" }), ws, async () => undefined);
+    assert.strictEqual(document.version, "3.5.7");
+
+    const file = makeFile(document as unknown as Record<string, unknown>);
+    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, true);
+    const imported = await store.getProject(result.projectId!);
+    assert.strictEqual(imported?.version, "3.5.7");
+  });
+
+  it("imports a legacy document without a version as the lowest content version", async () => {
+    const file = makeFile(makeSharedProjectDoc());
+
+    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+
+    assert.strictEqual(result.success, true);
+    const imported = await store.getProject(result.projectId!);
+    assert.strictEqual(imported?.version, "0.0.0");
+  });
+});
+
 describe("importProjectDocument", () => {
   let store: MemoryProjectStore;
   let pm: ProjectManager;
@@ -852,11 +917,15 @@ describe("project extensions interchange", () => {
   });
 
   it("round-trips a document without extensions byte-stably", async () => {
-    const original = makeSharedProjectDoc({
+    const original = {
+      format: MINDCRAFT_PROJECT_FORMAT,
+      name: "Shared Project",
+      version: "0.0.0",
+      description: "shared desc",
       files: [{ path: "src/main.ts", content: "hello" }],
       brains: { main: { pages: [] } },
       targets: { "test-app": { settings: true } },
-    });
+    };
     const imported = await importProjectDocument(makeFile(original), "test-app", "1.0.0", pm);
     assert.strictEqual(imported.success, true);
 

@@ -280,11 +280,17 @@ export class ProjectManager {
     snapshot: ProjectFileSnapshot,
     appData?: Record<string, string>,
     thumbnailUrl?: string,
-    extensions?: Readonly<Record<string, string>>
+    extensions?: Readonly<Record<string, string>>,
+    version?: string
   ): Promise<ProjectManifest> {
     const collection = await this.requireActiveProjectCollectionReady();
     const manifest = await this.store.createProject(collection.projectCollectionId, name);
-    await this.store.updateProject(manifest.id, { description, thumbnailUrl, extensions });
+    await this.store.updateProject(manifest.id, {
+      description,
+      thumbnailUrl,
+      extensions,
+      ...(version === undefined ? {} : { version }),
+    });
     await this.store.saveProjectFiles(manifest.id, snapshot);
     if (appData) {
       for (const [key, value] of Object.entries(appData)) {

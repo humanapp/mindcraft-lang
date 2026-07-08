@@ -12,6 +12,7 @@ type BrainSelectionCode = (typeof MindcraftProjectBrainSelectionCode)[keyof type
 const VALID_DOCUMENT = {
   format: MINDCRAFT_PROJECT_FORMAT,
   name: "Project",
+  version: "1.0.0",
   description: "",
   files: [],
   brains: {
