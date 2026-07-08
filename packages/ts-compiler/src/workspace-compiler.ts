@@ -279,7 +279,13 @@ const TSCONFIG_CONTENT = JSON.stringify(
       strict: true,
       noEmit: true,
       skipLibCheck: true,
+      paths: {
+        "@ext/*": ["./.extensions/*"],
+      },
     },
+    // TypeScript's default `**/*` include skips dot-directories; the
+    // materialized installed-extensions tree is listed explicitly to cover it.
+    include: ["**/*", ".extensions/**/*"],
   },
   undefined,
   2

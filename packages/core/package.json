@@ -64,6 +64,12 @@
     "./ambient/mindcraft.core.d.ts": {
       "default": "./ambient/mindcraft.core.d.ts"
     },
+    "./lib/mindcraft.json": {
+      "default": "./lib/mindcraft.json"
+    },
+    "./lib/index.ts": {
+      "default": "./lib/index.ts"
+    },
     "./app": {
       "node": {
         "import": {
@@ -412,6 +418,7 @@
   "files": [
     "dist",
     "ambient",
+    "lib",
     "README.md"
   ],
   "scripts": {
