@@ -1,3 +1,4 @@
+export { LOWEST_CONTENT_VERSION } from "@mindcraft-lang/service-api";
 export { AppHostError, AppHostErrorCode, appHostError } from "./app-host-error.js";
 export type { ExampleDefinition, ExampleFile } from "./examples.js";
 export { EXAMPLES_FOLDER } from "./examples.js";
@@ -25,6 +26,7 @@ export {
 } from "./project-collection-pin.js";
 export type {
   ExtensionReference,
+  ExtensionTarget,
   ProjectContentManifest,
   ProjectContentManifestError,
   ProjectContentManifestParseResult,
@@ -36,6 +38,7 @@ export {
   serializeProjectContentManifest,
   validateProjectContentManifest,
   validateProjectExtensions,
+  validateProjectTargets,
 } from "./project-content-manifest.js";
 export type {
   ProjectDirectoryEntry,

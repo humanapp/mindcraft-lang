@@ -143,6 +143,32 @@ describe("parseProjectContentManifest", () => {
     }
   });
 
+  it("carries a non-empty targets map through", () => {
+    const result = parseProjectContentManifest(
+      JSON.stringify({
+        name: "P",
+        version: "0.1.0",
+        targets: { "mindcraft-lang/microbit-v2": { packageVersion: "^0.2.0" } },
+      })
+    );
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest.targets, {
+        "mindcraft-lang/microbit-v2": { packageVersion: "^0.2.0" },
+      });
+    }
+  });
+
+  it("omits targets when absent or empty", () => {
+    for (const targets of [undefined, {}]) {
+      const result = parseProjectContentManifest(JSON.stringify({ name: "P", version: "0.1.0", targets }));
+      assert.strictEqual(result.ok, true);
+      if (result.ok) {
+        assert.strictEqual("targets" in result.manifest, false);
+      }
+    }
+  });
+
   it("rejects invalid JSON with INVALID_JSON", () => {
     const result = parseProjectContentManifest("{not json");
     assert.strictEqual(result.ok, false);
@@ -187,6 +213,22 @@ describe("validateProjectContentManifest", () => {
       const result = validateProjectContentManifest({ name: "P", version: "0.1.0", ambient });
       assert.strictEqual(result.ok, false);
       assert.ok(errorCodes(result).includes(ProjectContentManifestErrorCode.INVALID_AMBIENT));
+    }
+  });
+
+  it("rejects a malformed targets field with INVALID_TARGETS", () => {
+    const cases: unknown[] = [
+      5,
+      ["a"],
+      { "-bad/repo": { packageVersion: "^1.0.0" } },
+      { "mindcraft-lang/wodal": { packageVersion: 3 } },
+      { "mindcraft-lang/wodal": { packageVersion: "" } },
+      { "mindcraft-lang/wodal": "^1.0.0" },
+    ];
+    for (const targets of cases) {
+      const result = validateProjectContentManifest({ name: "P", version: "0.1.0", targets });
+      assert.strictEqual(result.ok, false, `Expected rejection for targets ${JSON.stringify(targets)}`);
+      assert.ok(errorCodes(result).includes(ProjectContentManifestErrorCode.INVALID_TARGETS));
     }
   });
 
@@ -308,5 +350,26 @@ describe("serializeProjectContentManifest", () => {
       ambient: [],
     });
     assert.strictEqual(emptySerialized.includes("ambient"), false);
+  });
+
+  it("round-trips a non-empty targets map and omits it when empty", () => {
+    const manifest: ProjectContentManifest = {
+      name: "P",
+      version: "0.1.0",
+      extensions: {},
+      targets: { "mindcraft-lang/microbit-v2": { packageVersion: "^0.2.0" } },
+    };
+    const result = parseProjectContentManifest(serializeProjectContentManifest(manifest));
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest, manifest);
+    }
+    const emptySerialized = serializeProjectContentManifest({
+      name: "P",
+      version: "0.1.0",
+      extensions: {},
+      targets: {},
+    });
+    assert.strictEqual(emptySerialized.includes("targets"), false);
   });
 });

@@ -3,6 +3,7 @@ import {
   appHostError,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_COLLECTION_NAME,
+  LOWEST_CONTENT_VERSION,
   MINDCRAFT_JSON_PATH,
   normalizeProjectCollectionName,
   type ProjectCollection,
@@ -11,6 +12,7 @@ import {
   type ProjectManifest,
   type ProjectStore,
 } from "@mindcraft-lang/app-host";
+import { INITIAL_CONTENT_VERSION } from "../project-content-version.js";
 
 interface MemoryProjectStoreData {
   projectCollections: ProjectCollection[];
@@ -28,13 +30,10 @@ function createMemoryProjectStoreData(): MemoryProjectStoreData {
   };
 }
 
-/** Content version a stored manifest reads as when it predates the `version` field. */
-const MISSING_CONTENT_VERSION = "0.0.0";
-
 /** Default a stored manifest that predates the `version` field to the lowest content version. */
 function withContentVersion(manifest: ProjectManifest): ProjectManifest {
   const version = (manifest as { version?: string }).version;
-  return version === undefined ? { ...manifest, version: MISSING_CONTENT_VERSION } : manifest;
+  return version === undefined ? { ...manifest, version: LOWEST_CONTENT_VERSION } : manifest;
 }
 
 /** In-memory ProjectStore implementation for app-host specs. */
@@ -172,7 +171,7 @@ export class MemoryProjectStore implements ProjectStore {
       id: `id-${this.data.projects.length + 1}`,
       projectCollectionId,
       name,
-      version: "0.1.0",
+      version: INITIAL_CONTENT_VERSION,
       description: "",
       createdAt: Date.now(),
       updatedAt: Date.now(),

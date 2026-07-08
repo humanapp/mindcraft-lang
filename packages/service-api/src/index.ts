@@ -36,6 +36,7 @@ export type {
 } from "./project-document.js";
 export {
   isMindcraftProjectFilePath,
+  LOWEST_CONTENT_VERSION,
   MINDCRAFT_PROJECT_FORMAT,
   MindcraftProjectDocumentValidationCode,
   parseMindcraftProjectDocument,

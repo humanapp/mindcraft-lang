@@ -31,6 +31,20 @@ export type {
   ResolvedExtensions,
 } from "./embedded-extensions.js";
 export { ExtensionResolutionCycleError, resolveEmbeddedExtensions } from "./embedded-extensions.js";
+export type {
+  ExtensionActionResult,
+  ExtensionCatalogEntry,
+  PlatformStackLayer,
+} from "./extension-catalog.js";
+export {
+  buildExtensionCatalog,
+  deriveProjectPlatformStack,
+  ExtensionActionResultCode,
+  installEmbeddedExtension,
+  isExtensionCompatible,
+  satisfiesRange,
+  uninstallEmbeddedExtension,
+} from "./extension-catalog.js";
 
 export type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
 export {

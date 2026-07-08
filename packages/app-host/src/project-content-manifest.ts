@@ -1,4 +1,4 @@
-import type { MindcraftProjectExtensions } from "@mindcraft-lang/service-api";
+import { LOWEST_CONTENT_VERSION, type MindcraftProjectExtensions } from "@mindcraft-lang/service-api";
 
 /**
  * A parsed extension reference naming where a dependency comes from.
@@ -45,9 +45,6 @@ const LOCAL_PROJECT_ID_PATTERN = /^[^\s/]+$/;
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
-/** Content version a manifest reads as when it lacks a valid semver `version`. */
-const DEFAULT_CONTENT_VERSION = "0.0.0";
-
 function isSemver(value: unknown): value is string {
   return typeof value === "string" && SEMVER_PATTERN.test(value);
 }
@@ -74,6 +71,21 @@ export function parseExtensionReference(reference: string): ExtensionReference |
     return LOCAL_PROJECT_ID_PATTERN.test(projectId) ? { transport: "local", projectId } : undefined;
   }
   return undefined;
+}
+
+/**
+ * One entry of a content manifest's {@link ProjectContentManifest.targets}
+ * map: the version constraint a target package must satisfy for the extension
+ * to be compatible with a platform whose stack includes that package.
+ */
+export interface ExtensionTarget {
+  /**
+   * Semver range the target package's resolved version must satisfy. An
+   * extension is compatible with a platform when one of its target packages is
+   * in the platform's stack and the stack's version for that package satisfies
+   * this range.
+   */
+  readonly packageVersion: string;
 }
 
 /**
@@ -104,6 +116,15 @@ export interface ProjectContentManifest {
    * Present only when the file carries a non-empty list.
    */
   readonly ambient?: readonly string[];
+  /**
+   * Platform-compatibility targets keyed by target package `<owner>/<repo>`
+   * coordinate; each value declares the semver range that package's version
+   * must satisfy. Present only when the file carries a non-empty map. A
+   * compatibility filter treats the extension as compatible with a platform
+   * when one of these keys is in the platform's stack and the stack's version
+   * for that package satisfies the entry's `packageVersion` range.
+   */
+  readonly targets?: Readonly<Record<string, ExtensionTarget>>;
 }
 
 /** Stable identifiers for content manifest validation errors. */
@@ -112,6 +133,7 @@ export const ProjectContentManifestErrorCode = {
   INVALID_ROOT: "PROJECT_MANIFEST_INVALID_ROOT",
   INVALID_NAME: "PROJECT_MANIFEST_INVALID_NAME",
   INVALID_AMBIENT: "PROJECT_MANIFEST_INVALID_AMBIENT",
+  INVALID_TARGETS: "PROJECT_MANIFEST_INVALID_TARGETS",
   INVALID_EXTENSIONS: "PROJECT_MANIFEST_INVALID_EXTENSIONS",
   INVALID_EXTENSION_COORDINATE: "PROJECT_MANIFEST_INVALID_EXTENSION_COORDINATE",
   DUPLICATE_EXTENSION_COORDINATE: "PROJECT_MANIFEST_DUPLICATE_EXTENSION_COORDINATE",
@@ -197,6 +219,44 @@ export function validateProjectExtensions(
 }
 
 /**
+ * Validate a compatibility targets map: an object keyed by target package
+ * `<owner>/<repo>` coordinate, each value an object carrying a non-empty string
+ * `packageVersion`. Returns one error per rejected entry; an empty list means
+ * the map is well-formed.
+ */
+export function validateProjectTargets(value: unknown): readonly ProjectContentManifestError[] {
+  if (!isRecord(value)) {
+    return [
+      {
+        code: ProjectContentManifestErrorCode.INVALID_TARGETS,
+        path: "$.targets",
+        message: "$.targets must be an object when present.",
+      },
+    ];
+  }
+  const errors: ProjectContentManifestError[] = [];
+  for (const [coordinate, target] of Object.entries(value)) {
+    const path = `$.targets[${JSON.stringify(coordinate)}]`;
+    if (!isExtensionCoordinate(coordinate)) {
+      errors.push({
+        code: ProjectContentManifestErrorCode.INVALID_TARGETS,
+        path,
+        message: `Target package coordinate "${coordinate}" must be "<owner>/<repo>".`,
+      });
+      continue;
+    }
+    if (!isRecord(target) || typeof target.packageVersion !== "string" || target.packageVersion.length === 0) {
+      errors.push({
+        code: ProjectContentManifestErrorCode.INVALID_TARGETS,
+        path,
+        message: `Target "${coordinate}" must be an object with a non-empty string "packageVersion".`,
+      });
+    }
+  }
+  return errors;
+}
+
+/**
  * Parse and validate a project content manifest from JSON text. String
  * `description` and `thumbnailUrl` fields are carried through; other fields are
  * ignored.
@@ -255,7 +315,7 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
     });
   }
 
-  const version = isSemver(value.version) ? value.version : DEFAULT_CONTENT_VERSION;
+  const version = isSemver(value.version) ? value.version : LOWEST_CONTENT_VERSION;
 
   let ambient: readonly string[] | undefined;
   if (value.ambient !== undefined) {
@@ -267,6 +327,16 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
       });
     } else if (value.ambient.length > 0) {
       ambient = value.ambient as readonly string[];
+    }
+  }
+
+  let targets: Readonly<Record<string, ExtensionTarget>> | undefined;
+  if (value.targets !== undefined) {
+    const targetErrors = validateProjectTargets(value.targets);
+    if (targetErrors.length > 0) {
+      errors.push(...targetErrors);
+    } else if (Object.keys(value.targets as Record<string, unknown>).length > 0) {
+      targets = value.targets as Readonly<Record<string, ExtensionTarget>>;
     }
   }
 
@@ -301,6 +371,7 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
       ...(typeof value.thumbnailUrl === "string" ? { thumbnailUrl: value.thumbnailUrl } : {}),
       extensions,
       ...(ambient !== undefined ? { ambient } : {}),
+      ...(targets !== undefined ? { targets } : {}),
     },
     errors: [],
   };
@@ -316,6 +387,9 @@ export function serializeProjectContentManifest(manifest: ProjectContentManifest
       ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
       ...(Object.keys(manifest.extensions).length > 0 ? { extensions: manifest.extensions } : {}),
       ...(manifest.ambient !== undefined && manifest.ambient.length > 0 ? { ambient: manifest.ambient } : {}),
+      ...(manifest.targets !== undefined && Object.keys(manifest.targets).length > 0
+        ? { targets: manifest.targets }
+        : {}),
     },
     null,
     2

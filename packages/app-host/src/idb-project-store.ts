@@ -1,3 +1,4 @@
+import { LOWEST_CONTENT_VERSION } from "@mindcraft-lang/service-api";
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import { AppHostErrorCode, appHostError } from "./app-host-error.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
@@ -7,6 +8,7 @@ import {
   normalizeProjectCollectionName,
   type ProjectCollection,
 } from "./project-collection.js";
+import { INITIAL_CONTENT_VERSION } from "./project-content-version.js";
 import type { ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectCollectionTabSession, ProjectStore } from "./project-store.js";
@@ -36,12 +38,6 @@ type LegacyProjectManifest = Omit<ProjectManifest, "projectCollectionId"> & {
 
 const DB_VERSION = 4;
 
-/** Content version stamped on a newly created project. */
-const INITIAL_CONTENT_VERSION = "0.1.0";
-
-/** Content version a stored manifest reads as when it predates the `version` field. */
-const MISSING_CONTENT_VERSION = "0.0.0";
-
 function dbName(keyPrefix: string): string {
   return `${keyPrefix}-projects`;
 }
@@ -49,7 +45,7 @@ function dbName(keyPrefix: string): string {
 /** Default a stored manifest that predates the `version` field to the lowest content version. */
 function withContentVersion(manifest: ProjectManifest): ProjectManifest {
   const version = (manifest as { version?: string }).version;
-  return version === undefined ? { ...manifest, version: MISSING_CONTENT_VERSION } : manifest;
+  return version === undefined ? { ...manifest, version: LOWEST_CONTENT_VERSION } : manifest;
 }
 
 function appDataKey(projectId: string, key: string): string {

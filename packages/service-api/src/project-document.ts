@@ -5,8 +5,12 @@ export const MINDCRAFT_PROJECT_FORMAT = "mindcraft.project";
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
-/** Content version a document reads as when it lacks a valid semver `version`. */
-const DEFAULT_CONTENT_VERSION = "0.0.0";
+/**
+ * Content version a project document, content manifest, or extension reads and
+ * compares as when it lacks a valid semver `version`: the lowest semantic
+ * version, `"0.0.0"`.
+ */
+export const LOWEST_CONTENT_VERSION = "0.0.0";
 
 function isSemver(value: unknown): value is string {
   return typeof value === "string" && SEMVER_PATTERN.test(value);
@@ -158,7 +162,7 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
   const errors: MindcraftProjectDocumentValidationError[] = [];
   const format = readString(value, "format", "$.format", MindcraftProjectDocumentValidationCode.INVALID_FORMAT, errors);
   const name = readString(value, "name", "$.name", MindcraftProjectDocumentValidationCode.INVALID_NAME, errors);
-  const version = isSemver(value.version) ? value.version : DEFAULT_CONTENT_VERSION;
+  const version = isSemver(value.version) ? value.version : LOWEST_CONTENT_VERSION;
   const description = readString(
     value,
     "description",

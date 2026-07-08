@@ -1,4 +1,9 @@
-import { MINDCRAFT_JSON_PATH, parseExtensionReference, parseProjectContentManifest } from "@mindcraft-lang/app-host";
+import {
+  LOWEST_CONTENT_VERSION,
+  MINDCRAFT_JSON_PATH,
+  parseExtensionReference,
+  parseProjectContentManifest,
+} from "@mindcraft-lang/app-host";
 import type { DependencyMount, ProjectDependency } from "@mindcraft-lang/ts-compiler";
 
 /** An extensions list keyed by `<owner>/<repo>` coordinate; each value is an extension reference string. */
@@ -108,8 +113,6 @@ export interface OriginCandidate {
   ambient: readonly string[];
 }
 
-const ZERO_VERSION = "0.0.0";
-
 /** Compare two semver strings by their release triple; a higher triple compares greater. */
 function compareSemver(a: string, b: string): number {
   const pa = a.split("-")[0].split(".").map(Number);
@@ -146,11 +149,11 @@ function readOwnManifest(files: ReadonlyMap<string, string>): {
 } {
   const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
   if (manifestContent === undefined) {
-    return { version: ZERO_VERSION, extensions: {}, ambient: [] };
+    return { version: LOWEST_CONTENT_VERSION, extensions: {}, ambient: [] };
   }
   const parsed = parseProjectContentManifest(manifestContent);
   if (!parsed.ok) {
-    return { version: ZERO_VERSION, extensions: {}, ambient: [] };
+    return { version: LOWEST_CONTENT_VERSION, extensions: {}, ambient: [] };
   }
   return {
     version: parsed.manifest.version,

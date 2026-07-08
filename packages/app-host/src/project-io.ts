@@ -7,6 +7,7 @@ import type {
   MindcraftProjectTargets,
 } from "@mindcraft-lang/service-api";
 import {
+  LOWEST_CONTENT_VERSION,
   MINDCRAFT_PROJECT_FORMAT,
   parseMindcraftProjectDocument,
   validateMindcraftProjectDocument,
@@ -109,9 +110,6 @@ export type ImportProjectTargetsCallback = (
 
 /** App-data key used to store the shared project target map. */
 export const PROJECT_TARGETS_APP_DATA_KEY = "targets";
-
-/** Content version a legacy export reads as when it carries no semver `version`. */
-const DEFAULT_CONTENT_VERSION = "0.0.0";
 
 interface ExportProjectData {
   name: string;
@@ -417,7 +415,7 @@ function makeLegacySharedDocument(
   return {
     format: MINDCRAFT_PROJECT_FORMAT,
     name: doc.name,
-    version: typeof doc.version === "string" ? doc.version : DEFAULT_CONTENT_VERSION,
+    version: typeof doc.version === "string" ? doc.version : LOWEST_CONTENT_VERSION,
     description: doc.description,
     ...(typeof doc.thumbnailUrl === "string" ? { thumbnailUrl: doc.thumbnailUrl } : {}),
     files,
