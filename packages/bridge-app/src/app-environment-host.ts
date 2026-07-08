@@ -381,6 +381,25 @@ export class AppEnvironmentHost {
     syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
   }
 
+  /**
+   * Apply an extensions-map change to the active project: persist the new map,
+   * then re-resolve the project's extension dependency graph and re-materialize
+   * the installed-extensions tree off the updated manifest, registering any
+   * newly-reachable origin and tearing down any origin the change dropped.
+   *
+   * @param extensions - The active project's next extensions map, keyed by coordinate.
+   */
+  async updateProjectExtensions(extensions: Readonly<Record<string, string>>): Promise<void> {
+    await this.projectManager.updateActive({ extensions });
+    if (!this._compiler) {
+      return;
+    }
+    const { dependencies, dependencyMounts } = this.resolveExtensions();
+    this._compiler.compiler.setDependencies(dependencies, dependencyMounts);
+    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
+    this._compiler.replaceProjectFiles();
+  }
+
   // ---------------------------------------------------------------------------
   // Project lifecycle events
   // ---------------------------------------------------------------------------

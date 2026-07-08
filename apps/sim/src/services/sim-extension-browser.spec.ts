@@ -67,13 +67,13 @@ const microbitAddon = ext(MICROBIT_ONLY, {
 const embedRecord: readonly EmbeddedExtension[] = [simLib, coreLib, flockAddon, microbitAddon];
 const project = { [SIM_LIB_COORDINATE]: SIM_LIB_REFERENCE };
 
-/** A persistence double capturing every `updateActive` extensions patch. */
+/** A persistence double capturing every extensions map applied through the host. */
 function capturingPersistence(): ExtensionProjectPersistence & { patches: Array<Record<string, string> | undefined> } {
   const patches: Array<Record<string, string> | undefined> = [];
   return {
     patches,
-    updateActive: async (updates) => {
-      patches.push(updates.extensions as Record<string, string> | undefined);
+    updateProjectExtensions: async (extensions) => {
+      patches.push(extensions);
     },
   };
 }
@@ -143,7 +143,7 @@ describe("toExtensionBrowserEntry", () => {
   });
 });
 
-describe("installSimExtension -- round-trips through updateActive", () => {
+describe("installSimExtension -- round-trips through the host", () => {
   test("installing an add-on persists an extensions map that gains the coordinate", async () => {
     const persistence = capturingPersistence();
     const result = await installSimExtension(persistence, project, FLOCK, embedRecord);
@@ -163,7 +163,7 @@ describe("installSimExtension -- round-trips through updateActive", () => {
   });
 });
 
-describe("uninstallSimExtension -- round-trips through updateActive", () => {
+describe("uninstallSimExtension -- round-trips through the host", () => {
   const withFlock = { ...project, [FLOCK]: `embedded:${FLOCK}` };
 
   test("uninstalling an add-on persists an extensions map that loses the coordinate", async () => {

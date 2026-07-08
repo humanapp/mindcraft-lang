@@ -15,7 +15,7 @@ import {
 } from "@mindcraft-lang/app-host";
 import type { IBrainDef } from "@mindcraft-lang/core/app";
 import { CoreTypeIds, coreModule, List } from "@mindcraft-lang/core/app";
-import { declarationMount } from "@mindcraft-lang/ts-compiler";
+import { declarationMount, type WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 
@@ -645,6 +645,108 @@ function createEmbeddedExtensionHost(projectManager: ProjectManager): AppEnviron
     embeddedExtensions: [DEMO_EXTENSION],
   });
 }
+
+/**
+ * A project manager stub whose `updateActive` replaces the active project's
+ * manifest object with the applied updates merged over the previous manifest.
+ */
+function stubProjectManagerWithLiveExtensions(
+  filesystem: ProjectFileSystem,
+  initialExtensions: Record<string, string>
+): ProjectManager {
+  let activeProject: ActiveProject = {
+    manifest: {
+      id: PROJECT_ID,
+      projectCollectionId: "collection-1",
+      name: PROJECT_ID,
+      version: "0.1.0",
+      description: "",
+      createdAt: 1,
+      updatedAt: 1,
+      extensions: initialExtensions,
+    },
+    filesystem,
+  } as ActiveProject;
+  return {
+    get activeProject(): ActiveProject {
+      return activeProject;
+    },
+    activeProjectCollection: createProjectCollection(),
+    async init(): Promise<void> {},
+    async getProjectCollectionState(): Promise<{ access: "ready" }> {
+      return { access: "ready" };
+    },
+    async ensureDefaultProject(): Promise<void> {},
+    async updateActive(updates: { extensions?: Record<string, string> }): Promise<void> {
+      activeProject = {
+        manifest: { ...activeProject.manifest, ...updates },
+        filesystem: activeProject.filesystem,
+      } as ActiveProject;
+    },
+    async saveAppData(): Promise<void> {},
+    async loadAppData(): Promise<string | undefined> {
+      return undefined;
+    },
+    async deleteAppData(): Promise<void> {},
+    dispose(): void {},
+  } as unknown as ProjectManager;
+}
+
+describe("AppEnvironmentHost live extension changes", () => {
+  it("materializes an installed add-on's tree live and de-materializes it on uninstall", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem();
+    filesystem.applyLocalChange({ action: "write", path: "level.ts", content: EXT_SENSOR_SOURCE, newEtag: "e1" });
+    const projectManager = stubProjectManagerWithLiveExtensions(filesystem, {});
+
+    // Capture every compile: the `@ext` import in level.ts resolves only while
+    // the add-on's source is materialized under `.extensions/`, so a compile
+    // error there is the observable signal that the tree is absent.
+    let latest: WorkspaceCompileResult | undefined;
+    const host = new AppEnvironmentHost({
+      projectManager,
+      modules: [coreModule()],
+      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      embeddedExtensions: [DEMO_EXTENSION],
+      onDidCompile: (result) => {
+        latest = result;
+      },
+    });
+
+    const levelHasError = (): boolean => {
+      for (const [path, diagnostics] of latest?.files ?? []) {
+        if (path.endsWith("level.ts") && diagnostics.some((d) => d.severity === "error")) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const hasLevelTile = (): boolean =>
+      (host.lastUserTileMetadata ?? []).some((entry) => entry.id === "extSensor00000001");
+
+    try {
+      await host.initialize(PROJECT_ID);
+
+      // Uninstalled: the `@ext` import is unresolved, so level.ts fails to compile
+      // and no tile is produced.
+      assert.equal(levelHasError(), true, "the @ext import is unresolved while the add-on is uninstalled");
+      assert.equal(hasLevelTile(), false, "no sensor tile is registered while the add-on is uninstalled");
+
+      // Install through the same path the browser drives; no project transition.
+      await host.updateProjectExtensions({ [DEMO_COORDINATE]: DEMO_REFERENCE });
+      assert.equal(levelHasError(), false, "installing live materializes .extensions so the @ext import resolves");
+      assert.equal(hasLevelTile(), true, "the sensor compiles into a user tile once the add-on is installed live");
+
+      // Uninstall live: the mount drops, `.extensions/mindcraft-lang/demo-lib`
+      // de-materializes, and the import is unresolved once more.
+      await host.updateProjectExtensions({});
+      assert.equal(levelHasError(), true, "uninstalling live de-materializes .extensions and the import fails again");
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
 
 describe("AppEnvironmentHost embedded extensions", () => {
   it("compiles user code that imports an embedded extension via @ext", async () => {
