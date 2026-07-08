@@ -18,7 +18,6 @@ import { CoreTypeIds, coreModule, List } from "@mindcraft-lang/core/app";
 import { declarationMount } from "@mindcraft-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
-import type { StdlibImportRedirect } from "./stdlib-import-migration.js";
 
 class EmptyProjectFileSystem implements ProjectFileSystem {
   exportSnapshot(): ProjectFileSnapshot {
@@ -379,78 +378,6 @@ export default Sensor({
 });
 `;
 
-const STEER_ACTUATOR_SOURCE = `import { Actuator, type Context, NumberType, modifier, optional, param } from "mindcraft";
-
-export default Actuator({
-  id: "steerActuator123",
-  name: "steer",
-  args: [optional(modifier("hold", { label: "hold" })), param("speed", { type: NumberType })],
-  onExecute(ctx: Context, args: { hold: boolean; speed: number }): void {},
-});
-`;
-
-const OLD_STRUCT_TYPE = "struct:</position.ts::Position>";
-const NEW_STRUCT_TYPE = `struct:<${PROJECT_ID}:/position.ts::Position>`;
-
-/** A saved brain in the pre-namespace key format, exercising every user-key shape. */
-function oldFormatUserBrain(): Record<string, unknown> {
-  return {
-    version: 1,
-    id: "brain00000000001",
-    name: "Gamepad Brain",
-    catalog: [
-      {
-        version: 2,
-        kind: "literal",
-        tileId: "tile.literal->number:<number>->50",
-        valueType: "number:<number>",
-        value: 50,
-        valueLabel: "50",
-        displayFormat: "default",
-      },
-      {
-        version: 1,
-        kind: "variable",
-        tileId: "tile.var->posvar0000000001",
-        varName: "pos",
-        varType: OLD_STRUCT_TYPE,
-        uniqueId: "posvar0000000001",
-      },
-    ],
-    pages: [
-      {
-        version: 2,
-        pageId: "page000000000001",
-        name: "Page 1",
-        rules: [
-          {
-            version: 1,
-            when: ["tile.sensor->user.sensor.stickSensor12345", `tile.accessor->${OLD_STRUCT_TYPE}->x`],
-            do: [
-              "tile.actuator->user.actuator.steerActuator123",
-              "tile.modifier->user.steerActuator123.hold",
-              "tile.parameter->user.steerActuator123.speed",
-              "tile.literal->number:<number>->50",
-            ],
-            children: [],
-          },
-          {
-            version: 1,
-            when: [],
-            do: [
-              "tile.actuator->user.actuator.steerActuator123",
-              "tile.parameter->user.steerActuator123.speed",
-              "tile.sensor->user.sensor.stickSensor12345",
-              `tile.accessor->${OLD_STRUCT_TYPE}->x`,
-            ],
-            children: [],
-          },
-        ],
-      },
-    ],
-  };
-}
-
 /** A saved brain that references platform tiles only. */
 function platformOnlyBrain(): Record<string, unknown> {
   return {
@@ -532,7 +459,6 @@ function createUserTileFilesystem(): ProjectFileSystem {
   const filesystem = createInMemoryProjectFileSystem();
   filesystem.applyLocalChange({ action: "write", path: "position.ts", content: POSITION_SOURCE, newEtag: "e1" });
   filesystem.applyLocalChange({ action: "write", path: "stick.ts", content: STICK_SENSOR_SOURCE, newEtag: "e2" });
-  filesystem.applyLocalChange({ action: "write", path: "steer.ts", content: STEER_ACTUATOR_SOURCE, newEtag: "e3" });
   return filesystem;
 }
 
@@ -565,69 +491,88 @@ function collectTileIdsByKind(brainDef: IBrainDef, kind: string): string[] {
   return collected;
 }
 
-describe("AppEnvironmentHost key-namespace migration", () => {
-  it("migrates a pre-namespace brain record on load, resolves every tile, and persists once", async () => {
+describe("AppEnvironmentHost namespaced-key save and reload", () => {
+  it("saves a brain with namespaced user-symbol keys and reloads it with no re-persist", async () => {
     const restoreLocalStorage = installEmptyLocalStorage();
-    const appData = new Map<string, string>([
-      ["brains", JSON.stringify({ main: oldFormatUserBrain(), aux: platformOnlyBrain() })],
-    ]);
-    const platformBrainBefore = JSON.stringify(platformOnlyBrain());
+    const appData = new Map<string, string>();
     const stub = stubProjectManagerWithAppData(createUserTileFilesystem(), appData);
     const host = createHost(stub.projectManager);
-
     try {
       await host.initialize(PROJECT_ID);
 
-      // Baseline degradation: the same old-format document deserialized
-      // without migration resolves user references to missing placeholders.
-      const unmigrated = host.env.deserializeBrainJsonFromPlain(oldFormatUserBrain());
+      const metadata = host.lastUserTileMetadata;
+      assert.ok(metadata, "the user tile must compile");
+      const sensor = metadata.find((entry) => entry.kind === "sensor");
+      assert.ok(sensor, "the sensor tile must compile");
+      const sensorKey = sensor.key;
+      const outputType = sensor.outputType;
+      assert.ok(outputType, "the sensor must produce a struct output type");
+
+      // The compiler mints namespaced keys: a placed tile carries exactly these.
       assert.ok(
-        collectTileIdsByKind(unmigrated, "missing").length > 0,
-        "the fixture must reference pre-namespace keys that no longer resolve"
+        sensorKey.startsWith(`${PROJECT_ID}:user.sensor.`),
+        `sensor key must be namespaced, not bare: ${sensorKey}`
       );
+      assert.ok(outputType.includes(`<${PROJECT_ID}:`), `struct type id must be namespaced: ${outputType}`);
 
-      const main = host.getCachedBrain("main");
-      assert.ok(main, "the migrated brain must load");
-      assert.deepEqual(collectTileIdsByKind(main, "missing"), [], "every migrated reference must resolve");
+      // A brain built from the minted keys is exactly what the save path writes.
+      const brainJson = {
+        version: 1,
+        id: "brain00000000010",
+        name: "Namespaced Brain",
+        catalog: [
+          {
+            version: 1,
+            kind: "variable",
+            tileId: "tile.var->posvar0000000010",
+            varName: "pos",
+            varType: outputType,
+            uniqueId: "posvar0000000010",
+          },
+        ],
+        pages: [
+          {
+            version: 2,
+            pageId: "page000000000010",
+            name: "Page 1",
+            rules: [
+              {
+                version: 1,
+                when: [`tile.sensor->${sensorKey}`, `tile.accessor->${outputType}->x`],
+                do: [],
+                children: [],
+              },
+            ],
+          },
+        ],
+      };
 
-      const variableTile = main.catalog().get("tile.var->posvar0000000001");
-      assert.ok(variableTile && variableTile.kind === "variable");
-      assert.equal((variableTile as { varType?: string }).varType, NEW_STRUCT_TYPE);
+      const built = host.env.deserializeBrainJsonFromPlain(brainJson);
+      assert.deepEqual(collectTileIdsByKind(built, "missing"), [], "minted-key brain resolves with no migration");
+      const serialized = JSON.stringify(built.toJson());
+      assert.ok(serialized.includes(`${PROJECT_ID}:user.sensor.`), "the saved brain stores the namespaced sensor key");
+      assert.ok(!/->user\.sensor\./.test(serialized), "the saved brain carries no bare user.sensor key");
 
-      const linked = host.env.linkBrain(main);
-      assert.ok(linked.program, `the migrated brain must compile: ${JSON.stringify(linked.diagnostics)}`);
-
-      // The migrated record persists exactly once, after a fully successful load.
-      const brainSaves = stub.savedKeys.filter((key) => key === "brains");
-      assert.equal(brainSaves.length, 1);
-      const persisted = JSON.parse(appData.get("brains")!) as Record<string, unknown>;
-      const persistedText = JSON.stringify(persisted.main);
-      assert.ok(persistedText.includes(`${PROJECT_ID}:user.sensor.stickSensor12345`));
-      assert.ok(persistedText.includes(`${PROJECT_ID}:user.actuator.steerActuator123`));
-      assert.ok(persistedText.includes(`${PROJECT_ID}:user.steerActuator123.speed`));
-      assert.ok(persistedText.includes(NEW_STRUCT_TYPE));
-      assert.ok(!persistedText.includes(OLD_STRUCT_TYPE));
-
-      // The platform-only brain sharing the record is byte-identical.
-      assert.equal(JSON.stringify(persisted.aux), platformBrainBefore);
+      await host.saveBrainForKey("robot", built);
     } finally {
       host.dispose();
       restoreLocalStorage();
     }
 
-    // A reload of the already-migrated project changes nothing and saves nothing.
+    // A fresh host loads the saved brain as-is: every reference resolves and the
+    // record is not re-persisted, because no load-time rewrite runs.
     const restoreAgain = installEmptyLocalStorage();
     const secondStub = stubProjectManagerWithAppData(createUserTileFilesystem(), appData);
     const secondHost = createHost(secondStub.projectManager);
     try {
       await secondHost.initialize(PROJECT_ID);
-      const reloaded = secondHost.getCachedBrain("main");
-      assert.ok(reloaded);
-      assert.deepEqual(collectTileIdsByKind(reloaded, "missing"), []);
+      const reloaded = secondHost.getCachedBrain("robot");
+      assert.ok(reloaded, "the saved brain must reload");
+      assert.deepEqual(collectTileIdsByKind(reloaded, "missing"), [], "reloaded brain resolves with no migration");
       assert.deepEqual(
         secondStub.savedKeys.filter((key) => key === "brains"),
         [],
-        "an already-migrated record must not be re-persisted"
+        "a loaded record is never re-persisted"
       );
     } finally {
       secondHost.dispose();
@@ -656,28 +601,6 @@ describe("AppEnvironmentHost key-namespace migration", () => {
       restoreLocalStorage();
     }
   });
-
-  it("leaves unclassifiable references untouched instead of guessing", async () => {
-    const restoreLocalStorage = installEmptyLocalStorage();
-    const oddBrain = platformOnlyBrain();
-    (oddBrain.pages as Array<{ rules: Array<{ when: string[] }> }>)[0].rules[0].when.push("tile.widget->user.mystery");
-    const storedRecord = JSON.stringify({ odd: oddBrain });
-    const appData = new Map<string, string>([["brains", storedRecord]]);
-    const stub = stubProjectManagerWithAppData(createInMemoryProjectFileSystem(), appData);
-    const host = createHost(stub.projectManager);
-
-    try {
-      await host.initialize(PROJECT_ID);
-
-      const odd = host.getCachedBrain("odd");
-      assert.ok(odd);
-      assert.deepEqual(collectTileIdsByKind(odd, "missing"), ["tile.widget->user.mystery"]);
-      assert.equal(appData.get("brains"), storedRecord, "an unknown-only record is never rewritten");
-    } finally {
-      host.dispose();
-      restoreLocalStorage();
-    }
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -701,17 +624,6 @@ const DEMO_EXTENSION: EmbeddedExtension = {
   ],
 };
 
-const DEMO_REDIRECTS: readonly StdlibImportRedirect[] = [
-  {
-    fromSpecifiers: ["demolib"],
-    toCoordinate: DEMO_COORDINATE,
-    toReference: DEMO_REFERENCE,
-    interimManifestKeys: [],
-    interimOrigins: ["embedded:demolib"],
-    toOrigin: DEMO_COORDINATE,
-  },
-];
-
 /** A sensor whose value comes from the embedded extension's helper, imported via `@ext`. */
 const EXT_SENSOR_SOURCE = `import { Sensor, type Context } from "mindcraft";
 import { level } from "@ext/mindcraft-lang/demo-lib";
@@ -725,29 +637,12 @@ export default Sensor({
 });
 `;
 
-/** The same sensor written against the legacy workspace-path import. */
-const LEGACY_SENSOR_SOURCE = `import { Sensor, type Context } from "mindcraft";
-import { level } from "demolib/level";
-
-export default Sensor({
-  id: "extSensor00000001",
-  name: "level",
-  onExecute(ctx: Context): number {
-    return level();
-  },
-});
-`;
-
-function createEmbeddedExtensionHost(
-  projectManager: ProjectManager,
-  options?: { redirects?: readonly StdlibImportRedirect[] }
-): AppEnvironmentHost {
+function createEmbeddedExtensionHost(projectManager: ProjectManager): AppEnvironmentHost {
   return new AppEnvironmentHost({
     projectManager,
     modules: [coreModule()],
     mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
     embeddedExtensions: [DEMO_EXTENSION],
-    stdlibImportRedirects: options?.redirects,
   });
 }
 
@@ -768,81 +663,6 @@ describe("AppEnvironmentHost embedded extensions", () => {
       const metadata = host.lastUserTileMetadata;
       assert.ok(metadata && metadata.length === 1, "the @ext-importing sensor must compile into a user tile");
       assert.equal(metadata[0].id, "extSensor00000001");
-    } finally {
-      host.dispose();
-      restoreLocalStorage();
-    }
-  });
-
-  it("migrates a legacy stdlib import to @ext, backfills the manifest, and compiles", async () => {
-    const restoreLocalStorage = installEmptyLocalStorage();
-    const filesystem = createInMemoryProjectFileSystem();
-    filesystem.applyLocalChange({ action: "write", path: "level.ts", content: LEGACY_SENSOR_SOURCE, newEtag: "e1" });
-    const appData = new Map<string, string>();
-    const updateCalls: Array<Record<string, string> | undefined> = [];
-    const baseStub = stubProjectManagerWithAppData(filesystem, appData);
-    const projectManager = new Proxy(baseStub.projectManager, {
-      get(target, prop, receiver) {
-        if (prop === "updateActive") {
-          return async (patch: { extensions?: Record<string, string> }): Promise<void> => {
-            updateCalls.push(patch.extensions);
-            (target.activeProject!.manifest as { extensions?: Record<string, string> }).extensions = patch.extensions;
-          };
-        }
-        return Reflect.get(target, prop, receiver);
-      },
-    });
-    const host = createEmbeddedExtensionHost(projectManager, { redirects: DEMO_REDIRECTS });
-
-    try {
-      await host.initialize(PROJECT_ID);
-
-      // The source import is rewritten in place to the extension entry surface.
-      const rewritten = filesystem.exportSnapshot().get("level.ts");
-      assert.ok(rewritten && rewritten.kind === "file");
-      assert.match(rewritten.content, /from "@ext\/mindcraft-lang\/demo-lib"/);
-      assert.doesNotMatch(rewritten.content, /demolib\/level/);
-
-      // The manifest is backfilled with the extension dependency.
-      assert.deepEqual(updateCalls, [{ [DEMO_COORDINATE]: DEMO_REFERENCE }]);
-
-      // The migrated project compiles into a user tile.
-      const metadata = host.lastUserTileMetadata;
-      assert.ok(metadata && metadata.length === 1, "the migrated sensor must compile");
-    } finally {
-      host.dispose();
-      restoreLocalStorage();
-    }
-  });
-
-  it("is a no-op for a project already on @ext with the dependency present", async () => {
-    const restoreLocalStorage = installEmptyLocalStorage();
-    const filesystem = createInMemoryProjectFileSystem();
-    filesystem.applyLocalChange({ action: "write", path: "level.ts", content: EXT_SENSOR_SOURCE, newEtag: "e1" });
-    const appData = new Map<string, string>();
-    const baseStub = stubProjectManagerWithAppData(filesystem, appData);
-    (baseStub.projectManager.activeProject!.manifest as { extensions?: Record<string, string> }).extensions = {
-      [DEMO_COORDINATE]: DEMO_REFERENCE,
-    };
-    let updateCount = 0;
-    const projectManager = new Proxy(baseStub.projectManager, {
-      get(target, prop, receiver) {
-        if (prop === "updateActive") {
-          return async (): Promise<void> => {
-            updateCount++;
-          };
-        }
-        return Reflect.get(target, prop, receiver);
-      },
-    });
-    const host = createEmbeddedExtensionHost(projectManager, { redirects: DEMO_REDIRECTS });
-
-    try {
-      await host.initialize(PROJECT_ID);
-      const unchanged = filesystem.exportSnapshot().get("level.ts");
-      assert.ok(unchanged && unchanged.kind === "file");
-      assert.equal(unchanged.content, EXT_SENSOR_SOURCE, "an already-migrated source is left byte-identical");
-      assert.equal(updateCount, 0, "a project already carrying the dependency triggers no manifest update");
     } finally {
       host.dispose();
       restoreLocalStorage();

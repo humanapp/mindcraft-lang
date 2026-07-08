@@ -20,9 +20,6 @@ import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.j
 import { createBridgeProject, createProjectCompiler } from "./compilation.js";
 import type { EmbeddedExtension, ResolvedExtensions } from "./embedded-extensions.js";
 import { ExtensionResolutionCycleError, resolveEmbeddedExtensions } from "./embedded-extensions.js";
-import { migrateBrainKeyNamespaces } from "./key-namespace-migration.js";
-import type { StdlibImportRedirect } from "./stdlib-import-migration.js";
-import { migrateStdlibBrainOrigins, migrateStdlibImports } from "./stdlib-import-migration.js";
 import type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
 import { applyCompiledUserTiles, hydrateUserTilesFromCache } from "./user-tile-registration.js";
 
@@ -48,16 +45,6 @@ export interface AppEnvironmentHostOptions {
    * keyed by its `<owner>/<repo>` coordinate. Empty when the app bundles none.
    */
   embeddedExtensions?: readonly EmbeddedExtension[];
-  /**
-   * Redirects that carry a project onto an embedded extension's final
-   * `<owner>/<repo>` coordinate, applied once per project at load: user-code
-   * import specifiers (legacy workspace-path or interim entry form) are
-   * rewritten to the `@ext/<owner>/<repo>` form, the coordinate dependency is
-   * backfilled into the manifest, interim manifest keys are removed, and
-   * interim saved-brain origins are rewritten. Non-destructive and idempotent.
-   * Empty when the host has no legacy stdlib to migrate.
-   */
-  stdlibImportRedirects?: readonly StdlibImportRedirect[];
   /** Read-only example projects materialized under the examples folder. */
   examples?: readonly ExampleDefinition[];
 
@@ -102,7 +89,6 @@ export class AppEnvironmentHost {
 
   private readonly mounts: readonly Mount[];
   private readonly embeddedExtensions: readonly EmbeddedExtension[];
-  private readonly stdlibImportRedirects: readonly StdlibImportRedirect[];
   private readonly onDidCompileCallback?: (
     result: WorkspaceCompileResult,
     tileResult: UserTileApplyResult | undefined
@@ -149,7 +135,6 @@ export class AppEnvironmentHost {
     this.projectManager = options.projectManager;
     this.mounts = options.mounts;
     this.embeddedExtensions = options.embeddedExtensions ?? [];
-    this.stdlibImportRedirects = options.stdlibImportRedirects ?? [];
     this.onDidCompileCallback = options.onDidCompile;
     this._bridgeUrl = options.bridgeUrl;
     this._loadBindingToken = options.loadBindingToken ?? (() => undefined);
@@ -223,7 +208,6 @@ export class AppEnvironmentHost {
         this.userTileStorageOptions(),
         this.projectManager.activeProject!.manifest.id
       )) ?? undefined;
-    await this.migrateStdlibImportsForActiveProject();
     this.initCompiler();
     await this.loadBrainsFromProject();
   }
@@ -231,49 +215,6 @@ export class AppEnvironmentHost {
   // ---------------------------------------------------------------------------
   // Compilation (always available, independent of bridge)
   // ---------------------------------------------------------------------------
-
-  /**
-   * Migrate the active project's user-code imports and manifest extensions onto
-   * the embedded extension's final `<owner>/<repo>` coordinate. Runs once per
-   * project load before the compiler starts. Non-destructive: applies changes
-   * to the in-memory project (auto-saved), backfilling the coordinate and
-   * removing any interim manifest key; a project already migrated is a no-op.
-   */
-  private async migrateStdlibImportsForActiveProject(): Promise<void> {
-    if (this.stdlibImportRedirects.length === 0) {
-      return;
-    }
-    const snapshot = this.projectFileSystem.exportSnapshot();
-    const files = new Map<string, string>();
-    for (const [path, entry] of snapshot) {
-      if (entry.kind === "file" && entry.content !== undefined) {
-        files.set(path, entry.content);
-      }
-    }
-    const result = migrateStdlibImports(
-      files,
-      this.projectManager.activeProject!.manifest.extensions,
-      this.stdlibImportRedirects
-    );
-    if (!result.changed) {
-      return;
-    }
-    for (const [path, content] of result.changedFiles) {
-      this.projectFileSystem.applyLocalChange({
-        action: "write",
-        path,
-        content,
-        newEtag: `stdlib-migration-${Date.now()}`,
-      });
-    }
-    if (Object.keys(result.manifestBackfill).length > 0 || result.manifestRemovals.length > 0) {
-      const extensions = { ...this.projectManager.activeProject!.manifest.extensions, ...result.manifestBackfill };
-      for (const interimKey of result.manifestRemovals) {
-        delete extensions[interimKey];
-      }
-      await this.projectManager.updateActive({ extensions });
-    }
-  }
 
   /**
    * Resolve the active project's extension dependency graph against the host's
@@ -364,7 +305,6 @@ export class AppEnvironmentHost {
     const record = await this.loadBrainRecord();
     const json = record[key];
     if (!json) return undefined;
-    this.migrateBrainJson(key, json);
     return this.deserializeBrainForKey(key, json);
   }
 
@@ -411,46 +351,12 @@ export class AppEnvironmentHost {
 
   private async loadBrainsFromProject(): Promise<void> {
     const record = await this.loadBrainRecord();
-    let migrated = false;
-    let loadFailed = false;
-    for (const [key, json] of Object.entries(record)) {
-      migrated = this.migrateBrainJson(key, json) || migrated;
-    }
     for (const [key, json] of Object.entries(record)) {
       const def = this.deserializeBrainForKey(key, json);
       if (def) {
         this._brainCache.set(key, def);
-      } else {
-        loadFailed = true;
       }
     }
-    // Persist the migrated record only when every brain in it deserialized;
-    // a failed load leaves the stored pre-migration bytes untouched.
-    if (migrated && !loadFailed) {
-      await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
-    }
-  }
-
-  /**
-   * Run the saved-brain migrations over one brain's plain JSON, in place: the
-   * prior stdlib origin rename onto the extension's final `<owner>/<repo>`
-   * coordinate origin, then the key-namespace migration that prefixes bare
-   * pre-namespace references with the host project's namespace. Returns true
-   * when either migration rewrote a reference.
-   */
-  private migrateBrainJson(key: string, json: unknown): boolean {
-    const namespace = this.projectManager.activeProject?.manifest.id;
-    if (!namespace) {
-      return false;
-    }
-    const originReport = migrateStdlibBrainOrigins(json, this.stdlibImportRedirects);
-    const report = migrateBrainKeyNamespaces(json, namespace, {
-      isPlatformTileId: (tileId) => this.env.brainServices.edit.tiles.has(tileId),
-    });
-    for (const unknownKey of report.unknownKeys) {
-      logger.warn(`[key-namespace-migration] brain "${key}": unrecognized reference left unmigrated: ${unknownKey}`);
-    }
-    return originReport.changed || report.changed;
   }
 
   private deserializeBrainForKey(key: string, json: unknown): IBrainDef | undefined {
@@ -618,7 +524,6 @@ export class AppEnvironmentHost {
         this.userTileStorageOptions(),
         this.projectManager.activeProject!.manifest.id
       )) ?? undefined;
-    await this.migrateStdlibImportsForActiveProject();
     this.initCompiler();
     await this.loadBrainsFromProject();
 
