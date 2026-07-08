@@ -821,9 +821,33 @@ export function buildCoreAmbientDeclarations(types: ITypeRegistry): string {
   return buildAmbientDeclarationsFromRegistry(types);
 }
 
+/** Options that restrict which platform declarations a generated ambient file carries. */
+export interface PlatformAmbientOptions {
+  /**
+   * Predicate selecting which non-core platform types the file declares. When
+   * omitted, every non-core platform type is included. Use it to partition a
+   * platform surface across several declaration-merging layer files.
+   */
+  includeType?: (def: TypeDef) => boolean;
+  /**
+   * Whether to emit augmentations of core structs (for example `Context`).
+   * Defaults to true; set false on a layer file that should not carry them.
+   */
+  includeAugmentations?: boolean;
+}
+
 /** Generate a platform ambient declaration file that augments the core Mindcraft module declarations. */
-export function buildPlatformAmbientDeclarations(baseTypes: ITypeRegistry, platformTypes: ITypeRegistry): string {
-  const parts = buildAmbientDeclarationParts(platformTypes, (def) => baseTypes.get(def.typeId) === undefined);
-  const augmentations = buildStructAugmentations(baseTypes, platformTypes);
+export function buildPlatformAmbientDeclarations(
+  baseTypes: ITypeRegistry,
+  platformTypes: ITypeRegistry,
+  options?: PlatformAmbientOptions
+): string {
+  const includeType = options?.includeType ?? (() => true);
+  const includeAugmentations = options?.includeAugmentations ?? true;
+  const parts = buildAmbientDeclarationParts(
+    platformTypes,
+    (def) => baseTypes.get(def.typeId) === undefined && includeType(def)
+  );
+  const augmentations = includeAugmentations ? buildStructAugmentations(baseTypes, platformTypes) : "";
   return `declare module "mindcraft" {\n  interface MindcraftTypeMap {\n${parts.typeMapEntries}  }\n\n${parts.typeDeclarations}${augmentations}}\n`;
 }
