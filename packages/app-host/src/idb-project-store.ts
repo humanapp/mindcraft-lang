@@ -36,8 +36,20 @@ type LegacyProjectManifest = Omit<ProjectManifest, "projectCollectionId"> & {
 
 const DB_VERSION = 4;
 
+/** Content version stamped on a newly created project. */
+const INITIAL_CONTENT_VERSION = "0.1.0";
+
+/** Content version a stored manifest reads as when it predates the `version` field. */
+const MISSING_CONTENT_VERSION = "0.0.0";
+
 function dbName(keyPrefix: string): string {
   return `${keyPrefix}-projects`;
+}
+
+/** Default a stored manifest that predates the `version` field to the lowest content version. */
+function withContentVersion(manifest: ProjectManifest): ProjectManifest {
+  const version = (manifest as { version?: string }).version;
+  return version === undefined ? { ...manifest, version: MISSING_CONTENT_VERSION } : manifest;
 }
 
 function appDataKey(projectId: string, key: string): string {
@@ -250,7 +262,9 @@ class IdbProjectStore implements ProjectStore {
       return [];
     }
     const projects = await this.db.getAll("projects");
-    return projects.filter((project) => project.projectCollectionId === projectCollectionId && isLiveProject(project));
+    return projects
+      .filter((project) => project.projectCollectionId === projectCollectionId && isLiveProject(project))
+      .map(withContentVersion);
   }
 
   async countProjectsByCollection(): Promise<Map<string, number>> {
@@ -283,7 +297,7 @@ class IdbProjectStore implements ProjectStore {
     if (!collection) {
       return undefined;
     }
-    return project;
+    return withContentVersion(project);
   }
 
   async createProject(projectCollectionId: string, name: string): Promise<ProjectManifest> {
@@ -297,6 +311,7 @@ class IdbProjectStore implements ProjectStore {
       id: crypto.randomUUID(),
       projectCollectionId,
       name,
+      version: INITIAL_CONTENT_VERSION,
       description: "",
       createdAt: now,
       updatedAt: now,
@@ -330,7 +345,7 @@ class IdbProjectStore implements ProjectStore {
 
   async updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl" | "extensions">>
+    updates: Partial<Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions">>
   ): Promise<void> {
     const manifest = await this.requireLiveProject(id);
     await this.db.put("projects", {
@@ -355,7 +370,7 @@ class IdbProjectStore implements ProjectStore {
         `Workspace not found: ${manifest.projectCollectionId}`
       );
     }
-    return manifest;
+    return withContentVersion(manifest);
   }
 
   async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
@@ -390,6 +405,7 @@ class IdbProjectStore implements ProjectStore {
       id: crypto.randomUUID(),
       projectCollectionId: targetProjectCollectionId,
       name: newName,
+      version: source.version,
       description: source.description,
       ...(source.thumbnailUrl === undefined ? {} : { thumbnailUrl: source.thumbnailUrl }),
       ...(source.extensions === undefined ? {} : { extensions: source.extensions }),

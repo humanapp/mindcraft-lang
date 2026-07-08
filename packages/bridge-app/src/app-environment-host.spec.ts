@@ -46,6 +46,7 @@ function createActiveProject(id: string): ActiveProject {
       id,
       projectCollectionId: "collection-1",
       name: id,
+      version: "0.1.0",
       description: "",
       createdAt: 1,
       updatedAt: 1,
@@ -116,6 +117,7 @@ function stubProjectManager(filesystem: ProjectFileSystem): ProjectManager {
         id: "p1",
         projectCollectionId: "collection-1",
         name: "p1",
+        version: "0.1.0",
         description: "",
         createdAt: 1,
         updatedAt: 1,
@@ -151,7 +153,6 @@ describe("AppEnvironmentHost user-action id write-back", () => {
       projectManager: stubProjectManager(filesystem),
       modules: [coreModule()],
       mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
-      host: { name: "test", version: "0.0.0" },
     });
 
     try {
@@ -195,7 +196,6 @@ describe("AppEnvironmentHost project transitions", () => {
       projectManager,
       modules: [],
       mounts: [],
-      host: { name: "test", version: "0.0.0" },
     });
     let unloadingCalls = 0;
     host.onProjectUnloading(() => {
@@ -260,7 +260,6 @@ describe("AppEnvironmentHost project transitions", () => {
       projectManager,
       modules: [],
       mounts: [],
-      host: { name: "test", version: "0.0.0" },
     });
     const unloadingProjectIds: Array<string | undefined> = [];
     host.onProjectUnloading(() => {
@@ -327,7 +326,6 @@ describe("AppEnvironmentHost project transitions", () => {
       projectManager: projectManagerStub as unknown as ProjectManager,
       modules: [coreModule()],
       mounts: [],
-      host: { name: "test", version: "0.0.0" },
     });
 
     const types = host.env.brainServices.runtime.types;
@@ -543,7 +541,6 @@ function createHost(projectManager: ProjectManager): AppEnvironmentHost {
     projectManager,
     modules: [coreModule()],
     mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
-    host: { name: "test", version: "0.0.0" },
   });
 }
 
@@ -751,7 +748,6 @@ function createEmbeddedExtensionHost(
     mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
     embeddedExtensions: [DEMO_EXTENSION],
     stdlibImportRedirects: options?.redirects,
-    host: { name: "test", version: "0.0.0" },
   });
 }
 

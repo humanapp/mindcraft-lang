@@ -22,7 +22,7 @@ import {
   PROJECT_TARGETS_APP_DATA_KEY,
   ProjectContentManifestErrorCode,
   ProjectManager,
-  parseMindcraftJson,
+  parseProjectContentManifest,
   syncManifestToMindcraftJson,
 } from "@mindcraft-lang/app-host";
 import { MINDCRAFT_PROJECT_FORMAT, MindcraftProjectDocumentValidationCode } from "@mindcraft-lang/service-api";
@@ -78,6 +78,7 @@ function makeManifest(overrides?: Partial<ProjectManifest>): ProjectManifest {
     id: "proj-1",
     projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
     name: "My Project",
+    version: "0.1.0",
     description: "A test project",
     createdAt: 1000,
     updatedAt: 2000,
@@ -820,13 +821,13 @@ describe("project extensions interchange", () => {
     assert.strictEqual(result.success, true);
 
     const active = await pm.open(result.projectId!);
-    syncManifestToMindcraftJson(active.filesystem, active.manifest, { name: "test-app", version: "1.0.0" });
+    syncManifestToMindcraftJson(active.filesystem, active.manifest);
 
     const entry = active.filesystem.exportSnapshot().get(MINDCRAFT_JSON_PATH);
     assert.ok(entry && entry.kind === "file");
-    const parsed = parseMindcraftJson(entry.content);
-    assert.ok(parsed);
-    assert.deepStrictEqual(parsed.extensions, EXTENSIONS);
+    const parsed = parseProjectContentManifest(entry.content);
+    assert.ok(parsed.ok);
+    assert.deepStrictEqual(parsed.manifest.extensions, EXTENSIONS);
   });
 
   it("leaves the manifest without extensions when the document has none", async () => {

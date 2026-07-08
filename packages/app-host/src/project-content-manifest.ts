@@ -45,6 +45,13 @@ const LOCAL_PROJECT_ID_PATTERN = /^[^\s/]+$/;
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
+/** Content version a manifest reads as when it lacks a valid semver `version`. */
+const DEFAULT_CONTENT_VERSION = "0.0.0";
+
+function isSemver(value: unknown): value is string {
+  return typeof value === "string" && SEMVER_PATTERN.test(value);
+}
+
 function isExtensionCoordinate(value: unknown): value is string {
   return typeof value === "string" && COORDINATE_PATTERN.test(value);
 }
@@ -78,6 +85,10 @@ export interface ProjectContentManifest {
   readonly name: string;
   /** Semver version of the project's content. */
   readonly version: string;
+  /** Free-form project description; present only when the file carries one. */
+  readonly description?: string;
+  /** URL or data URI of a project thumbnail image; present only when the file carries one. */
+  readonly thumbnailUrl?: string;
   /**
    * Extension dependencies keyed by their `<owner>/<repo>` coordinate; each
    * value is an extension reference string naming the transport. Coordinates
@@ -92,7 +103,6 @@ export const ProjectContentManifestErrorCode = {
   INVALID_JSON: "PROJECT_MANIFEST_INVALID_JSON",
   INVALID_ROOT: "PROJECT_MANIFEST_INVALID_ROOT",
   INVALID_NAME: "PROJECT_MANIFEST_INVALID_NAME",
-  INVALID_VERSION: "PROJECT_MANIFEST_INVALID_VERSION",
   INVALID_EXTENSIONS: "PROJECT_MANIFEST_INVALID_EXTENSIONS",
   INVALID_EXTENSION_COORDINATE: "PROJECT_MANIFEST_INVALID_EXTENSION_COORDINATE",
   DUPLICATE_EXTENSION_COORDINATE: "PROJECT_MANIFEST_DUPLICATE_EXTENSION_COORDINATE",
@@ -178,8 +188,9 @@ export function validateProjectExtensions(
 }
 
 /**
- * Parse and validate a project content manifest from JSON text. Fields other
- * than `name`, `version`, and `extensions` are ignored.
+ * Parse and validate a project content manifest from JSON text. String
+ * `description` and `thumbnailUrl` fields are carried through; other fields are
+ * ignored.
  *
  * @param content - JSON text of a `mindcraft.json` file.
  */
@@ -203,9 +214,10 @@ export function parseProjectContentManifest(content: string): ProjectContentMani
 }
 
 /**
- * Validate a parsed project content manifest. Fields other than `name`,
- * `version`, and `extensions` are ignored; an absent `extensions` field
- * yields an empty extensions map.
+ * Validate a parsed project content manifest. String `description` and
+ * `thumbnailUrl` fields are carried through; other fields are ignored, and an
+ * absent `extensions` field yields an empty extensions map. A missing or
+ * non-semver `version` is read as the lowest content version (`"0.0.0"`).
  *
  * @param value - Parsed JSON value of a `mindcraft.json` file.
  */
@@ -233,13 +245,7 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
     });
   }
 
-  if (typeof value.version !== "string" || !SEMVER_PATTERN.test(value.version)) {
-    errors.push({
-      code: ProjectContentManifestErrorCode.INVALID_VERSION,
-      path: "$.version",
-      message: "$.version must be a semver string.",
-    });
-  }
+  const version = isSemver(value.version) ? value.version : DEFAULT_CONTENT_VERSION;
 
   let extensions: MindcraftProjectExtensions = {};
   if (value.extensions !== undefined) {
@@ -267,7 +273,9 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
     ok: true,
     manifest: {
       name: value.name as string,
-      version: value.version as string,
+      version,
+      ...(typeof value.description === "string" ? { description: value.description } : {}),
+      ...(typeof value.thumbnailUrl === "string" ? { thumbnailUrl: value.thumbnailUrl } : {}),
       extensions,
     },
     errors: [],
@@ -280,11 +288,33 @@ export function serializeProjectContentManifest(manifest: ProjectContentManifest
     {
       name: manifest.name,
       version: manifest.version,
+      ...(manifest.description !== undefined ? { description: manifest.description } : {}),
+      ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
       ...(Object.keys(manifest.extensions).length > 0 ? { extensions: manifest.extensions } : {}),
     },
     null,
     2
   );
+}
+
+/**
+ * Read the `version` a `mindcraft.json` document explicitly declares, returning
+ * it only when it is a valid semver string. Returns `undefined` when the
+ * content is unparseable, omits `version`, or carries a non-semver `version`.
+ *
+ * @param content - JSON text of a `mindcraft.json` file.
+ */
+export function readExplicitContentManifestVersion(content: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed)) {
+    return undefined;
+  }
+  return isSemver(parsed.version) ? parsed.version : undefined;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

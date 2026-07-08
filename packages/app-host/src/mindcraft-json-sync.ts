@@ -1,18 +1,17 @@
-import type { MindcraftJson } from "./mindcraft-json.js";
-import { MINDCRAFT_JSON_PATH, parseMindcraftJson, serializeMindcraftJson } from "./mindcraft-json.js";
+import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
+import type { ProjectContentManifest } from "./project-content-manifest.js";
+import {
+  parseProjectContentManifest,
+  readExplicitContentManifestVersion,
+  serializeProjectContentManifest,
+} from "./project-content-manifest.js";
 import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectManifest } from "./project-manifest.js";
 
-/** Identifies the host application when writing `mindcraft.json`. */
-export interface MindcraftJsonHostInfo {
-  /** Host application identifier (e.g. `"sim"`). */
-  name: string;
-  /** Semver string of the host application. */
-  version: string;
-}
-
+/** Manifest fields that flow bidirectionally between the store and `mindcraft.json`. */
 type SyncedManifestFields = {
   name: string;
+  version: string;
   description: string;
   thumbnailUrl?: string;
   extensions?: Readonly<Record<string, string>>;
@@ -40,65 +39,48 @@ function extensionsEqual(
   );
 }
 
-function syncedFieldsFromManifest(manifest: ProjectManifest): SyncedManifestFields {
+/** Project the store manifest onto the on-disk content manifest schema. */
+function contentManifestFromManifest(manifest: ProjectManifest): ProjectContentManifest {
   return {
     name: manifest.name,
+    version: manifest.version,
     description: manifest.description,
-    thumbnailUrl: manifest.thumbnailUrl,
-    extensions: normalizeExtensions(manifest.extensions),
+    ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
+    extensions: manifest.extensions ?? {},
   };
 }
 
-function syncedFieldsMatch(a: SyncedManifestFields, b: SyncedManifestFields): boolean {
+function contentManifestsEqual(a: ProjectContentManifest, b: ProjectContentManifest): boolean {
   return (
     a.name === b.name &&
-    a.description === b.description &&
+    a.version === b.version &&
+    (a.description ?? "") === (b.description ?? "") &&
     a.thumbnailUrl === b.thumbnailUrl &&
     extensionsEqual(a.extensions, b.extensions)
   );
 }
 
 /**
- * Write the synced fields from `manifest` into the project file system's `mindcraft.json`,
- * creating the file if it does not exist. Does nothing if the file already
- * matches the manifest.
+ * Write the content manifest derived from `manifest` into the project file
+ * system's `mindcraft.json`, creating the file if it does not exist. Does
+ * nothing if the file already matches the manifest.
  */
-export function syncManifestToMindcraftJson(
-  filesystem: ProjectFileSystem,
-  manifest: ProjectManifest,
-  host: MindcraftJsonHostInfo
-): void {
+export function syncManifestToMindcraftJson(filesystem: ProjectFileSystem, manifest: ProjectManifest): void {
+  const desired = contentManifestFromManifest(manifest);
+
   const snapshot = filesystem.exportSnapshot();
   const existing = snapshot.get(MINDCRAFT_JSON_PATH);
-
-  const fields = syncedFieldsFromManifest(manifest);
-
   if (existing && existing.kind === "file") {
-    const parsed = parseMindcraftJson(existing.content);
-    if (parsed) {
-      if (syncedFieldsMatch(fields, parsed)) {
-        return;
-      }
-      filesystem.applyLocalChange({
-        action: "write",
-        path: MINDCRAFT_JSON_PATH,
-        content: serializeMindcraftJson({ ...parsed, ...fields }),
-        newEtag: `sync-${Date.now()}`,
-      });
+    const parsed = parseProjectContentManifest(existing.content);
+    if (parsed.ok && contentManifestsEqual(desired, parsed.manifest)) {
       return;
     }
   }
 
-  const json: MindcraftJson = {
-    ...fields,
-    host,
-    version: "0.0.1",
-  };
-
   filesystem.applyLocalChange({
     action: "write",
     path: MINDCRAFT_JSON_PATH,
-    content: serializeMindcraftJson(json),
+    content: serializeProjectContentManifest(desired),
     newEtag: `sync-${Date.now()}`,
   });
 }
@@ -112,28 +94,34 @@ export function diffMindcraftJsonToManifest(
   content: string,
   manifest: ProjectManifest
 ): Partial<SyncedManifestFields> | undefined {
-  const parsed = parseMindcraftJson(content);
-  if (!parsed) {
+  const parsed = parseProjectContentManifest(content);
+  if (!parsed.ok) {
     return undefined;
   }
+  const incoming = parsed.manifest;
 
   const patch: Partial<SyncedManifestFields> = {};
   let hasChanges = false;
 
-  if (parsed.name !== manifest.name && parsed.name.trim()) {
-    patch.name = parsed.name;
+  if (incoming.name !== manifest.name && incoming.name.trim()) {
+    patch.name = incoming.name;
     hasChanges = true;
   }
-  if (parsed.description !== manifest.description) {
-    patch.description = parsed.description;
+  const explicitVersion = readExplicitContentManifestVersion(content);
+  if (explicitVersion !== undefined && explicitVersion !== manifest.version) {
+    patch.version = explicitVersion;
     hasChanges = true;
   }
-  if (parsed.thumbnailUrl !== manifest.thumbnailUrl) {
-    patch.thumbnailUrl = parsed.thumbnailUrl;
+  if (incoming.description !== undefined && incoming.description !== manifest.description) {
+    patch.description = incoming.description;
     hasChanges = true;
   }
-  if (!extensionsEqual(parsed.extensions, manifest.extensions)) {
-    patch.extensions = parsed.extensions ?? {};
+  if (incoming.thumbnailUrl !== manifest.thumbnailUrl) {
+    patch.thumbnailUrl = incoming.thumbnailUrl;
+    hasChanges = true;
+  }
+  if (!extensionsEqual(incoming.extensions, manifest.extensions)) {
+    patch.extensions = incoming.extensions ?? {};
     hasChanges = true;
   }
 

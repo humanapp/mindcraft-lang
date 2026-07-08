@@ -309,7 +309,6 @@ export class SimEnvironmentStore {
       }),
       modules: [coreModule(), createSimModule()],
       mounts: simMounts,
-      host: { name: simName, version: simVersion },
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,
       saveBindingToken,

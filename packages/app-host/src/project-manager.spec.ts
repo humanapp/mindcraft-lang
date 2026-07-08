@@ -5,6 +5,7 @@ import {
   createProjectCollectionPinVerifier,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_NAME,
+  diffMindcraftJsonToManifest,
   normalizeProjectCollectionPin,
   PROJECT_COLLECTION_NAME_MAX_LENGTH,
   type ProjectCollection,
@@ -19,6 +20,7 @@ import {
   type ProjectPersistenceError,
   RELOAD_UNLOCK_REFRESH_INTERVAL_MS,
   RELOAD_UNLOCK_TTL_MS,
+  serializeProjectContentManifest,
   verifyProjectCollectionPin,
 } from "@mindcraft-lang/app-host";
 import { logger } from "@mindcraft-lang/core";
@@ -408,6 +410,31 @@ describe("ProjectManager", () => {
       await pm.create("Project");
       await pm.updateActive({ description: "A cool project" });
       assert.strictEqual(pm.activeProject?.manifest.description, "A cool project");
+    });
+
+    it("applies a mindcraft.json version edit through to the store", async () => {
+      await pm.create("Versioned");
+      const active = pm.activeProject!.manifest;
+      const content = serializeProjectContentManifest({ name: active.name, version: "2.3.4", extensions: {} });
+      const patch = diffMindcraftJsonToManifest(content, active);
+      assert.ok(patch);
+      await pm.updateActive(patch);
+      assert.strictEqual(pm.activeProject?.manifest.version, "2.3.4");
+      const [stored] = await memStore.listProjects(DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(stored.version, "2.3.4");
+    });
+
+    it("does not downgrade the stored version when mindcraft.json omits it", async () => {
+      await pm.create("Versioned");
+      const active = pm.activeProject!.manifest;
+      const originalVersion = active.version;
+      const content = JSON.stringify({ name: active.name, description: active.description });
+      const patch = diffMindcraftJsonToManifest(content, active);
+      if (patch) {
+        await pm.updateActive(patch);
+      }
+      const [stored] = await memStore.listProjects(DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(stored.version, originalVersion);
     });
 
     it("fires both listeners", async () => {

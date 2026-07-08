@@ -44,10 +44,13 @@ export interface ProjectStore {
   createProject(projectCollectionId: string, name: string): Promise<ProjectManifest>;
   /** Tombstone the project manifest while preserving project files and app data. */
   deleteProject(id: string): Promise<void>;
-  /** Patch the mutable fields of a project's manifest. */
+  /**
+   * Patch the mutable fields of a project's manifest. `version` is the
+   * project's own content semver.
+   */
   updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl" | "extensions">>
+    updates: Partial<Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions">>
   ): Promise<void>;
   /** Create a copy of `id` (project files and app data) under `newName`. */
   duplicateProject(id: string, newName: string): Promise<ProjectManifest>;

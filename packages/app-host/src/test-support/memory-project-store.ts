@@ -28,6 +28,15 @@ function createMemoryProjectStoreData(): MemoryProjectStoreData {
   };
 }
 
+/** Content version a stored manifest reads as when it predates the `version` field. */
+const MISSING_CONTENT_VERSION = "0.0.0";
+
+/** Default a stored manifest that predates the `version` field to the lowest content version. */
+function withContentVersion(manifest: ProjectManifest): ProjectManifest {
+  const version = (manifest as { version?: string }).version;
+  return version === undefined ? { ...manifest, version: MISSING_CONTENT_VERSION } : manifest;
+}
+
 /** In-memory ProjectStore implementation for app-host specs. */
 export class MemoryProjectStore implements ProjectStore {
   readonly keyPrefix: string;
@@ -121,9 +130,9 @@ export class MemoryProjectStore implements ProjectStore {
   async listProjects(projectCollectionId: string): Promise<ProjectManifest[]> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) return [];
-    return this.data.projects.filter(
-      (project) => project.projectCollectionId === projectCollectionId && project.deleted !== true
-    );
+    return this.data.projects
+      .filter((project) => project.projectCollectionId === projectCollectionId && project.deleted !== true)
+      .map(withContentVersion);
   }
 
   async countProjectsByCollection(): Promise<Map<string, number>> {
@@ -151,7 +160,7 @@ export class MemoryProjectStore implements ProjectStore {
     const project = this.data.projects.find((entry) => entry.id === id && entry.deleted !== true);
     if (!project) return undefined;
     const collection = await this.getProjectCollection(project.projectCollectionId);
-    return collection ? project : undefined;
+    return collection ? withContentVersion(project) : undefined;
   }
 
   async createProject(projectCollectionId: string, name: string): Promise<ProjectManifest> {
@@ -163,6 +172,7 @@ export class MemoryProjectStore implements ProjectStore {
       id: `id-${this.data.projects.length + 1}`,
       projectCollectionId,
       name,
+      version: "0.1.0",
       description: "",
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -190,7 +200,7 @@ export class MemoryProjectStore implements ProjectStore {
 
   async updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl" | "extensions">>
+    updates: Partial<Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions">>
   ): Promise<void> {
     await this.requireLiveProject(id);
     const idx = this.data.projects.findIndex((project) => project.id === id);
@@ -229,6 +239,7 @@ export class MemoryProjectStore implements ProjectStore {
       id: `id-${this.data.projects.length + 1}`,
       projectCollectionId: targetProjectCollectionId,
       name: newName,
+      version: source.version,
       description: source.description,
       ...(source.thumbnailUrl === undefined ? {} : { thumbnailUrl: source.thumbnailUrl }),
       ...(source.extensions === undefined ? {} : { extensions: source.extensions }),
@@ -292,6 +303,6 @@ export class MemoryProjectStore implements ProjectStore {
         `Workspace not found: ${project.projectCollectionId}`
       );
     }
-    return project;
+    return withContentVersion(project);
   }
 }

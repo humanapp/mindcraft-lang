@@ -94,7 +94,7 @@ describe("parseProjectContentManifest", () => {
     }
   });
 
-  it("ignores fields outside the content manifest", () => {
+  it("carries string description and thumbnailUrl through and ignores other fields", () => {
     const result = parseProjectContentManifest(
       JSON.stringify({
         name: "P",
@@ -105,6 +105,22 @@ describe("parseProjectContentManifest", () => {
       })
     );
     assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.strictEqual(result.manifest.description, "desc");
+      assert.strictEqual(result.manifest.thumbnailUrl, "data:,x");
+      assert.strictEqual("host" in result.manifest, false);
+    }
+  });
+
+  it("omits description and thumbnailUrl when absent or non-string", () => {
+    const result = parseProjectContentManifest(
+      JSON.stringify({ name: "P", version: "0.1.0", description: 5, thumbnailUrl: null })
+    );
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.strictEqual("description" in result.manifest, false);
+      assert.strictEqual("thumbnailUrl" in result.manifest, false);
+    }
   });
 
   it("rejects invalid JSON with INVALID_JSON", () => {
@@ -129,11 +145,13 @@ describe("validateProjectContentManifest", () => {
     }
   });
 
-  it("rejects a missing, non-string, or non-semver version with INVALID_VERSION", () => {
+  it("backfills a missing, non-string, or non-semver version to the lowest content version", () => {
     for (const version of [undefined, 42, "1.0", "abc", "1.0.0.0", "01.0.0"]) {
       const result = validateProjectContentManifest({ ...VALID_MANIFEST, version });
-      assert.strictEqual(result.ok, false, `Expected rejection for version ${JSON.stringify(version)}`);
-      assert.ok(errorCodes(result).includes(ProjectContentManifestErrorCode.INVALID_VERSION));
+      assert.strictEqual(result.ok, true, `Expected acceptance for version ${JSON.stringify(version)}`);
+      if (result.ok) {
+        assert.strictEqual(result.manifest.version, "0.0.0");
+      }
     }
   });
 
@@ -220,5 +238,26 @@ describe("serializeProjectContentManifest", () => {
   it("omits the extensions field when the map is empty", () => {
     const serialized = serializeProjectContentManifest({ name: "P", version: "0.1.0", extensions: {} });
     assert.strictEqual(serialized.includes("extensions"), false);
+  });
+
+  it("round-trips description and thumbnailUrl", () => {
+    const manifest: ProjectContentManifest = {
+      name: "P",
+      version: "0.1.0",
+      description: "desc",
+      thumbnailUrl: "data:,x",
+      extensions: {},
+    };
+    const result = parseProjectContentManifest(serializeProjectContentManifest(manifest));
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest, manifest);
+    }
+  });
+
+  it("omits description and thumbnailUrl when absent", () => {
+    const serialized = serializeProjectContentManifest({ name: "P", version: "0.1.0", extensions: {} });
+    assert.strictEqual(serialized.includes("description"), false);
+    assert.strictEqual(serialized.includes("thumbnailUrl"), false);
   });
 });

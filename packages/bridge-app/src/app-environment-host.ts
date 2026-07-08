@@ -1,6 +1,5 @@
 import type {
   ExampleDefinition,
-  MindcraftJsonHostInfo,
   ProjectCollectionProjectCommitResult,
   ProjectCollectionUnlockResult,
   ProjectFileSystem,
@@ -59,8 +58,6 @@ export interface AppEnvironmentHostOptions {
    * Empty when the host has no legacy stdlib to migrate.
    */
   stdlibImportRedirects?: readonly StdlibImportRedirect[];
-  /** Identifies the host application when writing `mindcraft.json`. */
-  host: MindcraftJsonHostInfo;
   /** Read-only example projects materialized under the examples folder. */
   examples?: readonly ExampleDefinition[];
 
@@ -103,7 +100,6 @@ export class AppEnvironmentHost {
   readonly env: MindcraftEnvironment;
   readonly projectManager: ProjectManager;
 
-  private readonly host: MindcraftJsonHostInfo;
   private readonly mounts: readonly Mount[];
   private readonly embeddedExtensions: readonly EmbeddedExtension[];
   private readonly stdlibImportRedirects: readonly StdlibImportRedirect[];
@@ -151,7 +147,6 @@ export class AppEnvironmentHost {
 
   constructor(options: AppEnvironmentHostOptions) {
     this.projectManager = options.projectManager;
-    this.host = options.host;
     this.mounts = options.mounts;
     this.embeddedExtensions = options.embeddedExtensions ?? [];
     this.stdlibImportRedirects = options.stdlibImportRedirects ?? [];
@@ -327,7 +322,7 @@ export class AppEnvironmentHost {
         this.onDidCompileCallback?.(result, tileResult);
       },
     });
-    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest, this.host);
+    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
     this._compiler.initialize();
   }
 
@@ -477,7 +472,7 @@ export class AppEnvironmentHost {
 
   async updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
     await this.projectManager.updateActive(updates);
-    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest, this.host);
+    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
   }
 
   // ---------------------------------------------------------------------------

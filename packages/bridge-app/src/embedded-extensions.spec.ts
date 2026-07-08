@@ -56,9 +56,7 @@ const STDLIB: EmbeddedExtension = {
 
 describe("resolveEmbeddedExtensions -- flat cases", () => {
   test("resolves an embedded reference by coordinate to a coordinate dependency and a namespaced mount", () => {
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/wodal": "embedded:mindcraft-lang/wodal" }, [
-      STDLIB,
-    ]);
+    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/wodal": "embedded:mindcraft-lang/wodal" }, [STDLIB]);
     assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/wodal" }]);
     assert.equal(resolved.dependencyMounts.length, 1);
     const mount = resolved.dependencyMounts[0];
