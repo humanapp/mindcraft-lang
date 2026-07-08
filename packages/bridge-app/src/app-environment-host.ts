@@ -17,7 +17,7 @@ import type { IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime
 import type { Mount, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
-import { createBridgeProject, createProjectCompiler } from "./compilation.js";
+import { augmentProjectFileSystem, createBridgeProject, createProjectCompiler } from "./compilation.js";
 import type { EmbeddedExtension, ResolvedExtensions } from "./embedded-extensions.js";
 import { ExtensionResolutionCycleError, resolveEmbeddedExtensions } from "./embedded-extensions.js";
 import type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
@@ -131,6 +131,9 @@ export class AppEnvironmentHost {
   // -- Compilation --
   private _compiler: ProjectCompilerHandle | undefined;
 
+  // -- Served file system (raw project files plus compiler-controlled files) --
+  private _servedFileSystem: ProjectFileSystem | undefined;
+
   constructor(options: AppEnvironmentHostOptions) {
     this.projectManager = options.projectManager;
     this.mounts = options.mounts;
@@ -160,6 +163,19 @@ export class AppEnvironmentHost {
 
   get projectFileSystem(): ProjectFileSystem {
     return this.projectManager.activeProject!.filesystem;
+  }
+
+  /**
+   * The file system whose exported snapshot carries both the raw project files
+   * and the compiler-controlled files (ambient declarations, `tsconfig.json`,
+   * the installed-extensions tree, and injected examples). A service worker
+   * serving project assets reads from this so extension-owned assets such as
+   * tile icons resolve. Each `exportSnapshot()` reads the live compiler, so
+   * installing or uninstalling an extension is reflected without a rebuild.
+   * Falls back to the raw project file system until the compiler is wired.
+   */
+  get servedProjectFileSystem(): ProjectFileSystem {
+    return this._servedFileSystem ?? this.projectFileSystem;
   }
 
   get activeProjectManifest(): ProjectManifest | undefined {
@@ -203,11 +219,7 @@ export class AppEnvironmentHost {
     }
     await this.projectManager.ensureDefaultProject(defaultProjectName);
     this._lastUserTileMetadata =
-      (await hydrateUserTilesFromCache(
-        this.env,
-        this.userTileStorageOptions(),
-        this.projectManager.activeProject!.manifest.id
-      )) ?? undefined;
+      (await hydrateUserTilesFromCache(this.env, this.userTileStorageOptions())) ?? undefined;
     this.initCompiler();
     await this.loadBrainsFromProject();
   }
@@ -263,6 +275,9 @@ export class AppEnvironmentHost {
         this.onDidCompileCallback?.(result, tileResult);
       },
     });
+    this._servedFileSystem = augmentProjectFileSystem(this.projectFileSystem, this._compiler.compiler, () =>
+      this._compiler!.getExamples()
+    );
     syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
     this._compiler.initialize();
   }
@@ -538,11 +553,7 @@ export class AppEnvironmentHost {
   private async completeProjectTransition(): Promise<void> {
     this.completeProjectUnload();
     this._lastUserTileMetadata =
-      (await hydrateUserTilesFromCache(
-        this.env,
-        this.userTileStorageOptions(),
-        this.projectManager.activeProject!.manifest.id
-      )) ?? undefined;
+      (await hydrateUserTilesFromCache(this.env, this.userTileStorageOptions())) ?? undefined;
     this.initCompiler();
     await this.loadBrainsFromProject();
 
@@ -628,7 +639,7 @@ export class AppEnvironmentHost {
 
     this._bridge = createBridgeProject({
       projectCompiler: this._compiler,
-      filesystem: this.projectFileSystem,
+      servedFileSystem: this.servedProjectFileSystem,
       bridgeUrl: this._bridgeUrl,
       bindingToken: this._loadBindingToken(),
       onBindingTokenChange: (token) => {

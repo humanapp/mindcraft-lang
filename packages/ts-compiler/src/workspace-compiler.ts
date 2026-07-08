@@ -157,22 +157,31 @@ function mapDiagnostic(diagnostic: CompileDiagnostic): WorkspaceDiagnosticEntry 
   };
 }
 
-function buildDiagnosticSnapshot(projectResult: ProjectCompileResult): WorkspaceCompileResult["files"] {
-  const files = new Map<string, readonly WorkspaceDiagnosticEntry[]>();
+/**
+ * Fold one compile root's diagnostics into `files`, mapping each root-relative
+ * path to its workspace path with `toWorkspacePath`. Diagnostics on a path
+ * already present are appended, so a host path carrying both TypeScript and
+ * descriptor diagnostics accumulates both.
+ */
+function foldRootDiagnostics(
+  files: Map<string, readonly WorkspaceDiagnosticEntry[]>,
+  projectResult: ProjectCompileResult,
+  toWorkspacePath: (path: string) => string
+): void {
+  const add = (path: string, diagnostics: readonly CompileDiagnostic[]): void => {
+    const key = toWorkspacePath(path);
+    const entries = diagnostics.map(mapDiagnostic);
+    const existing = files.get(key);
+    files.set(key, existing ? existing.concat(entries) : entries);
+  };
 
   for (const [path, diagnostics] of projectResult.tsErrors) {
-    const entries = diagnostics.map(mapDiagnostic);
-    const existing = files.get(path);
-    files.set(path, existing ? existing.concat(entries) : entries);
+    add(path, diagnostics);
   }
 
   for (const [path, compileResult] of projectResult.results) {
-    const entries = compileResult.diagnostics.map(mapDiagnostic);
-    const existing = files.get(path);
-    files.set(path, existing ? existing.concat(entries) : entries);
+    add(path, compileResult.diagnostics);
   }
-
-  return files;
 }
 
 function snapshotToProjectFiles(snapshot: WorkspaceSnapshot): Map<string, string> {
@@ -198,8 +207,8 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
    * otherwise.
    */
   private _extensionSession?: MultiRootSession;
-  /** The latest per-extension compile results, in dependency order; reused across host-only recompiles. */
-  private _extensionResults: readonly ProjectCompileResult[] = [];
+  /** The latest per-extension compile results paired with their coordinate namespace, in dependency order; reused across host-only recompiles. */
+  private _extensionResults: readonly (readonly [string, ProjectCompileResult])[] = [];
   /** Set when the resolved extension set changed since the last extension compile. */
   private _extensionsDirty = true;
 
@@ -251,8 +260,19 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
     this.refreshExtensions();
 
     const projectResult = this.project.compileAll();
-    const rootResults = [projectResult, ...this._extensionResults];
-    const files = buildDiagnosticSnapshot(projectResult);
+    const rootResults = [projectResult, ...this._extensionResults.map(([, result]) => result)];
+
+    // Host diagnostics key on their project-relative workspace path; each
+    // extension root's diagnostics key under its installed-extensions path
+    // (`.extensions/<owner>/<repo>/...`), the path space the VFS and extension
+    // tree serve from. Host paths and extension paths never overlap: the host
+    // compile skips the `.extensions/` tree, and each extension keys under its
+    // own coordinate. Diagnostics on a shared key accumulate, never overwrite.
+    const files = new Map<string, readonly WorkspaceDiagnosticEntry[]>();
+    foldRootDiagnostics(files, projectResult, (path) => path);
+    for (const [namespace, extensionResult] of this._extensionResults) {
+      foldRootDiagnostics(files, extensionResult, (path) => extensionWorkspacePath(namespace, path));
+    }
     const bundle = buildMultiRootActionBundle(rootResults, {
       services: this.options.environment.brainServices,
     });
@@ -277,6 +297,7 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
       namespace: mount.namespace,
       files: mount.files,
       dependencies: mount.dependencies,
+      readOnlySource: true,
     }));
   }
 
@@ -301,7 +322,7 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
     }
     this._extensionSession.setRoots(roots);
     const { roots: results } = this._extensionSession.compile();
-    this._extensionResults = [...results.values()];
+    this._extensionResults = [...results];
   }
 
   onDidCompile(listener: (result: WorkspaceCompileResult) => void): () => void {

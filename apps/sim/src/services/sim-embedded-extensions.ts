@@ -3,13 +3,27 @@ import coreLibAmbient from "@mindcraft-lang/core/ambient/mindcraft.core.d.ts?raw
 import coreLibEntry from "@mindcraft-lang/core/lib/index.ts?raw";
 import coreLibManifest from "@mindcraft-lang/core/lib/mindcraft.json?raw";
 import simLibAmbient from "../../ambient/mindcraft.sim.d.ts?raw";
+import detectExtDocs from "../../extensions/ecosim-detect-ext/detect.md?raw";
+import detectExtIcon from "../../extensions/ecosim-detect-ext/detect.svg?raw";
+import detectExtDef from "../../extensions/ecosim-detect-ext/detect.ts?raw";
+import detectExtManifest from "../../extensions/ecosim-detect-ext/mindcraft.json?raw";
+import teleportExtManifest from "../../extensions/ecosim-teleport-ext/mindcraft.json?raw";
+import teleportExtDocs from "../../extensions/ecosim-teleport-ext/teleport.md?raw";
+import teleportExtIcon from "../../extensions/ecosim-teleport-ext/teleport.svg?raw";
+import teleportExtDef from "../../extensions/ecosim-teleport-ext/teleport.ts?raw";
 import simLibEntry from "../../lib/index.ts?raw";
 import simLibManifest from "../../lib/mindcraft.json?raw";
-import { SIM_LIB_COORDINATE } from "./sim-extension-coordinates";
+import {
+  ECOSIM_DETECT_EXT_COORDINATE,
+  ECOSIM_TELEPORT_EXT_COORDINATE,
+  SIM_LIB_COORDINATE,
+} from "./sim-extension-coordinates";
 
 export {
   CORE_LIB_COORDINATE,
   CORE_LIB_REFERENCE,
+  ECOSIM_DETECT_EXT_COORDINATE,
+  ECOSIM_TELEPORT_EXT_COORDINATE,
   SIM_LIB_COORDINATE,
   SIM_LIB_REFERENCE,
   simDefaultExtensions,
@@ -44,8 +58,47 @@ export const simStdlibExtension: EmbeddedExtension = {
 };
 
 /**
- * Extensions bundled with apps/sim, resolved from `embedded:<owner>/<repo>`
- * references. The stack is core <- sim; seeding the sim layer alone resolves
- * both transitively through the sim layer's bundled `mindcraft.json` edge.
+ * The Teleport add-on as an embedded extension: the `teleport` actuator def with
+ * its bundled icon and docs assets, over the `mindcraft.json` declaring its name,
+ * version, and sim-platform compatibility target. Installable on a sim project;
+ * excluded from platforms whose stack lacks the sim layer.
  */
-export const simEmbeddedExtensions: readonly EmbeddedExtension[] = [simStdlibExtension, coreStdlibExtension];
+export const teleportAddonExtension: EmbeddedExtension = {
+  canonicalOrigin: ECOSIM_TELEPORT_EXT_COORDINATE,
+  files: [
+    { path: "teleport.ts", content: teleportExtDef },
+    { path: "teleport.svg", content: teleportExtIcon },
+    { path: "teleport.md", content: teleportExtDocs },
+    { path: "mindcraft.json", content: teleportExtManifest },
+  ],
+};
+
+/**
+ * The Detect add-on as an embedded extension: the `detect` sensor def with its
+ * bundled icon and docs assets, over the `mindcraft.json` declaring its name,
+ * version, and sim-platform compatibility target. Installable on a sim project;
+ * excluded from platforms whose stack lacks the sim layer.
+ */
+export const detectAddonExtension: EmbeddedExtension = {
+  canonicalOrigin: ECOSIM_DETECT_EXT_COORDINATE,
+  files: [
+    { path: "detect.ts", content: detectExtDef },
+    { path: "detect.svg", content: detectExtIcon },
+    { path: "detect.md", content: detectExtDocs },
+    { path: "mindcraft.json", content: detectExtManifest },
+  ],
+};
+
+/**
+ * Extensions bundled with apps/sim, resolved from `embedded:<owner>/<repo>`
+ * references. The layer stack is core <- sim; seeding the sim layer alone
+ * resolves both layers transitively through the sim layer's bundled
+ * `mindcraft.json` edge. The Teleport and Detect add-ons are in the embed record
+ * as installable-on-demand entries; they are not seeded by default.
+ */
+export const simEmbeddedExtensions: readonly EmbeddedExtension[] = [
+  simStdlibExtension,
+  coreStdlibExtension,
+  teleportAddonExtension,
+  detectAddonExtension,
+];

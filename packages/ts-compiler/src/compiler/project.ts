@@ -24,6 +24,7 @@ import {
   EXTENSION_IMPORT_PREFIX,
   extensionFilePath,
   extensionRoot,
+  extensionWorkspacePath,
   isExtensionWorkspacePath,
   type ProjectDependency,
   parseExtensionCompilerPath,
@@ -128,6 +129,7 @@ type UserTileProjectOptions =
       dependencies?: readonly ProjectDependency[];
       dependencyMounts?: readonly DependencyMount[];
       publishEntry?: boolean;
+      readOnlySource?: boolean;
     };
 
 const ACTION_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -238,6 +240,8 @@ export class UserTileProject {
   private readonly _projectNamespace: string;
   private readonly _generateActionId: () => string;
   private readonly _publishEntry: boolean;
+  /** True when this project's source is read-only (an installed extension); a declaration missing a stable `id` is rejected. */
+  private readonly _readOnlySource: boolean;
   private _dependencies: readonly ProjectDependency[];
   private _dependencyMounts: readonly DependencyMount[];
   /** Extension namespaces this project mounted at its last compile; a namespace dropped since then has its registrations torn down. */
@@ -252,6 +256,7 @@ export class UserTileProject {
     this._projectNamespace = options.projectNamespace;
     this._generateActionId = options.generateActionId ?? defaultActionId;
     this._publishEntry = options.publishEntry ?? false;
+    this._readOnlySource = options.readOnlySource ?? false;
     this._dependencies = options.dependencies ?? [];
     this._dependencyMounts = options.dependencyMounts ?? [];
   }
@@ -287,6 +292,32 @@ export class UserTileProject {
       this._files.delete(oldPath);
       this._files.set(newPath, content);
     }
+  }
+
+  /**
+   * Content of the project file at workspace path `vfsPath`, tolerant of a
+   * leading slash in the stored key (an extension mount keys its files with a
+   * leading slash; a host workspace snapshot keys them without one). Undefined
+   * when neither spelling is present.
+   */
+  private _getProjectFile(vfsPath: string): string | undefined {
+    return this._files.get(vfsPath) ?? this._files.get(`/${vfsPath}`);
+  }
+
+  /** True when {@link _getProjectFile} would resolve `vfsPath` to content. */
+  private _hasProjectFile(vfsPath: string): boolean {
+    return this._files.has(vfsPath) || this._files.has(`/${vfsPath}`);
+  }
+
+  /**
+   * Workspace path a tile asset at project-relative `vfsPath` serves from over
+   * `/vfs/`. A read-only extension root's assets materialize under the
+   * installed-extensions tree keyed by the extension's coordinate namespace
+   * (`.extensions/<owner>/<repo>/...`); a writable host project serves them at
+   * their project-relative path.
+   */
+  private _assetVfsPath(vfsPath: string): string {
+    return this._readOnlySource ? extensionWorkspacePath(this._projectNamespace, vfsPath) : vfsPath;
   }
 
   compileAll(sessionContext?: SharedTileSessionContext): ProjectCompileResult {
@@ -546,6 +577,18 @@ export class UserTileProject {
       return { diagnostics: validationDiags };
     }
 
+    if (this._readOnlySource && descriptor.id === undefined) {
+      return {
+        diagnostics: [
+          {
+            code: CompileDiagCode.ExtensionDeclarationMissingId,
+            message: `The installed extension is missing a stable id for ${descriptor.kind} "${descriptor.name}" and cannot be loaded. Update or remove the extension.`,
+            severity: "error",
+          },
+        ],
+      };
+    }
+
     const imported = collectImports(sourceFile, checker, tsProgram, compilerFiles, resolveModuleBase);
     if (imported.diagnostics.length > 0) {
       return { diagnostics: imported.diagnostics };
@@ -733,8 +776,8 @@ export class UserTileProject {
     if (descriptor.icon) {
       const resolvedIcon = resolveRelativePath(sourceFile.fileName, descriptor.icon);
       const vfsIcon = toVfsPath(resolvedIcon);
-      if (this._files.has(vfsIcon)) {
-        iconUrl = `/vfs/${vfsIcon}`;
+      if (this._hasProjectFile(vfsIcon)) {
+        iconUrl = `/vfs/${this._assetVfsPath(vfsIcon)}`;
       } else {
         metaDiags.push({
           code: CompileDiagCode.MetadataFileNotFound,
@@ -748,7 +791,7 @@ export class UserTileProject {
     if (descriptor.docs) {
       const resolvedDocs = resolveRelativePath(sourceFile.fileName, descriptor.docs);
       const vfsDocs = toVfsPath(resolvedDocs);
-      const docsContent = this._files.get(vfsDocs);
+      const docsContent = this._getProjectFile(vfsDocs);
       if (docsContent !== undefined) {
         docsMarkdown = docsContent.split(DOCS_TILE_ID_PLACEHOLDER).join(actionTileId);
       } else {

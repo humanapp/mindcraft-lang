@@ -435,6 +435,42 @@ export default Sensor({
     );
   });
 
+  const MISSING_ID_SOURCE = `import { Sensor, type Context } from "mindcraft";
+export default Sensor({
+  name: "ext beep",
+  onExecute(ctx: Context): number { return 1; },
+});
+`;
+
+  test("an installed extension's missing-id diagnostic surfaces on its .extensions path", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const malformedMount: DependencyMount = {
+      namespace: "acme/beeper",
+      files: new Map([["/index.ts", MISSING_ID_SOURCE]]),
+    };
+    const compiler = createWorkspaceCompiler({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      mounts: mountsFor(environment),
+      environment,
+      dependencies: [{ coordinate: "acme/beeper" }],
+      dependencyMounts: [malformedMount],
+    });
+    compiler.replaceWorkspace(
+      new Map([["main.ts", { kind: "file", content: HOST_SENSOR, etag: "e1", isReadonly: false }]])
+    );
+    const result = compiler.compile();
+
+    const extPath = ".extensions/acme/beeper/index.ts";
+    const extDiagnostics = result.files.get(extPath) ?? [];
+    assert.ok(
+      extDiagnostics.some((d) => d.code === "MC5022"),
+      `expected the extension's missing-id diagnostic on ${extPath}, got ${JSON.stringify([...result.files])}`
+    );
+
+    // The host's own file is unaffected.
+    assert.deepEqual(result.files.get("main.ts") ?? [], [], "the host program compiles clean");
+  });
+
   test("a project without extensions produces the single-root bundle unchanged", () => {
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
     const compiler = createWorkspaceCompiler({

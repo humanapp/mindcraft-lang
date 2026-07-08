@@ -586,6 +586,8 @@ export enum CompileDiagCode {
   MultiplePublishedNames = 5020,
   /** A published type or tile surface references a name-keyed type that is not published by its declaring project */
   UnpublishedTypeReference = 5021,
+  /** A declaration in a read-only extension omits the required stable `id`; the compiler cannot mint one because the extension source is regenerated on load and never saved */
+  ExtensionDeclarationMissingId = 5022,
 }
 
 /**

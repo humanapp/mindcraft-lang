@@ -24,6 +24,13 @@ export interface ProjectRoot {
    * root's `@ext/<owner>/<repo>` imports.
    */
   dependencies?: readonly ProjectDependency[];
+  /**
+   * True when the root's source is read-only and regenerated on load (an
+   * installed extension): a declaration missing a stable `id` is rejected with
+   * {@link CompileDiagCode.ExtensionDeclarationMissingId}. Defaults to false: a
+   * writable host root mints an id and rewrites its source.
+   */
+  readOnlySource?: boolean;
 }
 
 /** Result of {@link MultiRootSession.compile}: per-root compile results keyed by namespace. */
@@ -106,6 +113,7 @@ export class MultiRootSession {
           services: this._options.services,
           ambientFiles: this._ambientFiles(),
           publishEntry: true,
+          readOnlySource: root.readOnlySource ?? false,
         });
         entry = { root, project };
         this._roots.set(root.namespace, entry);

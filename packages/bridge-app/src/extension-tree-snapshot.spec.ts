@@ -31,6 +31,38 @@ const SECOND_MOUNT: DependencyMount = {
 
 const EXAMPLES: ExampleDefinition[] = [{ folder: "blink", files: [{ path: "main.ts", content: "export {};" }] }];
 
+const TILE_EXTENSION_DEF = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "probe-detect",
+  id: "probeDetect00001",
+  icon: "./probe.svg",
+  docs: "./probe.md",
+  onExecute(ctx: Context): boolean {
+    return true;
+  },
+});
+`;
+
+/** An extension mount carrying a tile def alongside its per-capability icon and docs assets. */
+const TILE_ASSET_MOUNT: DependencyMount = {
+  namespace: "acme/detector",
+  files: new Map([
+    ["/detect.ts", TILE_EXTENSION_DEF],
+    ["/probe.svg", '<svg id="probe"></svg>'],
+    ["/probe.md", "# Probe\nDocs."],
+  ]),
+  dependencies: [],
+};
+
+/** The vfs path the service worker resolves from a `/vfs/...` URL: prefix stripped, path-decoded. */
+const VFS_PREFIX = "/vfs/";
+function serviceWorkerVfsPath(vfsUrl: string): string {
+  const pathname = new URL(vfsUrl, "https://app.example").pathname;
+  return decodeURIComponent(pathname.slice(VFS_PREFIX.length));
+}
+
 /**
  * Build the peer-facing augmented file system the way the real host does:
  * an in-memory project FS that excludes compiler-controlled paths, wrapped
@@ -58,6 +90,35 @@ function buildAugmented(dependencyMounts: readonly DependencyMount[]) {
   );
   compiler.compile();
   return augmentProjectFileSystem(filesystem, compiler, () => EXAMPLES);
+}
+
+/**
+ * Build the workspace compiler and its peer-facing augmented file system,
+ * returning both so a test can read the compiler's emitted tile metadata and
+ * the snapshot the service worker serves from.
+ */
+function buildWorkspace(dependencyMounts: readonly DependencyMount[]) {
+  const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+  const ambient = buildAmbientDeclarations(environment.brainServices.runtime.types);
+  const mounts: Mount[] = [declarationMount([{ path: "mindcraft.core.d.ts", content: ambient }])];
+  const compiler = createWorkspaceCompiler({
+    projectNamespace: "probe",
+    mounts,
+    environment,
+    dependencies: dependencyMounts.map((m) => ({ coordinate: m.namespace })),
+    dependencyMounts,
+  });
+  const filesystem = createInMemoryProjectFileSystem({
+    shouldExclude: (path) => isCompilerControlledPath(path, mounts),
+  });
+  filesystem.applyLocalChange({ action: "write", path: "mindcraft.json", content: "{}", newEtag: "e0" });
+  filesystem.applyLocalChange({ action: "write", path: "src/main.ts", content: "export {};", newEtag: "e1" });
+  compiler.replaceWorkspace(
+    new Map([["src/main.ts", { kind: "file", content: "export {};", etag: "e1", isReadonly: false }]])
+  );
+  const result = compiler.compile();
+  const augmented = augmentProjectFileSystem(filesystem, compiler, () => EXAMPLES);
+  return { compiler, augmented, result };
 }
 
 describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () => {
@@ -143,5 +204,35 @@ describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () =
       .map((e) => e.name)
       .sort();
     assert.deepEqual(widgets, ["index.ts"]);
+  });
+
+  test("an extension tile's compiled icon URL resolves to the materialized asset in the served snapshot", () => {
+    const { augmented, result } = buildWorkspace([TILE_ASSET_MOUNT]);
+
+    // The extension tile compiles without a blocking diagnostic and yields a bundle.
+    assert.ok(result.bundle, "extension tile with icon/docs produces a bundle");
+
+    // The compiler emits a namespace-aware icon URL for the extension tile.
+    let iconUrl: string | undefined;
+    let docsMarkdown: string | undefined;
+    for (const rootResult of result.rootResults) {
+      for (const compileResult of rootResult.results.values()) {
+        if (compileResult.program?.iconUrl) {
+          iconUrl = compileResult.program.iconUrl;
+          docsMarkdown = compileResult.program.docsMarkdown;
+        }
+      }
+    }
+    assert.equal(iconUrl, "/vfs/.extensions/acme/detector/probe.svg");
+    assert.equal(docsMarkdown, "# Probe\nDocs.");
+
+    // The service worker serves that URL from the augmented snapshot: the URL's
+    // vfs path is a key present in the snapshot, resolving to the asset bytes.
+    const vfsPath = serviceWorkerVfsPath(iconUrl);
+    assert.equal(vfsPath, ".extensions/acme/detector/probe.svg");
+    const entry = augmented.exportSnapshot().get(vfsPath);
+    assert.ok(entry && entry.kind === "file", "the icon URL resolves to a file in the served snapshot");
+    assert.equal(entry.content, '<svg id="probe"></svg>');
+    assert.equal(entry.isReadonly, true);
   });
 });

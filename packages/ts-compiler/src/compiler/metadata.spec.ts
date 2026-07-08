@@ -137,6 +137,49 @@ export default Sensor({
     assert.equal(entry.program.iconUrl, "/vfs/tiles/assets/icon.png");
   });
 
+  test("read-only extension root resolves leading-slash asset keys to a namespace-aware icon URL", () => {
+    const sensorSource = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "widget-sensor",
+  id: "widgetSensor0001",
+  icon: "./widget.svg",
+  docs: "./widget.md",
+  onExecute(ctx: Context): boolean {
+    return true;
+  },
+});
+`;
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
+    const project = new UserTileProject({
+      projectNamespace: "acme/widget",
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+      publishEntry: true,
+      readOnlySource: true,
+    });
+    // An extension mount keys its files with a leading slash.
+    project.setFiles(
+      new Map([
+        ["/widget-sensor.ts", sensorSource],
+        ["/widget.svg", "<svg></svg>"],
+        ["/widget.md", "# Widget\nContent."],
+      ])
+    );
+
+    const result = project.compileAll();
+    assert.equal(result.tsErrors.size, 0);
+    const entry = result.results.get("widget-sensor.ts");
+    assert.ok(entry?.program, "expected a compiled program");
+
+    const assetDiag = entry.diagnostics.find((d) => d.code === CompileDiagCode.MetadataFileNotFound);
+    assert.equal(assetDiag, undefined, "extension asset should resolve without a MetadataFileNotFound diagnostic");
+
+    assert.equal(entry.program.iconUrl, "/vfs/.extensions/acme/widget/widget.svg");
+    assert.equal(entry.program.docsMarkdown, "# Widget\nContent.");
+  });
+
   test("label must be a string literal", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";

@@ -392,7 +392,13 @@ export function createProjectCompiler(options: CreateProjectCompilerOptions): Pr
 /** Options for {@link createBridgeProject}. */
 export interface CreateBridgeProjectOptions {
   projectCompiler: ProjectCompilerHandle;
-  filesystem: ProjectFileSystem;
+  /**
+   * The served file system whose snapshot already carries the raw project
+   * files plus the compiler-controlled files (produced by
+   * {@link augmentProjectFileSystem}). The bridge exposes this to the remote
+   * peer, so the peer and any local asset server read identical content.
+   */
+  servedFileSystem: ProjectFileSystem;
   bridgeUrl: string;
   bindingToken?: string;
   onBindingTokenChange?: (token: string) => void;
@@ -410,7 +416,7 @@ export interface BridgeProjectHandle {
  * surfaces compiler-controlled and example files to the remote peer.
  */
 export function createBridgeProject(options: CreateBridgeProjectOptions): BridgeProjectHandle {
-  const { projectCompiler, filesystem } = options;
+  const { projectCompiler, servedFileSystem } = options;
   const compiler = projectCompiler.compiler;
 
   let latestBindingToken = options.bindingToken;
@@ -419,9 +425,13 @@ export function createBridgeProject(options: CreateBridgeProjectOptions): Bridge
     options.onBindingTokenChange?.(token);
   };
 
-  const augmented = augmentProjectFileSystem(filesystem, compiler, () => projectCompiler.getExamples());
   let currentBridge = buildBridge(
-    { ...options, filesystem: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
+    {
+      bridgeUrl: options.bridgeUrl,
+      filesystem: servedFileSystem,
+      bindingToken: latestBindingToken,
+      onBindingTokenChange,
+    },
     compiler
   );
 
@@ -432,7 +442,7 @@ export function createBridgeProject(options: CreateBridgeProjectOptions): Bridge
     recreateBridge(bridgeUrl: string) {
       currentBridge.stop();
       currentBridge = buildBridge(
-        { ...options, bridgeUrl, filesystem: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
+        { bridgeUrl, filesystem: servedFileSystem, bindingToken: latestBindingToken, onBindingTokenChange },
         compiler
       );
     },
@@ -541,7 +551,12 @@ export function augmentProjectFileSystem(
 }
 
 function buildBridge(
-  options: Pick<CreateBridgeProjectOptions, "bridgeUrl" | "filesystem" | "bindingToken" | "onBindingTokenChange">,
+  options: {
+    bridgeUrl: string;
+    filesystem: ProjectFileSystem;
+    bindingToken?: string;
+    onBindingTokenChange?: (token: string) => void;
+  },
   compiler: TsWorkspaceCompiler
 ): AppBridge {
   return createAppBridge({

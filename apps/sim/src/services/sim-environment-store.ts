@@ -346,6 +346,10 @@ export class SimEnvironmentStore {
     return this.host.projectFileSystem;
   }
 
+  get servedProjectFileSystem(): ProjectFileSystem {
+    return this.host.servedProjectFileSystem;
+  }
+
   get activeProjectManifest(): ProjectManifest | undefined {
     return this.host.activeProjectManifest;
   }

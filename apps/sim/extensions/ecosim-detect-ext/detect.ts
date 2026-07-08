@@ -5,6 +5,7 @@ const kFarAwayDistanceThreshold = 300;
 
 export default Sensor({
   name: "detect",
+  id: "qqCSFiDwg0oiEVAw",
   icon: "./detect.svg",
   docs: "./detect.md",
   args: [

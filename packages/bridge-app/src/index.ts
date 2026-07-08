@@ -23,6 +23,11 @@ export type { AppEnvironmentHostOptions } from "./app-environment-host.js";
 export { AppEnvironmentHost } from "./app-environment-host.js";
 export type { CoreStdlibExtensionSource } from "./core-extension.js";
 export { buildCoreStdlibExtension, CORE_LIB_COORDINATE, CORE_LIB_REFERENCE } from "./core-extension.js";
+export type { EmbeddedExtensionIdViolation } from "./embedded-extension-id-gate.js";
+export {
+  findEmbeddedExtensionsMissingStableIds,
+  formatEmbeddedExtensionIdViolations,
+} from "./embedded-extension-id-gate.js";
 export type {
   EmbeddedExtension,
   EmbeddedExtensionFile,

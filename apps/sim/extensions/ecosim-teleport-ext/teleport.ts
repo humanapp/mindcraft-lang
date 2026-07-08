@@ -2,6 +2,7 @@ import { type ActorRef, Actuator, type Context, choice, optional, param, type Ve
 
 export default Actuator({
   name: "teleport",
+  id: "4vllyby14afcZtYY",
   icon: "./teleport.svg",
   docs: "./teleport.md",
   args: [

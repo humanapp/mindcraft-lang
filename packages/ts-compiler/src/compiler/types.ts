@@ -116,6 +116,14 @@ export interface CompileOptions {
    * published name, published type closure). Defaults to false.
    */
   publishEntry?: boolean;
+  /**
+   * When true, the project's source is read-only and regenerated on load (an
+   * installed extension), so a minted stable `id` cannot be persisted. A
+   * declaration missing an explicit `id` is then rejected with
+   * {@link CompileDiagCode.ExtensionDeclarationMissingId}. Defaults to false: a
+   * writable host project mints an id and rewrites the source.
+   */
+  readOnlySource?: boolean;
 }
 
 /** A 1-based source range produced by the descriptor extractor. */

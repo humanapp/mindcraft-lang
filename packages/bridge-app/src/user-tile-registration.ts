@@ -39,12 +39,19 @@ import {
   scopedOutputName,
 } from "@mindcraft-lang/ts-compiler";
 
-const METADATA_CACHE_VERSION = 8 as const;
+const METADATA_CACHE_VERSION = 9 as const;
 
 /** Cached metadata describing a user-authored sensor or actuator tile. */
 export interface UserTileMetadata {
   /** Stable key used to identify the tile across compiles. */
   key: string;
+  /**
+   * Namespace of the project that compiled this tile: a host project's store id
+   * or an installed extension's `<owner>/<repo>` coordinate. Warm-start scopes
+   * the tile's derived param and output ids under this namespace, matching the
+   * ids the authoritative compile mints.
+   */
+  namespace: string;
   /** Opaque stable id from the source declaration. */
   id: string;
   /** Whether the tile is a sensor or an actuator. */
@@ -128,6 +135,7 @@ function isUserTileMetadata(value: unknown): value is UserTileMetadata {
   return (
     isRecord(value) &&
     typeof value.key === "string" &&
+    typeof value.namespace === "string" &&
     typeof value.id === "string" &&
     (value.kind === "sensor" || value.kind === "actuator") &&
     typeof value.name === "string" &&
@@ -151,6 +159,7 @@ function metadataFromProgram(program: UserAuthoredProgram): UserTileMetadata {
   }
   return {
     key: program.key,
+    namespace: program.projectNamespace,
     id: program.id,
     kind: program.kind,
     name: program.name,
@@ -282,8 +291,7 @@ function getParameterId(projectNamespace: string, actionId: string, param: Extra
 function buildHydratedSnapshot(
   env: MindcraftEnvironment,
   revision: string,
-  metadata: readonly UserTileMetadata[],
-  projectNamespace: string
+  metadata: readonly UserTileMetadata[]
 ): HydratedTileMetadataSnapshot {
   return env.withServices((services) => {
     const { types } = services.runtime;
@@ -301,7 +309,7 @@ function buildHydratedSnapshot(
           break;
         }
 
-        const parameterId = getParameterId(projectNamespace, entry.id, param);
+        const parameterId = getParameterId(entry.namespace, entry.id, param);
         parameterTiles.push(
           new BrainTileParameterDef(parameterId, typeId, {
             hidden: param.anonymous,
@@ -343,7 +351,7 @@ function buildHydratedSnapshot(
             canRegister = false;
             break;
           }
-          const outputName = scopedOutputName(projectNamespace, output.name);
+          const outputName = scopedOutputName(entry.namespace, output.name);
           providedOutputKeys.push(mkOutputVarKey(outputTypeId, outputName));
           outputTiles.push(
             new BrainTileOutputDef(outputTypeId, outputName, {
@@ -422,15 +430,14 @@ export function collectMetadataFromCompile(result: WorkspaceCompileResult): User
 
 /**
  * Restore user tiles from the project's persisted metadata cache so the editor
- * can render them before the first compile finishes. `projectNamespace` is the
- * active project's namespace (its store id); derived tile ids are scoped under
- * it, matching the ids the compiler mints. Returns the cached metadata, or
- * `undefined` when no usable cache exists.
+ * can render them before the first compile finishes. Each tile's derived param
+ * and output ids are scoped under the tile's own persisted namespace, matching
+ * the ids the compiler mints. Returns the cached metadata, or `undefined` when
+ * no usable cache exists.
  */
 export async function hydrateUserTilesFromCache(
   env: MindcraftEnvironment,
-  options: UserTileRegistrationOptions,
-  projectNamespace: string
+  options: UserTileRegistrationOptions
 ): Promise<readonly UserTileMetadata[] | undefined> {
   const json = await options.loadMetadata();
   const loaded = loadMetadataCache(json, () => options.saveMetadata(undefined));
@@ -444,7 +451,7 @@ export async function hydrateUserTilesFromCache(
     );
   }
 
-  const snapshot = buildHydratedSnapshot(env, loaded.revision, loaded.metadata, projectNamespace);
+  const snapshot = buildHydratedSnapshot(env, loaded.revision, loaded.metadata);
   if (snapshot.tiles.length === 0) {
     return undefined;
   }
