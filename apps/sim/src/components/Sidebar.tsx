@@ -1,13 +1,27 @@
 import { useDocsSidebar } from "@mindcraft-lang/docs";
-import { Button, Slider, Switch } from "@mindcraft-lang/ui";
-import { BookOpen, Check, ChevronDown, ChevronRight, CircleHelp, Copy, FileText, Info, Settings } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { Button, ExtensionBrowserDialog, Slider, Switch } from "@mindcraft-lang/ui";
+import {
+  Blocks,
+  BookOpen,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  Copy,
+  FileText,
+  Info,
+  Settings,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { toast } from "sonner";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { useSimEnvironment } from "@/contexts/sim-environment";
 import { clearBindingToken } from "@/services/binding-token-persistence";
+import { simEmbeddedExtensions } from "@/services/sim-embedded-extensions";
+import { buildSimExtensionEntries, installSimExtension, uninstallSimExtension } from "@/services/sim-extension-browser";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   carnivore: "#e63946",
@@ -68,6 +82,40 @@ export function Sidebar({
     store.getCollapsedArchetypes()
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [extensionsOpen, setExtensionsOpen] = useState(false);
+  const subscribeToActiveProject = useCallback(
+    (listener: () => void) => store.projectManager.onActiveProjectChange(listener),
+    [store]
+  );
+  const extensions = useSyncExternalStore(subscribeToActiveProject, () => store.activeProjectManifest?.extensions);
+  const extensionEntries = useMemo(() => buildSimExtensionEntries(extensions, simEmbeddedExtensions), [extensions]);
+
+  const handleInstallExtension = (coordinate: string) => {
+    void (async () => {
+      const result = await installSimExtension(
+        store.projectManager,
+        store.activeProjectManifest?.extensions,
+        coordinate,
+        simEmbeddedExtensions
+      );
+      if (!result.ok) {
+        toast.error(`Could not install extension (${result.code})`);
+      }
+    })();
+  };
+
+  const handleUninstallExtension = (coordinate: string) => {
+    void (async () => {
+      const result = await uninstallSimExtension(
+        store.projectManager,
+        store.activeProjectManifest?.extensions,
+        coordinate
+      );
+      if (!result.ok) {
+        toast.error(`Could not remove extension (${result.code})`);
+      }
+    })();
+  };
   const [bridgeEnabled, setBridgeEnabled] = useState(() => store.getUiPreferences().bridgeEnabled);
   const bridgeStatus = useSyncExternalStore(store.subscribeToBridgeStatus, store.getBridgeStatusSnapshot);
   const joinCode = useSyncExternalStore(store.subscribeToBridgeJoinCode, store.getBridgeJoinCodeSnapshot);
@@ -138,6 +186,16 @@ export function Sidebar({
           <BookOpen className="h-4 w-4" aria-hidden="true" />
         </Button>
         <Button
+          onClick={() => setExtensionsOpen(true)}
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          title="Extensions"
+          aria-label="Open extensions"
+        >
+          <Blocks className="h-4 w-4" aria-hidden="true" />
+        </Button>
+        <Button
           onClick={() => setSettingsOpen(true)}
           variant="ghost"
           size="sm"
@@ -153,6 +211,14 @@ export function Sidebar({
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         onBridgeDisabled={() => setBridgeEnabled(false)}
+      />
+
+      <ExtensionBrowserDialog
+        open={extensionsOpen}
+        onOpenChange={setExtensionsOpen}
+        entries={extensionEntries}
+        onInstall={handleInstallExtension}
+        onUninstall={handleUninstallExtension}
       />
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">

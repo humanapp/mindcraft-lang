@@ -2,6 +2,8 @@
 
 // Brain editor components and infrastructure
 export * from "./brain-editor";
+// Extension browser dialog
+export * from "./extension-browser";
 // Shared utility library
 export * from "./lib";
 // Project picker
