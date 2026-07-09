@@ -50,12 +50,8 @@ export {
   uninstallEmbeddedExtension,
 } from "./extension-catalog.js";
 
-export type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
-export {
-  applyCompiledUserTiles,
-  collectMetadataFromCompile,
-  hydrateUserTilesFromCache,
-} from "./user-tile-registration.js";
+export type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
+export { applyCompiledUserTiles, collectMetadataFromCompile } from "./user-tile-registration.js";
 
 export type { VfsSwRegistrationOptions } from "./vfs-sw-registration.js";
 export { registerVfsServiceWorker } from "./vfs-sw-registration.js";

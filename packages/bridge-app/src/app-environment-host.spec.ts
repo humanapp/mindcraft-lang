@@ -285,8 +285,6 @@ describe("AppEnvironmentHost project transitions", () => {
       "lock",
       "unload:active",
       "unlock",
-      "load:user-tile-metadata",
-      "delete:user-tile-metadata",
       "load:brains",
       "loaded",
     ]);

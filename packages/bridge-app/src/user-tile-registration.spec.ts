@@ -5,9 +5,6 @@ import {
   coreModule,
   createMindcraftEnvironment,
   type MindcraftEnvironment,
-  mkOutputTileId,
-  mkOutputVarKey,
-  mkParameterTileId,
   mkSensorTileId,
 } from "@mindcraft-lang/core/app";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
@@ -17,18 +14,11 @@ import {
   buildMultiRootActionBundle,
   MultiRootSession,
   type ProjectCompileResult,
-  privateArgTileId,
-  scopedOutputName,
   UserTileProject,
   type WorkspaceCompileResult,
 } from "@mindcraft-lang/ts-compiler";
 import { TEST_PROJECT_NAMESPACE } from "@mindcraft-lang/ts-compiler/testing";
-import {
-  applyCompiledUserTiles,
-  collectMetadataFromCompile,
-  hydrateUserTilesFromCache,
-  type UserTileRegistrationOptions,
-} from "./user-tile-registration.js";
+import { applyCompiledUserTiles, collectMetadataFromCompile } from "./user-tile-registration.js";
 
 function resolveCoreTypeId(typeName: string): string | undefined {
   switch (typeName) {
@@ -109,89 +99,6 @@ describe("collectMetadataFromCompile", () => {
   });
 });
 
-const OUTPUT_SENSOR = `
-import { Sensor, setOutput, type Context } from "mindcraft";
-
-export default Sensor({
-  id: "snrange",
-  name: "range",
-  outputs: [{ name: "distance", type: "number" }],
-  onExecute(ctx: Context): number {
-    setOutput(ctx, "distance", 5);
-    return 1;
-  },
-});
-`;
-
-describe("warm-start cache round-trip", () => {
-  test("a sensor output hydrates with the same namespace-scoped identity the compiler mints", async () => {
-    const source = { "sensor.ts": OUTPUT_SENSOR };
-
-    const authoringEnv = createMindcraftEnvironment({ modules: [coreModule()] });
-    const result = compile(authoringEnv, source);
-    assert.ok(result.bundle, "expected the output sensor to compile to a bundle");
-
-    const scopedName = scopedOutputName(TEST_PROJECT_NAMESPACE, "distance");
-    const outputTileId = mkOutputTileId(CoreTypeIds.Number, scopedName);
-    const outputKey = mkOutputVarKey(CoreTypeIds.Number, scopedName);
-    const compiledOutputTile = result.bundle.tiles.find((tile) => tile.tileId === outputTileId);
-    assert.ok(compiledOutputTile, "the compiled bundle carries the scoped output tile");
-
-    let savedJson: string | undefined;
-    const options: UserTileRegistrationOptions = {
-      loadMetadata: async () => savedJson,
-      saveMetadata: (json) => {
-        savedJson = json;
-      },
-    };
-    applyCompiledUserTiles(authoringEnv, result, options);
-    assert.ok(savedJson, "the compile should persist a metadata cache");
-
-    const warmStartEnv = createMindcraftEnvironment({ modules: [coreModule()] });
-    const restored = await hydrateUserTilesFromCache(warmStartEnv, options);
-    assert.ok(restored, "the cache should hydrate");
-
-    const hydratedCatalog = warmStartEnv.tileCatalogs()[1];
-    const hydratedOutputTile = hydratedCatalog.get(outputTileId);
-    assert.ok(hydratedOutputTile, "the hydrated catalog carries the scoped output tile");
-
-    const hydratedSensor = hydratedCatalog.get(`tile.sensor->${TEST_PROJECT_NAMESPACE}:user.sensor.snrange`);
-    assert.ok(hydratedSensor, "the hydrated catalog carries the sensor");
-    assert.ok(
-      hydratedSensor.providedOutputs().indexOf(outputKey) >= 0,
-      "the hydrated sensor provides the scoped output key"
-    );
-  });
-
-  test("inline and presenceGated survive persist then rehydrate", async () => {
-    const source = { "sensor.ts": INLINE_PRESENCE_SENSOR };
-
-    const authoringEnv = createMindcraftEnvironment({ modules: [coreModule()] });
-    const result = compile(authoringEnv, source);
-
-    let savedJson: string | undefined;
-    const options: UserTileRegistrationOptions = {
-      loadMetadata: async () => savedJson,
-      saveMetadata: (json) => {
-        savedJson = json;
-      },
-    };
-
-    applyCompiledUserTiles(authoringEnv, result, options);
-    assert.ok(savedJson, "the compile should persist a metadata cache");
-
-    // A cold environment restoring only from the persisted cache.
-    const warmStartEnv = createMindcraftEnvironment({ modules: [coreModule()] });
-    const restored = await hydrateUserTilesFromCache(warmStartEnv, options);
-    assert.ok(restored, "the cache should hydrate");
-
-    const sensor = restored.find((m) => m.key === `${TEST_PROJECT_NAMESPACE}:user.sensor.snstick`);
-    assert.ok(sensor, "expected the sensor to survive the cache");
-    assert.equal(sensor.inline, true, "inline must survive the warm-start cache");
-    assert.equal(sensor.presenceGated, true, "presenceGated must survive the warm-start cache");
-  });
-});
-
 const EXT_NAMESPACE = "acme/beeper";
 const EXT_SENSOR = `
 import { Sensor, type Context } from "mindcraft";
@@ -253,10 +160,7 @@ describe("extension tiles across compilation roots", () => {
     const { result, extKey } = compileWithExtension(env);
     assert.ok(result.bundle, "expected a combined bundle");
 
-    applyCompiledUserTiles(env, result, {
-      loadMetadata: async () => undefined,
-      saveMetadata: () => {},
-    });
+    applyCompiledUserTiles(env, result);
 
     const extTile = result.bundle.tiles.find((tile) => tile.tileId === mkSensorTileId(extKey)) as
       | BrainTileSensorDef
@@ -273,96 +177,5 @@ describe("extension tiles across compilation roots", () => {
       `expected a clean link over the extension action, got ${JSON.stringify(linked.diagnostics.toArray())}`
     );
     assert.ok(linked.program, "the extension action links into a runnable brain program");
-  });
-});
-
-const EXT_DERIVED_NAMESPACE = "acme/ranger";
-const EXT_DERIVED_ID = "extRange00000001";
-const HOST_DERIVED_ID = "hostRange0000001";
-
-const EXT_DERIVED_SENSOR = `
-import { Sensor, setOutput, param, type Context } from "mindcraft";
-
-export default Sensor({
-  id: "${EXT_DERIVED_ID}",
-  name: "ext ranger",
-  args: [param("distance", { type: "number" })],
-  outputs: [{ name: "reading", type: "number" }],
-  onExecute(ctx: Context, args: { distance: number }): number {
-    setOutput(ctx, "reading", args.distance);
-    return 1;
-  },
-});
-`;
-
-const HOST_DERIVED_SENSOR = `
-import { Sensor, setOutput, param, type Context } from "mindcraft";
-
-export default Sensor({
-  id: "${HOST_DERIVED_ID}",
-  name: "host ranger",
-  args: [param("depth", { type: "number" })],
-  outputs: [{ name: "level", type: "number" }],
-  onExecute(ctx: Context, args: { depth: number }): number {
-    setOutput(ctx, "level", args.depth);
-    return 2;
-  },
-});
-`;
-
-function compileDerivedRoots(env: MindcraftEnvironment): WorkspaceCompileResult {
-  const session = new MultiRootSession({ services: env.brainServices });
-  session.setRoots([
-    { namespace: TEST_PROJECT_NAMESPACE, files: new Map([["main.ts", HOST_DERIVED_SENSOR]]) },
-    { namespace: EXT_DERIVED_NAMESPACE, files: new Map([["index.ts", EXT_DERIVED_SENSOR]]) },
-  ]);
-  session.compile();
-  const rootResults: ProjectCompileResult[] = [...session.results().values()];
-  const projectResult = session.results().get(TEST_PROJECT_NAMESPACE)!;
-  const bundle = buildMultiRootActionBundle(rootResults, { services: env.brainServices });
-  return { files: new Map(), projectResult, rootResults, bundle };
-}
-
-describe("warm-start hydration of extension tiles", () => {
-  test("an extension tile's derived param and output ids hydrate under the extension namespace", async () => {
-    const authoringEnv = createMindcraftEnvironment({ modules: [coreModule()] });
-    const result = compileDerivedRoots(authoringEnv);
-    assert.ok(result.bundle, "expected a combined bundle over the host and extension roots");
-
-    // Authoritative derived ids, scoped by each tile's own namespace.
-    const extParamId = mkParameterTileId(privateArgTileId(EXT_DERIVED_NAMESPACE, EXT_DERIVED_ID, "distance"));
-    const extOutputId = mkOutputTileId(CoreTypeIds.Number, scopedOutputName(EXT_DERIVED_NAMESPACE, "reading"));
-    const hostParamId = mkParameterTileId(privateArgTileId(TEST_PROJECT_NAMESPACE, HOST_DERIVED_ID, "depth"));
-    const hostOutputId = mkOutputTileId(CoreTypeIds.Number, scopedOutputName(TEST_PROJECT_NAMESPACE, "level"));
-    // The ids the host-scoped path would mint for the extension tile.
-    const extParamHostScoped = mkParameterTileId(privateArgTileId(TEST_PROJECT_NAMESPACE, EXT_DERIVED_ID, "distance"));
-    const extOutputHostScoped = mkOutputTileId(CoreTypeIds.Number, scopedOutputName(TEST_PROJECT_NAMESPACE, "reading"));
-
-    const bundleIds = new Set(result.bundle.tiles.map((tile) => tile.tileId));
-    assert.ok(bundleIds.has(extParamId), "the compiled bundle scopes the ext param id under the ext namespace");
-    assert.ok(bundleIds.has(extOutputId), "the compiled bundle scopes the ext output id under the ext namespace");
-
-    let savedJson: string | undefined;
-    const options: UserTileRegistrationOptions = {
-      loadMetadata: async () => savedJson,
-      saveMetadata: (json) => {
-        savedJson = json;
-      },
-    };
-    applyCompiledUserTiles(authoringEnv, result, options);
-    assert.ok(savedJson, "the compile should persist a metadata cache");
-
-    const warmStartEnv = createMindcraftEnvironment({ modules: [coreModule()] });
-    const restored = await hydrateUserTilesFromCache(warmStartEnv, options);
-    assert.ok(restored, "the cache should hydrate");
-
-    const catalog = warmStartEnv.tileCatalogs()[1];
-    assert.ok(catalog.get(extParamId), "the ext param hydrates under the ext namespace, matching the compile");
-    assert.ok(catalog.get(extOutputId), "the ext output hydrates under the ext namespace, matching the compile");
-    assert.ok(!catalog.get(extParamHostScoped), "the ext param is not mis-scoped under the host namespace");
-    assert.ok(!catalog.get(extOutputHostScoped), "the ext output is not mis-scoped under the host namespace");
-
-    assert.ok(catalog.get(hostParamId), "a host tile's derived param id is unchanged");
-    assert.ok(catalog.get(hostOutputId), "a host tile's derived output id is unchanged");
   });
 });

@@ -159,21 +159,16 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   private gatherCatalogs(): List<ITileCatalog> {
-    const catalogs = List.empty<ITileCatalog>();
     const brain = this.page()?.brain();
-    if (brain) {
-      catalogs.push(brain.servicesTiles());
+    if (!brain) {
+      return List.empty<ITileCatalog>();
     }
-    const brainCatalog = brain?.catalog();
-    if (brainCatalog) {
-      catalogs.push(brainCatalog);
-    }
-    // FUTURE: push ancestor rule catalogs
-    let currentRule: IBrainRuleDef | undefined = this.ancestor_;
-    while (currentRule) {
-      currentRule = currentRule.ancestor();
-    }
-    return catalogs;
+    // Resolve tile ids at edit-time against the same catalog set link-time uses,
+    // including the environment's user/extension bundle catalog. A struct-typed
+    // anonymous parameter tile derived from a user/extension action lives only
+    // in that bundle catalog, so a narrower set would miss it and report the
+    // slot as an unknown tile even though the brain links and runs.
+    return brain.deserializationCatalogs();
   }
 
   typecheck(): void {

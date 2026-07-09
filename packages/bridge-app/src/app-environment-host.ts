@@ -20,12 +20,11 @@ import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.j
 import { augmentProjectFileSystem, createBridgeProject, createProjectCompiler } from "./compilation.js";
 import type { EmbeddedExtension, ResolvedExtensions } from "./embedded-extensions.js";
 import { ExtensionResolutionCycleError, resolveEmbeddedExtensions } from "./embedded-extensions.js";
-import type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
-import { applyCompiledUserTiles, hydrateUserTilesFromCache } from "./user-tile-registration.js";
+import type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
+import { applyCompiledUserTiles } from "./user-tile-registration.js";
 
 // Project app-data keys.
 const BRAINS_APP_DATA_KEY = "brains";
-const USER_TILE_METADATA_APP_DATA_KEY = "user-tile-metadata";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -192,25 +191,6 @@ export class AppEnvironmentHost {
   // Initialize
   // ---------------------------------------------------------------------------
 
-  /**
-   * Storage hooks binding the user-tile metadata cache to the active project's
-   * durable app-data, so the cache is project-scoped rather than global.
-   */
-  private userTileStorageOptions(): UserTileRegistrationOptions {
-    return {
-      loadMetadata: () => this.projectManager.loadAppData(USER_TILE_METADATA_APP_DATA_KEY),
-      saveMetadata: (json) => {
-        const op =
-          json === undefined
-            ? this.projectManager.deleteAppData(USER_TILE_METADATA_APP_DATA_KEY)
-            : this.projectManager.saveAppData(USER_TILE_METADATA_APP_DATA_KEY, json);
-        op.catch((err: unknown) => {
-          logger.warn("[app-environment-host] failed to persist user-tile metadata cache:", err);
-        });
-      },
-    };
-  }
-
   async initialize(defaultProjectName: string): Promise<void> {
     await this.projectManager.init();
     const state = await this.projectManager.getProjectCollectionState();
@@ -218,8 +198,6 @@ export class AppEnvironmentHost {
       return;
     }
     await this.projectManager.ensureDefaultProject(defaultProjectName);
-    this._lastUserTileMetadata =
-      (await hydrateUserTilesFromCache(this.env, this.userTileStorageOptions())) ?? undefined;
     this.initCompiler();
     await this.loadBrainsFromProject();
   }
@@ -267,7 +245,7 @@ export class AppEnvironmentHost {
       onDidCompile: (result) => {
         this.persistMintedActionIds(result.projectResult.sourceRewrites);
         logWorkspaceCompile(result);
-        const tileResult = applyCompiledUserTiles(this.env, result, this.userTileStorageOptions());
+        const tileResult = applyCompiledUserTiles(this.env, result);
         if (tileResult) {
           this._lastUserTileMetadata = tileResult.metadata;
           this.bumpDocRevision();
@@ -559,8 +537,6 @@ export class AppEnvironmentHost {
 
   private async completeProjectTransition(): Promise<void> {
     this.completeProjectUnload();
-    this._lastUserTileMetadata =
-      (await hydrateUserTilesFromCache(this.env, this.userTileStorageOptions())) ?? undefined;
     this.initCompiler();
     await this.loadBrainsFromProject();
 
