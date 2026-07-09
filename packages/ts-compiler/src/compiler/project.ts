@@ -1390,6 +1390,12 @@ function sharedModifierLabelConflictDiagnostic(
  * `type`, param `type` written as identifiers) to their canonical registry
  * names, rewriting each member in place. A reference that names no type
  * yields an {@link CompileDiagCode.UnresolvedTypeReference} diagnostic.
+ *
+ * Each `typeNode` is a transient `ts.Expression` that only guides this
+ * resolution; it is a live AST node whose `parent` chain cannot be serialized.
+ * Once its `type` string is resolved, the node is dropped so the extracted
+ * param and output specs the compiler emits into a program artifact stay
+ * JSON-serializable for the tile metadata cache.
  */
 function resolveDescriptorTypeRefs(
   descriptor: ExtractedDescriptor,
@@ -1433,6 +1439,7 @@ function resolveDescriptorTypeRefs(
     if (name !== undefined) {
       output.type = name;
     }
+    output.typeNode = undefined;
   }
 
   const visitSpec = (spec: ExtractedArgSpec): void => {
@@ -1443,6 +1450,7 @@ function resolveDescriptorTypeRefs(
           if (name !== undefined) {
             spec.type = name;
           }
+          spec.typeNode = undefined;
         }
         break;
       }

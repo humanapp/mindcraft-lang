@@ -55,6 +55,7 @@ import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
+import { collectParams } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 import { extractStructTypeConfig } from "./lowering.js";
 import { type CompileResult, type ProjectCompileResult, UserTileProject } from "./project.js";
@@ -441,6 +442,48 @@ export default Sensor({
 
     const brain = runBrain(brainDef, 1);
     assert.equal(num(brain, readVar.varName), 3, "the struct value crossed the anonymous param slot");
+  });
+
+  test("a struct-typed param and output leave no live AST node on the compiled program", () => {
+    const services = __test__createBrainServices();
+    const readerSource = `import { type Context, param, Sensor } from "mindcraft";
+import { Position } from "./position";
+
+export default Sensor({
+  name: "read x",
+  args: [param("pos", { type: Position, anonymous: true })],
+  onExecute(ctx: Context, args: { pos: Position }): number {
+    return args.pos.x;
+  },
+});
+`;
+    const outputSource = `import { Sensor, setOutput, type Context } from "mindcraft";
+import { Position } from "./position";
+
+export default Sensor({
+  name: "position out",
+  outputs: [{ name: "pos", type: Position }],
+  onExecute(ctx: Context): number {
+    setOutput(ctx, "pos", Position({ x: 5, y: 6 }));
+    return 1;
+  },
+});
+`;
+    const [reader, output] = compileAndRegister(
+      services,
+      { "position.ts": POSITION_SOURCE, "reader.ts": readerSource, "out.ts": outputSource },
+      ["reader.ts", "out.ts"]
+    );
+
+    const param = collectParams(reader.args)[0];
+    assert.equal(param?.type, POSITION_IDENTITY, "the param type resolved to the struct identity");
+    assert.equal(param?.typeNode, undefined, "the transient param typeNode is dropped after resolution");
+    assert.equal(output.outputs?.[0]?.type, POSITION_IDENTITY, "the output type resolved to the struct identity");
+    assert.equal(output.outputs?.[0]?.typeNode, undefined, "the transient output typeNode is dropped after resolution");
+
+    // The metadata cache persists args and outputs via JSON.stringify; a retained
+    // AST node makes that throw on its cyclic `parent` chain.
+    assert.doesNotThrow(() => JSON.stringify({ args: reader.args, outputs: output.outputs }));
   });
 
   test("a struct value converts through a user conversion whose from-type is the declared struct", () => {

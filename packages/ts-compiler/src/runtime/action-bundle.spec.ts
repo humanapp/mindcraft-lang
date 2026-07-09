@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment, type HydratedTileMetadataSnapshot } from "@mindcraft-lang/core";
-import { type BrainServices, CoreCapabilityBits, isBrainBuildError } from "@mindcraft-lang/core/brain";
+import { type BrainServices, CoreCapabilityBits } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId, Op } from "@mindcraft-lang/core/runtime";
@@ -268,22 +268,28 @@ export default Sensor({
     const restored = environment.deserializeBrainJson(json);
     assert.equal(restored.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.tileId, sensorTile!.tileId);
 
-    let thrown: unknown;
-    try {
-      environment.createBrain(restored);
-    } catch (err) {
-      thrown = err;
-    }
-    if (!isBrainBuildError(thrown)) {
-      assert.fail("expected a BrainBuildError");
-    }
+    // Before the executable actions are installed, linking the restored brain
+    // reports the missing action by its key.
+    const linkResult = environment.linkBrain(restored);
+    assert.equal(linkResult.program, undefined);
     assert.ok(
-      thrown.diagnostics
+      linkResult.diagnostics
         .toArray()
         .some((diag) => diag.message.includes(`${TEST_PROJECT_NAMESPACE}:user.sensor.snprobe`))
     );
 
+    // With the action still missing, createBrain yields a tracked, invalidated
+    // brain that has no executable program.
+    const bornInvalidated = environment.createBrain(restored);
+    assert.equal(bornInvalidated.status, "invalidated");
+    assert.equal(bornInvalidated.getProgram(), undefined);
+
+    // Installing the executable actions revives the born-invalidated brain
+    // through the per-tick rebuild retry path.
     environment.replaceActionBundle(bundle);
+    environment.rebuildInvalidatedBrains();
+    assert.equal(bornInvalidated.status, "active");
+    assert.ok(bornInvalidated.getProgram());
 
     const brain = environment.createBrain(restored);
     assert.equal(brain.status, "active");

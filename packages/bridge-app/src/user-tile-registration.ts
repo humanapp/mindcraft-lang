@@ -484,8 +484,8 @@ export function applyCompiledUserTiles(
 
   try {
     persistMetadataCache(options.saveMetadata, bundle.revision, metadata);
-  } catch {
-    logger.warn("[user-tile-registration] failed to save metadata cache");
+  } catch (err) {
+    logger.warn("[user-tile-registration] failed to save metadata cache:", err);
   }
 
   const update = env.replaceActionBundle(bundle);
