@@ -168,7 +168,7 @@ describe("uninstallSimExtension -- round-trips through the host", () => {
 
   test("uninstalling an add-on persists an extensions map that loses the coordinate", async () => {
     const persistence = capturingPersistence();
-    const result = await uninstallSimExtension(persistence, withFlock, FLOCK);
+    const result = await uninstallSimExtension(persistence, withFlock, FLOCK, embedRecord);
     assert.equal(result.ok, true);
     assert.equal(result.code, ExtensionActionResultCode.UNINSTALLED);
     assert.equal(persistence.patches.length, 1);
@@ -178,9 +178,26 @@ describe("uninstallSimExtension -- round-trips through the host", () => {
 
   test("uninstalling a locked layer library is rejected and does not persist", async () => {
     const persistence = capturingPersistence();
-    const result = await uninstallSimExtension(persistence, project, SIM_LIB_COORDINATE);
+    const result = await uninstallSimExtension(persistence, project, SIM_LIB_COORDINATE, embedRecord);
     assert.equal(result.ok, false);
     assert.equal(result.code, ExtensionActionResultCode.LOCKED);
+    assert.equal(persistence.patches.length, 0);
+  });
+
+  test("uninstalling a coordinate a still-installed add-on depends on is rejected and does not persist", async () => {
+    const persistence = capturingPersistence();
+    // A depending add-on that requires Flock; both installed.
+    const HERD = "mindcraft-lang/sim-herd";
+    const herdAddon = ext(HERD, {
+      name: "Herd",
+      version: "1.0.0",
+      targets: { [SIM_LIB_COORDINATE]: { packageVersion: "^0.1.0" } },
+      extensions: { [FLOCK]: `embedded:${FLOCK}` },
+    });
+    const withDependent = { ...withFlock, [HERD]: `embedded:${HERD}` };
+    const result = await uninstallSimExtension(persistence, withDependent, FLOCK, [...embedRecord, herdAddon]);
+    assert.equal(result.ok, false);
+    assert.equal(result.code, ExtensionActionResultCode.REQUIRED_BY_DEPENDENT);
     assert.equal(persistence.patches.length, 0);
   });
 });

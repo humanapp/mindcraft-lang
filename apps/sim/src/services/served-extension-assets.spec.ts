@@ -9,7 +9,8 @@ import {
   type ProjectFileSystem,
   type ProjectManager,
 } from "@mindcraft-lang/app-host";
-import { AppEnvironmentHost, buildCoreStdlibExtension, type EmbeddedExtension } from "@mindcraft-lang/bridge-app";
+import { AppEnvironmentHost, CORE_LIB_COORDINATE, type EmbeddedExtension } from "@mindcraft-lang/bridge-app";
+import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
 import { coreModule } from "@mindcraft-lang/core/app";
 import { isCompilerControlledPath, type Mount } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
@@ -24,33 +25,23 @@ function readText(relativePath: string): string {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
 }
 
+function extensionDir(relativePath: string): string {
+  return fileURLToPath(new URL(relativePath, import.meta.url));
+}
+
 const TELEPORT_ICON_SVG = readText("../../extensions/ecosim-teleport-ext/teleport.svg");
 
-/** The sim embed record built from on-disk source (the app's `?raw` imports are Vite-only). */
+/**
+ * The sim embed record assembled from each extension's own `mindcraft.json`
+ * `files` list through the shared loader -- the single content-assembly path the
+ * app's Vite provider also uses.
+ */
 function simEmbedRecord(): EmbeddedExtension[] {
-  const simLib: EmbeddedExtension = {
-    canonicalOrigin: SIM_LIB_COORDINATE,
-    files: [
-      { path: "index.ts", content: readText("../../lib/index.ts") },
-      { path: "mindcraft.sim.d.ts", content: readText("../../ambient/mindcraft.sim.d.ts") },
-      { path: "mindcraft.json", content: readText("../../lib/mindcraft.json") },
-    ],
-  };
-  const coreLib = buildCoreStdlibExtension({
-    entry: readText("../../../../packages/core/lib/index.ts"),
-    ambient: readText("../../../../packages/core/ambient/mindcraft.core.d.ts"),
-    manifest: readText("../../../../packages/core/lib/mindcraft.json"),
-  });
-  const teleportAddon: EmbeddedExtension = {
-    canonicalOrigin: ECOSIM_TELEPORT_EXT_COORDINATE,
-    files: [
-      { path: "teleport.ts", content: readText("../../extensions/ecosim-teleport-ext/teleport.ts") },
-      { path: "teleport.svg", content: TELEPORT_ICON_SVG },
-      { path: "teleport.md", content: readText("../../extensions/ecosim-teleport-ext/teleport.md") },
-      { path: "mindcraft.json", content: readText("../../extensions/ecosim-teleport-ext/mindcraft.json") },
-    ],
-  };
-  return [simLib, coreLib, teleportAddon];
+  return [
+    buildEmbeddedExtensionFromDir(extensionDir("../../lib"), SIM_LIB_COORDINATE),
+    buildEmbeddedExtensionFromDir(extensionDir("../../../../packages/core/lib"), CORE_LIB_COORDINATE),
+    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/ecosim-teleport-ext"), ECOSIM_TELEPORT_EXT_COORDINATE),
+  ];
 }
 
 function installEmptyLocalStorage(): () => void {

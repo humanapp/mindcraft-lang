@@ -1,3 +1,4 @@
+import { EventEmitter } from "../platform/event-emitter";
 import { List } from "../platform/list";
 import {
   type BrainEvents,
@@ -30,6 +31,9 @@ export class Brain implements IBrain {
   /** Unsubscribe callbacks for the page-lifecycle event bridge registered in {@link initialize}. */
   private readonly unsubs: List<() => void> = new List<() => void>();
 
+  /** Emitter returned by {@link events} before the first successful {@link initialize}, when no runtime exists yet. */
+  private uninitializedEmitter: EventEmitter<BrainEvents> | undefined;
+
   constructor(
     public readonly brainDef: IBrainDef,
     private readonly services: BrainServices,
@@ -43,7 +47,13 @@ export class Brain implements IBrain {
   }
 
   events(): EventEmitterConsumer<BrainEvents> {
-    return this.runtime!.events();
+    if (this.runtime) {
+      return this.runtime.events();
+    }
+    if (!this.uninitializedEmitter) {
+      this.uninitializedEmitter = new EventEmitter<BrainEvents>();
+    }
+    return this.uninitializedEmitter;
   }
 
   /**

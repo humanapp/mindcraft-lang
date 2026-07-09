@@ -56,6 +56,10 @@
       "types": "./dist/vfs-service-worker.d.ts",
       "browser": "./dist/vfs-service-worker.js",
       "import": "./dist/vfs-service-worker.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
   "scripts": {

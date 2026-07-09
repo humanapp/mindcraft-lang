@@ -271,6 +271,13 @@ export class AppEnvironmentHost {
         if (tileResult) {
           this._lastUserTileMetadata = tileResult.metadata;
           this.bumpDocRevision();
+          if (tileResult.changedActionKeys.length > 0) {
+            // A changed action bundle can make a previously unbuildable brain
+            // buildable, including one born invalidated because its action was
+            // missing at creation. Schedule the rebuild flush to retry the
+            // invalidated set even when this compile invalidated no live brain.
+            this._pendingBrainRebuild = true;
+          }
         }
         this.onDidCompileCallback?.(result, tileResult);
       },

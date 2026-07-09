@@ -15,7 +15,7 @@ import { augmentProjectFileSystem } from "./compilation.js";
 import { toFileSystemSnapshot } from "./project-file-bridge.js";
 
 const STDLIB_MOUNT: DependencyMount = {
-  namespace: "mindcraft-lang/wodal",
+  namespace: "mindcraft-lang/codal",
   files: new Map([
     ["/index.ts", "export {} from './image';"],
     ["/image.ts", "export const image = 1;"],
@@ -126,16 +126,16 @@ describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () =
     const snapshot = buildAugmented([STDLIB_MOUNT]).exportSnapshot();
 
     // (a) The compiler-controlled extension source is present, read-only.
-    const indexEntry = snapshot.get(".extensions/mindcraft-lang/wodal/index.ts");
+    const indexEntry = snapshot.get(".extensions/mindcraft-lang/codal/index.ts");
     assert.ok(indexEntry && indexEntry.kind === "file", "the stdlib entry file is present");
     assert.equal(indexEntry.isReadonly, true, "materialized extension source is read-only");
-    const imageEntry = snapshot.get(".extensions/mindcraft-lang/wodal/image.ts");
+    const imageEntry = snapshot.get(".extensions/mindcraft-lang/codal/image.ts");
     assert.ok(imageEntry && imageEntry.kind === "file");
     assert.equal(imageEntry.isReadonly, true);
 
     // (b) Every ancestor of the extension files is present as a directory entry,
     // the same invariant the base project file system upholds for its own files.
-    for (const dir of [".extensions", ".extensions/mindcraft-lang", ".extensions/mindcraft-lang/wodal"]) {
+    for (const dir of [".extensions", ".extensions/mindcraft-lang", ".extensions/mindcraft-lang/codal"]) {
       const entry = snapshot.get(dir);
       assert.ok(entry && entry.kind === "directory", `${dir} is present as a directory entry`);
     }
@@ -161,7 +161,7 @@ describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () =
     const ext = peerFs.list().find((e) => e.name === ".extensions");
     assert.ok(ext && ext.kind === "directory", ".extensions surfaces at the peer root");
 
-    // Walk .extensions -> mindcraft-lang -> wodal -> files.
+    // Walk .extensions -> mindcraft-lang -> codal -> files.
     const owner = peerFs.list(".extensions");
     assert.deepEqual(
       owner.map((e) => [e.name, e.kind]),
@@ -170,9 +170,9 @@ describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () =
     const repo = peerFs.list(".extensions/mindcraft-lang");
     assert.deepEqual(
       repo.map((e) => [e.name, e.kind]),
-      [["wodal", "directory"]]
+      [["codal", "directory"]]
     );
-    const files = peerFs.list(".extensions/mindcraft-lang/wodal");
+    const files = peerFs.list(".extensions/mindcraft-lang/codal");
     const fileNames = files.map((e) => e.name).sort();
     assert.deepEqual(fileNames, ["image.ts", "index.ts"]);
     for (const f of files) {
@@ -194,11 +194,11 @@ describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () =
       .sort();
     assert.deepEqual(owners, ["acme", "mindcraft-lang"]);
 
-    const wodal = peerFs
-      .list(".extensions/mindcraft-lang/wodal")
+    const codal = peerFs
+      .list(".extensions/mindcraft-lang/codal")
       .map((e) => e.name)
       .sort();
-    assert.deepEqual(wodal, ["image.ts", "index.ts"]);
+    assert.deepEqual(codal, ["image.ts", "index.ts"]);
     const widgets = peerFs
       .list(".extensions/acme/widgets")
       .map((e) => e.name)

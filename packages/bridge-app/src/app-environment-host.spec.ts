@@ -13,8 +13,9 @@ import {
   type ProjectFileSystem,
   type ProjectManager,
 } from "@mindcraft-lang/app-host";
-import type { IBrainDef } from "@mindcraft-lang/core/app";
-import { CoreTypeIds, coreModule, List } from "@mindcraft-lang/core/app";
+import type { IBrainDef, MindcraftBrain } from "@mindcraft-lang/core/app";
+import { BrainDef, CoreTypeIds, coreModule, List, mkSensorTileId } from "@mindcraft-lang/core/app";
+import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { declarationMount, type WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
@@ -793,6 +794,137 @@ describe("AppEnvironmentHost brain persistence across project switches", () => {
       const persisted = JSON.parse(appData.get("brains")!) as Record<string, unknown>;
       assert.deepStrictEqual(persisted.bad, unsupportedBrain, "the unloadable entry must survive the switch");
       assert.ok(persisted.good, "the loadable brain must survive the switch");
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Compile-scheduled brain rebuild (the per-tick flush revives born-broke brains)
+// ---------------------------------------------------------------------------
+
+const SIGNAL_REPO = "signal-lib";
+const SIGNAL_COORDINATE = `mindcraft-lang/${SIGNAL_REPO}`;
+const SIGNAL_REFERENCE = `embedded:${SIGNAL_COORDINATE}`;
+const SIGNAL_SENSOR_ID = "signalSensor0001";
+
+/** The bundle action key the extension's sensor publishes when installed. */
+const SIGNAL_ACTION_KEY = `${SIGNAL_COORDINATE}:user.sensor.${SIGNAL_SENSOR_ID}`;
+
+/** An embedded extension whose entry publishes one sensor action into the bundle. */
+const SIGNAL_EXTENSION: EmbeddedExtension = {
+  canonicalOrigin: SIGNAL_COORDINATE,
+  files: [
+    {
+      path: "index.ts",
+      content: `import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "${SIGNAL_SENSOR_ID}",
+  name: "signal",
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`,
+    },
+  ],
+};
+
+/** A host-owned sensor that keeps the bundle non-empty whether or not the extension is installed. */
+const HOST_SENSOR_SOURCE = `import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "hostSensor000001",
+  name: "host signal",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+
+function findBundleTile(tiles: readonly IBrainTileDef[], tileId: string): IBrainTileDef {
+  for (const tile of tiles) {
+    if (tile.tileId === tileId) return tile;
+  }
+  throw new Error(`tile ${tileId} not found in bundle`);
+}
+
+/** True when the brain's linked program binds the given bytecode action key. */
+function brainBindsAction(brain: MindcraftBrain, key: string): boolean {
+  const actions = brain.getProgram()?.actions;
+  if (!actions) return false;
+  for (let i = 0; i < actions.size(); i++) {
+    if (actions.get(i).descriptor.key === key) return true;
+  }
+  return false;
+}
+
+describe("AppEnvironmentHost compile-scheduled brain rebuild", () => {
+  it("revives a born-broke brain through the per-tick flush after a compile changes the action bundle", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem();
+    filesystem.applyLocalChange({ action: "write", path: "main.ts", content: HOST_SENSOR_SOURCE, newEtag: "e1" });
+    const projectManager = stubProjectManagerWithLiveExtensions(filesystem, {
+      [SIGNAL_COORDINATE]: SIGNAL_REFERENCE,
+    });
+
+    let latestTiles: readonly IBrainTileDef[] = [];
+    const host = new AppEnvironmentHost({
+      projectManager,
+      modules: [coreModule()],
+      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      embeddedExtensions: [SIGNAL_EXTENSION],
+      onDidCompile: (result) => {
+        if (result.bundle) {
+          latestTiles = result.bundle.tiles;
+        }
+      },
+    });
+
+    try {
+      await host.initialize(PROJECT_ID);
+
+      // The extension is installed, so its sensor action is in the live bundle.
+      // Capture the tile and build a brain whose rule binds that action.
+      const signalTile = findBundleTile(latestTiles, mkSensorTileId(SIGNAL_ACTION_KEY));
+      const def = BrainDef.emptyBrainDef(host.env.brainServices, "signal-brain");
+      def.pages().get(0)!.children().get(0)!.when().appendTile(signalTile);
+
+      // Uninstall the extension: the recompile drops the sensor action from the
+      // bundle. Flush any rebuild it scheduled so none is pending before the
+      // born-broke brain exists.
+      await host.updateProjectExtensions({});
+      host.flushPendingBrainRebuilds();
+
+      // Born broke: created while its action is missing, the brain fails its
+      // initial build and is tracked in the invalidated set for retry.
+      const brain = host.env.createBrain(def);
+      assert.equal(brain.status, "invalidated", "the brain is born invalidated while its action is missing");
+      assert.equal(brainBindsAction(brain, SIGNAL_ACTION_KEY), false, "a born-broke brain binds no action");
+
+      // Creating a born-broke brain schedules no host rebuild, so a flush now is
+      // a no-op: the brain is only revived by a real bundle-changing compile.
+      host.flushPendingBrainRebuilds();
+      assert.equal(brain.status, "invalidated", "an unscheduled flush leaves the born-broke brain invalidated");
+
+      // Re-add the extension. The recompile raises changed action keys, which the
+      // host must translate into a scheduled brain rebuild.
+      await host.updateProjectExtensions({ [SIGNAL_COORDINATE]: SIGNAL_REFERENCE });
+
+      // The compile alone does not rebuild the born-broke brain...
+      assert.equal(brain.status, "invalidated", "the recompile alone does not revive the born-broke brain");
+
+      // ...the per-tick flush does, proving the compile scheduled the rebuild.
+      host.flushPendingBrainRebuilds();
+      assert.equal(brain.status, "active", "the scheduled flush revives the born-broke brain");
+      assert.equal(
+        brainBindsAction(brain, SIGNAL_ACTION_KEY),
+        true,
+        "the revived brain binds the previously-missing action"
+      );
     } finally {
       host.dispose();
       restoreLocalStorage();

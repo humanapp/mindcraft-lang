@@ -51,9 +51,9 @@ function mountFor(mounts: readonly DependencyMount[], origin: string): Dependenc
   return mount;
 }
 
-/** The Wodal standard library shape: an embedded extension with no `mindcraft.json`, hence no dependencies. */
+/** The codal standard library shape: an embedded extension with no `mindcraft.json`, hence no dependencies. */
 const STDLIB: EmbeddedExtension = {
-  canonicalOrigin: coordinateFor("wodal"),
+  canonicalOrigin: coordinateFor("codal"),
   files: [
     { path: "index.ts", content: "export {} from './image';" },
     { path: "image.ts", content: "export const image = 1;" },
@@ -62,11 +62,11 @@ const STDLIB: EmbeddedExtension = {
 
 describe("resolveEmbeddedExtensions -- flat cases", () => {
   test("resolves an embedded reference by coordinate to a coordinate dependency and a namespaced mount", () => {
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/wodal": "embedded:mindcraft-lang/wodal" }, [STDLIB]);
-    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/wodal" }]);
+    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" }, [STDLIB]);
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/codal" }]);
     assert.equal(resolved.dependencyMounts.length, 1);
     const mount = resolved.dependencyMounts[0];
-    assert.equal(mount.namespace, "mindcraft-lang/wodal");
+    assert.equal(mount.namespace, "mindcraft-lang/codal");
     assert.equal(mount.files.get("/index.ts"), "export {} from './image';");
     assert.equal(mount.files.get("/image.ts"), "export const image = 1;");
     assert.deepEqual(mount.dependencies, []);
@@ -76,8 +76,8 @@ describe("resolveEmbeddedExtensions -- flat cases", () => {
   test("the coordinate derives from identity, not from the manifest key", () => {
     // A manifest key that disagrees with the resolved coordinate does not change
     // the imported coordinate: it is always the extension's own <owner>/<repo>.
-    const resolved = resolveEmbeddedExtensions({ "any/key": "embedded:mindcraft-lang/wodal" }, [STDLIB]);
-    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/wodal" }]);
+    const resolved = resolveEmbeddedExtensions({ "any/key": "embedded:mindcraft-lang/codal" }, [STDLIB]);
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/codal" }]);
   });
 
   test("skips references of other transports", () => {
@@ -102,10 +102,10 @@ describe("resolveEmbeddedExtensions -- flat cases", () => {
     ]);
     assert.deepEqual(mountFor(withAmbient.dependencyMounts, coordinateFor("a")).ambient, ["mindcraft.a.d.ts"]);
 
-    const withoutAmbient = resolveEmbeddedExtensions({ "mindcraft-lang/wodal": "embedded:mindcraft-lang/wodal" }, [
+    const withoutAmbient = resolveEmbeddedExtensions({ "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" }, [
       STDLIB,
     ]);
-    assert.equal(mountFor(withoutAmbient.dependencyMounts, coordinateFor("wodal")).ambient, undefined);
+    assert.equal(mountFor(withoutAmbient.dependencyMounts, coordinateFor("codal")).ambient, undefined);
   });
 
   test("returns empty results for an absent extensions list", () => {
@@ -116,13 +116,13 @@ describe("resolveEmbeddedExtensions -- flat cases", () => {
   });
 
   test("the stdlib default extension (no manifest) resolves identically regardless of embed-record noise", () => {
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/wodal": "embedded:mindcraft-lang/wodal" }, [
+    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" }, [
       STDLIB,
       ext("unused-a", { version: "2.0.0" }),
     ]);
-    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/wodal" }]);
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/codal" }]);
     assert.equal(resolved.dependencyMounts.length, 1);
-    assert.equal(resolved.dependencyMounts[0].namespace, "mindcraft-lang/wodal");
+    assert.equal(resolved.dependencyMounts[0].namespace, "mindcraft-lang/codal");
     assert.deepEqual(resolved.dependencyMounts[0].dependencies, []);
     assert.deepEqual(resolved.warnings, []);
   });

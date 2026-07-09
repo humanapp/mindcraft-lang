@@ -4,6 +4,7 @@ import commonjs from '@rollup/plugin-commonjs';
 import path from 'path';
 import { uiPlugin } from '../../../packages/ui/src/vite-plugin.ts';
 import { sitemapPlugin } from './sitemap-plugin.mjs';
+import { embeddedExtensions } from './embedded-extensions.mjs';
 
 const phasermsg = () => {
     return {
@@ -23,7 +24,8 @@ export default defineConfig({
         react(),
         uiPlugin(),
         sitemapPlugin(),
-        phasermsg()
+        phasermsg(),
+        embeddedExtensions()
     ],
     resolve: {
         dedupe: ['sonner'],

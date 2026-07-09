@@ -91,7 +91,7 @@ describe("ProjectManager", () => {
 
   describe("default extensions", () => {
     it("seeds the host default extensions into a newly created project's manifest", async () => {
-      const defaults = { "mindcraft-lang/wodal": "embedded:mindcraft-lang/wodal" };
+      const defaults = { "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" };
       const withDefaults = new ProjectManager(memStore, { defaultExtensions: defaults });
       try {
         const manifest = await withDefaults.create("Seeded");

@@ -892,8 +892,20 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   createBrain(definition: IBrainDef, options?: CreateBrainOptions): MindcraftBrain {
     const overlayCatalogs = this.resolveOverlayCatalogs(options?.catalogs);
     const brain = new ManagedMindcraftBrain(this, definition, overlayCatalogs);
-    brain.initialize(options?.context, options?.vmEvents);
     this.trackBrain(brain);
+    try {
+      brain.initialize(options?.context, options?.vmEvents);
+    } catch (err) {
+      if (!isBrainBuildError(err)) {
+        this.removeBrain(brain);
+        throw err;
+      }
+      // The initial build failed (a required action is missing from the current
+      // bundle). The brain retains its definition and enters the invalidated set
+      // so the per-tick rebuild retries it once the action becomes available,
+      // exactly as a brain whose later rebuild fails does.
+      this.markBrainInvalidated(brain);
+    }
     return brain;
   }
 

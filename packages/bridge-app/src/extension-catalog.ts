@@ -55,6 +55,8 @@ export const ExtensionActionResultCode = {
   LOCKED: "EXTENSION_LOCKED",
   /** The coordinate names no bundled extension in the embed record; nothing changed. */
   UNKNOWN_COORDINATE: "EXTENSION_UNKNOWN_COORDINATE",
+  /** Another installed extension depends on the coordinate; it cannot be uninstalled while depended upon. Nothing changed. */
+  REQUIRED_BY_DEPENDENT: "EXTENSION_REQUIRED_BY_DEPENDENT",
 } as const;
 
 /** Union of all {@link ExtensionActionResultCode} values. */
@@ -262,17 +264,22 @@ export function installEmbeddedExtension(
 /**
  * Uninstall an embedded extension from a project's extensions map by removing
  * the entry keyed by its coordinate. The existing regenerate-on-load pipeline
- * de-materializes it thereafter. Rejects a required platform layer library and
- * reports an absent coordinate as a no-op.
+ * de-materializes it thereafter. Rejects a required platform layer library,
+ * reports an absent coordinate as a no-op, and blocks removing a coordinate that
+ * another still-installed extension depends on: after the removal that dependent
+ * would still pull the coordinate back into the resolved closure, so removing its
+ * explicit entry is refused with {@link ExtensionActionResultCode.REQUIRED_BY_DEPENDENT}.
  *
  * @param extensions - The project's current extensions map, keyed by coordinate.
  * @param coordinate - The `<owner>/<repo>` coordinate to uninstall.
  * @param layerCoordinates - The coordinates the host declares as platform layers; these are not uninstallable.
+ * @param embedRecord - The host application's bundled embedded extensions, used to resolve dependents.
  */
 export function uninstallEmbeddedExtension(
   extensions: Readonly<Record<string, string>> | undefined,
   coordinate: string,
-  layerCoordinates: ReadonlySet<string>
+  layerCoordinates: ReadonlySet<string>,
+  embedRecord: readonly EmbeddedExtension[]
 ): ExtensionActionResult {
   const current = extensions ?? {};
   if (layerCoordinates.has(coordinate)) {
@@ -286,6 +293,9 @@ export function uninstallEmbeddedExtension(
     if (key !== coordinate) {
       next[key] = value;
     }
+  }
+  if (resolvedOrigins(next, embedRecord).has(coordinate)) {
+    return { ok: false, code: ExtensionActionResultCode.REQUIRED_BY_DEPENDENT, extensions: current };
   }
   return { ok: true, code: ExtensionActionResultCode.UNINSTALLED, extensions: next };
 }

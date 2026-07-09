@@ -470,12 +470,36 @@ function ensureSnapshotDirectory(snapshot: ProjectFileSnapshot, dirPath: string)
   }
 }
 
+/** True when the two compiler-controlled file maps carry a different set of paths or content. */
+function compilerControlledFilesChanged(
+  previous: ReadonlyMap<string, string>,
+  current: ReadonlyMap<string, string>
+): boolean {
+  if (previous.size !== current.size) {
+    return true;
+  }
+  for (const [path, content] of current) {
+    if (previous.get(path) !== content) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Wrap a {@link ProjectFileSystem} so its exported snapshot also carries the
  * compiler-controlled files (ambient declarations, `tsconfig.json`, and the
  * read-only installed-extensions tree) and the injected example projects, all
  * marked read-only. Local and remote changes targeting those augmented paths
  * are filtered out, leaving them read-only from the peer's side.
+ *
+ * When a compile changes the compiler-controlled file set (installing or
+ * uninstalling an extension adds or removes its `.extensions/` subtree), the
+ * wrapper emits one full-snapshot `import` local change. The peer reconciles
+ * the whole tree from it: newly installed paths appear and uninstalled paths
+ * are pruned. The read-only compiler-controlled paths cannot be updated by an
+ * incremental write/delete notification, so the full-snapshot import is their
+ * propagation channel.
  */
 export function augmentProjectFileSystem(
   filesystem: ProjectFileSystem,
@@ -508,23 +532,41 @@ export function augmentProjectFileSystem(
     }
   };
 
+  const buildSnapshot = (): ProjectFileSnapshot => {
+    const snapshot = filesystem.exportSnapshot();
+    const controlledFiles = compiler.getCompilerControlledFiles();
+    for (const [path, content] of controlledFiles) {
+      ensureSnapshotDirectory(snapshot, parentDirectory(path));
+      snapshot.set(path, { kind: "file", content, etag: "compiler-controlled", isReadonly: true });
+    }
+    for (const example of getExamples()) {
+      ensureSnapshotDirectory(snapshot, `${EXAMPLES_FOLDER}/${example.folder}`);
+      for (const file of example.files) {
+        const path = `${EXAMPLES_FOLDER}/${example.folder}/${file.path}`;
+        ensureSnapshotDirectory(snapshot, parentDirectory(path));
+        snapshot.set(path, { kind: "file", content: file.content, etag: "example", isReadonly: true });
+      }
+    }
+    return snapshot;
+  };
+
+  const localChangeListeners = new Set<(change: ProjectFileChange) => void>();
+  let previousControlledFiles = new Map(compiler.getCompilerControlledFiles());
+  compiler.onDidCompile(() => {
+    const currentControlledFiles = compiler.getCompilerControlledFiles();
+    if (!compilerControlledFilesChanged(previousControlledFiles, currentControlledFiles)) {
+      return;
+    }
+    previousControlledFiles = new Map(currentControlledFiles);
+    const change: ProjectFileChange = { action: "import", entries: [...buildSnapshot()] };
+    for (const listener of localChangeListeners) {
+      listener(change);
+    }
+  });
+
   return {
     exportSnapshot(): ProjectFileSnapshot {
-      const snapshot = filesystem.exportSnapshot();
-      const controlledFiles = compiler.getCompilerControlledFiles();
-      for (const [path, content] of controlledFiles) {
-        ensureSnapshotDirectory(snapshot, parentDirectory(path));
-        snapshot.set(path, { kind: "file", content, etag: "compiler-controlled", isReadonly: true });
-      }
-      for (const example of getExamples()) {
-        ensureSnapshotDirectory(snapshot, `${EXAMPLES_FOLDER}/${example.folder}`);
-        for (const file of example.files) {
-          const path = `${EXAMPLES_FOLDER}/${example.folder}/${file.path}`;
-          ensureSnapshotDirectory(snapshot, parentDirectory(path));
-          snapshot.set(path, { kind: "file", content: file.content, etag: "example", isReadonly: true });
-        }
-      }
-      return snapshot;
+      return buildSnapshot();
     },
     applyRemoteChange(change: ProjectFileChange): void {
       const filtered = filterChange(change);
@@ -539,7 +581,12 @@ export function augmentProjectFileSystem(
       }
     },
     onLocalChange(listener: (change: ProjectFileChange) => void): () => void {
-      return filesystem.onLocalChange(listener);
+      localChangeListeners.add(listener);
+      const unsubscribeUnderlying = filesystem.onLocalChange(listener);
+      return () => {
+        localChangeListeners.delete(listener);
+        unsubscribeUnderlying();
+      };
     },
     onAnyChange(listener: () => void): () => void {
       return filesystem.onAnyChange(listener);

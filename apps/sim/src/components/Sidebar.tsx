@@ -106,7 +106,12 @@ export function Sidebar({
 
   const handleUninstallExtension = (coordinate: string) => {
     void (async () => {
-      const result = await uninstallSimExtension(store.host, store.activeProjectManifest?.extensions, coordinate);
+      const result = await uninstallSimExtension(
+        store.host,
+        store.activeProjectManifest?.extensions,
+        coordinate,
+        simEmbeddedExtensions
+      );
       if (!result.ok) {
         toast.error(`Could not remove extension (${result.code})`);
       }

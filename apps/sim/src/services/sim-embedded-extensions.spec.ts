@@ -3,37 +3,26 @@ import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { EmbeddedExtension } from "@mindcraft-lang/bridge-app";
-import { buildCoreStdlibExtension, CORE_LIB_COORDINATE, resolveEmbeddedExtensions } from "@mindcraft-lang/bridge-app";
+import { CORE_LIB_COORDINATE, resolveEmbeddedExtensions } from "@mindcraft-lang/bridge-app";
+import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
 import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
 import { SIM_LIB_COORDINATE, SIM_LIB_REFERENCE } from "./sim-extension-coordinates";
 
-function readText(relativePath: string): string {
-  return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
+function extensionDir(relativePath: string): string {
+  return fileURLToPath(new URL(relativePath, import.meta.url));
 }
 
 /**
- * The two embedded layers built from their on-disk source and bundled
- * `mindcraft.json` edges (the app's `?raw` imports are Vite-only). Mirrors the
- * embed record the app ships: the shared core layer through the same seam the
- * app uses, plus the sim platform layer carrying its edge and ambient `.d.ts`.
+ * The two embedded layers assembled from each extension's own `mindcraft.json`
+ * `files` list through the shared loader -- the single content-assembly path the
+ * app's Vite provider also uses. The layer stack is core <- sim.
  */
 function embeddedLayers(): EmbeddedExtension[] {
   return [
-    {
-      canonicalOrigin: SIM_LIB_COORDINATE,
-      files: [
-        { path: "index.ts", content: readText("../../lib/index.ts") },
-        { path: "mindcraft.sim.d.ts", content: readText("../../ambient/mindcraft.sim.d.ts") },
-        { path: "mindcraft.json", content: readText("../../lib/mindcraft.json") },
-      ],
-    },
-    buildCoreStdlibExtension({
-      entry: readText("../../../../packages/core/lib/index.ts"),
-      ambient: readText("../../../../packages/core/ambient/mindcraft.core.d.ts"),
-      manifest: readText("../../../../packages/core/lib/mindcraft.json"),
-    }),
+    buildEmbeddedExtensionFromDir(extensionDir("../../lib"), SIM_LIB_COORDINATE),
+    buildEmbeddedExtensionFromDir(extensionDir("../../../../packages/core/lib"), CORE_LIB_COORDINATE),
   ];
 }
 
@@ -111,5 +100,19 @@ export default Sensor({
       controlled.has(".extensions/mindcraft-lang/sim/mindcraft.sim.d.ts"),
       "the sim ambient materializes under .extensions/"
     );
+  });
+});
+
+describe("sim embedded layers -- the manifest-driven bundle matches the hand-assembled one", () => {
+  test("the core layer's manifest-driven path->content set equals its hand-assembled set", () => {
+    const built = buildEmbeddedExtensionFromDir(extensionDir("../../../../packages/core/lib"), CORE_LIB_COORDINATE);
+    const read = (rel: string) => readFileSync(extensionDir(rel), "utf8");
+    const handAssembled = new Map([
+      ["index.ts", read("../../../../packages/core/lib/index.ts")],
+      ["mindcraft.core.d.ts", read("../../../../packages/core/ambient/mindcraft.core.d.ts")],
+      ["mindcraft.json", read("../../../../packages/core/lib/mindcraft.json")],
+    ]);
+    const builtByPath = new Map(built.files.map((f) => [f.path, f.content]));
+    assert.deepEqual(builtByPath, handAssembled);
   });
 });

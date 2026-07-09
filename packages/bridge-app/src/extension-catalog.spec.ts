@@ -43,7 +43,7 @@ function ext(
 }
 
 const CORE = "mindcraft-lang/core";
-const WODAL = "mindcraft-lang/wodal";
+const CODAL = "mindcraft-lang/codal";
 const MICROBIT = "mindcraft-lang/microbit-v2";
 const SIM = "mindcraft-lang/sim";
 const POSITION = "mindcraft-lang/microbit-position";
@@ -52,11 +52,11 @@ const SHARED_MATH = "mindcraft-lang/shared-math";
 const LEGACY = "mindcraft-lang/legacy-widget";
 
 const coreLib = ext(CORE, { name: "Core", version: "0.2.1" });
-const wodalLib = ext(WODAL, { name: "Wodal", version: "0.2.1", extensions: { [CORE]: `embedded:${CORE}` } });
+const codalLib = ext(CODAL, { name: "Codal", version: "0.2.1", extensions: { [CORE]: `embedded:${CORE}` } });
 const microbitLib = ext(MICROBIT, {
   name: "Micro:bit v2",
   version: "0.2.1",
-  extensions: { [WODAL]: `embedded:${WODAL}` },
+  extensions: { [CODAL]: `embedded:${CODAL}` },
 });
 const simLib = ext(SIM, { name: "Sim", version: "0.1.0", extensions: { [CORE]: `embedded:${CORE}` } });
 
@@ -84,10 +84,10 @@ const legacyAddon = ext(LEGACY, {
 
 const ADDONS = [positionAddon, flockAddon, sharedMathAddon, legacyAddon];
 
-const microbitEmbedRecord: readonly EmbeddedExtension[] = [microbitLib, wodalLib, coreLib, ...ADDONS];
+const microbitEmbedRecord: readonly EmbeddedExtension[] = [microbitLib, codalLib, coreLib, ...ADDONS];
 const simEmbedRecord: readonly EmbeddedExtension[] = [simLib, coreLib, ...ADDONS];
 
-const microbitLayers = new Set([CORE, WODAL, MICROBIT]);
+const microbitLayers = new Set([CORE, CODAL, MICROBIT]);
 const simLayers = new Set([CORE, SIM]);
 
 const microbitProject = { [MICROBIT]: `embedded:${MICROBIT}` };
@@ -102,9 +102,9 @@ function coordinatesOf(items: readonly { coordinate: string }[]): string[] {
 }
 
 describe("deriveProjectPlatformStack -- two platforms", () => {
-  test("a micro:bit project's stack is core, wodal, and microbit-v2 with their declared versions", () => {
+  test("a micro:bit project's stack is core, codal, and microbit-v2 with their declared versions", () => {
     const stack = deriveProjectPlatformStack(microbitProject, microbitEmbedRecord, microbitLayers);
-    assert.deepEqual(coordinatesOf(stack), [CORE, MICROBIT, WODAL]);
+    assert.deepEqual(coordinatesOf(stack), [CODAL, CORE, MICROBIT]);
     assert.equal(stack.find((layer) => layer.coordinate === MICROBIT)?.version, "0.2.1");
     assert.equal(stack.find((layer) => layer.coordinate === CORE)?.version, "0.2.1");
   });
@@ -172,7 +172,7 @@ describe("buildExtensionCatalog -- two platforms", () => {
 
   test("the micro:bit catalog excludes transitive layer libs, an incompatible add-on, and a version mismatch", () => {
     const entries = buildExtensionCatalog(microbitProject, microbitEmbedRecord, microbitLayers);
-    assert.equal(entryFor(entries, WODAL), undefined);
+    assert.equal(entryFor(entries, CODAL), undefined);
     assert.equal(entryFor(entries, CORE), undefined);
     assert.equal(entryFor(entries, FLOCK), undefined);
     assert.equal(entryFor(entries, LEGACY), undefined);
@@ -203,7 +203,7 @@ describe("buildExtensionCatalog -- two platforms", () => {
       canonicalOrigin: CORE,
       files: [{ path: "index.ts", content: "export {};" }],
     };
-    const entries = buildExtensionCatalog(microbitProject, [microbitLib, wodalLib, noManifest], microbitLayers);
+    const entries = buildExtensionCatalog(microbitProject, [microbitLib, codalLib, noManifest], microbitLayers);
     assert.equal(entryFor(entries, MICROBIT)?.name, "Micro:bit v2");
   });
 });
@@ -244,7 +244,7 @@ describe("uninstallEmbeddedExtension", () => {
   const withPosition = { ...microbitProject, [POSITION]: `embedded:${POSITION}` };
 
   test("removes an add-on so it no longer resolves", () => {
-    const result = uninstallEmbeddedExtension(withPosition, POSITION, microbitLayers);
+    const result = uninstallEmbeddedExtension(withPosition, POSITION, microbitLayers, microbitEmbedRecord);
     assert.equal(result.ok, true);
     assert.equal(result.code, ExtensionActionResultCode.UNINSTALLED);
     assert.equal(POSITION in result.extensions, false);
@@ -257,17 +257,49 @@ describe("uninstallEmbeddedExtension", () => {
   });
 
   test("rejects uninstalling a locked layer library", () => {
-    const result = uninstallEmbeddedExtension(microbitProject, MICROBIT, microbitLayers);
+    const result = uninstallEmbeddedExtension(microbitProject, MICROBIT, microbitLayers, microbitEmbedRecord);
     assert.equal(result.ok, false);
     assert.equal(result.code, ExtensionActionResultCode.LOCKED);
     assert.deepEqual(result.extensions, microbitProject);
   });
 
   test("reports an absent coordinate as a no-op", () => {
-    const result = uninstallEmbeddedExtension(microbitProject, POSITION, microbitLayers);
+    const result = uninstallEmbeddedExtension(microbitProject, POSITION, microbitLayers, microbitEmbedRecord);
     assert.equal(result.ok, false);
     assert.equal(result.code, ExtensionActionResultCode.NOT_INSTALLED);
     assert.deepEqual(result.extensions, microbitProject);
+  });
+
+  test("rejects uninstalling a coordinate another installed extension depends on", () => {
+    // A gamepad add-on that depends on the Position add-on, both installed.
+    const GAMEPAD = "mindcraft-lang/microbit-gamepad";
+    const gamepadAddon = ext(GAMEPAD, {
+      name: "Gamepad",
+      version: "1.0.0",
+      targets: { [MICROBIT]: { packageVersion: "^0.2.0" } },
+      extensions: { [POSITION]: `embedded:${POSITION}` },
+    });
+    const embedRecord = [...microbitEmbedRecord, gamepadAddon];
+    const project = {
+      ...microbitProject,
+      [POSITION]: `embedded:${POSITION}`,
+      [GAMEPAD]: `embedded:${GAMEPAD}`,
+    };
+
+    const blocked = uninstallEmbeddedExtension(project, POSITION, microbitLayers, embedRecord);
+    assert.equal(blocked.ok, false);
+    assert.equal(blocked.code, ExtensionActionResultCode.REQUIRED_BY_DEPENDENT);
+    assert.deepEqual(blocked.extensions, project);
+
+    // The depending add-on itself uninstalls freely; nothing depends on it.
+    const allowed = uninstallEmbeddedExtension(project, GAMEPAD, microbitLayers, embedRecord);
+    assert.equal(allowed.ok, true);
+    assert.equal(allowed.code, ExtensionActionResultCode.UNINSTALLED);
+
+    // With the dependent removed, Position is no longer depended upon.
+    const nowAllowed = uninstallEmbeddedExtension(allowed.extensions, POSITION, microbitLayers, embedRecord);
+    assert.equal(nowAllowed.ok, true);
+    assert.equal(nowAllowed.code, ExtensionActionResultCode.UNINSTALLED);
   });
 });
 

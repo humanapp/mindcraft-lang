@@ -109,6 +109,16 @@ export interface ProjectContentManifest {
    */
   readonly extensions: MindcraftProjectExtensions;
   /**
+   * Project-relative paths of every source and asset file this project
+   * comprises: the authoritative content list used to assemble the project when
+   * it is loaded as an embedded or dependency extension, or packaged for
+   * delivery. The manifest itself is always part of the project and is never
+   * listed. Present only when the file carries a non-empty list; a live host
+   * project need not declare it, but a project assembled as an embedded
+   * extension must.
+   */
+  readonly files?: readonly string[];
+  /**
    * Content-relative paths of the `.d.ts` declaration files this content
    * contributes as ambient declarations: type declarations the consumer's
    * TypeScript environment includes globally (language globals and/or
@@ -132,6 +142,7 @@ export const ProjectContentManifestErrorCode = {
   INVALID_JSON: "PROJECT_MANIFEST_INVALID_JSON",
   INVALID_ROOT: "PROJECT_MANIFEST_INVALID_ROOT",
   INVALID_NAME: "PROJECT_MANIFEST_INVALID_NAME",
+  INVALID_FILES: "PROJECT_MANIFEST_INVALID_FILES",
   INVALID_AMBIENT: "PROJECT_MANIFEST_INVALID_AMBIENT",
   INVALID_TARGETS: "PROJECT_MANIFEST_INVALID_TARGETS",
   INVALID_EXTENSIONS: "PROJECT_MANIFEST_INVALID_EXTENSIONS",
@@ -284,10 +295,10 @@ export function parseProjectContentManifest(content: string): ProjectContentMani
 
 /**
  * Validate a parsed project content manifest. String `description` and
- * `thumbnailUrl` fields are carried through; a string-array `ambient` field is
- * carried through when non-empty; other fields are ignored, and an absent
- * `extensions` field yields an empty extensions map. A missing or non-semver
- * `version` is read as the lowest content version (`"0.0.0"`).
+ * `thumbnailUrl` fields are carried through; string-array `files` and `ambient`
+ * fields are carried through when non-empty; other fields are ignored, and an
+ * absent `extensions` field yields an empty extensions map. A missing or
+ * non-semver `version` is read as the lowest content version (`"0.0.0"`).
  *
  * @param value - Parsed JSON value of a `mindcraft.json` file.
  */
@@ -316,6 +327,19 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
   }
 
   const version = isSemver(value.version) ? value.version : LOWEST_CONTENT_VERSION;
+
+  let files: readonly string[] | undefined;
+  if (value.files !== undefined) {
+    if (!Array.isArray(value.files) || value.files.some((entry) => typeof entry !== "string")) {
+      errors.push({
+        code: ProjectContentManifestErrorCode.INVALID_FILES,
+        path: "$.files",
+        message: "$.files must be an array of string paths when present.",
+      });
+    } else if (value.files.length > 0) {
+      files = value.files as readonly string[];
+    }
+  }
 
   let ambient: readonly string[] | undefined;
   if (value.ambient !== undefined) {
@@ -370,6 +394,7 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
       ...(typeof value.description === "string" ? { description: value.description } : {}),
       ...(typeof value.thumbnailUrl === "string" ? { thumbnailUrl: value.thumbnailUrl } : {}),
       extensions,
+      ...(files !== undefined ? { files } : {}),
       ...(ambient !== undefined ? { ambient } : {}),
       ...(targets !== undefined ? { targets } : {}),
     },
@@ -386,6 +411,7 @@ export function serializeProjectContentManifest(manifest: ProjectContentManifest
       ...(manifest.description !== undefined ? { description: manifest.description } : {}),
       ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
       ...(Object.keys(manifest.extensions).length > 0 ? { extensions: manifest.extensions } : {}),
+      ...(manifest.files !== undefined && manifest.files.length > 0 ? { files: manifest.files } : {}),
       ...(manifest.ambient !== undefined && manifest.ambient.length > 0 ? { ambient: manifest.ambient } : {}),
       ...(manifest.targets !== undefined && Object.keys(manifest.targets).length > 0
         ? { targets: manifest.targets }

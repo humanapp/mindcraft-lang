@@ -7,7 +7,7 @@ import {
   type MindcraftEnvironment,
   type MindcraftModule,
 } from "@mindcraft-lang/core";
-import { type BrainServices, isBrainBuildError, LinkDiagCode, TilePlacement } from "@mindcraft-lang/core/brain";
+import { type BrainServices, LinkDiagCode, TilePlacement } from "@mindcraft-lang/core/brain";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import {
@@ -130,23 +130,19 @@ describe("MindcraftEnvironment.linkBrain", () => {
     assert.ok(result.diagnostics.get(0)!.message.includes("host.sensor"));
   });
 
-  test("createBrain throws a BrainBuildError carrying the diagnostics", () => {
+  test("createBrain of a def missing an action returns a tracked, invalidated brain", () => {
     const sensor = createHostSensorModule("host-sensor", "host.sensor");
     const withSensor = createMindcraftEnvironment({ modules: [coreModule(), sensor.module] });
     const withoutSensor = createMindcraftEnvironment({ modules: [coreModule()] });
     const def = createSensorBrainDef(getEnvironmentServices(withSensor), "Sensor", sensor.tile);
 
-    let thrown: unknown;
-    try {
-      withoutSensor.createBrain(def);
-    } catch (err) {
-      thrown = err;
-    }
-    if (!isBrainBuildError(thrown)) {
-      assert.fail("expected a BrainBuildError");
-    }
-    assert.equal(thrown.diagnostics.size(), 1);
-    assert.equal(thrown.diagnostics.get(0)!.code, LinkDiagCode.MissingActionBinding);
+    const brain = withoutSensor.createBrain(def);
+    assert.equal(brain.status, "invalidated");
+    assert.equal(brain.getProgram(), undefined);
+    // A born-invalidated brain is safe to operate as a no-op until it rebuilds.
+    brain.events();
+    brain.startup();
+    brain.think(0);
   });
 });
 

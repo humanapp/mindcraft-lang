@@ -15,7 +15,6 @@ import {
 import {
   type BrainServices,
   type ITileCatalog,
-  isBrainBuildError,
   mkVariableFactoryTileId,
   mkVariableTileId,
   TilePlacement,
@@ -304,30 +303,6 @@ function createSensorBrainDef(services: BrainServices, name: string, sensorTile:
   return brainDef;
 }
 
-function assertBuildErrorIncludes(fn: () => unknown, substring: string): void {
-  let thrown: unknown;
-  let didThrow = false;
-  try {
-    fn();
-  } catch (err) {
-    didThrow = true;
-    thrown = err;
-  }
-  assert.ok(didThrow, "expected the call to throw");
-  if (!isBrainBuildError(thrown)) {
-    assert.fail("expected a BrainBuildError");
-  }
-  const diagnostics = thrown.diagnostics;
-  let matched = false;
-  for (let i = 0; i < diagnostics.size(); i++) {
-    if (diagnostics.get(i)!.message.includes(substring)) {
-      matched = true;
-      break;
-    }
-  }
-  assert.ok(matched, `expected a diagnostic mentioning '${substring}'`);
-}
-
 describe("mindcraft environment", () => {
   test("an app-registered struct variable factory reads with the type's display name", () => {
     const capture: { typeId?: string } = {};
@@ -393,7 +368,8 @@ describe("mindcraft environment", () => {
 
     const alphaBrain = envA.createBrain(brainDef);
     assert.equal(alphaBrain.status, "active");
-    assertBuildErrorIncludes(() => envB.createBrain(brainDef), "alpha.sensor");
+    const envBBrain = envB.createBrain(brainDef);
+    assert.equal(envBBrain.status, "invalidated");
   });
 
   test("creates independent runnable brains from one definition", () => {
@@ -469,9 +445,14 @@ describe("mindcraft environment", () => {
       bundled.tile.tileId
     );
 
-    assertBuildErrorIncludes(() => environment.createBrain(restoredFromJson), "bundle.persisted");
+    const bornInvalidated = environment.createBrain(restoredFromJson);
+    assert.equal(bornInvalidated.status, "invalidated");
 
+    // Providing the missing action revives the born-invalidated brain through
+    // the same per-tick retry path that revives a brain whose rebuild failed.
     environment.replaceActionBundle(createActionBundle("bundle.persisted.rev1", [bundled]));
+    environment.rebuildInvalidatedBrains();
+    assert.equal(bornInvalidated.status, "active");
 
     const brain = environment.createBrain(restoredFromJson);
     assert.equal(brain.status, "active");

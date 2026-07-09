@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { EmbeddedExtension } from "@mindcraft-lang/bridge-app";
 import {
-  buildCoreStdlibExtension,
   buildExtensionCatalog,
   CORE_LIB_COORDINATE,
   collectMetadataFromCompile,
@@ -12,6 +10,7 @@ import {
   formatEmbeddedExtensionIdViolations,
   resolveEmbeddedExtensions,
 } from "@mindcraft-lang/bridge-app";
+import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
 import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
@@ -23,60 +22,22 @@ import {
   SIM_LIB_REFERENCE,
 } from "./sim-extension-coordinates";
 
-function readText(relativePath: string): string {
-  return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
+function extensionDir(relativePath: string): string {
+  return fileURLToPath(new URL(relativePath, import.meta.url));
 }
 
-/** The Teleport add-on built from its on-disk incubator project (the app's `?raw` imports are Vite-only). */
-function teleportAddon(): EmbeddedExtension {
-  const base = "../../extensions/ecosim-teleport-ext";
-  return {
-    canonicalOrigin: ECOSIM_TELEPORT_EXT_COORDINATE,
-    files: [
-      { path: "teleport.ts", content: readText(`${base}/teleport.ts`) },
-      { path: "teleport.svg", content: readText(`${base}/teleport.svg`) },
-      { path: "teleport.md", content: readText(`${base}/teleport.md`) },
-      { path: "mindcraft.json", content: readText(`${base}/mindcraft.json`) },
-    ],
-  };
-}
-
-/** The Detect add-on built from its on-disk incubator project. */
-function detectAddon(): EmbeddedExtension {
-  const base = "../../extensions/ecosim-detect-ext";
-  return {
-    canonicalOrigin: ECOSIM_DETECT_EXT_COORDINATE,
-    files: [
-      { path: "detect.ts", content: readText(`${base}/detect.ts`) },
-      { path: "detect.svg", content: readText(`${base}/detect.svg`) },
-      { path: "detect.md", content: readText(`${base}/detect.md`) },
-      { path: "mindcraft.json", content: readText(`${base}/mindcraft.json`) },
-    ],
-  };
-}
-
-/** The two sim layer libraries built from their on-disk source and bundled edges. */
-function simLayers(): EmbeddedExtension[] {
-  return [
-    {
-      canonicalOrigin: SIM_LIB_COORDINATE,
-      files: [
-        { path: "index.ts", content: readText("../../lib/index.ts") },
-        { path: "mindcraft.sim.d.ts", content: readText("../../ambient/mindcraft.sim.d.ts") },
-        { path: "mindcraft.json", content: readText("../../lib/mindcraft.json") },
-      ],
-    },
-    buildCoreStdlibExtension({
-      entry: readText("../../../../packages/core/lib/index.ts"),
-      ambient: readText("../../../../packages/core/ambient/mindcraft.core.d.ts"),
-      manifest: readText("../../../../packages/core/lib/mindcraft.json"),
-    }),
-  ];
-}
-
-/** The sim app's embed record: the two layers plus the two add-ons. */
+/**
+ * The sim app's embed record -- the two layers plus the two add-ons -- assembled
+ * from each extension's own `mindcraft.json` `files` list through the shared
+ * loader, the single content-assembly path the app's Vite provider also uses.
+ */
 function simEmbedRecord(): EmbeddedExtension[] {
-  return [...simLayers(), teleportAddon(), detectAddon()];
+  return [
+    buildEmbeddedExtensionFromDir(extensionDir("../../lib"), SIM_LIB_COORDINATE),
+    buildEmbeddedExtensionFromDir(extensionDir("../../../../packages/core/lib"), CORE_LIB_COORDINATE),
+    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/ecosim-teleport-ext"), ECOSIM_TELEPORT_EXT_COORDINATE),
+    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/ecosim-detect-ext"), ECOSIM_DETECT_EXT_COORDINATE),
+  ];
 }
 
 /** The stable actuator id baked into the Teleport extension's source def. */
@@ -123,9 +84,17 @@ describe("sim add-on extensions -- browser catalog compatibility", () => {
         },
       ],
     };
-    const [, coreLib] = simLayers();
-    const embedRecord = [microbitLayer, coreLib, teleportAddon(), detectAddon()];
-    const microbitLayerCoordinates = new Set([CORE_LIB_COORDINATE, "mindcraft-lang/wodal", MICROBIT_COORDINATE]);
+    const coreLib = buildEmbeddedExtensionFromDir(extensionDir("../../../../packages/core/lib"), CORE_LIB_COORDINATE);
+    const teleportAddon = buildEmbeddedExtensionFromDir(
+      extensionDir("../../extensions/ecosim-teleport-ext"),
+      ECOSIM_TELEPORT_EXT_COORDINATE
+    );
+    const detectAddon = buildEmbeddedExtensionFromDir(
+      extensionDir("../../extensions/ecosim-detect-ext"),
+      ECOSIM_DETECT_EXT_COORDINATE
+    );
+    const embedRecord = [microbitLayer, coreLib, teleportAddon, detectAddon];
+    const microbitLayerCoordinates = new Set([CORE_LIB_COORDINATE, "mindcraft-lang/codal", MICROBIT_COORDINATE]);
 
     const catalog = buildExtensionCatalog(
       { [MICROBIT_COORDINATE]: `embedded:${MICROBIT_COORDINATE}` },

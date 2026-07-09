@@ -2,6 +2,7 @@
   "name": "Teleport",
   "version": "0.1.0",
   "description": "Teleport actuator for the ecosystem simulation: move an actor to a position, another actor, or the current target.",
+  "files": ["teleport.ts", "teleport.svg", "teleport.md"],
   "targets": {
     "mindcraft-lang/sim": {
       "packageVersion": "^0.1.0"

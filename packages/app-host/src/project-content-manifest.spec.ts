@@ -123,6 +123,26 @@ describe("parseProjectContentManifest", () => {
     }
   });
 
+  it("carries a non-empty files string array through", () => {
+    const result = parseProjectContentManifest(
+      JSON.stringify({ name: "P", version: "0.1.0", files: ["index.ts", "mindcraft.core.d.ts"] })
+    );
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest.files, ["index.ts", "mindcraft.core.d.ts"]);
+    }
+  });
+
+  it("omits files when absent or empty", () => {
+    for (const files of [undefined, []]) {
+      const result = parseProjectContentManifest(JSON.stringify({ name: "P", version: "0.1.0", files }));
+      assert.strictEqual(result.ok, true);
+      if (result.ok) {
+        assert.strictEqual("files" in result.manifest, false);
+      }
+    }
+  });
+
   it("carries a non-empty ambient string array through", () => {
     const result = parseProjectContentManifest(
       JSON.stringify({ name: "P", version: "0.1.0", ambient: ["mindcraft.core.d.ts", "mindcraft.wodal.d.ts"] })
@@ -208,6 +228,14 @@ describe("validateProjectContentManifest", () => {
     }
   });
 
+  it("rejects a non-array or non-string-element files field with INVALID_FILES", () => {
+    for (const files of [5, "x", { a: 1 }, ["ok", 3]]) {
+      const result = validateProjectContentManifest({ name: "P", version: "0.1.0", files });
+      assert.strictEqual(result.ok, false);
+      assert.ok(errorCodes(result).includes(ProjectContentManifestErrorCode.INVALID_FILES));
+    }
+  });
+
   it("rejects a non-array or non-string-element ambient field with INVALID_AMBIENT", () => {
     for (const ambient of [5, "x", { a: 1 }, ["ok", 3]]) {
       const result = validateProjectContentManifest({ name: "P", version: "0.1.0", ambient });
@@ -221,9 +249,9 @@ describe("validateProjectContentManifest", () => {
       5,
       ["a"],
       { "-bad/repo": { packageVersion: "^1.0.0" } },
-      { "mindcraft-lang/wodal": { packageVersion: 3 } },
-      { "mindcraft-lang/wodal": { packageVersion: "" } },
-      { "mindcraft-lang/wodal": "^1.0.0" },
+      { "mindcraft-lang/codal": { packageVersion: 3 } },
+      { "mindcraft-lang/codal": { packageVersion: "" } },
+      { "mindcraft-lang/codal": "^1.0.0" },
     ];
     for (const targets of cases) {
       const result = validateProjectContentManifest({ name: "P", version: "0.1.0", targets });
@@ -329,6 +357,27 @@ describe("serializeProjectContentManifest", () => {
     const serialized = serializeProjectContentManifest({ name: "P", version: "0.1.0", extensions: {} });
     assert.strictEqual(serialized.includes("description"), false);
     assert.strictEqual(serialized.includes("thumbnailUrl"), false);
+  });
+
+  it("round-trips a non-empty files list and omits it when empty", () => {
+    const manifest: ProjectContentManifest = {
+      name: "P",
+      version: "0.1.0",
+      extensions: {},
+      files: ["index.ts", "mindcraft.core.d.ts"],
+    };
+    const result = parseProjectContentManifest(serializeProjectContentManifest(manifest));
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest, manifest);
+    }
+    const emptySerialized = serializeProjectContentManifest({
+      name: "P",
+      version: "0.1.0",
+      extensions: {},
+      files: [],
+    });
+    assert.strictEqual(emptySerialized.includes("files"), false);
   });
 
   it("round-trips a non-empty ambient list and omits it when empty", () => {

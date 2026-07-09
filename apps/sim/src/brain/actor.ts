@@ -1,5 +1,4 @@
 import {
-  BrainDef,
   type CreateBrainOptions,
   type IBrainDef,
   type IBrainPageDef,
@@ -184,7 +183,7 @@ export class Actor {
     this.actorId = 0; // to be assigned later
     this.archetype = archetype;
     this.brainDef = brainDef;
-    this.brain = this.tryCreateBrain();
+    this.brain = this.createBrain();
     this.mover = new Mover(moverCfg);
     this.sprite = null!; // to be assigned later
     this.bornAt = this.engine.simTime;
@@ -208,7 +207,13 @@ export class Actor {
     this.brain.startup();
   }
 
-  private tryCreateBrain(): MindcraftBrain {
+  /**
+   * Create this actor's brain from its current def. When the def references an
+   * action the active bundle does not provide, the returned brain is tracked
+   * and invalidated by the environment; the per-tick rebuild revives it once
+   * the action becomes available.
+   */
+  private createBrain(): MindcraftBrain {
     const env = this.engine.env;
     const brainOptions: CreateBrainOptions = {
       context: this,
@@ -224,20 +229,14 @@ export class Actor {
         },
       },
     };
-    try {
-      return env.createBrain(this.brainDef, brainOptions);
-    } catch (err) {
-      console.warn(`[Actor] Failed to create brain for ${this.archetype}:`, err);
-      const emptyDef = env.withServices((services) => BrainDef.emptyBrainDef(services, `${this.archetype} Brain`));
-      return env.createBrain(emptyDef, brainOptions);
-    }
+    return env.createBrain(this.brainDef, brainOptions);
   }
 
   replaceBrain(brainDef: IBrainDef = this.brainDef) {
     this.brainDef = brainDef;
     this.brain.events().removeAllListeners();
     this.brain.dispose();
-    this.brain = this.tryCreateBrain();
+    this.brain = this.createBrain();
     this.brain.events().on("page_activated", this.pageActivated);
     this.brain.events().on("page_deactivated", this.pageDeactivated);
     this.brain.startup();

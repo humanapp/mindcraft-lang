@@ -91,7 +91,7 @@ const platformAmbient: AmbientFile = {
 };
 
 const wodalMount: DependencyMount = {
-  namespace: "mindcraft-lang/wodal",
+  namespace: "mindcraft-lang/codal",
   files: new Map([
     [
       "/image.ts",
@@ -101,7 +101,7 @@ const wodalMount: DependencyMount = {
   ]),
 };
 
-const wodalDependency: ProjectDependency = { coordinate: "mindcraft-lang/wodal" };
+const wodalDependency: ProjectDependency = { coordinate: "mindcraft-lang/codal" };
 
 describe("generated workspace tsconfig editor resolution", () => {
   test("the materialized extension source and @ext user imports resolve types with zero diagnostics", () => {
@@ -116,16 +116,16 @@ describe("generated workspace tsconfig editor resolution", () => {
 
     const controlled = compiler.getCompilerControlledFiles();
     assert.ok(
-      controlled.has(".extensions/mindcraft-lang/wodal/image.ts"),
+      controlled.has(".extensions/mindcraft-lang/codal/image.ts"),
       "the wodal dependency materializes image.ts under the installed-extensions tree"
     );
 
-    const userMain = `import type { Image } from "mindcraft";\nimport { image } from "@ext/mindcraft-lang/wodal";\nexport const heart: Image = image(5);\n`;
+    const userMain = `import type { Image } from "mindcraft";\nimport { image } from "@ext/mindcraft-lang/codal";\nexport const heart: Image = image(5);\n`;
     const workspaceFiles = new Map(controlled);
     workspaceFiles.set("main.ts", userMain);
 
     const { config, byTarget } = editorDiagnostics(workspaceFiles, [
-      ".extensions/mindcraft-lang/wodal/image.ts",
+      ".extensions/mindcraft-lang/codal/image.ts",
       "main.ts",
     ]);
 
@@ -135,7 +135,7 @@ describe("generated workspace tsconfig editor resolution", () => {
       "the generated tsconfig.json produces no config-level diagnostics (parse, option, or global)"
     );
     assert.deepEqual(
-      byTarget.get(".extensions/mindcraft-lang/wodal/image.ts"),
+      byTarget.get(".extensions/mindcraft-lang/codal/image.ts"),
       [],
       'the materialized image.ts resolves `import type { Image } from "mindcraft"`'
     );
