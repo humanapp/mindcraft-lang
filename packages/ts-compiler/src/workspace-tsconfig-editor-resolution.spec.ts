@@ -33,6 +33,11 @@ function editorDiagnostics(
   workspaceFiles: ReadonlyMap<string, string>,
   targets: readonly string[]
 ): { config: string[]; byTarget: Map<string, string[]> } {
+  return withWorkspaceOnDisk(workspaceFiles, (root) => projectDiagnostics(root, "tsconfig.json", targets));
+}
+
+/** Materialize `workspaceFiles` into a temp directory, run `fn` against it, and clean up. */
+function withWorkspaceOnDisk<T>(workspaceFiles: ReadonlyMap<string, string>, fn: (root: string) => T): T {
   const root = mkdtempSync(path.join(tmpdir(), "mc-editor-tsconfig-"));
   try {
     for (const [relative, content] of workspaceFiles) {
@@ -40,44 +45,64 @@ function editorDiagnostics(
       mkdirSync(path.dirname(absolute), { recursive: true });
       writeFileSync(absolute, content);
     }
-
-    const configPath = path.join(root, "tsconfig.json");
-    const parseHost: ts.ParseConfigFileHost = {
-      ...ts.sys,
-      onUnRecoverableConfigFileDiagnostic: (diagnostic) => {
-        throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
-      },
-    };
-    const parsed = ts.getParsedCommandLineOfConfigFile(configPath, undefined, parseHost);
-    assert.ok(parsed, "the generated tsconfig.json parses");
-
-    const program = ts.createProgram(parsed.fileNames, parsed.options, ts.createCompilerHost(parsed.options));
-
-    const config = [...parsed.errors, ...program.getOptionsDiagnostics(), ...program.getGlobalDiagnostics()].map(
-      (diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
-    );
-
-    const byTarget = new Map<string, string[]>();
-    for (const target of targets) {
-      const absolute = path.join(root, target);
-      const sourceFile = program.getSourceFile(absolute);
-      if (!sourceFile) {
-        byTarget.set(target, ["<not covered by the project>"]);
-        continue;
-      }
-      const diagnostics = [
-        ...program.getSemanticDiagnostics(sourceFile),
-        ...program.getSyntacticDiagnostics(sourceFile),
-      ];
-      byTarget.set(
-        target,
-        diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))
-      );
-    }
-    return { config, byTarget };
+    return fn(root);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+}
+
+/**
+ * The `tsconfig.json` TypeScript's upward config-file discovery -- the search
+ * the editor's language service runs for an opened file -- finds for the file
+ * at workspace-relative `target`, as a workspace-relative path.
+ */
+function discoveredConfigFor(root: string, target: string): string | undefined {
+  const configPath = ts.findConfigFile(path.dirname(path.join(root, target)), ts.sys.fileExists);
+  return configPath === undefined ? undefined : path.relative(root, configPath);
+}
+
+/**
+ * Config-level and per-target diagnostics of the project defined by the
+ * `tsconfig.json` at workspace-relative `configRelative` in the materialized
+ * workspace at `root`. A target the project does not cover reports
+ * `<not covered by the project>`.
+ */
+function projectDiagnostics(
+  root: string,
+  configRelative: string,
+  targets: readonly string[]
+): { config: string[]; byTarget: Map<string, string[]> } {
+  const configPath = path.join(root, configRelative);
+  const parseHost: ts.ParseConfigFileHost = {
+    ...ts.sys,
+    onUnRecoverableConfigFileDiagnostic: (diagnostic) => {
+      throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
+    },
+  };
+  const parsed = ts.getParsedCommandLineOfConfigFile(configPath, undefined, parseHost);
+  assert.ok(parsed, `${configRelative} parses`);
+
+  const program = ts.createProgram(parsed.fileNames, parsed.options, ts.createCompilerHost(parsed.options));
+
+  const config = [...parsed.errors, ...program.getOptionsDiagnostics(), ...program.getGlobalDiagnostics()].map(
+    (diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
+  );
+
+  const byTarget = new Map<string, string[]>();
+  for (const target of targets) {
+    const absolute = path.join(root, target);
+    const sourceFile = program.getSourceFile(absolute);
+    if (!sourceFile) {
+      byTarget.set(target, ["<not covered by the project>"]);
+      continue;
+    }
+    const diagnostics = [...program.getSemanticDiagnostics(sourceFile), ...program.getSyntacticDiagnostics(sourceFile)];
+    byTarget.set(
+      target,
+      diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))
+    );
+  }
+  return { config, byTarget };
 }
 
 const platformAmbient: AmbientFile = {
@@ -102,6 +127,38 @@ const wodalMount: DependencyMount = {
 };
 
 const wodalDependency: ProjectDependency = { coordinate: "mindcraft-lang/codal" };
+
+/**
+ * A tsconfig an extension could plausibly ship for its own authoring workflow,
+ * hostile to a consumer: it relaxes strictness and remaps the `mindcraft`
+ * module to a path that does not exist in the consumer's workspace.
+ */
+const extensionCarriedTsconfig = JSON.stringify(
+  {
+    compilerOptions: {
+      strict: false,
+      baseUrl: ".",
+      paths: { mindcraft: ["./vendor/mindcraft"] },
+    },
+    include: ["**/*"],
+  },
+  undefined,
+  2
+);
+
+const tsconfigCarryingMount: DependencyMount = {
+  namespace: "acme/vendored",
+  files: new Map([
+    [
+      "/image.ts",
+      `import type { Image } from "mindcraft";\nexport function image(width: number): Image {\n  return { width };\n}\n`,
+    ],
+    ["/index.ts", `export { image } from "./image";\n`],
+    ["/tsconfig.json", extensionCarriedTsconfig],
+  ]),
+};
+
+const tsconfigCarryingDependency: ProjectDependency = { coordinate: "acme/vendored" };
 
 describe("generated workspace tsconfig editor resolution", () => {
   test("the materialized extension source and @ext user imports resolve types with zero diagnostics", () => {
@@ -144,5 +201,61 @@ describe("generated workspace tsconfig editor resolution", () => {
       [],
       "user code resolves both the ambient `mindcraft` module and the `@ext/<owner>/<repo>` import"
     );
+  });
+
+  test("an extension-carried tsconfig.json shadows config discovery only inside its own read-only subtree", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const compiler = createWorkspaceCompiler({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      mounts: [declarationMount([platformAmbient])],
+      environment,
+      dependencies: [tsconfigCarryingDependency],
+      dependencyMounts: [tsconfigCarryingMount],
+    });
+
+    const controlled = compiler.getCompilerControlledFiles();
+    assert.equal(
+      controlled.get(".extensions/acme/vendored/tsconfig.json"),
+      extensionCarriedTsconfig,
+      "the extension's tsconfig.json materializes verbatim under its installed-extensions subtree"
+    );
+
+    const userMain = `import type { Image } from "mindcraft";\nimport { image } from "@ext/acme/vendored";\nexport const heart: Image = image(5);\n`;
+    const workspaceFiles = new Map(controlled);
+    workspaceFiles.set("main.ts", userMain);
+
+    const extensionImage = ".extensions/acme/vendored/image.ts";
+    withWorkspaceOnDisk(workspaceFiles, (root) => {
+      assert.equal(
+        discoveredConfigFor(root, "main.ts"),
+        "tsconfig.json",
+        "the user's own files are still governed by the generated root tsconfig.json"
+      );
+      assert.equal(
+        discoveredConfigFor(root, extensionImage),
+        ".extensions/acme/vendored/tsconfig.json",
+        "config discovery inside the extension subtree finds the extension's own tsconfig.json"
+      );
+
+      const rootProject = projectDiagnostics(root, "tsconfig.json", ["main.ts", extensionImage]);
+      assert.deepEqual(rootProject.config, [], "the root project raises no config-level diagnostics");
+      assert.deepEqual(
+        rootProject.byTarget.get("main.ts"),
+        [],
+        "the user's diagnostics and `@ext` resolution into the subtree are unchanged by the nested tsconfig"
+      );
+      assert.deepEqual(
+        rootProject.byTarget.get(extensionImage),
+        [],
+        "the root project still covers and cleanly checks the extension source"
+      );
+
+      const nestedProject = projectDiagnostics(root, ".extensions/acme/vendored/tsconfig.json", [extensionImage]);
+      const nestedDiagnostics = nestedProject.byTarget.get(extensionImage) ?? [];
+      assert.ok(
+        nestedDiagnostics.length > 0,
+        "accepted blast radius: viewed under its own tsconfig, the read-only extension source misresolves"
+      );
+    });
   });
 });

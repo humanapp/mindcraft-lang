@@ -471,6 +471,59 @@ export default Sensor({
     assert.deepEqual(result.files.get("main.ts") ?? [], [], "the host program compiles clean");
   });
 
+  test("an extension-carried tsconfig.json is inert to compilation and extension content cannot collide at the workspace root", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const ambientFiles = ambientFilesFor(environment);
+    // A tsconfig that would break both compilation roots if it were ever read:
+    // it remaps the `mindcraft` module to a path that does not exist.
+    const carriedTsconfig = JSON.stringify({
+      compilerOptions: { strict: false, baseUrl: ".", paths: { mindcraft: ["./vendor/mindcraft"] } },
+      include: ["**/*"],
+    });
+    const beeperMount: DependencyMount = {
+      namespace: "acme/beeper",
+      files: new Map([
+        ["/index.ts", BEEP_SOURCE],
+        ["/tsconfig.json", carriedTsconfig],
+        ["/mindcraft.core.d.ts", "export {};\n"],
+      ]),
+    };
+    const compiler = createWorkspaceCompiler({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      mounts: [declarationMount(ambientFiles)],
+      environment,
+      dependencies: [{ coordinate: "acme/beeper" }],
+      dependencyMounts: [beeperMount],
+    });
+    compiler.replaceWorkspace(
+      new Map([["main.ts", { kind: "file", content: HOST_SENSOR, etag: "e1", isReadonly: false }]])
+    );
+
+    const result = compiler.compile();
+    assert.deepEqual(
+      [...result.files].filter(([, diagnostics]) => diagnostics.length > 0),
+      [],
+      "neither the host root nor the extension root reads the carried tsconfig: both compile clean"
+    );
+    assert.ok(result.bundle?.actions.get(EXT_ACTION_KEY), "the extension's tile action is in the bundle");
+    assert.ok(result.bundle?.actions.get(HOST_ACTION_KEY), "the host's tile action is in the bundle");
+
+    const controlled = compiler.getCompilerControlledFiles();
+    assert.equal(
+      controlled.get(".extensions/acme/beeper/tsconfig.json"),
+      carriedTsconfig,
+      "the carried tsconfig.json materializes verbatim under the extension subtree"
+    );
+    assert.ok(
+      controlled.get("tsconfig.json")?.includes('"strict": true'),
+      "the workspace-root tsconfig.json stays the generated one"
+    );
+    // Extension content keys under `.extensions/<owner>/<repo>/` unconditionally,
+    // so a file named like a host ambient cannot land at the workspace root.
+    assert.equal(controlled.get(".extensions/acme/beeper/mindcraft.core.d.ts"), "export {};\n");
+    assert.equal(controlled.get("mindcraft.core.d.ts"), ambientFiles[0]!.content);
+  });
+
   test("a project without extensions produces the single-root bundle unchanged", () => {
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
     const compiler = createWorkspaceCompiler({

@@ -108,6 +108,27 @@ describe("resolveEmbeddedExtensions -- flat cases", () => {
     assert.equal(mountFor(withoutAmbient.dependencyMounts, coordinateFor("codal")).ambient, undefined);
   });
 
+  test("a manifest-listed tsconfig.json is opaque payload: it rides the mount verbatim", () => {
+    const carriedTsconfig = '{ "compilerOptions": { "strict": false } }';
+    const withTsconfig: EmbeddedExtension = {
+      canonicalOrigin: coordinateFor("authored"),
+      files: [
+        { path: "index.ts", content: "export const authored = 1;" },
+        { path: "tsconfig.json", content: carriedTsconfig },
+        {
+          path: "mindcraft.json",
+          content: JSON.stringify({ name: "authored", version: "1.0.0", files: ["index.ts", "tsconfig.json"] }),
+        },
+      ],
+    };
+    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/authored": "embedded:mindcraft-lang/authored" }, [
+      withTsconfig,
+    ]);
+    const mount = mountFor(resolved.dependencyMounts, coordinateFor("authored"));
+    assert.equal(mount.files.get("/tsconfig.json"), carriedTsconfig);
+    assert.deepEqual(resolved.warnings, [], "carrying a tsconfig.json raises no resolution warning");
+  });
+
   test("returns empty results for an absent extensions list", () => {
     const resolved = resolveEmbeddedExtensions(undefined, [STDLIB]);
     assert.deepEqual(resolved.dependencies, []);
