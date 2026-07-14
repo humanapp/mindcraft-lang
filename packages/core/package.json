@@ -436,7 +436,7 @@
     "format:only": "biome format ./src",
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.spec.json && tsc --noEmit -p ambient/tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.spec.json && tsc --noEmit -p ambient/tsconfig.json && tsc --noEmit -p scripts/tsconfig.json && tsc --noEmit -p lib/tsconfig.json",
     "format": "biome format ./src --write",
     "pretest": "npm run build:node",
     "test": "tsx --tsconfig tsconfig.node.json --test $(find src -name '*.spec.ts')",
