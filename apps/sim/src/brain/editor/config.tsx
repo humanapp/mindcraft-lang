@@ -6,7 +6,7 @@ import type { Archetype } from "@/brain/actor";
 import { SimTypeIds } from "@/brain/type-system";
 import type { SimEnvironmentStore } from "@/services/sim-environment-store";
 import { dataTypeIconMap, dataTypeNameMap } from "./data-type-icons";
-import { genVisualForTile } from "./visual-provider";
+import { createVfsAwareVisualProvider } from "./visual-provider";
 
 const inputClass =
   "col-span-3 flex h-10 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50";
@@ -94,24 +94,14 @@ const vector2LiteralType: CustomLiteralType = {
 interface BuildBrainEditorConfigOptions {
   store: SimEnvironmentStore;
   archetype?: Archetype;
-  vfsRevision?: number;
   onTileHelp?: BrainEditorConfig["onTileHelp"];
   docsIntegration?: BrainEditorConfig["docsIntegration"];
 }
 
 export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): BrainEditorConfig {
-  const { store, archetype, vfsRevision, onTileHelp, docsIntegration } = options;
+  const { store, archetype, onTileHelp, docsIntegration } = options;
   const environment = store.env;
-  const resolveTileVisual =
-    vfsRevision !== undefined
-      ? (tileDef: Parameters<typeof genVisualForTile>[0]) => {
-          const visual = genVisualForTile(tileDef);
-          if (visual.iconUrl?.startsWith("/vfs/")) {
-            return { ...visual, iconUrl: `${visual.iconUrl}?_v=${vfsRevision}` };
-          }
-          return visual;
-        }
-      : genVisualForTile;
+  const resolveTileVisual = createVfsAwareVisualProvider((url) => store.resolveVfsAssetUrl(url));
 
   return {
     dataTypeIcons: dataTypeIconMap,

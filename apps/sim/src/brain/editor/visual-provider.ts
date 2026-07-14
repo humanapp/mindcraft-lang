@@ -40,6 +40,27 @@ function stripGenericCatalogLabel(tileDef: IBrainTileDef, visual: TileVisual | u
 
 const warnedMissingIcons = new Set<string>();
 
+/**
+ * Builds a tile visual resolver that generates each tile's visual via
+ * {@link genVisualForTile} and passes its icon URL through
+ * `resolveVfsAssetUrl`, replacing compiler-minted `/vfs/<path>` references
+ * with loadable asset URLs.
+ */
+export function createVfsAwareVisualProvider(
+  resolveVfsAssetUrl: (url: string) => string
+): (tileDef: IBrainTileDef) => TileVisual {
+  return (tileDef) => {
+    const visual = genVisualForTile(tileDef);
+    if (visual.iconUrl) {
+      const iconUrl = resolveVfsAssetUrl(visual.iconUrl);
+      if (iconUrl !== visual.iconUrl) {
+        return { ...visual, iconUrl };
+      }
+    }
+    return visual;
+  };
+}
+
 export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
   const intrinsicVisual = stripGenericCatalogLabel(tileDef, tileDef.metadata as TileVisual | undefined);
   const mappedVisual = tileVisuals.get(tileDef.tileId);

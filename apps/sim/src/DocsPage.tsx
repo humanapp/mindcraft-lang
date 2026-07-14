@@ -2,13 +2,17 @@ import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { DocsPage as SharedDocsPage } from "@mindcraft-lang/docs";
 import { Toaster } from "@mindcraft-lang/ui";
 import { useMemo } from "react";
-import { genVisualForTile } from "./brain/editor/visual-provider";
+import { createVfsAwareVisualProvider } from "./brain/editor/visual-provider";
 import { useSimEnvironment } from "./contexts/sim-environment";
 import { createDocsRegistry } from "./docs/docs-registry";
 
 export default function DocsPage() {
   const store = useSimEnvironment();
   const docsRegistry = useMemo(() => createDocsRegistry(store.userTileDocEntries), [store]);
+  const resolveTileVisual = useMemo(
+    () => createVfsAwareVisualProvider((url) => store.resolveVfsAssetUrl(url)),
+    [store]
+  );
   const docsTileCatalog = useMemo<ITileCatalog>(() => {
     return {
       get: (tileId: string) => {
@@ -26,7 +30,7 @@ export default function DocsPage() {
       registry={docsRegistry}
       tileCatalog={docsTileCatalog}
       brainServices={store.env.brainServices}
-      resolveTileVisual={genVisualForTile}
+      resolveTileVisual={resolveTileVisual}
       backLabel="Sim"
       backHref="/"
     >

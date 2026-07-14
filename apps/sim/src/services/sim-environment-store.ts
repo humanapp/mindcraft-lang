@@ -12,7 +12,13 @@ import {
   ProjectManager,
   type ProjectManifest,
 } from "@mindcraft-lang/app-host";
-import { type AppBridgeState, AppEnvironmentHost, type UserTileMetadata } from "@mindcraft-lang/bridge-app";
+import {
+  type AppBridgeState,
+  AppEnvironmentHost,
+  createVfsAssetUrlProvider,
+  type UserTileMetadata,
+  type VfsAssetUrlProvider,
+} from "@mindcraft-lang/bridge-app";
 import {
   type BrainDef,
   coreModule,
@@ -30,7 +36,6 @@ import type { Obstacle } from "@/brain/vision";
 import { name as simName, version as simVersion } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
 import { simDefaultExtensions, simEmbeddedExtensions } from "./sim-embedded-extensions";
-import { initVfsServiceWorker } from "./vfs-service-worker";
 
 /**
  * Platform content mounts for the sim, applied at the workspace root. Empty:
@@ -232,10 +237,15 @@ export class SimEnvironmentStore {
   private _projectDataReloadPromise: Promise<void> = Promise.resolve();
 
   private _isSwitchingProject = false;
-  private _vfsServiceWorkerInitialized = false;
+  private _vfsRevisionWiringInitialized = false;
+  private readonly _vfsAssetUrlProvider: VfsAssetUrlProvider;
 
   private constructor(host: AppEnvironmentHost) {
     this.host = host;
+    this._vfsAssetUrlProvider = createVfsAssetUrlProvider({
+      getProjectFileSystem: () => this.host.servedProjectFileSystem,
+      getVfsRevision: () => this.host.getVfsRevisionSnapshot(),
+    });
 
     this.host.onProjectLoaded(() => {
       const prefs = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
@@ -374,11 +384,24 @@ export class SimEnvironmentStore {
     }
     this._projectDataReloadPromise = this.reloadProjectData();
     await this._projectDataReloadPromise;
-    if (!this._vfsServiceWorkerInitialized) {
-      initVfsServiceWorker(this);
-      this._vfsServiceWorkerInitialized = true;
+    if (!this._vfsRevisionWiringInitialized) {
+      this.initVfsRevisionWiring();
+      this._vfsRevisionWiringInitialized = true;
     }
     this.host.initBridge();
+  }
+
+  /**
+   * Bumps the VFS revision on every local file-system change, re-subscribing
+   * to the new project's file system on each project load.
+   */
+  private initVfsRevisionWiring(): void {
+    let unsubLocalChange = this.projectFileSystem.onLocalChange(() => this.bumpVfsRevision());
+    this.host.onProjectLoaded(() => {
+      unsubLocalChange();
+      unsubLocalChange = this.projectFileSystem.onLocalChange(() => this.bumpVfsRevision());
+      this.bumpVfsRevision();
+    });
   }
 
   /** Release host resources owned by this store. */
@@ -559,6 +582,15 @@ export class SimEnvironmentStore {
   getVfsRevisionSnapshot = (): number => {
     return this.host.getVfsRevisionSnapshot();
   };
+
+  /**
+   * Resolves a compiler-minted `/vfs/<path>` asset URL to an object URL over
+   * the served project file system, cached per VFS revision. Other URLs pass
+   * through unchanged.
+   */
+  resolveVfsAssetUrl(url: string): string {
+    return this._vfsAssetUrlProvider.resolveAssetUrl(url);
+  }
 
   // -- App Settings (sim-specific) --
 

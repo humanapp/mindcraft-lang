@@ -51,7 +51,6 @@ export default defineConfig({
         rollupOptions: {
             input: {
                 main: path.resolve(process.cwd(), 'index.html'),
-                'vfs-service-worker': path.resolve(process.cwd(), 'src/vfs-sw-entry.ts'),
             },
             external: [],
             plugins: [
@@ -60,12 +59,6 @@ export default defineConfig({
                 })
             ],
             output: {
-                entryFileNames(chunkInfo) {
-                    if (chunkInfo.name === 'vfs-service-worker') {
-                        return 'vfs-service-worker.js';
-                    }
-                    return 'assets/[name]-[hash].js';
-                },
                 manualChunks: {
                     phaser: ['phaser']
                 }

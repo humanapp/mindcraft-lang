@@ -154,8 +154,8 @@ describe("AppEnvironmentHost served file system", () => {
       await host.initialize("p1");
       await host.updateProjectExtensions({ [BEAM_COORDINATE]: BEAM_REFERENCE });
 
-      // The served file system -- what the service worker reads -- carries the
-      // compiler-controlled extension assets.
+      // The served file system -- what the vfs asset-url provider reads --
+      // carries the compiler-controlled extension assets.
       const served = host.servedProjectFileSystem.exportSnapshot();
       const icon = served.get(BEAM_ICON_PATH);
       assert.ok(icon && icon.kind === "file", `served snapshot must carry ${BEAM_ICON_PATH}`);
@@ -237,9 +237,9 @@ describe("AppEnvironmentHost served file system", () => {
       await host.initialize("p1");
 
       // The app wires `projectFileSystem.onLocalChange` to `bumpVfsRevision`,
-      // which advances the `?_v=N` asset cache-buster. Installing an extension
+      // which starts a fresh asset-url generation. Installing an extension
       // rewrites mindcraft.json through the raw fs; that write fires the
-      // listener, and the newly materialized icon is fetched without a reload.
+      // listener, and the newly materialized icon resolves without a reload.
       let localChanges = 0;
       const unsubscribe = host.projectFileSystem.onLocalChange(() => {
         localChanges++;

@@ -49,5 +49,5 @@ export {
 export type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
 export { applyCompiledUserTiles, collectMetadataFromCompile } from "./user-tile-registration.js";
 
-export type { VfsSwRegistrationOptions } from "./vfs-sw-registration.js";
-export { registerVfsServiceWorker } from "./vfs-sw-registration.js";
+export type { VfsAssetUrlProvider, VfsAssetUrlProviderOptions } from "./vfs-asset-url-provider.js";
+export { createVfsAssetUrlProvider } from "./vfs-asset-url-provider.js";

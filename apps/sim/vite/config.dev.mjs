@@ -10,24 +10,11 @@ const assetsRoot = path.resolve(appRoot, "assets") + path.sep;
 const allowPkg =
   path.resolve(appRoot, "node_modules/@mindcraft-lang/core/dist/esm") + path.sep;
 
-function vfsServiceWorkerPlugin() {
-  return {
-    name: "vfs-sw-allowed",
-    configureServer(server) {
-      server.middlewares.use((_req, res, next) => {
-        res.setHeader("Service-Worker-Allowed", "/");
-        next();
-      });
-    },
-  };
-}
-
 // https://vitejs.dev/config/
 export default defineConfig({
   base: "/",
   appType: "spa",
   plugins: [
-    vfsServiceWorkerPlugin(),
     react(),
     uiPlugin(),
     embeddedExtensions(),

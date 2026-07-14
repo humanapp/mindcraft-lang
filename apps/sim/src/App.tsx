@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
 import { buildBrainEditorConfig } from "./brain/editor/config";
-import { genVisualForTile } from "./brain/editor/visual-provider";
+import { createVfsAwareVisualProvider } from "./brain/editor/visual-provider";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { NewWorkspaceDialog } from "./components/NewWorkspaceDialog";
 import { ProjectHeader } from "./components/ProjectHeader";
@@ -61,17 +61,17 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
   const { openDocsForTile, isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs } = useDocsSidebar();
   const store = useSimEnvironment();
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
-  const config = useMemo(
-    () =>
-      buildBrainEditorConfig({
-        store,
-        archetype: archetype ?? undefined,
-        vfsRevision,
-        onTileHelp: openDocsForTile,
-        docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
-      }),
-    [store, archetype, vfsRevision, openDocsForTile, isDocsOpen, toggleDocs, closeDocs]
-  );
+  const config = useMemo(() => {
+    // A VFS revision bump re-creates the config so tiles re-resolve their
+    // asset URLs against the new generation.
+    void vfsRevision;
+    return buildBrainEditorConfig({
+      store,
+      archetype: archetype ?? undefined,
+      onTileHelp: openDocsForTile,
+      docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
+    });
+  }, [store, archetype, vfsRevision, openDocsForTile, isDocsOpen, toggleDocs, closeDocs]);
   return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
 }
 
@@ -527,14 +527,11 @@ function App() {
   const docRevision = useSyncExternalStore(store.subscribeToDocRevision, store.getDocRevisionSnapshot);
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
   const docsResolveTileVisual = useMemo(() => {
-    return (tileDef: Parameters<typeof genVisualForTile>[0]) => {
-      const visual = genVisualForTile(tileDef);
-      if (visual.iconUrl?.startsWith("/vfs/")) {
-        return { ...visual, iconUrl: `${visual.iconUrl}?_v=${vfsRevision}` };
-      }
-      return visual;
-    };
-  }, [vfsRevision]);
+    // A VFS revision bump re-creates the resolver so docs tiles re-resolve
+    // their asset URLs against the new generation.
+    void vfsRevision;
+    return createVfsAwareVisualProvider((url) => store.resolveVfsAssetUrl(url));
+  }, [store, vfsRevision]);
   const docsRegistry = useMemo(() => {
     void docRevision;
     return createDocsRegistry(store.userTileDocEntries);

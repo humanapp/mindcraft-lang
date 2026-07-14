@@ -54,11 +54,10 @@ const TILE_ASSET_MOUNT: DependencyMount = {
   dependencies: [],
 };
 
-/** The vfs path the service worker resolves from a `/vfs/...` URL: prefix stripped, path-decoded. */
+/** The served-snapshot key a `/vfs/...` asset URL names: the prefix stripped. */
 const VFS_PREFIX = "/vfs/";
-function serviceWorkerVfsPath(vfsUrl: string): string {
-  const pathname = new URL(vfsUrl, "https://app.example").pathname;
-  return decodeURIComponent(pathname.slice(VFS_PREFIX.length));
+function vfsAssetPath(vfsUrl: string): string {
+  return vfsUrl.slice(VFS_PREFIX.length);
 }
 
 /**
@@ -93,7 +92,7 @@ function buildAugmented(dependencyMounts: readonly DependencyMount[]) {
 /**
  * Build the workspace compiler and its peer-facing augmented file system,
  * returning both so a test can read the compiler's emitted tile metadata and
- * the snapshot the service worker serves from.
+ * the snapshot the vfs asset-url provider resolves from.
  */
 function buildWorkspace(dependencyMounts: readonly DependencyMount[]) {
   const environment = createMindcraftEnvironment({ modules: [coreModule()] });
@@ -224,9 +223,9 @@ describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () =
     assert.equal(iconUrl, "/vfs/.extensions/acme/detector/probe.svg");
     assert.equal(docsMarkdown, "# Probe\nDocs.");
 
-    // The service worker serves that URL from the augmented snapshot: the URL's
-    // vfs path is a key present in the snapshot, resolving to the asset bytes.
-    const vfsPath = serviceWorkerVfsPath(iconUrl);
+    // The asset-url provider resolves that URL from the augmented snapshot: the
+    // URL's vfs path is a key present in the snapshot, resolving to the asset bytes.
+    const vfsPath = vfsAssetPath(iconUrl);
     assert.equal(vfsPath, ".extensions/acme/detector/probe.svg");
     const entry = augmented.exportSnapshot().get(vfsPath);
     assert.ok(entry && entry.kind === "file", "the icon URL resolves to a file in the served snapshot");

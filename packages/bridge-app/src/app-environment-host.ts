@@ -162,11 +162,10 @@ export class AppEnvironmentHost {
   /**
    * The file system whose exported snapshot carries both the raw project files
    * and the compiler-controlled files (ambient declarations, `tsconfig.json`,
-   * and the installed-extensions tree). A service worker serving project
-   * assets reads from this so extension-owned assets such as tile icons
-   * resolve. Each `exportSnapshot()` reads the live compiler, so installing or
-   * uninstalling an extension is reflected without a rebuild. Falls back to
-   * the raw project file system until the compiler is wired.
+   * and the installed-extensions tree), including extension-owned assets such
+   * as tile icons. Each `exportSnapshot()` reads the live compiler, so
+   * installing or uninstalling an extension is reflected without a rebuild.
+   * Falls back to the raw project file system until the compiler is wired.
    */
   get servedProjectFileSystem(): ProjectFileSystem {
     return this._servedFileSystem ?? this.projectFileSystem;

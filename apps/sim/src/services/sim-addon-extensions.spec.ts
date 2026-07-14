@@ -175,8 +175,8 @@ export default Sensor({
     assert.equal(detectTile.key, `${ECOSIM_DETECT_EXT_COORDINATE}:user.sensor.${DETECT_ID}`);
 
     // Each tile's icon URL is namespace-aware, pointing into the add-on's
-    // materialized `.extensions/<owner>/<repo>/` subtree the service worker
-    // serves, and its docs are inlined from the bundled markdown.
+    // materialized `.extensions/<owner>/<repo>/` subtree the vfs asset-url
+    // provider resolves, and its docs are inlined from the bundled markdown.
     assert.equal(teleportTile.iconUrl, `/vfs/.extensions/${ECOSIM_TELEPORT_EXT_COORDINATE}/teleport.svg`);
     assert.equal(detectTile.iconUrl, `/vfs/.extensions/${ECOSIM_DETECT_EXT_COORDINATE}/detect.svg`);
     assert.ok(teleportTile.docsMarkdown?.includes("# Teleport"), "the Teleport docs markdown is resolved");
