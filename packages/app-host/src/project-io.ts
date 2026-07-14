@@ -13,7 +13,6 @@ import {
   validateMindcraftProjectDocument,
 } from "@mindcraft-lang/service-api";
 import { AppHostErrorCode, appHostError } from "./app-host-error.js";
-import { EXAMPLES_FOLDER } from "./examples.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import type { ProjectContentManifestErrorCode } from "./project-content-manifest.js";
 import { validateProjectExtensions } from "./project-content-manifest.js";
@@ -137,14 +136,12 @@ async function buildExportProjectData(
   loadAppData: (key: string) => Promise<string | undefined>
 ): Promise<ExportProjectData> {
   const snapshot = filesystem.exportSnapshot();
-  const examplesPrefix = `${EXAMPLES_FOLDER}/`;
 
   const files: MindcraftProjectFile[] = [];
   for (const [path, entry] of snapshot) {
     if (entry.kind !== "file") continue;
     if (entry.isReadonly) continue;
     if (path === MINDCRAFT_JSON_PATH) continue;
-    if (path.startsWith(examplesPrefix)) continue;
     files.push({ path, content: entry.content });
   }
 

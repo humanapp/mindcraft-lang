@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createInMemoryProjectFileSystem, type ExampleDefinition } from "@mindcraft-lang/app-host";
+import { createInMemoryProjectFileSystem } from "@mindcraft-lang/app-host";
 import { FileSystem } from "@mindcraft-lang/bridge-client";
 import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core";
 import {
@@ -28,8 +28,6 @@ const SECOND_MOUNT: DependencyMount = {
   files: new Map([["/index.ts", "export const widget = 2;"]]),
   dependencies: [],
 };
-
-const EXAMPLES: ExampleDefinition[] = [{ folder: "blink", files: [{ path: "main.ts", content: "export {};" }] }];
 
 const TILE_EXTENSION_DEF = `
 import { Sensor, type Context } from "mindcraft";
@@ -89,7 +87,7 @@ function buildAugmented(dependencyMounts: readonly DependencyMount[]) {
     new Map([["src/main.ts", { kind: "file", content: "export {};", etag: "e1", isReadonly: false }]])
   );
   compiler.compile();
-  return augmentProjectFileSystem(filesystem, compiler, () => EXAMPLES);
+  return augmentProjectFileSystem(filesystem, compiler);
 }
 
 /**
@@ -117,7 +115,7 @@ function buildWorkspace(dependencyMounts: readonly DependencyMount[]) {
     new Map([["src/main.ts", { kind: "file", content: "export {};", etag: "e1", isReadonly: false }]])
   );
   const result = compiler.compile();
-  const augmented = augmentProjectFileSystem(filesystem, compiler, () => EXAMPLES);
+  const augmented = augmentProjectFileSystem(filesystem, compiler);
   return { compiler, augmented, result };
 }
 

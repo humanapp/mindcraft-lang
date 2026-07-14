@@ -1,9 +1,5 @@
-export type {
-  ExampleDefinition,
-  ExampleFile,
-  InMemoryProjectFileSystemOptions,
-} from "@mindcraft-lang/app-host";
-export { createInMemoryProjectFileSystem, EXAMPLES_FOLDER, MINDCRAFT_JSON_PATH } from "@mindcraft-lang/app-host";
+export type { InMemoryProjectFileSystemOptions } from "@mindcraft-lang/app-host";
+export { createInMemoryProjectFileSystem, MINDCRAFT_JSON_PATH } from "@mindcraft-lang/app-host";
 export type {
   AppBridge,
   AppBridgeFeature,

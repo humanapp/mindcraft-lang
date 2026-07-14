@@ -26,21 +26,6 @@
     }
   },
   "files": {
-    "includes": ["**", "!ambient/", "!src/examples/mindcraft.*.d.ts"]
-  },
-  "overrides": [
-    {
-      "includes": ["src/examples/**"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noExplicitAny": "off"
-          },
-          "style": {
-            "useNumberNamespace": "off"
-          }
-        }
-      }
-    }
-  ]
+    "includes": ["**", "!ambient/"]
+  }
 }

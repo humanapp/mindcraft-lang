@@ -27,7 +27,6 @@ import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { Obstacle } from "@/brain/vision";
-import { loadExamples } from "@/examples";
 import { name as simName, version as simVersion } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
 import { simDefaultExtensions, simEmbeddedExtensions } from "./sim-embedded-extensions";
@@ -318,7 +317,6 @@ export class SimEnvironmentStore {
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,
       saveBindingToken,
-      examples: loadExamples(),
       rng: {
         next: () => MathOps.random(),
       },

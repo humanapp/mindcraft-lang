@@ -220,13 +220,6 @@ export function isCompilerControlledPath(path: string, mounts: readonly Mount[])
   return isMountedPath(path, mounts);
 }
 
-const EXAMPLES_PREFIX = "__examples__/";
-
-function isExamplePath(path: string): boolean {
-  const normalized = normalizeWorkspacePath(path);
-  return normalized.startsWith(EXAMPLES_PREFIX);
-}
-
 /**
  * In-memory user-tile project. Holds a mutable file map, runs the TypeScript
  * compiler over user `.ts` sources, extracts descriptors, lowers them to IR,
@@ -364,7 +357,7 @@ export class UserTileProject {
     for (const mount of this._dependencyMounts) {
       const ambientRelativePaths = new Set((mount.ambient ?? []).map(normalizeWorkspacePath));
       for (const [path, content] of mount.files) {
-        if (normalizeWorkspacePath(path) === COMPILER_CONTROLLED_TSCONFIG_PATH || isExamplePath(path)) {
+        if (normalizeWorkspacePath(path) === COMPILER_CONTROLLED_TSCONFIG_PATH) {
           continue;
         }
         const compilerPath = extensionFilePath(mount.namespace, path);
@@ -381,7 +374,7 @@ export class UserTileProject {
       // The resolved extension set is the source of truth for the
       // installed-extensions tree; any `.extensions/` bytes that reach the
       // project VFS are compiler-controlled and ignored as user source.
-      if (isCompilerSuppliedPath(vfsPath) || isExamplePath(vfsPath) || isExtensionWorkspacePath(vfsPath)) {
+      if (isCompilerSuppliedPath(vfsPath) || isExtensionWorkspacePath(vfsPath)) {
         continue;
       }
       const cp = toCompilerPath(vfsPath);

@@ -1,9 +1,6 @@
 import * as vscode from "vscode";
 import { registerCommands } from "./commands";
-import { ExampleCodeLensProvider } from "./providers/example-codelens-provider";
-import { ExampleDecorationProvider } from "./providers/example-decoration-provider";
 import { MindcraftJsonCodeLensProvider } from "./providers/mindcraft-json-codelens-provider";
-import { MINDCRAFT_EXAMPLE_SCHEME } from "./services/mindcraft-example-fs-provider";
 import { MINDCRAFT_SCHEME } from "./services/mindcraft-fs-provider";
 import { ProjectManager } from "./services/project-manager";
 import { setMindcraftEnabled } from "./state/context";
@@ -13,41 +10,21 @@ import { MindcraftSessionsProvider } from "./views/mindcraftSessionsProvider";
 export function activate(context: vscode.ExtensionContext) {
   const projectManager = new ProjectManager();
 
-  const exampleDecorationProvider = new ExampleDecorationProvider();
-
   context.subscriptions.push(
     vscode.workspace.registerFileSystemProvider(MINDCRAFT_SCHEME, projectManager.fsProvider, {
       isCaseSensitive: true,
     }),
-    vscode.workspace.registerFileSystemProvider(MINDCRAFT_EXAMPLE_SCHEME, projectManager.exampleFsProvider, {
-      isCaseSensitive: true,
-      isReadonly: true,
-    }),
     vscode.window.registerFileDecorationProvider(projectManager.fsProvider),
-    vscode.window.registerFileDecorationProvider(exampleDecorationProvider),
-    vscode.languages.registerCodeLensProvider({ scheme: MINDCRAFT_EXAMPLE_SCHEME }, new ExampleCodeLensProvider()),
     vscode.languages.registerCodeLensProvider(
       { scheme: MINDCRAFT_SCHEME, pattern: "**/mindcraft.json" },
       new MindcraftJsonCodeLensProvider(projectManager.fsProvider)
-    ),
-    exampleDecorationProvider
+    )
   );
 
   const sessionsProvider = new MindcraftSessionsProvider(projectManager);
   const treeView = vscode.window.createTreeView("mindcraft.sessions", {
     treeDataProvider: sessionsProvider,
   });
-
-  // Read-only examples enter the project VFS via the connect-time bridge sync, which
-  // can land after the view has already rendered. Re-query whenever the view becomes
-  // visible so synced entries appear without a manual explorer refresh.
-  context.subscriptions.push(
-    treeView.onDidChangeVisibility((e) => {
-      if (e.visible) {
-        sessionsProvider.refresh();
-      }
-    })
-  );
 
   registerCommands(context, projectManager);
   createStatusBarItem(context, projectManager);

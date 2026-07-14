@@ -1,5 +1,3 @@
-import type { ExampleDefinition } from "@mindcraft-lang/app-host";
-import { EXAMPLES_FOLDER } from "@mindcraft-lang/app-host";
 import type { AppClientMessage, CompileDiagnosticEntry, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core";
 import {
@@ -311,8 +309,6 @@ export interface CreateProjectCompilerOptions {
   dependencies?: readonly ProjectDependency[];
   /** Read-only content of each dependency, mounted for `@ext/<owner>/<repo>` resolution. */
   dependencyMounts?: readonly DependencyMount[];
-  /** Read-only example projects materialized under the examples folder. */
-  examples?: readonly ExampleDefinition[];
   onDidCompile?: (result: WorkspaceCompileResult) => void;
 }
 
@@ -323,16 +319,9 @@ export interface ProjectCompilerHandle {
   initialize(): void;
   /** Re-seed the compiler with the latest project file snapshot and recompile. */
   replaceProjectFiles(): void;
-  /** Replace the set of injected example projects. */
-  injectExamples(examples: ExampleDefinition[]): void;
-  /** Read the currently injected example projects. */
-  getExamples(): ExampleDefinition[];
 }
 
-/**
- * Wrap a {@link ProjectFileSystem} as a TS workspace compiler. The compiler's
- * input includes the live project files plus any injected examples.
- */
+/** Wrap a {@link ProjectFileSystem} as a TS workspace compiler over the live project files. */
 export function createProjectCompiler(options: CreateProjectCompilerOptions): ProjectCompilerHandle {
   const { mounts, environment, filesystem, projectNamespace, dependencies, dependencyMounts } = options;
 
@@ -348,39 +337,15 @@ export function createProjectCompiler(options: CreateProjectCompilerOptions): Pr
     compiler.onDidCompile(options.onDidCompile);
   }
 
-  let injectedExamples: ExampleDefinition[] = options.examples ? [...options.examples] : [];
-
-  function buildSnapshot(): ProjectFileSnapshot {
-    const snapshot = new Map(filesystem.exportSnapshot());
-    for (const example of injectedExamples) {
-      snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}`, { kind: "directory" });
-      for (const file of example.files) {
-        snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}/${file.path}`, {
-          kind: "file",
-          content: file.content,
-          etag: "example",
-          isReadonly: true,
-        });
-      }
-    }
-    return snapshot;
-  }
-
   return {
     compiler,
     initialize() {
-      compiler.replaceWorkspace(buildSnapshot());
+      compiler.replaceWorkspace(filesystem.exportSnapshot());
       compiler.compile();
     },
     replaceProjectFiles() {
-      compiler.replaceWorkspace(buildSnapshot());
+      compiler.replaceWorkspace(filesystem.exportSnapshot());
       compiler.compile();
-    },
-    injectExamples(examples: ExampleDefinition[]) {
-      injectedExamples = examples;
-    },
-    getExamples() {
-      return injectedExamples;
     },
   };
 }
@@ -413,7 +378,7 @@ export interface BridgeProjectHandle {
 
 /**
  * Wire up an {@link AppBridge} that uses `projectCompiler` for diagnostics and
- * surfaces compiler-controlled and example files to the remote peer.
+ * surfaces compiler-controlled files to the remote peer.
  */
 export function createBridgeProject(options: CreateBridgeProjectOptions): BridgeProjectHandle {
   const { projectCompiler, servedFileSystem } = options;
@@ -489,9 +454,9 @@ function compilerControlledFilesChanged(
 /**
  * Wrap a {@link ProjectFileSystem} so its exported snapshot also carries the
  * compiler-controlled files (ambient declarations, `tsconfig.json`, and the
- * read-only installed-extensions tree) and the injected example projects, all
- * marked read-only. Local and remote changes targeting those augmented paths
- * are filtered out, leaving them read-only from the peer's side.
+ * read-only installed-extensions tree), all marked read-only. Local and remote
+ * changes targeting those augmented paths are filtered out, leaving them
+ * read-only from the peer's side.
  *
  * When a compile changes the compiler-controlled file set (installing or
  * uninstalling an extension adds or removes its `.extensions/` subtree), the
@@ -503,21 +468,9 @@ function compilerControlledFilesChanged(
  */
 export function augmentProjectFileSystem(
   filesystem: ProjectFileSystem,
-  compiler: TsWorkspaceCompiler,
-  getExamples: () => ExampleDefinition[]
+  compiler: TsWorkspaceCompiler
 ): ProjectFileSystem {
-  const isAugmentedPath = (path: string): boolean => {
-    if (compiler.getCompilerControlledFiles().has(path)) {
-      return true;
-    }
-    for (const example of getExamples()) {
-      const root = `${EXAMPLES_FOLDER}/${example.folder}`;
-      if (path === root || path.startsWith(`${root}/`)) {
-        return true;
-      }
-    }
-    return false;
-  };
+  const isAugmentedPath = (path: string): boolean => compiler.getCompilerControlledFiles().has(path);
   const filterChange = (change: ProjectFileChange): ProjectFileChange | undefined => {
     switch (change.action) {
       case "write":
@@ -538,14 +491,6 @@ export function augmentProjectFileSystem(
     for (const [path, content] of controlledFiles) {
       ensureSnapshotDirectory(snapshot, parentDirectory(path));
       snapshot.set(path, { kind: "file", content, etag: "compiler-controlled", isReadonly: true });
-    }
-    for (const example of getExamples()) {
-      ensureSnapshotDirectory(snapshot, `${EXAMPLES_FOLDER}/${example.folder}`);
-      for (const file of example.files) {
-        const path = `${EXAMPLES_FOLDER}/${example.folder}/${file.path}`;
-        ensureSnapshotDirectory(snapshot, parentDirectory(path));
-        snapshot.set(path, { kind: "file", content: file.content, etag: "example", isReadonly: true });
-      }
     }
     return snapshot;
   };

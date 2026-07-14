@@ -15,7 +15,6 @@ import {
   DEFAULT_MAX_FILE_SIZE,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_NAME,
-  EXAMPLES_FOLDER,
   ImportDiagnosticCode,
   importProjectDocument,
   MINDCRAFT_JSON_PATH,
@@ -175,19 +174,6 @@ describe("buildProjectExportDocument", () => {
     const files = new Map([
       ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
       ["lib/std.ts", { kind: "file" as const, content: "stdlib", etag: "e2", isReadonly: true }],
-    ]);
-    const ws = makeProjectFileSystem(files);
-
-    const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
-
-    assert.strictEqual(result.files.length, 1);
-    assert.strictEqual(result.files[0].path, "src/main.ts");
-  });
-
-  it("excludes __examples__/ paths", async () => {
-    const files = new Map([
-      ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
-      [`${EXAMPLES_FOLDER}/demo.ts`, { kind: "file" as const, content: "demo", etag: "e2", isReadonly: false }],
     ]);
     const ws = makeProjectFileSystem(files);
 

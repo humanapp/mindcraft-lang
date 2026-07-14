@@ -1,5 +1,4 @@
 import type {
-  ExampleDefinition,
   ProjectCollectionProjectCommitResult,
   ProjectCollectionUnlockResult,
   ProjectFileSystem,
@@ -44,8 +43,6 @@ export interface AppEnvironmentHostOptions {
    * keyed by its `<owner>/<repo>` coordinate. Empty when the app bundles none.
    */
   embeddedExtensions?: readonly EmbeddedExtension[];
-  /** Read-only example projects materialized under the examples folder. */
-  examples?: readonly ExampleDefinition[];
 
   /**
    * Host-supplied RNG. The bridge app forwards this to
@@ -122,7 +119,6 @@ export class AppEnvironmentHost {
 
   private readonly _loadBindingToken: () => string | undefined;
   private readonly _saveBindingToken: (token: string) => void;
-  private readonly _examples: readonly ExampleDefinition[];
 
   // -- User tile metadata (last known) --
   private _lastUserTileMetadata: readonly UserTileMetadata[] | undefined;
@@ -141,7 +137,6 @@ export class AppEnvironmentHost {
     this._bridgeUrl = options.bridgeUrl;
     this._loadBindingToken = options.loadBindingToken ?? (() => undefined);
     this._saveBindingToken = options.saveBindingToken ?? (() => {});
-    this._examples = options.examples ?? [];
 
     this.env = createMindcraftEnvironment({
       modules: [...options.modules],
@@ -167,11 +162,11 @@ export class AppEnvironmentHost {
   /**
    * The file system whose exported snapshot carries both the raw project files
    * and the compiler-controlled files (ambient declarations, `tsconfig.json`,
-   * the installed-extensions tree, and injected examples). A service worker
-   * serving project assets reads from this so extension-owned assets such as
-   * tile icons resolve. Each `exportSnapshot()` reads the live compiler, so
-   * installing or uninstalling an extension is reflected without a rebuild.
-   * Falls back to the raw project file system until the compiler is wired.
+   * and the installed-extensions tree). A service worker serving project
+   * assets reads from this so extension-owned assets such as tile icons
+   * resolve. Each `exportSnapshot()` reads the live compiler, so installing or
+   * uninstalling an extension is reflected without a rebuild. Falls back to
+   * the raw project file system until the compiler is wired.
    */
   get servedProjectFileSystem(): ProjectFileSystem {
     return this._servedFileSystem ?? this.projectFileSystem;
@@ -241,7 +236,6 @@ export class AppEnvironmentHost {
       mounts: this.mounts,
       dependencies,
       dependencyMounts,
-      examples: [...this._examples],
       onDidCompile: (result) => {
         this.persistMintedActionIds(result.projectResult.sourceRewrites);
         logWorkspaceCompile(result);
@@ -260,9 +254,7 @@ export class AppEnvironmentHost {
         this.onDidCompileCallback?.(result, tileResult);
       },
     });
-    this._servedFileSystem = augmentProjectFileSystem(this.projectFileSystem, this._compiler.compiler, () =>
-      this._compiler!.getExamples()
-    );
+    this._servedFileSystem = augmentProjectFileSystem(this.projectFileSystem, this._compiler.compiler);
     syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
     this._compiler.initialize();
   }

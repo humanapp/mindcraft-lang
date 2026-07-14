@@ -106,7 +106,7 @@ describe("extension uninstall peer sync", () => {
     );
     compiler.compile();
 
-    const served = augmentProjectFileSystem(filesystem, compiler, () => []);
+    const served = augmentProjectFileSystem(filesystem, compiler);
     const bridge = createAppBridge({ bridgeUrl: "http://localhost:3000", filesystem: served });
 
     bridge.start();
