@@ -395,7 +395,7 @@ export function Sidebar({
             // biome-ignore lint/a11y/useSemanticElements: fieldset would break layout; role="group" provides accessible grouping
             <div
               key={arch}
-              className="space-y-2 rounded-lg bg-gray-900 p-2.5"
+              className="space-y-2 rounded-lg bg-panel p-2.5"
               role="group"
               aria-label={`${ARCHETYPE_LABELS[arch]} settings`}
             >
@@ -481,7 +481,7 @@ export function Sidebar({
                   }}
                   variant="outline"
                   size="sm"
-                  className="w-full h-7 text-xs border-slate-600"
+                  className="w-full h-7 text-xs border-border"
                   aria-label={`Edit ${ARCHETYPE_LABELS[arch]} brain`}
                 >
                   Edit Brain
@@ -505,20 +505,20 @@ export function Sidebar({
 
         {/* VS Code Bridge */}
         {store.getAppSettings().showBridgePanel && (
-          <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
+          <div className="space-y-2 rounded-lg bg-panel p-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-0.5">
                 <span className="text-sm font-medium">VS Code Bridge</span>
                 <button
                   type="button"
-                  className="shrink-0 flex items-center p-0.5 rounded hover:bg-gray-700 text-slate-400 hover:text-slate-200 transition-colors"
+                  className="shrink-0 flex items-center p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                   aria-label="VS Code Bridge Help"
                   onClick={() => {
                     openDocs();
                     navigateToEntry("concepts", "vscode");
                   }}
                 >
-                  <CircleHelp className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+                  <CircleHelp className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                 </button>
               </div>
               <Switch
@@ -538,9 +538,9 @@ export function Sidebar({
             <output
               className={`text-xs font-mono ${
                 bridgeStatus === "connected"
-                  ? "text-green-400"
+                  ? "text-success"
                   : bridgeStatus === "connecting" || bridgeStatus === "reconnecting"
-                    ? "text-yellow-400"
+                    ? "text-warning"
                     : "text-muted-foreground"
               }`}
             >
@@ -548,10 +548,10 @@ export function Sidebar({
             </output>
             {joinCode && (bridgeStatus === "connected" || bridgeStatus === "reconnecting") && (
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-mono text-slate-300 truncate">{joinCode}</span>
+                <span className="text-xs font-mono text-foreground truncate">{joinCode}</span>
                 <button
                   type="button"
-                  className="shrink-0 p-0.5 rounded hover:bg-gray-700 text-slate-400 hover:text-slate-200 transition-colors"
+                  className="shrink-0 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                   aria-label={copied ? "Copied to clipboard" : "Copy join code"}
                   onClick={() => {
                     navigator.clipboard.writeText(joinCode);
@@ -570,7 +570,7 @@ export function Sidebar({
             <div className="text-center w-full">
               <button
                 type="button"
-                className="text-xs text-slate-300 underline-offset-2 hover:underline hover:text-slate-100 transition-colors text-left cursor-pointer"
+                className="text-xs text-muted-foreground underline-offset-2 hover:underline hover:text-foreground transition-colors text-left cursor-pointer"
                 onClick={() => {
                   openDocs();
                   navigateToEntry("concepts", "vscode");
@@ -583,7 +583,7 @@ export function Sidebar({
         )}
 
         {/* Debug toggle */}
-        <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
+        <div className="space-y-2 rounded-lg bg-panel p-2.5">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Debug Draw</span>
             <Switch

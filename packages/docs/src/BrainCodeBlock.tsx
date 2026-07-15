@@ -214,7 +214,7 @@ export function BrainCodeBlock({ content, meta = "" }: BrainCodeBlockProps) {
 
   if (!parsed) {
     return (
-      <pre className="rounded bg-slate-800 border border-slate-700 p-3 text-xs text-red-400 overflow-x-auto my-2">
+      <pre className="rounded bg-muted border border-border p-3 text-xs text-red-400 overflow-x-auto my-2">
         {content}
       </pre>
     );
@@ -233,8 +233,8 @@ export function BrainCodeBlock({ content, meta = "" }: BrainCodeBlockProps) {
       );
     }
     return (
-      <div className="my-3 rounded-lg border border-slate-700 overflow-hidden">
-        <div className="p-2 bg-slate-900/50 flex flex-wrap gap-1" style={{ zoom: 0.75 }}>
+      <div className="my-3 rounded-lg border border-border overflow-hidden">
+        <div className="p-2 bg-muted/50 flex flex-wrap gap-1" style={{ zoom: 0.75 }}>
           {parsed.tiles.map((tile, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: stable in read-only view
             <DocsTileChip key={i} tileDef={tile} side={parsed.side} />
@@ -256,20 +256,20 @@ export function BrainCodeBlock({ content, meta = "" }: BrainCodeBlockProps) {
   return (
     <div className="my-3 rounded-lg border border-slate-700 overflow-hidden">
       {/* Rendered tiles */}
-      <div className="p-2 bg-slate-900/50">
+      <div className="p-2 bg-muted/50">
         <DocsRuleBlock rules={parsed.rules} />
       </div>
 
       {/* Insert button */}
-      <div className="flex items-center justify-between px-3 py-2 bg-slate-800/80 border-t border-slate-700">
-        <span className="text-xs text-slate-500">
+      <div className="flex items-center justify-between px-3 py-2 bg-muted/80 border-t border-border">
+        <span className="text-xs text-muted-foreground">
           {parsed.rules.length} {parsed.rules.length === 1 ? "rule" : "rules"}
         </span>
         <button
           type="button"
           onClick={handleInsert}
           aria-label="Copy rules to clipboard"
-          className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white transition-colors border border-slate-600 pointer-events-auto"
+          className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded bg-secondary hover:bg-secondary/80 text-secondary-foreground transition-colors border border-border pointer-events-auto"
         >
           <ClipboardCopy className="w-3 h-3" aria-hidden="true" />
           Copy

@@ -63,10 +63,12 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md bg-white border-2 border-slate-300 rounded-2xl">
+        <DialogContent className="max-w-md bg-popover border-2 border-border rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-slate-800">Print: {brainDef.name()}</DialogTitle>
-            <DialogDescription className="text-slate-500">Choose a print format and click Print.</DialogDescription>
+            <DialogTitle className="text-foreground">Print: {brainDef.name()}</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Choose a print format and click Print.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
@@ -78,8 +80,8 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
                   aria-checked={mode === "visual"}
                   className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors cursor-pointer ${
                     mode === "visual"
-                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      ? "border-primary bg-accent text-foreground"
+                      : "border-border bg-background text-muted-foreground hover:bg-accent"
                   }`}
                   onClick={() => setMode("visual")}
                 >
@@ -93,8 +95,8 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
                   aria-checked={mode === "text"}
                   className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors cursor-pointer ${
                     mode === "text"
-                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      ? "border-primary bg-accent text-foreground"
+                      : "border-border bg-background text-muted-foreground hover:bg-accent"
                   }`}
                   onClick={() => setMode("text")}
                 >
@@ -102,7 +104,7 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
                   Text Only
                 </button>
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 {mode === "visual"
                   ? "Prints with formatting faithful to what's shown in the editor."
                   : "Prints a compact text representation of the brain logic."}
@@ -113,7 +115,7 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
             <Button variant="cancel" className="rounded-lg" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button className="rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white" onClick={handlePrint}>
+            <Button className="rounded-lg" onClick={handlePrint}>
               <Printer className="h-4 w-4 mr-1" />
               Print
             </Button>

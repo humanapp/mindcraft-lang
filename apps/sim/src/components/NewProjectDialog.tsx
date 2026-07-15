@@ -38,16 +38,15 @@ export function NewProjectDialog({ open, onOpenChange, onConfirm, defaultName }:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm bg-slate-100 border-2 border-slate-300 rounded-2xl text-slate-900">
-        <DialogHeader className="border-b border-slate-200 pb-3">
+      <DialogContent className="sm:max-w-sm rounded-2xl">
+        <DialogHeader className="border-b border-border pb-3">
           <DialogTitle className="text-lg font-semibold">New Project</DialogTitle>
-          <DialogDescription className="text-sm text-slate-600">Enter a name for your new project.</DialogDescription>
+          <DialogDescription className="text-sm">Enter a name for your new project.</DialogDescription>
         </DialogHeader>
         <div className="py-4">
           <Input
             ref={inputRef}
             value={name}
-            className="bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -62,11 +61,7 @@ export function NewProjectDialog({ open, onOpenChange, onConfirm, defaultName }:
           <Button variant="cancel" onClick={() => onOpenChange(false)} className="rounded-lg">
             Cancel
           </Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={!name.trim()}
-            className="rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white"
-          >
+          <Button onClick={handleConfirm} disabled={!name.trim()} className="rounded-lg">
             Create
           </Button>
         </DialogFooter>

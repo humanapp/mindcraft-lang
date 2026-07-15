@@ -93,17 +93,17 @@ function DocsPageLayout({ backLabel = "Home", backHref = "/" }: DocsPageLayoutPr
   const canPrint = detailContent !== null;
 
   return (
-    <div className="h-screen flex flex-col bg-slate-900 text-slate-200">
+    <div className="h-screen flex flex-col bg-background text-foreground">
       {/* Header */}
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-slate-700 shrink-0">
+      <header className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
         <a
           href={backHref}
-          className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition-colors"
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           {backLabel}
         </a>
-        <div className="flex items-center gap-2 text-slate-200">
+        <div className="flex items-center gap-2 text-foreground">
           <BookOpen className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-semibold tracking-tight">Documentation</span>
         </div>
@@ -111,7 +111,7 @@ function DocsPageLayout({ backLabel = "Home", backHref = "/" }: DocsPageLayoutPr
           <button
             type="button"
             onClick={() => triggerPrint(detailContent)}
-            className="ml-auto flex items-center justify-center w-7 h-7 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            className="ml-auto flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             aria-label="Print this page"
             title="Print this page"
           >

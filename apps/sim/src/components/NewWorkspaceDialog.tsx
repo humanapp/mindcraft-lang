@@ -33,18 +33,15 @@ export function NewWorkspaceDialog({ open, onOpenChange, onConfirm }: NewWorkspa
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm bg-slate-100 border-2 border-slate-300 rounded-lg text-slate-900">
-        <DialogHeader className="border-b border-slate-200 pb-3">
+      <DialogContent className="sm:max-w-sm rounded-lg">
+        <DialogHeader className="border-b border-border pb-3">
           <DialogTitle className="text-lg font-semibold">New Workspace</DialogTitle>
-          <DialogDescription className="text-sm text-slate-600">
-            Name the workspace before choosing a project.
-          </DialogDescription>
+          <DialogDescription className="text-sm">Name the workspace before choosing a project.</DialogDescription>
         </DialogHeader>
         <div className="py-4">
           <Input
             ref={inputRef}
             value={name}
-            className="bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -59,7 +56,7 @@ export function NewWorkspaceDialog({ open, onOpenChange, onConfirm }: NewWorkspa
           <Button variant="cancel" onClick={() => onOpenChange(false)} className="rounded-lg">
             Cancel
           </Button>
-          <Button onClick={handleConfirm} className="rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white">
+          <Button onClick={handleConfirm} className="rounded-lg">
             Create
           </Button>
         </DialogFooter>

@@ -661,20 +661,20 @@ function App() {
       <div className="h-screen flex bg-background overflow-hidden">
         <h1 className="sr-only">Mindcraft Simulation</h1>
         {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
-        <main className="flex-1 min-w-0 relative" aria-label="Game canvas" style={{ backgroundColor: "#2d3561" }}>
+        <main className="flex-1 min-w-0 relative bg-canvas" aria-label="Game canvas">
           {activeWorkspaceLocked ? (
-            <div className="flex h-full min-h-screen items-center justify-center bg-slate-950 p-4 text-white">
+            <div className="flex h-full min-h-screen items-center justify-center bg-background p-4 text-foreground">
               <form
-                className="w-full max-w-sm rounded-lg border border-white/15 bg-slate-900/95 p-5 shadow-2xl"
+                className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-2xl"
                 onSubmit={handleActiveWorkspaceUnlock}
               >
                 <div className="mb-4 flex items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-400/15 text-amber-200">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
                     <Lock className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <div className="min-w-0">
                     <h2 className="truncate text-lg font-semibold">Workspace Locked</h2>
-                    <p className="truncate text-sm text-slate-300">{activeWorkspaceName}</p>
+                    <p className="truncate text-sm text-muted-foreground">{activeWorkspaceName}</p>
                   </div>
                 </div>
                 <WorkspacePinInput
@@ -682,9 +682,9 @@ function App() {
                   value={activeUnlockPin}
                   disabled={activeUnlockBusy}
                   autoFocus
-                  labelClassName="text-sm font-medium text-slate-100"
-                  inputClassName="border-slate-400 bg-white text-slate-950"
-                  buttonClassName="text-slate-500 hover:text-slate-950 focus-visible:ring-slate-950"
+                  labelClassName="text-sm font-medium text-foreground"
+                  inputClassName="border-input bg-background"
+                  buttonClassName="text-muted-foreground hover:text-foreground focus-visible:ring-ring"
                   resetVisibilityKey={projectCollectionState?.activeProjectCollection?.projectCollectionId}
                   onValueChange={(value) => {
                     setActiveUnlockPin(value);
@@ -692,7 +692,7 @@ function App() {
                   }}
                 />
                 {activeUnlockError && (
-                  <p className="mt-2 text-sm text-red-300" role="alert">
+                  <p className="mt-2 text-sm text-destructive" role="alert">
                     {activeUnlockError}
                   </p>
                 )}

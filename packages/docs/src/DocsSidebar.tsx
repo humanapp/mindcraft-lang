@@ -149,16 +149,16 @@ interface SearchBarProps {
 
 function SearchBar({ value, onChange, inputRef }: SearchBarProps) {
   return (
-    <div className="px-3 py-2 border-b border-slate-700 shrink-0">
-      <div className="flex items-center gap-2 rounded-md bg-slate-800 border border-slate-600 px-2.5 py-1.5">
-        <Search className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
+    <div className="px-3 py-2 border-b border-border shrink-0">
+      <div className="flex items-center gap-2 rounded-md bg-muted border border-border px-2.5 py-1.5">
+        <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
         <input
           ref={inputRef}
           type="search"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Search docs..."
-          className="flex-1 bg-transparent text-sm text-slate-300 placeholder:text-slate-500 outline-none"
+          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
           aria-label="Search documentation"
         />
       </div>
@@ -196,7 +196,7 @@ function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarPro
 
   return (
     <div
-      className="flex border-b border-slate-700 shrink-0"
+      className="flex border-b border-border shrink-0"
       role="tablist"
       aria-label="Documentation sections"
       onKeyDown={handleKeyDown}
@@ -214,8 +214,8 @@ function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarPro
             onClick={() => setTab(tab.id)}
             className={`flex-1 font-medium transition-colors border-b-2 ${itemClassName} ${
               isActive
-                ? "text-slate-100 border-slate-400"
-                : "text-slate-500 border-transparent hover:text-slate-300 hover:border-slate-600"
+                ? "text-foreground border-foreground"
+                : "text-muted-foreground border-transparent hover:text-foreground hover:border-border"
             }`}
           >
             {tab.label}
@@ -264,7 +264,7 @@ function CategorySection({ category, children, defaultOpen = true }: CategorySec
         type="button"
         onClick={() => setIsOpen((o) => !o)}
         aria-expanded={isOpen}
-        className="flex items-center gap-1.5 w-full px-1 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider hover:text-slate-300 transition-colors"
+        className="flex items-center gap-1.5 w-full px-1 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
       >
         <ChevronRight className={`w-3 h-3 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden="true" />
         {category}
@@ -299,17 +299,17 @@ function TileCard({ entry, onClick }: TileCardProps) {
           onClick();
         }
       }}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-slate-800/50 hover:bg-slate-700/60 border border-slate-700/50 hover:border-slate-600 transition-colors text-left"
+      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-card hover:bg-accent border border-border transition-colors text-left"
     >
       {iconUrl ? (
         <img src={iconUrl} alt="" className="w-6 h-6 shrink-0" aria-hidden="true" />
       ) : (
-        <div className="w-6 h-6 rounded bg-slate-600 opacity-40 shrink-0" aria-hidden="true" />
+        <div className="w-6 h-6 rounded bg-muted opacity-40 shrink-0" aria-hidden="true" />
       )}
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-slate-200 truncate">{label}</div>
+        <div className="text-sm font-medium text-foreground truncate">{label}</div>
       </div>
-      <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
+      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
     </a>
   );
 }
@@ -330,13 +330,13 @@ function PatternCard({ entry, onClick }: PatternCardProps) {
           onClick();
         }
       }}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-slate-800/50 hover:bg-slate-700/60 border border-slate-700/50 hover:border-slate-600 transition-colors text-left"
+      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-card hover:bg-accent border border-border transition-colors text-left"
     >
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-slate-200 truncate">{entry.title}</div>
-        <div className="text-xs text-slate-500 truncate">{entry.tags.join(", ")}</div>
+        <div className="text-sm font-medium text-foreground truncate">{entry.title}</div>
+        <div className="text-xs text-muted-foreground truncate">{entry.tags.join(", ")}</div>
       </div>
-      <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
+      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
     </a>
   );
 }
@@ -357,13 +357,13 @@ function ConceptCard({ entry, onClick }: ConceptCardProps) {
           onClick();
         }
       }}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-slate-800/50 hover:bg-slate-700/60 border border-slate-700/50 hover:border-slate-600 transition-colors text-left"
+      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-card hover:bg-accent border border-border transition-colors text-left"
     >
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-slate-200 truncate">{entry.title}</div>
-        <div className="text-xs text-slate-500 truncate">{entry.tags.join(", ")}</div>
+        <div className="text-sm font-medium text-foreground truncate">{entry.title}</div>
+        <div className="text-xs text-muted-foreground truncate">{entry.tags.join(", ")}</div>
       </div>
-      <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
+      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
     </a>
   );
 }
@@ -489,11 +489,11 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
   if (navKey && detailContent) {
     return (
       <>
-        <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-700 shrink-0">
+        <div className="flex items-center gap-1 px-3 py-2 border-b border-border shrink-0">
           <button
             type="button"
             onClick={navigateBack}
-            className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors text-sm"
+            className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors text-sm"
             aria-label="Back to list"
           >
             <ChevronLeft className="w-4 h-4" aria-hidden="true" />
@@ -515,11 +515,11 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
     const tileLabel = getTileLabel(tileCatalog, resolveTileVisual, navKey);
     return (
       <>
-        <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-700 shrink-0">
+        <div className="flex items-center gap-1 px-3 py-2 border-b border-border shrink-0">
           <button
             type="button"
             onClick={navigateBack}
-            className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors text-sm"
+            className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors text-sm"
             aria-label="Back to list"
           >
             <ChevronLeft className="w-4 h-4" aria-hidden="true" />
@@ -528,11 +528,11 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         </div>
         <div className={`flex-1 min-h-0 overflow-y-auto ${scrollClassName}`}>
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center mb-3">
-              <BookOpen className="w-5 h-5 text-slate-500" aria-hidden="true" />
+            <div className="w-12 h-12 rounded-full bg-muted border border-border flex items-center justify-center mb-3">
+              <BookOpen className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
             </div>
-            <p className="text-sm font-medium text-slate-300 mb-1">No documentation available</p>
-            <p className="text-xs text-slate-500 max-w-48">
+            <p className="text-sm font-medium text-foreground mb-1">No documentation available</p>
+            <p className="text-xs text-muted-foreground max-w-48">
               {tileLabel ? `There is no doc page for "${tileLabel}" yet.` : "There is no doc page for this tile yet."}
             </p>
           </div>
@@ -565,7 +565,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         {activeTab === "tiles" && (
           <>
             {filteredTiles.length === 0 && (
-              <p className="text-sm text-slate-500 text-center py-6">No tiles match your search.</p>
+              <p className="text-sm text-muted-foreground text-center py-6">No tiles match your search.</p>
             )}
             {Array.from(tilesByCategory.entries()).map(([category, tiles]) => (
               <CategorySection key={category} category={category}>
@@ -580,7 +580,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         {activeTab === "patterns" && (
           <>
             {filteredPatterns.length === 0 && (
-              <p className="text-sm text-slate-500 text-center py-6">No patterns match your search.</p>
+              <p className="text-sm text-muted-foreground text-center py-6">No patterns match your search.</p>
             )}
             {Array.from(patternsByCategory.entries()).map(([category, patterns]) => (
               <CategorySection key={category} category={category}>
@@ -595,7 +595,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         {activeTab === "concepts" && (
           <>
             {filteredConcepts.length === 0 && (
-              <p className="text-sm text-slate-500 text-center py-6">No concepts match your search.</p>
+              <p className="text-sm text-muted-foreground text-center py-6">No concepts match your search.</p>
             )}
             <div className="space-y-1">
               {filteredConcepts.map((concept) => (
@@ -637,8 +637,8 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-700 shrink-0">
-        <div className="flex items-center gap-2 text-slate-200">
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-border shrink-0">
+        <div className="flex items-center gap-2 text-foreground">
           <BookOpen className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-semibold tracking-tight">Docs</span>
         </div>
@@ -647,7 +647,7 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
             href={docsPageUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            className="flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             aria-label="Open in docs page"
             title="Open in docs page"
           >
@@ -657,7 +657,7 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
             <button
               type="button"
               onClick={() => triggerPrint(detailContent)}
-              className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+              className="flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               aria-label="Print this page"
               title="Print this page"
             >
@@ -667,7 +667,7 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
           <button
             type="button"
             onClick={close}
-            className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            className="flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             aria-label="Close docs"
           >
             <X className="w-4 h-4" aria-hidden="true" />
@@ -706,19 +706,19 @@ function MobilePanel() {
       role="dialog"
       aria-modal="true"
       aria-label="Documentation"
-      className="fixed inset-0 z-60 pointer-events-auto bg-slate-900 flex flex-col"
+      className="fixed inset-0 z-60 pointer-events-auto bg-background flex flex-col"
     >
       {/* Header with back button */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-slate-700 shrink-0">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border shrink-0">
         <button
           type="button"
           onClick={close}
-          className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors text-sm"
+          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors text-sm"
         >
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           Back
         </button>
-        <div className="flex-1 flex items-center gap-2 text-slate-200 ml-2">
+        <div className="flex-1 flex items-center gap-2 text-foreground ml-2">
           <BookOpen className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-semibold tracking-tight">Docs</span>
         </div>
@@ -726,7 +726,7 @@ function MobilePanel() {
           <button
             type="button"
             onClick={() => triggerPrint(detailContent)}
-            className="flex items-center justify-center w-7 h-7 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            className="flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             aria-label="Print this page"
             title="Print this page"
           >
@@ -840,7 +840,7 @@ export function DocsSidebar() {
     <aside
       ref={asideRef}
       id="docs-sidebar"
-      className="fixed right-0 inset-y-0 z-60 pointer-events-auto flex flex-col bg-slate-900 border-l border-slate-700 transition-transform duration-300 ease-in-out"
+      className="fixed right-0 inset-y-0 z-60 pointer-events-auto flex flex-col bg-background border-l border-border transition-transform duration-300 ease-in-out"
       style={{
         width: `${widthPct}%`,
         transform: isOpen ? "translateX(0)" : "translateX(100%)",
@@ -871,10 +871,10 @@ export function DocsSidebar() {
         onKeyDown={handleSeparatorKeyDown}
       >
         {/* Visual affordance: thin line + grip dots, highlighted on hover/focus */}
-        <div className="w-px h-full bg-slate-700 group-hover:bg-slate-500 group-focus-visible:bg-blue-500 transition-colors" />
+        <div className="w-px h-full bg-border group-hover:bg-muted-foreground group-focus-visible:bg-primary transition-colors" />
         <div className="absolute flex flex-col items-center gap-0.5 pointer-events-none">
           <GripVertical
-            className="w-3 h-3 text-slate-600 group-hover:text-slate-400 group-focus-visible:text-blue-400 transition-colors"
+            className="w-3 h-3 text-muted-foreground group-hover:text-foreground group-focus-visible:text-primary transition-colors"
             aria-hidden="true"
           />
         </div>

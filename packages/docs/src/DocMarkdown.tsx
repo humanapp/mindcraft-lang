@@ -104,41 +104,41 @@ const MD_COMPONENTS: Components = {
 
   // Headings
   h1({ children: h }) {
-    return <h1 className="text-base font-bold text-slate-100 mt-4 mb-2 first:mt-0">{h}</h1>;
+    return <h1 className="text-base font-bold text-foreground mt-4 mb-2 first:mt-0">{h}</h1>;
   },
   h2({ children: h }) {
-    return <h2 className="text-sm font-semibold text-slate-200 mt-3 mb-1.5 border-b border-slate-700 pb-1">{h}</h2>;
+    return <h2 className="text-sm font-semibold text-foreground mt-3 mb-1.5 border-b border-border pb-1">{h}</h2>;
   },
   h3({ children: h }) {
-    return <h3 className="text-sm font-medium text-slate-300 mt-2 mb-1">{h}</h3>;
+    return <h3 className="text-sm font-medium text-foreground mt-2 mb-1">{h}</h3>;
   },
 
   // Block elements
   p({ children: p }) {
-    return <p className="text-sm text-slate-300 leading-relaxed mb-2">{p}</p>;
+    return <p className="text-sm text-foreground leading-relaxed mb-2">{p}</p>;
   },
   ul({ children: ul }) {
-    return <ul className="list-disc list-inside text-sm text-slate-300 mb-2 space-y-0.5 pl-2">{ul}</ul>;
+    return <ul className="list-disc list-inside text-sm text-foreground mb-2 space-y-0.5 pl-2">{ul}</ul>;
   },
   ol({ children: ol }) {
-    return <ol className="list-decimal list-inside text-sm text-slate-300 mb-2 space-y-0.5 pl-2">{ol}</ol>;
+    return <ol className="list-decimal list-inside text-sm text-foreground mb-2 space-y-0.5 pl-2">{ol}</ol>;
   },
   li({ children: li }) {
     return <li className="leading-relaxed">{li}</li>;
   },
   blockquote({ children: bq }) {
     return (
-      <blockquote className="border-l-2 border-slate-600 pl-3 my-2 text-sm text-slate-400 italic">{bq}</blockquote>
+      <blockquote className="border-l-2 border-border pl-3 my-2 text-sm text-muted-foreground italic">{bq}</blockquote>
     );
   },
   strong({ children: s }) {
-    return <strong className="font-semibold text-slate-200">{s}</strong>;
+    return <strong className="font-semibold text-foreground">{s}</strong>;
   },
   em({ children: e }) {
-    return <em className="italic text-slate-400">{e}</em>;
+    return <em className="italic text-muted-foreground">{e}</em>;
   },
   hr() {
-    return <hr className="border-slate-700 my-3" />;
+    return <hr className="border-border my-3" />;
   },
 
   // Table elements
@@ -150,19 +150,19 @@ const MD_COMPONENTS: Components = {
     );
   },
   thead({ children: t }) {
-    return <thead className="border-b border-slate-600">{t}</thead>;
+    return <thead className="border-b border-border">{t}</thead>;
   },
   tbody({ children: t }) {
     return <tbody>{t}</tbody>;
   },
   tr({ children: t }) {
-    return <tr className="border-b border-slate-700/50 last:border-0">{t}</tr>;
+    return <tr className="border-b border-border/50 last:border-0">{t}</tr>;
   },
   th({ children: t }) {
-    return <th className="text-left text-slate-300 font-semibold px-2 py-1.5">{t}</th>;
+    return <th className="text-left text-foreground font-semibold px-2 py-1.5">{t}</th>;
   },
   td({ children: t }) {
-    return <td className="text-slate-300 px-2 py-1.5 align-top">{t}</td>;
+    return <td className="text-foreground px-2 py-1.5 align-top">{t}</td>;
   },
 
   a({ href, children }) {
@@ -173,14 +173,14 @@ const MD_COMPONENTS: Components = {
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sky-400 underline hover:text-sky-300 transition-colors"
+          className="text-primary underline hover:text-primary/80 transition-colors"
         >
           {children}
         </a>
       );
     }
     return (
-      <a href={href} className="text-slate-300 underline hover:text-slate-100 transition-colors">
+      <a href={href} className="text-foreground underline hover:text-foreground/80 transition-colors">
         {children}
       </a>
     );
@@ -204,7 +204,7 @@ function MarkdownCode({ className, children, node }: { className?: string; child
       if (tileDef) {
         return <InlineTileLink tileId={tileId} tileDef={tileDef} />;
       }
-      return <code className="bg-slate-800 text-amber-400 px-1 rounded text-xs font-mono">{tileId}</code>;
+      return <code className="bg-muted text-warning px-1 rounded text-xs font-mono">{tileId}</code>;
     }
     if (text.startsWith("tag:")) {
       const spec = parseTagSpec(text);
@@ -214,7 +214,7 @@ function MarkdownCode({ className, children, node }: { className?: string; child
     }
   }
 
-  return <code className="bg-slate-800 text-green-400 px-1 rounded text-xs font-mono">{children}</code>;
+  return <code className="bg-muted text-foreground px-1 rounded text-xs font-mono">{children}</code>;
 }
 
 // ---------------------------------------------------------------------------

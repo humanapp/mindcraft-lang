@@ -58,7 +58,7 @@ function ExtensionCard({
         <div className="flex items-center gap-1.5">
           <span className="truncate text-sm font-medium">{entry.name}</span>
           {entry.installed && (
-            <span className="shrink-0 rounded border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">
+            <span className="shrink-0 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[10px] text-success">
               Installed
             </span>
           )}
@@ -71,9 +71,7 @@ function ExtensionCard({
           </p>
         )}
         {entry.identityMismatch !== undefined && (
-          <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
-            Publishes as {entry.identityMismatch.declaredIdentity}
-          </p>
+          <p className="mt-0.5 text-xs text-warning">Publishes as {entry.identityMismatch.declaredIdentity}</p>
         )}
       </div>
       {showInstall && (
@@ -188,7 +186,7 @@ export function ExtensionCatalogSection({ offers, onInstallReference }: Extensio
               <div className="flex items-center gap-1.5">
                 <span className="truncate text-sm font-medium">{offer.name}</span>
                 {offer.installed && (
-                  <span className="shrink-0 rounded border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">
+                  <span className="shrink-0 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[10px] text-success">
                     Installed
                   </span>
                 )}

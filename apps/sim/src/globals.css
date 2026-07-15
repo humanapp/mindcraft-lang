@@ -27,7 +27,7 @@
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgb(203 213 225) transparent;
+  scrollbar-color: var(--color-border) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -40,69 +40,52 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: rgb(203 213 225);
+  background-color: var(--color-border);
   border-radius: 4px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(148 163 184);
+  background-color: var(--color-input);
 }
 
+/*
+ * Single-brand dark-navy-on-black palette. Panels are a clearly-bluish
+ * elevated navy floating on a near-black background that carries a faint blue
+ * chroma, grounded in the game canvas navy (#2d3561). Hue is anchored around
+ * 262 (blue) across every surface so the app reads as one coherent brand.
+ * The app is dark-only; it does not follow the OS color scheme.
+ */
 @theme {
-  --color-background: oklch(100% 0 0);
-  --color-foreground: oklch(9% 0 0);
-  --color-card: oklch(100% 0 0);
-  --color-card-foreground: oklch(9% 0 0);
-  --color-popover: oklch(100% 0 0);
-  --color-popover-foreground: oklch(9% 0 0);
-  --color-primary: oklch(9% 0 0);
+  --color-background: oklch(9% 0.022 262);
+  --color-foreground: oklch(96% 0.008 262);
+  --color-card: oklch(24% 0.055 262);
+  --color-card-foreground: oklch(96% 0.008 262);
+  --color-popover: oklch(24% 0.055 262);
+  --color-popover-foreground: oklch(96% 0.008 262);
+  --color-panel: oklch(24% 0.055 262);
+  --color-panel-foreground: oklch(96% 0.008 262);
+  --color-primary: oklch(62% 0.15 258);
   --color-primary-foreground: oklch(98% 0 0);
-  --color-secondary: oklch(96% 0 0);
-  --color-secondary-foreground: oklch(9% 0 0);
-  --color-muted: oklch(96% 0 0);
-  --color-muted-foreground: oklch(45% 0 0);
-  --color-accent: oklch(96% 0 0);
-  --color-accent-foreground: oklch(9% 0 0);
-  --color-destructive: oklch(60% 0.21 29);
+  --color-secondary: oklch(31% 0.052 262);
+  --color-secondary-foreground: oklch(96% 0.008 262);
+  --color-muted: oklch(25% 0.038 262);
+  --color-muted-foreground: oklch(73% 0.025 262);
+  --color-accent: oklch(29% 0.048 262);
+  --color-accent-foreground: oklch(96% 0.008 262);
+  --color-destructive: oklch(64% 0.19 25);
   --color-destructive-foreground: oklch(98% 0 0);
-  --color-border: oklch(90% 0 0);
-  --color-input: oklch(90% 0 0);
-  --color-ring: oklch(9% 0 0);
-  --color-chart-1: oklch(61% 0.15 29);
-  --color-chart-2: oklch(39% 0.11 197);
-  --color-chart-3: oklch(24% 0.09 237);
-  --color-chart-4: oklch(66% 0.17 83);
-  --color-chart-5: oklch(67% 0.19 27);
-  --radius: 0.5rem;
-  --font-mono:
-    "Roboto Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  @theme {
-    --color-background: oklch(4% 0 0);
-    --color-foreground: oklch(98% 0 0);
-    --color-card: oklch(4% 0 0);
-    --color-card-foreground: oklch(98% 0 0);
-    --color-popover: oklch(4% 0 0);
-    --color-popover-foreground: oklch(98% 0 0);
-    --color-primary: oklch(98% 0 0);
-    --color-primary-foreground: oklch(9% 0 0);
-    --color-secondary: oklch(15% 0 0);
-    --color-secondary-foreground: oklch(98% 0 0);
-    --color-muted: oklch(15% 0 0);
-    --color-muted-foreground: oklch(64% 0 0);
-    --color-accent: oklch(15% 0 0);
-    --color-accent-foreground: oklch(98% 0 0);
-    --color-destructive: oklch(31% 0.16 29);
-    --color-destructive-foreground: oklch(98% 0 0);
-    --color-border: oklch(15% 0 0);
-    --color-input: oklch(15% 0 0);
-    --color-ring: oklch(83% 0 0);
-    --color-chart-1: oklch(50% 0.14 220);
-    --color-chart-2: oklch(45% 0.12 160);
-    --color-chart-3: oklch(55% 0.16 30);
-    --color-chart-4: oklch(60% 0.13 280);
-    --color-chart-5: oklch(55% 0.15 340);
-  }
+  --color-success: oklch(72% 0.16 150);
+  --color-success-foreground: oklch(18% 0.03 262);
+  --color-warning: oklch(80% 0.14 85);
+  --color-warning-foreground: oklch(18% 0.03 262);
+  --color-border: oklch(34% 0.05 262);
+  --color-input: oklch(36% 0.05 262);
+  --color-ring: oklch(65% 0.14 258);
+  --color-chart-1: oklch(60% 0.15 258);
+  --color-chart-2: oklch(65% 0.14 195);
+  --color-chart-3: oklch(70% 0.15 145);
+  --color-chart-4: oklch(72% 0.16 85);
+  --color-chart-5: oklch(65% 0.18 25);
+  /* Game backdrop -- app-local; the admired navy behind the simulation. */
+  --color-canvas: #2d3561;
 }

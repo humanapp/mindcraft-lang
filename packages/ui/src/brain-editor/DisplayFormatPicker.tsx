@@ -30,7 +30,7 @@ export function DisplayFormatPicker({ value, onChange }: DisplayFormatPickerProp
         <div className="col-start-2 col-span-3">
           <button
             type="button"
-            className="text-sm text-indigo-500 hover:text-indigo-700 font-medium"
+            className="text-sm text-primary hover:text-primary/80 font-medium"
             onClick={() => setIsExpanded(true)}
           >
             + Display format
@@ -42,14 +42,14 @@ export function DisplayFormatPicker({ value, onChange }: DisplayFormatPickerProp
 
   return (
     <div className="grid grid-cols-4 items-center gap-4">
-      <label htmlFor="displayFormat" className="text-right text-slate-700 font-medium">
+      <label htmlFor="displayFormat" className="text-right text-foreground font-medium">
         Format
       </label>
       <select
         id="displayFormat"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="col-span-3 flex h-10 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:border-indigo-500"
+        className="col-span-3 flex h-10 w-full rounded-lg border-2 border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring"
       >
         {FORMAT_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>

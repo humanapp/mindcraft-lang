@@ -9,7 +9,7 @@ import { dataTypeIconMap, dataTypeNameMap } from "./data-type-icons";
 import { createVfsAwareVisualProvider } from "./visual-provider";
 
 const inputClass =
-  "col-span-3 flex h-10 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50";
+  "col-span-3 flex h-10 w-full rounded-lg border-2 border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50";
 
 const vector2LiteralType: CustomLiteralType = {
   typeId: SimTypeIds.Vector2,
@@ -47,7 +47,7 @@ const vector2LiteralType: CustomLiteralType = {
     return (
       <div className="grid gap-4">
         <div className="grid grid-cols-4 items-center gap-4">
-          <label htmlFor="vector2X" className="text-right text-slate-700 font-medium">
+          <label htmlFor="vector2X" className="text-right text-foreground font-medium">
             X
           </label>
           <input
@@ -64,7 +64,7 @@ const vector2LiteralType: CustomLiteralType = {
           />
         </div>
         <div className="grid grid-cols-4 items-center gap-4">
-          <label htmlFor="vector2Y" className="text-right text-slate-700 font-medium">
+          <label htmlFor="vector2Y" className="text-right text-foreground font-medium">
             Y
           </label>
           <input

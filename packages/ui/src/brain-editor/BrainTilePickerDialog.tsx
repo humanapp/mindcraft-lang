@@ -288,10 +288,10 @@ export function BrainTilePickerDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-2xl sm:h-auto sm:p-6 sm:gap-4 bg-slate-50 border-2 border-slate-300 rounded-none sm:rounded-2xl">
-        <DialogHeader className="border-b border-slate-200 pb-4">
-          <DialogTitle className="text-slate-800 font-semibold">Pick a Brain Tile</DialogTitle>
-          <DialogDescription className="text-slate-600">Select a tile to add to the rule.</DialogDescription>
+      <DialogContent className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-2xl sm:h-auto sm:p-6 sm:gap-4 bg-popover border-2 border-border rounded-none sm:rounded-2xl">
+        <DialogHeader className="border-b border-border pb-4">
+          <DialogTitle className="text-foreground font-semibold">Pick a Brain Tile</DialogTitle>
+          <DialogDescription className="text-muted-foreground">Select a tile to add to the rule.</DialogDescription>
           <Input
             ref={inputRef}
             type="text"
@@ -299,7 +299,7 @@ export function BrainTilePickerDialog({
             aria-label="Filter tiles"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="mt-2 w-full text-black bg-white/90 focus:bg-white border-slate-900"
+            className="mt-2 w-full"
           />
         </DialogHeader>
         {/* biome-ignore lint/a11y/useSemanticElements: section is already used for each tile kind group within this container */}
@@ -308,8 +308,8 @@ export function BrainTilePickerDialog({
           role="region"
           aria-label="Available brain tiles"
           style={{
-            background: "linear-gradient(55deg, #1E1B4B 0%, #A78BFA 100%)",
-            boxShadow: "inset 0 0 0 2px rgba(255, 255, 255, 0.25)",
+            background: "linear-gradient(160deg, #191338 0%, #0E0A20 100%)",
+            boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 4px 20px rgba(0, 0, 0, 0.45)",
           }}
         >
           {noResults && (
