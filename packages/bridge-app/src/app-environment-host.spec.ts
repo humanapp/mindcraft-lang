@@ -285,6 +285,8 @@ describe("AppEnvironmentHost project transitions", () => {
       "lock",
       "unload:active",
       "unlock",
+      "load:installed-extensions",
+      "load:extension-install-log",
       "load:brains",
       "loaded",
     ]);

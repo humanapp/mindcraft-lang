@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { EmbeddedExtension } from "@mindcraft-lang/bridge-app";
-import { CORE_LIB_COORDINATE, resolveEmbeddedExtensions } from "@mindcraft-lang/bridge-app";
+import { CORE_LIB_COORDINATE, resolveProjectExtensions } from "@mindcraft-lang/bridge-app";
 import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
 import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@mindcraft-lang/ts-compiler";
@@ -28,7 +28,10 @@ function embeddedLayers(): EmbeddedExtension[] {
 
 describe("sim embedded layers -- transitive resolution of the core <- sim stack", () => {
   test("seeding the sim layer alone resolves both layers with their edges and ambient declarations", () => {
-    const resolved = resolveEmbeddedExtensions({ [SIM_LIB_COORDINATE]: SIM_LIB_REFERENCE }, embeddedLayers());
+    const resolved = resolveProjectExtensions(
+      { [SIM_LIB_COORDINATE]: SIM_LIB_REFERENCE },
+      { embedded: embeddedLayers() }
+    );
 
     assert.deepEqual(resolved.dependencies, [{ coordinate: SIM_LIB_COORDINATE }]);
     const origins = resolved.dependencyMounts.map((m) => m.namespace).sort();
@@ -48,7 +51,10 @@ describe("sim embedded layers -- transitive resolution of the core <- sim stack"
 
 describe("sim embedded layers -- ambient declarations arrive through the resolved extensions", () => {
   test("user code resolves types spanning both layers with no root ambient mount, and the .d.ts materialize under .extensions/", () => {
-    const resolved = resolveEmbeddedExtensions({ [SIM_LIB_COORDINATE]: SIM_LIB_REFERENCE }, embeddedLayers());
+    const resolved = resolveProjectExtensions(
+      { [SIM_LIB_COORDINATE]: SIM_LIB_REFERENCE },
+      { embedded: embeddedLayers() }
+    );
     const environment = createMindcraftEnvironment({ modules: [coreModule(), createSimModule()] });
 
     // No root ambient mounts; platform types resolve entirely through the

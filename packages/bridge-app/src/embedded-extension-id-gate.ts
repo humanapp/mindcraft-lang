@@ -1,7 +1,7 @@
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { CompileDiagCode, MultiRootSession, type ProjectRoot } from "@mindcraft-lang/ts-compiler";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
-import { resolveEmbeddedExtensions } from "./embedded-extensions.js";
+import { resolveProjectExtensions } from "./embedded-extensions.js";
 
 /**
  * A declaration in a repo-embedded extension that ships without an explicit
@@ -39,7 +39,7 @@ export function findEmbeddedExtensionsMissingStableIds(
   for (const extension of embedRecord) {
     references[extension.canonicalOrigin] = `embedded:${extension.canonicalOrigin}`;
   }
-  const { dependencyMounts } = resolveEmbeddedExtensions(references, embedRecord);
+  const { dependencyMounts } = resolveProjectExtensions(references, { embedded: embedRecord });
   const roots: ProjectRoot[] = dependencyMounts.map((mount) => ({
     namespace: mount.namespace,
     files: mount.files,

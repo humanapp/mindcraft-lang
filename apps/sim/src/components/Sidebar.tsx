@@ -1,3 +1,4 @@
+import type { ExtensionInstallReport } from "@mindcraft-lang/bridge-app";
 import { useDocsSidebar } from "@mindcraft-lang/docs";
 import { Button, ExtensionBrowserDialog, Slider, Switch } from "@mindcraft-lang/ui";
 import {
@@ -21,7 +22,13 @@ import { SettingsDialog } from "@/components/SettingsDialog";
 import { useSimEnvironment } from "@/contexts/sim-environment";
 import { clearBindingToken } from "@/services/binding-token-persistence";
 import { simEmbeddedExtensions } from "@/services/sim-embedded-extensions";
-import { buildSimExtensionEntries, installSimExtension, uninstallSimExtension } from "@/services/sim-extension-browser";
+import {
+  buildSimExtensionEntries,
+  checkSimExtensionUpdates,
+  installSimExtension,
+  installSimExtensionReference,
+  uninstallSimExtension,
+} from "@/services/sim-extension-browser";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   carnivore: "#e63946",
@@ -88,7 +95,44 @@ export function Sidebar({
     [store]
   );
   const extensions = useSyncExternalStore(subscribeToActiveProject, () => store.activeProjectManifest?.extensions);
-  const extensionEntries = useMemo(() => buildSimExtensionEntries(extensions, simEmbeddedExtensions), [extensions]);
+  const extensionEntries = useMemo(
+    () =>
+      buildSimExtensionEntries(
+        extensions,
+        simEmbeddedExtensions,
+        store.host.installedExtensionContent,
+        store.host.extensionFetchFailures
+      ),
+    [extensions, store]
+  );
+
+  const surfaceExtensionReport = (report: ExtensionInstallReport | undefined) => {
+    if (!report) {
+      return;
+    }
+    if (!report.committed) {
+      const detail =
+        report.refusal.kind === "fetch"
+          ? `${report.refusal.error.code}: ${report.refusal.error.message}`
+          : report.refusal.message;
+      toast.error(`Could not install extension. ${detail}`);
+      return;
+    }
+    if (report.outcome.kind === "worsened") {
+      const undo = report.undo;
+      toast.warning("Installed with new problems", {
+        description: report.outcome.newProblems
+          .slice(0, 3)
+          .map((problem) => `${problem.location}: ${problem.description}`)
+          .join("\n"),
+        ...(undo ? { action: { label: "Undo", onClick: () => void undo() } } : {}),
+      });
+      return;
+    }
+    if (report.outcome.kind === "improved") {
+      toast.success(`Extensions updated; ${report.outcome.resolvedProblems.length} problem(s) resolved`);
+    }
+  };
 
   const handleInstallExtension = (coordinate: string) => {
     void (async () => {
@@ -98,9 +142,29 @@ export function Sidebar({
         coordinate,
         simEmbeddedExtensions
       );
-      if (!result.ok) {
-        toast.error(`Could not install extension (${result.code})`);
+      if (!result.action.ok) {
+        toast.error(`Could not install extension (${result.action.code})`);
+        return;
       }
+      surfaceExtensionReport(result.report);
+    })();
+  };
+
+  const handleInstallExtensionReference = (input: string) => {
+    void (async () => {
+      const result = await installSimExtensionReference(store.host, store.activeProjectManifest?.extensions, input);
+      if (!result.ok) {
+        toast.error(`Could not add extension. ${result.code}: ${result.message}`);
+        return;
+      }
+      if (!result.action.ok) {
+        toast.error(`Could not add extension (${result.action.code})`);
+        return;
+      }
+      if (result.report?.committed) {
+        toast.success(`Installed ${result.reference}`);
+      }
+      surfaceExtensionReport(result.report);
     })();
   };
 
@@ -110,11 +174,56 @@ export function Sidebar({
         store.host,
         store.activeProjectManifest?.extensions,
         coordinate,
-        simEmbeddedExtensions
+        simEmbeddedExtensions,
+        store.host.installedExtensionContent
       );
-      if (!result.ok) {
-        toast.error(`Could not remove extension (${result.code})`);
+      if (!result.action.ok) {
+        toast.error(`Could not remove extension (${result.action.code})`);
+        return;
       }
+      surfaceExtensionReport(result.report);
+    })();
+  };
+
+  const handleCheckUpdates = (coordinates: readonly string[]) => {
+    void (async () => {
+      const summary = await checkSimExtensionUpdates(store.host, coordinates);
+      for (const failure of summary.failures) {
+        toast.error(
+          `Could not check ${failure.coordinate} for updates. ${failure.error.code}: ${failure.error.message}`
+        );
+      }
+      if (summary.updates.length === 0) {
+        if (summary.failures.length === 0) {
+          toast.success("Extensions are up to date");
+        }
+        return;
+      }
+      const updates = summary.updates;
+      const description = updates
+        .map((update) => `${update.coordinate} -> ${update.latestVersion ?? update.resolvedSha?.slice(0, 12) ?? ""}`)
+        .join("\n");
+      toast.info(`${updates.length} update(s) available`, {
+        description,
+        action: {
+          label: updates.length > 1 ? "Update all" : "Update",
+          onClick: () => {
+            void (async () => {
+              surfaceExtensionReport(await store.host.applyExtensionUpdates(updates));
+            })();
+          },
+        },
+      });
+    })();
+  };
+
+  const handleCheckAllUpdates = () => {
+    handleCheckUpdates(extensionEntries.filter((entry) => entry.updatable === true).map((entry) => entry.coordinate));
+  };
+
+  const handleRetryExtension = () => {
+    void (async () => {
+      surfaceExtensionReport(await store.host.updateProjectExtensions(store.activeProjectManifest?.extensions ?? {}));
     })();
   };
   const [bridgeEnabled, setBridgeEnabled] = useState(() => store.getUiPreferences().bridgeEnabled);
@@ -220,6 +329,10 @@ export function Sidebar({
         entries={extensionEntries}
         onInstall={handleInstallExtension}
         onUninstall={handleUninstallExtension}
+        onCheckUpdate={(coordinate) => handleCheckUpdates([coordinate])}
+        onRetry={handleRetryExtension}
+        onCheckAllUpdates={handleCheckAllUpdates}
+        onInstallReference={handleInstallExtensionReference}
       />
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">

@@ -217,13 +217,13 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     assert.equal(await readManifestVersion(clone), "0.1.1");
   });
 
-  it("refuses local dependencies without --yes and proceeds with it", async () => {
+  it("refuses a branch dependency without --yes and proceeds with it", async () => {
     const root = await scratch();
     const remote = await initBareRemote(root);
     const project = path.join(root, "project");
     await writeProjectFiles(project, {
       "mindcraft.json": JSON.stringify(
-        { name: "Blinker", version: "0.1.0", extensions: { "author/scratch": "local:project-1" } },
+        { name: "Blinker", version: "0.1.0", extensions: { "author/steering": "gh:author/steering#main" } },
         null,
         2
       ),
@@ -231,7 +231,8 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
 
     const refused = await runCliBin(project, "publish", "patch", "--remote", remote);
     assert.equal(refused.code, 1);
-    assert.match(refused.stderr, /PUBLISH_LOCAL_DEPENDENCIES_UNCONFIRMED/);
+    assert.match(refused.stderr, /PUBLISH_UNSTABLE_DEPENDENCIES_UNCONFIRMED/);
+    assert.match(refused.stderr, /DEPENDENCY_BRANCH_REFERENCE/);
     assert.match(refused.stderr, /--yes/);
 
     const confirmed = await runCliBin(project, "publish", "patch", "--remote", remote, "--yes");

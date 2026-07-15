@@ -1,4 +1,5 @@
 import {
+  isAbbreviatedCommitPin,
   LOWEST_CONTENT_VERSION,
   MINDCRAFT_JSON_PATH,
   parseExtensionReference,
@@ -34,21 +35,18 @@ export interface EmbeddedExtension {
   files: readonly EmbeddedExtensionFile[];
 }
 
-/** The kind of conflict a resolution warning reports. */
-export type ExtensionResolutionWarningKind =
-  /** The same origin was required at two different versions; the higher was selected. */
-  | "version-conflict"
-  /** The same origin was required at one version through two different references; the reference nearest the host project was selected. */
-  | "reference-tiebreak";
-
 /**
- * A non-fatal conflict encountered while resolving a project's extension
- * dependency graph. The selected origin is always resolvable; warnings are
- * returned on the resolution result.
+ * A conflict between two requesters of the same origin, resolved by selecting
+ * one of them.
  */
-export interface ExtensionResolutionWarning {
-  /** Discriminates the kind of conflict. */
-  readonly kind: ExtensionResolutionWarningKind;
+export interface ExtensionResolutionConflictWarning {
+  /**
+   * `version-conflict` when the same origin was required at two different
+   * versions and the higher was selected; `reference-tiebreak` when the
+   * versions were equal and the reference nearest the host project was
+   * selected.
+   */
+  readonly kind: "version-conflict" | "reference-tiebreak";
   /** The origin the conflict was resolved for. */
   readonly origin: string;
   /** The reference string selected for this origin. */
@@ -64,6 +62,39 @@ export interface ExtensionResolutionWarning {
 }
 
 /**
+ * A non-fatal finding encountered while resolving a project's extension
+ * dependency graph. Every resolved origin remains resolvable; warnings are
+ * returned on the resolution result.
+ */
+export type ExtensionResolutionWarning =
+  | ExtensionResolutionConflictWarning
+  | {
+      /** The origin resolved through a pin that is plausibly an abbreviated commit SHA, which the content CDN serves with mutable branch semantics. */
+      readonly kind: "abbreviated-pin";
+      /** The origin the warning is about. */
+      readonly origin: string;
+      /** The origin's winning reference string. */
+      readonly reference: string;
+      /** Human-readable summary. */
+      readonly message: string;
+    }
+  | {
+      /** The origin's installed content declares a manifest identity that differs from the coordinate its reference names. */
+      readonly kind: "identity-mismatch";
+      /** The coordinate the origin resolves under. */
+      readonly origin: string;
+      /** The origin's winning reference string. */
+      readonly reference: string;
+      /** The `<owner>/<repo>` identity the installed content's manifest declares. */
+      readonly declaredIdentity: string;
+      /** Human-readable summary. */
+      readonly message: string;
+    };
+
+/** The kind of finding a resolution warning reports. */
+export type ExtensionResolutionWarningKind = ExtensionResolutionWarning["kind"];
+
+/**
  * A dependency cycle in a project's extension graph. Resolution fails with this
  * error; the graph names the origins on the cycle in traversal order.
  */
@@ -77,7 +108,32 @@ export class ExtensionResolutionCycleError extends Error {
   }
 }
 
-/** Compiler inputs resolved from a project's extensions list and a host embed record. */
+/**
+ * Fetched extension content available to resolution: each entry maps a `gh:`
+ * reference string, as written in an extensions map, to the snapshot's
+ * origin-relative text files (leading-slash paths).
+ */
+export type FetchedExtensionContentMap = ReadonlyMap<string, ReadonlyMap<string, string>>;
+
+/** The content sources a project's extension references resolve against. */
+export interface ExtensionResolutionSources {
+  /** Extensions bundled with the host application, resolving `embedded:` references. */
+  readonly embedded: readonly EmbeddedExtension[];
+  /** Fetched snapshot content keyed by reference, resolving `gh:` references. */
+  readonly fetched?: FetchedExtensionContentMap;
+}
+
+/** Provenance of one origin selected into the resolved closure. */
+export interface ResolvedOriginProvenance {
+  /** The `<owner>/<repo>` coordinate resolved. */
+  readonly origin: string;
+  /** The winning candidate's reference string. */
+  readonly reference: string;
+  /** The winning candidate's declared semantic version. */
+  readonly version: string;
+}
+
+/** Compiler inputs resolved from a project's extensions list and its content sources. */
 export interface ResolvedExtensions {
   /** Each direct dependency's `<owner>/<repo>` coordinate, resolving its `@ext/<owner>/<repo>` imports. */
   dependencies: readonly ProjectDependency[];
@@ -87,6 +143,8 @@ export interface ResolvedExtensions {
    * `@ext/<owner>/<repo>` imports resolve against the correct origin.
    */
   dependencyMounts: readonly DependencyMount[];
+  /** The winning reference and version of every origin in the closure. */
+  origins: readonly ResolvedOriginProvenance[];
   /** Non-fatal conflicts encountered during resolution, in encounter order. */
   warnings: readonly ExtensionResolutionWarning[];
 }
@@ -111,6 +169,8 @@ export interface OriginCandidate {
   extensions: ExtensionsMap;
   /** The candidate's declared ambient `.d.ts` files, as namespace-relative paths; empty when it declares none. */
   ambient: readonly string[];
+  /** The `<owner>/<repo>` identity the candidate's manifest declares; absent when it declares none. */
+  identity?: string;
 }
 
 /** Compare two semver strings by their release triple; a higher triple compares greater. */
@@ -137,15 +197,16 @@ function embeddedFiles(extension: EmbeddedExtension): Map<string, string> {
 }
 
 /**
- * Read an extension's own version, extensions list, and declared ambient `.d.ts`
- * paths from the `mindcraft.json` carried in its content. An extension without a
- * manifest, or with an unparseable one, contributes no dependencies and no
- * ambient files and compares as `0.0.0`.
+ * Read an extension's own version, extensions list, declared ambient `.d.ts`
+ * paths, and declared identity from the `mindcraft.json` carried in its
+ * content. An extension without a manifest, or with an unparseable one,
+ * contributes no dependencies and no ambient files and compares as `0.0.0`.
  */
 function readOwnManifest(files: ReadonlyMap<string, string>): {
   version: string;
   extensions: ExtensionsMap;
   ambient: readonly string[];
+  identity?: string;
 } {
   const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
   if (manifestContent === undefined) {
@@ -159,34 +220,61 @@ function readOwnManifest(files: ReadonlyMap<string, string>): {
     version: parsed.manifest.version,
     extensions: parsed.manifest.extensions,
     ambient: parsed.manifest.ambient ?? [],
+    ...(parsed.manifest.identity !== undefined ? { identity: parsed.manifest.identity } : {}),
   };
 }
 
-/** Resolve one embedded reference string against the embed record into an origin candidate at the given depth. */
-function embeddedCandidate(
+/** Build an origin candidate for `origin` from its content files at the given depth. */
+function candidateFromFiles(
+  origin: string,
   reference: string,
   depth: number,
-  byCoordinate: ReadonlyMap<string, EmbeddedExtension>
-): OriginCandidate | undefined {
-  const parsed = parseExtensionReference(reference);
-  if (parsed === undefined || parsed.transport !== "embedded") {
-    return undefined;
-  }
-  const extension = byCoordinate.get(parsed.coordinate);
-  if (extension === undefined) {
-    return undefined;
-  }
-  const files = embeddedFiles(extension);
+  files: ReadonlyMap<string, string>
+): OriginCandidate {
   const own = readOwnManifest(files);
   return {
-    origin: extension.canonicalOrigin,
+    origin,
     version: own.version,
     reference,
     depth,
     files,
     extensions: own.extensions,
     ambient: own.ambient,
+    ...(own.identity !== undefined ? { identity: own.identity } : {}),
   };
+}
+
+/**
+ * Resolve one reference string against the content sources into an origin
+ * candidate at the given depth. An `embedded:` reference resolves through the
+ * embed record; a `gh:` reference resolves through the fetched content map.
+ * A reference whose source has no content for it yields `undefined`.
+ */
+function candidateForReference(
+  reference: string,
+  depth: number,
+  byCoordinate: ReadonlyMap<string, EmbeddedExtension>,
+  fetched: FetchedExtensionContentMap | undefined
+): OriginCandidate | undefined {
+  const parsed = parseExtensionReference(reference);
+  if (parsed === undefined) {
+    return undefined;
+  }
+  if (parsed.transport === "embedded") {
+    const extension = byCoordinate.get(parsed.coordinate);
+    if (extension === undefined) {
+      return undefined;
+    }
+    return candidateFromFiles(extension.canonicalOrigin, reference, depth, embeddedFiles(extension));
+  }
+  if (parsed.transport === "gh") {
+    const files = fetched?.get(reference);
+    if (files === undefined) {
+      return undefined;
+    }
+    return candidateFromFiles(`${parsed.owner}/${parsed.repo}`, reference, depth, files);
+  }
+  return undefined;
 }
 
 /** A resolved origin: the winning candidate plus the coordinates its own imports resolve through. */
@@ -201,7 +289,7 @@ export interface OriginUnification {
   /** The candidate that wins the origin: higher version, or nearest-root at an equal version. */
   readonly winner: OriginCandidate;
   /** The conflict recorded when the two candidates disagree on version or reference; absent when they unify cleanly. */
-  readonly warning: ExtensionResolutionWarning | undefined;
+  readonly warning: ExtensionResolutionConflictWarning | undefined;
 }
 
 /**
@@ -231,8 +319,8 @@ export function unifyOriginCandidate(incoming: OriginCandidate, incumbent: Origi
 }
 
 /**
- * Resolve a project's extensions list against a host application's embed record
- * into compiler dependency inputs. Resolution is transitive: an extension's own
+ * Resolve a project's extensions list against its content sources into
+ * compiler dependency inputs. Resolution is transitive: an extension's own
  * `mindcraft.json` extensions resolve recursively. Each origin appears once in
  * the closure regardless of how many dependents reference it, so references to
  * an origin's published types across a diamond unify on one registration.
@@ -241,21 +329,25 @@ export function unifyOriginCandidate(incoming: OriginCandidate, incumbent: Origi
  * semantic version is selected and a `version-conflict` warning names both
  * requesters; when the versions are equal but the references differ, the
  * reference nearest the host project wins and a `reference-tiebreak` warning is
- * emitted. References of non-embedded transports and embedded references
- * naming no bundled extension are skipped; an unresolved import surfaces later
- * as an ordinary compiler diagnostic.
+ * emitted. A fetched origin whose winning pin is plausibly an abbreviated
+ * commit SHA raises an `abbreviated-pin` warning, and one whose content
+ * declares a manifest identity differing from its coordinate raises an
+ * `identity-mismatch` warning. A reference whose source carries no content for
+ * it is skipped; an unresolved import surfaces later as an ordinary compiler
+ * diagnostic.
  *
  * @throws {ExtensionResolutionCycleError} when the extension graph contains a
  *   dependency cycle.
  */
-export function resolveEmbeddedExtensions(
+export function resolveProjectExtensions(
   extensions: Readonly<Record<string, string>> | undefined,
-  embedRecord: readonly EmbeddedExtension[]
+  sources: ExtensionResolutionSources
 ): ResolvedExtensions {
   if (!extensions) {
-    return { dependencies: [], dependencyMounts: [], warnings: [] };
+    return { dependencies: [], dependencyMounts: [], origins: [], warnings: [] };
   }
-  const byCoordinate = new Map(embedRecord.map((extension) => [extension.canonicalOrigin, extension]));
+  const byCoordinate = new Map(sources.embedded.map((extension) => [extension.canonicalOrigin, extension]));
+  const fetched = sources.fetched;
   const warnings: ExtensionResolutionWarning[] = [];
 
   // The project's direct dependencies: each dependency's `<owner>/<repo>`
@@ -265,7 +357,7 @@ export function resolveEmbeddedExtensions(
   const directDependencies: ProjectDependency[] = [];
   const rootCandidates: OriginCandidate[] = [];
   for (const reference of Object.values(extensions)) {
-    const candidate = embeddedCandidate(reference, 0, byCoordinate);
+    const candidate = candidateForReference(reference, 0, byCoordinate, fetched);
     if (candidate === undefined) {
       continue;
     }
@@ -305,7 +397,7 @@ export function resolveEmbeddedExtensions(
     if (winner.candidate === candidate && !expanded.has(candidate.origin)) {
       expanded.add(candidate.origin);
       for (const reference of Object.values(candidate.extensions)) {
-        const child = embeddedCandidate(reference, candidate.depth + 1, byCoordinate);
+        const child = candidateForReference(reference, candidate.depth + 1, byCoordinate, fetched);
         if (child === undefined) {
           continue;
         }
@@ -319,6 +411,7 @@ export function resolveEmbeddedExtensions(
   detectCycle(directDependencies, resolved);
 
   const dependencyMounts: DependencyMount[] = [];
+  const origins: ResolvedOriginProvenance[] = [];
   for (const { candidate, dependencies } of resolved.values()) {
     dependencyMounts.push({
       namespace: candidate.origin,
@@ -326,13 +419,48 @@ export function resolveEmbeddedExtensions(
       dependencies,
       ...(candidate.ambient.length > 0 ? { ambient: candidate.ambient } : {}),
     });
+    origins.push({ origin: candidate.origin, reference: candidate.reference, version: candidate.version });
+    warnings.push(...fetchedCandidateWarnings(candidate));
   }
 
-  return { dependencies: directDependencies, dependencyMounts, warnings };
+  return { dependencies: directDependencies, dependencyMounts, origins, warnings };
+}
+
+/** The pin-form and identity warnings a fetched origin's winning candidate raises. */
+function fetchedCandidateWarnings(candidate: OriginCandidate): ExtensionResolutionWarning[] {
+  const parsed = parseExtensionReference(candidate.reference);
+  if (parsed?.transport !== "gh") {
+    return [];
+  }
+  const found: ExtensionResolutionWarning[] = [];
+  if (parsed.routing.kind === "pin" && isAbbreviatedCommitPin(parsed.routing.pin)) {
+    found.push({
+      kind: "abbreviated-pin",
+      origin: candidate.origin,
+      reference: candidate.reference,
+      message:
+        `Extension "${candidate.origin}" is pinned at "${parsed.routing.pin}", which looks like an abbreviated ` +
+        "commit SHA; the content CDN serves it with mutable branch semantics. " +
+        "Only the full 40-character SHA is an immutable pin.",
+    });
+  }
+  if (candidate.identity !== undefined && candidate.identity !== candidate.origin) {
+    found.push({
+      kind: "identity-mismatch",
+      origin: candidate.origin,
+      reference: candidate.reference,
+      declaredIdentity: candidate.identity,
+      message:
+        `Extension "${candidate.origin}" (via "${candidate.reference}") declares the identity ` +
+        `"${candidate.identity}"; the content may have been forked or renamed upstream. ` +
+        `Resolution proceeds under "${candidate.origin}".`,
+    });
+  }
+  return found;
 }
 
 /** Build a version-conflict warning where `winner` was selected over `loser`. */
-function versionConflict(winner: OriginCandidate, loser: OriginCandidate): ExtensionResolutionWarning {
+function versionConflict(winner: OriginCandidate, loser: OriginCandidate): ExtensionResolutionConflictWarning {
   return {
     kind: "version-conflict",
     origin: winner.origin,
@@ -347,7 +475,7 @@ function versionConflict(winner: OriginCandidate, loser: OriginCandidate): Exten
 }
 
 /** Build a reference tie-break warning where `winner` was selected over `loser` at an equal version. */
-function referenceTiebreak(winner: OriginCandidate, loser: OriginCandidate): ExtensionResolutionWarning {
+function referenceTiebreak(winner: OriginCandidate, loser: OriginCandidate): ExtensionResolutionConflictWarning {
   return {
     kind: "reference-tiebreak",
     origin: winner.origin,

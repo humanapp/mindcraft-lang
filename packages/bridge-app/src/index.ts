@@ -26,25 +26,67 @@ export {
 export type {
   EmbeddedExtension,
   EmbeddedExtensionFile,
+  ExtensionResolutionConflictWarning,
+  ExtensionResolutionSources,
   ExtensionResolutionWarning,
   ExtensionResolutionWarningKind,
+  FetchedExtensionContentMap,
   ResolvedExtensions,
+  ResolvedOriginProvenance,
 } from "./embedded-extensions.js";
-export { ExtensionResolutionCycleError, resolveEmbeddedExtensions } from "./embedded-extensions.js";
+export { ExtensionResolutionCycleError, resolveProjectExtensions } from "./embedded-extensions.js";
 export type {
   ExtensionActionResult,
   ExtensionCatalogEntry,
+  ExtensionCatalogOffer,
+  ExtensionFetchFailures,
   PlatformStackLayer,
 } from "./extension-catalog.js";
 export {
   buildExtensionCatalog,
+  buildExtensionCatalogOffers,
   deriveProjectPlatformStack,
   ExtensionActionResultCode,
   installEmbeddedExtension,
+  installExtensionReference,
   isExtensionCompatible,
   satisfiesRange,
-  uninstallEmbeddedExtension,
+  uninstallExtension,
 } from "./extension-catalog.js";
+export type {
+  ExtensionFetchClosureResult,
+  ExtensionInstallOutcome,
+  ExtensionInstallOutcomeKind,
+  ExtensionInstallProblem,
+  ExtensionInstallRefusal,
+  ExtensionInstallReport,
+  ProjectDiagnosticsState,
+} from "./extension-install.js";
+export {
+  collectExtensionFetchClosure,
+  diffProjectDiagnostics,
+  typecheckBrainProblems,
+} from "./extension-install.js";
+export type { ExtensionInstallLogEvent } from "./extension-install-log.js";
+export {
+  appendExtensionInstallLog,
+  EXTENSION_INSTALL_LOG_APP_DATA_KEY,
+  parseExtensionInstallLog,
+} from "./extension-install-log.js";
+export type {
+  InstalledExtensionSnapshot,
+  InstalledExtensionSnapshots,
+} from "./fetched-extension-snapshots.js";
+export {
+  base64ToBytes,
+  bytesToBase64,
+  decodeInstalledSnapshotFiles,
+  fetchedContentFromSnapshots,
+  INSTALLED_EXTENSIONS_APP_DATA_KEY,
+  installedSnapshotFromFetched,
+  parseInstalledExtensionSnapshots,
+  serializeInstalledExtensionSnapshots,
+} from "./fetched-extension-snapshots.js";
 
 export type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
 export { applyCompiledUserTiles, collectMetadataFromCompile } from "./user-tile-registration.js";

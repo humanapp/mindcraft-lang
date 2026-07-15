@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
-import { resolveEmbeddedExtensions } from "./embedded-extensions.js";
+import { resolveProjectExtensions } from "./embedded-extensions.js";
 import type { ExtensionCatalogEntry, PlatformStackLayer } from "./extension-catalog.js";
 import {
   buildExtensionCatalog,
+  buildExtensionCatalogOffers,
   deriveProjectPlatformStack,
   ExtensionActionResultCode,
   installEmbeddedExtension,
+  installExtensionReference,
   isExtensionCompatible,
   satisfiesRange,
-  uninstallEmbeddedExtension,
+  uninstallExtension,
 } from "./extension-catalog.js";
 
 /** Build an embedded extension whose bundled `mindcraft.json` declares the given manifest fields. */
@@ -215,7 +217,7 @@ describe("installEmbeddedExtension", () => {
     assert.equal(result.code, ExtensionActionResultCode.INSTALLED);
     assert.equal(result.extensions[POSITION], `embedded:${POSITION}`);
 
-    const resolved = resolveEmbeddedExtensions(result.extensions, microbitEmbedRecord);
+    const resolved = resolveProjectExtensions(result.extensions, { embedded: microbitEmbedRecord });
     assert.ok(resolved.dependencyMounts.some((mount) => mount.namespace === POSITION));
   });
 
@@ -240,16 +242,16 @@ describe("installEmbeddedExtension", () => {
   });
 });
 
-describe("uninstallEmbeddedExtension", () => {
+describe("uninstallExtension", () => {
   const withPosition = { ...microbitProject, [POSITION]: `embedded:${POSITION}` };
 
   test("removes an add-on so it no longer resolves", () => {
-    const result = uninstallEmbeddedExtension(withPosition, POSITION, microbitLayers, microbitEmbedRecord);
+    const result = uninstallExtension(withPosition, POSITION, microbitLayers, microbitEmbedRecord);
     assert.equal(result.ok, true);
     assert.equal(result.code, ExtensionActionResultCode.UNINSTALLED);
     assert.equal(POSITION in result.extensions, false);
 
-    const resolved = resolveEmbeddedExtensions(result.extensions, microbitEmbedRecord);
+    const resolved = resolveProjectExtensions(result.extensions, { embedded: microbitEmbedRecord });
     assert.equal(
       resolved.dependencyMounts.some((mount) => mount.namespace === POSITION),
       false
@@ -257,14 +259,14 @@ describe("uninstallEmbeddedExtension", () => {
   });
 
   test("rejects uninstalling a locked layer library", () => {
-    const result = uninstallEmbeddedExtension(microbitProject, MICROBIT, microbitLayers, microbitEmbedRecord);
+    const result = uninstallExtension(microbitProject, MICROBIT, microbitLayers, microbitEmbedRecord);
     assert.equal(result.ok, false);
     assert.equal(result.code, ExtensionActionResultCode.LOCKED);
     assert.deepEqual(result.extensions, microbitProject);
   });
 
   test("reports an absent coordinate as a no-op", () => {
-    const result = uninstallEmbeddedExtension(microbitProject, POSITION, microbitLayers, microbitEmbedRecord);
+    const result = uninstallExtension(microbitProject, POSITION, microbitLayers, microbitEmbedRecord);
     assert.equal(result.ok, false);
     assert.equal(result.code, ExtensionActionResultCode.NOT_INSTALLED);
     assert.deepEqual(result.extensions, microbitProject);
@@ -286,18 +288,18 @@ describe("uninstallEmbeddedExtension", () => {
       [GAMEPAD]: `embedded:${GAMEPAD}`,
     };
 
-    const blocked = uninstallEmbeddedExtension(project, POSITION, microbitLayers, embedRecord);
+    const blocked = uninstallExtension(project, POSITION, microbitLayers, embedRecord);
     assert.equal(blocked.ok, false);
     assert.equal(blocked.code, ExtensionActionResultCode.REQUIRED_BY_DEPENDENT);
     assert.deepEqual(blocked.extensions, project);
 
     // The depending add-on itself uninstalls freely; nothing depends on it.
-    const allowed = uninstallEmbeddedExtension(project, GAMEPAD, microbitLayers, embedRecord);
+    const allowed = uninstallExtension(project, GAMEPAD, microbitLayers, embedRecord);
     assert.equal(allowed.ok, true);
     assert.equal(allowed.code, ExtensionActionResultCode.UNINSTALLED);
 
     // With the dependent removed, Position is no longer depended upon.
-    const nowAllowed = uninstallEmbeddedExtension(allowed.extensions, POSITION, microbitLayers, embedRecord);
+    const nowAllowed = uninstallExtension(allowed.extensions, POSITION, microbitLayers, embedRecord);
     assert.equal(nowAllowed.ok, true);
     assert.equal(nowAllowed.code, ExtensionActionResultCode.UNINSTALLED);
   });
@@ -333,5 +335,185 @@ describe("satisfiesRange", () => {
   test("a malformed version or bound never matches", () => {
     assert.equal(satisfiesRange("1.2", "^1.0.0"), false);
     assert.equal(satisfiesRange("1.2.3", "^1.0"), false);
+  });
+});
+
+describe("remote (gh:) catalog entries and actions", () => {
+  const REMOTE = "example-org/position-ext";
+  const REMOTE_REFERENCE = `gh:${REMOTE}@v0.1.0`;
+
+  /** Fetched snapshot content for the remote add-on, keyed by its reference. */
+  function remoteContent(manifest: {
+    name: string;
+    version: string;
+    extensions?: Record<string, string>;
+    identity?: string;
+  }) {
+    return new Map([
+      [
+        REMOTE_REFERENCE,
+        new Map([
+          ["/mindcraft.json", JSON.stringify({ ...manifest, files: ["index.ts"] })],
+          ["/index.ts", "export const p = 1;"],
+        ]),
+      ],
+    ]);
+  }
+
+  test("installExtensionReference adds a gh reference keyed by its coordinate", () => {
+    const result = installExtensionReference({}, REMOTE_REFERENCE);
+    assert.ok(result.ok);
+    assert.equal(result.code, ExtensionActionResultCode.INSTALLED);
+    assert.deepStrictEqual(result.extensions, { [REMOTE]: REMOTE_REFERENCE });
+  });
+
+  test("installExtensionReference trims surrounding whitespace", () => {
+    const result = installExtensionReference({}, `  ${REMOTE_REFERENCE}  `);
+    assert.ok(result.ok);
+    assert.deepStrictEqual(result.extensions, { [REMOTE]: REMOTE_REFERENCE });
+  });
+
+  test("installExtensionReference rejects a malformed or non-gh reference", () => {
+    for (const reference of ["gh:owner/repo", "embedded:a/b", "ffff:p1", "owner/repo@v1", ""]) {
+      const result = installExtensionReference({}, reference);
+      assert.ok(!result.ok);
+      assert.equal(result.code, ExtensionActionResultCode.INVALID_REFERENCE);
+    }
+  });
+
+  test("installExtensionReference reports an already-present coordinate as a no-op", () => {
+    const current = { [REMOTE]: REMOTE_REFERENCE };
+    const result = installExtensionReference(current, `gh:${REMOTE}#main`);
+    assert.ok(!result.ok);
+    assert.equal(result.code, ExtensionActionResultCode.ALREADY_INSTALLED);
+    assert.deepStrictEqual(result.extensions, current);
+  });
+
+  test("buildExtensionCatalog lists an installed remote dependency with its snapshot identity", () => {
+    const entries = buildExtensionCatalog(
+      { [REMOTE]: REMOTE_REFERENCE },
+      [],
+      new Set(),
+      remoteContent({ name: "Position", version: "0.1.0" })
+    );
+    assert.deepStrictEqual(entries, [
+      { coordinate: REMOTE, name: "Position", version: "0.1.0", installed: true, locked: false, updatable: true },
+    ]);
+  });
+
+  test("buildExtensionCatalog lists a remote reference without content as broken so it can be retried or removed", () => {
+    const entries = buildExtensionCatalog({ [REMOTE]: REMOTE_REFERENCE }, [], new Set());
+    assert.deepStrictEqual(entries, [
+      {
+        coordinate: REMOTE,
+        name: REMOTE,
+        version: "0.0.0",
+        installed: false,
+        locked: false,
+        broken: { message: `No content is installed for "${REMOTE_REFERENCE}".` },
+      },
+    ]);
+  });
+
+  test("buildExtensionCatalog carries the last recorded fetch failure on a broken entry", () => {
+    const failures = new Map([
+      [REMOTE_REFERENCE, { code: "EXTENSION_FETCH_UNREACHABLE", message: "The source is unreachable: refused" }],
+    ]);
+    const entries = buildExtensionCatalog({ [REMOTE]: REMOTE_REFERENCE }, [], new Set(), undefined, failures);
+    assert.deepStrictEqual(entries[0].broken, {
+      code: "EXTENSION_FETCH_UNREACHABLE",
+      message: "The source is unreachable: refused",
+    });
+  });
+
+  test("buildExtensionCatalog annotates a remote dependency whose manifest identity differs from its coordinate", () => {
+    const entries = buildExtensionCatalog(
+      { [REMOTE]: REMOTE_REFERENCE },
+      [],
+      new Set(),
+      remoteContent({ name: "Position", version: "0.1.0", identity: "upstream-org/position-ext" })
+    );
+    assert.deepStrictEqual(entries[0].identityMismatch, { declaredIdentity: "upstream-org/position-ext" });
+  });
+
+  test("uninstallExtension removes a remote dependency and blocks one another extension depends on", () => {
+    const removable = uninstallExtension({ [REMOTE]: REMOTE_REFERENCE }, REMOTE, new Set(), []);
+    assert.ok(removable.ok);
+    assert.deepStrictEqual(removable.extensions, {});
+
+    // An embedded extension's manifest requires the remote coordinate: after
+    // removing its explicit entry the dependent would pull it back, so the
+    // removal is refused.
+    const dependent = ext("mindcraft-lang/robot", {
+      name: "Robot",
+      version: "1.0.0",
+      extensions: { [REMOTE]: REMOTE_REFERENCE },
+    });
+    const blocked = uninstallExtension(
+      { "mindcraft-lang/robot": "embedded:mindcraft-lang/robot", [REMOTE]: REMOTE_REFERENCE },
+      REMOTE,
+      new Set(),
+      [dependent],
+      remoteContent({ name: "Position", version: "0.1.0" })
+    );
+    assert.ok(!blocked.ok);
+    assert.equal(blocked.code, ExtensionActionResultCode.REQUIRED_BY_DEPENDENT);
+  });
+});
+
+describe("buildExtensionCatalogOffers", () => {
+  const PIN_SHA = "b19b80b029a77303ee575d3ff9b29adbf7021b23";
+  const document = {
+    format: "mindcraft.catalog/1",
+    entries: [
+      {
+        coordinate: "mindcraft-lang/codal-position-ext",
+        kind: "extension",
+        ref: `gh:mindcraft-lang/codal-position-ext@${PIN_SHA}`,
+        name: "Position",
+        version: "0.1.0",
+        description: "Position sensing.",
+        thumbnail: "data:,x",
+      },
+      {
+        coordinate: "mindcraft-lang/ecosim-teleport-ext",
+        kind: "extension",
+        ref: `gh:mindcraft-lang/ecosim-teleport-ext@${PIN_SHA}`,
+        name: "Teleport",
+        version: "0.1.0",
+        description: "Teleport actuator.",
+      },
+    ],
+  };
+
+  test("adapts entries into offers from display metadata alone, marking already-declared coordinates installed", () => {
+    const offers = buildExtensionCatalogOffers(document, {
+      "mindcraft-lang/codal-position-ext": `gh:mindcraft-lang/codal-position-ext@${PIN_SHA}`,
+    });
+    assert.deepStrictEqual(offers, [
+      {
+        coordinate: "mindcraft-lang/codal-position-ext",
+        name: "Position",
+        version: "0.1.0",
+        description: "Position sensing.",
+        thumbnailUrl: "data:,x",
+        ref: `gh:mindcraft-lang/codal-position-ext@${PIN_SHA}`,
+        installed: true,
+      },
+      {
+        coordinate: "mindcraft-lang/ecosim-teleport-ext",
+        name: "Teleport",
+        version: "0.1.0",
+        description: "Teleport actuator.",
+        ref: `gh:mindcraft-lang/ecosim-teleport-ext@${PIN_SHA}`,
+        installed: false,
+      },
+    ]);
+  });
+
+  test("adapts every entry when the project declares no extensions", () => {
+    const offers = buildExtensionCatalogOffers(document, undefined);
+    assert.equal(offers.length, 2);
+    assert.ok(offers.every((offer) => !offer.installed));
   });
 });

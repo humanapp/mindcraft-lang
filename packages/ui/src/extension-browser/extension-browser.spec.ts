@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ExtensionBrowserList } from "./ExtensionBrowserDialog";
+import { ExtensionBrowserList, ExtensionCatalogSection } from "./ExtensionBrowserDialog";
 import {
   DEFAULT_EXTENSION_THUMBNAIL,
   type ExtensionBrowserEntry,
+  type ExtensionCatalogOffer,
   extensionCardMenuItems,
   extensionCardShowsInstall,
+  extensionCardShowsRetry,
   filterExtensionEntries,
   runExtensionCardAction,
 } from "./extension-browser-model";
@@ -47,6 +49,28 @@ const availableAddon = entry({
   installed: false,
   docsUrl: "https://github.com/mindcraft-lang/shared-math",
 });
+const updatableDependency = entry({
+  coordinate: "example-org/position-ext",
+  name: "Position",
+  version: "0.1.0",
+  installed: true,
+  updatable: true,
+});
+const brokenDependency = entry({
+  coordinate: "example-org/ghost-ext",
+  name: "example-org/ghost-ext",
+  version: "0.0.0",
+  installed: false,
+  broken: { code: "EXTENSION_FETCH_UNREACHABLE", message: "The source is unreachable: refused" },
+});
+const forkedDependency = entry({
+  coordinate: "fork-org/position-ext",
+  name: "Position",
+  version: "0.1.0",
+  installed: true,
+  updatable: true,
+  identityMismatch: { declaredIdentity: "upstream-org/position-ext" },
+});
 
 function renderList(entries: readonly ExtensionBrowserEntry[]): string {
   return renderToStaticMarkup(
@@ -54,6 +78,8 @@ function renderList(entries: readonly ExtensionBrowserEntry[]): string {
       entries,
       onInstall: () => {},
       onUninstall: () => {},
+      onCheckUpdate: () => {},
+      onRetry: () => {},
     })
   );
 }
@@ -105,6 +131,20 @@ describe("extensionCardMenuItems and extensionCardShowsInstall", () => {
   test("a locked library with no docsUrl offers no menu items", () => {
     assert.deepEqual(extensionCardMenuItems(entry({ coordinate: "x/y", locked: true, installed: true })), []);
   });
+
+  test("an updatable dependency offers Check for Update ahead of Uninstall", () => {
+    assert.deepEqual(extensionCardMenuItems(updatableDependency), [
+      { action: "check-update", label: "Check for Update" },
+      { action: "uninstall", label: "Uninstall" },
+    ]);
+  });
+
+  test("a broken dependency offers Uninstall and shows Retry instead of Add", () => {
+    assert.deepEqual(extensionCardMenuItems(brokenDependency), [{ action: "uninstall", label: "Uninstall" }]);
+    assert.equal(extensionCardShowsInstall(brokenDependency), false);
+    assert.equal(extensionCardShowsRetry(brokenDependency), true);
+    assert.equal(extensionCardShowsRetry(availableAddon), false);
+  });
 });
 
 describe("runExtensionCardAction", () => {
@@ -141,6 +181,26 @@ describe("runExtensionCardAction", () => {
     });
     assert.equal(called, false);
   });
+
+  test("check-update and retry fire their callbacks with the coordinate, and do nothing when absent", () => {
+    const checked: string[] = [];
+    const retried: string[] = [];
+    const callbacks = {
+      onInstall: () => {},
+      onUninstall: () => {},
+      onCheckUpdate: (c: string) => checked.push(c),
+      onRetry: (c: string) => retried.push(c),
+    };
+
+    runExtensionCardAction(updatableDependency, "check-update", callbacks);
+    runExtensionCardAction(brokenDependency, "retry", callbacks);
+    assert.deepEqual(checked, ["example-org/position-ext"]);
+    assert.deepEqual(retried, ["example-org/ghost-ext"]);
+
+    // Absent optional callbacks make the actions no-ops.
+    runExtensionCardAction(updatableDependency, "check-update", { onInstall: () => {}, onUninstall: () => {} });
+    runExtensionCardAction(brokenDependency, "retry", { onInstall: () => {}, onUninstall: () => {} });
+  });
 });
 
 describe("ExtensionBrowserList rendering", () => {
@@ -172,5 +232,62 @@ describe("ExtensionBrowserList rendering", () => {
     assert.match(markup, /Micro:bit v2 actions/);
     assert.match(markup, /Position actions/);
     assert.doesNotMatch(markup, />Add</);
+  });
+
+  test("a broken dependency renders its failure code and reason with a Retry affordance and no Add", () => {
+    const markup = renderList([brokenDependency]);
+    assert.match(markup, /EXTENSION_FETCH_UNREACHABLE/);
+    assert.match(markup, /The source is unreachable: refused/);
+    assert.match(markup, />Retry</);
+    assert.doesNotMatch(markup, />Add</);
+  });
+
+  test("an identity mismatch renders the declared identity on the card", () => {
+    const markup = renderList([forkedDependency]);
+    assert.match(markup, /Publishes as upstream-org\/position-ext/);
+  });
+});
+
+describe("ExtensionCatalogSection rendering", () => {
+  const offers: ExtensionCatalogOffer[] = [
+    {
+      coordinate: "mindcraft-lang/codal-position-ext",
+      name: "Position",
+      version: "0.1.0",
+      description: "Position sensing.",
+      ref: "gh:mindcraft-lang/codal-position-ext@b19b80b029a77303ee575d3ff9b29adbf7021b23",
+      installed: false,
+    },
+    {
+      coordinate: "mindcraft-lang/ecosim-teleport-ext",
+      name: "Teleport",
+      version: "0.2.0",
+      description: "Teleport actuator.",
+      ref: "gh:mindcraft-lang/ecosim-teleport-ext@89abcdef0123456789abcdef0123456789abcdef",
+      installed: true,
+    },
+  ];
+
+  test("renders each offer's display metadata with Add only on not-installed offers", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ExtensionCatalogSection, { offers, onInstallReference: () => {} })
+    );
+    assert.match(markup, /Catalog/);
+    assert.match(markup, /Position sensing\./);
+    assert.match(markup, /Teleport actuator\./);
+    assert.match(markup, /v0\.1\.0/);
+    assert.match(markup, /Installed/);
+    assert.equal(markup.split(">Add<").length - 1, 1, "one Add affordance for the one not-installed offer");
+  });
+});
+
+describe("ExtensionReferenceInstallRow", () => {
+  test("renders the add-from-GitHub input, naming the reference form and GitHub URLs as accepted input", async () => {
+    const { ExtensionReferenceInstallRow } = await import("./ExtensionBrowserDialog");
+    const markup = renderToStaticMarkup(createElement(ExtensionReferenceInstallRow, { onInstallReference: () => {} }));
+    assert.match(markup, /aria-label="Add from GitHub"/);
+    assert.match(markup, /gh:owner\/repo@v1\.0\.0 or GitHub URL/);
+    // The Add affordance starts disabled until a reference is entered.
+    assert.match(markup, /disabled/);
   });
 });

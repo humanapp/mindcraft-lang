@@ -1,5 +1,39 @@
 export { LOWEST_CONTENT_VERSION } from "@mindcraft-lang/service-api";
 export { AppHostError, AppHostErrorCode, appHostError } from "./app-host-error.js";
+export type { DependencyPinProbe, UnstableDependency } from "./dependency-stability.js";
+export { collectUnstableDependencies, UnstableDependencyCode } from "./dependency-stability.js";
+export type { ExtensionAddInput, ExtensionAddInputResolution } from "./extension-add-input.js";
+export {
+  ExtensionAddInputErrorCode,
+  parseExtensionAddInput,
+  resolveExtensionAddInput,
+} from "./extension-add-input.js";
+export type {
+  ExtensionCatalogDocument,
+  ExtensionCatalogDocumentEntry,
+  ExtensionCatalogDocumentError,
+  ExtensionCatalogDocumentParseResult,
+  ExtensionCatalogDocumentWarning,
+} from "./extension-catalog-document.js";
+export {
+  CATALOG_ENTRY_KIND_EXTENSION,
+  ExtensionCatalogDocumentErrorCode,
+  ExtensionCatalogDocumentWarningCode,
+  MINDCRAFT_CATALOG_FORMAT,
+  parseExtensionCatalogDocument,
+  validateExtensionCatalogDocument,
+} from "./extension-catalog-document.js";
+export type {
+  ExtensionFetchBranchResult,
+  ExtensionFetchError,
+  ExtensionFetchFileResult,
+  ExtensionFetchResult,
+  ExtensionFetchTransport,
+  ExtensionVersionListResult,
+  FetchedExtensionFile,
+  FetchedExtensionSnapshot,
+} from "./extension-fetch.js";
+export { ExtensionFetchErrorCode, fetchExtensionSnapshot } from "./extension-fetch.js";
 export type {
   ExtensionPublishBackend,
   ExtensionPublishCommit,
@@ -15,9 +49,18 @@ export {
   ExtensionPublishErrorCode,
   publishExtensionVersion,
 } from "./extension-publish.js";
+export type { ExtensionUpdateApplication, ExtensionUpdateCheck } from "./extension-update.js";
+export { checkExtensionReferenceUpdate, highestListedRelease } from "./extension-update.js";
 export { createIdbProjectStore } from "./idb-project-store.js";
 export type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";
 export { createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";
+export type { JsDelivrExtensionTransportOptions } from "./jsdelivr-extension-transport.js";
+export {
+  createJsDelivrExtensionTransport,
+  GITHUB_API_BASE_URL,
+  JSDELIVR_CDN_BASE_URL,
+  JSDELIVR_DATA_API_BASE_URL,
+} from "./jsdelivr-extension-transport.js";
 export { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 export { diffMindcraftJsonToManifest, syncManifestToMindcraftJson } from "./mindcraft-json-sync.js";
 export type { ProjectCollection, ProjectCollectionPinVerifier } from "./project-collection.js";
@@ -40,11 +83,13 @@ export {
 export type {
   ExtensionReference,
   ExtensionTarget,
+  GhRoutingSpecifier,
   ProjectContentManifest,
   ProjectContentManifestError,
   ProjectContentManifestParseResult,
 } from "./project-content-manifest.js";
 export {
+  isAbbreviatedCommitPin,
   isExtensionCoordinate,
   ProjectContentManifestErrorCode,
   parseExtensionReference,

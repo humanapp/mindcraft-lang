@@ -8,7 +8,7 @@ import {
   collectMetadataFromCompile,
   findEmbeddedExtensionsMissingStableIds,
   formatEmbeddedExtensionIdViolations,
-  resolveEmbeddedExtensions,
+  resolveProjectExtensions,
 } from "@mindcraft-lang/bridge-app";
 import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
 import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
@@ -124,7 +124,7 @@ export default Sensor({
     for (const coordinate of coordinates) {
       extensions[coordinate] = `embedded:${coordinate}`;
     }
-    const resolved = resolveEmbeddedExtensions(extensions, embedRecord);
+    const resolved = resolveProjectExtensions(extensions, { embedded: embedRecord });
     const environment = createMindcraftEnvironment({ modules: [coreModule(), createSimModule()] });
     const mounts: readonly Mount[] = [];
     const compiler = createWorkspaceCompiler({
@@ -221,12 +221,12 @@ export default Sensor({
 
     // Re-resolve to a project with only Detect installed (Teleport uninstalled).
     const embedRecord = simEmbedRecord();
-    const reduced = resolveEmbeddedExtensions(
+    const reduced = resolveProjectExtensions(
       {
         [SIM_LIB_COORDINATE]: SIM_LIB_REFERENCE,
         [ECOSIM_DETECT_EXT_COORDINATE]: `embedded:${ECOSIM_DETECT_EXT_COORDINATE}`,
       },
-      embedRecord
+      { embedded: embedRecord }
     );
     compiler.setDependencies(reduced.dependencies, reduced.dependencyMounts);
     const after = compiler.compile();

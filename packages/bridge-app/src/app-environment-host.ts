@@ -1,13 +1,26 @@
 import type {
+  ExtensionAddInputResolution,
+  ExtensionFetchResult,
+  ExtensionFetchTransport,
+  ExtensionUpdateApplication,
+  ExtensionUpdateCheck,
   ProjectCollectionProjectCommitResult,
   ProjectCollectionUnlockResult,
   ProjectFileSystem,
   ProjectManifest,
+  UnstableDependency,
 } from "@mindcraft-lang/app-host";
 import {
+  checkExtensionReferenceUpdate,
+  collectUnstableDependencies,
   diffMindcraftJsonToManifest,
+  ExtensionFetchErrorCode,
+  fetchExtensionSnapshot,
   MINDCRAFT_JSON_PATH,
   type ProjectManager,
+  parseExtensionAddInput,
+  parseProjectContentManifest,
+  resolveExtensionAddInput,
   syncManifestToMindcraftJson,
 } from "@mindcraft-lang/app-host";
 import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
@@ -18,8 +31,25 @@ import type { Mount, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler"
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { augmentProjectFileSystem, createBridgeProject, createProjectCompiler } from "./compilation.js";
-import type { EmbeddedExtension, ResolvedExtensions } from "./embedded-extensions.js";
-import { ExtensionResolutionCycleError, resolveEmbeddedExtensions } from "./embedded-extensions.js";
+import type { EmbeddedExtension, FetchedExtensionContentMap, ResolvedExtensions } from "./embedded-extensions.js";
+import { ExtensionResolutionCycleError, resolveProjectExtensions } from "./embedded-extensions.js";
+import type { ExtensionFetchFailures } from "./extension-catalog.js";
+import type { ExtensionInstallReport, ProjectDiagnosticsState } from "./extension-install.js";
+import { collectExtensionFetchClosure, diffProjectDiagnostics, typecheckBrainProblems } from "./extension-install.js";
+import type { ExtensionInstallLogEvent } from "./extension-install-log.js";
+import {
+  appendExtensionInstallLog,
+  EXTENSION_INSTALL_LOG_APP_DATA_KEY,
+  parseExtensionInstallLog,
+} from "./extension-install-log.js";
+import type { InstalledExtensionSnapshot, InstalledExtensionSnapshots } from "./fetched-extension-snapshots.js";
+import {
+  decodeInstalledSnapshotFiles,
+  fetchedContentFromSnapshots,
+  INSTALLED_EXTENSIONS_APP_DATA_KEY,
+  parseInstalledExtensionSnapshots,
+  serializeInstalledExtensionSnapshots,
+} from "./fetched-extension-snapshots.js";
 import type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
 import { applyCompiledUserTiles } from "./user-tile-registration.js";
 
@@ -44,6 +74,14 @@ export interface AppEnvironmentHostOptions {
    * keyed by its `<owner>/<repo>` coordinate. Empty when the app bundles none.
    */
   embeddedExtensions?: readonly EmbeddedExtension[];
+
+  /**
+   * Transport used to fetch remote (`gh:`) extension content at install time.
+   * When omitted, an install transaction needing a fetch refuses as
+   * unreachable; already-installed fetched extensions still load from their
+   * stored snapshots.
+   */
+  extensionFetchTransport?: ExtensionFetchTransport;
 
   /**
    * Host-supplied RNG. The bridge app forwards this to
@@ -86,10 +124,21 @@ export class AppEnvironmentHost {
 
   private readonly mounts: readonly Mount[];
   private readonly embeddedExtensions: readonly EmbeddedExtension[];
+  private readonly extensionFetchTransport: ExtensionFetchTransport | undefined;
   private readonly onDidCompileCallback?: (
     result: WorkspaceCompileResult,
     tileResult: UserTileApplyResult | undefined
   ) => void;
+
+  // -- Installed fetched-extension snapshots (persisted in the project store) --
+  private _installedSnapshots: InstalledExtensionSnapshots = {};
+  private _installedContent: FetchedExtensionContentMap = new Map();
+
+  // -- Last recorded fetch failure per reference (seeded from the install log) --
+  private _fetchFailures = new Map<string, { code: string; message: string }>();
+
+  // -- Latest workspace compile result --
+  private _lastCompileResult: WorkspaceCompileResult | undefined;
 
   // -- Brain cache --
   private readonly _brainCache = new Map<string, IBrainDef>();
@@ -134,6 +183,7 @@ export class AppEnvironmentHost {
     this.projectManager = options.projectManager;
     this.mounts = options.mounts;
     this.embeddedExtensions = options.embeddedExtensions ?? [];
+    this.extensionFetchTransport = options.extensionFetchTransport;
     this.onDidCompileCallback = options.onDidCompile;
     this._bridgeUrl = options.bridgeUrl;
     this._loadBindingToken = options.loadBindingToken ?? (() => undefined);
@@ -193,7 +243,7 @@ export class AppEnvironmentHost {
       return;
     }
     await this.projectManager.ensureDefaultProject(defaultProjectName);
-    this.initCompiler();
+    await this.initCompiler();
     await this.loadBrainsFromProject();
   }
 
@@ -203,17 +253,18 @@ export class AppEnvironmentHost {
 
   /**
    * Resolve the active project's extension dependency graph against the host's
-   * embed record. Logs any conflict warnings. A dependency cycle is a mechanics
-   * failure: it is logged and resolution falls back to no extension
-   * dependencies, so the project still loads and unresolved imports surface as
-   * ordinary compiler diagnostics.
+   * embed record and the project's stored fetched snapshots. Logs any conflict
+   * warnings. On this load path a dependency cycle is logged and resolution
+   * falls back to no extension dependencies, so the project still loads and
+   * unresolved imports surface as ordinary compiler diagnostics; an install
+   * transaction refuses on a cycle instead.
    */
   private resolveExtensions(): ResolvedExtensions {
     try {
-      const resolved = resolveEmbeddedExtensions(
-        this.projectManager.activeProject!.manifest.extensions,
-        this.embeddedExtensions
-      );
+      const resolved = resolveProjectExtensions(this.projectManager.activeProject!.manifest.extensions, {
+        embedded: this.embeddedExtensions,
+        fetched: this._installedContent,
+      });
       for (const warning of resolved.warnings) {
         logger.warn(`[extension-resolution] ${warning.message}`);
       }
@@ -221,13 +272,37 @@ export class AppEnvironmentHost {
     } catch (err) {
       if (err instanceof ExtensionResolutionCycleError) {
         logger.warn(`[extension-resolution] ${err.message}`);
-        return { dependencies: [], dependencyMounts: [], warnings: [] };
+        return { dependencies: [], dependencyMounts: [], origins: [], warnings: [] };
       }
       throw err;
     }
   }
 
-  private initCompiler(): void {
+  /** Replace the project's installed snapshot records, in memory and in the project store. */
+  private async persistInstalledSnapshots(snapshots: InstalledExtensionSnapshots): Promise<void> {
+    this._installedSnapshots = snapshots;
+    this._installedContent = fetchedContentFromSnapshots(snapshots);
+    await this.projectManager.saveAppData(
+      INSTALLED_EXTENSIONS_APP_DATA_KEY,
+      serializeInstalledExtensionSnapshots(snapshots)
+    );
+  }
+
+  private async initCompiler(): Promise<void> {
+    // The installed-extensions tree regenerates from the stored snapshots;
+    // loading a project never reaches the network.
+    this._installedSnapshots = parseInstalledExtensionSnapshots(
+      await this.projectManager.loadAppData(INSTALLED_EXTENSIONS_APP_DATA_KEY)
+    );
+    this._installedContent = fetchedContentFromSnapshots(this._installedSnapshots);
+    this._fetchFailures = new Map();
+    for (const event of parseExtensionInstallLog(
+      await this.projectManager.loadAppData(EXTENSION_INSTALL_LOG_APP_DATA_KEY)
+    )) {
+      if (event.kind === "fetch-refusal") {
+        this._fetchFailures.set(event.reference, { code: event.code, message: event.message });
+      }
+    }
     const { dependencies, dependencyMounts } = this.resolveExtensions();
     this._compiler = createProjectCompiler({
       environment: this.env,
@@ -237,6 +312,7 @@ export class AppEnvironmentHost {
       dependencies,
       dependencyMounts,
       onDidCompile: (result) => {
+        this._lastCompileResult = result;
         this.persistMintedActionIds(result.projectResult.sourceRewrites);
         logWorkspaceCompile(result);
         const tileResult = applyCompiledUserTiles(this.env, result);
@@ -381,23 +457,325 @@ export class AppEnvironmentHost {
     syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
   }
 
-  /**
-   * Apply an extensions-map change to the active project: persist the new map,
-   * then re-resolve the project's extension dependency graph and re-materialize
-   * the installed-extensions tree off the updated manifest, registering any
-   * newly-reachable origin and tearing down any origin the change dropped.
-   *
-   * @param extensions - The active project's next extensions map, keyed by coordinate.
-   */
-  async updateProjectExtensions(extensions: Readonly<Record<string, string>>): Promise<void> {
-    await this.projectManager.updateActive({ extensions });
+  /** The installed fetched-extension content available to the active project, keyed by reference. */
+  get installedExtensionContent(): FetchedExtensionContentMap {
+    return this._installedContent;
+  }
+
+  /** The last recorded fetch failure per reference, keyed by the reference string as written. */
+  get extensionFetchFailures(): ExtensionFetchFailures {
+    return this._fetchFailures;
+  }
+
+  /** Fetch one `gh:` reference's snapshot through the host's transport. */
+  private fetchSnapshot(reference: string): Promise<ExtensionFetchResult> {
+    if (!this.extensionFetchTransport) {
+      return Promise.resolve({
+        ok: false,
+        error: {
+          code: ExtensionFetchErrorCode.UNREACHABLE,
+          reference,
+          message: "The host application provides no extension fetch transport.",
+        },
+      });
+    }
+    return fetchExtensionSnapshot(reference, this.extensionFetchTransport);
+  }
+
+  /** Materialize a resolution: dependencies, `mindcraft.json`, and a recompile of the whole workspace. */
+  private applyResolution(resolution: ResolvedExtensions): void {
     if (!this._compiler) {
       return;
     }
-    const { dependencies, dependencyMounts } = this.resolveExtensions();
-    this._compiler.compiler.setDependencies(dependencies, dependencyMounts);
+    this._compiler.compiler.setDependencies(resolution.dependencies, resolution.dependencyMounts);
     syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
     this._compiler.replaceProjectFiles();
+  }
+
+  /** Rewrite `mindcraft.json` from the store manifest, restoring the file after a refused transaction. */
+  private resyncManifestFile(): void {
+    const active = this.projectManager.activeProject;
+    if (active) {
+      syncManifestToMindcraftJson(this.projectFileSystem, active.manifest);
+    }
+  }
+
+  /**
+   * The active project's diagnostic state: the latest workspace compile's
+   * per-file diagnostics plus a fresh typecheck of every cached brain.
+   */
+  private captureProjectDiagnostics(): ProjectDiagnosticsState {
+    const files = this._lastCompileResult?.files ?? new Map<string, never>();
+    const brains = new Map<string, readonly string[]>();
+    for (const [key, brain] of this._brainCache) {
+      brains.set(key, typecheckBrainProblems(brain));
+    }
+    return { files, brains };
+  }
+
+  /** Append the transaction's events to the project's install log. */
+  private async appendInstallLogEvents(events: readonly ExtensionInstallLogEvent[]): Promise<void> {
+    if (events.length === 0) {
+      return;
+    }
+    const raw = await this.projectManager.loadAppData(EXTENSION_INSTALL_LOG_APP_DATA_KEY);
+    await this.projectManager.saveAppData(EXTENSION_INSTALL_LOG_APP_DATA_KEY, appendExtensionInstallLog(raw, events));
+  }
+
+  /**
+   * The install and remove events between two resolved closures, plus the new
+   * resolution's warnings. An origin present in both closures records an
+   * install event when its winning reference or installed specifier changed
+   * (an update).
+   */
+  private installLogEventsForChange(
+    previous: ResolvedExtensions,
+    next: ResolvedExtensions,
+    previousSnapshots: InstalledExtensionSnapshots,
+    nextSnapshots: InstalledExtensionSnapshots
+  ): ExtensionInstallLogEvent[] {
+    const at = Date.now();
+    const previousByOrigin = new Map(previous.origins.map((origin) => [origin.origin, origin]));
+    const nextOrigins = new Set(next.origins.map((origin) => origin.origin));
+    const events: ExtensionInstallLogEvent[] = [];
+    for (const origin of next.origins) {
+      const specifier = nextSnapshots[origin.origin]?.specifier;
+      const before = previousByOrigin.get(origin.origin);
+      if (
+        before !== undefined &&
+        before.reference === origin.reference &&
+        previousSnapshots[origin.origin]?.specifier === specifier
+      ) {
+        continue;
+      }
+      events.push({
+        kind: "install",
+        at,
+        origin: origin.origin,
+        reference: origin.reference,
+        ...(specifier !== undefined ? { specifier } : {}),
+      });
+    }
+    for (const origin of previous.origins) {
+      if (!nextOrigins.has(origin.origin)) {
+        events.push({ kind: "remove", at, origin: origin.origin });
+      }
+    }
+    for (const warning of next.warnings) {
+      events.push({ kind: "resolution-warning", at, warning });
+    }
+    return events;
+  }
+
+  /**
+   * Apply an extensions-map change to the active project as one transaction:
+   * fetch content for every newly reachable `gh:` reference, resolve the
+   * transitive dependency graph, then commit -- persist the manifest entries
+   * and the fetched snapshots, re-materialize the installed-extensions tree,
+   * recompile the workspace, and re-typecheck the project's brains -- and
+   * report the diagnostic difference against the pre-change baseline.
+   *
+   * Improved, unchanged, and worsened outcomes all commit; a worsened report
+   * carries a one-step undo. The transaction refuses outright only on
+   * mechanics failures -- an unreachable source, a missing or unparseable
+   * manifest, a missing listed file, or a dependency cycle -- leaving the
+   * project unchanged. Every commit appends its install, remove, and
+   * resolution-warning events to the project's install log.
+   *
+   * @param extensions - The active project's next extensions map, keyed by coordinate.
+   * @param options.refetchReferences - References fetched fresh even when a stored snapshot matches.
+   */
+  async updateProjectExtensions(
+    extensions: Readonly<Record<string, string>>,
+    options?: { refetchReferences?: ReadonlySet<string> }
+  ): Promise<ExtensionInstallReport> {
+    const previousExtensions = this.projectManager.activeProject!.manifest.extensions ?? {};
+    const previousSnapshots = this._installedSnapshots;
+    const previousResolution = this.resolveExtensions();
+    const baseline = this.captureProjectDiagnostics();
+
+    const closure = await collectExtensionFetchClosure({
+      extensions,
+      embedded: this.embeddedExtensions,
+      stored: previousSnapshots,
+      refetch: options?.refetchReferences,
+      fetchSnapshot: (reference) => this.fetchSnapshot(reference),
+    });
+    if (!closure.ok) {
+      this.resyncManifestFile();
+      this._fetchFailures.set(closure.error.reference, {
+        code: closure.error.code,
+        message: closure.error.message,
+      });
+      await this.appendInstallLogEvents([
+        {
+          kind: "fetch-refusal",
+          at: Date.now(),
+          reference: closure.error.reference,
+          code: closure.error.code,
+          message: closure.error.message,
+        },
+      ]);
+      return { committed: false, refusal: { kind: "fetch", error: closure.error } };
+    }
+
+    const fetchedContent = new Map<string, ReadonlyMap<string, string>>();
+    for (const [reference, record] of closure.snapshotsByReference) {
+      fetchedContent.set(reference, decodeInstalledSnapshotFiles(record));
+    }
+    let resolution: ResolvedExtensions;
+    try {
+      resolution = resolveProjectExtensions(extensions, {
+        embedded: this.embeddedExtensions,
+        fetched: fetchedContent,
+      });
+    } catch (err) {
+      if (err instanceof ExtensionResolutionCycleError) {
+        this.resyncManifestFile();
+        return { committed: false, refusal: { kind: "cycle", cycle: err.cycle, message: err.message } };
+      }
+      throw err;
+    }
+
+    // Commit. Snapshot records persist for exactly the fetched origins in the
+    // resolved closure; records for origins the change dropped are pruned.
+    const nextSnapshots: Record<string, InstalledExtensionSnapshot> = {};
+    for (const origin of resolution.origins) {
+      const record = closure.snapshotsByReference.get(origin.reference);
+      if (record) {
+        nextSnapshots[origin.origin] = record;
+      }
+    }
+    await this.projectManager.updateActive({ extensions });
+    await this.persistInstalledSnapshots(nextSnapshots);
+    for (const reference of closure.snapshotsByReference.keys()) {
+      this._fetchFailures.delete(reference);
+    }
+    this.applyResolution(resolution);
+
+    const outcome = diffProjectDiagnostics(baseline, this.captureProjectDiagnostics());
+    await this.appendInstallLogEvents(
+      this.installLogEventsForChange(previousResolution, resolution, previousSnapshots, nextSnapshots)
+    );
+
+    if (outcome.kind !== "worsened") {
+      return { committed: true, outcome, warnings: resolution.warnings };
+    }
+    return {
+      committed: true,
+      outcome,
+      warnings: resolution.warnings,
+      undo: async () => {
+        await this.projectManager.updateActive({ extensions: previousExtensions });
+        await this.persistInstalledSnapshots(previousSnapshots);
+        this.applyResolution(this.resolveExtensions());
+        await this.appendInstallLogEvents([{ kind: "undo", at: Date.now() }]);
+      },
+    };
+  }
+
+  /**
+   * Normalize add-by-reference input to an installable extension reference: a
+   * complete reference, an `<owner>/<repo>` coordinate, or a GitHub repository
+   * URL. Input naming a repository without a version resolves to the
+   * repository's latest published version through the host's transport. Fails
+   * with a stable code when the input is unrecognized, no version can be
+   * resolved, or the host has no transport to resolve one through.
+   *
+   * @param input - The pasted add-field text.
+   */
+  async resolveExtensionInstallInput(input: string): Promise<ExtensionAddInputResolution> {
+    if (this.extensionFetchTransport) {
+      return resolveExtensionAddInput(input, this.extensionFetchTransport);
+    }
+    const parsed = parseExtensionAddInput(input);
+    switch (parsed.kind) {
+      case "reference":
+        return { ok: true, reference: parsed.reference };
+      case "coordinate":
+        return {
+          ok: false,
+          code: ExtensionFetchErrorCode.UNREACHABLE,
+          message: "The host application provides no extension fetch transport.",
+        };
+      case "invalid":
+        return { ok: false, code: parsed.code, message: parsed.message };
+    }
+  }
+
+  /**
+   * Check one installed fetched dependency of the active project for a newer
+   * version at its source: a `@<pin>` reference against the source's published
+   * versions, a `#<branch>` reference against the branch's head commit. The
+   * check runs on request, reaches the source through the host's transport,
+   * and changes nothing.
+   *
+   * @param coordinate - The dependency's `<owner>/<repo>` coordinate in the project's extensions map.
+   */
+  async checkExtensionUpdate(coordinate: string): Promise<ExtensionUpdateCheck> {
+    const reference = this.projectManager.activeProject!.manifest.extensions?.[coordinate];
+    const record = this._installedSnapshots[coordinate];
+    if (reference === undefined || record === undefined || record.reference !== reference) {
+      return {
+        ok: false,
+        error: {
+          code: ExtensionFetchErrorCode.INVALID_REFERENCE,
+          reference: reference ?? coordinate,
+          message: `"${coordinate}" is not an installed fetched dependency of the active project.`,
+        },
+      };
+    }
+    if (!this.extensionFetchTransport) {
+      return {
+        ok: false,
+        error: {
+          code: ExtensionFetchErrorCode.UNREACHABLE,
+          reference,
+          message: "The host application provides no extension fetch transport.",
+        },
+      };
+    }
+    const manifestContent = decodeInstalledSnapshotFiles(record).get(`/${MINDCRAFT_JSON_PATH}`);
+    const parsed = manifestContent !== undefined ? parseProjectContentManifest(manifestContent) : undefined;
+    return checkExtensionReferenceUpdate({
+      reference,
+      installedSpecifier: record.specifier,
+      installedVersion: parsed?.ok ? parsed.manifest.version : "0.0.0",
+      transport: this.extensionFetchTransport,
+    });
+  }
+
+  /**
+   * Apply one or more dependency updates to the active project as a single
+   * install transaction with one outcome: each update's coordinate takes its
+   * new reference in the extensions map, and each updated reference is fetched
+   * fresh, never satisfied from its stored snapshot. The report, the
+   * worsened-with-undo behavior, and the install log are those of
+   * {@link updateProjectExtensions}.
+   *
+   * @param updates - The updates to apply, as returned by update checks.
+   */
+  async applyExtensionUpdates(updates: readonly ExtensionUpdateApplication[]): Promise<ExtensionInstallReport> {
+    const next: Record<string, string> = { ...(this.projectManager.activeProject!.manifest.extensions ?? {}) };
+    const refetchReferences = new Set<string>();
+    for (const update of updates) {
+      next[update.coordinate] = update.reference;
+      refetchReferences.add(update.reference);
+    }
+    return this.updateProjectExtensions(next, { refetchReferences });
+  }
+
+  /**
+   * Collect the active project's dependencies that are not stable for
+   * consumers: branch references, and pinned references whose content the
+   * project has no installed snapshot for. Exporting or publishing such a
+   * project should ask for confirmation first.
+   */
+  async collectUnstableProjectDependencies(): Promise<readonly UnstableDependency[]> {
+    const extensions = this.projectManager.activeProject!.manifest.extensions ?? {};
+    return collectUnstableDependencies(extensions, async (owner, repo, pin) =>
+      this._installedContent.has(`gh:${owner}/${repo}@${pin}`)
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -531,13 +909,17 @@ export class AppEnvironmentHost {
     // project's registrations must be cleared here or they outlive it.
     this.env.brainServices.runtime.types.removeUserTypes();
     this._lastUserTileMetadata = undefined;
+    this._installedSnapshots = {};
+    this._installedContent = new Map();
+    this._fetchFailures = new Map();
+    this._lastCompileResult = undefined;
     this.bumpDocRevision();
     this.teardownBridge();
   }
 
   private async completeProjectTransition(): Promise<void> {
     this.completeProjectUnload();
-    this.initCompiler();
+    await this.initCompiler();
     await this.loadBrainsFromProject();
 
     for (const listener of this._projectLoadedListeners) {
@@ -716,7 +1098,16 @@ export class AppEnvironmentHost {
       if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
         const patch = diffMindcraftJsonToManifest(change.content, this.projectManager.activeProject.manifest);
         if (patch) {
-          void this.projectManager.updateActive(patch);
+          // An extensions change flows through the install transaction, the
+          // same pipeline the extension browser uses; the remaining synced
+          // fields patch the manifest directly.
+          const { extensions, ...rest } = patch;
+          if (extensions !== undefined) {
+            void this.updateProjectExtensions(extensions);
+          }
+          if (Object.keys(rest).length > 0) {
+            void this.projectManager.updateActive(rest);
+          }
         }
       }
     });

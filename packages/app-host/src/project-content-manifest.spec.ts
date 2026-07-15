@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ProjectContentManifest } from "@mindcraft-lang/app-host";
 import {
+  isAbbreviatedCommitPin,
   ProjectContentManifestErrorCode,
   parseExtensionReference,
   parseProjectContentManifest,
@@ -15,8 +16,8 @@ const VALID_MANIFEST = {
   version: "1.2.3",
   extensions: {
     "example-org/mindcraft-position": "gh:example-org/mindcraft-position@v1.2.0",
+    "example-org/steering": "gh:example-org/steering#main",
     "mindcraft-lang/microbit-stdlib": "embedded:mindcraft-lang/microbit-stdlib",
-    "author/scratch": "local:8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
   },
 };
 
@@ -25,12 +26,37 @@ function errorCodes(result: ReturnType<typeof validateProjectContentManifest>): 
 }
 
 describe("parseExtensionReference", () => {
-  it("parses a gh reference", () => {
+  it("parses a gh reference pinned at a tag", () => {
     assert.deepStrictEqual(parseExtensionReference("gh:example-org/mindcraft-position@v1.2.0"), {
       transport: "gh",
       owner: "example-org",
       repo: "mindcraft-position",
-      tag: "v1.2.0",
+      routing: { kind: "pin", pin: "v1.2.0" },
+    });
+  });
+
+  it("parses a gh reference pinned at a full commit SHA without interpreting it", () => {
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    assert.deepStrictEqual(parseExtensionReference(`gh:example-org/mindcraft-position@${sha}`), {
+      transport: "gh",
+      owner: "example-org",
+      repo: "mindcraft-position",
+      routing: { kind: "pin", pin: sha },
+    });
+  });
+
+  it("parses a gh branch reference, including a branch name containing a slash", () => {
+    assert.deepStrictEqual(parseExtensionReference("gh:example-org/mindcraft-position#main"), {
+      transport: "gh",
+      owner: "example-org",
+      repo: "mindcraft-position",
+      routing: { kind: "branch", branch: "main" },
+    });
+    assert.deepStrictEqual(parseExtensionReference("gh:example-org/mindcraft-position#feature/steering"), {
+      transport: "gh",
+      owner: "example-org",
+      repo: "mindcraft-position",
+      routing: { kind: "branch", branch: "feature/steering" },
     });
   });
 
@@ -45,13 +71,6 @@ describe("parseExtensionReference", () => {
     assert.strictEqual(parseExtensionReference("embedded:microbit-stdlib"), undefined);
   });
 
-  it("parses a local reference", () => {
-    assert.deepStrictEqual(parseExtensionReference("local:8f14e45f-ceea-4e17-a396-7f34c2d51b3a"), {
-      transport: "local",
-      projectId: "8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
-    });
-  });
-
   it("rejects unrecognized transports and malformed forms", () => {
     const malformed = [
       "npm:left-pad@1.0.0",
@@ -61,18 +80,34 @@ describe("parseExtensionReference", () => {
       "gh:owner/repo@tag with spaces",
       "gh:owner/repo@v1/extra",
       "gh:/repo@tag",
+      "gh:owner/repo#",
+      "gh:owner/repo#branch with spaces",
+      "gh:owner#branch",
       "embedded:",
       "embedded:reponly",
       "embedded:owner/repo/extra",
       "embedded:/repo",
       "embedded:owner/",
-      "local:",
-      "local:has whitespace",
+      "ffff:8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
       "",
       "position",
     ];
     for (const reference of malformed) {
       assert.strictEqual(parseExtensionReference(reference), undefined, `Expected rejection for "${reference}"`);
+    }
+  });
+});
+
+describe("isAbbreviatedCommitPin", () => {
+  it("matches all-hex pins of 7 to 39 characters", () => {
+    for (const pin of ["b19b80b", "B19B80B0", "0123456789abcdef0123456789abcdef0123456"]) {
+      assert.strictEqual(isAbbreviatedCommitPin(pin), true, `Expected match for "${pin}"`);
+    }
+  });
+
+  it("does not match tags, full SHAs, or short hex strings", () => {
+    for (const pin of ["v0.1.0", "0.1.0", "0123456789abcdef0123456789abcdef01234567", "abc123", "deadbeeg"]) {
+      assert.strictEqual(isAbbreviatedCommitPin(pin), false, `Expected no match for "${pin}"`);
     }
   });
 });

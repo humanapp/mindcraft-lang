@@ -1,12 +1,38 @@
 import { LOWEST_CONTENT_VERSION, type MindcraftProjectExtensions } from "@mindcraft-lang/service-api";
 
 /**
+ * Routing specifier of a `gh:` extension reference: how the reference names
+ * the repository content to fetch.
+ */
+export type GhRoutingSpecifier =
+  | {
+      readonly kind: "pin";
+      /**
+       * Opaque immutable specifier following `@`: a tag (such as `v0.1.0`) or a
+       * full commit SHA. It is fetched as written and never parsed or compared;
+       * the installed version always comes from the fetched manifest.
+       */
+      readonly pin: string;
+    }
+  | {
+      readonly kind: "branch";
+      /**
+       * Branch name following `#`. Installation resolves the branch to a commit
+       * SHA and fetches that immutable commit; the resolved SHA is recorded
+       * with the installed content.
+       */
+      readonly branch: string;
+    };
+
+/**
  * A parsed extension reference naming where a dependency comes from.
  *
  * String forms:
- * - `gh:<owner>/<repo>@<tag>` -- a GitHub repository snapshot at an exact tag.
+ * - `gh:<owner>/<repo>@<pin>` -- a GitHub repository snapshot at an immutable
+ *   pin (a tag or a full commit SHA).
+ * - `gh:<owner>/<repo>#<branch>` -- a GitHub repository branch, resolved to a
+ *   commit SHA at install time.
  * - `embedded:<owner>/<repo>` -- an extension bundled with the host application.
- * - `local:<project-id>` -- another project in the same project store.
  */
 export type ExtensionReference =
   | {
@@ -15,18 +41,13 @@ export type ExtensionReference =
       readonly owner: string;
       /** Repository name. */
       readonly repo: string;
-      /** Tag naming the exact snapshot to fetch. */
-      readonly tag: string;
+      /** What to fetch: an immutable pin or a branch to resolve. */
+      readonly routing: GhRoutingSpecifier;
     }
   | {
       readonly transport: "embedded";
       /** `<owner>/<repo>` coordinate identifying the bundled extension in the host application's embed records. */
       readonly coordinate: string;
-    }
-  | {
-      readonly transport: "local";
-      /** Project id of the source project. */
-      readonly projectId: string;
     };
 
 /**
@@ -37,9 +58,21 @@ export type ExtensionReference =
  */
 const COORDINATE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-const GH_REFERENCE_PATTERN = /^gh:([A-Za-z0-9][A-Za-z0-9-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)@([^\s/]+)$/;
+const GH_PIN_REFERENCE_PATTERN = /^gh:([A-Za-z0-9][A-Za-z0-9-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)@([^\s/]+)$/;
 
-const LOCAL_PROJECT_ID_PATTERN = /^[^\s/]+$/;
+const GH_BRANCH_REFERENCE_PATTERN = /^gh:([A-Za-z0-9][A-Za-z0-9-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)#([^\s]+)$/;
+
+const ABBREVIATED_COMMIT_PIN_PATTERN = /^[0-9a-f]{7,39}$/i;
+
+/**
+ * Tests whether a `gh:` reference pin is plausibly an abbreviated commit SHA:
+ * an all-hex string of 7 to 39 characters. Only the full 40-character form is
+ * served as an immutable commit; a shorter hex pin is served with mutable
+ * branch semantics.
+ */
+export function isAbbreviatedCommitPin(pin: string): boolean {
+  return ABBREVIATED_COMMIT_PIN_PATTERN.test(pin);
+}
 
 /** Semver 2.0.0 version grammar (semver.org). */
 const SEMVER_PATTERN =
@@ -62,17 +95,27 @@ export function isExtensionCoordinate(value: unknown): value is string {
  * not in a recognized reference form.
  */
 export function parseExtensionReference(reference: string): ExtensionReference | undefined {
-  const ghMatch = GH_REFERENCE_PATTERN.exec(reference);
-  if (ghMatch) {
-    return { transport: "gh", owner: ghMatch[1], repo: ghMatch[2], tag: ghMatch[3] };
+  const pinMatch = GH_PIN_REFERENCE_PATTERN.exec(reference);
+  if (pinMatch) {
+    return {
+      transport: "gh",
+      owner: pinMatch[1],
+      repo: pinMatch[2],
+      routing: { kind: "pin", pin: pinMatch[3] },
+    };
+  }
+  const branchMatch = GH_BRANCH_REFERENCE_PATTERN.exec(reference);
+  if (branchMatch) {
+    return {
+      transport: "gh",
+      owner: branchMatch[1],
+      repo: branchMatch[2],
+      routing: { kind: "branch", branch: branchMatch[3] },
+    };
   }
   if (reference.startsWith("embedded:")) {
     const coordinate = reference.slice("embedded:".length);
     return isExtensionCoordinate(coordinate) ? { transport: "embedded", coordinate } : undefined;
-  }
-  if (reference.startsWith("local:")) {
-    const projectId = reference.slice("local:".length);
-    return LOCAL_PROJECT_ID_PATTERN.test(projectId) ? { transport: "local", projectId } : undefined;
   }
   return undefined;
 }
@@ -251,7 +294,7 @@ export function validateProjectExtensions(
         path,
         message:
           `Extension reference for "${coordinate}" must be a string in the form ` +
-          '"gh:<owner>/<repo>@<tag>", "embedded:<owner>/<repo>", or "local:<project-id>".',
+          '"gh:<owner>/<repo>@<pin>", "gh:<owner>/<repo>#<branch>", or "embedded:<owner>/<repo>".',
       });
     }
   }

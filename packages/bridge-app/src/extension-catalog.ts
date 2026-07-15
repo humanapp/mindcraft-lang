@@ -1,12 +1,13 @@
 import {
+  type ExtensionCatalogDocument,
   type ExtensionTarget,
   LOWEST_CONTENT_VERSION,
   MINDCRAFT_JSON_PATH,
   parseExtensionReference,
   parseProjectContentManifest,
 } from "@mindcraft-lang/app-host";
-import type { EmbeddedExtension } from "./embedded-extensions.js";
-import { resolveEmbeddedExtensions } from "./embedded-extensions.js";
+import type { EmbeddedExtension, FetchedExtensionContentMap } from "./embedded-extensions.js";
+import { resolveProjectExtensions } from "./embedded-extensions.js";
 
 /**
  * One layer of a project's platform stack: a resolved layer library's
@@ -39,7 +40,24 @@ export interface ExtensionCatalogEntry {
   readonly installed: boolean;
   /** True when the extension is a required platform layer library the user cannot install or uninstall. */
   readonly locked: boolean;
+  /** True for a fetched (`gh:`) dependency with installed content, which carries an on-request update affordance. */
+  readonly updatable?: boolean;
+  /** Present when a declared `gh:` dependency has no installed snapshot content. */
+  readonly broken?: {
+    /** Stable failure code of the most recent recorded install attempt; absent when none is recorded. */
+    readonly code?: string;
+    /** Human-readable description of the broken state. */
+    readonly message: string;
+  };
+  /** Present when the installed content's manifest identity differs from the coordinate its reference names. */
+  readonly identityMismatch?: {
+    /** The `<owner>/<repo>` identity the installed content's manifest declares. */
+    readonly declaredIdentity: string;
+  };
 }
+
+/** The last recorded fetch failure per reference, keyed by the reference string as written. */
+export type ExtensionFetchFailures = ReadonlyMap<string, { readonly code: string; readonly message: string }>;
 
 /** Stable identifiers for the outcome of an install or uninstall action. */
 export const ExtensionActionResultCode = {
@@ -55,6 +73,8 @@ export const ExtensionActionResultCode = {
   LOCKED: "EXTENSION_LOCKED",
   /** The coordinate names no bundled extension in the embed record; nothing changed. */
   UNKNOWN_COORDINATE: "EXTENSION_UNKNOWN_COORDINATE",
+  /** The reference string is not a well-formed remote extension reference; nothing changed. */
+  INVALID_REFERENCE: "EXTENSION_INVALID_REFERENCE",
   /** Another installed extension depends on the coordinate; it cannot be uninstalled while depended upon. Nothing changed. */
   REQUIRED_BY_DEPENDENT: "EXTENSION_REQUIRED_BY_DEPENDENT",
 } as const;
@@ -78,6 +98,7 @@ interface EmbeddedManifest {
   version: string;
   thumbnailUrl?: string;
   targets?: Readonly<Record<string, ExtensionTarget>>;
+  identity?: string;
 }
 
 /** Read an embedded extension's manifest identity from its bundled `mindcraft.json`. */
@@ -118,10 +139,30 @@ function directEmbeddedCoordinates(
 /** The coordinates of every origin in a project's resolved extension closure. */
 function resolvedOrigins(
   extensions: Readonly<Record<string, string>> | undefined,
-  embedRecord: readonly EmbeddedExtension[]
+  embedRecord: readonly EmbeddedExtension[],
+  fetched?: FetchedExtensionContentMap
 ): Set<string> {
-  const resolved = resolveEmbeddedExtensions(extensions, embedRecord);
+  const resolved = resolveProjectExtensions(extensions, { embedded: embedRecord, fetched });
   return new Set(resolved.dependencyMounts.map((mount) => mount.namespace));
+}
+
+/** Read a fetched extension's manifest identity from its snapshot content. */
+function readFetchedManifest(files: ReadonlyMap<string, string>): EmbeddedManifest | undefined {
+  const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+  if (manifestContent === undefined) {
+    return undefined;
+  }
+  const parsed = parseProjectContentManifest(manifestContent);
+  if (!parsed.ok) {
+    return undefined;
+  }
+  return {
+    name: parsed.manifest.name,
+    version: parsed.manifest.version,
+    ...(parsed.manifest.thumbnailUrl !== undefined ? { thumbnailUrl: parsed.manifest.thumbnailUrl } : {}),
+    ...(parsed.manifest.targets !== undefined ? { targets: parsed.manifest.targets } : {}),
+    ...(parsed.manifest.identity !== undefined ? { identity: parsed.manifest.identity } : {}),
+  };
 }
 
 /**
@@ -183,23 +224,34 @@ export function isExtensionCompatible(
 
 /**
  * Build the extension catalog for a project: the flat list of top-level
- * embedded extensions directly compatible with the project's platform. It
- * includes each directly-referenced platform layer library (locked) and every
- * bundled add-on whose declared targets match the project's stack; transitive
- * sub-dependencies of a layer library are not listed, and add-ons incompatible
- * with the stack are excluded.
+ * embedded extensions directly compatible with the project's platform, plus a
+ * card for each remote (`gh:`) dependency the project's extensions map names.
+ * It includes each directly-referenced platform layer library (locked) and
+ * every bundled add-on whose declared targets match the project's stack;
+ * transitive sub-dependencies of a layer library are not listed, and add-ons
+ * incompatible with the stack are excluded. A remote dependency's card reads
+ * its name and version from its installed snapshot content and is marked
+ * `updatable`; a remote reference with no content available is listed under
+ * its coordinate as `broken`, carrying the last recorded fetch failure when
+ * one is known, so it can be retried or removed. A remote dependency whose
+ * installed manifest declares a different identity than its coordinate carries
+ * an `identityMismatch` annotation.
  *
  * @param extensions - The project's extensions map, keyed by coordinate.
  * @param embedRecord - The host application's bundled embedded extensions.
  * @param layerCoordinates - The coordinates the host declares as platform layers.
+ * @param fetched - Installed fetched-extension content, keyed by reference.
+ * @param fetchFailures - The last recorded fetch failure per reference.
  */
 export function buildExtensionCatalog(
   extensions: Readonly<Record<string, string>> | undefined,
   embedRecord: readonly EmbeddedExtension[],
-  layerCoordinates: ReadonlySet<string>
+  layerCoordinates: ReadonlySet<string>,
+  fetched?: FetchedExtensionContentMap,
+  fetchFailures?: ExtensionFetchFailures
 ): ExtensionCatalogEntry[] {
   const byCoordinate = new Map(embedRecord.map((extension) => [extension.canonicalOrigin, extension]));
-  const installed = resolvedOrigins(extensions, embedRecord);
+  const installed = resolvedOrigins(extensions, embedRecord, fetched);
   const direct = directEmbeddedCoordinates(extensions, byCoordinate);
   const stack = deriveProjectPlatformStack(extensions, embedRecord, layerCoordinates);
 
@@ -226,7 +278,116 @@ export function buildExtensionCatalog(
       locked,
     });
   }
+
+  for (const [coordinate, reference] of Object.entries(extensions ?? {})) {
+    const parsed = parseExtensionReference(reference);
+    if (parsed?.transport !== "gh") {
+      continue;
+    }
+    const content = fetched?.get(reference);
+    const manifest = content !== undefined ? readFetchedManifest(content) : undefined;
+    const failure = fetchFailures?.get(reference);
+    const broken =
+      content === undefined
+        ? {
+            ...(failure !== undefined ? { code: failure.code } : {}),
+            message: failure?.message ?? `No content is installed for "${reference}".`,
+          }
+        : undefined;
+    const identityMismatch =
+      manifest?.identity !== undefined && manifest.identity !== coordinate
+        ? { declaredIdentity: manifest.identity }
+        : undefined;
+    entries.push({
+      coordinate,
+      name: manifest?.name ?? coordinate,
+      version: manifest?.version ?? LOWEST_CONTENT_VERSION,
+      ...(manifest?.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
+      installed: installed.has(coordinate),
+      locked: false,
+      ...(content !== undefined ? { updatable: true } : {}),
+      ...(broken !== undefined ? { broken } : {}),
+      ...(identityMismatch !== undefined ? { identityMismatch } : {}),
+    });
+  }
   return entries;
+}
+
+/**
+ * One catalog document entry offered to a project: the entry's display
+ * metadata plus whether the project's extensions map already carries its
+ * coordinate.
+ */
+export interface ExtensionCatalogOffer {
+  /** The extension's `<owner>/<repo>` coordinate. */
+  readonly coordinate: string;
+  /** Display name from the catalog entry. */
+  readonly name: string;
+  /** Published version from the catalog entry. */
+  readonly version: string;
+  /** Description from the catalog entry. */
+  readonly description: string;
+  /** Thumbnail URL or data URI from the catalog entry; absent when it declares none. */
+  readonly thumbnailUrl?: string;
+  /** The pinned `gh:` reference an install of this offer writes. */
+  readonly ref: string;
+  /** True when the project's extensions map already carries the coordinate. */
+  readonly installed: boolean;
+}
+
+/**
+ * Adapt a validated extension catalog document into per-project offers: one
+ * offer per entry, rendered from the entry's display metadata alone, marked
+ * installed when the project's extensions map already carries the entry's
+ * coordinate.
+ *
+ * @param document - The validated catalog document.
+ * @param extensions - The project's extensions map, keyed by coordinate.
+ */
+export function buildExtensionCatalogOffers(
+  document: ExtensionCatalogDocument,
+  extensions: Readonly<Record<string, string>> | undefined
+): ExtensionCatalogOffer[] {
+  const current = extensions ?? {};
+  return document.entries.map((entry) => ({
+    coordinate: entry.coordinate,
+    name: entry.name,
+    version: entry.version,
+    description: entry.description,
+    ...(entry.thumbnail !== undefined ? { thumbnailUrl: entry.thumbnail } : {}),
+    ref: entry.ref,
+    installed: entry.coordinate in current,
+  }));
+}
+
+/**
+ * Add a remote extension to a project's extensions map from a `gh:` reference
+ * string, keyed by the reference's `<owner>/<repo>` coordinate. Rejects a
+ * string that is not a well-formed `gh:` reference, and reports an
+ * already-present coordinate as a no-op.
+ *
+ * @param extensions - The project's current extensions map, keyed by coordinate.
+ * @param reference - The `gh:<owner>/<repo>@<pin>` or `gh:<owner>/<repo>#<branch>` reference to add.
+ */
+export function installExtensionReference(
+  extensions: Readonly<Record<string, string>> | undefined,
+  reference: string
+): ExtensionActionResult {
+  const current = extensions ?? {};
+  const parsed = parseExtensionReference(reference.trim());
+  if (parsed?.transport !== "gh") {
+    return { ok: false, code: ExtensionActionResultCode.INVALID_REFERENCE, extensions: current };
+  }
+  const coordinate = `${parsed.owner}/${parsed.repo}`;
+  if (coordinate in current) {
+    return { ok: false, code: ExtensionActionResultCode.ALREADY_INSTALLED, extensions: current };
+  }
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries(current)) {
+    next[key] = value;
+  }
+  next[coordinate] = reference.trim();
+  return { ok: true, code: ExtensionActionResultCode.INSTALLED, extensions: next };
 }
 
 /**
@@ -262,24 +423,27 @@ export function installEmbeddedExtension(
 }
 
 /**
- * Uninstall an embedded extension from a project's extensions map by removing
- * the entry keyed by its coordinate. The existing regenerate-on-load pipeline
- * de-materializes it thereafter. Rejects a required platform layer library,
- * reports an absent coordinate as a no-op, and blocks removing a coordinate that
- * another still-installed extension depends on: after the removal that dependent
- * would still pull the coordinate back into the resolved closure, so removing its
- * explicit entry is refused with {@link ExtensionActionResultCode.REQUIRED_BY_DEPENDENT}.
+ * Uninstall an extension from a project's extensions map by removing the entry
+ * keyed by its coordinate, regardless of the entry's transport. The existing
+ * regenerate-on-load pipeline de-materializes it thereafter. Rejects a required
+ * platform layer library, reports an absent coordinate as a no-op, and blocks
+ * removing a coordinate that another still-installed extension depends on:
+ * after the removal that dependent would still pull the coordinate back into
+ * the resolved closure, so removing its explicit entry is refused with
+ * {@link ExtensionActionResultCode.REQUIRED_BY_DEPENDENT}.
  *
  * @param extensions - The project's current extensions map, keyed by coordinate.
  * @param coordinate - The `<owner>/<repo>` coordinate to uninstall.
  * @param layerCoordinates - The coordinates the host declares as platform layers; these are not uninstallable.
  * @param embedRecord - The host application's bundled embedded extensions, used to resolve dependents.
+ * @param fetched - Installed fetched-extension content, keyed by reference, used to resolve dependents.
  */
-export function uninstallEmbeddedExtension(
+export function uninstallExtension(
   extensions: Readonly<Record<string, string>> | undefined,
   coordinate: string,
   layerCoordinates: ReadonlySet<string>,
-  embedRecord: readonly EmbeddedExtension[]
+  embedRecord: readonly EmbeddedExtension[],
+  fetched?: FetchedExtensionContentMap
 ): ExtensionActionResult {
   const current = extensions ?? {};
   if (layerCoordinates.has(coordinate)) {
@@ -294,7 +458,7 @@ export function uninstallEmbeddedExtension(
       next[key] = value;
     }
   }
-  if (resolvedOrigins(next, embedRecord).has(coordinate)) {
+  if (resolvedOrigins(next, embedRecord, fetched).has(coordinate)) {
     return { ok: false, code: ExtensionActionResultCode.REQUIRED_BY_DEPENDENT, extensions: current };
   }
   return { ok: true, code: ExtensionActionResultCode.UNINSTALLED, extensions: next };

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { CORE_LIB_COORDINATE, resolveEmbeddedExtensions } from "@mindcraft-lang/bridge-app";
+import { CORE_LIB_COORDINATE, resolveProjectExtensions } from "@mindcraft-lang/bridge-app";
 import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
 import {
   BrainDef,
@@ -81,7 +81,7 @@ function createCompileHarness(env: MindcraftEnvironment) {
   function resolve(coordinates: readonly string[]) {
     const extensions: Record<string, string> = { [SIM_LIB_COORDINATE]: SIM_LIB_REFERENCE };
     for (const c of coordinates) extensions[c] = `embedded:${c}`;
-    return resolveEmbeddedExtensions(extensions, embedRecord());
+    return resolveProjectExtensions(extensions, { embedded: embedRecord() });
   }
 
   const initial = resolve([ECOSIM_TELEPORT_EXT_COORDINATE, ECOSIM_DETECT_EXT_COORDINATE]);

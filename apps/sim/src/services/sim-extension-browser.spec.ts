@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import {
+  ExtensionAddInputErrorCode,
+  ExtensionFetchErrorCode,
+  resolveExtensionAddInput,
+} from "@mindcraft-lang/app-host";
 import type { EmbeddedExtension, ExtensionCatalogEntry } from "@mindcraft-lang/bridge-app";
 import { ExtensionActionResultCode } from "@mindcraft-lang/bridge-app";
 import {
   buildSimExtensionEntries,
+  checkSimExtensionUpdates,
   type ExtensionProjectPersistence,
+  type ExtensionReferenceInstallSurface,
   githubDocsUrl,
   installSimExtension,
+  installSimExtensionReference,
   toExtensionBrowserEntry,
   uninstallSimExtension,
 } from "./sim-extension-browser";
@@ -74,6 +82,11 @@ function capturingPersistence(): ExtensionProjectPersistence & { patches: Array<
     patches,
     updateProjectExtensions: async (extensions) => {
       patches.push(extensions);
+      return {
+        committed: true,
+        outcome: { kind: "unchanged" as const, newProblems: [], resolvedProblems: [] },
+        warnings: [],
+      };
     },
   };
 }
@@ -147,8 +160,8 @@ describe("installSimExtension -- round-trips through the host", () => {
   test("installing an add-on persists an extensions map that gains the coordinate", async () => {
     const persistence = capturingPersistence();
     const result = await installSimExtension(persistence, project, FLOCK, embedRecord);
-    assert.equal(result.ok, true);
-    assert.equal(result.code, ExtensionActionResultCode.INSTALLED);
+    assert.equal(result.action.ok, true);
+    assert.equal(result.action.code, ExtensionActionResultCode.INSTALLED);
     assert.equal(persistence.patches.length, 1);
     assert.equal(persistence.patches[0]?.[FLOCK], `embedded:${FLOCK}`);
     assert.equal(persistence.patches[0]?.[SIM_LIB_COORDINATE], SIM_LIB_REFERENCE);
@@ -157,8 +170,8 @@ describe("installSimExtension -- round-trips through the host", () => {
   test("installing an already-present coordinate does not persist", async () => {
     const persistence = capturingPersistence();
     const result = await installSimExtension(persistence, project, SIM_LIB_COORDINATE, embedRecord);
-    assert.equal(result.ok, false);
-    assert.equal(result.code, ExtensionActionResultCode.ALREADY_INSTALLED);
+    assert.equal(result.action.ok, false);
+    assert.equal(result.action.code, ExtensionActionResultCode.ALREADY_INSTALLED);
     assert.equal(persistence.patches.length, 0);
   });
 });
@@ -169,8 +182,8 @@ describe("uninstallSimExtension -- round-trips through the host", () => {
   test("uninstalling an add-on persists an extensions map that loses the coordinate", async () => {
     const persistence = capturingPersistence();
     const result = await uninstallSimExtension(persistence, withFlock, FLOCK, embedRecord);
-    assert.equal(result.ok, true);
-    assert.equal(result.code, ExtensionActionResultCode.UNINSTALLED);
+    assert.equal(result.action.ok, true);
+    assert.equal(result.action.code, ExtensionActionResultCode.UNINSTALLED);
     assert.equal(persistence.patches.length, 1);
     assert.equal(FLOCK in (persistence.patches[0] ?? {}), false);
     assert.equal(persistence.patches[0]?.[SIM_LIB_COORDINATE], SIM_LIB_REFERENCE);
@@ -179,8 +192,8 @@ describe("uninstallSimExtension -- round-trips through the host", () => {
   test("uninstalling a locked layer library is rejected and does not persist", async () => {
     const persistence = capturingPersistence();
     const result = await uninstallSimExtension(persistence, project, SIM_LIB_COORDINATE, embedRecord);
-    assert.equal(result.ok, false);
-    assert.equal(result.code, ExtensionActionResultCode.LOCKED);
+    assert.equal(result.action.ok, false);
+    assert.equal(result.action.code, ExtensionActionResultCode.LOCKED);
     assert.equal(persistence.patches.length, 0);
   });
 
@@ -196,8 +209,141 @@ describe("uninstallSimExtension -- round-trips through the host", () => {
     });
     const withDependent = { ...withFlock, [HERD]: `embedded:${HERD}` };
     const result = await uninstallSimExtension(persistence, withDependent, FLOCK, [...embedRecord, herdAddon]);
-    assert.equal(result.ok, false);
-    assert.equal(result.code, ExtensionActionResultCode.REQUIRED_BY_DEPENDENT);
+    assert.equal(result.action.ok, false);
+    assert.equal(result.action.code, ExtensionActionResultCode.REQUIRED_BY_DEPENDENT);
     assert.equal(persistence.patches.length, 0);
+  });
+});
+
+/**
+ * An install surface running real input normalization over a stub version
+ * listing, capturing every extensions map applied through the host.
+ */
+function referenceInstallSurface(
+  versions: Record<string, readonly string[]> = {}
+): ExtensionReferenceInstallSurface & { patches: Array<Record<string, string> | undefined> } {
+  return {
+    ...capturingPersistence(),
+    resolveExtensionInstallInput: (input: string) =>
+      resolveExtensionAddInput(input, {
+        async fetchFile() {
+          return { ok: false, kind: "not-found" };
+        },
+        async resolveBranch() {
+          return { ok: false, kind: "not-found" };
+        },
+        async listVersionTags(owner: string, repo: string) {
+          const listed = versions[`${owner}/${repo}`];
+          return listed !== undefined ? { ok: true, versions: listed } : { ok: false, kind: "not-found" };
+        },
+      }),
+  };
+}
+
+describe("installSimExtensionReference -- generous input through the host", () => {
+  test("adding a complete gh reference persists it unchanged, keyed by its coordinate", async () => {
+    const surface = referenceInstallSurface();
+    const result = await installSimExtensionReference(surface, project, "gh:example-org/teleport-ext@v0.1.0");
+    assert.ok(result.ok);
+    assert.equal(result.reference, "gh:example-org/teleport-ext@v0.1.0");
+    assert.equal(result.action.ok, true);
+    assert.equal(result.action.code, ExtensionActionResultCode.INSTALLED);
+    assert.ok(result.report);
+    assert.equal(surface.patches.length, 1);
+    assert.equal(surface.patches[0]?.["example-org/teleport-ext"], "gh:example-org/teleport-ext@v0.1.0");
+  });
+
+  test("pasting a GitHub repository URL resolves the latest published version and persists the resolved reference", async () => {
+    const surface = referenceInstallSurface({ "example-org/teleport-ext": ["0.1.0", "0.2.0"] });
+    const result = await installSimExtensionReference(surface, project, "https://github.com/example-org/teleport-ext");
+    assert.ok(result.ok);
+    assert.equal(result.reference, "gh:example-org/teleport-ext@0.2.0");
+    assert.equal(result.action.ok, true);
+    assert.equal(surface.patches.length, 1);
+    assert.equal(surface.patches[0]?.["example-org/teleport-ext"], "gh:example-org/teleport-ext@0.2.0");
+  });
+
+  test("a repository with no published versions is rejected with its code and does not persist", async () => {
+    const surface = referenceInstallSurface();
+    const result = await installSimExtensionReference(surface, project, "example-org/teleport-ext");
+    assert.ok(!result.ok);
+    assert.equal(result.code, ExtensionFetchErrorCode.VERSIONS_NOT_FOUND);
+    assert.equal(surface.patches.length, 0);
+  });
+
+  test("unrecognized input is rejected with its code and does not persist", async () => {
+    const surface = referenceInstallSurface();
+    const result = await installSimExtensionReference(surface, project, "ffff:x");
+    assert.ok(!result.ok);
+    assert.equal(result.code, ExtensionAddInputErrorCode.UNRECOGNIZED);
+    assert.equal(surface.patches.length, 0);
+  });
+});
+
+describe("toExtensionBrowserEntry -- fetched-dependency annotations", () => {
+  test("passes updatable, broken, and identityMismatch through to the view model", () => {
+    const catalogEntry: ExtensionCatalogEntry = {
+      coordinate: "example-org/position-ext",
+      name: "Position",
+      version: "0.1.0",
+      installed: true,
+      locked: false,
+      updatable: true,
+      broken: { code: "EXTENSION_FETCH_UNREACHABLE", message: "The source is unreachable: refused" },
+      identityMismatch: { declaredIdentity: "upstream-org/position-ext" },
+    };
+    const entry = toExtensionBrowserEntry(catalogEntry);
+    assert.equal(entry.updatable, true);
+    assert.deepEqual(entry.broken, {
+      code: "EXTENSION_FETCH_UNREACHABLE",
+      message: "The source is unreachable: refused",
+    });
+    assert.deepEqual(entry.identityMismatch, { declaredIdentity: "upstream-org/position-ext" });
+  });
+});
+
+describe("checkSimExtensionUpdates", () => {
+  test("buckets available updates, current dependencies, and failed checks", async () => {
+    const surface = {
+      checkExtensionUpdate: async (coordinate: string) => {
+        if (coordinate === "example-org/current-ext") {
+          return { ok: true as const, updateAvailable: false as const };
+        }
+        if (coordinate === "example-org/stale-ext") {
+          return {
+            ok: true as const,
+            updateAvailable: true as const,
+            update: {
+              coordinate,
+              reference: "gh:example-org/stale-ext@0.2.0",
+              latestVersion: "0.2.0",
+            },
+          };
+        }
+        return {
+          ok: false as const,
+          error: {
+            code: "EXTENSION_FETCH_UNREACHABLE" as const,
+            reference: coordinate,
+            message: "The source is unreachable: refused",
+          },
+        };
+      },
+    };
+
+    const summary = await checkSimExtensionUpdates(surface, [
+      "example-org/current-ext",
+      "example-org/stale-ext",
+      "example-org/offline-ext",
+    ]);
+
+    assert.deepEqual(summary.current, ["example-org/current-ext"]);
+    assert.deepEqual(
+      summary.updates.map((update) => update.reference),
+      ["gh:example-org/stale-ext@0.2.0"]
+    );
+    assert.equal(summary.failures.length, 1);
+    assert.equal(summary.failures[0].coordinate, "example-org/offline-ext");
+    assert.equal(summary.failures[0].error.code, "EXTENSION_FETCH_UNREACHABLE");
   });
 });

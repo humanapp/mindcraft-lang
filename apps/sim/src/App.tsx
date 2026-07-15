@@ -454,19 +454,30 @@ function App() {
   );
 
   const handleExportProject = useCallback(() => {
-    store.exportProject().then(
-      (json) => {
+    void (async () => {
+      try {
+        const unstable = await store.host.collectUnstableProjectDependencies();
+        if (unstable.length > 0) {
+          const detail = unstable.map((dependency) => `${dependency.coordinate} (${dependency.code})`).join(", ");
+          const proceed = window.confirm(
+            `This project depends on extensions that are not stable for consumers: ${detail}. ` +
+              "The exported project may not work, or may not keep working, for anyone else. Export anyway?"
+          );
+          if (!proceed) {
+            return;
+          }
+        }
+        const json = await store.exportProject();
         const safeName =
           (store.activeProjectManifest?.name ?? "project")
             .replace(/[^a-zA-Z0-9]+/g, "-")
             .replace(/^-+|-+$/g, "")
             .toLowerCase() || "project";
         downloadTextFile(json, `${safeName}.mindcraft`);
-      },
-      () => {
+      } catch {
         toast.error("Failed to export project");
       }
-    );
+    })();
   }, [store]);
 
   const handleImportProject = useCallback(() => {

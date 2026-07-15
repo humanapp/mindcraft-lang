@@ -1,7 +1,8 @@
+import type { DependencyPinProbe } from "./dependency-stability.js";
+import { collectUnstableDependencies } from "./dependency-stability.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import {
   isExtensionCoordinate,
-  parseExtensionReference,
   parseProjectContentManifest,
   readExplicitContentManifestVersion,
   serializeProjectContentManifest,
@@ -99,7 +100,7 @@ export const ExtensionPublishErrorCode = {
   MANIFEST_MISSING: "PUBLISH_MANIFEST_MISSING",
   MANIFEST_INVALID: "PUBLISH_MANIFEST_INVALID",
   IDENTITY_UNKNOWN: "PUBLISH_IDENTITY_UNKNOWN",
-  LOCAL_DEPENDENCIES_UNCONFIRMED: "PUBLISH_LOCAL_DEPENDENCIES_UNCONFIRMED",
+  UNSTABLE_DEPENDENCIES_UNCONFIRMED: "PUBLISH_UNSTABLE_DEPENDENCIES_UNCONFIRMED",
   UNCOMMITTED_CHANGES: "PUBLISH_UNCOMMITTED_CHANGES",
   VERSION_ALREADY_PUBLISHED: "PUBLISH_VERSION_ALREADY_PUBLISHED",
   VERSION_BUMP_REQUIRED: "PUBLISH_VERSION_BUMP_REQUIRED",
@@ -157,10 +158,19 @@ export interface ExtensionPublishOptions {
    */
   readonly coordinate?: string;
   /**
-   * Confirms publishing a project whose extensions map contains `local:`
-   * references. Without this confirmation such a publish is refused.
+   * Confirms publishing a project whose extensions map contains dependencies
+   * that are not stable for consumers: a branch reference, or a pinned version
+   * the fetch source does not serve. Without this confirmation such a publish
+   * is refused.
    */
-  readonly allowLocalDependencies?: boolean;
+  readonly confirmUnstableDependencies?: boolean;
+  /**
+   * Reports whether the public fetch source serves a dependency's pinned
+   * content, consulted for `gh:` pin references when the publish is not
+   * already confirmed. When absent, pinned references are not probed and only
+   * branch references require confirmation.
+   */
+  readonly isPinPublished?: DependencyPinProbe;
   /** Content of the project being published. */
   readonly source: ExtensionPublishSource;
   /** Repository the publish is recorded on. */
@@ -197,11 +207,11 @@ function bumpVersion(version: string, bump: PublishVersionBump): string {
  * result carries the replaced value as `previousIdentity`.
  *
  * Refuses without applying anything when the manifest is missing or invalid,
- * no `coordinate` was provided, the project has unconfirmed `local:`
- * dependencies, the repository has uncommitted changes, the bumped version is
- * already the repository head's manifest version, an as-is publish targets a
- * repository that already has tags, the tag already exists, or a
- * manifest-listed file is absent. Each refusal carries its
+ * no `coordinate` was provided, the project has unconfirmed dependencies that
+ * are not stable for consumers, the repository has uncommitted changes, the
+ * bumped version is already the repository head's manifest version, an as-is
+ * publish targets a repository that already has tags, the tag already exists,
+ * or a manifest-listed file is absent. Each refusal carries its
  * {@link ExtensionPublishErrorCode}.
  */
 export async function publishExtensionVersion(options: ExtensionPublishOptions): Promise<ExtensionPublishResult> {
@@ -231,14 +241,18 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
     );
   }
 
-  if (options.allowLocalDependencies !== true) {
-    const localCoordinates = Object.entries(manifest.extensions)
-      .filter(([, reference]) => parseExtensionReference(reference)?.transport === "local")
-      .map(([coordinate]) => coordinate);
-    if (localCoordinates.length > 0) {
+  if (options.confirmUnstableDependencies !== true) {
+    const unstable = await collectUnstableDependencies(
+      manifest.extensions,
+      options.isPinPublished ?? (async () => true)
+    );
+    if (unstable.length > 0) {
+      const details = unstable
+        .map((dependency) => `${dependency.coordinate} ("${dependency.reference}"): ${dependency.code}`)
+        .join(", ");
       return refusal(
-        ExtensionPublishErrorCode.LOCAL_DEPENDENCIES_UNCONFIRMED,
-        `The project depends on local extensions (${localCoordinates.join(", ")}) and is not self-contained; ` +
+        ExtensionPublishErrorCode.UNSTABLE_DEPENDENCIES_UNCONFIRMED,
+        `The project depends on extensions that are not stable for consumers (${details}); ` +
           "publishing it requires explicit confirmation."
       );
     }

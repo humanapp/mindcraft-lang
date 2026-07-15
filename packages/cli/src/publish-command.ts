@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type {
+  DependencyPinProbe,
   ExtensionPublishBackend,
   ExtensionPublishResult,
   ExtensionPublishSource,
@@ -9,6 +10,7 @@ import type {
   PublishVersionBump,
 } from "@mindcraft-lang/app-host";
 import {
+  createJsDelivrExtensionTransport,
   deriveCoordinateFromRemoteUrl,
   ExtensionPublishErrorCode,
   MINDCRAFT_JSON_PATH,
@@ -36,7 +38,9 @@ project directory's mindcraft.json.
 
   --dir <path>     project directory (default: current directory)
   --remote <url>   git remote to publish the project tree to
-  --yes            confirm publishing a project with local: dependencies
+  --yes            confirm publishing a project whose dependencies are not
+                   stable for consumers (a branch reference, or a pinned
+                   version the fetch source does not serve)
 `;
 
 /** Stable identifiers for publish command failures beyond the engine's refusals. */
@@ -177,6 +181,18 @@ function checkoutPublishBackend(dir: string): ExtensionPublishBackend {
 }
 
 /**
+ * A dependency pin probe over the public content CDN: a pin is published
+ * exactly when the CDN serves the repository's `mindcraft.json` at it.
+ */
+function cdnPinProbe(): DependencyPinProbe {
+  const transport = createJsDelivrExtensionTransport();
+  return async (owner, repo, pin) => {
+    const result = await transport.fetchFile(owner, repo, pin, MINDCRAFT_JSON_PATH);
+    return result.ok;
+  };
+}
+
+/**
  * Publish the checkout at `dir` in place: bump, commit, tag, and push on the
  * repository the directory itself is a checkout of. The stamped identity
  * coordinate derives from the checkout's `origin` remote URL.
@@ -186,7 +202,8 @@ async function publishInCheckout(options: PublishArguments): Promise<ExtensionPu
   return publishExtensionVersion({
     bump: options.bump,
     coordinate: originUrl === undefined ? undefined : deriveCoordinateFromRemoteUrl(originUrl),
-    allowLocalDependencies: options.yes,
+    confirmUnstableDependencies: options.yes,
+    isPinPublished: cdnPinProbe(),
     source: directoryContentSource(options.dir),
     backend: checkoutPublishBackend(options.dir),
   });
@@ -233,7 +250,8 @@ async function publishToRemote(options: PublishArguments, remote: string): Promi
     return await publishExtensionVersion({
       bump: options.bump,
       coordinate: deriveCoordinateFromRemoteUrl(remote),
-      allowLocalDependencies: options.yes,
+      confirmUnstableDependencies: options.yes,
+      isPinPublished: cdnPinProbe(),
       source: directoryContentSource(options.dir),
       backend,
     });
@@ -273,7 +291,7 @@ export async function runPublishCommand(args: readonly string[]): Promise<number
       parsed.remote !== undefined ? await publishToRemote(parsed, parsed.remote) : await publishInCheckout(parsed);
     if (!result.ok) {
       process.stderr.write(`mindcraft publish: ${result.error.code}: ${result.error.message}\n`);
-      if (result.error.code === ExtensionPublishErrorCode.LOCAL_DEPENDENCIES_UNCONFIRMED) {
+      if (result.error.code === ExtensionPublishErrorCode.UNSTABLE_DEPENDENCIES_UNCONFIRMED) {
         process.stderr.write("Pass --yes to publish anyway.\n");
       }
       return 1;

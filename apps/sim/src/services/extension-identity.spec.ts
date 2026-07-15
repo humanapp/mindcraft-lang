@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { EmbeddedExtension } from "@mindcraft-lang/bridge-app";
-import { resolveEmbeddedExtensions } from "@mindcraft-lang/bridge-app";
+import { resolveProjectExtensions } from "@mindcraft-lang/bridge-app";
 
 /**
  * A mounted extension whose own manifest declares an identity that differs
@@ -29,7 +29,10 @@ function mismatchedExtension(): EmbeddedExtension {
 
 describe("mounted extension identity vs assigned origin", () => {
   it("resolves under the assigned origin; a mismatching declared identity is inert", () => {
-    const resolved = resolveEmbeddedExtensions({ "acme/widget": "embedded:acme/widget" }, [mismatchedExtension()]);
+    const resolved = resolveProjectExtensions(
+      { "acme/widget": "embedded:acme/widget" },
+      { embedded: [mismatchedExtension()] }
+    );
 
     assert.deepEqual(resolved.dependencies, [{ coordinate: "acme/widget" }]);
     assert.equal(resolved.dependencyMounts.length, 1);

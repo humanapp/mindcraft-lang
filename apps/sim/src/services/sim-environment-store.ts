@@ -1,5 +1,6 @@
 import {
   createIdbProjectStore,
+  createJsDelivrExtensionTransport,
   createWebLocksProjectLock,
   DEFAULT_PROJECT_NAME,
   type ImportAppChunkResult,
@@ -324,6 +325,7 @@ export class SimEnvironmentStore {
       modules: [coreModule(), createSimModule()],
       mounts: simMounts,
       embeddedExtensions: simEmbeddedExtensions,
+      extensionFetchTransport: createJsDelivrExtensionTransport(),
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,
       saveBindingToken,

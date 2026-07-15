@@ -623,8 +623,8 @@ describe("project round-trips through import and export", () => {
 describe("project extensions interchange", () => {
   const EXTENSIONS = {
     "example-org/mindcraft-position": "gh:example-org/mindcraft-position@v1.2.0",
+    "example-org/steering": "gh:example-org/steering#main",
     "mindcraft-lang/microbit-stdlib": "embedded:mindcraft-lang/microbit-stdlib",
-    "author/scratch": "local:8f14e45f-ceea-4e17-a396-7f34c2d51b3a",
   };
 
   let store: MemoryProjectStore;

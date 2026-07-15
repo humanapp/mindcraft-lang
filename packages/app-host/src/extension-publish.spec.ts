@@ -243,12 +243,12 @@ describe("publishExtensionVersion", () => {
     }
   });
 
-  it("refuses unconfirmed local dependencies and proceeds when confirmed", async () => {
+  it("refuses an unconfirmed branch dependency and proceeds when confirmed", async () => {
     const files = {
       "mindcraft.json": manifestText({
         name: "P",
         version: "0.1.0",
-        extensions: { "author/scratch": "local:project-1" },
+        extensions: { "author/steering": "gh:author/steering#main" },
       }),
     };
     const refused = await publishExtensionVersion({
@@ -259,14 +259,59 @@ describe("publishExtensionVersion", () => {
     });
     assert.equal(refused.ok, false);
     if (!refused.ok) {
-      assert.equal(refused.error.code, ExtensionPublishErrorCode.LOCAL_DEPENDENCIES_UNCONFIRMED);
-      assert.match(refused.error.message, /author\/scratch/);
+      assert.equal(refused.error.code, ExtensionPublishErrorCode.UNSTABLE_DEPENDENCIES_UNCONFIRMED);
+      assert.match(refused.error.message, /author\/steering/);
+      assert.match(refused.error.message, /DEPENDENCY_BRANCH_REFERENCE/);
     }
 
     const confirmed = await publishExtensionVersion({
       bump: "patch",
       coordinate: COORDINATE,
-      allowLocalDependencies: true,
+      confirmUnstableDependencies: true,
+      source: memorySource(files),
+      backend: memoryBackend().backend,
+    });
+    assert.equal(confirmed.ok, true);
+  });
+
+  it("refuses an unconfirmed pin the fetch source does not serve and passes a published pin silently", async () => {
+    const files = {
+      "mindcraft.json": manifestText({
+        name: "P",
+        version: "0.1.0",
+        extensions: {
+          "author/published": "gh:author/published@v1.0.0",
+          "author/unpublished": "gh:author/unpublished@v9.9.9",
+        },
+      }),
+    };
+    const probed: string[] = [];
+    const isPinPublished = async (owner: string, repo: string, pin: string) => {
+      probed.push(`${owner}/${repo}@${pin}`);
+      return repo === "published";
+    };
+
+    const refused = await publishExtensionVersion({
+      bump: "patch",
+      coordinate: COORDINATE,
+      isPinPublished,
+      source: memorySource(files),
+      backend: memoryBackend().backend,
+    });
+    assert.equal(refused.ok, false);
+    if (!refused.ok) {
+      assert.equal(refused.error.code, ExtensionPublishErrorCode.UNSTABLE_DEPENDENCIES_UNCONFIRMED);
+      assert.match(refused.error.message, /author\/unpublished/);
+      assert.match(refused.error.message, /DEPENDENCY_VERSION_UNPUBLISHED/);
+      assert.doesNotMatch(refused.error.message, /author\/published/);
+    }
+    assert.deepEqual(probed, ["author/published@v1.0.0", "author/unpublished@v9.9.9"]);
+
+    const confirmed = await publishExtensionVersion({
+      bump: "patch",
+      coordinate: COORDINATE,
+      confirmUnstableDependencies: true,
+      isPinPublished: async () => false,
       source: memorySource(files),
       backend: memoryBackend().backend,
     });

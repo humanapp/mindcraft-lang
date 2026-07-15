@@ -4,7 +4,7 @@ import type { DependencyMount } from "@mindcraft-lang/ts-compiler";
 import type { EmbeddedExtension, OriginCandidate } from "./embedded-extensions.js";
 import {
   ExtensionResolutionCycleError,
-  resolveEmbeddedExtensions,
+  resolveProjectExtensions,
   unifyOriginCandidate,
 } from "./embedded-extensions.js";
 
@@ -60,9 +60,12 @@ const STDLIB: EmbeddedExtension = {
   ],
 };
 
-describe("resolveEmbeddedExtensions -- flat cases", () => {
+describe("resolveProjectExtensions -- flat cases", () => {
   test("resolves an embedded reference by coordinate to a coordinate dependency and a namespaced mount", () => {
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" }, [STDLIB]);
+    const resolved = resolveProjectExtensions(
+      { "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" },
+      { embedded: [STDLIB] }
+    );
     assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/codal" }]);
     assert.equal(resolved.dependencyMounts.length, 1);
     const mount = resolved.dependencyMounts[0];
@@ -76,35 +79,43 @@ describe("resolveEmbeddedExtensions -- flat cases", () => {
   test("the coordinate derives from identity, not from the manifest key", () => {
     // A manifest key that disagrees with the resolved coordinate does not change
     // the imported coordinate: it is always the extension's own <owner>/<repo>.
-    const resolved = resolveEmbeddedExtensions({ "any/key": "embedded:mindcraft-lang/codal" }, [STDLIB]);
+    const resolved = resolveProjectExtensions({ "any/key": "embedded:mindcraft-lang/codal" }, { embedded: [STDLIB] });
     assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/codal" }]);
   });
 
   test("skips references of other transports", () => {
-    const resolved = resolveEmbeddedExtensions({ "owner/pos": "gh:owner/repo@v1.0.0", "author/scratch": "local:abc" }, [
-      STDLIB,
-    ]);
+    const resolved = resolveProjectExtensions(
+      { "owner/pos": "gh:owner/repo@v1.0.0", "author/scratch": "ffff:abc" },
+      { embedded: [STDLIB] }
+    );
     assert.deepEqual(resolved.dependencies, []);
     assert.deepEqual(resolved.dependencyMounts, []);
     assert.deepEqual(resolved.warnings, []);
   });
 
   test("skips an embedded reference with no matching bundled extension", () => {
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/other": "embedded:mindcraft-lang/not-bundled" }, [
-      STDLIB,
-    ]);
+    const resolved = resolveProjectExtensions(
+      { "mindcraft-lang/other": "embedded:mindcraft-lang/not-bundled" },
+      { embedded: [STDLIB] }
+    );
     assert.deepEqual(resolved.dependencies, []);
   });
 
   test("carries an extension's declared ambient list onto its mount and omits it when undeclared", () => {
-    const withAmbient = resolveEmbeddedExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, [
-      ext("a", { version: "1.0.0", ambient: ["mindcraft.a.d.ts"], extra: { "mindcraft.a.d.ts": "export {};" } }),
-    ]);
+    const withAmbient = resolveProjectExtensions(
+      { "mindcraft-lang/a": "embedded:mindcraft-lang/a" },
+      {
+        embedded: [
+          ext("a", { version: "1.0.0", ambient: ["mindcraft.a.d.ts"], extra: { "mindcraft.a.d.ts": "export {};" } }),
+        ],
+      }
+    );
     assert.deepEqual(mountFor(withAmbient.dependencyMounts, coordinateFor("a")).ambient, ["mindcraft.a.d.ts"]);
 
-    const withoutAmbient = resolveEmbeddedExtensions({ "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" }, [
-      STDLIB,
-    ]);
+    const withoutAmbient = resolveProjectExtensions(
+      { "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" },
+      { embedded: [STDLIB] }
+    );
     assert.equal(mountFor(withoutAmbient.dependencyMounts, coordinateFor("codal")).ambient, undefined);
   });
 
@@ -121,26 +132,27 @@ describe("resolveEmbeddedExtensions -- flat cases", () => {
         },
       ],
     };
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/authored": "embedded:mindcraft-lang/authored" }, [
-      withTsconfig,
-    ]);
+    const resolved = resolveProjectExtensions(
+      { "mindcraft-lang/authored": "embedded:mindcraft-lang/authored" },
+      { embedded: [withTsconfig] }
+    );
     const mount = mountFor(resolved.dependencyMounts, coordinateFor("authored"));
     assert.equal(mount.files.get("/tsconfig.json"), carriedTsconfig);
     assert.deepEqual(resolved.warnings, [], "carrying a tsconfig.json raises no resolution warning");
   });
 
   test("returns empty results for an absent extensions list", () => {
-    const resolved = resolveEmbeddedExtensions(undefined, [STDLIB]);
+    const resolved = resolveProjectExtensions(undefined, { embedded: [STDLIB] });
     assert.deepEqual(resolved.dependencies, []);
     assert.deepEqual(resolved.dependencyMounts, []);
     assert.deepEqual(resolved.warnings, []);
   });
 
   test("the stdlib default extension (no manifest) resolves identically regardless of embed-record noise", () => {
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" }, [
-      STDLIB,
-      ext("unused-a", { version: "2.0.0" }),
-    ]);
+    const resolved = resolveProjectExtensions(
+      { "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" },
+      { embedded: [STDLIB, ext("unused-a", { version: "2.0.0" })] }
+    );
     assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/codal" }]);
     assert.equal(resolved.dependencyMounts.length, 1);
     assert.equal(resolved.dependencyMounts[0].namespace, "mindcraft-lang/codal");
@@ -149,7 +161,7 @@ describe("resolveEmbeddedExtensions -- flat cases", () => {
   });
 });
 
-describe("resolveEmbeddedExtensions -- transitive resolution", () => {
+describe("resolveProjectExtensions -- transitive resolution", () => {
   test("an extension's own extensions resolve recursively, dependency mounts carry their own deps", () => {
     // A -> B -> C
     const embed = [
@@ -157,7 +169,7 @@ describe("resolveEmbeddedExtensions -- transitive resolution", () => {
       ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:mindcraft-lang/c" } }),
       ext("c", { version: "1.0.0" }),
     ];
-    const resolved = resolveEmbeddedExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, embed);
+    const resolved = resolveProjectExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, { embedded: embed });
 
     assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/a" }]);
     const origins = resolved.dependencyMounts.map((m) => m.namespace).sort();
@@ -180,9 +192,9 @@ describe("resolveEmbeddedExtensions -- transitive resolution", () => {
       ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:mindcraft-lang/c" } }),
       ext("c", { version: "1.0.0" }),
     ];
-    const resolved = resolveEmbeddedExtensions(
+    const resolved = resolveProjectExtensions(
       { "mindcraft-lang/a": "embedded:mindcraft-lang/a", "mindcraft-lang/b": "embedded:mindcraft-lang/b" },
-      embed
+      { embedded: embed }
     );
 
     const cMounts = resolved.dependencyMounts.filter((m) => m.namespace === coordinateFor("c"));
@@ -197,7 +209,7 @@ describe("resolveEmbeddedExtensions -- transitive resolution", () => {
   });
 });
 
-describe("resolveEmbeddedExtensions -- shared origin", () => {
+describe("resolveProjectExtensions -- shared origin", () => {
   test("the same embedded origin reached directly and transitively unifies to one mount, no warning", () => {
     // host -> c (depth 0); host -> a -> c (depth 1). Because an embedded
     // reference is identity-derived (`embedded:<owner>/<repo>` matches the embed
@@ -208,9 +220,9 @@ describe("resolveEmbeddedExtensions -- shared origin", () => {
       ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:mindcraft-lang/c" } }),
       ext("c", { version: "1.0.0" }),
     ];
-    const resolved = resolveEmbeddedExtensions(
+    const resolved = resolveProjectExtensions(
       { "mindcraft-lang/c": "embedded:mindcraft-lang/c", "mindcraft-lang/a": "embedded:mindcraft-lang/a" },
-      embed
+      { embedded: embed }
     );
 
     const cMounts = resolved.dependencyMounts.filter((m) => m.namespace === coordinateFor("c"));
@@ -222,7 +234,7 @@ describe("resolveEmbeddedExtensions -- shared origin", () => {
   });
 });
 
-describe("resolveEmbeddedExtensions -- cycle rejection", () => {
+describe("resolveProjectExtensions -- cycle rejection", () => {
   test("a dependency cycle throws a precise cycle error naming the origins", () => {
     // A -> B -> A
     const embed = [
@@ -230,7 +242,7 @@ describe("resolveEmbeddedExtensions -- cycle rejection", () => {
       ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/a": "embedded:mindcraft-lang/a" } }),
     ];
     assert.throws(
-      () => resolveEmbeddedExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, embed),
+      () => resolveProjectExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, { embedded: embed }),
       (err: unknown) => {
         assert.ok(err instanceof ExtensionResolutionCycleError);
         assert.deepEqual(err.cycle, [coordinateFor("a"), coordinateFor("b"), coordinateFor("a")]);
@@ -242,7 +254,7 @@ describe("resolveEmbeddedExtensions -- cycle rejection", () => {
   test("a self-cycle throws", () => {
     const embed = [ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/a": "embedded:mindcraft-lang/a" } })];
     assert.throws(
-      () => resolveEmbeddedExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, embed),
+      () => resolveProjectExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, { embedded: embed }),
       ExtensionResolutionCycleError
     );
   });
@@ -251,7 +263,7 @@ describe("resolveEmbeddedExtensions -- cycle rejection", () => {
 /**
  * Build a bare origin candidate carrying only the fields conflict resolution
  * reads. An embedded reference is identity-derived, so a version conflict or a
- * reference tie-break cannot arise through `resolveEmbeddedExtensions`; these
+ * reference tie-break cannot arise through `resolveProjectExtensions`; these
  * tests drive the resolution decision at its input level, where a remote
  * transport's versioned references can disagree.
  */
@@ -332,5 +344,216 @@ describe("unifyOriginCandidate -- reference tie-break", () => {
 
     assert.equal(winner, incumbent);
     assert.equal(warning, undefined);
+  });
+});
+
+describe("resolveProjectExtensions -- fetched content", () => {
+  /** Snapshot text files of a fetched extension declaring its manifest and one entry module. */
+  function fetchedFiles(options: {
+    name: string;
+    version: string;
+    extensions?: Record<string, string>;
+  }): Map<string, string> {
+    return new Map([
+      [
+        "/mindcraft.json",
+        JSON.stringify({
+          name: options.name,
+          version: options.version,
+          files: ["index.ts"],
+          ...(options.extensions ? { extensions: options.extensions } : {}),
+        }),
+      ],
+      ["/index.ts", "export const value = 1;"],
+    ]);
+  }
+
+  test("resolves a gh reference from fetched content keyed by reference", () => {
+    const reference = "gh:example-org/position-ext@v0.1.0";
+    const resolved = resolveProjectExtensions(
+      { "example-org/position-ext": reference },
+      { embedded: [], fetched: new Map([[reference, fetchedFiles({ name: "Position", version: "0.1.0" })]]) }
+    );
+
+    assert.deepStrictEqual(resolved.dependencies, [{ coordinate: "example-org/position-ext" }]);
+    const mount = mountFor(resolved.dependencyMounts, "example-org/position-ext");
+    assert.equal(mount.files.get("/index.ts"), "export const value = 1;");
+    assert.deepStrictEqual(resolved.origins, [{ origin: "example-org/position-ext", reference, version: "0.1.0" }]);
+  });
+
+  test("skips a gh reference with no fetched content; the import surfaces as a compiler diagnostic later", () => {
+    const resolved = resolveProjectExtensions(
+      { "example-org/position-ext": "gh:example-org/position-ext@v0.1.0" },
+      { embedded: [] }
+    );
+    assert.deepStrictEqual(resolved.dependencies, []);
+    assert.deepStrictEqual(resolved.dependencyMounts, []);
+  });
+
+  test("resolves transitively through a fetched extension's own gh extensions", () => {
+    const rootReference = "gh:example-org/robot-ext@v1.0.0";
+    const childReference = "gh:example-org/motor-ext@v2.0.0";
+    const fetched = new Map([
+      [
+        rootReference,
+        fetchedFiles({
+          name: "Robot",
+          version: "1.0.0",
+          extensions: { "example-org/motor-ext": childReference },
+        }),
+      ],
+      [childReference, fetchedFiles({ name: "Motor", version: "2.0.0" })],
+    ]);
+
+    const resolved = resolveProjectExtensions({ "example-org/robot-ext": rootReference }, { embedded: [], fetched });
+
+    assert.deepStrictEqual(resolved.dependencies, [{ coordinate: "example-org/robot-ext" }]);
+    const root = mountFor(resolved.dependencyMounts, "example-org/robot-ext");
+    assert.deepStrictEqual(root.dependencies, [{ coordinate: "example-org/motor-ext" }]);
+    mountFor(resolved.dependencyMounts, "example-org/motor-ext");
+  });
+
+  test("resolves an embedded extension's declared gh dependency", () => {
+    const childReference = "gh:example-org/motor-ext@v2.0.0";
+    const embedded = ext("robot", { version: "1.0.0", extensions: { "example-org/motor-ext": childReference } });
+    const resolved = resolveProjectExtensions(
+      { [coordinateFor("robot")]: `embedded:${coordinateFor("robot")}` },
+      { embedded: [embedded], fetched: new Map([[childReference, fetchedFiles({ name: "Motor", version: "2.0.0" })]]) }
+    );
+    mountFor(resolved.dependencyMounts, coordinateFor("robot"));
+    mountFor(resolved.dependencyMounts, "example-org/motor-ext");
+  });
+
+  test("selects the higher version when two references require the same fetched origin, with a warning", () => {
+    const directReference = "gh:example-org/motor-ext@v1.0.0";
+    const nestedReference = "gh:example-org/motor-ext@v2.0.0";
+    const rootReference = "gh:example-org/robot-ext@v1.0.0";
+    const fetched = new Map([
+      [directReference, fetchedFiles({ name: "Motor", version: "1.0.0" })],
+      [nestedReference, fetchedFiles({ name: "Motor", version: "2.0.0" })],
+      [
+        rootReference,
+        fetchedFiles({
+          name: "Robot",
+          version: "1.0.0",
+          extensions: { "example-org/motor-ext": nestedReference },
+        }),
+      ],
+    ]);
+
+    const resolved = resolveProjectExtensions(
+      { "example-org/motor-ext": directReference, "example-org/robot-ext": rootReference },
+      { embedded: [], fetched }
+    );
+
+    const motor = resolved.origins.find((origin) => origin.origin === "example-org/motor-ext");
+    assert.deepStrictEqual(motor, {
+      origin: "example-org/motor-ext",
+      reference: nestedReference,
+      version: "2.0.0",
+    });
+    assert.equal(resolved.warnings.length, 1);
+    assert.equal(resolved.warnings[0].kind, "version-conflict");
+    assert.equal(resolved.dependencyMounts.filter((m) => m.namespace === "example-org/motor-ext").length, 1);
+  });
+
+  test("rejects a dependency cycle across fetched extensions", () => {
+    const aReference = "gh:example-org/a-ext@v1.0.0";
+    const bReference = "gh:example-org/b-ext@v1.0.0";
+    const fetched = new Map([
+      [aReference, fetchedFiles({ name: "A", version: "1.0.0", extensions: { "example-org/b-ext": bReference } })],
+      [bReference, fetchedFiles({ name: "B", version: "1.0.0", extensions: { "example-org/a-ext": aReference } })],
+    ]);
+
+    assert.throws(
+      () => resolveProjectExtensions({ "example-org/a-ext": aReference }, { embedded: [], fetched }),
+      (error: unknown) => {
+        assert.ok(error instanceof ExtensionResolutionCycleError);
+        assert.deepStrictEqual(error.cycle, ["example-org/a-ext", "example-org/b-ext", "example-org/a-ext"]);
+        return true;
+      }
+    );
+  });
+});
+
+describe("resolveProjectExtensions -- fetched-origin warnings", () => {
+  const ABBREVIATED_PIN = "b19b80b";
+  const FULL_SHA = "b19b80b029a77303ee575d3ff9b29adbf7021b23";
+
+  /** Fetched content for one reference, carrying the given manifest fields. */
+  function fetchedFor(reference: string, manifest: Record<string, unknown>): Map<string, Map<string, string>> {
+    return new Map([
+      [
+        reference,
+        new Map([
+          ["/mindcraft.json", JSON.stringify(manifest)],
+          ["/index.ts", "export const x = 1;"],
+        ]),
+      ],
+    ]);
+  }
+
+  test("an abbreviated-SHA pin raises an abbreviated-pin warning; a full SHA and a tag do not", () => {
+    const abbreviated = `gh:example-org/position-ext@${ABBREVIATED_PIN}`;
+    const warned = resolveProjectExtensions(
+      { "example-org/position-ext": abbreviated },
+      { embedded: [], fetched: fetchedFor(abbreviated, { name: "P", version: "0.1.0" }) }
+    );
+    assert.equal(warned.warnings.length, 1);
+    const warning = warned.warnings[0];
+    assert.equal(warning.kind, "abbreviated-pin");
+    if (warning.kind === "abbreviated-pin") {
+      assert.equal(warning.origin, "example-org/position-ext");
+      assert.equal(warning.reference, abbreviated);
+      assert.match(warning.message, /40-character/);
+    }
+
+    for (const pin of [FULL_SHA, "v0.1.0"]) {
+      const reference = `gh:example-org/position-ext@${pin}`;
+      const clean = resolveProjectExtensions(
+        { "example-org/position-ext": reference },
+        { embedded: [], fetched: fetchedFor(reference, { name: "P", version: "0.1.0" }) }
+      );
+      assert.deepEqual(clean.warnings, [], `expected no warning for pin "${pin}"`);
+    }
+  });
+
+  test("a fetched manifest identity differing from the coordinate raises an identity-mismatch warning", () => {
+    const reference = "gh:fork-org/position-ext@v0.1.0";
+    const resolved = resolveProjectExtensions(
+      { "fork-org/position-ext": reference },
+      {
+        embedded: [],
+        fetched: fetchedFor(reference, { name: "P", version: "0.1.0", identity: "upstream-org/position-ext" }),
+      }
+    );
+    assert.equal(resolved.warnings.length, 1);
+    const warning = resolved.warnings[0];
+    assert.equal(warning.kind, "identity-mismatch");
+    if (warning.kind === "identity-mismatch") {
+      assert.equal(warning.origin, "fork-org/position-ext");
+      assert.equal(warning.declaredIdentity, "upstream-org/position-ext");
+      assert.match(warning.message, /upstream-org\/position-ext/);
+    }
+    // Resolution proceeds under the reference coordinate.
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "fork-org/position-ext" }]);
+  });
+
+  test("a matching identity and an embedded origin raise no identity warning", () => {
+    const reference = "gh:example-org/position-ext@v0.1.0";
+    const matching = resolveProjectExtensions(
+      { "example-org/position-ext": reference },
+      {
+        embedded: [],
+        fetched: fetchedFor(reference, { name: "P", version: "0.1.0", identity: "example-org/position-ext" }),
+      }
+    );
+    assert.deepEqual(matching.warnings, []);
+
+    const embedded = resolveProjectExtensions(
+      { "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" },
+      { embedded: [STDLIB] }
+    );
+    assert.deepEqual(embedded.warnings, []);
   });
 });
