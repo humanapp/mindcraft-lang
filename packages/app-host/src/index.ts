@@ -1,5 +1,16 @@
 export { LOWEST_CONTENT_VERSION } from "@mindcraft-lang/service-api";
 export { AppHostError, AppHostErrorCode, appHostError } from "./app-host-error.js";
+export type {
+  ExtensionPublishBackend,
+  ExtensionPublishCommit,
+  ExtensionPublishError,
+  ExtensionPublishOptions,
+  ExtensionPublishResult,
+  ExtensionPublishSource,
+  PublishFile,
+  PublishVersionBump,
+} from "./extension-publish.js";
+export { ExtensionPublishErrorCode, publishExtensionVersion } from "./extension-publish.js";
 export { createIdbProjectStore } from "./idb-project-store.js";
 export type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";
 export { createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";

@@ -94,7 +94,7 @@ describe("parseProjectContentManifest", () => {
     }
   });
 
-  it("carries string description and thumbnailUrl through and ignores other fields", () => {
+  it("carries string description and thumbnailUrl through and captures other fields as extras", () => {
     const result = parseProjectContentManifest(
       JSON.stringify({
         name: "P",
@@ -109,6 +109,15 @@ describe("parseProjectContentManifest", () => {
       assert.strictEqual(result.manifest.description, "desc");
       assert.strictEqual(result.manifest.thumbnailUrl, "data:,x");
       assert.strictEqual("host" in result.manifest, false);
+      assert.deepStrictEqual(result.manifest.extras, { host: { name: "sim", version: "1.0.0" } });
+    }
+  });
+
+  it("omits extras when the document carries only schema fields", () => {
+    const result = parseProjectContentManifest(JSON.stringify({ name: "P", version: "0.1.0" }));
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.strictEqual("extras" in result.manifest, false);
     }
   });
 
@@ -420,5 +429,22 @@ describe("serializeProjectContentManifest", () => {
       targets: {},
     });
     assert.strictEqual(emptySerialized.includes("targets"), false);
+  });
+
+  it("round-trips extras byte-faithfully after the schema fields", () => {
+    const manifest: ProjectContentManifest = {
+      name: "P",
+      version: "0.1.0",
+      extensions: {},
+      files: ["index.ts"],
+      extras: { brains: { main: { rules: [1, 2] } }, appChunk: ["verbatim", null] },
+    };
+    const serialized = serializeProjectContentManifest(manifest);
+    const result = parseProjectContentManifest(serialized);
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest, manifest);
+      assert.strictEqual(serializeProjectContentManifest(result.manifest), serialized);
+    }
   });
 });

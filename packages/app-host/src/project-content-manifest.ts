@@ -135,7 +135,26 @@ export interface ProjectContentManifest {
    * for that package satisfies the entry's `packageVersion` range.
    */
   readonly targets?: Readonly<Record<string, ExtensionTarget>>;
+  /**
+   * Root-level fields of the source document outside the manifest schema
+   * (for example application-specific content), keyed by property name and
+   * carried verbatim: a parse followed by a serialize preserves them. Present
+   * only when the source document carries at least one such field.
+   */
+  readonly extras?: Readonly<Record<string, unknown>>;
 }
+
+/** Root-level property names defined by the content manifest schema. */
+const MANIFEST_SCHEMA_FIELDS: ReadonlySet<string> = new Set([
+  "name",
+  "version",
+  "description",
+  "thumbnailUrl",
+  "extensions",
+  "files",
+  "ambient",
+  "targets",
+]);
 
 /** Stable identifiers for content manifest validation errors. */
 export const ProjectContentManifestErrorCode = {
@@ -269,8 +288,8 @@ export function validateProjectTargets(value: unknown): readonly ProjectContentM
 
 /**
  * Parse and validate a project content manifest from JSON text. String
- * `description` and `thumbnailUrl` fields are carried through; other fields are
- * ignored.
+ * `description` and `thumbnailUrl` fields are carried through; fields outside
+ * the manifest schema are carried through verbatim as `extras`.
  *
  * @param content - JSON text of a `mindcraft.json` file.
  */
@@ -296,9 +315,10 @@ export function parseProjectContentManifest(content: string): ProjectContentMani
 /**
  * Validate a parsed project content manifest. String `description` and
  * `thumbnailUrl` fields are carried through; string-array `files` and `ambient`
- * fields are carried through when non-empty; other fields are ignored, and an
- * absent `extensions` field yields an empty extensions map. A missing or
- * non-semver `version` is read as the lowest content version (`"0.0.0"`).
+ * fields are carried through when non-empty; fields outside the manifest
+ * schema are carried through verbatim as `extras`; an absent `extensions`
+ * field yields an empty extensions map. A missing or non-semver `version` is
+ * read as the lowest content version (`"0.0.0"`).
  *
  * @param value - Parsed JSON value of a `mindcraft.json` file.
  */
@@ -382,6 +402,13 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
     }
   }
 
+  let extras: Record<string, unknown> | undefined;
+  for (const [key, entry] of Object.entries(value)) {
+    if (MANIFEST_SCHEMA_FIELDS.has(key)) continue;
+    extras ??= {};
+    extras[key] = entry;
+  }
+
   if (errors.length > 0) {
     return { ok: false, errors };
   }
@@ -397,12 +424,17 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
       ...(files !== undefined ? { files } : {}),
       ...(ambient !== undefined ? { ambient } : {}),
       ...(targets !== undefined ? { targets } : {}),
+      ...(extras !== undefined ? { extras } : {}),
     },
     errors: [],
   };
 }
 
-/** Serialize a {@link ProjectContentManifest} to a pretty-printed JSON string. */
+/**
+ * Serialize a {@link ProjectContentManifest} to a pretty-printed JSON string.
+ * Schema fields are written in a fixed order; `extras` entries follow them
+ * verbatim.
+ */
 export function serializeProjectContentManifest(manifest: ProjectContentManifest): string {
   return JSON.stringify(
     {
@@ -416,6 +448,7 @@ export function serializeProjectContentManifest(manifest: ProjectContentManifest
       ...(manifest.targets !== undefined && Object.keys(manifest.targets).length > 0
         ? { targets: manifest.targets }
         : {}),
+      ...(manifest.extras !== undefined ? manifest.extras : {}),
     },
     null,
     2
