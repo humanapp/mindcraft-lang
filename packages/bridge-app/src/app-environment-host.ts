@@ -11,7 +11,8 @@ import {
   syncManifestToMindcraftJson,
 } from "@mindcraft-lang/app-host";
 import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
-import { createMindcraftEnvironment, Dict, logger } from "@mindcraft-lang/core/app";
+import { createMindcraftEnvironment, Dict, encodePersistedBrainJson, logger } from "@mindcraft-lang/core/app";
+import type { PersistedBrainJson } from "@mindcraft-lang/core/brain/model";
 import type { IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
 import type { Mount, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
@@ -281,8 +282,16 @@ export class AppEnvironmentHost {
   async saveBrainForKey(key: string, brainDef: IBrainDef): Promise<void> {
     this._brainCache.set(key, brainDef);
     const record = await this.loadBrainRecord();
-    record[key] = brainDef.toJson();
+    record[key] = this.serializeBrainForStorage(brainDef);
     await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
+  }
+
+  /**
+   * Serialize a brain into its persisted form: identifiers qualified by the
+   * active project's namespace are stored with the namespace absent.
+   */
+  serializeBrainForStorage(brainDef: IBrainDef): PersistedBrainJson {
+    return encodePersistedBrainJson(brainDef, this.projectManager.activeProject!.manifest.id);
   }
 
   async removeBrain(key: string): Promise<void> {
@@ -325,7 +334,7 @@ export class AppEnvironmentHost {
     // deserialize on load has no cache slot, and its stored bytes must survive.
     const record = await this.loadBrainRecord();
     for (const [key, def] of this._brainCache) {
-      record[key] = def.toJson();
+      record[key] = this.serializeBrainForStorage(def);
     }
     await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
   }
@@ -352,7 +361,7 @@ export class AppEnvironmentHost {
 
   private deserializeBrainForKey(key: string, json: unknown): IBrainDef | undefined {
     try {
-      const brainDef = this.env.deserializeBrainJsonFromPlain(json);
+      const brainDef = this.env.deserializeBrainJsonFromPlain(json, this.projectManager.activeProject!.manifest.id);
       if (brainDef.pages().size() === 0) {
         brainDef.appendNewPage();
       }

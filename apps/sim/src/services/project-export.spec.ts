@@ -7,7 +7,7 @@ import { BrainDef, coreModule } from "@mindcraft-lang/core/app";
 import { createSimModule } from "@/brain";
 import type { Obstacle } from "@/brain/vision";
 import { name as simName } from "../../package.json";
-import { buildSimExportDocument, type SimTarget } from "./project-io";
+import { buildSimExportDocument, type SimAppChunk } from "./project-io";
 
 // The app-host reads localStorage/sessionStorage for app-side caches; provide an in-memory shim
 // alongside fake-indexeddb so the host runs headlessly.
@@ -49,7 +49,7 @@ const ASSET_CONTENT = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></
 const OBSTACLES: readonly Obstacle[] = [{ x: 10, y: 20, width: 30, height: 40, rotation: 0.5 }];
 
 describe("sim project export document", () => {
-  it("carries the whole project: tile source, asset, brain, and the sim's target payload", async () => {
+  it("carries the whole project: tile source, asset, brain, and the sim's app chunk", async () => {
     const host = new AppEnvironmentHost({
       projectManager: new ProjectManager(await createIdbProjectStore("sim-export-probe")),
       modules: [coreModule(), createSimModule()],
@@ -75,20 +75,20 @@ describe("sim project export document", () => {
     await host.saveBrainForKey("herbivore", brain);
 
     const document = JSON.parse(await buildSimExportDocument(host.projectManager, { herbivore: 5 }, OBSTACLES)) as {
-      files: Array<{ path: string; content: string }>;
-      brains: Record<string, { name: string }>;
-      targets: Record<string, unknown>;
+      manifest: {
+        brains: Record<string, { name: string }>;
+        app: Record<string, unknown>;
+      };
+      contents: Record<string, string>;
     };
     host.dispose();
 
-    const tile = document.files.find((file) => file.path === TILE_PATH);
-    assert.equal(tile?.content, TILE_SOURCE);
-    const asset = document.files.find((file) => file.path === ASSET_PATH);
-    assert.equal(asset?.content, ASSET_CONTENT);
+    assert.equal(document.contents[TILE_PATH], TILE_SOURCE);
+    assert.equal(document.contents[ASSET_PATH], ASSET_CONTENT);
 
-    assert.equal(document.brains.herbivore?.name, "Herbivore");
+    assert.equal(document.manifest.brains.herbivore?.name, "Herbivore");
 
-    const app = document.targets[simName] as SimTarget;
+    const app = document.manifest.app[simName] as SimAppChunk;
     const herbivore = app.actors.find((actor) => actor.archetype === "herbivore");
     assert.deepEqual(herbivore, { archetype: "herbivore", brain: "herbivore", desiredCount: 5 });
     assert.deepEqual(app.obstacles, OBSTACLES);

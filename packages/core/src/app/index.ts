@@ -24,7 +24,14 @@ export { coreModule, createHostActuator, createHostSensor, createMindcraftEnviro
 // -- Brain model ----------------------------------------------------------------
 
 export type { IBrainDef, IBrainPageDef, IBrainRuleDef, IBrainTileSet } from "../brain/interfaces";
-export { BrainDef, brainJsonFromPlain } from "../brain/model";
+export type { PersistedBrainJson, PersistedIdRef, PersistedTileRef, PersistedTypeRef } from "../brain/model";
+export {
+  BrainDef,
+  brainJsonFromPlain,
+  decodePersistedBrainJson,
+  deserializePersistedBrainJson,
+  encodePersistedBrainJson,
+} from "../brain/model";
 
 // -- Call-spec builders ---------------------------------------------------------
 

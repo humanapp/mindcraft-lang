@@ -1,5 +1,11 @@
 import { List } from "@mindcraft-lang/core";
-import { BrainDef, type BrainPageDef, brainJsonFromPlain } from "@mindcraft-lang/core/brain/model";
+import {
+  BrainDef,
+  type BrainPageDef,
+  brainJsonFromPlain,
+  deserializePersistedBrainJson,
+  encodePersistedBrainJson,
+} from "@mindcraft-lang/core/brain/model";
 import {
   BookOpen,
   ChevronDown,
@@ -65,7 +71,7 @@ export interface BrainEditorDialogProps {
  * `onSubmit` is invoked with the resulting brain when the user confirms.
  */
 export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
-  const { getDefaultBrain, docsIntegration, brainServices, tileCatalogs } = useBrainEditorConfig();
+  const { getDefaultBrain, docsIntegration, brainServices, tileCatalogs, projectNamespace } = useBrainEditorConfig();
   const isDocsOpen = docsIntegration?.isOpen ?? false;
   const toggleDocs = docsIntegration?.toggle;
   const closeDocs = docsIntegration?.close;
@@ -267,8 +273,9 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     if (!brainDef) return;
 
     try {
-      // Serialize the brain to JSON
-      const json = brainDef.toJson();
+      // Serialize the brain to its persisted JSON form
+      const json =
+        projectNamespace !== undefined ? encodePersistedBrainJson(brainDef, projectNamespace) : brainDef.toJson();
       const text = JSON.stringify(json, null, 2);
 
       // Use File System Access API to save
@@ -292,7 +299,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         console.error("Failed to save brain:", err);
       }
     }
-  }, [brainDef]);
+  }, [brainDef, projectNamespace]);
 
   const handleLoadFromFile = useCallback(async () => {
     try {
@@ -312,9 +319,12 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       const arrayBuffer = await file.arrayBuffer();
       const text = new TextDecoder().decode(new Uint8Array(arrayBuffer));
 
-      let loadedBrain: BrainDef;
       const extraCatalogs = tileCatalogs ? List.from(tileCatalogs) : undefined;
-      loadedBrain = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown), brainServices!, extraCatalogs);
+      const plain = JSON.parse(text) as unknown;
+      const loadedBrain: BrainDef =
+        projectNamespace !== undefined
+          ? deserializePersistedBrainJson(plain, projectNamespace, brainServices!, extraCatalogs)
+          : BrainDef.fromJson(brainJsonFromPlain(plain), brainServices!, extraCatalogs);
 
       if (loadedBrain.pages().size() === 0) {
         loadedBrain.appendNewPage();
@@ -332,7 +342,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         console.error("Failed to load brain:", err);
       }
     }
-  }, [commandHistory, brainServices, tileCatalogs]);
+  }, [commandHistory, brainServices, tileCatalogs, projectNamespace]);
 
   const handleLoadDefault = useCallback(() => {
     const defaultBrain = getDefaultBrain?.();

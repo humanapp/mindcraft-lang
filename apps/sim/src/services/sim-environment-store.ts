@@ -2,7 +2,7 @@ import {
   createIdbProjectStore,
   createWebLocksProjectLock,
   DEFAULT_PROJECT_NAME,
-  type ImportAppLayerResult,
+  type ImportAppChunkResult,
   type ImportResult,
   importProjectDocument,
   type ProjectCollection,
@@ -32,7 +32,7 @@ import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { Obstacle } from "@/brain/vision";
-import { name as simName, version as simVersion } from "../../package.json";
+import { name as simName } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
 import { buildSimExportDocument } from "./project-io";
 import { simDefaultExtensions, simEmbeddedExtensions } from "./sim-embedded-extensions";
@@ -173,12 +173,12 @@ function parseObstacles(value: unknown): Obstacle[] | undefined {
   return result;
 }
 
-function translateProjectTarget(app: unknown): ImportAppLayerResult {
+function translateSimAppChunk(app: unknown): ImportAppChunkResult {
   const diagnostics: { severity: "error" | "warning"; message: string }[] = [];
   const appData = app as { actors?: unknown[]; obstacles?: unknown } | null;
   if (!appData?.actors || !Array.isArray(appData.actors) || appData.actors.length === 0) {
     return {
-      diagnostics: [{ severity: "error", message: "No actor data found in app layer." }],
+      diagnostics: [{ severity: "error", message: "No actor data found in the sim's app chunk." }],
     };
   }
 
@@ -205,7 +205,7 @@ function translateProjectTarget(app: unknown): ImportAppLayerResult {
     } else {
       diagnostics.push({
         severity: "warning",
-        message: "Ignored malformed obstacle data in app layer.",
+        message: "Ignored malformed obstacle data in the sim's app chunk.",
       });
     }
   }
@@ -510,11 +510,8 @@ export class SimEnvironmentStore {
   }
 
   async importProject(file: File): Promise<ImportResult> {
-    const pm = this.host.projectManager;
-
-    return importProjectDocument(file, simName, simVersion, pm, {
-      appLayerCallback: translateProjectTarget,
-      targetsCallback: (_targets, appTarget) => translateProjectTarget(appTarget),
+    return importProjectDocument(file, simName, this.host.projectManager, {
+      appChunkCallback: translateSimAppChunk,
     });
   }
 

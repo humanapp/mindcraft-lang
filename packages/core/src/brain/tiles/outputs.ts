@@ -1,4 +1,4 @@
-import { type ActionOutputSpec, mkOutputTileId, mkOutputVarKey, type TypeId } from "../../runtime";
+import { type ActionOutputSpec, mkOutputTileId, mkOutputVarKey, mkScopedOutputName, type TypeId } from "../../runtime";
 import { type BrainTileDefCreateOptions, TilePlacement } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 
@@ -16,25 +16,34 @@ import { BrainTileDefBase } from "../model/tiledef";
 export class BrainTileOutputDef extends BrainTileDefBase {
   readonly kind = "output";
 
-  /** Output name as declared on the sensor. */
+  /** Bare output name as declared on the sensor. */
   readonly outputName: string;
 
   /** Value type the output produces, used for editor type compatibility. */
   readonly outputType: TypeId;
+
+  /**
+   * Namespace of the project declaring the output. Present exactly for
+   * user-declared outputs, whose identity name is the declared name scoped by
+   * this namespace. Absent for platform outputs.
+   */
+  readonly namespace?: string;
 
   /** Backing rule-variable key this tile reads, and the identity a providing sensor lists. */
   readonly outputKey: string;
 
   /**
    * @param outputType - the resolved {@link TypeId} of the output value
-   * @param outputName - the output name declared on the sensor
+   * @param outputName - the bare output name declared on the sensor
    */
-  constructor(outputType: TypeId, outputName: string, opts: BrainTileDefCreateOptions = {}) {
+  constructor(outputType: TypeId, outputName: string, opts: BrainTileDefCreateOptions & { namespace?: string } = {}) {
     if (opts.placement === undefined) opts.placement = TilePlacement.EitherSide | TilePlacement.Inline;
-    super(mkOutputTileId(outputType, outputName), opts);
+    const identityName = opts.namespace !== undefined ? mkScopedOutputName(opts.namespace, outputName) : outputName;
+    super(mkOutputTileId(outputType, identityName), opts);
     this.outputName = outputName;
     this.outputType = outputType;
-    this.outputKey = mkOutputVarKey(outputType, outputName);
+    this.namespace = opts.namespace;
+    this.outputKey = mkOutputVarKey(outputType, identityName);
   }
 }
 

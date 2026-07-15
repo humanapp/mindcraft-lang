@@ -1,9 +1,5 @@
 /** Shared Mindcraft project document format identifier. */
-export const MINDCRAFT_PROJECT_FORMAT = "mindcraft.project";
-
-/** Semver 2.0.0 version grammar (semver.org). */
-const SEMVER_PATTERN =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+export const MINDCRAFT_PROJECT_FORMAT = "mindcraft.project/2";
 
 /**
  * Content version a project document, content manifest, or extension reads and
@@ -12,75 +8,39 @@ const SEMVER_PATTERN =
  */
 export const LOWEST_CONTENT_VERSION = "0.0.0";
 
-function isSemver(value: unknown): value is string {
-  return typeof value === "string" && SEMVER_PATTERN.test(value);
-}
-
 /** Validation code constants used by shared project document diagnostics. */
 export const MindcraftProjectDocumentValidationCode = {
   INVALID_JSON: "MINDCRAFT_PROJECT_INVALID_JSON",
   INVALID_ROOT: "MINDCRAFT_PROJECT_INVALID_ROOT",
   INVALID_FORMAT: "MINDCRAFT_PROJECT_INVALID_FORMAT",
-  INVALID_NAME: "MINDCRAFT_PROJECT_INVALID_NAME",
-  INVALID_DESCRIPTION: "MINDCRAFT_PROJECT_INVALID_DESCRIPTION",
-  INVALID_THUMBNAIL_URL: "MINDCRAFT_PROJECT_INVALID_THUMBNAIL_URL",
-  INVALID_FILES: "MINDCRAFT_PROJECT_INVALID_FILES",
-  INVALID_FILE_ENTRY: "MINDCRAFT_PROJECT_INVALID_FILE_ENTRY",
+  INVALID_MANIFEST: "MINDCRAFT_PROJECT_INVALID_MANIFEST",
+  INVALID_CONTENTS: "MINDCRAFT_PROJECT_INVALID_CONTENTS",
   INVALID_FILE_PATH: "MINDCRAFT_PROJECT_INVALID_FILE_PATH",
   INVALID_FILE_CONTENT: "MINDCRAFT_PROJECT_INVALID_FILE_CONTENT",
-  INVALID_BRAINS: "MINDCRAFT_PROJECT_INVALID_BRAINS",
-  INVALID_TARGETS: "MINDCRAFT_PROJECT_INVALID_TARGETS",
-  INVALID_EXTENSIONS: "MINDCRAFT_PROJECT_INVALID_EXTENSIONS",
-  INVALID_EXTENSION_REFERENCE: "MINDCRAFT_PROJECT_INVALID_EXTENSION_REFERENCE",
 } as const;
 
 /** Union of all {@link MindcraftProjectDocumentValidationCode} values. */
 export type MindcraftProjectDocumentValidationCode =
   (typeof MindcraftProjectDocumentValidationCode)[keyof typeof MindcraftProjectDocumentValidationCode];
 
-/** Source file entry stored in a shared Mindcraft project document. */
-export interface MindcraftProjectFile {
-  /** Project-relative path using forward slashes. */
-  readonly path: string;
-
-  /** UTF-8 source text. */
-  readonly content: string;
-}
-
-/** Target metadata keyed by package name. */
-export type MindcraftProjectTargets = Readonly<Record<string, unknown>>;
-
 /** Extension dependencies keyed by their `<owner>/<repo>` coordinate; each value is an extension reference string. */
 export type MindcraftProjectExtensions = Readonly<Record<string, string>>;
 
-/** Shared Mindcraft project document fields. */
+/**
+ * Shared Mindcraft project document: a single-file container for one project.
+ * The project's content manifest (its `mindcraft.json` object) is embedded
+ * verbatim; the document adds only the format marker and the project's file
+ * contents.
+ */
 export interface MindcraftProjectDocument {
   /** Document format identifier. */
   readonly format: typeof MINDCRAFT_PROJECT_FORMAT;
 
-  /** Human-readable project name. */
-  readonly name: string;
+  /** The project's content manifest object, embedded verbatim. */
+  readonly manifest: Readonly<Record<string, unknown>>;
 
-  /** Semver version of the project's own content, in package.json semantics. A document that lacks a valid semver reads as `"0.0.0"`. */
-  readonly version: string;
-
-  /** Human-readable project description. */
-  readonly description: string;
-
-  /** Optional thumbnail URL or data URL. */
-  readonly thumbnailUrl?: string;
-
-  /** Workspace source files. */
-  readonly files: readonly MindcraftProjectFile[];
-
-  /** Serialized Mindcraft brain definitions keyed by brain id. */
-  readonly brains: Readonly<Record<string, unknown>>;
-
-  /** Target metadata keyed by package name. */
-  readonly targets: MindcraftProjectTargets;
-
-  /** Extension dependencies keyed by their `<owner>/<repo>` coordinate. Absent means the project has no extensions. */
-  readonly extensions?: MindcraftProjectExtensions;
+  /** UTF-8 file contents keyed by project-relative path. */
+  readonly contents: Readonly<Record<string, string>>;
 }
 
 /** Validation diagnostic for a rejected shared project document. */
@@ -141,7 +101,10 @@ export function parseMindcraftProjectDocument(content: string): MindcraftProject
 }
 
 /**
- * Validates a parsed shared Mindcraft project document.
+ * Validates a parsed shared Mindcraft project document: the format marker, the
+ * embedded manifest object, and the file contents map. The manifest object is
+ * carried verbatim; its fields are validated by the content manifest schema,
+ * not here.
  *
  * @param value - Parsed JSON value from a `.mindcraft` file.
  */
@@ -160,39 +123,48 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
   }
 
   const errors: MindcraftProjectDocumentValidationError[] = [];
-  const format = readString(value, "format", "$.format", MindcraftProjectDocumentValidationCode.INVALID_FORMAT, errors);
-  const name = readString(value, "name", "$.name", MindcraftProjectDocumentValidationCode.INVALID_NAME, errors);
-  const version = isSemver(value.version) ? value.version : LOWEST_CONTENT_VERSION;
-  const description = readString(
-    value,
-    "description",
-    "$.description",
-    MindcraftProjectDocumentValidationCode.INVALID_DESCRIPTION,
-    errors
-  );
-  const thumbnailUrl = readOptionalString(
-    value,
-    "thumbnailUrl",
-    "$.thumbnailUrl",
-    MindcraftProjectDocumentValidationCode.INVALID_THUMBNAIL_URL,
-    errors
-  );
-  const files = readProjectFiles(value.files, errors);
-  const brains = readRecord(value.brains, "$.brains", MindcraftProjectDocumentValidationCode.INVALID_BRAINS, errors);
-  const targets = readRecord(
-    value.targets,
-    "$.targets",
-    MindcraftProjectDocumentValidationCode.INVALID_TARGETS,
-    errors
-  );
-  const extensions = readOptionalExtensions(value.extensions, errors);
 
-  if (format !== undefined && format !== MINDCRAFT_PROJECT_FORMAT) {
+  if (value.format !== MINDCRAFT_PROJECT_FORMAT) {
     errors.push({
       code: MindcraftProjectDocumentValidationCode.INVALID_FORMAT,
       path: "$.format",
       message: `Project document format must be "${MINDCRAFT_PROJECT_FORMAT}".`,
     });
+  }
+
+  if (!isRecord(value.manifest)) {
+    errors.push({
+      code: MindcraftProjectDocumentValidationCode.INVALID_MANIFEST,
+      path: "$.manifest",
+      message: "$.manifest must be an object.",
+    });
+  }
+
+  if (!isRecord(value.contents)) {
+    errors.push({
+      code: MindcraftProjectDocumentValidationCode.INVALID_CONTENTS,
+      path: "$.contents",
+      message: "$.contents must be an object keyed by project-relative path.",
+    });
+  } else {
+    for (const [filePath, content] of Object.entries(value.contents)) {
+      const path = `$.contents[${JSON.stringify(filePath)}]`;
+      if (!isMindcraftProjectFilePath(filePath)) {
+        errors.push({
+          code: MindcraftProjectDocumentValidationCode.INVALID_FILE_PATH,
+          path,
+          message: "Project file path must be a project-relative path.",
+        });
+        continue;
+      }
+      if (typeof content !== "string") {
+        errors.push({
+          code: MindcraftProjectDocumentValidationCode.INVALID_FILE_CONTENT,
+          path,
+          message: "Project file content must be a string.",
+        });
+      }
+    }
   }
 
   if (errors.length > 0) {
@@ -203,47 +175,11 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
     ok: true,
     document: {
       format: MINDCRAFT_PROJECT_FORMAT,
-      name: name as string,
-      version,
-      description: description as string,
-      ...(thumbnailUrl !== undefined ? { thumbnailUrl } : {}),
-      files: files as readonly MindcraftProjectFile[],
-      brains: brains as Readonly<Record<string, unknown>>,
-      targets: targets as MindcraftProjectTargets,
-      ...(extensions !== undefined ? { extensions } : {}),
+      manifest: value.manifest as Readonly<Record<string, unknown>>,
+      contents: value.contents as Readonly<Record<string, string>>,
     },
     errors: [],
   };
-}
-
-function readOptionalExtensions(
-  value: unknown,
-  errors: MindcraftProjectDocumentValidationError[]
-): MindcraftProjectExtensions | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!isRecord(value)) {
-    errors.push({
-      code: MindcraftProjectDocumentValidationCode.INVALID_EXTENSIONS,
-      path: "$.extensions",
-      message: "$.extensions must be an object when present.",
-    });
-    return undefined;
-  }
-
-  for (const [coordinate, reference] of Object.entries(value)) {
-    if (typeof reference !== "string") {
-      errors.push({
-        code: MindcraftProjectDocumentValidationCode.INVALID_EXTENSION_REFERENCE,
-        path: `$.extensions[${JSON.stringify(coordinate)}]`,
-        message: "Extension reference must be a string.",
-      });
-      return undefined;
-    }
-  }
-
-  return value as MindcraftProjectExtensions;
 }
 
 /** Tests whether a value is a valid shared-project file path. */
@@ -255,114 +191,6 @@ export function isMindcraftProjectFilePath(value: unknown): value is string {
     return false;
   }
   return value.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
-}
-
-function readProjectFiles(
-  value: unknown,
-  errors: MindcraftProjectDocumentValidationError[]
-): MindcraftProjectFile[] | undefined {
-  if (!Array.isArray(value)) {
-    errors.push({
-      code: MindcraftProjectDocumentValidationCode.INVALID_FILES,
-      path: "$.files",
-      message: "Project files must be an array.",
-    });
-    return undefined;
-  }
-
-  const files: MindcraftProjectFile[] = [];
-  for (const [index, entry] of value.entries()) {
-    const path = `$.files[${index}]`;
-    if (!isRecord(entry)) {
-      errors.push({
-        code: MindcraftProjectDocumentValidationCode.INVALID_FILE_ENTRY,
-        path,
-        message: "Project file entry must be an object.",
-      });
-      continue;
-    }
-
-    const filePath = entry.path;
-    const content = entry.content;
-    if (!isMindcraftProjectFilePath(filePath)) {
-      errors.push({
-        code: MindcraftProjectDocumentValidationCode.INVALID_FILE_PATH,
-        path: `${path}.path`,
-        message: "Project file path must be a project-relative path.",
-      });
-      continue;
-    }
-    if (typeof content !== "string") {
-      errors.push({
-        code: MindcraftProjectDocumentValidationCode.INVALID_FILE_CONTENT,
-        path: `${path}.content`,
-        message: "Project file content must be a string.",
-      });
-      continue;
-    }
-
-    files.push({ path: filePath, content });
-  }
-
-  return files;
-}
-
-function readString(
-  record: Readonly<Record<string, unknown>>,
-  key: string,
-  path: string,
-  code: MindcraftProjectDocumentValidationCode,
-  errors: MindcraftProjectDocumentValidationError[]
-): string | undefined {
-  const value = record[key];
-  if (typeof value !== "string") {
-    errors.push({
-      code,
-      path,
-      message: `${path} must be a string.`,
-    });
-    return undefined;
-  }
-  return value;
-}
-
-function readOptionalString(
-  record: Readonly<Record<string, unknown>>,
-  key: string,
-  path: string,
-  code: MindcraftProjectDocumentValidationCode,
-  errors: MindcraftProjectDocumentValidationError[]
-): string | undefined {
-  const value = record[key];
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "string") {
-    errors.push({
-      code,
-      path,
-      message: `${path} must be a string when present.`,
-    });
-    return undefined;
-  }
-  return value;
-}
-
-function readRecord(
-  value: unknown,
-  path: string,
-  code: MindcraftProjectDocumentValidationCode,
-  errors: MindcraftProjectDocumentValidationError[]
-): Readonly<Record<string, unknown>> | undefined {
-  if (!isRecord(value)) {
-    errors.push({
-      code,
-      path,
-      message: `${path} must be an object.`,
-    });
-    return undefined;
-  }
-  return value;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

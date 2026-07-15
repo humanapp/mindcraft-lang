@@ -40,7 +40,7 @@ function extensionsEqual(
 }
 
 /** Project the store manifest onto the on-disk content manifest schema. */
-function contentManifestFromManifest(manifest: ProjectManifest): ProjectContentManifest {
+export function contentManifestFromManifest(manifest: ProjectManifest): ProjectContentManifest {
   return {
     name: manifest.name,
     version: manifest.version,

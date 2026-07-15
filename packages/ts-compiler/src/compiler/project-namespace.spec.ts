@@ -103,7 +103,7 @@ describe("project-namespaced symbol keys", () => {
     const legacyJsonText = JSON.stringify(brainDef.toJson())
       .split(`${TEST_PROJECT_NAMESPACE}:user.sensor.`)
       .join("user.sensor.");
-    const restored = environment.deserializeBrainJsonFromPlain(JSON.parse(legacyJsonText));
+    const restored = environment.deserializeBrainJsonFromPlain(JSON.parse(legacyJsonText), TEST_PROJECT_NAMESPACE);
     const restoredTile = restored.pages().get(0)!.children().get(0)!.when().tiles().get(0)!;
     assert.equal(restoredTile.kind, "missing", "a pre-namespace tile id must degrade to a missing placeholder");
   });

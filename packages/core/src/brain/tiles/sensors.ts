@@ -1,6 +1,12 @@
 import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
-import { type ActionDescriptor, mkOutputVarKey, mkSensorTileId, type TypeId } from "../../runtime";
+import {
+  type ActionDescriptor,
+  mkOutputVarKey,
+  mkSensorTileId,
+  type TypeId,
+  type UserActionIdentity,
+} from "../../runtime";
 import fnCurrentPage from "../../runtime/sensors/current-page";
 import fnOnPageEntered from "../../runtime/sensors/on-page-entered";
 import fnPreviousPage from "../../runtime/sensors/previous-page";
@@ -35,6 +41,9 @@ export class BrainTileSensorDef extends BrainActionTileBase {
    */
   readonly writableResult: boolean;
 
+  /** Namespace and stable id of the compiled user action backing this tile. Absent for platform sensors. */
+  readonly userIdentity?: UserActionIdentity;
+
   /**
    * Creates a new sensor tile definition.
    *
@@ -42,7 +51,11 @@ export class BrainTileSensorDef extends BrainActionTileBase {
    * @param action - Stable action metadata for this sensor
    * @param opts - Optional configuration for tile placement and display properties
    */
-  constructor(sensorId: string, action: ActionDescriptor, opts: BrainTileDefCreateOptions = {}) {
+  constructor(
+    sensorId: string,
+    action: ActionDescriptor,
+    opts: BrainTileDefCreateOptions & { userIdentity?: UserActionIdentity } = {}
+  ) {
     if (action.kind !== "sensor") {
       throw new Error(`BrainTileSensorDef: expected sensor action for ${sensorId}`);
     }
@@ -59,6 +72,7 @@ export class BrainTileSensorDef extends BrainActionTileBase {
     this.sensorId = sensorId;
     this.outputType = action.outputType;
     this.writableResult = opts.writableResult ?? false;
+    this.userIdentity = opts.userIdentity;
   }
 }
 

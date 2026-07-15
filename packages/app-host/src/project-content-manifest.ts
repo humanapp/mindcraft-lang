@@ -457,29 +457,34 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
 }
 
 /**
+ * Project a {@link ProjectContentManifest} onto the plain JSON object a
+ * `mindcraft.json` file carries. Schema fields appear in a fixed order;
+ * `extras` entries follow them verbatim.
+ */
+export function projectContentManifestToJson(manifest: ProjectContentManifest): Record<string, unknown> {
+  return {
+    name: manifest.name,
+    version: manifest.version,
+    ...(manifest.identity !== undefined ? { identity: manifest.identity } : {}),
+    ...(manifest.description !== undefined ? { description: manifest.description } : {}),
+    ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
+    ...(Object.keys(manifest.extensions).length > 0 ? { extensions: manifest.extensions } : {}),
+    ...(manifest.files !== undefined && manifest.files.length > 0 ? { files: manifest.files } : {}),
+    ...(manifest.ambient !== undefined && manifest.ambient.length > 0 ? { ambient: manifest.ambient } : {}),
+    ...(manifest.targets !== undefined && Object.keys(manifest.targets).length > 0
+      ? { targets: manifest.targets }
+      : {}),
+    ...(manifest.extras !== undefined ? manifest.extras : {}),
+  };
+}
+
+/**
  * Serialize a {@link ProjectContentManifest} to a pretty-printed JSON string.
  * Schema fields are written in a fixed order; `extras` entries follow them
  * verbatim.
  */
 export function serializeProjectContentManifest(manifest: ProjectContentManifest): string {
-  return JSON.stringify(
-    {
-      name: manifest.name,
-      version: manifest.version,
-      ...(manifest.identity !== undefined ? { identity: manifest.identity } : {}),
-      ...(manifest.description !== undefined ? { description: manifest.description } : {}),
-      ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
-      ...(Object.keys(manifest.extensions).length > 0 ? { extensions: manifest.extensions } : {}),
-      ...(manifest.files !== undefined && manifest.files.length > 0 ? { files: manifest.files } : {}),
-      ...(manifest.ambient !== undefined && manifest.ambient.length > 0 ? { ambient: manifest.ambient } : {}),
-      ...(manifest.targets !== undefined && Object.keys(manifest.targets).length > 0
-        ? { targets: manifest.targets }
-        : {}),
-      ...(manifest.extras !== undefined ? manifest.extras : {}),
-    },
-    null,
-    2
-  );
+  return JSON.stringify(projectContentManifestToJson(manifest), null, 2);
 }
 
 /**

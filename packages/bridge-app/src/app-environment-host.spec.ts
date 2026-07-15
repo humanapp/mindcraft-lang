@@ -411,13 +411,17 @@ interface AppDataStub {
   savedKeys: string[];
 }
 
-function stubProjectManagerWithAppData(filesystem: ProjectFileSystem, appData: Map<string, string>): AppDataStub {
+function stubProjectManagerWithAppData(
+  filesystem: ProjectFileSystem,
+  appData: Map<string, string>,
+  projectId: string = PROJECT_ID
+): AppDataStub {
   const savedKeys: string[] = [];
   let activeProject: ActiveProject = {
     manifest: {
-      id: PROJECT_ID,
+      id: projectId,
       projectCollectionId: "collection-1",
-      name: PROJECT_ID,
+      name: projectId,
       description: "",
       createdAt: 1,
       updatedAt: 1,
@@ -491,7 +495,7 @@ function collectTileIdsByKind(brainDef: IBrainDef, kind: string): string[] {
 }
 
 describe("AppEnvironmentHost namespaced-key save and reload", () => {
-  it("saves a brain with namespaced user-symbol keys and reloads it with no re-persist", async () => {
+  it("stores own-tile references namespace-relative and reloads them with no re-persist", async () => {
     const restoreLocalStorage = installEmptyLocalStorage();
     const appData = new Map<string, string>();
     const stub = stubProjectManagerWithAppData(createUserTileFilesystem(), appData);
@@ -546,13 +550,28 @@ describe("AppEnvironmentHost namespaced-key save and reload", () => {
         ],
       };
 
-      const built = host.env.deserializeBrainJsonFromPlain(brainJson);
+      const built = host.env.deserializeBrainJsonFromPlain(brainJson, PROJECT_ID);
       assert.deepEqual(collectTileIdsByKind(built, "missing"), [], "minted-key brain resolves with no migration");
-      const serialized = JSON.stringify(built.toJson());
-      assert.ok(serialized.includes(`${PROJECT_ID}:user.sensor.`), "the saved brain stores the namespaced sensor key");
-      assert.ok(!/->user\.sensor\./.test(serialized), "the saved brain carries no bare user.sensor key");
+
+      // In memory the brain carries fully qualified keys.
+      const inMemory = JSON.stringify(built.toJson());
+      assert.ok(inMemory.includes(`${PROJECT_ID}:user.sensor.`), "the in-memory brain carries the qualified key");
 
       await host.saveBrainForKey("robot", built);
+
+      // On disk the own-namespace references are stored structured with the
+      // namespace absent.
+      const actionId = sensorKey.slice(`${PROJECT_ID}:user.sensor.`.length);
+      const stored = appData.get("brains")!;
+      assert.ok(
+        stored.includes(`{"k":"action","area":"sensor","id":"${actionId}"}`),
+        "the stored sensor reference is structured with the namespace absent"
+      );
+      assert.ok(
+        stored.includes('{"k":"named","t":"struct","name":"/position.ts::Position"}'),
+        "the stored struct type is structured with the namespace absent"
+      );
+      assert.ok(!stored.includes(`${PROJECT_ID}:`), "the stored brain never embeds the owning project id");
     } finally {
       host.dispose();
       restoreLocalStorage();
@@ -575,6 +594,245 @@ describe("AppEnvironmentHost namespaced-key save and reload", () => {
       );
     } finally {
       secondHost.dispose();
+      restoreAgain();
+    }
+  });
+
+  it("resolves a saved brain's own-tile references after import mints a new project id", async () => {
+    // Import copies the brains blob verbatim into a project with a freshly
+    // minted id, so the saved form must not bind the source project's
+    // namespace into its own tile and type references.
+    const appData = new Map<string, string>();
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const stub = stubProjectManagerWithAppData(createUserTileFilesystem(), appData);
+    const host = createHost(stub.projectManager);
+    try {
+      await host.initialize(PROJECT_ID);
+      const metadata = host.lastUserTileMetadata;
+      assert.ok(metadata, "the user tile must compile");
+      const sensor = metadata.find((entry) => entry.kind === "sensor");
+      assert.ok(sensor?.outputType, "the sensor tile must compile with a struct output type");
+      const outputType = sensor.outputType;
+
+      const brainJson = {
+        version: 1,
+        id: "brain00000000020",
+        name: "Imported Brain",
+        catalog: [
+          {
+            version: 1,
+            kind: "variable",
+            tileId: "tile.var->posvar0000000020",
+            varName: "pos",
+            varType: outputType,
+            uniqueId: "posvar0000000020",
+          },
+        ],
+        pages: [
+          {
+            version: 2,
+            pageId: "page000000000020",
+            name: "Page 1",
+            rules: [
+              {
+                version: 1,
+                when: [`tile.sensor->${sensor.key}`, `tile.accessor->${outputType}->x`],
+                do: [],
+                children: [],
+              },
+            ],
+          },
+        ],
+      };
+      const built = host.env.deserializeBrainJsonFromPlain(brainJson, PROJECT_ID);
+      assert.deepEqual(collectTileIdsByKind(built, "missing"), [], "the brain resolves in its owning project");
+      await host.saveBrainForKey("robot", built);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+
+    // The importing host: same files, same brains blob, new project id.
+    const importedProjectId = "p2imported000001";
+    const restoreAgain = installEmptyLocalStorage();
+    const importedStub = stubProjectManagerWithAppData(createUserTileFilesystem(), appData, importedProjectId);
+    const importedHost = createHost(importedStub.projectManager);
+    try {
+      await importedHost.initialize(importedProjectId);
+
+      const importedMetadata = importedHost.lastUserTileMetadata;
+      const importedSensor = importedMetadata?.find((entry) => entry.kind === "sensor");
+      assert.ok(importedSensor?.outputType, "the imported project's sensor must compile");
+      assert.ok(
+        importedSensor.key.startsWith(`${importedProjectId}:user.sensor.`),
+        "the imported project registers its tiles under the minted id"
+      );
+
+      const reloaded = importedHost.getCachedBrain("robot");
+      assert.ok(reloaded, "the imported brain must load");
+      assert.deepEqual(
+        collectTileIdsByKind(reloaded, "missing"),
+        [],
+        "the imported brain's own-tile references resolve under the minted project id"
+      );
+      const variableTile = reloaded.catalog().get("tile.var->posvar0000000020");
+      assert.ok(variableTile && variableTile.kind === "variable");
+      assert.equal(
+        (variableTile as { varType?: string }).varType,
+        importedSensor.outputType,
+        "the variable's struct type follows the loading project's namespace"
+      );
+    } finally {
+      importedHost.dispose();
+      restoreAgain();
+    }
+  });
+
+  it("stores extension references absolute while own references stay relative, and both survive import", async () => {
+    const POS_COORDINATE = "mindcraft-lang/pos-lib";
+    const POS_EXTENSION: EmbeddedExtension = {
+      canonicalOrigin: POS_COORDINATE,
+      files: [
+        {
+          path: "index.ts",
+          content: `import { type Context, NumberType, Sensor, type StructOf, StructType } from "mindcraft";
+
+export const EPos = StructType({
+  name: "EPos",
+  fields: { x: NumberType, y: NumberType },
+  accessors: true,
+  variables: true,
+});
+
+export type EPos = StructOf<typeof EPos>;
+
+export default Sensor({
+  id: "extStick00000001",
+  name: "ext stick",
+  inline: true,
+  returnType: EPos,
+  onExecute(ctx: Context): EPos {
+    return EPos({ x: 1, y: 2 });
+  },
+});
+`,
+        },
+      ],
+    };
+    const buildHost = (projectManager: ProjectManager): AppEnvironmentHost =>
+      new AppEnvironmentHost({
+        projectManager,
+        modules: [coreModule()],
+        mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+        embeddedExtensions: [POS_EXTENSION],
+      });
+    const installExtension = (stub: AppDataStub): void => {
+      (stub.projectManager.activeProject!.manifest as { extensions?: Record<string, string> }).extensions = {
+        [POS_COORDINATE]: `embedded:${POS_COORDINATE}`,
+      };
+    };
+    const findByActionId = (host: AppEnvironmentHost, id: string) =>
+      host.lastUserTileMetadata?.find((entry) => entry.id === id);
+
+    const appData = new Map<string, string>();
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const stub = stubProjectManagerWithAppData(createUserTileFilesystem(), appData);
+    installExtension(stub);
+    const host = buildHost(stub.projectManager);
+    try {
+      await host.initialize(PROJECT_ID);
+      const ownSensor = findByActionId(host, "stickSensor12345");
+      const extSensor = findByActionId(host, "extStick00000001");
+      assert.ok(ownSensor?.outputType, "the project's own sensor must compile");
+      assert.ok(extSensor?.outputType, "the extension's sensor must compile");
+      assert.ok(extSensor.key.startsWith(`${POS_COORDINATE}:user.sensor.`), "the extension key carries its coordinate");
+
+      const brainJson = {
+        version: 1,
+        id: "brain00000000030",
+        name: "Mixed Brain",
+        catalog: [
+          {
+            version: 1,
+            kind: "variable",
+            tileId: "tile.var->ownvar0000000030",
+            varName: "own",
+            varType: ownSensor.outputType,
+            uniqueId: "ownvar0000000030",
+          },
+          {
+            version: 1,
+            kind: "variable",
+            tileId: "tile.var->extvar0000000030",
+            varName: "ext",
+            varType: extSensor.outputType,
+            uniqueId: "extvar0000000030",
+          },
+        ],
+        pages: [
+          {
+            version: 2,
+            pageId: "page000000000030",
+            name: "Page 1",
+            rules: [
+              {
+                version: 1,
+                when: [`tile.sensor->${ownSensor.key}`, `tile.sensor->${extSensor.key}`],
+                do: [],
+                children: [],
+              },
+            ],
+          },
+        ],
+      };
+      const built = host.env.deserializeBrainJsonFromPlain(brainJson, PROJECT_ID);
+      assert.deepEqual(collectTileIdsByKind(built, "missing"), [], "the mixed brain resolves in its owning project");
+      await host.saveBrainForKey("mixed", built);
+
+      const stored = appData.get("brains")!;
+      assert.ok(
+        stored.includes('{"k":"action","area":"sensor","id":"stickSensor12345"}'),
+        "own reference stored structured with the namespace absent"
+      );
+      assert.ok(
+        stored.includes(`{"k":"action","area":"sensor","id":"extStick00000001","ns":"${POS_COORDINATE}"}`),
+        "extension reference carries its coordinate namespace"
+      );
+      assert.ok(
+        stored.includes('{"k":"named","t":"struct","name":"/position.ts::Position"}'),
+        "own struct type stored structured with the namespace absent"
+      );
+      assert.ok(
+        stored.includes(`{"k":"named","t":"struct","name":"/index.ts::EPos","ns":"${POS_COORDINATE}"}`),
+        "extension struct type carries its coordinate namespace"
+      );
+      assert.ok(!stored.includes(`${PROJECT_ID}:`), "the stored brain never embeds the owning project id");
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+
+    // Import: same files, same extension install, same brains blob, new id.
+    const importedProjectId = "p3imported000001";
+    const restoreAgain = installEmptyLocalStorage();
+    const importedStub = stubProjectManagerWithAppData(createUserTileFilesystem(), appData, importedProjectId);
+    installExtension(importedStub);
+    const importedHost = buildHost(importedStub.projectManager);
+    try {
+      await importedHost.initialize(importedProjectId);
+      const ownSensor = findByActionId(importedHost, "stickSensor12345");
+      const extSensor = findByActionId(importedHost, "extStick00000001");
+      assert.ok(ownSensor?.outputType && extSensor?.outputType);
+
+      const reloaded = importedHost.getCachedBrain("mixed");
+      assert.ok(reloaded, "the imported mixed brain must load");
+      assert.deepEqual(collectTileIdsByKind(reloaded, "missing"), [], "own and extension references both resolve");
+      const ownVar = reloaded.catalog().get("tile.var->ownvar0000000030") as { varType?: string } | undefined;
+      const extVar = reloaded.catalog().get("tile.var->extvar0000000030") as { varType?: string } | undefined;
+      assert.equal(ownVar?.varType, ownSensor.outputType, "the own struct type follows the loading project");
+      assert.equal(extVar?.varType, extSensor.outputType, "the extension struct type stays coordinate-qualified");
+    } finally {
+      importedHost.dispose();
       restoreAgain();
     }
   });

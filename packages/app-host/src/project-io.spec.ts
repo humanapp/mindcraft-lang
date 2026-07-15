@@ -18,7 +18,6 @@ import {
   ImportDiagnosticCode,
   importProjectDocument,
   MINDCRAFT_JSON_PATH,
-  PROJECT_TARGETS_APP_DATA_KEY,
   ProjectContentManifestErrorCode,
   ProjectManager,
   parseProjectContentManifest,
@@ -85,26 +84,20 @@ function makeManifest(overrides?: Partial<ProjectManifest>): ProjectManifest {
   };
 }
 
-function makeExportDoc(overrides?: Record<string, unknown>): Record<string, unknown> {
-  return {
-    host: { name: "test-app", version: "1.0.0" },
-    name: "Test Project",
-    description: "desc",
-    files: [],
-    brains: {},
-    ...overrides,
-  };
-}
-
-function makeSharedProjectDoc(overrides?: Record<string, unknown>): Record<string, unknown> {
+/** A well-formed v2 document with overridable manifest fields and contents. */
+function makeDocument(
+  manifestOverrides?: Record<string, unknown>,
+  contents?: Record<string, string>
+): Record<string, unknown> {
   return {
     format: MINDCRAFT_PROJECT_FORMAT,
-    name: "Shared Project",
-    description: "shared desc",
-    files: [],
-    brains: {},
-    targets: {},
-    ...overrides,
+    manifest: {
+      name: "Shared Project",
+      version: "0.1.0",
+      description: "shared desc",
+      ...manifestOverrides,
+    },
+    contents: contents ?? {},
   };
 }
 
@@ -116,43 +109,105 @@ function makeFile(doc: Record<string, unknown>, name = "test.mindcraft"): File {
 function hasDiagnosticCode(
   diagnostics: ImportDiagnostic[],
   severity: ImportDiagnostic["severity"],
-  code: ImportDiagnosticCode
+  code: ImportDiagnostic["code"]
 ): boolean {
   return diagnostics.some((diagnostic) => diagnostic.severity === severity && diagnostic.code === code);
-}
-
-function countDiagnosticCode(diagnostics: ImportDiagnostic[], code: ImportDiagnosticCode): number {
-  return diagnostics.filter((diagnostic) => diagnostic.code === code).length;
 }
 
 // -- Tests --------------------------------------------------------------------
 
 describe("buildProjectExportDocument", () => {
-  it("exports user files and excludes mindcraft.json", async () => {
+  it("exports user file contents and excludes mindcraft.json", async () => {
     const files = new Map([
       ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
       [MINDCRAFT_JSON_PATH, { kind: "file" as const, content: "{}", etag: "e2", isReadonly: false }],
     ]);
     const ws = makeProjectFileSystem(files);
-    const manifest = makeManifest();
 
-    const result = await buildProjectExportDocument(manifest, ws, async () => undefined);
+    const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
 
-    assert.strictEqual(result.files.length, 1);
-    assert.strictEqual(result.files[0].path, "src/main.ts");
-    assert.strictEqual(result.files[0].content, "hello");
-    assert.strictEqual(result.name, "My Project");
-    assert.strictEqual(result.description, "A test project");
-    assert.strictEqual("projectCollectionId" in result, false);
+    assert.strictEqual(result.format, MINDCRAFT_PROJECT_FORMAT);
+    assert.deepStrictEqual(result.contents, { "src/main.ts": "hello" });
+    assert.strictEqual(result.manifest.name, "My Project");
+    assert.strictEqual(result.manifest.description, "A test project");
   });
 
-  it("serializes without local project collection metadata", async () => {
+  it("excludes read-only files and directory entries", async () => {
+    const files = new Map([
+      ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
+      ["lib/std.ts", { kind: "file" as const, content: "stdlib", etag: "e2", isReadonly: true }],
+    ]);
+    const dirs = new Map([["src", { kind: "directory" as const }]]);
+    const ws = makeProjectFileSystem(files, dirs);
+
+    const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
+
+    assert.deepStrictEqual(Object.keys(result.contents), ["src/main.ts"]);
+  });
+
+  it("embeds brains from app data in the manifest", async () => {
     const ws = makeProjectFileSystem();
-    const manifest = makeManifest({ projectCollectionId: "private-workspace" });
+    const brains = { carnivore: { name: "carnivore" }, herbivore: { name: "herbivore" } };
 
-    const result = await buildProjectExportDocument(manifest, ws, async () => undefined);
+    const result = await buildProjectExportDocument(makeManifest(), ws, async (key) => {
+      if (key === "brains") return JSON.stringify(brains);
+      return undefined;
+    });
+
+    assert.deepStrictEqual(result.manifest.brains, brains);
+  });
+
+  it("omits the brains chunk when no brain data is stored", async () => {
+    const ws = makeProjectFileSystem();
+
+    const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
+
+    assert.strictEqual("brains" in result.manifest, false);
+  });
+
+  it("embeds the exporting app's chunk and preserves stored chunks of other apps", async () => {
+    const ws = makeProjectFileSystem();
+    const stored = {
+      "test-app": { stale: true },
+      "other-app": { preserved: true },
+    };
+
+    const result = await buildProjectExportDocument(
+      makeManifest(),
+      ws,
+      async (key) => {
+        if (key === "app") return JSON.stringify(stored);
+        return undefined;
+      },
+      { appChunk: { name: "test-app", chunk: { fresh: true } } }
+    );
+
+    assert.deepStrictEqual(result.manifest.app, {
+      "test-app": { fresh: true },
+      "other-app": { preserved: true },
+    });
+  });
+
+  it("omits the app chunk map when there is none", async () => {
+    const ws = makeProjectFileSystem();
+
+    const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
+
+    assert.strictEqual("app" in result.manifest, false);
+  });
+
+  it("exports exactly the document keys and none of the local-only store fields", async () => {
+    const ws = makeProjectFileSystem();
+
+    const result = await buildProjectExportDocument(
+      makeManifest({ version: "1.4.2", projectCollectionId: "private-workspace" }),
+      ws,
+      async () => undefined
+    );
+
+    assert.deepStrictEqual(Object.keys(result), ["format", "manifest", "contents"]);
+    assert.deepStrictEqual(Object.keys(result.manifest), ["name", "version", "description"]);
     const serialized = JSON.stringify(result);
-
     assert.strictEqual(serialized.includes("projectCollectionId"), false);
     assert.strictEqual(serialized.includes("private-workspace"), false);
   });
@@ -168,96 +223,6 @@ describe("buildProjectExportDocument", () => {
     await assertRejectsWithCode(() => buildActiveProjectExportDocument(pm), AppHostErrorCode.PROJECT_COLLECTION_LOCKED);
     await pm.close();
     pm.dispose();
-  });
-
-  it("excludes read-only files", async () => {
-    const files = new Map([
-      ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
-      ["lib/std.ts", { kind: "file" as const, content: "stdlib", etag: "e2", isReadonly: true }],
-    ]);
-    const ws = makeProjectFileSystem(files);
-
-    const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
-
-    assert.strictEqual(result.files.length, 1);
-    assert.strictEqual(result.files[0].path, "src/main.ts");
-  });
-
-  it("excludes directory entries", async () => {
-    const files = new Map([
-      ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
-    ]);
-    const dirs = new Map([["src", { kind: "directory" as const }]]);
-    const ws = makeProjectFileSystem(files, dirs);
-
-    const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
-
-    assert.strictEqual(result.files.length, 1);
-    assert.strictEqual(result.files[0].path, "src/main.ts");
-  });
-
-  it("loads and includes brains from app data", async () => {
-    const ws = makeProjectFileSystem();
-    const brains = { carnivore: { name: "carnivore" }, herbivore: { name: "herbivore" } };
-
-    const result = await buildProjectExportDocument(makeManifest(), ws, async (key) => {
-      if (key === "brains") return JSON.stringify(brains);
-      return undefined;
-    });
-
-    assert.deepStrictEqual(result.brains, brains);
-  });
-
-  it("returns empty brains object when no brain data stored", async () => {
-    const ws = makeProjectFileSystem();
-
-    const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
-
-    assert.deepStrictEqual(result.brains, {});
-  });
-
-  it("returns empty files array when project file system has no user files", async () => {
-    const files = new Map([
-      [MINDCRAFT_JSON_PATH, { kind: "file" as const, content: "{}", etag: "e1", isReadonly: false }],
-    ]);
-    const ws = makeProjectFileSystem(files);
-
-    const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
-
-    assert.strictEqual(result.files.length, 0);
-  });
-});
-
-describe("buildProjectExportDocument", () => {
-  it("exports active project as a shared project document with targets", async () => {
-    const files = new Map([
-      ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
-    ]);
-    const ws = makeProjectFileSystem(files);
-    const manifest = makeManifest();
-    const targets = { "@mindcraft-lang/wodal": { profile: "microbit-v2" } };
-
-    const result = await buildProjectExportDocument(manifest, ws, async () => undefined, { targets });
-
-    assert.strictEqual(result.format, MINDCRAFT_PROJECT_FORMAT);
-    assert.deepStrictEqual(result.targets, targets);
-    assert.strictEqual(result.files.length, 1);
-    assert.strictEqual("host" in result, false);
-  });
-
-  it("reuses stored target data when explicit targets are not supplied", async () => {
-    const ws = makeProjectFileSystem();
-    const targets = {
-      "test-app": { actors: [] },
-      "unknown-target": { preserved: true },
-    };
-
-    const result = await buildProjectExportDocument(makeManifest(), ws, async (key) => {
-      if (key === PROJECT_TARGETS_APP_DATA_KEY) return JSON.stringify(targets);
-      return undefined;
-    });
-
-    assert.deepStrictEqual(result.targets, targets);
   });
 });
 
@@ -275,50 +240,34 @@ describe("project content version interchange", () => {
     await pm.close();
   });
 
-  it("exports the manifest content version as a picked field", async () => {
+  it("exports the manifest content version", async () => {
     const ws = makeProjectFileSystem();
 
     const result = await buildProjectExportDocument(makeManifest({ version: "1.4.2" }), ws, async () => undefined);
 
-    assert.strictEqual(result.version, "1.4.2");
-  });
-
-  it("exports exactly the document keys and none of the local-only store fields", async () => {
-    const ws = makeProjectFileSystem();
-
-    const result = await buildProjectExportDocument(makeManifest({ version: "1.4.2" }), ws, async () => undefined);
-
-    assert.deepStrictEqual(Object.keys(result).sort(), [
-      "brains",
-      "description",
-      "files",
-      "format",
-      "name",
-      "targets",
-      "version",
-    ]);
-    for (const localOnly of ["id", "projectCollectionId", "deleted", "createdAt", "updatedAt"]) {
-      assert.strictEqual(localOnly in result, false);
-    }
+    assert.strictEqual(result.manifest.version, "1.4.2");
   });
 
   it("round-trips the content version from export through import into the store", async () => {
     const ws = makeProjectFileSystem();
     const document = await buildProjectExportDocument(makeManifest({ version: "3.5.7" }), ws, async () => undefined);
-    assert.strictEqual(document.version, "3.5.7");
 
-    const file = makeFile(document as unknown as Record<string, unknown>);
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(
+      makeFile(document as unknown as Record<string, unknown>),
+      "test-app",
+      pm
+    );
 
     assert.strictEqual(result.success, true);
     const imported = await store.getProject(result.projectId!);
     assert.strictEqual(imported?.version, "3.5.7");
   });
 
-  it("imports a legacy document without a version as the lowest content version", async () => {
-    const file = makeFile(makeSharedProjectDoc());
+  it("imports a document without a manifest version as the lowest content version", async () => {
+    const doc = makeDocument();
+    delete (doc.manifest as Record<string, unknown>).version;
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(makeFile(doc), "test-app", pm);
 
     assert.strictEqual(result.success, true);
     const imported = await store.getProject(result.projectId!);
@@ -344,205 +293,73 @@ describe("importProjectDocument", () => {
     const content = "x".repeat(100);
     const file = new File([content], "test.mindcraft");
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm, {
-      maxFileSize: 10,
-    });
+    const result = await importProjectDocument(file, "test-app", pm, { maxFileSize: 10 });
 
     assert.strictEqual(result.success, false);
     assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_FILE_TOO_LARGE));
   });
 
-  it("rejects invalid JSON", async () => {
+  it("rejects invalid JSON with the document validation code", async () => {
     const file = new File(["not json {{{"], "test.mindcraft");
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(file, "test-app", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_INVALID_JSON));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", MindcraftProjectDocumentValidationCode.INVALID_JSON));
   });
 
-  it("rejects mismatched host.name", async () => {
-    const file = makeFile(makeExportDoc({ host: { name: "other-app", version: "1.0.0" } }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_HOST_MISMATCH));
-  });
-
-  it("rejects missing host.name", async () => {
-    const file = makeFile(makeExportDoc({ host: {} }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_HOST_MISMATCH));
-  });
-
-  it("rejects newer host.version", async () => {
-    const file = makeFile(makeExportDoc({ host: { name: "test-app", version: "2.0.0" } }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_NEWER_HOST_VERSION));
-  });
-
-  it("accepts same host.version", async () => {
-    const file = makeFile(makeExportDoc());
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, true);
-    assert.ok(result.projectId);
-  });
-
-  it("accepts older host.version", async () => {
-    const file = makeFile(makeExportDoc({ host: { name: "test-app", version: "0.9.0" } }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, true);
-    assert.ok(result.projectId);
-  });
-
-  it("imports shared project documents into durable project data", async () => {
-    const targets = {
-      "test-app": { settings: true },
-      "unknown-target": { keep: true },
+  it("rejects a document in the retired doc-level shape", async () => {
+    const legacy = {
+      format: "mindcraft.project",
+      name: "Old Project",
+      description: "",
+      files: [{ path: "src/main.ts", content: "hello" }],
+      brains: {},
+      targets: {},
     };
-    const brains = { main: { pages: [] } };
-    const file = makeFile(
-      makeSharedProjectDoc({
-        name: "Shared Import",
-        files: [{ path: "src/main.ts", content: "hello shared" }],
-        brains,
-        targets,
-      })
-    );
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, true);
-    const snapshot = await store.loadProjectFiles(result.projectId!);
-    const main = snapshot?.get("src/main.ts");
-    assert.ok(main && main.kind === "file");
-    assert.strictEqual(main.content, "hello shared");
-    assert.deepStrictEqual(JSON.parse((await store.loadAppData(result.projectId!, "brains"))!), brains);
-    assert.deepStrictEqual(
-      JSON.parse((await store.loadAppData(result.projectId!, PROJECT_TARGETS_APP_DATA_KEY))!),
-      targets
-    );
-  });
-
-  it("maps shared document validation errors from service-api diagnostics", async () => {
-    const file = makeFile(makeSharedProjectDoc({ name: 123 }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(makeFile(legacy), "test-app", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(
-      result.diagnostics.some(
-        (diagnostic) =>
-          diagnostic.severity === "error" && diagnostic.code === MindcraftProjectDocumentValidationCode.INVALID_NAME
-      )
-    );
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", MindcraftProjectDocumentValidationCode.INVALID_FORMAT));
     assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
-  it("lets app callbacks reject shared target payloads", async () => {
-    const file = makeFile(makeSharedProjectDoc({ targets: { "test-app": { unsupported: true } } }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm, {
-      targetsCallback: (_targets, appTarget) => {
-        assert.deepStrictEqual(appTarget, { unsupported: true });
-        return { diagnostics: [{ severity: "error", message: "Unsupported app target." }] };
-      },
-    });
+  it("rejects an invalid embedded manifest with the content manifest code", async () => {
+    const result = await importProjectDocument(makeFile(makeDocument({ name: 123 })), "test-app", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_TARGET_TRANSLATION_FAILED));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ProjectContentManifestErrorCode.INVALID_NAME));
     assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
-  it("passes unknown shared targets to the app callback", async () => {
-    const targets = {
-      "test-app": { settings: true },
-      "unknown-target": { keep: true },
-    };
-    let receivedTargets: unknown;
-    const file = makeFile(makeSharedProjectDoc({ targets }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm, {
-      targetsCallback: (allTargets) => {
-        receivedTargets = allTargets;
-        return { diagnostics: [], appData: { settings: '{"ok":true}' } };
-      },
-    });
-
-    assert.strictEqual(result.success, true);
-    assert.deepStrictEqual(receivedTargets, targets);
-    assert.strictEqual(await store.loadAppData(result.projectId!, "settings"), '{"ok":true}');
-    assert.deepStrictEqual(
-      JSON.parse((await store.loadAppData(result.projectId!, PROJECT_TARGETS_APP_DATA_KEY))!),
-      targets
-    );
-  });
-
-  it("rejects missing required fields", async () => {
-    const cases: Array<{ field: string; doc: Record<string, unknown>; code: ImportDiagnosticCode }> = [
-      { field: "name", doc: makeExportDoc({ name: 123 }), code: ImportDiagnosticCode.IMPORT_INVALID_NAME },
-      {
-        field: "description",
-        doc: makeExportDoc({ description: null }),
-        code: ImportDiagnosticCode.IMPORT_INVALID_DESCRIPTION,
-      },
-      { field: "files", doc: makeExportDoc({ files: "not-array" }), code: ImportDiagnosticCode.IMPORT_INVALID_FILES },
-      { field: "brains", doc: makeExportDoc({ brains: null }), code: ImportDiagnosticCode.IMPORT_INVALID_BRAINS },
-      { field: "brains (array)", doc: makeExportDoc({ brains: [] }), code: ImportDiagnosticCode.IMPORT_INVALID_BRAINS },
-    ];
-
-    for (const { field, doc, code } of cases) {
-      const file = makeFile(doc);
-      const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-      assert.strictEqual(result.success, false, `Expected failure for ${field}`);
-      assert.ok(hasDiagnosticCode(result.diagnostics, "error", code));
+  it("rejects escaping and absolute content paths without writing a project", async () => {
+    for (const path of ["../escape.ts", "/absolute.ts", "src\\backslash.ts"]) {
+      const result = await importProjectDocument(makeFile(makeDocument({}, { [path]: "bad" })), "test-app", pm);
+      assert.strictEqual(result.success, false, `Expected failure for ${path}`);
+      assert.ok(
+        hasDiagnosticCode(result.diagnostics, "error", MindcraftProjectDocumentValidationCode.INVALID_FILE_PATH)
+      );
     }
+    assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
-  it("substitutes DEFAULT_PROJECT_NAME when name is empty", async () => {
-    const file = makeFile(makeExportDoc({ name: "   " }));
+  it("creates the project and writes its files from the contents map", async () => {
+    const doc = makeDocument(
+      { name: "Import Test", description: "imported desc" },
+      { "src/main.ts": "hello world", "src/lib.ts": "lib code" }
+    );
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, true);
-    const project = await store.getProject(result.projectId!);
-    assert.strictEqual(project?.name, DEFAULT_PROJECT_NAME);
-  });
-
-  it("creates project and writes project files", async () => {
-    const doc = makeExportDoc({
-      name: "Import Test",
-      description: "imported desc",
-      files: [
-        { path: "src/main.ts", content: "hello world" },
-        { path: "src/lib.ts", content: "lib code" },
-      ],
-    });
-    const file = makeFile(doc);
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(makeFile(doc), "test-app", pm);
 
     assert.strictEqual(result.success, true);
     assert.ok(result.projectId);
 
     const snapshot = await store.loadProjectFiles(result.projectId!);
-    assert.ok(snapshot);
-    const mainEntry = snapshot.get("src/main.ts");
+    const mainEntry = snapshot?.get("src/main.ts");
     assert.ok(mainEntry && mainEntry.kind === "file");
     assert.strictEqual(mainEntry.content, "hello world");
-
-    const libEntry = snapshot.get("src/lib.ts");
+    const libEntry = snapshot?.get("src/lib.ts");
     assert.ok(libEntry && libEntry.kind === "file");
     assert.strictEqual(libEntry.content, "lib code");
 
@@ -551,55 +368,21 @@ describe("importProjectDocument", () => {
     assert.strictEqual(project?.description, "imported desc");
   });
 
-  it("assigns imported projects to the active project collection", async () => {
-    const targetCollection = await pm.createProjectCollection("Import Target");
-    await pm.switchProjectCollection(targetCollection.projectCollectionId);
-    const file = makeFile(makeExportDoc({ projectCollectionId: "file-owned-workspace" }));
+  it("skips a mindcraft.json entry carried in the contents map", async () => {
+    const doc = makeDocument({}, { [MINDCRAFT_JSON_PATH]: "{}", "src/main.ts": "hello" });
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, true);
-    const project = await store.getProject(result.projectId!);
-    assert.strictEqual(project?.projectCollectionId, targetCollection.projectCollectionId);
-  });
-
-  it("allows imported projects to use a duplicate name", async () => {
-    await store.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Test Project");
-    const file = makeFile(makeExportDoc({ name: "Test Project" }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, true);
-    assert.deepStrictEqual(
-      (await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).map((project) => project.name),
-      ["Test Project", "Test Project"]
-    );
-  });
-
-  it("skips invalid file entries with warning diagnostic", async () => {
-    const doc = makeExportDoc({
-      files: [
-        { path: "valid.ts", content: "ok" },
-        { path: 123, content: "bad path" },
-        { path: "good.ts", content: 456 },
-      ],
-    });
-    const file = makeFile(doc);
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(makeFile(doc), "test-app", pm);
 
     assert.strictEqual(result.success, true);
     const snapshot = await store.loadProjectFiles(result.projectId!);
-    assert.ok(snapshot?.get("valid.ts"));
-    assert.strictEqual(countDiagnosticCode(result.diagnostics, ImportDiagnosticCode.IMPORT_INVALID_FILE_ENTRY), 2);
+    assert.strictEqual(snapshot?.has(MINDCRAFT_JSON_PATH), false);
+    assert.ok(snapshot?.get("src/main.ts"));
   });
 
-  it("saves brains to app data", async () => {
+  it("seeds the manifest's brains chunk into app data", async () => {
     const brains = { carnivore: { name: "carnivore" } };
-    const doc = makeExportDoc({ brains });
-    const file = makeFile(doc);
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(makeFile(makeDocument({ brains })), "test-app", pm);
 
     assert.strictEqual(result.success, true);
     const raw = await store.loadAppData(result.projectId!, "brains");
@@ -607,109 +390,89 @@ describe("importProjectDocument", () => {
     assert.deepStrictEqual(JSON.parse(raw), brains);
   });
 
-  it("normalizes legacy app payloads into shared target data", async () => {
-    const app = { actors: [{ archetype: "carnivore" }] };
-    const file = makeFile(makeExportDoc({ app }));
+  it("rejects a non-object brains chunk", async () => {
+    const result = await importProjectDocument(makeFile(makeDocument({ brains: [] })), "test-app", pm);
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, true);
-    assert.deepStrictEqual(JSON.parse((await store.loadAppData(result.projectId!, PROJECT_TARGETS_APP_DATA_KEY))!), {
-      "test-app": app,
-    });
+    assert.strictEqual(result.success, false);
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_INVALID_BRAINS));
   });
 
-  it("calls app layer callback when app is present", async () => {
-    const appData = { actors: [{ archetype: "carnivore" }] };
-    const doc = makeExportDoc({ app: appData });
-    const file = makeFile(doc);
-    let callbackCalled = false;
-    let receivedApp: unknown;
-    let receivedVersion: string | undefined;
+  it("stores the whole app chunk map, preserving chunks of unknown apps", async () => {
+    const app = {
+      "test-app": { settings: true },
+      "unknown-app": { keep: true },
+    };
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm, {
-      appLayerCallback: (app, version) => {
-        callbackCalled = true;
-        receivedApp = app;
-        receivedVersion = version;
-        return { diagnostics: [{ severity: "warning", message: "app warning" }] };
+    const result = await importProjectDocument(makeFile(makeDocument({ app })), "test-app", pm);
+
+    assert.strictEqual(result.success, true);
+    assert.deepStrictEqual(JSON.parse((await store.loadAppData(result.projectId!, "app"))!), app);
+  });
+
+  it("rejects a non-object app chunk map", async () => {
+    const result = await importProjectDocument(makeFile(makeDocument({ app: "chunk" })), "test-app", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_INVALID_APP_CHUNKS));
+  });
+
+  it("passes the importing app's chunk to the callback and merges its app data", async () => {
+    const app = { "test-app": { actors: [{ archetype: "carnivore" }] } };
+    let receivedChunk: unknown;
+
+    const result = await importProjectDocument(makeFile(makeDocument({ app })), "test-app", pm, {
+      appChunkCallback: (appChunk) => {
+        receivedChunk = appChunk;
+        return {
+          diagnostics: [{ severity: "warning", message: "app warning" }],
+          appData: { actors: '{"carnivore":5}' },
+        };
       },
     });
 
     assert.strictEqual(result.success, true);
-    assert.strictEqual(callbackCalled, true);
-    assert.deepStrictEqual(receivedApp, appData);
-    assert.strictEqual(receivedVersion, "1.0.0");
+    assert.deepStrictEqual(receivedChunk, app["test-app"]);
+    assert.strictEqual(await store.loadAppData(result.projectId!, "actors"), '{"carnivore":5}');
     assert.strictEqual(result.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length, 1);
   });
 
-  it("returns error when app is missing but callback is provided", async () => {
-    const doc = makeExportDoc();
-    delete (doc as Record<string, unknown>).app;
-    const file = makeFile(doc);
-    let callbackCalled = false;
+  it("invokes the callback with undefined when the document carries no chunk for the app", async () => {
+    let receivedChunk: unknown = "unset";
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm, {
-      appLayerCallback: () => {
-        callbackCalled = true;
+    const result = await importProjectDocument(makeFile(makeDocument()), "test-app", pm, {
+      appChunkCallback: (appChunk) => {
+        receivedChunk = appChunk;
         return { diagnostics: [] };
       },
     });
 
-    assert.strictEqual(result.success, false);
-    assert.strictEqual(callbackCalled, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_MISSING_APP_DATA));
-    assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
-  });
-
-  it("aborts import when app layer callback returns error diagnostic", async () => {
-    const doc = makeExportDoc({ app: { actors: [] } });
-    const file = makeFile(doc);
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm, {
-      appLayerCallback: () => ({
-        diagnostics: [{ severity: "error", message: "bad app data" }],
-      }),
-    });
-
-    assert.strictEqual(result.success, false);
-    assert.strictEqual(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length, 1);
-    assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
-  });
-
-  it("merges app layer appData into store alongside brains", async () => {
-    const doc = makeExportDoc({
-      brains: { carnivore: { name: "c" } },
-      app: { actors: [] },
-    });
-    const file = makeFile(doc);
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm, {
-      appLayerCallback: () => ({
-        diagnostics: [],
-        appData: { actors: '{"carnivore":5}', settings: '{"speed":2}' },
-      }),
-    });
-
     assert.strictEqual(result.success, true);
-    assert.strictEqual(await store.loadAppData(result.projectId!, "actors"), '{"carnivore":5}');
-    assert.strictEqual(await store.loadAppData(result.projectId!, "settings"), '{"speed":2}');
-    const brainsRaw = await store.loadAppData(result.projectId!, "brains");
-    assert.deepStrictEqual(JSON.parse(brainsRaw!), { carnivore: { name: "c" } });
+    assert.strictEqual(receivedChunk, undefined);
   });
 
-  it("brains key from common layer wins over callback appData.brains", async () => {
-    const doc = makeExportDoc({
-      brains: { carnivore: { name: "c" } },
-      app: { actors: [] },
-    });
-    const file = makeFile(doc);
+  it("lets the app callback reject its chunk, defaulting the translation code", async () => {
+    const result = await importProjectDocument(
+      makeFile(makeDocument({ app: { "test-app": { unsupported: true } } })),
+      "test-app",
+      pm,
+      {
+        appChunkCallback: () => ({ diagnostics: [{ severity: "error", message: "Unsupported app chunk." }] }),
+      }
+    );
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm, {
-      appLayerCallback: () => ({
-        diagnostics: [],
-        appData: { brains: '{"hijack":true}' },
-      }),
+    assert.strictEqual(result.success, false);
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_APP_TRANSLATION_FAILED));
+    assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
+  });
+
+  it("brains chunk from the manifest wins over callback appData.brains", async () => {
+    const doc = makeDocument({
+      brains: { carnivore: { name: "c" } },
+      app: { "test-app": { actors: [] } },
+    });
+
+    const result = await importProjectDocument(makeFile(doc), "test-app", pm, {
+      appChunkCallback: () => ({ diagnostics: [], appData: { brains: '{"hijack":true}' } }),
     });
 
     assert.strictEqual(result.success, true);
@@ -717,53 +480,48 @@ describe("importProjectDocument", () => {
     assert.deepStrictEqual(JSON.parse(brainsRaw!), { carnivore: { name: "c" } });
   });
 
-  it("re-exports a legacy-imported project as a shared project document", async () => {
-    const app = { actors: [{ archetype: "carnivore" }] };
-    const imported = await importProjectDocument(makeFile(makeExportDoc({ app })), "test-app", "1.0.0", pm);
-    assert.strictEqual(imported.success, true);
+  it("substitutes DEFAULT_PROJECT_NAME when the manifest name is blank", async () => {
+    const result = await importProjectDocument(makeFile(makeDocument({ name: "   " })), "test-app", pm);
 
-    await pm.open(imported.projectId!);
-    const exported = await buildActiveProjectExportDocument(pm);
+    assert.strictEqual(result.success, true);
+    const project = await store.getProject(result.projectId!);
+    assert.strictEqual(project?.name, DEFAULT_PROJECT_NAME);
+  });
 
-    assert.strictEqual(exported.format, MINDCRAFT_PROJECT_FORMAT);
-    assert.deepStrictEqual(exported.targets, { "test-app": app });
+  it("assigns imported projects to the active project collection", async () => {
+    const targetCollection = await pm.createProjectCollection("Import Target");
+    await pm.switchProjectCollection(targetCollection.projectCollectionId);
+
+    const result = await importProjectDocument(makeFile(makeDocument()), "test-app", pm);
+
+    assert.strictEqual(result.success, true);
+    const project = await store.getProject(result.projectId!);
+    assert.strictEqual(project?.projectCollectionId, targetCollection.projectCollectionId);
+  });
+
+  it("allows imported projects to use a duplicate name", async () => {
+    await store.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Shared Project");
+
+    const result = await importProjectDocument(makeFile(makeDocument()), "test-app", pm);
+
+    assert.strictEqual(result.success, true);
+    assert.deepStrictEqual(
+      (await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).map((project) => project.name),
+      ["Shared Project", "Shared Project"]
+    );
   });
 
   it("never throws -- catches unexpected errors and returns error diagnostic", async () => {
-    const file = makeFile(makeExportDoc());
-
     const badPm = {
       createFromSnapshot() {
         throw new Error("boom");
       },
     } as unknown as ProjectManager;
 
-    const result = await importProjectDocument(file, "test-app", "1.0.0", badPm);
+    const result = await importProjectDocument(makeFile(makeDocument()), "test-app", badPm);
 
     assert.strictEqual(result.success, false);
     assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_UNEXPECTED_ERROR));
-  });
-
-  it("validates file paths -- rejects .. and leading /", async () => {
-    const doc = makeExportDoc({
-      files: [
-        { path: "../escape.ts", content: "bad" },
-        { path: "/absolute.ts", content: "bad" },
-        { path: "src\\backslash.ts", content: "bad" },
-        { path: "valid/file.ts", content: "ok" },
-      ],
-    });
-    const file = makeFile(doc);
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, true);
-    const snapshot = await store.loadProjectFiles(result.projectId!);
-    assert.ok(snapshot?.get("valid/file.ts"));
-    assert.strictEqual(snapshot?.has("../escape.ts"), false);
-    assert.strictEqual(snapshot?.has("/absolute.ts"), false);
-    assert.strictEqual(snapshot?.has("src\\backslash.ts"), false);
-    assert.strictEqual(countDiagnosticCode(result.diagnostics, ImportDiagnosticCode.IMPORT_INVALID_FILE_PATH), 3);
   });
 
   it("rejects without writing a project when there is no active project collection", async () => {
@@ -772,7 +530,7 @@ describe("importProjectDocument", () => {
     store = new MemoryProjectStore();
     pm = new ProjectManager(store);
 
-    const result = await importProjectDocument(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(makeFile(makeDocument()), "test-app", pm);
 
     assert.strictEqual(result.success, false);
     assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_UNEXPECTED_ERROR));
@@ -785,7 +543,7 @@ describe("importProjectDocument", () => {
     await pm.close();
     await store.deleteProjectCollection(collection.projectCollectionId);
 
-    const result = await importProjectDocument(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(makeFile(makeDocument()), "test-app", pm);
 
     assert.strictEqual(result.success, false);
     assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_UNEXPECTED_ERROR));
@@ -799,11 +557,66 @@ describe("importProjectDocument", () => {
     });
     const before = await store.listProjects(activeCollectionId);
 
-    const result = await importProjectDocument(makeFile(makeExportDoc()), "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(makeFile(makeDocument()), "test-app", pm);
 
     assert.strictEqual(result.success, false);
     assert.ok(hasDiagnosticCode(result.diagnostics, "error", ImportDiagnosticCode.IMPORT_UNEXPECTED_ERROR));
     assert.deepStrictEqual(await store.listProjects(activeCollectionId), before);
+  });
+});
+
+describe("project round-trips through import and export", () => {
+  let store: MemoryProjectStore;
+  let pm: ProjectManager;
+
+  beforeEach(async () => {
+    store = new MemoryProjectStore();
+    pm = new ProjectManager(store);
+    await pm.init();
+  });
+
+  afterEach(async () => {
+    await pm.close();
+  });
+
+  it("re-exports an imported project byte-stably, extras chunks included", async () => {
+    const original = {
+      format: MINDCRAFT_PROJECT_FORMAT,
+      manifest: {
+        name: "Shared Project",
+        version: "1.0.0",
+        description: "shared desc",
+        extensions: { "example-org/mindcraft-position": "gh:example-org/mindcraft-position@v1.2.0" },
+        brains: { main: { pages: [] } },
+        app: { "other-app": { settings: true } },
+      },
+      contents: { "src/main.ts": "hello" },
+    };
+    const imported = await importProjectDocument(makeFile(original), "test-app", pm);
+    assert.strictEqual(imported.success, true);
+
+    await pm.open(imported.projectId!);
+    const exported = await buildActiveProjectExportDocument(pm);
+
+    assert.strictEqual(JSON.stringify(exported), JSON.stringify(original));
+  });
+
+  it("re-exports with the importing app's fresh chunk replacing its stored one", async () => {
+    const original = makeDocument({
+      app: { "test-app": { stale: true }, "other-app": { keep: true } },
+    });
+    const imported = await importProjectDocument(makeFile(original), "test-app", pm);
+    assert.strictEqual(imported.success, true);
+
+    await pm.open(imported.projectId!);
+    const exported = await buildActiveProjectExportDocument(pm, {
+      appChunk: { name: "test-app", chunk: { fresh: true } },
+    });
+
+    assert.deepStrictEqual(exported.manifest.app, {
+      "test-app": { fresh: true },
+      "other-app": { keep: true },
+    });
   });
 });
 
@@ -836,29 +649,21 @@ describe("project extensions interchange", () => {
       async () => undefined
     );
 
-    assert.deepStrictEqual(result.extensions, EXTENSIONS);
+    assert.deepStrictEqual(result.manifest.extensions, EXTENSIONS);
   });
 
-  it("omits the extensions field when the manifest has none", async () => {
+  it("omits the extensions field when the manifest has none or an empty map", async () => {
     const ws = makeProjectFileSystem();
 
-    const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
+    const absent = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
+    assert.strictEqual("extensions" in absent.manifest, false);
 
-    assert.strictEqual("extensions" in result, false);
-  });
-
-  it("omits the extensions field when the manifest's extensions map is empty", async () => {
-    const ws = makeProjectFileSystem();
-
-    const result = await buildProjectExportDocument(makeManifest({ extensions: {} }), ws, async () => undefined);
-
-    assert.strictEqual("extensions" in result, false);
+    const empty = await buildProjectExportDocument(makeManifest({ extensions: {} }), ws, async () => undefined);
+    assert.strictEqual("extensions" in empty.manifest, false);
   });
 
   it("imports extensions into the project manifest", async () => {
-    const file = makeFile(makeSharedProjectDoc({ extensions: EXTENSIONS }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(makeFile(makeDocument({ extensions: EXTENSIONS })), "test-app", pm);
 
     assert.strictEqual(result.success, true);
     const manifest = await store.getProject(result.projectId!);
@@ -867,8 +672,7 @@ describe("project extensions interchange", () => {
   });
 
   it("projects imported extensions into mindcraft.json when the project is opened and synced", async () => {
-    const file = makeFile(makeSharedProjectDoc({ extensions: EXTENSIONS }));
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(makeFile(makeDocument({ extensions: EXTENSIONS })), "test-app", pm);
     assert.strictEqual(result.success, true);
 
     const active = await pm.open(result.projectId!);
@@ -882,9 +686,7 @@ describe("project extensions interchange", () => {
   });
 
   it("leaves the manifest without extensions when the document has none", async () => {
-    const file = makeFile(makeSharedProjectDoc());
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(makeFile(makeDocument()), "test-app", pm);
 
     assert.strictEqual(result.success, true);
     const manifest = await store.getProject(result.projectId!);
@@ -892,93 +694,46 @@ describe("project extensions interchange", () => {
   });
 
   it("round-trips extensions through import and export", async () => {
-    const original = makeSharedProjectDoc({ extensions: EXTENSIONS });
-    const imported = await importProjectDocument(makeFile(original), "test-app", "1.0.0", pm);
+    const imported = await importProjectDocument(makeFile(makeDocument({ extensions: EXTENSIONS })), "test-app", pm);
     assert.strictEqual(imported.success, true);
 
     await pm.open(imported.projectId!);
     const exported = await buildActiveProjectExportDocument(pm);
 
-    assert.deepStrictEqual(exported.extensions, EXTENSIONS);
+    assert.deepStrictEqual(exported.manifest.extensions, EXTENSIONS);
   });
 
-  it("round-trips a document without extensions byte-stably", async () => {
-    const original = {
-      format: MINDCRAFT_PROJECT_FORMAT,
-      name: "Shared Project",
-      version: "0.0.0",
-      description: "shared desc",
-      files: [{ path: "src/main.ts", content: "hello" }],
-      brains: { main: { pages: [] } },
-      targets: { "test-app": { settings: true } },
-    };
-    const imported = await importProjectDocument(makeFile(original), "test-app", "1.0.0", pm);
-    assert.strictEqual(imported.success, true);
-
-    await pm.open(imported.projectId!);
-    const exported = await buildActiveProjectExportDocument(pm);
-
-    assert.strictEqual(JSON.stringify(exported), JSON.stringify(original));
-  });
-
-  it("rejects structurally invalid extensions with the document validation code", async () => {
-    const file = makeFile(makeSharedProjectDoc({ extensions: 5 }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+  it("rejects structurally invalid extensions with the content manifest code", async () => {
+    const result = await importProjectDocument(makeFile(makeDocument({ extensions: 5 })), "test-app", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(
-      result.diagnostics.some(
-        (diagnostic) =>
-          diagnostic.severity === "error" &&
-          diagnostic.code === MindcraftProjectDocumentValidationCode.INVALID_EXTENSIONS
-      )
-    );
-  });
-
-  it("rejects non-string extension references with the document validation code", async () => {
-    const file = makeFile(makeSharedProjectDoc({ extensions: { "org/position": 42 } }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
-
-    assert.strictEqual(result.success, false);
-    assert.ok(
-      result.diagnostics.some(
-        (diagnostic) =>
-          diagnostic.severity === "error" &&
-          diagnostic.code === MindcraftProjectDocumentValidationCode.INVALID_EXTENSION_REFERENCE
-      )
-    );
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ProjectContentManifestErrorCode.INVALID_EXTENSIONS));
   });
 
   it("rejects malformed extension references with the content manifest code", async () => {
-    const file = makeFile(makeSharedProjectDoc({ extensions: { "org/position": "not-a-ref" } }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(
+      makeFile(makeDocument({ extensions: { "org/position": "not-a-ref" } })),
+      "test-app",
+      pm
+    );
 
     assert.strictEqual(result.success, false);
     assert.ok(
-      result.diagnostics.some(
-        (diagnostic) =>
-          diagnostic.severity === "error" &&
-          diagnostic.code === ProjectContentManifestErrorCode.INVALID_EXTENSION_REFERENCE
-      )
+      hasDiagnosticCode(result.diagnostics, "error", ProjectContentManifestErrorCode.INVALID_EXTENSION_REFERENCE)
     );
     assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
   it("rejects invalid extension coordinates with the content manifest code", async () => {
-    const file = makeFile(makeSharedProjectDoc({ extensions: { "bad-coordinate": "embedded:org/fine" } }));
-
-    const result = await importProjectDocument(file, "test-app", "1.0.0", pm);
+    const result = await importProjectDocument(
+      makeFile(makeDocument({ extensions: { "bad-coordinate": "embedded:org/fine" } })),
+      "test-app",
+      pm
+    );
 
     assert.strictEqual(result.success, false);
     assert.ok(
-      result.diagnostics.some(
-        (diagnostic) =>
-          diagnostic.severity === "error" &&
-          diagnostic.code === ProjectContentManifestErrorCode.INVALID_EXTENSION_COORDINATE
-      )
+      hasDiagnosticCode(result.diagnostics, "error", ProjectContentManifestErrorCode.INVALID_EXTENSION_COORDINATE)
     );
   });
 });

@@ -5,21 +5,20 @@ import type { MindcraftProjectDocument, ProjectContentManifest } from "@mindcraf
 import {
   isExtensionCoordinate,
   MINDCRAFT_JSON_PATH,
-  parseProjectContentManifest,
   serializeProjectContentManifest,
+  validateProjectContentManifest,
 } from "@mindcraft-lang/app-host";
 import { parseMindcraftProjectDocument } from "@mindcraft-lang/service-api";
 
 const UNPACK_USAGE = `usage: mindcraft unpack <file.mindcraft> [dir] [--coordinate <owner/repo>] [--force]
 
 Converts a .mindcraft export document into a publishable project directory:
-every document file is written to disk, and mindcraft.json is assembled from
-the document's project data with everything else the document carries (brains,
-app-specific target data) preserved verbatim. The assembled files list names
-every unpacked file, including scratch files that happened to be in the
-exported workspace; prune mindcraft.json before publishing. After this
-graduation the repository is the canonical project -- re-exporting from the
-app is a release ritual, not a sync.
+the document's embedded manifest is written as mindcraft.json and every file
+in its contents is written to disk. A manifest that declares no files list
+gets one naming every unpacked file, including scratch files that happened to
+be in the exported workspace; prune mindcraft.json before publishing. After
+this graduation the repository is the canonical project -- re-exporting from
+the app is a release ritual, not a sync.
 
   dir                          target directory (default: the document's base
                                name, in the current directory)
@@ -90,93 +89,46 @@ interface UnpackRefusal {
   message: string;
 }
 
-/** Document root fields the unpack maps onto manifest schema fields or the unpacked tree. */
-const MAPPED_DOCUMENT_FIELDS: ReadonlySet<string> = new Set([
-  "format",
-  "name",
-  "version",
-  "description",
-  "thumbnailUrl",
-  "files",
-  "extensions",
-  "targets",
-]);
-
-/**
- * Manifest extras key carrying the document's `targets` map (per-target
- * project data keyed by package name). The manifest's own `targets` field is
- * the platform-compatibility map, a different concept, so the document's map
- * is carried under this key.
- */
-const PROJECT_TARGETS_EXTRAS_KEY = "projectTargets";
-
 interface UnpackedTree {
   /** Serialized `mindcraft.json` of the unpacked project. */
   manifestText: string;
   /** Every non-manifest document file, in document order. */
   files: readonly { path: string; content: string }[];
-  /** True when the manifest's files list came from a manifest carried inside the document. */
-  preservedFilesList: boolean;
+  /** True when the files list came from the embedded manifest's own declaration. */
+  declaredFilesList: boolean;
 }
 
 /**
  * Assemble the published-repo tree from a validated document: the document's
- * files, and a content manifest carrying the document's project data plus
- * every unmapped document field verbatim as extras.
+ * contents plus its embedded manifest, with the identity recorded when a
+ * coordinate is given and a files list synthesized from the contents when the
+ * manifest declares none.
  */
 function buildUnpackedTree(
   document: MindcraftProjectDocument,
-  raw: Readonly<Record<string, unknown>>,
   coordinate: string | undefined
 ): UnpackedTree | UnpackRefusal {
-  const files = document.files.filter((file) => file.path !== MINDCRAFT_JSON_PATH);
-
-  // A mindcraft.json carried inside the document is the project's own
-  // manifest; when it declares a files list, that list is preserved instead
-  // of synthesizing one.
-  let preservedFiles: readonly string[] | undefined;
-  const carriedManifest = document.files.find((file) => file.path === MINDCRAFT_JSON_PATH);
-  if (carriedManifest !== undefined) {
-    const parsed = parseProjectContentManifest(carriedManifest.content);
-    if (parsed.ok) {
-      preservedFiles = parsed.manifest.files;
-    }
-  }
-  const filesList = preservedFiles ?? files.map((file) => file.path);
-
-  let extras: Record<string, unknown> | undefined;
-  for (const [key, value] of Object.entries(raw)) {
-    if (MAPPED_DOCUMENT_FIELDS.has(key)) continue;
-    extras ??= {};
-    extras[key] = value;
-  }
-  if (raw.targets !== undefined) {
-    extras ??= {};
-    extras[PROJECT_TARGETS_EXTRAS_KEY] = raw.targets;
-  }
-
-  const manifest: ProjectContentManifest = {
-    name: document.name,
-    version: document.version,
-    ...(coordinate !== undefined ? { identity: coordinate } : {}),
-    ...(document.description !== "" ? { description: document.description } : {}),
-    ...(document.thumbnailUrl !== undefined ? { thumbnailUrl: document.thumbnailUrl } : {}),
-    extensions: document.extensions ?? {},
-    ...(filesList.length > 0 ? { files: filesList } : {}),
-    ...(extras !== undefined ? { extras } : {}),
-  };
-
-  const manifestText = serializeProjectContentManifest(manifest);
-  const validated = parseProjectContentManifest(manifestText);
+  const validated = validateProjectContentManifest(document.manifest);
   if (!validated.ok) {
     const details = validated.errors.map((error) => `${error.code} at ${error.path}: ${error.message}`).join(" ");
     return {
       code: UnpackErrorCode.DOCUMENT_INVALID,
-      message: `The document's fields do not assemble into a valid content manifest. ${details}`,
+      message: `The document's embedded manifest is not a valid content manifest. ${details}`,
     };
   }
 
-  return { manifestText, files, preservedFilesList: preservedFiles !== undefined };
+  const files = Object.entries(document.contents)
+    .filter(([filePath]) => filePath !== MINDCRAFT_JSON_PATH)
+    .map(([filePath, content]) => ({ path: filePath, content }));
+
+  const declaredFilesList = validated.manifest.files !== undefined;
+  const manifest: ProjectContentManifest = {
+    ...validated.manifest,
+    ...(coordinate !== undefined ? { identity: coordinate } : {}),
+    ...(declaredFilesList ? {} : { files: files.map((file) => file.path) }),
+  };
+
+  return { manifestText: serializeProjectContentManifest(manifest), files, declaredFilesList };
 }
 
 function isRefusal(value: UnpackedTree | UnpackRefusal): value is UnpackRefusal {
@@ -248,9 +200,8 @@ export async function runUnpackCommand(args: readonly string[]): Promise<number>
       message: `"${parsed.file}" is not a valid .mindcraft project document. ${details}`,
     });
   }
-  const raw = JSON.parse(text) as Readonly<Record<string, unknown>>;
 
-  const tree = buildUnpackedTree(documentResult.document, raw, parsed.coordinate);
+  const tree = buildUnpackedTree(documentResult.document, parsed.coordinate);
   if (isRefusal(tree)) {
     return refuse(tree);
   }
@@ -269,7 +220,7 @@ export async function runUnpackCommand(args: readonly string[]): Promise<number>
   await writeFile(path.join(parsed.dir, MINDCRAFT_JSON_PATH), tree.manifestText, "utf8");
 
   process.stdout.write(`unpacked ${tree.files.length} project files and ${MINDCRAFT_JSON_PATH} into ${parsed.dir}\n`);
-  if (!tree.preservedFilesList && tree.files.length > 0) {
+  if (!tree.declaredFilesList && tree.files.length > 0) {
     process.stdout.write(
       "note: the manifest's files list names everything the export carried, including scratch\n" +
         "files; prune mindcraft.json before publishing.\n"

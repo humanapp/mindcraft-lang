@@ -64,6 +64,42 @@ export function nativeTypeToString(coreType: NativeType): string {
   }
 }
 
+/** Inverse of {@link nativeTypeToString}. Returns undefined for unrecognized names. */
+export function nativeTypeFromString(name: string): NativeType | undefined {
+  switch (name) {
+    case "unknown":
+      return NativeType.Unknown;
+    case "void":
+      return NativeType.Void;
+    case "nil":
+      return NativeType.Nil;
+    case "boolean":
+      return NativeType.Boolean;
+    case "number":
+      return NativeType.Number;
+    case "string":
+      return NativeType.String;
+    case "enum":
+      return NativeType.Enum;
+    case "list":
+      return NativeType.List;
+    case "map":
+      return NativeType.Map;
+    case "struct":
+      return NativeType.Struct;
+    case "any":
+      return NativeType.Any;
+    case "union":
+      return NativeType.Union;
+    case "function":
+      return NativeType.Function;
+    case "buffer":
+      return NativeType.Buffer;
+    default:
+      return undefined;
+  }
+}
+
 /** String/JSON formatter for runtime values of a registered type. */
 export interface TypeCodec {
   stringify(value: unknown): string;

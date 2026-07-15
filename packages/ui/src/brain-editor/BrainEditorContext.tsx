@@ -48,6 +48,8 @@ export interface BrainEditorConfig {
   getDefaultBrain?: () => BrainDef | undefined;
   /** Optional BrainServices instance for direct access to tiles, types, etc. */
   brainServices?: BrainServices;
+  /** Namespace of the active project. Brain files save and load namespace-relative to it. */
+  projectNamespace?: string;
   /** Tile catalogs from the host environment (core + user tile catalogs). */
   tileCatalogs?: readonly ITileCatalog[];
   /** Optional callback invoked when the user requests help for a tile (e.g. right-click -> Help). */

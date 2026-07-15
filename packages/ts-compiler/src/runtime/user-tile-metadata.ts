@@ -15,10 +15,19 @@ import {
   createAccessorTileDef,
   createVariableFactoryTileDef,
 } from "@mindcraft-lang/core/brain/tiles";
-import { type ActionDescriptor, mkModifierTileId, mkParameterTileId, type TypeId } from "@mindcraft-lang/core/runtime";
+import {
+  type ActionDescriptor,
+  mkAnonParameterId,
+  mkModifierTileId,
+  mkParameterTileId,
+  type NamespacedTypeName,
+  splitNamespacedTypeName,
+  type TypeId,
+  type UserArgIdentity,
+} from "@mindcraft-lang/core/runtime";
 import { BitSet } from "@mindcraft-lang/core/util";
 import { collectModifiers, collectParams } from "../compiler/arg-spec-utils.js";
-import { privateArgTileId, scopedOutputName } from "../compiler/symbol-keys.js";
+import { privateArgTileId } from "../compiler/symbol-keys.js";
 import type { ExtractedModifier, ExtractedParam, UserAuthoredProgram } from "../compiler/types.js";
 
 /** Resolve a parameter type name to a runtime `TypeId`, or `undefined` when the type is not registered. */
@@ -75,9 +84,22 @@ function buildActionDescriptor(program: UserAuthoredProgram): ActionDescriptor {
 }
 
 function getParameterId(program: UserAuthoredProgram, param: ExtractedParam): string {
-  if (param.anonymous) return `anon.${param.type}`;
+  if (param.anonymous) return mkAnonParameterId(param.type);
   if (param.name.startsWith("parameter.")) return param.name;
   return privateArgTileId(program.projectNamespace, program.id, param.name);
+}
+
+/** Identity components of a parameter tile, matching {@link getParameterId}'s three id forms. */
+function getParameterIdentity(
+  program: UserAuthoredProgram,
+  param: ExtractedParam
+): { userArg?: UserArgIdentity; anonType?: NamespacedTypeName } {
+  if (param.anonymous) {
+    const split = splitNamespacedTypeName(param.type);
+    return { anonType: split ?? { localName: param.type } };
+  }
+  if (param.name.startsWith("parameter.")) return {};
+  return { userArg: { namespace: program.projectNamespace, actionId: program.id, argName: param.name } };
 }
 
 /** Resolve a modifier's tile id: shared `modifier.` ids stay unscoped; private ids are scoped by the stable action id under the project namespace. */
@@ -104,7 +126,7 @@ function buildParameterTiles(
       return undefined;
     }
 
-    parameterTiles.set(tileId, new BrainTileParameterDef(parameterId, typeId));
+    parameterTiles.set(tileId, new BrainTileParameterDef(parameterId, typeId, getParameterIdentity(program, param)));
   }
 
   return Array.from(parameterTiles.values());
@@ -131,7 +153,10 @@ function buildModifierTiles(program: UserAuthoredProgram): readonly BrainTileMod
       continue;
     }
     const metadata: ITileMetadata = { label: modifier.label, iconUrl: modifier.icon };
-    modifierTiles.set(tileId, new BrainTileModifierDef(modifierId, { metadata }));
+    const userArg = modifier.id.startsWith("modifier.")
+      ? undefined
+      : { namespace: program.projectNamespace, actionId: program.id, argName: modifier.id };
+    modifierTiles.set(tileId, new BrainTileModifierDef(modifierId, { metadata, userArg }));
   }
 
   return Array.from(modifierTiles.values());
@@ -159,9 +184,7 @@ function buildOutputTiles(
       docsMarkdown: output.docs,
       tags: output.tags,
     };
-    outputTiles.push(
-      new BrainTileOutputDef(typeId, scopedOutputName(program.projectNamespace, output.name), { metadata })
-    );
+    outputTiles.push(new BrainTileOutputDef(typeId, output.name, { metadata, namespace: program.projectNamespace }));
   }
   return outputTiles;
 }
@@ -207,6 +230,7 @@ export function buildUserTileMetadata(
   }
 
   const providedOutputs = List.from(outputTiles.map((tile) => tile.outputKey));
+  const userIdentity = { namespace: program.projectNamespace, actionId: program.id };
   const actionTile =
     program.kind === "sensor"
       ? new BrainTileSensorDef(program.key, actionDescriptor, {
@@ -215,11 +239,13 @@ export function buildUserTileMetadata(
           providedOutputs,
           consumesWhenResult: program.consumesWhenResult,
           placement: program.inline ? TilePlacement.EitherSide | TilePlacement.Inline : undefined,
+          userIdentity,
         })
       : new BrainTileActuatorDef(program.key, actionDescriptor, {
           metadata,
           capabilities: userTileCaps,
           consumesWhenResult: program.consumesWhenResult,
+          userIdentity,
         });
 
   return {

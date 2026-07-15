@@ -49,6 +49,7 @@ export {
   ProjectContentManifestErrorCode,
   parseExtensionReference,
   parseProjectContentManifest,
+  projectContentManifestToJson,
   serializeProjectContentManifest,
   validateProjectContentManifest,
   validateProjectExtensions,
@@ -63,15 +64,13 @@ export type {
 } from "./project-file-snapshot.js";
 export type { ProjectFileSystem } from "./project-file-system.js";
 export type {
-  ImportAppLayerCallback,
-  ImportAppLayerResult,
+  ExportAppChunk,
+  ImportAppChunkCallback,
+  ImportAppChunkResult,
   ImportDiagnostic,
-  ImportProjectTargetsCallback,
-  ImportProjectTargetsResult,
   ImportResult,
   MindcraftProjectDocument,
-  MindcraftProjectFile,
-  MindcraftProjectTargets,
+  MindcraftProjectExtensions,
 } from "./project-io.js";
 export {
   buildActiveProjectExportDocument,
@@ -79,7 +78,6 @@ export {
   DEFAULT_MAX_FILE_SIZE,
   ImportDiagnosticCode,
   importProjectDocument,
-  PROJECT_TARGETS_APP_DATA_KEY,
 } from "./project-io.js";
 export type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 export { createWebLocksProjectLock } from "./project-lock.js";

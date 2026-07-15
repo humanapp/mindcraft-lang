@@ -37,14 +37,17 @@ describe("export to published repository", () => {
     { skip: existsSync(APP_EXPORT_DOCUMENT) ? false : "app export fixture not present in this checkout" },
     async () => {
       const document = JSON.parse(readFileSync(APP_EXPORT_DOCUMENT, "utf8")) as {
-        name: string;
-        version: string;
-        files: Array<{ path: string; content: string }>;
-        brains: Record<string, unknown>;
-        targets: Record<string, unknown>;
-        extensions: Record<string, string>;
+        manifest: {
+          name: string;
+          version: string;
+          extensions: Record<string, string>;
+          brains: Record<string, unknown>;
+          app: Record<string, unknown>;
+        };
+        contents: Record<string, string>;
       };
-      assert.ok(document.files.length > 0, "the app export fixture should carry project files");
+      const contentPaths = Object.keys(document.contents);
+      assert.ok(contentPaths.length > 0, "the app export fixture should carry project files");
 
       const root = await scratch();
       // The remote's path tail is the coordinate the publish stamps, matching
@@ -66,33 +69,28 @@ describe("export to published repository", () => {
       const published = await runCliBin(root, "publish", "--dir", project, "--remote", remote, "--yes");
       assert.equal(published.code, 0, published.stderr);
       assert.doesNotMatch(published.stderr, /identity changed/);
-      const tag = `v${document.version}`;
-      assert.match(
-        published.stdout,
-        new RegExp(`published ${document.version.replaceAll(".", "\\.")} \\(tag ${tag}\\)`)
-      );
+      const version = document.manifest.version;
+      const tag = `v${version}`;
+      assert.match(published.stdout, new RegExp(`published ${version.replaceAll(".", "\\.")} \\(tag ${tag}\\)`));
 
       const clone = await cloneAtTag(root, remote, tag);
-      const expectedTree = [...document.files.map((file) => file.path), "mindcraft.json"].sort();
+      const expectedTree = [...contentPaths, "mindcraft.json"].sort();
       assert.deepEqual(await listProjectFiles(clone), expectedTree);
-      for (const file of document.files) {
-        assert.equal(await readFile(path.join(clone, file.path), "utf8"), file.content);
+      for (const contentPath of contentPaths) {
+        assert.equal(await readFile(path.join(clone, contentPath), "utf8"), document.contents[contentPath]);
       }
 
       const manifest = JSON.parse(await readFile(path.join(clone, "mindcraft.json"), "utf8")) as Record<
         string,
         unknown
       >;
-      assert.equal(manifest.name, document.name);
-      assert.equal(manifest.version, document.version);
+      assert.equal(manifest.name, document.manifest.name);
+      assert.equal(manifest.version, version);
       assert.equal(manifest.identity, "example-org/sample-project");
-      assert.deepEqual(
-        manifest.files,
-        document.files.map((file) => file.path)
-      );
-      assert.deepEqual(manifest.extensions, document.extensions);
-      assert.equal(JSON.stringify(manifest.brains), JSON.stringify(document.brains));
-      assert.equal(JSON.stringify(manifest.projectTargets), JSON.stringify(document.targets));
+      assert.deepEqual(manifest.files, contentPaths);
+      assert.deepEqual(manifest.extensions, document.manifest.extensions);
+      assert.equal(JSON.stringify(manifest.brains), JSON.stringify(document.manifest.brains));
+      assert.equal(JSON.stringify(manifest.app), JSON.stringify(document.manifest.app));
     }
   );
 });

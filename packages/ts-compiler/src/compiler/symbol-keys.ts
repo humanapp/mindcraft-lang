@@ -22,6 +22,8 @@
  * these markers.
  */
 
+import { type ActionKind, mkPrivateArgId, mkScopedOutputName, mkUserActionKey } from "@mindcraft-lang/core/runtime";
+
 /**
  * Registry name of a user-declared type or System: the project namespace, the
  * declaring file, and the binding name.
@@ -68,12 +70,8 @@ export function parseQualifiedClassName(name: string): QualifiedClassNameParts |
 }
 
 /** Action key of a compiled user tile or conversion. */
-export function userActionKey(
-  projectNamespace: string,
-  kind: "sensor" | "actuator" | "conversion",
-  id: string
-): string {
-  return `${projectNamespace}:user.${kind}.${id}`;
+export function userActionKey(projectNamespace: string, kind: ActionKind, id: string): string {
+  return mkUserActionKey(projectNamespace, kind, id);
 }
 
 /**
@@ -81,7 +79,7 @@ export function userActionKey(
  * declaring action's stable id under the project namespace.
  */
 export function privateArgTileId(projectNamespace: string, actionId: string, argName: string): string {
-  return `${projectNamespace}:user.${actionId}.${argName}`;
+  return mkPrivateArgId(projectNamespace, actionId, argName);
 }
 
 /**
@@ -92,5 +90,5 @@ export function privateArgTileId(projectNamespace: string, actionId: string, arg
  * only for user-declared outputs.
  */
 export function scopedOutputName(projectNamespace: string, outputName: string): string {
-  return `${projectNamespace}:${outputName}`;
+  return mkScopedOutputName(projectNamespace, outputName);
 }

@@ -9,7 +9,7 @@ import type {
   ITileMetadata,
 } from "./brain/interfaces";
 import type { BrainJson } from "./brain/model";
-import { BrainDef, brainJsonFromPlain } from "./brain/model";
+import { BrainDef, deserializePersistedBrainJson } from "./brain/model";
 import type { BrainServices } from "./brain/services";
 import { createAppServices, createBrainServices } from "./brain/services-factory";
 import { registerAccessorTileDef } from "./brain/tiles/accessors";
@@ -389,8 +389,18 @@ export interface MindcraftEnvironment {
   readonly appServices: AppServices;
   withServices<T>(callback: (services: BrainServices) => T): T;
   createCatalog(): MindcraftCatalog;
+  /**
+   * Deserialize in-memory brain JSON whose identifiers are already fully
+   * qualified runtime ids (the shape produced by `IBrainDef.toJson`).
+   */
   deserializeBrainJson(json: BrainJson): IBrainDef;
-  deserializeBrainJsonFromPlain(plain: unknown): IBrainDef;
+  /**
+   * Deserialize the raw `JSON.parse` output of persisted brain JSON for the
+   * project identified by `projectNamespace`. Runs registered brain JSON
+   * migrations, then decodes structured identifier references: the loading
+   * project's namespace qualifies refs whose namespace field is absent.
+   */
+  deserializeBrainJsonFromPlain(plain: unknown, projectNamespace: string): IBrainDef;
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void;
   createBrain(definition: IBrainDef, options?: CreateBrainOptions): MindcraftBrain;
   /** Compiles and links a brain definition into a {@link BrainBuildResult}. */
@@ -878,11 +888,11 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     return BrainDef.fromJson(json, this.brainServices, this.buildDeserializeCatalogs());
   }
 
-  deserializeBrainJsonFromPlain(plain: unknown): IBrainDef {
+  deserializeBrainJsonFromPlain(plain: unknown, projectNamespace: string): IBrainDef {
     for (let i = 0; i < this.brainJsonMigrations_.size(); i++) {
       this.brainJsonMigrations_.get(i)!(plain);
     }
-    return this.deserializeBrainJson(brainJsonFromPlain(plain));
+    return deserializePersistedBrainJson(plain, projectNamespace, this.brainServices, this.buildDeserializeCatalogs());
   }
 
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void {

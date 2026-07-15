@@ -110,6 +110,7 @@ export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): 
     customLiteralTypes: [vector2LiteralType],
     getDefaultBrain: archetype ? () => store.getDefaultBrain(archetype) : undefined,
     brainServices: environment.brainServices,
+    projectNamespace: store.activeProjectManifest?.id,
     tileCatalogs: environment.tileCatalogs(),
     onTileHelp,
     docsIntegration,

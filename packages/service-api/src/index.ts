@@ -17,22 +17,10 @@ export {
   validateMindcraftProgramImage,
 } from "./program-image.js";
 export type {
-  MindcraftProjectBrainSelectionError,
-  MindcraftProjectBrainSelectionResult,
-  MindcraftProjectBrainSelector,
-  MindcraftProjectSelectedBrain,
-} from "./project-brain-selection.js";
-export {
-  MindcraftProjectBrainSelectionCode,
-  selectMindcraftProjectBrain,
-} from "./project-brain-selection.js";
-export type {
   MindcraftProjectDocument,
   MindcraftProjectDocumentParseResult,
   MindcraftProjectDocumentValidationError,
   MindcraftProjectExtensions,
-  MindcraftProjectFile,
-  MindcraftProjectTargets,
 } from "./project-document.js";
 export {
   isMindcraftProjectFilePath,
@@ -42,12 +30,6 @@ export {
   parseMindcraftProjectDocument,
   validateMindcraftProjectDocument,
 } from "./project-document.js";
-export type {
-  MindcraftExportCommon,
-  MindcraftExportDocument,
-  MindcraftExportFile,
-  MindcraftExportHost,
-} from "./project-export.js";
 export type {
   SharedProject,
   SharedProjectHostInfo,

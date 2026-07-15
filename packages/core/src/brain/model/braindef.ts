@@ -18,6 +18,7 @@ import {
 import type { BrainServices } from "../services";
 import { type CatalogTileJson, TileCatalog } from "../tiles/catalog";
 import { BrainTilePageDef } from "../tiles/pagetiles";
+import type { PersistedIdRef } from "./brain-json-persisted";
 import { BrainPageDef, type PageJson } from "./pagedef";
 import type { RuleJson } from "./ruledef";
 
@@ -132,6 +133,7 @@ export class BrainDef implements IBrainDef {
   private readonly services_: BrainServices;
   private readonly id_: string;
   private extraCatalogs_?: ReadonlyList<ITileCatalog>;
+  private readonly persistedIdRefs_ = new Dict<string, PersistedIdRef>();
 
   constructor(services: BrainServices, id?: string) {
     this.services_ = services;
@@ -313,10 +315,28 @@ export class BrainDef implements IBrainDef {
     this.syncPageTiles_();
   }
 
+  /**
+   * Structured persisted references keyed by the runtime identifier they
+   * minted at load time. Consulted when this brain is serialized so
+   * identifiers without a live model backing (unresolved tiles, unregistered
+   * variable types) keep their persisted identity.
+   */
+  persistedIdRefs(): Dict<string, PersistedIdRef> {
+    return this.persistedIdRefs_;
+  }
+
+  private copyPersistedIdRefsFrom_(source: BrainDef): void {
+    source.persistedIdRefs_.forEach((ref, id) => {
+      this.persistedIdRefs_.set(id, ref);
+    });
+  }
+
   clone(extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
     // A clone is a new brain: it drops the source id and mints its own.
     const json: BrainJson = { ...this.toJson(), id: undefined };
-    return BrainDef.fromJson(json, this.services_, extraCatalogs ?? this.extraCatalogs_);
+    const cloned = BrainDef.fromJson(json, this.services_, extraCatalogs ?? this.extraCatalogs_);
+    cloned.copyPersistedIdRefsFrom_(this);
+    return cloned;
   }
 
   /**
@@ -328,6 +348,7 @@ export class BrainDef implements IBrainDef {
    * than per-page events, so callers can update UI state in one shot.
    */
   replaceContentFrom(source: BrainDef, extraCatalogs?: ReadonlyList<ITileCatalog>): void {
+    this.copyPersistedIdRefsFrom_(source);
     this.replaceContentFromJson(source.toJson(), extraCatalogs);
   }
 

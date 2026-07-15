@@ -1,5 +1,5 @@
 import type { BrainServices, DiagnosticSeverity } from "@mindcraft-lang/core/brain";
-import type { ConstantOffsets, TypeId, UserActionArtifact } from "@mindcraft-lang/core/runtime";
+import type { ActionKind, ConstantOffsets, TypeId, UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
 import type { DependencyMount, ProjectDependency } from "./extension-mounts.js";
@@ -136,7 +136,7 @@ export interface SourceSpan {
 
 /** Descriptor extracted from a `Sensor({...})`, `Actuator({...})`, or `Conversion({...})` default export. */
 export interface ExtractedDescriptor {
-  kind: "sensor" | "actuator" | "conversion";
+  kind: ActionKind;
   /** Stable id from the source `id` field, or `undefined` when the declaration omits it (the compiler then mints one). */
   id?: string;
   /** Absolute source offset just inside the config object's opening brace, where a minted `id` is inserted on write-back. */

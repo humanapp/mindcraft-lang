@@ -1,8 +1,7 @@
 /**
- * Denormalized copy of the producing app's identity for a shared project.
- *
- * Mirrors `MindcraftExportHost` so listings and previews can be served
- * without fetching the full `.mindcraft` payload from blob storage.
+ * Denormalized copy of the producing app's identity for a shared project,
+ * letting listings and previews be served without fetching the full
+ * `.mindcraft` payload from blob storage.
  */
 export interface SharedProjectHostInfo {
   /** Application identifier of the host that produced the latest revision. */
@@ -47,8 +46,8 @@ export interface SharedProject {
 /**
  * Immutable snapshot of a shared project's content at a point in time.
  *
- * The `.mindcraft` payload itself (a `MindcraftExportDocument`) is not
- * embedded; instead, `payloadUrl` references the blob in object storage.
+ * The `.mindcraft` payload itself is not embedded; instead, `payloadUrl`
+ * references the blob in object storage.
  * This keeps metadata small and lets revisions be listed cheaply.
  */
 export interface SharedProjectRevision {

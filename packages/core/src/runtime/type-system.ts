@@ -8,7 +8,15 @@ import { TypeUtils } from "../platform/types";
 import { UniqueSet } from "../platform/uniqueset";
 import { CoreFuncId, CoreTypeAtomId, type StableIdOwner, TARGET_TYPE_ATOM_BASE } from "./abi-ids";
 import { registerEnumConversions } from "./conversions";
-import { CoreTypeIds, CoreTypeNames, mkTypeId } from "./core-types";
+import {
+  CoreTypeIds,
+  CoreTypeNames,
+  mkConstructedTypeName,
+  mkFunctionTypeName,
+  mkNullableTypeName,
+  mkTypeId,
+  mkUnionTypeName,
+} from "./core-types";
 import { CoreOpId } from "./operator-defs";
 import {
   type EnumPrimitiveValue,
@@ -578,7 +586,7 @@ export class TypeRegistry implements ITypeRegistry {
     if (baseDef.nullable) {
       return baseTypeId;
     }
-    const nullableName = `${baseDef.name}?`;
+    const nullableName = mkNullableTypeName(baseDef.name);
     const typeId = mkTypeId(baseDef.coreType, nullableName);
     if (this.defs.has(typeId)) {
       return typeId;
@@ -613,12 +621,7 @@ export class TypeRegistry implements ITypeRegistry {
         `Type constructor '${constructorName}' expects ${SU.toString(ctor.arity)} argument(s), got ${SU.toString(args.size())}`
       );
     }
-    const parts: string[] = [];
-    args.forEach((a) => {
-      parts.push(a);
-    });
-    const argsStr = parts.join(",");
-    const constructedName = `${constructorName}<${argsStr}>`;
+    const constructedName = mkConstructedTypeName(constructorName, args);
     const typeId = mkTypeId(ctor.coreType, constructedName);
     if (this.defs.has(typeId)) {
       return typeId;
@@ -632,12 +635,7 @@ export class TypeRegistry implements ITypeRegistry {
   }
 
   getOrCreateFunctionType(shape: FunctionTypeShape): TypeId {
-    const parts: string[] = [];
-    shape.paramTypeIds.forEach((pid) => {
-      parts.push(pid);
-    });
-    const paramsStr = parts.join(",");
-    const canonicalName = `Function<(${paramsStr})=>${shape.returnTypeId}>`;
+    const canonicalName = mkFunctionTypeName(shape.paramTypeIds, shape.returnTypeId);
     const typeId = mkTypeId(NativeType.Function, canonicalName);
     if (this.defs.has(typeId)) {
       return typeId;
@@ -702,11 +700,7 @@ export class TypeRegistry implements ITypeRegistry {
       return this.addNullableType(otherTypeId as TypeId);
     }
 
-    const nameParts: string[] = [];
-    sorted.forEach((id) => {
-      nameParts.push(id);
-    });
-    const name = nameParts.join(",");
+    const name = mkUnionTypeName(sorted);
     const typeId = mkTypeId(NativeType.Union, name);
     if (this.defs.has(typeId)) {
       return typeId;
