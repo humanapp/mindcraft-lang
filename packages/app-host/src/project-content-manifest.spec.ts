@@ -132,6 +132,24 @@ describe("parseProjectContentManifest", () => {
     }
   });
 
+  it("carries a declared identity coordinate through", () => {
+    const result = parseProjectContentManifest(
+      JSON.stringify({ name: "P", version: "0.1.0", identity: "example-org/sample-project" })
+    );
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.strictEqual(result.manifest.identity, "example-org/sample-project");
+    }
+  });
+
+  it("omits identity when absent", () => {
+    const result = parseProjectContentManifest(JSON.stringify({ name: "P", version: "0.1.0" }));
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.strictEqual("identity" in result.manifest, false);
+    }
+  });
+
   it("carries a non-empty files string array through", () => {
     const result = parseProjectContentManifest(
       JSON.stringify({ name: "P", version: "0.1.0", files: ["index.ts", "mindcraft.core.d.ts"] })
@@ -234,6 +252,14 @@ describe("validateProjectContentManifest", () => {
     for (const version of ["1.0.0-alpha.1", "1.0.0+build.5", "1.0.0-rc.1+sha.abc"]) {
       const result = validateProjectContentManifest({ name: "P", version });
       assert.strictEqual(result.ok, true, `Expected acceptance for version "${version}"`);
+    }
+  });
+
+  it("rejects a malformed identity with INVALID_IDENTITY", () => {
+    for (const identity of [42, "", "no-slash", "owner/repo/extra", "/repo", "owner/", "-bad/repo", "owner/ repo"]) {
+      const result = validateProjectContentManifest({ name: "P", version: "0.1.0", identity });
+      assert.strictEqual(result.ok, false, `Expected rejection for identity ${JSON.stringify(identity)}`);
+      assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.INVALID_IDENTITY]);
     }
   });
 
@@ -366,6 +392,22 @@ describe("serializeProjectContentManifest", () => {
     const serialized = serializeProjectContentManifest({ name: "P", version: "0.1.0", extensions: {} });
     assert.strictEqual(serialized.includes("description"), false);
     assert.strictEqual(serialized.includes("thumbnailUrl"), false);
+  });
+
+  it("round-trips identity and omits it when absent", () => {
+    const manifest: ProjectContentManifest = {
+      name: "P",
+      version: "0.1.0",
+      identity: "example-org/sample-project",
+      extensions: {},
+    };
+    const result = parseProjectContentManifest(serializeProjectContentManifest(manifest));
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest, manifest);
+    }
+    const withoutIdentity = serializeProjectContentManifest({ name: "P", version: "0.1.0", extensions: {} });
+    assert.strictEqual(withoutIdentity.includes("identity"), false);
   });
 
   it("round-trips a non-empty files list and omits it when empty", () => {

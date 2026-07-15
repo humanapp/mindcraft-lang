@@ -4,6 +4,7 @@ import type { ExtensionClientMessage, ExtensionServerMessage } from "@mindcraft-
 type ExtensionProject = Project<ExtensionClientMessage, ExtensionServerMessage>;
 
 import * as vscode from "vscode";
+import { BuildMembershipTracker } from "./build-membership-tracker";
 import { DiagnosticsManager } from "./diagnostics-manager";
 import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-provider";
 
@@ -38,6 +39,7 @@ export class ProjectManager implements vscode.Disposable {
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _fsProvider = new MindcraftFileSystemProvider();
   private readonly _diagnosticsManager = new DiagnosticsManager();
+  private readonly _buildMembership = new BuildMembershipTracker(MINDCRAFT_SCHEME);
   private _globalState: vscode.Memento | undefined;
   private _workspaceFolderName = DEFAULT_WORKSPACE_FOLDER_NAME;
 
@@ -62,6 +64,10 @@ export class ProjectManager implements vscode.Disposable {
 
   get diagnosticsManager(): DiagnosticsManager {
     return this._diagnosticsManager;
+  }
+
+  get buildMembership(): BuildMembershipTracker {
+    return this._buildMembership;
   }
 
   get project(): ExtensionProject | undefined {
@@ -186,10 +192,12 @@ export class ProjectManager implements vscode.Disposable {
       if (ev.action === "write" && ev.path === "mindcraft.json") {
         this.updateFolderNameFromProject(project);
       }
+      this._buildMembership.refresh(project.files.raw);
     };
     project.fromRemoteFileChange = (ev) => this.handleFilesystemNotification(ev);
 
     this._fsProvider.setFileSystems(project.files.raw, project.files.toRemote);
+    this._buildMembership.refresh(project.files.raw);
 
     this._project = project;
     project.session.start();
@@ -299,6 +307,7 @@ export class ProjectManager implements vscode.Disposable {
     this._project = undefined;
     this._fsProvider.setFileSystems(undefined, undefined);
     this._diagnosticsManager.clear();
+    this._buildMembership.refresh(undefined);
     this._onDidChangeProject.fire();
     this._onDidChangeStatus.fire("disconnected");
     if (this._appBound) {
@@ -347,11 +356,13 @@ export class ProjectManager implements vscode.Disposable {
     }
 
     this._fsProvider.fireChanges(events);
+    this._buildMembership.refresh(this._project?.files.raw);
   }
 
   private fireRootChanged(): void {
     const uri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: "/" });
     this._fsProvider.fireChanges([{ type: vscode.FileChangeType.Changed, uri }]);
+    this._buildMembership.refresh(this._project?.files.raw);
   }
 
   /**
@@ -364,6 +375,21 @@ export class ProjectManager implements vscode.Disposable {
   notifyLocalCreate(paths: readonly string[]): void {
     const events = paths.map((path) => ({
       type: vscode.FileChangeType.Created,
+      uri: vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${path}` }),
+    }));
+    this._fsProvider.fireChanges(events);
+  }
+
+  /**
+   * Fire `Changed` file-view events for `paths` rewritten locally through the
+   * project filesystem, so open editors reload content written outside the
+   * VS Code FileSystemProvider API.
+   *
+   * @param paths - VFS-root-relative paths (no leading slash) that were just rewritten.
+   */
+  notifyLocalWrite(paths: readonly string[]): void {
+    const events = paths.map((path) => ({
+      type: vscode.FileChangeType.Changed,
       uri: vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${path}` }),
     }));
     this._fsProvider.fireChanges(events);
@@ -443,6 +469,7 @@ export class ProjectManager implements vscode.Disposable {
     this.disconnectActive();
     this._fsProvider.dispose();
     this._diagnosticsManager.dispose();
+    this._buildMembership.dispose();
     this._onDidChangeProject.dispose();
     this._onDidChangeStatus.dispose();
     this._onDidChangeAppBound.dispose();

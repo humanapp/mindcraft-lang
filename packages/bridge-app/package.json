@@ -52,6 +52,11 @@
       "browser": "./dist/compilation.js",
       "import": "./dist/compilation.js"
     },
+    "./manifest-files": {
+      "types": "./dist/manifest-files.d.ts",
+      "browser": "./dist/manifest-files.js",
+      "import": "./dist/manifest-files.js"
+    },
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"

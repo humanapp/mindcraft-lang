@@ -1,5 +1,7 @@
+import { addManifestFilesEntry, removeManifestFilesEntry } from "@mindcraft-lang/bridge-app/manifest-files";
 import * as vscode from "vscode";
-import { MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
+import { isBuildMembershipPath } from "../services/build-membership-tracker";
+import { MINDCRAFT_JSON, MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
 import type { ProjectManager } from "../services/project-manager";
 import { isMindcraftEnabled, setMindcraftEnabled } from "../state/context";
 
@@ -108,8 +110,50 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
 
     vscode.commands.registerCommand("mindcraft.unlockMindcraftJson", () => {
       projectManager.fsProvider.unlockMindcraftJson();
+    }),
+
+    vscode.commands.registerCommand("mindcraft.toggleFileInBuild", (uri: vscode.Uri) => {
+      toggleFileInBuild(projectManager, uri);
     })
   );
+}
+
+/**
+ * Toggle `uri`'s membership in the manifest `files` list: add the file when
+ * it is not listed, remove it when it is. Applies a conservative text edit to
+ * mindcraft.json through the project filesystem.
+ */
+function toggleFileInBuild(projectManager: ProjectManager, uri: vscode.Uri): void {
+  const project = projectManager.project;
+  if (!project) {
+    vscode.window.showWarningMessage("Not connected to a Mindcraft session.");
+    return;
+  }
+
+  const path = uri.path.replace(/^\//, "");
+  if (!isBuildMembershipPath(path)) {
+    return;
+  }
+
+  let manifestText: string;
+  try {
+    manifestText = project.files.raw.read(MINDCRAFT_JSON);
+  } catch {
+    vscode.window.showWarningMessage("mindcraft.json could not be read.");
+    return;
+  }
+
+  const tracker = projectManager.buildMembership;
+  const edited = tracker.isInBuild(path)
+    ? removeManifestFilesEntry(manifestText, path)
+    : addManifestFilesEntry(manifestText, path);
+  if (edited === undefined) {
+    vscode.window.showWarningMessage(`Could not update the "files" list in mindcraft.json for ${path}.`);
+    return;
+  }
+
+  project.files.toRemote.write(MINDCRAFT_JSON, edited);
+  projectManager.notifyLocalWrite([MINDCRAFT_JSON]);
 }
 
 async function createFileFromTemplate(

@@ -49,7 +49,11 @@ function isSemver(value: unknown): value is string {
   return typeof value === "string" && SEMVER_PATTERN.test(value);
 }
 
-function isExtensionCoordinate(value: unknown): value is string {
+/**
+ * Tests whether a value is a well-formed extension coordinate: a string in the
+ * form `<owner>/<repo>`, each segment starting with a letter or digit.
+ */
+export function isExtensionCoordinate(value: unknown): value is string {
   return typeof value === "string" && COORDINATE_PATTERN.test(value);
 }
 
@@ -97,6 +101,11 @@ export interface ProjectContentManifest {
   readonly name: string;
   /** Semver version of the project's content. */
   readonly version: string;
+  /**
+   * The project's own declared `<owner>/<repo>` coordinate: the identity the
+   * project publishes under. Present only when the file carries one.
+   */
+  readonly identity?: string;
   /** Free-form project description; present only when the file carries one. */
   readonly description?: string;
   /** URL or data URI of a project thumbnail image; present only when the file carries one. */
@@ -148,6 +157,7 @@ export interface ProjectContentManifest {
 const MANIFEST_SCHEMA_FIELDS: ReadonlySet<string> = new Set([
   "name",
   "version",
+  "identity",
   "description",
   "thumbnailUrl",
   "extensions",
@@ -161,6 +171,7 @@ export const ProjectContentManifestErrorCode = {
   INVALID_JSON: "PROJECT_MANIFEST_INVALID_JSON",
   INVALID_ROOT: "PROJECT_MANIFEST_INVALID_ROOT",
   INVALID_NAME: "PROJECT_MANIFEST_INVALID_NAME",
+  INVALID_IDENTITY: "PROJECT_MANIFEST_INVALID_IDENTITY",
   INVALID_FILES: "PROJECT_MANIFEST_INVALID_FILES",
   INVALID_AMBIENT: "PROJECT_MANIFEST_INVALID_AMBIENT",
   INVALID_TARGETS: "PROJECT_MANIFEST_INVALID_TARGETS",
@@ -314,11 +325,12 @@ export function parseProjectContentManifest(content: string): ProjectContentMani
 
 /**
  * Validate a parsed project content manifest. String `description` and
- * `thumbnailUrl` fields are carried through; string-array `files` and `ambient`
- * fields are carried through when non-empty; fields outside the manifest
- * schema are carried through verbatim as `extras`; an absent `extensions`
- * field yields an empty extensions map. A missing or non-semver `version` is
- * read as the lowest content version (`"0.0.0"`).
+ * `thumbnailUrl` fields are carried through; an `identity` field must be an
+ * `<owner>/<repo>` coordinate and is carried through; string-array `files` and
+ * `ambient` fields are carried through when non-empty; fields outside the
+ * manifest schema are carried through verbatim as `extras`; an absent
+ * `extensions` field yields an empty extensions map. A missing or non-semver
+ * `version` is read as the lowest content version (`"0.0.0"`).
  *
  * @param value - Parsed JSON value of a `mindcraft.json` file.
  */
@@ -347,6 +359,19 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
   }
 
   const version = isSemver(value.version) ? value.version : LOWEST_CONTENT_VERSION;
+
+  let identity: string | undefined;
+  if (value.identity !== undefined) {
+    if (!isExtensionCoordinate(value.identity)) {
+      errors.push({
+        code: ProjectContentManifestErrorCode.INVALID_IDENTITY,
+        path: "$.identity",
+        message: '$.identity must be an "<owner>/<repo>" coordinate when present.',
+      });
+    } else {
+      identity = value.identity;
+    }
+  }
 
   let files: readonly string[] | undefined;
   if (value.files !== undefined) {
@@ -418,6 +443,7 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
     manifest: {
       name: value.name as string,
       version,
+      ...(identity !== undefined ? { identity } : {}),
       ...(typeof value.description === "string" ? { description: value.description } : {}),
       ...(typeof value.thumbnailUrl === "string" ? { thumbnailUrl: value.thumbnailUrl } : {}),
       extensions,
@@ -440,6 +466,7 @@ export function serializeProjectContentManifest(manifest: ProjectContentManifest
     {
       name: manifest.name,
       version: manifest.version,
+      ...(manifest.identity !== undefined ? { identity: manifest.identity } : {}),
       ...(manifest.description !== undefined ? { description: manifest.description } : {}),
       ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
       ...(Object.keys(manifest.extensions).length > 0 ? { extensions: manifest.extensions } : {}),

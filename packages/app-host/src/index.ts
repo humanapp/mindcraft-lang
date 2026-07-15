@@ -10,7 +10,11 @@ export type {
   PublishFile,
   PublishVersionBump,
 } from "./extension-publish.js";
-export { ExtensionPublishErrorCode, publishExtensionVersion } from "./extension-publish.js";
+export {
+  deriveCoordinateFromRemoteUrl,
+  ExtensionPublishErrorCode,
+  publishExtensionVersion,
+} from "./extension-publish.js";
 export { createIdbProjectStore } from "./idb-project-store.js";
 export type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";
 export { createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";
@@ -41,6 +45,7 @@ export type {
   ProjectContentManifestParseResult,
 } from "./project-content-manifest.js";
 export {
+  isExtensionCoordinate,
   ProjectContentManifestErrorCode,
   parseExtensionReference,
   parseProjectContentManifest,

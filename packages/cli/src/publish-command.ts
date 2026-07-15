@@ -8,27 +8,50 @@ import type {
   PublishFile,
   PublishVersionBump,
 } from "@mindcraft-lang/app-host";
-import { ExtensionPublishErrorCode, MINDCRAFT_JSON_PATH, publishExtensionVersion } from "@mindcraft-lang/app-host";
+import {
+  deriveCoordinateFromRemoteUrl,
+  ExtensionPublishErrorCode,
+  MINDCRAFT_JSON_PATH,
+  parseProjectContentManifest,
+  publishExtensionVersion,
+  serializeProjectContentManifest,
+} from "@mindcraft-lang/app-host";
 import { GitCommandError, git, tryGit } from "./git.js";
 
-const PUBLISH_USAGE = `usage: mindcraft publish <patch|minor|major> [--dir <path>] [--remote <url>] [--yes]
+const PUBLISH_USAGE = `usage: mindcraft publish [patch|minor|major] [--dir <path>] [--remote <url>] [--yes]
 
-Publishes the next version of the Mindcraft project in --dir (default: the
-current directory). Without --remote, the directory must be a git checkout
-whose repository is the project: the manifest version is bumped, committed,
-tagged v<version>, and the branch and tag are pushed to origin. With --remote,
-the project's published tree (mindcraft.json plus its manifest-listed files)
-is committed to that remote's default branch and tagged v<version>.
+Publishes a version of the Mindcraft project in --dir (default: the current
+directory). With a version bump, the manifest version is incremented; without
+one, the manifest's current version is published as-is, which is valid only as
+a first publish to a repository that has no tags. Every publish stamps the
+published manifest's identity field with the <owner>/<repo> coordinate derived
+from the publish remote (origin without --remote); a warning is printed when
+the stamp changes a previously recorded identity. Without --remote, the
+directory must be a git checkout whose repository is the project: the publish
+is committed, tagged v<version>, and the branch and tag are pushed to origin.
+With --remote, the project's published tree (mindcraft.json plus its
+manifest-listed files) is committed to that remote's default branch and tagged
+v<version>, and the published version and identity are written back to the
+project directory's mindcraft.json.
 
   --dir <path>     project directory (default: current directory)
   --remote <url>   git remote to publish the project tree to
   --yes            confirm publishing a project with local: dependencies
 `;
 
+/** Stable identifiers for publish command failures beyond the engine's refusals. */
+export const PublishCommandErrorCode = {
+  WRITE_BACK_FAILED: "PUBLISH_WRITE_BACK_FAILED",
+} as const;
+
+/** Union of all {@link PublishCommandErrorCode} values. */
+export type PublishCommandErrorCode = (typeof PublishCommandErrorCode)[keyof typeof PublishCommandErrorCode];
+
 const VERSION_BUMPS: readonly PublishVersionBump[] = ["patch", "minor", "major"];
 
 interface PublishArguments {
-  bump: PublishVersionBump;
+  /** Version component to increment; absent for an as-is first publish. */
+  bump: PublishVersionBump | undefined;
   dir: string;
   remote: string | undefined;
   yes: boolean;
@@ -69,9 +92,6 @@ function parsePublishArguments(args: readonly string[]): PublishArguments | stri
     }
   }
 
-  if (bump === undefined) {
-    return "expected a version bump: patch, minor, or major";
-  }
   return { bump, dir, remote, yes };
 }
 
@@ -135,11 +155,21 @@ function checkoutPublishBackend(dir: string): ExtensionPublishBackend {
       const remoteTag = await git(dir, "ls-remote", "--tags", "origin", `refs/tags/${tag}`);
       return remoteTag.trim() !== "";
     },
+    hasAnyTags: async () => {
+      if ((await git(dir, "tag", "--list")).trim() !== "") {
+        return true;
+      }
+      return (await git(dir, "ls-remote", "--tags", "origin")).trim() !== "";
+    },
     readHeadManifest: () => tryGit(dir, "show", `HEAD:${MINDCRAFT_JSON_PATH}`),
     apply: async ({ tag, files }) => {
       await writePublishFiles(dir, files);
       await git(dir, "add", "--", ...files.map((file) => file.path));
-      await git(dir, "commit", "-m", tag);
+      // An as-is publish can leave the tree identical to head; the tag alone
+      // records the publish then.
+      if ((await tryGit(dir, "diff", "--cached", "--quiet")) === undefined) {
+        await git(dir, "commit", "-m", tag);
+      }
       await git(dir, "tag", tag);
       await git(dir, "push", "origin", "HEAD", `refs/tags/${tag}`);
     },
@@ -148,11 +178,14 @@ function checkoutPublishBackend(dir: string): ExtensionPublishBackend {
 
 /**
  * Publish the checkout at `dir` in place: bump, commit, tag, and push on the
- * repository the directory itself is a checkout of.
+ * repository the directory itself is a checkout of. The stamped identity
+ * coordinate derives from the checkout's `origin` remote URL.
  */
 async function publishInCheckout(options: PublishArguments): Promise<ExtensionPublishResult> {
+  const originUrl = (await tryGit(options.dir, "remote", "get-url", "origin"))?.trim();
   return publishExtensionVersion({
     bump: options.bump,
+    coordinate: originUrl === undefined ? undefined : deriveCoordinateFromRemoteUrl(originUrl),
     allowLocalDependencies: options.yes,
     source: directoryContentSource(options.dir),
     backend: checkoutPublishBackend(options.dir),
@@ -162,7 +195,8 @@ async function publishInCheckout(options: PublishArguments): Promise<ExtensionPu
 /**
  * Publish the project directory's manifest-described tree to `remote` through
  * a temporary clone: the clone's working tree is replaced with the publish
- * files, committed to the remote's default branch, tagged, and pushed.
+ * files, committed to the remote's default branch, tagged, and pushed. The
+ * stamped identity coordinate derives from the `remote` URL.
  */
 async function publishToRemote(options: PublishArguments, remote: string): Promise<ExtensionPublishResult> {
   const scratch = await mkdtemp(path.join(tmpdir(), "mindcraft-publish-"));
@@ -174,6 +208,7 @@ async function publishToRemote(options: PublishArguments, remote: string): Promi
     const backend: ExtensionPublishBackend = {
       isClean: async () => true,
       tagExists: async (tag) => (await tryGit(clone, "rev-parse", "--verify", `refs/tags/${tag}`)) !== undefined,
+      hasAnyTags: async () => (await git(clone, "tag", "--list")).trim() !== "",
       readHeadManifest: async () => {
         try {
           return await readFile(path.join(clone, MINDCRAFT_JSON_PATH), "utf8");
@@ -197,6 +232,7 @@ async function publishToRemote(options: PublishArguments, remote: string): Promi
 
     return await publishExtensionVersion({
       bump: options.bump,
+      coordinate: deriveCoordinateFromRemoteUrl(remote),
       allowLocalDependencies: options.yes,
       source: directoryContentSource(options.dir),
       backend,
@@ -204,6 +240,21 @@ async function publishToRemote(options: PublishArguments, remote: string): Promi
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
+}
+
+/**
+ * Write a successful publish's version and stamped identity into the source
+ * directory's `mindcraft.json` through the manifest serializer, leaving every
+ * other field as parsed. Throws when the manifest cannot be read, parsed, or
+ * written.
+ */
+async function writeBackPublishedManifest(dir: string, version: string, identity: string): Promise<void> {
+  const manifestPath = path.join(dir, MINDCRAFT_JSON_PATH);
+  const parsed = parseProjectContentManifest(await readFile(manifestPath, "utf8"));
+  if (!parsed.ok) {
+    throw new Error(`${manifestPath} is no longer a valid content manifest`);
+  }
+  await writeFile(manifestPath, serializeProjectContentManifest({ ...parsed.manifest, version, identity }));
 }
 
 /**
@@ -226,6 +277,22 @@ export async function runPublishCommand(args: readonly string[]): Promise<number
         process.stderr.write("Pass --yes to publish anyway.\n");
       }
       return 1;
+    }
+    if (result.previousIdentity !== undefined) {
+      process.stderr.write(`warning: identity changed: ${result.previousIdentity} -> ${result.identity}\n`);
+    }
+    if (parsed.remote !== undefined) {
+      try {
+        await writeBackPublishedManifest(parsed.dir, result.version, result.identity);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        process.stderr.write(
+          `mindcraft publish: ${PublishCommandErrorCode.WRITE_BACK_FAILED}: version ${result.version} was ` +
+            `published (tag ${result.tag}), but writing it back to ${path.join(parsed.dir, MINDCRAFT_JSON_PATH)} ` +
+            `failed: ${message}\n`
+        );
+        return 1;
+      }
     }
     process.stdout.write(`published ${result.version} (tag ${result.tag})\n`);
     return 0;

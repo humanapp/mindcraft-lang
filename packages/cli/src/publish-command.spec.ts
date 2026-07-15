@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
+import { chmod, cp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { deriveCoordinateFromRemoteUrl } from "@mindcraft-lang/app-host";
 import {
   cloneAtTag,
   initBareRemote,
@@ -31,9 +32,15 @@ after(async () => {
   }
 });
 
+async function readManifest(dir: string): Promise<{ version: string; identity?: string }> {
+  return JSON.parse(await readFile(path.join(dir, "mindcraft.json"), "utf8")) as {
+    version: string;
+    identity?: string;
+  };
+}
+
 async function readManifestVersion(dir: string): Promise<string> {
-  const manifest = JSON.parse(await readFile(path.join(dir, "mindcraft.json"), "utf8")) as { version: string };
-  return manifest.version;
+  return (await readManifest(dir)).version;
 }
 
 describe("mindcraft publish to a remote (constructed mode)", () => {
@@ -68,12 +75,13 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
 
   it("carries unknown manifest fields through the bump byte-faithfully", async () => {
     const root = await scratch();
-    const remote = await initBareRemote(root);
+    const remote = await initBareRemote(root, "example-org/blinker.git");
     const project = path.join(root, "project");
     const original = JSON.stringify(
       {
         name: "Blinker",
         version: "0.1.0",
+        identity: "example-org/blinker",
         files: ["index.ts"],
         brains: { main: { rules: [1, 2, 3], nested: { deep: true } } },
         appChunk: ["verbatim", null, 4],
@@ -91,21 +99,122 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     assert.equal(published, original.replace('"version": "0.1.0"', '"version": "0.1.1"'));
   });
 
-  it("refuses to republish when the source manifest was not bumped", async () => {
+  it("writes the published version and identity back so a repeat publish succeeds", async () => {
     const root = await scratch();
-    const remote = await initBareRemote(root);
+    const remote = await initBareRemote(root, "example-org/blinker.git");
     const project = path.join(root, "project");
+    const brains = { main: { rules: [1, 2, 3], nested: { deep: true } } };
+    const appChunk = ["verbatim", null, 4];
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.1.0", files: ["index.ts"] }, null, 2),
+      "mindcraft.json": JSON.stringify(
+        { name: "Blinker", version: "0.1.0", files: ["index.ts"], brains, appChunk },
+        null,
+        2
+      ),
       "index.ts": "export {};\n",
     });
 
     const first = await runCliBin(project, "publish", "patch", "--remote", remote);
     assert.equal(first.code, 0, first.stderr);
+    assert.doesNotMatch(first.stderr, /identity changed/);
 
+    const writtenBack = await readFile(path.join(project, "mindcraft.json"), "utf8");
+    const expected = JSON.stringify(
+      {
+        name: "Blinker",
+        version: "0.1.1",
+        identity: "example-org/blinker",
+        files: ["index.ts"],
+        brains,
+        appChunk,
+      },
+      null,
+      2
+    );
+    assert.equal(writtenBack, expected);
+
+    const second = await runCliBin(project, "publish", "patch", "--remote", remote);
+    assert.equal(second.code, 0, second.stderr);
+    assert.doesNotMatch(second.stderr, /identity changed/);
+    assert.match(second.stdout, /published 0\.1\.2 \(tag v0\.1\.2\)/);
+    const clone = await cloneAtTag(root, remote, "v0.1.2");
+    assert.equal(await readManifestVersion(clone), "0.1.2");
+  });
+
+  it("still refuses when the source manifest version is manually reverted", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root);
+    const project = path.join(root, "project");
+    const manifest = JSON.stringify({ name: "Blinker", version: "0.1.0", files: ["index.ts"] }, null, 2);
+    await writeProjectFiles(project, { "mindcraft.json": manifest, "index.ts": "export {};\n" });
+
+    const first = await runCliBin(project, "publish", "patch", "--remote", remote);
+    assert.equal(first.code, 0, first.stderr);
+
+    await writeProjectFiles(project, { "mindcraft.json": manifest });
     const second = await runCliBin(project, "publish", "patch", "--remote", remote);
     assert.equal(second.code, 1);
     assert.match(second.stderr, /PUBLISH_VERSION_ALREADY_PUBLISHED/);
+  });
+
+  it("restamps a changed identity with a warning, and the write-back makes the next publish warning-free", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "example-org/blinker.git");
+    const project = path.join(root, "project");
+    await writeProjectFiles(project, {
+      "mindcraft.json": JSON.stringify(
+        { name: "Blinker", version: "0.3.0", identity: "old-org/blinker", files: ["index.ts"] },
+        null,
+        2
+      ),
+      "index.ts": "export {};\n",
+    });
+
+    const first = await runCliBin(project, "publish", "--remote", remote);
+    assert.equal(first.code, 0, first.stderr);
+    assert.match(first.stderr, /warning: identity changed: old-org\/blinker -> example-org\/blinker/);
+    const clone = await cloneAtTag(root, remote, "v0.3.0");
+    assert.equal((await readManifest(clone)).identity, "example-org/blinker");
+    assert.equal((await readManifest(project)).identity, "example-org/blinker");
+
+    const second = await runCliBin(project, "publish", "patch", "--remote", remote);
+    assert.equal(second.code, 0, second.stderr);
+    assert.doesNotMatch(second.stderr, /identity changed/);
+    assert.match(second.stdout, /published 0\.3\.1 \(tag v0\.3\.1\)/);
+  });
+
+  it("refuses a remote that yields no identity coordinate", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "_remote.git");
+    const project = path.join(root, "project");
+    await writeProjectFiles(project, {
+      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.1.0" }, null, 2),
+    });
+
+    const result = await runCliBin(project, "publish", "patch", "--remote", remote);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /PUBLISH_IDENTITY_UNKNOWN/);
+  });
+
+  it("reports a write-back failure after a successful publish", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root);
+    const project = path.join(root, "project");
+    await writeProjectFiles(project, {
+      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.1.0" }, null, 2),
+    });
+
+    await chmod(path.join(project, "mindcraft.json"), 0o444);
+    try {
+      const result = await runCliBin(project, "publish", "patch", "--remote", remote);
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /PUBLISH_WRITE_BACK_FAILED/);
+      assert.match(result.stderr, /was published \(tag v0\.1\.1\)/);
+    } finally {
+      await chmod(path.join(project, "mindcraft.json"), 0o644);
+    }
+    const clone = await cloneAtTag(root, remote, "v0.1.1");
+    assert.equal(await readManifestVersion(clone), "0.1.1");
   });
 
   it("refuses local dependencies without --yes and proceeds with it", async () => {
@@ -151,6 +260,50 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     assert.match(escaped.stderr, /PUBLISH_LISTED_FILE_MISSING/);
   });
 
+  it("publishes the manifest's current version as-is to an empty remote, stamping the identity", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "example-org/blinker.git");
+    const project = path.join(root, "project");
+    await writeProjectFiles(project, {
+      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.4.0", files: ["index.ts"] }, null, 2),
+      "index.ts": "export {};\n",
+    });
+
+    const result = await runCliBin(project, "publish", "--remote", remote);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /published 0\.4\.0 \(tag v0\.4\.0\)/);
+    assert.doesNotMatch(result.stderr, /identity changed/);
+
+    const clone = await cloneAtTag(root, remote, "v0.4.0");
+    assert.deepEqual(await readManifest(clone), await readManifest(project));
+    assert.equal((await readManifest(clone)).version, "0.4.0");
+    assert.equal((await readManifest(clone)).identity, "example-org/blinker");
+  });
+
+  it("refuses an as-is publish to a remote that was already published", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root);
+    const project = path.join(root, "project");
+    await writeProjectFiles(project, {
+      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.4.0" }, null, 2),
+    });
+
+    const first = await runCliBin(project, "publish", "--remote", remote);
+    assert.equal(first.code, 0, first.stderr);
+
+    await writeProjectFiles(project, {
+      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.5.0" }, null, 2),
+    });
+    const second = await runCliBin(project, "publish", "--remote", remote);
+    assert.equal(second.code, 1);
+    assert.match(second.stderr, /PUBLISH_VERSION_BUMP_REQUIRED/);
+
+    const bumped = await runCliBin(project, "publish", "patch", "--remote", remote);
+    assert.equal(bumped.code, 0, bumped.stderr);
+    assert.match(bumped.stdout, /published 0\.5\.1 \(tag v0\.5\.1\)/);
+  });
+
   it("refuses a directory without a manifest", async () => {
     const root = await scratch();
     const remote = await initBareRemote(root);
@@ -177,6 +330,7 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /published 0\.3\.0 \(tag v0\.3\.0\)/);
     assert.equal(await readManifestVersion(checkout), "0.3.0");
+    assert.equal((await readManifest(checkout)).identity, deriveCoordinateFromRemoteUrl(remote));
     assert.equal((await runGit(checkout, "status", "--porcelain")).trim(), "");
 
     const clone = await cloneAtTag(root, remote, "v0.3.0");
@@ -201,6 +355,66 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     assert.equal(result.code, 1);
     assert.match(result.stderr, /PUBLISH_UNCOMMITTED_CHANGES/);
     assert.equal((await runGit(checkout, "tag", "--list")).trim(), "");
+  });
+
+  it("publishes the manifest's current version as-is on an untagged checkout, and only once", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root);
+    const checkout = await initCheckoutProject(root, remote, {
+      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
+      "index.ts": "export const blink = true;\n",
+    });
+
+    const result = await runCliBin(checkout, "publish");
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /published 0\.2\.0 \(tag v0\.2\.0\)/);
+    assert.doesNotMatch(result.stderr, /identity changed/);
+    assert.equal(await readManifestVersion(checkout), "0.2.0");
+    assert.equal((await readManifest(checkout)).identity, deriveCoordinateFromRemoteUrl(remote));
+    // The identity stamp changed the manifest, so this as-is publish commits.
+    assert.equal((await runGit(checkout, "rev-list", "--count", "HEAD")).trim(), "2");
+    assert.equal((await runGit(checkout, "status", "--porcelain")).trim(), "");
+
+    const clone = await cloneAtTag(root, remote, "v0.2.0");
+    assert.equal(await readManifestVersion(clone), "0.2.0");
+    assert.equal((await readManifest(clone)).identity, deriveCoordinateFromRemoteUrl(remote));
+
+    const second = await runCliBin(checkout, "publish");
+    assert.equal(second.code, 1);
+    assert.match(second.stderr, /PUBLISH_VERSION_BUMP_REQUIRED/);
+  });
+
+  it("records an as-is publish as a tag only when the manifest already carries the identity", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "example-org/blinker.git");
+    const checkout = await initCheckoutProject(root, remote, {
+      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0", identity: "example-org/blinker" }, null, 2),
+      "index.ts": "export const blink = true;\n",
+    });
+
+    const result = await runCliBin(checkout, "publish");
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.doesNotMatch(result.stderr, /identity changed/);
+    assert.equal((await runGit(checkout, "rev-list", "--count", "HEAD")).trim(), "1");
+    const head = (await runGit(checkout, "rev-parse", "HEAD")).trim();
+    assert.equal((await runGit(checkout, "rev-parse", "v0.2.0^{commit}")).trim(), head);
+  });
+
+  it("refuses when the checkout has no origin remote to derive the identity from", async () => {
+    const root = await scratch();
+    const checkout = path.join(root, "checkout");
+    await writeProjectFiles(checkout, {
+      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
+    });
+    await runGit(checkout, "init", "--quiet");
+    await runGit(checkout, "add", "--all");
+    await runGit(checkout, "commit", "--quiet", "-m", "initial content");
+
+    const result = await runCliBin(checkout, "publish", "patch");
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /PUBLISH_IDENTITY_UNKNOWN/);
   });
 
   it("refuses a publish onto an existing tag", async () => {
@@ -241,9 +455,11 @@ describe("mindcraft command surface", () => {
     assert.equal(badBump.code, 1);
     assert.match(badBump.stderr, /usage: mindcraft publish/);
 
+    // Bare publish is the as-is surface; in a directory with no project it
+    // refuses on the missing manifest, not on the missing bump argument.
     const noBump = await runCliBin(root, "publish");
     assert.equal(noBump.code, 1);
-    assert.match(noBump.stderr, /expected a version bump/);
+    assert.match(noBump.stderr, /PUBLISH_MANIFEST_MISSING/);
   });
 });
 
@@ -258,8 +474,13 @@ describe("publishing the codal-position extension content", () => {
     async () => {
       const root = await scratch();
       const remote = await initBareRemote(root);
+      // A successful publish to a remote writes the published version and
+      // identity back into --dir, so the real extension source is copied to
+      // scratch and the copy is published.
+      const project = path.join(root, "codal-position-ext");
+      await cp(CODAL_POSITION_EXT_DIR, project, { recursive: true });
 
-      const result = await runCliBin(root, "publish", "patch", "--dir", CODAL_POSITION_EXT_DIR, "--remote", remote);
+      const result = await runCliBin(root, "publish", "patch", "--dir", project, "--remote", remote);
 
       assert.equal(result.code, 0, result.stderr);
       assert.match(result.stdout, /published 0\.1\.1 \(tag v0\.1\.1\)/);

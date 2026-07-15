@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 import { registerCommands } from "./commands";
+import { BuildMembershipCodeLensProvider } from "./providers/build-membership-codelens-provider";
+import { BuildMembershipDecorationProvider } from "./providers/build-membership-decoration-provider";
 import { MindcraftJsonCodeLensProvider } from "./providers/mindcraft-json-codelens-provider";
 import { MINDCRAFT_SCHEME } from "./services/mindcraft-fs-provider";
 import { ProjectManager } from "./services/project-manager";
@@ -15,9 +17,16 @@ export function activate(context: vscode.ExtensionContext) {
       isCaseSensitive: true,
     }),
     vscode.window.registerFileDecorationProvider(projectManager.fsProvider),
+    vscode.window.registerFileDecorationProvider(
+      new BuildMembershipDecorationProvider(MINDCRAFT_SCHEME, projectManager.buildMembership)
+    ),
     vscode.languages.registerCodeLensProvider(
       { scheme: MINDCRAFT_SCHEME, pattern: "**/mindcraft.json" },
       new MindcraftJsonCodeLensProvider(projectManager.fsProvider)
+    ),
+    vscode.languages.registerCodeLensProvider(
+      { scheme: MINDCRAFT_SCHEME },
+      new BuildMembershipCodeLensProvider(projectManager.buildMembership)
     )
   );
 

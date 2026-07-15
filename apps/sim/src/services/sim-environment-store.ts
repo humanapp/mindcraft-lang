@@ -1,5 +1,4 @@
 import {
-  buildActiveProjectExportDocument,
   createIdbProjectStore,
   createWebLocksProjectLock,
   DEFAULT_PROJECT_NAME,
@@ -35,6 +34,7 @@ import { ARCHETYPES } from "@/brain/archetypes";
 import type { Obstacle } from "@/brain/vision";
 import { name as simName, version as simVersion } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
+import { buildSimExportDocument } from "./project-io";
 import { simDefaultExtensions, simEmbeddedExtensions } from "./sim-embedded-extensions";
 
 /**
@@ -506,34 +506,7 @@ export class SimEnvironmentStore {
   // -- Project export / import --
 
   async exportProject(): Promise<string> {
-    const pm = this.host.projectManager;
-
-    const doc = await buildActiveProjectExportDocument(pm);
-
-    const counts = this.getDesiredCounts();
-    const actors: { archetype: string; brain: string | null; desiredCount: number }[] = [];
-    for (const archetype of Object.keys(ARCHETYPES)) {
-      const hasBrain = archetype in (doc.brains as Record<string, unknown>);
-      actors.push({
-        archetype,
-        brain: hasBrain ? archetype : null,
-        desiredCount: counts[archetype as Archetype] ?? 0,
-      });
-    }
-
-    const app: { actors: typeof actors; obstacles?: Obstacle[] } = { actors };
-    const obstacles = this._obstacles;
-    if (obstacles && obstacles.length > 0) {
-      app.obstacles = obstacles.map((o) => ({
-        x: o.x,
-        y: o.y,
-        width: o.width,
-        height: o.height,
-        ...(o.rotation !== undefined ? { rotation: o.rotation } : {}),
-      }));
-    }
-
-    return JSON.stringify({ ...doc, targets: { ...doc.targets, [simName]: app } }, null, 2);
+    return buildSimExportDocument(this.host.projectManager, this.getDesiredCounts(), this._obstacles);
   }
 
   async importProject(file: File): Promise<ImportResult> {

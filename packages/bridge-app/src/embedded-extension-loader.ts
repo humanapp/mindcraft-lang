@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, relative, resolve, sep } from "node:path";
 import { MINDCRAFT_JSON_PATH, parseProjectContentManifest } from "@mindcraft-lang/app-host";
 import type { EmbeddedExtension, EmbeddedExtensionFile } from "./embedded-extensions.js";
+import { findMissingListedFiles } from "./manifest-files.js";
 
 /**
  * Map a manifest `files` entry to the extension-relative path it occupies in the
@@ -46,7 +47,7 @@ function readManifestFiles(dir: string): { manifestText: string; files: readonly
  */
 export function findMissingExtensionFiles(dir: string): readonly string[] {
   const { files } = readManifestFiles(dir);
-  return files.filter((entry) => !existsSync(resolve(dir, entry)));
+  return findMissingListedFiles(files, (entry) => existsSync(resolve(dir, entry)));
 }
 
 /**

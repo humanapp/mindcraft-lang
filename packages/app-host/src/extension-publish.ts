@@ -1,10 +1,43 @@
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import {
+  isExtensionCoordinate,
   parseExtensionReference,
   parseProjectContentManifest,
   readExplicitContentManifestVersion,
   serializeProjectContentManifest,
 } from "./project-content-manifest.js";
+
+/**
+ * Derive the `<owner>/<repo>` extension coordinate a git remote URL publishes
+ * under: the last two segments of the URL's path, with a trailing `.git`
+ * stripped. Handles scp-like remotes (`git@github.com:owner/repo.git`), URL
+ * remotes (`ssh://git@github.com/owner/repo`, `https://github.com/owner/repo`),
+ * and plain paths. Returns `undefined` when the URL yields fewer than two path
+ * segments or the segments do not form a valid coordinate.
+ */
+export function deriveCoordinateFromRemoteUrl(url: string): string | undefined {
+  let remotePath = url;
+  const scheme = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.exec(remotePath);
+  if (scheme) {
+    // URL form: the path follows the authority.
+    const rest = remotePath.slice(scheme[0].length);
+    const slash = rest.indexOf("/");
+    if (slash === -1) return undefined;
+    remotePath = rest.slice(slash + 1);
+  } else {
+    // scp-like form: the path follows the colon after user@host.
+    const scpLike = /^[^/]+@[^/:]+:(.*)$/.exec(remotePath);
+    if (scpLike) remotePath = scpLike[1];
+  }
+  remotePath = remotePath.replace(/\/+$/, "");
+  if (remotePath.endsWith(".git")) {
+    remotePath = remotePath.slice(0, -".git".length);
+  }
+  const segments = remotePath.split("/").filter((segment) => segment !== "");
+  if (segments.length < 2) return undefined;
+  const coordinate = `${segments[segments.length - 2]}/${segments[segments.length - 1]}`;
+  return isExtensionCoordinate(coordinate) ? coordinate : undefined;
+}
 
 /** Version component a publish increments. */
 export type PublishVersionBump = "patch" | "minor" | "major";
@@ -38,8 +71,8 @@ export interface ExtensionPublishCommit {
   /** Tag naming the published version (`v<version>`). */
   readonly tag: string;
   /**
-   * The published tree: the bumped `mindcraft.json` first, followed by each
-   * manifest-listed file.
+   * The published tree: the `mindcraft.json` carrying the published version
+   * first, followed by each manifest-listed file.
    */
   readonly files: readonly PublishFile[];
 }
@@ -50,6 +83,8 @@ export interface ExtensionPublishBackend {
   isClean(): Promise<boolean>;
   /** Resolves `true` when `tag` already exists on the target repository. */
   tagExists(tag: string): Promise<boolean>;
+  /** Resolves `true` when the target repository has at least one tag. */
+  hasAnyTags(): Promise<boolean>;
   /**
    * Text of `mindcraft.json` at the target repository's current head, or
    * `undefined` when the repository is empty or its head carries none.
@@ -63,9 +98,11 @@ export interface ExtensionPublishBackend {
 export const ExtensionPublishErrorCode = {
   MANIFEST_MISSING: "PUBLISH_MANIFEST_MISSING",
   MANIFEST_INVALID: "PUBLISH_MANIFEST_INVALID",
+  IDENTITY_UNKNOWN: "PUBLISH_IDENTITY_UNKNOWN",
   LOCAL_DEPENDENCIES_UNCONFIRMED: "PUBLISH_LOCAL_DEPENDENCIES_UNCONFIRMED",
   UNCOMMITTED_CHANGES: "PUBLISH_UNCOMMITTED_CHANGES",
   VERSION_ALREADY_PUBLISHED: "PUBLISH_VERSION_ALREADY_PUBLISHED",
+  VERSION_BUMP_REQUIRED: "PUBLISH_VERSION_BUMP_REQUIRED",
   TAG_EXISTS: "PUBLISH_TAG_EXISTS",
   LISTED_FILE_MISSING: "PUBLISH_LISTED_FILE_MISSING",
 } as const;
@@ -90,6 +127,13 @@ export type ExtensionPublishResult =
       readonly version: string;
       /** Tag recording the published version. */
       readonly tag: string;
+      /** Coordinate stamped as the published manifest's identity. */
+      readonly identity: string;
+      /**
+       * Identity the source manifest declared before this publish, present
+       * only when the stamped coordinate replaced a different value.
+       */
+      readonly previousIdentity?: string;
     }
   | {
       /** False when the publish was refused before being applied. */
@@ -100,8 +144,18 @@ export type ExtensionPublishResult =
 
 /** Options for {@link publishExtensionVersion}. */
 export interface ExtensionPublishOptions {
-  /** Version component to increment. */
-  readonly bump: PublishVersionBump;
+  /**
+   * Version component to increment. When absent, the manifest's current
+   * version is published as-is; this is valid only as a first publish, to a
+   * repository that has no tags.
+   */
+  readonly bump?: PublishVersionBump;
+  /**
+   * The `<owner>/<repo>` coordinate the publish stamps into the published
+   * manifest's `identity`, derived from the target repository's remote. A
+   * publish without one is refused.
+   */
+  readonly coordinate?: string;
   /**
    * Confirms publishing a project whose extensions map contains `local:`
    * references. Without this confirmation such a publish is refused.
@@ -133,16 +187,22 @@ function bumpVersion(version: string, bump: PublishVersionBump): string {
 }
 
 /**
- * Publish the next version of a project: reads the project's manifest, bumps
- * its `version` by `bump`, and records the published tree -- the bumped
- * `mindcraft.json` plus every manifest-listed file -- on the target repository
- * as a commit tagged `v<version>`.
+ * Publish a version of a project: reads the project's manifest, bumps its
+ * `version` by `bump` (or keeps it as-is when `bump` is absent), stamps the
+ * manifest's `identity` with `coordinate`, and records the published tree --
+ * the published `mindcraft.json` plus every manifest-listed file -- on the
+ * target repository as a commit tagged `v<version>`. An as-is publish is a
+ * first publish: it is accepted only when the target repository has no tags.
+ * When the stamp replaces a different previously declared identity, the ok
+ * result carries the replaced value as `previousIdentity`.
  *
  * Refuses without applying anything when the manifest is missing or invalid,
- * the project has unconfirmed `local:` dependencies, the repository has
- * uncommitted changes, the bumped version is already the repository head's
- * manifest version, the tag already exists, or a manifest-listed file is
- * absent. Each refusal carries its {@link ExtensionPublishErrorCode}.
+ * no `coordinate` was provided, the project has unconfirmed `local:`
+ * dependencies, the repository has uncommitted changes, the bumped version is
+ * already the repository head's manifest version, an as-is publish targets a
+ * repository that already has tags, the tag already exists, or a
+ * manifest-listed file is absent. Each refusal carries its
+ * {@link ExtensionPublishErrorCode}.
  */
 export async function publishExtensionVersion(options: ExtensionPublishOptions): Promise<ExtensionPublishResult> {
   const { source, backend } = options;
@@ -162,6 +222,15 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
   }
   const manifest = parsed.manifest;
 
+  const coordinate = options.coordinate;
+  if (coordinate === undefined) {
+    return refusal(
+      ExtensionPublishErrorCode.IDENTITY_UNKNOWN,
+      "The publish has no <owner>/<repo> coordinate to stamp as the manifest's identity; " +
+        "the repository remote did not yield one."
+    );
+  }
+
   if (options.allowLocalDependencies !== true) {
     const localCoordinates = Object.entries(manifest.extensions)
       .filter(([, reference]) => parseExtensionReference(reference)?.transport === "local")
@@ -175,31 +244,43 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
     }
   }
 
-  const version = bumpVersion(manifest.version, options.bump);
+  const version = options.bump === undefined ? manifest.version : bumpVersion(manifest.version, options.bump);
   const tag = `v${version}`;
 
   if (!(await backend.isClean())) {
     return refusal(ExtensionPublishErrorCode.UNCOMMITTED_CHANGES, "The repository has uncommitted changes.");
   }
 
-  const headManifestText = await backend.readHeadManifest();
-  if (headManifestText !== undefined && readExplicitContentManifestVersion(headManifestText) === version) {
-    return refusal(
-      ExtensionPublishErrorCode.VERSION_ALREADY_PUBLISHED,
-      `Version ${version} is already the manifest version at the repository head; ` +
-        "update the project's manifest version before publishing."
-    );
+  if (options.bump === undefined) {
+    // As-is first publish: the repository must carry no earlier publish. An
+    // as-is publish keeps the head manifest version, so duplicate protection
+    // is the tag namespace, not the head manifest version.
+    if (await backend.hasAnyTags()) {
+      return refusal(
+        ExtensionPublishErrorCode.VERSION_BUMP_REQUIRED,
+        "The repository already has published tags; publish with a version bump (patch, minor, or major)."
+      );
+    }
+  } else {
+    const headManifestText = await backend.readHeadManifest();
+    if (headManifestText !== undefined && readExplicitContentManifestVersion(headManifestText) === version) {
+      return refusal(
+        ExtensionPublishErrorCode.VERSION_ALREADY_PUBLISHED,
+        `Version ${version} is already the manifest version at the repository head; ` +
+          "update the project's manifest version before publishing."
+      );
+    }
   }
 
   if (await backend.tagExists(tag)) {
     return refusal(ExtensionPublishErrorCode.TAG_EXISTS, `Tag ${tag} already exists on the repository.`);
   }
 
-  const bumpedManifest = serializeProjectContentManifest({ ...manifest, version });
-  const files: PublishFile[] = [{ path: MINDCRAFT_JSON_PATH, content: new TextEncoder().encode(bumpedManifest) }];
+  const publishedManifest = serializeProjectContentManifest({ ...manifest, version, identity: coordinate });
+  const files: PublishFile[] = [{ path: MINDCRAFT_JSON_PATH, content: new TextEncoder().encode(publishedManifest) }];
   for (const path of manifest.files ?? []) {
-    // The bumped manifest serialized above is the published manifest; a files
-    // entry naming it must not overwrite it with the pre-bump bytes.
+    // The manifest serialized above is the published manifest; a files entry
+    // naming it must not overwrite it with the source bytes.
     if (path === MINDCRAFT_JSON_PATH) continue;
     const content = await source.readFile(path);
     if (content === undefined) {
@@ -212,5 +293,12 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
   }
 
   await backend.apply({ version, tag, files });
-  return { ok: true, version, tag };
+  const identityChanged = manifest.identity !== undefined && manifest.identity !== coordinate;
+  return {
+    ok: true,
+    version,
+    tag,
+    identity: coordinate,
+    ...(identityChanged ? { previousIdentity: manifest.identity } : {}),
+  };
 }
