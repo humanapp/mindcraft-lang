@@ -282,11 +282,11 @@ describe("ExtensionCatalogSection rendering", () => {
 });
 
 describe("ExtensionReferenceInstallRow", () => {
-  test("renders the add-from-GitHub input, naming the reference form and GitHub URLs as accepted input", async () => {
+  test("renders the add-from-GitHub input inviting a pasted GitHub URL", async () => {
     const { ExtensionReferenceInstallRow } = await import("./ExtensionBrowserDialog");
     const markup = renderToStaticMarkup(createElement(ExtensionReferenceInstallRow, { onInstallReference: () => {} }));
     assert.match(markup, /aria-label="Add from GitHub"/);
-    assert.match(markup, /gh:owner\/repo@v1\.0\.0 or GitHub URL/);
+    assert.match(markup, /Paste GitHub URL/);
     // The Add affordance starts disabled until a reference is entered.
     assert.match(markup, /disabled/);
   });
