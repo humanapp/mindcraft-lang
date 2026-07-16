@@ -1189,3 +1189,68 @@ describe("AppEnvironmentHost compile-scheduled brain rebuild", () => {
     }
   });
 });
+
+describe("AppEnvironmentHost brain cache reconciliation", () => {
+  function stubProjectManagerWithAppData(appData: Map<string, string>): ProjectManager {
+    return {
+      activeProject: createActiveProject(PROJECT_ID),
+      activeProjectCollection: createProjectCollection(),
+      async init(): Promise<void> {},
+      async getProjectCollectionState(): Promise<{ access: "ready" }> {
+        return { access: "ready" };
+      },
+      async ensureDefaultProject(): Promise<void> {},
+      async saveAppData(key: string, data: string): Promise<void> {
+        appData.set(key, data);
+      },
+      async loadAppData(key: string): Promise<string | undefined> {
+        return appData.get(key);
+      },
+      async deleteAppData(key: string): Promise<void> {
+        appData.delete(key);
+      },
+      dispose(): void {},
+    } as unknown as ProjectManager;
+  }
+
+  it("replaces changed brains, drops removed ones, and leaves untouched brains cached as-is", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const appData = new Map<string, string>();
+    const host = new AppEnvironmentHost({
+      projectManager: stubProjectManagerWithAppData(appData),
+      modules: [coreModule()],
+      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+    });
+
+    try {
+      await host.initialize(PROJECT_ID);
+      await host.saveBrainForKey("keep", BrainDef.emptyBrainDef(host.env.brainServices, "keeper"));
+      await host.saveBrainForKey("edit", BrainDef.emptyBrainDef(host.env.brainServices, "before"));
+      await host.saveBrainForKey("drop", BrainDef.emptyBrainDef(host.env.brainServices, "dropped"));
+      const keptInstance = host.getCachedBrain("keep");
+
+      // Simulate an external mindcraft.json edit: the stored brains record is
+      // rewritten with "edit" replaced and "drop" removed.
+      const replacement = host.serializeBrainForStorage(BrainDef.emptyBrainDef(host.env.brainServices, "after"));
+      const record = JSON.parse(appData.get("brains")!) as Record<string, unknown>;
+      delete record.drop;
+      record.edit = JSON.parse(JSON.stringify(replacement)) as unknown;
+      appData.set("brains", JSON.stringify(record));
+
+      const result = await host.reconcileBrainsFromStore();
+      assert.deepStrictEqual([...result.changed], ["edit"]);
+      assert.deepStrictEqual([...result.removed], ["drop"]);
+      assert.strictEqual(host.getCachedBrain("keep"), keptInstance, "an untouched brain keeps its cached instance");
+      assert.equal(host.getCachedBrain("edit")?.name(), "after");
+      assert.equal(host.getCachedBrain("drop"), undefined);
+
+      // A second reconcile against the unchanged record is a no-op.
+      const repeat = await host.reconcileBrainsFromStore();
+      assert.deepStrictEqual([...repeat.changed], []);
+      assert.deepStrictEqual([...repeat.removed], []);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});

@@ -22,7 +22,11 @@ import { declarationMount } from "@mindcraft-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import { buildExtensionCatalog } from "./extension-catalog.js";
 import { parseExtensionInstallLog } from "./extension-install-log.js";
-import { parseInstalledExtensionSnapshots } from "./fetched-extension-snapshots.js";
+import {
+  parseInstalledExtensionSnapshots,
+  reconstructInstalledSnapshotsFromTree,
+  serializeInstalledExtensionSnapshots,
+} from "./fetched-extension-snapshots.js";
 
 const CORE_AMBIENT = readFileSync(
   fileURLToPath(new URL("../../core/ambient/mindcraft.core.d.ts", import.meta.url)),
@@ -271,6 +275,74 @@ describe("extension install pipeline", () => {
       assert.equal(followup.outcome.kind, "unchanged");
     } finally {
       reloaded.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("loads snapshot records rebuilt from a materialized tree and resolves without a transport", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    // The world a folder host seeds: the manifest names the dependency, and
+    // the store's snapshot records were rebuilt from the on-disk tree plus
+    // its provenance record.
+    const seeded = reconstructInstalledSnapshotsFromTree(
+      { [POSITION_COORDINATE]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" } },
+      Object.entries(POSITION_CONTENT).map(
+        ([path, content]) => [`.extensions/${POSITION_COORDINATE}/${path}`, content] as [string, string]
+      )
+    );
+    const world: ProjectWorld = {
+      appData: new Map([["installed-extensions", serializeInstalledExtensionSnapshots(seeded)]]),
+      extensions: { [POSITION_COORDINATE]: POSITION_REFERENCE },
+    };
+    const transport = createTestTransport({ content: {} });
+    const host = createHost(world, { transport, hostFiles: { "main.ts": HOST_IMPORTS_POSITION } });
+
+    try {
+      await host.initialize(PROJECT_ID);
+      assert.ok(servedPaths(host).includes(`.extensions/${POSITION_COORDINATE}/index.ts`));
+      assert.deepStrictEqual(host.getInstalledExtensionMetadata(), {
+        [POSITION_COORDINATE]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" },
+      });
+
+      // A re-resolve of the unchanged map reuses the rebuilt record: the
+      // transport sees no request.
+      const report = await host.updateProjectExtensions(world.extensions);
+      assert.ok(report.committed);
+      assert.deepStrictEqual(transport.requests, []);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("refetches a dependency whose manifest reference no longer matches the rebuilt record", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const seeded = reconstructInstalledSnapshotsFromTree(
+      { [POSITION_COORDINATE]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" } },
+      Object.entries(POSITION_CONTENT).map(
+        ([path, content]) => [`.extensions/${POSITION_COORDINATE}/${path}`, content] as [string, string]
+      )
+    );
+    const updatedReference = `gh:${POSITION_COORDINATE}@v0.2.0`;
+    const world: ProjectWorld = {
+      appData: new Map([["installed-extensions", serializeInstalledExtensionSnapshots(seeded)]]),
+      extensions: { [POSITION_COORDINATE]: updatedReference },
+    };
+    const transport = createTestTransport({
+      content: { [`${POSITION_COORDINATE}@v0.2.0`]: POSITION_CONTENT },
+    });
+    const host = createHost(world, { transport, hostFiles: { "main.ts": HOST_IMPORTS_POSITION } });
+
+    try {
+      await host.initialize(PROJECT_ID);
+      const report = await host.updateProjectExtensions(world.extensions);
+      assert.ok(report.committed);
+      assert.ok(
+        transport.requests.some((request) => request.includes(`${POSITION_COORDINATE}@v0.2.0`)),
+        "the changed pin is fetched fresh instead of served from the rebuilt record"
+      );
+    } finally {
+      host.dispose();
       restoreLocalStorage();
     }
   });

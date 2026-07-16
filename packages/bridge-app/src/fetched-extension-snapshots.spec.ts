@@ -6,8 +6,11 @@ import {
   bytesToBase64,
   decodeInstalledSnapshotFiles,
   fetchedContentFromSnapshots,
+  installedExtensionMetadataFromSnapshots,
   installedSnapshotFromFetched,
+  parseInstalledExtensionMetadata,
   parseInstalledExtensionSnapshots,
+  reconstructInstalledSnapshotsFromTree,
   serializeInstalledExtensionSnapshots,
 } from "./fetched-extension-snapshots.js";
 
@@ -67,5 +70,47 @@ describe("fetched extension snapshot records", () => {
       "example-org/bad": { reference: 5 },
     });
     assert.deepStrictEqual(Object.keys(parseInstalledExtensionSnapshots(mixed)), ["example-org/good"]);
+  });
+});
+
+describe("installed-extensions tree provenance", () => {
+  const ORIGIN = "example-org/position-ext";
+  const METADATA = { [ORIGIN]: { reference: `gh:${ORIGIN}@v0.1.0`, specifier: "v0.1.0" } };
+
+  it("extracts each record's provenance keyed by origin", () => {
+    const snapshots = {
+      [ORIGIN]: { reference: `gh:${ORIGIN}@v0.1.0`, specifier: "v0.1.0", files: { "index.ts": "aGk=" } },
+    };
+    assert.deepStrictEqual(installedExtensionMetadataFromSnapshots(snapshots), METADATA);
+  });
+
+  it("parses absent or malformed provenance text as an empty record and drops malformed entries", () => {
+    assert.deepStrictEqual(parseInstalledExtensionMetadata(undefined), {});
+    assert.deepStrictEqual(parseInstalledExtensionMetadata("not json"), {});
+    const mixed = JSON.stringify({
+      ...METADATA,
+      "example-org/bad": { reference: 5 },
+    });
+    assert.deepStrictEqual(parseInstalledExtensionMetadata(mixed), METADATA);
+  });
+
+  it("rebuilds snapshot records from a materialized tree, scoped to each origin's subtree", () => {
+    const snapshots = reconstructInstalledSnapshotsFromTree(METADATA, [
+      ["tsconfig.json", "{}"],
+      [`.extensions/${ORIGIN}/index.ts`, "export const p = 1;"],
+      [`.extensions/${ORIGIN}/docs/readme.md`, "# Position"],
+      [".extensions/other-org/other-ext/index.ts", "export const q = 2;"],
+    ]);
+    const record = snapshots[ORIGIN];
+    assert.ok(record);
+    assert.equal(record.reference, `gh:${ORIGIN}@v0.1.0`);
+    assert.equal(record.specifier, "v0.1.0");
+    const files = decodeInstalledSnapshotFiles(record);
+    assert.deepStrictEqual([...files.keys()].sort(), ["/docs/readme.md", "/index.ts"]);
+    assert.equal(files.get("/index.ts"), "export const p = 1;");
+  });
+
+  it("yields no record for an origin whose subtree is absent from the tree", () => {
+    assert.deepStrictEqual(reconstructInstalledSnapshotsFromTree(METADATA, [["tsconfig.json", "{}"]]), {});
   });
 });

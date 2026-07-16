@@ -6,7 +6,18 @@ import type { FileSystemNotification, FilesystemSyncPayload } from "./notificati
  * (for example a VS Code extension owning a workspace folder) and an embedded
  * app. Bumped on incompatible changes.
  */
-export const FOLDER_SESSION_PROTOCOL_VERSION = 1;
+export const FOLDER_SESSION_PROTOCOL_VERSION = 2;
+
+/** Project-relative directory holding the materialized installed-extensions tree. */
+export const EXTENSIONS_TREE_PATH = ".extensions";
+
+/**
+ * Project-relative path of the installed fetched-extension metadata record a
+ * folder-session host stores beside the materialized installed-extensions
+ * tree. The file's JSON content maps each `<owner>/<repo>` origin to its
+ * {@link FolderInstalledExtensionMetadata}.
+ */
+export const INSTALLED_EXTENSIONS_METADATA_PATH = ".extensions/installed.json";
 
 /** URL search parameter a host adds to the embedded app's document URL as the host-mode bootstrap flag. */
 export const FOLDER_HOST_MODE_URL_PARAM = "mindcraftHostMode";
@@ -36,6 +47,8 @@ export const FolderSessionErrorCode = {
   PATH_OUTSIDE_PROJECT: "FOLDER_SESSION_PATH_OUTSIDE_PROJECT",
   /** A disk write failed. */
   WRITE_FAILED: "FOLDER_SESSION_WRITE_FAILED",
+  /** The removable volume named by a volume write is not mounted. */
+  REMOVABLE_VOLUME_NOT_FOUND: "FOLDER_SESSION_REMOVABLE_VOLUME_NOT_FOUND",
 } as const;
 
 /** Union of all {@link FolderSessionErrorCode} values. */
@@ -70,6 +83,13 @@ export interface FolderWelcomePayload {
     /** Opaque version tag minted from the file's disk state. */
     etag: string;
   };
+  /**
+   * Text files currently on disk under the project's installed-extensions
+   * tree, as project-relative path/content pairs (including
+   * {@link INSTALLED_EXTENSIONS_METADATA_PATH} when present). Absent when the
+   * tree is absent or empty.
+   */
+  extensionsCache?: ReadonlyArray<[string, string]>;
 }
 
 /** Handshake confirmation: delivers the project identity and its manifest. */
@@ -123,6 +143,28 @@ export interface FolderManifestWriteMessage {
   payload: FolderManifestWritePayload;
 }
 
+/** Payload of a {@link FolderVolumeWriteMessage}. */
+export interface FolderVolumeWritePayload {
+  /** Name of the mounted removable volume to write to. */
+  volumeName: string;
+  /** Name of the file to write at the volume's root. */
+  filename: string;
+  /** Full text content of the file. */
+  contents: string;
+}
+
+/**
+ * Writes an artifact file to the root of a mounted removable volume. The host
+ * replies with {@link FolderAckMessage} carrying the same `id`, or
+ * {@link FolderErrorMessage} when the volume is not mounted or the write
+ * fails.
+ */
+export interface FolderVolumeWriteMessage {
+  type: "folder:volumeWrite";
+  id?: string;
+  payload: FolderVolumeWritePayload;
+}
+
 /** Confirms that the request with the same `id` was applied. */
 export interface FolderAckMessage {
   type: "folder:ack";
@@ -145,6 +187,41 @@ export interface FolderDiagnosticsMessage {
   type: "folder:diagnostics";
   id?: string;
   payload: CompileDiagnosticsPayload;
+}
+
+/** Install provenance of one installed fetched dependency. */
+export interface FolderInstalledExtensionMetadata {
+  /** The manifest reference the dependency's content was installed from, as written. */
+  reference: string;
+  /** The immutable routing specifier the content was fetched at. */
+  specifier: string;
+}
+
+/** Payload of a {@link FolderCompilerFilesMessage}. */
+export interface FolderCompilerFilesPayload {
+  /**
+   * The app's full compiler-controlled file set -- the generated
+   * `tsconfig.json`, ambient declarations, and the materialized
+   * installed-extensions tree -- as project-relative path/content pairs.
+   */
+  files: ReadonlyArray<[string, string]>;
+  /**
+   * Install provenance of every installed fetched dependency, keyed by
+   * `<owner>/<repo>` origin. The host stores it at
+   * {@link INSTALLED_EXTENSIONS_METADATA_PATH}.
+   */
+  installedExtensions: Readonly<Record<string, FolderInstalledExtensionMetadata>>;
+}
+
+/**
+ * The app's compiler-controlled file set, published to the host for
+ * materialization into the project folder: the full set after the project
+ * loads, and again whenever a compile changes the set.
+ */
+export interface FolderCompilerFilesMessage {
+  type: "folder:compilerFiles";
+  id?: string;
+  payload: FolderCompilerFilesPayload;
 }
 
 /** Payload of a {@link FolderErrorMessage}. */
@@ -171,7 +248,9 @@ export type FolderAppMessage =
   | FolderLoadFilesMessage
   | FolderChangeMessage
   | FolderManifestWriteMessage
-  | FolderDiagnosticsMessage;
+  | FolderVolumeWriteMessage
+  | FolderDiagnosticsMessage
+  | FolderCompilerFilesMessage;
 
 /** Messages sent by the folder-session host to the app. */
 export type FolderHostMessage =

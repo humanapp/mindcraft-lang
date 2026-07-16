@@ -1,10 +1,12 @@
 import type {
   FileSystemNotification,
   FolderAppMessage,
+  FolderCompilerFilesPayload,
   FolderHostMessage,
   FolderSessionErrorCode as FolderSessionErrorCodeType,
 } from "@mindcraft-lang/bridge-protocol";
 import {
+  EXTENSIONS_TREE_PATH,
   FOLDER_SESSION_PROTOCOL_VERSION,
   FolderSessionErrorCode,
   filesystemNotificationSchema,
@@ -12,6 +14,10 @@ import {
 } from "@mindcraft-lang/bridge-protocol";
 import * as vscode from "vscode";
 import type { DiagnosticsManager } from "./diagnostics-manager";
+import type { AffordanceFileAccess } from "./project-affordances";
+import { ProjectAffordanceWriter } from "./project-affordances";
+import type { RemovableVolumeFileAccess, RemovableVolumeRoot } from "./removable-volume";
+import { DEFAULT_REMOVABLE_VOLUME_ROOTS, writeFileToRemovableVolume } from "./removable-volume";
 
 const MINDCRAFT_JSON = "mindcraft.json";
 
@@ -36,6 +42,8 @@ export class FolderStoreHost {
   private readonly onHandshakeComplete: (() => void) | undefined;
   /** Latest etag (or delete marker) this host produced per path, for watcher echo suppression. */
   private readonly selfWriteLog = new Map<string, string>();
+  /** Writer materializing the app's compiler-controlled files into the project folder. */
+  private readonly affordanceWriter: ProjectAffordanceWriter;
 
   constructor(
     folder: vscode.Uri,
@@ -47,6 +55,7 @@ export class FolderStoreHost {
     this.postToApp = postToApp;
     this.diagnostics = diagnostics;
     this.onHandshakeComplete = onHandshakeComplete;
+    this.affordanceWriter = new ProjectAffordanceWriter(this.createAffordanceFileAccess());
   }
 
   /** Handle one message posted by the embedded app. */
@@ -68,10 +77,16 @@ export class FolderStoreHost {
       case "folder:manifestWrite":
         await this.handleManifestWrite(message.id, message.payload?.content);
         return;
+      case "folder:volumeWrite":
+        await this.handleVolumeWrite(message.id, message.payload);
+        return;
       case "folder:diagnostics":
         if (message.payload) {
           this.diagnostics.handleDiagnostics(message.payload);
         }
+        return;
+      case "folder:compilerFiles":
+        await this.handleCompilerFiles(message.payload);
         return;
     }
   }
@@ -79,7 +94,12 @@ export class FolderStoreHost {
   /** Handle one file watcher event under the project folder. */
   async handleWatcherEvent(kind: "create" | "change" | "delete", uri: vscode.Uri): Promise<void> {
     const path = this.toRelativePath(uri);
-    if (path === undefined || path.length === 0 || isExcludedPath(path)) {
+    if (
+      path === undefined ||
+      path.length === 0 ||
+      isExcludedPath(path) ||
+      this.affordanceWriter.isAffordancePath(path)
+    ) {
       return;
     }
 
@@ -141,6 +161,7 @@ export class FolderStoreHost {
       );
       return;
     }
+    const extensionsCache = await this.collectExtensionsCacheEntries();
     this.postToApp({
       type: "folder:welcome",
       id,
@@ -148,9 +169,51 @@ export class FolderStoreHost {
         protocolVersion: FOLDER_SESSION_PROTOCOL_VERSION,
         projectId: this.folder.toString(),
         manifest: { content, etag: etagFromStat(stat) },
+        ...(extensionsCache.length > 0 ? { extensionsCache } : {}),
       },
     });
     this.onHandshakeComplete?.();
+  }
+
+  /** The on-disk installed-extensions tree's text files, as project-relative path/content pairs. */
+  private async collectExtensionsCacheEntries(): Promise<Array<[string, string]>> {
+    const entries: Array<[string, string]> = [];
+    await this.collectTreeTextFiles(this.toUri(EXTENSIONS_TREE_PATH), EXTENSIONS_TREE_PATH, entries);
+    return entries;
+  }
+
+  private async collectTreeTextFiles(
+    directory: vscode.Uri,
+    prefix: string,
+    entries: Array<[string, string]>
+  ): Promise<void> {
+    let children: Array<[string, vscode.FileType]>;
+    try {
+      children = await vscode.workspace.fs.readDirectory(directory);
+    } catch {
+      return;
+    }
+    for (const [name, type] of children) {
+      const path = `${prefix}/${name}`;
+      const uri = vscode.Uri.joinPath(directory, name);
+      if (type === vscode.FileType.Directory) {
+        await this.collectTreeTextFiles(uri, path, entries);
+        continue;
+      }
+      if (type !== vscode.FileType.File) {
+        continue;
+      }
+      let stat: vscode.FileStat;
+      try {
+        stat = await vscode.workspace.fs.stat(uri);
+      } catch {
+        continue;
+      }
+      const content = await this.readTextFile(uri, stat);
+      if (content !== undefined) {
+        entries.push([path, content]);
+      }
+    }
   }
 
   private async handleLoadFiles(id: string | undefined): Promise<void> {
@@ -172,7 +235,7 @@ export class FolderStoreHost {
     }
     for (const [name, type] of children) {
       const path = prefix.length > 0 ? `${prefix}/${name}` : name;
-      if (isExcludedPath(path) || path === MINDCRAFT_JSON) {
+      if (isExcludedPath(path) || path === MINDCRAFT_JSON || this.affordanceWriter.isAffordancePath(path)) {
         continue;
       }
       if (type === vscode.FileType.Directory) {
@@ -286,6 +349,152 @@ export class FolderStoreHost {
     this.postToApp({ type: "folder:ack", id });
   }
 
+  /**
+   * Handle one volume-write request: write the artifact to the root of the
+   * named removable volume, discovered under `mountRoots`. Posts the reply
+   * to the app and returns it.
+   */
+  async handleVolumeWrite(
+    id: string | undefined,
+    payload: unknown,
+    mountRoots: readonly RemovableVolumeRoot[] = DEFAULT_REMOVABLE_VOLUME_ROOTS
+  ): Promise<FolderHostMessage> {
+    const request = payload as { volumeName?: unknown; filename?: unknown; contents?: unknown } | undefined;
+    if (
+      typeof request?.volumeName !== "string" ||
+      typeof request.filename !== "string" ||
+      typeof request.contents !== "string"
+    ) {
+      return this.postReply({
+        type: "folder:error",
+        id,
+        payload: {
+          code: FolderSessionErrorCode.INVALID_PAYLOAD,
+          message: "folder:volumeWrite payload failed validation",
+        },
+      });
+    }
+    const outcome = await writeFileToRemovableVolume(
+      request.volumeName,
+      request.filename,
+      request.contents,
+      removableVolumeFileAccess,
+      mountRoots
+    );
+    if (!outcome.ok) {
+      return this.postReply({ type: "folder:error", id, payload: { code: outcome.code, message: outcome.message } });
+    }
+    return this.postReply({ type: "folder:ack", id });
+  }
+
+  private postReply(message: FolderHostMessage): FolderHostMessage {
+    this.postToApp(message);
+    return message;
+  }
+
+  /**
+   * Materialize the app's compiler-controlled file set into the project
+   * folder. Every path must be a normalized project-relative path; a payload
+   * naming a path outside the project is refused whole.
+   */
+  private async handleCompilerFiles(payload: FolderCompilerFilesPayload | undefined): Promise<void> {
+    if (
+      !payload ||
+      !Array.isArray(payload.files) ||
+      payload.installedExtensions === null ||
+      typeof payload.installedExtensions !== "object"
+    ) {
+      this.postError(
+        undefined,
+        FolderSessionErrorCode.INVALID_PAYLOAD,
+        "folder:compilerFiles payload failed validation"
+      );
+      return;
+    }
+    for (const [path] of payload.files) {
+      if (!isSafeRelativePath(path)) {
+        this.postError(
+          undefined,
+          FolderSessionErrorCode.PATH_OUTSIDE_PROJECT,
+          `"${path}" does not name a path inside the project folder`
+        );
+        return;
+      }
+    }
+    try {
+      const result = await this.affordanceWriter.apply(payload);
+      for (const path of result.writtenPaths) {
+        if (!isExcludedPath(path)) {
+          await this.recordSelfWrite(path, this.toUri(path));
+        }
+      }
+      for (const path of result.deletedPaths) {
+        if (!isExcludedPath(path)) {
+          this.selfWriteLog.set(path, SELF_DELETED);
+        }
+      }
+    } catch (error) {
+      this.postError(undefined, FolderSessionErrorCode.WRITE_FAILED, describeError(error));
+      void vscode.window.showErrorMessage(
+        `Mindcraft could not update the project's generated files: ${describeError(error)}`
+      );
+    }
+  }
+
+  /** The affordance writer's file operations, over the project folder. */
+  private createAffordanceFileAccess(): AffordanceFileAccess {
+    return {
+      readTextFile: async (path) => {
+        const uri = this.toUri(path);
+        let stat: vscode.FileStat;
+        try {
+          stat = await vscode.workspace.fs.stat(uri);
+        } catch {
+          return undefined;
+        }
+        return this.readTextFile(uri, stat);
+      },
+      writeTextFile: async (path, content) => {
+        const parent = parentDirectoryPath(path);
+        if (parent) {
+          await vscode.workspace.fs.createDirectory(this.toUri(parent));
+        }
+        await vscode.workspace.fs.writeFile(this.toUri(path), new TextEncoder().encode(content));
+      },
+      deleteFile: async (path) => {
+        await this.deleteIgnoringMissing(this.toUri(path), false);
+      },
+      listFilesUnder: async (directory) => {
+        const files: string[] = [];
+        const walk = async (uri: vscode.Uri, prefix: string): Promise<void> => {
+          let children: Array<[string, vscode.FileType]>;
+          try {
+            children = await vscode.workspace.fs.readDirectory(uri);
+          } catch {
+            return;
+          }
+          for (const [name, type] of children) {
+            const path = `${prefix}/${name}`;
+            if (type === vscode.FileType.Directory) {
+              await walk(vscode.Uri.joinPath(uri, name), path);
+            } else if (type === vscode.FileType.File) {
+              files.push(path);
+            }
+          }
+        };
+        await walk(this.toUri(directory), directory);
+        return files;
+      },
+      deleteDirectoryIfEmpty: async (path) => {
+        try {
+          await vscode.workspace.fs.delete(this.toUri(path), { recursive: false, useTrash: false });
+        } catch {
+          // Non-empty or already gone.
+        }
+      },
+    };
+  }
+
   private async recordSelfWrite(path: string, uri: vscode.Uri): Promise<void> {
     try {
       const stat = await vscode.workspace.fs.stat(uri);
@@ -338,6 +547,29 @@ export class FolderStoreHost {
     this.postToApp({ type: "folder:error", id, payload: { code, message } });
   }
 }
+
+/** Removable-volume file access over the workbench file system, addressing machine paths as `file:` URIs. */
+const removableVolumeFileAccess: RemovableVolumeFileAccess = {
+  async isDirectory(path: string): Promise<boolean> {
+    try {
+      const stat = await vscode.workspace.fs.stat(vscode.Uri.file(path));
+      return (stat.type & vscode.FileType.Directory) !== 0;
+    } catch {
+      return false;
+    }
+  },
+  async listSubdirectories(path: string): Promise<string[]> {
+    try {
+      const children = await vscode.workspace.fs.readDirectory(vscode.Uri.file(path));
+      return children.filter(([, type]) => (type & vscode.FileType.Directory) !== 0).map(([name]) => name);
+    } catch {
+      return [];
+    }
+  },
+  async writeTextFile(path: string, contents: string): Promise<void> {
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(path), new TextEncoder().encode(contents));
+  },
+};
 
 function etagFromStat(stat: vscode.FileStat): string {
   return `${stat.mtime}-${stat.size}`;

@@ -1,10 +1,15 @@
 export type { InMemoryProjectFileSystemOptions } from "@mindcraft-lang/app-host";
 export { createInMemoryProjectFileSystem, MINDCRAFT_JSON_PATH } from "@mindcraft-lang/app-host";
-export type { FolderAppMessage, FolderHostMessage } from "@mindcraft-lang/bridge-protocol";
+export type {
+  FolderAppMessage,
+  FolderHostMessage,
+  FolderInstalledExtensionMetadata,
+} from "@mindcraft-lang/bridge-protocol";
 export {
   FOLDER_HOST_MODE_FOLDER,
   FOLDER_HOST_MODE_GLOBAL,
   FOLDER_HOST_MODE_URL_PARAM,
+  FolderSessionErrorCode,
 } from "@mindcraft-lang/bridge-protocol";
 export type {
   AppBridge,
@@ -88,8 +93,11 @@ export {
   decodeInstalledSnapshotFiles,
   fetchedContentFromSnapshots,
   INSTALLED_EXTENSIONS_APP_DATA_KEY,
+  installedExtensionMetadataFromSnapshots,
   installedSnapshotFromFetched,
+  parseInstalledExtensionMetadata,
   parseInstalledExtensionSnapshots,
+  reconstructInstalledSnapshotsFromTree,
   serializeInstalledExtensionSnapshots,
 } from "./fetched-extension-snapshots.js";
 export type { FolderHostPort, FolderHostSession, FolderHostSessionOptions } from "./folder-host-session.js";

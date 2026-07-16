@@ -5,13 +5,19 @@ import type {
   FileSystemNotification,
   FolderAppMessage,
   FolderHostMessage,
+  FolderInstalledExtensionMetadata,
   FolderSessionErrorCode,
   FolderWelcomePayload,
 } from "@mindcraft-lang/bridge-protocol";
 import {
   FOLDER_SESSION_PROTOCOL_VERSION,
   FolderSessionErrorCode as FolderSessionErrorCodes,
+  INSTALLED_EXTENSIONS_METADATA_PATH,
 } from "@mindcraft-lang/bridge-protocol";
+import {
+  parseInstalledExtensionMetadata,
+  reconstructInstalledSnapshotsFromTree,
+} from "./fetched-extension-snapshots.js";
 import type { FolderAppDataCodec, WorkspaceFolderStoreErrorCode } from "./workspace-folder-project-store.js";
 import { WorkspaceFolderProjectStore } from "./workspace-folder-project-store.js";
 
@@ -62,6 +68,22 @@ export interface FolderHostSession {
   readonly projectId: string;
   /** Publish compile diagnostics for one file to the host. */
   publishDiagnostics(payload: CompileDiagnosticsPayload): void;
+  /**
+   * Publish the app's full compiler-controlled file set and the install
+   * provenance of its fetched dependencies to the host.
+   */
+  publishCompilerControlledFiles(
+    files: ReadonlyMap<string, string>,
+    installedExtensions: Readonly<Record<string, FolderInstalledExtensionMetadata>>
+  ): void;
+  /**
+   * Write a text file to the root of a removable volume mounted on the host
+   * machine, replacing any existing file with the same name. Resolves when
+   * the write completes; rejects with {@link FolderSessionError} carrying
+   * `REMOVABLE_VOLUME_NOT_FOUND` when no volume named `volumeName` is
+   * mounted, or `WRITE_FAILED` when the write fails.
+   */
+  writeRemovableVolumeFile(volumeName: string, filename: string, contents: string): Promise<void>;
   /**
    * Subscribe to project file changes observed on disk outside the app. Each
    * change has already been absorbed by the session's store; apply it to the
@@ -124,6 +146,7 @@ export async function connectFolderHostSession(options: FolderHostSessionOptions
     manifestContent: payload.manifest.content,
     appName: options.appName,
     appDataCodec: options.appDataCodec,
+    installedExtensionSnapshots: reconstructSnapshotsFromWelcome(payload.extensionsCache),
   });
 
   const externalChangeListeners = new Set<(change: ProjectFileChange) => void>();
@@ -144,6 +167,18 @@ export async function connectFolderHostSession(options: FolderHostSessionOptions
     projectId: payload.projectId,
     publishDiagnostics(payload: CompileDiagnosticsPayload): void {
       options.port.postMessage({ type: "folder:diagnostics", payload });
+    },
+    publishCompilerControlledFiles(
+      files: ReadonlyMap<string, string>,
+      installedExtensions: Readonly<Record<string, FolderInstalledExtensionMetadata>>
+    ): void {
+      options.port.postMessage({
+        type: "folder:compilerFiles",
+        payload: { files: [...files], installedExtensions },
+      });
+    },
+    async writeRemovableVolumeFile(volumeName: string, filename: string, contents: string): Promise<void> {
+      await rpc.request({ type: "folder:volumeWrite", payload: { volumeName, filename, contents } });
     },
     onExternalChange(listener: (change: ProjectFileChange) => void): () => void {
       externalChangeListeners.add(listener);
@@ -200,6 +235,23 @@ export function createFolderCompileDiagnosticsPublisher(
       }
     }
   };
+}
+
+/**
+ * Rebuild the installed snapshot records from the welcome's on-disk
+ * installed-extensions tree offer. Returns `undefined` when the offer is
+ * absent or carries no metadata record.
+ */
+function reconstructSnapshotsFromWelcome(extensionsCache: ReadonlyArray<[string, string]> | undefined) {
+  if (!extensionsCache) {
+    return undefined;
+  }
+  const metadataEntry = extensionsCache.find(([path]) => path === INSTALLED_EXTENSIONS_METADATA_PATH);
+  const metadata = parseInstalledExtensionMetadata(metadataEntry?.[1]);
+  if (Object.keys(metadata).length === 0) {
+    return undefined;
+  }
+  return reconstructInstalledSnapshotsFromTree(metadata, extensionsCache);
 }
 
 /** Request/reply and event demultiplexer over a {@link FolderHostPort}. */

@@ -23,6 +23,7 @@ import {
   resolveExtensionAddInput,
   syncManifestToMindcraftJson,
 } from "@mindcraft-lang/app-host";
+import type { FolderInstalledExtensionMetadata } from "@mindcraft-lang/bridge-protocol";
 import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
 import { createMindcraftEnvironment, Dict, encodePersistedBrainJson, logger } from "@mindcraft-lang/core/app";
 import type { PersistedBrainJson } from "@mindcraft-lang/core/brain/model";
@@ -47,6 +48,7 @@ import {
   decodeInstalledSnapshotFiles,
   fetchedContentFromSnapshots,
   INSTALLED_EXTENSIONS_APP_DATA_KEY,
+  installedExtensionMetadataFromSnapshots,
   parseInstalledExtensionSnapshots,
   serializeInstalledExtensionSnapshots,
 } from "./fetched-extension-snapshots.js";
@@ -178,6 +180,9 @@ export class AppEnvironmentHost {
 
   // -- Served file system (raw project files plus compiler-controlled files) --
   private _servedFileSystem: ProjectFileSystem | undefined;
+
+  // -- Compiler-controlled file set changes --
+  private readonly _compilerControlledFilesListeners = new Set<(files: ReadonlyMap<string, string>) => void>();
 
   constructor(options: AppEnvironmentHostOptions) {
     this.projectManager = options.projectManager;
@@ -330,7 +335,13 @@ export class AppEnvironmentHost {
         this.onDidCompileCallback?.(result, tileResult);
       },
     });
-    this._servedFileSystem = augmentProjectFileSystem(this.projectFileSystem, this._compiler.compiler);
+    this._servedFileSystem = augmentProjectFileSystem(this.projectFileSystem, this._compiler.compiler, {
+      onCompilerControlledFilesChanged: (files) => {
+        for (const listener of this._compilerControlledFilesListeners) {
+          listener(files);
+        }
+      },
+    });
     syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
     this._compiler.initialize();
   }
@@ -435,6 +446,37 @@ export class AppEnvironmentHost {
     }
   }
 
+  /**
+   * Reconcile the in-memory brain cache against the project store's current
+   * brain record: cached brains absent from the record are dropped, and
+   * record entries whose stored form differs from the cached brain are
+   * deserialized into the cache. Returns the changed and removed brain keys.
+   */
+  async reconcileBrainsFromStore(): Promise<{ changed: readonly string[]; removed: readonly string[] }> {
+    const record = await this.loadBrainRecord();
+    const changed: string[] = [];
+    const removed: string[] = [];
+    for (const key of [...this._brainCache.keys()]) {
+      if (!(key in record)) {
+        this._brainCache.delete(key);
+        removed.push(key);
+      }
+    }
+    for (const [key, json] of Object.entries(record)) {
+      const cached = this._brainCache.get(key);
+      if (cached && JSON.stringify(json) === JSON.stringify(this.serializeBrainForStorage(cached))) {
+        continue;
+      }
+      const def = this.deserializeBrainForKey(key, json);
+      if (!def) {
+        continue;
+      }
+      this._brainCache.set(key, def);
+      changed.push(key);
+    }
+    return { changed, removed };
+  }
+
   private deserializeBrainForKey(key: string, json: unknown): IBrainDef | undefined {
     try {
       const brainDef = this.env.deserializeBrainJsonFromPlain(json, this.projectManager.activeProject!.manifest.id);
@@ -460,6 +502,32 @@ export class AppEnvironmentHost {
   /** The installed fetched-extension content available to the active project, keyed by reference. */
   get installedExtensionContent(): FetchedExtensionContentMap {
     return this._installedContent;
+  }
+
+  /**
+   * The compiler-controlled file set of the active project's workspace: the
+   * generated `tsconfig.json`, ambient declarations, and the materialized
+   * installed-extensions tree. Undefined until the compiler is wired.
+   */
+  getCompilerControlledFiles(): ReadonlyMap<string, string> | undefined {
+    return this._compiler?.compiler.getCompilerControlledFiles();
+  }
+
+  /**
+   * Subscribe to compiler-controlled file set changes. The listener receives
+   * the full new set after each compile that changed it. Returns an
+   * unsubscribe function.
+   */
+  onCompilerControlledFilesChanged(listener: (files: ReadonlyMap<string, string>) => void): () => void {
+    this._compilerControlledFilesListeners.add(listener);
+    return () => {
+      this._compilerControlledFilesListeners.delete(listener);
+    };
+  }
+
+  /** Install provenance of every installed fetched dependency, keyed by `<owner>/<repo>` origin. */
+  getInstalledExtensionMetadata(): Record<string, FolderInstalledExtensionMetadata> {
+    return installedExtensionMetadataFromSnapshots(this._installedSnapshots);
   }
 
   /** The last recorded fetch failure per reference, keyed by the reference string as written. */

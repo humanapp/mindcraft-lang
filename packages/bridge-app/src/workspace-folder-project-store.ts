@@ -16,6 +16,11 @@ import {
   serializeProjectContentManifest,
 } from "@mindcraft-lang/app-host";
 import type { FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
+import type { InstalledExtensionSnapshots } from "./fetched-extension-snapshots.js";
+import {
+  INSTALLED_EXTENSIONS_APP_DATA_KEY,
+  serializeInstalledExtensionSnapshots,
+} from "./fetched-extension-snapshots.js";
 import { toFileSystemNotification, toProjectFileChange } from "./project-file-bridge.js";
 
 /** Project collection id of the single collection a workspace-folder store exposes. */
@@ -82,6 +87,13 @@ export interface WorkspaceFolderProjectStoreOptions {
   appName: string;
   /** Translator between app-data entries and this app's manifest chunk. */
   appDataCodec?: FolderAppDataCodec;
+  /**
+   * Installed fetched-extension snapshot records seeding the store's
+   * installed-extensions app data, keyed by `<owner>/<repo>` origin. Loading
+   * the project then regenerates the installed-extensions tree from these
+   * records without reaching the network.
+   */
+  installedExtensionSnapshots?: InstalledExtensionSnapshots;
 }
 
 /** App-data key whose entries are stored as the manifest's `brains` chunk. */
@@ -166,6 +178,12 @@ export class WorkspaceFolderProjectStore implements ProjectStore {
       updatedAt: now,
     };
     this.seedAppDataFromBase();
+    if (options.installedExtensionSnapshots && Object.keys(options.installedExtensionSnapshots).length > 0) {
+      this.appData.set(
+        INSTALLED_EXTENSIONS_APP_DATA_KEY,
+        serializeInstalledExtensionSnapshots(options.installedExtensionSnapshots)
+      );
+    }
   }
 
   /**

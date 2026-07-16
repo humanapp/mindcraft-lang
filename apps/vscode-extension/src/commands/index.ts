@@ -3,30 +3,8 @@ import * as vscode from "vscode";
 import { isBuildMembershipPath } from "../services/build-membership-tracker";
 import { MINDCRAFT_JSON, MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
 import type { ProjectManager } from "../services/project-manager";
+import { ACTUATOR_SCAFFOLD, findUniqueFolderName, SENSOR_SCAFFOLD, type TileScaffold } from "../services/tile-scaffold";
 import { isMindcraftEnabled, setMindcraftEnabled } from "../state/context";
-
-const SENSOR_TEMPLATE = `import { Sensor } from "mindcraft";
-
-export default Sensor({
-  name: "my sensor",
-  // icon: "./my-sensor.svg",
-  // docs: "./my-sensor.md",
-  onExecute(ctx, params): boolean {
-    return false;
-  },
-});
-`;
-
-const ACTUATOR_TEMPLATE = `import { Actuator } from "mindcraft";
-
-export default Actuator({
-  name: "my actuator",
-  // icon: "./my-actuator.svg",
-  // docs: "./my-actuator.md",
-  onExecute(ctx, params) {
-  },
-});
-`;
 
 export function registerCommands(context: vscode.ExtensionContext, projectManager: ProjectManager): void {
   context.subscriptions.push(
@@ -80,11 +58,11 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
     }),
 
     vscode.commands.registerCommand("mindcraft.createSensor", async () => {
-      await createFileFromTemplate(projectManager, "my-sensor", SENSOR_TEMPLATE);
+      await createFileFromScaffold(projectManager, SENSOR_SCAFFOLD);
     }),
 
     vscode.commands.registerCommand("mindcraft.createActuator", async () => {
-      await createFileFromTemplate(projectManager, "my-actuator", ACTUATOR_TEMPLATE);
+      await createFileFromScaffold(projectManager, ACTUATOR_SCAFFOLD);
     }),
 
     vscode.commands.registerCommand("mindcraft.sync", async () => {
@@ -99,13 +77,6 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
     vscode.commands.registerCommand("mindcraft.hide", () => {
       setMindcraftEnabled(false);
       vscode.window.showInformationMessage("Mindcraft view hidden.");
-    }),
-
-    vscode.commands.registerCommand("mindcraft.openSettings", () => {
-      vscode.commands.executeCommand(
-        "workbench.action.openSettings",
-        "@ext:mindcraft-lang.mindcraft-lang-vscode-extension"
-      );
     }),
 
     vscode.commands.registerCommand("mindcraft.unlockMindcraftJson", () => {
@@ -156,11 +127,7 @@ function toggleFileInBuild(projectManager: ProjectManager, uri: vscode.Uri): voi
   projectManager.notifyLocalWrite([MINDCRAFT_JSON]);
 }
 
-async function createFileFromTemplate(
-  projectManager: ProjectManager,
-  baseName: string,
-  content: string
-): Promise<void> {
+async function createFileFromScaffold(projectManager: ProjectManager, scaffold: TileScaffold): Promise<void> {
   if (!projectManager.project) {
     vscode.window.showWarningMessage("Not connected to a Mindcraft session.");
     return;
@@ -175,23 +142,14 @@ async function createFileFromTemplate(
   }
 
   const existingNames = new Set(existingEntries.map(([name]) => name));
-  const targetFolder = findUniqueFolderName(baseName, existingNames);
-  const fileName = `${baseName}.ts`;
+  const targetFolder = findUniqueFolderName(scaffold.baseName, existingNames);
+  const fileName = `${scaffold.baseName}.ts`;
 
   const writeFs = projectManager.project.files.toRemote;
   writeFs.mkdir(targetFolder);
-  writeFs.write(`${targetFolder}/${fileName}`, content);
+  writeFs.write(`${targetFolder}/${fileName}`, scaffold.content);
   projectManager.notifyLocalCreate([targetFolder, `${targetFolder}/${fileName}`]);
 
   const fileUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${targetFolder}/${fileName}` });
   await vscode.commands.executeCommand("vscode.open", fileUri);
-}
-
-function findUniqueFolderName(baseName: string, existing: Set<string>): string {
-  if (!existing.has(baseName)) return baseName;
-
-  for (let i = 2; ; i++) {
-    const candidate = `${baseName}-${i}`;
-    if (!existing.has(candidate)) return candidate;
-  }
 }

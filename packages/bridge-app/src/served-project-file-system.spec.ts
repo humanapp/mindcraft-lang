@@ -226,6 +226,38 @@ describe("AppEnvironmentHost served file system", () => {
     }
   });
 
+  it("notifies compiler-controlled file set subscribers with the full set on install and uninstall", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem({
+      shouldExclude: (path) => isCompilerControlledPath(path, []),
+    });
+    const host = createHost(filesystem);
+
+    try {
+      await host.initialize("p1");
+      const sets: ReadonlyMap<string, string>[] = [];
+      const unsubscribe = host.onCompilerControlledFilesChanged((files) => {
+        sets.push(new Map(files));
+      });
+      try {
+        await host.updateProjectExtensions({ [BEAM_COORDINATE]: BEAM_REFERENCE });
+        assert.equal(sets.length, 1, "installing fires one change with the new set");
+        assert.equal(sets[0].get(BEAM_ICON_PATH), BEAM_ICON_SVG);
+        assert.ok(sets[0].has("tsconfig.json"), "the full set carries the generated tsconfig");
+        assert.deepStrictEqual(sets[0], new Map(host.getCompilerControlledFiles()));
+
+        await host.updateProjectExtensions({});
+        assert.equal(sets.length, 2, "uninstalling fires a second change");
+        assert.equal(sets[1].get(BEAM_ICON_PATH), undefined, "the uninstalled subtree is gone from the set");
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
   it("fires a local file-system change on install, driving the vfs revision bump the app subscribes to", async () => {
     const restoreLocalStorage = installEmptyLocalStorage();
     const filesystem = createInMemoryProjectFileSystem({

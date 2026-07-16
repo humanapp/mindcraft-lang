@@ -207,11 +207,11 @@ describe("parseProjectContentManifest", () => {
 
   it("carries a non-empty ambient string array through", () => {
     const result = parseProjectContentManifest(
-      JSON.stringify({ name: "P", version: "0.1.0", ambient: ["mindcraft.core.d.ts", "mindcraft.wodal.d.ts"] })
+      JSON.stringify({ name: "P", version: "0.1.0", ambient: ["mindcraft.core.d.ts", "mindcraft.codal.d.ts"] })
     );
     assert.strictEqual(result.ok, true);
     if (result.ok) {
-      assert.deepStrictEqual(result.manifest.ambient, ["mindcraft.core.d.ts", "mindcraft.wodal.d.ts"]);
+      assert.deepStrictEqual(result.manifest.ambient, ["mindcraft.core.d.ts", "mindcraft.codal.d.ts"]);
     }
   });
 

@@ -1,4 +1,6 @@
 import type { FetchedExtensionSnapshot } from "@mindcraft-lang/app-host";
+import type { FolderInstalledExtensionMetadata } from "@mindcraft-lang/bridge-protocol";
+import { EXTENSIONS_TREE_PATH } from "@mindcraft-lang/bridge-protocol";
 import type { FetchedExtensionContentMap } from "./embedded-extensions.js";
 
 /** App-data key holding a project's installed fetched-extension snapshots. */
@@ -114,4 +116,75 @@ export function parseInstalledExtensionSnapshots(raw: string | undefined): Insta
 /** Serialize a project's snapshot records to their app-data text. */
 export function serializeInstalledExtensionSnapshots(snapshots: InstalledExtensionSnapshots): string {
   return JSON.stringify(snapshots);
+}
+
+/**
+ * Extract each snapshot record's install provenance, keyed by `<owner>/<repo>`
+ * origin.
+ */
+export function installedExtensionMetadataFromSnapshots(
+  snapshots: InstalledExtensionSnapshots
+): Record<string, FolderInstalledExtensionMetadata> {
+  const metadata: Record<string, FolderInstalledExtensionMetadata> = {};
+  for (const [origin, snapshot] of Object.entries(snapshots)) {
+    metadata[origin] = { reference: snapshot.reference, specifier: snapshot.specifier };
+  }
+  return metadata;
+}
+
+/**
+ * Parse an installed-extensions metadata record from its JSON text. Returns an
+ * empty record when the text is absent or malformed; individual malformed
+ * entries are dropped.
+ */
+export function parseInstalledExtensionMetadata(
+  raw: string | undefined
+): Record<string, FolderInstalledExtensionMetadata> {
+  if (raw === undefined) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!isRecord(parsed)) return {};
+  const metadata: Record<string, FolderInstalledExtensionMetadata> = {};
+  for (const [origin, entry] of Object.entries(parsed)) {
+    if (isRecord(entry) && typeof entry.reference === "string" && typeof entry.specifier === "string") {
+      metadata[origin] = { reference: entry.reference, specifier: entry.specifier };
+    }
+  }
+  return metadata;
+}
+
+/**
+ * Rebuild a project's installed snapshot records from a materialized
+ * installed-extensions tree and its recorded install provenance. For each
+ * origin in `metadata`, the tree's files under
+ * `.extensions/<owner>/<repo>/` become the record's content at the recorded
+ * reference and specifier; an origin with no files in the tree yields no
+ * record.
+ *
+ * @param metadata - Install provenance per origin, as recorded beside the tree.
+ * @param treeFiles - Project-relative path/content pairs of the tree's text files.
+ */
+export function reconstructInstalledSnapshotsFromTree(
+  metadata: Readonly<Record<string, FolderInstalledExtensionMetadata>>,
+  treeFiles: ReadonlyArray<[string, string]>
+): InstalledExtensionSnapshots {
+  const encoder = new TextEncoder();
+  const snapshots: Record<string, InstalledExtensionSnapshot> = {};
+  for (const [origin, provenance] of Object.entries(metadata)) {
+    const prefix = `${EXTENSIONS_TREE_PATH}/${origin}/`;
+    const files: Record<string, string> = {};
+    let hasFiles = false;
+    for (const [path, content] of treeFiles) {
+      if (!path.startsWith(prefix)) continue;
+      files[path.slice(prefix.length)] = bytesToBase64(encoder.encode(content));
+      hasFiles = true;
+    }
+    if (!hasFiles) continue;
+    snapshots[origin] = { reference: provenance.reference, specifier: provenance.specifier, files };
+  }
+  return snapshots;
 }

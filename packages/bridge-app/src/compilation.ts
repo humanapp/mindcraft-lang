@@ -451,6 +451,15 @@ function compilerControlledFilesChanged(
   return false;
 }
 
+/** Options for {@link augmentProjectFileSystem}. */
+export interface AugmentProjectFileSystemOptions {
+  /**
+   * Invoked with the full compiler-controlled file set whenever a compile
+   * changes that set.
+   */
+  onCompilerControlledFilesChanged?: (files: ReadonlyMap<string, string>) => void;
+}
+
 /**
  * Wrap a {@link ProjectFileSystem} so its exported snapshot also carries the
  * compiler-controlled files (ambient declarations, `tsconfig.json`, and the
@@ -460,15 +469,17 @@ function compilerControlledFilesChanged(
  *
  * When a compile changes the compiler-controlled file set (installing or
  * uninstalling an extension adds or removes its `.extensions/` subtree), the
- * wrapper emits one full-snapshot `import` local change. The peer reconciles
- * the whole tree from it: newly installed paths appear and uninstalled paths
+ * wrapper emits one full-snapshot `import` local change and invokes the
+ * options' change callback with the new set. The peer reconciles the whole
+ * tree from the import: newly installed paths appear and uninstalled paths
  * are pruned. The read-only compiler-controlled paths cannot be updated by an
  * incremental write/delete notification, so the full-snapshot import is their
  * propagation channel.
  */
 export function augmentProjectFileSystem(
   filesystem: ProjectFileSystem,
-  compiler: TsWorkspaceCompiler
+  compiler: TsWorkspaceCompiler,
+  options?: AugmentProjectFileSystemOptions
 ): ProjectFileSystem {
   const isAugmentedPath = (path: string): boolean => compiler.getCompilerControlledFiles().has(path);
   const filterChange = (change: ProjectFileChange): ProjectFileChange | undefined => {
@@ -503,6 +514,7 @@ export function augmentProjectFileSystem(
       return;
     }
     previousControlledFiles = new Map(currentControlledFiles);
+    options?.onCompilerControlledFilesChanged?.(currentControlledFiles);
     const change: ProjectFileChange = { action: "import", entries: [...buildSnapshot()] };
     for (const listener of localChangeListeners) {
       listener(change);
