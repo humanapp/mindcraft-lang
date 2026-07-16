@@ -1,7 +1,8 @@
 import { addManifestFilesEntry, removeManifestFilesEntry } from "@mindcraft-lang/bridge-app/manifest-files";
 import * as vscode from "vscode";
+import { MINDCRAFT_JSON } from "../mindcraft-json";
 import { isBuildMembershipPath } from "../services/build-membership-tracker";
-import { MINDCRAFT_JSON, MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
+import { MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
 import type { ProjectManager } from "../services/project-manager";
 import { ACTUATOR_SCAFFOLD, findUniqueFolderName, SENSOR_SCAFFOLD, type TileScaffold } from "../services/tile-scaffold";
 import { isMindcraftEnabled, setMindcraftEnabled } from "../state/context";

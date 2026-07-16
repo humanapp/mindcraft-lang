@@ -136,6 +136,24 @@ export interface ExtensionTarget {
 }
 
 /**
+ * A project's hostable app bundle: the host-served content a target package
+ * ships. Its `files` are host content only and are disjoint from the
+ * top-level {@link ProjectContentManifest.files}, which is consumer content.
+ */
+export interface ProjectContentManifestHostApp {
+  /**
+   * Content-relative directory whose `index.html` the host serves as the
+   * project's app.
+   */
+  readonly path: string;
+  /**
+   * Content-relative paths of every file the host-served bundle comprises.
+   * Disjoint from the top-level {@link ProjectContentManifest.files}.
+   */
+  readonly files: readonly string[];
+}
+
+/**
  * A project's content manifest: the portable identity data carried in
  * `mindcraft.json` alongside host-specific fields.
  */
@@ -188,6 +206,13 @@ export interface ProjectContentManifest {
    */
   readonly targets?: Readonly<Record<string, ExtensionTarget>>;
   /**
+   * The project's hostable app bundle: the directory the host serves and the
+   * host-only file list it comprises. Present only when the project publishes
+   * a host-served app; a package without one omits it. Its `files` are
+   * disjoint from the top-level {@link ProjectContentManifest.files}.
+   */
+  readonly hostApp?: ProjectContentManifestHostApp;
+  /**
    * Root-level fields of the source document outside the manifest schema
    * (for example application-specific content), keyed by property name and
    * carried verbatim: a parse followed by a serialize preserves them. Present
@@ -207,6 +232,7 @@ const MANIFEST_SCHEMA_FIELDS: ReadonlySet<string> = new Set([
   "files",
   "ambient",
   "targets",
+  "hostApp",
 ]);
 
 /** Stable identifiers for content manifest validation errors. */
@@ -218,6 +244,8 @@ export const ProjectContentManifestErrorCode = {
   INVALID_FILES: "PROJECT_MANIFEST_INVALID_FILES",
   INVALID_AMBIENT: "PROJECT_MANIFEST_INVALID_AMBIENT",
   INVALID_TARGETS: "PROJECT_MANIFEST_INVALID_TARGETS",
+  INVALID_HOST_APP: "PROJECT_MANIFEST_INVALID_HOST_APP",
+  HOST_APP_FILES_OVERLAP: "PROJECT_MANIFEST_HOST_APP_FILES_OVERLAP",
   INVALID_EXTENSIONS: "PROJECT_MANIFEST_INVALID_EXTENSIONS",
   INVALID_EXTENSION_COORDINATE: "PROJECT_MANIFEST_INVALID_EXTENSION_COORDINATE",
   DUPLICATE_EXTENSION_COORDINATE: "PROJECT_MANIFEST_DUPLICATE_EXTENSION_COORDINATE",
@@ -341,6 +369,49 @@ export function validateProjectTargets(value: unknown): readonly ProjectContentM
 }
 
 /**
+ * Validate a hostable app bundle declaration: an object carrying a non-empty
+ * string `path` and a `files` array of string paths. Returns the normalized
+ * bundle with no errors when well-formed, or one error per rejected field.
+ */
+export function validateProjectHostApp(value: unknown):
+  | { readonly hostApp: ProjectContentManifestHostApp; readonly errors: readonly [] }
+  | { readonly hostApp?: undefined; readonly errors: readonly ProjectContentManifestError[] } {
+  if (!isRecord(value)) {
+    return {
+      errors: [
+        {
+          code: ProjectContentManifestErrorCode.INVALID_HOST_APP,
+          path: "$.hostApp",
+          message: "$.hostApp must be an object when present.",
+        },
+      ],
+    };
+  }
+  const errors: ProjectContentManifestError[] = [];
+  if (typeof value.path !== "string" || value.path.length === 0) {
+    errors.push({
+      code: ProjectContentManifestErrorCode.INVALID_HOST_APP,
+      path: "$.hostApp.path",
+      message: "$.hostApp.path must be a non-empty string.",
+    });
+  }
+  if (!Array.isArray(value.files) || value.files.some((entry) => typeof entry !== "string")) {
+    errors.push({
+      code: ProjectContentManifestErrorCode.INVALID_HOST_APP,
+      path: "$.hostApp.files",
+      message: "$.hostApp.files must be an array of string paths.",
+    });
+  }
+  if (errors.length > 0) {
+    return { errors };
+  }
+  return {
+    hostApp: { path: value.path as string, files: value.files as readonly string[] },
+    errors: [],
+  };
+}
+
+/**
  * Parse and validate a project content manifest from JSON text. String
  * `description` and `thumbnailUrl` fields are carried through; fields outside
  * the manifest schema are carried through verbatim as `extras`.
@@ -452,6 +523,29 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
     }
   }
 
+  let hostApp: ProjectContentManifestHostApp | undefined;
+  if (value.hostApp !== undefined) {
+    const hostAppResult = validateProjectHostApp(value.hostApp);
+    if (hostAppResult.errors.length > 0) {
+      errors.push(...hostAppResult.errors);
+    } else {
+      hostApp = hostAppResult.hostApp;
+    }
+  }
+
+  if (files !== undefined && hostApp !== undefined) {
+    const topLevelFiles = new Set(files);
+    for (const path of hostApp.files) {
+      if (topLevelFiles.has(path)) {
+        errors.push({
+          code: ProjectContentManifestErrorCode.HOST_APP_FILES_OVERLAP,
+          path: `$.hostApp.files[${JSON.stringify(path)}]`,
+          message: `"${path}" appears in both $.files (consumer content) and $.hostApp.files (host content); the two lists must be disjoint.`,
+        });
+      }
+    }
+  }
+
   let extensions: MindcraftProjectExtensions = {};
   if (value.extensions !== undefined) {
     if (!isRecord(value.extensions)) {
@@ -493,6 +587,7 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
       ...(files !== undefined ? { files } : {}),
       ...(ambient !== undefined ? { ambient } : {}),
       ...(targets !== undefined ? { targets } : {}),
+      ...(hostApp !== undefined ? { hostApp } : {}),
       ...(extras !== undefined ? { extras } : {}),
     },
     errors: [],
@@ -517,6 +612,7 @@ export function projectContentManifestToJson(manifest: ProjectContentManifest): 
     ...(manifest.targets !== undefined && Object.keys(manifest.targets).length > 0
       ? { targets: manifest.targets }
       : {}),
+    ...(manifest.hostApp !== undefined ? { hostApp: manifest.hostApp } : {}),
     ...(manifest.extras !== undefined ? manifest.extras : {}),
   };
 }

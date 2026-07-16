@@ -155,16 +155,20 @@
         "mindcraft.bridgeUrl": {
           "type": "string",
           "default": "vscode-bridge.mindcraft-lang.org",
-          "description": "URL for the Mindcraft bridge service"
+          "description": "Web only: URL of the Mindcraft bridge service the web editor pairs with. Has no effect in desktop VS Code."
         },
         "mindcraft.devTarget": {
           "type": "object",
           "default": null,
-          "description": "Desktop only: the Mindcraft target app to host for a project folder -- { appPath: <built app directory>, extensions?: { <owner>/<repo>: <reference> }, targets?: { <owner>/<repo>: { packageVersion: <range> } } }. Has no effect in the web editor.",
+          "description": "Desktop only: the Mindcraft target app to host for a project folder -- { appPath: <built app directory> } to host a local build, or { appRef: <owner>/<repo>@<ref> } to host a published build; optional extensions?: { <owner>/<repo>: <reference> } and targets?: { <owner>/<repo>: { packageVersion: <range> } }. Has no effect in the web editor.",
           "properties": {
             "appPath": {
               "type": "string",
-              "description": "Absolute path of the target app's built (dist) directory"
+              "description": "Absolute path of the target app's built (dist) directory to host a local build"
+            },
+            "appRef": {
+              "type": "string",
+              "description": "Pinned <owner>/<repo>@<ref> reference of the target app's published bundle to host a published build"
             },
             "extensions": {
               "type": "object",
@@ -199,6 +203,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.15",
+    "@mindcraft-lang/app-host": "file:../../packages/app-host",
     "@mindcraft-lang/bridge-app": "file:../../packages/bridge-app",
     "@mindcraft-lang/bridge-client": "file:../../packages/bridge-client",
     "@mindcraft-lang/bridge-protocol": "file:../../packages/bridge-protocol",

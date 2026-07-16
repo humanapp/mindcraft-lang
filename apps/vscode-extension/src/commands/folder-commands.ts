@@ -1,13 +1,13 @@
 import * as vscode from "vscode";
+import { MINDCRAFT_JSON } from "../mindcraft-json";
 import {
   activeFolderSessionFolder,
   openFolderProjectSession,
   revealFolderSessionEditor,
 } from "../services/folder-session";
+import { fileExists, findProjectFolderCandidates, resolveTargetAppRoot } from "../services/folder-target-resolver";
 import { buildProjectSkeleton, readDevTargetDescriptor } from "../services/project-skeleton";
 import { ACTUATOR_SCAFFOLD, findUniqueFolderName, SENSOR_SCAFFOLD, type TileScaffold } from "../services/tile-scaffold";
-
-const MINDCRAFT_JSON = "mindcraft.json";
 
 /** Register the desktop project-folder commands. */
 export function registerFolderCommands(context: vscode.ExtensionContext): void {
@@ -72,7 +72,11 @@ async function openProjectFolder(context: vscode.ExtensionContext): Promise<void
   if (!folder) {
     return;
   }
-  openFolderProjectSession(context, folder, vscode.Uri.file(descriptor.appPath));
+  const appRoot = await resolveTargetAppRoot(context, descriptor);
+  if (!appRoot) {
+    return;
+  }
+  openFolderProjectSession(context, folder, appRoot);
 }
 
 async function newProject(context: vscode.ExtensionContext, nameArgument?: string): Promise<void> {
@@ -105,15 +109,20 @@ async function newProject(context: vscode.ExtensionContext, nameArgument?: strin
   if (!name) {
     return;
   }
+  const appRoot = await resolveTargetAppRoot(context, descriptor);
+  if (!appRoot) {
+    return;
+  }
   await vscode.workspace.fs.writeFile(manifestUri, new TextEncoder().encode(buildProjectSkeleton(name, descriptor)));
-  openFolderProjectSession(context, folder, vscode.Uri.file(descriptor.appPath));
+  openFolderProjectSession(context, folder, appRoot);
 }
 
 function requireDevTarget(): ReturnType<typeof readDevTargetDescriptor> {
   const descriptor = readDevTargetDescriptor();
   if (!descriptor) {
     vscode.window.showErrorMessage(
-      'Set the "mindcraft.devTarget" setting ({ "appPath": "<built app directory>" }) to host a target app.'
+      'Set the "mindcraft.devTarget" setting ({ "appPath": "<built app directory>" } to host a local build, ' +
+        'or { "appRef": "<owner>/<repo>@<ref>" } to host a published build) to host a target app.'
     );
     return undefined;
   }
@@ -140,17 +149,6 @@ async function resolveProjectFolder(): Promise<vscode.Uri | undefined> {
   return (await pickFolder(candidates))?.uri;
 }
 
-/** The workspace folders that contain a `mindcraft.json` manifest. */
-async function findProjectFolderCandidates(): Promise<vscode.WorkspaceFolder[]> {
-  const candidates: vscode.WorkspaceFolder[] = [];
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    if (await fileExists(vscode.Uri.joinPath(folder.uri, MINDCRAFT_JSON))) {
-      candidates.push(folder);
-    }
-  }
-  return candidates;
-}
-
 /**
  * Pick one folder from `folders`: the sole entry when only one is given,
  * else the user's quick-pick choice (undefined when dismissed).
@@ -164,13 +162,4 @@ async function pickFolder(folders: readonly vscode.WorkspaceFolder[]): Promise<v
     { placeHolder: "Select the project folder" }
   );
   return picked?.folder;
-}
-
-async function fileExists(uri: vscode.Uri): Promise<boolean> {
-  try {
-    const stat = await vscode.workspace.fs.stat(uri);
-    return stat.type === vscode.FileType.File;
-  } catch {
-    return false;
-  }
 }

@@ -86,6 +86,7 @@ export type {
   GhRoutingSpecifier,
   ProjectContentManifest,
   ProjectContentManifestError,
+  ProjectContentManifestHostApp,
   ProjectContentManifestParseResult,
 } from "./project-content-manifest.js";
 export {
@@ -97,6 +98,7 @@ export {
   projectContentManifestToJson,
   serializeProjectContentManifest,
   validateProjectContentManifest,
+  validateProjectHostApp,
   validateProjectExtensions,
   validateProjectTargets,
 } from "./project-content-manifest.js";

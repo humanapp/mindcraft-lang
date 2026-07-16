@@ -4,6 +4,7 @@ import type { ExtensionClientMessage, ExtensionServerMessage } from "@mindcraft-
 type ExtensionProject = Project<ExtensionClientMessage, ExtensionServerMessage>;
 
 import * as vscode from "vscode";
+import { MINDCRAFT_JSON } from "../mindcraft-json";
 import { BuildMembershipTracker } from "./build-membership-tracker";
 import { DiagnosticsManager } from "./diagnostics-manager";
 import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-provider";
@@ -189,7 +190,7 @@ export class ProjectManager implements vscode.Disposable {
 
     project.toRemoteFileChange = (ev) => {
       this.sendChangeWithAck(project, ev);
-      if (ev.action === "write" && ev.path === "mindcraft.json") {
+      if (ev.action === "write" && ev.path === MINDCRAFT_JSON) {
         this.updateFolderNameFromProject(project);
       }
       this._buildMembership.refresh(project.files.raw);
@@ -332,7 +333,7 @@ export class ProjectManager implements vscode.Disposable {
       case "write":
         events.push({ type: vscode.FileChangeType.Created, uri: uri(ev.path) });
         events.push({ type: vscode.FileChangeType.Changed, uri: uri(ev.path) });
-        if (ev.path === "mindcraft.json" && this._project) {
+        if (ev.path === MINDCRAFT_JSON && this._project) {
           this.updateFolderNameFromProject(this._project);
         }
         break;
@@ -416,7 +417,7 @@ export class ProjectManager implements vscode.Disposable {
 
   private updateFolderNameFromProject(project: ExtensionProject): void {
     try {
-      const content = project.files.raw.read("mindcraft.json");
+      const content = project.files.raw.read(MINDCRAFT_JSON);
       const json = JSON.parse(content);
       if (json?.name) {
         this.renameWorkspaceFolder(json.name);

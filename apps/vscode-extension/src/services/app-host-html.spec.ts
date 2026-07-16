@@ -101,9 +101,9 @@ describe("buildAppHostHtml", () => {
 });
 
 describe("buildAppLoadFailureHtml", () => {
-  it("names the unreadable index path with markup escaped", () => {
-    const page = buildAppLoadFailureHtml("/tmp/<dist>&/index.html");
-    assert.notStrictEqual(page.indexOf("/tmp/&lt;dist&gt;&amp;/index.html"), -1);
+  it("renders the failure message with markup escaped", () => {
+    const page = buildAppLoadFailureHtml("Cannot read /tmp/<dist>&/index.html");
+    assert.notStrictEqual(page.indexOf("Cannot read /tmp/&lt;dist&gt;&amp;/index.html"), -1);
     assert.strictEqual(page.indexOf("<dist>"), -1);
   });
 });

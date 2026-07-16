@@ -62,8 +62,8 @@ export function buildAppHostHtml(options: AppHostHtmlOptions): string {
   return `${injection}${appIndexHtml}`;
 }
 
-/** Build the webview document shown when the target app's `index.html` cannot be read from `indexPath`. */
-export function buildAppLoadFailureHtml(indexPath: string): string {
+/** Build the webview document shown when the target app cannot be hosted, stating `message` to the user. */
+export function buildAppLoadFailureHtml(message: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -71,7 +71,7 @@ export function buildAppLoadFailureHtml(indexPath: string): string {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'">
 </head>
 <body>
-<p>Cannot read the target app's index.html at ${escapeText(indexPath)}. Check the "mindcraft.devTarget" setting.</p>
+<p>${escapeText(message)}</p>
 </body>
 </html>`;
 }

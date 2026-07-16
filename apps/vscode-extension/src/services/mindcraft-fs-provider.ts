@@ -1,8 +1,8 @@
 import { ErrorCode, type IFileSystem, ProtocolError } from "@mindcraft-lang/bridge-client";
 import * as vscode from "vscode";
+import { MINDCRAFT_JSON } from "../mindcraft-json";
 
 export const MINDCRAFT_SCHEME = "mindcraft";
-export const MINDCRAFT_JSON = "mindcraft.json";
 
 export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, vscode.FileDecorationProvider {
   private readonly _onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>();

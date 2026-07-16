@@ -262,6 +262,79 @@ describe("parseProjectContentManifest", () => {
     assert.strictEqual(result.ok, false);
     assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.INVALID_ROOT]);
   });
+
+  it("carries a host-app bundle through", () => {
+    const result = parseProjectContentManifest(
+      JSON.stringify({
+        name: "P",
+        version: "0.1.0",
+        hostApp: { path: "app", files: ["app/index.html", "app/main.js"] },
+      })
+    );
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest.hostApp, { path: "app", files: ["app/index.html", "app/main.js"] });
+    }
+  });
+
+  it("omits hostApp when absent", () => {
+    const result = parseProjectContentManifest(JSON.stringify({ name: "P", version: "0.1.0" }));
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.strictEqual("hostApp" in result.manifest, false);
+    }
+  });
+
+  it("carries a root-level app chunk through as extras, unaffected by hostApp", () => {
+    const result = parseProjectContentManifest(
+      JSON.stringify({ name: "P", version: "0.1.0", app: { "microbit-sim": { session: 1 } } })
+    );
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest.extras?.app, { "microbit-sim": { session: 1 } });
+      assert.strictEqual("hostApp" in result.manifest, false);
+    }
+  });
+
+  it("rejects a malformed hostApp with INVALID_HOST_APP", () => {
+    const cases: unknown[] = [
+      "not-an-object",
+      { files: ["app/index.html"] },
+      { path: "", files: ["app/index.html"] },
+      { path: "app" },
+      { path: "app", files: "app/index.html" },
+      { path: "app", files: ["app/index.html", 7] },
+    ];
+    for (const hostApp of cases) {
+      const result = validateProjectContentManifest({ name: "P", version: "0.1.0", hostApp });
+      assert.strictEqual(result.ok, false, `Expected rejection for hostApp ${JSON.stringify(hostApp)}`);
+      assert.ok(
+        errorCodes(result).includes(ProjectContentManifestErrorCode.INVALID_HOST_APP),
+        `Expected INVALID_HOST_APP for hostApp ${JSON.stringify(hostApp)}`
+      );
+    }
+  });
+
+  it("rejects a path shared by files and hostApp.files with HOST_APP_FILES_OVERLAP", () => {
+    const result = validateProjectContentManifest({
+      name: "P",
+      version: "0.1.0",
+      files: ["sensor.ts", "shared.ts"],
+      hostApp: { path: "app", files: ["app/index.html", "shared.ts"] },
+    });
+    assert.strictEqual(result.ok, false);
+    assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.HOST_APP_FILES_OVERLAP]);
+  });
+
+  it("accepts disjoint files and hostApp.files", () => {
+    const result = validateProjectContentManifest({
+      name: "P",
+      version: "0.1.0",
+      files: ["sensor.ts"],
+      hostApp: { path: "app", files: ["app/index.html"] },
+    });
+    assert.strictEqual(result.ok, true);
+  });
 });
 
 describe("validateProjectContentManifest", () => {
@@ -506,6 +579,22 @@ describe("serializeProjectContentManifest", () => {
       targets: {},
     });
     assert.strictEqual(emptySerialized.includes("targets"), false);
+  });
+
+  it("round-trips a host-app bundle and omits it when absent", () => {
+    const manifest: ProjectContentManifest = {
+      name: "P",
+      version: "0.1.0",
+      extensions: {},
+      hostApp: { path: "app", files: ["app/index.html", "app/main.js"] },
+    };
+    const result = parseProjectContentManifest(serializeProjectContentManifest(manifest));
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest, manifest);
+    }
+    const withoutHostApp = serializeProjectContentManifest({ name: "P", version: "0.1.0", extensions: {} });
+    assert.strictEqual(withoutHostApp.includes("hostApp"), false);
   });
 
   it("round-trips extras byte-faithfully after the schema fields", () => {

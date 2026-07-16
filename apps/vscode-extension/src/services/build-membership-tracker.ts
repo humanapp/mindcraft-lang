@@ -5,7 +5,7 @@ import {
 } from "@mindcraft-lang/bridge-app/manifest-files";
 import type { IFileSystem } from "@mindcraft-lang/bridge-client";
 import * as vscode from "vscode";
-import { MINDCRAFT_JSON } from "./mindcraft-fs-provider";
+import { MINDCRAFT_JSON } from "../mindcraft-json";
 
 /** Diagnostic code for a manifest `files` entry that is absent from the project. */
 export const LISTED_FILE_MISSING_CODE = "MINDCRAFT_LISTED_FILE_MISSING";

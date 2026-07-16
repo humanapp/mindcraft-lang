@@ -13,13 +13,13 @@ import {
   MAX_FILE_CONTENT_BYTES,
 } from "@mindcraft-lang/bridge-protocol";
 import * as vscode from "vscode";
+import { MINDCRAFT_JSON } from "../mindcraft-json";
 import type { DiagnosticsManager } from "./diagnostics-manager";
+import { containedRelativePath, isSafeRelativePath } from "./path-confinement";
 import type { AffordanceFileAccess } from "./project-affordances";
 import { ProjectAffordanceWriter } from "./project-affordances";
 import type { RemovableVolumeFileAccess, RemovableVolumeRoot } from "./removable-volume";
 import { DEFAULT_REMOVABLE_VOLUME_ROOTS, writeFileToRemovableVolume } from "./removable-volume";
-
-const MINDCRAFT_JSON = "mindcraft.json";
 
 /** Marks a path in the self-write log whose latest host-side operation was a delete. */
 const SELF_DELETED = "__self-deleted__";
@@ -536,11 +536,7 @@ export class FolderStoreHost {
   }
 
   private toRelativePath(uri: vscode.Uri): string | undefined {
-    const folderPath = this.folder.path.endsWith("/") ? this.folder.path : `${this.folder.path}/`;
-    if (!uri.path.startsWith(folderPath)) {
-      return undefined;
-    }
-    return uri.path.slice(folderPath.length);
+    return containedRelativePath(this.folder.path, uri.path);
   }
 
   private postError(id: string | undefined, code: FolderSessionErrorCodeType, message: string): void {
@@ -578,17 +574,6 @@ function etagFromStat(stat: vscode.FileStat): string {
 function parentDirectoryPath(path: string): string | undefined {
   const index = path.lastIndexOf("/");
   return index > 0 ? path.slice(0, index) : undefined;
-}
-
-/**
- * True for a normalized project-relative path: non-empty segments, no `.` or
- * `..`, no leading slash, no backslashes.
- */
-export function isSafeRelativePath(path: string): boolean {
-  if (path.length === 0 || path.startsWith("/") || path.includes("\\")) {
-    return false;
-  }
-  return path.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 }
 
 /**

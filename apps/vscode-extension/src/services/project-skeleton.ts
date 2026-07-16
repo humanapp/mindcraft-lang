@@ -7,12 +7,16 @@ export const DEV_TARGET_SETTING = "devTarget";
 export const SKELETON_PROJECT_VERSION = "0.1.0";
 
 /**
- * Dev-override description of the hosted target: where its built app lives
- * and what a new project of this target starts from.
+ * Dev-override description of the hosted target: where its app comes from and
+ * what a new project of this target starts from. The app is sourced from a
+ * local built directory (`appPath`) or from a pinned published reference
+ * (`appRef`); `appPath` takes precedence when both are set.
  */
 export interface FolderTargetDescriptor {
-  /** Absolute path of the target app's built (dist) directory. */
-  readonly appPath: string;
+  /** Absolute path of the target app's built (dist) directory, when hosting a local build. */
+  readonly appPath?: string;
+  /** Pinned `<owner>/<repo>@<ref>` reference of the target app's published bundle, when hosting a published build. */
+  readonly appRef?: string;
   /** Extension dependencies seeded into a new project, keyed by coordinate. */
   readonly extensions?: Readonly<Record<string, string>>;
   /** Platform-compatibility targets seeded into a new project. */
@@ -21,21 +25,23 @@ export interface FolderTargetDescriptor {
 
 /**
  * Read the `mindcraft.devTarget` setting. Returns `undefined` when the
- * setting is absent or carries no usable `appPath`.
+ * setting is absent or names neither an `appPath` nor an `appRef`.
  */
 export function readDevTargetDescriptor(): FolderTargetDescriptor | undefined {
   const raw = vscode.workspace.getConfiguration("mindcraft").get<Record<string, unknown>>(DEV_TARGET_SETTING);
   if (!raw || typeof raw !== "object") {
     return undefined;
   }
-  const appPath = raw.appPath;
-  if (typeof appPath !== "string" || appPath.trim().length === 0) {
+  const appPath = typeof raw.appPath === "string" && raw.appPath.trim().length > 0 ? raw.appPath.trim() : undefined;
+  const appRef = typeof raw.appRef === "string" && raw.appRef.trim().length > 0 ? raw.appRef.trim() : undefined;
+  if (appPath === undefined && appRef === undefined) {
     return undefined;
   }
   const extensions = isStringRecord(raw.extensions) ? raw.extensions : undefined;
   const targets = isTargetsRecord(raw.targets) ? raw.targets : undefined;
   return {
-    appPath: appPath.trim(),
+    ...(appPath !== undefined ? { appPath } : {}),
+    ...(appRef !== undefined ? { appRef } : {}),
     ...(extensions !== undefined ? { extensions } : {}),
     ...(targets !== undefined ? { targets } : {}),
   };

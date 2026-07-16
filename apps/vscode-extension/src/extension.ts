@@ -2,15 +2,19 @@ import * as vscode from "vscode";
 import { registerFolderCommands } from "./commands/folder-commands";
 import { activateBridgeSession } from "./services/bridge-session";
 import {
+  disposeFolderSessionForTest,
   folderSessionVolumeWriteForTest,
   hasFolderSessionHandshakeCompleted,
   isFolderSessionEditorOpen,
+  registerFolderSessionSerializer,
+  restoreFolderSessionForTest,
 } from "./services/folder-session";
 import type { RemovableVolumeRoot } from "./services/removable-volume";
-import { setMindcraftEnabled } from "./state/context";
+import { installTestTargetAppTransport, testTargetAppTransportCalls } from "./services/target-app-cache-host";
+import { isMindcraftEnabled, setMindcraftEnabled } from "./state/context";
 import { ProjectActionsProvider } from "./views/projectActionsProvider";
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("mindcraft.openSettings", () => {
       vscode.commands.executeCommand(
@@ -28,25 +32,43 @@ export function activate(context: vscode.ExtensionContext) {
     return;
   }
   registerFolderCommands(context);
+  // Apply the context the desktop view's when-clause reads before the view is
+  // created, so the view is present the moment it registers on every activation
+  // path -- including the onWebviewPanel restore path, where context keys reset
+  // on window reload and the extension activates early to restore the app tab.
+  // Awaiting removes the race where the Explorer evaluates the when-clause while
+  // the context set is still in flight; view presence never depends on reveal.
+  await setMindcraftEnabled(true);
   const projectActionsProvider = new ProjectActionsProvider();
   const projectActionsView = vscode.window.createTreeView("mindcraft.projectActions", {
     treeDataProvider: projectActionsProvider,
   });
   context.subscriptions.push(projectActionsView);
-  // The reveal needs the view's when-clause satisfied, so enable first.
-  void setMindcraftEnabled(true).then(() =>
-    expandProjectActionsViewOnFirstRender(context, projectActionsProvider, projectActionsView)
-  );
+  context.subscriptions.push(registerFolderSessionSerializer(context));
+  // Expansion is a one-time convenience; view presence follows the when-clause.
+  void expandProjectActionsViewOnFirstRender(context, projectActionsProvider, projectActionsView);
   // Test-only hooks for integration harnesses.
   context.subscriptions.push(
     vscode.commands.registerCommand("mindcraft.testHooks.folderSessionHandshakeCompleted", () =>
       hasFolderSessionHandshakeCompleted()
     ),
+    vscode.commands.registerCommand("mindcraft.testHooks.desktopViewState", () => ({
+      enabled: isMindcraftEnabled(),
+      viewVisible: projectActionsView.visible,
+    })),
     vscode.commands.registerCommand("mindcraft.testHooks.folderEditorOpen", () => isFolderSessionEditorOpen()),
     vscode.commands.registerCommand(
       "mindcraft.testHooks.folderVolumeWrite",
       (payload: unknown, mountRoots?: readonly RemovableVolumeRoot[]) =>
         folderSessionVolumeWriteForTest(payload, mountRoots)
+    ),
+    vscode.commands.registerCommand("mindcraft.testHooks.installTargetAppTransport", (files?: Record<string, string>) =>
+      installTestTargetAppTransport(files)
+    ),
+    vscode.commands.registerCommand("mindcraft.testHooks.targetAppTransportCalls", () => testTargetAppTransportCalls()),
+    vscode.commands.registerCommand("mindcraft.testHooks.disposeFolderSession", () => disposeFolderSessionForTest()),
+    vscode.commands.registerCommand("mindcraft.testHooks.restoreFolderSession", () =>
+      restoreFolderSessionForTest(context)
     )
   );
 }
