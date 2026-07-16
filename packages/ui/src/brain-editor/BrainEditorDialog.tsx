@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { staticAssetUrl } from "../asset-url";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
@@ -486,7 +487,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                   aria-label="Page name controls"
                 >
                   <img
-                    src="/assets/brain/icons/page.svg"
+                    src={staticAssetUrl("assets/brain/icons/page.svg")}
                     alt="Page icon"
                     className="h-8 w-8 bg-muted rounded-sm"
                     aria-hidden="true"
@@ -545,7 +546,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                   aria-label="Brain name controls"
                 >
                   <img
-                    src="/assets/brain/icons/brain2.svg"
+                    src={staticAssetUrl("assets/brain/icons/brain2.svg")}
                     alt="Brain icon"
                     className="h-8 w-8 bg-muted rounded-sm"
                     aria-hidden="true"

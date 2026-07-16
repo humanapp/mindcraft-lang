@@ -1,6 +1,7 @@
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
+import { staticAssetUrl } from "../asset-url";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { TileValue } from "./TileValue";
 import { resolveTileVisual } from "./tile-visual-utils";
@@ -18,7 +19,7 @@ function PrintTile({ tileDef, side }: PrintTileProps) {
 
   const visual = resolveTileVisual(editorConfig, tileDef);
   const label = visual.label;
-  const iconUrl = visual.iconUrl || "/assets/brain/icons/question_mark.svg";
+  const iconUrl = visual.iconUrl || staticAssetUrl("assets/brain/icons/question_mark.svg");
   const baseColor =
     (side === RuleSide.When ? visual?.colorDef?.when : side === RuleSide.Do ? visual?.colorDef?.do : undefined) ||
     "#475569";

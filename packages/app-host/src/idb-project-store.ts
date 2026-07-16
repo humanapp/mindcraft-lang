@@ -1,6 +1,7 @@
 import { LOWEST_CONTENT_VERSION } from "@mindcraft-lang/service-api";
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import { AppHostErrorCode, appHostError } from "./app-host-error.js";
+import { applyProjectFileChangeToSnapshot } from "./in-memory-project-file-system.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import {
   DEFAULT_PROJECT_COLLECTION_ID,
@@ -9,7 +10,7 @@ import {
   type ProjectCollection,
 } from "./project-collection.js";
 import { INITIAL_CONTENT_VERSION } from "./project-content-version.js";
-import type { ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
+import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectCollectionTabSession, ProjectStore } from "./project-store.js";
 
@@ -444,6 +445,14 @@ class IdbProjectStore implements ProjectStore {
     snapshot.delete(MINDCRAFT_JSON_PATH);
     await this.db.put("files", [...snapshot], id);
     await this.updateProject(id, {});
+  }
+
+  async applyProjectFileChanges(id: string, changes: readonly ProjectFileChange[]): Promise<void> {
+    const snapshot = (await this.loadProjectFiles(id)) ?? new Map();
+    for (const change of changes) {
+      applyProjectFileChangeToSnapshot(snapshot, change);
+    }
+    await this.saveProjectFiles(id, snapshot);
   }
 
   async loadAppData(id: string, key: string): Promise<string | undefined> {

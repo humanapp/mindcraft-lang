@@ -1,5 +1,7 @@
 export type { InMemoryProjectFileSystemOptions } from "@mindcraft-lang/app-host";
 export { createInMemoryProjectFileSystem, MINDCRAFT_JSON_PATH } from "@mindcraft-lang/app-host";
+export type { FolderAppMessage, FolderHostMessage } from "@mindcraft-lang/bridge-protocol";
+export { FOLDER_HOST_MODE_FOLDER, FOLDER_HOST_MODE_URL_PARAM } from "@mindcraft-lang/bridge-protocol";
 export type {
   AppBridge,
   AppBridgeFeature,
@@ -14,7 +16,6 @@ export type {
   ProjectFileSystem,
 } from "./app-bridge.js";
 export { createAppBridge } from "./app-bridge.js";
-
 export type { AppEnvironmentHostOptions } from "./app-environment-host.js";
 export { AppEnvironmentHost } from "./app-environment-host.js";
 export { CORE_LIB_COORDINATE, CORE_LIB_REFERENCE } from "./core-extension.js";
@@ -87,9 +88,26 @@ export {
   parseInstalledExtensionSnapshots,
   serializeInstalledExtensionSnapshots,
 } from "./fetched-extension-snapshots.js";
+export type { FolderHostPort, FolderHostSession, FolderHostSessionOptions } from "./folder-host-session.js";
+export {
+  connectFolderHostSession,
+  createFolderCompileDiagnosticsPublisher,
+  FolderSessionError,
+} from "./folder-host-session.js";
 
 export type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
 export { applyCompiledUserTiles, collectMetadataFromCompile } from "./user-tile-registration.js";
 
 export type { VfsAssetUrlProvider, VfsAssetUrlProviderOptions } from "./vfs-asset-url-provider.js";
 export { createVfsAssetUrlProvider } from "./vfs-asset-url-provider.js";
+export type {
+  FolderAppDataCodec,
+  WorkspaceFolderProjectStoreOptions,
+  WorkspaceFolderRpc,
+} from "./workspace-folder-project-store.js";
+export {
+  WORKSPACE_FOLDER_PROJECT_COLLECTION_ID,
+  WorkspaceFolderProjectStore,
+  WorkspaceFolderStoreError,
+  WorkspaceFolderStoreErrorCode,
+} from "./workspace-folder-project-store.js";

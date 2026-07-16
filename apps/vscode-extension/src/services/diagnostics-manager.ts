@@ -14,12 +14,18 @@ export class DiagnosticsManager implements vscode.Disposable {
   private readonly _collection: vscode.DiagnosticCollection;
   private readonly _versions = new Map<string, number>();
   private readonly _fileCounts = new Map<string, { errors: number; warnings: number }>();
+  private readonly _toUri: (file: string) => vscode.Uri;
   private _totalErrors = 0;
   private _totalWarnings = 0;
   private readonly _onDidChangeCounts = new vscode.EventEmitter<{ errors: number; warnings: number }>();
   readonly onDidChangeCounts = this._onDidChangeCounts.event;
 
-  constructor() {
+  /**
+   * @param toUri - Maps a project-relative file path to the URI diagnostics
+   *   are published on. Defaults to the virtual `mindcraft:` scheme.
+   */
+  constructor(toUri?: (file: string) => vscode.Uri) {
+    this._toUri = toUri ?? ((file) => vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${file}` }));
     this._collection = vscode.languages.createDiagnosticCollection("mindcraft");
     this._collection.clear();
   }
@@ -35,7 +41,7 @@ export class DiagnosticsManager implements vscode.Disposable {
     if (lastVersion !== undefined && version < lastVersion) return;
     this._versions.set(file, version);
 
-    const uri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${file}` });
+    const uri = this._toUri(file);
     const visibleDiagnostics = diagnostics.filter((entry) => !SUPPRESSED_DIAGNOSTIC_CODES.has(entry.code));
     const mapped = visibleDiagnostics.map((entry) => {
       const range = new vscode.Range(
@@ -75,7 +81,7 @@ export class DiagnosticsManager implements vscode.Disposable {
   }
 
   clearFile(file: string): void {
-    const uri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${file}` });
+    const uri = this._toUri(file);
     this._collection.delete(uri);
     this._versions.delete(file);
     const counts = this._fileCounts.get(file);

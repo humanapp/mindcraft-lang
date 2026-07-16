@@ -1,5 +1,5 @@
 import type { ProjectCollection } from "./project-collection.js";
-import type { ProjectFileSnapshot } from "./project-file-snapshot.js";
+import type { ProjectFileChange, ProjectFileSnapshot } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
 
 /** Tab-scoped project collection and project restore state. */
@@ -69,6 +69,13 @@ export interface ProjectStore {
    * project manifest when the project is opened.
    */
   saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void>;
+  /**
+   * Apply an ordered batch of changes to the stored project files of `id`.
+   * Equivalent to loading the stored snapshot, applying each change in order,
+   * and saving the result. Changes to the `mindcraft.json` entry are not
+   * persisted; that file is derived from the project manifest.
+   */
+  applyProjectFileChanges(id: string, changes: readonly ProjectFileChange[]): Promise<void>;
 
   /** Load a per-project app-data value by key. */
   loadAppData(id: string, key: string): Promise<string | undefined>;

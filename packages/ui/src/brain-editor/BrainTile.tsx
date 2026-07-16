@@ -2,6 +2,7 @@ import { CoreCapabilityBits, type IBrainActionTileDef, type IBrainTileDef, RuleS
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 import { CircleAlert, ClockFading } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
+import { staticAssetUrl } from "../asset-url";
 import { adjustColor, saturateColor } from "../lib/color";
 import { glassEffect } from "../lib/glass-effect";
 import { useBrainEditorConfig } from "./BrainEditorContext";
@@ -29,7 +30,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
 
     const visual = resolveTileVisual(editorConfig, tileDef);
     const label = visual.label;
-    const iconUrl = visual.iconUrl || "/assets/brain/icons/question_mark.svg";
+    const iconUrl = visual.iconUrl || staticAssetUrl("assets/brain/icons/question_mark.svg");
     const baseColor =
       (side === RuleSide.When ? visual?.colorDef?.when : side === RuleSide.Do ? visual?.colorDef?.do : undefined) ||
       "#475569";
@@ -174,11 +175,11 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
             <div
               style={{
                 backgroundColor: darkerSaturatedColor,
-                WebkitMaskImage: "url(/assets/brain/icons/ts-logo-128.svg)",
+                WebkitMaskImage: `url(${staticAssetUrl("assets/brain/icons/ts-logo-128.svg")})`,
                 WebkitMaskSize: "contain",
                 WebkitMaskRepeat: "no-repeat",
                 WebkitMaskPosition: "center",
-                maskImage: "url(/assets/brain/icons/ts-logo-128.svg)",
+                maskImage: `url(${staticAssetUrl("assets/brain/icons/ts-logo-128.svg")})`,
                 maskSize: "contain",
                 maskRepeat: "no-repeat",
                 maskPosition: "center",

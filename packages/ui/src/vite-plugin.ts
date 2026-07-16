@@ -23,8 +23,14 @@ const fontPublicPath = `/assets/fonts/${fontFileName}`;
  *   inlining happens before transform runs).
  */
 export function uiPlugin() {
+  let resolvedBase = "/";
   return {
     name: "mindcraft-ui",
+
+    // biome-ignore lint/suspicious/noExplicitAny: Vite types not available in source-only package
+    configResolved(config: any) {
+      resolvedBase = typeof config.base === "string" && config.base.length > 0 ? config.base : "/";
+    },
 
     transform(code: string, id: string) {
       if (id.endsWith(".css") && code.includes(fontFileName)) {
@@ -50,6 +56,7 @@ export function uiPlugin() {
     },
 
     transformIndexHtml() {
+      const baseWithSlash = resolvedBase.endsWith("/") ? resolvedBase : `${resolvedBase}/`;
       return [
         {
           tag: "link",
@@ -57,7 +64,7 @@ export function uiPlugin() {
             rel: "preload",
             as: "font",
             type: "font/woff2",
-            href: fontPublicPath,
+            href: `${baseWithSlash}assets/fonts/${fontFileName}`,
             crossorigin: "anonymous",
           },
           injectTo: "head" as const,
@@ -76,12 +83,14 @@ export function uiPlugin() {
 
       // Rewrite the font url() in all assembled CSS assets. This is the
       // reliable production-build fix: @import inlining happens before
-      // transform runs, so the URL must be rewritten here instead.
+      // transform runs, so the URL must be rewritten here instead. The URL is
+      // relative to the CSS asset (both live under assets/), which keeps it
+      // valid for any build base.
       for (const asset of Object.values(bundle)) {
         if (asset.type === "asset" && typeof asset.source === "string" && asset.source.includes(fontFileName)) {
           asset.source = asset.source.replace(
             /url\(["']?[^"'()]*latinmodern-math\.woff2["']?\)/g,
-            `url("${fontPublicPath}")`
+            `url("fonts/${fontFileName}")`
           );
         }
       }

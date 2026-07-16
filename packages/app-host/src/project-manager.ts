@@ -13,7 +13,7 @@ import {
   type ProjectCollectionBroadcastMessage,
 } from "./project-collection-broadcast.js";
 import { createProjectCollectionPinVerifier, verifyProjectCollectionPin } from "./project-collection-pin.js";
-import type { ProjectFileSnapshot } from "./project-file-snapshot.js";
+import type { ProjectFileChange, ProjectFileSnapshot } from "./project-file-snapshot.js";
 import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 import type { ProjectManifest } from "./project-manifest.js";
@@ -186,7 +186,10 @@ export class ProjectManager {
   private currentActive: ActiveProject | undefined;
   private currentLockHandle: ProjectLockHandle | undefined;
   private autoSaveUnsub: (() => void) | undefined;
+  private autoSaveLocalUnsub: (() => void) | undefined;
   private autoSaveTimerId: ReturnType<typeof setTimeout> | undefined;
+  private pendingLocalChanges: ProjectFileChange[] = [];
+  private remoteChangesSinceFlush = false;
   private reloadUnlockRefreshTimerId: ReturnType<typeof setInterval> | undefined;
   private reloadUnlockRefreshProjectCollectionId: string | undefined;
   private readonly unlockedProjectCollectionIds = new Set<string>();
@@ -1076,7 +1079,19 @@ export class ProjectManager {
   }
 
   private startAutoSave(filesystem: ProjectFileSystem): void {
+    // applyLocalChange notifies local-change listeners before any-change
+    // listeners, so an any-change event without a preceding local record is a
+    // remote change.
+    let lastChangeWasLocal = false;
+    this.autoSaveLocalUnsub = filesystem.onLocalChange((change) => {
+      lastChangeWasLocal = true;
+      this.pendingLocalChanges.push(change);
+    });
     this.autoSaveUnsub = filesystem.onAnyChange(() => {
+      if (!lastChangeWasLocal) {
+        this.remoteChangesSinceFlush = true;
+      }
+      lastChangeWasLocal = false;
       this.scheduleAutoSave();
     });
   }
@@ -1088,6 +1103,10 @@ export class ProjectManager {
     }
     this.autoSaveUnsub?.();
     this.autoSaveUnsub = undefined;
+    this.autoSaveLocalUnsub?.();
+    this.autoSaveLocalUnsub = undefined;
+    this.pendingLocalChanges = [];
+    this.remoteChangesSinceFlush = false;
   }
 
   private scheduleAutoSave(): void {
@@ -1096,13 +1115,39 @@ export class ProjectManager {
     }
     this.autoSaveTimerId = setTimeout(() => {
       this.autoSaveTimerId = undefined;
-      if (this.currentActive) {
-        const { manifest, filesystem } = this.currentActive;
-        this.store.saveProjectFiles(manifest.id, filesystem.exportSnapshot()).catch((error: unknown) => {
-          void this.handleAutoSaveError(manifest.projectCollectionId, manifest.id, error);
-        });
-      }
+      void this.flushAutoSave();
     }, this.autoSaveDelayMs);
+  }
+
+  /**
+   * Persist the changes accumulated since the last flush: local-only edits go
+   * through the store's change-granular write path; any remote change since
+   * the last flush falls back to a whole-snapshot save.
+   */
+  private async flushAutoSave(): Promise<void> {
+    const active = this.currentActive;
+    if (!active) {
+      return;
+    }
+    const { manifest, filesystem } = active;
+    const changes = this.pendingLocalChanges;
+    const hadRemoteChanges = this.remoteChangesSinceFlush;
+    this.pendingLocalChanges = [];
+    this.remoteChangesSinceFlush = false;
+    if (changes.length === 0 && !hadRemoteChanges) {
+      return;
+    }
+    try {
+      if (hadRemoteChanges) {
+        await this.store.saveProjectFiles(manifest.id, filesystem.exportSnapshot());
+      } else {
+        await this.store.applyProjectFileChanges(manifest.id, changes);
+      }
+    } catch (error) {
+      this.pendingLocalChanges = [...changes, ...this.pendingLocalChanges];
+      this.remoteChangesSinceFlush = this.remoteChangesSinceFlush || hadRemoteChanges;
+      void this.handleAutoSaveError(manifest.projectCollectionId, manifest.id, error);
+    }
   }
 
   private notifyActiveProject(): void {

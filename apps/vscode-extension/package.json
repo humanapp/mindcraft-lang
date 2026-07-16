@@ -79,15 +79,71 @@
       {
         "command": "mindcraft.unlockMindcraftJson",
         "title": "Mindcraft: Unlock mindcraft.json for Editing"
+      },
+      {
+        "command": "mindcraft.openProjectFolder",
+        "title": "Mindcraft: Open Project Folder"
+      },
+      {
+        "command": "mindcraft.newProject",
+        "title": "Mindcraft: New Project"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "mindcraft.show",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.connect",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.disconnect",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.createSensor",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.createActuator",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.hide",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.sync",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.openSettings",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.unlockMindcraftJson",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.openProjectFolder",
+          "when": "!mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.newProject",
+          "when": "!mindcraft.webHost"
+        }
+      ]
+    },
     "views": {
       "explorer": [
         {
           "id": "mindcraft.sessions",
           "name": "Mindcraft",
           "icon": "$(symbol-misc)",
-          "when": "mindcraft.enabled"
+          "when": "mindcraft.enabled && mindcraft.webHost"
         }
       ]
     },
@@ -98,6 +154,25 @@
           "type": "string",
           "default": "vscode-bridge.mindcraft-lang.org",
           "description": "URL for the Mindcraft bridge service"
+        },
+        "mindcraft.devTarget": {
+          "type": "object",
+          "default": null,
+          "description": "Dev-override target descriptor for desktop folder mode: { appPath: <built app directory>, extensions?: { <owner>/<repo>: <reference> }, targets?: { <owner>/<repo>: { packageVersion: <range> } } }",
+          "properties": {
+            "appPath": {
+              "type": "string",
+              "description": "Absolute path of the target app's built (dist) directory"
+            },
+            "extensions": {
+              "type": "object",
+              "description": "Extension dependencies seeded into a new project, keyed by coordinate"
+            },
+            "targets": {
+              "type": "object",
+              "description": "Platform-compatibility targets seeded into a new project"
+            }
+          }
         }
       }
     }
@@ -113,8 +188,8 @@
     "check": "biome check ./src --write",
     "typecheck": "tsc --noEmit",
     "format": "biome format ./src --write",
-    "package": "vsce package --no-dependencies --target web",
-    "publish": "vsce publish --no-dependencies --target web",
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --no-dependencies",
     "release:patch": "node ../../scripts/release.js patch",
     "release:minor": "node ../../scripts/release.js minor",
     "release:major": "node ../../scripts/release.js major"

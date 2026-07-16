@@ -1,6 +1,7 @@
 import {
   AppHostErrorCode,
   appHostError,
+  applyProjectFileChangeToSnapshot,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_COLLECTION_NAME,
   LOWEST_CONTENT_VERSION,
@@ -8,6 +9,7 @@ import {
   normalizeProjectCollectionName,
   type ProjectCollection,
   type ProjectCollectionTabSession,
+  type ProjectFileChange,
   type ProjectFileSnapshot,
   type ProjectManifest,
   type ProjectStore,
@@ -267,6 +269,14 @@ export class MemoryProjectStore implements ProjectStore {
     await this.requireLiveProject(id);
     snapshot.delete(MINDCRAFT_JSON_PATH);
     this.data.projectFiles.set(id, snapshot);
+  }
+
+  async applyProjectFileChanges(id: string, changes: readonly ProjectFileChange[]): Promise<void> {
+    const snapshot = (await this.loadProjectFiles(id)) ?? new Map();
+    for (const change of changes) {
+      applyProjectFileChangeToSnapshot(snapshot, change);
+    }
+    await this.saveProjectFiles(id, snapshot);
   }
 
   async loadAppData(id: string, key: string): Promise<string | undefined> {

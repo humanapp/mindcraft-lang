@@ -14,6 +14,7 @@ import {
   type ProjectCollectionState,
   type ProjectCollectionSummaryChange,
   type ProjectCollectionTabSession,
+  type ProjectFileChange,
   type ProjectFileSnapshot,
   ProjectManager,
   type ProjectManifest,
@@ -596,6 +597,75 @@ describe("ProjectManager", () => {
       await restored.close();
       first.dispose();
       restored.dispose();
+    });
+
+    it("autosaves local-only edits through the change-granular store write path", async () => {
+      const countingStore = new CountingFileWriteStore();
+      const manager = new ProjectManager(countingStore, { autoSaveDelayMs: 0 });
+      try {
+        await manager.create("Change Granular");
+        countingStore.saveProjectFilesCount = 0;
+        countingStore.appliedChangeBatches.length = 0;
+        manager.activeProject?.filesystem.applyLocalChange({
+          action: "write",
+          path: "src/a.ts",
+          content: "a",
+          newEtag: "etag-a",
+        });
+        manager.activeProject?.filesystem.applyLocalChange({
+          action: "write",
+          path: "src/b.ts",
+          content: "b",
+          newEtag: "etag-b",
+        });
+        await waitForTimers();
+
+        assert.strictEqual(countingStore.saveProjectFilesCount, 0);
+        assert.strictEqual(countingStore.appliedChangeBatches.length, 1);
+        assert.deepStrictEqual(
+          countingStore.appliedChangeBatches[0].map((change) => (change.action === "write" ? change.path : "")),
+          ["src/a.ts", "src/b.ts"]
+        );
+        const saved = await countingStore.loadProjectFiles(manager.activeProject!.manifest.id);
+        const entry = saved?.get("src/b.ts");
+        assert.ok(entry && entry.kind === "file");
+        assert.strictEqual(entry.content, "b");
+      } finally {
+        await manager.close();
+        manager.dispose();
+      }
+    });
+
+    it("autosaves with a whole-snapshot store write when a remote change arrived", async () => {
+      const countingStore = new CountingFileWriteStore();
+      const manager = new ProjectManager(countingStore, { autoSaveDelayMs: 0 });
+      try {
+        await manager.create("Remote Fallback");
+        countingStore.saveProjectFilesCount = 0;
+        countingStore.appliedChangeBatches.length = 0;
+        manager.activeProject?.filesystem.applyLocalChange({
+          action: "write",
+          path: "src/local.ts",
+          content: "local",
+          newEtag: "etag-local",
+        });
+        manager.activeProject?.filesystem.applyRemoteChange({
+          action: "write",
+          path: "src/remote.ts",
+          content: "remote",
+          newEtag: "etag-remote",
+        });
+        await waitForTimers();
+
+        assert.strictEqual(countingStore.saveProjectFilesCount, 1);
+        assert.strictEqual(countingStore.appliedChangeBatches.length, 0);
+        const saved = await countingStore.loadProjectFiles(manager.activeProject!.manifest.id);
+        assert.ok(saved?.has("src/local.ts"));
+        assert.ok(saved?.has("src/remote.ts"));
+      } finally {
+        await manager.close();
+        manager.dispose();
+      }
     });
 
     it("emits onProjectPersistenceError and logs non-tombstone autosave failures", async () => {
@@ -2121,6 +2191,29 @@ class FailingSaveProjectStore extends MemoryProjectStore {
       throw new Error("autosave failed");
     }
     await super.saveProjectFiles(id, snapshot);
+  }
+}
+
+class CountingFileWriteStore extends MemoryProjectStore {
+  saveProjectFilesCount = 0;
+  appliedChangeBatches: ProjectFileChange[][] = [];
+  private inChangeApply = false;
+
+  override async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
+    if (!this.inChangeApply) {
+      this.saveProjectFilesCount += 1;
+    }
+    await super.saveProjectFiles(id, snapshot);
+  }
+
+  override async applyProjectFileChanges(id: string, changes: readonly ProjectFileChange[]): Promise<void> {
+    this.appliedChangeBatches.push([...changes]);
+    this.inChangeApply = true;
+    try {
+      await super.applyProjectFileChanges(id, changes);
+    } finally {
+      this.inChangeApply = false;
+    }
   }
 }
 

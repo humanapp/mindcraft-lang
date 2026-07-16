@@ -53,7 +53,7 @@ export type { ExtensionUpdateApplication, ExtensionUpdateCheck } from "./extensi
 export { checkExtensionReferenceUpdate, highestListedRelease } from "./extension-update.js";
 export { createIdbProjectStore } from "./idb-project-store.js";
 export type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";
-export { createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";
+export { applyProjectFileChangeToSnapshot, createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";
 export type { JsDelivrExtensionTransportOptions } from "./jsdelivr-extension-transport.js";
 export {
   createJsDelivrExtensionTransport,

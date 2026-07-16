@@ -1,0 +1,174 @@
+import type { CompileDiagnosticsPayload } from "./messages/compile.js";
+import type { FileSystemNotification, FilesystemSyncPayload } from "./notifications.js";
+
+/**
+ * Wire-format version of the folder-session protocol spoken between a host
+ * (for example a VS Code extension owning a workspace folder) and an embedded
+ * app. Bumped on incompatible changes.
+ */
+export const FOLDER_SESSION_PROTOCOL_VERSION = 1;
+
+/** URL search parameter a host adds to the embedded app's document URL as the host-mode bootstrap flag. */
+export const FOLDER_HOST_MODE_URL_PARAM = "mindcraftHostMode";
+
+/** Value of {@link FOLDER_HOST_MODE_URL_PARAM} selecting folder host mode. */
+export const FOLDER_HOST_MODE_FOLDER = "folder";
+
+/** Stable identifiers for folder-session errors reported by the host. */
+export const FolderSessionErrorCode = {
+  /** The app's `folder:hello` declared a protocol version the host does not speak. */
+  PROTOCOL_VERSION_MISMATCH: "FOLDER_SESSION_PROTOCOL_VERSION_MISMATCH",
+  /** The project folder carries no readable `mindcraft.json`. */
+  PROJECT_MANIFEST_NOT_FOUND: "FOLDER_SESSION_PROJECT_MANIFEST_NOT_FOUND",
+  /** A message payload failed validation. */
+  INVALID_PAYLOAD: "FOLDER_SESSION_INVALID_PAYLOAD",
+  /** A change action the host does not apply to a project folder. */
+  UNSUPPORTED_CHANGE: "FOLDER_SESSION_UNSUPPORTED_CHANGE",
+  /** A change named a path that resolves outside the project folder. */
+  PATH_OUTSIDE_PROJECT: "FOLDER_SESSION_PATH_OUTSIDE_PROJECT",
+  /** A disk write failed. */
+  WRITE_FAILED: "FOLDER_SESSION_WRITE_FAILED",
+} as const;
+
+/** Union of all {@link FolderSessionErrorCode} values. */
+export type FolderSessionErrorCode = (typeof FolderSessionErrorCode)[keyof typeof FolderSessionErrorCode];
+
+/** Payload of a {@link FolderHelloMessage}. */
+export interface FolderHelloPayload {
+  /** Protocol version the app speaks; must equal {@link FOLDER_SESSION_PROTOCOL_VERSION}. */
+  protocolVersion: number;
+}
+
+/**
+ * First message the app sends to open a folder session. The host replies with
+ * {@link FolderWelcomeMessage} carrying the same `id`, or {@link FolderErrorMessage}.
+ */
+export interface FolderHelloMessage {
+  type: "folder:hello";
+  id?: string;
+  payload: FolderHelloPayload;
+}
+
+/** Payload of a {@link FolderWelcomeMessage}. */
+export interface FolderWelcomePayload {
+  /** Protocol version the host speaks. */
+  protocolVersion: number;
+  /** Stable opaque id of the host-provided project. */
+  projectId: string;
+  /** The project's `mindcraft.json` as read from disk. */
+  manifest: {
+    /** Full JSON text of the manifest file. */
+    content: string;
+    /** Opaque version tag minted from the file's disk state. */
+    etag: string;
+  };
+}
+
+/** Handshake confirmation: delivers the project identity and its manifest. */
+export interface FolderWelcomeMessage {
+  type: "folder:welcome";
+  id?: string;
+  payload: FolderWelcomePayload;
+}
+
+/**
+ * Requests the project's file snapshot from the host. The host replies with
+ * {@link FolderFilesMessage} carrying the same `id`. The `mindcraft.json`
+ * manifest is not included; it is delivered by the handshake.
+ */
+export interface FolderLoadFilesMessage {
+  type: "folder:loadFiles";
+  id?: string;
+}
+
+/** Full project file snapshot sent in reply to {@link FolderLoadFilesMessage}. */
+export interface FolderFilesMessage {
+  type: "folder:files";
+  id?: string;
+  payload: FilesystemSyncPayload;
+}
+
+/**
+ * A single change-granular project file write from the app. The host applies
+ * it to the project folder and replies with {@link FolderAckMessage} carrying
+ * the same `id`, or {@link FolderErrorMessage} when the write fails.
+ */
+export interface FolderChangeMessage {
+  type: "folder:change";
+  id?: string;
+  payload: FileSystemNotification;
+}
+
+/** Payload of a {@link FolderManifestWriteMessage}. */
+export interface FolderManifestWritePayload {
+  /** Full JSON text to store as the project's `mindcraft.json`. */
+  content: string;
+}
+
+/**
+ * Replaces the project's `mindcraft.json` on disk. The host replies with
+ * {@link FolderAckMessage} carrying the same `id`, or {@link FolderErrorMessage}.
+ */
+export interface FolderManifestWriteMessage {
+  type: "folder:manifestWrite";
+  id?: string;
+  payload: FolderManifestWritePayload;
+}
+
+/** Confirms that the request with the same `id` was applied. */
+export interface FolderAckMessage {
+  type: "folder:ack";
+  id?: string;
+}
+
+/**
+ * A project file change observed on disk outside the app (an external edit).
+ * A `write` carries the file's new content and an etag minted from its disk
+ * state; a change to `mindcraft.json` is delivered on this channel too.
+ */
+export interface FolderExternalChangeMessage {
+  type: "folder:externalChange";
+  id?: string;
+  payload: FileSystemNotification;
+}
+
+/** Compile diagnostics for one file, published by the app to the host. */
+export interface FolderDiagnosticsMessage {
+  type: "folder:diagnostics";
+  id?: string;
+  payload: CompileDiagnosticsPayload;
+}
+
+/** Payload of a {@link FolderErrorMessage}. */
+export interface FolderErrorPayload {
+  /** Stable machine-readable error code. */
+  code: FolderSessionErrorCode;
+  /** Human-readable error message. */
+  message: string;
+}
+
+/**
+ * Reports a failed request (carrying the request's `id`) or a session-level
+ * fault from the host.
+ */
+export interface FolderErrorMessage {
+  type: "folder:error";
+  id?: string;
+  payload: FolderErrorPayload;
+}
+
+/** Messages sent by the app to the folder-session host. */
+export type FolderAppMessage =
+  | FolderHelloMessage
+  | FolderLoadFilesMessage
+  | FolderChangeMessage
+  | FolderManifestWriteMessage
+  | FolderDiagnosticsMessage;
+
+/** Messages sent by the folder-session host to the app. */
+export type FolderHostMessage =
+  | FolderWelcomeMessage
+  | FolderFilesMessage
+  | FolderAckMessage
+  | FolderExternalChangeMessage
+  | FolderErrorMessage;

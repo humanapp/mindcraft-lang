@@ -1,5 +1,7 @@
 // Shared UI primitives (shadcn)
 
+// Static asset base resolution
+export * from "./asset-url";
 // Brain editor components and infrastructure
 export * from "./brain-editor";
 // Extension browser dialog

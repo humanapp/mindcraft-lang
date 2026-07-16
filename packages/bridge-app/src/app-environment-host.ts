@@ -1087,6 +1087,46 @@ export class AppEnvironmentHost {
     return this._bridgeJoinCode;
   };
 
+  /**
+   * Apply a project file change observed outside the app (a folder-session
+   * external edit): applies it to the project file system and the workspace
+   * compiler, recompiles, and absorbs any `mindcraft.json` manifest change.
+   */
+  applyExternalProjectFileChange(change: ProjectFileChange): void {
+    this.projectFileSystem.applyRemoteChange(change);
+    if (this._compiler) {
+      this._compiler.compiler.applyWorkspaceChange(change);
+      this._compiler.compiler.compile();
+    }
+    this.handleRemoteProjectFileChange(change);
+  }
+
+  /**
+   * Absorb a project file change made by a remote peer: bumps the VFS
+   * revision, and a `mindcraft.json` write is diffed against the active
+   * manifest -- an extensions change runs through the install transaction and
+   * the remaining synced fields patch the manifest. The change itself must
+   * already be applied to the project file system.
+   */
+  handleRemoteProjectFileChange(change: ProjectFileChange): void {
+    this.bumpVfsRevision();
+    if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
+      const patch = diffMindcraftJsonToManifest(change.content, this.projectManager.activeProject.manifest);
+      if (patch) {
+        // An extensions change flows through the install transaction, the
+        // same pipeline the extension browser uses; the remaining synced
+        // fields patch the manifest directly.
+        const { extensions, ...rest } = patch;
+        if (extensions !== undefined) {
+          void this.updateProjectExtensions(extensions);
+        }
+        if (Object.keys(rest).length > 0) {
+          void this.projectManager.updateActive(rest);
+        }
+      }
+    }
+  }
+
   private wireBridgeState(bridge: AppBridge): void {
     this._bridgeStateUnsub?.();
     this._remoteChangeUnsub?.();
@@ -1094,22 +1134,7 @@ export class AppEnvironmentHost {
       this.applyBridgeSnapshot(bridge);
     });
     this._remoteChangeUnsub = bridge.onRemoteChange((change: ProjectFileChange) => {
-      this.bumpVfsRevision();
-      if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
-        const patch = diffMindcraftJsonToManifest(change.content, this.projectManager.activeProject.manifest);
-        if (patch) {
-          // An extensions change flows through the install transaction, the
-          // same pipeline the extension browser uses; the remaining synced
-          // fields patch the manifest directly.
-          const { extensions, ...rest } = patch;
-          if (extensions !== undefined) {
-            void this.updateProjectExtensions(extensions);
-          }
-          if (Object.keys(rest).length > 0) {
-            void this.projectManager.updateActive(rest);
-          }
-        }
-      }
+      this.handleRemoteProjectFileChange(change);
     });
     this.applyBridgeSnapshot(bridge);
   }

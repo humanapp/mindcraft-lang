@@ -1,55 +1,17 @@
 import * as vscode from "vscode";
-import { registerCommands } from "./commands";
-import { BuildMembershipCodeLensProvider } from "./providers/build-membership-codelens-provider";
-import { BuildMembershipDecorationProvider } from "./providers/build-membership-decoration-provider";
-import { MindcraftJsonCodeLensProvider } from "./providers/mindcraft-json-codelens-provider";
-import { MINDCRAFT_SCHEME } from "./services/mindcraft-fs-provider";
-import { ProjectManager } from "./services/project-manager";
-import { setMindcraftEnabled } from "./state/context";
-import { createStatusBarItem } from "./ui/statusBar";
-import { MindcraftSessionsProvider } from "./views/mindcraftSessionsProvider";
+import { registerFolderCommands } from "./commands/folder-commands";
+import { activateBridgeSession } from "./services/bridge-session";
 
 export function activate(context: vscode.ExtensionContext) {
-  const projectManager = new ProjectManager();
-
-  context.subscriptions.push(
-    vscode.workspace.registerFileSystemProvider(MINDCRAFT_SCHEME, projectManager.fsProvider, {
-      isCaseSensitive: true,
-    }),
-    vscode.window.registerFileDecorationProvider(projectManager.fsProvider),
-    vscode.window.registerFileDecorationProvider(
-      new BuildMembershipDecorationProvider(MINDCRAFT_SCHEME, projectManager.buildMembership)
-    ),
-    vscode.languages.registerCodeLensProvider(
-      { scheme: MINDCRAFT_SCHEME, pattern: "**/mindcraft.json" },
-      new MindcraftJsonCodeLensProvider(projectManager.fsProvider)
-    ),
-    vscode.languages.registerCodeLensProvider(
-      { scheme: MINDCRAFT_SCHEME },
-      new BuildMembershipCodeLensProvider(projectManager.buildMembership)
-    )
-  );
-
-  const sessionsProvider = new MindcraftSessionsProvider(projectManager);
-  const treeView = vscode.window.createTreeView("mindcraft.sessions", {
-    treeDataProvider: sessionsProvider,
-  });
-
-  registerCommands(context, projectManager);
-  createStatusBarItem(context, projectManager);
-
-  context.subscriptions.push(
-    projectManager.onDidChangeAppBound(async (bound) => {
-      if (bound && !treeView.visible) {
-        await setMindcraftEnabled(true);
-        vscode.commands.executeCommand("mindcraft.sessions.focus");
-      }
-    })
-  );
-
-  projectManager.initialize(context.globalState);
-
-  context.subscriptions.push(treeView, projectManager);
+  // Mode is environment-keyed: the web UI runs bridge mode only, desktop runs
+  // folder mode only. The context key gates command and view visibility.
+  const isWebHost = vscode.env.uiKind === vscode.UIKind.Web;
+  void vscode.commands.executeCommand("setContext", "mindcraft.webHost", isWebHost);
+  if (isWebHost) {
+    activateBridgeSession(context);
+    return;
+  }
+  registerFolderCommands(context);
 }
 
 export function deactivate() {}

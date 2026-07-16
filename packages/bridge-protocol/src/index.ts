@@ -2,6 +2,30 @@
 export const PROTOCOL_VERSION = 1;
 
 export type {
+  FolderAckMessage,
+  FolderAppMessage,
+  FolderChangeMessage,
+  FolderDiagnosticsMessage,
+  FolderErrorMessage,
+  FolderErrorPayload,
+  FolderExternalChangeMessage,
+  FolderFilesMessage,
+  FolderHelloMessage,
+  FolderHelloPayload,
+  FolderHostMessage,
+  FolderLoadFilesMessage,
+  FolderManifestWriteMessage,
+  FolderManifestWritePayload,
+  FolderWelcomeMessage,
+  FolderWelcomePayload,
+} from "./folder-session.js";
+export {
+  FOLDER_HOST_MODE_FOLDER,
+  FOLDER_HOST_MODE_URL_PARAM,
+  FOLDER_SESSION_PROTOCOL_VERSION,
+  FolderSessionErrorCode,
+} from "./folder-session.js";
+export type {
   AppClientMessage,
   AppServerMessage,
   AppSessionJoinCodeMessage,
