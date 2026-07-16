@@ -186,7 +186,8 @@
     "format:only": "biome format ./src",
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
-    "typecheck": "tsc --noEmit",
+    "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json",
     "format": "biome format ./src --write",
     "package": "vsce package --no-dependencies",
     "publish": "vsce publish --no-dependencies",
@@ -199,10 +200,12 @@
     "@mindcraft-lang/bridge-app": "file:../../packages/bridge-app",
     "@mindcraft-lang/bridge-client": "file:../../packages/bridge-client",
     "@mindcraft-lang/bridge-protocol": "file:../../packages/bridge-protocol",
+    "@types/node": "^25.3.0",
     "@types/vscode": "^1.100.0",
     "@vscode/test-web": "^0.0.80",
     "@vscode/vsce": "^3.8.0",
     "esbuild": "^0.25.0",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.3"
   }
 }

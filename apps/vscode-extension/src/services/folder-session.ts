@@ -1,10 +1,17 @@
-import { FOLDER_HOST_MODE_FOLDER, FOLDER_HOST_MODE_URL_PARAM } from "@mindcraft-lang/bridge-protocol";
 import * as vscode from "vscode";
+import { buildAppHostHtml, buildAppLoadFailureHtml } from "./app-host-html";
 import { DiagnosticsManager } from "./diagnostics-manager";
 import { FolderStoreHost } from "./folder-store-host";
 import type { ProjectSession } from "./project-session";
 
 let currentSession: FolderProjectSession | undefined;
+
+let handshakeCompleted = false;
+
+/** Test-only: true once any folder session has answered an app's `folder:hello` with `folder:welcome`. */
+export function hasFolderSessionHandshakeCompleted(): boolean {
+  return handshakeCompleted;
+}
 
 /**
  * Open (or reveal) the folder session for `folder`: an app tab hosting the
@@ -59,13 +66,16 @@ class FolderProjectSession implements ProjectSession {
       (message) => {
         void this.panel.webview.postMessage(message);
       },
-      this.diagnostics
+      this.diagnostics,
+      () => {
+        handshakeCompleted = true;
+      }
     );
 
     this.panel.webview.onDidReceiveMessage((message: unknown) => {
       void this.storeHost.handleAppMessage(message);
     });
-    this.panel.webview.html = buildWebviewHtml(this.panel.webview, appRoot);
+    void this.initializeWebviewHtml(appRoot);
 
     this.watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, "**/*"));
     this.watcher.onDidCreate((uri) => {
@@ -80,6 +90,29 @@ class FolderProjectSession implements ProjectSession {
 
     this.panel.onDidDispose(() => {
       this.dispose();
+    });
+  }
+
+  private async initializeWebviewHtml(appRoot: vscode.Uri): Promise<void> {
+    const webview = this.panel.webview;
+    const indexUri = vscode.Uri.joinPath(appRoot, "index.html");
+    let appIndexHtml: string;
+    try {
+      appIndexHtml = new TextDecoder().decode(await vscode.workspace.fs.readFile(indexUri));
+    } catch {
+      if (!this.disposed) {
+        webview.html = buildAppLoadFailureHtml(indexUri.fsPath);
+      }
+      return;
+    }
+    if (this.disposed) {
+      return;
+    }
+    webview.html = buildAppHostHtml({
+      appIndexHtml,
+      appBaseUri: webview.asWebviewUri(appRoot).toString(),
+      cspSource: webview.cspSource,
+      nonce: mintNonce(),
     });
   }
 
@@ -101,44 +134,6 @@ class FolderProjectSession implements ProjectSession {
     this.panel.dispose();
     this.onClosed();
   }
-}
-
-function buildWebviewHtml(webview: vscode.Webview, appRoot: vscode.Uri): string {
-  const indexUri = webview.asWebviewUri(vscode.Uri.joinPath(appRoot, "index.html"));
-  const appUrl = `${indexUri.toString()}?${FOLDER_HOST_MODE_URL_PARAM}=${FOLDER_HOST_MODE_FOLDER}`;
-  const nonce = mintNonce();
-  const csp = [
-    "default-src 'none'",
-    `frame-src ${webview.cspSource}`,
-    `img-src ${webview.cspSource} blob: data:`,
-    `style-src 'nonce-${nonce}'`,
-    `script-src 'nonce-${nonce}'`,
-  ].join("; ");
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="${csp}">
-<style nonce="${nonce}">
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
-  iframe { border: 0; width: 100%; height: 100%; }
-</style>
-</head>
-<body>
-<iframe id="mindcraft-app" src="${appUrl}" allow="clipboard-read; clipboard-write"></iframe>
-<script nonce="${nonce}">
-  const vscodeApi = acquireVsCodeApi();
-  const frame = document.getElementById("mindcraft-app");
-  window.addEventListener("message", (event) => {
-    if (event.source === frame.contentWindow) {
-      vscodeApi.postMessage(event.data);
-    } else if (frame.contentWindow) {
-      frame.contentWindow.postMessage(event.data, "*");
-    }
-  });
-</script>
-</body>
-</html>`;
 }
 
 function mintNonce(): string {

@@ -14,6 +14,14 @@ export const FOLDER_HOST_MODE_URL_PARAM = "mindcraftHostMode";
 /** Value of {@link FOLDER_HOST_MODE_URL_PARAM} selecting folder host mode. */
 export const FOLDER_HOST_MODE_FOLDER = "folder";
 
+/**
+ * Name of the global property a host defines in the embedded app's document
+ * as the host-mode bootstrap flag; carries the same values as
+ * {@link FOLDER_HOST_MODE_URL_PARAM}. Used by hosts whose app document has no
+ * queryable URL (for example an iframe loaded via `srcdoc`).
+ */
+export const FOLDER_HOST_MODE_GLOBAL = "__mindcraftHostMode";
+
 /** Stable identifiers for folder-session errors reported by the host. */
 export const FolderSessionErrorCode = {
   /** The app's `folder:hello` declared a protocol version the host does not speak. */

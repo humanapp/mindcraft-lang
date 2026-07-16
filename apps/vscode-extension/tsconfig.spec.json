@@ -1,0 +1,11 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"types": ["node"],
+		"paths": {
+			"@mindcraft-lang/bridge-protocol": ["../../packages/bridge-protocol/src/index.ts"]
+		}
+	},
+	"include": ["src/**/*.spec.ts"],
+	"exclude": []
+}

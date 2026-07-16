@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { registerFolderCommands } from "./commands/folder-commands";
 import { activateBridgeSession } from "./services/bridge-session";
+import { hasFolderSessionHandshakeCompleted } from "./services/folder-session";
 
 export function activate(context: vscode.ExtensionContext) {
   // Mode is environment-keyed: the web UI runs bridge mode only, desktop runs
@@ -12,6 +13,12 @@ export function activate(context: vscode.ExtensionContext) {
     return;
   }
   registerFolderCommands(context);
+  // Test-only hook for integration harnesses.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mindcraft.testHooks.folderSessionHandshakeCompleted", () =>
+      hasFolderSessionHandshakeCompleted()
+    )
+  );
 }
 
 export function deactivate() {}

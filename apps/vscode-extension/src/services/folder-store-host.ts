@@ -33,13 +33,20 @@ export class FolderStoreHost {
   private readonly folder: vscode.Uri;
   private readonly postToApp: (message: FolderHostMessage) => void;
   private readonly diagnostics: DiagnosticsManager;
+  private readonly onHandshakeComplete: (() => void) | undefined;
   /** Latest etag (or delete marker) this host produced per path, for watcher echo suppression. */
   private readonly selfWriteLog = new Map<string, string>();
 
-  constructor(folder: vscode.Uri, postToApp: (message: FolderHostMessage) => void, diagnostics: DiagnosticsManager) {
+  constructor(
+    folder: vscode.Uri,
+    postToApp: (message: FolderHostMessage) => void,
+    diagnostics: DiagnosticsManager,
+    onHandshakeComplete?: () => void
+  ) {
     this.folder = folder;
     this.postToApp = postToApp;
     this.diagnostics = diagnostics;
+    this.onHandshakeComplete = onHandshakeComplete;
   }
 
   /** Handle one message posted by the embedded app. */
@@ -143,6 +150,7 @@ export class FolderStoreHost {
         manifest: { content, etag: etagFromStat(stat) },
       },
     });
+    this.onHandshakeComplete?.();
   }
 
   private async handleLoadFiles(id: string | undefined): Promise<void> {

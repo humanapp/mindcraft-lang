@@ -1,7 +1,11 @@
 export type { InMemoryProjectFileSystemOptions } from "@mindcraft-lang/app-host";
 export { createInMemoryProjectFileSystem, MINDCRAFT_JSON_PATH } from "@mindcraft-lang/app-host";
 export type { FolderAppMessage, FolderHostMessage } from "@mindcraft-lang/bridge-protocol";
-export { FOLDER_HOST_MODE_FOLDER, FOLDER_HOST_MODE_URL_PARAM } from "@mindcraft-lang/bridge-protocol";
+export {
+  FOLDER_HOST_MODE_FOLDER,
+  FOLDER_HOST_MODE_GLOBAL,
+  FOLDER_HOST_MODE_URL_PARAM,
+} from "@mindcraft-lang/bridge-protocol";
 export type {
   AppBridge,
   AppBridgeFeature,

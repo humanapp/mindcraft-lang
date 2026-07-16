@@ -21,6 +21,7 @@ export type {
 } from "./folder-session.js";
 export {
   FOLDER_HOST_MODE_FOLDER,
+  FOLDER_HOST_MODE_GLOBAL,
   FOLDER_HOST_MODE_URL_PARAM,
   FOLDER_SESSION_PROTOCOL_VERSION,
   FolderSessionErrorCode,
