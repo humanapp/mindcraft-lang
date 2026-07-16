@@ -1,11 +1,11 @@
 /**
  * Installed-extension path conventions for multi-root compilation. A consuming
  * project's resolved extensions materialize as read-only source under the
- * `.extensions/<owner>/<repo>/` tree, so a declaration's compiler path
+ * `.libraries/<owner>/<repo>/` tree, so a declaration's compiler path
  * identifies the extension that owns it. Symbol keys minted from a declaration
  * always carry the OWNING extension's coordinate namespace and its
  * coordinate-relative path, never the install path, so a type imported through
- * `@ext/<owner>/<repo>` resolves to the declaring extension's registration.
+ * `@lib/<owner>/<repo>` resolves to the declaring extension's registration.
  */
 
 import { qualifiedClassName } from "./symbol-keys.js";
@@ -13,14 +13,14 @@ import { qualifiedClassName } from "./symbol-keys.js";
 /**
  * One entry of a project's extensions list: the dependency's `<owner>/<repo>`
  * coordinate. The coordinate is the dependency's identity, its compiler
- * namespace, and its import name all at once: `@ext/<owner>/<repo>` names it
+ * namespace, and its import name all at once: `@lib/<owner>/<repo>` names it
  * the same way in every project, and its symbols register under the same
  * `<owner>/<repo>` namespace.
  */
 export interface ProjectDependency {
   /**
    * The dependency's `<owner>/<repo>` coordinate: its identity, its compiler
-   * namespace, and the name `@ext/<owner>/<repo>` in the depending project's
+   * namespace, and the name `@lib/<owner>/<repo>` in the depending project's
    * sources resolves to its entry module.
    */
   coordinate: string;
@@ -32,7 +32,7 @@ export interface DependencyMount {
   namespace: string;
   /** The mounted project's source files, keyed by project-relative path. */
   files: ReadonlyMap<string, string>;
-  /** The mounted project's own extensions list, resolving `@ext/<owner>/<repo>` imports inside its files. */
+  /** The mounted project's own extensions list, resolving `@lib/<owner>/<repo>` imports inside its files. */
   dependencies?: readonly ProjectDependency[];
   /**
    * Namespace-relative paths of the mount's `.d.ts` files that are ambient
@@ -43,11 +43,11 @@ export interface DependencyMount {
   ambient?: readonly string[];
 }
 
-/** Import-specifier prefix for extension imports: `@ext/<owner>/<repo>` resolves to the dependency's entry module. */
-export const EXTENSION_IMPORT_PREFIX = "@ext/";
+/** Import-specifier prefix for extension imports: `@lib/<owner>/<repo>` resolves to the dependency's entry module. */
+export const EXTENSION_IMPORT_PREFIX = "@lib/";
 
 /**
- * Split the part after `@ext/` into its coordinate `<owner>/<repo>` and any
+ * Split the part after `@lib/` into its coordinate `<owner>/<repo>` and any
  * deep-import remainder. A valid extension specifier names exactly the two
  * coordinate segments; a third segment or beyond is a deep import into the
  * extension's internals.
@@ -74,7 +74,7 @@ export function splitExtensionSpecifier(rest: string): { coordinate?: string; de
  * compiler-controlled and reproducible: it is regenerated from the resolved
  * extension set on load and excluded from the project's saved bytes.
  */
-export const EXTENSIONS_DIR = ".extensions";
+export const EXTENSIONS_DIR = ".libraries";
 
 const EXTENSIONS_COMPILER_PREFIX = `/${EXTENSIONS_DIR}/`;
 
@@ -139,7 +139,7 @@ export function parseExtensionCompilerPath(fileName: string): ExtensionPathParts
  * file inside the installed-extensions tree keys under its extension's own
  * coordinate namespace, so every reference to the declaration -- from its own
  * project or from a consuming one -- resolves to one registration. A type
- * imported through `@ext/<owner>/<repo>` resolves to the declaring extension's
+ * imported through `@lib/<owner>/<repo>` resolves to the declaring extension's
  * registration.
  */
 export function qualifiedDeclarationName(localNamespace: string, fileName: string, binding: string): string {

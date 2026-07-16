@@ -2341,7 +2341,7 @@ export const Outer = StructType({
           [
             "main.ts",
             `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/corpus/deep-lib/position";
+import { Position } from "@lib/corpus/deep-lib/position";
 
 export default Sensor({
   name: "deep import probe", inline: true,

@@ -47,11 +47,11 @@ describe("diffProjectDiagnostics", () => {
 
   it("classifies any new problem as worsened, even when others resolved", () => {
     const before = state({ files: { "main.ts": [entry("boom")] } });
-    const after = state({ files: { ".extensions/o/r/index.ts": [entry("broken ext")] } });
+    const after = state({ files: { ".libraries/o/r/index.ts": [entry("broken ext")] } });
     const outcome = diffProjectDiagnostics(before, after);
     assert.equal(outcome.kind, "worsened");
     assert.deepStrictEqual(outcome.newProblems, [
-      { location: ".extensions/o/r/index.ts", description: "error MC1: broken ext" },
+      { location: ".libraries/o/r/index.ts", description: "error MC1: broken ext" },
     ]);
     assert.equal(outcome.resolvedProblems.length, 1);
   });

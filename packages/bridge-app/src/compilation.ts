@@ -305,9 +305,9 @@ export interface CreateProjectCompilerOptions {
   projectNamespace: string;
   /** Read-only content mounts exposed to the compiler and remote VFS peers. */
   mounts: readonly Mount[];
-  /** Extension dependencies of the project, each a `<owner>/<repo>` coordinate resolving its `@ext/<owner>/<repo>` imports. */
+  /** Extension dependencies of the project, each a `<owner>/<repo>` coordinate resolving its `@lib/<owner>/<repo>` imports. */
   dependencies?: readonly ProjectDependency[];
-  /** Read-only content of each dependency, mounted for `@ext/<owner>/<repo>` resolution. */
+  /** Read-only content of each dependency, mounted for `@lib/<owner>/<repo>` resolution. */
   dependencyMounts?: readonly DependencyMount[];
   onDidCompile?: (result: WorkspaceCompileResult) => void;
 }
@@ -468,7 +468,7 @@ export interface AugmentProjectFileSystemOptions {
  * read-only from the peer's side.
  *
  * When a compile changes the compiler-controlled file set (installing or
- * uninstalling an extension adds or removes its `.extensions/` subtree), the
+ * uninstalling an extension adds or removes its `.libraries/` subtree), the
  * wrapper emits one full-snapshot `import` local change and invokes the
  * options' change callback with the new set. The peer reconciles the whole
  * tree from the import: newly installed paths appear and uninstalled paths

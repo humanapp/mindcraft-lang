@@ -373,7 +373,9 @@ export function validateProjectTargets(value: unknown): readonly ProjectContentM
  * string `path` and a `files` array of string paths. Returns the normalized
  * bundle with no errors when well-formed, or one error per rejected field.
  */
-export function validateProjectHostApp(value: unknown):
+export function validateProjectHostApp(
+  value: unknown
+):
   | { readonly hostApp: ProjectContentManifestHostApp; readonly errors: readonly [] }
   | { readonly hostApp?: undefined; readonly errors: readonly ProjectContentManifestError[] } {
   if (!isRecord(value)) {

@@ -9,7 +9,7 @@ export const INSTALLED_EXTENSIONS_APP_DATA_KEY = "installed-extensions";
 /**
  * One installed fetched dependency's persisted snapshot: the content of the
  * dependency together with the reference and resolved routing specifier it
- * was fetched at. The project store carries these records so `.extensions/`
+ * was fetched at. The project store carries these records so `.libraries/`
  * regenerates on load without reaching the network.
  */
 export interface InstalledExtensionSnapshot {
@@ -161,7 +161,7 @@ export function parseInstalledExtensionMetadata(
  * Rebuild a project's installed snapshot records from a materialized
  * installed-extensions tree and its recorded install provenance. For each
  * origin in `metadata`, the tree's files under
- * `.extensions/<owner>/<repo>/` become the record's content at the recorded
+ * `.libraries/<owner>/<repo>/` become the record's content at the recorded
  * reference and specifier; an origin with no files in the tree yields no
  * record.
  *

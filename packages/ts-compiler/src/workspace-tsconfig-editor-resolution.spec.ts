@@ -161,7 +161,7 @@ const tsconfigCarryingMount: DependencyMount = {
 const tsconfigCarryingDependency: ProjectDependency = { coordinate: "acme/vendored" };
 
 describe("generated workspace tsconfig editor resolution", () => {
-  test("the materialized extension source and @ext user imports resolve types with zero diagnostics", () => {
+  test("the materialized extension source and @lib user imports resolve types with zero diagnostics", () => {
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
     const compiler = createWorkspaceCompiler({
       projectNamespace: TEST_PROJECT_NAMESPACE,
@@ -173,16 +173,16 @@ describe("generated workspace tsconfig editor resolution", () => {
 
     const controlled = compiler.getCompilerControlledFiles();
     assert.ok(
-      controlled.has(".extensions/mindcraft-lang/codal/image.ts"),
+      controlled.has(".libraries/mindcraft-lang/codal/image.ts"),
       "the wodal dependency materializes image.ts under the installed-extensions tree"
     );
 
-    const userMain = `import type { Image } from "mindcraft";\nimport { image } from "@ext/mindcraft-lang/codal";\nexport const heart: Image = image(5);\n`;
+    const userMain = `import type { Image } from "mindcraft";\nimport { image } from "@lib/mindcraft-lang/codal";\nexport const heart: Image = image(5);\n`;
     const workspaceFiles = new Map(controlled);
     workspaceFiles.set("main.ts", userMain);
 
     const { config, byTarget } = editorDiagnostics(workspaceFiles, [
-      ".extensions/mindcraft-lang/codal/image.ts",
+      ".libraries/mindcraft-lang/codal/image.ts",
       "main.ts",
     ]);
 
@@ -192,14 +192,14 @@ describe("generated workspace tsconfig editor resolution", () => {
       "the generated tsconfig.json produces no config-level diagnostics (parse, option, or global)"
     );
     assert.deepEqual(
-      byTarget.get(".extensions/mindcraft-lang/codal/image.ts"),
+      byTarget.get(".libraries/mindcraft-lang/codal/image.ts"),
       [],
       'the materialized image.ts resolves `import type { Image } from "mindcraft"`'
     );
     assert.deepEqual(
       byTarget.get("main.ts"),
       [],
-      "user code resolves both the ambient `mindcraft` module and the `@ext/<owner>/<repo>` import"
+      "user code resolves both the ambient `mindcraft` module and the `@lib/<owner>/<repo>` import"
     );
   });
 
@@ -215,16 +215,16 @@ describe("generated workspace tsconfig editor resolution", () => {
 
     const controlled = compiler.getCompilerControlledFiles();
     assert.equal(
-      controlled.get(".extensions/acme/vendored/tsconfig.json"),
+      controlled.get(".libraries/acme/vendored/tsconfig.json"),
       extensionCarriedTsconfig,
       "the extension's tsconfig.json materializes verbatim under its installed-extensions subtree"
     );
 
-    const userMain = `import type { Image } from "mindcraft";\nimport { image } from "@ext/acme/vendored";\nexport const heart: Image = image(5);\n`;
+    const userMain = `import type { Image } from "mindcraft";\nimport { image } from "@lib/acme/vendored";\nexport const heart: Image = image(5);\n`;
     const workspaceFiles = new Map(controlled);
     workspaceFiles.set("main.ts", userMain);
 
-    const extensionImage = ".extensions/acme/vendored/image.ts";
+    const extensionImage = ".libraries/acme/vendored/image.ts";
     withWorkspaceOnDisk(workspaceFiles, (root) => {
       assert.equal(
         discoveredConfigFor(root, "main.ts"),
@@ -233,7 +233,7 @@ describe("generated workspace tsconfig editor resolution", () => {
       );
       assert.equal(
         discoveredConfigFor(root, extensionImage),
-        ".extensions/acme/vendored/tsconfig.json",
+        ".libraries/acme/vendored/tsconfig.json",
         "config discovery inside the extension subtree finds the extension's own tsconfig.json"
       );
 
@@ -242,7 +242,7 @@ describe("generated workspace tsconfig editor resolution", () => {
       assert.deepEqual(
         rootProject.byTarget.get("main.ts"),
         [],
-        "the user's diagnostics and `@ext` resolution into the subtree are unchanged by the nested tsconfig"
+        "the user's diagnostics and `@lib` resolution into the subtree are unchanged by the nested tsconfig"
       );
       assert.deepEqual(
         rootProject.byTarget.get(extensionImage),
@@ -250,7 +250,7 @@ describe("generated workspace tsconfig editor resolution", () => {
         "the root project still covers and cleanly checks the extension source"
       );
 
-      const nestedProject = projectDiagnostics(root, ".extensions/acme/vendored/tsconfig.json", [extensionImage]);
+      const nestedProject = projectDiagnostics(root, ".libraries/acme/vendored/tsconfig.json", [extensionImage]);
       const nestedDiagnostics = nestedProject.byTarget.get(extensionImage) ?? [];
       assert.ok(
         nestedDiagnostics.length > 0,

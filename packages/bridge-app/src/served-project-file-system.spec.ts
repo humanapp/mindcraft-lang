@@ -22,8 +22,8 @@ const CORE_AMBIENT = readFileSync(
 const BEAM_REPO = "beam-lib";
 const BEAM_COORDINATE = `mindcraft-lang/${BEAM_REPO}`;
 const BEAM_REFERENCE = `embedded:${BEAM_COORDINATE}`;
-const BEAM_ICON_PATH = `.extensions/${BEAM_COORDINATE}/beam.svg`;
-const BEAM_DOCS_PATH = `.extensions/${BEAM_COORDINATE}/beam.md`;
+const BEAM_ICON_PATH = `.libraries/${BEAM_COORDINATE}/beam.svg`;
+const BEAM_DOCS_PATH = `.libraries/${BEAM_COORDINATE}/beam.md`;
 const BEAM_ICON_SVG = '<svg id="beam"></svg>';
 const BEAM_DOCS_MD = "# Beam\nDocs.";
 

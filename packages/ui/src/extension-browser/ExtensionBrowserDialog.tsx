@@ -139,7 +139,7 @@ export function ExtensionBrowserList({
   onRetry,
 }: ExtensionBrowserListProps) {
   return (
-    <ul aria-label="Extensions" className="flex flex-col gap-2">
+    <ul aria-label="Libraries" className="flex flex-col gap-2">
       {entries.map((entry) => (
         <ExtensionCard
           key={entry.coordinate}
@@ -313,12 +313,12 @@ export function ExtensionBrowserDialog({
         )}
       >
         <DialogHeader className="flex-col space-y-0.5 border-b px-4 py-3 sm:px-6 sm:py-4">
-          <DialogTitle>Extensions</DialogTitle>
-          <DialogDescription>Add or remove extensions for this project.</DialogDescription>
+          <DialogTitle>Libraries</DialogTitle>
+          <DialogDescription>Add or remove libraries for this project.</DialogDescription>
           <Input
             type="text"
-            placeholder="Search extensions..."
-            aria-label="Search extensions"
+            placeholder="Search libraries..."
+            aria-label="Search libraries"
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             className="mt-2 w-full"
@@ -335,7 +335,7 @@ export function ExtensionBrowserDialog({
             <ExtensionCatalogSection offers={catalogOffers} onInstallReference={onInstallReference} />
           )}
           {filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">No extensions match your search.</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">No libraries match your search.</p>
           ) : (
             <ExtensionBrowserList
               entries={filtered}

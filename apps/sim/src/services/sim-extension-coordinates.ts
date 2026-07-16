@@ -3,7 +3,7 @@ export { CORE_LIB_COORDINATE, CORE_LIB_REFERENCE } from "@mindcraft-lang/bridge-
 /**
  * The sim layer's `<owner>/<repo>` coordinate: its identity, its compiler
  * namespace, and the name it is imported and stored under
- * (`@ext/mindcraft-lang/sim`). The top of apps/sim's platform stack, carrying
+ * (`@lib/mindcraft-lang/sim`). The top of apps/sim's platform stack, carrying
  * the ecosystem simulation's `"mindcraft"` types; depends on the shared core
  * layer.
  */

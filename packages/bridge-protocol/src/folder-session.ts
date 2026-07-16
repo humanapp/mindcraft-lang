@@ -9,7 +9,7 @@ import type { FileSystemNotification, FilesystemSyncPayload } from "./notificati
 export const FOLDER_SESSION_PROTOCOL_VERSION = 2;
 
 /** Project-relative directory holding the materialized installed-extensions tree. */
-export const EXTENSIONS_TREE_PATH = ".extensions";
+export const EXTENSIONS_TREE_PATH = ".libraries";
 
 /**
  * Project-relative path of the installed fetched-extension metadata record a
@@ -17,7 +17,7 @@ export const EXTENSIONS_TREE_PATH = ".extensions";
  * tree. The file's JSON content maps each `<owner>/<repo>` origin to its
  * {@link FolderInstalledExtensionMetadata}.
  */
-export const INSTALLED_EXTENSIONS_METADATA_PATH = ".extensions/installed.json";
+export const INSTALLED_EXTENSIONS_METADATA_PATH = ".libraries/installed.json";
 
 /** URL search parameter a host adds to the embedded app's document URL as the host-mode bootstrap flag. */
 export const FOLDER_HOST_MODE_URL_PARAM = "mindcraftHostMode";

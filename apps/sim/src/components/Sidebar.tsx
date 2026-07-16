@@ -115,7 +115,7 @@ export function Sidebar({
         report.refusal.kind === "fetch"
           ? `${report.refusal.error.code}: ${report.refusal.error.message}`
           : report.refusal.message;
-      toast.error(`Could not install extension. ${detail}`);
+      toast.error(`Could not install library. ${detail}`);
       return;
     }
     if (report.outcome.kind === "worsened") {
@@ -130,7 +130,7 @@ export function Sidebar({
       return;
     }
     if (report.outcome.kind === "improved") {
-      toast.success(`Extensions updated; ${report.outcome.resolvedProblems.length} problem(s) resolved`);
+      toast.success(`Libraries updated; ${report.outcome.resolvedProblems.length} problem(s) resolved`);
     }
   };
 
@@ -143,7 +143,7 @@ export function Sidebar({
         simEmbeddedExtensions
       );
       if (!result.action.ok) {
-        toast.error(`Could not install extension (${result.action.code})`);
+        toast.error(`Could not install library (${result.action.code})`);
         return;
       }
       surfaceExtensionReport(result.report);
@@ -154,11 +154,11 @@ export function Sidebar({
     void (async () => {
       const result = await installSimExtensionReference(store.host, store.activeProjectManifest?.extensions, input);
       if (!result.ok) {
-        toast.error(`Could not add extension. ${result.code}: ${result.message}`);
+        toast.error(`Could not add library. ${result.code}: ${result.message}`);
         return;
       }
       if (!result.action.ok) {
-        toast.error(`Could not add extension (${result.action.code})`);
+        toast.error(`Could not add library (${result.action.code})`);
         return;
       }
       if (result.report?.committed) {
@@ -178,7 +178,7 @@ export function Sidebar({
         store.host.installedExtensionContent
       );
       if (!result.action.ok) {
-        toast.error(`Could not remove extension (${result.action.code})`);
+        toast.error(`Could not remove library (${result.action.code})`);
         return;
       }
       surfaceExtensionReport(result.report);
@@ -195,7 +195,7 @@ export function Sidebar({
       }
       if (summary.updates.length === 0) {
         if (summary.failures.length === 0) {
-          toast.success("Extensions are up to date");
+          toast.success("Libraries are up to date");
         }
         return;
       }
@@ -300,8 +300,8 @@ export function Sidebar({
           variant="ghost"
           size="sm"
           className="h-7 w-7 p-0"
-          title="Extensions"
-          aria-label="Open extensions"
+          title="Libraries"
+          aria-label="Open libraries"
         >
           <Blocks className="h-4 w-4" aria-hidden="true" />
         </Button>

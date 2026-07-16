@@ -109,13 +109,13 @@ export interface CreateWorkspaceCompilerOptions {
   mounts: readonly Mount[];
   /**
    * Extension dependencies of the project being compiled, each pairing a
-   * dependency's `@ext/<owner>/<repo>` coordinate with its namespace. Empty
+   * dependency's `@lib/<owner>/<repo>` coordinate with its namespace. Empty
    * when the project has no extensions.
    */
   dependencies?: readonly ProjectDependency[];
   /**
    * Read-only content of each dependency named in {@link dependencies},
-   * including the transitive closure, mounted for `@ext/<owner>/<repo>`
+   * including the transitive closure, mounted for `@lib/<owner>/<repo>`
    * resolution.
    */
   dependencyMounts?: readonly DependencyMount[];
@@ -136,7 +136,7 @@ export interface WorkspaceCompiler {
   onDidCompile(listener: (result: WorkspaceCompileResult) => void): () => void;
   /**
    * Files the compiler controls: ambient declarations, `tsconfig.json`, and the
-   * read-only installed-extensions tree (`.extensions/<owner>/<repo>/...`)
+   * read-only installed-extensions tree (`.libraries/<owner>/<repo>/...`)
    * materialized from the resolved extension set. The host should keep these in
    * sync with the workspace and exclude them from the project's saved bytes.
    */
@@ -264,9 +264,9 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
 
     // Host diagnostics key on their project-relative workspace path; each
     // extension root's diagnostics key under its installed-extensions path
-    // (`.extensions/<owner>/<repo>/...`), the path space the VFS and extension
+    // (`.libraries/<owner>/<repo>/...`), the path space the VFS and extension
     // tree serve from. Host paths and extension paths never overlap: the host
-    // compile skips the `.extensions/` tree, and each extension keys under its
+    // compile skips the `.libraries/` tree, and each extension keys under its
     // own coordinate. Diagnostics on a shared key accumulate, never overwrite.
     const files = new Map<string, readonly WorkspaceDiagnosticEntry[]>();
     foldRootDiagnostics(files, projectResult, (path) => path);
@@ -359,12 +359,12 @@ const TSCONFIG_CONTENT = JSON.stringify(
       noEmit: true,
       skipLibCheck: true,
       paths: {
-        "@ext/*": ["./.extensions/*"],
+        "@lib/*": ["./.libraries/*"],
       },
     },
     // TypeScript's default `**/*` include skips dot-directories; the
     // materialized installed-extensions tree is listed explicitly to cover it.
-    include: ["**/*", ".extensions/**/*"],
+    include: ["**/*", ".libraries/**/*"],
   },
   undefined,
   2

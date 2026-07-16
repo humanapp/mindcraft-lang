@@ -4,7 +4,7 @@ import { type BuildMembershipTracker, isBuildMembershipPath } from "../services/
 /**
  * Decorates project files that are not named by the manifest `files` list
  * with a neutral "Not in build" badge. Files the list names, the manifest
- * itself, and the `.extensions/` tree carry no decoration; when the project
+ * itself, and the `.libraries/` tree carry no decoration; when the project
  * declares no `files` list, nothing is decorated.
  */
 export class BuildMembershipDecorationProvider implements vscode.FileDecorationProvider {

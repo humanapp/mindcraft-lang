@@ -19,7 +19,7 @@ import { decodeInstalledSnapshotFiles, installedSnapshotFromFetched } from "./fe
  * {@link ExtensionInstallOutcome} regardless of what mutation produced them.
  */
 export interface ProjectDiagnosticsState {
-  /** Compiler diagnostics keyed by workspace path (host files and `.extensions/` files alike). */
+  /** Compiler diagnostics keyed by workspace path (host files and `.libraries/` files alike). */
   readonly files: ReadonlyMap<string, readonly WorkspaceDiagnosticEntry[]>;
   /** Brain typecheck problem renderings keyed by brain key. */
   readonly brains: ReadonlyMap<string, readonly string[]>;

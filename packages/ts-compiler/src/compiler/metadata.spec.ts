@@ -176,7 +176,7 @@ export default Sensor({
     const assetDiag = entry.diagnostics.find((d) => d.code === CompileDiagCode.MetadataFileNotFound);
     assert.equal(assetDiag, undefined, "extension asset should resolve without a MetadataFileNotFound diagnostic");
 
-    assert.equal(entry.program.iconUrl, "/vfs/.extensions/acme/widget/widget.svg");
+    assert.equal(entry.program.iconUrl, "/vfs/.libraries/acme/widget/widget.svg");
     assert.equal(entry.program.docsMarkdown, "# Widget\nContent.");
   });
 

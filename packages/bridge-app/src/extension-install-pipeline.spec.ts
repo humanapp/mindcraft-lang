@@ -96,7 +96,7 @@ const BROKEN_CONTENT: Record<string, string> = {
   "index.ts": 'export const broken: number = "not a number";\n',
 };
 
-const HOST_IMPORTS_POSITION = `import { position } from "@ext/${POSITION_COORDINATE}";
+const HOST_IMPORTS_POSITION = `import { position } from "@lib/${POSITION_COORDINATE}";
 
 export const doubled = position * 2;
 `;
@@ -234,7 +234,7 @@ describe("extension install pipeline", () => {
       assert.deepStrictEqual(Object.keys(record.files).sort(), ["index.ts", "mindcraft.json"]);
 
       // The installed tree materializes exactly like an embedded install.
-      assert.ok(servedPaths(host).includes(`.extensions/${POSITION_COORDINATE}/index.ts`));
+      assert.ok(servedPaths(host).includes(`.libraries/${POSITION_COORDINATE}/index.ts`));
 
       const log = parseExtensionInstallLog(world.appData.get("extension-install-log"));
       assert.deepStrictEqual(
@@ -248,7 +248,7 @@ describe("extension install pipeline", () => {
     }
   });
 
-  it("regenerates .extensions from the stored snapshot on load, never from the network", async () => {
+  it("regenerates .libraries from the stored snapshot on load, never from the network", async () => {
     const restoreLocalStorage = installEmptyLocalStorage();
     const world: ProjectWorld = { appData: new Map(), extensions: {} };
     const transport = createTestTransport({ content: { [`${POSITION_COORDINATE}@v0.1.0`]: POSITION_CONTENT } });
@@ -266,7 +266,7 @@ describe("extension install pipeline", () => {
     const reloaded = createHost(world, { hostFiles: { "main.ts": HOST_IMPORTS_POSITION } });
     try {
       await reloaded.initialize(PROJECT_ID);
-      assert.ok(servedPaths(reloaded).includes(`.extensions/${POSITION_COORDINATE}/index.ts`));
+      assert.ok(servedPaths(reloaded).includes(`.libraries/${POSITION_COORDINATE}/index.ts`));
       // The import compiles cleanly offline: an install never depends on its
       // sources being reachable after installation. A re-resolve of the same
       // map reuses the stored snapshot without a transport.
@@ -287,7 +287,7 @@ describe("extension install pipeline", () => {
     const seeded = reconstructInstalledSnapshotsFromTree(
       { [POSITION_COORDINATE]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" } },
       Object.entries(POSITION_CONTENT).map(
-        ([path, content]) => [`.extensions/${POSITION_COORDINATE}/${path}`, content] as [string, string]
+        ([path, content]) => [`.libraries/${POSITION_COORDINATE}/${path}`, content] as [string, string]
       )
     );
     const world: ProjectWorld = {
@@ -299,7 +299,7 @@ describe("extension install pipeline", () => {
 
     try {
       await host.initialize(PROJECT_ID);
-      assert.ok(servedPaths(host).includes(`.extensions/${POSITION_COORDINATE}/index.ts`));
+      assert.ok(servedPaths(host).includes(`.libraries/${POSITION_COORDINATE}/index.ts`));
       assert.deepStrictEqual(host.getInstalledExtensionMetadata(), {
         [POSITION_COORDINATE]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" },
       });
@@ -320,7 +320,7 @@ describe("extension install pipeline", () => {
     const seeded = reconstructInstalledSnapshotsFromTree(
       { [POSITION_COORDINATE]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" } },
       Object.entries(POSITION_CONTENT).map(
-        ([path, content]) => [`.extensions/${POSITION_COORDINATE}/${path}`, content] as [string, string]
+        ([path, content]) => [`.libraries/${POSITION_COORDINATE}/${path}`, content] as [string, string]
       )
     );
     const updatedReference = `gh:${POSITION_COORDINATE}@v0.2.0`;
@@ -361,17 +361,17 @@ describe("extension install pipeline", () => {
       assert.ok(report.committed);
       assert.equal(report.outcome.kind, "worsened");
       assert.ok(
-        report.outcome.newProblems.some((problem) => problem.location === `.extensions/${BROKEN_COORDINATE}/index.ts`)
+        report.outcome.newProblems.some((problem) => problem.location === `.libraries/${BROKEN_COORDINATE}/index.ts`)
       );
       assert.equal(world.extensions[BROKEN_COORDINATE], BROKEN_REFERENCE);
-      assert.ok(servedPaths(host).includes(`.extensions/${BROKEN_COORDINATE}/index.ts`));
+      assert.ok(servedPaths(host).includes(`.libraries/${BROKEN_COORDINATE}/index.ts`));
       assert.ok(report.undo);
 
       // One-step undo: manifest entries revert, the tree de-materializes, the
       // snapshot store reverts, and the log records the undo.
       await report.undo();
       assert.deepStrictEqual(world.extensions, {});
-      assert.ok(!servedPaths(host).includes(`.extensions/${BROKEN_COORDINATE}/index.ts`));
+      assert.ok(!servedPaths(host).includes(`.libraries/${BROKEN_COORDINATE}/index.ts`));
       assert.deepStrictEqual(parseInstalledExtensionSnapshots(world.appData.get("installed-extensions")), {});
       const log = parseExtensionInstallLog(world.appData.get("extension-install-log"));
       assert.deepStrictEqual(
@@ -398,7 +398,7 @@ describe("extension install pipeline", () => {
       assert.ok(report.refusal.kind === "fetch" && report.refusal.error.code === ExtensionFetchErrorCode.UNREACHABLE);
       assert.deepStrictEqual(world.extensions, {});
       assert.equal(world.appData.get("installed-extensions"), undefined);
-      assert.ok(!servedPaths(host).includes(`.extensions/${POSITION_COORDINATE}/index.ts`));
+      assert.ok(!servedPaths(host).includes(`.libraries/${POSITION_COORDINATE}/index.ts`));
     } finally {
       host.dispose();
       restoreLocalStorage();
@@ -450,7 +450,7 @@ describe("extension install pipeline", () => {
       content: {
         "example-org/robot-ext@v1": {
           "mindcraft.json": manifestText("Robot", { "example-org/motor-ext": motorReference }),
-          "index.ts": `export { motor } from "@ext/example-org/motor-ext";\n`,
+          "index.ts": `export { motor } from "@lib/example-org/motor-ext";\n`,
         },
         "example-org/motor-ext@v1": {
           "mindcraft.json": manifestText("Motor"),
@@ -466,15 +466,15 @@ describe("extension install pipeline", () => {
 
       assert.ok(report.committed);
       assert.equal(report.outcome.kind, "unchanged");
-      assert.ok(servedPaths(host).includes(".extensions/example-org/robot-ext/index.ts"));
-      assert.ok(servedPaths(host).includes(".extensions/example-org/motor-ext/index.ts"));
+      assert.ok(servedPaths(host).includes(".libraries/example-org/robot-ext/index.ts"));
+      assert.ok(servedPaths(host).includes(".libraries/example-org/motor-ext/index.ts"));
       const stored = parseInstalledExtensionSnapshots(world.appData.get("installed-extensions"));
       assert.deepStrictEqual(Object.keys(stored).sort(), ["example-org/motor-ext", "example-org/robot-ext"]);
 
       const removal = await host.updateProjectExtensions({});
       assert.ok(removal.committed);
-      assert.ok(!servedPaths(host).includes(".extensions/example-org/robot-ext/index.ts"));
-      assert.ok(!servedPaths(host).includes(".extensions/example-org/motor-ext/index.ts"));
+      assert.ok(!servedPaths(host).includes(".libraries/example-org/robot-ext/index.ts"));
+      assert.ok(!servedPaths(host).includes(".libraries/example-org/motor-ext/index.ts"));
       assert.deepStrictEqual(parseInstalledExtensionSnapshots(world.appData.get("installed-extensions")), {});
 
       const log = parseExtensionInstallLog(world.appData.get("extension-install-log"));
@@ -547,7 +547,7 @@ describe("extension install pipeline", () => {
       const report = await host.updateProjectExtensions({ [POSITION_COORDINATE]: POSITION_REFERENCE });
       assert.ok(report.committed);
       assert.equal(report.outcome.kind, "improved");
-      assert.ok(servedPaths(host).includes(`.extensions/${POSITION_COORDINATE}/index.ts`));
+      assert.ok(servedPaths(host).includes(`.libraries/${POSITION_COORDINATE}/index.ts`));
     } finally {
       host.dispose();
       restoreLocalStorage();
@@ -642,7 +642,7 @@ describe("extension install pipeline -- hand-edited mindcraft.json", () => {
       const stored = parseInstalledExtensionSnapshots(world.appData.get("installed-extensions"));
       assert.equal(stored[POSITION_COORDINATE]?.reference, POSITION_REFERENCE);
       assert.equal(world.extensions[POSITION_COORDINATE], POSITION_REFERENCE);
-      assert.ok(servedPaths(host).includes(`.extensions/${POSITION_COORDINATE}/index.ts`));
+      assert.ok(servedPaths(host).includes(`.libraries/${POSITION_COORDINATE}/index.ts`));
     } finally {
       host.dispose();
       (globalThis as Record<string, unknown>).WebSocket = originalWebSocket;
@@ -940,7 +940,7 @@ describe("add-by-reference input normalization through the host", () => {
       });
       assert.ok(report.committed);
       assert.equal(world.extensions[POSITION_COORDINATE], `gh:${POSITION_COORDINATE}@0.1.0`);
-      assert.ok(servedPaths(host).includes(`.extensions/${POSITION_COORDINATE}/index.ts`));
+      assert.ok(servedPaths(host).includes(`.libraries/${POSITION_COORDINATE}/index.ts`));
     } finally {
       host.dispose();
       restoreLocalStorage();

@@ -172,7 +172,7 @@
             },
             "extensions": {
               "type": "object",
-              "description": "Extension dependencies seeded into a new project, keyed by coordinate"
+              "description": "Library dependencies seeded into a new project, keyed by coordinate"
             },
             "targets": {
               "type": "object",

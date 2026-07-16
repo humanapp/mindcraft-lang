@@ -210,7 +210,7 @@ function normalizeWorkspacePath(path: string): string {
 /**
  * True for paths the workspace never owns: the compiler-synthesized
  * `tsconfig.json`, any file inside the installed-extensions tree
- * (`.extensions/`), and any file a mount provides. Such paths are surfaced
+ * (`.libraries/`), and any file a mount provides. Such paths are surfaced
  * read-only and are not persisted in the project store.
  */
 export function isCompilerControlledPath(path: string, mounts: readonly Mount[]): boolean {
@@ -256,7 +256,7 @@ export class UserTileProject {
 
   /**
    * Replace the project's extensions list and the mounted dependency content
-   * `@ext/<owner>/<repo>` imports resolve against. `dependencyMounts` covers
+   * `@lib/<owner>/<repo>` imports resolve against. `dependencyMounts` covers
    * the transitive dependency closure.
    */
   setDependencies(dependencies: readonly ProjectDependency[], dependencyMounts: readonly DependencyMount[]): void {
@@ -306,7 +306,7 @@ export class UserTileProject {
    * Workspace path a tile asset at project-relative `vfsPath` serves from over
    * `/vfs/`. A read-only extension root's assets materialize under the
    * installed-extensions tree keyed by the extension's coordinate namespace
-   * (`.extensions/<owner>/<repo>/...`); a writable host project serves them at
+   * (`.libraries/<owner>/<repo>/...`); a writable host project serves them at
    * their project-relative path.
    */
   private _assetVfsPath(vfsPath: string): string {
@@ -349,7 +349,7 @@ export class UserTileProject {
 
     // Resolved extension content materializes under the installed-extensions
     // tree keyed by its `<owner>/<repo>` coordinate; it is compiled only when
-    // reached through an `@ext/<owner>/<repo>` import. A file the mount declares
+    // reached through an `@lib/<owner>/<repo>` import. A file the mount declares
     // as `ambient` is the exception: its materialized path joins the ambient
     // compiler roots, always in scope for the type checker. A tsconfig path an
     // extension happens to carry is the consuming project's to supply, never the
@@ -372,7 +372,7 @@ export class UserTileProject {
     const userRootFiles: string[] = [];
     for (const [vfsPath, content] of this._files) {
       // The resolved extension set is the source of truth for the
-      // installed-extensions tree; any `.extensions/` bytes that reach the
+      // installed-extensions tree; any `.libraries/` bytes that reach the
       // project VFS are compiler-controlled and ignored as user source.
       if (isCompilerSuppliedPath(vfsPath) || isExtensionWorkspacePath(vfsPath)) {
         continue;
@@ -523,8 +523,8 @@ export class UserTileProject {
   }
 
   /**
-   * Resolver mapping an `@ext/<owner>/<repo>` specifier to the installed
-   * extension's compiler-path base under the `.extensions/` tree. A specifier
+   * Resolver mapping an `@lib/<owner>/<repo>` specifier to the installed
+   * extension's compiler-path base under the `.libraries/` tree. A specifier
    * in the project's own files resolves through the project's extensions list;
    * a specifier inside an installed extension's files resolves through that
    * extension's own extensions list. A specifier with fewer than two coordinate
@@ -981,8 +981,8 @@ function spanOfNode(
 }
 
 /**
- * Reject `@ext/<owner>/<repo>/...` specifiers in the project's own files: only
- * an extension's entry surface (`@ext/<owner>/<repo>`) is importable. Returns
+ * Reject `@lib/<owner>/<repo>/...` specifiers in the project's own files: only
+ * an extension's entry surface (`@lib/<owner>/<repo>`) is importable. Returns
  * the diagnostics keyed by the importing file's compiler path.
  */
 function scanExtensionDeepImports(
@@ -1009,7 +1009,7 @@ function scanExtensionDeepImports(
       }
       diags.push({
         code: CompileDiagCode.ExtensionDeepImport,
-        message: `"${specifier}" imports a module inside an extension. Import the extension's published surface from "@ext/${coordinate}".`,
+        message: `"${specifier}" imports a module inside an extension. Import the extension's published surface from "@lib/${coordinate}".`,
         severity: "error",
         ...spanOfNode(sourceFile, specifierNode),
       });
@@ -1971,7 +1971,7 @@ function resolveModuleSpecifier(
     const containingDir = containingFile.fileName.substring(0, containingFile.fileName.lastIndexOf("/"));
     base = resolvePath(containingDir, specifier);
   } else {
-    // A non-relative specifier addresses a dependency mount (`@ext/<owner>/<repo>`),
+    // A non-relative specifier addresses a dependency mount (`@lib/<owner>/<repo>`),
     // a mounted stdlib source module, or an ambient `declare module`, which
     // is not a file and falls through to undefined.
     base = resolveModuleBase?.(specifier, containingFile.fileName) ?? `/${specifier}`;

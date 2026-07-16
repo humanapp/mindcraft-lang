@@ -1,7 +1,7 @@
 /**
  * Entry-module publication and cross-project type resolution: public
  * `<namespace>::<name>` keys alias private registrations (one type id per
- * declaration), `@ext/<owner>/<repo>` imports resolve to a dependency's entry module,
+ * declaration), `@lib/<owner>/<repo>` imports resolve to a dependency's entry module,
  * every name surface resolves an extension-imported type to the DECLARING
  * project's key, and the publication diagnostics (deep import, multiple
  * published names, unpublished type reference) emit precisely. The
@@ -59,7 +59,7 @@ const POSITION_ENTRY = `export { Position } from "./position";
 `;
 
 const GAMEPAD_STICK_SOURCE = `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/acme/position";
+import { Position } from "@lib/acme/position";
 
 export default Sensor({
   name: "stick position", inline: true,
@@ -83,7 +83,7 @@ export const Seen = System({
 `;
 
 const HOST_MOVE_SOURCE = `import { Actuator, param, type Context } from "mindcraft";
-import { Position } from "@ext/acme/position";
+import { Position } from "@lib/acme/position";
 import { Seen } from "./seen";
 
 export default Actuator({
@@ -317,7 +317,7 @@ export const Vec = StructType({
         namespace: GAMEPAD_NS,
         files: files({
           "stick.ts": GAMEPAD_STICK_SOURCE,
-          "index.ts": `export { Position } from "@ext/acme/position";\n`,
+          "index.ts": `export { Position } from "@lib/acme/position";\n`,
         }),
         dependencies: [dep(POSITION_NS)],
       },
@@ -489,7 +489,7 @@ export const Nav = System({
     const { session } = newSession();
     const consumerNs = "acme/consumer";
     const consumerSource = `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/acme/position";
+import { Position } from "@lib/acme/position";
 
 export default Sensor({
   name: "secret probe",
@@ -539,7 +539,7 @@ export const Secret = StructType({
         namespace: consumerNs,
         files: files({
           "main.ts": `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/acme/position/position";
+import { Position } from "@lib/acme/position/position";
 
 export default Sensor({
   name: "deep probe",
@@ -558,8 +558,8 @@ export default Sensor({
     const diags = diagnosticsOf(roots.get(consumerNs)!, "main.ts");
     assert.equal(diags.length, 1, JSON.stringify(diags));
     assert.equal(diags[0].code, CompileDiagCode.ExtensionDeepImport);
-    assert.match(diags[0].message, /"@ext\/acme\/position\/position"/);
-    assert.match(diags[0].message, /import the extension's published surface from "@ext\/acme\/position"/i);
+    assert.match(diags[0].message, /"@lib\/acme\/position\/position"/);
+    assert.match(diags[0].message, /import the extension's published surface from "@lib\/acme\/position"/i);
     assert.ok(diags[0].line, "the diagnostic carries the import's source span");
   });
 
@@ -572,7 +572,7 @@ export default Sensor({
         namespace: consumerNs,
         files: files({
           "main.ts": `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/position";
+import { Position } from "@lib/position";
 
 export default Sensor({
   name: "single probe",
@@ -593,8 +593,40 @@ export default Sensor({
     // module-not-found TypeScript error, never a silent success.
     const tsErrors = roots.get(consumerNs)!.tsErrors.get("main.ts") ?? [];
     assert.ok(
-      tsErrors.some((diag) => /Cannot find module '@ext\/position'/.test(diag.message)),
+      tsErrors.some((diag) => /Cannot find module '@lib\/position'/.test(diag.message)),
       `expected an unresolved-module error, got ${JSON.stringify(tsErrors)}`
+    );
+  });
+
+  test("the retired `@ext/` import prefix no longer resolves to a mounted dependency", () => {
+    const { session } = newSession();
+    const consumerNs = "acme/retired";
+    session.setRoots([
+      positionRoot(),
+      {
+        namespace: consumerNs,
+        files: files({
+          "main.ts": `import { Sensor, type Context } from "mindcraft";
+import { Position } from "@ext/acme/position";
+
+export default Sensor({
+  name: "retired probe",
+  id: "retiredProbe0001",
+  returnType: Position,
+  onExecute(ctx: Context): Position {
+    return Position({ x: 1, y: 2 });
+  },
+});
+`,
+        }),
+        dependencies: [dep(POSITION_NS)],
+      },
+    ]);
+    const { roots } = session.compile();
+    const tsErrors = roots.get(consumerNs)!.tsErrors.get("main.ts") ?? [];
+    assert.ok(
+      tsErrors.some((diag) => /Cannot find module '@ext\/acme\/position'/.test(diag.message)),
+      `the old prefix must fail to resolve, got ${JSON.stringify(tsErrors)}`
     );
   });
 });
@@ -631,7 +663,7 @@ describe("declaring-project-aware type resolution", () => {
   test("an anonymous param type resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "reader.ts": `import { Sensor, param, type Context } from "mindcraft";
-import { Position } from "@ext/acme/position";
+import { Position } from "@lib/acme/position";
 
 export default Sensor({
   name: "read x",
@@ -652,7 +684,7 @@ export default Sensor({
   test("a declared output type resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "spotter.ts": `import { Sensor, setOutput, type Context } from "mindcraft";
-import { Position } from "@ext/acme/position";
+import { Position } from "@lib/acme/position";
 
 export default Sensor({
   name: "spotter",
@@ -675,7 +707,7 @@ export default Sensor({
   test("consumesWhenResult resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "chase.ts": `import { Actuator, type Context } from "mindcraft";
-import { Position } from "@ext/acme/position";
+import { Position } from "@lib/acme/position";
 
 export default Actuator({
   name: "chase",
@@ -693,7 +725,7 @@ export default Actuator({
   test("a StructType field typed by an extension import resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "track.ts": `import { NumberType, Sensor, StructType, type Context, type StructOf } from "mindcraft";
-import { Position } from "@ext/acme/position";
+import { Position } from "@lib/acme/position";
 
 export const Track = StructType({
   name: "track",
@@ -722,7 +754,7 @@ export default Sensor({
   test("a System state field typed by an extension import resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "nav.ts": `import { Sensor, System, type Context } from "mindcraft";
-import { Position } from "@ext/acme/position";
+import { Position } from "@lib/acme/position";
 
 const Nav = System({
   name: "nav",
@@ -746,7 +778,7 @@ export default Sensor({
   test("a Conversion from-type resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
       "pos-to-buffer.ts": `import { BufferType, Conversion } from "mindcraft";
-import { Position } from "@ext/acme/position";
+import { Position } from "@lib/acme/position";
 
 export default Conversion({
   id: "convPosBuf000001",
@@ -778,7 +810,7 @@ export default Conversion({
         namespace: otherNs,
         files: files({
           "probe.ts": `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/acme/position";
+import { Position } from "@lib/acme/position";
 
 export default Sensor({
   name: "other probe",

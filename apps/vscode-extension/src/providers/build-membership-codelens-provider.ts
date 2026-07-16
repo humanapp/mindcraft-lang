@@ -5,7 +5,7 @@ import { type BuildMembershipTracker, isBuildMembershipPath } from "../services/
  * Offers a single membership-toggle CodeLens on project files when the
  * manifest declares a `files` list: "Add to build" on an unlisted file,
  * "Remove from build" on a listed one. The manifest itself and the
- * `.extensions/` tree get no lens.
+ * `.libraries/` tree get no lens.
  */
 export class BuildMembershipCodeLensProvider implements vscode.CodeLensProvider {
   private readonly _onDidChangeCodeLenses = new vscode.EventEmitter<void>();

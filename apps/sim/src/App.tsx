@@ -460,7 +460,7 @@ function App() {
         if (unstable.length > 0) {
           const detail = unstable.map((dependency) => `${dependency.coordinate} (${dependency.code})`).join(", ");
           const proceed = window.confirm(
-            `This project depends on extensions that are not stable for consumers: ${detail}. ` +
+            `This project depends on libraries that are not stable for consumers: ${detail}. ` +
               "The exported project may not work, or may not keep working, for anyone else. Export anyway?"
           );
           if (!proceed) {

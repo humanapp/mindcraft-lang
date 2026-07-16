@@ -43,7 +43,7 @@ Then:
 3. The Mindcraft editor opens in a tab. Brains you build there and tiles you author in TypeScript all save to the project folder.
 4. Use the **Mindcraft** panel in the Explorer sidebar for the common actions: create a sensor, create an actuator, open the editor, open settings. Closing the editor tab is fine -- **Mindcraft: Open Editor** brings it back.
 
-New projects include a generated `tsconfig.json` and a `.extensions` folder so tile sources get full type information and error checking in the editor, plus a `.gitignore` that keeps the generated files out of version control.
+New projects include a generated `tsconfig.json` and a `.libraries` folder so tile sources get full type information and error checking in the editor, plus a `.gitignore` that keeps the generated files out of version control.
 
 ### Flashing a Device
 
@@ -71,4 +71,4 @@ For targets whose hardware is programmed by copying a firmware file to a USB dri
 | Setting | Where | Description |
 |---|---|---|
 | `mindcraft.bridgeUrl` | Web | URL of the bridge service used to pair with a running app |
-| `mindcraft.devTarget` | Desktop | The Mindcraft target app to host for project folders, plus optional extension and platform-target seeds for new projects |
+| `mindcraft.devTarget` | Desktop | The Mindcraft target app to host for project folders, plus optional library and platform-target seeds for new projects |

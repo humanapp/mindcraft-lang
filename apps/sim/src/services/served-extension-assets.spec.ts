@@ -24,7 +24,7 @@ import { createSimModule } from "@/brain";
 import { createVfsAwareVisualProvider } from "@/brain/editor/visual-provider";
 import { ECOSIM_TELEPORT_EXT_COORDINATE, SIM_LIB_COORDINATE, SIM_LIB_REFERENCE } from "./sim-extension-coordinates";
 
-const TELEPORT_ICON_PATH = `.extensions/${ECOSIM_TELEPORT_EXT_COORDINATE}/teleport.svg`;
+const TELEPORT_ICON_PATH = `.libraries/${ECOSIM_TELEPORT_EXT_COORDINATE}/teleport.svg`;
 const TELEPORT_REFERENCE = `embedded:${ECOSIM_TELEPORT_EXT_COORDINATE}`;
 
 const SIM_MOUNTS: readonly Mount[] = [];
@@ -152,7 +152,7 @@ describe("sim served extension assets", () => {
       });
 
       // The vfs asset-url provider reads `store.servedProjectFileSystem`; the vfs
-      // path of the tile's `/vfs/.extensions/.../teleport.svg` icon URL resolves here.
+      // path of the tile's `/vfs/.libraries/.../teleport.svg` icon URL resolves here.
       const icon = host.servedProjectFileSystem.exportSnapshot().get(TELEPORT_ICON_PATH);
       assert.ok(icon && icon.kind === "file", `the served snapshot carries ${TELEPORT_ICON_PATH}`);
       assert.equal(icon.content, TELEPORT_ICON_SVG, "the served icon is the bundled Teleport svg byte-for-byte");

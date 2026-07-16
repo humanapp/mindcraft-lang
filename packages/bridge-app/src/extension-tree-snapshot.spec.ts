@@ -64,7 +64,7 @@ function vfsAssetPath(vfsUrl: string): string {
  * Build the peer-facing augmented file system the way the real host does:
  * an in-memory project FS that excludes compiler-controlled paths, wrapped
  * over a workspace compiler whose resolved dependency mounts materialize the
- * `.extensions/<owner>/<repo>/` tree.
+ * `.libraries/<owner>/<repo>/` tree.
  */
 function buildAugmented(dependencyMounts: readonly DependencyMount[]) {
   const environment = createMindcraftEnvironment({ modules: [coreModule()] });
@@ -119,20 +119,20 @@ function buildWorkspace(dependencyMounts: readonly DependencyMount[]) {
 }
 
 describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () => {
-  test("the exported snapshot carries the .extensions files read-only and every ancestor directory entry", () => {
+  test("the exported snapshot carries the .libraries files read-only and every ancestor directory entry", () => {
     const snapshot = buildAugmented([STDLIB_MOUNT]).exportSnapshot();
 
     // (a) The compiler-controlled extension source is present, read-only.
-    const indexEntry = snapshot.get(".extensions/mindcraft-lang/codal/index.ts");
+    const indexEntry = snapshot.get(".libraries/mindcraft-lang/codal/index.ts");
     assert.ok(indexEntry && indexEntry.kind === "file", "the stdlib entry file is present");
     assert.equal(indexEntry.isReadonly, true, "materialized extension source is read-only");
-    const imageEntry = snapshot.get(".extensions/mindcraft-lang/codal/image.ts");
+    const imageEntry = snapshot.get(".libraries/mindcraft-lang/codal/image.ts");
     assert.ok(imageEntry && imageEntry.kind === "file");
     assert.equal(imageEntry.isReadonly, true);
 
     // (b) Every ancestor of the extension files is present as a directory entry,
     // the same invariant the base project file system upholds for its own files.
-    for (const dir of [".extensions", ".extensions/mindcraft-lang", ".extensions/mindcraft-lang/codal"]) {
+    for (const dir of [".libraries", ".libraries/mindcraft-lang", ".libraries/mindcraft-lang/codal"]) {
       const entry = snapshot.get(dir);
       assert.ok(entry && entry.kind === "directory", `${dir} is present as a directory entry`);
     }
@@ -142,7 +142,7 @@ describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () =
     assert.ok(ambient && ambient.kind === "file", "the root ambient declaration is present");
   });
 
-  test("the .extensions tree is walkable to the stdlib files through the peer sync chain", () => {
+  test("the .libraries tree is walkable to the stdlib files through the peer sync chain", () => {
     const augmented = buildAugmented([STDLIB_MOUNT]);
     const initial = toFileSystemSnapshot(augmented.exportSnapshot());
 
@@ -155,21 +155,21 @@ describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () =
 
     const rootNames = peerFs.list().map((e) => e.name);
     assert.ok(rootNames.includes("mindcraft.core.d.ts"), "root ambient declaration surfaces");
-    const ext = peerFs.list().find((e) => e.name === ".extensions");
-    assert.ok(ext && ext.kind === "directory", ".extensions surfaces at the peer root");
+    const ext = peerFs.list().find((e) => e.name === ".libraries");
+    assert.ok(ext && ext.kind === "directory", ".libraries surfaces at the peer root");
 
-    // Walk .extensions -> mindcraft-lang -> codal -> files.
-    const owner = peerFs.list(".extensions");
+    // Walk .libraries -> mindcraft-lang -> codal -> files.
+    const owner = peerFs.list(".libraries");
     assert.deepEqual(
       owner.map((e) => [e.name, e.kind]),
       [["mindcraft-lang", "directory"]]
     );
-    const repo = peerFs.list(".extensions/mindcraft-lang");
+    const repo = peerFs.list(".libraries/mindcraft-lang");
     assert.deepEqual(
       repo.map((e) => [e.name, e.kind]),
       [["codal", "directory"]]
     );
-    const files = peerFs.list(".extensions/mindcraft-lang/codal");
+    const files = peerFs.list(".libraries/mindcraft-lang/codal");
     const fileNames = files.map((e) => e.name).sort();
     assert.deepEqual(fileNames, ["image.ts", "index.ts"]);
     for (const f of files) {
@@ -186,18 +186,18 @@ describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () =
     peerFs.import(toFileSystemSnapshot(augmented.exportSnapshot()));
 
     const owners = peerFs
-      .list(".extensions")
+      .list(".libraries")
       .map((e) => e.name)
       .sort();
     assert.deepEqual(owners, ["acme", "mindcraft-lang"]);
 
     const codal = peerFs
-      .list(".extensions/mindcraft-lang/codal")
+      .list(".libraries/mindcraft-lang/codal")
       .map((e) => e.name)
       .sort();
     assert.deepEqual(codal, ["image.ts", "index.ts"]);
     const widgets = peerFs
-      .list(".extensions/acme/widgets")
+      .list(".libraries/acme/widgets")
       .map((e) => e.name)
       .sort();
     assert.deepEqual(widgets, ["index.ts"]);
@@ -220,13 +220,13 @@ describe("augmentProjectFileSystem -- installed-extensions tree surfacing", () =
         }
       }
     }
-    assert.equal(iconUrl, "/vfs/.extensions/acme/detector/probe.svg");
+    assert.equal(iconUrl, "/vfs/.libraries/acme/detector/probe.svg");
     assert.equal(docsMarkdown, "# Probe\nDocs.");
 
     // The asset-url provider resolves that URL from the augmented snapshot: the
     // URL's vfs path is a key present in the snapshot, resolving to the asset bytes.
     const vfsPath = vfsAssetPath(iconUrl);
-    assert.equal(vfsPath, ".extensions/acme/detector/probe.svg");
+    assert.equal(vfsPath, ".libraries/acme/detector/probe.svg");
     const entry = augmented.exportSnapshot().get(vfsPath);
     assert.ok(entry && entry.kind === "file", "the icon URL resolves to a file in the served snapshot");
     assert.equal(entry.content, '<svg id="probe"></svg>');

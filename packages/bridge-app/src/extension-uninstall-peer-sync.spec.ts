@@ -47,7 +47,7 @@ class MockWebSocket {
 }
 
 const TELEPORT_COORDINATE = "mindcraft-lang/ecosim-teleport-ext";
-const TELEPORT_INDEX_PATH = `.extensions/${TELEPORT_COORDINATE}/index.ts`;
+const TELEPORT_INDEX_PATH = `.libraries/${TELEPORT_COORDINATE}/index.ts`;
 
 const TELEPORT_MOUNT: DependencyMount = {
   namespace: TELEPORT_COORDINATE,
@@ -85,7 +85,7 @@ describe("extension uninstall peer sync", () => {
     (globalThis as Record<string, unknown>).WebSocket = originalWebSocket;
   });
 
-  it("prunes the uninstalled extension's .extensions tree from the peer sync view", () => {
+  it("prunes the uninstalled extension's .libraries tree from the peer sync view", () => {
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
     const ambient = buildAmbientDeclarations(environment.brainServices.runtime.types);
     const mounts: Mount[] = [declarationMount([{ path: "mindcraft.core.d.ts", content: ambient }])];

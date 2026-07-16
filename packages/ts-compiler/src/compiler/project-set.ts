@@ -21,7 +21,7 @@ export interface ProjectRoot {
   /**
    * The root's extensions list. Each entry's coordinate must match a root in
    * the resolved set (a root's namespace) and names the dependency in the
-   * root's `@ext/<owner>/<repo>` imports.
+   * root's `@lib/<owner>/<repo>` imports.
    */
   dependencies?: readonly ProjectDependency[];
   /**

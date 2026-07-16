@@ -135,12 +135,12 @@ export interface ResolvedOriginProvenance {
 
 /** Compiler inputs resolved from a project's extensions list and its content sources. */
 export interface ResolvedExtensions {
-  /** Each direct dependency's `<owner>/<repo>` coordinate, resolving its `@ext/<owner>/<repo>` imports. */
+  /** Each direct dependency's `<owner>/<repo>` coordinate, resolving its `@lib/<owner>/<repo>` imports. */
   dependencies: readonly ProjectDependency[];
   /**
    * Read-only content of every origin in the transitive dependency closure,
    * one mount per origin, each carrying its own extensions list so nested
-   * `@ext/<owner>/<repo>` imports resolve against the correct origin.
+   * `@lib/<owner>/<repo>` imports resolve against the correct origin.
    */
   dependencyMounts: readonly DependencyMount[];
   /** The winning reference and version of every origin in the closure. */
@@ -165,7 +165,7 @@ export interface OriginCandidate {
   depth: number;
   /** The candidate's origin-relative file map, with leading-slash paths. */
   files: ReadonlyMap<string, string>;
-  /** The candidate's own extensions list, resolving its `@ext/<owner>/<repo>` imports. */
+  /** The candidate's own extensions list, resolving its `@lib/<owner>/<repo>` imports. */
   extensions: ExtensionsMap;
   /** The candidate's declared ambient `.d.ts` files, as namespace-relative paths; empty when it declares none. */
   ambient: readonly string[];
@@ -280,7 +280,7 @@ function candidateForReference(
 /** A resolved origin: the winning candidate plus the coordinates its own imports resolve through. */
 interface ResolvedOrigin {
   candidate: OriginCandidate;
-  /** This origin's own dependency coordinates, resolving its `@ext/<owner>/<repo>` imports. */
+  /** This origin's own dependency coordinates, resolving its `@lib/<owner>/<repo>` imports. */
   dependencies: ProjectDependency[];
 }
 

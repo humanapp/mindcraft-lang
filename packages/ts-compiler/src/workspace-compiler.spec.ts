@@ -227,8 +227,8 @@ export type Vec = StructOf<typeof Vec>;
     const bothDeps: ProjectDependency[] = [{ coordinate: "acme/position" }, { coordinate: "acme/vec" }];
 
     const hostBoth = `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/acme/position";
-import { Vec } from "@ext/acme/vec";
+import { Position } from "@lib/acme/position";
+import { Vec } from "@lib/acme/vec";
 export default Sensor({
   name: "read", id: "readBothTypes01", returnType: Position,
   onExecute(ctx: Context): Position { const v: Vec = Vec({ a: 1 }); return Position({ x: v.a, y: 2 }); },
@@ -255,7 +255,7 @@ export default Sensor({
 
     // Re-resolve to {position}: drop the vec dependency and its import.
     const hostPosOnly = `import { Sensor, type Context } from "mindcraft";
-import { Position } from "@ext/acme/position";
+import { Position } from "@lib/acme/position";
 export default Sensor({
   name: "read", id: "readBothTypes01", returnType: Position,
   onExecute(ctx: Context): Position { return Position({ x: 1, y: 2 }); },
@@ -296,8 +296,8 @@ export type Point = StructOf<typeof Point>;
     };
 
     // A and B each depend on the shared point origin and re-publish its type.
-    const aEntry = `export { Point } from "@ext/acme/point";\n`;
-    const bEntry = `export { Point } from "@ext/acme/point";\n`;
+    const aEntry = `export { Point } from "@lib/acme/point";\n`;
+    const bEntry = `export { Point } from "@lib/acme/point";\n`;
     const aMount: DependencyMount = {
       namespace: "acme/a",
       files: new Map([["/index.ts", aEntry]]),
@@ -310,8 +310,8 @@ export type Point = StructOf<typeof Point>;
     };
 
     const host = `import { Sensor, type Context } from "mindcraft";
-import { Point as PointA } from "@ext/acme/a";
-import { Point as PointB } from "@ext/acme/b";
+import { Point as PointA } from "@lib/acme/a";
+import { Point as PointB } from "@lib/acme/b";
 export default Sensor({
   name: "read", id: "readDiamond00001", returnType: PointA,
   onExecute(ctx: Context): PointA { const b: PointB = { x: 5, y: 6 }; return PointA({ x: b.x, y: b.y }); },
@@ -336,11 +336,11 @@ export default Sensor({
     assert.equal(types.resolveByName(qualifiedClassName("acme/b", "/point.ts", "Point")), undefined);
 
     // Each resolved origin materializes as compiler-controlled source under its
-    // own `.extensions/<owner>/<repo>/` subtree.
+    // own `.libraries/<owner>/<repo>/` subtree.
     const controlled = compiler.getCompilerControlledFiles();
-    assert.equal(controlled.get(".extensions/acme/point/point.ts"), pointSource);
-    assert.equal(controlled.get(".extensions/acme/a/index.ts"), aEntry);
-    assert.equal(controlled.get(".extensions/acme/b/index.ts"), bEntry);
+    assert.equal(controlled.get(".libraries/acme/point/point.ts"), pointSource);
+    assert.equal(controlled.get(".libraries/acme/a/index.ts"), aEntry);
+    assert.equal(controlled.get(".libraries/acme/b/index.ts"), bEntry);
   });
 
   const BEEP_SOURCE = `import { Sensor, type Context } from "mindcraft";
@@ -442,7 +442,7 @@ export default Sensor({
 });
 `;
 
-  test("an installed extension's missing-id diagnostic surfaces on its .extensions path", () => {
+  test("an installed extension's missing-id diagnostic surfaces on its .libraries path", () => {
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
     const malformedMount: DependencyMount = {
       namespace: "acme/beeper",
@@ -460,7 +460,7 @@ export default Sensor({
     );
     const result = compiler.compile();
 
-    const extPath = ".extensions/acme/beeper/index.ts";
+    const extPath = ".libraries/acme/beeper/index.ts";
     const extDiagnostics = result.files.get(extPath) ?? [];
     assert.ok(
       extDiagnostics.some((d) => d.code === "MC5022"),
@@ -510,7 +510,7 @@ export default Sensor({
 
     const controlled = compiler.getCompilerControlledFiles();
     assert.equal(
-      controlled.get(".extensions/acme/beeper/tsconfig.json"),
+      controlled.get(".libraries/acme/beeper/tsconfig.json"),
       carriedTsconfig,
       "the carried tsconfig.json materializes verbatim under the extension subtree"
     );
@@ -518,9 +518,9 @@ export default Sensor({
       controlled.get("tsconfig.json")?.includes('"strict": true'),
       "the workspace-root tsconfig.json stays the generated one"
     );
-    // Extension content keys under `.extensions/<owner>/<repo>/` unconditionally,
+    // Extension content keys under `.libraries/<owner>/<repo>/` unconditionally,
     // so a file named like a host ambient cannot land at the workspace root.
-    assert.equal(controlled.get(".extensions/acme/beeper/mindcraft.core.d.ts"), "export {};\n");
+    assert.equal(controlled.get(".libraries/acme/beeper/mindcraft.core.d.ts"), "export {};\n");
     assert.equal(controlled.get("mindcraft.core.d.ts"), ambientFiles[0]!.content);
   });
 

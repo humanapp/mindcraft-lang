@@ -56,18 +56,18 @@ describe("updatedGitignoreContent", () => {
     const content = updatedGitignoreContent(undefined);
     assert.ok(content);
     assert.ok(content.startsWith(GITIGNORE_MARKER));
-    assert.ok(content.includes(".extensions/"));
+    assert.ok(content.includes(".libraries/"));
     assert.ok(content.includes("tsconfig.json"));
   });
 
   it("appends only the missing entries and preserves existing content byte-for-byte", () => {
-    const existing = "node_modules/\n.extensions/\n";
+    const existing = "node_modules/\n.libraries/\n";
     const content = updatedGitignoreContent(existing);
     assert.ok(content);
     assert.ok(content.startsWith(existing), "existing content is preserved unmodified at the top");
     const appended = content.slice(existing.length);
     assert.ok(appended.includes("tsconfig.json"));
-    assert.ok(!appended.includes(".extensions/"), "an already-covered entry is not appended");
+    assert.ok(!appended.includes(".libraries/"), "an already-covered entry is not appended");
   });
 
   it("adds a separating newline when the existing content lacks a trailing one", () => {
@@ -77,14 +77,14 @@ describe("updatedGitignoreContent", () => {
   });
 
   it("recognizes slash variants of the entries as covering", () => {
-    assert.equal(updatedGitignoreContent("/.extensions\n/tsconfig.json\n"), undefined);
-    assert.equal(updatedGitignoreContent(".extensions\ntsconfig.json"), undefined);
+    assert.equal(updatedGitignoreContent("/.libraries\n/tsconfig.json\n"), undefined);
+    assert.equal(updatedGitignoreContent(".libraries\ntsconfig.json"), undefined);
   });
 
   it("does not accept commented-out entries as covering", () => {
-    const content = updatedGitignoreContent("#.extensions/\n# tsconfig.json\n");
+    const content = updatedGitignoreContent("#.libraries/\n# tsconfig.json\n");
     assert.ok(content);
-    assert.ok(content.includes(".extensions/"));
+    assert.ok(content.includes(".libraries/"));
     assert.ok(content.includes("\ntsconfig.json"));
   });
 });
@@ -98,7 +98,7 @@ describe("ProjectAffordanceWriter", () => {
       payload(
         [
           ["tsconfig.json", '{ "compilerOptions": {} }'],
-          [`.extensions/${ORIGIN}/index.ts`, "export const p = 1;"],
+          [`.libraries/${ORIGIN}/index.ts`, "export const p = 1;"],
         ],
         { [ORIGIN]: { reference: `gh:${ORIGIN}@v0.1.0`, specifier: "v0.1.0" } }
       )
@@ -106,7 +106,7 @@ describe("ProjectAffordanceWriter", () => {
 
     assert.equal(access.files.get("tsconfig.json"), renderGeneratedTsconfig('{ "compilerOptions": {} }'));
     assert.ok(access.files.get("tsconfig.json")?.startsWith(GENERATED_TSCONFIG_MARKER));
-    assert.equal(access.files.get(`.extensions/${ORIGIN}/index.ts`), "export const p = 1;");
+    assert.equal(access.files.get(`.libraries/${ORIGIN}/index.ts`), "export const p = 1;");
     const metadata = JSON.parse(access.files.get(INSTALLED_EXTENSIONS_METADATA_PATH) ?? "{}") as Record<
       string,
       { reference: string; specifier: string }
@@ -129,7 +129,7 @@ describe("ProjectAffordanceWriter", () => {
     const writer = new ProjectAffordanceWriter(access);
     const set = payload([
       ["tsconfig.json", "{}"],
-      [`.extensions/${ORIGIN}/index.ts`, "export const p = 1;"],
+      [`.libraries/${ORIGIN}/index.ts`, "export const p = 1;"],
     ]);
 
     await writer.apply(set);
@@ -140,20 +140,20 @@ describe("ProjectAffordanceWriter", () => {
   });
 
   it("prunes tree files that left the set, including stale files found on disk at the first apply", async () => {
-    const stalePath = ".extensions/old-org/old-ext/index.ts";
+    const stalePath = ".libraries/old-org/old-ext/index.ts";
     const access = memoryFileAccess({ [stalePath]: "export const stale = 1;" });
     const writer = new ProjectAffordanceWriter(access);
 
     await writer.apply(
       payload([
         ["tsconfig.json", "{}"],
-        [`.extensions/${ORIGIN}/index.ts`, "export const p = 1;"],
+        [`.libraries/${ORIGIN}/index.ts`, "export const p = 1;"],
       ])
     );
     assert.equal(access.files.has(stalePath), false, "a stale on-disk tree file is pruned at the first apply");
 
     await writer.apply(payload([["tsconfig.json", "{}"]]));
-    assert.equal(access.files.has(`.extensions/${ORIGIN}/index.ts`), false, "an uninstalled subtree is pruned");
+    assert.equal(access.files.has(`.libraries/${ORIGIN}/index.ts`), false, "an uninstalled subtree is pruned");
   });
 
   it("prunes a provenance record that no longer lists any dependency", async () => {
@@ -190,8 +190,8 @@ describe("ProjectAffordanceWriter", () => {
   it("owns the generated tsconfig and the whole tree as affordance paths, and nothing else", () => {
     const writer = new ProjectAffordanceWriter(memoryFileAccess());
     assert.equal(writer.isAffordancePath("tsconfig.json"), true);
-    assert.equal(writer.isAffordancePath(".extensions"), true);
-    assert.equal(writer.isAffordancePath(`.extensions/${ORIGIN}/index.ts`), true);
+    assert.equal(writer.isAffordancePath(".libraries"), true);
+    assert.equal(writer.isAffordancePath(`.libraries/${ORIGIN}/index.ts`), true);
     assert.equal(writer.isAffordancePath("main.ts"), false);
     assert.equal(writer.isAffordancePath("nested/tsconfig.json"), false);
   });

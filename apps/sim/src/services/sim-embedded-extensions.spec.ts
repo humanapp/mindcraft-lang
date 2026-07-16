@@ -50,7 +50,7 @@ describe("sim embedded layers -- transitive resolution of the core <- sim stack"
 });
 
 describe("sim embedded layers -- ambient declarations arrive through the resolved extensions", () => {
-  test("user code resolves types spanning both layers with no root ambient mount, and the .d.ts materialize under .extensions/", () => {
+  test("user code resolves types spanning both layers with no root ambient mount, and the .d.ts materialize under .libraries/", () => {
     const resolved = resolveProjectExtensions(
       { [SIM_LIB_COORDINATE]: SIM_LIB_REFERENCE },
       { embedded: embeddedLayers() }
@@ -96,15 +96,15 @@ export default Sensor({
     );
 
     // The layer ambient `.d.ts` are inspectable in the project file tree under
-    // each layer's `.extensions/<owner>/<repo>/` subtree.
+    // each layer's `.libraries/<owner>/<repo>/` subtree.
     const controlled = compiler.getCompilerControlledFiles();
     assert.ok(
-      controlled.has(".extensions/mindcraft-lang/core/mindcraft.core.d.ts"),
-      "the core ambient materializes under .extensions/"
+      controlled.has(".libraries/mindcraft-lang/core/mindcraft.core.d.ts"),
+      "the core ambient materializes under .libraries/"
     );
     assert.ok(
-      controlled.has(".extensions/mindcraft-lang/sim/mindcraft.sim.d.ts"),
-      "the sim ambient materializes under .extensions/"
+      controlled.has(".libraries/mindcraft-lang/sim/mindcraft.sim.d.ts"),
+      "the sim ambient materializes under .libraries/"
     );
   });
 });

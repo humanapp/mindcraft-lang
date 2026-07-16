@@ -97,9 +97,9 @@ describe("installed-extensions tree provenance", () => {
   it("rebuilds snapshot records from a materialized tree, scoped to each origin's subtree", () => {
     const snapshots = reconstructInstalledSnapshotsFromTree(METADATA, [
       ["tsconfig.json", "{}"],
-      [`.extensions/${ORIGIN}/index.ts`, "export const p = 1;"],
-      [`.extensions/${ORIGIN}/docs/readme.md`, "# Position"],
-      [".extensions/other-org/other-ext/index.ts", "export const q = 2;"],
+      [`.libraries/${ORIGIN}/index.ts`, "export const p = 1;"],
+      [`.libraries/${ORIGIN}/docs/readme.md`, "# Position"],
+      [".libraries/other-org/other-ext/index.ts", "export const q = 2;"],
     ]);
     const record = snapshots[ORIGIN];
     assert.ok(record);

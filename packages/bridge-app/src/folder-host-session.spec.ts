@@ -84,7 +84,7 @@ describe("folder session compiler-controlled files publication", () => {
     session.publishCompilerControlledFiles(
       new Map([
         ["tsconfig.json", "{}"],
-        [`.extensions/${POSITION_ORIGIN}/index.ts`, "export const position = 42;\n"],
+        [`.libraries/${POSITION_ORIGIN}/index.ts`, "export const position = 42;\n"],
       ]),
       { [POSITION_ORIGIN]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" } }
     );
@@ -95,7 +95,7 @@ describe("folder session compiler-controlled files publication", () => {
     assert.ok(message);
     assert.deepStrictEqual(message.payload.files, [
       ["tsconfig.json", "{}"],
-      [`.extensions/${POSITION_ORIGIN}/index.ts`, "export const position = 42;\n"],
+      [`.libraries/${POSITION_ORIGIN}/index.ts`, "export const position = 42;\n"],
     ]);
     assert.deepStrictEqual(message.payload.installedExtensions, {
       [POSITION_ORIGIN]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" },
@@ -144,8 +144,8 @@ describe("folder session installed-extensions cache seeding", () => {
           INSTALLED_EXTENSIONS_METADATA_PATH,
           JSON.stringify({ [POSITION_ORIGIN]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" } }),
         ],
-        [`.extensions/${POSITION_ORIGIN}/mindcraft.json`, JSON.stringify({ name: "Position", version: "0.1.0" })],
-        [`.extensions/${POSITION_ORIGIN}/index.ts`, "export const position = 42;\n"],
+        [`.libraries/${POSITION_ORIGIN}/mindcraft.json`, JSON.stringify({ name: "Position", version: "0.1.0" })],
+        [`.libraries/${POSITION_ORIGIN}/index.ts`, "export const position = 42;\n"],
       ],
     });
     const session = await connectFolderHostSession({ port, appName: "test-app" });
@@ -169,7 +169,7 @@ describe("folder session installed-extensions cache seeding", () => {
 
     const treeOnly = await connectFolderHostSession({
       port: fakeHostPort({
-        extensionsCache: [[`.extensions/${POSITION_ORIGIN}/index.ts`, "export const position = 42;\n"]],
+        extensionsCache: [[`.libraries/${POSITION_ORIGIN}/index.ts`, "export const position = 42;\n"]],
       }),
       appName: "test-app",
     });

@@ -147,13 +147,13 @@ export default Sensor({
 
     assert.equal(result.projectResult.tsErrors.size, 0, "the host program compiles clean over the sim ambient");
 
-    // The extension roots materialize under their `.extensions/<owner>/<repo>/` subtrees.
+    // The extension roots materialize under their `.libraries/<owner>/<repo>/` subtrees.
     const controlled = compiler.getCompilerControlledFiles();
     assert.ok(
-      controlled.has(`.extensions/${ECOSIM_TELEPORT_EXT_COORDINATE}/teleport.ts`),
+      controlled.has(`.libraries/${ECOSIM_TELEPORT_EXT_COORDINATE}/teleport.ts`),
       "Teleport source materializes"
     );
-    assert.ok(controlled.has(`.extensions/${ECOSIM_DETECT_EXT_COORDINATE}/detect.ts`), "Detect source materializes");
+    assert.ok(controlled.has(`.libraries/${ECOSIM_DETECT_EXT_COORDINATE}/detect.ts`), "Detect source materializes");
 
     // Each add-on's def enters the picker as a tile keyed under the add-on's namespace.
     const tiles = collectMetadataFromCompile(result);
@@ -175,19 +175,19 @@ export default Sensor({
     assert.equal(detectTile.key, `${ECOSIM_DETECT_EXT_COORDINATE}:user.sensor.${DETECT_ID}`);
 
     // Each tile's icon URL is namespace-aware, pointing into the add-on's
-    // materialized `.extensions/<owner>/<repo>/` subtree the vfs asset-url
+    // materialized `.libraries/<owner>/<repo>/` subtree the vfs asset-url
     // provider resolves, and its docs are inlined from the bundled markdown.
-    assert.equal(teleportTile.iconUrl, `/vfs/.extensions/${ECOSIM_TELEPORT_EXT_COORDINATE}/teleport.svg`);
-    assert.equal(detectTile.iconUrl, `/vfs/.extensions/${ECOSIM_DETECT_EXT_COORDINATE}/detect.svg`);
+    assert.equal(teleportTile.iconUrl, `/vfs/.libraries/${ECOSIM_TELEPORT_EXT_COORDINATE}/teleport.svg`);
+    assert.equal(detectTile.iconUrl, `/vfs/.libraries/${ECOSIM_DETECT_EXT_COORDINATE}/detect.svg`);
     assert.ok(teleportTile.docsMarkdown?.includes("# Teleport"), "the Teleport docs markdown is resolved");
     assert.ok(detectTile.docsMarkdown?.includes("# Detect"), "the Detect docs markdown is resolved");
 
     // The materialized subtree carries the icon and docs assets the URLs resolve to.
     assert.ok(
-      controlled.has(`.extensions/${ECOSIM_TELEPORT_EXT_COORDINATE}/teleport.svg`),
+      controlled.has(`.libraries/${ECOSIM_TELEPORT_EXT_COORDINATE}/teleport.svg`),
       "Teleport icon materializes"
     );
-    assert.ok(controlled.has(`.extensions/${ECOSIM_DETECT_EXT_COORDINATE}/detect.svg`), "Detect icon materializes");
+    assert.ok(controlled.has(`.libraries/${ECOSIM_DETECT_EXT_COORDINATE}/detect.svg`), "Detect icon materializes");
 
     // No duplicate-stable-id diagnostic (5014) is raised across the resolved set.
     for (const rootResult of result.rootResults) {

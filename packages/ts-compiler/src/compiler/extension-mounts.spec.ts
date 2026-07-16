@@ -1,5 +1,5 @@
 /**
- * The `@ext/<owner>/<repo>` specifier split: an extension coordinate is exactly
+ * The `@lib/<owner>/<repo>` specifier split: an extension coordinate is exactly
  * two segments. Fewer segments name no extension (the import falls through to an
  * ordinary module-not-found), and a third segment or beyond is a deep import
  * into the extension's internals. This grammar is the single source the module
@@ -50,18 +50,18 @@ describe("splitExtensionSpecifier", () => {
 });
 
 describe("installed-extension paths", () => {
-  test("a coordinate's file materializes at its `.extensions/<owner>/<repo>/` subtree", () => {
-    assert.equal(extensionFilePath("acme/point", "index.ts"), "/.extensions/acme/point/index.ts");
-    assert.equal(extensionFilePath("acme/point", "/nested/util.ts"), "/.extensions/acme/point/nested/util.ts");
-    assert.equal(extensionWorkspacePath("acme/point", "/index.ts"), ".extensions/acme/point/index.ts");
+  test("a coordinate's file materializes at its `.libraries/<owner>/<repo>/` subtree", () => {
+    assert.equal(extensionFilePath("acme/point", "index.ts"), "/.libraries/acme/point/index.ts");
+    assert.equal(extensionFilePath("acme/point", "/nested/util.ts"), "/.libraries/acme/point/nested/util.ts");
+    assert.equal(extensionWorkspacePath("acme/point", "/index.ts"), ".libraries/acme/point/index.ts");
   });
 
   test("an extension compiler path parses back to its coordinate and coordinate-relative path", () => {
-    assert.deepEqual(parseExtensionCompilerPath("/.extensions/acme/point/index.ts"), {
+    assert.deepEqual(parseExtensionCompilerPath("/.libraries/acme/point/index.ts"), {
       namespace: "acme/point",
       fileName: "/index.ts",
     });
-    assert.deepEqual(parseExtensionCompilerPath("/.extensions/acme/point/nested/util.ts"), {
+    assert.deepEqual(parseExtensionCompilerPath("/.libraries/acme/point/nested/util.ts"), {
       namespace: "acme/point",
       fileName: "/nested/util.ts",
     });
@@ -69,20 +69,20 @@ describe("installed-extension paths", () => {
 
   test("a project-local path is not an extension path", () => {
     assert.equal(parseExtensionCompilerPath("/main.ts"), undefined);
-    assert.equal(parseExtensionCompilerPath("/.extensions/acme"), undefined);
+    assert.equal(parseExtensionCompilerPath("/.libraries/acme"), undefined);
     assert.equal(isExtensionWorkspacePath("main.ts"), false);
   });
 
   test("the extensions tree is recognized workspace-relative and compiler-path", () => {
-    assert.equal(isExtensionWorkspacePath(".extensions"), true);
-    assert.equal(isExtensionWorkspacePath(".extensions/acme/point/index.ts"), true);
-    assert.equal(isExtensionWorkspacePath("/.extensions/acme/point/index.ts"), true);
-    assert.equal(isExtensionWorkspacePath(".extensionsfoo/x.ts"), false);
+    assert.equal(isExtensionWorkspacePath(".libraries"), true);
+    assert.equal(isExtensionWorkspacePath(".libraries/acme/point/index.ts"), true);
+    assert.equal(isExtensionWorkspacePath("/.libraries/acme/point/index.ts"), true);
+    assert.equal(isExtensionWorkspacePath(".librariesfoo/x.ts"), false);
   });
 
   test("a declaration inside the extensions tree keys under its coordinate, not the host namespace", () => {
     assert.equal(
-      qualifiedDeclarationName("host-guid", "/.extensions/acme/point/point.ts", "Point"),
+      qualifiedDeclarationName("host-guid", "/.libraries/acme/point/point.ts", "Point"),
       qualifiedClassName("acme/point", "/point.ts", "Point")
     );
   });
@@ -95,7 +95,7 @@ describe("installed-extension paths", () => {
   });
 
   test("the extensions tree is compiler-controlled, so the project store excludes it from saved bytes", () => {
-    assert.equal(isCompilerControlledPath(".extensions/acme/point/index.ts", []), true);
+    assert.equal(isCompilerControlledPath(".libraries/acme/point/index.ts", []), true);
     assert.equal(isCompilerControlledPath("main.ts", []), false);
   });
 });

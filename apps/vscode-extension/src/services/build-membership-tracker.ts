@@ -10,12 +10,12 @@ import { MINDCRAFT_JSON } from "../mindcraft-json";
 /** Diagnostic code for a manifest `files` entry that is absent from the project. */
 export const LISTED_FILE_MISSING_CODE = "MINDCRAFT_LISTED_FILE_MISSING";
 
-const EXTENSIONS_TREE_PREFIX = ".extensions/";
+const EXTENSIONS_TREE_PREFIX = ".libraries/";
 
 /**
  * True when `path` (project-root-relative, no leading slash) participates in
  * build membership: project files other than the manifest itself and the
- * read-only `.extensions/` dependency tree.
+ * read-only `.libraries/` dependency tree.
  */
 export function isBuildMembershipPath(path: string): boolean {
   return path !== "" && path !== MINDCRAFT_JSON && !path.startsWith(EXTENSIONS_TREE_PREFIX);

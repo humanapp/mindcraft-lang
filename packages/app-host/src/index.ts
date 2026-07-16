@@ -98,8 +98,8 @@ export {
   projectContentManifestToJson,
   serializeProjectContentManifest,
   validateProjectContentManifest,
-  validateProjectHostApp,
   validateProjectExtensions,
+  validateProjectHostApp,
   validateProjectTargets,
 } from "./project-content-manifest.js";
 export type {

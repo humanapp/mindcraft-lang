@@ -883,9 +883,9 @@ const DEMO_EXTENSION: EmbeddedExtension = {
   ],
 };
 
-/** A sensor whose value comes from the embedded extension's helper, imported via `@ext`. */
+/** A sensor whose value comes from the embedded extension's helper, imported via `@lib`. */
 const EXT_SENSOR_SOURCE = `import { Sensor, type Context } from "mindcraft";
-import { level } from "@ext/mindcraft-lang/demo-lib";
+import { level } from "@lib/mindcraft-lang/demo-lib";
 
 export default Sensor({
   id: "extSensor00000001",
@@ -958,8 +958,8 @@ describe("AppEnvironmentHost live extension changes", () => {
     filesystem.applyLocalChange({ action: "write", path: "level.ts", content: EXT_SENSOR_SOURCE, newEtag: "e1" });
     const projectManager = stubProjectManagerWithLiveExtensions(filesystem, {});
 
-    // Capture every compile: the `@ext` import in level.ts resolves only while
-    // the add-on's source is materialized under `.extensions/`, so a compile
+    // Capture every compile: the `@lib` import in level.ts resolves only while
+    // the add-on's source is materialized under `.libraries/`, so a compile
     // error there is the observable signal that the tree is absent.
     let latest: WorkspaceCompileResult | undefined;
     const host = new AppEnvironmentHost({
@@ -986,20 +986,20 @@ describe("AppEnvironmentHost live extension changes", () => {
     try {
       await host.initialize(PROJECT_ID);
 
-      // Uninstalled: the `@ext` import is unresolved, so level.ts fails to compile
+      // Uninstalled: the `@lib` import is unresolved, so level.ts fails to compile
       // and no tile is produced.
-      assert.equal(levelHasError(), true, "the @ext import is unresolved while the add-on is uninstalled");
+      assert.equal(levelHasError(), true, "the @lib import is unresolved while the add-on is uninstalled");
       assert.equal(hasLevelTile(), false, "no sensor tile is registered while the add-on is uninstalled");
 
       // Install through the same path the browser drives; no project transition.
       await host.updateProjectExtensions({ [DEMO_COORDINATE]: DEMO_REFERENCE });
-      assert.equal(levelHasError(), false, "installing live materializes .extensions so the @ext import resolves");
+      assert.equal(levelHasError(), false, "installing live materializes .libraries so the @lib import resolves");
       assert.equal(hasLevelTile(), true, "the sensor compiles into a user tile once the add-on is installed live");
 
-      // Uninstall live: the mount drops, `.extensions/mindcraft-lang/demo-lib`
+      // Uninstall live: the mount drops, `.libraries/mindcraft-lang/demo-lib`
       // de-materializes, and the import is unresolved once more.
       await host.updateProjectExtensions({});
-      assert.equal(levelHasError(), true, "uninstalling live de-materializes .extensions and the import fails again");
+      assert.equal(levelHasError(), true, "uninstalling live de-materializes .libraries and the import fails again");
     } finally {
       host.dispose();
       restoreLocalStorage();
@@ -1008,7 +1008,7 @@ describe("AppEnvironmentHost live extension changes", () => {
 });
 
 describe("AppEnvironmentHost embedded extensions", () => {
-  it("compiles user code that imports an embedded extension via @ext", async () => {
+  it("compiles user code that imports an embedded extension via @lib", async () => {
     const restoreLocalStorage = installEmptyLocalStorage();
     const filesystem = createInMemoryProjectFileSystem();
     filesystem.applyLocalChange({ action: "write", path: "level.ts", content: EXT_SENSOR_SOURCE, newEtag: "e1" });
@@ -1022,7 +1022,42 @@ describe("AppEnvironmentHost embedded extensions", () => {
     try {
       await host.initialize(PROJECT_ID);
       const metadata = host.lastUserTileMetadata;
-      assert.ok(metadata && metadata.length === 1, "the @ext-importing sensor must compile into a user tile");
+      assert.ok(metadata && metadata.length === 1, "the @lib-importing sensor must compile into a user tile");
+      assert.equal(metadata[0].id, "extSensor00000001");
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("keeps the manifest key `extensions` while materializing libraries under `.libraries/` and importing them via `@lib/`", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem();
+    filesystem.applyLocalChange({ action: "write", path: "level.ts", content: EXT_SENSOR_SOURCE, newEtag: "e1" });
+    const appData = new Map<string, string>();
+    const stub = stubProjectManagerWithAppData(filesystem, appData);
+    // The dependency is declared under the manifest key `extensions`, resolves
+    // to a tree materialized under `.libraries/`, and is imported via `@lib/`:
+    // three distinct spellings that must not be harmonized.
+    const manifest = stub.projectManager.activeProject!.manifest as { extensions?: Record<string, string> };
+    manifest.extensions = { [DEMO_COORDINATE]: DEMO_REFERENCE };
+    const host = createEmbeddedExtensionHost(stub.projectManager);
+
+    try {
+      await host.initialize(PROJECT_ID);
+
+      const servedPaths = [...host.servedProjectFileSystem.exportSnapshot().keys()];
+      assert.ok(
+        servedPaths.includes(`.libraries/${DEMO_COORDINATE}/index.ts`),
+        `the library materializes under .libraries/: ${JSON.stringify(servedPaths)}`
+      );
+      assert.ok(
+        !servedPaths.some((path) => path.startsWith(".extensions/")),
+        "no dependency materializes under the retired .extensions/ path"
+      );
+
+      const metadata = host.lastUserTileMetadata;
+      assert.ok(metadata && metadata.length === 1, "the @lib-importing consumer compiles into a user tile");
       assert.equal(metadata[0].id, "extSensor00000001");
     } finally {
       host.dispose();
