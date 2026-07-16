@@ -99,7 +99,6 @@ export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, 
             className="col-span-3"
             placeholder="Enter string value"
             autoComplete="off"
-            // biome-ignore lint/a11y/noAutofocus: dialog input should focus immediately for keyboard users
             autoFocus
           />
         </div>
@@ -126,7 +125,6 @@ export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, 
               className="col-span-3"
               placeholder="0"
               autoComplete="off"
-              // biome-ignore lint/a11y/noAutofocus: dialog input should focus immediately for keyboard users
               autoFocus
             />
           </div>

@@ -140,6 +140,21 @@ Any output beyond that line -- errors, warnings, **or infos** -- means the check
 - Arrow callbacks to `forEach` that return a value trigger `lint/suspicious/useIterableCallbackReturn`. Use a block body `{ stmt; }` instead of an expression arrow.
 - `biome check --write` only applies *safe* auto-fixes. Unsafe fixes are silently skipped and leave residual infos. Never rely on `--write` to clean up code you wrote.
 
+## Tests Never Key on Display Prose
+
+Static display chrome -- placeholders, labels, button captions, tooltips,
+aria-labels, and any other user-facing wording -- is not a test contract.
+Do not assert it in tests: wording changes freely and will be localized, and
+a test keyed to it breaks without any behavior change.
+
+- Assert structure and behavior instead: the element exists (queried by role
+  or a test id), its disabled/enabled state, the callback fired, the value
+  produced.
+- Dynamic data rendered into output IS assertable: a resolved reference, a
+  version, an error code, a file path. These are machine forms produced by
+  the behavior under test.
+- Error and diagnostic assertions match stable codes, never message prose.
+
 ## Broad View Before Acting
 
 Before making any change that touches more than one call site, method signature, or data flow, read all involved files end-to-end and explicitly identify every invariant the change must preserve -- ordering, symmetry, consistency across parallel code paths, and structural conventions -- before writing a single line of code.
