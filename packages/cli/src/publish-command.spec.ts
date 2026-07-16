@@ -5,6 +5,7 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { deriveCoordinateFromRemoteUrl } from "@mindcraft-lang/app-host";
+import { resolvePublishTarget } from "./publish-command.js";
 import {
   cloneAtTag,
   initBareRemote,
@@ -42,6 +43,71 @@ async function readManifest(dir: string): Promise<{ version: string; identity?: 
 async function readManifestVersion(dir: string): Promise<string> {
   return (await readManifest(dir)).version;
 }
+
+describe("resolvePublishTarget", () => {
+  it("uses constructed mode to an explicit --remote, whatever the identity or origin", () => {
+    assert.deepEqual(
+      resolvePublishTarget({
+        explicitRemote: "git@github.com:acme/blinker.git",
+        identity: undefined,
+        originCoordinate: undefined,
+      }),
+      { mode: "constructed", remote: "git@github.com:acme/blinker.git" }
+    );
+    assert.deepEqual(
+      resolvePublishTarget({
+        explicitRemote: "git@github.com:acme/blinker.git",
+        identity: "acme/blinker",
+        originCoordinate: "acme/blinker",
+      }),
+      { mode: "constructed", remote: "git@github.com:acme/blinker.git" }
+    );
+  });
+
+  it("uses in-place mode when the recorded identity equals the origin coordinate", () => {
+    assert.deepEqual(
+      resolvePublishTarget({ explicitRemote: undefined, identity: "acme/blinker", originCoordinate: "acme/blinker" }),
+      { mode: "in-place" }
+    );
+  });
+
+  it("derives the GitHub remote when the origin coordinate differs from the recorded identity", () => {
+    assert.deepEqual(
+      resolvePublishTarget({ explicitRemote: undefined, identity: "acme/blinker", originCoordinate: "acme/monorepo" }),
+      { mode: "constructed", remote: "https://github.com/acme/blinker.git" }
+    );
+  });
+
+  it("derives the GitHub remote when there is no origin but an identity is recorded", () => {
+    assert.deepEqual(
+      resolvePublishTarget({ explicitRemote: undefined, identity: "acme/blinker", originCoordinate: undefined }),
+      { mode: "constructed", remote: "https://github.com/acme/blinker.git" }
+    );
+  });
+
+  it("derives a remote that round-trips back to the recorded identity", () => {
+    const target = resolvePublishTarget({
+      explicitRemote: undefined,
+      identity: "acme/blinker",
+      originCoordinate: "acme/monorepo",
+    });
+    assert.equal(target.mode, "constructed");
+    if (target.mode === "constructed") {
+      assert.equal(deriveCoordinateFromRemoteUrl(target.remote), "acme/blinker");
+    }
+  });
+
+  it("uses in-place mode for a first publish with no recorded identity, with or without an origin", () => {
+    assert.deepEqual(
+      resolvePublishTarget({ explicitRemote: undefined, identity: undefined, originCoordinate: "acme/blinker" }),
+      { mode: "in-place" }
+    );
+    assert.deepEqual(
+      resolvePublishTarget({ explicitRemote: undefined, identity: undefined, originCoordinate: undefined }),
+      { mode: "in-place" }
+    );
+  });
+});
 
 describe("mindcraft publish to a remote (constructed mode)", () => {
   it("publishes exactly the manifest-described tree, tagged and version-matched", async () => {
@@ -342,6 +408,37 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     assert.equal(await readManifestVersion(branchClone), "0.3.0");
   });
 
+  it("publishes with no flags from a published project's folder, using the recorded identity", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "example-org/blinker.git");
+    const checkout = await initCheckoutProject(root, remote, {
+      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0", identity: "example-org/blinker" }, null, 2),
+      "index.ts": "export const blink = true;\n",
+    });
+
+    const result = await runCliBin(checkout, "publish", "patch");
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /published 0\.2\.1 \(tag v0\.2\.1\)/);
+    assert.doesNotMatch(result.stderr, /identity changed/);
+    assert.equal(await readManifestVersion(checkout), "0.2.1");
+    assert.equal((await readManifest(checkout)).identity, "example-org/blinker");
+
+    const clone = await cloneAtTag(root, remote, "v0.2.1");
+    assert.equal(await readManifestVersion(clone), "0.2.1");
+  });
+
+  it("fails with a clear missing-manifest error when the current folder has no mindcraft.json", async () => {
+    const root = await scratch();
+    const project = path.join(root, "project");
+    await writeProjectFiles(project, { "index.ts": "export {};\n" });
+
+    const result = await runCliBin(project, "publish", "patch");
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /PUBLISH_MANIFEST_MISSING/);
+  });
+
   it("refuses a dirty working tree", async () => {
     const root = await scratch();
     const remote = await initBareRemote(root);
@@ -481,15 +578,18 @@ describe("publishing the codal-position extension content", () => {
       const project = path.join(root, "codal-position-ext");
       await cp(CODAL_POSITION_EXT_DIR, project, { recursive: true });
 
+      const [major, minor, patch] = (await readManifestVersion(project)).split(".").map(Number);
+      const expectedVersion = `${major}.${minor}.${patch + 1}`;
+
       const result = await runCliBin(root, "publish", "patch", "--dir", project, "--remote", remote);
 
       assert.equal(result.code, 0, result.stderr);
-      assert.match(result.stdout, /published 0\.1\.1 \(tag v0\.1\.1\)/);
+      assert.equal(result.stdout, `published ${expectedVersion} (tag v${expectedVersion})\n`);
 
-      const clone = await cloneAtTag(root, remote, "v0.1.1");
+      const clone = await cloneAtTag(root, remote, `v${expectedVersion}`);
       assert.deepEqual(await listProjectFiles(clone), ["index.ts", "mindcraft.json"]);
       assert.equal(existsSync(path.join(clone, "tsconfig.json")), false);
-      assert.equal(await readManifestVersion(clone), "0.1.1");
+      assert.equal(await readManifestVersion(clone), expectedVersion);
       const sourceIndex = await readFile(path.join(CODAL_POSITION_EXT_DIR, "index.ts"));
       const publishedIndex = await readFile(path.join(clone, "index.ts"));
       assert.deepEqual(Array.from(new Uint8Array(publishedIndex)), Array.from(new Uint8Array(sourceIndex)));

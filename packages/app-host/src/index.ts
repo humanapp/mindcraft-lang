@@ -47,6 +47,7 @@ export type {
 export {
   deriveCoordinateFromRemoteUrl,
   ExtensionPublishErrorCode,
+  githubRemoteUrlForCoordinate,
   publishExtensionVersion,
 } from "./extension-publish.js";
 export type { ExtensionUpdateApplication, ExtensionUpdateCheck } from "./extension-update.js";

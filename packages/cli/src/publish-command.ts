@@ -13,6 +13,7 @@ import {
   createJsDelivrExtensionTransport,
   deriveCoordinateFromRemoteUrl,
   ExtensionPublishErrorCode,
+  githubRemoteUrlForCoordinate,
   MINDCRAFT_JSON_PATH,
   parseProjectContentManifest,
   publishExtensionVersion,
@@ -23,21 +24,33 @@ import { GitCommandError, git, tryGit } from "./git.js";
 const PUBLISH_USAGE = `usage: mindcraft publish [patch|minor|major] [--dir <path>] [--remote <url>] [--yes]
 
 Publishes a version of the Mindcraft project in --dir (default: the current
-directory). With a version bump, the manifest version is incremented; without
-one, the manifest's current version is published as-is, which is valid only as
-a first publish to a repository that has no tags. Every publish stamps the
-published manifest's identity field with the <owner>/<repo> coordinate derived
-from the publish remote (origin without --remote); a warning is printed when
-the stamp changes a previously recorded identity. Without --remote, the
-directory must be a git checkout whose repository is the project: the publish
-is committed, tagged v<version>, and the branch and tag are pushed to origin.
-With --remote, the project's published tree (mindcraft.json plus its
-manifest-listed files) is committed to that remote's default branch and tagged
-v<version>, and the published version and identity are written back to the
-project directory's mindcraft.json.
+directory). Run from inside an already-published project's folder, no flags are
+needed: the current directory supplies --dir, and the manifest's recorded
+identity supplies the remote. With a version bump, the manifest version is
+incremented; without one, the manifest's current version is published as-is,
+which is valid only as a first publish to a repository that has no tags. Every
+publish stamps the published manifest's identity field with the <owner>/<repo>
+coordinate of the publish remote; a warning is printed when the stamp changes a
+previously recorded identity.
+
+Without --remote, the publish targets the checkout's origin when origin's
+coordinate matches the manifest's recorded identity: it is committed, tagged
+v<version>, and the branch and tag are pushed to origin. When origin does not
+match that identity (for example a project kept inside a monorepo), or there is
+no origin, the publish targets the GitHub remote derived from the recorded
+identity, https://github.com/<owner>/<repo>.git. A first publish, whose manifest
+records no identity yet, targets origin.
+
+With --remote, or when the remote is derived from the identity, the project's
+published tree (mindcraft.json plus its manifest-listed files) is committed to
+that remote's default branch and tagged v<version>, and the published version
+and identity are written back to the project directory's mindcraft.json.
 
   --dir <path>     project directory (default: current directory)
-  --remote <url>   git remote to publish the project tree to
+  --remote <url>   git remote to publish the project tree to; without it the
+                   remote is the checkout's origin when it matches the recorded
+                   identity, otherwise the GitHub remote derived from that
+                   identity
   --yes            confirm publishing a project whose dependencies are not
                    stable for consumers (a branch reference, or a pinned
                    version the fetch source does not serve)
@@ -99,8 +112,69 @@ function parsePublishArguments(args: readonly string[]): PublishArguments | stri
   return { bump, dir, remote, yes };
 }
 
+/** Inputs {@link resolvePublishTarget} decides the publish target from. */
+export interface PublishTargetInput {
+  /** Value of `--remote`, or `undefined` when the flag is absent. */
+  readonly explicitRemote: string | undefined;
+  /**
+   * The `<owner>/<repo>` identity recorded in the project's manifest, or
+   * `undefined` when the manifest records none, is missing, or is invalid.
+   */
+  readonly identity: string | undefined;
+  /**
+   * The `<owner>/<repo>` coordinate the checkout's `origin` remote resolves to,
+   * or `undefined` when there is no origin or it yields no coordinate.
+   */
+  readonly originCoordinate: string | undefined;
+}
+
+/** Where a publish records its version, and how the target repository is reached. */
+export type PublishTarget = { readonly mode: "in-place" } | { readonly mode: "constructed"; readonly remote: string };
+
+/**
+ * Decide where a publish records its version:
+ * - `--remote` given: constructed mode to that URL.
+ * - no `--remote`, a recorded identity that equals the origin coordinate:
+ *   in-place mode on origin.
+ * - no `--remote`, a recorded identity that origin does not match (a different
+ *   coordinate, or no origin): constructed mode to the GitHub remote derived
+ *   from the identity, `https://github.com/<owner>/<repo>.git`.
+ * - no `--remote` and no recorded identity: in-place mode on origin.
+ *
+ * Always returns a target and does not validate that it can publish; a missing
+ * manifest, an unusable origin, or an identity that cannot be stamped is
+ * refused by the publish the chosen target dispatches to.
+ */
+export function resolvePublishTarget(input: PublishTargetInput): PublishTarget {
+  if (input.explicitRemote !== undefined) {
+    return { mode: "constructed", remote: input.explicitRemote };
+  }
+  if (input.identity !== undefined && input.originCoordinate !== input.identity) {
+    return { mode: "constructed", remote: githubRemoteUrlForCoordinate(input.identity) };
+  }
+  return { mode: "in-place" };
+}
+
 function isFileNotFound(error: unknown): boolean {
   return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+/**
+ * Read the `<owner>/<repo>` identity recorded in the project's `mindcraft.json`.
+ * Returns `undefined` when the directory has no manifest, its manifest does not
+ * parse, or it records no identity; a missing or invalid manifest is reported
+ * by the publish itself.
+ */
+async function readRecordedIdentity(dir: string): Promise<string | undefined> {
+  let manifestText: string;
+  try {
+    manifestText = await readFile(path.join(dir, MINDCRAFT_JSON_PATH), "utf8");
+  } catch (error) {
+    if (isFileNotFound(error)) return undefined;
+    throw error;
+  }
+  const parsed = parseProjectContentManifest(manifestText);
+  return parsed.ok ? parsed.manifest.identity : undefined;
 }
 
 /**
@@ -287,8 +361,14 @@ export async function runPublishCommand(args: readonly string[]): Promise<number
   }
 
   try {
+    const originUrl = (await tryGit(parsed.dir, "remote", "get-url", "origin"))?.trim();
+    const target = resolvePublishTarget({
+      explicitRemote: parsed.remote,
+      identity: await readRecordedIdentity(parsed.dir),
+      originCoordinate: originUrl === undefined ? undefined : deriveCoordinateFromRemoteUrl(originUrl),
+    });
     const result =
-      parsed.remote !== undefined ? await publishToRemote(parsed, parsed.remote) : await publishInCheckout(parsed);
+      target.mode === "constructed" ? await publishToRemote(parsed, target.remote) : await publishInCheckout(parsed);
     if (!result.ok) {
       process.stderr.write(`mindcraft publish: ${result.error.code}: ${result.error.message}\n`);
       if (result.error.code === ExtensionPublishErrorCode.UNSTABLE_DEPENDENCIES_UNCONFIRMED) {
@@ -299,7 +379,7 @@ export async function runPublishCommand(args: readonly string[]): Promise<number
     if (result.previousIdentity !== undefined) {
       process.stderr.write(`warning: identity changed: ${result.previousIdentity} -> ${result.identity}\n`);
     }
-    if (parsed.remote !== undefined) {
+    if (target.mode === "constructed") {
       try {
         await writeBackPublishedManifest(parsed.dir, result.version, result.identity);
       } catch (error) {

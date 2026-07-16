@@ -9,6 +9,7 @@ import type {
 import {
   deriveCoordinateFromRemoteUrl,
   ExtensionPublishErrorCode,
+  githubRemoteUrlForCoordinate,
   publishExtensionVersion,
   serializeProjectContentManifest,
   validateProjectContentManifest,
@@ -94,6 +95,23 @@ describe("deriveCoordinateFromRemoteUrl", () => {
     for (const url of cases) {
       assert.equal(deriveCoordinateFromRemoteUrl(url), undefined, url);
     }
+  });
+});
+
+describe("githubRemoteUrlForCoordinate", () => {
+  it("builds the canonical HTTPS GitHub remote URL for a coordinate", () => {
+    assert.equal(githubRemoteUrlForCoordinate("acme/position"), "https://github.com/acme/position.git");
+  });
+
+  it("round-trips through deriveCoordinateFromRemoteUrl", () => {
+    for (const coordinate of ["acme/position", "mindcraft-lang/codal-position-ext", "a1/b2.c3"]) {
+      assert.equal(deriveCoordinateFromRemoteUrl(githubRemoteUrlForCoordinate(coordinate)), coordinate);
+    }
+  });
+
+  it("throws for a value that is not a valid coordinate", () => {
+    assert.throws(() => githubRemoteUrlForCoordinate("_bad/coordinate"));
+    assert.throws(() => githubRemoteUrlForCoordinate("noslash"));
   });
 });
 

@@ -40,6 +40,18 @@ export function deriveCoordinateFromRemoteUrl(url: string): string | undefined {
   return isExtensionCoordinate(coordinate) ? coordinate : undefined;
 }
 
+/**
+ * Build the canonical HTTPS GitHub remote URL a `<owner>/<repo>` extension
+ * coordinate publishes under: `https://github.com/<owner>/<repo>.git`. Throws
+ * when `coordinate` is not a valid `<owner>/<repo>` coordinate.
+ */
+export function githubRemoteUrlForCoordinate(coordinate: string): string {
+  if (!isExtensionCoordinate(coordinate)) {
+    throw new Error(`"${coordinate}" is not a valid <owner>/<repo> extension coordinate.`);
+  }
+  return `https://github.com/${coordinate}.git`;
+}
+
 /** Version component a publish increments. */
 export type PublishVersionBump = "patch" | "minor" | "major";
 
