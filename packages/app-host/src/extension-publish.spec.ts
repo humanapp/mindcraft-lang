@@ -387,6 +387,54 @@ describe("publishExtensionVersion", () => {
     }
   });
 
+  it("publishes host-app bundle files at their content-relative paths after the listed files", async () => {
+    const source = memorySource({
+      "mindcraft.json": manifestText({
+        name: "Microbit V2",
+        version: "0.1.0",
+        files: ["index.ts"],
+        hostApp: { path: "app", files: ["app/index.html", "app/assets/main.js"] },
+      }),
+      "index.ts": "export {};",
+      "app/index.html": "<!doctype html><title>t</title>",
+      "app/assets/main.js": "console.log(1);",
+    });
+    const { backend, applied } = memoryBackend();
+
+    const result = await publishExtensionVersion({ bump: "patch", coordinate: COORDINATE, source, backend });
+
+    assert.equal(result.ok, true);
+    const commit = applied[0];
+    assert.deepEqual(
+      commit.files.map((file) => file.path),
+      ["mindcraft.json", "index.ts", "app/index.html", "app/assets/main.js"]
+    );
+    const published = JSON.parse(decode(commit.files[0].content)) as { hostApp?: unknown };
+    assert.deepEqual(published.hostApp, { path: "app", files: ["app/index.html", "app/assets/main.js"] });
+    assert.equal(decode(commit.files[2].content), "<!doctype html><title>t</title>");
+  });
+
+  it("refuses when a host-app bundle file is missing", async () => {
+    const result = await publishExtensionVersion({
+      bump: "patch",
+      coordinate: COORDINATE,
+      source: memorySource({
+        "mindcraft.json": manifestText({
+          name: "Microbit V2",
+          version: "0.1.0",
+          hostApp: { path: "app", files: ["app/index.html", "app/ghost.js"] },
+        }),
+        "app/index.html": "<!doctype html>",
+      }),
+      backend: memoryBackend().backend,
+    });
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.error.code, ExtensionPublishErrorCode.LISTED_FILE_MISSING);
+      assert.match(result.error.message, /app\/ghost\.js/);
+    }
+  });
+
   it("publishes the bumped manifest once even when the files list names it", async () => {
     const source = memorySource({
       "mindcraft.json": manifestText({ name: "P", version: "0.1.0", files: ["mindcraft.json", "index.ts"] }),

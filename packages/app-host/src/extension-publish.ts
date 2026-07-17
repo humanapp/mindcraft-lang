@@ -85,7 +85,8 @@ export interface ExtensionPublishCommit {
   readonly tag: string;
   /**
    * The published tree: the `mindcraft.json` carrying the published version
-   * first, followed by each manifest-listed file.
+   * first, followed by each manifest-listed file and each host-app bundle
+   * file.
    */
   readonly files: readonly PublishFile[];
 }
@@ -212,8 +213,9 @@ function bumpVersion(version: string, bump: PublishVersionBump): string {
  * Publish a version of a project: reads the project's manifest, bumps its
  * `version` by `bump` (or keeps it as-is when `bump` is absent), stamps the
  * manifest's `identity` with `coordinate`, and records the published tree --
- * the published `mindcraft.json` plus every manifest-listed file -- on the
- * target repository as a commit tagged `v<version>`. An as-is publish is a
+ * the published `mindcraft.json` plus every manifest-listed file and every
+ * host-app bundle file -- on the target repository as a commit tagged
+ * `v<version>`. An as-is publish is a
  * first publish: it is accepted only when the target repository has no tags.
  * When the stamp replaces a different previously declared identity, the ok
  * result carries the replaced value as `previousIdentity`.
@@ -223,8 +225,8 @@ function bumpVersion(version: string, bump: PublishVersionBump): string {
  * are not stable for consumers, the repository has uncommitted changes, the
  * bumped version is already the repository head's manifest version, an as-is
  * publish targets a repository that already has tags, the tag already exists,
- * or a manifest-listed file is absent. Each refusal carries its
- * {@link ExtensionPublishErrorCode}.
+ * or a manifest-listed or host-app bundle file is absent. Each refusal
+ * carries its {@link ExtensionPublishErrorCode}.
  */
 export async function publishExtensionVersion(options: ExtensionPublishOptions): Promise<ExtensionPublishResult> {
   const { source, backend } = options;
@@ -304,7 +306,7 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
 
   const publishedManifest = serializeProjectContentManifest({ ...manifest, version, identity: coordinate });
   const files: PublishFile[] = [{ path: MINDCRAFT_JSON_PATH, content: new TextEncoder().encode(publishedManifest) }];
-  for (const path of manifest.files ?? []) {
+  for (const path of [...(manifest.files ?? []), ...(manifest.hostApp?.files ?? [])]) {
     // The manifest serialized above is the published manifest; a files entry
     // naming it must not overwrite it with the source bytes.
     if (path === MINDCRAFT_JSON_PATH) continue;
