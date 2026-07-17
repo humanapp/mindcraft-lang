@@ -25,7 +25,7 @@ import {
   Undo,
   Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { staticAssetUrl } from "../asset-url";
 import { Button } from "../ui/button";
@@ -121,10 +121,19 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     updateUndoRedoState();
   }, [commandHistory]);
 
-  // Clone brainDef when it changes or dialog opens
+  // Read through a ref so the working copy resets only when the dialog opens
+  // or the source brain changes. The host config (and with it this callback's
+  // identity) legitimately rebuilds mid-edit -- docs sidebar toggles, tile
+  // installs, asset revision bumps -- and an open draft must survive those.
+  const createEditableBrainRef = useRef(createEditableBrain);
+  useEffect(() => {
+    createEditableBrainRef.current = createEditableBrain;
+  }, [createEditableBrain]);
+
+  // Clone brainDef when the source brain changes or the dialog opens
   useEffect(() => {
     if (isOpen && srcBrainDef) {
-      const newBrainDef = createEditableBrain(srcBrainDef);
+      const newBrainDef = createEditableBrainRef.current(srcBrainDef);
       setBrainDef(newBrainDef);
       setCurrentPageNumber(1);
       setTotalPageCount(newBrainDef.pages().size());
@@ -134,7 +143,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setBrainDef(undefined);
       commandHistory.clear();
     }
-  }, [isOpen, srcBrainDef, commandHistory, createEditableBrain]);
+  }, [isOpen, srcBrainDef, commandHistory]);
 
   useEffect(() => {
     return onBrainClipboardChanged(() => setHasBrainClipboard(hasBrainInClipboard()));
