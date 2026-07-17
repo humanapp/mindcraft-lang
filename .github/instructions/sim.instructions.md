@@ -44,7 +44,7 @@ Changes to `packages/core` require rebuilding it (the sim's `prebuild` handles t
 
 - **Modifiers** are boolean flags. Use `mod()` from `call-spec.ts`.
 - **Parameters** accept a typed value. Use `param()` from `call-spec.ts`.
-- Do NOT mix these up -- wrong helper causes slot lookup failures at startup.
+- Do not mix them up -- the wrong helper causes slot lookup failures at startup.
 
 ### Call Spec Example
 

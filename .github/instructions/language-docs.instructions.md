@@ -45,7 +45,7 @@ src/
 
 ## Brain Editor Integration
 
-The docs package does NOT import from the brain editor context. Integration uses
+The docs package does not import from the brain editor context. Integration uses
 dependency inversion through `BrainEditorConfig`:
 
 - `onTileHelp` -- right-click Help on tiles (hidden when not provided)

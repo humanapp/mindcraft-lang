@@ -1,5 +1,5 @@
 ---
-applyTo: "external/mindcraft-lang/packages/ts-compiler/**"
+applyTo: "packages/ts-compiler/**"
 ---
 
 # TS-Compiler Operating Principles
