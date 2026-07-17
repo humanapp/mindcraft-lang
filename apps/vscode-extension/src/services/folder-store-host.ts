@@ -578,7 +578,7 @@ function parentDirectoryPath(path: string): string | undefined {
 
 /**
  * True for paths the folder session does not sync: any segment starting with
- * a dot (`.git`, `.extensions`) or a `node_modules` directory.
+ * a dot (`.git`, `.libraries`) or a `node_modules` directory.
  */
 export function isExcludedPath(path: string): boolean {
   return path.split("/").some((segment) => segment.startsWith(".") || segment === "node_modules");
