@@ -11,6 +11,7 @@ import {
   type BrainTileVariableDef,
   getCatalogFallbackLabel,
 } from "@mindcraft-lang/core/brain/tiles";
+import type { TileSourceLibrary } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import { DocsRegistry } from "./DocsRegistry";
@@ -24,6 +25,8 @@ interface DocsSidebarContextValue {
   registry: DocsRegistry;
   tileCatalog: ITileCatalog | undefined;
   brainServices: BrainServices | undefined;
+  /** Installed libraries of the active project; the tiles tab subgroups entries attributed to them. */
+  libraries: readonly TileSourceLibrary[] | undefined;
   resolveTileVisual: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** The key of the entry currently shown in detail view, or null for list view. */
   navKey: string | null;
@@ -68,6 +71,8 @@ interface DocsSidebarProviderProps {
   registry?: DocsRegistry;
   tileCatalog?: ITileCatalog;
   brainServices?: BrainServices;
+  /** Installed libraries of the active project; the tiles tab subgroups entries attributed to them. */
+  libraries?: readonly TileSourceLibrary[];
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Initial active tab (defaults to "tiles"). */
   initialTab?: DocTab;
@@ -86,6 +91,7 @@ export function DocsSidebarProvider({
   registry: externalRegistry,
   tileCatalog: externalTileCatalog,
   brainServices: externalBrainServices,
+  libraries,
   resolveTileVisual: resolveTileVisualProp,
   initialTab,
   initialNavKey,
@@ -162,6 +168,7 @@ export function DocsSidebarProvider({
     registry,
     tileCatalog,
     brainServices: externalBrainServices,
+    libraries,
     resolveTileVisual,
     navKey,
     navTab,

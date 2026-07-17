@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "../ui/input";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
+import { groupTilesByLibrary, type TileSourceLibrary } from "./tile-library-groups";
 import { resolveTileVisual } from "./tile-visual-utils";
 
 type TileGroup =
@@ -68,6 +69,72 @@ function fuzzyMatch(filter: string, text: string): boolean {
   return true;
 }
 
+interface TileGroupSectionProps {
+  group: TileGroup;
+  tiles: TileSuggestion[];
+  side: RuleSide;
+  libraries?: readonly TileSourceLibrary[];
+  /** Renders the section in the muted compatible-via-conversion style. */
+  conversion?: boolean;
+  onTileClick: (tileDef: IBrainTileDef) => void;
+}
+
+/**
+ * One kind group of the picker: unattributed tiles first, then a subcluster
+ * per installed library, each under its library's display-name subheading.
+ */
+function TileGroupSection({ group, tiles, side, libraries, conversion, onTileClick }: TileGroupSectionProps) {
+  const { unattributed, clusters } = groupTilesByLibrary(tiles, (s) => s.tileDef, libraries);
+  const headingId = conversion ? `tile-group-conv-${group}` : `tile-group-${group}`;
+  const tileRowClass = conversion ? "flex flex-wrap gap-1 opacity-75" : "flex flex-wrap gap-1";
+  const renderTiles = (items: readonly TileSuggestion[]) =>
+    items.map((s) => (
+      <BrainTile key={s.tileDef.tileId} tileDef={s.tileDef} side={side} onClick={() => onTileClick(s.tileDef)} />
+    ));
+
+  return (
+    <section aria-labelledby={headingId}>
+      <h3
+        id={headingId}
+        className={
+          conversion ? "text-sm font-semibold uppercase mb-2 text-white/50" : "text-sm font-semibold uppercase mb-2"
+        }
+      >
+        {groupNames[group]}
+      </h3>
+      {unattributed.length > 0 && (
+        /* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */
+        <div
+          className={tileRowClass}
+          role="group"
+          aria-label={conversion ? `${groupNames[group]} tiles (conversion)` : `${groupNames[group]} tiles`}
+        >
+          {renderTiles(unattributed)}
+        </div>
+      )}
+      {clusters.map((cluster) => (
+        <div key={cluster.library.coordinate}>
+          <h4 className="text-xs font-semibold uppercase text-white/50 mt-2 mb-1 tracking-wider">
+            {cluster.library.name}
+          </h4>
+          {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}
+          <div
+            className={tileRowClass}
+            role="group"
+            aria-label={
+              conversion
+                ? `${groupNames[group]} tiles from ${cluster.library.name} (conversion)`
+                : `${groupNames[group]} tiles from ${cluster.library.name}`
+            }
+          >
+            {renderTiles(cluster.items)}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 /** Props for {@link BrainTilePickerDialog}. */
 export interface BrainTilePickerDialogProps {
   isOpen: boolean;
@@ -107,7 +174,7 @@ export function BrainTilePickerDialog({
   onCancel,
 }: BrainTilePickerDialogProps) {
   const editorConfig = useBrainEditorConfig();
-  const { brainServices, tileCatalogs } = editorConfig;
+  const { brainServices, tileCatalogs, libraries } = editorConfig;
   const [filter, setFilter] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -318,22 +385,14 @@ export function BrainTilePickerDialog({
             </p>
           )}
           {filteredExact.map(([group, tiles]) => (
-            <section key={group} aria-labelledby={`tile-group-${group}`}>
-              <h3 id={`tile-group-${group}`} className="text-sm font-semibold uppercase mb-2">
-                {groupNames[group]}
-              </h3>
-              {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}
-              <div className="flex flex-wrap gap-1" role="group" aria-label={`${groupNames[group]} tiles`}>
-                {tiles.map((s) => (
-                  <BrainTile
-                    key={s.tileDef.tileId}
-                    tileDef={s.tileDef}
-                    side={side}
-                    onClick={() => handleTileClick(s.tileDef)}
-                  />
-                ))}
-              </div>
-            </section>
+            <TileGroupSection
+              key={group}
+              group={group}
+              tiles={tiles}
+              side={side}
+              libraries={libraries}
+              onTileClick={handleTileClick}
+            />
           ))}
           {hasFilteredConversions && (
             <>
@@ -343,26 +402,15 @@ export function BrainTilePickerDialog({
                 </h3>
               </div>
               {filteredConversion.map(([group, tiles]) => (
-                <section key={`conv-${group}`} aria-labelledby={`tile-group-conv-${group}`}>
-                  <h3 id={`tile-group-conv-${group}`} className="text-sm font-semibold uppercase mb-2 text-white/50">
-                    {groupNames[group]}
-                  </h3>
-                  {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}
-                  <div
-                    className="flex flex-wrap gap-1 opacity-75"
-                    role="group"
-                    aria-label={`${groupNames[group]} tiles (conversion)`}
-                  >
-                    {tiles.map((s) => (
-                      <BrainTile
-                        key={s.tileDef.tileId}
-                        tileDef={s.tileDef}
-                        side={side}
-                        onClick={() => handleTileClick(s.tileDef)}
-                      />
-                    ))}
-                  </div>
-                </section>
+                <TileGroupSection
+                  key={`conv-${group}`}
+                  group={group}
+                  tiles={tiles}
+                  side={side}
+                  libraries={libraries}
+                  conversion
+                  onTileClick={handleTileClick}
+                />
               ))}
             </>
           )}

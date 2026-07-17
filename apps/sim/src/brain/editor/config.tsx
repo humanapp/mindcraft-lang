@@ -112,6 +112,7 @@ export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): 
     brainServices: environment.brainServices,
     projectNamespace: store.activeProjectManifest?.id,
     tileCatalogs: environment.tileCatalogs(),
+    libraries: store.host.installedLibraries,
     onTileHelp,
     docsIntegration,
   };

@@ -131,6 +131,8 @@ export interface ResolvedOriginProvenance {
   readonly reference: string;
   /** The winning candidate's declared semantic version. */
   readonly version: string;
+  /** The winning candidate's declared display name; the coordinate when it declares none. */
+  readonly name: string;
 }
 
 /** Compiler inputs resolved from a project's extensions list and its content sources. */
@@ -159,6 +161,8 @@ export interface OriginCandidate {
   origin: string;
   /** The candidate's declared semantic version, or `0.0.0` when it has no manifest. */
   version: string;
+  /** The candidate's declared display name, or its coordinate when it has no manifest. */
+  name: string;
   /** The reference string that reached this candidate. */
   reference: string;
   /** The distance from the host project (0 for a direct dependency) at which this candidate was reached. */
@@ -197,12 +201,17 @@ function embeddedFiles(extension: EmbeddedExtension): Map<string, string> {
 }
 
 /**
- * Read an extension's own version, extensions list, declared ambient `.d.ts`
- * paths, and declared identity from the `mindcraft.json` carried in its
- * content. An extension without a manifest, or with an unparseable one,
- * contributes no dependencies and no ambient files and compares as `0.0.0`.
+ * Read an extension's own display name, version, extensions list, declared
+ * ambient `.d.ts` paths, and declared identity from the `mindcraft.json`
+ * carried in its content. An extension without a manifest, or with an
+ * unparseable one, contributes no dependencies and no ambient files, compares
+ * as `0.0.0`, and displays as its coordinate.
  */
-function readOwnManifest(files: ReadonlyMap<string, string>): {
+function readOwnManifest(
+  origin: string,
+  files: ReadonlyMap<string, string>
+): {
+  name: string;
   version: string;
   extensions: ExtensionsMap;
   ambient: readonly string[];
@@ -210,13 +219,14 @@ function readOwnManifest(files: ReadonlyMap<string, string>): {
 } {
   const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
   if (manifestContent === undefined) {
-    return { version: LOWEST_CONTENT_VERSION, extensions: {}, ambient: [] };
+    return { name: origin, version: LOWEST_CONTENT_VERSION, extensions: {}, ambient: [] };
   }
   const parsed = parseProjectContentManifest(manifestContent);
   if (!parsed.ok) {
-    return { version: LOWEST_CONTENT_VERSION, extensions: {}, ambient: [] };
+    return { name: origin, version: LOWEST_CONTENT_VERSION, extensions: {}, ambient: [] };
   }
   return {
+    name: parsed.manifest.name,
     version: parsed.manifest.version,
     extensions: parsed.manifest.extensions,
     ambient: parsed.manifest.ambient ?? [],
@@ -231,10 +241,11 @@ function candidateFromFiles(
   depth: number,
   files: ReadonlyMap<string, string>
 ): OriginCandidate {
-  const own = readOwnManifest(files);
+  const own = readOwnManifest(origin, files);
   return {
     origin,
     version: own.version,
+    name: own.name,
     reference,
     depth,
     files,
@@ -419,7 +430,12 @@ export function resolveProjectExtensions(
       dependencies,
       ...(candidate.ambient.length > 0 ? { ambient: candidate.ambient } : {}),
     });
-    origins.push({ origin: candidate.origin, reference: candidate.reference, version: candidate.version });
+    origins.push({
+      origin: candidate.origin,
+      reference: candidate.reference,
+      version: candidate.version,
+      name: candidate.name,
+    });
     warnings.push(...fetchedCandidateWarnings(candidate));
   }
 

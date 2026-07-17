@@ -119,6 +119,19 @@ describe("resolveProjectExtensions -- flat cases", () => {
     assert.equal(mountFor(withoutAmbient.dependencyMounts, coordinateFor("codal")).ambient, undefined);
   });
 
+  test("origin provenance carries the manifest display name, falling back to the coordinate without one", () => {
+    const resolved = resolveProjectExtensions(
+      {
+        "mindcraft-lang/a": "embedded:mindcraft-lang/a",
+        "mindcraft-lang/codal": "embedded:mindcraft-lang/codal",
+      },
+      { embedded: [ext("a", { version: "1.0.0" }), STDLIB] }
+    );
+    const originFor = (origin: string) => resolved.origins.find((candidate) => candidate.origin === origin);
+    assert.equal(originFor(coordinateFor("a"))?.name, "a");
+    assert.equal(originFor(coordinateFor("codal"))?.name, coordinateFor("codal"));
+  });
+
   test("a manifest-listed tsconfig.json is opaque payload: it rides the mount verbatim", () => {
     const carriedTsconfig = '{ "compilerOptions": { "strict": false } }';
     const withTsconfig: EmbeddedExtension = {
@@ -273,9 +286,11 @@ function originCandidate(options: {
   reference: string;
   depth: number;
 }): OriginCandidate {
+  const origin = options.origin ?? coordinateFor("shared");
   return {
-    origin: options.origin ?? coordinateFor("shared"),
+    origin,
     version: options.version,
+    name: origin,
     reference: options.reference,
     depth: options.depth,
     files: new Map(),
@@ -378,7 +393,9 @@ describe("resolveProjectExtensions -- fetched content", () => {
     assert.deepStrictEqual(resolved.dependencies, [{ coordinate: "example-org/position-ext" }]);
     const mount = mountFor(resolved.dependencyMounts, "example-org/position-ext");
     assert.equal(mount.files.get("/index.ts"), "export const value = 1;");
-    assert.deepStrictEqual(resolved.origins, [{ origin: "example-org/position-ext", reference, version: "0.1.0" }]);
+    assert.deepStrictEqual(resolved.origins, [
+      { origin: "example-org/position-ext", reference, version: "0.1.0", name: "Position" },
+    ]);
   });
 
   test("skips a gh reference with no fetched content; the import surfaces as a compiler diagnostic later", () => {
@@ -451,6 +468,7 @@ describe("resolveProjectExtensions -- fetched content", () => {
       origin: "example-org/motor-ext",
       reference: nestedReference,
       version: "2.0.0",
+      name: "Motor",
     });
     assert.equal(resolved.warnings.length, 1);
     assert.equal(resolved.warnings[0].kind, "version-conflict");

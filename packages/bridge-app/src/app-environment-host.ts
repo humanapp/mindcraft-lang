@@ -34,7 +34,7 @@ import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.j
 import { augmentProjectFileSystem, createBridgeProject, createProjectCompiler } from "./compilation.js";
 import type { EmbeddedExtension, FetchedExtensionContentMap, ResolvedExtensions } from "./embedded-extensions.js";
 import { ExtensionResolutionCycleError, resolveProjectExtensions } from "./embedded-extensions.js";
-import type { ExtensionFetchFailures } from "./extension-catalog.js";
+import type { ExtensionCatalogEntry, ExtensionFetchFailures } from "./extension-catalog.js";
 import type { ExtensionInstallReport, ProjectDiagnosticsState } from "./extension-install.js";
 import { collectExtensionFetchClosure, diffProjectDiagnostics, typecheckBrainProblems } from "./extension-install.js";
 import type { ExtensionInstallLogEvent } from "./extension-install-log.js";
@@ -135,6 +135,9 @@ export class AppEnvironmentHost {
   // -- Installed fetched-extension snapshots (persisted in the project store) --
   private _installedSnapshots: InstalledExtensionSnapshots = {};
   private _installedContent: FetchedExtensionContentMap = new Map();
+
+  // -- Latest resolved extension closure of the active project --
+  private _lastResolution: ResolvedExtensions | undefined;
 
   // -- Last recorded fetch failure per reference (seeded from the install log) --
   private _fetchFailures = new Map<string, { code: string; message: string }>();
@@ -308,7 +311,9 @@ export class AppEnvironmentHost {
         this._fetchFailures.set(event.reference, { code: event.code, message: event.message });
       }
     }
-    const { dependencies, dependencyMounts } = this.resolveExtensions();
+    const resolution = this.resolveExtensions();
+    this._lastResolution = resolution;
+    const { dependencies, dependencyMounts } = resolution;
     this._compiler = createProjectCompiler({
       environment: this.env,
       filesystem: this.projectFileSystem,
@@ -530,6 +535,18 @@ export class AppEnvironmentHost {
     return installedExtensionMetadataFromSnapshots(this._installedSnapshots);
   }
 
+  /**
+   * The installed libraries of the active project's resolved extension
+   * closure: one record per resolved origin, carrying the coordinate a
+   * compiled tile's identity namespace names and the display name the
+   * library's own `mindcraft.json` declares. Empty until the compiler is
+   * wired.
+   */
+  get installedLibraries(): readonly Pick<ExtensionCatalogEntry, "coordinate" | "name">[] {
+    const origins = this._lastResolution?.origins ?? [];
+    return origins.map((origin) => ({ coordinate: origin.origin, name: origin.name }));
+  }
+
   /** The last recorded fetch failure per reference, keyed by the reference string as written. */
   get extensionFetchFailures(): ExtensionFetchFailures {
     return this._fetchFailures;
@@ -555,6 +572,7 @@ export class AppEnvironmentHost {
     if (!this._compiler) {
       return;
     }
+    this._lastResolution = resolution;
     this._compiler.compiler.setDependencies(resolution.dependencies, resolution.dependencyMounts);
     syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
     this._compiler.replaceProjectFiles();
@@ -981,6 +999,7 @@ export class AppEnvironmentHost {
     this._installedContent = new Map();
     this._fetchFailures = new Map();
     this._lastCompileResult = undefined;
+    this._lastResolution = undefined;
     this.bumpDocRevision();
     this.teardownBridge();
   }

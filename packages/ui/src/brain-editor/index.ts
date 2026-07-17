@@ -71,5 +71,8 @@ export {
   importTileFromClipboard,
   onTileClipboardChanged,
 } from "./tile-clipboard";
+export type { LibraryTileCluster, LibraryTileGroups, TileSourceLibrary } from "./tile-library-groups";
+// Library attribution
+export { groupTilesByLibrary, tileSourceNamespace } from "./tile-library-groups";
 export { formatValue } from "./tile-value-utils";
 export type { TileColorDef, TileVisual } from "./types";

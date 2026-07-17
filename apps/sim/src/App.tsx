@@ -547,6 +547,10 @@ function App() {
     void docRevision;
     return createDocsRegistry(store.userTileDocEntries);
   }, [docRevision, store]);
+  const docsLibraries = useMemo(() => {
+    void docRevision;
+    return store.host.installedLibraries;
+  }, [docRevision, store]);
   const docsTileCatalog = useMemo<ITileCatalog>(() => {
     return {
       get: (tileId: string) => {
@@ -656,6 +660,7 @@ function App() {
       registry={docsRegistry}
       tileCatalog={docsTileCatalog}
       brainServices={store.env.brainServices}
+      libraries={docsLibraries}
       resolveTileVisual={docsResolveTileVisual}
     >
       <div className="h-screen flex bg-background overflow-hidden">

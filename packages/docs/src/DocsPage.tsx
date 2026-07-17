@@ -1,4 +1,5 @@
 import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
+import type { TileSourceLibrary } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, Printer } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -141,6 +142,8 @@ export interface DocsPageProps {
   tileCatalog?: ITileCatalog;
   /** Optional BrainServices instance for direct access. */
   brainServices?: BrainServices;
+  /** Installed libraries of the active project; the tiles tab subgroups entries attributed to them. */
+  libraries?: readonly TileSourceLibrary[];
   /** Optional tile visual resolver for app-provided labels, icons, and colors. */
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Label displayed in the back link (top-left). Defaults to "Home". */
@@ -155,6 +158,7 @@ export function DocsPage({
   registry,
   tileCatalog,
   brainServices,
+  libraries,
   resolveTileVisual,
   backLabel,
   backHref,
@@ -167,6 +171,7 @@ export function DocsPage({
       registry={registry}
       tileCatalog={tileCatalog}
       brainServices={brainServices}
+      libraries={libraries}
       resolveTileVisual={resolveTileVisual}
       initialTab={tab}
       initialNavKey={key}

@@ -1,4 +1,5 @@
 import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
+import { groupTilesByLibrary, type LibraryTileGroups } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Printer, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -381,7 +382,8 @@ export interface DocsPanelContentProps {
 
 /** Tab bar plus searchable list/detail content shared by the desktop and mobile sidebars. */
 export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", searchRef }: DocsPanelContentProps) {
-  const { activeTab, setTab, registry, navKey, navTab, navigateToEntry, navigateBack, tileCatalog } = useDocsSidebar();
+  const { activeTab, setTab, registry, navKey, navTab, navigateToEntry, navigateBack, tileCatalog, libraries } =
+    useDocsSidebar();
   const resolveTileVisual = useDocsResolveTileVisual();
   const [search, setSearch] = useState("");
 
@@ -432,7 +434,9 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
     return concepts.filter((c) => matchesSearch(search, c.title, c.tags, c.content));
   }, [registry, search]);
 
-  // Group tiles by category, sorted by the canonical tile picker section order.
+  // Group tiles by category, sorted by the canonical tile picker section
+  // order, then subgroup each category by source library (unattributed
+  // entries first, one cluster per library) to mirror the tile picker.
   const tilesByCategory = useMemo(() => {
     const groups = new Map<string, DocsTileEntry[]>();
     for (const tile of filteredTiles) {
@@ -444,17 +448,19 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
       }
     }
     // Reorder groups to match the tile picker's section order.
-    const ordered = new Map<string, DocsTileEntry[]>();
+    const ordered = new Map<string, LibraryTileGroups<DocsTileEntry>>();
+    const subgroup = (entries: DocsTileEntry[]) =>
+      groupTilesByLibrary(entries, (entry) => tileCatalog?.get(entry.tileId), libraries);
     for (const cat of TILES_CATEGORY_ORDER) {
       const entries = groups.get(cat);
-      if (entries) ordered.set(cat, entries);
+      if (entries) ordered.set(cat, subgroup(entries));
     }
     // Append remaining categories not covered by the order list.
     for (const [cat, entries] of groups) {
-      if (!ordered.has(cat)) ordered.set(cat, entries);
+      if (!ordered.has(cat)) ordered.set(cat, subgroup(entries));
     }
     return ordered;
-  }, [filteredTiles]);
+  }, [filteredTiles, tileCatalog, libraries]);
 
   // Group patterns by category
   const patternsByCategory = useMemo(() => {
@@ -567,10 +573,18 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
             {filteredTiles.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-6">No tiles match your search.</p>
             )}
-            {Array.from(tilesByCategory.entries()).map(([category, tiles]) => (
+            {Array.from(tilesByCategory.entries()).map(([category, groups]) => (
               <CategorySection key={category} category={category}>
-                {tiles.map((tile) => (
+                {groups.unattributed.map((tile) => (
                   <TileCard key={tile.tileId} entry={tile} onClick={() => openDetail(tile.tileId)} />
+                ))}
+                {groups.clusters.map((cluster) => (
+                  <div key={cluster.library.coordinate} className="space-y-1">
+                    <div className="px-1 pt-1.5 text-xs font-medium text-muted-foreground">{cluster.library.name}</div>
+                    {cluster.items.map((tile) => (
+                      <TileCard key={tile.tileId} entry={tile} onClick={() => openDetail(tile.tileId)} />
+                    ))}
+                  </div>
                 ))}
               </CategorySection>
             ))}
