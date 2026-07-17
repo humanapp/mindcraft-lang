@@ -1,6 +1,6 @@
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { adjustColor, formatValue, glassEffect, saturateColor } from "@mindcraft-lang/ui";
+import { adjustColor, cn, formatValue, glassEffect, saturateColor } from "@mindcraft-lang/ui";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { useLayoutEffect, useState } from "react";
 import { useDocsResolveTileVisual } from "./DocsSidebarContext";
@@ -176,10 +176,12 @@ function adjustAlpha(hex: string, alpha: number): string {
 
 interface InlineTileIconProps {
   tileDef: IBrainTileDef;
+  /** Additional classes merged onto the chip's root element. */
+  className?: string;
 }
 
 /** Compact tile rendering used inline in prose for `tile:xxx` references. */
-export function InlineTileIcon({ tileDef }: InlineTileIconProps) {
+export function InlineTileIcon({ tileDef, className }: InlineTileIconProps) {
   const resolveTileVisual = useDocsResolveTileVisual();
   const visual = resolveTileVisual(tileDef);
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
@@ -188,7 +190,10 @@ export function InlineTileIcon({ tileDef }: InlineTileIconProps) {
 
   return (
     <span
-      className="inline-flex shrink-0 min-w-max items-center gap-0.5 align-middle px-1 py-0.5 rounded border text-xs font-mono font-normal text-nowrap"
+      className={cn(
+        "inline-flex shrink-0 min-w-max items-center gap-0.5 align-middle px-1 py-0.5 rounded border text-xs font-mono font-normal text-nowrap",
+        className
+      )}
       style={{ borderColor: baseColor, backgroundColor: adjustAlpha(baseColor, 0.15), color: "#e2e8f0" }}
       title={label}
     >

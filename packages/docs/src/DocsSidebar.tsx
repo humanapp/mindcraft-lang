@@ -8,6 +8,7 @@ import { DocMarkdown } from "./DocMarkdown";
 import { DocsPrintView } from "./DocsPrintView";
 import type { DocsConceptEntry, DocsPatternEntry, DocsTileEntry } from "./DocsRegistry";
 import { type DocTab, useDocsResolveTileVisual, useDocsSidebar } from "./DocsSidebarContext";
+import { DocsTileArgsSection } from "./DocsTileArgs";
 import { useDocsPrint } from "./useDocsPrint";
 
 // ---------------------------------------------------------------------------
@@ -136,6 +137,15 @@ function getTileIconUrl(
   tileId: string
 ): string | undefined {
   return getTileVisual(tileCatalog, resolveTileVisual, tileId)?.iconUrl;
+}
+
+/**
+ * True for tile kinds documented in the arg-tile section of their placing
+ * action's doc page. The browse list omits entries of these kinds; search
+ * still surfaces them.
+ */
+function isActionArgTileKind(kind: IBrainTileDef["kind"] | undefined): boolean {
+  return kind === "parameter" || kind === "modifier";
 }
 
 // ---------------------------------------------------------------------------
@@ -409,7 +419,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
       const tileDef = tileCatalog?.get(t.tileId);
       return !tileDef?.hidden && !tileDef?.deprecated;
     });
-    if (!search) return tiles;
+    if (!search) return tiles.filter((t) => !isActionArgTileKind(tileCatalog?.get(t.tileId)?.kind));
     return tiles.filter((t) =>
       matchesSearch(
         search,
@@ -511,6 +521,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
           onWheel={(e) => e.nativeEvent.stopPropagation()}
         >
           <DocMarkdown>{detailContent}</DocMarkdown>
+          {navTab === "tiles" && <DocsTileArgsSection tileId={navKey} />}
         </article>
       </>
     );

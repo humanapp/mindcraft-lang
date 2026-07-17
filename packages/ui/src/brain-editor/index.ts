@@ -1,9 +1,11 @@
 // Context and types
 
+// Action call-spec arg entries
+export type { ActionArgEntry, ActionArgTileEntry, ActionArgTypeEntry, TypeDisplaySources } from "./action-arg-tiles";
+export { getActionArgEntries, resolveTypeDisplayName } from "./action-arg-tiles";
 export type { BrainEditorConfig, CustomLiteralType } from "./BrainEditorContext";
 export { BrainEditorProvider, useBrainEditorConfig } from "./BrainEditorContext";
 export type { BrainEditorDialogProps } from "./BrainEditorDialog";
-
 // Components
 export { BrainEditorDialog } from "./BrainEditorDialog";
 export { BrainPageEditor } from "./BrainPageEditor";

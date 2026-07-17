@@ -27,6 +27,10 @@ interface DocsSidebarContextValue {
   brainServices: BrainServices | undefined;
   /** Installed libraries of the active project; the tiles tab subgroups entries attributed to them. */
   libraries: readonly TileSourceLibrary[] | undefined;
+  /** App-supplied friendly type names keyed by type id. */
+  dataTypeNames: ReadonlyMap<string, string> | undefined;
+  /** App-supplied type icon URLs keyed by type id. */
+  dataTypeIcons: ReadonlyMap<string, string> | undefined;
   resolveTileVisual: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** The key of the entry currently shown in detail view, or null for list view. */
   navKey: string | null;
@@ -73,6 +77,10 @@ interface DocsSidebarProviderProps {
   brainServices?: BrainServices;
   /** Installed libraries of the active project; the tiles tab subgroups entries attributed to them. */
   libraries?: readonly TileSourceLibrary[];
+  /** App-supplied friendly type names keyed by type id. */
+  dataTypeNames?: ReadonlyMap<string, string>;
+  /** App-supplied type icon URLs keyed by type id. */
+  dataTypeIcons?: ReadonlyMap<string, string>;
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Initial active tab (defaults to "tiles"). */
   initialTab?: DocTab;
@@ -92,6 +100,8 @@ export function DocsSidebarProvider({
   tileCatalog: externalTileCatalog,
   brainServices: externalBrainServices,
   libraries,
+  dataTypeNames,
+  dataTypeIcons,
   resolveTileVisual: resolveTileVisualProp,
   initialTab,
   initialNavKey,
@@ -169,6 +179,8 @@ export function DocsSidebarProvider({
     tileCatalog,
     brainServices: externalBrainServices,
     libraries,
+    dataTypeNames,
+    dataTypeIcons,
     resolveTileVisual,
     navKey,
     navTab,

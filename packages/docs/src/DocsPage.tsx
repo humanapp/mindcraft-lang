@@ -144,6 +144,10 @@ export interface DocsPageProps {
   brainServices?: BrainServices;
   /** Installed libraries of the active project; the tiles tab subgroups entries attributed to them. */
   libraries?: readonly TileSourceLibrary[];
+  /** App-supplied friendly type names keyed by type id. */
+  dataTypeNames?: ReadonlyMap<string, string>;
+  /** App-supplied type icon URLs keyed by type id. */
+  dataTypeIcons?: ReadonlyMap<string, string>;
   /** Optional tile visual resolver for app-provided labels, icons, and colors. */
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Label displayed in the back link (top-left). Defaults to "Home". */
@@ -159,6 +163,8 @@ export function DocsPage({
   tileCatalog,
   brainServices,
   libraries,
+  dataTypeNames,
+  dataTypeIcons,
   resolveTileVisual,
   backLabel,
   backHref,
@@ -172,6 +178,8 @@ export function DocsPage({
       tileCatalog={tileCatalog}
       brainServices={brainServices}
       libraries={libraries}
+      dataTypeNames={dataTypeNames}
+      dataTypeIcons={dataTypeIcons}
       resolveTileVisual={resolveTileVisual}
       initialTab={tab}
       initialNavKey={key}

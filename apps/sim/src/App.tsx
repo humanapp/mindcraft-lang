@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
 import { buildBrainEditorConfig } from "./brain/editor/config";
+import { dataTypeIconMap, dataTypeNameMap } from "./brain/editor/data-type-icons";
 import { createVfsAwareVisualProvider } from "./brain/editor/visual-provider";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { NewWorkspaceDialog } from "./components/NewWorkspaceDialog";
@@ -661,6 +662,8 @@ function App() {
       tileCatalog={docsTileCatalog}
       brainServices={store.env.brainServices}
       libraries={docsLibraries}
+      dataTypeNames={dataTypeNameMap}
+      dataTypeIcons={dataTypeIconMap}
       resolveTileVisual={docsResolveTileVisual}
     >
       <div className="h-screen flex bg-background overflow-hidden">
