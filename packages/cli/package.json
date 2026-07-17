@@ -2,10 +2,15 @@
   "name": "@mindcraft-lang/cli",
   "version": "0.1.0",
   "description": "Command-line tools for Mindcraft projects",
-  "private": true,
   "license": "MIT",
   "author": "humanapp",
   "type": "module",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18"
   },
