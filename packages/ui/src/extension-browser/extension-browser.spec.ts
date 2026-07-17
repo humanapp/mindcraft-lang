@@ -251,19 +251,19 @@ describe("ExtensionBrowserList rendering", () => {
 describe("ExtensionCatalogSection rendering", () => {
   const offers: ExtensionCatalogOffer[] = [
     {
-      coordinate: "mindcraft-lang/codal-position-ext",
+      coordinate: "mindcraft-lang/lib-codal-position",
       name: "Position",
       version: "0.1.0",
       description: "Position sensing.",
-      ref: "gh:mindcraft-lang/codal-position-ext@b19b80b029a77303ee575d3ff9b29adbf7021b23",
+      ref: "gh:mindcraft-lang/lib-codal-position@b19b80b029a77303ee575d3ff9b29adbf7021b23",
       installed: false,
     },
     {
-      coordinate: "mindcraft-lang/ecosim-teleport-ext",
+      coordinate: "mindcraft-lang/lib-ecosim-teleport",
       name: "Teleport",
       version: "0.2.0",
       description: "Teleport actuator.",
-      ref: "gh:mindcraft-lang/ecosim-teleport-ext@89abcdef0123456789abcdef0123456789abcdef",
+      ref: "gh:mindcraft-lang/lib-ecosim-teleport@89abcdef0123456789abcdef0123456789abcdef",
       installed: true,
     },
   ];

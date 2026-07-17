@@ -562,20 +562,20 @@ describe("mindcraft command surface", () => {
 });
 
 const CODAL_POSITION_EXT_DIR = fileURLToPath(
-  new URL("../../../../../apps/microbit-sim/extensions/codal-position-ext", import.meta.url)
+  new URL("../../../../../apps/microbit-sim/extensions/lib-codal-position", import.meta.url)
 );
 
 describe("publishing the codal-position extension content", () => {
   it(
     "publishes exactly its manifest-described tree to a local remote",
-    { skip: existsSync(CODAL_POSITION_EXT_DIR) ? false : "codal-position-ext content not present in this checkout" },
+    { skip: existsSync(CODAL_POSITION_EXT_DIR) ? false : "lib-codal-position content not present in this checkout" },
     async () => {
       const root = await scratch();
       const remote = await initBareRemote(root);
       // A successful publish to a remote writes the published version and
       // identity back into --dir, so the real extension source is copied to
       // scratch and the copy is published.
-      const project = path.join(root, "codal-position-ext");
+      const project = path.join(root, "lib-codal-position");
       await cp(CODAL_POSITION_EXT_DIR, project, { recursive: true });
 
       const [major, minor, patch] = (await readManifestVersion(project)).split(".").map(Number);

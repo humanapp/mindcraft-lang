@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { buildCoreAmbientDeclarations, buildPlatformAmbientDeclarations } from "@mindcraft-lang/ts-compiler";
-import { createSimModule } from "@/brain";
+import { createSimModule } from "../brain";
 
 function readText(relativePath: string): string {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");

@@ -14,17 +14,17 @@ import {
 } from "@mindcraft-lang/core/app";
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@mindcraft-lang/ts-compiler";
-import { createSimModule } from "@/brain";
-import type { Archetype } from "@/brain/actor";
-import { Engine } from "@/brain/engine";
-import type { Playground } from "@/game/scenes/Playground";
-import type { SimEnvironmentStore } from "@/services/sim-environment-store";
+import { createSimModule } from "../brain";
+import type { Archetype } from "../brain/actor";
+import { Engine } from "../brain/engine";
+import type { Playground } from "../game/scenes/Playground";
+import type { SimEnvironmentStore } from "../services/sim-environment-store";
 import {
   ECOSIM_DETECT_EXT_COORDINATE,
   ECOSIM_TELEPORT_EXT_COORDINATE,
   SIM_LIB_COORDINATE,
   SIM_LIB_REFERENCE,
-} from "@/services/sim-extension-coordinates";
+} from "../services/sim-extension-coordinates";
 
 /** Stable ids baked into the Teleport and Detect extension source defs. */
 const TELEPORT_ID = "4vllyby14afcZtYY";
@@ -39,8 +39,8 @@ function embedRecord() {
   return [
     buildEmbeddedExtensionFromDir(extensionDir("../../lib"), SIM_LIB_COORDINATE),
     buildEmbeddedExtensionFromDir(extensionDir("../../../../packages/core/lib"), CORE_LIB_COORDINATE),
-    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/ecosim-teleport-ext"), ECOSIM_TELEPORT_EXT_COORDINATE),
-    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/ecosim-detect-ext"), ECOSIM_DETECT_EXT_COORDINATE),
+    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/lib-ecosim-teleport"), ECOSIM_TELEPORT_EXT_COORDINATE),
+    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/lib-ecosim-detect"), ECOSIM_DETECT_EXT_COORDINATE),
   ];
 }
 

@@ -467,18 +467,18 @@ describe("buildExtensionCatalogOffers", () => {
     format: "mindcraft.catalog/1",
     entries: [
       {
-        coordinate: "mindcraft-lang/codal-position-ext",
+        coordinate: "mindcraft-lang/lib-codal-position",
         kind: "extension",
-        ref: `gh:mindcraft-lang/codal-position-ext@${PIN_SHA}`,
+        ref: `gh:mindcraft-lang/lib-codal-position@${PIN_SHA}`,
         name: "Position",
         version: "0.1.0",
         description: "Position sensing.",
         thumbnail: "data:,x",
       },
       {
-        coordinate: "mindcraft-lang/ecosim-teleport-ext",
+        coordinate: "mindcraft-lang/lib-ecosim-teleport",
         kind: "extension",
-        ref: `gh:mindcraft-lang/ecosim-teleport-ext@${PIN_SHA}`,
+        ref: `gh:mindcraft-lang/lib-ecosim-teleport@${PIN_SHA}`,
         name: "Teleport",
         version: "0.1.0",
         description: "Teleport actuator.",
@@ -488,24 +488,24 @@ describe("buildExtensionCatalogOffers", () => {
 
   test("adapts entries into offers from display metadata alone, marking already-declared coordinates installed", () => {
     const offers = buildExtensionCatalogOffers(document, {
-      "mindcraft-lang/codal-position-ext": `gh:mindcraft-lang/codal-position-ext@${PIN_SHA}`,
+      "mindcraft-lang/lib-codal-position": `gh:mindcraft-lang/lib-codal-position@${PIN_SHA}`,
     });
     assert.deepStrictEqual(offers, [
       {
-        coordinate: "mindcraft-lang/codal-position-ext",
+        coordinate: "mindcraft-lang/lib-codal-position",
         name: "Position",
         version: "0.1.0",
         description: "Position sensing.",
         thumbnailUrl: "data:,x",
-        ref: `gh:mindcraft-lang/codal-position-ext@${PIN_SHA}`,
+        ref: `gh:mindcraft-lang/lib-codal-position@${PIN_SHA}`,
         installed: true,
       },
       {
-        coordinate: "mindcraft-lang/ecosim-teleport-ext",
+        coordinate: "mindcraft-lang/lib-ecosim-teleport",
         name: "Teleport",
         version: "0.1.0",
         description: "Teleport actuator.",
-        ref: `gh:mindcraft-lang/ecosim-teleport-ext@${PIN_SHA}`,
+        ref: `gh:mindcraft-lang/lib-ecosim-teleport@${PIN_SHA}`,
         installed: false,
       },
     ]);

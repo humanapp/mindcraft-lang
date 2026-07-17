@@ -7,7 +7,7 @@ import { CORE_LIB_COORDINATE, resolveProjectExtensions } from "@mindcraft-lang/b
 import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
 import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@mindcraft-lang/ts-compiler";
-import { createSimModule } from "@/brain";
+import { createSimModule } from "../brain";
 import { SIM_LIB_COORDINATE, SIM_LIB_REFERENCE } from "./sim-extension-coordinates";
 
 function extensionDir(relativePath: string): string {

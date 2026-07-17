@@ -1,7 +1,7 @@
 {
   "name": "Teleport",
-  "version": "0.1.0",
-  "identity": "mindcraft-lang/ecosim-teleport-ext",
+  "version": "0.1.1",
+  "identity": "mindcraft-lang/lib-ecosim-teleport",
   "description": "Teleport actuator for the ecosystem simulation: move an actor to a position, another actor, or the current target.",
   "files": [
     "teleport.ts",

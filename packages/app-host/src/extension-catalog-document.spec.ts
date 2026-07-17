@@ -11,9 +11,9 @@ import {
 const PIN_SHA = "b19b80b029a77303ee575d3ff9b29adbf7021b23";
 
 const VALID_ENTRY = {
-  coordinate: "mindcraft-lang/codal-position-ext",
+  coordinate: "mindcraft-lang/lib-codal-position",
   kind: "extension",
-  ref: `gh:mindcraft-lang/codal-position-ext@${PIN_SHA}`,
+  ref: `gh:mindcraft-lang/lib-codal-position@${PIN_SHA}`,
   name: "Position",
   version: "0.1.0",
   description: "Position sensing for CODAL targets.",
@@ -83,10 +83,10 @@ describe("validateExtensionCatalogDocument", () => {
 
   it("rejects refs that are not full-SHA pins", () => {
     const badRefs = [
-      "gh:mindcraft-lang/codal-position-ext@v0.1.0",
-      `gh:mindcraft-lang/codal-position-ext@${PIN_SHA.slice(0, 7)}`,
-      "gh:mindcraft-lang/codal-position-ext#main",
-      `embedded:mindcraft-lang/codal-position-ext`,
+      "gh:mindcraft-lang/lib-codal-position@v0.1.0",
+      `gh:mindcraft-lang/lib-codal-position@${PIN_SHA.slice(0, 7)}`,
+      "gh:mindcraft-lang/lib-codal-position#main",
+      `embedded:mindcraft-lang/lib-codal-position`,
       42,
     ];
     for (const ref of badRefs) {
@@ -102,11 +102,11 @@ describe("validateExtensionCatalogDocument", () => {
   it("rejects a ref whose coordinate differs from the entry coordinate", () => {
     const result = validateExtensionCatalogDocument({
       format: MINDCRAFT_CATALOG_FORMAT,
-      entries: [{ ...VALID_ENTRY, ref: `gh:other-org/codal-position-ext@${PIN_SHA}` }],
+      entries: [{ ...VALID_ENTRY, ref: `gh:other-org/lib-codal-position@${PIN_SHA}` }],
     });
     assert.ok(!result.ok);
     assert.equal(result.errors[0].code, ExtensionCatalogDocumentErrorCode.INVALID_REF);
-    assert.match(result.errors[0].message, /other-org\/codal-position-ext/);
+    assert.match(result.errors[0].message, /other-org\/lib-codal-position/);
   });
 
   it("rejects missing display metadata with entry paths", () => {

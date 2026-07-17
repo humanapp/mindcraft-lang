@@ -4,9 +4,9 @@ import { describe, it } from "node:test";
 import { createIdbProjectStore, ProjectManager } from "@mindcraft-lang/app-host";
 import { AppEnvironmentHost } from "@mindcraft-lang/bridge-app";
 import { BrainDef, coreModule } from "@mindcraft-lang/core/app";
-import { createSimModule } from "@/brain";
-import type { Obstacle } from "@/brain/vision";
 import { name as simName } from "../../package.json";
+import { createSimModule } from "../brain";
+import type { Obstacle } from "../brain/vision";
 import { buildSimExportDocument, type SimAppChunk } from "./project-io";
 
 // The app-host reads localStorage/sessionStorage for app-side caches; provide an in-memory shim

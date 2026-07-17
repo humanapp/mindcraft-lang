@@ -20,8 +20,8 @@ import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
 import { coreModule, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/app";
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { isCompilerControlledPath, type Mount } from "@mindcraft-lang/ts-compiler";
-import { createSimModule } from "@/brain";
-import { createVfsAwareVisualProvider } from "@/brain/editor/visual-provider";
+import { createSimModule } from "../brain";
+import { createVfsAwareVisualProvider } from "../brain/editor/visual-provider";
 import { ECOSIM_TELEPORT_EXT_COORDINATE, SIM_LIB_COORDINATE, SIM_LIB_REFERENCE } from "./sim-extension-coordinates";
 
 const TELEPORT_ICON_PATH = `.libraries/${ECOSIM_TELEPORT_EXT_COORDINATE}/teleport.svg`;
@@ -37,7 +37,7 @@ function extensionDir(relativePath: string): string {
   return fileURLToPath(new URL(relativePath, import.meta.url));
 }
 
-const TELEPORT_ICON_SVG = readText("../../extensions/ecosim-teleport-ext/teleport.svg");
+const TELEPORT_ICON_SVG = readText("../../extensions/lib-ecosim-teleport/teleport.svg");
 
 /**
  * The sim embed record assembled from each extension's own `mindcraft.json`
@@ -48,7 +48,7 @@ function simEmbedRecord(): EmbeddedExtension[] {
   return [
     buildEmbeddedExtensionFromDir(extensionDir("../../lib"), SIM_LIB_COORDINATE),
     buildEmbeddedExtensionFromDir(extensionDir("../../../../packages/core/lib"), CORE_LIB_COORDINATE),
-    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/ecosim-teleport-ext"), ECOSIM_TELEPORT_EXT_COORDINATE),
+    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/lib-ecosim-teleport"), ECOSIM_TELEPORT_EXT_COORDINATE),
   ];
 }
 

@@ -1,18 +1,27 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
+import type { ExtensionFetchTransport } from "@mindcraft-lang/app-host";
 import {
   checkExtensionReferenceUpdate,
   createJsDelivrExtensionTransport,
   fetchExtensionSnapshot,
+  highestListedRelease,
   JSDELIVR_CDN_BASE_URL,
   resolveExtensionAddInput,
 } from "@mindcraft-lang/app-host";
 
-const LIVE_COORDINATE = "mindcraft-lang/codal-position-ext";
-const LIVE_TAG = "v0.1.0";
+const LIVE_COORDINATE = "mindcraft-lang/lib-codal-position";
 
 /**
- * Commit SHA of the `v0.1.0` tag on mindcraft-lang/codal-position-ext,
+ * The oldest published release of the live coordinate, used as an installed
+ * "behind" version the update check must offer an upgrade from. Its immutable
+ * v0.1.0 content predates the `lib-` rename and carries the old identity, so
+ * probes must not assert its manifest identity equals the coordinate.
+ */
+const LIVE_OLD_VERSION = "0.1.0";
+
+/**
+ * Commit SHA of the `v0.1.0` tag on mindcraft-lang/lib-codal-position,
  * resolved once (read-only) and pinned here as the published contract
  * guarantees tag immutability.
  */
@@ -23,13 +32,28 @@ const PROBE_TIMEOUT_MS = 15000;
 /** True when the live jsDelivr CDN answers within the probe timeout. */
 async function liveCdnAvailable(): Promise<boolean> {
   try {
-    const response = await fetch(`${JSDELIVR_CDN_BASE_URL}/gh/${LIVE_COORDINATE}@${LIVE_TAG}/mindcraft.json`, {
+    const response = await fetch(`${JSDELIVR_CDN_BASE_URL}/gh/${LIVE_COORDINATE}@${LIVE_OLD_VERSION}/mindcraft.json`, {
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     return response.ok;
   } catch {
     return false;
   }
+}
+
+/**
+ * The highest plain `x.y.z` release the source currently lists for the live
+ * coordinate, resolved through the same transport path the add and update
+ * flows use. Asserts the source answers and lists at least one release, so a
+ * republished version bump moves the probes forward without a code change.
+ */
+async function resolveLatestPublishedVersion(transport: ExtensionFetchTransport): Promise<string> {
+  const [owner, repo] = LIVE_COORDINATE.split("/");
+  const listed = await transport.listVersionTags(owner, repo);
+  assert.ok(listed.ok, listed.ok ? "" : `listVersionTags failed: ${listed.kind}`);
+  const latest = highestListedRelease(listed.versions);
+  assert.ok(latest !== undefined, "expected at least one published release version");
+  return latest;
 }
 
 describe("live jsDelivr probes (self-skipping offline)", () => {
@@ -39,19 +63,19 @@ describe("live jsDelivr probes (self-skipping offline)", () => {
     online = await liveCdnAvailable();
   });
 
-  it("fetches the published v0.1.0 snapshot by tag with its manifest identity and exact files list", async (t) => {
+  it("fetches the latest published snapshot by tag with its manifest identity and exact files list", async (t) => {
     if (!online) return t.skip("jsDelivr is unreachable");
 
-    const result = await fetchExtensionSnapshot(
-      `gh:${LIVE_COORDINATE}@${LIVE_TAG}`,
-      createJsDelivrExtensionTransport()
-    );
+    const transport = createJsDelivrExtensionTransport();
+    const latest = await resolveLatestPublishedVersion(transport);
+
+    const result = await fetchExtensionSnapshot(`gh:${LIVE_COORDINATE}@${latest}`, transport);
 
     assert.ok(result.ok, result.ok ? "" : result.error.message);
     assert.equal(result.snapshot.coordinate, LIVE_COORDINATE);
-    assert.equal(result.snapshot.specifier, LIVE_TAG);
+    assert.equal(result.snapshot.specifier, latest);
     assert.equal(result.snapshot.manifest.identity, LIVE_COORDINATE);
-    assert.equal(result.snapshot.manifest.version, "0.1.0");
+    assert.equal(result.snapshot.manifest.version, latest);
     // The snapshot carries mindcraft.json plus exactly the manifest-listed files.
     assert.deepStrictEqual(
       result.snapshot.files.map((file) => file.path),
@@ -62,11 +86,11 @@ describe("live jsDelivr probes (self-skipping offline)", () => {
     }
   });
 
-  it("fetches the same content by the tag's full 40-character commit SHA, which the CDN pins as an immutable commit", async (t) => {
+  it("fetches the same content by a tag's full 40-character commit SHA, which the CDN pins as an immutable commit", async (t) => {
     if (!online) return t.skip("jsDelivr is unreachable");
 
     const transport = createJsDelivrExtensionTransport();
-    const byTag = await fetchExtensionSnapshot(`gh:${LIVE_COORDINATE}@${LIVE_TAG}`, transport);
+    const byTag = await fetchExtensionSnapshot(`gh:${LIVE_COORDINATE}@${LIVE_OLD_VERSION}`, transport);
     const bySha = await fetchExtensionSnapshot(`gh:${LIVE_COORDINATE}@${LIVE_TAG_COMMIT_SHA}`, transport);
 
     assert.ok(byTag.ok && bySha.ok);
@@ -98,7 +122,7 @@ describe("live jsDelivr probes (self-skipping offline)", () => {
     if (!online) return t.skip("jsDelivr is unreachable");
 
     const transport = createJsDelivrExtensionTransport();
-    const resolved = await transport.resolveBranch("mindcraft-lang", "codal-position-ext", "main");
+    const resolved = await transport.resolveBranch("mindcraft-lang", "lib-codal-position", "main");
     t.diagnostic(`resolveBranch(main) -> ${JSON.stringify(resolved)}`);
     if (!resolved.ok && (resolved.kind === "rate-limited" || resolved.kind === "unreachable")) {
       return t.skip(`GitHub API unavailable: ${resolved.kind}`);
@@ -118,7 +142,7 @@ describe("live jsDelivr probes (self-skipping offline)", () => {
 
     const resolved = await createJsDelivrExtensionTransport().resolveBranch(
       "mindcraft-lang",
-      "codal-position-ext",
+      "lib-codal-position",
       "definitely-absent-branch"
     );
     if (!resolved.ok && (resolved.kind === "rate-limited" || resolved.kind === "unreachable")) {
@@ -131,33 +155,48 @@ describe("live jsDelivr probes (self-skipping offline)", () => {
     if (!online) return t.skip("jsDelivr is unreachable");
 
     const transport = createJsDelivrExtensionTransport();
+    const latest = await resolveLatestPublishedVersion(transport);
+
     const resolved = await resolveExtensionAddInput(`https://github.com/${LIVE_COORDINATE}`, transport);
-    assert.deepStrictEqual(resolved, { ok: true, reference: `gh:${LIVE_COORDINATE}@0.1.0` });
+    assert.deepStrictEqual(resolved, { ok: true, reference: `gh:${LIVE_COORDINATE}@${latest}` });
 
     const installed = await fetchExtensionSnapshot(resolved.ok ? resolved.reference : "", transport);
     assert.ok(installed.ok, installed.ok ? "" : installed.error.message);
     assert.equal(installed.snapshot.manifest.identity, LIVE_COORDINATE);
-    assert.equal(installed.snapshot.manifest.version, "0.1.0");
+    assert.equal(installed.snapshot.manifest.version, latest);
   });
 
-  it("lists the published versions through the data API and reports no update available for the installed v0.1.0", async (t) => {
+  it("offers an update from an installed old version up to the latest, and none for an installed latest", async (t) => {
     if (!online) return t.skip("jsDelivr is unreachable");
 
     const transport = createJsDelivrExtensionTransport();
     // Finding: /v1/packages/gh/<owner>/<repo> lists the repository's tags as
-    // versions with a leading "v" stripped; the tag v0.1.0 lists as "0.1.0",
-    // and the CDN serves both the "@0.1.0" and "@v0.1.0" pin forms.
-    const listed = await transport.listVersionTags("mindcraft-lang", "codal-position-ext");
+    // versions with a leading "v" stripped; the tag v0.1.0 lists as "0.1.0".
+    const listed = await transport.listVersionTags("mindcraft-lang", "lib-codal-position");
     t.diagnostic(`listVersionTags -> ${JSON.stringify(listed)}`);
     assert.ok(listed.ok);
-    assert.ok(listed.versions.includes("0.1.0"));
+    assert.ok(listed.versions.includes(LIVE_OLD_VERSION));
+    const latest = highestListedRelease(listed.versions);
+    assert.ok(latest !== undefined);
 
-    const check = await checkExtensionReferenceUpdate({
-      reference: `gh:${LIVE_COORDINATE}@${LIVE_TAG}`,
-      installedSpecifier: LIVE_TAG,
-      installedVersion: "0.1.0",
+    const behind = await checkExtensionReferenceUpdate({
+      reference: `gh:${LIVE_COORDINATE}@${LIVE_OLD_VERSION}`,
+      installedSpecifier: LIVE_OLD_VERSION,
+      installedVersion: LIVE_OLD_VERSION,
       transport,
     });
-    assert.deepStrictEqual(check, { ok: true, updateAvailable: false });
+    assert.deepStrictEqual(behind, {
+      ok: true,
+      updateAvailable: true,
+      update: { coordinate: LIVE_COORDINATE, reference: `gh:${LIVE_COORDINATE}@${latest}`, latestVersion: latest },
+    });
+
+    const current = await checkExtensionReferenceUpdate({
+      reference: `gh:${LIVE_COORDINATE}@${latest}`,
+      installedSpecifier: latest,
+      installedVersion: latest,
+      transport,
+    });
+    assert.deepStrictEqual(current, { ok: true, updateAvailable: false });
   });
 });

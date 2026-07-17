@@ -17,14 +17,14 @@ export const SIM_LIB_REFERENCE = "embedded:mindcraft-lang/sim";
  * publishing the `teleport` actuator for the sim platform. Opaque `<owner>/<repo>`
  * identity; the repo segment is human-readable and never parsed by code.
  */
-export const ECOSIM_TELEPORT_EXT_COORDINATE = "mindcraft-lang/ecosim-teleport-ext";
+export const ECOSIM_TELEPORT_EXT_COORDINATE = "mindcraft-lang/lib-ecosim-teleport";
 
 /**
  * Coordinate of the Detect add-on: an installable capability extension publishing
  * the `detect` sensor for the sim platform. Opaque `<owner>/<repo>` identity; the
  * repo segment is human-readable and never parsed by code.
  */
-export const ECOSIM_DETECT_EXT_COORDINATE = "mindcraft-lang/ecosim-detect-ext";
+export const ECOSIM_DETECT_EXT_COORDINATE = "mindcraft-lang/lib-ecosim-detect";
 
 /**
  * Extensions seeded into every new apps/sim project's manifest, keyed by

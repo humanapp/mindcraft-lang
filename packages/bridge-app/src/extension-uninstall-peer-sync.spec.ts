@@ -46,7 +46,7 @@ class MockWebSocket {
   }
 }
 
-const TELEPORT_COORDINATE = "mindcraft-lang/ecosim-teleport-ext";
+const TELEPORT_COORDINATE = "mindcraft-lang/lib-ecosim-teleport";
 const TELEPORT_INDEX_PATH = `.libraries/${TELEPORT_COORDINATE}/index.ts`;
 
 const TELEPORT_MOUNT: DependencyMount = {

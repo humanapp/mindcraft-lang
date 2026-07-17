@@ -1,7 +1,7 @@
 {
   "name": "Detect",
-  "version": "0.1.0",
-  "identity": "mindcraft-lang/ecosim-detect-ext",
+  "version": "0.1.1",
+  "identity": "mindcraft-lang/lib-ecosim-detect",
   "description": "Detect sensor for the ecosystem simulation: find the nearest actor by kind and distance, exposing it as the rule target.",
   "files": [
     "detect.ts",

@@ -104,7 +104,7 @@ describe("githubRemoteUrlForCoordinate", () => {
   });
 
   it("round-trips through deriveCoordinateFromRemoteUrl", () => {
-    for (const coordinate of ["acme/position", "mindcraft-lang/codal-position-ext", "a1/b2.c3"]) {
+    for (const coordinate of ["acme/position", "mindcraft-lang/lib-codal-position", "a1/b2.c3"]) {
       assert.equal(deriveCoordinateFromRemoteUrl(githubRemoteUrlForCoordinate(coordinate)), coordinate);
     }
   });

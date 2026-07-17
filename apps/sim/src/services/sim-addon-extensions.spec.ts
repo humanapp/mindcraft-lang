@@ -13,7 +13,7 @@ import {
 import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
 import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@mindcraft-lang/ts-compiler";
-import { createSimModule } from "@/brain";
+import { createSimModule } from "../brain";
 import { buildSimExtensionEntries } from "./sim-extension-browser";
 import {
   ECOSIM_DETECT_EXT_COORDINATE,
@@ -35,8 +35,8 @@ function simEmbedRecord(): EmbeddedExtension[] {
   return [
     buildEmbeddedExtensionFromDir(extensionDir("../../lib"), SIM_LIB_COORDINATE),
     buildEmbeddedExtensionFromDir(extensionDir("../../../../packages/core/lib"), CORE_LIB_COORDINATE),
-    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/ecosim-teleport-ext"), ECOSIM_TELEPORT_EXT_COORDINATE),
-    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/ecosim-detect-ext"), ECOSIM_DETECT_EXT_COORDINATE),
+    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/lib-ecosim-teleport"), ECOSIM_TELEPORT_EXT_COORDINATE),
+    buildEmbeddedExtensionFromDir(extensionDir("../../extensions/lib-ecosim-detect"), ECOSIM_DETECT_EXT_COORDINATE),
   ];
 }
 
@@ -86,11 +86,11 @@ describe("sim add-on extensions -- browser catalog compatibility", () => {
     };
     const coreLib = buildEmbeddedExtensionFromDir(extensionDir("../../../../packages/core/lib"), CORE_LIB_COORDINATE);
     const teleportAddon = buildEmbeddedExtensionFromDir(
-      extensionDir("../../extensions/ecosim-teleport-ext"),
+      extensionDir("../../extensions/lib-ecosim-teleport"),
       ECOSIM_TELEPORT_EXT_COORDINATE
     );
     const detectAddon = buildEmbeddedExtensionFromDir(
-      extensionDir("../../extensions/ecosim-detect-ext"),
+      extensionDir("../../extensions/lib-ecosim-detect"),
       ECOSIM_DETECT_EXT_COORDINATE
     );
     const embedRecord = [microbitLayer, coreLib, teleportAddon, detectAddon];
