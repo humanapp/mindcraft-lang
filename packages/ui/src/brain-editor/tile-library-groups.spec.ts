@@ -9,7 +9,12 @@ import {
   BrainTileSensorDef,
 } from "@mindcraft-lang/core/brain/tiles";
 import { CoreTypeIds, mkCallDef } from "@mindcraft-lang/core/runtime";
-import { groupTilesByLibrary, type TileSourceLibrary, tileSourceNamespace } from "./tile-library-groups";
+import {
+  groupTilesByLibrary,
+  isProjectAuthoredActionTile,
+  type TileSourceLibrary,
+  tileSourceNamespace,
+} from "./tile-library-groups";
 
 const emptyCallDef = () => mkCallDef({ type: "bag", items: [] });
 
@@ -63,6 +68,47 @@ describe("tileSourceNamespace", () => {
     assert.equal(tileSourceNamespace(new BrainTileOutputDef(CoreTypeIds.Number, "reading")), undefined);
     assert.equal(tileSourceNamespace(new BrainTileParameterDef("p", CoreTypeIds.Number)), undefined);
     assert.equal(tileSourceNamespace(new BrainTileModifierDef("m")), undefined);
+  });
+});
+
+describe("isProjectAuthoredActionTile", () => {
+  test("matches sensors and actuators whose identity namespace equals the project namespace", () => {
+    assert.equal(isProjectAuthoredActionTile(actuator("a", "project-store-id"), "project-store-id"), true);
+    assert.equal(isProjectAuthoredActionTile(sensor("s", "project-store-id"), "project-store-id"), true);
+  });
+
+  test("rejects library tiles, platform tiles, and an undefined project namespace", () => {
+    assert.equal(isProjectAuthoredActionTile(actuator("a", LIB_A.coordinate), "project-store-id"), false);
+    assert.equal(isProjectAuthoredActionTile(sensor("s", LIB_B.coordinate), "project-store-id"), false);
+    assert.equal(isProjectAuthoredActionTile(actuator("platform"), "project-store-id"), false);
+    assert.equal(isProjectAuthoredActionTile(actuator("platform"), undefined), false);
+    assert.equal(isProjectAuthoredActionTile(actuator("a", "project-store-id"), undefined), false);
+  });
+
+  test("rejects non-action tile kinds even when their namespace matches", () => {
+    assert.equal(
+      isProjectAuthoredActionTile(
+        new BrainTileOutputDef(CoreTypeIds.Number, "reading", { namespace: "project-store-id" }),
+        "project-store-id"
+      ),
+      false
+    );
+    assert.equal(
+      isProjectAuthoredActionTile(
+        new BrainTileParameterDef("p", CoreTypeIds.Number, {
+          userArg: { namespace: "project-store-id", actionId: "act", argName: "p" },
+        }),
+        "project-store-id"
+      ),
+      false
+    );
+    assert.equal(
+      isProjectAuthoredActionTile(
+        new BrainTileModifierDef("m", { userArg: { namespace: "project-store-id", actionId: "act", argName: "m" } }),
+        "project-store-id"
+      ),
+      false
+    );
   });
 });
 

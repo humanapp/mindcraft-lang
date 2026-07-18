@@ -50,6 +50,19 @@ export function tileSourceNamespace(tileDef: IBrainTileDef): string | undefined 
 }
 
 /**
+ * True when the tile is a sensor or actuator compiled from the active
+ * project's own TypeScript: its identity namespace equals `projectNamespace`.
+ * False for library tiles, platform tiles, other tile kinds, and when
+ * `projectNamespace` is undefined.
+ */
+export function isProjectAuthoredActionTile(tileDef: IBrainTileDef, projectNamespace: string | undefined): boolean {
+  if (projectNamespace === undefined || (tileDef.kind !== "sensor" && tileDef.kind !== "actuator")) {
+    return false;
+  }
+  return tileSourceNamespace(tileDef) === projectNamespace;
+}
+
+/**
  * Partition items by the installed library their tile's identity namespace
  * names: unattributed items first, in input order, then one cluster per
  * library ordered by display name. An item whose namespace matches no entry

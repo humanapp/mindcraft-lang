@@ -1,4 +1,4 @@
-import { CoreCapabilityBits, type IBrainActionTileDef, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import { type IBrainActionTileDef, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 import { CircleAlert, ClockFading } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
@@ -8,6 +8,7 @@ import { glassEffect } from "../lib/glass-effect";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { TileValue } from "./TileValue";
 import type { TileBadge } from "./tile-badges";
+import { isProjectAuthoredActionTile } from "./tile-library-groups";
 import { resolveTileVisual } from "./tile-visual-utils";
 
 interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
@@ -23,7 +24,7 @@ interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "
 export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
   ({ tileDef, side, badge, className = "", ...props }, ref) => {
     const editorConfig = useBrainEditorConfig();
-    const { dataTypeIcons, dataTypeNames } = editorConfig;
+    const { dataTypeIcons, dataTypeNames, projectNamespace } = editorConfig;
     const [isOverflowing, setIsOverflowing] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [labelBasedWidth, setLabelBasedWidth] = useState<number | undefined>(undefined);
@@ -42,7 +43,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
       tileDef.kind === "output";
     const isParamTile = tileDef.kind === "parameter";
     const isFactoryTile = tileDef.kind === "factory";
-    const isUserTile = tileDef.capabilities().get(CoreCapabilityBits.UserTile) !== 0;
+    const isProjectAuthoredAction = isProjectAuthoredActionTile(tileDef, projectNamespace);
     const isActionTile = tileDef.kind === "sensor" || tileDef.kind === "actuator";
     const isAsyncAction = isActionTile && (tileDef as IBrainActionTileDef).action.isAsync === true;
     let tileTypeIcon: string | undefined;
@@ -171,7 +172,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
               aria-hidden="true"
             />
           )}
-          {isUserTile && (
+          {isProjectAuthoredAction && (
             <div
               style={{
                 backgroundColor: darkerSaturatedColor,
