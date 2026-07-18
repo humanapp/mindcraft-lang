@@ -26,10 +26,10 @@ export function hasFolderSessionHandshakeCompleted(): boolean {
 }
 
 /**
- * Test-only: dispose the running folder session and clear the handshake flag,
+ * Dispose the running folder session (if any) and clear the handshake flag,
  * so a subsequent open resolves its app root and handshakes afresh.
  */
-export function disposeFolderSessionForTest(): void {
+export function disposeActiveFolderSession(): void {
   currentSession?.dispose();
   currentSession = undefined;
   handshakeCompleted = false;

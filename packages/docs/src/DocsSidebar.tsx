@@ -5,6 +5,7 @@ import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Printe
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DocMarkdown } from "./DocMarkdown";
+import { DocsEntryLink } from "./DocsEntryLink";
 import { DocsPrintView } from "./DocsPrintView";
 import type { DocsConceptEntry, DocsPatternEntry, DocsTileEntry } from "./DocsRegistry";
 import { type DocTab, useDocsResolveTileVisual, useDocsSidebar } from "./DocsSidebarContext";
@@ -299,19 +300,9 @@ function TileCard({ entry, onClick }: TileCardProps) {
   const resolveTileVisual = useDocsResolveTileVisual();
   const label = getTileLabel(tileCatalog, resolveTileVisual, entry.tileId);
   const iconUrl = getTileIconUrl(tileCatalog, resolveTileVisual, entry.tileId);
-  const href = `/docs/tiles/${encodeURIComponent(entry.tileId)}`;
 
   return (
-    <a
-      href={href}
-      onClick={(e) => {
-        if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-card hover:bg-accent border border-border transition-colors text-left"
-    >
+    <DocsEntryLink href={`/docs/tiles/${encodeURIComponent(entry.tileId)}`} onOpen={onClick}>
       {iconUrl ? (
         <img src={iconUrl} alt="" className="w-6 h-6 shrink-0" aria-hidden="true" />
       ) : (
@@ -321,7 +312,7 @@ function TileCard({ entry, onClick }: TileCardProps) {
         <div className="text-sm font-medium text-foreground truncate">{label}</div>
       </div>
       <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
-    </a>
+    </DocsEntryLink>
   );
 }
 
@@ -331,24 +322,14 @@ interface PatternCardProps {
 }
 
 function PatternCard({ entry, onClick }: PatternCardProps) {
-  const href = `/docs/patterns/${encodeURIComponent(entry.id)}`;
   return (
-    <a
-      href={href}
-      onClick={(e) => {
-        if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-card hover:bg-accent border border-border transition-colors text-left"
-    >
+    <DocsEntryLink href={`/docs/patterns/${encodeURIComponent(entry.id)}`} onOpen={onClick}>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-foreground truncate">{entry.title}</div>
         <div className="text-xs text-muted-foreground truncate">{entry.tags.join(", ")}</div>
       </div>
       <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
-    </a>
+    </DocsEntryLink>
   );
 }
 
@@ -358,24 +339,14 @@ interface ConceptCardProps {
 }
 
 function ConceptCard({ entry, onClick }: ConceptCardProps) {
-  const href = `/docs/concepts/${encodeURIComponent(entry.id)}`;
   return (
-    <a
-      href={href}
-      onClick={(e) => {
-        if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-card hover:bg-accent border border-border transition-colors text-left"
-    >
+    <DocsEntryLink href={`/docs/concepts/${encodeURIComponent(entry.id)}`} onOpen={onClick}>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-foreground truncate">{entry.title}</div>
         <div className="text-xs text-muted-foreground truncate">{entry.tags.join(", ")}</div>
       </div>
       <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
-    </a>
+    </DocsEntryLink>
   );
 }
 
@@ -639,7 +610,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
 // ---------------------------------------------------------------------------
 
 function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }) {
-  const { close, activeTab, navKey, navTab, registry } = useDocsSidebar();
+  const { close, activeTab, navKey, navTab, registry, showDocsPageLinks } = useDocsSidebar();
   const { printContent, triggerPrint, getPrintRoot } = useDocsPrint();
 
   // Resolve the current detail content for the print button
@@ -668,16 +639,18 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
           <span className="text-sm font-semibold tracking-tight">Docs</span>
         </div>
         <div className="flex items-center gap-1">
-          <a
-            href={docsPageUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            aria-label="Open in docs page"
-            title="Open in docs page"
-          >
-            <ExternalLink className="w-4 h-4" aria-hidden="true" />
-          </a>
+          {showDocsPageLinks && (
+            <a
+              href={docsPageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              aria-label="Open in docs page"
+              title="Open in docs page"
+            >
+              <ExternalLink className="w-4 h-4" aria-hidden="true" />
+            </a>
+          )}
           {canPrint && (
             <button
               type="button"

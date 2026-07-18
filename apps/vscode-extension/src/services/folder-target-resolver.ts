@@ -27,19 +27,25 @@ export async function findProjectFolderCandidates(): Promise<vscode.WorkspaceFol
 }
 
 /**
- * The target coordinates declared by the `targets` map of the project manifest
- * in `folderUri`, in manifest order. Returns an empty list when the manifest
- * is missing, unreadable, or invalid.
+ * The target entries declared by the `targets` map of the project manifest in
+ * `folderUri`, as coordinate to declared package-version range, in manifest
+ * order. Returns an empty map when the manifest is missing, unreadable, or
+ * invalid.
  */
-async function readDeclaredTargetCoordinates(folderUri: vscode.Uri): Promise<readonly string[]> {
+export async function readDeclaredTargetRanges(folderUri: vscode.Uri): Promise<Readonly<Record<string, string>>> {
   let text: string;
   try {
     text = new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(folderUri, MINDCRAFT_JSON)));
   } catch {
-    return [];
+    return {};
   }
   const parsed = parseProjectContentManifest(text);
-  return parsed.ok ? Object.keys(parsed.manifest.targets ?? {}) : [];
+  if (!parsed.ok) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(parsed.manifest.targets ?? {}).map(([coordinate, target]) => [coordinate, target.packageVersion])
+  );
 }
 
 /**
@@ -50,7 +56,7 @@ async function readDeclaredTargetCoordinates(folderUri: vscode.Uri): Promise<rea
 export async function resolveFolderTargetDescriptor(folderUri: vscode.Uri): Promise<ProjectTargetResolution> {
   return resolveProjectTargetDescriptor(
     readDevTargetDescriptor(),
-    await readDeclaredTargetCoordinates(folderUri),
+    Object.keys(await readDeclaredTargetRanges(folderUri)),
     targetRegistryEntries()
   );
 }

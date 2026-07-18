@@ -3,7 +3,7 @@ import { installTestTargetPick, registerFolderCommands } from "./commands/folder
 import { activateBridgeSession } from "./services/bridge-session";
 import {
   autoOpenFolderSessionOnActivation,
-  disposeFolderSessionForTest,
+  disposeActiveFolderSession,
   folderSessionVolumeWriteForTest,
   hasFolderSessionHandshakeCompleted,
   isFolderSessionEditorOpen,
@@ -66,14 +66,15 @@ export async function activate(context: vscode.ExtensionContext) {
     ),
     vscode.commands.registerCommand(
       "mindcraft.testHooks.installTargetAppTransport",
-      (files?: Record<string, string | { readonly file: string }>) => installTestTargetAppTransport(files)
+      (files?: Record<string, string | { readonly file: string }>, versions?: readonly string[]) =>
+        installTestTargetAppTransport(files, versions)
     ),
     vscode.commands.registerCommand("mindcraft.testHooks.installTargetPick", (coordinate?: string) =>
       installTestTargetPick(coordinate)
     ),
     vscode.commands.registerCommand("mindcraft.testHooks.targetRegistryEntries", () => targetRegistryEntries()),
     vscode.commands.registerCommand("mindcraft.testHooks.targetAppTransportCalls", () => testTargetAppTransportCalls()),
-    vscode.commands.registerCommand("mindcraft.testHooks.disposeFolderSession", () => disposeFolderSessionForTest()),
+    vscode.commands.registerCommand("mindcraft.testHooks.disposeFolderSession", () => disposeActiveFolderSession()),
     vscode.commands.registerCommand("mindcraft.testHooks.restoreFolderSession", () =>
       restoreFolderSessionForTest(context)
     ),

@@ -31,6 +31,8 @@ interface DocsSidebarContextValue {
   dataTypeNames: ReadonlyMap<string, string> | undefined;
   /** App-supplied type icon URLs keyed by type id. */
   dataTypeIcons: ReadonlyMap<string, string> | undefined;
+  /** Whether panel entries and the panel header link to the app's standalone docs pages. */
+  showDocsPageLinks: boolean;
   resolveTileVisual: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** The key of the entry currently shown in detail view, or null for list view. */
   navKey: string | null;
@@ -81,6 +83,8 @@ interface DocsSidebarProviderProps {
   dataTypeNames?: ReadonlyMap<string, string>;
   /** App-supplied type icon URLs keyed by type id. */
   dataTypeIcons?: ReadonlyMap<string, string>;
+  /** Whether panel entries and the panel header link to the app's standalone docs pages (default true). */
+  showDocsPageLinks?: boolean;
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Initial active tab (defaults to "tiles"). */
   initialTab?: DocTab;
@@ -102,6 +106,7 @@ export function DocsSidebarProvider({
   libraries,
   dataTypeNames,
   dataTypeIcons,
+  showDocsPageLinks,
   resolveTileVisual: resolveTileVisualProp,
   initialTab,
   initialNavKey,
@@ -181,6 +186,7 @@ export function DocsSidebarProvider({
     libraries,
     dataTypeNames,
     dataTypeIcons,
+    showDocsPageLinks: showDocsPageLinks ?? true,
     resolveTileVisual,
     navKey,
     navTab,

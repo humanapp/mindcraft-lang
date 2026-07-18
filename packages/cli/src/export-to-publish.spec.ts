@@ -65,8 +65,10 @@ describe("export to published repository", () => {
       );
       assert.equal(unpacked.code, 0, unpacked.stderr);
 
-      // The fixture project carries a branch dependency, so the publish needs the confirmation flag.
-      const published = await runCliBin(root, "publish", "--dir", project, "--remote", remote, "--yes");
+      // The app export carries an app-shipped embedded: dependency, which
+      // publishes as-is, and a branch dependency, which needs the
+      // confirmation flag.
+      const published = await runCliBin(root, "publish", "--dir", project, "--remote", remote, "--allow-unstable-refs");
       assert.equal(published.code, 0, published.stderr);
       assert.doesNotMatch(published.stderr, /identity changed/);
       const version = document.manifest.version;

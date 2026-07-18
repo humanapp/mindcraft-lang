@@ -336,6 +336,58 @@ describe("publishExtensionVersion", () => {
     assert.equal(confirmed.ok, true);
   });
 
+  it("publishes a project whose extensions map carries an embedded reference without confirmation", async () => {
+    const result = await publishExtensionVersion({
+      bump: "patch",
+      coordinate: COORDINATE,
+      source: memorySource({
+        "mindcraft.json": manifestText({
+          name: "P",
+          version: "0.1.0",
+          extensions: { "author/position": "embedded:author/position" },
+        }),
+      }),
+      backend: memoryBackend().backend,
+    });
+    assert.equal(result.ok, true);
+  });
+
+  it("publishes a project whose pinned dependency the fetch source serves without confirmation", async () => {
+    const result = await publishExtensionVersion({
+      bump: "patch",
+      coordinate: COORDINATE,
+      isPinPublished: async () => true,
+      source: memorySource({
+        "mindcraft.json": manifestText({
+          name: "P",
+          version: "0.1.0",
+          extensions: { "author/published": "gh:author/published@v1.0.0" },
+        }),
+      }),
+      backend: memoryBackend().backend,
+    });
+    assert.equal(result.ok, true);
+  });
+
+  it("publishes a project whose targets map declares compatibility packages", async () => {
+    const result = await publishExtensionVersion({
+      bump: "patch",
+      coordinate: COORDINATE,
+      source: memorySource({
+        "mindcraft.json": manifestText({
+          name: "P",
+          version: "0.1.0",
+          targets: {
+            "mindcraft-lang/lib-codal": { packageVersion: "^0.2.0" },
+            "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.2.0" },
+          },
+        }),
+      }),
+      backend: memoryBackend().backend,
+    });
+    assert.equal(result.ok, true);
+  });
+
   it("refuses a repository with uncommitted changes", async () => {
     const result = await publishExtensionVersion({
       bump: "patch",

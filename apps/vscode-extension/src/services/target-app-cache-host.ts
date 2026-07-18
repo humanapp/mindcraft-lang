@@ -4,8 +4,11 @@ import type {
   ProjectContentManifest,
 } from "@mindcraft-lang/app-host";
 import {
+  checkExtensionReferenceUpdate,
   createJsDelivrExtensionTransport,
+  ExtensionFetchErrorCode,
   fetchExtensionSnapshot,
+  highestListedRelease,
   parseExtensionReference,
   parseProjectContentManifest,
 } from "@mindcraft-lang/app-host";
@@ -17,6 +20,7 @@ import type {
   TargetAppSource,
 } from "./target-app-cache";
 import { ensureCachedTargetAppInStore } from "./target-app-cache";
+import type { TargetReleaseListing, TargetUpdateCheckResult } from "./target-update";
 
 /** Test-installed transport replacing the live jsDelivr transport when set. */
 let testTransport: (ExtensionFetchTransport & { calls: number }) | undefined;
@@ -25,11 +29,13 @@ let testTransport: (ExtensionFetchTransport & { calls: number }) | undefined;
  * Test-only: install a fake transport serving the given content by path, or
  * clear the installed transport when `files` is undefined. A string entry is
  * served as its UTF-8 bytes; a `{ file }` entry is served by reading the named
- * on-disk file. Resets the fetch call counter observed by
+ * on-disk file. `versions` is the published-version listing the transport
+ * reports (empty when omitted). Resets the fetch call counter observed by
  * {@link testTargetAppTransportCalls}.
  */
 export function installTestTargetAppTransport(
-  files: Record<string, string | { readonly file: string }> | undefined
+  files: Record<string, string | { readonly file: string }> | undefined,
+  versions?: readonly string[]
 ): void {
   if (files === undefined) {
     testTransport = undefined;
@@ -53,7 +59,7 @@ export function installTestTargetAppTransport(
       return { ok: false, kind: "not-found" };
     },
     async listVersionTags() {
-      return { ok: true, versions: [] };
+      return { ok: true, versions: versions ?? [] };
     },
   };
 }
@@ -61,6 +67,25 @@ export function installTestTargetAppTransport(
 /** Test-only: the installed fake transport's fetchFile call count (0 when none is installed). */
 export function testTargetAppTransportCalls(): number {
   return testTransport?.calls ?? 0;
+}
+
+/**
+ * The transport target-app operations fetch through: the test-installed
+ * transport when one is set, else the live jsDelivr transport. When
+ * `fetchTimeoutMs` is given, each live network request is aborted after that
+ * many milliseconds and surfaces as an unreachable transport result; the
+ * test-installed transport is never bounded.
+ */
+export function activeTargetAppTransport(fetchTimeoutMs?: number): ExtensionFetchTransport {
+  if (testTransport !== undefined) {
+    return testTransport;
+  }
+  if (fetchTimeoutMs === undefined) {
+    return createJsDelivrExtensionTransport();
+  }
+  return createJsDelivrExtensionTransport({
+    fetchImpl: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(fetchTimeoutMs) }),
+  });
 }
 
 /** Result of {@link ensureCachedTargetApp}. */
@@ -128,7 +153,7 @@ function createCacheFileAccess(cacheRoot: vscode.Uri): TargetAppCacheFileAccess 
 export async function ensureCachedTargetApp(
   context: vscode.ExtensionContext,
   reference: string,
-  transport: ExtensionFetchTransport = testTransport ?? createJsDelivrExtensionTransport()
+  transport: ExtensionFetchTransport = activeTargetAppTransport()
 ): Promise<EnsureCachedTargetAppUriResult> {
   const cacheRoot = context.globalStorageUri;
   const access = createCacheFileAccess(cacheRoot);
@@ -172,4 +197,89 @@ export async function ensureCachedTargetApp(
   } finally {
     finishNotification?.();
   }
+}
+
+/** Timeout in milliseconds bounding each live network request of a pin update check. */
+const UPDATE_CHECK_FETCH_TIMEOUT_MS = 15000;
+
+/**
+ * Check the pinned target-app `reference` for a newer published release: the
+ * installed version is read from the cached bundle's manifest (fetching and
+ * caching the bundle first when it is not cached yet), then compared against
+ * the source's published version listing. Every live network request is
+ * bounded by a per-request timeout, so the check always settles. Returns the
+ * newer reference to install, an up-to-date result, or a failure carrying a
+ * stable code.
+ */
+export async function checkTargetAppPinUpdate(
+  context: vscode.ExtensionContext,
+  reference: string
+): Promise<TargetUpdateCheckResult> {
+  const transport = activeTargetAppTransport(UPDATE_CHECK_FETCH_TIMEOUT_MS);
+  const ensured = await ensureCachedTargetApp(context, reference, transport);
+  if (!ensured.ok) {
+    return { ok: false, error: { code: ensured.code, message: ensured.message } };
+  }
+  const parsed = parseExtensionReference(reference);
+  const installedSpecifier = parsed?.transport === "gh" && parsed.routing.kind === "pin" ? parsed.routing.pin : "";
+  return checkExtensionReferenceUpdate({
+    reference,
+    installedSpecifier,
+    installedVersion: ensured.manifest.version,
+    transport,
+  });
+}
+
+/**
+ * List the newest published plain `x.y.z` release of the target package at
+ * `coordinate` (`<owner>/<repo>`). Every live network request is bounded by a
+ * per-request timeout, so the listing always settles. Returns the highest
+ * listed release, or a failure carrying a stable code when the source cannot
+ * be read or lists no plain release.
+ */
+export async function listLatestTargetRelease(coordinate: string): Promise<TargetReleaseListing> {
+  const transport = activeTargetAppTransport(UPDATE_CHECK_FETCH_TIMEOUT_MS);
+  const slash = coordinate.indexOf("/");
+  const owner = coordinate.slice(0, slash);
+  const repo = coordinate.slice(slash + 1);
+  const listed = await transport.listVersionTags(owner, repo);
+  if (!listed.ok) {
+    switch (listed.kind) {
+      case "not-found":
+        return {
+          ok: false,
+          error: {
+            code: ExtensionFetchErrorCode.VERSIONS_NOT_FOUND,
+            message: `The source lists no published versions for ${coordinate}.`,
+          },
+        };
+      case "http-status":
+        return {
+          ok: false,
+          error: {
+            code: ExtensionFetchErrorCode.HTTP_STATUS,
+            message: `The source answered with HTTP status ${listed.status}.`,
+          },
+        };
+      case "unreachable":
+        return {
+          ok: false,
+          error: {
+            code: ExtensionFetchErrorCode.UNREACHABLE,
+            message: `The source is unreachable: ${listed.message}`,
+          },
+        };
+    }
+  }
+  const latestRelease = highestListedRelease(listed.versions);
+  if (latestRelease === undefined) {
+    return {
+      ok: false,
+      error: {
+        code: ExtensionFetchErrorCode.VERSIONS_NOT_FOUND,
+        message: `The source lists no plain x.y.z release for ${coordinate}.`,
+      },
+    };
+  }
+  return { ok: true, latestRelease };
 }

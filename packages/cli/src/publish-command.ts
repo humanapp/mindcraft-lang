@@ -21,7 +21,7 @@ import {
 } from "@mindcraft-lang/app-host";
 import { GitCommandError, git, tryGit } from "./git.js";
 
-const PUBLISH_USAGE = `usage: mindcraft publish [patch|minor|major] [--dir <path>] [--remote <url>] [--yes]
+const PUBLISH_USAGE = `usage: mindcraft publish [patch|minor|major] [--dir <path>] [--remote <url>] [--allow-unstable-refs]
 
 Publishes a version of the Mindcraft project in --dir (default: the current
 directory). Run from inside an already-published project's folder, no flags are
@@ -51,9 +51,10 @@ and identity are written back to the project directory's mindcraft.json.
                    remote is the checkout's origin when it matches the recorded
                    identity, otherwise the GitHub remote derived from that
                    identity
-  --yes            confirm publishing a project whose dependencies are not
-                   stable for consumers (a branch reference, or a pinned
-                   version the fetch source does not serve)
+  --allow-unstable-refs
+                   allow dependencies that are unstable for consumers: a
+                   branch reference, or a pinned version the fetch source
+                   does not yet serve
 `;
 
 /** Stable identifiers for publish command failures beyond the engine's refusals. */
@@ -71,7 +72,7 @@ interface PublishArguments {
   bump: PublishVersionBump | undefined;
   dir: string;
   remote: string | undefined;
-  yes: boolean;
+  allowUnstableRefs: boolean;
 }
 
 function isVersionBump(value: string): value is PublishVersionBump {
@@ -82,12 +83,12 @@ function parsePublishArguments(args: readonly string[]): PublishArguments | stri
   let bump: PublishVersionBump | undefined;
   let dir = process.cwd();
   let remote: string | undefined;
-  let yes = false;
+  let allowUnstableRefs = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--yes") {
-      yes = true;
+    if (arg === "--allow-unstable-refs") {
+      allowUnstableRefs = true;
     } else if (arg === "--dir" || arg === "--remote") {
       const value = args[i + 1];
       if (value === undefined) {
@@ -109,7 +110,7 @@ function parsePublishArguments(args: readonly string[]): PublishArguments | stri
     }
   }
 
-  return { bump, dir, remote, yes };
+  return { bump, dir, remote, allowUnstableRefs };
 }
 
 /** Inputs {@link resolvePublishTarget} decides the publish target from. */
@@ -276,7 +277,7 @@ async function publishInCheckout(options: PublishArguments): Promise<ExtensionPu
   return publishExtensionVersion({
     bump: options.bump,
     coordinate: originUrl === undefined ? undefined : deriveCoordinateFromRemoteUrl(originUrl),
-    confirmUnstableDependencies: options.yes,
+    confirmUnstableDependencies: options.allowUnstableRefs,
     isPinPublished: cdnPinProbe(),
     source: directoryContentSource(options.dir),
     backend: checkoutPublishBackend(options.dir),
@@ -324,7 +325,7 @@ async function publishToRemote(options: PublishArguments, remote: string): Promi
     return await publishExtensionVersion({
       bump: options.bump,
       coordinate: deriveCoordinateFromRemoteUrl(remote),
-      confirmUnstableDependencies: options.yes,
+      confirmUnstableDependencies: options.allowUnstableRefs,
       isPinPublished: cdnPinProbe(),
       source: directoryContentSource(options.dir),
       backend,
@@ -372,7 +373,7 @@ export async function runPublishCommand(args: readonly string[]): Promise<number
     if (!result.ok) {
       process.stderr.write(`mindcraft publish: ${result.error.code}: ${result.error.message}\n`);
       if (result.error.code === ExtensionPublishErrorCode.UNSTABLE_DEPENDENCIES_UNCONFIRMED) {
-        process.stderr.write("Pass --yes to publish anyway.\n");
+        process.stderr.write("Pass --allow-unstable-refs to publish anyway.\n");
       }
       return 1;
     }

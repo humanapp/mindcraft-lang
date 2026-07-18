@@ -91,6 +91,10 @@
       {
         "command": "mindcraft.openEditor",
         "title": "Mindcraft: Open Editor"
+      },
+      {
+        "command": "mindcraft.updateTarget",
+        "title": "Mindcraft: Update Target"
       }
     ],
     "menus": {
@@ -129,6 +133,10 @@
         },
         {
           "command": "mindcraft.openEditor",
+          "when": "!mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.updateTarget",
           "when": "!mindcraft.webHost"
         }
       ]

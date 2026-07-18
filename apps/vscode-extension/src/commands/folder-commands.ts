@@ -3,17 +3,23 @@ import * as vscode from "vscode";
 import { MINDCRAFT_JSON } from "../mindcraft-json";
 import {
   activeFolderSessionFolder,
+  disposeActiveFolderSession,
   openFolderProjectSession,
   revealFolderSessionEditor,
 } from "../services/folder-session";
 import {
   fileExists,
   findProjectFolderCandidates,
+  readDeclaredTargetRanges,
   resolveFolderTargetDescriptor,
   resolveTargetAppRoot,
 } from "../services/folder-target-resolver";
-import { buildProjectSkeleton, readDevTargetDescriptor } from "../services/project-skeleton";
-import { ensureCachedTargetApp } from "../services/target-app-cache-host";
+import { buildProjectSkeleton, DEV_TARGET_SETTING, readDevTargetDescriptor } from "../services/project-skeleton";
+import {
+  checkTargetAppPinUpdate,
+  ensureCachedTargetApp,
+  listLatestTargetRelease,
+} from "../services/target-app-cache-host";
 import {
   findTargetRegistryEntry,
   type ProjectTargetResolution,
@@ -22,6 +28,12 @@ import {
   targetRegistryEntries,
   targetRegistryPickItems,
 } from "../services/target-registry";
+import {
+  applyTargetRangeToManifest,
+  planTargetUpdate,
+  TargetUpdateOutcome,
+  type TargetUpdatePlan,
+} from "../services/target-update";
 import { ACTUATOR_SCAFFOLD, findUniqueFolderName, SENSOR_SCAFFOLD, type TileScaffold } from "../services/tile-scaffold";
 
 /** Register the desktop project-folder commands. */
@@ -44,8 +56,128 @@ export function registerFolderCommands(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("mindcraft.createActuator", async () => {
       await createTileFile(ACTUATOR_SCAFFOLD);
-    })
+    }),
+    vscode.commands.registerCommand("mindcraft.updateTarget", async () => updateTarget(context))
   );
+}
+
+/**
+ * Update the project and its hosted editor to the latest published release of
+ * the project's target: resolve the target coordinate (the
+ * `mindcraft.devTarget` setting's `appRef` when set, else the project
+ * manifest's registry-listed target), set the project manifest's target entry
+ * to a caret range at the newest published release, write the `devTarget`
+ * `appRef` pin at that release, and reopen the editor. Resolves with the
+ * run's plan, carrying its stable outcome code.
+ */
+async function updateTarget(context: vscode.ExtensionContext): Promise<TargetUpdatePlan> {
+  const candidates = await findProjectFolderCandidates();
+  if (candidates.length === 0) {
+    vscode.window.showInformationMessage(`Open a workspace folder containing ${MINDCRAFT_JSON} first.`);
+    return { outcome: TargetUpdateOutcome.NOT_UPDATABLE };
+  }
+  const folder = await pickFolder(candidates);
+  if (!folder) {
+    return { outcome: TargetUpdateOutcome.NOT_UPDATABLE };
+  }
+  const appRef = readDevTargetDescriptor()?.appRef;
+  let registryAppRef: string | undefined;
+  if (appRef === undefined) {
+    const resolution = await resolveFolderTargetDescriptor(folder.uri);
+    registryAppRef = resolution.ok ? resolution.descriptor.appRef : undefined;
+    if (registryAppRef === undefined) {
+      vscode.window.showInformationMessage("The project resolves no published target to update.");
+      return { outcome: TargetUpdateOutcome.NOT_UPDATABLE };
+    }
+  }
+  const plan = await planTargetUpdate(
+    { appRef, registryAppRef, manifestRanges: await readDeclaredTargetRanges(folder.uri) },
+    {
+      listLatestRelease: (coordinate) => listLatestTargetRelease(coordinate),
+      checkPinUpdate: (reference) => checkTargetAppPinUpdate(context, reference),
+    }
+  );
+  switch (plan.outcome) {
+    case TargetUpdateOutcome.NOT_UPDATABLE:
+      break;
+    case TargetUpdateOutcome.UP_TO_DATE:
+      vscode.window.showInformationMessage(`${plan.coordinate} is already up to date (${plan.latestVersion}).`);
+      break;
+    case TargetUpdateOutcome.CHECK_FAILED:
+      vscode.window.showErrorMessage(`Could not check for a newer target (${plan.errorCode}): ${plan.message}`);
+      break;
+    case TargetUpdateOutcome.REBUILD_BRANCH:
+      disposeActiveFolderSession();
+      if (plan.updateManifest && plan.latestVersion !== undefined) {
+        await writeTargetRange(folder.uri, plan.coordinate, plan.latestVersion);
+      }
+      await openProjectFolder(context);
+      vscode.window.showInformationMessage(
+        plan.updateManifest && plan.latestVersion !== undefined
+          ? `Updated ${plan.coordinate} to ${plan.latestVersion} and reloaded the editor from branch "${plan.branch}".`
+          : `Reloaded the editor from the latest commit of branch "${plan.branch}".`
+      );
+      break;
+    case TargetUpdateOutcome.APPLY: {
+      disposeActiveFolderSession();
+      if (plan.updateManifest) {
+        await writeTargetRange(folder.uri, plan.coordinate, plan.latestVersion);
+      }
+      if (plan.updatedAppRef !== undefined) {
+        await rewriteDevTargetAppRef(plan.updatedAppRef);
+      }
+      await openProjectFolder(context);
+      vscode.window.showInformationMessage(`Updated ${plan.coordinate} to ${plan.latestVersion}.`);
+      break;
+    }
+  }
+  return plan;
+}
+
+/**
+ * Read-modify-write the project manifest in `folderUri`: set its target entry
+ * for `coordinate` to a caret range at `latestVersion` through the content
+ * manifest parse/serialize round trip, preserving every other field of the
+ * document. Shows an error message and writes nothing when the document
+ * cannot be read or does not parse as a content manifest.
+ */
+async function writeTargetRange(folderUri: vscode.Uri, coordinate: string, latestVersion: string): Promise<void> {
+  const manifestUri = vscode.Uri.joinPath(folderUri, MINDCRAFT_JSON);
+  let content: string;
+  try {
+    content = new TextDecoder().decode(await vscode.workspace.fs.readFile(manifestUri));
+  } catch {
+    vscode.window.showErrorMessage(`Could not read ${MINDCRAFT_JSON} to update its target entry.`);
+    return;
+  }
+  const updated = applyTargetRangeToManifest(content, coordinate, latestVersion);
+  if (!updated.ok) {
+    vscode.window.showErrorMessage(`Could not update ${MINDCRAFT_JSON} (${updated.errorCode}): ${updated.message}`);
+    return;
+  }
+  if (updated.changed) {
+    await vscode.workspace.fs.writeFile(manifestUri, new TextEncoder().encode(updated.content));
+  }
+}
+
+/**
+ * Write the `mindcraft.devTarget` setting's `appRef` as `updatedAppRef`,
+ * preserving the setting object's other fields. Writes at the configuration
+ * scope where the setting is defined (workspace when a workspace value
+ * exists, else user); when the setting is not defined at either scope, a
+ * fresh workspace-scoped setting is written.
+ */
+async function rewriteDevTargetAppRef(updatedAppRef: string): Promise<void> {
+  const configuration = vscode.workspace.getConfiguration("mindcraft");
+  const inspected = configuration.inspect<Record<string, unknown>>(DEV_TARGET_SETTING);
+  const workspaceValue = inspected?.workspaceValue;
+  const globalValue = inspected?.globalValue;
+  const current = workspaceValue ?? globalValue ?? {};
+  const target =
+    workspaceValue === undefined && globalValue !== undefined
+      ? vscode.ConfigurationTarget.Global
+      : vscode.ConfigurationTarget.Workspace;
+  await configuration.update(DEV_TARGET_SETTING, { ...current, appRef: updatedAppRef }, target);
 }
 
 /**
