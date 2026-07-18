@@ -5,6 +5,6 @@
   "files": ["index.ts", "../ambient/mindcraft.sim.d.ts"],
   "ambient": ["mindcraft.sim.d.ts"],
   "extensions": {
-    "mindcraft-lang/core": "embedded:mindcraft-lang/core"
+    "mindcraft-lang/lib-core": "embedded:mindcraft-lang/lib-core"
   }
 }

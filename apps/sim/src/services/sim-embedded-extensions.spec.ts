@@ -99,7 +99,7 @@ export default Sensor({
     // each layer's `.libraries/<owner>/<repo>/` subtree.
     const controlled = compiler.getCompilerControlledFiles();
     assert.ok(
-      controlled.has(".libraries/mindcraft-lang/core/mindcraft.core.d.ts"),
+      controlled.has(".libraries/mindcraft-lang/lib-core/mindcraft.core.d.ts"),
       "the core ambient materializes under .libraries/"
     );
     assert.ok(

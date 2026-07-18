@@ -6,7 +6,7 @@ import { embeddedExtensionsVitePlugin } from "@mindcraft-lang/bridge-app/node";
 // extension needs no change here.
 const registrations = [
   { coordinate: "mindcraft-lang/sim", dir: path.resolve(process.cwd(), "./lib") },
-  { coordinate: "mindcraft-lang/core", dir: path.resolve(process.cwd(), "../../packages/core/lib") },
+  { coordinate: "mindcraft-lang/lib-core", dir: path.resolve(process.cwd(), "../../packages/core/lib") },
   {
     coordinate: "mindcraft-lang/lib-ecosim-teleport",
     dir: path.resolve(process.cwd(), "./extensions/lib-ecosim-teleport"),
