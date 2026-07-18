@@ -3,10 +3,56 @@ import { collectUnstableDependencies } from "./dependency-stability.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import {
   isExtensionCoordinate,
+  type ProjectContentManifest,
   parseProjectContentManifest,
   readExplicitContentManifestVersion,
   serializeProjectContentManifest,
 } from "./project-content-manifest.js";
+
+/** Project-relative path of the README furniture a publish writes into a repository. */
+const README_PATH = "README.md";
+
+/**
+ * Generate the Markdown of the README a publish writes into a published
+ * repository that carries no author-provided one, so the repository is not
+ * bare. Built from the published (identity-stamped) manifest and its
+ * `<owner>/<repo>` coordinate: a top-level heading from the manifest `name`, the
+ * `description` line when the manifest carries one, the
+ * `gh:<owner>/<repo>@<version>` install reference, and a kind-conditional usage
+ * block -- an `@lib/<owner>/<repo>` import snippet for a library (a manifest
+ * without a `hostApp` bundle), or a create-a-project line for a target (a
+ * manifest with a `hostApp` bundle).
+ *
+ * @param manifest - The published manifest, after its version bump and identity stamp.
+ * @param coordinate - The `<owner>/<repo>` coordinate the project publishes under.
+ * @returns The README Markdown text.
+ */
+export function generatePublishedReadme(manifest: ProjectContentManifest, coordinate: string): string {
+  const isTarget = manifest.hostApp !== undefined;
+  const installReference = `gh:${coordinate}@${manifest.version}`;
+  const lines: string[] = [`# ${manifest.name}`, ""];
+  if (manifest.description !== undefined) {
+    lines.push(manifest.description, "");
+  }
+  if (isTarget) {
+    lines.push("Create a new project for this target:", "", "```", installReference, "```");
+  } else {
+    lines.push(
+      "Add this library to a project's dependencies:",
+      "",
+      "```",
+      installReference,
+      "```",
+      "",
+      "Then import from it:",
+      "",
+      "```ts",
+      `import { } from "@lib/${coordinate}";`,
+      "```"
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
 
 /**
  * Derive the `<owner>/<repo>` extension coordinate a git remote URL publishes
@@ -86,7 +132,9 @@ export interface ExtensionPublishCommit {
   /**
    * The published tree: the `mindcraft.json` carrying the published version
    * first, followed by each manifest-listed file and each host-app bundle
-   * file.
+   * file, and a `README.md` -- the author's own when the project carries one,
+   * otherwise one generated from the manifest -- unless the manifest already
+   * lists a `README.md`.
    */
   readonly files: readonly PublishFile[];
 }
@@ -213,8 +261,10 @@ function bumpVersion(version: string, bump: PublishVersionBump): string {
  * Publish a version of a project: reads the project's manifest, bumps its
  * `version` by `bump` (or keeps it as-is when `bump` is absent), stamps the
  * manifest's `identity` with `coordinate`, and records the published tree --
- * the published `mindcraft.json` plus every manifest-listed file and every
- * host-app bundle file -- on the target repository as a commit tagged
+ * the published `mindcraft.json`, every manifest-listed file, every host-app
+ * bundle file, and a `README.md` (the author's own, or one generated from the
+ * manifest when the project carries none, unless the manifest already lists a
+ * `README.md`) -- on the target repository as a commit tagged
  * `v<version>`. An as-is publish is a
  * first publish: it is accepted only when the target repository has no tags.
  * When the stamp replaces a different previously declared identity, the ok
@@ -304,9 +354,12 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
     return refusal(ExtensionPublishErrorCode.TAG_EXISTS, `Tag ${tag} already exists on the repository.`);
   }
 
-  const publishedManifest = serializeProjectContentManifest({ ...manifest, version, identity: coordinate });
-  const files: PublishFile[] = [{ path: MINDCRAFT_JSON_PATH, content: new TextEncoder().encode(publishedManifest) }];
-  for (const path of [...(manifest.files ?? []), ...(manifest.hostApp?.files ?? [])]) {
+  const encoder = new TextEncoder();
+  const publishedManifestData: ProjectContentManifest = { ...manifest, version, identity: coordinate };
+  const publishedManifest = serializeProjectContentManifest(publishedManifestData);
+  const files: PublishFile[] = [{ path: MINDCRAFT_JSON_PATH, content: encoder.encode(publishedManifest) }];
+  const listedPaths = [...(manifest.files ?? []), ...(manifest.hostApp?.files ?? [])];
+  for (const path of listedPaths) {
     // The manifest serialized above is the published manifest; a files entry
     // naming it must not overwrite it with the source bytes.
     if (path === MINDCRAFT_JSON_PATH) continue;
@@ -318,6 +371,18 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
       );
     }
     files.push({ path, content });
+  }
+
+  // README furniture for the published repository: skipped when the manifest
+  // already lists a README (that copy publishes as listed content). Otherwise
+  // the author's own README publishes when the project has one, and a generated
+  // README publishes when it does not.
+  if (!listedPaths.includes(README_PATH)) {
+    const authoredReadme = await source.readFile(README_PATH);
+    files.push({
+      path: README_PATH,
+      content: authoredReadme ?? encoder.encode(generatePublishedReadme(publishedManifestData, coordinate)),
+    });
   }
 
   await backend.apply({ version, tag, files });

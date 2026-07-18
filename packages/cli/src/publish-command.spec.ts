@@ -131,12 +131,41 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     assert.match(result.stdout, /published 0\.1\.1 \(tag v0\.1\.1\)/);
 
     const clone = await cloneAtTag(root, remote, "v0.1.1");
-    assert.deepEqual(await listProjectFiles(clone), ["assets/logo.bin", "index.ts", "mindcraft.json"]);
+    assert.deepEqual(await listProjectFiles(clone), ["README.md", "assets/logo.bin", "index.ts", "mindcraft.json"]);
     assert.equal(existsSync(path.join(clone, "tsconfig.json")), false);
     assert.equal(await readManifestVersion(clone), "0.1.1");
     assert.equal(await readFile(path.join(clone, "index.ts"), "utf8"), "export const blink = true;\n");
     const published = new Uint8Array(await readFile(path.join(clone, "assets/logo.bin")));
     assert.deepEqual(Array.from(published), Array.from(BINARY_CONTENT));
+  });
+
+  it("writes a generated README into the published tree without touching the manifest files list", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "example-org/blinker.git");
+    const project = path.join(root, "project");
+    await writeProjectFiles(project, {
+      "mindcraft.json": JSON.stringify(
+        { name: "Blinker", version: "0.1.0", description: "Blinks an LED.", files: ["index.ts"] },
+        null,
+        2
+      ),
+      "index.ts": "export {};\n",
+    });
+
+    const result = await runCliBin(project, "publish", "patch", "--remote", remote);
+    assert.equal(result.code, 0, result.stderr);
+
+    const clone = await cloneAtTag(root, remote, "v0.1.1");
+    assert.ok((await listProjectFiles(clone)).includes("README.md"));
+    const readme = await readFile(path.join(clone, "README.md"), "utf8");
+    assert.match(readme, /Blinker/);
+    assert.match(readme, /example-org\/blinker/);
+    assert.match(readme, /0\.1\.1/);
+    assert.match(readme, /@lib\/example-org\/blinker/);
+    const publishedManifest = JSON.parse(await readFile(path.join(clone, "mindcraft.json"), "utf8")) as {
+      files?: readonly string[];
+    };
+    assert.deepEqual(publishedManifest.files, ["index.ts"]);
   });
 
   it("carries unknown manifest fields through the bump byte-faithfully", async () => {
@@ -483,12 +512,15 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     assert.match(second.stderr, /PUBLISH_VERSION_BUMP_REQUIRED/);
   });
 
-  it("records an as-is publish as a tag only when the manifest already carries the identity", async () => {
+  it("records an as-is publish as a tag only when the tree already carries the identity and a README", async () => {
     const root = await scratch();
     const remote = await initBareRemote(root, "example-org/blinker.git");
+    // The checkout already carries a README, so the README furniture leaves the
+    // published tree identical to head and the as-is publish records a tag only.
     const checkout = await initCheckoutProject(root, remote, {
       "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0", identity: "example-org/blinker" }, null, 2),
       "index.ts": "export const blink = true;\n",
+      "README.md": "# Blinker\n",
     });
 
     const result = await runCliBin(checkout, "publish");
@@ -587,7 +619,7 @@ describe("publishing the codal-position extension content", () => {
       assert.equal(result.stdout, `published ${expectedVersion} (tag v${expectedVersion})\n`);
 
       const clone = await cloneAtTag(root, remote, `v${expectedVersion}`);
-      assert.deepEqual(await listProjectFiles(clone), ["index.ts", "mindcraft.json"]);
+      assert.deepEqual(await listProjectFiles(clone), ["README.md", "index.ts", "mindcraft.json"]);
       assert.equal(existsSync(path.join(clone, "tsconfig.json")), false);
       assert.equal(await readManifestVersion(clone), expectedVersion);
       const sourceIndex = await readFile(path.join(CODAL_POSITION_EXT_DIR, "index.ts"));

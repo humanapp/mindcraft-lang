@@ -133,7 +133,7 @@ describe("publishExtensionVersion", () => {
     assert.equal(commit.tag, "v0.1.1");
     assert.deepEqual(
       commit.files.map((file) => file.path),
-      ["mindcraft.json", "index.ts", "assets/a.bin"]
+      ["mindcraft.json", "index.ts", "assets/a.bin", "README.md"]
     );
     const published = JSON.parse(decode(commit.files[0].content)) as Record<string, unknown>;
     assert.equal(published.version, "0.1.1");
@@ -407,7 +407,7 @@ describe("publishExtensionVersion", () => {
     const commit = applied[0];
     assert.deepEqual(
       commit.files.map((file) => file.path),
-      ["mindcraft.json", "index.ts", "app/index.html", "app/assets/main.js"]
+      ["mindcraft.json", "index.ts", "app/index.html", "app/assets/main.js", "README.md"]
     );
     const published = JSON.parse(decode(commit.files[0].content)) as { hostApp?: unknown };
     assert.deepEqual(published.hostApp, { path: "app", files: ["app/index.html", "app/assets/main.js"] });
@@ -449,5 +449,107 @@ describe("publishExtensionVersion", () => {
     assert.equal(manifestEntries.length, 1);
     const published = JSON.parse(decode(manifestEntries[0].content)) as Record<string, unknown>;
     assert.equal(published.version, "0.1.1");
+  });
+
+  it("adds a generated README carrying the name, coordinate, version, and library import to a library publish", async () => {
+    const source = memorySource({
+      "mindcraft.json": manifestText({
+        name: "Position",
+        version: "0.1.0",
+        description: "Tracks the robot position.",
+        files: ["index.ts"],
+      }),
+      "index.ts": "export {};",
+    });
+    const { backend, applied } = memoryBackend();
+
+    const result = await publishExtensionVersion({ bump: "patch", coordinate: COORDINATE, source, backend });
+
+    assert.equal(result.ok, true);
+    const readme = applied[0].files.find((file) => file.path === "README.md");
+    assert.ok(readme, "the published tree includes a README.md");
+    const text = decode(readme.content);
+    assert.match(text, /Position/);
+    assert.match(text, /Tracks the robot position\./);
+    assert.match(text, /acme\/position/);
+    assert.match(text, /0\.1\.1/);
+    assert.match(text, /@lib\/acme\/position/);
+  });
+
+  it("adds a generated README with no library import to a target publish", async () => {
+    const source = memorySource({
+      "mindcraft.json": manifestText({
+        name: "Microbit V2",
+        version: "0.2.0",
+        files: ["index.ts"],
+        hostApp: { path: "app", files: ["app/index.html"] },
+      }),
+      "index.ts": "export {};",
+      "app/index.html": "<!doctype html>",
+    });
+    const { backend, applied } = memoryBackend();
+
+    const result = await publishExtensionVersion({ bump: "minor", coordinate: COORDINATE, source, backend });
+
+    assert.equal(result.ok, true);
+    const readme = applied[0].files.find((file) => file.path === "README.md");
+    assert.ok(readme, "the published tree includes a README.md");
+    const text = decode(readme.content);
+    assert.match(text, /Microbit V2/);
+    assert.match(text, /acme\/position/);
+    assert.match(text, /0\.3\.0/);
+    assert.doesNotMatch(text, /@lib\//);
+  });
+
+  it("publishes the author's own README byte-for-byte and does not generate one", async () => {
+    const authored = "# Written by the author\n\nCustom prose the generator would never produce.\n";
+    const source = memorySource({
+      "mindcraft.json": manifestText({ name: "Position", version: "0.1.0", files: ["index.ts"] }),
+      "index.ts": "export {};",
+      "README.md": authored,
+    });
+    const { backend, applied } = memoryBackend();
+
+    const result = await publishExtensionVersion({ bump: "patch", coordinate: COORDINATE, source, backend });
+
+    assert.equal(result.ok, true);
+    const readme = applied[0].files.find((file) => file.path === "README.md");
+    assert.ok(readme, "the published tree includes a README.md");
+    assert.equal(decode(readme.content), authored);
+    // A generated README carries the install reference; the author's does not.
+    assert.doesNotMatch(decode(readme.content), /gh:acme\/position/);
+  });
+
+  it("leaves the published manifest's files array unchanged by the README furniture", async () => {
+    const source = memorySource({
+      "mindcraft.json": manifestText({ name: "Position", version: "0.1.0", files: ["index.ts"] }),
+      "index.ts": "export {};",
+    });
+    const { backend, applied } = memoryBackend();
+
+    const result = await publishExtensionVersion({ bump: "patch", coordinate: COORDINATE, source, backend });
+
+    assert.equal(result.ok, true);
+    const published = JSON.parse(decode(applied[0].files[0].content)) as { files?: readonly string[] };
+    assert.deepEqual(published.files, ["index.ts"]);
+    assert.ok(applied[0].files.some((file) => file.path === "README.md"));
+  });
+
+  it("does not add README furniture when the manifest already lists a README", async () => {
+    const source = memorySource({
+      "mindcraft.json": manifestText({ name: "Position", version: "0.1.0", files: ["index.ts", "README.md"] }),
+      "index.ts": "export {};",
+      "README.md": "# listed readme\n",
+    });
+    const { backend, applied } = memoryBackend();
+
+    const result = await publishExtensionVersion({ bump: "patch", coordinate: COORDINATE, source, backend });
+
+    assert.equal(result.ok, true);
+    const readmes = applied[0].files.filter((file) => file.path === "README.md");
+    assert.equal(readmes.length, 1);
+    assert.equal(decode(readmes[0].content), "# listed readme\n");
+    const published = JSON.parse(decode(applied[0].files[0].content)) as { files?: readonly string[] };
+    assert.deepEqual(published.files, ["index.ts", "README.md"]);
   });
 });

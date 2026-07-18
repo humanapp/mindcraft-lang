@@ -74,7 +74,7 @@ describe("export to published repository", () => {
       assert.match(published.stdout, new RegExp(`published ${version.replaceAll(".", "\\.")} \\(tag ${tag}\\)`));
 
       const clone = await cloneAtTag(root, remote, tag);
-      const expectedTree = [...contentPaths, "mindcraft.json"].sort();
+      const expectedTree = [...contentPaths, "mindcraft.json", "README.md"].sort();
       assert.deepEqual(await listProjectFiles(clone), expectedTree);
       for (const contentPath of contentPaths) {
         assert.equal(await readFile(path.join(clone, contentPath), "utf8"), document.contents[contentPath]);
