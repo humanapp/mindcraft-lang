@@ -4,9 +4,9 @@
     {
       "kind": "library",
       "coordinate": "mindcraft-lang/trg-microbit-v2",
-      "ref": "gh:mindcraft-lang/trg-microbit-v2@e2c99284e5ea80fcd16a4b75d9cc945510baaf5e",
+      "ref": "gh:mindcraft-lang/trg-microbit-v2@c6cfc18d88a6c475be7af63cd6529480d444d8e4",
       "name": "micro:bit v2",
-      "version": "0.3.0",
+      "version": "0.7.0",
       "description": "Program the BBC micro:bit (v2) with Mindcraft."
     }
   ]

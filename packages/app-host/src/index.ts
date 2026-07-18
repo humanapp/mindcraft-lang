@@ -61,7 +61,6 @@ export {
   createJsDelivrExtensionTransport,
   GITHUB_API_BASE_URL,
   JSDELIVR_CDN_BASE_URL,
-  JSDELIVR_DATA_API_BASE_URL,
 } from "./jsdelivr-extension-transport.js";
 export { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 export { diffMindcraftJsonToManifest, syncManifestToMindcraftJson } from "./mindcraft-json-sync.js";

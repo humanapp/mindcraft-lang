@@ -538,7 +538,7 @@ describe("extension install pipeline", () => {
 
     const world: ProjectWorld = { appData: new Map(), extensions: {} };
     const host = createHost(world, {
-      transport: createJsDelivrExtensionTransport({ cdnBaseUrl: baseUrl, dataApiBaseUrl: baseUrl }),
+      transport: createJsDelivrExtensionTransport({ cdnBaseUrl: baseUrl }),
       hostFiles: { "main.ts": HOST_IMPORTS_POSITION },
     });
 

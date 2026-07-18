@@ -165,6 +165,26 @@ export interface FolderVolumeWriteMessage {
   payload: FolderVolumeWritePayload;
 }
 
+/** Payload of a {@link FolderOpenExternalDocumentMessage}. */
+export interface FolderOpenExternalDocumentPayload {
+  /** Full text of the self-contained HTML document to open externally. */
+  html: string;
+}
+
+/**
+ * Asks the host to open a self-contained HTML document in the user's default
+ * external application (the system browser). The host writes it to a temporary
+ * file and opens that file; the document is app-generated content, opened
+ * outside the embedding surface. The host replies with {@link FolderAckMessage}
+ * carrying the same `id`, or {@link FolderErrorMessage} when it cannot be
+ * written or opened.
+ */
+export interface FolderOpenExternalDocumentMessage {
+  type: "folder:openExternalDocument";
+  id?: string;
+  payload: FolderOpenExternalDocumentPayload;
+}
+
 /** Confirms that the request with the same `id` was applied. */
 export interface FolderAckMessage {
   type: "folder:ack";
@@ -249,6 +269,7 @@ export type FolderAppMessage =
   | FolderChangeMessage
   | FolderManifestWriteMessage
   | FolderVolumeWriteMessage
+  | FolderOpenExternalDocumentMessage
   | FolderDiagnosticsMessage
   | FolderCompilerFilesMessage;
 

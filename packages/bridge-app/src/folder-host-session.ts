@@ -85,6 +85,13 @@ export interface FolderHostSession {
    */
   writeRemovableVolumeFile(volumeName: string, filename: string, contents: string): Promise<void>;
   /**
+   * Ask the host to open a self-contained HTML document in the user's default
+   * external application (the system browser). Resolves when the host has
+   * opened it; rejects with {@link FolderSessionError} when the host cannot
+   * write or open it.
+   */
+  openExternalDocument(html: string): Promise<void>;
+  /**
    * Subscribe to project file changes observed on disk outside the app. Each
    * change has already been absorbed by the session's store; apply it to the
    * live project file system. Changes received before the first listener
@@ -179,6 +186,9 @@ export async function connectFolderHostSession(options: FolderHostSessionOptions
     },
     async writeRemovableVolumeFile(volumeName: string, filename: string, contents: string): Promise<void> {
       await rpc.request({ type: "folder:volumeWrite", payload: { volumeName, filename, contents } });
+    },
+    async openExternalDocument(html: string): Promise<void> {
+      await rpc.request({ type: "folder:openExternalDocument", payload: { html } });
     },
     onExternalChange(listener: (change: ProjectFileChange) => void): () => void {
       externalChangeListeners.add(listener);

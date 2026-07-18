@@ -170,8 +170,8 @@ describe("live jsDelivr probes (self-skipping offline)", () => {
     if (!online) return t.skip("jsDelivr is unreachable");
 
     const transport = createJsDelivrExtensionTransport();
-    // Finding: /v1/packages/gh/<owner>/<repo> lists the repository's tags as
-    // versions with a leading "v" stripped; the tag v0.1.0 lists as "0.1.0".
+    // Finding: /repos/<owner>/<repo>/tags lists the repository's tags by name;
+    // the transport strips a leading "v", so the tag v0.1.0 lists as "0.1.0".
     const listed = await transport.listVersionTags("mindcraft-lang", "lib-codal-position");
     t.diagnostic(`listVersionTags -> ${JSON.stringify(listed)}`);
     assert.ok(listed.ok);

@@ -610,8 +610,8 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
 // ---------------------------------------------------------------------------
 
 function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }) {
-  const { close, activeTab, navKey, navTab, registry, showDocsPageLinks } = useDocsSidebar();
-  const { printContent, triggerPrint, getPrintRoot } = useDocsPrint();
+  const { close, activeTab, navKey, navTab, registry, showDocsPageLinks, printTransport } = useDocsSidebar();
+  const { printContent, triggerPrint, getPrintRoot } = useDocsPrint(printTransport);
 
   // Resolve the current detail content for the print button
   const detailContent = useMemo(() => {
@@ -686,8 +686,8 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
 // ---------------------------------------------------------------------------
 
 function MobilePanel() {
-  const { close, navKey, navTab, registry } = useDocsSidebar();
-  const { printContent, triggerPrint, getPrintRoot } = useDocsPrint();
+  const { close, navKey, navTab, registry, printTransport } = useDocsSidebar();
+  const { printContent, triggerPrint, getPrintRoot } = useDocsPrint(printTransport);
 
   const detailContent = useMemo(() => {
     if (!navKey || !navTab) return null;

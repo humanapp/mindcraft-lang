@@ -4,7 +4,6 @@ import type {
   ProjectContentManifest,
 } from "@mindcraft-lang/app-host";
 import {
-  checkExtensionReferenceUpdate,
   createJsDelivrExtensionTransport,
   ExtensionFetchErrorCode,
   fetchExtensionSnapshot,
@@ -20,7 +19,7 @@ import type {
   TargetAppSource,
 } from "./target-app-cache";
 import { ensureCachedTargetAppInStore } from "./target-app-cache";
-import type { TargetReleaseListing, TargetUpdateCheckResult } from "./target-update";
+import type { TargetReleaseListing } from "./target-update";
 
 /** Test-installed transport replacing the live jsDelivr transport when set. */
 let testTransport: (ExtensionFetchTransport & { calls: number }) | undefined;
@@ -199,36 +198,8 @@ export async function ensureCachedTargetApp(
   }
 }
 
-/** Timeout in milliseconds bounding each live network request of a pin update check. */
+/** Timeout in milliseconds bounding each live network request of a version listing. */
 const UPDATE_CHECK_FETCH_TIMEOUT_MS = 15000;
-
-/**
- * Check the pinned target-app `reference` for a newer published release: the
- * installed version is read from the cached bundle's manifest (fetching and
- * caching the bundle first when it is not cached yet), then compared against
- * the source's published version listing. Every live network request is
- * bounded by a per-request timeout, so the check always settles. Returns the
- * newer reference to install, an up-to-date result, or a failure carrying a
- * stable code.
- */
-export async function checkTargetAppPinUpdate(
-  context: vscode.ExtensionContext,
-  reference: string
-): Promise<TargetUpdateCheckResult> {
-  const transport = activeTargetAppTransport(UPDATE_CHECK_FETCH_TIMEOUT_MS);
-  const ensured = await ensureCachedTargetApp(context, reference, transport);
-  if (!ensured.ok) {
-    return { ok: false, error: { code: ensured.code, message: ensured.message } };
-  }
-  const parsed = parseExtensionReference(reference);
-  const installedSpecifier = parsed?.transport === "gh" && parsed.routing.kind === "pin" ? parsed.routing.pin : "";
-  return checkExtensionReferenceUpdate({
-    reference,
-    installedSpecifier,
-    installedVersion: ensured.manifest.version,
-    transport,
-  });
-}
 
 /**
  * List the newest published plain `x.y.z` release of the target package at

@@ -1,4 +1,4 @@
-import type { ExtensionCatalogDocumentEntry } from "@mindcraft-lang/app-host";
+import { type ExtensionCatalogDocumentEntry, parseExtensionReference } from "@mindcraft-lang/app-host";
 import * as vscode from "vscode";
 import { MINDCRAFT_JSON } from "../mindcraft-json";
 import {
@@ -15,24 +15,24 @@ import {
   resolveTargetAppRoot,
 } from "../services/folder-target-resolver";
 import { buildProjectSkeleton, DEV_TARGET_SETTING, readDevTargetDescriptor } from "../services/project-skeleton";
-import {
-  checkTargetAppPinUpdate,
-  ensureCachedTargetApp,
-  listLatestTargetRelease,
-} from "../services/target-app-cache-host";
+import { ensureCachedTargetApp, listLatestTargetRelease } from "../services/target-app-cache-host";
 import {
   findTargetRegistryEntry,
   type ProjectTargetResolution,
   registryProjectSeed,
+  resolveProjectTargetDescriptor,
   TargetResolutionErrorCode,
   targetRegistryEntries,
   targetRegistryPickItems,
 } from "../services/target-registry";
 import {
   applyTargetRangeToManifest,
-  planTargetUpdate,
+  resolveTargetUpdateAction,
+  specificAppRef,
+  type TargetUpdateChoice,
+  type TargetUpdateCommandResult,
   TargetUpdateOutcome,
-  type TargetUpdatePlan,
+  targetUpdateChoices,
 } from "../services/target-update";
 import { ACTUATOR_SCAFFOLD, findUniqueFolderName, SENSOR_SCAFFOLD, type TileScaffold } from "../services/tile-scaffold";
 
@@ -62,76 +62,165 @@ export function registerFolderCommands(context: vscode.ExtensionContext): void {
 }
 
 /**
- * Update the project and its hosted editor to the latest published release of
- * the project's target: resolve the target coordinate (the
- * `mindcraft.devTarget` setting's `appRef` when set, else the project
- * manifest's registry-listed target), set the project manifest's target entry
- * to a caret range at the newest published release, write the `devTarget`
- * `appRef` pin at that release, and reopen the editor. Resolves with the
- * run's plan, carrying its stable outcome code.
+ * Update the project and its hosted editor to a chosen version of the project's
+ * target. Resolves the target coordinate (the `mindcraft.devTarget` setting's
+ * `appRef` when set, else the project manifest's registry-listed target), then
+ * offers a quick-pick built from the bundled registry and the published version
+ * listing: the registry-approved version, the highest published release when it
+ * is newer, and a specific tag/SHA/`#branch`. The selection sets the manifest's
+ * target range and either clears the `appRef` override (approved) or writes it
+ * pinned at the chosen version (published or specific), then reopens the editor.
+ * Resolves with the run's stable outcome code.
  */
-async function updateTarget(context: vscode.ExtensionContext): Promise<TargetUpdatePlan> {
+async function updateTarget(context: vscode.ExtensionContext): Promise<TargetUpdateCommandResult> {
   const candidates = await findProjectFolderCandidates();
   if (candidates.length === 0) {
     vscode.window.showInformationMessage(`Open a workspace folder containing ${MINDCRAFT_JSON} first.`);
-    return { outcome: TargetUpdateOutcome.NOT_UPDATABLE };
+    return { outcome: TargetUpdateOutcome.NOT_APPLICABLE };
   }
   const folder = await pickFolder(candidates);
   if (!folder) {
-    return { outcome: TargetUpdateOutcome.NOT_UPDATABLE };
+    return { outcome: TargetUpdateOutcome.CANCELLED };
   }
+  const coordinate = await resolveUpdateTargetCoordinate(folder.uri);
+  if (coordinate === undefined) {
+    vscode.window.showInformationMessage("This project resolves no target to update.");
+    return { outcome: TargetUpdateOutcome.NOT_APPLICABLE };
+  }
+  const approvedVersion = findTargetRegistryEntry(coordinate)?.version;
+  const listed = await listLatestTargetRelease(coordinate);
+  const latestPublished = listed.ok ? listed.latestRelease : undefined;
+  const choice = await pickUpdateChoice(targetUpdateChoices({ approvedVersion, latestPublished }));
+  if (choice === undefined) {
+    return { outcome: TargetUpdateOutcome.CANCELLED };
+  }
+
+  let action: ReturnType<typeof resolveTargetUpdateAction>;
+  if (choice.kind === "approved") {
+    action = resolveTargetUpdateAction({ kind: "approved", coordinate, version: choice.version });
+  } else if (choice.kind === "published") {
+    action = resolveTargetUpdateAction({ kind: "published", coordinate, version: choice.version });
+  } else {
+    const entered = (await promptSpecificReference())?.trim();
+    if (!entered) {
+      return { outcome: TargetUpdateOutcome.CANCELLED };
+    }
+    const appRef = specificAppRef(coordinate, entered);
+    const ensured = await ensureCachedTargetApp(context, appRef);
+    if (!ensured.ok) {
+      vscode.window.showErrorMessage(`Could not fetch the target "${appRef}" (${ensured.code}): ${ensured.message}`);
+      return { outcome: TargetUpdateOutcome.FETCH_FAILED };
+    }
+    action = resolveTargetUpdateAction({
+      kind: "specific",
+      coordinate,
+      reference: entered,
+      version: ensured.manifest.version,
+    });
+  }
+
+  disposeActiveFolderSession();
+  await writeTargetRange(folder.uri, action.coordinate, action.version);
+  if (action.appRef.op === "clear") {
+    await clearDevTargetAppRef();
+  } else {
+    await rewriteDevTargetAppRef(action.appRef.reference);
+  }
+  await openProjectFolder(context);
+  vscode.window.showInformationMessage(`Updated ${action.coordinate} to ${action.version}.`);
+  return {
+    outcome: TargetUpdateOutcome.UPDATED,
+    coordinate: action.coordinate,
+    version: action.version,
+    ...(action.appRef.op === "write" ? { appRef: action.appRef.reference } : {}),
+  };
+}
+
+/**
+ * The target coordinate the Update Target command acts on: the
+ * `mindcraft.devTarget` setting's `appRef` coordinate when set, else the
+ * project manifest's registry-membership match. Returns undefined when neither
+ * yields a `gh:` coordinate.
+ */
+async function resolveUpdateTargetCoordinate(folderUri: vscode.Uri): Promise<string | undefined> {
   const appRef = readDevTargetDescriptor()?.appRef;
-  let registryAppRef: string | undefined;
-  if (appRef === undefined) {
-    const resolution = await resolveFolderTargetDescriptor(folder.uri);
-    registryAppRef = resolution.ok ? resolution.descriptor.appRef : undefined;
-    if (registryAppRef === undefined) {
-      vscode.window.showInformationMessage("The project resolves no published target to update.");
-      return { outcome: TargetUpdateOutcome.NOT_UPDATABLE };
-    }
+  if (appRef !== undefined) {
+    return referenceCoordinate(appRef);
   }
-  const plan = await planTargetUpdate(
-    { appRef, registryAppRef, manifestRanges: await readDeclaredTargetRanges(folder.uri) },
-    {
-      listLatestRelease: (coordinate) => listLatestTargetRelease(coordinate),
-      checkPinUpdate: (reference) => checkTargetAppPinUpdate(context, reference),
-    }
+  const declaredCoordinates = Object.keys(await readDeclaredTargetRanges(folderUri));
+  const resolution = resolveProjectTargetDescriptor(undefined, declaredCoordinates, targetRegistryEntries());
+  return resolution.ok && resolution.descriptor.appRef !== undefined
+    ? referenceCoordinate(resolution.descriptor.appRef)
+    : undefined;
+}
+
+/** The `<owner>/<repo>` coordinate of a `gh:` reference, or undefined for any other reference. */
+function referenceCoordinate(reference: string): string | undefined {
+  const parsed = parseExtensionReference(reference);
+  return parsed?.transport === "gh" ? `${parsed.owner}/${parsed.repo}` : undefined;
+}
+
+let testUpdateChoiceKind: TargetUpdateChoice["kind"] | undefined;
+let testUpdateSpecificInput: string | undefined;
+
+/**
+ * Test-only: preselect the Update Target quick-pick choice by kind
+ * (`"approved"`, `"published"`, or `"specific"`), or clear the preselection
+ * when `kind` is undefined.
+ */
+export function installTestTargetUpdatePick(kind: TargetUpdateChoice["kind"] | undefined): void {
+  testUpdateChoiceKind = kind;
+}
+
+/**
+ * Test-only: preseed the specific-version input box's value, or clear it when
+ * `value` is undefined so the input box is shown.
+ */
+export function installTestTargetUpdateSpecificInput(value: string | undefined): void {
+  testUpdateSpecificInput = value;
+}
+
+/**
+ * Quick-pick one Update Target choice. Returns the choice matching the
+ * test-installed kind when one is set; otherwise shows the quick-pick and
+ * returns the picked choice, or undefined when dismissed.
+ */
+async function pickUpdateChoice(choices: readonly TargetUpdateChoice[]): Promise<TargetUpdateChoice | undefined> {
+  if (testUpdateChoiceKind !== undefined) {
+    return choices.find((choice) => choice.kind === testUpdateChoiceKind);
+  }
+  const picked = await vscode.window.showQuickPick(
+    choices.map((choice) => ({ label: updateChoiceLabel(choice), choice })),
+    { placeHolder: "Update the project's target" }
   );
-  switch (plan.outcome) {
-    case TargetUpdateOutcome.NOT_UPDATABLE:
-      break;
-    case TargetUpdateOutcome.UP_TO_DATE:
-      vscode.window.showInformationMessage(`${plan.coordinate} is already up to date (${plan.latestVersion}).`);
-      break;
-    case TargetUpdateOutcome.CHECK_FAILED:
-      vscode.window.showErrorMessage(`Could not check for a newer target (${plan.errorCode}): ${plan.message}`);
-      break;
-    case TargetUpdateOutcome.REBUILD_BRANCH:
-      disposeActiveFolderSession();
-      if (plan.updateManifest && plan.latestVersion !== undefined) {
-        await writeTargetRange(folder.uri, plan.coordinate, plan.latestVersion);
-      }
-      await openProjectFolder(context);
-      vscode.window.showInformationMessage(
-        plan.updateManifest && plan.latestVersion !== undefined
-          ? `Updated ${plan.coordinate} to ${plan.latestVersion} and reloaded the editor from branch "${plan.branch}".`
-          : `Reloaded the editor from the latest commit of branch "${plan.branch}".`
-      );
-      break;
-    case TargetUpdateOutcome.APPLY: {
-      disposeActiveFolderSession();
-      if (plan.updateManifest) {
-        await writeTargetRange(folder.uri, plan.coordinate, plan.latestVersion);
-      }
-      if (plan.updatedAppRef !== undefined) {
-        await rewriteDevTargetAppRef(plan.updatedAppRef);
-      }
-      await openProjectFolder(context);
-      vscode.window.showInformationMessage(`Updated ${plan.coordinate} to ${plan.latestVersion}.`);
-      break;
-    }
+  return picked?.choice;
+}
+
+/** The quick-pick caption for an Update Target choice. */
+function updateChoiceLabel(choice: TargetUpdateChoice): string {
+  switch (choice.kind) {
+    case "approved":
+      return `Latest stable (${choice.version})`;
+    case "published":
+      return `Latest development (${choice.version})`;
+    case "specific":
+      return "Specific version...";
   }
-  return plan;
+}
+
+/**
+ * Prompt for a specific target reference. Returns the test-installed value when
+ * one is set; otherwise shows the input box and returns the entered text, or
+ * undefined when dismissed.
+ */
+async function promptSpecificReference(): Promise<string | undefined> {
+  if (testUpdateSpecificInput !== undefined) {
+    return testUpdateSpecificInput;
+  }
+  return vscode.window.showInputBox({
+    prompt: "Enter a version tag, commit SHA, or #branch",
+    placeHolder: "v1.2.3",
+  });
 }
 
 /**
@@ -178,6 +267,28 @@ async function rewriteDevTargetAppRef(updatedAppRef: string): Promise<void> {
       ? vscode.ConfigurationTarget.Global
       : vscode.ConfigurationTarget.Workspace;
   await configuration.update(DEV_TARGET_SETTING, { ...current, appRef: updatedAppRef }, target);
+}
+
+/**
+ * Remove the `mindcraft.devTarget` setting's `appRef` at the configuration
+ * scope where the setting is defined, preserving the setting object's other
+ * fields (for example `appPath`). Clears the whole setting when `appRef` was
+ * its only field. Does nothing when no `appRef` is defined at either scope.
+ */
+async function clearDevTargetAppRef(): Promise<void> {
+  const configuration = vscode.workspace.getConfiguration("mindcraft");
+  const inspected = configuration.inspect<Record<string, unknown>>(DEV_TARGET_SETTING);
+  const workspaceValue = inspected?.workspaceValue;
+  const globalValue = inspected?.globalValue;
+  const defined = workspaceValue ?? globalValue;
+  if (defined === undefined || defined.appRef === undefined) {
+    return;
+  }
+  const target =
+    workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+  const rest: Record<string, unknown> = { ...defined };
+  delete rest.appRef;
+  await configuration.update(DEV_TARGET_SETTING, Object.keys(rest).length > 0 ? rest : undefined, target);
 }
 
 /**

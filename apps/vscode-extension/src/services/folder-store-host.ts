@@ -15,9 +15,11 @@ import {
 import * as vscode from "vscode";
 import { MINDCRAFT_JSON } from "../mindcraft-json";
 import type { DiagnosticsManager } from "./diagnostics-manager";
+import type { ExternalDocumentAccess } from "./external-document";
+import { openExternalHtmlDocument } from "./external-document";
 import { containedRelativePath, isSafeRelativePath } from "./path-confinement";
 import type { AffordanceFileAccess } from "./project-affordances";
-import { ProjectAffordanceWriter } from "./project-affordances";
+import { GITIGNORE_PATH, ProjectAffordanceWriter, updatedGitignoreContent } from "./project-affordances";
 import type { RemovableVolumeFileAccess, RemovableVolumeRoot } from "./removable-volume";
 import { DEFAULT_REMOVABLE_VOLUME_ROOTS, writeFileToRemovableVolume } from "./removable-volume";
 
@@ -44,6 +46,8 @@ export class FolderStoreHost {
   private readonly selfWriteLog = new Map<string, string>();
   /** Writer materializing the app's compiler-controlled files into the project folder. */
   private readonly affordanceWriter: ProjectAffordanceWriter;
+  /** Reused scratch file printable documents are written to before opening externally. */
+  private readonly externalDocumentAccess: ExternalDocumentAccess;
 
   constructor(
     folder: vscode.Uri,
@@ -56,6 +60,7 @@ export class FolderStoreHost {
     this.diagnostics = diagnostics;
     this.onHandshakeComplete = onHandshakeComplete;
     this.affordanceWriter = new ProjectAffordanceWriter(this.createAffordanceFileAccess());
+    this.externalDocumentAccess = createExternalDocumentAccess(this.folder);
   }
 
   /** Handle one message posted by the embedded app. */
@@ -79,6 +84,9 @@ export class FolderStoreHost {
         return;
       case "folder:volumeWrite":
         await this.handleVolumeWrite(message.id, message.payload);
+        return;
+      case "folder:openExternalDocument":
+        await this.handleOpenExternalDocument(message.id, message.payload);
         return;
       case "folder:diagnostics":
         if (message.payload) {
@@ -393,6 +401,33 @@ export class FolderStoreHost {
   }
 
   /**
+   * Handle one open-external-document request: write the app-generated HTML to
+   * the reused temporary document file and open it in the user's default
+   * external application. Posts the reply to the app.
+   */
+  async handleOpenExternalDocument(
+    id: string | undefined,
+    payload: unknown,
+    access: ExternalDocumentAccess = this.externalDocumentAccess
+  ): Promise<void> {
+    const request = payload as { html?: unknown } | undefined;
+    if (typeof request?.html !== "string") {
+      this.postError(
+        id,
+        FolderSessionErrorCode.INVALID_PAYLOAD,
+        "folder:openExternalDocument payload failed validation"
+      );
+      return;
+    }
+    const outcome = await openExternalHtmlDocument(request.html, access);
+    if (!outcome.ok) {
+      this.postError(id, outcome.code, outcome.message);
+      return;
+    }
+    this.postToApp({ type: "folder:ack", id });
+  }
+
+  /**
    * Materialize the app's compiler-controlled file set into the project
    * folder. Every path must be a normalized project-relative path; a payload
    * naming a path outside the project is refused whole.
@@ -566,6 +601,53 @@ const removableVolumeFileAccess: RemovableVolumeFileAccess = {
     await vscode.workspace.fs.writeFile(vscode.Uri.file(path), new TextEncoder().encode(contents));
   },
 };
+
+/** Host-local scratch directory printable documents are written into, under the project folder. */
+const SCRATCH_DIRECTORY = ".mindcraft";
+
+/** Name of the reused scratch file printable documents are written to under {@link SCRATCH_DIRECTORY}. */
+const EXTERNAL_DOCUMENT_FILENAME = "print.html";
+
+/** The `.gitignore` entry ignoring the whole scratch directory. */
+const SCRATCH_GITIGNORE_ENTRY = `${SCRATCH_DIRECTORY}/`;
+
+/**
+ * External-document access over the workbench file system and the host's
+ * default external opener: writes the document to a reused file under the
+ * project folder's `.mindcraft` scratch directory (a real `file:` path in the
+ * desktop host), ensures that directory is gitignored, then opens the file.
+ * The file is overwritten each call.
+ */
+function createExternalDocumentAccess(folder: vscode.Uri): ExternalDocumentAccess {
+  const scratchUri = vscode.Uri.joinPath(folder, SCRATCH_DIRECTORY);
+  const documentUri = vscode.Uri.joinPath(scratchUri, EXTERNAL_DOCUMENT_FILENAME);
+  const gitignoreUri = vscode.Uri.joinPath(folder, GITIGNORE_PATH);
+  return {
+    async writeTempDocument(html: string): Promise<string> {
+      await ensureScratchGitignored(gitignoreUri);
+      await vscode.workspace.fs.createDirectory(scratchUri);
+      await vscode.workspace.fs.writeFile(documentUri, new TextEncoder().encode(html));
+      return documentUri.toString();
+    },
+    async openExternal(target: string): Promise<void> {
+      await vscode.env.openExternal(vscode.Uri.parse(target));
+    },
+  };
+}
+
+/** Append the scratch-directory entry to the project's `.gitignore` when absent; a no-op when present. */
+async function ensureScratchGitignored(gitignoreUri: vscode.Uri): Promise<void> {
+  let existing: string | undefined;
+  try {
+    existing = new TextDecoder().decode(await vscode.workspace.fs.readFile(gitignoreUri));
+  } catch {
+    existing = undefined;
+  }
+  const updated = updatedGitignoreContent(existing, [SCRATCH_GITIGNORE_ENTRY]);
+  if (updated !== undefined) {
+    await vscode.workspace.fs.writeFile(gitignoreUri, new TextEncoder().encode(updated));
+  }
+}
 
 function etagFromStat(stat: vscode.FileStat): string {
   return `${stat.mtime}-${stat.size}`;

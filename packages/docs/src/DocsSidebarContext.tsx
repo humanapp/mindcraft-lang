@@ -13,6 +13,7 @@ import {
 } from "@mindcraft-lang/core/brain/tiles";
 import type { TileSourceLibrary } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
+import type { PrintTransport } from "@mindcraft-lang/ui/print/standalone-print-document";
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import { DocsRegistry } from "./DocsRegistry";
 
@@ -33,6 +34,11 @@ interface DocsSidebarContextValue {
   dataTypeIcons: ReadonlyMap<string, string> | undefined;
   /** Whether panel entries and the panel header link to the app's standalone docs pages. */
   showDocsPageLinks: boolean;
+  /**
+   * Sink for the printable doc-page document when the host cannot open the
+   * browser print dialog; when absent, printing calls `window.print()`.
+   */
+  printTransport: PrintTransport | undefined;
   resolveTileVisual: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** The key of the entry currently shown in detail view, or null for list view. */
   navKey: string | null;
@@ -85,6 +91,11 @@ interface DocsSidebarProviderProps {
   dataTypeIcons?: ReadonlyMap<string, string>;
   /** Whether panel entries and the panel header link to the app's standalone docs pages (default true). */
   showDocsPageLinks?: boolean;
+  /**
+   * Sink for the printable doc-page document when the host cannot open the
+   * browser print dialog; when absent, printing calls `window.print()`.
+   */
+  printTransport?: PrintTransport;
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Initial active tab (defaults to "tiles"). */
   initialTab?: DocTab;
@@ -107,6 +118,7 @@ export function DocsSidebarProvider({
   dataTypeNames,
   dataTypeIcons,
   showDocsPageLinks,
+  printTransport,
   resolveTileVisual: resolveTileVisualProp,
   initialTab,
   initialNavKey,
@@ -187,6 +199,7 @@ export function DocsSidebarProvider({
     dataTypeNames,
     dataTypeIcons,
     showDocsPageLinks: showDocsPageLinks ?? true,
+    printTransport,
     resolveTileVisual,
     navKey,
     navTab,

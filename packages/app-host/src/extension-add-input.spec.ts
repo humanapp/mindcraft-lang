@@ -156,27 +156,20 @@ describe("resolveExtensionAddInput", () => {
   });
 });
 
-describe("resolveExtensionAddInput against a local server with the jsDelivr data API layout", () => {
+describe("resolveExtensionAddInput against a local server with the GitHub tags API layout", () => {
   let server: Server;
   let baseUrl: string;
 
   before(async () => {
     server = createServer((request, response) => {
       const url = new URL(request.url ?? "/", baseUrl);
-      if (url.pathname === "/v1/packages/gh/example-org/position-ext") {
+      if (url.pathname === "/repos/example-org/position-ext/tags") {
         response.setHeader("content-type", "application/json");
-        response.end(
-          JSON.stringify({
-            type: "gh",
-            name: "example-org/position-ext",
-            tags: {},
-            versions: [{ version: "0.1.0" }, { version: "0.2.0" }],
-          })
-        );
+        response.end(JSON.stringify([{ name: "v0.1.0" }, { name: "v0.2.0" }]));
         return;
       }
       response.statusCode = 404;
-      response.end(JSON.stringify({ status: 404, message: "Couldn't find the requested package." }));
+      response.end(JSON.stringify({ status: 404, message: "Not Found" }));
     });
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", resolve);
@@ -191,7 +184,6 @@ describe("resolveExtensionAddInput against a local server with the jsDelivr data
   it("normalizes a pasted repository URL to the highest listed version through the real transport", async () => {
     const transport = createJsDelivrExtensionTransport({
       cdnBaseUrl: baseUrl,
-      dataApiBaseUrl: baseUrl,
       githubApiBaseUrl: baseUrl,
     });
     const resolved = await resolveExtensionAddInput("https://github.com/example-org/position-ext", transport);

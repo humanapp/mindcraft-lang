@@ -87,6 +87,14 @@ describe("updatedGitignoreContent", () => {
     assert.ok(content.includes(".libraries/"));
     assert.ok(content.includes("\ntsconfig.json"));
   });
+
+  it("appends caller-supplied entries and no-ops once they are covered", () => {
+    const added = updatedGitignoreContent("node_modules/\n", [".mindcraft/"]);
+    assert.ok(added);
+    assert.ok(added.startsWith("node_modules/\n"));
+    assert.ok(added.slice("node_modules/\n".length).includes(".mindcraft/"));
+    assert.equal(updatedGitignoreContent("node_modules/\n.mindcraft/\n", [".mindcraft/"]), undefined);
+  });
 });
 
 describe("ProjectAffordanceWriter", () => {

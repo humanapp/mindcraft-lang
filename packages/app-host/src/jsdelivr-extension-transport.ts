@@ -8,19 +8,14 @@ import type {
 /** Default base URL of the jsDelivr CDN serving GitHub repository files. */
 export const JSDELIVR_CDN_BASE_URL = "https://cdn.jsdelivr.net";
 
-/** Default base URL of the jsDelivr data API. */
-export const JSDELIVR_DATA_API_BASE_URL = "https://data.jsdelivr.com";
-
-/** Default base URL of the GitHub REST API answering branch resolution requests. */
+/** Default base URL of the GitHub REST API answering branch and tag requests. */
 export const GITHUB_API_BASE_URL = "https://api.github.com";
 
 /** Options for {@link createJsDelivrExtensionTransport}. */
 export interface JsDelivrExtensionTransportOptions {
   /** Base URL serving `/gh/<owner>/<repo>@<pin>/<path>` file requests. Defaults to {@link JSDELIVR_CDN_BASE_URL}. */
   readonly cdnBaseUrl?: string;
-  /** Base URL of the data API answering version-listing requests. Defaults to {@link JSDELIVR_DATA_API_BASE_URL}. */
-  readonly dataApiBaseUrl?: string;
-  /** Base URL of the GitHub REST API answering branch resolution requests. Defaults to {@link GITHUB_API_BASE_URL}. */
+  /** Base URL of the GitHub REST API answering branch and tag requests. Defaults to {@link GITHUB_API_BASE_URL}. */
   readonly githubApiBaseUrl?: string;
   /** Fetch implementation. Defaults to the global `fetch`. */
   readonly fetchImpl?: typeof fetch;
@@ -45,14 +40,13 @@ function isGithubRateLimited(response: Response): boolean {
  * Create the {@link ExtensionFetchTransport} over public GitHub repository
  * content: files are read from the jsDelivr CDN's
  * `/gh/<owner>/<repo>@<pin>/<path>` layout, published versions are listed
- * through the jsDelivr data API's `/v1/packages/gh/<owner>/<repo>` endpoint,
- * and a branch resolves to its head commit SHA through the GitHub REST API's
+ * through the GitHub REST API's `/repos/<owner>/<repo>/tags` endpoint, and a
+ * branch resolves to its head commit SHA through the GitHub REST API's
  * `/repos/<owner>/<repo>/branches/<branch>` endpoint. All requests are
  * anonymous HTTPS GETs.
  */
 export function createJsDelivrExtensionTransport(options?: JsDelivrExtensionTransportOptions): ExtensionFetchTransport {
   const cdnBaseUrl = options?.cdnBaseUrl ?? JSDELIVR_CDN_BASE_URL;
-  const dataApiBaseUrl = options?.dataApiBaseUrl ?? JSDELIVR_DATA_API_BASE_URL;
   const githubApiBaseUrl = options?.githubApiBaseUrl ?? GITHUB_API_BASE_URL;
   const fetchImpl = options?.fetchImpl ?? fetch;
 
@@ -84,7 +78,8 @@ export function createJsDelivrExtensionTransport(options?: JsDelivrExtensionTran
         `/branches/${encodeURIComponent(branch)}`;
       let response: Response;
       try {
-        response = await fetchImpl(url);
+        // Bypass the HTTP cache; a branch head is a mutable pointer.
+        response = await fetchImpl(url, { cache: "no-store" });
       } catch (error) {
         return { ok: false, kind: "unreachable", message: error instanceof Error ? error.message : String(error) };
       }
@@ -106,10 +101,11 @@ export function createJsDelivrExtensionTransport(options?: JsDelivrExtensionTran
     },
 
     async listVersionTags(owner: string, repo: string): Promise<ExtensionVersionListResult> {
-      const url = `${dataApiBaseUrl}/v1/packages/gh/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+      const url = `${githubApiBaseUrl}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tags?per_page=100`;
       let response: Response;
       try {
-        response = await fetchImpl(url);
+        // Bypass the HTTP cache; a pushed tag must be visible immediately.
+        response = await fetchImpl(url, { cache: "no-store" });
       } catch (error) {
         return { ok: false, kind: "unreachable", message: error instanceof Error ? error.message : String(error) };
       }
@@ -119,11 +115,17 @@ export function createJsDelivrExtensionTransport(options?: JsDelivrExtensionTran
       if (!response.ok) {
         return { ok: false, kind: "http-status", status: response.status };
       }
-      const body = (await response.json()) as { versions?: readonly { version?: string | null }[] | null };
+      const body = (await response.json()) as readonly { name?: string | null }[];
       const versions: string[] = [];
-      for (const entry of body.versions ?? []) {
-        if (typeof entry.version === "string" && entry.version.length > 0) {
-          versions.push(entry.version);
+      for (const entry of body) {
+        if (typeof entry.name !== "string" || entry.name.length === 0) {
+          continue;
+        }
+        // Tag names are pushed as written (e.g. "v0.8.0"); the release
+        // comparators parse bare "x.y.z", so drop a leading "v".
+        const version = entry.name.startsWith("v") ? entry.name.slice(1) : entry.name;
+        if (version.length > 0) {
+          versions.push(version);
         }
       }
       return { ok: true, versions };

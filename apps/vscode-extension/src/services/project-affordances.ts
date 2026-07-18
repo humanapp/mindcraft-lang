@@ -55,13 +55,17 @@ function gitignoreLineCovers(line: string, entry: string): boolean {
 }
 
 /**
- * The `.gitignore` text covering the generated entries: existing content is
- * preserved byte-for-byte and any missing entries are appended under a marker
- * comment. Returns undefined when every entry is already covered.
+ * The `.gitignore` text covering `entries` (defaulting to the generated file
+ * entries): existing content is preserved byte-for-byte and any missing entries
+ * are appended under a marker comment. Returns undefined when every entry is
+ * already covered.
  */
-export function updatedGitignoreContent(existing: string | undefined): string | undefined {
+export function updatedGitignoreContent(
+  existing: string | undefined,
+  entries: readonly string[] = GITIGNORE_ENTRIES
+): string | undefined {
   const lines = existing === undefined ? [] : existing.split(/\r?\n/);
-  const missing = GITIGNORE_ENTRIES.filter((entry) => !lines.some((line) => gitignoreLineCovers(line, entry)));
+  const missing = entries.filter((entry) => !lines.some((line) => gitignoreLineCovers(line, entry)));
   if (missing.length === 0) {
     return undefined;
   }

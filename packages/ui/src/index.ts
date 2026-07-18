@@ -8,6 +8,8 @@ export * from "./brain-editor";
 export * from "./extension-browser";
 // Shared utility library
 export * from "./lib";
+// Self-contained print document builder and transport
+export * from "./print/standalone-print-document";
 // Project picker
 export * from "./project-picker";
 // Package-level runtime settings

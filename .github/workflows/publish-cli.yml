@@ -1,9 +1,9 @@
-name: Publish @mindcraft-lang/cli
+name: Publish mindcraft-cli
 
 on:
   push:
     tags:
-      - "cli-v*"
+      - "mindcraft-cli-v*"
 
 permissions:
   contents: write
@@ -74,7 +74,7 @@ jobs:
 
       - name: Verify package version matches tag
         run: |
-          PACKAGE_VERSION="cli-v$(node -p "require('./package.json').version")"
+          PACKAGE_VERSION="mindcraft-cli-v$(node -p "require('./package.json').version")"
           if [ "$PACKAGE_VERSION" != "${{ github.ref_name }}" ]; then
             echo "Tag ${{ github.ref_name }} does not match package.json version $PACKAGE_VERSION"
             exit 1

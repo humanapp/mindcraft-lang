@@ -19,6 +19,8 @@ export type {
   FolderLoadFilesMessage,
   FolderManifestWriteMessage,
   FolderManifestWritePayload,
+  FolderOpenExternalDocumentMessage,
+  FolderOpenExternalDocumentPayload,
   FolderVolumeWriteMessage,
   FolderVolumeWritePayload,
   FolderWelcomeMessage,

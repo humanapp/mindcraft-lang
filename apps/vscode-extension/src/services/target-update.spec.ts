@@ -3,224 +3,100 @@ import { describe, it } from "node:test";
 import { serializeProjectContentManifest } from "@mindcraft-lang/app-host";
 import {
   applyTargetRangeToManifest,
-  planTargetUpdate,
-  type TargetReleaseListing,
-  type TargetUpdateCheckResult,
-  type TargetUpdateIo,
-  TargetUpdateOutcome,
+  resolveTargetUpdateAction,
+  specificAppRef,
+  type TargetUpdateChoice,
+  targetUpdateChoices,
 } from "./target-update";
 
-/** An io whose every operation fails the test when invoked, except the given overrides. */
-function io(overrides: Partial<TargetUpdateIo> = {}): TargetUpdateIo {
-  return {
-    listLatestRelease: () => {
-      throw new Error("listLatestRelease must not be invoked");
-    },
-    checkPinUpdate: () => {
-      throw new Error("checkPinUpdate must not be invoked");
-    },
-    ...overrides,
-  };
-}
+const COORD = "example-org/hello-target";
 
-const listing = (latestRelease: string): Promise<TargetReleaseListing> => Promise.resolve({ ok: true, latestRelease });
+/** The choice kinds offered, in display order. */
+const kinds = (choices: readonly TargetUpdateChoice[]): readonly string[] => choices.map((choice) => choice.kind);
 
-const listingFailure: Promise<TargetReleaseListing> = Promise.resolve({
-  ok: false,
-  error: { code: "EXTENSION_FETCH_UNREACHABLE", message: "offline" },
+describe("targetUpdateChoices", () => {
+  it("offers the approved choice first when the coordinate is in the registry", () => {
+    const choices = targetUpdateChoices({ approvedVersion: "0.7.0", latestPublished: undefined });
+    assert.deepEqual(kinds(choices), ["approved", "specific"]);
+    assert.deepEqual(choices[0], { kind: "approved", version: "0.7.0" });
+  });
+
+  it("offers the published choice only when it is newer than the approved version", () => {
+    const newer = targetUpdateChoices({ approvedVersion: "0.7.0", latestPublished: "0.8.0" });
+    assert.deepEqual(kinds(newer), ["approved", "published", "specific"]);
+    assert.deepEqual(newer[1], { kind: "published", version: "0.8.0" });
+  });
+
+  it("omits the published choice when it is not newer than the approved version", () => {
+    assert.deepEqual(kinds(targetUpdateChoices({ approvedVersion: "0.7.0", latestPublished: "0.7.0" })), [
+      "approved",
+      "specific",
+    ]);
+    assert.deepEqual(kinds(targetUpdateChoices({ approvedVersion: "0.8.0", latestPublished: "0.7.0" })), [
+      "approved",
+      "specific",
+    ]);
+  });
+
+  it("offers the published choice with no approved version when the coordinate is not in the registry", () => {
+    const choices = targetUpdateChoices({ approvedVersion: undefined, latestPublished: "0.8.0" });
+    assert.deepEqual(kinds(choices), ["published", "specific"]);
+    assert.deepEqual(choices[0], { kind: "published", version: "0.8.0" });
+  });
+
+  it("offers only the specific choice when neither an approved nor a published version resolves", () => {
+    assert.deepEqual(kinds(targetUpdateChoices({ approvedVersion: undefined, latestPublished: undefined })), [
+      "specific",
+    ]);
+  });
 });
 
-const pinCurrent: Promise<TargetUpdateCheckResult> = Promise.resolve({ ok: true, updateAvailable: false });
-
-const pinUpdate = (reference: string): Promise<TargetUpdateCheckResult> =>
-  Promise.resolve({ ok: true, updateAvailable: true, update: { reference } });
-
-describe("planTargetUpdate", () => {
-  it("plans nothing to update when neither reference resolves", async () => {
-    const plan = await planTargetUpdate({ appRef: undefined, registryAppRef: undefined, manifestRanges: {} }, io());
-    assert.deepEqual(plan, { outcome: TargetUpdateOutcome.NOT_UPDATABLE });
+describe("resolveTargetUpdateAction", () => {
+  it("clears the appRef and floors the range at the approved version for an approved selection", () => {
+    const action = resolveTargetUpdateAction({ kind: "approved", coordinate: COORD, version: "0.7.0" });
+    assert.deepEqual(action, { coordinate: COORD, version: "0.7.0", appRef: { op: "clear" } });
   });
 
-  it("plans a failure with the invalid-reference code for a non-gh appRef", async () => {
-    const plan = await planTargetUpdate(
-      { appRef: "embedded:example-org/hello-target", registryAppRef: undefined, manifestRanges: {} },
-      io()
-    );
-    assert.ok(plan.outcome === TargetUpdateOutcome.CHECK_FAILED);
-    assert.equal(plan.errorCode, "EXTENSION_FETCH_INVALID_REFERENCE");
-  });
-
-  it("selects the appRef coordinate over the registry reference", async () => {
-    const listed: string[] = [];
-    const checked: string[] = [];
-    const plan = await planTargetUpdate(
-      {
-        appRef: "gh:example-org/hello-target@v0.1.0",
-        registryAppRef: "gh:other-org/other-target@abc",
-        manifestRanges: {},
-      },
-      io({
-        listLatestRelease: (coordinate) => {
-          listed.push(coordinate);
-          return listing("0.2.0");
-        },
-        checkPinUpdate: (reference) => {
-          checked.push(reference);
-          return pinUpdate("gh:example-org/hello-target@0.2.0");
-        },
-      })
-    );
-    assert.deepEqual(listed, ["example-org/hello-target"]);
-    assert.deepEqual(checked, ["gh:example-org/hello-target@v0.1.0"]);
-    assert.ok(plan.outcome === TargetUpdateOutcome.APPLY);
-    assert.equal(plan.coordinate, "example-org/hello-target");
-    assert.equal(plan.updatedAppRef, "gh:example-org/hello-target@0.2.0");
-  });
-
-  it("plans a manifest add for an absent target entry with a current pin", async () => {
-    const plan = await planTargetUpdate(
-      { appRef: "gh:example-org/hello-target@v0.2.0", registryAppRef: undefined, manifestRanges: {} },
-      io({ listLatestRelease: () => listing("0.2.0"), checkPinUpdate: () => pinCurrent })
-    );
-    assert.ok(plan.outcome === TargetUpdateOutcome.APPLY);
-    assert.equal(plan.updateManifest, true);
-    assert.equal(plan.updatedAppRef, undefined);
-    assert.equal(plan.latestVersion, "0.2.0");
-  });
-
-  it("plans a pin rewrite without a manifest write when the declared range is current", async () => {
-    const plan = await planTargetUpdate(
-      {
-        appRef: "gh:example-org/hello-target@v0.1.0",
-        registryAppRef: undefined,
-        manifestRanges: { "example-org/hello-target": "^0.2.0" },
-      },
-      io({
-        listLatestRelease: () => listing("0.2.0"),
-        checkPinUpdate: () => pinUpdate("gh:example-org/hello-target@0.2.0"),
-      })
-    );
-    assert.ok(plan.outcome === TargetUpdateOutcome.APPLY);
-    assert.equal(plan.updateManifest, false);
-    assert.equal(plan.updatedAppRef, "gh:example-org/hello-target@0.2.0");
-  });
-
-  it("plans up to date when the range is current and the pin needs no rewrite", async () => {
-    const plan = await planTargetUpdate(
-      {
-        appRef: "gh:example-org/hello-target@v0.2.0",
-        registryAppRef: undefined,
-        manifestRanges: { "example-org/hello-target": "^0.2.0" },
-      },
-      io({ listLatestRelease: () => listing("0.2.0"), checkPinUpdate: () => pinCurrent })
-    );
-    assert.deepEqual(plan, {
-      outcome: TargetUpdateOutcome.UP_TO_DATE,
-      coordinate: "example-org/hello-target",
-      latestVersion: "0.2.0",
+  it("writes the published pin and floors the range at the published release for a published selection", () => {
+    const action = resolveTargetUpdateAction({ kind: "published", coordinate: COORD, version: "0.8.0" });
+    assert.deepEqual(action, {
+      coordinate: COORD,
+      version: "0.8.0",
+      appRef: { op: "write", reference: `gh:${COORD}@0.8.0` },
     });
   });
 
-  it("plans a registry-tier apply carrying the newest release's reference to write", async () => {
-    const plan = await planTargetUpdate(
-      {
-        appRef: undefined,
-        registryAppRef: "gh:example-org/hello-target@abc123",
-        manifestRanges: { "example-org/hello-target": "^0.1.0" },
-      },
-      io({ listLatestRelease: () => listing("1.0.0") })
-    );
-    assert.deepEqual(plan, {
-      outcome: TargetUpdateOutcome.APPLY,
-      coordinate: "example-org/hello-target",
-      latestVersion: "1.0.0",
-      updateManifest: true,
-      updatedAppRef: "gh:example-org/hello-target@1.0.0",
+  it("writes the entered pin and floors the range at the fetched version for a specific selection", () => {
+    const action = resolveTargetUpdateAction({
+      kind: "specific",
+      coordinate: COORD,
+      reference: "v0.5.0",
+      version: "0.5.0",
+    });
+    assert.deepEqual(action, {
+      coordinate: COORD,
+      version: "0.5.0",
+      appRef: { op: "write", reference: `gh:${COORD}@v0.5.0` },
     });
   });
 
-  it("plans a registry-tier apply with the reference to write when the declared range is current", async () => {
-    const plan = await planTargetUpdate(
-      {
-        appRef: undefined,
-        registryAppRef: "gh:example-org/hello-target@abc123",
-        manifestRanges: { "example-org/hello-target": "^1.0.0" },
-      },
-      io({ listLatestRelease: () => listing("1.0.0") })
-    );
-    assert.deepEqual(plan, {
-      outcome: TargetUpdateOutcome.APPLY,
-      coordinate: "example-org/hello-target",
-      latestVersion: "1.0.0",
-      updateManifest: false,
-      updatedAppRef: "gh:example-org/hello-target@1.0.0",
+  it("routes a #branch specific reference as a branch appRef, flooring the range at the fetched version", () => {
+    const action = resolveTargetUpdateAction({
+      kind: "specific",
+      coordinate: COORD,
+      reference: "#main",
+      version: "0.6.0",
     });
+    assert.deepEqual(action.appRef, { op: "write", reference: `gh:${COORD}#main` });
+    assert.equal(action.version, "0.6.0");
   });
+});
 
-  it("plans a branch rebuild with the manifest update when the listing succeeds", async () => {
-    const appRef = "gh:example-org/hello-target#main";
-    const plan = await planTargetUpdate(
-      { appRef, registryAppRef: undefined, manifestRanges: { "example-org/hello-target": "^0.1.0" } },
-      io({ listLatestRelease: () => listing("0.2.0") })
-    );
-    assert.deepEqual(plan, {
-      outcome: TargetUpdateOutcome.REBUILD_BRANCH,
-      appRef,
-      branch: "main",
-      coordinate: "example-org/hello-target",
-      latestVersion: "0.2.0",
-      updateManifest: true,
-    });
-  });
-
-  it("plans a branch rebuild without a manifest update when the range is current", async () => {
-    const plan = await planTargetUpdate(
-      {
-        appRef: "gh:example-org/hello-target#main",
-        registryAppRef: undefined,
-        manifestRanges: { "example-org/hello-target": "^0.2.0" },
-      },
-      io({ listLatestRelease: () => listing("0.2.0") })
-    );
-    assert.ok(plan.outcome === TargetUpdateOutcome.REBUILD_BRANCH);
-    assert.equal(plan.updateManifest, false);
-  });
-
-  it("falls back to a rebuild alone when the listing fails for a branch reference", async () => {
-    const appRef = "gh:example-org/hello-target#main";
-    const plan = await planTargetUpdate(
-      { appRef, registryAppRef: undefined, manifestRanges: {} },
-      io({ listLatestRelease: () => listingFailure })
-    );
-    assert.deepEqual(plan, {
-      outcome: TargetUpdateOutcome.REBUILD_BRANCH,
-      appRef,
-      branch: "main",
-      coordinate: "example-org/hello-target",
-      updateManifest: false,
-    });
-  });
-
-  it("plans a failure carrying the listing's stable code when the listing fails", async () => {
-    const plan = await planTargetUpdate(
-      { appRef: "gh:example-org/hello-target@v0.1.0", registryAppRef: undefined, manifestRanges: {} },
-      io({ listLatestRelease: () => listingFailure })
-    );
-    assert.ok(plan.outcome === TargetUpdateOutcome.CHECK_FAILED);
-    assert.equal(plan.errorCode, "EXTENSION_FETCH_UNREACHABLE");
-  });
-
-  it("plans a failure carrying the pin check's stable code when the check fails", async () => {
-    const plan = await planTargetUpdate(
-      { appRef: "gh:example-org/hello-target@v0.1.0", registryAppRef: undefined, manifestRanges: {} },
-      io({
-        listLatestRelease: () => listing("0.2.0"),
-        checkPinUpdate: () =>
-          Promise.resolve({ ok: false, error: { code: "EXTENSION_FETCH_RATE_LIMITED", message: "later" } }),
-      })
-    );
-    assert.ok(plan.outcome === TargetUpdateOutcome.CHECK_FAILED);
-    assert.equal(plan.errorCode, "EXTENSION_FETCH_RATE_LIMITED");
+describe("specificAppRef", () => {
+  it("pins a tag or SHA entry with @ and routes a #branch entry as a branch", () => {
+    assert.equal(specificAppRef(COORD, "v1.2.3"), `gh:${COORD}@v1.2.3`);
+    assert.equal(specificAppRef(COORD, "abc1234def"), `gh:${COORD}@abc1234def`);
+    assert.equal(specificAppRef(COORD, "#feature"), `gh:${COORD}#feature`);
   });
 });
 

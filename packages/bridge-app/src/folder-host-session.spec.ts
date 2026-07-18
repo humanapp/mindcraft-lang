@@ -4,6 +4,7 @@ import type {
   FolderAppMessage,
   FolderCompilerFilesMessage,
   FolderHostMessage,
+  FolderOpenExternalDocumentMessage,
   FolderSessionErrorCode as FolderSessionErrorCodeType,
   FolderVolumeWriteMessage,
 } from "@mindcraft-lang/bridge-protocol";
@@ -29,6 +30,7 @@ const POSITION_REFERENCE = `gh:${POSITION_ORIGIN}@v0.1.0`;
 function fakeHostPort(options?: {
   extensionsCache?: ReadonlyArray<[string, string]>;
   volumeWriteErrorCode?: FolderSessionErrorCodeType;
+  openExternalDocumentErrorCode?: FolderSessionErrorCodeType;
 }): FolderHostPort & {
   sent: FolderAppMessage[];
 } {
@@ -60,6 +62,16 @@ function fakeHostPort(options?: {
               type: "folder:error",
               id: message.id,
               payload: { code: options.volumeWriteErrorCode, message: "volume write refused" },
+            });
+          } else {
+            listener?.({ type: "folder:ack", id: message.id });
+          }
+        } else if (message.type === "folder:openExternalDocument") {
+          if (options?.openExternalDocumentErrorCode) {
+            listener?.({
+              type: "folder:error",
+              id: message.id,
+              payload: { code: options.openExternalDocumentErrorCode, message: "open refused" },
             });
           } else {
             listener?.({ type: "folder:ack", id: message.id });
@@ -130,6 +142,34 @@ describe("folder session removable-volume writes", () => {
     await assert.rejects(session.writeRemovableVolumeFile("DATA", "program.hex", ""), (error: unknown) => {
       assert.ok(error instanceof FolderSessionError);
       assert.equal(error.code, FolderSessionErrorCode.REMOVABLE_VOLUME_NOT_FOUND);
+      return true;
+    });
+    session.dispose();
+  });
+});
+
+describe("folder session external-document opens", () => {
+  it("sends one folder:openExternalDocument request and resolves on the host's ack", async () => {
+    const port = fakeHostPort();
+    const session = await connectFolderHostSession({ port, appName: "test-app" });
+
+    await session.openExternalDocument("<!doctype html><html></html>");
+
+    const message = port.sent.find(
+      (candidate): candidate is FolderOpenExternalDocumentMessage => candidate.type === "folder:openExternalDocument"
+    );
+    assert.ok(message);
+    assert.deepStrictEqual(message.payload, { html: "<!doctype html><html></html>" });
+    session.dispose();
+  });
+
+  it("rejects with the host-reported code when the document cannot be opened", async () => {
+    const port = fakeHostPort({ openExternalDocumentErrorCode: FolderSessionErrorCode.WRITE_FAILED });
+    const session = await connectFolderHostSession({ port, appName: "test-app" });
+
+    await assert.rejects(session.openExternalDocument("<html></html>"), (error: unknown) => {
+      assert.ok(error instanceof FolderSessionError);
+      assert.equal(error.code, FolderSessionErrorCode.WRITE_FAILED);
       return true;
     });
     session.dispose();

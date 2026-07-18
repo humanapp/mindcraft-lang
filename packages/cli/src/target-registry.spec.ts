@@ -9,7 +9,7 @@ import {
 } from "./target-registry.js";
 
 const MICROBIT_COORDINATE = "mindcraft-lang/trg-microbit-v2";
-const MICROBIT_REF = "gh:mindcraft-lang/trg-microbit-v2@e2c99284e5ea80fcd16a4b75d9cc945510baaf5e";
+const MICROBIT_REF = "gh:mindcraft-lang/trg-microbit-v2@c6cfc18d88a6c475be7af63cd6529480d444d8e4";
 
 const SHA_A = "1111111111111111111111111111111111111111";
 const SHA_B = "2222222222222222222222222222222222222222";
@@ -38,7 +38,7 @@ describe("target registry", () => {
     const [only] = registry.entries;
     assert.equal(only.coordinate, MICROBIT_COORDINATE);
     assert.equal(only.name, "micro:bit v2");
-    assert.equal(only.version, "0.3.0");
+    assert.equal(only.version, "0.7.0");
     assert.equal(only.ref, MICROBIT_REF);
     assert.equal(registry.resolve(MICROBIT_COORDINATE), MICROBIT_REF);
   });

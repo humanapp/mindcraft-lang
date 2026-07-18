@@ -2,8 +2,10 @@ import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { FileText, Form, Printer } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { printPortalViaTransport } from "../print/standalone-print-document";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainPrintTextView } from "./BrainPrintTextView";
 import { BrainPrintView } from "./BrainPrintView";
 
@@ -19,6 +21,7 @@ interface BrainPrintDialogProps {
 export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintDialogProps) {
   const [mode, setMode] = useState<PrintMode>("visual");
   const printRootRef = useRef<HTMLDivElement | null>(null);
+  const { printTransport } = useBrainEditorConfig();
 
   const handlePrint = useCallback(() => {
     // Print uses a portal outside the React tree. The hidden root div is toggled
@@ -37,16 +40,26 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
     printRoot.style.display = "block";
 
     // Wait one frame for React to render the portal content into the visible root,
-    // then trigger the browser print dialog.
+    // then trigger printing.
     requestAnimationFrame(() => {
-      window.print();
-      // Hide after print dialog closes
-      const root = document.getElementById("brain-print-root");
-      if (root) {
-        root.style.display = "none";
+      const hide = () => {
+        const root = document.getElementById("brain-print-root");
+        if (root) {
+          root.style.display = "none";
+        }
+      };
+      if (printTransport) {
+        // The host cannot open the browser print dialog: serialize the print
+        // view into a self-contained document and route it to the transport.
+        void printPortalViaTransport(printRoot as HTMLDivElement, "brain-print-root", brainDef.name(), printTransport)
+          .catch(() => undefined)
+          .finally(hide);
+        return;
       }
+      window.print();
+      hide();
     });
-  }, []);
+  }, [printTransport, brainDef]);
 
   // Ensure the print root element exists in the DOM for the portal
   const getPrintRoot = useCallback((): HTMLDivElement => {

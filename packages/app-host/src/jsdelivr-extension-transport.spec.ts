@@ -2,7 +2,33 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
-import { createJsDelivrExtensionTransport } from "@mindcraft-lang/app-host";
+import { createJsDelivrExtensionTransport, highestListedRelease } from "@mindcraft-lang/app-host";
+
+/** A captured fetch invocation: the URL requested and the init the transport passed. */
+interface CapturedCall {
+  readonly url: string;
+  readonly init: RequestInit | undefined;
+}
+
+/**
+ * A fetch stub that records every `(url, init)` pair and answers each URL with a
+ * canned 200 response, so tests can assert which init a transport method passes.
+ */
+function recordingFetch(): { readonly calls: CapturedCall[]; readonly fetchImpl: typeof fetch } {
+  const calls: CapturedCall[] = [];
+  const fetchImpl: typeof fetch = (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    calls.push({ url, init });
+    let body = "";
+    if (url.includes("/branches/")) {
+      body = JSON.stringify({ commit: { sha: "0123456789abcdef0123456789abcdef01234567" } });
+    } else if (url.includes("/tags")) {
+      body = JSON.stringify([{ name: "v0.2.0" }]);
+    }
+    return Promise.resolve(new Response(body, { status: 200, headers: { "content-type": "application/json" } }));
+  };
+  return { calls, fetchImpl };
+}
 
 const encoder = new TextEncoder();
 
@@ -49,22 +75,15 @@ describe("createJsDelivrExtensionTransport against local servers with the jsDeli
         response.end(JSON.stringify({ message: "Branch not found" }));
         return;
       }
-      // jsDelivr data API package endpoint shape: /v1/packages/gh/<owner>/<repo>.
-      if (url.pathname === "/v1/packages/gh/example-org/position-ext") {
+      // GitHub REST API tags endpoint shape: /repos/<owner>/<repo>/tags.
+      if (url.pathname === "/repos/example-org/position-ext/tags") {
         response.setHeader("content-type", "application/json");
-        response.end(
-          JSON.stringify({
-            type: "gh",
-            name: "example-org/position-ext",
-            tags: {},
-            versions: [{ version: "0.2.0" }, { version: "0.1.0" }],
-          })
-        );
+        response.end(JSON.stringify([{ name: "v0.2.0" }, { name: "v0.1.0" }]));
         return;
       }
-      if (url.pathname.startsWith("/v1/packages/gh/")) {
+      if (url.pathname.startsWith("/repos/") && url.pathname.endsWith("/tags")) {
         response.statusCode = 404;
-        response.end(JSON.stringify({ status: 404, message: "Couldn't find the requested package." }));
+        response.end(JSON.stringify({ status: 404, message: "Not Found" }));
         return;
       }
       const file = SERVED_FILES[decodeURIComponent(url.pathname)];
@@ -99,7 +118,6 @@ describe("createJsDelivrExtensionTransport against local servers with the jsDeli
   function transport() {
     return createJsDelivrExtensionTransport({
       cdnBaseUrl: baseUrl,
-      dataApiBaseUrl: baseUrl,
       githubApiBaseUrl: baseUrl,
     });
   }
@@ -139,12 +157,12 @@ describe("createJsDelivrExtensionTransport against local servers with the jsDeli
     assert.deepStrictEqual(throttled, { ok: false, kind: "rate-limited" });
   });
 
-  it("lists a repository's published versions through the data API", async () => {
+  it("lists a repository's published versions through the GitHub tags API, dropping the leading v", async () => {
     const listed = await transport().listVersionTags("example-org", "position-ext");
     assert.deepStrictEqual(listed, { ok: true, versions: ["0.2.0", "0.1.0"] });
   });
 
-  it("answers not-found for a repository the data API does not know", async () => {
+  it("answers not-found for a repository the GitHub tags API does not know", async () => {
     const listed = await transport().listVersionTags("example-org", "absent-ext");
     assert.deepStrictEqual(listed, { ok: false, kind: "not-found" });
   });
@@ -152,7 +170,6 @@ describe("createJsDelivrExtensionTransport against local servers with the jsDeli
   it("reports an unexpected HTTP status as http-status", async () => {
     const failing = createJsDelivrExtensionTransport({
       cdnBaseUrl: brokenBaseUrl,
-      dataApiBaseUrl: brokenBaseUrl,
       githubApiBaseUrl: brokenBaseUrl,
     });
     const file = await failing.fetchFile("example-org", "position-ext", "v0.1.0", "mindcraft.json");
@@ -167,7 +184,6 @@ describe("createJsDelivrExtensionTransport against local servers with the jsDeli
     const unreachable = createJsDelivrExtensionTransport({
       // A closed loopback port: connections are refused immediately.
       cdnBaseUrl: "http://127.0.0.1:1",
-      dataApiBaseUrl: "http://127.0.0.1:1",
       githubApiBaseUrl: "http://127.0.0.1:1",
     });
     const file = await unreachable.fetchFile("example-org", "position-ext", "v0.1.0", "mindcraft.json");
@@ -176,5 +192,90 @@ describe("createJsDelivrExtensionTransport against local servers with the jsDeli
     assert.ok(!branch.ok && branch.kind === "unreachable");
     const versions = await unreachable.listVersionTags("example-org", "position-ext");
     assert.ok(!versions.ok && versions.kind === "unreachable");
+  });
+});
+
+describe("createJsDelivrExtensionTransport HTTP cache handling", () => {
+  it("bypasses the HTTP cache for the version-list query", async () => {
+    const { calls, fetchImpl } = recordingFetch();
+    await createJsDelivrExtensionTransport({ fetchImpl }).listVersionTags("example-org", "position-ext");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.init?.cache, "no-store");
+  });
+
+  it("bypasses the HTTP cache for the branch-resolution query", async () => {
+    const { calls, fetchImpl } = recordingFetch();
+    await createJsDelivrExtensionTransport({ fetchImpl }).resolveBranch("example-org", "position-ext", "main");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.init?.cache, "no-store");
+  });
+
+  it("leaves the immutable pinned-file query cacheable", async () => {
+    const { calls, fetchImpl } = recordingFetch();
+    await createJsDelivrExtensionTransport({ fetchImpl }).fetchFile(
+      "example-org",
+      "position-ext",
+      "v0.1.0",
+      "mindcraft.json"
+    );
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.init?.cache, undefined);
+  });
+
+  it("carries no-store through a wrapping fetchImpl that also attaches a timeout signal", async () => {
+    const { calls, fetchImpl } = recordingFetch();
+    const signal = AbortSignal.timeout(15000);
+    // Mirrors the update-check transport's timeout wrapper, which merges the
+    // transport-supplied init with its own abort signal.
+    const wrapped: typeof fetch = (input, init) => fetchImpl(input, { ...init, signal });
+    await createJsDelivrExtensionTransport({ fetchImpl: wrapped }).listVersionTags("example-org", "position-ext");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.init?.cache, "no-store");
+    assert.equal(calls[0]?.init?.signal, signal);
+  });
+});
+
+describe("createJsDelivrExtensionTransport version listing over the GitHub tags API", () => {
+  /** Build a transport whose fetch answers every call with `response`, capturing the requested URL. */
+  function stubbing(response: Response): {
+    readonly urls: string[];
+    readonly transport: ReturnType<typeof createJsDelivrExtensionTransport>;
+  } {
+    const urls: string[] = [];
+    const fetchImpl: typeof fetch = (input) => {
+      urls.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      return Promise.resolve(response.clone());
+    };
+    return { urls, transport: createJsDelivrExtensionTransport({ fetchImpl }) };
+  }
+
+  it("requests the GitHub tags endpoint with a per-page bound", async () => {
+    const { urls, transport } = stubbing(new Response("[]", { status: 200 }));
+    await transport.listVersionTags("example-org", "position-ext");
+    assert.equal(urls.length, 1);
+    assert.equal(urls[0], "https://api.github.com/repos/example-org/position-ext/tags?per_page=100");
+  });
+
+  it("normalizes v-prefixed tag names into the form the release comparators accept", async () => {
+    const body = JSON.stringify([{ name: "v0.8.0" }, { name: "v0.7.0" }]);
+    const { transport } = stubbing(new Response(body, { status: 200 }));
+    const listed = await transport.listVersionTags("example-org", "position-ext");
+    assert.ok(listed.ok);
+    assert.deepStrictEqual(listed.versions, ["0.8.0", "0.7.0"]);
+    assert.equal(highestListedRelease(listed.versions), "0.8.0");
+  });
+
+  it("answers not-found for a 404 and http-status for any other non-ok status", async () => {
+    const notFound = stubbing(new Response("Not Found", { status: 404 }));
+    assert.deepStrictEqual(await notFound.transport.listVersionTags("example-org", "position-ext"), {
+      ok: false,
+      kind: "not-found",
+    });
+    const rateLimited = stubbing(new Response("rate limited", { status: 403 }));
+    assert.deepStrictEqual(await rateLimited.transport.listVersionTags("example-org", "position-ext"), {
+      ok: false,
+      kind: "http-status",
+      status: 403,
+    });
   });
 });

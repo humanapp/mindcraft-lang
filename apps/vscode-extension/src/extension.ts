@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
-import { installTestTargetPick, registerFolderCommands } from "./commands/folder-commands";
+import {
+  installTestTargetPick,
+  installTestTargetUpdatePick,
+  installTestTargetUpdateSpecificInput,
+  registerFolderCommands,
+} from "./commands/folder-commands";
 import { activateBridgeSession } from "./services/bridge-session";
 import {
   autoOpenFolderSessionOnActivation,
@@ -71,6 +76,12 @@ export async function activate(context: vscode.ExtensionContext) {
     ),
     vscode.commands.registerCommand("mindcraft.testHooks.installTargetPick", (coordinate?: string) =>
       installTestTargetPick(coordinate)
+    ),
+    vscode.commands.registerCommand("mindcraft.testHooks.installTargetUpdatePick", (kind?: string) =>
+      installTestTargetUpdatePick(kind as "approved" | "published" | "specific" | undefined)
+    ),
+    vscode.commands.registerCommand("mindcraft.testHooks.installTargetUpdateSpecificInput", (value?: string) =>
+      installTestTargetUpdateSpecificInput(value)
     ),
     vscode.commands.registerCommand("mindcraft.testHooks.targetRegistryEntries", () => targetRegistryEntries()),
     vscode.commands.registerCommand("mindcraft.testHooks.targetAppTransportCalls", () => testTargetAppTransportCalls()),
