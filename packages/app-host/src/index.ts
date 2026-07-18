@@ -17,6 +17,7 @@ export type {
 } from "./extension-catalog-document.js";
 export {
   CATALOG_ENTRY_KIND_EXTENSION,
+  CATALOG_ENTRY_KIND_TARGET,
   ExtensionCatalogDocumentErrorCode,
   ExtensionCatalogDocumentWarningCode,
   MINDCRAFT_CATALOG_FORMAT,

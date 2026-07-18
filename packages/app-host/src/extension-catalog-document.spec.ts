@@ -21,6 +21,15 @@ const VALID_ENTRY = {
   thumbnail: "data:,x",
 };
 
+const TARGET_ENTRY = {
+  coordinate: "mindcraft-lang/trg-widget",
+  kind: "target",
+  ref: `gh:mindcraft-lang/trg-widget@${PIN_SHA}`,
+  name: "Widget",
+  version: "0.1.0",
+  description: "A hostable widget platform.",
+};
+
 describe("validateExtensionCatalogDocument", () => {
   it("accepts a document with a fully specified entry", () => {
     const result = validateExtensionCatalogDocument({
@@ -39,6 +48,64 @@ describe("validateExtensionCatalogDocument", () => {
 
     assert.ok(result.ok);
     assert.deepStrictEqual(result.document.entries, [minimal]);
+  });
+
+  it("accepts a library entry without an alias", () => {
+    const result = validateExtensionCatalogDocument({ format: MINDCRAFT_CATALOG_FORMAT, entries: [VALID_ENTRY] });
+
+    assert.ok(result.ok);
+    assert.equal(result.document.entries[0].kind, "library");
+    assert.equal(result.document.entries[0].alias, undefined);
+  });
+
+  it("parses and field-picks a valid alias onto a target entry", () => {
+    const withAlias = { ...TARGET_ENTRY, alias: "widget" };
+    const result = validateExtensionCatalogDocument({ format: MINDCRAFT_CATALOG_FORMAT, entries: [withAlias] });
+
+    assert.ok(result.ok);
+    assert.equal(result.document.entries[0].kind, "target");
+    assert.equal(result.document.entries[0].alias, "widget");
+  });
+
+  it("rejects an alias on a non-target entry with ALIAS_NOT_ALLOWED", () => {
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [{ ...VALID_ENTRY, alias: "widget" }],
+    });
+    assert.ok(!result.ok);
+    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.ALIAS_NOT_ALLOWED));
+  });
+
+  it("rejects a target alias with an invalid charset", () => {
+    for (const alias of ["Widget", "-leading", "has_underscore", 42]) {
+      const result = validateExtensionCatalogDocument({
+        format: MINDCRAFT_CATALOG_FORMAT,
+        entries: [{ ...TARGET_ENTRY, alias }],
+      });
+      assert.ok(!result.ok, `Expected rejection for alias ${JSON.stringify(alias)}`);
+      assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_ALIAS));
+    }
+  });
+
+  it("rejects two target entries carrying the same alias, compared case-insensitively", () => {
+    const first = {
+      ...TARGET_ENTRY,
+      coordinate: "mindcraft-lang/trg-a",
+      ref: `gh:mindcraft-lang/trg-a@${PIN_SHA}`,
+      alias: "shared",
+    };
+    const second = {
+      ...TARGET_ENTRY,
+      coordinate: "mindcraft-lang/trg-b",
+      ref: `gh:mindcraft-lang/trg-b@${PIN_SHA}`,
+      alias: "shared",
+    };
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [first, second],
+    });
+    assert.ok(!result.ok);
+    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.DUPLICATE_ALIAS));
   });
 
   it("skips an unknown-kind entry with a warning, keeping the known entries", () => {

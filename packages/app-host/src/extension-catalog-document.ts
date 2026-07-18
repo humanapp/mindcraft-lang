@@ -4,10 +4,15 @@ import { isExtensionCoordinate, parseExtensionReference, validateProjectTargets 
 /** Format marker of a Mindcraft extension catalog document. */
 export const MINDCRAFT_CATALOG_FORMAT = "mindcraft.catalog/1";
 
-/** The one entry kind this format defines. */
+/** Entry kind for a library the catalog approves for installation. */
 export const CATALOG_ENTRY_KIND_EXTENSION = "library";
 
+/** Entry kind for a hostable platform target a CLI resolves by alias or coordinate. */
+export const CATALOG_ENTRY_KIND_TARGET = "target";
+
 const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+
+const CATALOG_ALIAS_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 /**
  * One entry of an extension catalog document: an approved extension pinned to
@@ -17,7 +22,7 @@ const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
 export interface ExtensionCatalogDocumentEntry {
   /** The extension's `<owner>/<repo>` coordinate. */
   readonly coordinate: string;
-  /** Trust semantics of the entry's pin; `"library"` is the only kind this format defines. */
+  /** Entry kind; one of `"library"` or `"target"`. */
   readonly kind: string;
   /**
    * The pinned reference an install of this entry writes:
@@ -31,6 +36,13 @@ export interface ExtensionCatalogDocumentEntry {
   readonly version: string;
   /** Description shown for the entry. */
   readonly description: string;
+  /**
+   * Curated shell-friendly handle for a `"target"` entry: lowercase
+   * alphanumerics and hyphens with no leading hyphen (`^[a-z0-9][a-z0-9-]*$`),
+   * unique within the document compared case-insensitively. Allowed only on
+   * `"target"` entries; present only when the entry declares one.
+   */
+  readonly alias?: string;
   /**
    * Platform-compatibility targets keyed by target package `<owner>/<repo>`
    * coordinate; present only when the entry declares them.
@@ -57,6 +69,9 @@ export const ExtensionCatalogDocumentErrorCode = {
   INVALID_ENTRY: "CATALOG_DOCUMENT_INVALID_ENTRY",
   INVALID_COORDINATE: "CATALOG_DOCUMENT_INVALID_COORDINATE",
   INVALID_REF: "CATALOG_DOCUMENT_INVALID_REF",
+  INVALID_ALIAS: "CATALOG_DOCUMENT_INVALID_ALIAS",
+  DUPLICATE_ALIAS: "CATALOG_DOCUMENT_DUPLICATE_ALIAS",
+  ALIAS_NOT_ALLOWED: "CATALOG_DOCUMENT_ALIAS_NOT_ALLOWED",
 } as const;
 
 /** Union of all {@link ExtensionCatalogDocumentErrorCode} values. */
@@ -150,7 +165,7 @@ function validateEntry(
       ],
     };
   }
-  if (value.kind !== CATALOG_ENTRY_KIND_EXTENSION) {
+  if (value.kind !== CATALOG_ENTRY_KIND_EXTENSION && value.kind !== CATALOG_ENTRY_KIND_TARGET) {
     return {
       skip: {
         code: ExtensionCatalogDocumentWarningCode.UNKNOWN_ENTRY_KIND,
@@ -159,6 +174,7 @@ function validateEntry(
       },
     };
   }
+  const kind = value.kind;
 
   const errors: ExtensionCatalogDocumentError[] = [];
 
@@ -216,6 +232,23 @@ function validateEntry(
     }
   }
 
+  if (value.alias !== undefined) {
+    if (kind !== CATALOG_ENTRY_KIND_TARGET) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.ALIAS_NOT_ALLOWED,
+        path: `${path}.alias`,
+        message: `Catalog entry alias is allowed only on "${CATALOG_ENTRY_KIND_TARGET}" entries, not "${kind}" entries.`,
+      });
+    } else if (typeof value.alias !== "string" || !CATALOG_ALIAS_PATTERN.test(value.alias)) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_ALIAS,
+        path: `${path}.alias`,
+        message:
+          "Catalog entry alias must be lowercase alphanumerics and hyphens with no leading hyphen (^[a-z0-9][a-z0-9-]*$).",
+      });
+    }
+  }
+
   if (value.thumbnail !== undefined && typeof value.thumbnail !== "string") {
     errors.push({
       code: ExtensionCatalogDocumentErrorCode.INVALID_ENTRY,
@@ -231,11 +264,12 @@ function validateEntry(
   return {
     entry: {
       coordinate: value.coordinate as string,
-      kind: CATALOG_ENTRY_KIND_EXTENSION,
+      kind,
       ref: value.ref as string,
       name: value.name as string,
       version: value.version as string,
       description: value.description as string,
+      ...(typeof value.alias === "string" ? { alias: value.alias } : {}),
       ...(targets !== undefined ? { targets } : {}),
       ...(typeof value.thumbnail === "string" ? { thumbnail: value.thumbnail } : {}),
     },
@@ -290,10 +324,24 @@ export function validateExtensionCatalogDocument(value: unknown): ExtensionCatal
   const entries: ExtensionCatalogDocumentEntry[] = [];
   const warnings: ExtensionCatalogDocumentWarning[] = [];
   const errors: ExtensionCatalogDocumentError[] = [];
+  const aliasFirstIndex = new Map<string, number>();
   for (const [index, entryValue] of (value.entries as readonly unknown[]).entries()) {
     const result = validateEntry(entryValue, `$.entries[${index}]`);
     if ("entry" in result) {
       entries.push(result.entry);
+      if (result.entry.alias !== undefined) {
+        const aliasKey = result.entry.alias.toLowerCase();
+        const priorIndex = aliasFirstIndex.get(aliasKey);
+        if (priorIndex === undefined) {
+          aliasFirstIndex.set(aliasKey, index);
+        } else {
+          errors.push({
+            code: ExtensionCatalogDocumentErrorCode.DUPLICATE_ALIAS,
+            path: `$.entries[${index}].alias`,
+            message: `Catalog entry alias "${result.entry.alias}" duplicates the alias at $.entries[${priorIndex}] (compared case-insensitively).`,
+          });
+        }
+      }
     } else if ("skip" in result) {
       warnings.push(result.skip);
     } else {
