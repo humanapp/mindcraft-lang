@@ -160,7 +160,7 @@
         "mindcraft.devTarget": {
           "type": "object",
           "default": null,
-          "description": "Desktop only: the Mindcraft target app to host for a project folder -- { appPath: <built app directory> } to host a local build, or { appRef: <owner>/<repo>@<ref> } to host a published build; optional extensions?: { <owner>/<repo>: <reference> } and targets?: { <owner>/<repo>: { packageVersion: <range> } }. Has no effect in the web editor.",
+          "description": "Desktop only: author override of the target app hosted for a project folder (normally resolved from the project's own mindcraft.json targets) -- { appPath: <built app directory> } to host a local build, or { appRef: <owner>/<repo>@<ref> } to host a published build; optional extensions?: { <owner>/<repo>: <reference> } and targets?: { <owner>/<repo>: { packageVersion: <range> } } seeded into a new project. Has no effect in the web editor.",
           "properties": {
             "appPath": {
               "type": "string",

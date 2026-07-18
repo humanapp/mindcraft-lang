@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { installTestTargetPick, registerFolderCommands } from "./commands/folder-commands";
 import { activateBridgeSession } from "./services/bridge-session";
 import {
+  autoOpenFolderSessionOnActivation,
   disposeFolderSessionForTest,
   folderSessionVolumeWriteForTest,
   hasFolderSessionHandshakeCompleted,
@@ -75,8 +76,14 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("mindcraft.testHooks.disposeFolderSession", () => disposeFolderSessionForTest()),
     vscode.commands.registerCommand("mindcraft.testHooks.restoreFolderSession", () =>
       restoreFolderSessionForTest(context)
+    ),
+    vscode.commands.registerCommand("mindcraft.testHooks.autoOpenFolderSession", () =>
+      autoOpenFolderSessionOnActivation(context)
     )
   );
+  // Auto-open the hosted editor for a single-project workspace. Runs after the
+  // serializer registration so a restored tab from the previous window wins.
+  void autoOpenFolderSessionOnActivation(context);
 }
 
 export function deactivate() {}

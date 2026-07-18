@@ -5,9 +5,12 @@ import { buildAppHostHtml, buildAppLoadFailureHtml, buildAppLoadingHtml } from "
 import { DiagnosticsManager } from "./diagnostics-manager";
 import { RestoreFailureReason as Reason, type RestoreFailureReason, resolveRestoreTarget } from "./folder-restore";
 import { FolderStoreHost } from "./folder-store-host";
-import { findProjectFolderCandidates, resolveTargetAppRoot } from "./folder-target-resolver";
+import {
+  findProjectFolderCandidates,
+  resolveFolderTargetDescriptor,
+  resolveTargetAppRoot,
+} from "./folder-target-resolver";
 import type { ProjectSession } from "./project-session";
-import { readDevTargetDescriptor } from "./project-skeleton";
 import type { RemovableVolumeRoot } from "./removable-volume";
 
 /** Webview panel view type of the hosted app tab; also the key the panel serializer restores. */
@@ -104,8 +107,11 @@ export async function restoreFolderSessionIntoPanel(
 ): Promise<RestoreFolderSessionOutcome> {
   panel.webview.html = buildAppLoadingHtml();
   const resolution = await resolveRestoreTarget<vscode.WorkspaceFolder, vscode.Uri>({
-    descriptor: readDevTargetDescriptor(),
     projectFolders: await findProjectFolderCandidates(),
+    resolveDescriptor: async (folder) => {
+      const resolved = await resolveFolderTargetDescriptor(folder.uri);
+      return resolved.ok ? resolved.descriptor : undefined;
+    },
     resolveAppRoot: (descriptor) => resolveTargetAppRoot(context, descriptor),
   });
   if (!resolution.ok) {
@@ -147,13 +153,56 @@ export async function restoreFolderSessionForTest(
 /** The user-facing message shown on the app-load-failure page for a restore that could not resolve. */
 function restoreFailureMessage(reason: RestoreFailureReason): string {
   switch (reason) {
-    case Reason.NO_DEV_TARGET:
-      return 'Set the "mindcraft.devTarget" setting to host a target app for this project.';
     case Reason.NO_PROJECT_FOLDER:
       return `Open a workspace folder containing ${MINDCRAFT_JSON} to restore the Mindcraft editor.`;
+    case Reason.NO_REGISTRY_MATCH:
+      return (
+        `This project declares no known target in ${MINDCRAFT_JSON}. Create the project from a known target, ` +
+        'or set the "mindcraft.devTarget" setting to override the hosted app.'
+      );
     case Reason.APP_ROOT_UNAVAILABLE:
-      return 'Could not load the target app. Check the "mindcraft.devTarget" setting.';
+      return 'Could not load the project\'s target app. Try again when online, or check the "mindcraft.devTarget" setting if set.';
   }
+}
+
+/** True when any tab in the window is a folder-app webview tab. */
+function hasFolderAppTab(): boolean {
+  return vscode.window.tabGroups.all.some((group) =>
+    group.tabs.some(
+      (tab) => tab.input instanceof vscode.TabInputWebview && tab.input.viewType.includes(FOLDER_APP_VIEW_TYPE)
+    )
+  );
+}
+
+/**
+ * Open the hosted editor for the workspace's single project folder on desktop
+ * activation. Opens nothing when a session already runs, when a folder-app tab
+ * from the previous window is present (the panel serializer rebuilds the
+ * session into it), when the workspace does not contain exactly one folder
+ * with a `mindcraft.json` project, or when the project resolves no target.
+ * An unresolved target is silent; a failure to load a resolved target's app
+ * surfaces the same error message as an interactive open.
+ */
+export async function autoOpenFolderSessionOnActivation(context: vscode.ExtensionContext): Promise<void> {
+  if (currentSession !== undefined || hasFolderAppTab()) {
+    return;
+  }
+  const candidates = await findProjectFolderCandidates();
+  const folder = candidates.length === 1 ? candidates[0] : undefined;
+  if (folder === undefined) {
+    return;
+  }
+  const resolution = await resolveFolderTargetDescriptor(folder.uri);
+  if (!resolution.ok) {
+    return;
+  }
+  const appRoot = await resolveTargetAppRoot(context, resolution.descriptor);
+  // Re-check after the awaits: a serializer restore that landed (or whose
+  // restored tab appeared) meanwhile owns the session; auto-open yields.
+  if (appRoot === undefined || currentSession !== undefined || hasFolderAppTab()) {
+    return;
+  }
+  openFolderProjectSession(context, folder, appRoot);
 }
 
 /**

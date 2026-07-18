@@ -27,6 +27,62 @@ export function findTargetRegistryEntry(coordinate: string): ExtensionCatalogDoc
   return targetRegistryEntries().find((entry) => entry.coordinate === coordinate);
 }
 
+/** Stable identifiers for the reasons a project resolves no hostable target. */
+export const TargetResolutionErrorCode = {
+  /** No declared target coordinate is listed in the targets registry. */
+  NO_REGISTRY_MATCH: "TARGET_RESOLUTION_NO_REGISTRY_MATCH",
+  /** More than one declared target coordinate is listed in the targets registry. */
+  AMBIGUOUS_REGISTRY_MATCH: "TARGET_RESOLUTION_AMBIGUOUS_REGISTRY_MATCH",
+} as const;
+
+/** Union of all {@link TargetResolutionErrorCode} values. */
+export type TargetResolutionErrorCode = (typeof TargetResolutionErrorCode)[keyof typeof TargetResolutionErrorCode];
+
+/** Outcome of {@link resolveProjectTargetDescriptor}. */
+export type ProjectTargetResolution =
+  | {
+      readonly ok: true;
+      /** The descriptor whose app the session hosts. */
+      readonly descriptor: FolderTargetDescriptor;
+    }
+  | {
+      readonly ok: false;
+      /** Stable machine-readable failure code. */
+      readonly code: TargetResolutionErrorCode;
+      /** The target coordinates the project's manifest declares, in manifest order. */
+      readonly declaredCoordinates: readonly string[];
+    };
+
+/**
+ * Resolve the target descriptor a project opens with. The `mindcraft.devTarget`
+ * override wins when set; otherwise the project's declared target coordinates
+ * are matched against the registry entries by membership, and the single listed
+ * coordinate's pinned ref becomes the hosted app. Fails with a stable code when
+ * no declared coordinate -- or more than one -- is listed in the registry.
+ */
+export function resolveProjectTargetDescriptor(
+  devTarget: FolderTargetDescriptor | undefined,
+  declaredCoordinates: readonly string[],
+  entries: readonly ExtensionCatalogDocumentEntry[]
+): ProjectTargetResolution {
+  if (devTarget !== undefined) {
+    return { ok: true, descriptor: devTarget };
+  }
+  const matches = entries.filter((entry) => declaredCoordinates.includes(entry.coordinate));
+  const matched = matches.length === 1 ? matches[0] : undefined;
+  if (matched === undefined) {
+    return {
+      ok: false,
+      code:
+        matches.length === 0
+          ? TargetResolutionErrorCode.NO_REGISTRY_MATCH
+          : TargetResolutionErrorCode.AMBIGUOUS_REGISTRY_MATCH,
+      declaredCoordinates,
+    };
+  }
+  return { ok: true, descriptor: { appRef: matched.ref } };
+}
+
 /** One target choice offered by the New Project target picker. */
 export interface TargetRegistryPickItem {
   /** Display name shown as the pick's label. */

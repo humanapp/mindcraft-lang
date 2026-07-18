@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { ExtensionCatalogDocumentEntry } from "@mindcraft-lang/app-host";
 import { parseExtensionReference, validateExtensionCatalogDocument } from "@mindcraft-lang/app-host";
 import bundledTargetsRegistry from "../../../../packages/cli/targets.json";
 import {
   findTargetRegistryEntry,
   registryProjectSeed,
+  resolveProjectTargetDescriptor,
+  TargetResolutionErrorCode,
   targetRegistryEntries,
   targetRegistryPickItems,
 } from "./target-registry";
@@ -47,6 +50,73 @@ describe("targetRegistryPickItems", () => {
       assert.equal(item.label, entries[index].name);
       assert.equal(item.detail, entries[index].description);
     }
+  });
+});
+
+/** A registry entry fixture with the given coordinate and a pinned ref derived from it. */
+function entry(coordinate: string): ExtensionCatalogDocumentEntry {
+  return {
+    coordinate,
+    kind: "library",
+    ref: `gh:${coordinate}@${"a".repeat(40)}`,
+    name: coordinate,
+    version: "1.0.0",
+    description: `Entry for ${coordinate}`,
+  };
+}
+
+describe("resolveProjectTargetDescriptor", () => {
+  const WIDGET_ENTRY = entry("acme/widget-platform");
+
+  it("returns the devTarget descriptor unchanged when set, without consulting the registry", () => {
+    const devTarget = { appPath: "/builds/target/dist" };
+    const resolution = resolveProjectTargetDescriptor(devTarget, [WIDGET_ENTRY.coordinate], [WIDGET_ENTRY]);
+    assert.deepStrictEqual(resolution, { ok: true, descriptor: devTarget });
+  });
+
+  it("returns a devTarget appRef descriptor unchanged when set", () => {
+    const devTarget = { appRef: "gh:acme/other-target@v1.2.3" };
+    const resolution = resolveProjectTargetDescriptor(devTarget, [WIDGET_ENTRY.coordinate], [WIDGET_ENTRY]);
+    assert.deepStrictEqual(resolution, { ok: true, descriptor: devTarget });
+  });
+
+  it("resolves the registry-listed declared coordinate by membership, not by coordinate prefix", () => {
+    const resolution = resolveProjectTargetDescriptor(
+      undefined,
+      ["mindcraft-lang/lib-cutebot", "acme/trg-unregistered", WIDGET_ENTRY.coordinate],
+      [WIDGET_ENTRY]
+    );
+    assert.deepStrictEqual(resolution, { ok: true, descriptor: { appRef: WIDGET_ENTRY.ref } });
+  });
+
+  it("fails with NO_REGISTRY_MATCH when no declared coordinate is registry-listed, naming the declared coordinates", () => {
+    const declared = ["mindcraft-lang/lib-cutebot", "acme/trg-unregistered"];
+    const resolution = resolveProjectTargetDescriptor(undefined, declared, [WIDGET_ENTRY]);
+    assert.deepStrictEqual(resolution, {
+      ok: false,
+      code: TargetResolutionErrorCode.NO_REGISTRY_MATCH,
+      declaredCoordinates: declared,
+    });
+  });
+
+  it("fails with NO_REGISTRY_MATCH when the project declares no targets", () => {
+    const resolution = resolveProjectTargetDescriptor(undefined, [], [WIDGET_ENTRY]);
+    assert.deepStrictEqual(resolution, {
+      ok: false,
+      code: TargetResolutionErrorCode.NO_REGISTRY_MATCH,
+      declaredCoordinates: [],
+    });
+  });
+
+  it("fails with AMBIGUOUS_REGISTRY_MATCH when more than one declared coordinate is registry-listed", () => {
+    const otherEntry = entry("acme/other-platform");
+    const declared = [WIDGET_ENTRY.coordinate, otherEntry.coordinate];
+    const resolution = resolveProjectTargetDescriptor(undefined, declared, [WIDGET_ENTRY, otherEntry]);
+    assert.deepStrictEqual(resolution, {
+      ok: false,
+      code: TargetResolutionErrorCode.AMBIGUOUS_REGISTRY_MATCH,
+      declaredCoordinates: declared,
+    });
   });
 });
 

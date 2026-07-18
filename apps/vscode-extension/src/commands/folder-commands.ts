@@ -6,12 +6,19 @@ import {
   openFolderProjectSession,
   revealFolderSessionEditor,
 } from "../services/folder-session";
-import { fileExists, findProjectFolderCandidates, resolveTargetAppRoot } from "../services/folder-target-resolver";
+import {
+  fileExists,
+  findProjectFolderCandidates,
+  resolveFolderTargetDescriptor,
+  resolveTargetAppRoot,
+} from "../services/folder-target-resolver";
 import { buildProjectSkeleton, readDevTargetDescriptor } from "../services/project-skeleton";
 import { ensureCachedTargetApp } from "../services/target-app-cache-host";
 import {
   findTargetRegistryEntry,
+  type ProjectTargetResolution,
   registryProjectSeed,
+  TargetResolutionErrorCode,
   targetRegistryEntries,
   targetRegistryPickItems,
 } from "../services/target-registry";
@@ -67,10 +74,6 @@ async function createTileFile(scaffold: TileScaffold): Promise<void> {
 }
 
 async function openProjectFolder(context: vscode.ExtensionContext): Promise<void> {
-  const descriptor = requireDevTarget();
-  if (!descriptor) {
-    return;
-  }
   const candidates = await findProjectFolderCandidates();
   if (candidates.length === 0) {
     vscode.window.showErrorMessage(`Open a workspace folder containing ${MINDCRAFT_JSON} first.`);
@@ -80,11 +83,32 @@ async function openProjectFolder(context: vscode.ExtensionContext): Promise<void
   if (!folder) {
     return;
   }
-  const appRoot = await resolveTargetAppRoot(context, descriptor);
+  const resolution = await resolveFolderTargetDescriptor(folder.uri);
+  if (!resolution.ok) {
+    vscode.window.showErrorMessage(targetResolutionFailureMessage(resolution));
+    return;
+  }
+  const appRoot = await resolveTargetAppRoot(context, resolution.descriptor);
   if (!appRoot) {
     return;
   }
   openFolderProjectSession(context, folder, appRoot);
+}
+
+/** The error message shown when a project folder resolves no hostable target. */
+function targetResolutionFailureMessage(failure: Extract<ProjectTargetResolution, { ok: false }>): string {
+  const declared = failure.declaredCoordinates;
+  if (failure.code === TargetResolutionErrorCode.AMBIGUOUS_REGISTRY_MATCH) {
+    return (
+      `The project declares more than one known target (${declared.join(", ")}) (${failure.code}). ` +
+      `Keep one target in ${MINDCRAFT_JSON}, or set the "mindcraft.devTarget" setting to override the hosted app.`
+    );
+  }
+  return declared.length === 0
+    ? `The project declares no target in ${MINDCRAFT_JSON} (${failure.code}). ` +
+        'Create the project with New Project, or set the "mindcraft.devTarget" setting to override the hosted app.'
+    : `The project declares no known target (declared: ${declared.join(", ")}) (${failure.code}). ` +
+        `Declare a known target in ${MINDCRAFT_JSON}, or set the "mindcraft.devTarget" setting to override the hosted app.`;
 }
 
 async function newProject(context: vscode.ExtensionContext, nameArgument?: string): Promise<void> {
@@ -166,18 +190,6 @@ async function pickRegistryTarget(): Promise<ExtensionCatalogDocumentEntry | und
     placeHolder: "Select the new project's target",
   });
   return picked?.entry;
-}
-
-function requireDevTarget(): ReturnType<typeof readDevTargetDescriptor> {
-  const descriptor = readDevTargetDescriptor();
-  if (!descriptor) {
-    vscode.window.showErrorMessage(
-      'Set the "mindcraft.devTarget" setting ({ "appPath": "<built app directory>" } to host a local build, ' +
-        'or { "appRef": "<owner>/<repo>@<ref>" } to host a published build) to host a target app.'
-    );
-    return undefined;
-  }
-  return descriptor;
 }
 
 /**
