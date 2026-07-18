@@ -64,6 +64,15 @@ export function buildAppHostHtml(options: AppHostHtmlOptions): string {
 
 /** Build the webview document shown when the target app cannot be hosted, stating `message` to the user. */
 export function buildAppLoadFailureHtml(message: string): string {
+  return buildStaticPage(message);
+}
+
+/** Build the webview document shown while the app the tab will host is being prepared. */
+export function buildAppLoadingHtml(): string {
+  return buildStaticPage("Loading the Mindcraft editor...");
+}
+
+function buildStaticPage(message: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>

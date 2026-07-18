@@ -6,7 +6,12 @@ import {
   parseProjectContentManifest,
 } from "@mindcraft-lang/app-host";
 import * as vscode from "vscode";
-import type { TargetAppCacheErrorCode, TargetAppCacheFileAccess, TargetAppSource } from "./target-app-cache";
+import type {
+  TargetAppCacheErrorCode,
+  TargetAppCacheFileAccess,
+  TargetAppCacheProgress,
+  TargetAppSource,
+} from "./target-app-cache";
 import { ensureCachedTargetAppInStore } from "./target-app-cache";
 
 /** Test-installed transport replacing the live jsDelivr transport when set. */
@@ -74,14 +79,6 @@ function parentDirectory(relPath: string): string | undefined {
 function createCacheFileAccess(cacheRoot: vscode.Uri): TargetAppCacheFileAccess {
   const toUri = (relPath: string): vscode.Uri => vscode.Uri.joinPath(cacheRoot, ...relPath.split("/"));
   return {
-    async isDirectory(relPath: string): Promise<boolean> {
-      try {
-        const stat = await vscode.workspace.fs.stat(toUri(relPath));
-        return (stat.type & vscode.FileType.Directory) !== 0;
-      } catch {
-        return false;
-      }
-    },
     async readTextFile(relPath: string): Promise<string | undefined> {
       try {
         return new TextDecoder().decode(await vscode.workspace.fs.readFile(toUri(relPath)));
@@ -104,7 +101,8 @@ function createCacheFileAccess(cacheRoot: vscode.Uri): TargetAppCacheFileAccess 
  * extension's global storage, and return the on-disk directory whose
  * `index.html` the host serves. A cache hit returns without touching the
  * transport; a miss fetches the snapshot, validates every content path, and
- * writes the bundle to disk.
+ * writes the bundle to disk while a progress notification counts the
+ * downloaded files.
  *
  * @param context - The extension context supplying the global storage root.
  * @param reference - A pinned `gh:<owner>/<repo>@<pin>` (or `#branch`) reference.
@@ -130,9 +128,33 @@ export async function ensureCachedTargetApp(
     fetchSnapshot: (ref: string) => fetchExtensionSnapshot(ref, transport),
     parseManifest: parseProjectContentManifest,
   };
-  const result = await ensureCachedTargetAppInStore(access, reference, source, transport);
-  if (!result.ok) {
-    return result;
+  let reporter: vscode.Progress<{ message?: string }> | undefined;
+  let finishNotification: (() => void) | undefined;
+  const onProgress = (progress: TargetAppCacheProgress): void => {
+    const message = `Downloading ${progress.displayName} (${progress.completed}/${progress.total})...`;
+    if (reporter !== undefined) {
+      reporter.report({ message });
+      return;
+    }
+    // The first progress event opens the notification, which stays up until
+    // the ensure call settles.
+    void vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, cancellable: false },
+      (report) =>
+        new Promise<void>((resolve) => {
+          reporter = report;
+          finishNotification = resolve;
+          report.report({ message });
+        })
+    );
+  };
+  try {
+    const result = await ensureCachedTargetAppInStore(access, reference, source, transport, onProgress);
+    if (!result.ok) {
+      return result;
+    }
+    return { ok: true, appDir: vscode.Uri.joinPath(cacheRoot, ...result.appDir.split("/")) };
+  } finally {
+    finishNotification?.();
   }
-  return { ok: true, appDir: vscode.Uri.joinPath(cacheRoot, ...result.appDir.split("/")) };
 }

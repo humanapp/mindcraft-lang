@@ -11,10 +11,12 @@ import type {
   ProjectContentManifestParseResult,
 } from "@mindcraft-lang/app-host";
 import {
+  APP_BUNDLE_FETCH_CONCURRENCY,
   deriveTargetAppCacheDir,
   ensureCachedTargetAppInStore,
   TargetAppCacheErrorCode,
   type TargetAppCacheFileAccess,
+  type TargetAppCacheProgress,
   type TargetAppSource,
 } from "./target-app-cache";
 
@@ -28,14 +30,6 @@ const encoder = new TextEncoder();
 /** An in-memory cache-root file store implementing the cache's file access. */
 class FakeStore implements TargetAppCacheFileAccess {
   readonly files = new Map<string, Uint8Array>();
-
-  async isDirectory(relPath: string): Promise<boolean> {
-    const prefix = `${relPath}/`;
-    for (const path of this.files.keys()) {
-      if (path.startsWith(prefix)) return true;
-    }
-    return false;
-  }
 
   async readTextFile(relPath: string): Promise<string | undefined> {
     const bytes = this.files.get(relPath);
@@ -53,6 +47,29 @@ function fakeTransport(bundleFiles: Record<string, string>): ExtensionFetchTrans
     calls: 0,
     async fetchFile(_owner, _repo, _pin, path): Promise<ExtensionFetchFileResult> {
       this.calls++;
+      const content = bundleFiles[path];
+      if (content === undefined) return { ok: false, kind: "not-found" };
+      return { ok: true, content: encoder.encode(content) };
+    },
+    async resolveBranch(): Promise<ExtensionFetchBranchResult> {
+      throw new Error("resolveBranch is not used for pinned references");
+    },
+    async listVersionTags(): Promise<ExtensionVersionListResult> {
+      throw new Error("listVersionTags is not used");
+    },
+  };
+}
+
+/** A transport resolving each fetch on a timer tick, recording the peak number of in-flight fetches. */
+function trackingTransport(bundleFiles: Record<string, string>): ExtensionFetchTransport & { maxInFlight: number } {
+  let inFlight = 0;
+  return {
+    maxInFlight: 0,
+    async fetchFile(_owner, _repo, _pin, path): Promise<ExtensionFetchFileResult> {
+      inFlight++;
+      this.maxInFlight = Math.max(this.maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      inFlight--;
       const content = bundleFiles[path];
       if (content === undefined) return { ok: false, kind: "not-found" };
       return { ok: true, content: encoder.encode(content) };
@@ -151,7 +168,7 @@ describe("ensureCachedTargetAppInStore", () => {
     }
   });
 
-  it("returns from the cache on a hit without touching source or transport", async () => {
+  it("returns from the cache on a hit without touching source, transport, or the progress listener", async () => {
     await ensureCachedTargetAppInStore(
       store,
       REFERENCE,
@@ -160,10 +177,71 @@ describe("ensureCachedTargetAppInStore", () => {
     );
     const source = fakeSource(snapshot(manifest(APP)));
     const transport = fakeTransport(APP_BUNDLE);
-    const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, transport);
+    const events: TargetAppCacheProgress[] = [];
+    const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, transport, (progress) => {
+      events.push(progress);
+    });
     assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app` });
     assert.strictEqual(source.fetches, 0);
     assert.strictEqual(transport.calls, 0);
+    assert.strictEqual(events.length, 0);
+  });
+
+  it("fetches bundle files concurrently, bounded by the pool limit", async () => {
+    const paths = Array.from({ length: 20 }, (_, i) => `app/chunk-${i}.js`);
+    const bundle = Object.fromEntries(paths.map((path) => [path, `// ${path}`]));
+    bundle["app/index.html"] = "<!doctype html>";
+    const files = ["app/index.html", ...paths];
+    const source = fakeSource(snapshot(manifest({ path: "app", files })));
+    const transport = trackingTransport(bundle);
+    const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, transport);
+    assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app` });
+    assert.strictEqual(transport.maxInFlight, APP_BUNDLE_FETCH_CONCURRENCY);
+    for (const path of files) {
+      assert.ok(store.files.has(`${CACHE_DIR}/${path}`));
+    }
+  });
+
+  it("fails the whole operation when one bundle file cannot be fetched, writing nothing", async () => {
+    const paths = Array.from({ length: 20 }, (_, i) => `app/chunk-${i}.js`);
+    const bundle = Object.fromEntries(paths.map((path) => [path, `// ${path}`]));
+    const files = [...paths, "app/absent.js"];
+    const source = fakeSource(snapshot(manifest({ path: "app", files })));
+    const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, trackingTransport(bundle));
+    assert.strictEqual(failureCode(result), TargetAppCacheErrorCode.FETCH_FAILED);
+    assert.strictEqual(store.files.size, 0);
+  });
+
+  it("reports progress once at download start and once per fetched file", async () => {
+    const source = fakeSource(snapshot(manifest(APP)));
+    const events: TargetAppCacheProgress[] = [];
+    const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, fakeTransport(APP_BUNDLE), (p) => {
+      events.push(p);
+    });
+    assert.strictEqual(result.ok, true);
+    const total = APP.files.length;
+    assert.strictEqual(events.length, total + 1);
+    assert.deepStrictEqual(
+      events.map((event) => event.completed),
+      Array.from({ length: total + 1 }, (_, i) => i)
+    );
+    for (const event of events) {
+      assert.strictEqual(event.total, total);
+      assert.strictEqual(event.displayName, "Microbit V2");
+    }
+  });
+
+  it("falls back to the coordinate as the progress display name when the manifest name is empty", async () => {
+    const source = fakeSource(snapshot({ ...manifest(APP), name: "" }));
+    const events: TargetAppCacheProgress[] = [];
+    const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, fakeTransport(APP_BUNDLE), (p) => {
+      events.push(p);
+    });
+    assert.strictEqual(result.ok, true);
+    assert.ok(events.length > 0);
+    for (const event of events) {
+      assert.strictEqual(event.displayName, COORDINATE);
+    }
   });
 
   it("fails with FETCH_FAILED when the snapshot cannot be fetched", async () => {
@@ -207,6 +285,20 @@ describe("ensureCachedTargetAppInStore", () => {
     );
     assert.strictEqual(failureCode(result), TargetAppCacheErrorCode.SNAPSHOT_PATH_UNSAFE);
     assert.strictEqual(store.files.size, 0);
+  });
+
+  it("treats a partially populated cache (bundle files without the manifest) as a miss and repopulates", async () => {
+    // An interrupted population wrote some bundle files but never reached the
+    // manifest, which is written last.
+    await store.writeFile(`${CACHE_DIR}/app/index.html`, encoder.encode("<!doctype html>"));
+    const source = fakeSource(snapshot(manifest(APP)));
+    const transport = fakeTransport(APP_BUNDLE);
+    const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, transport);
+    assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app` });
+    assert.strictEqual(source.fetches, 1);
+    assert.ok(store.files.has(`${CACHE_DIR}/mindcraft.json`));
+    assert.ok(store.files.has(`${CACHE_DIR}/app/index.html`));
+    assert.ok(store.files.has(`${CACHE_DIR}/app/main.js`));
   });
 
   it("rejects a reference whose specifier escapes the cache root without fetching", async () => {

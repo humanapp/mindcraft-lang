@@ -1,7 +1,7 @@
 import type { FolderHostMessage } from "@mindcraft-lang/bridge-protocol";
 import * as vscode from "vscode";
 import { MINDCRAFT_JSON } from "../mindcraft-json";
-import { buildAppHostHtml, buildAppLoadFailureHtml } from "./app-host-html";
+import { buildAppHostHtml, buildAppLoadFailureHtml, buildAppLoadingHtml } from "./app-host-html";
 import { DiagnosticsManager } from "./diagnostics-manager";
 import { RestoreFailureReason as Reason, type RestoreFailureReason, resolveRestoreTarget } from "./folder-restore";
 import { FolderStoreHost } from "./folder-store-host";
@@ -93,13 +93,16 @@ export type RestoreFolderSessionOutcome =
 /**
  * Rebuild the folder session bound to a restored (or freshly created) app
  * panel: resolve the project folder and app root the same way an interactive
- * open does, then adopt `panel` into a new session. On a resolution failure the
- * panel shows the app-load-failure page, keeping the restored tab non-blank.
+ * open does, then adopt `panel` into a new session. The panel shows a loading
+ * page while resolution runs (which may download the target app), and the
+ * app-load-failure page on a resolution failure, keeping the restored tab
+ * non-blank throughout.
  */
 export async function restoreFolderSessionIntoPanel(
   context: vscode.ExtensionContext,
   panel: vscode.WebviewPanel
 ): Promise<RestoreFolderSessionOutcome> {
+  panel.webview.html = buildAppLoadingHtml();
   const resolution = await resolveRestoreTarget<vscode.WorkspaceFolder, vscode.Uri>({
     descriptor: readDevTargetDescriptor(),
     projectFolders: await findProjectFolderCandidates(),
