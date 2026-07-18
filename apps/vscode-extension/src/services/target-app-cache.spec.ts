@@ -157,7 +157,7 @@ describe("ensureCachedTargetAppInStore", () => {
     const source = fakeSource(snapshot(manifest(APP)));
     const transport = fakeTransport(APP_BUNDLE);
     const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, transport);
-    assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app` });
+    assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app`, manifest: manifest(APP) });
     assert.strictEqual(source.fetches, 1);
     assert.ok(store.files.has(`${CACHE_DIR}/mindcraft.json`));
     assert.ok(store.files.has(`${CACHE_DIR}/app/index.html`));
@@ -181,7 +181,7 @@ describe("ensureCachedTargetAppInStore", () => {
     const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, transport, (progress) => {
       events.push(progress);
     });
-    assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app` });
+    assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app`, manifest: manifest(APP) });
     assert.strictEqual(source.fetches, 0);
     assert.strictEqual(transport.calls, 0);
     assert.strictEqual(events.length, 0);
@@ -195,7 +195,11 @@ describe("ensureCachedTargetAppInStore", () => {
     const source = fakeSource(snapshot(manifest({ path: "app", files })));
     const transport = trackingTransport(bundle);
     const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, transport);
-    assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app` });
+    assert.deepStrictEqual(result, {
+      ok: true,
+      appDir: `${CACHE_DIR}/app`,
+      manifest: manifest({ path: "app", files }),
+    });
     assert.strictEqual(transport.maxInFlight, APP_BUNDLE_FETCH_CONCURRENCY);
     for (const path of files) {
       assert.ok(store.files.has(`${CACHE_DIR}/${path}`));
@@ -294,7 +298,7 @@ describe("ensureCachedTargetAppInStore", () => {
     const source = fakeSource(snapshot(manifest(APP)));
     const transport = fakeTransport(APP_BUNDLE);
     const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, transport);
-    assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app` });
+    assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app`, manifest: manifest(APP) });
     assert.strictEqual(source.fetches, 1);
     assert.ok(store.files.has(`${CACHE_DIR}/mindcraft.json`));
     assert.ok(store.files.has(`${CACHE_DIR}/app/index.html`));

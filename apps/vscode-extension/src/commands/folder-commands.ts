@@ -1,3 +1,4 @@
+import type { ExtensionCatalogDocumentEntry } from "@mindcraft-lang/app-host";
 import * as vscode from "vscode";
 import { MINDCRAFT_JSON } from "../mindcraft-json";
 import {
@@ -7,6 +8,13 @@ import {
 } from "../services/folder-session";
 import { fileExists, findProjectFolderCandidates, resolveTargetAppRoot } from "../services/folder-target-resolver";
 import { buildProjectSkeleton, readDevTargetDescriptor } from "../services/project-skeleton";
+import { ensureCachedTargetApp } from "../services/target-app-cache-host";
+import {
+  findTargetRegistryEntry,
+  registryProjectSeed,
+  targetRegistryEntries,
+  targetRegistryPickItems,
+} from "../services/target-registry";
 import { ACTUATOR_SCAFFOLD, findUniqueFolderName, SENSOR_SCAFFOLD, type TileScaffold } from "../services/tile-scaffold";
 
 /** Register the desktop project-folder commands. */
@@ -80,8 +88,9 @@ async function openProjectFolder(context: vscode.ExtensionContext): Promise<void
 }
 
 async function newProject(context: vscode.ExtensionContext, nameArgument?: string): Promise<void> {
-  const descriptor = requireDevTarget();
-  if (!descriptor) {
+  const descriptor = readDevTargetDescriptor();
+  const registryEntry = descriptor ? undefined : await pickRegistryTarget();
+  if (!descriptor && !registryEntry) {
     return;
   }
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -109,12 +118,54 @@ async function newProject(context: vscode.ExtensionContext, nameArgument?: strin
   if (!name) {
     return;
   }
-  const appRoot = await resolveTargetAppRoot(context, descriptor);
-  if (!appRoot) {
+  let appRoot: vscode.Uri;
+  let skeleton: string;
+  if (descriptor) {
+    const resolved = await resolveTargetAppRoot(context, descriptor);
+    if (!resolved) {
+      return;
+    }
+    appRoot = resolved;
+    skeleton = buildProjectSkeleton(name, descriptor);
+  } else if (registryEntry) {
+    const result = await ensureCachedTargetApp(context, registryEntry.ref);
+    if (!result.ok) {
+      vscode.window.showErrorMessage(
+        `Could not load the target app "${registryEntry.ref}" (${result.code}): ${result.message}`
+      );
+      return;
+    }
+    appRoot = result.appDir;
+    skeleton = buildProjectSkeleton(name, registryProjectSeed(registryEntry.coordinate, result.manifest.version));
+  } else {
     return;
   }
-  await vscode.workspace.fs.writeFile(manifestUri, new TextEncoder().encode(buildProjectSkeleton(name, descriptor)));
+  await vscode.workspace.fs.writeFile(manifestUri, new TextEncoder().encode(skeleton));
   openFolderProjectSession(context, folder, appRoot);
+}
+
+let testTargetPickCoordinate: string | undefined;
+
+/**
+ * Test-only: preselect the registry target the New Project picker returns, by
+ * coordinate, or clear the preselection when `coordinate` is undefined.
+ */
+export function installTestTargetPick(coordinate: string | undefined): void {
+  testTargetPickCoordinate = coordinate;
+}
+
+/**
+ * Pick one target from the bundled targets registry. Always shows the
+ * quick-pick, even for a single entry; returns undefined when dismissed.
+ */
+async function pickRegistryTarget(): Promise<ExtensionCatalogDocumentEntry | undefined> {
+  if (testTargetPickCoordinate !== undefined) {
+    return findTargetRegistryEntry(testTargetPickCoordinate);
+  }
+  const picked = await vscode.window.showQuickPick([...targetRegistryPickItems(targetRegistryEntries())], {
+    placeHolder: "Select the new project's target",
+  });
+  return picked?.entry;
 }
 
 function requireDevTarget(): ReturnType<typeof readDevTargetDescriptor> {

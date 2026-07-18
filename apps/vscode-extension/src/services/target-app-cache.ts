@@ -75,6 +75,8 @@ export type EnsureCachedTargetAppResult =
       readonly ok: true;
       /** Cache-root-relative path of the directory whose `index.html` the host serves. */
       readonly appDir: string;
+      /** The cached target package's parsed content manifest. */
+      readonly manifest: ProjectContentManifest;
     }
   | {
       readonly ok: false;
@@ -122,7 +124,7 @@ function resolveAppDir(manifest: ProjectContentManifest, cacheDir: string): Ensu
   if (!isSafeRelativePath(hostApp.path)) {
     return unsafePath(`The target app path "${hostApp.path}" escapes the cache root.`);
   }
-  return { ok: true, appDir: joinRelative(cacheDir, hostApp.path) };
+  return { ok: true, appDir: joinRelative(cacheDir, hostApp.path), manifest };
 }
 
 /**
@@ -179,7 +181,8 @@ async function fetchAppBundle(
 
 /**
  * Ensure the target app named by `reference` is cached under the store, and
- * return the cache-root-relative directory whose `index.html` the host serves.
+ * return the cache-root-relative directory whose `index.html` the host serves
+ * together with the package's parsed content manifest.
  *
  * On a cache hit -- the keyed directory carries a readable manifest resolving
  * an app directory -- the app directory is resolved from that cached manifest

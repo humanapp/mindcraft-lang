@@ -468,7 +468,7 @@ describe("buildExtensionCatalogOffers", () => {
     entries: [
       {
         coordinate: "mindcraft-lang/lib-codal-position",
-        kind: "extension",
+        kind: "library",
         ref: `gh:mindcraft-lang/lib-codal-position@${PIN_SHA}`,
         name: "Position",
         version: "0.1.0",
@@ -477,7 +477,7 @@ describe("buildExtensionCatalogOffers", () => {
       },
       {
         coordinate: "mindcraft-lang/lib-ecosim-teleport",
-        kind: "extension",
+        kind: "library",
         ref: `gh:mindcraft-lang/lib-ecosim-teleport@${PIN_SHA}`,
         name: "Teleport",
         version: "0.1.0",

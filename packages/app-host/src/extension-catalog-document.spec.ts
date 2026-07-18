@@ -12,7 +12,7 @@ const PIN_SHA = "b19b80b029a77303ee575d3ff9b29adbf7021b23";
 
 const VALID_ENTRY = {
   coordinate: "mindcraft-lang/lib-codal-position",
-  kind: "extension",
+  kind: "library",
   ref: `gh:mindcraft-lang/lib-codal-position@${PIN_SHA}`,
   name: "Position",
   version: "0.1.0",
@@ -42,16 +42,18 @@ describe("validateExtensionCatalogDocument", () => {
   });
 
   it("skips an unknown-kind entry with a warning, keeping the known entries", () => {
-    const result = validateExtensionCatalogDocument({
-      format: MINDCRAFT_CATALOG_FORMAT,
-      entries: [{ ...VALID_ENTRY, kind: "template" }, VALID_ENTRY],
-    });
+    for (const kind of ["template", "extension"]) {
+      const result = validateExtensionCatalogDocument({
+        format: MINDCRAFT_CATALOG_FORMAT,
+        entries: [{ ...VALID_ENTRY, kind }, VALID_ENTRY],
+      });
 
-    assert.ok(result.ok);
-    assert.equal(result.document.entries.length, 1);
-    assert.equal(result.warnings.length, 1);
-    assert.equal(result.warnings[0].code, ExtensionCatalogDocumentWarningCode.UNKNOWN_ENTRY_KIND);
-    assert.equal(result.warnings[0].path, "$.entries[0].kind");
+      assert.ok(result.ok);
+      assert.equal(result.document.entries.length, 1);
+      assert.equal(result.warnings.length, 1);
+      assert.equal(result.warnings[0].code, ExtensionCatalogDocumentWarningCode.UNKNOWN_ENTRY_KIND);
+      assert.equal(result.warnings[0].path, "$.entries[0].kind");
+    }
   });
 
   it("rejects a wrong or missing format marker", () => {

@@ -5,7 +5,7 @@ import { isExtensionCoordinate, parseExtensionReference, validateProjectTargets 
 export const MINDCRAFT_CATALOG_FORMAT = "mindcraft.catalog/1";
 
 /** The one entry kind this format defines. */
-export const CATALOG_ENTRY_KIND_EXTENSION = "extension";
+export const CATALOG_ENTRY_KIND_EXTENSION = "library";
 
 const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
 
@@ -17,7 +17,7 @@ const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
 export interface ExtensionCatalogDocumentEntry {
   /** The extension's `<owner>/<repo>` coordinate. */
   readonly coordinate: string;
-  /** Trust semantics of the entry's pin; `"extension"` is the only kind this format defines. */
+  /** Trust semantics of the entry's pin; `"library"` is the only kind this format defines. */
   readonly kind: string;
   /**
    * The pinned reference an install of this entry writes:

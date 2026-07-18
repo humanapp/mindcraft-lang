@@ -1,4 +1,8 @@
-import type { ExtensionFetchFileResult, ExtensionFetchTransport } from "@mindcraft-lang/app-host";
+import type {
+  ExtensionFetchFileResult,
+  ExtensionFetchTransport,
+  ProjectContentManifest,
+} from "@mindcraft-lang/app-host";
 import {
   createJsDelivrExtensionTransport,
   fetchExtensionSnapshot,
@@ -19,10 +23,14 @@ let testTransport: (ExtensionFetchTransport & { calls: number }) | undefined;
 
 /**
  * Test-only: install a fake transport serving the given content by path, or
- * clear the installed transport when `files` is undefined. Resets the fetch
- * call counter observed by {@link testTargetAppTransportCalls}.
+ * clear the installed transport when `files` is undefined. A string entry is
+ * served as its UTF-8 bytes; a `{ file }` entry is served by reading the named
+ * on-disk file. Resets the fetch call counter observed by
+ * {@link testTargetAppTransportCalls}.
  */
-export function installTestTargetAppTransport(files: Record<string, string> | undefined): void {
+export function installTestTargetAppTransport(
+  files: Record<string, string | { readonly file: string }> | undefined
+): void {
   if (files === undefined) {
     testTransport = undefined;
     return;
@@ -32,9 +40,14 @@ export function installTestTargetAppTransport(files: Record<string, string> | un
     calls: 0,
     async fetchFile(_owner, _repo, _pin, path): Promise<ExtensionFetchFileResult> {
       this.calls++;
-      const content = files[path];
-      if (content === undefined) return { ok: false, kind: "not-found" };
-      return { ok: true, content: encoder.encode(content) };
+      const entry = files[path];
+      if (entry === undefined) return { ok: false, kind: "not-found" };
+      if (typeof entry === "string") return { ok: true, content: encoder.encode(entry) };
+      try {
+        return { ok: true, content: await vscode.workspace.fs.readFile(vscode.Uri.file(entry.file)) };
+      } catch {
+        return { ok: false, kind: "not-found" };
+      }
     },
     async resolveBranch() {
       return { ok: false, kind: "not-found" };
@@ -57,6 +70,8 @@ export type EnsureCachedTargetAppUriResult =
       readonly ok: true;
       /** URI of the on-disk directory whose `index.html` the host serves. */
       readonly appDir: vscode.Uri;
+      /** The cached target package's parsed content manifest. */
+      readonly manifest: ProjectContentManifest;
     }
   | {
       readonly ok: false;
@@ -153,7 +168,7 @@ export async function ensureCachedTargetApp(
     if (!result.ok) {
       return result;
     }
-    return { ok: true, appDir: vscode.Uri.joinPath(cacheRoot, ...result.appDir.split("/")) };
+    return { ok: true, appDir: vscode.Uri.joinPath(cacheRoot, ...result.appDir.split("/")), manifest: result.manifest };
   } finally {
     finishNotification?.();
   }

@@ -3,7 +3,9 @@
 	"compilerOptions": {
 		"types": ["node"],
 		"paths": {
-			"@mindcraft-lang/bridge-protocol": ["../../packages/bridge-protocol/src/index.ts"]
+			"@mindcraft-lang/app-host": ["../../packages/app-host/src/index.ts"],
+			"@mindcraft-lang/bridge-protocol": ["../../packages/bridge-protocol/src/index.ts"],
+			"@mindcraft-lang/service-api": ["../../packages/service-api/src/index.ts"]
 		}
 	},
 	"include": ["src/**/*.spec.ts"],

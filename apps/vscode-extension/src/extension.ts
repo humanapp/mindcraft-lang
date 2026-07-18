@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { registerFolderCommands } from "./commands/folder-commands";
+import { installTestTargetPick, registerFolderCommands } from "./commands/folder-commands";
 import { activateBridgeSession } from "./services/bridge-session";
 import {
   disposeFolderSessionForTest,
@@ -11,6 +11,7 @@ import {
 } from "./services/folder-session";
 import type { RemovableVolumeRoot } from "./services/removable-volume";
 import { installTestTargetAppTransport, testTargetAppTransportCalls } from "./services/target-app-cache-host";
+import { targetRegistryEntries } from "./services/target-registry";
 import { isMindcraftEnabled, setMindcraftEnabled } from "./state/context";
 import { ProjectActionsProvider } from "./views/projectActionsProvider";
 
@@ -62,9 +63,14 @@ export async function activate(context: vscode.ExtensionContext) {
       (payload: unknown, mountRoots?: readonly RemovableVolumeRoot[]) =>
         folderSessionVolumeWriteForTest(payload, mountRoots)
     ),
-    vscode.commands.registerCommand("mindcraft.testHooks.installTargetAppTransport", (files?: Record<string, string>) =>
-      installTestTargetAppTransport(files)
+    vscode.commands.registerCommand(
+      "mindcraft.testHooks.installTargetAppTransport",
+      (files?: Record<string, string | { readonly file: string }>) => installTestTargetAppTransport(files)
     ),
+    vscode.commands.registerCommand("mindcraft.testHooks.installTargetPick", (coordinate?: string) =>
+      installTestTargetPick(coordinate)
+    ),
+    vscode.commands.registerCommand("mindcraft.testHooks.targetRegistryEntries", () => targetRegistryEntries()),
     vscode.commands.registerCommand("mindcraft.testHooks.targetAppTransportCalls", () => testTargetAppTransportCalls()),
     vscode.commands.registerCommand("mindcraft.testHooks.disposeFolderSession", () => disposeFolderSessionForTest()),
     vscode.commands.registerCommand("mindcraft.testHooks.restoreFolderSession", () =>
