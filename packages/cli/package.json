@@ -6,7 +6,8 @@
   "author": "humanapp",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "targets.json"
   ],
   "publishConfig": {
     "access": "public"
