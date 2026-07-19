@@ -37,6 +37,7 @@ import { name as simName } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
 import { buildSimExportDocument } from "./project-io";
 import { simDefaultExtensions, simEmbeddedExtensions } from "./sim-embedded-extensions";
+import { simLibraryCatalogMoves } from "./sim-extension-browser";
 
 /**
  * Platform content mounts for the sim, applied at the workspace root. Empty:
@@ -326,6 +327,7 @@ export class SimEnvironmentStore {
       mounts: simMounts,
       embeddedExtensions: simEmbeddedExtensions,
       extensionFetchTransport: createJsDelivrExtensionTransport(),
+      catalogMoves: simLibraryCatalogMoves,
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,
       saveBindingToken,

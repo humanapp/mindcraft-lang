@@ -14,8 +14,11 @@ export type {
   ExtensionCatalogDocumentError,
   ExtensionCatalogDocumentParseResult,
   ExtensionCatalogDocumentWarning,
+  ExtensionCatalogMove,
+  ExtensionCatalogMoves,
 } from "./extension-catalog-document.js";
 export {
+  applyCatalogMove,
   CATALOG_ENTRY_KIND_EXTENSION,
   CATALOG_ENTRY_KIND_TARGET,
   ExtensionCatalogDocumentErrorCode,

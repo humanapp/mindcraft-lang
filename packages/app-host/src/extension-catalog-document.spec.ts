@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  applyCatalogMove,
   ExtensionCatalogDocumentErrorCode,
   ExtensionCatalogDocumentWarningCode,
   MINDCRAFT_CATALOG_FORMAT,
@@ -28,6 +29,15 @@ const TARGET_ENTRY = {
   name: "Widget",
   version: "0.1.0",
   description: "A hostable widget platform.",
+};
+
+const EMBEDDED_ENTRY = {
+  coordinate: "mindcraft-lang/lib-microbit-cutebot",
+  kind: "library",
+  ref: "embedded:mindcraft-lang/lib-microbit-cutebot",
+  name: "Cutebot",
+  version: "0.1.2",
+  description: "ELECFREAKS Cutebot chassis driver.",
 };
 
 describe("validateExtensionCatalogDocument", () => {
@@ -84,6 +94,28 @@ describe("validateExtensionCatalogDocument", () => {
       });
       assert.ok(!result.ok, `Expected rejection for alias ${JSON.stringify(alias)}`);
       assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_ALIAS));
+    }
+  });
+
+  it("rejects an all-digit target alias with NUMERIC_ALIAS", () => {
+    for (const alias of ["2", "007", "12"]) {
+      const result = validateExtensionCatalogDocument({
+        format: MINDCRAFT_CATALOG_FORMAT,
+        entries: [{ ...TARGET_ENTRY, alias }],
+      });
+      assert.ok(!result.ok, `Expected rejection for alias ${JSON.stringify(alias)}`);
+      assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.NUMERIC_ALIAS));
+    }
+  });
+
+  it("accepts a target alias that mixes digits with non-digits", () => {
+    for (const alias of ["v2", "2-2", "microbit-v2"]) {
+      const result = validateExtensionCatalogDocument({
+        format: MINDCRAFT_CATALOG_FORMAT,
+        entries: [{ ...TARGET_ENTRY, alias }],
+      });
+      assert.ok(result.ok, `Expected acceptance for alias ${JSON.stringify(alias)}`);
+      assert.equal(result.document.entries[0].alias, alias);
     }
   });
 
@@ -150,18 +182,45 @@ describe("validateExtensionCatalogDocument", () => {
     assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_COORDINATE));
   });
 
-  it("rejects refs that are not full-SHA pins", () => {
+  it("rejects gh: refs that are not full-SHA pins", () => {
     const badRefs = [
       "gh:mindcraft-lang/lib-codal-position@v0.1.0",
       `gh:mindcraft-lang/lib-codal-position@${PIN_SHA.slice(0, 7)}`,
       "gh:mindcraft-lang/lib-codal-position#main",
-      `embedded:mindcraft-lang/lib-codal-position`,
       42,
     ];
     for (const ref of badRefs) {
       const result = validateExtensionCatalogDocument({
         format: MINDCRAFT_CATALOG_FORMAT,
         entries: [{ ...VALID_ENTRY, ref }],
+      });
+      assert.ok(!result.ok, `Expected rejection for ref ${JSON.stringify(ref)}`);
+      assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_REF));
+    }
+  });
+
+  it("accepts an embedded-transport ref with no SHA", () => {
+    const result = validateExtensionCatalogDocument({ format: MINDCRAFT_CATALOG_FORMAT, entries: [EMBEDDED_ENTRY] });
+    assert.ok(result.ok);
+    assert.deepStrictEqual(result.warnings, []);
+    assert.deepStrictEqual(result.document.entries, [EMBEDDED_ENTRY]);
+  });
+
+  it("rejects an embedded ref whose coordinate differs from the entry coordinate", () => {
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [{ ...EMBEDDED_ENTRY, ref: "embedded:other-org/lib-microbit-cutebot" }],
+    });
+    assert.ok(!result.ok);
+    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_REF));
+    assert.match(result.errors[0].message, /other-org\/lib-microbit-cutebot/);
+  });
+
+  it("rejects a ref whose transport is neither gh nor embedded", () => {
+    for (const ref of ["npm:mindcraft-lang/lib-microbit-cutebot", "file:./cutebot", "cutebot"]) {
+      const result = validateExtensionCatalogDocument({
+        format: MINDCRAFT_CATALOG_FORMAT,
+        entries: [{ ...EMBEDDED_ENTRY, ref }],
       });
       assert.ok(!result.ok, `Expected rejection for ref ${JSON.stringify(ref)}`);
       assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_REF));
@@ -187,6 +246,114 @@ describe("validateExtensionCatalogDocument", () => {
     assert.ok(!result.ok);
     assert.equal(result.errors[0].code, ExtensionCatalogDocumentErrorCode.INVALID_ENTRY);
     assert.equal(result.errors[0].path, "$.entries[0].description");
+  });
+});
+
+describe("validateExtensionCatalogDocument -- moves", () => {
+  const MOVE_COORDINATE = "mindcraft-lang/lib-codal-position";
+  const MOVE_REF = `gh:${MOVE_COORDINATE}@${PIN_SHA}`;
+
+  it("defaults an absent moves section to an empty map", () => {
+    const result = validateExtensionCatalogDocument({ format: MINDCRAFT_CATALOG_FORMAT, entries: [VALID_ENTRY] });
+    assert.ok(result.ok);
+    assert.deepStrictEqual(result.document.moves, {});
+  });
+
+  it("accepts a well-formed same-coordinate flip with zero errors and warnings", () => {
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [VALID_ENTRY],
+      moves: { [MOVE_COORDINATE]: { ref: MOVE_REF } },
+    });
+    assert.ok(result.ok);
+    assert.deepStrictEqual(result.warnings, []);
+    assert.deepStrictEqual(result.document.moves, { [MOVE_COORDINATE]: { ref: MOVE_REF } });
+  });
+
+  it("rejects a non-object moves section with INVALID_MOVES", () => {
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [VALID_ENTRY],
+      moves: [],
+    });
+    assert.ok(!result.ok);
+    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVES));
+  });
+
+  it("rejects a move key that is not a coordinate with INVALID_MOVES", () => {
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [VALID_ENTRY],
+      moves: { "no-slash": { ref: MOVE_REF } },
+    });
+    assert.ok(!result.ok);
+    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVES));
+  });
+
+  it("rejects move refs that are not full-SHA gh pins with INVALID_MOVE_REF", () => {
+    const badRefs: unknown[] = [
+      `embedded:${MOVE_COORDINATE}`,
+      `gh:${MOVE_COORDINATE}@v0.1.0`,
+      `gh:${MOVE_COORDINATE}@${PIN_SHA.slice(0, 7)}`,
+      `gh:${MOVE_COORDINATE}#main`,
+      42,
+    ];
+    for (const ref of badRefs) {
+      const result = validateExtensionCatalogDocument({
+        format: MINDCRAFT_CATALOG_FORMAT,
+        entries: [VALID_ENTRY],
+        moves: { [MOVE_COORDINATE]: { ref } },
+      });
+      assert.ok(!result.ok, `Expected rejection for move ref ${JSON.stringify(ref)}`);
+      assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF));
+    }
+  });
+
+  it("rejects a move whose value is not an object with INVALID_MOVE_REF", () => {
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [VALID_ENTRY],
+      moves: { [MOVE_COORDINATE]: MOVE_REF },
+    });
+    assert.ok(!result.ok);
+    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF));
+  });
+
+  it("rejects a move ref whose coordinate differs from the move key with INVALID_MOVE_REF", () => {
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [VALID_ENTRY],
+      moves: { [MOVE_COORDINATE]: { ref: `gh:other-org/lib-codal-position@${PIN_SHA}` } },
+    });
+    assert.ok(!result.ok);
+    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF));
+    assert.ok(result.errors.some((error) => /other-org\/lib-codal-position/.test(error.message)));
+  });
+});
+
+describe("applyCatalogMove", () => {
+  const COORDINATE = "example-org/position-ext";
+  const MOVED_REF = `example-org/position-ext@${PIN_SHA}`;
+  const moves = { [COORDINATE]: { ref: `gh:${MOVED_REF}` } };
+
+  it("redirects an embedded reference of a moved coordinate to the move target", () => {
+    assert.equal(applyCatalogMove(`embedded:${COORDINATE}`, moves), `gh:${MOVED_REF}`);
+  });
+
+  it("redirects a differing gh pin of a moved coordinate to the move target", () => {
+    assert.equal(applyCatalogMove(`gh:${COORDINATE}@v0.1.0`, moves), `gh:${MOVED_REF}`);
+  });
+
+  it("returns the reference unchanged when it already equals the move target", () => {
+    assert.equal(applyCatalogMove(`gh:${MOVED_REF}`, moves), `gh:${MOVED_REF}`);
+  });
+
+  it("returns the reference unchanged when no move targets its coordinate", () => {
+    assert.equal(applyCatalogMove("embedded:other-org/other-ext", moves), "embedded:other-org/other-ext");
+  });
+
+  it("returns an unparseable reference unchanged", () => {
+    assert.equal(applyCatalogMove("not-a-reference", moves), "not-a-reference");
   });
 });
 

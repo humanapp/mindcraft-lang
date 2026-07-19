@@ -11,10 +11,12 @@ import {
   type ExtensionBrowserEntry,
   type ExtensionCardCallbacks,
   type ExtensionCatalogOffer,
+  extensionBrowserSections,
   extensionCardMenuItems,
   extensionCardShowsInstall,
   extensionCardShowsRetry,
   filterExtensionEntries,
+  filterExtensionOffers,
   runExtensionCardAction,
 } from "./extension-browser-model";
 
@@ -276,10 +278,10 @@ export interface ExtensionBrowserDialogProps extends ExtensionCardCallbacks {
 
 /**
  * Modal that presents a searchable flat list of extension cards, an optional
- * add-by-reference row, and an optional catalog section. A locked layer
- * library offers a View Docs menu; an installed add-on offers Uninstall; an
- * updatable dependency offers Check for Update; a broken dependency shows its
- * reason with a Retry affordance; a not-installed add-on offers an inline Add.
+ * add-by-reference row, and an optional catalog section. An installed add-on
+ * offers Uninstall; an updatable dependency offers Check for Update; a broken
+ * dependency shows its reason with a Retry affordance; a not-installed add-on
+ * offers an inline Add.
  */
 export function ExtensionBrowserDialog({
   open,
@@ -301,7 +303,13 @@ export function ExtensionBrowserDialog({
     }
   }, [open]);
 
-  const filtered = React.useMemo(() => filterExtensionEntries(entries, filter), [entries, filter]);
+  const searchActive = filter.trim().length > 0;
+  const filteredEntries = React.useMemo(() => filterExtensionEntries(entries, filter), [entries, filter]);
+  const filteredOffers = React.useMemo(
+    () => (onInstallReference !== undefined ? filterExtensionOffers(catalogOffers ?? [], filter) : []),
+    [catalogOffers, onInstallReference, filter]
+  );
+  const sections = extensionBrowserSections(filteredOffers.length, filteredEntries.length, searchActive);
   const updatableCount = React.useMemo(() => entries.filter((entry) => entry.updatable === true).length, [entries]);
 
   return (
@@ -331,19 +339,20 @@ export function ExtensionBrowserDialog({
               Check for Updates
             </Button>
           )}
-          {onInstallReference !== undefined && catalogOffers !== undefined && catalogOffers.length > 0 && (
-            <ExtensionCatalogSection offers={catalogOffers} onInstallReference={onInstallReference} />
+          {onInstallReference !== undefined && sections.showOffers && (
+            <ExtensionCatalogSection offers={filteredOffers} onInstallReference={onInstallReference} />
           )}
-          {filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">No libraries match your search.</p>
-          ) : (
+          {sections.showEntries && (
             <ExtensionBrowserList
-              entries={filtered}
+              entries={filteredEntries}
               onInstall={onInstall}
               onUninstall={onUninstall}
               onCheckUpdate={onCheckUpdate}
               onRetry={onRetry}
             />
+          )}
+          {sections.showNoMatch && (
+            <p className="py-8 text-center text-sm text-muted-foreground">No libraries match your search.</p>
           )}
         </div>
       </DialogContent>

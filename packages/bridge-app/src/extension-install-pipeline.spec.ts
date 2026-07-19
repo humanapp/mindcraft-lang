@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import type {
   ActiveProject,
+  ExtensionCatalogMoves,
   ExtensionFetchTransport,
   ProjectCollection,
   ProjectFileSystem,
@@ -20,6 +21,7 @@ import {
 import { BrainDef, coreModule } from "@mindcraft-lang/core/app";
 import { declarationMount } from "@mindcraft-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
+import type { EmbeddedExtension } from "./embedded-extensions.js";
 import { buildExtensionCatalog } from "./extension-catalog.js";
 import { parseExtensionInstallLog } from "./extension-install-log.js";
 import {
@@ -186,6 +188,8 @@ function createHost(
   options?: {
     transport?: ExtensionFetchTransport;
     hostFiles?: Record<string, string>;
+    embeddedExtensions?: readonly EmbeddedExtension[];
+    catalogMoves?: ExtensionCatalogMoves;
   }
 ): AppEnvironmentHost {
   const filesystem = createInMemoryProjectFileSystem();
@@ -197,6 +201,8 @@ function createHost(
     modules: [coreModule()],
     mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
     extensionFetchTransport: options?.transport,
+    ...(options?.embeddedExtensions ? { embeddedExtensions: options.embeddedExtensions } : {}),
+    ...(options?.catalogMoves ? { catalogMoves: options.catalogMoves } : {}),
   });
 }
 
@@ -1007,6 +1013,190 @@ describe("unstable project dependencies", () => {
       ]);
     } finally {
       host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+describe("catalog moves -- top-level transport flip", () => {
+  const MOVE_SHA = "1111111111111111111111111111111111111111";
+  const MOVE_REF = `gh:${POSITION_COORDINATE}@${MOVE_SHA}`;
+  const EMBEDDED_REF = `embedded:${POSITION_COORDINATE}`;
+  const POSITION_EMBEDDED: EmbeddedExtension = {
+    canonicalOrigin: POSITION_COORDINATE,
+    files: [
+      { path: "mindcraft.json", content: manifestText("Position") },
+      { path: "index.ts", content: "export const position = 42;\n" },
+    ],
+  };
+
+  it("leaves the top-level entry untouched when no catalog move targets its coordinate", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = { appData: new Map(), extensions: { [POSITION_COORDINATE]: EMBEDDED_REF } };
+    const host = createHost(world, {
+      transport: createTestTransport({ content: { [`${POSITION_COORDINATE}@${MOVE_SHA}`]: POSITION_CONTENT } }),
+      hostFiles: { "main.ts": HOST_IMPORTS_POSITION },
+      embeddedExtensions: [POSITION_EMBEDDED],
+    });
+    try {
+      // RED baseline: absent a move for the coordinate, project load rewrites nothing.
+      await host.initialize(PROJECT_ID);
+      assert.equal(world.extensions[POSITION_COORDINATE], EMBEDDED_REF);
+      assert.equal(await host.applyCatalogMoves(), undefined);
+      assert.equal(world.extensions[POSITION_COORDINATE], EMBEDDED_REF);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("rewrites a moved top-level entry to the target on load, persists it, and is idempotent", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = { appData: new Map(), extensions: { [POSITION_COORDINATE]: EMBEDDED_REF } };
+    const host = createHost(world, {
+      transport: createTestTransport({ content: { [`${POSITION_COORDINATE}@${MOVE_SHA}`]: POSITION_CONTENT } }),
+      hostFiles: { "main.ts": HOST_IMPORTS_POSITION },
+      embeddedExtensions: [POSITION_EMBEDDED],
+      catalogMoves: { [POSITION_COORDINATE]: { ref: MOVE_REF } },
+    });
+    try {
+      // GREEN: load auto-applies the move; the persisted manifest ref flips to
+      // the gh target, the target content is fetched and materialized, and the
+      // install-log signal records the change.
+      await host.initialize(PROJECT_ID);
+      assert.equal(world.extensions[POSITION_COORDINATE], MOVE_REF);
+      const stored = parseInstalledExtensionSnapshots(world.appData.get("installed-extensions"));
+      assert.equal(stored[POSITION_COORDINATE]?.reference, MOVE_REF);
+      assert.equal(stored[POSITION_COORDINATE]?.specifier, MOVE_SHA);
+      assert.ok(servedPaths(host).includes(`.libraries/${POSITION_COORDINATE}/index.ts`));
+      assert.ok(
+        parseExtensionInstallLog(world.appData.get("extension-install-log")).some((event) => event.kind === "install")
+      );
+
+      // A re-encountered un-migrated map migrates on an explicit call, and the
+      // returned report commits.
+      await host.projectManager.updateActive({ extensions: { [POSITION_COORDINATE]: EMBEDDED_REF } });
+      const report = await host.applyCatalogMoves();
+      assert.ok(report?.committed);
+      assert.equal(world.extensions[POSITION_COORDINATE], MOVE_REF);
+
+      // Idempotent: a project already at its move target is a no-op.
+      assert.equal(await host.applyCatalogMoves(), undefined);
+      assert.equal(world.extensions[POSITION_COORDINATE], MOVE_REF);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+describe("catalog moves -- transitive dependency redirect", () => {
+  const MOTOR_COORDINATE = "example-org/motor-ext";
+  const MOTOR_SHA = "2222222222222222222222222222222222222222";
+  const MOTOR_MOVE_REF = `gh:${MOTOR_COORDINATE}@${MOTOR_SHA}`;
+  const ROBOT_COORDINATE = "example-org/robot-ext";
+  const ROBOT_REFERENCE = `gh:${ROBOT_COORDINATE}@v1`;
+
+  /** A transport serving robot-ext (declaring an embedded motor dependency) and the moved motor content. */
+  function createMoveTransport(): ExtensionFetchTransport & { requests: string[] } {
+    return createTestTransport({
+      content: {
+        [`${ROBOT_COORDINATE}@v1`]: {
+          "mindcraft.json": manifestText("Robot", { [MOTOR_COORDINATE]: `embedded:${MOTOR_COORDINATE}` }),
+          "index.ts": `export { motor } from "@lib/${MOTOR_COORDINATE}";\n`,
+        },
+        [`${MOTOR_COORDINATE}@${MOTOR_SHA}`]: {
+          "mindcraft.json": manifestText("Motor"),
+          "index.ts": "export const motor = 1;\n",
+        },
+      },
+    });
+  }
+
+  it("does not resolve a transitive embedded dependency when the embedded copy is absent and no move applies", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = { appData: new Map(), extensions: {} };
+    const host = createHost(world, {
+      transport: createMoveTransport(),
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+    });
+    try {
+      // RED: robot-ext declares `embedded:motor-ext`, motor-ext is not bundled,
+      // and no move applies -- motor-ext never resolves.
+      await host.initialize(PROJECT_ID);
+      const report = await host.updateProjectExtensions({ [ROBOT_COORDINATE]: ROBOT_REFERENCE });
+      assert.ok(report.committed);
+      assert.ok(!servedPaths(host).includes(`.libraries/${MOTOR_COORDINATE}/index.ts`));
+      assert.deepStrictEqual(host.installedLibraries.map((library) => library.coordinate).sort(), [ROBOT_COORDINATE]);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("redirects the transitive dependency through the move target: fetched, resolved, not added to the manifest map, dependent content unchanged", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = { appData: new Map(), extensions: {} };
+    const host = createHost(world, {
+      transport: createMoveTransport(),
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      catalogMoves: { [MOTOR_COORDINATE]: { ref: MOTOR_MOVE_REF } },
+    });
+    try {
+      // GREEN: the move redirects `embedded:motor-ext` to the gh target during
+      // resolution; motor-ext is fetched and materialized.
+      await host.initialize(PROJECT_ID);
+      const report = await host.updateProjectExtensions({ [ROBOT_COORDINATE]: ROBOT_REFERENCE });
+      assert.ok(report.committed);
+      assert.ok(servedPaths(host).includes(`.libraries/${MOTOR_COORDINATE}/index.ts`));
+
+      // The transitive coordinate is not written into the project's manifest map.
+      assert.deepStrictEqual(Object.keys(world.extensions), [ROBOT_COORDINATE]);
+
+      // A snapshot for the redirected transitive dependency persists at the move target.
+      const stored = parseInstalledExtensionSnapshots(world.appData.get("installed-extensions"));
+      assert.equal(stored[MOTOR_COORDINATE]?.reference, MOTOR_MOVE_REF);
+
+      // The dependent's content is data, not rewritten: robot-ext's manifest
+      // still declares the embedded reference it shipped with.
+      const robotManifest = host.servedProjectFileSystem
+        .exportSnapshot()
+        .get(`.libraries/${ROBOT_COORDINATE}/mindcraft.json`);
+      assert.ok(robotManifest?.kind === "file" && robotManifest.content.includes(`embedded:${MOTOR_COORDINATE}`));
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("resolves the redirected transitive dependency from stored snapshots on reload without a transport", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = { appData: new Map(), extensions: {} };
+    const first = createHost(world, {
+      transport: createMoveTransport(),
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      catalogMoves: { [MOTOR_COORDINATE]: { ref: MOTOR_MOVE_REF } },
+    });
+    try {
+      await first.initialize(PROJECT_ID);
+      const report = await first.updateProjectExtensions({ [ROBOT_COORDINATE]: ROBOT_REFERENCE });
+      assert.ok(report.committed);
+    } finally {
+      first.dispose();
+    }
+
+    // A fresh host over the same store, with no transport: the load-path
+    // transitive redirect resolves motor-ext from the stored snapshot.
+    const reloaded = createHost(world, {
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      catalogMoves: { [MOTOR_COORDINATE]: { ref: MOTOR_MOVE_REF } },
+    });
+    try {
+      await reloaded.initialize(PROJECT_ID);
+      assert.ok(servedPaths(reloaded).includes(`.libraries/${MOTOR_COORDINATE}/index.ts`));
+      assert.deepStrictEqual(Object.keys(world.extensions), [ROBOT_COORDINATE]);
+    } finally {
+      reloaded.dispose();
       restoreLocalStorage();
     }
   });

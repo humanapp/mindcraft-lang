@@ -3,7 +3,6 @@ import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { EmbeddedExtension } from "@mindcraft-lang/bridge-app";
 import {
-  buildExtensionCatalog,
   CORE_LIB_COORDINATE,
   collectMetadataFromCompile,
   findEmbeddedExtensionsMissingStableIds,
@@ -53,57 +52,33 @@ describe("sim add-on extensions -- every declaration ships a stable id", () => {
   });
 });
 
-describe("sim add-on extensions -- browser catalog compatibility", () => {
-  test("a sim project lists Teleport and Detect as installable, unlocked add-ons", () => {
+describe("sim add-on extensions -- browser entries list direct dependencies only", () => {
+  test("a fresh sim project does not list the bundled Teleport/Detect add-ons it does not directly reference", () => {
     const entries = buildSimExtensionEntries({ [SIM_LIB_COORDINATE]: SIM_LIB_REFERENCE }, simEmbedRecord());
 
-    const teleport = entries.find((e) => e.coordinate === ECOSIM_TELEPORT_EXT_COORDINATE);
-    const detect = entries.find((e) => e.coordinate === ECOSIM_DETECT_EXT_COORDINATE);
-    assert.ok(teleport, "Teleport is in the sim project catalog");
-    assert.ok(detect, "Detect is in the sim project catalog");
-    for (const entry of [teleport, detect]) {
-      assert.equal(entry.locked, false, "an add-on is not a locked layer library");
-      assert.equal(entry.installed, false, "an add-on is not installed by default");
-    }
-    assert.equal(teleport.name, "Teleport");
-    assert.equal(detect.name, "Detect");
+    // Teleport and Detect are bundled add-ons surfaced through the catalog
+    // offers, not entry cards, until the project directly references them.
+    assert.equal(
+      entries.find((e) => e.coordinate === ECOSIM_TELEPORT_EXT_COORDINATE),
+      undefined
+    );
+    assert.equal(
+      entries.find((e) => e.coordinate === ECOSIM_DETECT_EXT_COORDINATE),
+      undefined
+    );
   });
 
-  test("a microbit-shaped project's catalog excludes the sim-targeted add-ons", () => {
-    const MICROBIT_COORDINATE = "mindcraft-lang/microbit-v2";
-    const microbitLayer: EmbeddedExtension = {
-      canonicalOrigin: MICROBIT_COORDINATE,
-      files: [
-        {
-          path: "mindcraft.json",
-          content: JSON.stringify({
-            name: "Microbit v2",
-            version: "0.2.0",
-            extensions: { [CORE_LIB_COORDINATE]: `embedded:${CORE_LIB_COORDINATE}` },
-          }),
-        },
-      ],
+  test("a directly-installed add-on lists as an installed entry", () => {
+    const project = {
+      [SIM_LIB_COORDINATE]: SIM_LIB_REFERENCE,
+      [ECOSIM_TELEPORT_EXT_COORDINATE]: `embedded:${ECOSIM_TELEPORT_EXT_COORDINATE}`,
     };
-    const coreLib = buildEmbeddedExtensionFromDir(extensionDir("../../../../packages/core/lib"), CORE_LIB_COORDINATE);
-    const teleportAddon = buildEmbeddedExtensionFromDir(
-      extensionDir("../../extensions/lib-ecosim-teleport"),
-      ECOSIM_TELEPORT_EXT_COORDINATE
-    );
-    const detectAddon = buildEmbeddedExtensionFromDir(
-      extensionDir("../../extensions/lib-ecosim-detect"),
-      ECOSIM_DETECT_EXT_COORDINATE
-    );
-    const embedRecord = [microbitLayer, coreLib, teleportAddon, detectAddon];
-    const microbitLayerCoordinates = new Set([CORE_LIB_COORDINATE, "mindcraft-lang/codal", MICROBIT_COORDINATE]);
+    const entries = buildSimExtensionEntries(project, simEmbedRecord());
 
-    const catalog = buildExtensionCatalog(
-      { [MICROBIT_COORDINATE]: `embedded:${MICROBIT_COORDINATE}` },
-      embedRecord,
-      microbitLayerCoordinates
-    );
-    const coordinates = catalog.map((e) => e.coordinate);
-    assert.equal(coordinates.includes(ECOSIM_TELEPORT_EXT_COORDINATE), false, "Teleport is hidden off the sim stack");
-    assert.equal(coordinates.includes(ECOSIM_DETECT_EXT_COORDINATE), false, "Detect is hidden off the sim stack");
+    const teleport = entries.find((e) => e.coordinate === ECOSIM_TELEPORT_EXT_COORDINATE);
+    assert.ok(teleport, "a directly-referenced add-on is an entry card");
+    assert.equal(teleport.installed, true);
+    assert.equal(teleport.name, "Teleport");
   });
 });
 

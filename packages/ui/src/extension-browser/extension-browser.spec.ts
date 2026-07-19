@@ -7,10 +7,12 @@ import {
   DEFAULT_EXTENSION_THUMBNAIL,
   type ExtensionBrowserEntry,
   type ExtensionCatalogOffer,
+  extensionBrowserSections,
   extensionCardMenuItems,
   extensionCardShowsInstall,
   extensionCardShowsRetry,
   filterExtensionEntries,
+  filterExtensionOffers,
   runExtensionCardAction,
 } from "./extension-browser-model";
 
@@ -21,19 +23,10 @@ function entry(
     name: overrides.coordinate,
     version: "1.0.0",
     installed: false,
-    locked: false,
     ...overrides,
   };
 }
 
-const lockedLib = entry({
-  coordinate: "mindcraft-lang/microbit-v2",
-  name: "Micro:bit v2",
-  version: "0.2.1",
-  installed: true,
-  locked: true,
-  docsUrl: "https://github.com/mindcraft-lang/microbit-v2",
-});
 const installedAddon = entry({
   coordinate: "mindcraft-lang/microbit-position",
   name: "Position",
@@ -85,7 +78,7 @@ function renderList(entries: readonly ExtensionBrowserEntry[]): string {
 }
 
 describe("filterExtensionEntries", () => {
-  const all = [lockedLib, installedAddon, availableAddon];
+  const all = [installedAddon, availableAddon];
 
   test("a blank query returns every entry", () => {
     assert.deepEqual(
@@ -112,12 +105,103 @@ describe("filterExtensionEntries", () => {
   });
 });
 
-describe("extensionCardMenuItems and extensionCardShowsInstall", () => {
-  test("a locked layer library offers only View Docs and no inline Add", () => {
-    assert.deepEqual(extensionCardMenuItems(lockedLib), [{ action: "docs", label: "View Docs" }]);
-    assert.equal(extensionCardShowsInstall(lockedLib), false);
+describe("filterExtensionOffers", () => {
+  const cutebot: ExtensionCatalogOffer = {
+    coordinate: "elecfreaks/cutebot",
+    name: "Cutebot",
+    version: "1.0.0",
+    description: "Drive the Cutebot chassis.",
+    ref: "embedded:elecfreaks/cutebot",
+    installed: false,
+  };
+  const yahboom: ExtensionCatalogOffer = {
+    coordinate: "yahboom/gamepad",
+    name: "Yahboom Gamepad",
+    version: "1.0.0",
+    description: "Read the GHBit gamepad buttons.",
+    ref: "embedded:yahboom/gamepad",
+    installed: false,
+  };
+  const offers = [cutebot, yahboom];
+
+  test("a blank query returns every offer", () => {
+    assert.deepEqual(
+      filterExtensionOffers(offers, "").map((o) => o.coordinate),
+      offers.map((o) => o.coordinate)
+    );
+    assert.equal(filterExtensionOffers(offers, "   ").length, offers.length);
   });
 
+  test("filters case-insensitively by name", () => {
+    assert.deepEqual(
+      filterExtensionOffers(offers, "CUTE").map((o) => o.coordinate),
+      ["elecfreaks/cutebot"]
+    );
+  });
+
+  test("filters by coordinate", () => {
+    assert.deepEqual(
+      filterExtensionOffers(offers, "yahboom/gamepad").map((o) => o.coordinate),
+      ["yahboom/gamepad"]
+    );
+  });
+
+  test("filters by description substring", () => {
+    assert.deepEqual(
+      filterExtensionOffers(offers, "ghbit").map((o) => o.coordinate),
+      ["yahboom/gamepad"]
+    );
+  });
+
+  test("a query matching nothing yields no offers", () => {
+    assert.deepEqual(filterExtensionOffers(offers, "zzz"), []);
+  });
+});
+
+describe("extensionBrowserSections", () => {
+  test("a fresh project (no entries, offers present, no search) shows offers and no no-match message", () => {
+    const sections = extensionBrowserSections(2, 0, false);
+    assert.equal(sections.showNoMatch, false);
+    assert.equal(sections.showOffers, true);
+    assert.equal(sections.showEntries, false);
+  });
+
+  test("no search with entries present shows the list and no no-match message", () => {
+    const sections = extensionBrowserSections(0, 3, false);
+    assert.equal(sections.showNoMatch, false);
+    assert.equal(sections.showEntries, true);
+    assert.equal(sections.showOffers, false);
+  });
+
+  test("a search matching only an offer shows offers and no no-match message", () => {
+    const sections = extensionBrowserSections(1, 0, true);
+    assert.equal(sections.showNoMatch, false);
+    assert.equal(sections.showOffers, true);
+    assert.equal(sections.showEntries, false);
+  });
+
+  test("a search matching only an entry shows the list and no no-match message", () => {
+    const sections = extensionBrowserSections(0, 1, true);
+    assert.equal(sections.showNoMatch, false);
+    assert.equal(sections.showEntries, true);
+  });
+
+  test("a search matching nothing anywhere shows the no-match message", () => {
+    const sections = extensionBrowserSections(0, 0, true);
+    assert.equal(sections.showNoMatch, true);
+    assert.equal(sections.showOffers, false);
+    assert.equal(sections.showEntries, false);
+  });
+
+  test("an empty browser with no active search shows neither content nor the no-match message", () => {
+    const sections = extensionBrowserSections(0, 0, false);
+    assert.equal(sections.showNoMatch, false);
+    assert.equal(sections.showOffers, false);
+    assert.equal(sections.showEntries, false);
+  });
+});
+
+describe("extensionCardMenuItems and extensionCardShowsInstall", () => {
   test("an installed add-on offers Uninstall and no inline Add", () => {
     assert.deepEqual(extensionCardMenuItems(installedAddon), [{ action: "uninstall", label: "Uninstall" }]);
     assert.equal(extensionCardShowsInstall(installedAddon), false);
@@ -126,10 +210,6 @@ describe("extensionCardMenuItems and extensionCardShowsInstall", () => {
   test("a not-installed add-on offers no menu and shows the inline Add", () => {
     assert.deepEqual(extensionCardMenuItems(availableAddon), []);
     assert.equal(extensionCardShowsInstall(availableAddon), true);
-  });
-
-  test("a locked library with no docsUrl offers no menu items", () => {
-    assert.deepEqual(extensionCardMenuItems(entry({ coordinate: "x/y", locked: true, installed: true })), []);
   });
 
   test("an updatable dependency offers Check for Update ahead of Uninstall", () => {
@@ -162,12 +242,12 @@ describe("runExtensionCardAction", () => {
 
   test("docs opens the entry's docsUrl", () => {
     const opened: string[] = [];
-    runExtensionCardAction(lockedLib, "docs", {
+    runExtensionCardAction(installedAddon, "docs", {
       onInstall: () => {},
       onUninstall: () => {},
       openDocs: (url) => opened.push(url),
     });
-    assert.deepEqual(opened, ["https://github.com/mindcraft-lang/microbit-v2"]);
+    assert.deepEqual(opened, ["https://github.com/mindcraft-lang/microbit-position"]);
   });
 
   test("docs on an entry without a docsUrl does nothing", () => {
@@ -227,9 +307,8 @@ describe("ExtensionBrowserList rendering", () => {
     assert.doesNotMatch(markup, /Shared Math actions/);
   });
 
-  test("a locked library and an installed add-on render a kebab and no inline Add", () => {
-    const markup = renderList([lockedLib, installedAddon]);
-    assert.match(markup, /Micro:bit v2 actions/);
+  test("installed add-ons render a kebab and no inline Add", () => {
+    const markup = renderList([installedAddon, updatableDependency]);
     assert.match(markup, /Position actions/);
     assert.doesNotMatch(markup, />Add</);
   });

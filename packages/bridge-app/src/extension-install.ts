@@ -1,5 +1,10 @@
-import type { ExtensionFetchError, ExtensionFetchResult } from "@mindcraft-lang/app-host";
-import { MINDCRAFT_JSON_PATH, parseExtensionReference, parseProjectContentManifest } from "@mindcraft-lang/app-host";
+import type { ExtensionCatalogMoves, ExtensionFetchError, ExtensionFetchResult } from "@mindcraft-lang/app-host";
+import {
+  applyCatalogMove,
+  MINDCRAFT_JSON_PATH,
+  parseExtensionReference,
+  parseProjectContentManifest,
+} from "@mindcraft-lang/app-host";
 import type { IBrainDef } from "@mindcraft-lang/core/app";
 import type { IBrainRuleDef } from "@mindcraft-lang/core/brain";
 import { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
@@ -231,6 +236,11 @@ function ownExtensions(files: ReadonlyMap<string, string>): Readonly<Record<stri
   return parsed.ok ? parsed.manifest.extensions : {};
 }
 
+/** Redirect a dependency's declared child references through the catalog moves table. */
+function movedChildren(extensions: Readonly<Record<string, string>>, moves: ExtensionCatalogMoves): string[] {
+  return Object.values(extensions).map((reference) => applyCatalogMove(reference, moves));
+}
+
 /** Build the leading-slash text file map of an embedded extension. */
 function embeddedContent(extension: EmbeddedExtension): Map<string, string> {
   const files = new Map<string, string>();
@@ -251,6 +261,7 @@ function embeddedContent(extension: EmbeddedExtension): Map<string, string> {
  * @param options.embedded - The host application's bundled embedded extensions.
  * @param options.stored - The project's stored snapshot records, reused by matching reference.
  * @param options.refetch - References fetched fresh even when a stored record matches.
+ * @param options.moves - Curated transport-flip moves; a transitive dependency reference whose coordinate a move targets is walked through the move's target reference.
  * @param options.fetchSnapshot - Fetches a snapshot for a `gh:` reference.
  */
 export async function collectExtensionFetchClosure(options: {
@@ -258,8 +269,10 @@ export async function collectExtensionFetchClosure(options: {
   embedded: readonly EmbeddedExtension[];
   stored: InstalledExtensionSnapshots;
   refetch?: ReadonlySet<string>;
+  moves?: ExtensionCatalogMoves;
   fetchSnapshot: (reference: string) => Promise<ExtensionFetchResult>;
 }): Promise<ExtensionFetchClosureResult> {
+  const moves = options.moves ?? {};
   const embeddedByCoordinate = new Map(options.embedded.map((extension) => [extension.canonicalOrigin, extension]));
   const storedByReference = new Map<string, InstalledExtensionSnapshot>();
   for (const record of Object.values(options.stored)) {
@@ -282,7 +295,7 @@ export async function collectExtensionFetchClosure(options: {
     if (parsed.transport === "embedded") {
       const extension = embeddedByCoordinate.get(parsed.coordinate);
       if (extension === undefined) continue;
-      queue.push(...Object.values(ownExtensions(embeddedContent(extension))));
+      queue.push(...movedChildren(ownExtensions(embeddedContent(extension)), moves));
       continue;
     }
 
@@ -296,7 +309,7 @@ export async function collectExtensionFetchClosure(options: {
         record = installedSnapshotFromFetched(fetched.snapshot);
       }
       snapshotsByReference.set(reference, record);
-      queue.push(...Object.values(ownExtensions(decodeInstalledSnapshotFiles(record))));
+      queue.push(...movedChildren(ownExtensions(decodeInstalledSnapshotFiles(record)), moves));
     }
   }
 

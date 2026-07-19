@@ -1,4 +1,6 @@
+import type { ExtensionCatalogMoves } from "@mindcraft-lang/app-host";
 import {
+  applyCatalogMove,
   isAbbreviatedCommitPin,
   LOWEST_CONTENT_VERSION,
   MINDCRAFT_JSON_PATH,
@@ -121,6 +123,12 @@ export interface ExtensionResolutionSources {
   readonly embedded: readonly EmbeddedExtension[];
   /** Fetched snapshot content keyed by reference, resolving `gh:` references. */
   readonly fetched?: FetchedExtensionContentMap;
+  /**
+   * Curated transport-flip moves, keyed by coordinate. A transitive dependency
+   * reference whose coordinate a move targets resolves through the move's
+   * target reference; absent when the host applies no moves.
+   */
+  readonly moves?: ExtensionCatalogMoves;
 }
 
 /** Provenance of one origin selected into the resolved closure. */
@@ -359,6 +367,7 @@ export function resolveProjectExtensions(
   }
   const byCoordinate = new Map(sources.embedded.map((extension) => [extension.canonicalOrigin, extension]));
   const fetched = sources.fetched;
+  const moves = sources.moves ?? {};
   const warnings: ExtensionResolutionWarning[] = [];
 
   // The project's direct dependencies: each dependency's `<owner>/<repo>`
@@ -407,7 +416,8 @@ export function resolveProjectExtensions(
     // Expand an origin's own dependencies once, off its winning candidate.
     if (winner.candidate === candidate && !expanded.has(candidate.origin)) {
       expanded.add(candidate.origin);
-      for (const reference of Object.values(candidate.extensions)) {
+      for (const declaredReference of Object.values(candidate.extensions)) {
+        const reference = applyCatalogMove(declaredReference, moves);
         const child = candidateForReference(reference, candidate.depth + 1, byCoordinate, fetched);
         if (child === undefined) {
           continue;

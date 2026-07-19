@@ -23,10 +23,11 @@ import { useSimEnvironment } from "@/contexts/sim-environment";
 import { clearBindingToken } from "@/services/binding-token-persistence";
 import { simEmbeddedExtensions } from "@/services/sim-embedded-extensions";
 import {
+  buildSimCatalogOffers,
   buildSimExtensionEntries,
   checkSimExtensionUpdates,
   installSimExtension,
-  installSimExtensionReference,
+  installSimReference,
   uninstallSimExtension,
 } from "@/services/sim-extension-browser";
 
@@ -95,6 +96,7 @@ export function Sidebar({
     [store]
   );
   const extensions = useSyncExternalStore(subscribeToActiveProject, () => store.activeProjectManifest?.extensions);
+  const catalogOffers = useMemo(() => buildSimCatalogOffers(extensions, simEmbeddedExtensions), [extensions]);
   const extensionEntries = useMemo(
     () =>
       buildSimExtensionEntries(
@@ -152,7 +154,12 @@ export function Sidebar({
 
   const handleInstallExtensionReference = (input: string) => {
     void (async () => {
-      const result = await installSimExtensionReference(store.host, store.activeProjectManifest?.extensions, input);
+      const result = await installSimReference(
+        store.host,
+        store.activeProjectManifest?.extensions,
+        simEmbeddedExtensions,
+        input
+      );
       if (!result.ok) {
         toast.error(`Could not add library. ${result.code}: ${result.message}`);
         return;
@@ -333,6 +340,7 @@ export function Sidebar({
         onRetry={handleRetryExtension}
         onCheckAllUpdates={handleCheckAllUpdates}
         onInstallReference={handleInstallExtensionReference}
+        catalogOffers={catalogOffers}
       />
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">

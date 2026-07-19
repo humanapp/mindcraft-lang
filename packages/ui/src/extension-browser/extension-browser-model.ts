@@ -14,8 +14,6 @@ export interface ExtensionBrowserEntry {
   readonly thumbnailUrl?: string;
   /** True when the extension is part of the project. */
   readonly installed: boolean;
-  /** True when the extension is a required platform layer library the user cannot install or uninstall. */
-  readonly locked: boolean;
   /** Documentation URL opened by the card's View Docs action; the action is omitted when absent. */
   readonly docsUrl?: string;
   /** True for a fetched dependency with installed content; the card offers an on-request update check. */
@@ -111,19 +109,70 @@ export function filterExtensionEntries(
 }
 
 /**
- * The kebab-menu items a card offers for an entry. A locked layer library
- * offers only View Docs (and only when it declares a `docsUrl`); a broken
- * dependency offers Uninstall; an installed updatable dependency offers Check
- * for Update and Uninstall; any other installed add-on offers Uninstall; a
- * not-installed add-on offers no menu items and shows the inline Add
- * affordance from {@link extensionCardShowsInstall}.
+ * Filter catalog offers by a search query, matching case-insensitively against
+ * each offer's name, coordinate, and description. A blank query returns the
+ * offers unchanged.
+ *
+ * @param offers - The offers to filter.
+ * @param query - The search text.
+ */
+export function filterExtensionOffers(
+  offers: readonly ExtensionCatalogOffer[],
+  query: string
+): ExtensionCatalogOffer[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) {
+    return [...offers];
+  }
+  return offers.filter(
+    (offer) =>
+      offer.name.toLowerCase().includes(needle) ||
+      offer.coordinate.toLowerCase().includes(needle) ||
+      offer.description.toLowerCase().includes(needle)
+  );
+}
+
+/** Which sections of {@link ExtensionBrowserDialog} render for a given filter result. */
+export interface ExtensionBrowserSections {
+  /** Render the catalog offers section. True when at least one offer survives the filter. */
+  readonly showOffers: boolean;
+  /** Render the installed-entries list. True when at least one entry survives the filter. */
+  readonly showEntries: boolean;
+  /** Render the "no libraries match your search" message. True only when a search is active and it matched nothing anywhere. */
+  readonly showNoMatch: boolean;
+}
+
+/**
+ * Decide which sections the browser renders from the post-filter offer and
+ * entry counts and whether a search is active. The no-match message appears
+ * only when a search is active and both the offers and the entries filtered to
+ * empty; with no active search it never appears, so a fresh project with offers
+ * and no installed entries shows only its offers.
+ *
+ * @param offerCount - Number of catalog offers surviving the filter.
+ * @param entryCount - Number of installed entries surviving the filter.
+ * @param searchActive - True when the search box holds a non-blank query.
+ */
+export function extensionBrowserSections(
+  offerCount: number,
+  entryCount: number,
+  searchActive: boolean
+): ExtensionBrowserSections {
+  const showOffers = offerCount > 0;
+  const showEntries = entryCount > 0;
+  return { showOffers, showEntries, showNoMatch: searchActive && !showOffers && !showEntries };
+}
+
+/**
+ * The kebab-menu items a card offers for an entry. A broken dependency offers
+ * Uninstall; an installed updatable dependency offers Check for Update and
+ * Uninstall; any other installed add-on offers Uninstall; a not-installed
+ * add-on offers no menu items and shows the inline Add affordance from
+ * {@link extensionCardShowsInstall}.
  *
  * @param entry - The entry whose menu items to compute.
  */
 export function extensionCardMenuItems(entry: ExtensionBrowserEntry): ExtensionCardMenuItem[] {
-  if (entry.locked) {
-    return entry.docsUrl !== undefined ? [{ action: "docs", label: "View Docs" }] : [];
-  }
   if (entry.broken !== undefined) {
     return [{ action: "uninstall", label: "Uninstall" }];
   }
@@ -138,23 +187,23 @@ export function extensionCardMenuItems(entry: ExtensionBrowserEntry): ExtensionC
 
 /**
  * Report whether a card shows the inline Add affordance: true for a not-installed
- * add-on, false for a locked layer library, an already-installed extension, or a
- * broken dependency (which shows Retry instead).
+ * add-on, false for an already-installed extension or a broken dependency (which
+ * shows Retry instead).
  *
  * @param entry - The entry to test.
  */
 export function extensionCardShowsInstall(entry: ExtensionBrowserEntry): boolean {
-  return !entry.locked && !entry.installed && entry.broken === undefined;
+  return !entry.installed && entry.broken === undefined;
 }
 
 /**
  * Report whether a card shows the inline Retry affordance: true for a broken
- * dependency that is not a locked layer library.
+ * dependency.
  *
  * @param entry - The entry to test.
  */
 export function extensionCardShowsRetry(entry: ExtensionBrowserEntry): boolean {
-  return !entry.locked && entry.broken !== undefined;
+  return entry.broken !== undefined;
 }
 
 /**

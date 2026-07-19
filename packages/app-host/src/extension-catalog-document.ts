@@ -25,22 +25,22 @@ export interface ExtensionCatalogDocumentEntry {
   /** Entry kind; one of `"library"` or `"target"`. */
   readonly kind: string;
   /**
-   * The pinned reference an install of this entry writes:
-   * `gh:<coordinate>@<full 40-character commit SHA>`, naming exactly the
-   * approved content.
+   * The reference an install of this entry writes: either
+   * `gh:<coordinate>@<full 40-character commit SHA>` naming exact remote
+   * content, or `embedded:<coordinate>` naming a host-bundled library.
    */
   readonly ref: string;
   /** Display name shown for the entry. */
   readonly name: string;
-  /** Published version the pin corresponds to. */
+  /** Version shown for the entry as a display string. */
   readonly version: string;
   /** Description shown for the entry. */
   readonly description: string;
   /**
    * Curated shell-friendly handle for a `"target"` entry: lowercase
-   * alphanumerics and hyphens with no leading hyphen (`^[a-z0-9][a-z0-9-]*$`),
-   * unique within the document compared case-insensitively. Allowed only on
-   * `"target"` entries; present only when the entry declares one.
+   * alphanumerics and hyphens with no leading hyphen (`^[a-z0-9][a-z0-9-]*$`)
+   * and not all digits, unique within the document compared case-insensitively.
+   * Allowed only on `"target"` entries; present only when the entry declares one.
    */
   readonly alias?: string;
   /**
@@ -52,12 +52,37 @@ export interface ExtensionCatalogDocumentEntry {
   readonly thumbnail?: string;
 }
 
+/**
+ * One curated transport-flip move: a coordinate's content is now served from a
+ * new reference for the same coordinate. The catalog authority (PR-reviewed,
+ * pinned) declares moves; they are never read from fetched package content.
+ */
+export interface ExtensionCatalogMove {
+  /**
+   * The reference the coordinate now resolves through:
+   * `gh:<owner>/<repo>@<full 40-character commit SHA>`, whose `<owner>/<repo>`
+   * equals the move's coordinate key (a same-coordinate flip).
+   */
+  readonly ref: string;
+}
+
+/**
+ * A catalog document's curated moves, keyed by the `<owner>/<repo>` coordinate
+ * being redirected. Empty when the document declares none.
+ */
+export type ExtensionCatalogMoves = Readonly<Record<string, ExtensionCatalogMove>>;
+
 /** A parsed extension catalog document. */
 export interface ExtensionCatalogDocument {
   /** The document's format marker ({@link MINDCRAFT_CATALOG_FORMAT}). */
   readonly format: string;
   /** The catalog's entries, in document order, with unknown-kind entries skipped. */
   readonly entries: readonly ExtensionCatalogDocumentEntry[];
+  /**
+   * Curated transport-flip moves keyed by coordinate; always present, empty
+   * when the document declares none.
+   */
+  readonly moves: ExtensionCatalogMoves;
 }
 
 /** Stable identifiers for catalog document validation errors. */
@@ -72,6 +97,9 @@ export const ExtensionCatalogDocumentErrorCode = {
   INVALID_ALIAS: "CATALOG_DOCUMENT_INVALID_ALIAS",
   DUPLICATE_ALIAS: "CATALOG_DOCUMENT_DUPLICATE_ALIAS",
   ALIAS_NOT_ALLOWED: "CATALOG_DOCUMENT_ALIAS_NOT_ALLOWED",
+  INVALID_MOVES: "CATALOG_DOCUMENT_INVALID_MOVES",
+  INVALID_MOVE_REF: "CATALOG_DOCUMENT_INVALID_MOVE_REF",
+  NUMERIC_ALIAS: "CATALOG_DOCUMENT_NUMERIC_ALIAS",
 } as const;
 
 /** Union of all {@link ExtensionCatalogDocumentErrorCode} values. */
@@ -187,22 +215,40 @@ function validateEntry(
   }
 
   const parsedRef = typeof value.ref === "string" ? parseExtensionReference(value.ref) : undefined;
-  if (
-    parsedRef === undefined ||
-    parsedRef.transport !== "gh" ||
-    parsedRef.routing.kind !== "pin" ||
-    !FULL_COMMIT_SHA_PATTERN.test(parsedRef.routing.pin)
-  ) {
+  if (parsedRef === undefined) {
     errors.push({
       code: ExtensionCatalogDocumentErrorCode.INVALID_REF,
       path: `${path}.ref`,
-      message: 'Catalog entry ref must be "gh:<owner>/<repo>@<full 40-character commit SHA>".',
+      message:
+        'Catalog entry ref must be "gh:<owner>/<repo>@<full 40-character commit SHA>" or "embedded:<owner>/<repo>".',
     });
-  } else if (isExtensionCoordinate(value.coordinate) && `${parsedRef.owner}/${parsedRef.repo}` !== value.coordinate) {
+  } else if (parsedRef.transport === "gh") {
+    if (parsedRef.routing.kind !== "pin" || !FULL_COMMIT_SHA_PATTERN.test(parsedRef.routing.pin)) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_REF,
+        path: `${path}.ref`,
+        message: 'Catalog entry "gh:" ref must be pinned to a full 40-character commit SHA.',
+      });
+    } else if (isExtensionCoordinate(value.coordinate) && `${parsedRef.owner}/${parsedRef.repo}` !== value.coordinate) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_REF,
+        path: `${path}.ref`,
+        message: `Catalog entry ref names "${parsedRef.owner}/${parsedRef.repo}", not the entry coordinate "${value.coordinate}".`,
+      });
+    }
+  } else if (parsedRef.transport === "embedded") {
+    if (isExtensionCoordinate(value.coordinate) && parsedRef.coordinate !== value.coordinate) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_REF,
+        path: `${path}.ref`,
+        message: `Catalog entry ref names "${parsedRef.coordinate}", not the entry coordinate "${value.coordinate}".`,
+      });
+    }
+  } else {
     errors.push({
       code: ExtensionCatalogDocumentErrorCode.INVALID_REF,
       path: `${path}.ref`,
-      message: `Catalog entry ref names "${parsedRef.owner}/${parsedRef.repo}", not the entry coordinate "${value.coordinate}".`,
+      message: 'Catalog entry ref transport must be "gh" or "embedded".',
     });
   }
 
@@ -246,6 +292,12 @@ function validateEntry(
         message:
           "Catalog entry alias must be lowercase alphanumerics and hyphens with no leading hyphen (^[a-z0-9][a-z0-9-]*$).",
       });
+    } else if (/^[0-9]+$/.test(value.alias)) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.NUMERIC_ALIAS,
+        path: `${path}.alias`,
+        message: "Catalog entry alias must not be all digits, so it cannot be confused with a list index.",
+      });
     }
   }
 
@@ -274,6 +326,98 @@ function validateEntry(
       ...(typeof value.thumbnail === "string" ? { thumbnail: value.thumbnail } : {}),
     },
   };
+}
+
+/**
+ * Validate a catalog document's `moves` section: an object keyed by
+ * `<owner>/<repo>` coordinate, each value an object whose `ref` is a `gh:`
+ * reference pinned to a full 40-character commit SHA naming the key coordinate.
+ * Returns the well-formed moves and one error per rejected entry.
+ */
+function validateExtensionCatalogMoves(value: unknown): {
+  moves: ExtensionCatalogMoves;
+  errors: ExtensionCatalogDocumentError[];
+} {
+  if (!isRecord(value)) {
+    return {
+      moves: {},
+      errors: [
+        {
+          code: ExtensionCatalogDocumentErrorCode.INVALID_MOVES,
+          path: "$.moves",
+          message: "$.moves must be an object when present.",
+        },
+      ],
+    };
+  }
+  const errors: ExtensionCatalogDocumentError[] = [];
+  const moves: Record<string, ExtensionCatalogMove> = {};
+  for (const [coordinate, entry] of Object.entries(value)) {
+    const path = `$.moves[${JSON.stringify(coordinate)}]`;
+    if (!isExtensionCoordinate(coordinate)) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_MOVES,
+        path,
+        message: `Catalog move key "${coordinate}" must be an "<owner>/<repo>" coordinate.`,
+      });
+      continue;
+    }
+    if (!isRecord(entry) || typeof entry.ref !== "string") {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF,
+        path: `${path}.ref`,
+        message: `Catalog move "${coordinate}" must be an object with a string "ref".`,
+      });
+      continue;
+    }
+    const parsedRef = parseExtensionReference(entry.ref);
+    if (
+      parsedRef === undefined ||
+      parsedRef.transport !== "gh" ||
+      parsedRef.routing.kind !== "pin" ||
+      !FULL_COMMIT_SHA_PATTERN.test(parsedRef.routing.pin)
+    ) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF,
+        path: `${path}.ref`,
+        message: `Catalog move "${coordinate}" ref must be "gh:<owner>/<repo>@<full 40-character commit SHA>".`,
+      });
+      continue;
+    }
+    if (`${parsedRef.owner}/${parsedRef.repo}` !== coordinate) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF,
+        path: `${path}.ref`,
+        message: `Catalog move ref names "${parsedRef.owner}/${parsedRef.repo}", not the move coordinate "${coordinate}".`,
+      });
+      continue;
+    }
+    moves[coordinate] = { ref: entry.ref };
+  }
+  return { moves, errors };
+}
+
+/**
+ * Redirect an extension reference through a catalog moves table: when a move
+ * targets the reference's coordinate and its target differs from the reference,
+ * return the move's target reference; otherwise return the reference unchanged.
+ * The coordinate is read from the reference's transport (`embedded:<coordinate>`
+ * or `gh:<owner>/<repo>`), and an unparseable reference is returned unchanged.
+ *
+ * @param reference - The extension reference to redirect.
+ * @param moves - The catalog moves table, keyed by coordinate.
+ */
+export function applyCatalogMove(reference: string, moves: ExtensionCatalogMoves): string {
+  const parsed = parseExtensionReference(reference);
+  if (parsed === undefined) {
+    return reference;
+  }
+  const coordinate = parsed.transport === "embedded" ? parsed.coordinate : `${parsed.owner}/${parsed.repo}`;
+  const move = moves[coordinate];
+  if (move === undefined || move.ref === reference) {
+    return reference;
+  }
+  return move.ref;
 }
 
 /**
@@ -349,10 +493,17 @@ export function validateExtensionCatalogDocument(value: unknown): ExtensionCatal
     }
   }
 
+  let moves: ExtensionCatalogMoves = {};
+  if (value.moves !== undefined) {
+    const movesResult = validateExtensionCatalogMoves(value.moves);
+    moves = movesResult.moves;
+    errors.push(...movesResult.errors);
+  }
+
   if (errors.length > 0) {
     return { ok: false, errors };
   }
-  return { ok: true, document: { format: MINDCRAFT_CATALOG_FORMAT, entries }, warnings, errors: [] };
+  return { ok: true, document: { format: MINDCRAFT_CATALOG_FORMAT, entries, moves }, warnings, errors: [] };
 }
 
 /**

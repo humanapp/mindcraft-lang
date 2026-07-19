@@ -38,8 +38,6 @@ export interface ExtensionCatalogEntry {
   readonly thumbnailUrl?: string;
   /** True when the extension is in the project's resolved extension set. */
   readonly installed: boolean;
-  /** True when the extension is a required platform layer library the user cannot install or uninstall. */
-  readonly locked: boolean;
   /** True for a fetched (`gh:`) dependency with installed content, which carries an on-request update affordance. */
   readonly updatable?: boolean;
   /** Present when a declared `gh:` dependency has no installed snapshot content. */
@@ -223,23 +221,24 @@ export function isExtensionCompatible(
 }
 
 /**
- * Build the extension catalog for a project: the flat list of top-level
- * embedded extensions directly compatible with the project's platform, plus a
- * card for each remote (`gh:`) dependency the project's extensions map names.
- * It includes each directly-referenced platform layer library (locked) and
- * every bundled add-on whose declared targets match the project's stack;
- * transitive sub-dependencies of a layer library are not listed, and add-ons
- * incompatible with the stack are excluded. A remote dependency's card reads
- * its name and version from its installed snapshot content and is marked
- * `updatable`; a remote reference with no content available is listed under
- * its coordinate as `broken`, carrying the last recorded fetch failure when
- * one is known, so it can be retried or removed. A remote dependency whose
- * installed manifest declares a different identity than its coordinate carries
- * an `identityMismatch` annotation.
+ * Build the entry cards for a project's extension browser: the project's direct
+ * dependencies that a user manages, across both transports. An embedded entry
+ * is listed when the map references its coordinate directly through an
+ * `embedded:` reference and the coordinate is not a platform layer; a remote
+ * (`gh:`) entry is listed for each `gh:` reference the map names. Nothing else
+ * lists: a platform layer library, a non-referenced bundled add-on, and a
+ * transitively-resolved sub-dependency are not entry cards (a bundled add-on is
+ * surfaced through the catalog offers instead). A remote dependency's card
+ * reads its name and version from its installed snapshot content and is marked
+ * `updatable`; a remote reference with no content available is listed under its
+ * coordinate as `broken`, carrying the last recorded fetch failure when one is
+ * known, so it can be retried or removed. A remote dependency whose installed
+ * manifest declares a different identity than its coordinate carries an
+ * `identityMismatch` annotation.
  *
  * @param extensions - The project's extensions map, keyed by coordinate.
  * @param embedRecord - The host application's bundled embedded extensions.
- * @param layerCoordinates - The coordinates the host declares as platform layers.
+ * @param layerCoordinates - The coordinates the host declares as platform layers; these are never entry cards.
  * @param fetched - Installed fetched-extension content, keyed by reference.
  * @param fetchFailures - The last recorded fetch failure per reference.
  */
@@ -253,29 +252,20 @@ export function buildExtensionCatalog(
   const byCoordinate = new Map(embedRecord.map((extension) => [extension.canonicalOrigin, extension]));
   const installed = resolvedOrigins(extensions, embedRecord, fetched);
   const direct = directEmbeddedCoordinates(extensions, byCoordinate);
-  const stack = deriveProjectPlatformStack(extensions, embedRecord, layerCoordinates);
 
   const entries: ExtensionCatalogEntry[] = [];
   for (const extension of embedRecord) {
     const coordinate = extension.canonicalOrigin;
-    const locked = layerCoordinates.has(coordinate);
-    const manifest = readEmbeddedManifest(extension);
-    if (locked) {
-      // Only the project's directly-referenced target library is top-level;
-      // a layer library reached only transitively is a sub-dependency, not a card.
-      if (!direct.has(coordinate)) {
-        continue;
-      }
-    } else if (!isExtensionCompatible(manifest.targets, stack)) {
+    if (!direct.has(coordinate) || layerCoordinates.has(coordinate)) {
       continue;
     }
+    const manifest = readEmbeddedManifest(extension);
     entries.push({
       coordinate,
       name: manifest.name,
       version: manifest.version,
       ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
       installed: installed.has(coordinate),
-      locked,
     });
   }
 
@@ -304,7 +294,6 @@ export function buildExtensionCatalog(
       version: manifest?.version ?? LOWEST_CONTENT_VERSION,
       ...(manifest?.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
       installed: installed.has(coordinate),
-      locked: false,
       ...(content !== undefined ? { updatable: true } : {}),
       ...(broken !== undefined ? { broken } : {}),
       ...(identityMismatch !== undefined ? { identityMismatch } : {}),
@@ -336,28 +325,86 @@ export interface ExtensionCatalogOffer {
 }
 
 /**
- * Adapt a validated extension catalog document into per-project offers: one
- * offer per entry, rendered from the entry's display metadata alone, marked
+ * Report whether an offer's declared target coordinates place it on a platform
+ * stack, ignoring version ranges. True when at least one declared target
+ * coordinate is a layer in the stack. An offer with no targets is on no stack.
+ * Used for embedded offers, which version with the host and so declare only the
+ * target coordinate they belong to.
+ *
+ * @param targets - The offer's declared compatibility targets, keyed by target package coordinate.
+ * @param stack - The project's platform stack.
+ */
+function targetsCoordinateInStack(
+  targets: Readonly<Record<string, ExtensionTarget>> | undefined,
+  stack: readonly PlatformStackLayer[]
+): boolean {
+  if (targets === undefined) {
+    return false;
+  }
+  for (const coordinate of Object.keys(targets)) {
+    if (stack.some((layer) => layer.coordinate === coordinate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Adapt a validated extension catalog document into per-project offers,
+ * compatibility-filtered against the project's platform stack: one offer per
+ * compatible entry, rendered from the entry's display metadata alone, marked
  * installed when the project's extensions map already carries the entry's
- * coordinate.
+ * coordinate. The stack is derived from the project's extensions, the embed
+ * record, and the layer coordinates.
+ *
+ * An offer's compatibility is judged by its reference transport. An
+ * `embedded:` offer is compatible when at least one target coordinate its
+ * embed-record manifest declares is a layer in the stack; its declared version
+ * range is ignored, since an embedded library versions with the host. A `gh:`
+ * offer is compatible when its catalog-entry targets both name a stack layer
+ * and satisfy that layer's version through {@link isExtensionCompatible}; a
+ * `gh:` offer that declares no targets is excluded, since it cannot be
+ * verified compatible.
  *
  * @param document - The validated catalog document.
  * @param extensions - The project's extensions map, keyed by coordinate.
+ * @param embedRecord - The host application's bundled embedded extensions.
+ * @param layerCoordinates - The coordinates the host declares as platform layers.
  */
 export function buildExtensionCatalogOffers(
   document: ExtensionCatalogDocument,
-  extensions: Readonly<Record<string, string>> | undefined
+  extensions: Readonly<Record<string, string>> | undefined,
+  embedRecord: readonly EmbeddedExtension[],
+  layerCoordinates: ReadonlySet<string>
 ): ExtensionCatalogOffer[] {
   const current = extensions ?? {};
-  return document.entries.map((entry) => ({
-    coordinate: entry.coordinate,
-    name: entry.name,
-    version: entry.version,
-    description: entry.description,
-    ...(entry.thumbnail !== undefined ? { thumbnailUrl: entry.thumbnail } : {}),
-    ref: entry.ref,
-    installed: entry.coordinate in current,
-  }));
+  const stack = deriveProjectPlatformStack(extensions, embedRecord, layerCoordinates);
+  const byCoordinate = new Map(embedRecord.map((extension) => [extension.canonicalOrigin, extension]));
+  const offers: ExtensionCatalogOffer[] = [];
+  for (const entry of document.entries) {
+    const parsed = parseExtensionReference(entry.ref);
+    let compatible: boolean;
+    if (parsed?.transport === "embedded") {
+      const embedded = byCoordinate.get(entry.coordinate);
+      const targets = embedded !== undefined ? readEmbeddedManifest(embedded).targets : undefined;
+      compatible = targetsCoordinateInStack(targets, stack);
+    } else {
+      compatible = isExtensionCompatible(entry.targets, stack);
+    }
+    if (!compatible) {
+      continue;
+    }
+    offers.push({
+      coordinate: entry.coordinate,
+      name: entry.name,
+      version: entry.version,
+      description: entry.description,
+      ...(entry.thumbnail !== undefined ? { thumbnailUrl: entry.thumbnail } : {}),
+      ref: entry.ref,
+      installed: entry.coordinate in current,
+    });
+  }
+  return offers;
 }
 
 /**

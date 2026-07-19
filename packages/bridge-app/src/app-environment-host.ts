@@ -1,5 +1,6 @@
 import type {
   ExtensionAddInputResolution,
+  ExtensionCatalogMoves,
   ExtensionFetchResult,
   ExtensionFetchTransport,
   ExtensionUpdateApplication,
@@ -11,6 +12,7 @@ import type {
   UnstableDependency,
 } from "@mindcraft-lang/app-host";
 import {
+  applyCatalogMove,
   checkExtensionReferenceUpdate,
   collectUnstableDependencies,
   diffMindcraftJsonToManifest,
@@ -86,6 +88,15 @@ export interface AppEnvironmentHostOptions {
   extensionFetchTransport?: ExtensionFetchTransport;
 
   /**
+   * Curated transport-flip moves from the host's catalog, keyed by coordinate.
+   * On project load a top-level manifest entry whose ref differs from a move
+   * target is rewritten to the target through the install transaction, and a
+   * transitive dependency reference a move targets resolves through the target.
+   * Empty when the host declares none.
+   */
+  catalogMoves?: ExtensionCatalogMoves;
+
+  /**
    * Host-supplied RNG. The bridge app forwards this to
    * {@link createMindcraftEnvironment} so brains pull randomness from the host
    * (e.g. the simulator's seeded RNG). When omitted, the environment falls back
@@ -127,6 +138,7 @@ export class AppEnvironmentHost {
   private readonly mounts: readonly Mount[];
   private readonly embeddedExtensions: readonly EmbeddedExtension[];
   private readonly extensionFetchTransport: ExtensionFetchTransport | undefined;
+  private readonly catalogMoves: ExtensionCatalogMoves;
   private readonly onDidCompileCallback?: (
     result: WorkspaceCompileResult,
     tileResult: UserTileApplyResult | undefined
@@ -192,6 +204,7 @@ export class AppEnvironmentHost {
     this.mounts = options.mounts;
     this.embeddedExtensions = options.embeddedExtensions ?? [];
     this.extensionFetchTransport = options.extensionFetchTransport;
+    this.catalogMoves = options.catalogMoves ?? {};
     this.onDidCompileCallback = options.onDidCompile;
     this._bridgeUrl = options.bridgeUrl;
     this._loadBindingToken = options.loadBindingToken ?? (() => undefined);
@@ -253,6 +266,7 @@ export class AppEnvironmentHost {
     await this.projectManager.ensureDefaultProject(defaultProjectName);
     await this.initCompiler();
     await this.loadBrainsFromProject();
+    await this.applyCatalogMoves();
   }
 
   // ---------------------------------------------------------------------------
@@ -272,6 +286,7 @@ export class AppEnvironmentHost {
       const resolved = resolveProjectExtensions(this.projectManager.activeProject!.manifest.extensions, {
         embedded: this.embeddedExtensions,
         fetched: this._installedContent,
+        moves: this.catalogMoves,
       });
       for (const warning of resolved.warnings) {
         logger.warn(`[extension-resolution] ${warning.message}`);
@@ -685,6 +700,7 @@ export class AppEnvironmentHost {
       embedded: this.embeddedExtensions,
       stored: previousSnapshots,
       refetch: options?.refetchReferences,
+      moves: this.catalogMoves,
       fetchSnapshot: (reference) => this.fetchSnapshot(reference),
     });
     if (!closure.ok) {
@@ -714,6 +730,7 @@ export class AppEnvironmentHost {
       resolution = resolveProjectExtensions(extensions, {
         embedded: this.embeddedExtensions,
         fetched: fetchedContent,
+        moves: this.catalogMoves,
       });
     } catch (err) {
       if (err instanceof ExtensionResolutionCycleError) {
@@ -758,6 +775,35 @@ export class AppEnvironmentHost {
         await this.appendInstallLogEvents([{ kind: "undo", at: Date.now() }]);
       },
     };
+  }
+
+  /**
+   * Redirect the active project's top-level manifest entries whose reference
+   * differs from a curated catalog move target. Each moved coordinate's
+   * reference is rewritten to the move target and the change runs through the
+   * install transaction, persisting the manifest and fetching the moved
+   * content. Returns the transaction's report, or undefined when the host
+   * declares no moves or no top-level entry is moved (idempotent: a project
+   * already at its move targets is a no-op).
+   */
+  async applyCatalogMoves(): Promise<ExtensionInstallReport | undefined> {
+    if (Object.keys(this.catalogMoves).length === 0) {
+      return undefined;
+    }
+    const current = this.projectManager.activeProject?.manifest.extensions ?? {};
+    const next: Record<string, string> = {};
+    let changed = false;
+    for (const [coordinate, reference] of Object.entries(current)) {
+      const moved = applyCatalogMove(reference, this.catalogMoves);
+      next[coordinate] = moved;
+      if (moved !== reference) {
+        changed = true;
+      }
+    }
+    if (!changed) {
+      return undefined;
+    }
+    return this.updateProjectExtensions(next);
   }
 
   /**
@@ -1008,6 +1054,7 @@ export class AppEnvironmentHost {
     this.completeProjectUnload();
     await this.initCompiler();
     await this.loadBrainsFromProject();
+    await this.applyCatalogMoves();
 
     for (const listener of this._projectLoadedListeners) {
       listener();

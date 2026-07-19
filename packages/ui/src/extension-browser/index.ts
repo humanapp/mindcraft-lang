@@ -11,13 +11,16 @@ export {
 export {
   DEFAULT_EXTENSION_THUMBNAIL,
   type ExtensionBrowserEntry,
+  type ExtensionBrowserSections,
   type ExtensionCardActionKind,
   type ExtensionCardCallbacks,
   type ExtensionCardMenuItem,
   type ExtensionCatalogOffer,
+  extensionBrowserSections,
   extensionCardMenuItems,
   extensionCardShowsInstall,
   extensionCardShowsRetry,
   filterExtensionEntries,
+  filterExtensionOffers,
   runExtensionCardAction,
 } from "./extension-browser-model";

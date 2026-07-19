@@ -15,6 +15,7 @@ import {
   githubDocsUrl,
   installSimExtension,
   installSimExtensionReference,
+  installSimReference,
   toExtensionBrowserEntry,
   uninstallSimExtension,
 } from "./sim-extension-browser";
@@ -91,30 +92,37 @@ function capturingPersistence(): ExtensionProjectPersistence & { patches: Array<
   };
 }
 
-describe("buildSimExtensionEntries -- catalog build and adaptation", () => {
-  test("lists the locked sim layer and the compatible add-on, each with a derived docs URL", () => {
+describe("buildSimExtensionEntries -- direct dependencies adapted to browser entries", () => {
+  test("lists nothing for a fresh project: the platform layer is not an entry card", () => {
     const entries = buildSimExtensionEntries(project, embedRecord);
-    assert.deepEqual(entries.map((e) => e.coordinate).sort(), [SIM_LIB_COORDINATE, FLOCK].sort());
+    assert.deepEqual(
+      entries.map((e) => e.coordinate),
+      []
+    );
+  });
 
-    const sim = entries.find((e) => e.coordinate === SIM_LIB_COORDINATE);
-    assert.ok(sim);
-    assert.equal(sim.locked, true);
-    assert.equal(sim.installed, true);
-    assert.equal(sim.docsUrl, `https://github.com/${SIM_LIB_COORDINATE}`);
+  test("lists a directly-installed add-on as an installed entry with a derived docs URL", () => {
+    const withFlock = { ...project, [FLOCK]: `embedded:${FLOCK}` };
+    const entries = buildSimExtensionEntries(withFlock, embedRecord);
+    assert.deepEqual(
+      entries.map((e) => e.coordinate),
+      [FLOCK]
+    );
 
     const flock = entries.find((e) => e.coordinate === FLOCK);
     assert.ok(flock);
-    assert.equal(flock.locked, false);
-    assert.equal(flock.installed, false);
+    assert.equal(flock.installed, true);
     assert.equal(flock.name, "Flock");
     assert.equal(flock.thumbnailUrl, "data:,flock");
     assert.equal(flock.docsUrl, `https://github.com/${FLOCK}`);
   });
 
-  test("excludes the transitive core lib and an add-on targeting another platform", () => {
+  test("excludes the platform layer, the transitive core lib, and every non-referenced add-on", () => {
     const entries = buildSimExtensionEntries(project, embedRecord);
     const coordinates = entries.map((e) => e.coordinate);
+    assert.equal(coordinates.includes(SIM_LIB_COORDINATE), false);
     assert.equal(coordinates.includes(CORE_LIB_COORDINATE), false);
+    assert.equal(coordinates.includes(FLOCK), false);
     assert.equal(coordinates.includes(MICROBIT_ONLY), false);
   });
 });
@@ -127,7 +135,6 @@ describe("toExtensionBrowserEntry", () => {
       version: "1.0.0",
       thumbnailUrl: "data:,flock",
       installed: false,
-      locked: false,
     };
     assert.deepEqual(toExtensionBrowserEntry(catalogEntry), {
       coordinate: FLOCK,
@@ -135,7 +142,6 @@ describe("toExtensionBrowserEntry", () => {
       version: "1.0.0",
       thumbnailUrl: "data:,flock",
       installed: false,
-      locked: false,
       docsUrl: `https://github.com/${FLOCK}`,
     });
   });
@@ -146,7 +152,6 @@ describe("toExtensionBrowserEntry", () => {
       name: "Sim",
       version: "0.1.0",
       installed: true,
-      locked: true,
     };
     assert.equal("thumbnailUrl" in toExtensionBrowserEntry(catalogEntry), false);
   });
@@ -287,7 +292,6 @@ describe("toExtensionBrowserEntry -- fetched-dependency annotations", () => {
       name: "Position",
       version: "0.1.0",
       installed: true,
-      locked: false,
       updatable: true,
       broken: { code: "EXTENSION_FETCH_UNREACHABLE", message: "The source is unreachable: refused" },
       identityMismatch: { declaredIdentity: "upstream-org/position-ext" },
@@ -345,5 +349,25 @@ describe("checkSimExtensionUpdates", () => {
     assert.equal(summary.failures.length, 1);
     assert.equal(summary.failures[0].coordinate, "example-org/offline-ext");
     assert.equal(summary.failures[0].error.code, "EXTENSION_FETCH_UNREACHABLE");
+  });
+});
+
+describe("installSimReference -- routes by transport", () => {
+  test("an embedded offer ref installs by writing embedded:<coord> to the map", async () => {
+    const surface = referenceInstallSurface();
+    const result = await installSimReference(surface, project, embedRecord, `embedded:${FLOCK}`);
+    assert.ok(result.ok);
+    assert.equal(result.action.ok, true);
+    assert.equal(result.action.code, ExtensionActionResultCode.INSTALLED);
+    assert.equal(result.action.extensions[FLOCK], `embedded:${FLOCK}`);
+    assert.equal(surface.patches[0]?.[FLOCK], `embedded:${FLOCK}`);
+  });
+
+  test("a gh reference routes through the remote installer and writes gh:", async () => {
+    const surface = referenceInstallSurface();
+    const result = await installSimReference(surface, project, embedRecord, "gh:example-org/teleport-ext@v0.1.0");
+    assert.ok(result.ok);
+    assert.equal(result.action.ok, true);
+    assert.equal(surface.patches[0]?.["example-org/teleport-ext"], "gh:example-org/teleport-ext@v0.1.0");
   });
 });

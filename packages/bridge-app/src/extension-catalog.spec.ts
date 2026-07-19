@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import type { ExtensionCatalogDocument } from "@mindcraft-lang/app-host";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 import { resolveProjectExtensions } from "./embedded-extensions.js";
 import type { ExtensionCatalogEntry, PlatformStackLayer } from "./extension-catalog.js";
@@ -152,61 +153,77 @@ describe("isExtensionCompatible -- stack inclusion and semver ranges", () => {
 });
 
 describe("buildExtensionCatalog -- two platforms", () => {
-  test("a micro:bit project lists its locked target lib plus directly-compatible add-ons", () => {
+  test("a fresh micro:bit project lists nothing: no platform layer, no compatible bundled add-on", () => {
     const entries = buildExtensionCatalog(microbitProject, microbitEmbedRecord, microbitLayers);
-    assert.deepEqual(coordinatesOf(entries), [MICROBIT, POSITION, SHARED_MATH].sort());
-
-    const target = entryFor(entries, MICROBIT);
-    assert.ok(target);
-    assert.equal(target.locked, true);
-    assert.equal(target.installed, true);
-    assert.equal(target.name, "Micro:bit v2");
-    assert.equal(target.version, "0.2.1");
-
-    const position = entryFor(entries, POSITION);
-    assert.ok(position);
-    assert.equal(position.locked, false);
-    assert.equal(position.installed, false);
-    assert.equal(position.name, "Position");
-    assert.equal(position.version, "1.3.0");
-    assert.equal(position.thumbnailUrl, "data:,pos");
+    // The locked platform target is not an entry card; POSITION and SHARED_MATH
+    // are compatible bundled add-ons surfaced only through the catalog offers.
+    assert.deepEqual(coordinatesOf(entries), []);
+    assert.equal(entryFor(entries, MICROBIT), undefined);
+    assert.equal(entryFor(entries, POSITION), undefined);
+    assert.equal(entryFor(entries, SHARED_MATH), undefined);
   });
 
-  test("the micro:bit catalog excludes transitive layer libs, an incompatible add-on, and a version mismatch", () => {
+  test("the entry list excludes platform layers and every non-referenced bundled add-on", () => {
     const entries = buildExtensionCatalog(microbitProject, microbitEmbedRecord, microbitLayers);
+    assert.equal(entryFor(entries, MICROBIT), undefined);
     assert.equal(entryFor(entries, CODAL), undefined);
     assert.equal(entryFor(entries, CORE), undefined);
     assert.equal(entryFor(entries, FLOCK), undefined);
     assert.equal(entryFor(entries, LEGACY), undefined);
   });
 
-  test("an apps/sim project lists its own locked target lib plus its directly-compatible add-ons", () => {
+  test("a fresh apps/sim project lists nothing: its platform layer is not an entry card", () => {
     const entries = buildExtensionCatalog(simProject, simEmbedRecord, simLayers);
-    assert.deepEqual(coordinatesOf(entries), [SIM, FLOCK, SHARED_MATH].sort());
-
-    const target = entryFor(entries, SIM);
-    assert.ok(target);
-    assert.equal(target.locked, true);
-    assert.equal(target.installed, true);
-
+    assert.deepEqual(coordinatesOf(entries), []);
+    assert.equal(entryFor(entries, SIM), undefined);
     assert.equal(entryFor(entries, POSITION), undefined);
+    assert.equal(entryFor(entries, FLOCK), undefined);
     assert.equal(entryFor(entries, CORE), undefined);
   });
 
-  test("installing an add-on flips its catalog entry to installed", () => {
+  test("a top-level embedded install is listed as an installed management card", () => {
+    // Edge 2: a direct, non-layer embedded install (a top-level manifest-map
+    // entry) is listed so it carries its uninstall affordance.
     const installed = installEmbeddedExtension(microbitProject, microbitEmbedRecord, POSITION);
     assert.equal(installed.ok, true);
     const entries = buildExtensionCatalog(installed.extensions, microbitEmbedRecord, microbitLayers);
-    assert.equal(entryFor(entries, POSITION)?.installed, true);
+    assert.deepEqual(coordinatesOf(entries), [POSITION]);
+    const position = entryFor(entries, POSITION);
+    assert.ok(position);
+    assert.equal(position.installed, true);
+    assert.equal(position.name, "Position");
+    assert.equal(position.thumbnailUrl, "data:,pos");
   });
 
-  test("an add-on missing its manifest name falls back to its coordinate", () => {
+  test("a transitively-resolved embedded dep is not listed; only the top-level non-layer lib is", () => {
+    // GAMEPAD is a top-level embedded install whose manifest depends on POSITION.
+    // POSITION resolves transitively but is not a top-level manifest-map entry,
+    // so it is not an entry card; the platform layer is never an entry card.
+    const GAMEPAD = "mindcraft-lang/microbit-gamepad";
+    const gamepadAddon = ext(GAMEPAD, {
+      name: "Gamepad",
+      version: "1.0.0",
+      targets: { [MICROBIT]: { packageVersion: "^0.2.0" } },
+      extensions: { [POSITION]: `embedded:${POSITION}` },
+    });
+    const embedRecord = [...microbitEmbedRecord, gamepadAddon];
+    const project = { ...microbitProject, [GAMEPAD]: `embedded:${GAMEPAD}` };
+
+    const entries = buildExtensionCatalog(project, embedRecord, microbitLayers);
+    assert.deepEqual(coordinatesOf(entries), [GAMEPAD]);
+    assert.equal(entryFor(entries, GAMEPAD)?.installed, true);
+    assert.equal(entryFor(entries, POSITION), undefined);
+    assert.equal(entryFor(entries, MICROBIT), undefined);
+  });
+
+  test("an entry missing its manifest name falls back to its coordinate", () => {
     const noManifest: EmbeddedExtension = {
-      canonicalOrigin: CORE,
+      canonicalOrigin: POSITION,
       files: [{ path: "index.ts", content: "export {};" }],
     };
-    const entries = buildExtensionCatalog(microbitProject, [microbitLib, codalLib, noManifest], microbitLayers);
-    assert.equal(entryFor(entries, MICROBIT)?.name, "Micro:bit v2");
+    const project = { ...microbitProject, [POSITION]: `embedded:${POSITION}` };
+    const entries = buildExtensionCatalog(project, [microbitLib, noManifest], microbitLayers);
+    assert.equal(entryFor(entries, POSITION)?.name, POSITION);
   });
 });
 
@@ -397,7 +414,7 @@ describe("remote (gh:) catalog entries and actions", () => {
       remoteContent({ name: "Position", version: "0.1.0" })
     );
     assert.deepStrictEqual(entries, [
-      { coordinate: REMOTE, name: "Position", version: "0.1.0", installed: true, locked: false, updatable: true },
+      { coordinate: REMOTE, name: "Position", version: "0.1.0", installed: true, updatable: true },
     ]);
   });
 
@@ -409,7 +426,6 @@ describe("remote (gh:) catalog entries and actions", () => {
         name: REMOTE,
         version: "0.0.0",
         installed: false,
-        locked: false,
         broken: { message: `No content is installed for "${REMOTE_REFERENCE}".` },
       },
     ]);
@@ -461,59 +477,131 @@ describe("remote (gh:) catalog entries and actions", () => {
   });
 });
 
-describe("buildExtensionCatalogOffers", () => {
+describe("buildExtensionCatalogOffers -- compatibility-filtered against the project stack", () => {
   const PIN_SHA = "b19b80b029a77303ee575d3ff9b29adbf7021b23";
-  const document = {
+  const GH_COMPATIBLE = "ext-org/gh-microbit";
+  const GH_OUT_OF_RANGE = "ext-org/gh-microbit-legacy";
+  const GH_WRONG_PLATFORM = "ext-org/gh-sim";
+  const GH_NO_TARGETS = "ext-org/gh-bare";
+  const ghRef = (coordinate: string) => `gh:${coordinate}@${PIN_SHA}`;
+
+  // A catalog mixing embedded offers (targets read from the embed-record
+  // manifest) and gh: offers (targets read from the catalog entry) against the
+  // micro:bit stack (core, codal, microbit-v2 at 0.2.1).
+  const document: ExtensionCatalogDocument = {
     format: "mindcraft.catalog/1",
     entries: [
+      // Embedded, declared target coordinate (MICROBIT) is a stack layer.
       {
-        coordinate: "mindcraft-lang/lib-codal-position",
+        coordinate: POSITION,
         kind: "library",
-        ref: `gh:mindcraft-lang/lib-codal-position@${PIN_SHA}`,
+        ref: `embedded:${POSITION}`,
         name: "Position",
-        version: "0.1.0",
+        version: "1.3.0",
         description: "Position sensing.",
-        thumbnail: "data:,x",
+        thumbnail: "data:,pos",
       },
+      // Embedded, declared target coordinate (SIM) is not a micro:bit stack layer.
       {
-        coordinate: "mindcraft-lang/lib-ecosim-teleport",
+        coordinate: FLOCK,
         kind: "library",
-        ref: `gh:mindcraft-lang/lib-ecosim-teleport@${PIN_SHA}`,
-        name: "Teleport",
-        version: "0.1.0",
-        description: "Teleport actuator.",
+        ref: `embedded:${FLOCK}`,
+        name: "Flock",
+        version: "1.0.0",
+        description: "Flocking.",
+      },
+      // gh:, target coordinate in stack and version in range.
+      {
+        coordinate: GH_COMPATIBLE,
+        kind: "library",
+        ref: ghRef(GH_COMPATIBLE),
+        name: "GH Compatible",
+        version: "1.0.0",
+        description: "A compatible remote library.",
+        targets: { [MICROBIT]: { packageVersion: "^0.2.0" } },
+      },
+      // gh:, target coordinate in stack but version out of range (0.2.1 not in ^0.3.0).
+      {
+        coordinate: GH_OUT_OF_RANGE,
+        kind: "library",
+        ref: ghRef(GH_OUT_OF_RANGE),
+        name: "GH Out Of Range",
+        version: "1.0.0",
+        description: "A remote library the stack version excludes.",
+        targets: { [MICROBIT]: { packageVersion: "^0.3.0" } },
+      },
+      // gh:, target coordinate not in the micro:bit stack.
+      {
+        coordinate: GH_WRONG_PLATFORM,
+        kind: "library",
+        ref: ghRef(GH_WRONG_PLATFORM),
+        name: "GH Wrong Platform",
+        version: "1.0.0",
+        description: "A remote library for another platform.",
+        targets: { [SIM]: { packageVersion: "^0.1.0" } },
+      },
+      // gh:, no declared targets -> unverifiable -> excluded (fail-closed).
+      {
+        coordinate: GH_NO_TARGETS,
+        kind: "library",
+        ref: ghRef(GH_NO_TARGETS),
+        name: "GH No Targets",
+        version: "1.0.0",
+        description: "A remote library declaring no compatibility.",
       },
     ],
+    moves: {},
   };
 
-  test("adapts entries into offers from display metadata alone, marking already-declared coordinates installed", () => {
-    const offers = buildExtensionCatalogOffers(document, {
-      "mindcraft-lang/lib-codal-position": `gh:mindcraft-lang/lib-codal-position@${PIN_SHA}`,
-    });
-    assert.deepStrictEqual(offers, [
-      {
-        coordinate: "mindcraft-lang/lib-codal-position",
-        name: "Position",
-        version: "0.1.0",
-        description: "Position sensing.",
-        thumbnailUrl: "data:,x",
-        ref: `gh:mindcraft-lang/lib-codal-position@${PIN_SHA}`,
-        installed: true,
-      },
-      {
-        coordinate: "mindcraft-lang/lib-ecosim-teleport",
-        name: "Teleport",
-        version: "0.1.0",
-        description: "Teleport actuator.",
-        ref: `gh:mindcraft-lang/lib-ecosim-teleport@${PIN_SHA}`,
-        installed: false,
-      },
-    ]);
+  test("includes only compatible offers: embedded by target coordinate, gh: by coordinate and version range", () => {
+    const offers = buildExtensionCatalogOffers(document, microbitProject, microbitEmbedRecord, microbitLayers);
+    assert.deepEqual(coordinatesOf(offers), [GH_COMPATIBLE, POSITION].sort());
   });
 
-  test("adapts every entry when the project declares no extensions", () => {
-    const offers = buildExtensionCatalogOffers(document, undefined);
-    assert.equal(offers.length, 2);
-    assert.ok(offers.every((offer) => !offer.installed));
+  test("an embedded offer whose target coordinate is not in the stack is excluded", () => {
+    const offers = buildExtensionCatalogOffers(document, microbitProject, microbitEmbedRecord, microbitLayers);
+    assert.equal(
+      offers.some((offer) => offer.coordinate === FLOCK),
+      false
+    );
+  });
+
+  test("a gh: offer with a target coordinate in the stack but an out-of-range version is excluded", () => {
+    const offers = buildExtensionCatalogOffers(document, microbitProject, microbitEmbedRecord, microbitLayers);
+    assert.equal(
+      offers.some((offer) => offer.coordinate === GH_OUT_OF_RANGE),
+      false
+    );
+  });
+
+  test("a gh: offer for another platform is excluded", () => {
+    const offers = buildExtensionCatalogOffers(document, microbitProject, microbitEmbedRecord, microbitLayers);
+    assert.equal(
+      offers.some((offer) => offer.coordinate === GH_WRONG_PLATFORM),
+      false
+    );
+  });
+
+  test("a gh: offer declaring no targets is excluded (fail-closed)", () => {
+    const offers = buildExtensionCatalogOffers(document, microbitProject, microbitEmbedRecord, microbitLayers);
+    assert.equal(
+      offers.some((offer) => offer.coordinate === GH_NO_TARGETS),
+      false
+    );
+  });
+
+  test("adapts a compatible entry from display metadata alone, marking an already-declared coordinate installed", () => {
+    const withPosition = { ...microbitProject, [POSITION]: `embedded:${POSITION}` };
+    const offers = buildExtensionCatalogOffers(document, withPosition, microbitEmbedRecord, microbitLayers);
+    const position = offers.find((offer) => offer.coordinate === POSITION);
+    assert.deepStrictEqual(position, {
+      coordinate: POSITION,
+      name: "Position",
+      version: "1.3.0",
+      description: "Position sensing.",
+      thumbnailUrl: "data:,pos",
+      ref: `embedded:${POSITION}`,
+      installed: true,
+    });
   });
 });
