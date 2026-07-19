@@ -117,7 +117,6 @@ describe("filterExtensionOffers", () => {
     version: "1.0.0",
     description: "Drive the Cutebot chassis.",
     ref: "embedded:elecfreaks/cutebot",
-    installed: false,
   };
   const yahboom: ExtensionCatalogOffer = {
     coordinate: "yahboom/gamepad",
@@ -125,7 +124,6 @@ describe("filterExtensionOffers", () => {
     version: "1.0.0",
     description: "Read the GHBit gamepad buttons.",
     ref: "embedded:yahboom/gamepad",
-    installed: false,
   };
   const offers = [cutebot, yahboom];
 
@@ -355,7 +353,6 @@ describe("ExtensionCatalogSection rendering", () => {
       version: "0.1.0",
       description: "Position sensing.",
       ref: "gh:mindcraft-lang/lib-codal-position@b19b80b029a77303ee575d3ff9b29adbf7021b23",
-      installed: false,
     },
     {
       coordinate: "mindcraft-lang/lib-ecosim-teleport",
@@ -363,11 +360,10 @@ describe("ExtensionCatalogSection rendering", () => {
       version: "0.2.0",
       description: "Teleport actuator.",
       ref: "gh:mindcraft-lang/lib-ecosim-teleport@89abcdef0123456789abcdef0123456789abcdef",
-      installed: true,
     },
   ];
 
-  test("renders each offer's display metadata with Add only on not-installed offers", () => {
+  test("renders each offer's display metadata with an Add affordance", () => {
     const markup = renderToStaticMarkup(
       createElement(ExtensionCatalogSection, { offers, onInstallReference: () => {} })
     );
@@ -375,8 +371,7 @@ describe("ExtensionCatalogSection rendering", () => {
     assert.match(markup, /Position sensing\./);
     assert.match(markup, /Teleport actuator\./);
     assert.match(markup, /v0\.1\.0/);
-    assert.match(markup, /Installed/);
-    assert.equal(markup.split(">Add<").length - 1, 1, "one Add affordance for the one not-installed offer");
+    assert.equal(markup.split(">Add<").length - 1, 2, "one Add affordance per offer");
   });
 });
 

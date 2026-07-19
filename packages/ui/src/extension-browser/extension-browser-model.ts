@@ -60,7 +60,9 @@ export interface ExtensionCardCallbacks {
 
 /**
  * One catalog entry offered in the browser's catalog section, rendered from
- * the catalog document's display metadata alone.
+ * the catalog document's display metadata alone. Only libraries the project has
+ * not yet installed are offered; an installed library is represented by its
+ * manageable entry card instead.
  */
 export interface ExtensionCatalogOffer {
   /** The extension's `<owner>/<repo>` coordinate: its stable key in the section. */
@@ -75,8 +77,6 @@ export interface ExtensionCatalogOffer {
   readonly thumbnailUrl?: string;
   /** The pinned `gh:` reference installing this offer writes. */
   readonly ref: string;
-  /** True when the project's extensions map already carries the coordinate. */
-  readonly installed: boolean;
 }
 
 const svgThumbnail = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#e2e8f0"/><path d="M24 24h16v16H24z" fill="#94a3b8"/><path d="M40 20a6 6 0 0 1 0 12M20 32a6 6 0 0 1 12 0" fill="none" stroke="#94a3b8" stroke-width="4"/></svg>`;

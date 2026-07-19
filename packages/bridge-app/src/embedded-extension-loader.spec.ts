@@ -84,7 +84,7 @@ describe("buildEmbeddedExtensionFromDir -- the error direction is a listed file 
   });
 });
 
-describe("buildEmbeddedExtensionFromDir -- an embedded extension must declare its files", () => {
+describe("buildEmbeddedExtensionFromDir -- an extension must declare files or a hostApp", () => {
   let dir: string;
   before(() => {
     dir = mkdtempSync(join(tmpdir(), "mindcraft-ext-"));
@@ -94,7 +94,42 @@ describe("buildEmbeddedExtensionFromDir -- an embedded extension must declare it
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("a manifest with no files list is rejected", () => {
+  test("a manifest declaring neither files nor a hostApp is rejected", () => {
     assert.throws(() => buildEmbeddedExtensionFromDir(dir, COORDINATE), /files/);
+  });
+});
+
+describe("buildEmbeddedExtensionFromDir -- a hostApp target carries no content files", () => {
+  let dir: string;
+  before(() => {
+    dir = mkdtempSync(join(tmpdir(), "mindcraft-ext-"));
+    writeFileSync(join(dir, "index.html"), "<!doctype html>\n");
+    writeFileSync(
+      join(dir, "mindcraft.json"),
+      JSON.stringify(
+        {
+          name: "Target",
+          version: "0.8.0",
+          identity: "test-owner/trg-target",
+          extensions: { "test-owner/lib-dep": "embedded:test-owner/lib-dep" },
+          hostApp: { path: "app", files: ["app/index.html"] },
+        },
+        null,
+        2
+      )
+    );
+  });
+  after(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a manifest with no files but a hostApp assembles the manifest alone, with no throw", () => {
+    const extension = buildEmbeddedExtensionFromDir(dir, "test-owner/trg-target");
+    assert.equal(extension.canonicalOrigin, "test-owner/trg-target");
+    assert.deepEqual([...contentByPath(extension.files).keys()], ["mindcraft.json"]);
+  });
+
+  test("findMissingExtensionFiles reports no drift for a files-less hostApp manifest", () => {
+    assert.deepEqual(findMissingExtensionFiles(dir), []);
   });
 });

@@ -188,20 +188,13 @@ export function ExtensionCatalogSection({ offers, onInstallReference }: Extensio
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <span className="truncate text-sm font-medium">{offer.name}</span>
-                {offer.installed && (
-                  <span className="shrink-0 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[10px] text-success">
-                    Installed
-                  </span>
-                )}
               </div>
               <span className="text-xs text-muted-foreground">v{offer.version}</span>
               <p className="mt-0.5 truncate text-xs text-muted-foreground">{offer.description}</p>
             </div>
-            {!offer.installed && (
-              <Button type="button" variant="outline" size="sm" onClick={() => onInstallReference(offer.ref)}>
-                Add
-              </Button>
-            )}
+            <Button type="button" variant="outline" size="sm" onClick={() => onInstallReference(offer.ref)}>
+              Add
+            </Button>
           </li>
         ))}
       </ul>

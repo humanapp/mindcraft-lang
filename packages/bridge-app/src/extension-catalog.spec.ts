@@ -610,9 +610,8 @@ describe("buildExtensionCatalogOffers -- compatibility-filtered against the proj
     );
   });
 
-  test("adapts a compatible entry from display metadata alone, marking an already-declared coordinate installed", () => {
-    const withPosition = { ...microbitProject, [POSITION]: `embedded:${POSITION}` };
-    const offers = buildExtensionCatalogOffers(document, withPosition, microbitEmbedRecord, microbitLayers);
+  test("adapts a compatible not-installed entry from display metadata alone", () => {
+    const offers = buildExtensionCatalogOffers(document, microbitProject, microbitEmbedRecord, microbitLayers);
     const position = offers.find((offer) => offer.coordinate === POSITION);
     assert.deepStrictEqual(position, {
       coordinate: POSITION,
@@ -621,7 +620,15 @@ describe("buildExtensionCatalogOffers -- compatibility-filtered against the proj
       description: "Position sensing.",
       thumbnailUrl: "data:,pos",
       ref: `embedded:${POSITION}`,
-      installed: true,
     });
+  });
+
+  test("drops an offer whose coordinate the project has already installed", () => {
+    const withPosition = { ...microbitProject, [POSITION]: `embedded:${POSITION}` };
+    const offers = buildExtensionCatalogOffers(document, withPosition, microbitEmbedRecord, microbitLayers);
+    assert.equal(
+      offers.some((offer) => offer.coordinate === POSITION),
+      false
+    );
   });
 });

@@ -22,16 +22,15 @@ function hashText(text: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-function hasBlockingDiagnostics(results: readonly ProjectCompileResult[]): boolean {
-  for (const result of results) {
-    if (result.tsErrors.size > 0) {
-      return true;
-    }
+/** True when one compilation root carries a TypeScript error or a lowering diagnostic. */
+function rootHasBlockingDiagnostics(result: ProjectCompileResult): boolean {
+  if (result.tsErrors.size > 0) {
+    return true;
+  }
 
-    for (const compileResult of result.results.values()) {
-      if (compileResult.diagnostics.length > 0) {
-        return true;
-      }
+  for (const compileResult of result.results.values()) {
+    if (compileResult.diagnostics.length > 0) {
+      return true;
     }
   }
 
@@ -81,21 +80,27 @@ export function buildCompiledActionBundle(
 /**
  * Build one {@link CompiledActionBundle} from the per-root compile results of
  * a multi-root session, registering each tile if-absent across roots in
- * program `key` order. Returns undefined when any root has blocking
- * diagnostics.
+ * program `key` order.
+ *
+ * A root carrying a blocking diagnostic contributes no tiles; every healthy
+ * root still contributes its own. A host project whose user code has a compile
+ * error therefore does not withhold the tiles of the healthy roots (the
+ * installed libraries). Returns undefined only when every root is blocked; a
+ * project whose sole root fails then keeps its last good bundle.
  */
 export function buildMultiRootActionBundle(
   results: Iterable<ProjectCompileResult>,
   options: BuildCompiledActionBundleOptions
 ): CompiledActionBundle | undefined {
   const resultList = [...results];
-  if (hasBlockingDiagnostics(resultList)) {
+  const healthyResults = resultList.filter((result) => !rootHasBlockingDiagnostics(result));
+  if (healthyResults.length === 0 && resultList.length > 0) {
     return undefined;
   }
 
   const resolveTypeId =
     options.resolveTypeId ?? ((typeName: string) => options.services.runtime.types.resolveByName(typeName));
-  const programs = collectPrograms(resultList);
+  const programs = collectPrograms(healthyResults);
   const actions = new Dict<string, UserAuthoredProgram>();
   const tileMap = new Map<string, IBrainTileDef>();
 

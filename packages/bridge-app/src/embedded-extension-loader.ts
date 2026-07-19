@@ -16,7 +16,13 @@ function bundlePathFor(dir: string, entry: string): string {
   return rel.startsWith("..") ? basename(entry) : rel.split(sep).join("/");
 }
 
-/** Read and parse the `files` list an extension declares in its own `mindcraft.json`. */
+/**
+ * Read and parse the `files` list an extension declares in its own
+ * `mindcraft.json`. An extension must declare content `files` or a `hostApp`
+ * bundle: a library names its content files, and a target (a `hostApp`) carries
+ * no library content, so it resolves to an empty file list. A manifest that
+ * declares neither is rejected.
+ */
 function readManifestFiles(dir: string): { manifestText: string; files: readonly string[] } {
   const manifestPath = resolve(dir, MINDCRAFT_JSON_PATH);
   if (!existsSync(manifestPath)) {
@@ -31,7 +37,12 @@ function readManifestFiles(dir: string): { manifestText: string; files: readonly
     );
   }
   if (parsed.manifest.files === undefined) {
-    throw new Error(`Embedded extension manifest at ${manifestPath} must declare a "files" list naming its content.`);
+    if (parsed.manifest.hostApp !== undefined) {
+      return { manifestText, files: [] };
+    }
+    throw new Error(
+      `Embedded extension manifest at ${manifestPath} must declare a "files" list naming its content, or a "hostApp" bundle.`
+    );
   }
   return { manifestText, files: parsed.manifest.files };
 }
@@ -71,8 +82,8 @@ export function extensionSourceFiles(dir: string): readonly string[] {
  *
  * @param dir - Directory holding the extension's `mindcraft.json`.
  * @param canonicalOrigin - The `<owner>/<repo>` coordinate the bundle is keyed under.
- * @throws {Error} when the manifest is missing, invalid, declares no `files`, or
- *   names a file absent from disk.
+ * @throws {Error} when the manifest is missing, invalid, declares neither
+ *   `files` nor a `hostApp` bundle, or names a file absent from disk.
  */
 export function buildEmbeddedExtensionFromDir(dir: string, canonicalOrigin: string): EmbeddedExtension {
   const { manifestText, files: declared } = readManifestFiles(dir);

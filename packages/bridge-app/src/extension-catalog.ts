@@ -307,8 +307,7 @@ export function buildExtensionCatalog(
 
 /**
  * One catalog document entry offered to a project: the entry's display
- * metadata plus whether the project's extensions map already carries its
- * coordinate.
+ * metadata. Only libraries the project has not yet installed are offered.
  */
 export interface ExtensionCatalogOffer {
   /** The extension's `<owner>/<repo>` coordinate. */
@@ -323,8 +322,6 @@ export interface ExtensionCatalogOffer {
   readonly thumbnailUrl?: string;
   /** The pinned `gh:` reference an install of this offer writes. */
   readonly ref: string;
-  /** True when the project's extensions map already carries the coordinate. */
-  readonly installed: boolean;
 }
 
 /**
@@ -355,10 +352,11 @@ function targetsCoordinateInStack(
 /**
  * Adapt a validated extension catalog document into per-project offers,
  * compatibility-filtered against the project's platform stack: one offer per
- * compatible entry, rendered from the entry's display metadata alone, marked
- * installed when the project's extensions map already carries the entry's
- * coordinate. The stack is derived from the project's extensions, the embed
- * record, and the layer coordinates.
+ * compatible entry the project has not already installed, rendered from the
+ * entry's display metadata alone. An entry whose coordinate the project's
+ * extensions map already carries is dropped, since it is represented instead by
+ * its manageable entry card. The stack is derived from the project's
+ * extensions, the embed record, and the layer coordinates.
  *
  * An offer's compatibility is judged by its reference transport. An
  * `embedded:` offer is compatible when at least one target coordinate its
@@ -385,6 +383,9 @@ export function buildExtensionCatalogOffers(
   const byCoordinate = new Map(embedRecord.map((extension) => [extension.canonicalOrigin, extension]));
   const offers: ExtensionCatalogOffer[] = [];
   for (const entry of document.entries) {
+    if (entry.coordinate in current) {
+      continue;
+    }
     const parsed = parseExtensionReference(entry.ref);
     let compatible: boolean;
     if (parsed?.transport === "embedded") {
@@ -404,7 +405,6 @@ export function buildExtensionCatalogOffers(
       description: entry.description,
       ...(entry.thumbnail !== undefined ? { thumbnailUrl: entry.thumbnail } : {}),
       ref: entry.ref,
-      installed: entry.coordinate in current,
     });
   }
   return offers;

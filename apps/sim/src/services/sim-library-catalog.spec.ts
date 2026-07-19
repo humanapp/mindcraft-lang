@@ -72,19 +72,20 @@ describe("buildSimCatalogOffers -- compatibility-filtered against the sim stack"
   const embedRecord: readonly EmbeddedExtension[] = [layer, addon(TELEPORT), addon(DETECT)];
   const project = { [SIM_LIB_COORDINATE]: SIM_LIB_REFERENCE };
 
-  test("the seeded teleport and detect offers are compatible with a sim project and marked not installed", () => {
+  test("the seeded teleport and detect offers are compatible with a fresh sim project", () => {
     const offers = buildSimCatalogOffers(project, embedRecord);
     assert.deepEqual(offers.map((offer) => offer.coordinate).sort(), [TELEPORT, DETECT].sort());
-    assert.ok(offers.every((offer) => offer.installed === false));
     for (const offer of offers) {
       assert.equal(offer.ref, `embedded:${offer.coordinate}`);
     }
   });
 
-  test("a project carrying an offer's coordinate marks that offer installed", () => {
+  test("a project carrying an offer's coordinate drops that offer, leaving the not-installed one", () => {
     const offers = buildSimCatalogOffers({ ...project, [TELEPORT]: `embedded:${TELEPORT}` }, embedRecord);
-    assert.equal(offers.find((offer) => offer.coordinate === TELEPORT)?.installed, true);
-    assert.equal(offers.find((offer) => offer.coordinate === DETECT)?.installed, false);
+    assert.deepEqual(
+      offers.map((offer) => offer.coordinate),
+      [DETECT]
+    );
   });
 });
 
