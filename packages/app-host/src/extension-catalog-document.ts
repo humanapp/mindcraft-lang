@@ -53,22 +53,36 @@ export interface ExtensionCatalogDocumentEntry {
 }
 
 /**
- * One curated transport-flip move: a coordinate's content is now served from a
- * new reference for the same coordinate. The catalog authority (PR-reviewed,
- * pinned) declares moves; they are never read from fetched package content.
+ * One curated catalog move for a coordinate. The catalog authority (PR-reviewed,
+ * pinned) declares moves; they are never read from fetched package content. A
+ * move is one of two shapes, distinguished by whether it carries a new
+ * `coordinate`:
+ *
+ * - Transport flip (`coordinate` absent): the source coordinate's content is
+ *   served from a new reference for the SAME coordinate.
+ * - Rename (`coordinate` present, differing from the move key): the source
+ *   coordinate (the move key) is renamed to the new `coordinate`, served from
+ *   `ref`.
  */
 export interface ExtensionCatalogMove {
   /**
-   * The reference the coordinate now resolves through:
-   * `gh:<owner>/<repo>@<full 40-character commit SHA>`, whose `<owner>/<repo>`
-   * equals the move's coordinate key (a same-coordinate flip).
+   * The renamed-to `<owner>/<repo>` coordinate. Present only for a rename, and
+   * then always different from the move key; absent for a same-coordinate
+   * transport flip.
+   */
+  readonly coordinate?: string;
+  /**
+   * The reference the move resolves through:
+   * `gh:<owner>/<repo>@<full 40-character commit SHA>`. Its `<owner>/<repo>`
+   * equals the move's key coordinate for a flip, or the new {@link coordinate}
+   * for a rename.
    */
   readonly ref: string;
 }
 
 /**
- * A catalog document's curated moves, keyed by the `<owner>/<repo>` coordinate
- * being redirected. Empty when the document declares none.
+ * A catalog document's curated moves, keyed by the source `<owner>/<repo>`
+ * coordinate being redirected or renamed. Empty when the document declares none.
  */
 export type ExtensionCatalogMoves = Readonly<Record<string, ExtensionCatalogMove>>;
 
@@ -99,6 +113,7 @@ export const ExtensionCatalogDocumentErrorCode = {
   ALIAS_NOT_ALLOWED: "CATALOG_DOCUMENT_ALIAS_NOT_ALLOWED",
   INVALID_MOVES: "CATALOG_DOCUMENT_INVALID_MOVES",
   INVALID_MOVE_REF: "CATALOG_DOCUMENT_INVALID_MOVE_REF",
+  INVALID_MOVE_COORDINATE: "CATALOG_DOCUMENT_INVALID_MOVE_COORDINATE",
   NUMERIC_ALIAS: "CATALOG_DOCUMENT_NUMERIC_ALIAS",
 } as const;
 
@@ -329,10 +344,13 @@ function validateEntry(
 }
 
 /**
- * Validate a catalog document's `moves` section: an object keyed by
- * `<owner>/<repo>` coordinate, each value an object whose `ref` is a `gh:`
- * reference pinned to a full 40-character commit SHA naming the key coordinate.
- * Returns the well-formed moves and one error per rejected entry.
+ * Validate a catalog document's `moves` section: an object keyed by source
+ * `<owner>/<repo>` coordinate, each value an object with a `gh:` `ref` pinned to
+ * a full 40-character commit SHA. A value that also carries a `coordinate` is a
+ * rename: the new `coordinate` must be a valid coordinate different from the
+ * key, and `ref` must name it. A value without `coordinate` is a flip: `ref`
+ * must name the key coordinate. Returns the well-formed moves and one error per
+ * rejected entry.
  */
 function validateExtensionCatalogMoves(value: unknown): {
   moves: ExtensionCatalogMoves;
@@ -370,6 +388,23 @@ function validateExtensionCatalogMoves(value: unknown): {
       });
       continue;
     }
+    // A rename carries a new coordinate; a flip omits it. Either way the ref
+    // must name the move's destination: the new coordinate for a rename, the
+    // source key for a flip.
+    let destinationCoordinate = coordinate;
+    let renameTo: string | undefined;
+    if (entry.coordinate !== undefined) {
+      if (!isExtensionCoordinate(entry.coordinate) || entry.coordinate === coordinate) {
+        errors.push({
+          code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_COORDINATE,
+          path: `${path}.coordinate`,
+          message: `Catalog move "${coordinate}" coordinate must be an "<owner>/<repo>" coordinate different from the move key.`,
+        });
+        continue;
+      }
+      destinationCoordinate = entry.coordinate;
+      renameTo = entry.coordinate;
+    }
     const parsedRef = parseExtensionReference(entry.ref);
     if (
       parsedRef === undefined ||
@@ -384,28 +419,30 @@ function validateExtensionCatalogMoves(value: unknown): {
       });
       continue;
     }
-    if (`${parsedRef.owner}/${parsedRef.repo}` !== coordinate) {
+    if (`${parsedRef.owner}/${parsedRef.repo}` !== destinationCoordinate) {
       errors.push({
         code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF,
         path: `${path}.ref`,
-        message: `Catalog move ref names "${parsedRef.owner}/${parsedRef.repo}", not the move coordinate "${coordinate}".`,
+        message: `Catalog move ref names "${parsedRef.owner}/${parsedRef.repo}", not the move coordinate "${destinationCoordinate}".`,
       });
       continue;
     }
-    moves[coordinate] = { ref: entry.ref };
+    moves[coordinate] = renameTo !== undefined ? { coordinate: renameTo, ref: entry.ref } : { ref: entry.ref };
   }
   return { moves, errors };
 }
 
 /**
  * Redirect an extension reference through a catalog moves table: when a move
- * targets the reference's coordinate and its target differs from the reference,
- * return the move's target reference; otherwise return the reference unchanged.
- * The coordinate is read from the reference's transport (`embedded:<coordinate>`
- * or `gh:<owner>/<repo>`), and an unparseable reference is returned unchanged.
+ * targets the reference's coordinate and its `ref` differs from the reference,
+ * return the move's `ref`; otherwise return the reference unchanged. The
+ * coordinate is read from the reference's transport (`embedded:<coordinate>` or
+ * `gh:<owner>/<repo>`), and an unparseable reference is returned unchanged. For
+ * a rename move the returned `ref` names the new coordinate, so a dependency
+ * reference to a renamed source coordinate resolves the renamed content.
  *
  * @param reference - The extension reference to redirect.
- * @param moves - The catalog moves table, keyed by coordinate.
+ * @param moves - The catalog moves table, keyed by source coordinate.
  */
 export function applyCatalogMove(reference: string, moves: ExtensionCatalogMoves): string {
   const parsed = parseExtensionReference(reference);

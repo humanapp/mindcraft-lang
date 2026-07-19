@@ -18,6 +18,7 @@ import {
   ExtensionAddInputErrorCode,
   ExtensionFetchErrorCode,
 } from "@mindcraft-lang/app-host";
+import type { PersistedBrainJson } from "@mindcraft-lang/core/app";
 import { BrainDef, coreModule } from "@mindcraft-lang/core/app";
 import { declarationMount } from "@mindcraft-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
@@ -1197,6 +1198,167 @@ describe("catalog moves -- transitive dependency redirect", () => {
       assert.deepStrictEqual(Object.keys(world.extensions), [ROBOT_COORDINATE]);
     } finally {
       reloaded.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+describe("catalog moves -- coordinate rename", () => {
+  const SOURCE_COORDINATE = "example-org/cutebot";
+  const TARGET_COORDINATE = "example-org/cutebot-chassis";
+  const RENAME_SHA = "3333333333333333333333333333333333333333";
+  const RENAME_REF = `gh:${TARGET_COORDINATE}@${RENAME_SHA}`;
+  const FLIP_SHA = "4444444444444444444444444444444444444444";
+  const FLIP_REF = `gh:${SOURCE_COORDINATE}@${FLIP_SHA}`;
+  const SOURCE_EMBEDDED_REF = `embedded:${SOURCE_COORDINATE}`;
+
+  const SOURCE_EMBEDDED: EmbeddedExtension = {
+    canonicalOrigin: SOURCE_COORDINATE,
+    files: [
+      { path: "mindcraft.json", content: manifestText("Cutebot") },
+      { path: "index.ts", content: "export const cutebot = 1;\n" },
+    ],
+  };
+
+  /**
+   * A saved brain referencing a library tile and a library type from the source
+   * coordinate: an action tile keyed `<SOURCE_COORDINATE>:user.sensor.aaa111`
+   * and an accessor over a named type in the same namespace. Both carry the
+   * source coordinate as the `ns` field of their structured references.
+   */
+  function brainWithSourceRefs(): PersistedBrainJson {
+    return {
+      version: 1,
+      id: "b1",
+      name: "Robot",
+      catalog: [],
+      pages: [
+        {
+          version: 2,
+          pageId: "p1",
+          name: "Page 1",
+          rules: [
+            {
+              version: 1,
+              when: [{ k: "action", area: "sensor", id: "aaa111", ns: SOURCE_COORDINATE }],
+              do: [
+                {
+                  k: "accessor",
+                  type: { k: "named", t: "struct", name: "/index.ts::Speed", ns: SOURCE_COORDINATE },
+                  field: "value",
+                },
+              ],
+              children: [],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  function storedBrains(brain: PersistedBrainJson): Map<string, string> {
+    return new Map([["brains", JSON.stringify({ b1: brain })]]);
+  }
+
+  it("renames the manifest coordinate and rewrites saved-brain namespaces to the new coordinate", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = {
+      appData: storedBrains(brainWithSourceRefs()),
+      extensions: { [SOURCE_COORDINATE]: SOURCE_EMBEDDED_REF },
+    };
+    const host = createHost(world, {
+      transport: createTestTransport({
+        content: {
+          [`${TARGET_COORDINATE}@${RENAME_SHA}`]: {
+            "mindcraft.json": manifestText("Cutebot Chassis"),
+            "index.ts": "export const cutebot = 1;\n",
+          },
+        },
+      }),
+      embeddedExtensions: [SOURCE_EMBEDDED],
+      catalogMoves: { [SOURCE_COORDINATE]: { coordinate: TARGET_COORDINATE, ref: RENAME_REF } },
+    });
+    try {
+      // GREEN: load auto-applies the rename. The manifest key moves from the
+      // source coordinate to the new coordinate at the move ref...
+      await host.initialize(PROJECT_ID);
+      assert.deepStrictEqual(Object.keys(world.extensions), [TARGET_COORDINATE]);
+      assert.equal(world.extensions[TARGET_COORDINATE], RENAME_REF);
+
+      // ...and, in the same moment, the saved brain's source-coordinate
+      // references are rewritten to the new coordinate, stable ids intact.
+      const storedBrain = (JSON.parse(world.appData.get("brains") ?? "{}") as Record<string, PersistedBrainJson>).b1;
+      const rule = storedBrain.pages[0].rules[0];
+      assert.deepStrictEqual(rule.when[0], { k: "action", area: "sensor", id: "aaa111", ns: TARGET_COORDINATE });
+      assert.deepStrictEqual(rule.do[0], {
+        k: "accessor",
+        type: { k: "named", t: "struct", name: "/index.ts::Speed", ns: TARGET_COORDINATE },
+        field: "value",
+      });
+
+      // The in-memory brain cache is healed too: re-serializing it yields the
+      // new-coordinate namespace, so a later save cannot regress the store.
+      const cached = host.getCachedBrain("b1");
+      assert.ok(cached);
+      const reserialized = host.serializeBrainForStorage(cached);
+      assert.deepStrictEqual(reserialized.pages[0].rules[0].when[0], {
+        k: "action",
+        area: "sensor",
+        id: "aaa111",
+        ns: TARGET_COORDINATE,
+      });
+
+      // Idempotent: a project already at the new coordinate is a no-op, and the
+      // brain is not rewritten again.
+      assert.equal(await host.applyCatalogMoves(), undefined);
+      assert.deepStrictEqual(Object.keys(world.extensions), [TARGET_COORDINATE]);
+      const afterIdempotent = (JSON.parse(world.appData.get("brains") ?? "{}") as Record<string, PersistedBrainJson>)
+        .b1;
+      assert.deepStrictEqual(afterIdempotent.pages[0].rules[0].when[0], {
+        k: "action",
+        area: "sensor",
+        id: "aaa111",
+        ns: TARGET_COORDINATE,
+      });
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("a flip move rewrites the reference but leaves saved-brain namespaces untouched", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = {
+      appData: storedBrains(brainWithSourceRefs()),
+      extensions: { [SOURCE_COORDINATE]: SOURCE_EMBEDDED_REF },
+    };
+    const host = createHost(world, {
+      transport: createTestTransport({
+        content: {
+          [`${SOURCE_COORDINATE}@${FLIP_SHA}`]: {
+            "mindcraft.json": manifestText("Cutebot"),
+            "index.ts": "export const cutebot = 1;\n",
+          },
+        },
+      }),
+      embeddedExtensions: [SOURCE_EMBEDDED],
+      catalogMoves: { [SOURCE_COORDINATE]: { ref: FLIP_REF } },
+    });
+    try {
+      // A flip keeps the same coordinate key and updates only the reference;
+      // brain namespaces are a rename concern and stay at the source coordinate.
+      await host.initialize(PROJECT_ID);
+      assert.deepStrictEqual(Object.keys(world.extensions), [SOURCE_COORDINATE]);
+      assert.equal(world.extensions[SOURCE_COORDINATE], FLIP_REF);
+      const storedBrain = (JSON.parse(world.appData.get("brains") ?? "{}") as Record<string, PersistedBrainJson>).b1;
+      assert.deepStrictEqual(storedBrain.pages[0].rules[0].when[0], {
+        k: "action",
+        area: "sensor",
+        id: "aaa111",
+        ns: SOURCE_COORDINATE,
+      });
+    } finally {
+      host.dispose();
       restoreLocalStorage();
     }
   });

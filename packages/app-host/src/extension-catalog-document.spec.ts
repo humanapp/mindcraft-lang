@@ -329,6 +329,50 @@ describe("validateExtensionCatalogDocument -- moves", () => {
     assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF));
     assert.ok(result.errors.some((error) => /other-org\/lib-codal-position/.test(error.message)));
   });
+
+  const RENAME_TO = "mindcraft-lang/lib-position";
+  const RENAME_REF = `gh:${RENAME_TO}@${PIN_SHA}`;
+
+  it("accepts a well-formed rename whose ref names the new coordinate", () => {
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [VALID_ENTRY],
+      moves: { [MOVE_COORDINATE]: { coordinate: RENAME_TO, ref: RENAME_REF } },
+    });
+    assert.ok(result.ok);
+    assert.deepStrictEqual(result.warnings, []);
+    assert.deepStrictEqual(result.document.moves, { [MOVE_COORDINATE]: { coordinate: RENAME_TO, ref: RENAME_REF } });
+  });
+
+  it("rejects a rename whose new coordinate is malformed with INVALID_MOVE_COORDINATE", () => {
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [VALID_ENTRY],
+      moves: { [MOVE_COORDINATE]: { coordinate: "no-slash", ref: RENAME_REF } },
+    });
+    assert.ok(!result.ok);
+    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_COORDINATE));
+  });
+
+  it("rejects a rename whose new coordinate equals the move key with INVALID_MOVE_COORDINATE", () => {
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [VALID_ENTRY],
+      moves: { [MOVE_COORDINATE]: { coordinate: MOVE_COORDINATE, ref: MOVE_REF } },
+    });
+    assert.ok(!result.ok);
+    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_COORDINATE));
+  });
+
+  it("rejects a rename whose ref names the source, not the new coordinate, with INVALID_MOVE_REF", () => {
+    const result = validateExtensionCatalogDocument({
+      format: MINDCRAFT_CATALOG_FORMAT,
+      entries: [VALID_ENTRY],
+      moves: { [MOVE_COORDINATE]: { coordinate: RENAME_TO, ref: MOVE_REF } },
+    });
+    assert.ok(!result.ok);
+    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF));
+  });
 });
 
 describe("applyCatalogMove", () => {
@@ -354,6 +398,15 @@ describe("applyCatalogMove", () => {
 
   it("returns an unparseable reference unchanged", () => {
     assert.equal(applyCatalogMove("not-a-reference", moves), "not-a-reference");
+  });
+
+  it("redirects a reference of a renamed source coordinate to the new coordinate's ref", () => {
+    const RENAMED_REF = `gh:example-org/position-ext-2@${PIN_SHA}`;
+    const renameMoves = { [COORDINATE]: { coordinate: "example-org/position-ext-2", ref: RENAMED_REF } };
+    assert.equal(applyCatalogMove(`embedded:${COORDINATE}`, renameMoves), RENAMED_REF);
+    assert.equal(applyCatalogMove(`gh:${COORDINATE}@v0.1.0`, renameMoves), RENAMED_REF);
+    // A reference already at the new coordinate is not further redirected.
+    assert.equal(applyCatalogMove(RENAMED_REF, renameMoves), RENAMED_REF);
   });
 });
 

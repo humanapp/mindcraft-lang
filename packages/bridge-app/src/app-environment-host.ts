@@ -27,7 +27,13 @@ import {
 } from "@mindcraft-lang/app-host";
 import type { FolderInstalledExtensionMetadata } from "@mindcraft-lang/bridge-protocol";
 import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
-import { createMindcraftEnvironment, Dict, encodePersistedBrainJson, logger } from "@mindcraft-lang/core/app";
+import {
+  createMindcraftEnvironment,
+  Dict,
+  encodePersistedBrainJson,
+  logger,
+  renameBrainNamespaces,
+} from "@mindcraft-lang/core/app";
 import type { PersistedBrainJson } from "@mindcraft-lang/core/brain/model";
 import type { IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
 import type { Mount, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
@@ -778,13 +784,18 @@ export class AppEnvironmentHost {
   }
 
   /**
-   * Redirect the active project's top-level manifest entries whose reference
-   * differs from a curated catalog move target. Each moved coordinate's
-   * reference is rewritten to the move target and the change runs through the
-   * install transaction, persisting the manifest and fetching the moved
-   * content. Returns the transaction's report, or undefined when the host
-   * declares no moves or no top-level entry is moved (idempotent: a project
-   * already at its move targets is a no-op).
+   * Rewrite the active project's top-level manifest entries that a curated
+   * catalog move redirects. A flip rewrites a coordinate's reference to the
+   * move target for the same coordinate; a rename replaces the source
+   * coordinate key with the move's new coordinate at its reference, and in the
+   * same per-project moment rewrites the source-coordinate namespace prefix of
+   * every saved-brain reference to the new coordinate so no brain is stranded.
+   * The rewritten map runs through the install transaction, persisting the
+   * manifest and fetching the moved content. Returns the transaction's report,
+   * or undefined when the host declares no moves or no top-level entry is
+   * moved (idempotent: a project already at its move targets is a no-op). When
+   * the transaction refuses, any brain rewrite is rolled back so the project is
+   * never half-migrated.
    */
   async applyCatalogMoves(): Promise<ExtensionInstallReport | undefined> {
     if (Object.keys(this.catalogMoves).length === 0) {
@@ -792,8 +803,16 @@ export class AppEnvironmentHost {
     }
     const current = this.projectManager.activeProject?.manifest.extensions ?? {};
     const next: Record<string, string> = {};
+    const renames: { from: string; to: string }[] = [];
     let changed = false;
     for (const [coordinate, reference] of Object.entries(current)) {
+      const move = this.catalogMoves[coordinate];
+      if (move?.coordinate !== undefined && move.coordinate !== coordinate) {
+        next[move.coordinate] = move.ref;
+        renames.push({ from: coordinate, to: move.coordinate });
+        changed = true;
+        continue;
+      }
       const moved = applyCatalogMove(reference, this.catalogMoves);
       next[coordinate] = moved;
       if (moved !== reference) {
@@ -803,7 +822,71 @@ export class AppEnvironmentHost {
     if (!changed) {
       return undefined;
     }
-    return this.updateProjectExtensions(next);
+
+    let brainsBeforeRename: string | undefined;
+    let brainsRewritten = false;
+    if (renames.length > 0) {
+      brainsBeforeRename = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
+      brainsRewritten = await this.renameBrainNamespaces(renames);
+    }
+
+    const report = await this.updateProjectExtensions(next);
+    if (brainsRewritten && !report.committed) {
+      await this.restoreBrains(brainsBeforeRename);
+    }
+    return report;
+  }
+
+  /**
+   * Rewrite every saved brain's foreign-namespace references from each rename's
+   * source coordinate to its target, persisting the rewritten brains record and
+   * re-deserializing the changed brains into the cache. Returns true when at
+   * least one brain changed.
+   */
+  private async renameBrainNamespaces(renames: readonly { from: string; to: string }[]): Promise<boolean> {
+    const rewrite = (namespace: string): string => {
+      for (const rename of renames) {
+        if (rename.from === namespace) {
+          return rename.to;
+        }
+      }
+      return namespace;
+    };
+    const record = await this.loadBrainRecord();
+    const changedKeys: string[] = [];
+    for (const [key, json] of Object.entries(record)) {
+      const result = renameBrainNamespaces(json, rewrite);
+      if (result.changed) {
+        record[key] = result.brain;
+        changedKeys.push(key);
+      }
+    }
+    if (changedKeys.length === 0) {
+      return false;
+    }
+    await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
+    for (const key of changedKeys) {
+      const def = this.deserializeBrainForKey(key, record[key]);
+      if (def) {
+        this._brainCache.set(key, def);
+      }
+    }
+    return true;
+  }
+
+  /** Restore the brains record and cache to a pre-rewrite snapshot after a refused migration. */
+  private async restoreBrains(raw: string | undefined): Promise<void> {
+    if (raw === undefined) {
+      return;
+    }
+    await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, raw);
+    const record = JSON.parse(raw) as Record<string, unknown>;
+    for (const [key, json] of Object.entries(record)) {
+      const def = this.deserializeBrainForKey(key, json);
+      if (def) {
+        this._brainCache.set(key, def);
+      }
+    }
   }
 
   /**
