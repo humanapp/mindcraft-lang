@@ -38,7 +38,11 @@ function fixtureBrain(): PersistedBrainJson {
             when: [{ k: "action", area: "sensor", id: "aaa111", ns: SOURCE }],
             do: [
               { k: "arg", area: "parameter", action: "bbb222", name: "power", ns: SOURCE },
-              { k: "accessor", type: { k: "named", t: "struct", name: "/index.ts::Speed", ns: SOURCE }, field: "value" },
+              {
+                k: "accessor",
+                type: { k: "named", t: "struct", name: "/index.ts::Speed", ns: SOURCE },
+                field: "value",
+              },
               { k: "action", area: "actuator", id: "ccc333", ns: OTHER },
             ],
             children: [
