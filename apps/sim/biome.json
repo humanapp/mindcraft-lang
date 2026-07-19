@@ -26,6 +26,6 @@
     }
   },
   "files": {
-    "includes": ["**", "!ambient/"]
+    "includes": ["**", "!lib/mindcraft.sim.d.ts"]
   }
 }

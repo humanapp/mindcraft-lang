@@ -243,6 +243,7 @@ export const ProjectContentManifestErrorCode = {
   INVALID_IDENTITY: "PROJECT_MANIFEST_INVALID_IDENTITY",
   INVALID_FILES: "PROJECT_MANIFEST_INVALID_FILES",
   INVALID_AMBIENT: "PROJECT_MANIFEST_INVALID_AMBIENT",
+  FILE_ESCAPES_ROOT: "PROJECT_MANIFEST_FILE_ESCAPES_ROOT",
   INVALID_TARGETS: "PROJECT_MANIFEST_INVALID_TARGETS",
   INVALID_HOST_APP: "PROJECT_MANIFEST_INVALID_HOST_APP",
   HOST_APP_FILES_OVERLAP: "PROJECT_MANIFEST_HOST_APP_FILES_OVERLAP",
@@ -497,8 +498,17 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
         path: "$.files",
         message: "$.files must be an array of string paths when present.",
       });
-    } else if (value.files.length > 0) {
-      files = value.files as readonly string[];
+    } else {
+      const escaping = (value.files as readonly string[]).filter(pathEscapesProjectRoot);
+      if (escaping.length > 0) {
+        errors.push({
+          code: ProjectContentManifestErrorCode.FILE_ESCAPES_ROOT,
+          path: "$.files",
+          message: `$.files entries must stay within the project root; these escape it: ${escaping.join(", ")}.`,
+        });
+      } else if (value.files.length > 0) {
+        files = value.files as readonly string[];
+      }
     }
   }
 
@@ -510,8 +520,17 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
         path: "$.ambient",
         message: "$.ambient must be an array of string paths when present.",
       });
-    } else if (value.ambient.length > 0) {
-      ambient = value.ambient as readonly string[];
+    } else {
+      const escaping = (value.ambient as readonly string[]).filter(pathEscapesProjectRoot);
+      if (escaping.length > 0) {
+        errors.push({
+          code: ProjectContentManifestErrorCode.FILE_ESCAPES_ROOT,
+          path: "$.ambient",
+          message: `$.ambient entries must stay within the project root; these escape it: ${escaping.join(", ")}.`,
+        });
+      } else if (value.ambient.length > 0) {
+        ambient = value.ambient as readonly string[];
+      }
     }
   }
 
@@ -650,4 +669,34 @@ export function readExplicitContentManifestVersion(content: string): string | un
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Tests whether a forward-slash content path points outside the project root:
+ * an absolute path (leading `/`), or a relative path whose `..` segments walk
+ * above the root. A path that stays within the root (including one that uses
+ * `..` only to re-descend, such as `a/../b`) does not escape. The check is
+ * purely lexical and never touches the filesystem.
+ *
+ * @param entry - A content-relative path from a manifest `files` or `ambient` list.
+ */
+function pathEscapesProjectRoot(entry: string): boolean {
+  if (entry.startsWith("/")) {
+    return true;
+  }
+  let depth = 0;
+  for (const segment of entry.split("/")) {
+    if (segment === "" || segment === ".") {
+      continue;
+    }
+    if (segment === "..") {
+      depth -= 1;
+      if (depth < 0) {
+        return true;
+      }
+    } else {
+      depth += 1;
+    }
+  }
+  return false;
 }

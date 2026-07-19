@@ -107,7 +107,7 @@ UI primitives (Button, Slider, etc.) are also imported from `@mindcraft-lang/ui`
 
 ## Ambient Type Declarations
 
-The sim contributes a checked-in ambient declaration file at `ambient/mindcraft.sim.d.ts`.
+The sim contributes a checked-in ambient declaration file at `lib/mindcraft.sim.d.ts`.
 It augments the core `"mindcraft"` module with the sim-specific user-code surface:
 `ActorRef`, `Vector2`, sim entries in `MindcraftTypeMap`, `Context.self`, and sim
 methods on `BrainContext` and `EngineContext`.
@@ -120,7 +120,7 @@ npm run generate:ambient
 
 This command first runs core's ambient generator, then writes the sim augmentation. The
 core file remains owned by `@mindcraft-lang/core`; the sim reads it from the package
-export and pairs it with `ambient/mindcraft.sim.d.ts` in `src/services/sim-ambient-files.ts`.
+export and pairs it with `lib/mindcraft.sim.d.ts` in `src/services/sim-ambient-files.ts`.
 The workspace compiler and VS Code bridge expose both files as readonly compiler-owned
 root files named `mindcraft.core.d.ts` and `mindcraft.sim.d.ts`.
 

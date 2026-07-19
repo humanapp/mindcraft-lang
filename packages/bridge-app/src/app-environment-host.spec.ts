@@ -96,7 +96,7 @@ function installEmptyLocalStorage(): () => void {
 }
 
 const CORE_AMBIENT = readFileSync(
-  fileURLToPath(new URL("../../core/ambient/mindcraft.core.d.ts", import.meta.url)),
+  fileURLToPath(new URL("../../core/lib/mindcraft.core.d.ts", import.meta.url)),
   "utf8"
 );
 

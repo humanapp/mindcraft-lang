@@ -14,7 +14,7 @@ type AmbientGeneratorModule = {
 };
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ambientPath = resolve(packageDir, "ambient/mindcraft.core.d.ts");
+const ambientPath = resolve(packageDir, "lib/mindcraft.core.d.ts");
 
 async function main(): Promise<void> {
   const coreApp = (await import(

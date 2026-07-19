@@ -387,6 +387,32 @@ describe("validateProjectContentManifest", () => {
     }
   });
 
+  it("rejects a files entry that escapes the project root with FILE_ESCAPES_ROOT", () => {
+    for (const files of [["../outside.ts"], ["/absolute.ts"], ["a/../../up.ts"], ["ok.ts", "../leak.d.ts"]]) {
+      const result = validateProjectContentManifest({ name: "P", version: "0.1.0", files });
+      assert.strictEqual(result.ok, false, `Expected rejection for files ${JSON.stringify(files)}`);
+      assert.ok(errorCodes(result).includes(ProjectContentManifestErrorCode.FILE_ESCAPES_ROOT));
+    }
+  });
+
+  it("rejects an ambient entry that escapes the project root with FILE_ESCAPES_ROOT", () => {
+    for (const ambient of [["../ambient/mindcraft.core.d.ts"], ["/abs.d.ts"], ["nested/../../up.d.ts"]]) {
+      const result = validateProjectContentManifest({ name: "P", version: "0.1.0", ambient });
+      assert.strictEqual(result.ok, false, `Expected rejection for ambient ${JSON.stringify(ambient)}`);
+      assert.ok(errorCodes(result).includes(ProjectContentManifestErrorCode.FILE_ESCAPES_ROOT));
+    }
+  });
+
+  it("accepts root-relative files and ambient entries, including in-root `..` re-descent", () => {
+    const result = validateProjectContentManifest({
+      name: "P",
+      version: "0.1.0",
+      files: ["index.ts", "sub/image.ts", "sub/../image.ts"],
+      ambient: ["mindcraft.core.d.ts"],
+    });
+    assert.strictEqual(result.ok, true, `Expected acceptance: ${JSON.stringify(errorCodes(result))}`);
+  });
+
   it("rejects a malformed targets field with INVALID_TARGETS", () => {
     const cases: unknown[] = [
       5,

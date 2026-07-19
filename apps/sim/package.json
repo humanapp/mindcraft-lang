@@ -41,7 +41,7 @@
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
     "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json && tsc --noEmit -p ambient/tsconfig.json && tsc --noEmit -p scripts/tsconfig.json && tsc --noEmit -p lib/tsconfig.json && tsc --noEmit -p extensions/tsconfig.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json && tsc --noEmit -p lib/tsconfig.ambient.json && tsc --noEmit -p scripts/tsconfig.json && tsc --noEmit -p lib/tsconfig.json && tsc --noEmit -p extensions/tsconfig.json",
     "format": "biome format ./src --write",
     "build:deps": "node ../../scripts/build-packages.js .",
     "release:patch": "node ../../scripts/release.js patch --skip-deps",

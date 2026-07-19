@@ -115,7 +115,7 @@ describe("sim embedded layers -- the manifest-driven bundle matches the hand-ass
     const read = (rel: string) => readFileSync(extensionDir(rel), "utf8");
     const handAssembled = new Map([
       ["index.ts", read("../../../../packages/core/lib/index.ts")],
-      ["mindcraft.core.d.ts", read("../../../../packages/core/ambient/mindcraft.core.d.ts")],
+      ["mindcraft.core.d.ts", read("../../../../packages/core/lib/mindcraft.core.d.ts")],
       ["mindcraft.json", read("../../../../packages/core/lib/mindcraft.json")],
     ]);
     const builtByPath = new Map(built.files.map((f) => [f.path, f.content]));

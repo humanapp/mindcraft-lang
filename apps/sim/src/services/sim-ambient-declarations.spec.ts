@@ -24,6 +24,6 @@ test("checked-in ambient declarations match generated core and sim declarations"
     simEnvironment.brainServices.runtime.types
   );
 
-  assert.equal(readPackageText("@mindcraft-lang/core/ambient/mindcraft.core.d.ts"), coreAmbient);
-  assert.equal(readText("../../ambient/mindcraft.sim.d.ts"), simAmbient);
+  assert.equal(readPackageText("@mindcraft-lang/core/lib/mindcraft.core.d.ts"), coreAmbient);
+  assert.equal(readText("../../lib/mindcraft.sim.d.ts"), simAmbient);
 });

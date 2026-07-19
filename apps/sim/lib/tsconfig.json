@@ -9,8 +9,5 @@
     "types": []
   },
   "include": ["*.ts"],
-  "files": [
-    "../../../packages/core/ambient/mindcraft.core.d.ts",
-    "../ambient/mindcraft.sim.d.ts"
-  ]
+  "files": ["../../../packages/core/lib/mindcraft.core.d.ts"]
 }

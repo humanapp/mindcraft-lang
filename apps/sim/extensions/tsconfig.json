@@ -10,7 +10,7 @@
   },
   "include": ["**/*.ts"],
   "files": [
-    "../../../packages/core/ambient/mindcraft.core.d.ts",
-    "../ambient/mindcraft.sim.d.ts"
+    "../../../packages/core/lib/mindcraft.core.d.ts",
+    "../lib/mindcraft.sim.d.ts"
   ]
 }

@@ -2,7 +2,7 @@
   "name": "Ecosystem Simulation Library",
   "version": "0.1.0",
   "description": "Mindcraft library for the ecosystem simulation platform.",
-  "files": ["index.ts", "../ambient/mindcraft.sim.d.ts"],
+  "files": ["index.ts", "mindcraft.sim.d.ts"],
   "ambient": ["mindcraft.sim.d.ts"],
   "extensions": {
     "mindcraft-lang/lib-core": "embedded:mindcraft-lang/lib-core"
