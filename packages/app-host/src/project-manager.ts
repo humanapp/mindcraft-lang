@@ -416,7 +416,9 @@ export class ProjectManager {
   }
 
   async updateActive(
-    updates: Partial<Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions">>
+    updates: Partial<
+      Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions" | "targets">
+    >
   ): Promise<void> {
     if (!this.currentActive) {
       throw appHostError(AppHostErrorCode.NO_ACTIVE_PROJECT, "No active project");

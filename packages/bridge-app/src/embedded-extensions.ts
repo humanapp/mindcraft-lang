@@ -1,4 +1,4 @@
-import type { ExtensionCatalogMoves } from "@mindcraft-lang/app-host";
+import type { ExtensionCatalogMoves, ExtensionTarget } from "@mindcraft-lang/app-host";
 import {
   applyCatalogMove,
   isAbbreviatedCommitPin,
@@ -91,6 +91,19 @@ export type ExtensionResolutionWarning =
       readonly declaredIdentity: string;
       /** Human-readable summary. */
       readonly message: string;
+    }
+  | {
+      /**
+       * A declared compatibility target could not be resolved to any content: no
+       * embed record carries its coordinate, no target registry pins it, or the
+       * pinned content is not available. The target's platform stack does not
+       * materialize.
+       */
+      readonly kind: "unresolved-target";
+      /** The unresolved target's `<owner>/<repo>` coordinate. */
+      readonly origin: string;
+      /** Human-readable summary. */
+      readonly message: string;
     };
 
 /** The kind of finding a resolution warning reports. */
@@ -129,6 +142,13 @@ export interface ExtensionResolutionSources {
    * target reference; absent when the host applies no moves.
    */
   readonly moves?: ExtensionCatalogMoves;
+  /**
+   * Registry pins resolving a target coordinate that no embed record carries to
+   * a `gh:` reference, keyed by the target's `<owner>/<repo>` coordinate. A
+   * declared target that matches no embed entry resolves through this map and
+   * then through {@link fetched}; absent when the host pins no remote targets.
+   */
+  readonly targetRegistry?: ReadonlyMap<string, string>;
 }
 
 /** Provenance of one origin selected into the resolved closure. */
@@ -179,6 +199,8 @@ export interface OriginCandidate {
   files: ReadonlyMap<string, string>;
   /** The candidate's own extensions list, resolving its `@lib/<owner>/<repo>` imports. */
   extensions: ExtensionsMap;
+  /** The `<owner>/<repo>` coordinates of the candidate's declared compatibility targets, each recursed as a platform edge; empty when it declares none. */
+  targets: readonly string[];
   /** The candidate's declared ambient `.d.ts` files, as namespace-relative paths; empty when it declares none. */
   ambient: readonly string[];
   /** The `<owner>/<repo>` identity the candidate's manifest declares; absent when it declares none. */
@@ -222,21 +244,23 @@ function readOwnManifest(
   name: string;
   version: string;
   extensions: ExtensionsMap;
+  targets: readonly string[];
   ambient: readonly string[];
   identity?: string;
 } {
   const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
   if (manifestContent === undefined) {
-    return { name: origin, version: LOWEST_CONTENT_VERSION, extensions: {}, ambient: [] };
+    return { name: origin, version: LOWEST_CONTENT_VERSION, extensions: {}, targets: [], ambient: [] };
   }
   const parsed = parseProjectContentManifest(manifestContent);
   if (!parsed.ok) {
-    return { name: origin, version: LOWEST_CONTENT_VERSION, extensions: {}, ambient: [] };
+    return { name: origin, version: LOWEST_CONTENT_VERSION, extensions: {}, targets: [], ambient: [] };
   }
   return {
     name: parsed.manifest.name,
     version: parsed.manifest.version,
     extensions: parsed.manifest.extensions,
+    targets: Object.keys(parsed.manifest.targets ?? {}),
     ambient: parsed.manifest.ambient ?? [],
     ...(parsed.manifest.identity !== undefined ? { identity: parsed.manifest.identity } : {}),
   };
@@ -258,6 +282,7 @@ function candidateFromFiles(
     depth,
     files,
     extensions: own.extensions,
+    targets: own.targets,
     ambient: own.ambient,
     ...(own.identity !== undefined ? { identity: own.identity } : {}),
   };
@@ -294,6 +319,34 @@ function candidateForReference(
     return candidateFromFiles(`${parsed.owner}/${parsed.repo}`, reference, depth, files);
   }
   return undefined;
+}
+
+/**
+ * Resolve a declared target coordinate to the reference string its content is
+ * reached through: an `embedded:<coordinate>` reference when the embed record
+ * carries it, otherwise the registry's pinned `gh:` reference for the
+ * coordinate. Returns `undefined` when neither source names the coordinate.
+ */
+function referenceForTargetCoordinate(
+  coordinate: string,
+  byCoordinate: ReadonlyMap<string, EmbeddedExtension>,
+  targetRegistry: ReadonlyMap<string, string> | undefined
+): string | undefined {
+  if (byCoordinate.has(coordinate)) {
+    return `embedded:${coordinate}`;
+  }
+  return targetRegistry?.get(coordinate);
+}
+
+/** Build the warning for a declared target coordinate that resolves to no content. */
+function unresolvedTargetWarning(coordinate: string): ExtensionResolutionWarning {
+  return {
+    kind: "unresolved-target",
+    origin: coordinate,
+    message:
+      `Target "${coordinate}" resolves to no content: it is not in the host embed record, not pinned in the ` +
+      "target registry, or its pinned content is not available. Its platform stack does not materialize.",
+  };
 }
 
 /** A resolved origin: the winning candidate plus the coordinates its own imports resolve through. */
@@ -355,33 +408,82 @@ export function unifyOriginCandidate(incoming: OriginCandidate, incumbent: Origi
  * it is skipped; an unresolved import surfaces later as an ordinary compiler
  * diagnostic.
  *
+ * A project's declared compatibility targets are additional closure roots, and
+ * at every node the union of its `extensions` and `targets` edges is recursed.
+ * A target coordinate resolves to `embedded:<coordinate>` when the
+ * embed record carries it, otherwise to the target registry's pinned `gh:`
+ * reference; a target that resolves to no content raises an `unresolved-target`
+ * warning. A coordinate reached through both an extension edge and a target
+ * edge unifies onto one resolved origin.
+ *
+ * @param extensions - The project's extensions map, keyed by coordinate; each value is a reference string.
+ * @param sources - The content sources references resolve against.
+ * @param projectTargets - The project's declared compatibility targets, keyed by target coordinate; each is recursed as a closure root.
  * @throws {ExtensionResolutionCycleError} when the extension graph contains a
  *   dependency cycle.
  */
 export function resolveProjectExtensions(
   extensions: Readonly<Record<string, string>> | undefined,
-  sources: ExtensionResolutionSources
+  sources: ExtensionResolutionSources,
+  projectTargets?: Readonly<Record<string, ExtensionTarget>>
 ): ResolvedExtensions {
-  if (!extensions) {
+  const targetCoordinates = Object.keys(projectTargets ?? {});
+  if (!extensions && targetCoordinates.length === 0) {
     return { dependencies: [], dependencyMounts: [], origins: [], warnings: [] };
   }
   const byCoordinate = new Map(sources.embedded.map((extension) => [extension.canonicalOrigin, extension]));
   const fetched = sources.fetched;
   const moves = sources.moves ?? {};
+  const targetRegistry = sources.targetRegistry;
   const warnings: ExtensionResolutionWarning[] = [];
+  const warnedTargets = new Set<string>();
 
   // The project's direct dependencies: each dependency's `<owner>/<repo>`
   // coordinate, which its reference resolves to. The coordinate is derived
-  // from identity, never from the manifest key. Unresolved references are
-  // skipped.
+  // from identity, never from the manifest key. A coordinate reached through
+  // both an extension and a target edge is listed once.
   const directDependencies: ProjectDependency[] = [];
+  const seenDirect = new Set<string>();
+  const addDirect = (coordinate: string): void => {
+    if (!seenDirect.has(coordinate)) {
+      seenDirect.add(coordinate);
+      directDependencies.push({ coordinate });
+    }
+  };
+
+  /**
+   * Resolve one declared target coordinate at `depth` into a candidate,
+   * recording an `unresolved-target` warning (once per coordinate) when it
+   * resolves to no content.
+   */
+  const resolveTargetEdge = (coordinate: string, depth: number): OriginCandidate | undefined => {
+    const reference = referenceForTargetCoordinate(coordinate, byCoordinate, targetRegistry);
+    const child = reference !== undefined ? candidateForReference(reference, depth, byCoordinate, fetched) : undefined;
+    if (child === undefined) {
+      if (!warnedTargets.has(coordinate)) {
+        warnedTargets.add(coordinate);
+        warnings.push(unresolvedTargetWarning(coordinate));
+      }
+      return undefined;
+    }
+    return child;
+  };
+
   const rootCandidates: OriginCandidate[] = [];
-  for (const reference of Object.values(extensions)) {
+  for (const reference of Object.values(extensions ?? {})) {
     const candidate = candidateForReference(reference, 0, byCoordinate, fetched);
     if (candidate === undefined) {
       continue;
     }
-    directDependencies.push({ coordinate: candidate.origin });
+    addDirect(candidate.origin);
+    rootCandidates.push(candidate);
+  }
+  for (const coordinate of targetCoordinates) {
+    const candidate = resolveTargetEdge(coordinate, 0);
+    if (candidate === undefined) {
+      continue;
+    }
+    addDirect(candidate.origin);
     rootCandidates.push(candidate);
   }
 
@@ -413,12 +515,22 @@ export function resolveProjectExtensions(
   while (queue.length > 0) {
     const candidate = queue.shift()!;
     const winner = resolved.get(candidate.origin)!;
-    // Expand an origin's own dependencies once, off its winning candidate.
+    // Expand an origin's own edges once, off its winning candidate: the union
+    // of its extension edges and its target edges.
     if (winner.candidate === candidate && !expanded.has(candidate.origin)) {
       expanded.add(candidate.origin);
       for (const declaredReference of Object.values(candidate.extensions)) {
         const reference = applyCatalogMove(declaredReference, moves);
         const child = candidateForReference(reference, candidate.depth + 1, byCoordinate, fetched);
+        if (child === undefined) {
+          continue;
+        }
+        winner.dependencies.push({ coordinate: child.origin });
+        unify(child);
+        queue.push(child);
+      }
+      for (const targetCoordinate of candidate.targets) {
+        const child = resolveTargetEdge(targetCoordinate, candidate.depth + 1);
         if (child === undefined) {
           continue;
         }

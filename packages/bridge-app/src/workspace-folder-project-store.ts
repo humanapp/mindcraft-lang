@@ -174,6 +174,7 @@ export class WorkspaceFolderProjectStore implements ProjectStore {
       description: parsed.manifest.description ?? "",
       ...(parsed.manifest.thumbnailUrl !== undefined ? { thumbnailUrl: parsed.manifest.thumbnailUrl } : {}),
       ...(Object.keys(parsed.manifest.extensions).length > 0 ? { extensions: parsed.manifest.extensions } : {}),
+      ...(parsed.manifest.targets !== undefined ? { targets: parsed.manifest.targets } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -206,6 +207,7 @@ export class WorkspaceFolderProjectStore implements ProjectStore {
           description: parsed.manifest.description ?? "",
           ...(parsed.manifest.thumbnailUrl !== undefined ? { thumbnailUrl: parsed.manifest.thumbnailUrl } : {}),
           ...(Object.keys(parsed.manifest.extensions).length > 0 ? { extensions: parsed.manifest.extensions } : {}),
+          ...(parsed.manifest.targets !== undefined ? { targets: parsed.manifest.targets } : {}),
           createdAt: this.manifest.createdAt,
           updatedAt: Date.now(),
         };
@@ -267,7 +269,9 @@ export class WorkspaceFolderProjectStore implements ProjectStore {
 
   async updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions">>
+    updates: Partial<
+      Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions" | "targets">
+    >
   ): Promise<void> {
     this.requireProject(id);
     this.manifest = { ...this.manifest, ...updates, updatedAt: Date.now() };

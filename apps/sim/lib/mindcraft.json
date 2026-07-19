@@ -4,7 +4,9 @@
   "description": "Mindcraft library for the ecosystem simulation platform.",
   "files": ["index.ts", "mindcraft.sim.d.ts"],
   "ambient": ["mindcraft.sim.d.ts"],
-  "extensions": {
-    "mindcraft-lang/lib-core": "embedded:mindcraft-lang/lib-core"
+  "targets": {
+    "mindcraft-lang/lib-core": {
+      "packageVersion": "^0.2.0"
+    }
   }
 }

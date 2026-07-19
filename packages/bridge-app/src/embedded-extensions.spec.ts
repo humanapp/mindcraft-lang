@@ -21,6 +21,7 @@ function ext(
   options: {
     version?: string;
     extensions?: Record<string, string>;
+    targets?: Record<string, { packageVersion: string }>;
     ambient?: string[];
     extra?: Record<string, string>;
   } = {}
@@ -28,13 +29,19 @@ function ext(
   const files: { path: string; content: string }[] = [
     { path: "index.ts", content: `export const ${repo.replace(/[^A-Za-z0-9]/g, "_")} = 1;` },
   ];
-  if (options.version !== undefined || options.extensions !== undefined || options.ambient !== undefined) {
+  if (
+    options.version !== undefined ||
+    options.extensions !== undefined ||
+    options.targets !== undefined ||
+    options.ambient !== undefined
+  ) {
     files.push({
       path: "mindcraft.json",
       content: JSON.stringify({
         name: repo,
         version: options.version ?? "1.0.0",
         ...(options.extensions ? { extensions: options.extensions } : {}),
+        ...(options.targets ? { targets: options.targets } : {}),
         ...(options.ambient ? { ambient: options.ambient } : {}),
       }),
     });
@@ -295,6 +302,7 @@ function originCandidate(options: {
     depth: options.depth,
     files: new Map(),
     extensions: {},
+    targets: [],
     ambient: [],
   };
 }
@@ -573,5 +581,126 @@ describe("resolveProjectExtensions -- fetched-origin warnings", () => {
       { embedded: [STDLIB] }
     );
     assert.deepEqual(embedded.warnings, []);
+  });
+});
+
+describe("resolveProjectExtensions -- target-driven resolution", () => {
+  test("a project's declared targets are closure roots even with no extensions", () => {
+    const resolved = resolveProjectExtensions(
+      undefined,
+      { embedded: [ext("codal", { version: "0.2.1", ambient: ["a.d.ts"], extra: { "a.d.ts": "export {};" } })] },
+      { [coordinateFor("codal")]: { packageVersion: "^0.2.0" } }
+    );
+    assert.deepEqual(resolved.dependencies, [{ coordinate: coordinateFor("codal") }]);
+    const mount = mountFor(resolved.dependencyMounts, coordinateFor("codal"));
+    assert.deepEqual(mount.ambient, ["a.d.ts"]);
+    assert.deepEqual(resolved.warnings, []);
+  });
+
+  test("recurse-both: a node reaches its lower layer through a target edge in its own manifest", () => {
+    // trg --targets--> mid --targets--> base; the project reaches trg through an
+    // extension edge, and the full stack still assembles.
+    const embed = [
+      ext("trg", { version: "1.0.0", targets: { [coordinateFor("mid")]: { packageVersion: "^0.0.0" } } }),
+      ext("mid", { version: "1.0.0", targets: { [coordinateFor("base")]: { packageVersion: "^0.0.0" } } }),
+      ext("base", { version: "1.0.0", ambient: ["base.d.ts"], extra: { "base.d.ts": "export {};" } }),
+    ];
+    const resolved = resolveProjectExtensions(
+      { [coordinateFor("trg")]: `embedded:${coordinateFor("trg")}` },
+      { embedded: embed }
+    );
+    const origins = resolved.dependencyMounts.map((m) => m.namespace).sort();
+    assert.deepEqual(origins, [coordinateFor("base"), coordinateFor("mid"), coordinateFor("trg")]);
+    assert.deepEqual(mountFor(resolved.dependencyMounts, coordinateFor("trg")).dependencies, [
+      { coordinate: coordinateFor("mid") },
+    ]);
+    assert.deepEqual(mountFor(resolved.dependencyMounts, coordinateFor("mid")).dependencies, [
+      { coordinate: coordinateFor("base") },
+    ]);
+    assert.deepEqual(mountFor(resolved.dependencyMounts, coordinateFor("base")).ambient, ["base.d.ts"]);
+    assert.deepEqual(resolved.warnings, []);
+  });
+
+  test("a coordinate reached through both an extension edge and a target edge unifies to one mount", () => {
+    const embed = [ext("shared", { version: "1.0.0" })];
+    const resolved = resolveProjectExtensions(
+      { [coordinateFor("shared")]: `embedded:${coordinateFor("shared")}` },
+      { embedded: embed },
+      { [coordinateFor("shared")]: { packageVersion: "^1.0.0" } }
+    );
+    assert.deepEqual(resolved.dependencies, [{ coordinate: coordinateFor("shared") }]);
+    assert.equal(resolved.dependencyMounts.filter((m) => m.namespace === coordinateFor("shared")).length, 1);
+    assert.deepEqual(resolved.warnings, []);
+  });
+
+  test("a target coordinate no embed record carries resolves through a registry pin to fetched content", () => {
+    const reference = "gh:example-org/base@v1.0.0";
+    const fetched = new Map([
+      [
+        reference,
+        new Map([
+          ["/mindcraft.json", JSON.stringify({ name: "Base", version: "1.0.0", files: ["index.ts"] })],
+          ["/index.ts", "export const x = 1;"],
+        ]),
+      ],
+    ]);
+    const resolved = resolveProjectExtensions(
+      undefined,
+      { embedded: [], fetched, targetRegistry: new Map([["example-org/base", reference]]) },
+      { "example-org/base": { packageVersion: "^1.0.0" } }
+    );
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "example-org/base" }]);
+    const mount = mountFor(resolved.dependencyMounts, "example-org/base");
+    assert.equal(mount.files.get("/index.ts"), "export const x = 1;");
+    assert.deepEqual(resolved.warnings, []);
+  });
+
+  test("a declared target matching no embed record and no registry pin raises an unresolved-target warning", () => {
+    const resolved = resolveProjectExtensions(
+      undefined,
+      { embedded: [] },
+      { "example-org/missing": { packageVersion: "^1.0.0" } }
+    );
+    assert.deepEqual(resolved.dependencies, []);
+    assert.deepEqual(resolved.dependencyMounts, []);
+    assert.equal(resolved.warnings.length, 1);
+    const warning = resolved.warnings[0];
+    assert.equal(warning.kind, "unresolved-target");
+    assert.equal(warning.origin, "example-org/missing");
+  });
+
+  test("a registry-pinned target whose content is not fetched raises an unresolved-target warning", () => {
+    const reference = "gh:example-org/base@v1.0.0";
+    const resolved = resolveProjectExtensions(
+      undefined,
+      { embedded: [], targetRegistry: new Map([["example-org/base", reference]]) },
+      { "example-org/base": { packageVersion: "^1.0.0" } }
+    );
+    assert.deepEqual(resolved.dependencyMounts, []);
+    assert.equal(resolved.warnings.length, 1);
+    assert.equal(resolved.warnings[0].kind, "unresolved-target");
+    assert.equal(resolved.warnings[0].origin, "example-org/base");
+  });
+
+  test("an unresolved target nested behind a node is warned once by its coordinate", () => {
+    const embed = [ext("trg", { version: "1.0.0", targets: { "example-org/missing": { packageVersion: "^1.0.0" } } })];
+    const resolved = resolveProjectExtensions(
+      { [coordinateFor("trg")]: `embedded:${coordinateFor("trg")}` },
+      { embedded: embed }
+    );
+    mountFor(resolved.dependencyMounts, coordinateFor("trg"));
+    assert.equal(resolved.warnings.filter((w) => w.kind === "unresolved-target").length, 1);
+    assert.equal(resolved.warnings[0].origin, "example-org/missing");
+  });
+
+  test("a target cycle across target edges is rejected as a dependency cycle", () => {
+    const embed = [
+      ext("a", { version: "1.0.0", targets: { [coordinateFor("b")]: { packageVersion: "^1.0.0" } } }),
+      ext("b", { version: "1.0.0", targets: { [coordinateFor("a")]: { packageVersion: "^1.0.0" } } }),
+    ];
+    assert.throws(
+      () => resolveProjectExtensions({ [coordinateFor("a")]: `embedded:${coordinateFor("a")}` }, { embedded: embed }),
+      ExtensionResolutionCycleError
+    );
   });
 });

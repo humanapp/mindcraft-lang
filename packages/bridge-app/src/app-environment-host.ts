@@ -289,11 +289,15 @@ export class AppEnvironmentHost {
    */
   private resolveExtensions(): ResolvedExtensions {
     try {
-      const resolved = resolveProjectExtensions(this.projectManager.activeProject!.manifest.extensions, {
-        embedded: this.embeddedExtensions,
-        fetched: this._installedContent,
-        moves: this.catalogMoves,
-      });
+      const resolved = resolveProjectExtensions(
+        this.projectManager.activeProject!.manifest.extensions,
+        {
+          embedded: this.embeddedExtensions,
+          fetched: this._installedContent,
+          moves: this.catalogMoves,
+        },
+        this.projectManager.activeProject!.manifest.targets
+      );
       for (const warning of resolved.warnings) {
         logger.warn(`[extension-resolution] ${warning.message}`);
       }
@@ -733,11 +737,15 @@ export class AppEnvironmentHost {
     }
     let resolution: ResolvedExtensions;
     try {
-      resolution = resolveProjectExtensions(extensions, {
-        embedded: this.embeddedExtensions,
-        fetched: fetchedContent,
-        moves: this.catalogMoves,
-      });
+      resolution = resolveProjectExtensions(
+        extensions,
+        {
+          embedded: this.embeddedExtensions,
+          fetched: fetchedContent,
+          moves: this.catalogMoves,
+        },
+        this.projectManager.activeProject!.manifest.targets
+      );
     } catch (err) {
       if (err instanceof ExtensionResolutionCycleError) {
         this.resyncManifestFile();

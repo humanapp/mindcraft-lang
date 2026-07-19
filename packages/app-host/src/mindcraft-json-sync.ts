@@ -1,5 +1,5 @@
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
-import type { ProjectContentManifest } from "./project-content-manifest.js";
+import type { ExtensionTarget, ProjectContentManifest } from "./project-content-manifest.js";
 import {
   parseProjectContentManifest,
   readExplicitContentManifestVersion,
@@ -15,27 +15,42 @@ type SyncedManifestFields = {
   description: string;
   thumbnailUrl?: string;
   extensions?: Readonly<Record<string, string>>;
+  targets?: Readonly<Record<string, ExtensionTarget>>;
 };
 
-/** Treats an empty extensions map as absent. */
-function normalizeExtensions(
-  extensions: Readonly<Record<string, string>> | undefined
-): Readonly<Record<string, string>> | undefined {
-  return extensions && Object.keys(extensions).length > 0 ? extensions : undefined;
+/** Treats an empty map as absent. */
+function normalizeMap<T>(map: Readonly<Record<string, T>> | undefined): Readonly<Record<string, T>> | undefined {
+  return map && Object.keys(map).length > 0 ? map : undefined;
 }
 
 function extensionsEqual(
   a: Readonly<Record<string, string>> | undefined,
   b: Readonly<Record<string, string>> | undefined
 ): boolean {
-  const normalizedA = normalizeExtensions(a);
-  const normalizedB = normalizeExtensions(b);
+  const normalizedA = normalizeMap(a);
+  const normalizedB = normalizeMap(b);
   if (normalizedA === undefined || normalizedB === undefined) {
     return normalizedA === normalizedB;
   }
   const keysA = Object.keys(normalizedA);
   return (
     keysA.length === Object.keys(normalizedB).length && keysA.every((key) => normalizedA[key] === normalizedB[key])
+  );
+}
+
+function targetsEqual(
+  a: Readonly<Record<string, ExtensionTarget>> | undefined,
+  b: Readonly<Record<string, ExtensionTarget>> | undefined
+): boolean {
+  const normalizedA = normalizeMap(a);
+  const normalizedB = normalizeMap(b);
+  if (normalizedA === undefined || normalizedB === undefined) {
+    return normalizedA === normalizedB;
+  }
+  const keysA = Object.keys(normalizedA);
+  return (
+    keysA.length === Object.keys(normalizedB).length &&
+    keysA.every((key) => normalizedA[key]?.packageVersion === normalizedB[key]?.packageVersion)
   );
 }
 
@@ -47,6 +62,7 @@ export function contentManifestFromManifest(manifest: ProjectManifest): ProjectC
     description: manifest.description,
     ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
     extensions: manifest.extensions ?? {},
+    ...(normalizeMap(manifest.targets) !== undefined ? { targets: manifest.targets } : {}),
   };
 }
 
@@ -56,7 +72,8 @@ function contentManifestsEqual(a: ProjectContentManifest, b: ProjectContentManif
     a.version === b.version &&
     (a.description ?? "") === (b.description ?? "") &&
     a.thumbnailUrl === b.thumbnailUrl &&
-    extensionsEqual(a.extensions, b.extensions)
+    extensionsEqual(a.extensions, b.extensions) &&
+    targetsEqual(a.targets, b.targets)
   );
 }
 
@@ -122,6 +139,10 @@ export function diffMindcraftJsonToManifest(
   }
   if (!extensionsEqual(incoming.extensions, manifest.extensions)) {
     patch.extensions = incoming.extensions ?? {};
+    hasChanges = true;
+  }
+  if (!targetsEqual(incoming.targets, manifest.targets)) {
+    patch.targets = incoming.targets ?? {};
     hasChanges = true;
   }
 

@@ -50,7 +50,9 @@ export interface ProjectStore {
    */
   updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions">>
+    updates: Partial<
+      Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions" | "targets">
+    >
   ): Promise<void>;
   /** Create a copy of `id` (project files and app data) under `newName`. */
   duplicateProject(id: string, newName: string): Promise<ProjectManifest>;

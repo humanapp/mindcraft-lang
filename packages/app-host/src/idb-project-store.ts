@@ -342,7 +342,9 @@ class IdbProjectStore implements ProjectStore {
 
   async updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions">>
+    updates: Partial<
+      Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions" | "targets">
+    >
   ): Promise<void> {
     const manifest = await this.requireLiveProject(id);
     await this.db.put("projects", {
