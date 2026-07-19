@@ -152,6 +152,64 @@ describe("isExtensionCompatible -- stack inclusion and semver ranges", () => {
   });
 });
 
+describe("isExtensionCompatible -- shared mid-tier layer, differing top-level target", () => {
+  const LIB_CODAL = "mindcraft-lang/lib-codal";
+  const TRG_MICROBIT = "mindcraft-lang/trg-microbit-v2";
+  const TRG_ARCADE = "mindcraft-lang/trg-arcade";
+
+  // A library that targets the shared codal mid-tier layer, agnostic to which
+  // codal-based top-level target sits above it.
+  const codalMidTierTargets = { [LIB_CODAL]: { packageVersion: "^0.2.0" } };
+
+  // Two codal-based stacks with different top-level targets, both carrying the
+  // shared mid-tier layer at a satisfying version.
+  const microbitStack: PlatformStackLayer[] = [
+    { coordinate: TRG_MICROBIT, version: "0.8.0" },
+    { coordinate: LIB_CODAL, version: "0.2.1" },
+  ];
+  const arcadeStack: PlatformStackLayer[] = [
+    { coordinate: TRG_ARCADE, version: "0.1.0" },
+    { coordinate: LIB_CODAL, version: "0.2.1" },
+  ];
+
+  test("a mid-tier-targeting library is compatible with a micro:bit-topped stack carrying that layer", () => {
+    assert.equal(isExtensionCompatible(codalMidTierTargets, microbitStack), true);
+  });
+
+  test("the same library is compatible with an arcade-topped stack carrying that layer", () => {
+    assert.equal(isExtensionCompatible(codalMidTierTargets, arcadeStack), true);
+  });
+
+  test("it is incompatible with a stack whose different top-level target carries no mid-tier layer", () => {
+    const arcadeOnlyStack: PlatformStackLayer[] = [{ coordinate: TRG_ARCADE, version: "0.1.0" }];
+    assert.equal(isExtensionCompatible(codalMidTierTargets, arcadeOnlyStack), false);
+  });
+
+  test("it is incompatible when the mid-tier layer is present below the range", () => {
+    const belowRange: PlatformStackLayer[] = [
+      { coordinate: TRG_ARCADE, version: "0.1.0" },
+      { coordinate: LIB_CODAL, version: "0.1.9" },
+    ];
+    assert.equal(isExtensionCompatible(codalMidTierTargets, belowRange), false);
+  });
+
+  test("it is incompatible when the mid-tier layer is present above the range", () => {
+    const aboveRange: PlatformStackLayer[] = [
+      { coordinate: TRG_ARCADE, version: "0.1.0" },
+      { coordinate: LIB_CODAL, version: "0.3.0" },
+    ];
+    assert.equal(isExtensionCompatible(codalMidTierTargets, aboveRange), false);
+  });
+
+  test("an unmatched second target does not poison a matched one", () => {
+    const twoTargets = {
+      [LIB_CODAL]: { packageVersion: "^0.2.0" },
+      [TRG_ARCADE]: { packageVersion: "^0.1.0" },
+    };
+    assert.equal(isExtensionCompatible(twoTargets, microbitStack), true);
+  });
+});
+
 describe("buildExtensionCatalog -- two platforms", () => {
   test("a fresh micro:bit project lists nothing: no platform layer, no compatible bundled add-on", () => {
     const entries = buildExtensionCatalog(microbitProject, microbitEmbedRecord, microbitLayers);

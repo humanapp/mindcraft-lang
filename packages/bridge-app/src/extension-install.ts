@@ -315,3 +315,60 @@ export async function collectExtensionFetchClosure(options: {
 
   return { ok: true, snapshotsByReference };
 }
+
+/**
+ * Report whether the moved closure of an extensions map reaches a `gh:`
+ * reference whose content is not already available -- neither bundled as an
+ * embedded extension nor held in the stored snapshot records. Walks the same
+ * embedded- and stored-manifest edges as {@link collectExtensionFetchClosure},
+ * applying moves at every edge, but fetches nothing: it answers whether a load
+ * must run a fetch transaction to heal a transitive moved dependency whose
+ * content the project never persisted (for example a dependency installed while
+ * the moved library was still bundled).
+ *
+ * @param options.extensions - The extensions map to walk, with any top-level moves already applied.
+ * @param options.embedded - The host application's bundled embedded extensions.
+ * @param options.stored - The project's stored snapshot records, matched by reference.
+ * @param options.moves - Curated transport-flip moves applied at every dependency edge.
+ */
+export function movedClosureHasMissingContent(options: {
+  extensions: Readonly<Record<string, string>>;
+  embedded: readonly EmbeddedExtension[];
+  stored: InstalledExtensionSnapshots;
+  moves?: ExtensionCatalogMoves;
+}): boolean {
+  const moves = options.moves ?? {};
+  const embeddedByCoordinate = new Map(options.embedded.map((extension) => [extension.canonicalOrigin, extension]));
+  const storedByReference = new Map<string, InstalledExtensionSnapshot>();
+  for (const record of Object.values(options.stored)) {
+    storedByReference.set(record.reference, record);
+  }
+
+  const visited = new Set<string>();
+  const queue: string[] = [...Object.values(options.extensions)];
+  while (queue.length > 0) {
+    const reference = queue.shift()!;
+    if (visited.has(reference)) continue;
+    visited.add(reference);
+
+    const parsed = parseExtensionReference(reference);
+    if (parsed === undefined) continue;
+
+    if (parsed.transport === "embedded") {
+      const extension = embeddedByCoordinate.get(parsed.coordinate);
+      if (extension === undefined) continue;
+      queue.push(...movedChildren(ownExtensions(embeddedContent(extension)), moves));
+      continue;
+    }
+
+    if (parsed.transport === "gh") {
+      const record = storedByReference.get(reference);
+      if (record === undefined) {
+        return true;
+      }
+      queue.push(...movedChildren(ownExtensions(decodeInstalledSnapshotFiles(record)), moves));
+    }
+  }
+
+  return false;
+}

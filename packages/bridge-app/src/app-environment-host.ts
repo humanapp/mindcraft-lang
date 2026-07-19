@@ -44,7 +44,12 @@ import type { EmbeddedExtension, FetchedExtensionContentMap, ResolvedExtensions 
 import { ExtensionResolutionCycleError, resolveProjectExtensions } from "./embedded-extensions.js";
 import type { ExtensionCatalogEntry, ExtensionFetchFailures } from "./extension-catalog.js";
 import type { ExtensionInstallReport, ProjectDiagnosticsState } from "./extension-install.js";
-import { collectExtensionFetchClosure, diffProjectDiagnostics, typecheckBrainProblems } from "./extension-install.js";
+import {
+  collectExtensionFetchClosure,
+  diffProjectDiagnostics,
+  movedClosureHasMissingContent,
+  typecheckBrainProblems,
+} from "./extension-install.js";
 import type { ExtensionInstallLogEvent } from "./extension-install-log.js";
 import {
   appendExtensionInstallLog,
@@ -799,11 +804,16 @@ export class AppEnvironmentHost {
    * same per-project moment rewrites the source-coordinate namespace prefix of
    * every saved-brain reference to the new coordinate so no brain is stranded.
    * The rewritten map runs through the install transaction, persisting the
-   * manifest and fetching the moved content. Returns the transaction's report,
-   * or undefined when the host declares no moves or no top-level entry is
-   * moved (idempotent: a project already at its move targets is a no-op). When
-   * the transaction refuses, any brain rewrite is rolled back so the project is
-   * never half-migrated.
+   * manifest and fetching the moved content. A transitive dependency a move
+   * redirects at any depth is also healed on load: when no top-level entry is
+   * moved but the moved closure reaches `gh:` content that is neither embedded
+   * nor already persisted, the transaction still runs to fetch and persist that
+   * content, so a project that installed the dependency while its library was
+   * bundled resolves after graduation. Returns the transaction's report, or
+   * undefined when the host declares no moves, or when no top-level entry is
+   * moved and the moved closure is already fully backed by embedded or persisted
+   * content (idempotent no-op). When the transaction refuses, any brain rewrite
+   * is rolled back so the project is never half-migrated.
    */
   async applyCatalogMoves(): Promise<ExtensionInstallReport | undefined> {
     if (Object.keys(this.catalogMoves).length === 0) {
@@ -828,7 +838,21 @@ export class AppEnvironmentHost {
       }
     }
     if (!changed) {
-      return undefined;
+      // No top-level entry moved, but a transitive moved dependency at any depth
+      // may still lack content on this load -- a dependency installed while the
+      // moved library was bundled has no persisted snapshot. Heal it by running
+      // the fetch transaction, which fetches and persists exactly the missing
+      // content. A closure already fully backed by embedded or persisted content
+      // is a true no-op.
+      const needsHeal = movedClosureHasMissingContent({
+        extensions: next,
+        embedded: this.embeddedExtensions,
+        stored: this._installedSnapshots,
+        moves: this.catalogMoves,
+      });
+      if (!needsHeal) {
+        return undefined;
+      }
     }
 
     let brainsBeforeRename: string | undefined;
