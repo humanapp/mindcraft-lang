@@ -20,10 +20,6 @@ import {
   runExtensionCardAction,
 } from "./extension-browser-model";
 
-function openDocsInNewTab(url: string): void {
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-
 /**
  * A single extension card: thumbnail, title, version, an installed indicator,
  * broken-state and identity-mismatch annotations, and state-dependent
@@ -35,6 +31,7 @@ function ExtensionCard({
   onUninstall,
   onCheckUpdate,
   onRetry,
+  onOpenRepo,
 }: { entry: ExtensionBrowserEntry } & ExtensionCardCallbacks) {
   const showInstall = extensionCardShowsInstall(entry);
   const showRetry = extensionCardShowsRetry(entry);
@@ -43,10 +40,12 @@ function ExtensionCard({
     onUninstall,
     onCheckUpdate,
     onRetry,
-    openDocs: openDocsInNewTab,
+    onOpenRepo,
   };
   const menuItems = extensionCardMenuItems(entry).filter(
-    (item) => item.action !== "check-update" || onCheckUpdate !== undefined
+    (item) =>
+      (item.action !== "check-update" || onCheckUpdate !== undefined) &&
+      (item.action !== "open-repo" || onOpenRepo !== undefined)
   );
 
   return (
@@ -139,6 +138,7 @@ export function ExtensionBrowserList({
   onUninstall,
   onCheckUpdate,
   onRetry,
+  onOpenRepo,
 }: ExtensionBrowserListProps) {
   return (
     <ul aria-label="Libraries" className="flex flex-col gap-2">
@@ -150,6 +150,7 @@ export function ExtensionBrowserList({
           onUninstall={onUninstall}
           onCheckUpdate={onCheckUpdate}
           onRetry={onRetry}
+          onOpenRepo={onOpenRepo}
         />
       ))}
     </ul>
@@ -291,6 +292,7 @@ export function ExtensionBrowserDialog({
   onUninstall,
   onCheckUpdate,
   onRetry,
+  onOpenRepo,
   onInstallReference,
   onCheckAllUpdates,
   catalogOffers,
@@ -349,6 +351,7 @@ export function ExtensionBrowserDialog({
               onUninstall={onUninstall}
               onCheckUpdate={onCheckUpdate}
               onRetry={onRetry}
+              onOpenRepo={onOpenRepo}
             />
           )}
           {sections.showNoMatch && (

@@ -38,6 +38,8 @@ export interface ExtensionCatalogEntry {
   readonly thumbnailUrl?: string;
   /** True when the extension is in the project's resolved extension set. */
   readonly installed: boolean;
+  /** GitHub repository URL `https://github.com/<coordinate>`; set only for remote (`gh:`) entries, whose coordinate is their repository. */
+  readonly repoUrl?: string;
   /** True for a fetched (`gh:`) dependency with installed content, which carries an on-request update affordance. */
   readonly updatable?: boolean;
   /** Present when a declared `gh:` dependency has no installed snapshot content. */
@@ -294,6 +296,7 @@ export function buildExtensionCatalog(
       version: manifest?.version ?? LOWEST_CONTENT_VERSION,
       ...(manifest?.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
       installed: installed.has(coordinate),
+      repoUrl: `https://github.com/${coordinate}`,
       ...(content !== undefined ? { updatable: true } : {}),
       ...(broken !== undefined ? { broken } : {}),
       ...(identityMismatch !== undefined ? { identityMismatch } : {}),

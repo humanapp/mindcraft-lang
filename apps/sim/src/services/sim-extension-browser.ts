@@ -53,12 +53,7 @@ export interface ExtensionActionOutcome {
   readonly report?: ExtensionInstallReport;
 }
 
-/** The GitHub repository URL for an extension's `<owner>/<repo>` coordinate. */
-export function githubDocsUrl(coordinate: string): string {
-  return `https://github.com/${coordinate}`;
-}
-
-/** Adapt a host catalog entry into the platform-agnostic browser view model, deriving the docs URL from the coordinate. */
+/** Adapt a host catalog entry into the platform-agnostic browser view model, carrying the repository URL when present. */
 export function toExtensionBrowserEntry(entry: ExtensionCatalogEntry): ExtensionBrowserEntry {
   return {
     coordinate: entry.coordinate,
@@ -66,7 +61,7 @@ export function toExtensionBrowserEntry(entry: ExtensionCatalogEntry): Extension
     version: entry.version,
     ...(entry.thumbnailUrl !== undefined ? { thumbnailUrl: entry.thumbnailUrl } : {}),
     installed: entry.installed,
-    docsUrl: githubDocsUrl(entry.coordinate),
+    ...(entry.repoUrl !== undefined ? { repoUrl: entry.repoUrl } : {}),
     ...(entry.updatable !== undefined ? { updatable: entry.updatable } : {}),
     ...(entry.broken !== undefined ? { broken: entry.broken } : {}),
     ...(entry.identityMismatch !== undefined ? { identityMismatch: entry.identityMismatch } : {}),

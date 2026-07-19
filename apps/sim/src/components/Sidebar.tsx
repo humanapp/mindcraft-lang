@@ -338,6 +338,7 @@ export function Sidebar({
         onUninstall={handleUninstallExtension}
         onCheckUpdate={(coordinate) => handleCheckUpdates([coordinate])}
         onRetry={handleRetryExtension}
+        onOpenRepo={(url) => window.open(url, "_blank", "noopener")}
         onCheckAllUpdates={handleCheckAllUpdates}
         onInstallReference={handleInstallExtensionReference}
         catalogOffers={catalogOffers}

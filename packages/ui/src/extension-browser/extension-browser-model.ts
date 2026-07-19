@@ -1,7 +1,6 @@
 /**
  * One extension shown in {@link ExtensionBrowserDialog}. The host application
- * adapts its own catalog entry into this platform-agnostic view model, deriving
- * `docsUrl` from the coordinate.
+ * adapts its own catalog entry into this platform-agnostic view model.
  */
 export interface ExtensionBrowserEntry {
   /** The extension's `<owner>/<repo>` coordinate: its stable key in the list. */
@@ -14,8 +13,8 @@ export interface ExtensionBrowserEntry {
   readonly thumbnailUrl?: string;
   /** True when the extension is part of the project. */
   readonly installed: boolean;
-  /** Documentation URL opened by the card's View Docs action; the action is omitted when absent. */
-  readonly docsUrl?: string;
+  /** GitHub repository URL opened by the card's Open Repository action; present only for remote (`gh:`) entries, whose coordinate is their repository. The action is omitted when absent. */
+  readonly repoUrl?: string;
   /** True for a fetched dependency with installed content; the card offers an on-request update check. */
   readonly updatable?: boolean;
   /** Present when a declared remote dependency has no installed content; the card renders the reason and offers Retry. */
@@ -35,9 +34,9 @@ export interface ExtensionBrowserEntry {
 /**
  * An affordance a card can trigger: install a not-installed add-on, uninstall
  * an installed one, check an installed fetched dependency for an update, retry
- * a broken dependency's install, or open its docs.
+ * a broken dependency's install, or open its GitHub repository.
  */
-export type ExtensionCardActionKind = "install" | "uninstall" | "check-update" | "retry" | "docs";
+export type ExtensionCardActionKind = "install" | "uninstall" | "check-update" | "retry" | "open-repo";
 
 /** One item in a card's kebab menu: its stable action kind and its display label. */
 export interface ExtensionCardMenuItem {
@@ -55,8 +54,8 @@ export interface ExtensionCardCallbacks {
   onCheckUpdate?: (coordinate: string) => void;
   /** Re-run the install transaction for the broken dependency named by the coordinate. Absent when the host offers no retry. */
   onRetry?: (coordinate: string) => void;
-  /** Open the given documentation URL. Absent when the host does not handle docs navigation. */
-  openDocs?: (url: string) => void;
+  /** Open the given GitHub repository URL. Absent when the host does not handle external navigation. */
+  onOpenRepo?: (url: string) => void;
 }
 
 /**
@@ -164,25 +163,26 @@ export function extensionBrowserSections(
 }
 
 /**
- * The kebab-menu items a card offers for an entry. A broken dependency offers
- * Uninstall; an installed updatable dependency offers Check for Update and
- * Uninstall; any other installed add-on offers Uninstall; a not-installed
- * add-on offers no menu items and shows the inline Add affordance from
- * {@link extensionCardShowsInstall}.
+ * The kebab-menu items a card offers for an entry. An installed updatable
+ * dependency offers Check for Update; any installed add-on or broken dependency
+ * offers Uninstall; any entry with a `repoUrl` offers Open Repository. A
+ * not-installed add-on with no `repoUrl` offers no menu items and shows the
+ * inline Add affordance from {@link extensionCardShowsInstall}.
  *
  * @param entry - The entry whose menu items to compute.
  */
 export function extensionCardMenuItems(entry: ExtensionBrowserEntry): ExtensionCardMenuItem[] {
-  if (entry.broken !== undefined) {
-    return [{ action: "uninstall", label: "Uninstall" }];
+  const items: ExtensionCardMenuItem[] = [];
+  if (entry.broken === undefined && entry.installed && entry.updatable === true) {
+    items.push({ action: "check-update", label: "Check for Update" });
   }
-  if (entry.installed) {
-    return [
-      ...(entry.updatable === true ? [{ action: "check-update", label: "Check for Update" } as const] : []),
-      { action: "uninstall", label: "Uninstall" },
-    ];
+  if (entry.repoUrl !== undefined) {
+    items.push({ action: "open-repo", label: "Open Repository" });
   }
-  return [];
+  if (entry.broken !== undefined || entry.installed) {
+    items.push({ action: "uninstall", label: "Uninstall" });
+  }
+  return items;
 }
 
 /**
@@ -209,8 +209,8 @@ export function extensionCardShowsRetry(entry: ExtensionBrowserEntry): boolean {
 /**
  * Dispatch a card affordance to the matching callback: `install`, `uninstall`,
  * `check-update`, and `retry` call their callbacks with the entry's
- * coordinate; `docs` calls `openDocs` with the entry's `docsUrl`. An absent
- * optional callback or `docsUrl` makes the action do nothing.
+ * coordinate; `open-repo` calls `onOpenRepo` with the entry's `repoUrl`. An
+ * absent optional callback or `repoUrl` makes the action do nothing.
  *
  * @param entry - The entry the action applies to.
  * @param action - The affordance triggered.
@@ -235,8 +235,8 @@ export function runExtensionCardAction(
       callbacks.onRetry?.(entry.coordinate);
       return;
     default:
-      if (entry.docsUrl !== undefined) {
-        callbacks.openDocs?.(entry.docsUrl);
+      if (entry.repoUrl !== undefined) {
+        callbacks.onOpenRepo?.(entry.repoUrl);
       }
   }
 }

@@ -193,6 +193,8 @@ describe("buildExtensionCatalog -- two platforms", () => {
     assert.equal(position.installed, true);
     assert.equal(position.name, "Position");
     assert.equal(position.thumbnailUrl, "data:,pos");
+    // An embedded entry's coordinate is not a GitHub repository, so it carries no repoUrl.
+    assert.equal("repoUrl" in position, false);
   });
 
   test("a transitively-resolved embedded dep is not listed; only the top-level non-layer lib is", () => {
@@ -414,8 +416,25 @@ describe("remote (gh:) catalog entries and actions", () => {
       remoteContent({ name: "Position", version: "0.1.0" })
     );
     assert.deepStrictEqual(entries, [
-      { coordinate: REMOTE, name: "Position", version: "0.1.0", installed: true, updatable: true },
+      {
+        coordinate: REMOTE,
+        name: "Position",
+        version: "0.1.0",
+        installed: true,
+        repoUrl: `https://github.com/${REMOTE}`,
+        updatable: true,
+      },
     ]);
+  });
+
+  test("buildExtensionCatalog sets a gh entry's repoUrl to its GitHub repository", () => {
+    const entries = buildExtensionCatalog(
+      { [REMOTE]: REMOTE_REFERENCE },
+      [],
+      new Set(),
+      remoteContent({ name: "Position", version: "0.1.0" })
+    );
+    assert.equal(entries[0].repoUrl, `https://github.com/${REMOTE}`);
   });
 
   test("buildExtensionCatalog lists a remote reference without content as broken so it can be retried or removed", () => {
@@ -426,6 +445,7 @@ describe("remote (gh:) catalog entries and actions", () => {
         name: REMOTE,
         version: "0.0.0",
         installed: false,
+        repoUrl: `https://github.com/${REMOTE}`,
         broken: { message: `No content is installed for "${REMOTE_REFERENCE}".` },
       },
     ]);

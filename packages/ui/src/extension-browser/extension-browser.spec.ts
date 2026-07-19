@@ -33,14 +33,12 @@ const installedAddon = entry({
   version: "1.3.0",
   installed: true,
   thumbnailUrl: "https://example.test/pos.png",
-  docsUrl: "https://github.com/mindcraft-lang/microbit-position",
 });
 const availableAddon = entry({
   coordinate: "mindcraft-lang/shared-math",
   name: "Shared Math",
   version: "2.0.0",
   installed: false,
-  docsUrl: "https://github.com/mindcraft-lang/shared-math",
 });
 const updatableDependency = entry({
   coordinate: "example-org/position-ext",
@@ -48,6 +46,13 @@ const updatableDependency = entry({
   version: "0.1.0",
   installed: true,
   updatable: true,
+});
+const remoteDependency = entry({
+  coordinate: "example-org/remote-ext",
+  name: "Remote",
+  version: "0.1.0",
+  installed: true,
+  repoUrl: "https://github.com/example-org/remote-ext",
 });
 const brokenDependency = entry({
   coordinate: "example-org/ghost-ext",
@@ -225,6 +230,17 @@ describe("extensionCardMenuItems and extensionCardShowsInstall", () => {
     assert.equal(extensionCardShowsRetry(brokenDependency), true);
     assert.equal(extensionCardShowsRetry(availableAddon), false);
   });
+
+  test("an entry with a repoUrl offers Open Repository; one without omits it", () => {
+    assert.deepEqual(extensionCardMenuItems(remoteDependency), [
+      { action: "open-repo", label: "Open Repository" },
+      { action: "uninstall", label: "Uninstall" },
+    ]);
+    assert.equal(
+      extensionCardMenuItems(installedAddon).some((item) => item.action === "open-repo"),
+      false
+    );
+  });
 });
 
 describe("runExtensionCardAction", () => {
@@ -240,26 +256,30 @@ describe("runExtensionCardAction", () => {
     assert.deepEqual(uninstalled, ["mindcraft-lang/microbit-position"]);
   });
 
-  test("docs opens the entry's docsUrl", () => {
+  test("open-repo opens the entry's repoUrl", () => {
     const opened: string[] = [];
-    runExtensionCardAction(installedAddon, "docs", {
+    runExtensionCardAction(remoteDependency, "open-repo", {
       onInstall: () => {},
       onUninstall: () => {},
-      openDocs: (url) => opened.push(url),
+      onOpenRepo: (url) => opened.push(url),
     });
-    assert.deepEqual(opened, ["https://github.com/mindcraft-lang/microbit-position"]);
+    assert.deepEqual(opened, ["https://github.com/example-org/remote-ext"]);
   });
 
-  test("docs on an entry without a docsUrl does nothing", () => {
+  test("open-repo on an entry without a repoUrl does nothing", () => {
     let called = false;
-    runExtensionCardAction(entry({ coordinate: "x/y" }), "docs", {
+    runExtensionCardAction(entry({ coordinate: "x/y" }), "open-repo", {
       onInstall: () => {},
       onUninstall: () => {},
-      openDocs: () => {
+      onOpenRepo: () => {
         called = true;
       },
     });
     assert.equal(called, false);
+  });
+
+  test("open-repo with an absent callback is a no-op", () => {
+    runExtensionCardAction(remoteDependency, "open-repo", { onInstall: () => {}, onUninstall: () => {} });
   });
 
   test("check-update and retry fire their callbacks with the coordinate, and do nothing when absent", () => {

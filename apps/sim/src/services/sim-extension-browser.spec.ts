@@ -12,7 +12,6 @@ import {
   checkSimExtensionUpdates,
   type ExtensionProjectPersistence,
   type ExtensionReferenceInstallSurface,
-  githubDocsUrl,
   installSimExtension,
   installSimExtensionReference,
   installSimReference,
@@ -101,7 +100,7 @@ describe("buildSimExtensionEntries -- direct dependencies adapted to browser ent
     );
   });
 
-  test("lists a directly-installed add-on as an installed entry with a derived docs URL", () => {
+  test("lists a directly-installed embedded add-on as an installed entry with no repository URL", () => {
     const withFlock = { ...project, [FLOCK]: `embedded:${FLOCK}` };
     const entries = buildSimExtensionEntries(withFlock, embedRecord);
     assert.deepEqual(
@@ -114,7 +113,8 @@ describe("buildSimExtensionEntries -- direct dependencies adapted to browser ent
     assert.equal(flock.installed, true);
     assert.equal(flock.name, "Flock");
     assert.equal(flock.thumbnailUrl, "data:,flock");
-    assert.equal(flock.docsUrl, `https://github.com/${FLOCK}`);
+    // An embedded add-on's coordinate is not a GitHub repository, so it carries no repoUrl.
+    assert.equal("repoUrl" in flock, false);
   });
 
   test("excludes the platform layer, the transitive core lib, and every non-referenced add-on", () => {
@@ -128,13 +128,14 @@ describe("buildSimExtensionEntries -- direct dependencies adapted to browser ent
 });
 
 describe("toExtensionBrowserEntry", () => {
-  test("derives the docs URL and passes through a declared thumbnail", () => {
+  test("carries a repository URL and thumbnail through when the catalog entry declares them", () => {
     const catalogEntry: ExtensionCatalogEntry = {
       coordinate: FLOCK,
       name: "Flock",
       version: "1.0.0",
       thumbnailUrl: "data:,flock",
       installed: false,
+      repoUrl: `https://github.com/${FLOCK}`,
     };
     assert.deepEqual(toExtensionBrowserEntry(catalogEntry), {
       coordinate: FLOCK,
@@ -142,8 +143,18 @@ describe("toExtensionBrowserEntry", () => {
       version: "1.0.0",
       thumbnailUrl: "data:,flock",
       installed: false,
-      docsUrl: `https://github.com/${FLOCK}`,
+      repoUrl: `https://github.com/${FLOCK}`,
     });
+  });
+
+  test("omits the repository URL when the catalog entry declares none", () => {
+    const catalogEntry: ExtensionCatalogEntry = {
+      coordinate: FLOCK,
+      name: "Flock",
+      version: "1.0.0",
+      installed: false,
+    };
+    assert.equal("repoUrl" in toExtensionBrowserEntry(catalogEntry), false);
   });
 
   test("omits the thumbnail when the catalog entry declares none", () => {
@@ -154,10 +165,6 @@ describe("toExtensionBrowserEntry", () => {
       installed: true,
     };
     assert.equal("thumbnailUrl" in toExtensionBrowserEntry(catalogEntry), false);
-  });
-
-  test("githubDocsUrl builds the repository URL", () => {
-    assert.equal(githubDocsUrl(FLOCK), "https://github.com/mindcraft-lang/sim-flock");
   });
 });
 
