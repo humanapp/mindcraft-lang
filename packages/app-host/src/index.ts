@@ -49,6 +49,7 @@ export type {
   PublishVersionBump,
 } from "./extension-publish.js";
 export {
+  bumpVersion,
   deriveCoordinateFromRemoteUrl,
   ExtensionPublishErrorCode,
   generatePublishedReadme,

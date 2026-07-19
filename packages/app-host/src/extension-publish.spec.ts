@@ -7,6 +7,7 @@ import type {
   PublishVersionBump,
 } from "@mindcraft-lang/app-host";
 import {
+  bumpVersion,
   deriveCoordinateFromRemoteUrl,
   ExtensionPublishErrorCode,
   githubRemoteUrlForCoordinate,
@@ -453,7 +454,7 @@ describe("publishExtensionVersion", () => {
     });
     const { backend, applied } = memoryBackend();
 
-    const result = await publishExtensionVersion({ bump: "patch", coordinate: COORDINATE, source, backend });
+    const result = await publishExtensionVersion({ coordinate: COORDINATE, source, backend });
 
     assert.equal(result.ok, true);
     const commit = applied[0];
@@ -468,7 +469,6 @@ describe("publishExtensionVersion", () => {
 
   it("refuses when a host-app bundle file is missing", async () => {
     const result = await publishExtensionVersion({
-      bump: "patch",
       coordinate: COORDINATE,
       source: memorySource({
         "mindcraft.json": manifestText({
@@ -541,7 +541,7 @@ describe("publishExtensionVersion", () => {
     });
     const { backend, applied } = memoryBackend();
 
-    const result = await publishExtensionVersion({ bump: "minor", coordinate: COORDINATE, source, backend });
+    const result = await publishExtensionVersion({ coordinate: COORDINATE, source, backend });
 
     assert.equal(result.ok, true);
     const readme = applied[0].files.find((file) => file.path === "README.md");
@@ -549,7 +549,7 @@ describe("publishExtensionVersion", () => {
     const text = decode(readme.content);
     assert.match(text, /Microbit V2/);
     assert.match(text, /acme\/position/);
-    assert.match(text, /0\.3\.0/);
+    assert.match(text, /0\.2\.0/);
     assert.doesNotMatch(text, /@lib\//);
   });
 
@@ -603,5 +603,112 @@ describe("publishExtensionVersion", () => {
     assert.equal(decode(readmes[0].content), "# listed readme\n");
     const published = JSON.parse(decode(applied[0].files[0].content)) as { files?: readonly string[] };
     assert.deepEqual(published.files, ["index.ts", "README.md"]);
+  });
+});
+
+describe("bumpVersion", () => {
+  it("increments the requested component and zeroes the lower ones", () => {
+    assert.equal(bumpVersion("1.2.3", "patch"), "1.2.4");
+    assert.equal(bumpVersion("1.2.3", "minor"), "1.3.0");
+    assert.equal(bumpVersion("1.2.3", "major"), "2.0.0");
+  });
+});
+
+/**
+ * A target manifest as the release flow produces it: a hostApp bundle plus a
+ * build-version stamp equal to the version the bundle was packaged at.
+ */
+function targetManifest(version: string, stamp = version): string {
+  return manifestText({
+    name: "Microbit V2",
+    version,
+    files: ["index.ts"],
+    hostApp: { path: "app", files: ["app/index.html"] },
+    buildVersion: stamp,
+  });
+}
+
+function targetSource(version: string, stamp = version): ExtensionPublishSource {
+  return memorySource({
+    "mindcraft.json": targetManifest(version, stamp),
+    "index.ts": "export {};",
+    "app/index.html": "<!doctype html>",
+  });
+}
+
+describe("publishExtensionVersion for a target (hostApp)", () => {
+  it("ships the manifest's current version verbatim without a bump", async () => {
+    const { backend, applied } = memoryBackend();
+
+    const result = await publishExtensionVersion({ coordinate: COORDINATE, source: targetSource("0.9.1"), backend });
+
+    assert.deepEqual(result, { ok: true, version: "0.9.1", tag: "v0.9.1", identity: COORDINATE });
+    const published = JSON.parse(decode(applied[0].files[0].content)) as { version: string; buildVersion?: string };
+    assert.equal(published.version, "0.9.1");
+    assert.equal(published.buildVersion, "0.9.1");
+  });
+
+  it("refuses a version bump on a target", async () => {
+    for (const bump of ["patch", "minor", "major"] as const) {
+      const result = await publishExtensionVersion({
+        bump,
+        coordinate: COORDINATE,
+        source: targetSource("0.9.1"),
+        backend: memoryBackend().backend,
+      });
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.error.code, ExtensionPublishErrorCode.HOST_APP_BUMP_UNSUPPORTED);
+    }
+  });
+
+  it("refuses when the manifest version does not match the build-version stamp", async () => {
+    const { backend, applied } = memoryBackend();
+
+    const result = await publishExtensionVersion({
+      coordinate: COORDINATE,
+      // Version bumped to 0.9.2 but the bundle was still packaged at 0.9.1.
+      source: targetSource("0.9.2", "0.9.1"),
+      backend,
+    });
+
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.error.code, ExtensionPublishErrorCode.HOST_APP_STAMP_MISMATCH);
+    assert.equal(applied.length, 0);
+  });
+
+  it("ships a target that carries no build-version stamp", async () => {
+    const source = memorySource({
+      "mindcraft.json": manifestText({
+        name: "Microbit V2",
+        version: "0.9.1",
+        files: ["index.ts"],
+        hostApp: { path: "app", files: ["app/index.html"] },
+      }),
+      "index.ts": "export {};",
+      "app/index.html": "<!doctype html>",
+    });
+    const result = await publishExtensionVersion({ coordinate: COORDINATE, source, backend: memoryBackend().backend });
+    assert.equal(result.ok, true);
+  });
+
+  it("publishes a first target version even when the head manifest already carries it", async () => {
+    // A target keeps its version as-is, so the head manifest matching it is the
+    // normal first-publish state and must not be read as a re-publish.
+    const result = await publishExtensionVersion({
+      coordinate: COORDINATE,
+      source: targetSource("0.9.1"),
+      backend: memoryBackend({ readHeadManifest: async () => targetManifest("0.9.1") }).backend,
+    });
+    assert.equal(result.ok, true);
+  });
+
+  it("refuses re-publishing a version whose tag already exists", async () => {
+    const result = await publishExtensionVersion({
+      coordinate: COORDINATE,
+      source: targetSource("0.9.1"),
+      backend: memoryBackend({ tagExists: async (tag) => tag === "v0.9.1" }).backend,
+    });
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.error.code, ExtensionPublishErrorCode.TAG_EXISTS);
   });
 });

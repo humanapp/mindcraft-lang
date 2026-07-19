@@ -353,7 +353,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     });
     const escaped = await runCliBin(project, "publish", "patch", "--remote", remote);
     assert.equal(escaped.code, 1);
-    assert.match(escaped.stderr, /PUBLISH_LISTED_FILE_MISSING/);
+    assert.match(escaped.stderr, /PROJECT_MANIFEST_FILE_ESCAPES_ROOT/);
   });
 
   it("publishes the manifest's current version as-is to an empty remote, stamping the identity", async () => {
@@ -564,6 +564,119 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     await runGit(checkout, "commit", "--quiet", "-m", "revert version");
 
     const second = await runCliBin(checkout, "publish", "patch");
+    assert.equal(second.code, 1);
+    assert.match(second.stderr, /PUBLISH_TAG_EXISTS/);
+  });
+});
+
+function targetFiles(version: string, stamp: string): Record<string, string> {
+  return {
+    "mindcraft.json": JSON.stringify(
+      {
+        name: "Microbit V2",
+        version,
+        files: ["index.ts"],
+        hostApp: { path: "app", files: ["app/index.html"] },
+        buildVersion: stamp,
+      },
+      null,
+      2
+    ),
+    "index.ts": "export {};\n",
+    "app/index.html": "<!doctype html>\n",
+  };
+}
+
+describe("mindcraft publish for a target (hostApp)", () => {
+  it("ships the manifest's current version verbatim, without a bump (constructed mode)", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "example-org/microbit.git");
+    const project = path.join(root, "project");
+    await writeProjectFiles(project, targetFiles("0.9.1", "0.9.1"));
+
+    const result = await runCliBin(project, "publish", "--remote", remote);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /published 0\.9\.1 \(tag v0\.9\.1\)/);
+    const clone = await cloneAtTag(root, remote, "v0.9.1");
+    assert.equal(await readManifestVersion(clone), "0.9.1");
+  });
+
+  it("ships a target in a checkout without a bump (in-place mode)", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root);
+    const checkout = await initCheckoutProject(root, remote, targetFiles("0.9.1", "0.9.1"));
+
+    const result = await runCliBin(checkout, "publish");
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /published 0\.9\.1 \(tag v0\.9\.1\)/);
+    const clone = await cloneAtTag(root, remote, "v0.9.1");
+    assert.equal(await readManifestVersion(clone), "0.9.1");
+  });
+
+  it("refuses a version bump on a target", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "example-org/microbit.git");
+    const project = path.join(root, "project");
+    await writeProjectFiles(project, targetFiles("0.9.1", "0.9.1"));
+
+    const result = await runCliBin(project, "publish", "patch", "--remote", remote);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /PUBLISH_HOST_APP_BUMP_UNSUPPORTED/);
+  });
+
+  it("refuses when the manifest version drifts from the build stamp", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "example-org/microbit.git");
+    const project = path.join(root, "project");
+    // Version 0.9.2 but the bundle was packaged at 0.9.1.
+    await writeProjectFiles(project, targetFiles("0.9.2", "0.9.1"));
+
+    const result = await runCliBin(project, "publish", "--remote", remote);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /PUBLISH_HOST_APP_STAMP_MISMATCH/);
+  });
+
+  it("bumps the version, refuses until repackaged, then publishes the fresh version", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "example-org/microbit.git");
+    const project = path.join(root, "project");
+    await writeProjectFiles(project, targetFiles("0.9.1", "0.9.1"));
+
+    const first = await runCliBin(project, "publish", "--remote", remote);
+    assert.equal(first.code, 0, first.stderr);
+
+    // Next release: set the version (stamp is left at 0.9.1 until a repackage).
+    const versioned = await runCliBin(project, "version", "patch");
+    assert.equal(versioned.code, 0, versioned.stderr);
+    assert.match(versioned.stdout, /version 0\.9\.2/);
+
+    const beforeRepackage = await runCliBin(project, "publish", "--remote", remote);
+    assert.equal(beforeRepackage.code, 1);
+    assert.match(beforeRepackage.stderr, /PUBLISH_HOST_APP_STAMP_MISMATCH/);
+
+    // Repackage: the assemble step writes the stamp to the baked version.
+    await writeProjectFiles(project, targetFiles("0.9.2", "0.9.2"));
+    const afterRepackage = await runCliBin(project, "publish", "--remote", remote);
+    assert.equal(afterRepackage.code, 0, afterRepackage.stderr);
+    assert.match(afterRepackage.stdout, /published 0\.9\.2 \(tag v0\.9\.2\)/);
+    const clone = await cloneAtTag(root, remote, "v0.9.2");
+    assert.equal(await readManifestVersion(clone), "0.9.2");
+  });
+
+  it("refuses re-publishing a target version whose tag already exists", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "example-org/microbit.git");
+    const project = path.join(root, "project");
+    await writeProjectFiles(project, targetFiles("0.9.1", "0.9.1"));
+
+    const first = await runCliBin(project, "publish", "--remote", remote);
+    assert.equal(first.code, 0, first.stderr);
+
+    const second = await runCliBin(project, "publish", "--remote", remote);
     assert.equal(second.code, 1);
     assert.match(second.stderr, /PUBLISH_TAG_EXISTS/);
   });

@@ -167,6 +167,8 @@ export const ExtensionPublishErrorCode = {
   VERSION_BUMP_REQUIRED: "PUBLISH_VERSION_BUMP_REQUIRED",
   TAG_EXISTS: "PUBLISH_TAG_EXISTS",
   LISTED_FILE_MISSING: "PUBLISH_LISTED_FILE_MISSING",
+  HOST_APP_BUMP_UNSUPPORTED: "PUBLISH_HOST_APP_BUMP_UNSUPPORTED",
+  HOST_APP_STAMP_MISMATCH: "PUBLISH_HOST_APP_STAMP_MISMATCH",
 } as const;
 
 /** Union of all {@link ExtensionPublishErrorCode} values. */
@@ -238,11 +240,36 @@ export interface ExtensionPublishOptions {
   readonly backend: ExtensionPublishBackend;
 }
 
+/**
+ * Manifest field naming the version that was baked into a target's packaged app
+ * bundle. A target's release flow writes this stamp at packaging time equal to
+ * the version the bundle was built with; a publish of a target refuses when the
+ * manifest version has moved away from the stamp (the version was bumped without
+ * repackaging). Carried through publish as a manifest extra. Libraries do not
+ * carry it.
+ */
+const BUILD_VERSION_STAMP_FIELD = "buildVersion";
+
 function refusal(code: ExtensionPublishErrorCode, message: string): ExtensionPublishResult {
   return { ok: false, error: { code, message } };
 }
 
-function bumpVersion(version: string, bump: PublishVersionBump): string {
+/**
+ * Read the {@link BUILD_VERSION_STAMP_FIELD} build-version stamp from a
+ * manifest's extras, or `undefined` when the manifest carries no string stamp.
+ */
+function readBuildVersionStamp(manifest: ProjectContentManifest): string | undefined {
+  const raw = manifest.extras?.[BUILD_VERSION_STAMP_FIELD];
+  return typeof raw === "string" ? raw : undefined;
+}
+
+/**
+ * Increment one component of a semver `version` string. `patch` increments the
+ * patch component; `minor` increments the minor and zeroes the patch; `major`
+ * increments the major and zeroes the minor and patch. A version without three
+ * numeric components is read as `0.0.0` before the increment.
+ */
+export function bumpVersion(version: string, bump: PublishVersionBump): string {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
   const major = match ? Number(match[1]) : 0;
   const minor = match ? Number(match[2]) : 0;
@@ -265,18 +292,26 @@ function bumpVersion(version: string, bump: PublishVersionBump): string {
  * bundle file, and a `README.md` (the author's own, or one generated from the
  * manifest when the project carries none, unless the manifest already lists a
  * `README.md`) -- on the target repository as a commit tagged
- * `v<version>`. An as-is publish is a
- * first publish: it is accepted only when the target repository has no tags.
- * When the stamp replaces a different previously declared identity, the ok
- * result carries the replaced value as `previousIdentity`.
+ * `v<version>`. For a library (a manifest with no `hostApp` bundle) an as-is
+ * publish is a first publish: it is accepted only when the target repository
+ * has no tags. When the stamp replaces a different previously declared
+ * identity, the ok result carries the replaced value as `previousIdentity`.
+ *
+ * A target (a manifest that declares a `hostApp` bundle) sets its version
+ * before packaging, so it publishes the manifest's current version verbatim: a
+ * `bump` is refused, and the version already recorded in the manifest is
+ * published as long as its tag does not already exist. The manifest's
+ * build-version stamp must equal the manifest version when present, so a version
+ * bumped without repackaging is refused.
  *
  * Refuses without applying anything when the manifest is missing or invalid,
  * no `coordinate` was provided, the project has unconfirmed dependencies that
- * are not stable for consumers, the repository has uncommitted changes, the
- * bumped version is already the repository head's manifest version, an as-is
- * publish targets a repository that already has tags, the tag already exists,
- * or a manifest-listed or host-app bundle file is absent. Each refusal
- * carries its {@link ExtensionPublishErrorCode}.
+ * are not stable for consumers, a `bump` was requested for a target, the
+ * repository has uncommitted changes, a target's manifest version does not
+ * match its build-version stamp, the version is already the repository head's
+ * manifest version, a library as-is publish targets a repository that already
+ * has tags, the tag already exists, or a manifest-listed or host-app bundle
+ * file is absent. Each refusal carries its {@link ExtensionPublishErrorCode}.
  */
 export async function publishExtensionVersion(options: ExtensionPublishOptions): Promise<ExtensionPublishResult> {
   const { source, backend } = options;
@@ -322,6 +357,16 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
     }
   }
 
+  const isTarget = manifest.hostApp !== undefined;
+
+  if (isTarget && options.bump !== undefined) {
+    return refusal(
+      ExtensionPublishErrorCode.HOST_APP_BUMP_UNSUPPORTED,
+      "A target (a manifest that declares a hostApp bundle) sets its version before packaging; " +
+        "publish it without a version bump. Set the next version with the version command and repackage first."
+    );
+  }
+
   const version = options.bump === undefined ? manifest.version : bumpVersion(manifest.version, options.bump);
   const tag = `v${version}`;
 
@@ -329,10 +374,25 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
     return refusal(ExtensionPublishErrorCode.UNCOMMITTED_CHANGES, "The repository has uncommitted changes.");
   }
 
-  if (options.bump === undefined) {
-    // As-is first publish: the repository must carry no earlier publish. An
-    // as-is publish keeps the head manifest version, so duplicate protection
-    // is the tag namespace, not the head manifest version.
+  if (isTarget) {
+    // A target ships its already-baked version verbatim. The build-version
+    // stamp records the version the bundle was packaged with; a mismatch means
+    // the manifest version moved without repackaging. Re-publish protection is
+    // the tag namespace below: a target keeps its manifest version, so the head
+    // manifest version equals it by construction and cannot distinguish a
+    // re-publish from a first publish.
+    const stamp = readBuildVersionStamp(manifest);
+    if (stamp !== undefined && stamp !== version) {
+      return refusal(
+        ExtensionPublishErrorCode.HOST_APP_STAMP_MISMATCH,
+        `The manifest version ${version} does not match the packaged build stamp ${stamp}; ` +
+          "repackage the target so the built bundle matches the version before publishing."
+      );
+    }
+  } else if (options.bump === undefined) {
+    // Library as-is first publish: the repository must carry no earlier
+    // publish. An as-is publish keeps the head manifest version, so duplicate
+    // protection is the tag namespace, not the head manifest version.
     if (await backend.hasAnyTags()) {
       return refusal(
         ExtensionPublishErrorCode.VERSION_BUMP_REQUIRED,
