@@ -251,6 +251,19 @@ function ownExtensions(files: ReadonlyMap<string, string>): Readonly<Record<stri
   return parsed.ok ? parsed.manifest.extensions : {};
 }
 
+/**
+ * Report whether a stored snapshot record holds usable content: its decoded
+ * files carry a parseable `mindcraft.json`. Every fetched snapshot is written
+ * with one, so a record without it is corrupt and its content must be treated
+ * as missing.
+ */
+function isUsableSnapshotRecord(record: InstalledExtensionSnapshot): boolean {
+  const files = decodeInstalledSnapshotFiles(record);
+  const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+  if (manifestContent === undefined) return false;
+  return parseProjectContentManifest(manifestContent).ok;
+}
+
 /** Build the leading-slash text file map of an embedded extension. */
 function embeddedContent(extension: EmbeddedExtension): Map<string, string> {
   const files = new Map<string, string>();
@@ -318,6 +331,10 @@ export function floatingPinsFromSnapshots(stored: InstalledExtensionSnapshots): 
  * that let a `packageVersion` selector capture on the next pass, until no edge
  * rewrite changes. Root references are walked as written.
  *
+ * A stored record is reused only when it is usable (its files carry a
+ * parseable `mindcraft.json`); an unusable record counts as missing content in
+ * both modes.
+ *
  * In fetch mode (a `fetchSnapshot` callback present), content missing for a
  * reference as written fails the walk; content missing for a move-rewritten
  * edge, an unresolvable floating destination, and a permanently undeterminable
@@ -332,6 +349,9 @@ async function walkExtensionClosure(options: ClosureWalkOptions): Promise<Closur
   const storedByReference = new Map<string, InstalledExtensionSnapshot>();
   for (const record of Object.values(options.stored)) {
     if (options.refetch?.has(record.reference)) continue;
+    // An unusable record is treated as missing content: a dry run reports it
+    // and a fetch walk refetches and replaces it.
+    if (!isUsableSnapshotRecord(record)) continue;
     storedByReference.set(record.reference, record);
   }
   const fetchedRecords = new Map<string, InstalledExtensionSnapshot>();
@@ -541,7 +561,7 @@ async function walkExtensionClosure(options: ClosureWalkOptions): Promise<Closur
 
 /**
  * Walk every reference reachable from an extensions map and ensure content is
- * available for each reachable `gh:` reference: a stored record whose
+ * available for each reachable `gh:` reference: a usable stored record whose
  * reference matches is reused, and anything else is fetched. Catalog moves
  * apply at every dependency edge through the apply/fetch/re-apply loop of the
  * shared walk; a moved edge that cannot complete this walk (fetch failure,
@@ -552,7 +572,7 @@ async function walkExtensionClosure(options: ClosureWalkOptions): Promise<Closur
  *
  * @param options.extensions - The extensions map to walk; root references are walked as written.
  * @param options.embedded - The host application's bundled embedded extensions.
- * @param options.stored - The project's stored snapshot records, reused by matching reference.
+ * @param options.stored - The project's stored snapshot records, reused by matching reference when usable.
  * @param options.refetch - References fetched fresh even when a stored record matches.
  * @param options.moves - Curated catalog moves applied at every dependency edge.
  * @param options.fetchSnapshot - Fetches a snapshot for a `gh:` reference.
@@ -587,7 +607,7 @@ export async function collectExtensionFetchClosure(options: {
  * the stored content determines, a floating destination with no stored pin
  * counts as missing content, and nothing is fetched. It answers whether a
  * load must run a fetch transaction to heal a moved dependency whose content
- * the project never persisted.
+ * the project never persisted, or persisted in an unusable record.
  *
  * @param options.extensions - The extensions map to walk, with any top-level moves already applied.
  * @param options.embedded - The host application's bundled embedded extensions.

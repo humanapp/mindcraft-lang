@@ -297,8 +297,8 @@ export class AppEnvironmentHost {
     }
     await this.projectManager.ensureDefaultProject(defaultProjectName);
     await this.initCompiler();
+    this.absorbCatalogMovesOutcome(await this.applyCatalogMoves());
     await this.loadBrainsFromProject();
-    await this.applyCatalogMoves();
   }
 
   // ---------------------------------------------------------------------------
@@ -493,6 +493,11 @@ export class AppEnvironmentHost {
     return {};
   }
 
+  /**
+   * Deserialize the project's stored brains into the cache. Call after the
+   * load's catalog moves have applied: deserialization resolves saved tile
+   * references against the current action bundle.
+   */
   private async loadBrainsFromProject(): Promise<void> {
     const record = await this.loadBrainRecord();
     for (const [key, json] of Object.entries(record)) {
@@ -602,6 +607,31 @@ export class AppEnvironmentHost {
   /** The last recorded fetch failure per reference, keyed by the reference string as written. */
   get extensionFetchFailures(): ExtensionFetchFailures {
     return this._fetchFailures;
+  }
+
+  /**
+   * Non-fatal warnings of the active project's latest extension resolution,
+   * including the stable-coded catalog-move findings the load's move
+   * application recorded. Empty until the compiler is wired.
+   */
+  get resolutionWarnings(): readonly ExtensionResolutionWarning[] {
+    return this._lastResolution?.warnings ?? [];
+  }
+
+  /** Merge a load's catalog-move findings into the latest resolution's warnings, skipping duplicates. */
+  private absorbCatalogMovesOutcome(outcome: CatalogMovesOutcome | undefined): void {
+    if (outcome === undefined || outcome.warnings.length === 0 || this._lastResolution === undefined) {
+      return;
+    }
+    const seen = new Set(this._lastResolution.warnings.map(resolutionWarningKey));
+    const added = outcome.warnings.filter((warning) => !seen.has(resolutionWarningKey(warning)));
+    if (added.length === 0) {
+      return;
+    }
+    this._lastResolution = {
+      ...this._lastResolution,
+      warnings: [...this._lastResolution.warnings, ...added],
+    };
   }
 
   /** Fetch one `gh:` reference's snapshot through the host's transport. */
@@ -1336,8 +1366,8 @@ export class AppEnvironmentHost {
   private async completeProjectTransition(): Promise<void> {
     this.completeProjectUnload();
     await this.initCompiler();
+    this.absorbCatalogMovesOutcome(await this.applyCatalogMoves());
     await this.loadBrainsFromProject();
-    await this.applyCatalogMoves();
 
     for (const listener of this._projectLoadedListeners) {
       listener();
@@ -1578,6 +1608,13 @@ export class AppEnvironmentHost {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Identity key of a resolution warning: the fields that name the same finding across sources. */
+function resolutionWarningKey(warning: ExtensionResolutionWarning): string {
+  const reference = "reference" in warning ? warning.reference : "";
+  const code = warning.kind === "catalog-move-failed" ? warning.code : "";
+  return `${warning.kind} ${warning.origin} ${reference} ${code}`;
+}
 
 function logWorkspaceCompile(result: WorkspaceCompileResult): void {
   const resultsByPath = result.projectResult.results;

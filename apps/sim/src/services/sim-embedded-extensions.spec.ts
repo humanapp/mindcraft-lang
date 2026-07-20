@@ -33,7 +33,12 @@ describe("sim embedded layers -- transitive resolution of the core <- sim stack"
       { embedded: embeddedLayers() }
     );
 
-    assert.deepEqual(resolved.dependencies, [{ coordinate: SIM_LIB_COORDINATE }]);
+    // The seeded layer plus the core layer its target edge recurses to are
+    // both importable dependencies of the project.
+    assert.deepEqual(resolved.dependencies.map((dependency) => dependency.coordinate).sort(), [
+      CORE_LIB_COORDINATE,
+      SIM_LIB_COORDINATE,
+    ]);
     const origins = resolved.dependencyMounts.map((m) => m.namespace).sort();
     assert.deepEqual(origins, [CORE_LIB_COORDINATE, SIM_LIB_COORDINATE]);
 

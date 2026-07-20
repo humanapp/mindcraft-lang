@@ -75,7 +75,7 @@ export const CatalogMoveWarningCode = {
   FLOATING_UNRESOLVED: "CATALOG_MOVE_FLOATING_UNRESOLVED",
   /** A version-range selector could not be evaluated: the reference's version is undeterminable. */
   VERSION_UNKNOWN: "CATALOG_MOVE_VERSION_UNKNOWN",
-  /** The moved destination's content could not be fetched; the move is not applied. */
+  /** The moved destination's content is not available; the move is not applied. */
   FETCH_FAILED: "CATALOG_MOVE_FETCH_FAILED",
 } as const;
 
@@ -207,7 +207,11 @@ export interface ResolvedOriginProvenance {
 
 /** Compiler inputs resolved from a project's extensions list and its content sources. */
 export interface ResolvedExtensions {
-  /** Each direct dependency's `<owner>/<repo>` coordinate, resolving its `@lib/<owner>/<repo>` imports. */
+  /**
+   * The `<owner>/<repo>` coordinates the project's own files may import through
+   * `@lib/<owner>/<repo>`: each direct dependency, plus every platform-stack
+   * origin reached through a `targets` edge at any depth.
+   */
   dependencies: readonly ProjectDependency[];
   /**
    * Read-only content of every origin in the transitive dependency closure,
@@ -504,7 +508,11 @@ export function unifyOriginCandidate(incoming: OriginCandidate, incumbent: Origi
  * embed record carries it, otherwise to the target registry's pinned `gh:`
  * reference; a target that resolves to no content raises an `unresolved-target`
  * warning. A coordinate reached through both an extension edge and a target
- * edge unifies onto one resolved origin.
+ * edge unifies onto one resolved origin. Every origin reached through a target
+ * edge, at any depth, is listed in `dependencies`, so the project's own files
+ * may `@lib`-import any layer of the materialized platform stack. A
+ * catalog-moved edge whose moved content is not available raises a
+ * stable-coded `catalog-move-failed` warning and stays unresolved this load.
  *
  * @param extensions - The project's extensions map, keyed by coordinate; each value is a reference string.
  * @param sources - The content sources references resolve against.
@@ -552,23 +560,27 @@ export function resolveProjectExtensions(
   /**
    * Redirect one dependency edge through the catalog moves. A floating result
    * resolves to its pin, and the moves re-apply from the pin, until the
-   * reference is concrete and uncaptured. Returns the reference to resolve, or
-   * `undefined` when the edge cannot resolve this load (a floating destination
-   * with no pinned content yet).
+   * reference is concrete and uncaptured. Returns the reference to resolve,
+   * marked whether a move rewrote it, or `undefined` when the edge cannot
+   * resolve this load (a floating destination with no pinned content yet).
    */
-  const redirectEdge = (declaredReference: string): string | undefined => {
+  const redirectEdge = (declaredReference: string): { reference: string; moved: boolean } | undefined => {
     let reference = declaredReference;
+    let moved = false;
     const seenPins = new Set<string>();
     while (true) {
       const applied = applyCatalogMove(reference, moves, versionLookup);
       if (!applied.ok) {
         pushMoveWarning(declaredReference, applied.code, applied.message);
-        return declaredReference;
+        return { reference: declaredReference, moved: false };
+      }
+      if (applied.moved) {
+        moved = true;
       }
       reference = applied.reference;
       const parts = parseCatalogMoveReference(reference);
       if (!parts?.floating) {
-        return reference;
+        return { reference, moved };
       }
       const pin = sources.floatingPins?.get(parts.coordinate.toLowerCase());
       if (pin === undefined) {
@@ -586,17 +598,18 @@ export function resolveProjectExtensions(
           CatalogMoveWarningCode.CYCLE,
           `Catalog moves for "${declaredReference}" revisited the pinned "${pin}".`
         );
-        return declaredReference;
+        return { reference: declaredReference, moved: false };
       }
       seenPins.add(pin);
       reference = pin;
+      moved = true;
     }
   };
 
-  // The project's direct dependencies: each dependency's `<owner>/<repo>`
-  // coordinate, which its reference resolves to. The coordinate is derived
-  // from identity, never from the manifest key. A coordinate reached through
-  // both an extension and a target edge is listed once.
+  // The coordinates the project's own files may import: each direct
+  // dependency's `<owner>/<repo>` coordinate plus every origin reached through
+  // a target edge. The coordinate is derived from identity, never from the
+  // manifest key. A coordinate reached through several edges is listed once.
   const directDependencies: ProjectDependency[] = [];
   const seenDirect = new Set<string>();
   const addDirect = (coordinate: string): void => {
@@ -675,12 +688,19 @@ export function resolveProjectExtensions(
     if (winner.candidate === candidate && !expanded.has(candidate.origin)) {
       expanded.add(candidate.origin);
       for (const declaredReference of Object.values(candidate.extensions)) {
-        const reference = redirectEdge(declaredReference);
-        if (reference === undefined) {
+        const redirected = redirectEdge(declaredReference);
+        if (redirected === undefined) {
           continue;
         }
-        const child = candidateForReference(reference, candidate.depth + 1, byCoordinate, fetched);
+        const child = candidateForReference(redirected.reference, candidate.depth + 1, byCoordinate, fetched);
         if (child === undefined) {
+          if (redirected.moved) {
+            pushMoveWarning(
+              declaredReference,
+              CatalogMoveWarningCode.FETCH_FAILED,
+              `Moved content "${redirected.reference}" is not available; the dependency stays unresolved this load.`
+            );
+          }
           continue;
         }
         winner.dependencies.push({ coordinate: child.origin });
@@ -693,6 +713,7 @@ export function resolveProjectExtensions(
           continue;
         }
         winner.dependencies.push({ coordinate: child.origin });
+        addDirect(child.origin);
         unify(child);
         queue.push(child);
       }

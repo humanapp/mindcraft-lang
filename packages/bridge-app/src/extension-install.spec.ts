@@ -4,7 +4,11 @@ import type { ExtensionFetchResult } from "@mindcraft-lang/app-host";
 import { ExtensionFetchErrorCode } from "@mindcraft-lang/app-host";
 import type { WorkspaceDiagnosticEntry } from "@mindcraft-lang/ts-compiler";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
-import { collectExtensionFetchClosure, diffProjectDiagnostics } from "./extension-install.js";
+import {
+  collectExtensionFetchClosure,
+  diffProjectDiagnostics,
+  movedClosureHasMissingContent,
+} from "./extension-install.js";
 import { appendExtensionInstallLog, parseExtensionInstallLog } from "./extension-install-log.js";
 import { bytesToBase64 } from "./fetched-extension-snapshots.js";
 
@@ -171,6 +175,65 @@ describe("collectExtensionFetchClosure", () => {
     assert.ok(result.ok);
     assert.deepStrictEqual(fetches, []);
     assert.equal(result.snapshotsByReference.get("gh:example-org/root@v1"), stored["example-org/root"]);
+  });
+
+  it("refetches and replaces a stored record whose files carry no parseable manifest", async () => {
+    const stored = {
+      "example-org/root": {
+        reference: "gh:example-org/root@v1",
+        specifier: "v1",
+        files: {},
+      },
+    };
+    const fetches: string[] = [];
+    const result = await collectExtensionFetchClosure({
+      extensions: { "example-org/root": "gh:example-org/root@v1" },
+      embedded: [],
+      stored,
+      fetchSnapshot: async (reference) => {
+        fetches.push(reference);
+        return okFetch(reference, manifestText("root"));
+      },
+    });
+    assert.ok(result.ok);
+    assert.deepStrictEqual(fetches, ["gh:example-org/root@v1"]);
+    const record = result.snapshotsByReference.get("gh:example-org/root@v1");
+    assert.ok(record, "the walk produced a record for the reference");
+    assert.notEqual(record, stored["example-org/root"], "the unusable stored record is replaced by the fresh fetch");
+    assert.ok(record.files["mindcraft.json"], "the replacement carries the fetched manifest");
+  });
+
+  it("dry mode reports missing content for a stored record whose files carry no parseable manifest", async () => {
+    const stored = {
+      "example-org/root": {
+        reference: "gh:example-org/root@v1",
+        specifier: "v1",
+        files: {},
+      },
+    };
+    assert.equal(
+      await movedClosureHasMissingContent({
+        extensions: { "example-org/root": "gh:example-org/root@v1" },
+        embedded: [],
+        stored,
+      }),
+      true
+    );
+    const usable = {
+      "example-org/root": {
+        reference: "gh:example-org/root@v1",
+        specifier: "v1",
+        files: { "mindcraft.json": bytesToBase64(new TextEncoder().encode(manifestText("root"))) },
+      },
+    };
+    assert.equal(
+      await movedClosureHasMissingContent({
+        extensions: { "example-org/root": "gh:example-org/root@v1" },
+        embedded: [],
+        stored: usable,
+      }),
+      false
+    );
   });
 
   it("propagates the first fetch failure and produces no partial closure", async () => {

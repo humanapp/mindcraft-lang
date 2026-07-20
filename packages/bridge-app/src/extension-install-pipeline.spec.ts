@@ -1123,6 +1123,72 @@ describe("catalog moves -- top-level transport flip", () => {
   });
 });
 
+describe("catalog moves -- load warnings surface", () => {
+  const MOVE_SHA = "1111111111111111111111111111111111111111";
+  const MOVE_REF = `gh:${POSITION_COORDINATE}@${MOVE_SHA}`;
+  const DEPENDENT_COORDINATE = "example-org/dependent-ext";
+  const DEPENDENT_EMBEDDED: EmbeddedExtension = {
+    canonicalOrigin: DEPENDENT_COORDINATE,
+    files: [
+      {
+        path: "mindcraft.json",
+        content: manifestText("Dependent", { [POSITION_COORDINATE]: `embedded:${POSITION_COORDINATE}` }),
+      },
+      { path: "index.ts", content: "export const dependent = 1;\n" },
+    ],
+  };
+
+  it("a load whose moved transitive dependency cannot be resolved surfaces the stable-coded warning", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = {
+      appData: new Map(),
+      extensions: { [DEPENDENT_COORDINATE]: `embedded:${DEPENDENT_COORDINATE}` },
+    };
+    // The transport serves nothing: the moved Position content cannot be fetched.
+    const host = createHost(world, {
+      transport: createTestTransport({ content: {} }),
+      embeddedExtensions: [DEPENDENT_EMBEDDED],
+      catalogMoves: { [POSITION_COORDINATE]: [{ ref: MOVE_REF }] },
+    });
+    try {
+      await host.initialize(PROJECT_ID);
+      const failed = host.resolutionWarnings.filter((warning) => warning.kind === "catalog-move-failed");
+      assert.equal(failed.length, 1, "the skipped move is surfaced exactly once");
+      assert.ok(failed[0].kind === "catalog-move-failed");
+      assert.equal(failed[0].code, CatalogMoveWarningCode.FETCH_FAILED);
+      assert.equal(failed[0].origin, POSITION_COORDINATE);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("a load that heals its moved transitive dependency surfaces no warnings", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = {
+      appData: new Map(),
+      extensions: { [DEPENDENT_COORDINATE]: `embedded:${DEPENDENT_COORDINATE}` },
+    };
+    const host = createHost(world, {
+      transport: createTestTransport({ content: { [`${POSITION_COORDINATE}@${MOVE_SHA}`]: POSITION_CONTENT } }),
+      embeddedExtensions: [DEPENDENT_EMBEDDED],
+      catalogMoves: { [POSITION_COORDINATE]: [{ ref: MOVE_REF }] },
+    });
+    try {
+      await host.initialize(PROJECT_ID);
+      assert.deepStrictEqual(host.resolutionWarnings, [], "a healed load carries no move warnings");
+      // The heal persists the fetched snapshot; the manifest map itself gains
+      // no entry for the transitive dependency.
+      assert.deepStrictEqual(Object.keys(world.extensions), [DEPENDENT_COORDINATE]);
+      const stored = parseInstalledExtensionSnapshots(world.appData.get("installed-extensions"));
+      assert.equal(stored[POSITION_COORDINATE]?.reference, MOVE_REF);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
 describe("catalog moves -- per-move transaction independence", () => {
   const HEALTHY_COORDINATE = "example-org/healthy-ext";
   const FAILING_COORDINATE = "example-org/failing-ext";

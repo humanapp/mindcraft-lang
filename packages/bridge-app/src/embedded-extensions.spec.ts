@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 import type { DependencyMount } from "@mindcraft-lang/ts-compiler";
 import type { EmbeddedExtension, OriginCandidate } from "./embedded-extensions.js";
 import {
+  CatalogMoveWarningCode,
   ExtensionResolutionCycleError,
   resolveProjectExtensions,
   unifyOriginCandidate,
@@ -611,6 +612,13 @@ describe("resolveProjectExtensions -- target-driven resolution", () => {
     );
     const origins = resolved.dependencyMounts.map((m) => m.namespace).sort();
     assert.deepEqual(origins, [coordinateFor("base"), coordinateFor("mid"), coordinateFor("trg")]);
+    // Every target-recursed platform layer joins the project's own importable
+    // dependencies alongside the root.
+    assert.deepEqual(resolved.dependencies.map((dependency) => dependency.coordinate).sort(), [
+      coordinateFor("base"),
+      coordinateFor("mid"),
+      coordinateFor("trg"),
+    ]);
     assert.deepEqual(mountFor(resolved.dependencyMounts, coordinateFor("trg")).dependencies, [
       { coordinate: coordinateFor("mid") },
     ]);
@@ -691,6 +699,42 @@ describe("resolveProjectExtensions -- target-driven resolution", () => {
     mountFor(resolved.dependencyMounts, coordinateFor("trg"));
     assert.equal(resolved.warnings.filter((w) => w.kind === "unresolved-target").length, 1);
     assert.equal(resolved.warnings[0].origin, "example-org/missing");
+  });
+
+  test("a catalog-moved edge whose moved content is missing raises a stable-coded warning", () => {
+    const movedReference = "gh:mindcraft-lang/pos@1111111111111111111111111111111111111111";
+    const embed = [
+      ext("a", { version: "1.0.0", extensions: { [coordinateFor("pos")]: `embedded:${coordinateFor("pos")}` } }),
+    ];
+    const resolved = resolveProjectExtensions(
+      { [coordinateFor("a")]: `embedded:${coordinateFor("a")}` },
+      { embedded: embed, moves: { [coordinateFor("pos")]: [{ ref: movedReference }] } }
+    );
+    assert.equal(
+      resolved.origins.some((origin) => origin.origin === coordinateFor("pos")),
+      false,
+      "the moved dependency stays unresolved"
+    );
+    const warning = resolved.warnings.find((entry) => entry.kind === "catalog-move-failed");
+    assert.ok(warning, "the skipped moved edge is reported");
+    if (warning.kind === "catalog-move-failed") {
+      assert.equal(warning.code, CatalogMoveWarningCode.FETCH_FAILED);
+      assert.equal(warning.reference, `embedded:${coordinateFor("pos")}`);
+      assert.equal(warning.origin, coordinateFor("pos"));
+    }
+  });
+
+  test("an unmoved transitive edge with missing content stays a silent skip", () => {
+    const embed = [ext("a", { version: "1.0.0", extensions: { "example-org/child": "gh:example-org/child@v1.0.0" } })];
+    const resolved = resolveProjectExtensions(
+      { [coordinateFor("a")]: `embedded:${coordinateFor("a")}` },
+      { embedded: embed }
+    );
+    assert.equal(
+      resolved.origins.some((origin) => origin.origin === "example-org/child"),
+      false
+    );
+    assert.deepEqual(resolved.warnings, [], "an unmoved unresolved import surfaces as a compiler diagnostic instead");
   });
 
   test("a target cycle across target edges is rejected as a dependency cycle", () => {
