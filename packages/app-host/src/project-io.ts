@@ -311,7 +311,8 @@ export async function importProjectDocument(
       appData,
       manifest.thumbnailUrl,
       normalizeExtensions(manifest.extensions),
-      manifest.version
+      manifest.version,
+      manifest.targets
     );
 
     return { success: true, projectId: created.id, diagnostics: appDiagnostics };

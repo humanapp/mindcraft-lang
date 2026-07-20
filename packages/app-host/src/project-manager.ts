@@ -13,6 +13,7 @@ import {
   type ProjectCollectionBroadcastMessage,
 } from "./project-collection-broadcast.js";
 import { createProjectCollectionPinVerifier, verifyProjectCollectionPin } from "./project-collection-pin.js";
+import type { ExtensionTarget } from "./project-content-manifest.js";
 import type { ProjectFileChange, ProjectFileSnapshot } from "./project-file-snapshot.js";
 import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
@@ -284,7 +285,8 @@ export class ProjectManager {
     appData?: Record<string, string>,
     thumbnailUrl?: string,
     extensions?: Readonly<Record<string, string>>,
-    version?: string
+    version?: string,
+    targets?: Readonly<Record<string, ExtensionTarget>>
   ): Promise<ProjectManifest> {
     const collection = await this.requireActiveProjectCollectionReady();
     const manifest = await this.store.createProject(collection.projectCollectionId, name);
@@ -293,6 +295,7 @@ export class ProjectManager {
       thumbnailUrl,
       extensions,
       ...(version === undefined ? {} : { version }),
+      ...(targets === undefined ? {} : { targets }),
     });
     await this.store.saveProjectFiles(manifest.id, snapshot);
     if (appData) {

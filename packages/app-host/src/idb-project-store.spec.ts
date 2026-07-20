@@ -395,6 +395,7 @@ describe("createIdbProjectStore project collection membership", () => {
     await store.updateProject(project.id, {
       description: "source description",
       thumbnailUrl: "data:image/png;base64,source",
+      targets: { "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" } },
     });
 
     const copy = await store.duplicateProject(project.id, "Copy");
@@ -402,6 +403,7 @@ describe("createIdbProjectStore project collection membership", () => {
     assert.strictEqual(copy.projectCollectionId, collection.projectCollectionId);
     assert.strictEqual(copy.description, "source description");
     assert.strictEqual(copy.thumbnailUrl, "data:image/png;base64,source");
+    assert.deepStrictEqual(copy.targets, { "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" } });
     assert.strictEqual((await store.loadProjectFiles(copy.id))?.get("src/main.ts")?.kind, "file");
     assert.strictEqual(await store.loadAppData(copy.id, "brains"), '{"source":true}');
   });
@@ -414,6 +416,7 @@ describe("createIdbProjectStore project collection membership", () => {
     await store.updateProject(project.id, {
       description: "source description",
       thumbnailUrl: "data:image/png;base64,source",
+      targets: { "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" } },
     });
     await store.saveProjectFiles(
       project.id,
@@ -429,6 +432,7 @@ describe("createIdbProjectStore project collection membership", () => {
     assert.strictEqual(copy.name, "Copy");
     assert.strictEqual(copy.description, "source description");
     assert.strictEqual(copy.thumbnailUrl, "data:image/png;base64,source");
+    assert.deepStrictEqual(copy.targets, { "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" } });
     assert.strictEqual((await store.loadProjectFiles(copy.id))?.get("src/main.ts")?.kind, "file");
     assert.strictEqual(await store.loadAppData(copy.id, "brains"), '{"source":true}');
     await assertRejectsWithCode(

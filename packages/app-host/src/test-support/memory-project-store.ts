@@ -201,7 +201,9 @@ export class MemoryProjectStore implements ProjectStore {
 
   async updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions">>
+    updates: Partial<
+      Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions" | "targets">
+    >
   ): Promise<void> {
     await this.requireLiveProject(id);
     const idx = this.data.projects.findIndex((project) => project.id === id);
@@ -244,6 +246,7 @@ export class MemoryProjectStore implements ProjectStore {
       description: source.description,
       ...(source.thumbnailUrl === undefined ? {} : { thumbnailUrl: source.thumbnailUrl }),
       ...(source.extensions === undefined ? {} : { extensions: source.extensions }),
+      ...(source.targets === undefined ? {} : { targets: source.targets }),
       createdAt: now,
       updatedAt: now,
     };

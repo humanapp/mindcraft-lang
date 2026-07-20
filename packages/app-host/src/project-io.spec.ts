@@ -587,6 +587,7 @@ describe("project round-trips through import and export", () => {
         version: "1.0.0",
         description: "shared desc",
         extensions: { "example-org/mindcraft-position": "gh:example-org/mindcraft-position@v1.2.0" },
+        targets: { "example-org/trg-platform": { packageVersion: "^1.0.0" } },
         brains: { main: { pages: [] } },
         app: { "other-app": { settings: true } },
       },
@@ -738,6 +739,103 @@ describe("project extensions interchange", () => {
   });
 });
 
+describe("project targets interchange", () => {
+  const TARGETS = {
+    "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" },
+    "mindcraft-lang/lib-missing-platform": { packageVersion: "^1.0.0" },
+  };
+
+  let store: MemoryProjectStore;
+  let pm: ProjectManager;
+
+  beforeEach(async () => {
+    store = new MemoryProjectStore();
+    pm = new ProjectManager(store);
+    await pm.init();
+  });
+
+  afterEach(async () => {
+    await pm.close();
+  });
+
+  it("exports targets from the project manifest", async () => {
+    const ws = makeProjectFileSystem();
+
+    const result = await buildProjectExportDocument(makeManifest({ targets: TARGETS }), ws, async () => undefined);
+
+    assert.deepStrictEqual(result.manifest.targets, TARGETS);
+  });
+
+  it("omits the targets field when the manifest has none or an empty map", async () => {
+    const ws = makeProjectFileSystem();
+
+    const absent = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
+    assert.strictEqual("targets" in absent.manifest, false);
+
+    const empty = await buildProjectExportDocument(makeManifest({ targets: {} }), ws, async () => undefined);
+    assert.strictEqual("targets" in empty.manifest, false);
+  });
+
+  it("imports targets into the project manifest", async () => {
+    const result = await importProjectDocument(makeFile(makeDocument({ targets: TARGETS })), "test-app", pm);
+
+    assert.strictEqual(result.success, true);
+    const manifest = await store.getProject(result.projectId!);
+    assert.ok(manifest);
+    assert.deepStrictEqual(manifest.targets, TARGETS);
+  });
+
+  it("leaves the manifest without targets when the document has none", async () => {
+    const result = await importProjectDocument(makeFile(makeDocument()), "test-app", pm);
+
+    assert.strictEqual(result.success, true);
+    const manifest = await store.getProject(result.projectId!);
+    assert.strictEqual(manifest?.targets, undefined);
+  });
+
+  it("projects imported targets into mindcraft.json when the project is opened and synced", async () => {
+    const result = await importProjectDocument(makeFile(makeDocument({ targets: TARGETS })), "test-app", pm);
+    assert.strictEqual(result.success, true);
+
+    const active = await pm.open(result.projectId!);
+    syncManifestToMindcraftJson(active.filesystem, active.manifest);
+
+    const entry = active.filesystem.exportSnapshot().get(MINDCRAFT_JSON_PATH);
+    assert.ok(entry && entry.kind === "file");
+    const parsed = parseProjectContentManifest(entry.content);
+    assert.ok(parsed.ok);
+    assert.deepStrictEqual(parsed.manifest.targets, TARGETS);
+  });
+
+  it("round-trips targets through import and export", async () => {
+    const imported = await importProjectDocument(makeFile(makeDocument({ targets: TARGETS })), "test-app", pm);
+    assert.strictEqual(imported.success, true);
+
+    await pm.open(imported.projectId!);
+    const exported = await buildActiveProjectExportDocument(pm);
+
+    assert.deepStrictEqual(exported.manifest.targets, TARGETS);
+  });
+
+  it("round-trips a project without targets with the field absent", async () => {
+    const imported = await importProjectDocument(makeFile(makeDocument()), "test-app", pm);
+    assert.strictEqual(imported.success, true);
+
+    await pm.open(imported.projectId!);
+    const exported = await buildActiveProjectExportDocument(pm);
+
+    assert.strictEqual("targets" in exported.manifest, false);
+  });
+
+  it("rejects structurally invalid targets with the content manifest code", async () => {
+    const result = await importProjectDocument(makeFile(makeDocument({ targets: 5 })), "test-app", pm);
+
+    assert.strictEqual(result.success, false);
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", ProjectContentManifestErrorCode.INVALID_TARGETS));
+    assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
+  });
+});
+
 describe("ProjectManager.createFromSnapshot", () => {
   it("writes manifest, description, project files, and app data without opening", async () => {
     const store = new MemoryProjectStore();
@@ -766,6 +864,29 @@ describe("ProjectManager.createFromSnapshot", () => {
 
     assert.strictEqual(await store.loadAppData(manifest.id, "brains"), '{"a":1}');
     assert.strictEqual(await store.loadAppData(manifest.id, "actors"), '{"b":2}');
+  });
+
+  it("persists a targets map into the created manifest and leaves it absent when omitted", async () => {
+    const store = new MemoryProjectStore();
+    const pm = new ProjectManager(store);
+    await pm.init();
+    const targets = { "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" } };
+    const snapshot: ProjectFileSnapshot = new Map();
+
+    const withTargets = await pm.createFromSnapshot(
+      "Targeted",
+      "",
+      snapshot,
+      undefined,
+      undefined,
+      undefined,
+      "0.1.0",
+      targets
+    );
+    assert.deepStrictEqual((await store.getProject(withTargets.id))?.targets, targets);
+
+    const withoutTargets = await pm.createFromSnapshot("Untargeted", "", new Map());
+    assert.strictEqual((await store.getProject(withoutTargets.id))?.targets, undefined);
   });
 
   it("rejects without writing a project when there is no active project collection", async () => {

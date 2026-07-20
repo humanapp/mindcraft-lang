@@ -408,6 +408,7 @@ class IdbProjectStore implements ProjectStore {
       description: source.description,
       ...(source.thumbnailUrl === undefined ? {} : { thumbnailUrl: source.thumbnailUrl }),
       ...(source.extensions === undefined ? {} : { extensions: source.extensions }),
+      ...(source.targets === undefined ? {} : { targets: source.targets }),
       createdAt: now,
       updatedAt: now,
     };
