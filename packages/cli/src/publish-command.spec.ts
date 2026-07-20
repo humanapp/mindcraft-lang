@@ -8,11 +8,13 @@ import { deriveCoordinateFromRemoteUrl } from "@mindcraft-lang/app-host";
 import { resolvePublishTarget } from "./publish-command.js";
 import {
   cloneAtTag,
+  githubRewriteEnv,
   initBareRemote,
   initCheckoutProject,
   listProjectFiles,
   makeScratchDir,
   runCliBin,
+  runCliBinWithEnv,
   runGit,
   writeProjectFiles,
 } from "./test-support/publish-fixtures.js";
@@ -45,12 +47,13 @@ async function readManifestVersion(dir: string): Promise<string> {
 }
 
 describe("resolvePublishTarget", () => {
-  it("uses constructed mode to an explicit --remote, whatever the identity or origin", () => {
+  it("uses constructed mode to an explicit --remote, whatever the identity or checkout shape", () => {
     assert.deepEqual(
       resolvePublishTarget({
         explicitRemote: "git@github.com:acme/blinker.git",
         identity: undefined,
-        originCoordinate: undefined,
+        isCheckoutRoot: false,
+        hasOrigin: false,
       }),
       { mode: "constructed", remote: "git@github.com:acme/blinker.git" }
     );
@@ -58,29 +61,63 @@ describe("resolvePublishTarget", () => {
       resolvePublishTarget({
         explicitRemote: "git@github.com:acme/blinker.git",
         identity: "acme/blinker",
-        originCoordinate: "acme/blinker",
+        isCheckoutRoot: true,
+        hasOrigin: true,
       }),
       { mode: "constructed", remote: "git@github.com:acme/blinker.git" }
     );
   });
 
-  it("uses in-place mode when the recorded identity equals the origin coordinate", () => {
+  it("uses in-place mode for a checkout-root project with an origin, whatever the identity", () => {
     assert.deepEqual(
-      resolvePublishTarget({ explicitRemote: undefined, identity: "acme/blinker", originCoordinate: "acme/blinker" }),
+      resolvePublishTarget({
+        explicitRemote: undefined,
+        identity: "acme/blinker",
+        isCheckoutRoot: true,
+        hasOrigin: true,
+      }),
+      { mode: "in-place" }
+    );
+    assert.deepEqual(
+      resolvePublishTarget({
+        explicitRemote: undefined,
+        identity: "acme/renamed",
+        isCheckoutRoot: true,
+        hasOrigin: true,
+      }),
       { mode: "in-place" }
     );
   });
 
-  it("derives the GitHub remote when the origin coordinate differs from the recorded identity", () => {
+  it("derives the GitHub remote for a subdirectory project with a recorded identity", () => {
     assert.deepEqual(
-      resolvePublishTarget({ explicitRemote: undefined, identity: "acme/blinker", originCoordinate: "acme/monorepo" }),
+      resolvePublishTarget({
+        explicitRemote: undefined,
+        identity: "acme/blinker",
+        isCheckoutRoot: false,
+        hasOrigin: true,
+      }),
       { mode: "constructed", remote: "https://github.com/acme/blinker.git" }
     );
   });
 
   it("derives the GitHub remote when there is no origin but an identity is recorded", () => {
     assert.deepEqual(
-      resolvePublishTarget({ explicitRemote: undefined, identity: "acme/blinker", originCoordinate: undefined }),
+      resolvePublishTarget({
+        explicitRemote: undefined,
+        identity: "acme/blinker",
+        isCheckoutRoot: true,
+        hasOrigin: false,
+      }),
+      { mode: "constructed", remote: "https://github.com/acme/blinker.git" }
+    );
+    assert.deepEqual(
+      resolvePublishTarget({
+        explicitRemote: undefined,
+        identity: "acme/blinker",
+        isCheckoutRoot: false,
+        hasOrigin: false,
+      }),
       { mode: "constructed", remote: "https://github.com/acme/blinker.git" }
     );
   });
@@ -89,7 +126,8 @@ describe("resolvePublishTarget", () => {
     const target = resolvePublishTarget({
       explicitRemote: undefined,
       identity: "acme/blinker",
-      originCoordinate: "acme/monorepo",
+      isCheckoutRoot: false,
+      hasOrigin: true,
     });
     assert.equal(target.mode, "constructed");
     if (target.mode === "constructed") {
@@ -97,13 +135,13 @@ describe("resolvePublishTarget", () => {
     }
   });
 
-  it("uses in-place mode for a first publish with no recorded identity, with or without an origin", () => {
+  it("uses in-place mode for a first publish with no recorded identity, whatever the checkout shape", () => {
     assert.deepEqual(
-      resolvePublishTarget({ explicitRemote: undefined, identity: undefined, originCoordinate: "acme/blinker" }),
+      resolvePublishTarget({ explicitRemote: undefined, identity: undefined, isCheckoutRoot: true, hasOrigin: true }),
       { mode: "in-place" }
     );
     assert.deepEqual(
-      resolvePublishTarget({ explicitRemote: undefined, identity: undefined, originCoordinate: undefined }),
+      resolvePublishTarget({ explicitRemote: undefined, identity: undefined, isCheckoutRoot: false, hasOrigin: false }),
       { mode: "in-place" }
     );
   });
@@ -410,6 +448,35 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     assert.equal(result.code, 1);
     assert.match(result.stderr, /PUBLISH_MANIFEST_MISSING/);
   });
+
+  it("publishes a subdirectory project inside a monorepo to the identity-derived remote with write-back", async () => {
+    const root = await scratch();
+    const libraryRemote = await initBareRemote(root, "example-org/blinker.git");
+    const monorepoRemote = await initBareRemote(root, "acme/monorepo.git");
+    const checkout = await initCheckoutProject(root, monorepoRemote, {
+      "packages/blinker/mindcraft.json": JSON.stringify(
+        { name: "Blinker", version: "0.1.0", identity: "example-org/blinker", files: ["index.ts"] },
+        null,
+        2
+      ),
+      "packages/blinker/index.ts": "export {};\n",
+    });
+    const project = path.join(checkout, "packages", "blinker");
+
+    const result = await runCliBinWithEnv(project, githubRewriteEnv(root), "publish", "patch");
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /published 0\.1\.1 \(tag v0\.1\.1\)/);
+    assert.doesNotMatch(result.stderr, /identity changed/);
+
+    const clone = await cloneAtTag(root, libraryRemote, "v0.1.1");
+    assert.equal(await readManifestVersion(clone), "0.1.1");
+    assert.equal((await readManifest(clone)).identity, "example-org/blinker");
+    assert.equal((await runGit(root, "ls-remote", "--tags", monorepoRemote)).trim(), "");
+
+    assert.equal(await readManifestVersion(project), "0.1.1");
+    assert.equal((await readManifest(project)).identity, "example-org/blinker");
+  });
 });
 
 describe("mindcraft publish in a checkout (in-place mode)", () => {
@@ -435,6 +502,32 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     const branchClone = path.join(root, "clone-main");
     await runGit(root, "clone", "--quiet", "--branch", "main", remote, branchClone);
     assert.equal(await readManifestVersion(branchClone), "0.3.0");
+  });
+
+  it("follows origin for a renamed standalone checkout whose recorded identity is stale", async () => {
+    const root = await scratch();
+    const remote = await initBareRemote(root, "example-org/new-name.git");
+    const checkout = await initCheckoutProject(root, remote, {
+      "mindcraft.json": JSON.stringify(
+        { name: "Blinker", version: "0.2.0", identity: "example-org/old-name" },
+        null,
+        2
+      ),
+      "index.ts": "export const blink = true;\n",
+    });
+
+    const result = await runCliBin(checkout, "publish", "patch");
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /published 0\.2\.1 \(tag v0\.2\.1\)/);
+    assert.match(result.stderr, /warning: identity changed: example-org\/old-name -> example-org\/new-name/);
+    assert.equal(await readManifestVersion(checkout), "0.2.1");
+    assert.equal((await readManifest(checkout)).identity, "example-org/new-name");
+    assert.equal((await runGit(checkout, "status", "--porcelain")).trim(), "");
+
+    const clone = await cloneAtTag(root, remote, "v0.2.1");
+    assert.equal(await readManifestVersion(clone), "0.2.1");
+    assert.equal((await readManifest(clone)).identity, "example-org/new-name");
   });
 
   it("publishes with no flags from a published project's folder, using the recorded identity", async () => {

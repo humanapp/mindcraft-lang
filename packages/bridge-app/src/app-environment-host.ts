@@ -182,6 +182,7 @@ export class AppEnvironmentHost {
 
   // -- Latest resolved extension closure of the active project --
   private _lastResolution: ResolvedExtensions | undefined;
+  private readonly _resolutionWarningsListeners = new Set<() => void>();
 
   // -- Last recorded fetch failure per reference (seeded from the install log) --
   private _fetchFailures = new Map<string, { code: string; message: string }>();
@@ -364,7 +365,7 @@ export class AppEnvironmentHost {
       }
     }
     const resolution = this.resolveExtensions();
-    this._lastResolution = resolution;
+    this.setLastResolution(resolution);
     const { dependencies, dependencyMounts } = resolution;
     this._compiler = createProjectCompiler({
       environment: this.env,
@@ -615,7 +616,31 @@ export class AppEnvironmentHost {
    * application recorded. Empty until the compiler is wired.
    */
   get resolutionWarnings(): readonly ExtensionResolutionWarning[] {
-    return this._lastResolution?.warnings ?? [];
+    return this._lastResolution?.warnings ?? NO_RESOLUTION_WARNINGS;
+  }
+
+  /**
+   * Subscribe to resolution-warning changes for `useSyncExternalStore`. The
+   * listener fires whenever the active project's latest resolution is
+   * replaced: on project load and switch, and after each install transaction.
+   * Returns an unsubscribe function.
+   */
+  subscribeToResolutionWarnings = (listener: () => void): (() => void) => {
+    this._resolutionWarningsListeners.add(listener);
+    return () => this._resolutionWarningsListeners.delete(listener);
+  };
+
+  /** Snapshot of {@link resolutionWarnings} for `useSyncExternalStore`. */
+  getResolutionWarningsSnapshot = (): readonly ExtensionResolutionWarning[] => {
+    return this.resolutionWarnings;
+  };
+
+  /** Record the latest resolution and notify resolution-warning subscribers. */
+  private setLastResolution(resolution: ResolvedExtensions | undefined): void {
+    this._lastResolution = resolution;
+    for (const listener of this._resolutionWarningsListeners) {
+      listener();
+    }
   }
 
   /** Merge a load's catalog-move findings into the latest resolution's warnings, skipping duplicates. */
@@ -628,10 +653,10 @@ export class AppEnvironmentHost {
     if (added.length === 0) {
       return;
     }
-    this._lastResolution = {
+    this.setLastResolution({
       ...this._lastResolution,
       warnings: [...this._lastResolution.warnings, ...added],
-    };
+    });
   }
 
   /** Fetch one `gh:` reference's snapshot through the host's transport. */
@@ -654,7 +679,7 @@ export class AppEnvironmentHost {
     if (!this._compiler) {
       return;
     }
-    this._lastResolution = resolution;
+    this.setLastResolution(resolution);
     this._compiler.compiler.setDependencies(resolution.dependencies, resolution.dependencyMounts);
     syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
     this._compiler.replaceProjectFiles();
@@ -1358,7 +1383,7 @@ export class AppEnvironmentHost {
     this._installedContent = new Map();
     this._fetchFailures = new Map();
     this._lastCompileResult = undefined;
-    this._lastResolution = undefined;
+    this.setLastResolution(undefined);
     this.bumpDocRevision();
     this.teardownBridge();
   }
@@ -1608,6 +1633,9 @@ export class AppEnvironmentHost {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Stable empty warnings array, the snapshot value while no resolution is recorded. */
+const NO_RESOLUTION_WARNINGS: readonly ExtensionResolutionWarning[] = [];
 
 /** Identity key of a resolution warning: the fields that name the same finding across sources. */
 function resolutionWarningKey(warning: ExtensionResolutionWarning): string {

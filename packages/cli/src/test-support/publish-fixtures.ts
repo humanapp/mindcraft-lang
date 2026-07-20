@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** Absolute path of the built `mindcraft` bin under test. */
 export const CLI_BIN = fileURLToPath(new URL("../../dist/main.js", import.meta.url));
@@ -47,15 +47,42 @@ export function runGit(cwd: string, ...args: string[]): Promise<string> {
 
 /** Run the built `mindcraft` bin with `args` in `cwd` and capture its outcome. */
 export function runCliBin(cwd: string, ...args: string[]): Promise<CliRunResult> {
+  return runCliBinWithEnv(cwd, {}, ...args);
+}
+
+/**
+ * Run the built `mindcraft` bin with `args` in `cwd`, layering `env` entries
+ * over the test git environment, and capture its outcome.
+ */
+export function runCliBinWithEnv(cwd: string, env: NodeJS.ProcessEnv, ...args: string[]): Promise<CliRunResult> {
   return new Promise((resolve, reject) => {
-    execFile(process.execPath, [CLI_BIN, ...args], { cwd, env: GIT_TEST_ENV }, (error, stdout, stderr) => {
-      if (error && typeof error.code !== "number") {
-        reject(error);
-      } else {
-        resolve({ code: typeof error?.code === "number" ? error.code : 0, stdout, stderr });
+    execFile(
+      process.execPath,
+      [CLI_BIN, ...args],
+      { cwd, env: { ...GIT_TEST_ENV, ...env } },
+      (error, stdout, stderr) => {
+        if (error && typeof error.code !== "number") {
+          reject(error);
+        } else {
+          resolve({ code: typeof error?.code === "number" ? error.code : 0, stdout, stderr });
+        }
       }
-    });
+    );
   });
+}
+
+/**
+ * Git environment entries that rewrite `https://github.com/<owner>/<repo>.git`
+ * remote URLs to repositories under `root`, keyed by their `<owner>/<repo>`
+ * path. Lets a publish that derives a GitHub remote from a recorded identity
+ * run against a local fixture repository.
+ */
+export function githubRewriteEnv(root: string): NodeJS.ProcessEnv {
+  return {
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: `url.${pathToFileURL(root).href}/.insteadOf`,
+    GIT_CONFIG_VALUE_0: "https://github.com/",
+  };
 }
 
 /** Create a fresh scratch directory under the OS temp dir. */

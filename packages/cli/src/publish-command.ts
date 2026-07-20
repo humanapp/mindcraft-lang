@@ -25,21 +25,22 @@ const PUBLISH_USAGE = `usage: mindcraft publish [patch|minor|major] [--dir <path
 
 Publishes a version of the Mindcraft project in --dir (default: the current
 directory). Run from inside an already-published project's folder, no flags are
-needed: the current directory supplies --dir, and the manifest's recorded
-identity supplies the remote. With a version bump, the manifest version is
-incremented; without one, the manifest's current version is published as-is,
-which is valid only as a first publish to a repository that has no tags. Every
-publish stamps the published manifest's identity field with the <owner>/<repo>
-coordinate of the publish remote; a warning is printed when the stamp changes a
-previously recorded identity.
+needed: the current directory supplies --dir, and the project's git checkout
+supplies the remote. With a version bump, the manifest version is incremented;
+without one, the manifest's current version is published as-is, which is valid
+only as a first publish to a repository that has no tags. Every publish stamps
+the published manifest's identity field with the <owner>/<repo> coordinate of
+the publish remote; a warning is printed when the stamp changes a previously
+recorded identity.
 
-Without --remote, the publish targets the checkout's origin when origin's
-coordinate matches the manifest's recorded identity: it is committed, tagged
-v<version>, and the branch and tag are pushed to origin. When origin does not
-match that identity (for example a project kept inside a monorepo), or there is
-no origin, the publish targets the GitHub remote derived from the recorded
-identity, https://github.com/<owner>/<repo>.git. A first publish, whose manifest
-records no identity yet, targets origin.
+Without --remote, the publish target depends on where the project sits in its
+git checkout. A standalone project, whose directory is the repository root of
+its checkout, publishes to the checkout's origin: it is committed, tagged
+v<version>, and the branch and tag are pushed to origin. A project kept in a
+subdirectory of its checkout (for example inside a monorepo), or one whose
+checkout has no origin, publishes to the GitHub remote derived from the
+manifest's recorded identity, https://github.com/<owner>/<repo>.git. A first
+publish, whose manifest records no identity yet, targets origin.
 
 With --remote, or when the remote is derived from the identity, the project's
 published tree (mindcraft.json plus its manifest-listed files) is committed to
@@ -47,10 +48,10 @@ that remote's default branch and tagged v<version>, and the published version
 and identity are written back to the project directory's mindcraft.json.
 
   --dir <path>     project directory (default: current directory)
-  --remote <url>   git remote to publish the project tree to; without it the
-                   remote is the checkout's origin when it matches the recorded
-                   identity, otherwise the GitHub remote derived from that
-                   identity
+  --remote <url>   git remote to publish the project tree to; without it a
+                   standalone checkout publishes to its origin, and a
+                   subdirectory project publishes to the GitHub remote derived
+                   from the recorded identity
   --allow-unstable-refs
                    allow dependencies that are unstable for consumers: a
                    branch reference, or a pinned version the fetch source
@@ -123,10 +124,13 @@ export interface PublishTargetInput {
    */
   readonly identity: string | undefined;
   /**
-   * The `<owner>/<repo>` coordinate the checkout's `origin` remote resolves to,
-   * or `undefined` when there is no origin or it yields no coordinate.
+   * `true` when the project directory is the repository root of its git
+   * checkout; `false` for a subdirectory of a checkout, or a directory that is
+   * not in a git checkout at all.
    */
-  readonly originCoordinate: string | undefined;
+  readonly isCheckoutRoot: boolean;
+  /** `true` when the project's git checkout has an `origin` remote. */
+  readonly hasOrigin: boolean;
 }
 
 /** Where a publish records its version, and how the target repository is reached. */
@@ -135,12 +139,14 @@ export type PublishTarget = { readonly mode: "in-place" } | { readonly mode: "co
 /**
  * Decide where a publish records its version:
  * - `--remote` given: constructed mode to that URL.
- * - no `--remote`, a recorded identity that equals the origin coordinate:
+ * - no `--remote`, a standalone project (the project directory is the
+ *   repository root of a checkout that has an origin): in-place mode on
+ *   origin, whatever identity the manifest records.
+ * - no `--remote` and not a standalone project (a subdirectory of a checkout,
+ *   or no origin), with a recorded identity: constructed mode to the GitHub
+ *   remote derived from the identity, `https://github.com/<owner>/<repo>.git`.
+ * - no `--remote`, not a standalone project, and no recorded identity:
  *   in-place mode on origin.
- * - no `--remote`, a recorded identity that origin does not match (a different
- *   coordinate, or no origin): constructed mode to the GitHub remote derived
- *   from the identity, `https://github.com/<owner>/<repo>.git`.
- * - no `--remote` and no recorded identity: in-place mode on origin.
  *
  * Always returns a target and does not validate that it can publish; a missing
  * manifest, an unusable origin, or an identity that cannot be stamped is
@@ -150,7 +156,10 @@ export function resolvePublishTarget(input: PublishTargetInput): PublishTarget {
   if (input.explicitRemote !== undefined) {
     return { mode: "constructed", remote: input.explicitRemote };
   }
-  if (input.identity !== undefined && input.originCoordinate !== input.identity) {
+  if (input.isCheckoutRoot && input.hasOrigin) {
+    return { mode: "in-place" };
+  }
+  if (input.identity !== undefined) {
     return { mode: "constructed", remote: githubRemoteUrlForCoordinate(input.identity) };
   }
   return { mode: "in-place" };
@@ -363,10 +372,14 @@ export async function runPublishCommand(args: readonly string[]): Promise<number
 
   try {
     const originUrl = (await tryGit(parsed.dir, "remote", "get-url", "origin"))?.trim();
+    // --show-prefix is the project directory's path relative to its checkout's
+    // repository root: empty at the root, and absent outside any checkout.
+    const checkoutPrefix = (await tryGit(parsed.dir, "rev-parse", "--show-prefix"))?.trim();
     const target = resolvePublishTarget({
       explicitRemote: parsed.remote,
       identity: await readRecordedIdentity(parsed.dir),
-      originCoordinate: originUrl === undefined ? undefined : deriveCoordinateFromRemoteUrl(originUrl),
+      isCheckoutRoot: checkoutPrefix === "",
+      hasOrigin: originUrl !== undefined,
     });
     const result =
       target.mode === "constructed" ? await publishToRemote(parsed, target.remote) : await publishInCheckout(parsed);

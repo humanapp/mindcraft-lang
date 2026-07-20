@@ -1007,6 +1007,53 @@ describe("AppEnvironmentHost live extension changes", () => {
   });
 });
 
+describe("AppEnvironmentHost resolution-warning subscription", () => {
+  it("notifies subscribers on load and on install transactions, with a reference-stable snapshot", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem();
+    const projectManager = stubProjectManagerWithLiveExtensions(filesystem, {});
+    const host = new AppEnvironmentHost({
+      projectManager,
+      modules: [coreModule()],
+      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      embeddedExtensions: [DEMO_EXTENSION],
+    });
+
+    try {
+      let notified = 0;
+      const unsubscribe = host.subscribeToResolutionWarnings(() => {
+        notified += 1;
+      });
+      assert.equal(
+        host.getResolutionWarningsSnapshot(),
+        host.getResolutionWarningsSnapshot(),
+        "the pre-load empty snapshot is reference-stable"
+      );
+
+      await host.initialize(PROJECT_ID);
+      assert.ok(notified > 0, "the load notified subscribers");
+      assert.equal(host.getResolutionWarningsSnapshot(), host.resolutionWarnings, "the snapshot mirrors the getter");
+
+      const afterLoad = notified;
+      await host.updateProjectExtensions({ [DEMO_COORDINATE]: DEMO_REFERENCE });
+      assert.ok(notified > afterLoad, "the install transaction notified subscribers");
+      assert.equal(
+        host.getResolutionWarningsSnapshot(),
+        host.getResolutionWarningsSnapshot(),
+        "the post-install snapshot is reference-stable"
+      );
+
+      unsubscribe();
+      const afterUnsubscribe = notified;
+      await host.updateProjectExtensions({});
+      assert.equal(notified, afterUnsubscribe, "an unsubscribed listener no longer fires");
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
 describe("AppEnvironmentHost embedded extensions", () => {
   it("compiles user code that imports an embedded extension via @lib", async () => {
     const restoreLocalStorage = installEmptyLocalStorage();
