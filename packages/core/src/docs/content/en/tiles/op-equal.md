@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.op->eq",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Equal To

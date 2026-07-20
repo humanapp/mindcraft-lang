@@ -9,7 +9,7 @@ import { useBrainEditorConfig } from "./BrainEditorContext";
 import { TileValue } from "./TileValue";
 import type { TileBadge } from "./tile-badges";
 import { isProjectAuthoredActionTile } from "./tile-library-groups";
-import { resolveTileVisual } from "./tile-visual-utils";
+import { resolveTileVisual, tileVisualCategory } from "./tile-visual-utils";
 
 interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   tileDef: IBrainTileDef;
@@ -36,15 +36,12 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
       (side === RuleSide.When ? visual?.colorDef?.when : side === RuleSide.Do ? visual?.colorDef?.do : undefined) ||
       "#475569";
 
-    const isValueTile =
-      tileDef.kind === "literal" ||
-      tileDef.kind === "variable" ||
-      tileDef.kind === "accessor" ||
-      tileDef.kind === "output";
-    const isParamTile = tileDef.kind === "parameter";
-    const isFactoryTile = tileDef.kind === "factory";
+    const category = tileVisualCategory(tileDef);
+    const isValueTile = category === "value";
+    const isParamTile = category === "parameter";
+    const isFactoryTile = category === "factory";
     const isProjectAuthoredAction = isProjectAuthoredActionTile(tileDef, projectNamespace);
-    const isActionTile = tileDef.kind === "sensor" || tileDef.kind === "actuator";
+    const isActionTile = category === "action";
     const isAsyncAction = isActionTile && (tileDef as IBrainActionTileDef).action.isAsync === true;
     let tileTypeIcon: string | undefined;
     let tileTypeName: string | undefined;

@@ -1,3 +1,4 @@
+import { assertUnreachable } from "@mindcraft-lang/core";
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type {
   BrainTileActuatorDef,
@@ -44,8 +45,18 @@ export function tileSourceNamespace(tileDef: IBrainTileDef): string | undefined 
       return (tileDef as BrainTileParameterDef).userArg?.namespace;
     case "modifier":
       return (tileDef as BrainTileModifierDef).userArg?.namespace;
-    default:
+    case "undefined":
+    case "operator":
+    case "variable":
+    case "literal":
+    case "factory":
+    case "controlFlow":
+    case "accessor":
+    case "page":
+    case "missing":
       return undefined;
+    default:
+      return assertUnreachable(tileDef.kind);
   }
 }
 

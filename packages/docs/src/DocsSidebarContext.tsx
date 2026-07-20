@@ -1,3 +1,4 @@
+import { assertUnreachable } from "@mindcraft-lang/core";
 import {
   type BrainServices,
   type IBrainTileDef,
@@ -59,23 +60,33 @@ interface DocsSidebarContextValue {
 const DocsSidebarContext = createContext<DocsSidebarContextValue | null>(null);
 
 function defaultTileLabel(tileDef: IBrainTileDef): string {
-  if (tileDef.kind === "literal") {
-    const literalDef = tileDef as BrainTileLiteralDef;
-    const format = literalDef.displayFormat;
-    return format && format !== LiteralDisplayFormats.Default && typeof literalDef.value === "number"
-      ? applyDisplayFormat(literalDef.value, format)
-      : literalDef.valueLabel || String(literalDef.value);
+  switch (tileDef.kind) {
+    case "literal": {
+      const literalDef = tileDef as BrainTileLiteralDef;
+      const format = literalDef.displayFormat;
+      return format && format !== LiteralDisplayFormats.Default && typeof literalDef.value === "number"
+        ? applyDisplayFormat(literalDef.value, format)
+        : literalDef.valueLabel || String(literalDef.value);
+    }
+    case "variable":
+      return (tileDef as BrainTileVariableDef).varName;
+    case "accessor":
+      return (tileDef as BrainTileAccessorDef).fieldName;
+    case "undefined":
+    case "sensor":
+    case "actuator":
+    case "parameter":
+    case "operator":
+    case "factory":
+    case "controlFlow":
+    case "modifier":
+    case "page":
+    case "output":
+    case "missing":
+      return getCatalogFallbackLabel(tileDef);
+    default:
+      return assertUnreachable(tileDef.kind);
   }
-
-  if (tileDef.kind === "variable") {
-    return (tileDef as BrainTileVariableDef).varName;
-  }
-
-  if (tileDef.kind === "accessor") {
-    return (tileDef as BrainTileAccessorDef).fieldName;
-  }
-
-  return getCatalogFallbackLabel(tileDef);
 }
 
 interface DocsSidebarProviderProps {
@@ -164,18 +175,35 @@ export function DocsSidebarProvider({
     setIsOpen(true);
     // Variable and literal tiles are dynamic (one per variable/value) and
     // don't have individual tile doc pages. Redirect to the relevant concept.
-    if (tileDef.kind === "variable") {
-      setActiveTab("concepts");
-      setNavKey("variables");
-      setNavTab("concepts");
-    } else if (tileDef.kind === "literal") {
-      setActiveTab("concepts");
-      setNavKey("literals");
-      setNavTab("concepts");
-    } else {
-      setActiveTab("tiles");
-      setNavKey(tileDef.tileId);
-      setNavTab("tiles");
+    switch (tileDef.kind) {
+      case "variable":
+        setActiveTab("concepts");
+        setNavKey("variables");
+        setNavTab("concepts");
+        break;
+      case "literal":
+        setActiveTab("concepts");
+        setNavKey("literals");
+        setNavTab("concepts");
+        break;
+      case "undefined":
+      case "sensor":
+      case "actuator":
+      case "parameter":
+      case "operator":
+      case "factory":
+      case "controlFlow":
+      case "modifier":
+      case "accessor":
+      case "page":
+      case "output":
+      case "missing":
+        setActiveTab("tiles");
+        setNavKey(tileDef.tileId);
+        setNavTab("tiles");
+        break;
+      default:
+        assertUnreachable(tileDef.kind);
     }
   }, []);
 

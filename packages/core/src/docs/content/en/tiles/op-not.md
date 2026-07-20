@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.op->not",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Not

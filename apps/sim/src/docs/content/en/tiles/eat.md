@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.actuator->actuator.eat",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Eat

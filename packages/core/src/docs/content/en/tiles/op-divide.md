@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.op->div",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Divide

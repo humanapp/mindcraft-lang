@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.op->or",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Or

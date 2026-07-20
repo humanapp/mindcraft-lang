@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.actuator->switch-page",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Switch Page

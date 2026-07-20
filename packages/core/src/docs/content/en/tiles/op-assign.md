@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.op->assign",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Gets

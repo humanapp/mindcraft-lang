@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.op->mul",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Multiply

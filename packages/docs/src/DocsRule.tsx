@@ -1,3 +1,4 @@
+import { assertUnreachable } from "@mindcraft-lang/core";
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { adjustColor, cn, formatValue, glassEffect, saturateColor } from "@mindcraft-lang/ui";
@@ -36,6 +37,44 @@ interface DocsTileChipProps {
   side: RuleSide;
 }
 
+/**
+ * The boxed value a tile chip displays, or undefined for a tile rendered as an
+ * icon chip. Value tiles are literal, variable, and accessor tiles; `italic`
+ * marks a variable name.
+ */
+function docsTileValue(tileDef: IBrainTileDef): { text: string; italic: boolean } | undefined {
+  switch (tileDef.kind) {
+    case "literal": {
+      const literalDef = tileDef as BrainTileLiteralDef;
+      const raw =
+        literalDef.displayFormat && literalDef.displayFormat !== "default"
+          ? literalDef.value
+          : literalDef.valueLabel || literalDef.value;
+      return { text: formatValue(raw, literalDef.valueType, [], literalDef.displayFormat), italic: false };
+    }
+    case "variable":
+      return { text: (tileDef as BrainTileVariableDef).varName, italic: true };
+    case "accessor": {
+      const accessorDef = tileDef as BrainTileAccessorDef;
+      return { text: formatValue(accessorDef.fieldName, accessorDef.fieldTypeId, []), italic: false };
+    }
+    case "undefined":
+    case "sensor":
+    case "actuator":
+    case "parameter":
+    case "operator":
+    case "factory":
+    case "controlFlow":
+    case "modifier":
+    case "page":
+    case "output":
+    case "missing":
+      return undefined;
+    default:
+      return assertUnreachable(tileDef.kind);
+  }
+}
+
 /** Read-only rendering of a single brain tile, used inside doc tile strips and rule rows. */
 export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
   const resolveTileVisual = useDocsResolveTileVisual();
@@ -44,29 +83,15 @@ export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
   const iconUrl = visual?.iconUrl || "/assets/brain/icons/question_mark.svg";
   const baseColor = (side === RuleSide.When ? visual?.colorDef?.when : visual?.colorDef?.do) || "#475569";
 
-  const isValueTile = tileDef.kind === "literal" || tileDef.kind === "variable" || tileDef.kind === "accessor";
+  const value = docsTileValue(tileDef);
+  const isValueTile = value !== undefined;
+  const displayValue = value?.text;
+  const isItalic = value?.italic ?? false;
 
   const lighterColor = adjustColor(baseColor, 0.3);
   const lighterColor2 = adjustColor(baseColor, 0.4);
   const darkerColor = adjustColor(baseColor, 0);
   const darkerSaturatedColor = adjustColor(saturateColor(baseColor, 0.5), -0.4);
-
-  let displayValue: string | undefined;
-  let isItalic = false;
-  if (tileDef.kind === "literal") {
-    const literalDef = tileDef as BrainTileLiteralDef;
-    const raw =
-      literalDef.displayFormat && literalDef.displayFormat !== "default"
-        ? literalDef.value
-        : literalDef.valueLabel || literalDef.value;
-    displayValue = formatValue(raw, literalDef.valueType, [], literalDef.displayFormat);
-  } else if (tileDef.kind === "variable") {
-    displayValue = (tileDef as BrainTileVariableDef).varName;
-    isItalic = true;
-  } else if (tileDef.kind === "accessor") {
-    const accessorDef = tileDef as BrainTileAccessorDef;
-    displayValue = formatValue(accessorDef.fieldName, accessorDef.fieldTypeId, []);
-  }
 
   const [labelBasedWidth, setLabelBasedWidth] = useState<number | undefined>(undefined);
 

@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.op->ge",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Greater Than or Equal

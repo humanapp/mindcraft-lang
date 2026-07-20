@@ -1,4 +1,4 @@
-import { List, type ReadonlyBitSet, type ReadonlyList, type UniqueSet } from "@mindcraft-lang/core";
+import { assertUnreachable, List, type ReadonlyBitSet, type ReadonlyList, type UniqueSet } from "@mindcraft-lang/core";
 import {
   CoreCapabilityBits,
   type IBrainRuleDef,
@@ -239,8 +239,11 @@ export function BrainTilePickerDialog({
         case "literal":
         case "page":
           return tileDef.kind;
-        default:
+        case "undefined":
+        case "missing":
           return "other";
+        default:
+          return assertUnreachable(tileDef.kind);
       }
     };
 
