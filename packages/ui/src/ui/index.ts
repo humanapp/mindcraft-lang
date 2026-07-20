@@ -32,6 +32,7 @@ export {
 } from "./dropdown-menu";
 export type { InputProps } from "./input";
 export { Input } from "./input";
+export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./popover";
 export { Slider } from "./slider";
 export { Toaster } from "./sonner";
 export { Switch } from "./switch";
