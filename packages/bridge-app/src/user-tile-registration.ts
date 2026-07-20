@@ -1,5 +1,5 @@
-import type { BrainActionCallSpec, MindcraftEnvironment } from "@mindcraft-lang/core/app";
-import { logger, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/app";
+import type { ActionKind, BrainActionCallSpec, MindcraftEnvironment } from "@mindcraft-lang/core/app";
+import { logger, mkActionTileId } from "@mindcraft-lang/core/app";
 import type {
   ExtractedArgSpec,
   ExtractedOutput,
@@ -19,8 +19,8 @@ export interface UserTileMetadata {
   namespace: string;
   /** Opaque stable id from the source declaration. */
   id: string;
-  /** Whether the tile is a sensor or an actuator. */
-  kind: "sensor" | "actuator";
+  /** The tile-bearing action kind; conversions surface no tile and are excluded. */
+  kind: Exclude<ActionKind, "conversion">;
   /** Display name of the user's action. */
   name: string;
   /** Brain-action call signature derived from the source. */
@@ -124,7 +124,7 @@ export function applyCompiledUserTiles(
       `[user-tile-registration] applied bundle: ${metadata.length} tile(s), ${update.changedActionKeys.length} changed action(s), ${update.invalidatedBrains.length} invalidated brain(s)`
     );
     for (const entry of metadata) {
-      const tileId = entry.kind === "sensor" ? mkSensorTileId(entry.key) : mkActuatorTileId(entry.key);
+      const tileId = mkActionTileId(entry.kind, entry.key);
       logger.debug(`[user-tile-registration]   ${tileId}`);
     }
   }

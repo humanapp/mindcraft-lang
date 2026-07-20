@@ -6,10 +6,9 @@ import {
   CoreFuncId,
   CoreTypeIds,
   isBytecodeConversion,
-  mkActuatorTileId,
+  mkActionTileId,
   mkModifierTileId,
   mkParameterTileId,
-  mkSensorTileId,
   Op,
 } from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
@@ -784,7 +783,7 @@ export class UserTileProject {
     const debugMetadata = assembleDebugMetadata(funcs, functionDebugInfo, compilerFiles);
 
     const actionKey = userActionKey(this._projectNamespace, descriptor.kind, actionId);
-    const actionTileId = descriptor.kind === "sensor" ? mkSensorTileId(actionKey) : mkActuatorTileId(actionKey);
+    const actionTileId = mkActionTileId(descriptor.kind, actionKey);
     if (descriptor.id === undefined) {
       const text = sourceFile.text;
       const offset = descriptor.idInsertOffset;
@@ -1013,7 +1012,7 @@ export class UserTileProject {
 
     const actionId = descriptor.id;
     const actionKey = userActionKey(this._projectNamespace, descriptor.kind, actionId);
-    const actionTileId = descriptor.kind === "sensor" ? mkSensorTileId(actionKey) : mkActuatorTileId(actionKey);
+    const actionTileId = mkActionTileId(descriptor.kind, actionKey);
     const media = this._resolveTileMedia(sourceFile, descriptor, actionTileId);
 
     const definition: UserTileDefinition = {

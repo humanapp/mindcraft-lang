@@ -1,4 +1,4 @@
-import { List } from "@mindcraft-lang/core";
+import { assertUnreachable, List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import {
   ContextTypeIds,
@@ -3274,20 +3274,26 @@ function lowerOnExecuteBody(
   classInfos: ClassInfo[],
   systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
-  if (descriptor.kind === "conversion") {
-    return lowerConvertBody(
-      descriptor,
-      checker,
-      callsiteVars,
-      functionTable,
-      sharedDiagnostics,
-      funcIdCounter,
-      closureFunctions,
-      services,
-      projectNamespace,
-      classInfos,
-      systemBindings
-    );
+  switch (descriptor.kind) {
+    case "conversion":
+      return lowerConvertBody(
+        descriptor,
+        checker,
+        callsiteVars,
+        functionTable,
+        sharedDiagnostics,
+        funcIdCounter,
+        closureFunctions,
+        services,
+        projectNamespace,
+        classInfos,
+        systemBindings
+      );
+    case "sensor":
+    case "actuator":
+      break;
+    default:
+      assertUnreachable(descriptor.kind);
   }
 
   const ir: IrNode[] = [];

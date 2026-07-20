@@ -1,4 +1,4 @@
-import { List } from "@mindcraft-lang/core";
+import { assertUnreachable, List } from "@mindcraft-lang/core";
 import {
   type BrainServices,
   CoreCapabilityBits,
@@ -234,22 +234,29 @@ export function buildUserTileMetadata(
 
   const providedOutputs = List.from(outputTiles.map((tile) => tile.outputKey));
   const userIdentity = { namespace: program.projectNamespace, actionId: program.id };
-  const actionTile =
-    program.kind === "sensor"
-      ? new BrainTileSensorDef(program.key, actionDescriptor, {
-          metadata,
-          capabilities: userTileCaps,
-          providedOutputs,
-          consumesWhenResult: program.consumesWhenResult,
-          placement: program.inline ? TilePlacement.EitherSide | TilePlacement.Inline : undefined,
-          userIdentity,
-        })
-      : new BrainTileActuatorDef(program.key, actionDescriptor, {
-          metadata,
-          capabilities: userTileCaps,
-          consumesWhenResult: program.consumesWhenResult,
-          userIdentity,
-        });
+  let actionTile: BrainTileSensorDef | BrainTileActuatorDef;
+  switch (program.kind) {
+    case "sensor":
+      actionTile = new BrainTileSensorDef(program.key, actionDescriptor, {
+        metadata,
+        capabilities: userTileCaps,
+        providedOutputs,
+        consumesWhenResult: program.consumesWhenResult,
+        placement: program.inline ? TilePlacement.EitherSide | TilePlacement.Inline : undefined,
+        userIdentity,
+      });
+      break;
+    case "actuator":
+      actionTile = new BrainTileActuatorDef(program.key, actionDescriptor, {
+        metadata,
+        capabilities: userTileCaps,
+        consumesWhenResult: program.consumesWhenResult,
+        userIdentity,
+      });
+      break;
+    default:
+      return assertUnreachable(program.kind);
+  }
 
   return {
     actionDescriptor,

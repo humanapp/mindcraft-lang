@@ -43,7 +43,7 @@ export {
 
 // -- Call-spec builders ---------------------------------------------------------
 
-export type { BrainActionCallChoiceSpec, BrainActionCallSpec } from "../runtime";
+export type { ActionKind, BrainActionCallChoiceSpec, BrainActionCallSpec } from "../runtime";
 export { bag, choice, conditional, mkCallDef, mod, optional, param, repeated } from "../runtime";
 
 // -- Tile definitions -----------------------------------------------------------
@@ -67,6 +67,7 @@ export {
 
 export {
   mkAccessorTileId,
+  mkActionTileId,
   mkActuatorTileId,
   mkControlFlowTileId,
   mkLiteralFactoryTileId,

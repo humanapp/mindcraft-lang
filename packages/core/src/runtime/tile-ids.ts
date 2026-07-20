@@ -1,3 +1,4 @@
+import { assertUnreachable } from "../platform/assert";
 import { StringUtils as SU } from "../platform/string";
 import type { ActionKind } from "./function-defs";
 
@@ -87,6 +88,18 @@ export interface NamespacedTypeName {
 
 export function mkActuatorTileId(actuatorId: string): string {
   return mkTileId("actuator", actuatorId);
+}
+
+/** Tile id of a tile-bearing user action, dispatched on its {@link ActionKind}. Conversions carry no tile surface and are excluded from the parameter type. */
+export function mkActionTileId(kind: Exclude<ActionKind, "conversion">, actionId: string): string {
+  switch (kind) {
+    case "sensor":
+      return mkSensorTileId(actionId);
+    case "actuator":
+      return mkActuatorTileId(actionId);
+    default:
+      return assertUnreachable(kind);
+  }
 }
 
 export function mkParameterTileId(parameterId: string): string {

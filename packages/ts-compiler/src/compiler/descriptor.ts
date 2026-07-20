@@ -1,3 +1,4 @@
+import type { ActionKind } from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
 import { DescriptorDiagCode } from "./diag-codes.js";
 import { shorthandValueExpression } from "./type-ref.js";
@@ -10,6 +11,13 @@ import type {
   ExtractedParam,
   SourceSpan,
 } from "./types.js";
+
+/** Source constructor name of each action kind's default-export call. */
+const kActionConstructorNames: Record<ActionKind, string> = {
+  sensor: "Sensor",
+  actuator: "Actuator",
+  conversion: "Conversion",
+};
 
 /** Result of {@link extractDescriptor}: the descriptor (when extraction succeeded) plus any diagnostics. */
 export interface ExtractionResult {
@@ -86,7 +94,10 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
   }
 
   const callee = expr.expression.text;
-  if (callee !== "Sensor" && callee !== "Actuator" && callee !== "Conversion") {
+  const matchedKind = (Object.keys(kActionConstructorNames) as ActionKind[]).find(
+    (k) => kActionConstructorNames[k] === callee
+  );
+  if (matchedKind === undefined) {
     addDiag(
       DescriptorDiagCode.InvalidDefaultExport,
       expr.expression,
@@ -114,11 +125,11 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
     return { diagnostics };
   }
 
-  if (callee === "Conversion") {
+  if (matchedKind === "conversion") {
     return extractConversionDescriptor(sourceFile, checker, arg, addDiag, diagnostics);
   }
 
-  const kind: "sensor" | "actuator" = callee === "Sensor" ? "sensor" : "actuator";
+  const kind: "sensor" | "actuator" = matchedKind;
 
   let id: string | undefined;
   let name: string | undefined;

@@ -7,6 +7,7 @@ import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
 
 export {
   CoreParameterId,
+  mkActionTileId,
   mkActuatorTileId,
   mkModifierTileId,
   mkOutputTileId,

@@ -23,12 +23,12 @@ import {
   type WorkspaceCompileDiagnostic,
 } from "@mindcraft-lang/bridge-app";
 import {
+  type ActionKind,
   type BrainDef,
   coreModule,
   MathOps,
   type MindcraftEnvironment,
-  mkActuatorTileId,
-  mkSensorTileId,
+  mkActionTileId,
 } from "@mindcraft-lang/core/app";
 import type { DocsTileEntry } from "@mindcraft-lang/docs";
 import { isCompilerControlledPath, type Mount } from "@mindcraft-lang/ts-compiler";
@@ -759,14 +759,19 @@ export class SimEnvironmentStore {
   };
 }
 
+/** Docs category label for each tile-bearing user-action kind. */
+const kUserTileDocCategories: Record<Exclude<ActionKind, "conversion">, string> = {
+  sensor: "Sensors",
+  actuator: "Actuators",
+};
+
 function buildDocEntries(metadata: readonly UserTileMetadata[]): DocsTileEntry[] {
   const entries: DocsTileEntry[] = [];
   for (const entry of metadata) {
-    const tileId = entry.kind === "sensor" ? mkSensorTileId(entry.key) : mkActuatorTileId(entry.key);
     entries.push({
-      tileId,
+      tileId: mkActionTileId(entry.kind, entry.key),
       tags: entry.tags ? [...entry.tags] : [],
-      category: entry.kind === "sensor" ? "Sensors" : "Actuators",
+      category: kUserTileDocCategories[entry.kind],
       content: entry.docsMarkdown ?? "",
     });
   }

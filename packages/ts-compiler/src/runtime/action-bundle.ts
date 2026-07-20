@@ -1,4 +1,4 @@
-import { type CompiledActionBundle, Dict } from "@mindcraft-lang/core";
+import { assertUnreachable, type CompiledActionBundle, Dict } from "@mindcraft-lang/core";
 import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type { CompileResult, ProjectCompileResult } from "../compiler/compile.js";
 import type { UserAuthoredProgram, UserTileDefinition } from "../compiler/types.js";
@@ -131,11 +131,17 @@ export function buildMultiRootActionBundle(
   for (const program of contributions.programs) {
     addTiles(tileMap, buildStructTypeTiles(program, options.services));
 
-    // A conversion has no tile surface of its own; its artifact rides the
-    // bundle's action table and registers via its conversion metadata.
-    if (program.kind === "conversion") {
-      actions.set(program.key, program);
-      continue;
+    switch (program.kind) {
+      case "conversion":
+        // A conversion has no tile surface of its own; its artifact rides the
+        // bundle's action table and registers via its conversion metadata.
+        actions.set(program.key, program);
+        continue;
+      case "sensor":
+      case "actuator":
+        break;
+      default:
+        assertUnreachable(program.kind);
     }
 
     const metadata = buildUserTileMetadata(program, resolveTypeId);

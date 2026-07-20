@@ -1,3 +1,4 @@
+import { assertUnreachable } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import type { ActionDescriptor, BytecodeResolvedAction } from "@mindcraft-lang/core/runtime";
 import type { UserAuthoredProgram } from "../compiler/types.js";
@@ -61,9 +62,15 @@ export function registerUserConversion(program: UserAuthoredProgram, services: B
 
 /** Register a single compiled user tile (action descriptor, action tile, and parameter tiles) into the brain services. */
 export function registerUserTile(program: UserAuthoredProgram, services: BrainServices): void {
-  if (program.kind === "conversion") {
-    registerUserConversion(program, services);
-    return;
+  switch (program.kind) {
+    case "conversion":
+      registerUserConversion(program, services);
+      return;
+    case "sensor":
+    case "actuator":
+      break;
+    default:
+      assertUnreachable(program.kind);
   }
 
   const { actions } = services.runtime;
