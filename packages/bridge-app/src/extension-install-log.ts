@@ -30,12 +30,6 @@ export type ExtensionInstallLogEvent =
       readonly origin: string;
     }
   | {
-      /** A worsened transaction was undone: manifest entries reverted and the project re-resolved. */
-      readonly kind: "undo";
-      /** Unix epoch milliseconds. */
-      readonly at: number;
-    }
-  | {
       /** An install transaction was refused because a reference's fetch failed; the project was left unchanged. */
       readonly kind: "fetch-refusal";
       /** Unix epoch milliseconds. */
@@ -58,7 +52,8 @@ export type ExtensionInstallLogEvent =
 
 /**
  * Parse a project's install log from its app-data text. Returns an empty log
- * when the text is absent or malformed.
+ * when the text is absent or malformed. Entries with event kinds no longer
+ * produced (historical logs) parse and round-trip unchanged.
  */
 export function parseExtensionInstallLog(raw: string | undefined): readonly ExtensionInstallLogEvent[] {
   if (raw === undefined) return [];

@@ -52,7 +52,7 @@ import {
   systemConfigObject,
 } from "./lowering.js";
 import { isMountedPath, type Mount } from "./mounts.js";
-import { publishEntryModule } from "./publication.js";
+import { ENTRY_MODULE_COMPILER_PATH, publishEntryModule } from "./publication.js";
 import { userActionKey } from "./symbol-keys.js";
 import { resolveTypeNameExpression, structTypeCallExpression } from "./type-ref.js";
 import type {
@@ -72,6 +72,7 @@ import type {
   StdlibSourceFile,
   SuspendSiteInfo,
   UserAuthoredProgram,
+  UserTileDefinition,
 } from "./types.js";
 import { validateAst } from "./validator.js";
 import { createVirtualCompilerHost, type ModuleBaseResolver } from "./virtual-host.js";
@@ -91,7 +92,10 @@ export interface FunctionDebugInfo {
 /** Result of compiling a single user-tile source file. */
 export interface CompileResult {
   diagnostics: CompileDiagnostic[];
+  /** The compiled program: fresh when the file compiled, or the file's last successfully compiled program when this compile failed. */
   program?: UserAuthoredProgram;
+  /** The tile's surface definition, present when the file's program did not compile but its definition extracted and resolved. */
+  definition?: UserTileDefinition;
   descriptor?: ExtractedDescriptor;
   functionDebugInfo?: FunctionDebugInfo[];
 }
@@ -239,6 +243,8 @@ export class UserTileProject {
   private _dependencyMounts: readonly DependencyMount[];
   /** Extension namespaces this project mounted at its last compile; a namespace dropped since then has its registrations torn down. */
   private _mountedNamespaces = new Set<string>();
+  /** Each declaration's last successfully compiled program, keyed by its stable action id; a failed recompile keeps contributing it while its types resolve. */
+  private readonly _lastGoodPrograms = new Map<string, UserAuthoredProgram>();
 
   constructor(options: UserTileProjectOptions) {
     this._ambientFiles = options.ambientFiles ?? [
@@ -391,15 +397,9 @@ export class UserTileProject {
     const host = createVirtualCompilerHost(compilerFiles, checkerOptions, resolveExtensionBase);
     const tsProgram = ts.createProgram([...ambientCompilerPaths, ...userRootFiles], checkerOptions, host);
 
+    let deepImportDiags = new Map<string, CompileDiagnostic[]>();
     if (this._dependencies.length > 0 || this._dependencyMounts.length > 0) {
-      const deepImportDiags = scanExtensionDeepImports(tsProgram, userRootFiles);
-      if (deepImportDiags.size > 0) {
-        const results = new Map<string, CompileResult>();
-        for (const [compilerPath, diagnostics] of deepImportDiags) {
-          results.set(toVfsPath(compilerPath), { diagnostics });
-        }
-        return { results, tsErrors: new Map(), sourceRewrites: new Map() };
-      }
+      deepImportDiags = scanExtensionDeepImports(tsProgram, userRootFiles);
     }
 
     const tsDiagnostics = ts.getPreEmitDiagnostics(tsProgram);
@@ -408,6 +408,9 @@ export class UserTileProject {
     for (const d of tsDiagnostics) {
       const fileName = d.file?.fileName;
       if (fileName !== undefined && ambientCompilerPaths.has(fileName)) continue;
+      // A file rejected for a deep import reports only that rejection; its
+      // TypeScript diagnostics for the same compile are subsumed.
+      if (fileName !== undefined && deepImportDiags.has(fileName)) continue;
       const vfsKey = fileName ? toVfsPath(fileName) : "<global>";
       const severity =
         d.category === ts.DiagnosticCategory.Warning
@@ -438,13 +441,41 @@ export class UserTileProject {
       arr.push(diag);
     }
 
-    if (tsErrors.size > 0) {
+    // A failed file compiles no program: one carrying a deep-import rejection
+    // or an error-severity TypeScript diagnostic. Compilation is per-file: an
+    // entry is withheld only when it is failed itself or transitively imports
+    // a failed file; every other entry compiles as usual. A file-less global
+    // TypeScript error cannot be attributed and withholds the whole root.
+    const failedCompilerPaths = new Set<string>(deepImportDiags.keys());
+    for (const [vfsKey, diags] of tsErrors) {
+      if (vfsKey === "<global>") continue;
+      if (diags.some((diag) => diag.severity === "error")) {
+        failedCompilerPaths.add(toCompilerPath(vfsKey));
+      }
+    }
+    const hasGlobalErrors = (tsErrors.get("<global>") ?? []).some((diag) => diag.severity === "error");
+    if (hasGlobalErrors) {
       return { results: new Map(), tsErrors, sourceRewrites: new Map() };
     }
 
     const checker = tsProgram.getTypeChecker();
     const results = new Map<string, CompileResult>();
     const sourceRewrites = new Map<string, string>();
+
+    for (const [compilerPath, diagnostics] of deepImportDiags) {
+      results.set(toVfsPath(compilerPath), { diagnostics });
+    }
+
+    const directImportsMemo = new Map<string, readonly ts.SourceFile[]>();
+    const failedImportsOf = (sourceFile: ts.SourceFile): FailedImports =>
+      collectFailedImports(
+        sourceFile,
+        failedCompilerPaths,
+        tsProgram,
+        compilerFiles,
+        resolveExtensionBase,
+        directImportsMemo
+      );
 
     const services = this._services;
     services.runtime.types.removeUserTypes(this._projectNamespace);
@@ -460,20 +491,58 @@ export class UserTileProject {
     }
     this._mountedNamespaces = currentNamespaces;
 
+    // Entries whose program did not compile this pass, eligible for their
+    // last successfully compiled program.
+    const lastGoodCandidates: { vfsPath: string; id: string }[] = [];
+
     for (const compilerPath of userRootFiles) {
       const sourceFile = tsProgram.getSourceFile(compilerPath);
       if (!sourceFile) continue;
 
       if (!hasDefaultExport(sourceFile)) continue;
 
+      const vfsPath = toVfsPath(compilerPath);
+
+      // A failed entry compiles no program this session -- its deep-import
+      // rejection, its `tsErrors` entry, or the imported-file diagnostic
+      // explains why -- but its DEFINITION still contributes when it can be
+      // extracted and its declared surface types resolve.
+      const programBlockedDiags: CompileDiagnostic[] = [...(deepImportDiags.get(compilerPath) ?? [])];
+      let programBlocked = deepImportDiags.has(compilerPath) || failedCompilerPaths.has(compilerPath);
+      if (!programBlocked) {
+        const failedImports = failedImportsOf(sourceFile);
+        if (failedImports.paths.length > 0) {
+          programBlocked = true;
+          programBlockedDiags.push(importedFileHasErrorsDiagnostic(sourceFile, failedImports));
+        }
+      }
+
       const extractionResult = extractDescriptor(sourceFile, checker);
       if (!extractionResult.descriptor) {
-        const vfsPath = toVfsPath(compilerPath);
-        results.set(vfsPath, { diagnostics: extractionResult.diagnostics });
+        const diagnostics = [...programBlockedDiags, ...extractionResult.diagnostics];
+        if (diagnostics.length > 0) {
+          results.set(vfsPath, { diagnostics });
+        }
         continue;
       }
 
-      const vfsPath = toVfsPath(compilerPath);
+      if (programBlocked) {
+        const fallback = this._definitionFallback(
+          sourceFile,
+          extractionResult.descriptor,
+          checker,
+          services,
+          programBlockedDiags
+        );
+        if (fallback.program || fallback.definition || fallback.diagnostics.length > 0) {
+          results.set(vfsPath, fallback);
+        }
+        if (extractionResult.descriptor.id !== undefined) {
+          lastGoodCandidates.push({ vfsPath, id: extractionResult.descriptor.id });
+        }
+        continue;
+      }
+
       const result = this._compileEntryPoint(
         sourceFile,
         extractionResult.descriptor,
@@ -485,15 +554,46 @@ export class UserTileProject {
         sourceRewrites,
         resolveExtensionBase
       );
-      results.set(vfsPath, result);
+      if (result.program) {
+        this._lastGoodPrograms.set(result.program.id, result.program);
+        results.set(vfsPath, result);
+        continue;
+      }
+      results.set(
+        vfsPath,
+        this._definitionFallback(sourceFile, extractionResult.descriptor, checker, services, result.diagnostics)
+      );
+      if (extractionResult.descriptor.id !== undefined) {
+        lastGoodCandidates.push({ vfsPath, id: extractionResult.descriptor.id });
+      }
     }
+
+    this._attachLastGoodPrograms(results, lastGoodCandidates, services);
 
     reconcileSharedUserTiles(results, services, sessionContext);
     reconcileConversionPairs(results, services, sessionContext);
     reconcileStableIds(results);
 
     let publishedTypes: ReadonlyMap<string, TypeId> | undefined;
-    if (this._publishEntry) {
+    // The entry module is a compiling unit like any other: when it is failed,
+    // or reaches a failed file, it publishes nothing.
+    const entrySource = this._publishEntry ? tsProgram.getSourceFile(ENTRY_MODULE_COMPILER_PATH) : undefined;
+    const entryFailed =
+      entrySource !== undefined &&
+      (deepImportDiags.has(ENTRY_MODULE_COMPILER_PATH) || failedCompilerPaths.has(ENTRY_MODULE_COMPILER_PATH));
+    const entryFailedImports = entrySource !== undefined && !entryFailed ? failedImportsOf(entrySource) : undefined;
+    if (entrySource !== undefined && entryFailedImports !== undefined && entryFailedImports.paths.length > 0) {
+      const vfsPath = toVfsPath(ENTRY_MODULE_COMPILER_PATH);
+      const existing = results.get(vfsPath);
+      if (!existing) {
+        results.set(vfsPath, { diagnostics: [importedFileHasErrorsDiagnostic(entrySource, entryFailedImports)] });
+      } else if (!existing.diagnostics.some((diag) => diag.code === CompileDiagCode.ImportedFileHasErrors)) {
+        existing.diagnostics.push(importedFileHasErrorsDiagnostic(entrySource, entryFailedImports));
+      }
+    }
+    const entryPublishable =
+      !entryFailed && (entryFailedImports === undefined || entryFailedImports.paths.length === 0);
+    if (this._publishEntry && entryPublishable) {
       const programsByFile = new Map<string, UserAuthoredProgram>();
       for (const [path, result] of results) {
         if (result.program) programsByFile.set(path, result.program);
@@ -665,83 +765,14 @@ export class UserTileProject {
       );
     }
 
-    const qualifiedArgs = qualifyArgSpecTypes(
-      descriptor.args,
-      sourceFile,
-      services.runtime.types,
-      this._projectNamespace
-    );
-    // Shared `parameter.` ids are excluded: their types are checked by the
-    // cross-program shared-tile reconcile, which also detects conflicts.
-    const unresolvedParams = collectParams(qualifiedArgs).filter(
-      (param) =>
-        (param.anonymous || !param.name.startsWith("parameter.")) &&
-        services.runtime.types.resolveByName(param.type) === undefined
-    );
-    if (unresolvedParams.length > 0) {
-      return {
-        diagnostics: unresolvedParams.map((param) => ({
-          code: CompileDiagCode.ParameterUnresolvedType,
-          message: `Parameter "${param.name}" declares type "${param.type}", which does not resolve to a registered type. Reference the type by its imported binding (a TypeRef token, a StructType binding, or an enum) or declare it in this module.`,
-          severity: "error" as const,
-        })),
-      };
+    const surface = this._resolveSurfaceTypes(sourceFile, descriptor, checker, services);
+    if ("diagnostics" in surface) {
+      return { diagnostics: surface.diagnostics };
     }
-    const qualifiedReturnType = descriptor.returnType
-      ? qualifyDescriptorType(
-          descriptor.returnType,
-          sourceFile,
-          services.runtime.types,
-          this._projectNamespace,
-          descriptor.returnTypeAnnotation,
-          checker
-        )
-      : undefined;
+    const { qualifiedArgs, outputType, consumesWhenResultType } = surface;
 
     const actionId = descriptor.id ?? this._generateActionId();
     const callDef = buildCallDef(this._projectNamespace, actionId, qualifiedArgs);
-    const outputType = qualifiedReturnType ? services.runtime.types.resolveByName(qualifiedReturnType) : undefined;
-    if (qualifiedReturnType && !outputType) {
-      return {
-        diagnostics: [
-          {
-            code: CompileDiagCode.UnknownOutputType,
-            message: `Sensor return type "${descriptor.returnType}" does not resolve to a registered type.`,
-            severity: "error",
-          },
-        ],
-      };
-    }
-
-    const qualifiedConsumesWhenResult = descriptor.consumesWhenResult
-      ? qualifyDescriptorType(descriptor.consumesWhenResult, sourceFile, services.runtime.types, this._projectNamespace)
-      : undefined;
-    const consumesWhenResultType = qualifiedConsumesWhenResult
-      ? services.runtime.types.resolveByName(qualifiedConsumesWhenResult)
-      : undefined;
-    if (qualifiedConsumesWhenResult && !consumesWhenResultType) {
-      return {
-        diagnostics: [
-          {
-            code: CompileDiagCode.UnresolvedTypeReference,
-            message: `\`consumesWhenResult\` reference "${descriptor.consumesWhenResult}" does not name a known type.`,
-            severity: "error",
-          },
-        ],
-      };
-    }
-    if (consumesWhenResultType === CoreTypeIds.Any) {
-      return {
-        diagnostics: [
-          {
-            code: CompileDiagCode.ConsumesWhenResultIsAny,
-            message:
-              "`consumesWhenResult` must name the concrete WHEN-result type this tile requires; `any` matches no WHEN result, so the tile would never be offered -- name the specific type, or remove `consumesWhenResult` to keep the tile always available.",
-            severity: "error",
-          },
-        ],
-      };
-    }
 
     const funcs = programResult.functions;
     for (const func of funcs) {
@@ -760,42 +791,9 @@ export class UserTileProject {
       sourceRewrites.set(vfsPath, `${text.slice(0, offset)}\n  id: ${JSON.stringify(actionId)},${text.slice(offset)}`);
     }
 
-    const metaDiags: CompileDiagnostic[] = [];
-    let iconUrl: string | undefined;
-    let docsMarkdown: string | undefined;
+    const { iconUrl, docsMarkdown, metaDiags } = this._resolveTileMedia(sourceFile, descriptor, actionTileId);
     const label = descriptor.label ?? descriptor.name;
     const tags = descriptor.tags;
-
-    if (descriptor.icon) {
-      const resolvedIcon = resolveRelativePath(sourceFile.fileName, descriptor.icon);
-      const vfsIcon = toVfsPath(resolvedIcon);
-      if (this._hasProjectFile(vfsIcon)) {
-        iconUrl = `/vfs/${this._assetVfsPath(vfsIcon)}`;
-      } else {
-        metaDiags.push({
-          code: CompileDiagCode.MetadataFileNotFound,
-          message: `Icon file not found: "${descriptor.icon}"`,
-          severity: "warning",
-          ...descriptor.iconSpan,
-        });
-      }
-    }
-
-    if (descriptor.docs) {
-      const resolvedDocs = resolveRelativePath(sourceFile.fileName, descriptor.docs);
-      const vfsDocs = toVfsPath(resolvedDocs);
-      const docsContent = this._getProjectFile(vfsDocs);
-      if (docsContent !== undefined) {
-        docsMarkdown = docsContent.split(DOCS_TILE_ID_PLACEHOLDER).join(actionTileId);
-      } else {
-        metaDiags.push({
-          code: CompileDiagCode.MetadataFileNotFound,
-          message: `Docs file not found: "${descriptor.docs}"`,
-          severity: "warning",
-          ...descriptor.docsSpan,
-        });
-      }
-    }
 
     const program: UserAuthoredProgram = {
       version: 1,
@@ -851,10 +849,240 @@ export class UserTileProject {
   }
 
   /**
+   * Resolve a tile descriptor's declared surface types against the live
+   * registry: the qualified arg specs, the sensor return type, and the
+   * WHEN-result type. Returns the resolved pieces, or the diagnostics of the
+   * first unresolvable member.
+   */
+  private _resolveSurfaceTypes(
+    sourceFile: ts.SourceFile,
+    descriptor: ExtractedDescriptor,
+    checker: ts.TypeChecker,
+    services: BrainServices
+  ):
+    | { diagnostics: CompileDiagnostic[] }
+    | { qualifiedArgs: ExtractedArgSpec[]; outputType?: TypeId; consumesWhenResultType?: TypeId } {
+    const qualifiedArgs = qualifyArgSpecTypes(
+      descriptor.args,
+      sourceFile,
+      services.runtime.types,
+      this._projectNamespace
+    );
+    // Shared `parameter.` ids are excluded: their types are checked by the
+    // cross-program shared-tile reconcile, which also detects conflicts.
+    const unresolvedParams = collectParams(qualifiedArgs).filter(
+      (param) =>
+        (param.anonymous || !param.name.startsWith("parameter.")) &&
+        services.runtime.types.resolveByName(param.type) === undefined
+    );
+    if (unresolvedParams.length > 0) {
+      return {
+        diagnostics: unresolvedParams.map((param) => ({
+          code: CompileDiagCode.ParameterUnresolvedType,
+          message: `Parameter "${param.name}" declares type "${param.type}", which does not resolve to a registered type. Reference the type by its imported binding (a TypeRef token, a StructType binding, or an enum) or declare it in this module.`,
+          severity: "error" as const,
+        })),
+      };
+    }
+    const qualifiedReturnType = descriptor.returnType
+      ? qualifyDescriptorType(
+          descriptor.returnType,
+          sourceFile,
+          services.runtime.types,
+          this._projectNamespace,
+          descriptor.returnTypeAnnotation,
+          checker
+        )
+      : undefined;
+    const outputType = qualifiedReturnType ? services.runtime.types.resolveByName(qualifiedReturnType) : undefined;
+    if (qualifiedReturnType && !outputType) {
+      return {
+        diagnostics: [
+          {
+            code: CompileDiagCode.UnknownOutputType,
+            message: `Sensor return type "${descriptor.returnType}" does not resolve to a registered type.`,
+            severity: "error",
+          },
+        ],
+      };
+    }
+
+    const qualifiedConsumesWhenResult = descriptor.consumesWhenResult
+      ? qualifyDescriptorType(descriptor.consumesWhenResult, sourceFile, services.runtime.types, this._projectNamespace)
+      : undefined;
+    const consumesWhenResultType = qualifiedConsumesWhenResult
+      ? services.runtime.types.resolveByName(qualifiedConsumesWhenResult)
+      : undefined;
+    if (qualifiedConsumesWhenResult && !consumesWhenResultType) {
+      return {
+        diagnostics: [
+          {
+            code: CompileDiagCode.UnresolvedTypeReference,
+            message: `\`consumesWhenResult\` reference "${descriptor.consumesWhenResult}" does not name a known type.`,
+            severity: "error",
+          },
+        ],
+      };
+    }
+    if (consumesWhenResultType === CoreTypeIds.Any) {
+      return {
+        diagnostics: [
+          {
+            code: CompileDiagCode.ConsumesWhenResultIsAny,
+            message:
+              "`consumesWhenResult` must name the concrete WHEN-result type this tile requires; `any` matches no WHEN result, so the tile would never be offered -- name the specific type, or remove `consumesWhenResult` to keep the tile always available.",
+            severity: "error",
+          },
+        ],
+      };
+    }
+
+    return { qualifiedArgs, outputType, consumesWhenResultType };
+  }
+
+  /** Resolve a descriptor's icon and docs references to served metadata, with a warning for each missing file. */
+  private _resolveTileMedia(
+    sourceFile: ts.SourceFile,
+    descriptor: ExtractedDescriptor,
+    actionTileId: string
+  ): { iconUrl?: string; docsMarkdown?: string; metaDiags: CompileDiagnostic[] } {
+    const metaDiags: CompileDiagnostic[] = [];
+    let iconUrl: string | undefined;
+    let docsMarkdown: string | undefined;
+
+    if (descriptor.icon) {
+      const resolvedIcon = resolveRelativePath(sourceFile.fileName, descriptor.icon);
+      const vfsIcon = toVfsPath(resolvedIcon);
+      if (this._hasProjectFile(vfsIcon)) {
+        iconUrl = `/vfs/${this._assetVfsPath(vfsIcon)}`;
+      } else {
+        metaDiags.push({
+          code: CompileDiagCode.MetadataFileNotFound,
+          message: `Icon file not found: "${descriptor.icon}"`,
+          severity: "warning",
+          ...descriptor.iconSpan,
+        });
+      }
+    }
+
+    if (descriptor.docs) {
+      const resolvedDocs = resolveRelativePath(sourceFile.fileName, descriptor.docs);
+      const vfsDocs = toVfsPath(resolvedDocs);
+      const docsContent = this._getProjectFile(vfsDocs);
+      if (docsContent !== undefined) {
+        docsMarkdown = docsContent.split(DOCS_TILE_ID_PLACEHOLDER).join(actionTileId);
+      } else {
+        metaDiags.push({
+          code: CompileDiagCode.MetadataFileNotFound,
+          message: `Docs file not found: "${descriptor.docs}"`,
+          severity: "warning",
+          ...descriptor.docsSpan,
+        });
+      }
+    }
+
+    return { iconUrl, docsMarkdown, metaDiags };
+  }
+
+  /**
+   * Contribution for an entry file whose program did not compile this pass:
+   * the tile's surface definition when the descriptor's declared types
+   * resolve, otherwise nothing -- the file's diagnostics stand and saved
+   * instances placeholder.
+   */
+  private _definitionFallback(
+    sourceFile: ts.SourceFile,
+    descriptor: ExtractedDescriptor,
+    checker: ts.TypeChecker,
+    services: BrainServices,
+    diagnostics: CompileDiagnostic[]
+  ): CompileResult {
+    if (descriptor.kind === "conversion" || descriptor.id === undefined) {
+      return { diagnostics };
+    }
+
+    const typeRefDiags = resolveDescriptorTypeRefs(descriptor, checker, sourceFile, this._projectNamespace);
+    if (typeRefDiags.length > 0) {
+      return { diagnostics: [...diagnostics, ...typeRefDiags] };
+    }
+
+    const surface = this._resolveSurfaceTypes(sourceFile, descriptor, checker, services);
+    if ("diagnostics" in surface) {
+      return { diagnostics: [...diagnostics, ...surface.diagnostics] };
+    }
+
+    const actionId = descriptor.id;
+    const actionKey = userActionKey(this._projectNamespace, descriptor.kind, actionId);
+    const actionTileId = descriptor.kind === "sensor" ? mkSensorTileId(actionKey) : mkActuatorTileId(actionKey);
+    const media = this._resolveTileMedia(sourceFile, descriptor, actionTileId);
+
+    const definition: UserTileDefinition = {
+      id: actionId,
+      projectNamespace: this._projectNamespace,
+      key: actionKey,
+      kind: descriptor.kind,
+      name: descriptor.name,
+      callDef: buildCallDef(this._projectNamespace, actionId, surface.qualifiedArgs),
+      isAsync: descriptor.execIsAsync,
+      outputType: surface.outputType,
+      consumesWhenResult: surface.consumesWhenResultType,
+      args: surface.qualifiedArgs,
+      outputs: descriptor.outputs,
+      label: descriptor.label ?? descriptor.name,
+      iconUrl: media.iconUrl,
+      docsMarkdown: media.docsMarkdown,
+      tags: descriptor.tags,
+      inline: descriptor.inline,
+      presenceGated: descriptor.presenceGated,
+      revisionId: generateRevisionId(),
+    };
+
+    return { diagnostics: [...diagnostics, ...media.metaDiags], definition, descriptor };
+  }
+
+  /**
+   * Attach each failed entry's last successfully compiled program: the entry
+   * keeps executing its last-good program while the file is broken. An entry
+   * is eligible only when the cached program's referenced types still resolve
+   * and no OTHER entry of this compile claims the same stable id (a duplicate
+   * id must never adopt another declaration's program). The attached program
+   * supersedes the entry's surface definition.
+   */
+  private _attachLastGoodPrograms(
+    results: Map<string, CompileResult>,
+    candidates: readonly { vfsPath: string; id: string }[],
+    services: BrainServices
+  ): void {
+    for (const candidate of candidates) {
+      const lastGood = this._lastGoodPrograms.get(candidate.id);
+      if (!lastGood || !artifactTypesResolvable(lastGood, services)) continue;
+
+      let claimedElsewhere = false;
+      for (const [path, result] of results) {
+        if (path === candidate.vfsPath) continue;
+        const surface = result.program ?? result.definition;
+        if (surface?.id === candidate.id) {
+          claimedElsewhere = true;
+          break;
+        }
+      }
+      if (claimedElsewhere) continue;
+
+      const entry = results.get(candidate.vfsPath);
+      if (entry) {
+        entry.program = lastGood;
+        entry.definition = undefined;
+      } else {
+        results.set(candidate.vfsPath, { diagnostics: [], program: lastGood });
+      }
+    }
+  }
+
+  /**
    * Assemble the {@link UserAuthoredProgram} for a compiled `Conversion({...})`
    * declaration: resolve `from`/`to` to registered types, mint the stable id
    * when absent, and attach the conversion registry metadata. Conversions
-   * surface no tiles, so no tile metadata is produced.
+   * surface no tiles, so no tile surface metadata is produced.
    */
   private _assembleConversionProgram(
     sourceFile: ts.SourceFile,
@@ -1018,6 +1246,113 @@ function scanExtensionDeepImports(
   return byFile;
 }
 
+/** Failed files a compiling unit reaches through its imports. */
+interface FailedImports {
+  /** Workspace paths of the failed files, sorted. */
+  paths: readonly string[];
+  /** The first import statement's specifier whose subtree reaches a failed file. */
+  anchor?: ts.StringLiteral;
+}
+
+/**
+ * Walk `sourceFile`'s imports and re-exports transitively and collect every
+ * reachable file in `failedCompilerPaths`. `directImportsMemo` caches each
+ * visited file's resolved direct imports across entries of one compile.
+ */
+function collectFailedImports(
+  sourceFile: ts.SourceFile,
+  failedCompilerPaths: ReadonlySet<string>,
+  tsProgram: ts.Program,
+  compilerFiles: Map<string, string>,
+  resolveModuleBase: ModuleBaseResolver,
+  directImportsMemo: Map<string, readonly ts.SourceFile[]>
+): FailedImports {
+  const directImports = (file: ts.SourceFile): readonly ts.SourceFile[] => {
+    const memoized = directImportsMemo.get(file.fileName);
+    if (memoized) return memoized;
+    const imports: ts.SourceFile[] = [];
+    for (const stmt of file.statements) {
+      if (!ts.isImportDeclaration(stmt) && !(ts.isExportDeclaration(stmt) && stmt.moduleSpecifier)) continue;
+      const imported = resolveImportedSourceFile(stmt, file, tsProgram, compilerFiles, resolveModuleBase);
+      if (imported) imports.push(imported);
+    }
+    directImportsMemo.set(file.fileName, imports);
+    return imports;
+  };
+
+  const failedPaths = new Set<string>();
+  const visited = new Set<string>([sourceFile.fileName]);
+  const visit = (file: ts.SourceFile): void => {
+    if (failedCompilerPaths.has(file.fileName)) {
+      failedPaths.add(toVfsPath(file.fileName));
+    }
+    for (const imported of directImports(file)) {
+      if (visited.has(imported.fileName)) continue;
+      visited.add(imported.fileName);
+      visit(imported);
+    }
+  };
+
+  let anchor: ts.StringLiteral | undefined;
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isImportDeclaration(stmt) && !(ts.isExportDeclaration(stmt) && stmt.moduleSpecifier)) continue;
+    const imported = resolveImportedSourceFile(stmt, sourceFile, tsProgram, compilerFiles, resolveModuleBase);
+    if (!imported || visited.has(imported.fileName)) continue;
+    const before = failedPaths.size;
+    visited.add(imported.fileName);
+    visit(imported);
+    if (anchor === undefined && failedPaths.size > before && ts.isStringLiteral(stmt.moduleSpecifier!)) {
+      anchor = stmt.moduleSpecifier as ts.StringLiteral;
+    }
+  }
+
+  return { paths: [...failedPaths].sort(), anchor };
+}
+
+/**
+ * True when every type a compiled artifact references still resolves in the
+ * live registry: its constant-pool type entries, declared struct types,
+ * surface types, conversion pair, and parameter and output type names.
+ */
+function artifactTypesResolvable(program: UserAuthoredProgram, services: BrainServices): boolean {
+  const types = services.runtime.types;
+  let poolResolvable = true;
+  program.types?.forEach((entry) => {
+    if (!types.get(entry.typeId)) poolResolvable = false;
+  });
+  if (!poolResolvable) return false;
+  for (const structType of program.structTypes ?? []) {
+    if (!types.get(structType.typeId)) return false;
+    for (const field of structType.fields) {
+      if (!types.get(field.typeId)) return false;
+    }
+  }
+  if (program.outputType !== undefined && !types.get(program.outputType)) return false;
+  if (program.consumesWhenResult !== undefined && !types.get(program.consumesWhenResult)) return false;
+  if (program.conversion) {
+    if (!types.get(program.conversion.fromType) || !types.get(program.conversion.toType)) return false;
+  }
+  for (const param of collectParams(program.args)) {
+    if (types.resolveByName(param.type) === undefined) return false;
+  }
+  for (const output of program.outputs ?? []) {
+    if (output.type !== undefined && types.resolveByName(output.type) === undefined) return false;
+  }
+  return true;
+}
+
+/** Diagnostic for a compiling unit withheld because an imported file failed, anchored at the importing statement when one is known. */
+function importedFileHasErrorsDiagnostic(sourceFile: ts.SourceFile, failedImports: FailedImports): CompileDiagnostic {
+  const list = failedImports.paths.map((path) => `"${path}"`).join(", ");
+  const plural = failedImports.paths.length > 1;
+  return {
+    code: CompileDiagCode.ImportedFileHasErrors,
+    message: `This file imports ${list}, which ${plural ? "have" : "has"} compile errors. Fix ${plural ? "those files" : "that file"} to compile this one.`,
+    severity: "error",
+    ...(failedImports.anchor ? spanOfNode(sourceFile, failedImports.anchor) : {}),
+  };
+}
+
 /**
  * Gather the name-keyed declarations publication registers for an entry
  * module: the entry's own top-level declarations plus the exported
@@ -1144,32 +1479,36 @@ export function addSharedTileDeclarations(
   results: ReadonlyMap<string, CompileResult>,
   services: BrainServices
 ): void {
-  const programs: UserAuthoredProgram[] = [];
+  const surfaces: (UserAuthoredProgram | UserTileDefinition)[] = [];
   for (const result of results.values()) {
-    if (result.program) programs.push(result.program);
+    const surface = result.program ?? result.definition;
+    if (surface) surfaces.push(surface);
   }
-  programs.sort((left, right) => left.key.localeCompare(right.key));
+  surfaces.sort((left, right) => left.key.localeCompare(right.key));
 
-  for (const program of programs) {
-    for (const modifier of collectModifiers(program.args)) {
+  for (const surface of surfaces) {
+    for (const modifier of collectModifiers(surface.args)) {
       if (!modifier.id.startsWith("modifier.") || modifier.label === "") continue;
       if (!draft.sharedModifiers.has(modifier.id)) {
-        draft.sharedModifiers.set(modifier.id, { label: modifier.label, declaredBy: program.key });
+        draft.sharedModifiers.set(modifier.id, { label: modifier.label, declaredBy: surface.key });
       }
     }
-    for (const param of collectParams(program.args)) {
+    for (const param of collectParams(surface.args)) {
       if (param.anonymous || !param.name.startsWith("parameter.")) continue;
       const typeId = services.runtime.types.resolveByName(param.type);
       if (typeId === undefined) continue;
       if (!draft.sharedParameters.has(param.name)) {
-        draft.sharedParameters.set(param.name, { typeId, typeName: param.type, declaredBy: program.key });
+        draft.sharedParameters.set(param.name, { typeId, typeName: param.type, declaredBy: surface.key });
       }
     }
-    if (program.conversion) {
-      const pairKey = conversionPairKey(program.conversion.fromType, program.conversion.toType);
-      if (!draft.conversionPairs.has(pairKey)) {
-        draft.conversionPairs.set(pairKey, program.key);
-      }
+  }
+
+  for (const result of results.values()) {
+    const conversion = result.program?.conversion;
+    if (!conversion) continue;
+    const pairKey = conversionPairKey(conversion.fromType, conversion.toType);
+    if (!draft.conversionPairs.has(pairKey)) {
+      draft.conversionPairs.set(pairKey, result.program!.key);
     }
   }
 }
@@ -1191,9 +1530,10 @@ function reconcileSharedUserTiles(
   services: BrainServices,
   sessionContext?: SharedTileSessionContext
 ): void {
-  const entries: { path: string; program: UserAuthoredProgram }[] = [];
+  const entries: { path: string; program: UserAuthoredProgram | UserTileDefinition }[] = [];
   for (const [path, result] of results) {
-    if (result.program) entries.push({ path, program: result.program });
+    const surface = result.program ?? result.definition;
+    if (surface) entries.push({ path, program: surface });
   }
   entries.sort((left, right) => left.program.key.localeCompare(right.program.key));
 
@@ -1331,16 +1671,16 @@ function reconcileStableIds(results: Map<string, CompileResult>): void {
   const paths = [...results.keys()].sort();
   for (const path of paths) {
     const result = results.get(path)!;
-    const program = result.program;
-    if (!program) continue;
-    const claimant = claimedByPath.get(program.id);
+    const surface = result.program ?? result.definition;
+    if (!surface) continue;
+    const claimant = claimedByPath.get(surface.id);
     if (claimant === undefined) {
-      claimedByPath.set(program.id, path);
+      claimedByPath.set(surface.id, path);
       continue;
     }
     result.diagnostics.push({
       code: CompileDiagCode.DuplicateActionId,
-      message: `Stable id "${program.id}" is already used by ${claimant}. Each declaration must have its own id; delete this one to have a fresh id minted.`,
+      message: `Stable id "${surface.id}" is already used by ${claimant}. Each declaration must have its own id; delete this one to have a fresh id minted.`,
       severity: "error",
     });
   }

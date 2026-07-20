@@ -15,6 +15,8 @@ import {
   installSimExtension,
   installSimExtensionReference,
   installSimReference,
+  simLibraryCatalog,
+  simLibraryDisplayName,
   toExtensionBrowserEntry,
   uninstallSimExtension,
 } from "./sim-extension-browser";
@@ -376,5 +378,24 @@ describe("installSimReference -- routes by transport", () => {
     assert.ok(result.ok);
     assert.equal(result.action.ok, true);
     assert.equal(surface.patches[0]?.["example-org/teleport-ext"], "gh:example-org/teleport-ext@v0.1.0");
+  });
+});
+
+describe("simLibraryDisplayName", () => {
+  test("prefers the installed library's manifest name", () => {
+    const name = simLibraryDisplayName([{ coordinate: FLOCK, name: "Flock" }], FLOCK);
+    assert.equal(name, "Flock");
+  });
+
+  test("falls back to the bundled catalog entry's name when not installed", () => {
+    const entry = simLibraryCatalog.entries[0];
+    assert.ok(entry, "the bundled catalog carries at least one entry");
+    const name = simLibraryDisplayName([], entry.coordinate);
+    assert.equal(name, entry.name);
+  });
+
+  test("falls back to the coordinate when nothing names the library", () => {
+    const name = simLibraryDisplayName([], "example-org/unknown-lib");
+    assert.equal(name, "example-org/unknown-lib");
   });
 });

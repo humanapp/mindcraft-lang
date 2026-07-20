@@ -355,7 +355,7 @@ describe("extension install pipeline", () => {
     }
   });
 
-  it("commits a worsened install with a notice naming the new problems and a working one-step undo", async () => {
+  it("commits a worsened install with a report naming the new problems", async () => {
     const restoreLocalStorage = installEmptyLocalStorage();
     const world: ProjectWorld = { appData: new Map(), extensions: {} };
     const transport = createTestTransport({ content: { [`${BROKEN_COORDINATE}@v0.1.0`]: BROKEN_CONTENT } });
@@ -373,19 +373,6 @@ describe("extension install pipeline", () => {
       );
       assert.equal(world.extensions[BROKEN_COORDINATE], BROKEN_REFERENCE);
       assert.ok(servedPaths(host).includes(`.libraries/${BROKEN_COORDINATE}/index.ts`));
-      assert.ok(report.undo);
-
-      // One-step undo: manifest entries revert, the tree de-materializes, the
-      // snapshot store reverts, and the log records the undo.
-      await report.undo();
-      assert.deepStrictEqual(world.extensions, {});
-      assert.ok(!servedPaths(host).includes(`.libraries/${BROKEN_COORDINATE}/index.ts`));
-      assert.deepStrictEqual(parseInstalledExtensionSnapshots(world.appData.get("installed-extensions")), {});
-      const log = parseExtensionInstallLog(world.appData.get("extension-install-log"));
-      assert.deepStrictEqual(
-        log.map((event) => event.kind),
-        ["install", "undo"]
-      );
     } finally {
       host.dispose();
       restoreLocalStorage();

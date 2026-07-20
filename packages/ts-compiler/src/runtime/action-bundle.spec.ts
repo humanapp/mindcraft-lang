@@ -168,7 +168,7 @@ export default Sensor({
     );
   });
 
-  test("returns no bundle when the compile output still has diagnostics", () => {
+  test("returns no bundle when every file is blocked", () => {
     const result = compileProject(
       new Map([
         [
@@ -191,7 +191,9 @@ export default Sensor({
     assert.equal(buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services }), undefined);
   });
 
-  test("returns no bundle when a program parameter type cannot be resolved at bundle time", () => {
+  // Re-anchored for definition presence: a bundle-time surface failure
+  // withholds that tile and its action; it never withholds the bundle.
+  test("a program whose parameter type cannot be resolved at bundle time is withheld from the bundle", () => {
     const result = compileProject(
       new Map([
         [
@@ -214,10 +216,18 @@ export default Actuator({
 
     const entry = result.results.get("move.ts");
     assert.ok(entry?.program);
+    const actionKey = entry.program.key;
 
     (entry.program.args[0] as ExtractedParam).type = "vector2";
 
-    assert.equal(buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services }), undefined);
+    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
+    assert.ok(bundle, "the bundle still builds");
+    assert.equal(bundle.actions.get(actionKey), undefined, "the unresolvable tile's action is withheld");
+    assert.equal(
+      bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId(actionKey)),
+      false,
+      "the unresolvable tile is withheld"
+    );
   });
 
   test("bundle tiles can hydrate deserialization before executable actions are installed", () => {

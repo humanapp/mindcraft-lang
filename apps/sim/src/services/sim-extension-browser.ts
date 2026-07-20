@@ -59,6 +59,7 @@ export function toExtensionBrowserEntry(entry: ExtensionCatalogEntry): Extension
     coordinate: entry.coordinate,
     name: entry.name,
     version: entry.version,
+    ...(entry.description !== undefined ? { description: entry.description } : {}),
     ...(entry.thumbnailUrl !== undefined ? { thumbnailUrl: entry.thumbnailUrl } : {}),
     installed: entry.installed,
     ...(entry.repoUrl !== undefined ? { repoUrl: entry.repoUrl } : {}),
@@ -85,9 +86,14 @@ export function buildSimExtensionEntries(
   installedContent?: FetchedExtensionContentMap,
   fetchFailures?: ExtensionFetchFailures
 ): ExtensionBrowserEntry[] {
-  return buildExtensionCatalog(extensions, embedRecord, SIM_LAYER_COORDINATES, installedContent, fetchFailures).map(
-    toExtensionBrowserEntry
-  );
+  return buildExtensionCatalog(
+    extensions,
+    embedRecord,
+    SIM_LAYER_COORDINATES,
+    installedContent,
+    fetchFailures,
+    simLibraryCatalog
+  ).map(toExtensionBrowserEntry);
 }
 
 /**
@@ -109,10 +115,13 @@ export function loadSimLibraryCatalog(document: unknown): ExtensionCatalogDocume
  * The bundled library catalog offered to apps/sim projects: the curated set of
  * published feature libraries, each pinned to an exact `gh:` reference.
  */
-const simLibraryCatalog: ExtensionCatalogDocument = loadSimLibraryCatalog(simLibraryCatalogDocument);
+export const simLibraryCatalog: ExtensionCatalogDocument = loadSimLibraryCatalog(simLibraryCatalogDocument);
 
 /** The curated catalog moves the bundled sim catalog declares, keyed by source coordinate. */
 export const simLibraryCatalogMoves = simLibraryCatalog.moves;
+
+/** The bundled catalog's coordinates in document order; anchors the library browser's stable list order. */
+export const simCatalogCoordinateOrder: readonly string[] = simLibraryCatalog.entries.map((entry) => entry.coordinate);
 
 /**
  * Build the catalog offers for an apps/sim project: one offer per bundled
@@ -128,6 +137,27 @@ export function buildSimCatalogOffers(
   embedRecord: readonly EmbeddedExtension[]
 ): ExtensionCatalogOffer[] {
   return buildExtensionCatalogOffers(simLibraryCatalog, extensions, embedRecord, SIM_LAYER_COORDINATES);
+}
+
+/**
+ * The display name of the library at `coordinate`: the installed content's
+ * manifest name when the library is in the resolved closure, the bundled
+ * catalog entry's name otherwise, and the coordinate itself as the last
+ * fallback.
+ *
+ * @param installedLibraries - The active project's installed libraries, each with its manifest display name.
+ * @param coordinate - The library's `<owner>/<repo>` coordinate.
+ */
+export function simLibraryDisplayName(
+  installedLibraries: readonly Pick<ExtensionCatalogEntry, "coordinate" | "name">[],
+  coordinate: string
+): string {
+  const installed = installedLibraries.find((library) => library.coordinate === coordinate);
+  if (installed !== undefined) {
+    return installed.name;
+  }
+  const catalogEntry = simLibraryCatalog.entries.find((entry) => entry.coordinate === coordinate);
+  return catalogEntry?.name ?? coordinate;
 }
 
 /** The surface update checks drive. */

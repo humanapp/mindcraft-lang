@@ -2,17 +2,20 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ExtensionBrowserList, ExtensionCatalogSection } from "./ExtensionBrowserDialog";
+import { ExtensionBrowserList } from "./ExtensionBrowserDialog";
 import {
   DEFAULT_EXTENSION_THUMBNAIL,
   type ExtensionBrowserEntry,
   type ExtensionCatalogOffer,
-  extensionBrowserSections,
+  extensionBrowserItemCoordinate,
+  extensionBrowserShowsCheckAllUpdates,
+  extensionBrowserShowsNoMatch,
   extensionCardMenuItems,
   extensionCardShowsInstall,
   extensionCardShowsRetry,
   filterExtensionEntries,
   filterExtensionOffers,
+  orderExtensionBrowserItems,
   runExtensionCardAction,
 } from "./extension-browser-model";
 
@@ -73,7 +76,7 @@ const forkedDependency = entry({
 function renderList(entries: readonly ExtensionBrowserEntry[]): string {
   return renderToStaticMarkup(
     createElement(ExtensionBrowserList, {
-      entries,
+      items: entries.map((item) => ({ kind: "entry" as const, entry: item })),
       onInstall: () => {},
       onUninstall: () => {},
       onCheckUpdate: () => {},
@@ -161,46 +164,17 @@ describe("filterExtensionOffers", () => {
   });
 });
 
-describe("extensionBrowserSections", () => {
-  test("a fresh project (no entries, offers present, no search) shows offers and no no-match message", () => {
-    const sections = extensionBrowserSections(2, 0, false);
-    assert.equal(sections.showNoMatch, false);
-    assert.equal(sections.showOffers, true);
-    assert.equal(sections.showEntries, false);
+describe("extensionBrowserShowsNoMatch", () => {
+  test("a search matching nothing shows the no-match message", () => {
+    assert.equal(extensionBrowserShowsNoMatch(0, true), true);
   });
 
-  test("no search with entries present shows the list and no no-match message", () => {
-    const sections = extensionBrowserSections(0, 3, false);
-    assert.equal(sections.showNoMatch, false);
-    assert.equal(sections.showEntries, true);
-    assert.equal(sections.showOffers, false);
+  test("a search with surviving cards shows no no-match message", () => {
+    assert.equal(extensionBrowserShowsNoMatch(1, true), false);
   });
 
-  test("a search matching only an offer shows offers and no no-match message", () => {
-    const sections = extensionBrowserSections(1, 0, true);
-    assert.equal(sections.showNoMatch, false);
-    assert.equal(sections.showOffers, true);
-    assert.equal(sections.showEntries, false);
-  });
-
-  test("a search matching only an entry shows the list and no no-match message", () => {
-    const sections = extensionBrowserSections(0, 1, true);
-    assert.equal(sections.showNoMatch, false);
-    assert.equal(sections.showEntries, true);
-  });
-
-  test("a search matching nothing anywhere shows the no-match message", () => {
-    const sections = extensionBrowserSections(0, 0, true);
-    assert.equal(sections.showNoMatch, true);
-    assert.equal(sections.showOffers, false);
-    assert.equal(sections.showEntries, false);
-  });
-
-  test("an empty browser with no active search shows neither content nor the no-match message", () => {
-    const sections = extensionBrowserSections(0, 0, false);
-    assert.equal(sections.showNoMatch, false);
-    assert.equal(sections.showOffers, false);
-    assert.equal(sections.showEntries, false);
+  test("an empty browser with no active search shows no no-match message", () => {
+    assert.equal(extensionBrowserShowsNoMatch(0, false), false);
   });
 });
 
@@ -345,7 +319,7 @@ describe("ExtensionBrowserList rendering", () => {
   });
 });
 
-describe("ExtensionCatalogSection rendering", () => {
+describe("catalog offer cards in the unified list", () => {
   const offers: ExtensionCatalogOffer[] = [
     {
       coordinate: "mindcraft-lang/lib-codal-position",
@@ -365,9 +339,13 @@ describe("ExtensionCatalogSection rendering", () => {
 
   test("renders each offer's display metadata with an Add affordance", () => {
     const markup = renderToStaticMarkup(
-      createElement(ExtensionCatalogSection, { offers, onInstallReference: () => {} })
+      createElement(ExtensionBrowserList, {
+        items: offers.map((offer) => ({ kind: "offer" as const, offer })),
+        onInstall: () => {},
+        onUninstall: () => {},
+        onInstallReference: () => {},
+      })
     );
-    assert.match(markup, /Catalog/);
     assert.match(markup, /Position sensing\./);
     assert.match(markup, /Teleport actuator\./);
     assert.match(markup, /v0\.1\.0/);
@@ -383,5 +361,128 @@ describe("ExtensionReferenceInstallRow", () => {
     assert.match(markup, /Paste GitHub URL/);
     // The Add affordance starts disabled until a reference is entered.
     assert.match(markup, /disabled/);
+  });
+});
+
+describe("orderExtensionBrowserItems -- stable catalog order", () => {
+  // The catalog document's order: three catalog libraries. The browser list
+  // must present catalog items at their catalog positions regardless of
+  // install status; a directly-installed unlisted library follows the catalog
+  // block in coordinate order.
+  const catalogCoordinates = ["elecfreaks/cutebot", "yahboom/gamepad", "mindcraft-lang/microbit-position"];
+
+  function offerFor(coordinate: string): ExtensionCatalogOffer {
+    return {
+      coordinate,
+      name: coordinate,
+      version: "1.0.0",
+      description: `${coordinate} library`,
+      ref: `embedded:${coordinate}`,
+    };
+  }
+
+  function installedEntryFor(coordinate: string): ExtensionBrowserEntry {
+    return entry({ coordinate, name: coordinate, installed: true });
+  }
+
+  /** The browser's list state, derived exactly as the app builders derive it: installed coordinates are entry cards, catalog coordinates not installed are offers, unlisted installed libraries are entry cards. */
+  function browserItems(installed: readonly string[], search = ""): string[] {
+    const unlisted = installed.filter((coordinate) => !catalogCoordinates.includes(coordinate));
+    const entries = [...installed.filter((c) => catalogCoordinates.includes(c)), ...unlisted].map(installedEntryFor);
+    const offers = catalogCoordinates.filter((coordinate) => !installed.includes(coordinate)).map(offerFor);
+    return orderExtensionBrowserItems(
+      filterExtensionEntries(entries, search),
+      filterExtensionOffers(offers, search),
+      catalogCoordinates
+    ).map(extensionBrowserItemCoordinate);
+  }
+
+  test("installing a catalog library never changes the list order", () => {
+    const before = browserItems([]);
+    const after = browserItems(["yahboom/gamepad"]);
+    assert.deepEqual(after, before, "the sequence is unchanged; only the item's status changed");
+  });
+
+  test("uninstalling a catalog library never changes the list order", () => {
+    const before = browserItems(["elecfreaks/cutebot", "yahboom/gamepad"]);
+    const after = browserItems(["elecfreaks/cutebot"]);
+    assert.deepEqual(after, before, "the sequence is unchanged; only the item's status changed");
+  });
+
+  test("an active search filters the sequence without reordering it", () => {
+    const installed = ["yahboom/gamepad"];
+    const unfiltered = browserItems(installed);
+    const filtered = browserItems(installed, "e");
+    assert.deepEqual(
+      filtered,
+      unfiltered.filter((coordinate) => filtered.includes(coordinate)),
+      "the filtered list is a subsequence of the unfiltered list"
+    );
+    const afterInstall = browserItems([...installed, "elecfreaks/cutebot"], "e");
+    assert.deepEqual(afterInstall, filtered, "an install under an active search changes no positions");
+  });
+
+  test("unlisted installed libraries follow the catalog block in coordinate order", () => {
+    const items = browserItems(["example-org/zeta-lib", "example-org/alpha-lib", "yahboom/gamepad"]);
+    assert.deepEqual(items, [
+      "elecfreaks/cutebot",
+      "yahboom/gamepad",
+      "mindcraft-lang/microbit-position",
+      "example-org/alpha-lib",
+      "example-org/zeta-lib",
+    ]);
+  });
+});
+
+describe("extensionBrowserShowsCheckAllUpdates", () => {
+  const installedUpdatable = entry({
+    coordinate: "example-org/fetched-lib",
+    installed: true,
+    updatable: true,
+    repoUrl: "https://github.com/example-org/fetched-lib",
+  });
+  const installedEmbedded = entry({ coordinate: "example-org/embedded-lib", installed: true });
+  const uninstalledOffer = entry({ coordinate: "example-org/offered-lib", installed: false });
+
+  test("visible with one installed library even when uninstalled libraries are also listed", () => {
+    assert.equal(extensionBrowserShowsCheckAllUpdates([installedUpdatable, uninstalledOffer]), true);
+  });
+
+  test("visible with one installed embedded library and no updatable dependency", () => {
+    assert.equal(extensionBrowserShowsCheckAllUpdates([installedEmbedded, uninstalledOffer]), true);
+  });
+
+  test("visible when every listed library is installed", () => {
+    assert.equal(
+      extensionBrowserShowsCheckAllUpdates([
+        installedUpdatable,
+        entry({ coordinate: "example-org/other-lib", installed: true, updatable: true }),
+      ]),
+      true
+    );
+  });
+
+  test("hidden when no listed library is installed", () => {
+    assert.equal(extensionBrowserShowsCheckAllUpdates([uninstalledOffer]), false);
+    assert.equal(extensionBrowserShowsCheckAllUpdates([]), false);
+  });
+});
+
+describe("entry-card descriptions", () => {
+  test("an installed library's card carries its description", () => {
+    const markup = renderList([
+      entry({
+        coordinate: "example-org/described-lib",
+        name: "Described",
+        installed: true,
+        description: "Drives the described chassis.",
+      }),
+    ]);
+    assert.match(markup, /Drives the described chassis\./);
+  });
+
+  test("a library without a description renders no description paragraph", () => {
+    const markup = renderList([entry({ coordinate: "example-org/bare-lib", name: "Bare", installed: true })]);
+    assert.doesNotMatch(markup, /Drives the described chassis\./);
   });
 });

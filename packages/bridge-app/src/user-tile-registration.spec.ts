@@ -97,6 +97,66 @@ describe("collectMetadataFromCompile", () => {
     assert.equal(sensor.inline, true);
     assert.equal(sensor.presenceGated, true);
   });
+
+  // Re-anchored for definition presence: a failing file with a resolvable
+  // surface contributes definition metadata; only a surface-unresolvable
+  // definition is withheld.
+  test("metadata matches the bundle: definitions contribute, surface-unresolvable files do not", () => {
+    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const result = compile(env, {
+      "sensor.ts": INLINE_PRESENCE_SENSOR,
+      "broken.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Position } from "@lib/acme/pos";
+
+export default Sensor({
+  id: "snbroken00000001",
+  name: "broken",
+  onExecute(ctx: Context): number {
+    const position: Position | undefined = undefined;
+    return 1;
+  },
+});
+`,
+      "steer.ts": `
+import { Actuator, param, type Context } from "mindcraft";
+import { Position } from "@lib/acme/pos";
+
+export default Actuator({
+  id: "acsteer000000001",
+  name: "steer",
+  args: [param("position", { type: Position, anonymous: true })],
+  onExecute(ctx: Context, args: { position: Position }): void {
+  },
+});
+`,
+    });
+
+    const metadata = collectMetadataFromCompile(result);
+    const keys = metadata.map((entry) => entry.key);
+    assert.ok(keys.includes(`${TEST_PROJECT_NAMESPACE}:user.sensor.snstick`), "the clean file's metadata is collected");
+    assert.ok(
+      keys.includes(`${TEST_PROJECT_NAMESPACE}:user.sensor.snbroken00000001`),
+      "the failing file's definition metadata is collected"
+    );
+    assert.equal(
+      keys.includes(`${TEST_PROJECT_NAMESPACE}:user.actuator.acsteer000000001`),
+      false,
+      "the surface-unresolvable file contributes no metadata"
+    );
+    assert.ok(result.bundle, "the partially-failing project still bundles");
+    assert.ok(
+      result.bundle.tiles.some(
+        (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snbroken00000001`)
+      ),
+      "the definition's tile is in the bundle"
+    );
+    assert.equal(
+      result.bundle.actions.get(`${TEST_PROJECT_NAMESPACE}:user.sensor.snbroken00000001`),
+      undefined,
+      "the definition offers no executable action"
+    );
+  });
 });
 
 const EXT_NAMESPACE = "acme/beeper";

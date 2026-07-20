@@ -9,14 +9,18 @@ import { Input } from "../ui/input";
 import {
   DEFAULT_EXTENSION_THUMBNAIL,
   type ExtensionBrowserEntry,
+  type ExtensionBrowserItem,
   type ExtensionCardCallbacks,
   type ExtensionCatalogOffer,
-  extensionBrowserSections,
+  extensionBrowserItemCoordinate,
+  extensionBrowserShowsCheckAllUpdates,
+  extensionBrowserShowsNoMatch,
   extensionCardMenuItems,
   extensionCardShowsInstall,
   extensionCardShowsRetry,
   filterExtensionEntries,
   filterExtensionOffers,
+  orderExtensionBrowserItems,
   runExtensionCardAction,
 } from "./extension-browser-model";
 
@@ -65,6 +69,9 @@ function ExtensionCard({
           )}
         </div>
         <span className="text-xs text-muted-foreground">v{entry.version}</span>
+        {entry.description !== undefined && (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{entry.description}</p>
+        )}
         {entry.broken !== undefined && (
           <p className="mt-0.5 text-xs text-destructive">
             {entry.broken.code !== undefined ? `${entry.broken.code}: ` : ""}
@@ -121,84 +128,81 @@ function ExtensionCard({
   );
 }
 
+/** A catalog offer card: display metadata from the catalog document and an Add affordance. */
+function ExtensionOfferCard({
+  offer,
+  onInstallReference,
+}: {
+  offer: ExtensionCatalogOffer;
+  onInstallReference?: (reference: string) => void;
+}) {
+  return (
+    <li className="flex items-center gap-3 rounded-lg border bg-card p-3 text-card-foreground">
+      <img
+        src={offer.thumbnailUrl ?? DEFAULT_EXTENSION_THUMBNAIL}
+        alt=""
+        className="h-12 w-12 shrink-0 rounded-md border bg-muted object-cover"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium">{offer.name}</span>
+        </div>
+        <span className="text-xs text-muted-foreground">v{offer.version}</span>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">{offer.description}</p>
+      </div>
+      {onInstallReference !== undefined && (
+        <Button type="button" variant="outline" size="sm" onClick={() => onInstallReference(offer.ref)}>
+          Add
+        </Button>
+      )}
+    </li>
+  );
+}
+
 /** Props for {@link ExtensionBrowserList}. */
 export interface ExtensionBrowserListProps extends ExtensionCardCallbacks {
-  /** The entries to render, already filtered by the caller. */
-  entries: readonly ExtensionBrowserEntry[];
+  /** The items to render, already filtered and ordered by the caller. */
+  items: readonly ExtensionBrowserItem[];
+  /** Called with an offer's pinned reference when its Add affordance is triggered. */
+  onInstallReference?: (reference: string) => void;
 }
 
 /**
- * The flat list of extension cards, rendered without a surrounding modal. The
- * caller supplies the entries to show (already filtered) and the card
- * callbacks.
+ * The flat list of library cards, rendered without a surrounding modal: one
+ * card per item, entry cards and catalog offer cards alike, in the caller's
+ * order.
  */
 export function ExtensionBrowserList({
-  entries,
+  items,
   onInstall,
   onUninstall,
   onCheckUpdate,
   onRetry,
   onOpenRepo,
+  onInstallReference,
 }: ExtensionBrowserListProps) {
   return (
     <ul aria-label="Libraries" className="flex flex-col gap-2">
-      {entries.map((entry) => (
-        <ExtensionCard
-          key={entry.coordinate}
-          entry={entry}
-          onInstall={onInstall}
-          onUninstall={onUninstall}
-          onCheckUpdate={onCheckUpdate}
-          onRetry={onRetry}
-          onOpenRepo={onOpenRepo}
-        />
-      ))}
+      {items.map((item) =>
+        item.kind === "entry" ? (
+          <ExtensionCard
+            key={extensionBrowserItemCoordinate(item)}
+            entry={item.entry}
+            onInstall={onInstall}
+            onUninstall={onUninstall}
+            onCheckUpdate={onCheckUpdate}
+            onRetry={onRetry}
+            onOpenRepo={onOpenRepo}
+          />
+        ) : (
+          <ExtensionOfferCard
+            key={extensionBrowserItemCoordinate(item)}
+            offer={item.offer}
+            onInstallReference={onInstallReference}
+          />
+        )
+      )}
     </ul>
-  );
-}
-
-/** Props for {@link ExtensionCatalogSection}. */
-export interface ExtensionCatalogSectionProps {
-  /** The catalog offers to render. */
-  offers: readonly ExtensionCatalogOffer[];
-  /** Called with an offer's pinned reference when its Add affordance is triggered. */
-  onInstallReference: (reference: string) => void;
-}
-
-/**
- * The catalog section of the browser: one card per offer, rendered from the
- * catalog document's display metadata alone. Adding an offer writes its pinned
- * reference through `onInstallReference`.
- */
-export function ExtensionCatalogSection({ offers, onInstallReference }: ExtensionCatalogSectionProps) {
-  return (
-    <section aria-label="Catalog" className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Catalog</h3>
-      <ul className="flex flex-col gap-2">
-        {offers.map((offer) => (
-          <li
-            key={offer.coordinate}
-            className="flex items-center gap-3 rounded-lg border bg-card p-3 text-card-foreground"
-          >
-            <img
-              src={offer.thumbnailUrl ?? DEFAULT_EXTENSION_THUMBNAIL}
-              alt=""
-              className="h-12 w-12 shrink-0 rounded-md border bg-muted object-cover"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <span className="truncate text-sm font-medium">{offer.name}</span>
-              </div>
-              <span className="text-xs text-muted-foreground">v{offer.version}</span>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{offer.description}</p>
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => onInstallReference(offer.ref)}>
-              Add
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
@@ -266,8 +270,13 @@ export interface ExtensionBrowserDialogProps extends ExtensionCardCallbacks {
    * affordance appears when present and at least two entries are updatable.
    */
   onCheckAllUpdates?: () => void;
-  /** Catalog offers to render as an installable section; the section appears only when non-empty. */
+  /** Catalog offers to render as installable cards in the list. */
   catalogOffers?: readonly ExtensionCatalogOffer[];
+  /**
+   * The catalog document's coordinates in document order; anchors every
+   * catalog-listed card's position in the list regardless of install status.
+   */
+  catalogCoordinates?: readonly string[];
 }
 
 /**
@@ -289,6 +298,7 @@ export function ExtensionBrowserDialog({
   onInstallReference,
   onCheckAllUpdates,
   catalogOffers,
+  catalogCoordinates,
 }: ExtensionBrowserDialogProps) {
   const [filter, setFilter] = React.useState("");
 
@@ -299,13 +309,13 @@ export function ExtensionBrowserDialog({
   }, [open]);
 
   const searchActive = filter.trim().length > 0;
-  const filteredEntries = React.useMemo(() => filterExtensionEntries(entries, filter), [entries, filter]);
-  const filteredOffers = React.useMemo(
-    () => (onInstallReference !== undefined ? filterExtensionOffers(catalogOffers ?? [], filter) : []),
-    [catalogOffers, onInstallReference, filter]
-  );
-  const sections = extensionBrowserSections(filteredOffers.length, filteredEntries.length, searchActive);
-  const updatableCount = React.useMemo(() => entries.filter((entry) => entry.updatable === true).length, [entries]);
+  const items = React.useMemo(() => {
+    const filteredEntries = filterExtensionEntries(entries, filter);
+    const filteredOffers = onInstallReference !== undefined ? filterExtensionOffers(catalogOffers ?? [], filter) : [];
+    return orderExtensionBrowserItems(filteredEntries, filteredOffers, catalogCoordinates ?? []);
+  }, [entries, catalogOffers, catalogCoordinates, onInstallReference, filter]);
+  const showNoMatch = extensionBrowserShowsNoMatch(items.length, searchActive);
+  const showCheckAllUpdates = extensionBrowserShowsCheckAllUpdates(entries);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -329,25 +339,30 @@ export function ExtensionBrowserDialog({
         </DialogHeader>
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-6">
           {onInstallReference !== undefined && <ExtensionReferenceInstallRow onInstallReference={onInstallReference} />}
-          {onCheckAllUpdates !== undefined && updatableCount >= 2 && (
-            <Button type="button" variant="outline" size="sm" className="self-start" onClick={onCheckAllUpdates}>
+          {onCheckAllUpdates !== undefined && showCheckAllUpdates && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-start"
+              data-testid="check-all-updates-button"
+              onClick={onCheckAllUpdates}
+            >
               Check for Updates
             </Button>
           )}
-          {onInstallReference !== undefined && sections.showOffers && (
-            <ExtensionCatalogSection offers={filteredOffers} onInstallReference={onInstallReference} />
-          )}
-          {sections.showEntries && (
+          {items.length > 0 && (
             <ExtensionBrowserList
-              entries={filteredEntries}
+              items={items}
               onInstall={onInstall}
               onUninstall={onUninstall}
               onCheckUpdate={onCheckUpdate}
               onRetry={onRetry}
               onOpenRepo={onOpenRepo}
+              onInstallReference={onInstallReference}
             />
           )}
-          {sections.showNoMatch && (
+          {showNoMatch && (
             <p className="py-8 text-center text-sm text-muted-foreground">No libraries match your search.</p>
           )}
         </div>

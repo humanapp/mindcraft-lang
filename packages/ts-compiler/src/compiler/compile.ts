@@ -40,7 +40,11 @@ export function compileUserTile(
   project.updateFile("user-code.ts", source);
   const result = project.compileAll();
   const entry = result.results.get("user-code.ts");
-  if (entry) return entry;
+  const entryTsErrors = result.tsErrors.get("user-code.ts") ?? [];
+  if (entry) {
+    if (entryTsErrors.length === 0) return entry;
+    return { ...entry, diagnostics: [...entryTsErrors, ...entry.diagnostics] };
+  }
 
   const allTsErrors = Array.from(result.tsErrors.values()).flat();
   if (allTsErrors.length > 0) {

@@ -38,7 +38,7 @@ import {
 } from "@mindcraft-lang/core/app";
 import type { PersistedBrainJson } from "@mindcraft-lang/core/brain/model";
 import type { IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
-import type { Mount, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+import type { Mount, WorkspaceCompileResult, WorkspaceDiagnosticEntry } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { augmentProjectFileSystem, createBridgeProject, createProjectCompiler } from "./compilation.js";
@@ -91,6 +91,14 @@ export interface CatalogMovesOutcome {
   /** Stable-coded findings for moves that could not be applied this load. */
   readonly warnings: readonly ExtensionResolutionWarning[];
 }
+
+/** One diagnostic of the latest workspace compile, located at its workspace path. */
+export type WorkspaceCompileDiagnostic = WorkspaceDiagnosticEntry & {
+  /** Workspace path of the file the diagnostic is located in. */
+  readonly path: string;
+};
+
+const NO_COMPILE_DIAGNOSTICS: readonly WorkspaceCompileDiagnostic[] = [];
 
 // ---------------------------------------------------------------------------
 // Options
@@ -202,6 +210,14 @@ export class AppEnvironmentHost {
   private _vfsRevision = 0;
   private readonly _docRevisionListeners = new Set<() => void>();
   private readonly _vfsRevisionListeners = new Set<() => void>();
+
+  // -- Brain-diagnostics revision counter (useSyncExternalStore pattern) --
+  private _brainDiagnosticsRevision = 0;
+  private readonly _brainDiagnosticsListeners = new Set<() => void>();
+
+  // -- Latest workspace-compile diagnostics (useSyncExternalStore pattern) --
+  private _compileDiagnostics: readonly WorkspaceCompileDiagnostic[] = NO_COMPILE_DIAGNOSTICS;
+  private readonly _compileDiagnosticsListeners = new Set<() => void>();
 
   // -- Project lifecycle --
   private readonly _projectUnloadingListeners = new Set<() => void>();
@@ -376,6 +392,7 @@ export class AppEnvironmentHost {
       dependencyMounts,
       onDidCompile: (result) => {
         this._lastCompileResult = result;
+        this.setCompileDiagnostics(result);
         this.persistMintedActionIds(result.projectResult.sourceRewrites);
         logWorkspaceCompile(result);
         const tileResult = applyCompiledUserTiles(this.env, result);
@@ -429,6 +446,7 @@ export class AppEnvironmentHost {
     const record = await this.loadBrainRecord();
     record[key] = this.serializeBrainForStorage(brainDef);
     await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
+    this.bumpBrainDiagnosticsRevision();
   }
 
   /**
@@ -546,10 +564,30 @@ export class AppEnvironmentHost {
       if (brainDef.pages().size() === 0) {
         brainDef.appendNewPage();
       }
+      // Establish the stored typecheck state consumers of the loaded brain
+      // read (badges, diagnostics baselines).
+      typecheckBrainProblems(brainDef);
       return brainDef;
     } catch (err) {
       logger.warn(`Failed to load brain "${key}":`, err);
       return undefined;
+    }
+  }
+
+  /**
+   * Re-resolve every cached brain's tile references against the current
+   * catalogs by round-tripping it through its persisted form -- the same
+   * resolution a project load performs, so a tile whose library left the
+   * closure becomes a placeholder and a placeholder whose library returned
+   * becomes the real tile again. A brain whose round-trip fails keeps its
+   * current definition.
+   */
+  private refreshBrainCache(): void {
+    for (const [key, brainDef] of [...this._brainCache]) {
+      const refreshed = this.deserializeBrainForKey(key, this.serializeBrainForStorage(brainDef));
+      if (refreshed) {
+        this._brainCache.set(key, refreshed);
+      }
     }
   }
 
@@ -768,12 +806,11 @@ export class AppEnvironmentHost {
    * recompile the workspace, and re-typecheck the project's brains -- and
    * report the diagnostic difference against the pre-change baseline.
    *
-   * Improved, unchanged, and worsened outcomes all commit; a worsened report
-   * carries a one-step undo. The transaction refuses outright only on
-   * mechanics failures -- an unreachable source, a missing or unparseable
-   * manifest, a missing listed file, or a dependency cycle -- leaving the
-   * project unchanged. Every commit appends its install, remove, and
-   * resolution-warning events to the project's install log.
+   * Improved, unchanged, and worsened outcomes all commit. The transaction
+   * refuses outright only on mechanics failures -- an unreachable source, a
+   * missing or unparseable manifest, a missing listed file, or a dependency
+   * cycle -- leaving the project unchanged. Every commit appends its install,
+   * remove, and resolution-warning events to the project's install log.
    *
    * @param extensions - The active project's next extensions map, keyed by coordinate.
    * @param options.refetchReferences - References fetched fresh even when a stored snapshot matches.
@@ -782,7 +819,6 @@ export class AppEnvironmentHost {
     extensions: Readonly<Record<string, string>>,
     options?: { refetchReferences?: ReadonlySet<string> }
   ): Promise<ExtensionInstallReport> {
-    const previousExtensions = this.projectManager.activeProject!.manifest.extensions ?? {};
     const previousSnapshots = this._installedSnapshots;
     const previousResolution = this.resolveExtensions();
     const baseline = this.captureProjectDiagnostics();
@@ -844,6 +880,9 @@ export class AppEnvironmentHost {
 
     // Commit. Snapshot records persist for exactly the fetched origins in the
     // resolved closure; records for origins the change dropped are pruned.
+    // Invariant: the installed content swaps in before the manifest commit,
+    // and the commit's active-project notification observes the new closure's
+    // content. A manifest commit failure restores the previous snapshots.
     const nextSnapshots: Record<string, InstalledExtensionSnapshot> = {};
     for (const origin of resolution.origins) {
       const record = closure.snapshotsByReference.get(origin.reference);
@@ -851,14 +890,21 @@ export class AppEnvironmentHost {
         nextSnapshots[origin.origin] = record;
       }
     }
-    await this.projectManager.updateActive({ extensions });
     await this.persistInstalledSnapshots(nextSnapshots);
+    try {
+      await this.projectManager.updateActive({ extensions });
+    } catch (err) {
+      await this.persistInstalledSnapshots(previousSnapshots);
+      throw err;
+    }
     for (const reference of closure.snapshotsByReference.keys()) {
       this._fetchFailures.delete(reference);
     }
     this.applyResolution(resolution);
+    this.refreshBrainCache();
 
     const outcome = diffProjectDiagnostics(baseline, this.captureProjectDiagnostics());
+    this.bumpBrainDiagnosticsRevision();
     await this.appendInstallLogEvents(
       this.installLogEventsForChange(previousResolution, resolution, previousSnapshots, nextSnapshots)
     );
@@ -869,20 +915,7 @@ export class AppEnvironmentHost {
       );
     }
     const warnings = [...resolution.warnings, ...closure.warnings];
-    if (outcome.kind !== "worsened") {
-      return { committed: true, outcome, warnings };
-    }
-    return {
-      committed: true,
-      outcome,
-      warnings,
-      undo: async () => {
-        await this.projectManager.updateActive({ extensions: previousExtensions });
-        await this.persistInstalledSnapshots(previousSnapshots);
-        this.applyResolution(this.resolveExtensions());
-        await this.appendInstallLogEvents([{ kind: "undo", at: Date.now() }]);
-      },
-    };
+    return { committed: true, outcome, warnings };
   }
 
   /** Version lookup over the embed record and the project's persisted snapshot content. */
@@ -1219,9 +1252,8 @@ export class AppEnvironmentHost {
    * Apply one or more dependency updates to the active project as a single
    * install transaction with one outcome: each update's coordinate takes its
    * new reference in the extensions map, and each updated reference is fetched
-   * fresh, never satisfied from its stored snapshot. The report, the
-   * worsened-with-undo behavior, and the install log are those of
-   * {@link updateProjectExtensions}.
+   * fresh, never satisfied from its stored snapshot. The report and the
+   * install log are those of {@link updateProjectExtensions}.
    *
    * @param updates - The updates to apply, as returned by update checks.
    */
@@ -1383,6 +1415,7 @@ export class AppEnvironmentHost {
     this._installedContent = new Map();
     this._fetchFailures = new Map();
     this._lastCompileResult = undefined;
+    this.setCompileDiagnostics(undefined);
     this.setLastResolution(undefined);
     this.bumpDocRevision();
     this.teardownBridge();
@@ -1449,6 +1482,61 @@ export class AppEnvironmentHost {
     this._docRevisionListeners.add(listener);
     return () => this._docRevisionListeners.delete(listener);
   };
+
+  /**
+   * Subscribe to brain-diagnostics revision changes for
+   * `useSyncExternalStore`. The revision bumps whenever the stored typecheck
+   * state of the project's brains may have changed: after each extension
+   * transaction and after each brain save. Returns an unsubscribe function.
+   */
+  subscribeToBrainDiagnostics = (listener: () => void): (() => void) => {
+    this._brainDiagnosticsListeners.add(listener);
+    return () => this._brainDiagnosticsListeners.delete(listener);
+  };
+
+  /** Snapshot of the current brain-diagnostics revision for `useSyncExternalStore`. */
+  getBrainDiagnosticsRevision = (): number => {
+    return this._brainDiagnosticsRevision;
+  };
+
+  private bumpBrainDiagnosticsRevision(): void {
+    this._brainDiagnosticsRevision++;
+    for (const listener of this._brainDiagnosticsListeners) {
+      listener();
+    }
+  }
+
+  /**
+   * Subscribe to workspace-compile diagnostic changes for
+   * `useSyncExternalStore`. The listener fires after every workspace compile
+   * and on project unload. Returns an unsubscribe function.
+   */
+  subscribeToCompileDiagnostics = (listener: () => void): (() => void) => {
+    this._compileDiagnosticsListeners.add(listener);
+    return () => this._compileDiagnosticsListeners.delete(listener);
+  };
+
+  /** Snapshot of the latest workspace compile's diagnostics for `useSyncExternalStore`; empty when clean. */
+  getCompileDiagnosticsSnapshot = (): readonly WorkspaceCompileDiagnostic[] => {
+    return this._compileDiagnostics;
+  };
+
+  /** Record a compile's per-file diagnostics as one flat located list and notify subscribers. */
+  private setCompileDiagnostics(result: WorkspaceCompileResult | undefined): void {
+    const diagnostics: WorkspaceCompileDiagnostic[] = [];
+    for (const [path, entries] of result?.files ?? []) {
+      for (const entry of entries) {
+        diagnostics.push({ ...entry, path });
+      }
+    }
+    if (diagnostics.length === 0 && this._compileDiagnostics.length === 0) {
+      return;
+    }
+    this._compileDiagnostics = diagnostics.length === 0 ? NO_COMPILE_DIAGNOSTICS : diagnostics;
+    for (const listener of this._compileDiagnosticsListeners) {
+      listener();
+    }
+  }
 
   getDocRevisionSnapshot = (): number => {
     return this._docRevision;

@@ -55,7 +55,7 @@ export {
   scopedOutputName,
   userActionKey,
 } from "./compiler/symbol-keys.js";
-export type { LinkedUserProgram, UserAuthoredProgram } from "./compiler/types.js";
+export type { LinkedUserProgram, UserAuthoredProgram, UserTileDefinition } from "./compiler/types.js";
 export {
   isCallSpec,
   isExtractedParam,
@@ -67,7 +67,11 @@ export {
 export type { LinkResult } from "./linker/linker.js";
 export { linkUserPrograms } from "./linker/linker.js";
 export type { BuildCompiledActionBundleOptions } from "./runtime/action-bundle.js";
-export { buildCompiledActionBundle, buildMultiRootActionBundle } from "./runtime/action-bundle.js";
+export {
+  buildCompiledActionBundle,
+  buildMultiRootActionBundle,
+  compileResultContributes,
+} from "./runtime/action-bundle.js";
 export type {
   CreateWorkspaceCompilerOptions,
   WorkspaceChange,

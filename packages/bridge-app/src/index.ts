@@ -25,8 +25,14 @@ export type {
   ProjectFileSystem,
 } from "./app-bridge.js";
 export { createAppBridge } from "./app-bridge.js";
-export type { AppEnvironmentHostOptions, CatalogMovesOutcome } from "./app-environment-host.js";
+export type {
+  AppEnvironmentHostOptions,
+  CatalogMovesOutcome,
+  WorkspaceCompileDiagnostic,
+} from "./app-environment-host.js";
 export { AppEnvironmentHost } from "./app-environment-host.js";
+export type { BrainDiagnosticEntry } from "./brain-diagnostics.js";
+export { collectBrainErrorDiagnostics } from "./brain-diagnostics.js";
 export { CORE_LIB_COORDINATE, CORE_LIB_REFERENCE } from "./core-extension.js";
 export type { EmbeddedExtensionIdViolation } from "./embedded-extension-id-gate.js";
 export {
@@ -90,6 +96,8 @@ export {
   EXTENSION_INSTALL_LOG_APP_DATA_KEY,
   parseExtensionInstallLog,
 } from "./extension-install-log.js";
+export type { ExtensionTransactionFlavor, ExtensionTransactionToasts } from "./extension-report-presenter.js";
+export { presentExtensionTransaction } from "./extension-report-presenter.js";
 export type {
   InstalledExtensionSnapshot,
   InstalledExtensionSnapshots,
@@ -113,6 +121,12 @@ export {
   createFolderCompileDiagnosticsPublisher,
   FolderSessionError,
 } from "./folder-host-session.js";
+export type {
+  LibraryUninstallGuardOutcome,
+  LibraryUninstallImpact,
+  UninstallGuardBrain,
+} from "./library-uninstall-guard.js";
+export { collectLibraryUninstallImpact, runGuardedLibraryUninstall } from "./library-uninstall-guard.js";
 
 export type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
 export { applyCompiledUserTiles, collectMetadataFromCompile } from "./user-tile-registration.js";

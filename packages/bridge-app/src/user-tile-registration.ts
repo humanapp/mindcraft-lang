@@ -4,6 +4,7 @@ import type {
   ExtractedArgSpec,
   ExtractedOutput,
   UserAuthoredProgram,
+  UserTileDefinition,
   WorkspaceCompileResult,
 } from "@mindcraft-lang/ts-compiler";
 
@@ -55,7 +56,7 @@ export interface UserTileApplyResult {
   invalidatedBrainCount: number;
 }
 
-function metadataFromProgram(program: UserAuthoredProgram): UserTileMetadata {
+function metadataFromProgram(program: UserAuthoredProgram | UserTileDefinition): UserTileMetadata {
   if (program.kind === "conversion") {
     throw new Error(`Conversion "${program.key}" has no tile metadata`);
   }
@@ -81,17 +82,19 @@ function metadataFromProgram(program: UserAuthoredProgram): UserTileMetadata {
 
 /**
  * Extract user-tile metadata from a compile result, sorted by key. Includes a
- * metadata entry for every compilation root: the host project and each
- * installed extension, each keyed under its own namespace.
+ * metadata entry for every contributing file of every compilation root -- the
+ * host project and each installed extension, each keyed under its own
+ * namespace -- matching the files whose tiles enter the compiled bundle.
  */
 export function collectMetadataFromCompile(result: WorkspaceCompileResult): UserTileMetadata[] {
   const metadata: UserTileMetadata[] = [];
 
   for (const rootResult of result.rootResults) {
     for (const compileResult of rootResult.results.values()) {
+      const surface = compileResult.program ?? compileResult.definition;
       // Conversions compile to a program but surface no tiles, so they contribute no tile metadata.
-      if (compileResult.program && compileResult.program.kind !== "conversion") {
-        metadata.push(metadataFromProgram(compileResult.program));
+      if (surface && surface.kind !== "conversion") {
+        metadata.push(metadataFromProgram(surface));
       }
     }
   }

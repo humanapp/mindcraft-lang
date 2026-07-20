@@ -9,6 +9,8 @@ export interface ExtensionBrowserEntry {
   readonly name: string;
   /** Semantic version shown on the card. */
   readonly version: string;
+  /** Description shown on the card; omitted when the library declares none. */
+  readonly description?: string;
   /** Thumbnail URL or data URI; the bundled default thumbnail is shown when absent. */
   readonly thumbnailUrl?: string;
   /** True when the extension is part of the project. */
@@ -131,35 +133,75 @@ export function filterExtensionOffers(
   );
 }
 
-/** Which sections of {@link ExtensionBrowserDialog} render for a given filter result. */
-export interface ExtensionBrowserSections {
-  /** Render the catalog offers section. True when at least one offer survives the filter. */
-  readonly showOffers: boolean;
-  /** Render the installed-entries list. True when at least one entry survives the filter. */
-  readonly showEntries: boolean;
-  /** Render the "no libraries match your search" message. True only when a search is active and it matched nothing anywhere. */
-  readonly showNoMatch: boolean;
+/** One item of the browser list: an installed/manageable entry card or a catalog offer card. */
+export type ExtensionBrowserItem =
+  | { readonly kind: "entry"; readonly entry: ExtensionBrowserEntry }
+  | { readonly kind: "offer"; readonly offer: ExtensionCatalogOffer };
+
+/** The coordinate identifying an item, regardless of its card kind. */
+export function extensionBrowserItemCoordinate(item: ExtensionBrowserItem): string {
+  return item.kind === "entry" ? item.entry.coordinate : item.offer.coordinate;
 }
 
 /**
- * Decide which sections the browser renders from the post-filter offer and
- * entry counts and whether a search is active. The no-match message appears
- * only when a search is active and both the offers and the entries filtered to
- * empty; with no active search it never appears, so a fresh project with offers
- * and no installed entries shows only its offers.
+ * Order the browser's cards into one stable list: catalog-listed items at
+ * their catalog-document positions regardless of install status, then items
+ * with no catalog position in coordinate order. Installing or uninstalling a
+ * library changes only its card kind, never any item's position.
  *
- * @param offerCount - Number of catalog offers surviving the filter.
- * @param entryCount - Number of installed entries surviving the filter.
+ * @param entries - The installed/manageable entry cards, already filtered.
+ * @param offers - The catalog offer cards, already filtered.
+ * @param catalogCoordinates - The catalog document's coordinates in document order.
+ */
+export function orderExtensionBrowserItems(
+  entries: readonly ExtensionBrowserEntry[],
+  offers: readonly ExtensionCatalogOffer[],
+  catalogCoordinates: readonly string[]
+): ExtensionBrowserItem[] {
+  const positions = new Map(catalogCoordinates.map((coordinate, index) => [coordinate, index]));
+  const items: ExtensionBrowserItem[] = [
+    ...entries.map((entry) => ({ kind: "entry" as const, entry })),
+    ...offers.map((offer) => ({ kind: "offer" as const, offer })),
+  ];
+  return items.sort((a, b) => {
+    const coordinateA = extensionBrowserItemCoordinate(a);
+    const coordinateB = extensionBrowserItemCoordinate(b);
+    const positionA = positions.get(coordinateA);
+    const positionB = positions.get(coordinateB);
+    if (positionA !== undefined && positionB !== undefined) {
+      return positionA - positionB;
+    }
+    if (positionA !== undefined) {
+      return -1;
+    }
+    if (positionB !== undefined) {
+      return 1;
+    }
+    return coordinateA < coordinateB ? -1 : coordinateA > coordinateB ? 1 : 0;
+  });
+}
+
+/**
+ * Report whether the browser shows the no-match message: true only when a
+ * search is active and no card survived the filter. With no active search an
+ * empty list shows nothing.
+ *
+ * @param itemCount - Number of cards surviving the filter.
  * @param searchActive - True when the search box holds a non-blank query.
  */
-export function extensionBrowserSections(
-  offerCount: number,
-  entryCount: number,
-  searchActive: boolean
-): ExtensionBrowserSections {
-  const showOffers = offerCount > 0;
-  const showEntries = entryCount > 0;
-  return { showOffers, showEntries, showNoMatch: searchActive && !showOffers && !showEntries };
+export function extensionBrowserShowsNoMatch(itemCount: number, searchActive: boolean): boolean {
+  return searchActive && itemCount === 0;
+}
+
+/**
+ * Report whether the browser shows the Check for Updates affordance: true
+ * when at least one listed library is installed, regardless of how many
+ * uninstalled libraries are also listed.
+ *
+ * @param entries - The browser's entry cards, unfiltered.
+ */
+export function extensionBrowserShowsCheckAllUpdates(entries: readonly ExtensionBrowserEntry[]): boolean {
+  return entries.some((entry) => entry.installed);
 }
 
 /**

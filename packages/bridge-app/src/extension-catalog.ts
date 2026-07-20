@@ -38,6 +38,12 @@ export interface ExtensionCatalogEntry {
   readonly name: string;
   /** Semantic version read from the extension's content manifest, or `0.0.0` when it declares none. */
   readonly version: string;
+  /**
+   * Free-form description: the extension's content manifest's when it carries
+   * one, else the host catalog document's entry description; absent when
+   * neither declares one.
+   */
+  readonly description?: string;
   /** Thumbnail URL or data URI read from the extension's content manifest; absent when it declares none. */
   readonly thumbnailUrl?: string;
   /** True when the extension is in the project's resolved extension set. */
@@ -100,6 +106,7 @@ export interface ExtensionActionResult {
 interface EmbeddedManifest {
   name: string;
   version: string;
+  description?: string;
   thumbnailUrl?: string;
   targets?: Readonly<Record<string, ExtensionTarget>>;
   identity?: string;
@@ -120,6 +127,7 @@ function readEmbeddedManifest(extension: EmbeddedExtension): EmbeddedManifest {
   return {
     name: parsed.manifest.name,
     version: parsed.manifest.version,
+    ...(parsed.manifest.description !== undefined ? { description: parsed.manifest.description } : {}),
     ...(parsed.manifest.thumbnailUrl !== undefined ? { thumbnailUrl: parsed.manifest.thumbnailUrl } : {}),
     ...(parsed.manifest.targets !== undefined ? { targets: parsed.manifest.targets } : {}),
   };
@@ -163,6 +171,7 @@ function readFetchedManifest(files: ReadonlyMap<string, string>): EmbeddedManife
   return {
     name: parsed.manifest.name,
     version: parsed.manifest.version,
+    ...(parsed.manifest.description !== undefined ? { description: parsed.manifest.description } : {}),
     ...(parsed.manifest.thumbnailUrl !== undefined ? { thumbnailUrl: parsed.manifest.thumbnailUrl } : {}),
     ...(parsed.manifest.targets !== undefined ? { targets: parsed.manifest.targets } : {}),
     ...(parsed.manifest.identity !== undefined ? { identity: parsed.manifest.identity } : {}),
@@ -247,17 +256,22 @@ export function isExtensionCompatible(
  * @param layerCoordinates - The coordinates the host declares as platform layers; these are never entry cards.
  * @param fetched - Installed fetched-extension content, keyed by reference.
  * @param fetchFailures - The last recorded fetch failure per reference.
+ * @param catalog - The host's catalog document; its entry descriptions back-fill a manifest that declares none.
  */
 export function buildExtensionCatalog(
   extensions: Readonly<Record<string, string>> | undefined,
   embedRecord: readonly EmbeddedExtension[],
   layerCoordinates: ReadonlySet<string>,
   fetched?: FetchedExtensionContentMap,
-  fetchFailures?: ExtensionFetchFailures
+  fetchFailures?: ExtensionFetchFailures,
+  catalog?: ExtensionCatalogDocument
 ): ExtensionCatalogEntry[] {
   const byCoordinate = new Map(embedRecord.map((extension) => [extension.canonicalOrigin, extension]));
   const installed = resolvedOrigins(extensions, embedRecord, fetched);
   const direct = directEmbeddedCoordinates(extensions, byCoordinate);
+  const description = (coordinate: string, manifest: EmbeddedManifest | undefined): string | undefined => {
+    return manifest?.description ?? catalog?.entries.find((entry) => entry.coordinate === coordinate)?.description;
+  };
 
   const entries: ExtensionCatalogEntry[] = [];
   for (const extension of embedRecord) {
@@ -266,10 +280,12 @@ export function buildExtensionCatalog(
       continue;
     }
     const manifest = readEmbeddedManifest(extension);
+    const described = description(coordinate, manifest);
     entries.push({
       coordinate,
       name: manifest.name,
       version: manifest.version,
+      ...(described !== undefined ? { description: described } : {}),
       ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
       installed: installed.has(coordinate),
     });
@@ -294,10 +310,12 @@ export function buildExtensionCatalog(
       manifest?.identity !== undefined && manifest.identity !== coordinate
         ? { declaredIdentity: manifest.identity }
         : undefined;
+    const described = description(coordinate, manifest);
     entries.push({
       coordinate,
       name: manifest?.name ?? coordinate,
       version: manifest?.version ?? LOWEST_CONTENT_VERSION,
+      ...(described !== undefined ? { description: described } : {}),
       ...(manifest?.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
       installed: installed.has(coordinate),
       repoUrl: `https://github.com/${coordinate}`,

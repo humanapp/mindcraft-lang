@@ -41,6 +41,37 @@ export interface UserAuthoredProgram extends UserActionArtifact {
 }
 
 /**
+ * Surface definition of a user tile: the {@link UserAuthoredProgram} fields
+ * that register the tile on the language surface (picker, brain typechecking,
+ * placement), without the executable program fields. A `CompileResult`
+ * carries one when the file's tile definition extracted and its declared
+ * surface types resolved but no program compiled this session; the tile is
+ * placeable, and a brain using it reports a link failure until the file
+ * compiles.
+ */
+export type UserTileDefinition = Pick<
+  UserAuthoredProgram,
+  | "id"
+  | "projectNamespace"
+  | "key"
+  | "kind"
+  | "name"
+  | "callDef"
+  | "isAsync"
+  | "outputType"
+  | "consumesWhenResult"
+  | "args"
+  | "outputs"
+  | "label"
+  | "iconUrl"
+  | "docsMarkdown"
+  | "tags"
+  | "inline"
+  | "presenceGated"
+  | "revisionId"
+>;
+
+/**
  * One user-declared struct type collected while compiling a program: the
  * registered type, its declared tile surface, and its fields. Registration
  * derives accessor tiles and the variable-factory tile from it,

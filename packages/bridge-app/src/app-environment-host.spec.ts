@@ -982,24 +982,34 @@ describe("AppEnvironmentHost live extension changes", () => {
     };
     const hasLevelTile = (): boolean =>
       (host.lastUserTileMetadata ?? []).some((entry) => entry.id === "extSensor00000001");
+    const levelActionOffered = (): boolean => {
+      const key = (host.lastUserTileMetadata ?? []).find((entry) => entry.id === "extSensor00000001")?.key;
+      return key !== undefined && latest?.bundle?.actions.get(key) !== undefined;
+    };
 
     try {
       await host.initialize(PROJECT_ID);
 
-      // Uninstalled: the `@lib` import is unresolved, so level.ts fails to compile
-      // and no tile is produced.
+      // Uninstalled: the `@lib` import is unresolved, so level.ts fails to
+      // compile. Its tile definition still registers (definition presence),
+      // with no executable action.
       assert.equal(levelHasError(), true, "the @lib import is unresolved while the add-on is uninstalled");
-      assert.equal(hasLevelTile(), false, "no sensor tile is registered while the add-on is uninstalled");
+      assert.equal(hasLevelTile(), true, "the user's tile definition stays registered while the add-on is uninstalled");
+      assert.equal(levelActionOffered(), false, "the tile is not executable while the add-on is uninstalled");
 
       // Install through the same path the browser drives; no project transition.
       await host.updateProjectExtensions({ [DEMO_COORDINATE]: DEMO_REFERENCE });
       assert.equal(levelHasError(), false, "installing live materializes .libraries so the @lib import resolves");
       assert.equal(hasLevelTile(), true, "the sensor compiles into a user tile once the add-on is installed live");
+      assert.equal(levelActionOffered(), true, "the tile becomes executable once the add-on is installed live");
 
       // Uninstall live: the mount drops, `.libraries/mindcraft-lang/demo-lib`
-      // de-materializes, and the import is unresolved once more.
+      // de-materializes, and the import is unresolved once more. The user's
+      // tile keeps its last successfully compiled program for the session.
       await host.updateProjectExtensions({});
       assert.equal(levelHasError(), true, "uninstalling live de-materializes .libraries and the import fails again");
+      assert.equal(hasLevelTile(), true, "the user's tile stays registered");
+      assert.equal(levelActionOffered(), true, "the tile keeps its last-good program for the session");
     } finally {
       host.dispose();
       restoreLocalStorage();
@@ -1331,6 +1341,53 @@ describe("AppEnvironmentHost brain cache reconciliation", () => {
       assert.deepStrictEqual([...repeat.changed], []);
       assert.deepStrictEqual([...repeat.removed], []);
     } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Workspace-compile diagnostics surface
+// ---------------------------------------------------------------------------
+
+describe("AppEnvironmentHost workspace-compile diagnostics surface", () => {
+  it("publishes the latest compile's located diagnostics and empties on a clean compile", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem();
+    filesystem.applyLocalChange({
+      action: "write",
+      path: "broken.ts",
+      content: 'export const flag: boolean = "no";\n',
+      newEtag: "e1",
+    });
+    const host = createHost(stubProjectManagerWithAppData(filesystem, new Map()).projectManager);
+    let notifications = 0;
+    const unsubscribe = host.subscribeToCompileDiagnostics(() => {
+      notifications++;
+    });
+    try {
+      await host.initialize(PROJECT_ID);
+
+      assert.ok(notifications > 0, "the initial compile notified the subscription");
+      const snapshot = host.getCompileDiagnosticsSnapshot();
+      assert.ok(snapshot.length > 0, "the broken file's compile carries diagnostics");
+      const located = snapshot.find((entry) => entry.path === "broken.ts");
+      assert.ok(located, "the diagnostic is located at its workspace path");
+      assert.ok(located.message.length > 0, "the compiler message is carried verbatim");
+      assert.equal(typeof located.code, "string");
+      assert.equal(typeof located.range.startLine, "number");
+      assert.equal(typeof located.range.startColumn, "number");
+
+      host.applyExternalProjectFileChange({
+        action: "write",
+        path: "broken.ts",
+        content: "export const flag: boolean = true;\n",
+        newEtag: "e2",
+      });
+      assert.deepEqual(host.getCompileDiagnosticsSnapshot(), [], "a clean compile empties the snapshot");
+    } finally {
+      unsubscribe();
       host.dispose();
       restoreLocalStorage();
     }

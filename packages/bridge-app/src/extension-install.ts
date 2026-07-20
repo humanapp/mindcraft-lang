@@ -203,12 +203,6 @@ export type ExtensionInstallReport =
       readonly outcome: ExtensionInstallOutcome;
       /** Non-fatal resolution conflicts encountered, in encounter order. */
       readonly warnings: readonly ExtensionResolutionWarning[];
-      /**
-       * One-step undo: reverts the manifest entries and the stored snapshots,
-       * then re-resolves and re-materializes. Present when the outcome
-       * worsened.
-       */
-      readonly undo?: () => Promise<void>;
     }
   | {
       /** False: a mechanics failure refused the transaction; nothing changed. */

@@ -15,9 +15,12 @@ import {
 import {
   type AppBridgeState,
   AppEnvironmentHost,
+  type BrainDiagnosticEntry,
+  collectBrainErrorDiagnostics,
   createVfsAssetUrlProvider,
   type UserTileMetadata,
   type VfsAssetUrlProvider,
+  type WorkspaceCompileDiagnostic,
 } from "@mindcraft-lang/bridge-app";
 import {
   type BrainDef,
@@ -112,6 +115,26 @@ function loadCollapsedArchetypes(): Record<string, boolean> {
 function persistCollapsedArchetypes(value: Record<string, boolean>): void {
   try {
     localStorage.setItem(COLLAPSED_ARCHETYPES_KEY, JSON.stringify(value));
+  } catch {
+    // storage full or unavailable
+  }
+}
+
+// -- Collapsed Dev Panel (global, not per-project) --
+
+const DEV_PANEL_COLLAPSED_KEY = `${simName}:dev-panel-collapsed`;
+
+function loadDevPanelCollapsed(): boolean {
+  try {
+    return localStorage.getItem(DEV_PANEL_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function persistDevPanelCollapsed(value: boolean): void {
+  try {
+    localStorage.setItem(DEV_PANEL_COLLAPSED_KEY, String(value));
   } catch {
     // storage full or unavailable
   }
@@ -230,6 +253,7 @@ export class SimEnvironmentStore {
 
   private _uiPreferences: UiPreferences = { ...DEFAULT_UI_PREFS };
   private _collapsedArchetypes: Record<string, boolean> = loadCollapsedArchetypes();
+  private _devPanelCollapsed: boolean = loadDevPanelCollapsed();
 
   private _desiredCounts: Record<Archetype, number> = defaultDesiredCounts();
   private readonly _desiredCountsListeners = new Set<() => void>();
@@ -435,6 +459,38 @@ export class SimEnvironmentStore {
     return this.host.getDefaultBrain(archetype) as BrainDef | undefined;
   }
 
+  /** Subscribes to brain-diagnostics revision changes for `useSyncExternalStore`. Returns an unsubscribe function. */
+  subscribeToBrainDiagnostics = (listener: () => void): (() => void) => {
+    return this.host.subscribeToBrainDiagnostics(listener);
+  };
+
+  /** Snapshot of the current brain-diagnostics revision for `useSyncExternalStore`. */
+  getBrainDiagnosticsRevision = (): number => {
+    return this.host.getBrainDiagnosticsRevision();
+  };
+
+  /** Subscribes to workspace-compile diagnostic changes for `useSyncExternalStore`. Returns an unsubscribe function. */
+  subscribeToCompileDiagnostics = (listener: () => void): (() => void) => {
+    return this.host.subscribeToCompileDiagnostics(listener);
+  };
+
+  /** Snapshot of the latest workspace compile's diagnostics for `useSyncExternalStore`; empty when clean. */
+  getCompileDiagnosticsSnapshot = (): readonly WorkspaceCompileDiagnostic[] => {
+    return this.host.getCompileDiagnosticsSnapshot();
+  };
+
+  /**
+   * The verbatim error diagnostics of an archetype brain's stored typecheck
+   * state. Empty when the brain is not cached or is clean.
+   */
+  getBrainDiagnostics(archetype: Archetype): readonly BrainDiagnosticEntry[] {
+    const brain = this.host.getCachedBrain(archetype);
+    if (!brain) {
+      return [];
+    }
+    return collectBrainErrorDiagnostics(brain);
+  }
+
   // -- Project metadata --
 
   async updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
@@ -615,6 +671,17 @@ export class SimEnvironmentStore {
   updateCollapsedArchetypes(value: Record<string, boolean>): void {
     this._collapsedArchetypes = value;
     persistCollapsedArchetypes(value);
+  }
+
+  // -- Collapsed Dev Panel (global) --
+
+  getDevPanelCollapsed(): boolean {
+    return this._devPanelCollapsed;
+  }
+
+  updateDevPanelCollapsed(value: boolean): void {
+    this._devPanelCollapsed = value;
+    persistDevPanelCollapsed(value);
   }
 
   // -- Desired population counts (per-project, debounced auto-save) --

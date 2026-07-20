@@ -305,15 +305,18 @@ describe("collectExtensionFetchClosure", () => {
 });
 
 describe("extension install log", () => {
-  it("appends events to the stored log text and parses malformed text as empty", () => {
-    const first = appendExtensionInstallLog(undefined, [
-      { kind: "install", at: 1, origin: "example-org/a", reference: "gh:example-org/a@v1", specifier: "v1" },
+  it("appends events, preserves historical entries of retired kinds, and parses malformed text as empty", () => {
+    // A log persisted before the transaction-undo mechanism was removed still
+    // carries its "undo" entries; they parse and survive appends unchanged.
+    const historical = JSON.stringify([{ kind: "undo", at: 1 }]);
+    const appended = appendExtensionInstallLog(historical, [
+      { kind: "install", at: 2, origin: "example-org/a", reference: "gh:example-org/a@v1", specifier: "v1" },
     ]);
-    const second = appendExtensionInstallLog(first, [{ kind: "undo", at: 2 }]);
-    const events = parseExtensionInstallLog(second);
-    assert.equal(events.length, 2);
-    assert.equal(events[0].kind, "install");
-    assert.equal(events[1].kind, "undo");
+    const events = parseExtensionInstallLog(appended);
+    assert.deepStrictEqual(
+      events.map((event) => event.kind),
+      ["undo", "install"]
+    );
     assert.deepStrictEqual(parseExtensionInstallLog("not json"), []);
   });
 });

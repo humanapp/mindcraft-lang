@@ -544,7 +544,12 @@ export default Sensor({
 
     assert.ok(result.tsErrors.size > 0, "expected TypeScript errors");
     assert.ok(result.tsErrors.has("lib/broken.ts"), "error should be associated with the broken helper file");
-    assert.equal(result.results.size, 0, "no results when there are TS errors");
+    // Compilation is per-file: the entry importing the broken helper is
+    // withheld with its own diagnostic.
+    const entry = result.results.get("sensors/use-broken.ts");
+    assert.ok(entry, "the dependent entry appears in results");
+    assert.equal(entry.program, undefined, "the dependent entry compiles no program");
+    assert.ok(entry.diagnostics.some((diag) => diag.code === CompileDiagCode.ImportedFileHasErrors));
   });
 
   test("transitive import: A imports B which imports C", () => {

@@ -22,6 +22,7 @@ function ext(
   manifest: {
     name?: string;
     version?: string;
+    description?: string;
     extensions?: Record<string, string>;
     targets?: Record<string, { packageVersion: string }>;
     thumbnailUrl?: string;
@@ -36,6 +37,7 @@ function ext(
         content: JSON.stringify({
           name: manifest.name ?? coordinate,
           version: manifest.version ?? "1.0.0",
+          ...(manifest.description !== undefined ? { description: manifest.description } : {}),
           ...(manifest.thumbnailUrl !== undefined ? { thumbnailUrl: manifest.thumbnailUrl } : {}),
           ...(manifest.extensions !== undefined ? { extensions: manifest.extensions } : {}),
           ...(manifest.targets !== undefined ? { targets: manifest.targets } : {}),
@@ -688,5 +690,96 @@ describe("buildExtensionCatalogOffers -- compatibility-filtered against the proj
       offers.some((offer) => offer.coordinate === POSITION),
       false
     );
+  });
+});
+
+describe("library descriptions on entry cards", () => {
+  const DESCRIBED = "example-org/described-lib";
+  const BARE = "example-org/bare-lib";
+  const DESCRIPTION = "Drives the described chassis.";
+  const noLayers: ReadonlySet<string> = new Set();
+
+  test("an installed embedded library's entry carries its manifest description", () => {
+    const entries = buildExtensionCatalog(
+      { [DESCRIBED]: `embedded:${DESCRIBED}` },
+      [ext(DESCRIBED, { name: "Described", description: DESCRIPTION })],
+      noLayers
+    );
+    assert.equal(entryFor(entries, DESCRIBED)?.description, DESCRIPTION);
+  });
+
+  test("an installed remote library's entry carries its installed manifest's description", () => {
+    const reference = `gh:${DESCRIBED}@v1.0.0`;
+    const fetched = new Map([
+      [
+        reference,
+        new Map([
+          [
+            "/mindcraft.json",
+            JSON.stringify({ name: "Described", version: "1.0.0", description: DESCRIPTION, files: ["index.ts"] }),
+          ],
+          ["/index.ts", "export {};"],
+        ]),
+      ],
+    ]);
+    const entries = buildExtensionCatalog({ [DESCRIBED]: reference }, [], noLayers, fetched);
+    assert.equal(entryFor(entries, DESCRIBED)?.description, DESCRIPTION);
+  });
+
+  test("a library declaring no description gets none", () => {
+    const entries = buildExtensionCatalog({ [BARE]: `embedded:${BARE}` }, [ext(BARE, { name: "Bare" })], noLayers);
+    assert.equal(entryFor(entries, BARE)?.description, undefined);
+  });
+
+  test("a manifest without a description falls back to the catalog document's entry description", () => {
+    const catalog: ExtensionCatalogDocument = {
+      format: "mindcraft.catalog/1",
+      entries: [
+        {
+          kind: "library",
+          coordinate: BARE,
+          name: "Bare",
+          version: "1.0.0",
+          description: "Catalog-listed bare library.",
+          ref: `embedded:${BARE}`,
+        },
+      ],
+      moves: {},
+    };
+    const entries = buildExtensionCatalog(
+      { [BARE]: `embedded:${BARE}` },
+      [ext(BARE, { name: "Bare" })],
+      noLayers,
+      undefined,
+      undefined,
+      catalog
+    );
+    assert.equal(entryFor(entries, BARE)?.description, "Catalog-listed bare library.");
+  });
+
+  test("the installed manifest's description wins over the catalog document's", () => {
+    const catalog: ExtensionCatalogDocument = {
+      format: "mindcraft.catalog/1",
+      entries: [
+        {
+          kind: "library",
+          coordinate: DESCRIBED,
+          name: "Described",
+          version: "1.0.0",
+          description: "Catalog wording.",
+          ref: `embedded:${DESCRIBED}`,
+        },
+      ],
+      moves: {},
+    };
+    const entries = buildExtensionCatalog(
+      { [DESCRIBED]: `embedded:${DESCRIBED}` },
+      [ext(DESCRIBED, { name: "Described", description: DESCRIPTION })],
+      noLayers,
+      undefined,
+      undefined,
+      catalog
+    );
+    assert.equal(entryFor(entries, DESCRIBED)?.description, DESCRIPTION);
   });
 });

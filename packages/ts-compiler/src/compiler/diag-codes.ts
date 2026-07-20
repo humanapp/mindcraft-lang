@@ -588,6 +588,8 @@ export enum CompileDiagCode {
   UnpublishedTypeReference = 5021,
   /** A declaration in a read-only extension omits the required stable `id`; the compiler cannot mint one because the extension source is regenerated on load and never saved */
   ExtensionDeclarationMissingId = 5022,
+  /** A module this file imports, directly or transitively, has compile errors, so this file cannot compile */
+  ImportedFileHasErrors = 5023,
 }
 
 /**

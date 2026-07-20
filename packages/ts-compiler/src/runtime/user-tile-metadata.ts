@@ -28,10 +28,13 @@ import {
 import { BitSet } from "@mindcraft-lang/core/util";
 import { collectModifiers, collectParams } from "../compiler/arg-spec-utils.js";
 import { privateArgTileId } from "../compiler/symbol-keys.js";
-import type { ExtractedModifier, ExtractedParam, UserAuthoredProgram } from "../compiler/types.js";
+import type { ExtractedModifier, ExtractedParam, UserAuthoredProgram, UserTileDefinition } from "../compiler/types.js";
 
 /** Resolve a parameter type name to a runtime `TypeId`, or `undefined` when the type is not registered. */
 export type UserTileTypeResolver = (typeName: string) => TypeId | undefined;
+
+/** A tile surface a bundle registers: a compiled program or a program-less tile definition. */
+export type UserTileSurface = UserAuthoredProgram | UserTileDefinition;
 
 /**
  * Accessor tiles and variable-factory tiles derived from a program's declared
@@ -73,7 +76,7 @@ export interface BuiltUserTileMetadata {
   outputTiles: readonly BrainTileOutputDef[];
 }
 
-function buildActionDescriptor(program: UserAuthoredProgram): ActionDescriptor {
+function buildActionDescriptor(program: UserTileSurface): ActionDescriptor {
   return {
     key: program.key,
     kind: program.kind,
@@ -83,7 +86,7 @@ function buildActionDescriptor(program: UserAuthoredProgram): ActionDescriptor {
   };
 }
 
-function getParameterId(program: UserAuthoredProgram, param: ExtractedParam): string {
+function getParameterId(program: UserTileSurface, param: ExtractedParam): string {
   if (param.anonymous) return mkAnonParameterId(param.type);
   if (param.name.startsWith("parameter.")) return param.name;
   return privateArgTileId(program.projectNamespace, program.id, param.name);
@@ -91,7 +94,7 @@ function getParameterId(program: UserAuthoredProgram, param: ExtractedParam): st
 
 /** Identity components of a parameter tile, matching {@link getParameterId}'s three id forms. */
 function getParameterIdentity(
-  program: UserAuthoredProgram,
+  program: UserTileSurface,
   param: ExtractedParam
 ): { userArg?: UserArgIdentity; anonType?: NamespacedTypeName } {
   if (param.anonymous) {
@@ -103,13 +106,13 @@ function getParameterIdentity(
 }
 
 /** Resolve a modifier's tile id: shared `modifier.` ids stay unscoped; private ids are scoped by the stable action id under the project namespace. */
-function getModifierId(program: UserAuthoredProgram, modifier: ExtractedModifier): string {
+function getModifierId(program: UserTileSurface, modifier: ExtractedModifier): string {
   if (modifier.id.startsWith("modifier.")) return modifier.id;
   return privateArgTileId(program.projectNamespace, program.id, modifier.id);
 }
 
 function buildParameterTiles(
-  program: UserAuthoredProgram,
+  program: UserTileSurface,
   resolveTypeId: UserTileTypeResolver
 ): readonly BrainTileParameterDef[] | undefined {
   const parameterTiles = new Map<string, BrainTileParameterDef>();
@@ -139,7 +142,7 @@ function buildParameterTiles(
  * `modifier.` id with no label) references a modifier declared or registered
  * elsewhere and materializes nothing.
  */
-function buildModifierTiles(program: UserAuthoredProgram): readonly BrainTileModifierDef[] {
+function buildModifierTiles(program: UserTileSurface): readonly BrainTileModifierDef[] {
   const modifierTiles = new Map<string, BrainTileModifierDef>();
 
   for (const modifier of collectModifiers(program.args)) {
@@ -169,7 +172,7 @@ function buildModifierTiles(program: UserAuthoredProgram): readonly BrainTileMod
  * undefined when an output's type cannot be resolved.
  */
 function buildOutputTiles(
-  program: UserAuthoredProgram,
+  program: UserTileSurface,
   resolveTypeId: UserTileTypeResolver
 ): readonly BrainTileOutputDef[] | undefined {
   const outputTiles: BrainTileOutputDef[] = [];
@@ -195,7 +198,7 @@ function buildOutputTiles(
  * be resolved.
  */
 export function buildUserTileMetadata(
-  program: UserAuthoredProgram,
+  program: UserTileSurface,
   resolveTypeId: UserTileTypeResolver
 ): BuiltUserTileMetadata | undefined {
   if (program.kind === "conversion") {

@@ -92,7 +92,7 @@ export interface WorkspaceCompileResult {
    * when the project has no extensions.
    */
   rootResults: readonly ProjectCompileResult[];
-  /** Compiled action bundle. Absent when the project has blocking diagnostics. */
+  /** Compiled action bundle. Absent only when every root has a blocked file and no file contributes a program. */
   bundle?: CompiledActionBundle;
 }
 
