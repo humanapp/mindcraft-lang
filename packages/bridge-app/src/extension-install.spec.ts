@@ -186,6 +186,59 @@ describe("collectExtensionFetchClosure", () => {
     assert.ok(!result.ok);
     assert.equal(result.error.code, ExtensionFetchErrorCode.UNREACHABLE);
   });
+
+  it("re-applies a range-scoped move to a transitive pin whose version is learned by fetching it, within one walk", async () => {
+    const DEP = "example-org/dep";
+    const OLD = "gh:example-org/versioned@1111111111111111111111111111111111111111";
+    const NEW = "gh:example-org/versioned@2222222222222222222222222222222222222222";
+    const contentByReference: Record<string, string> = {
+      [`gh:${DEP}@v1`]: manifestText("Dep", { "example-org/versioned": OLD }),
+      [OLD]: JSON.stringify({ name: "Versioned", version: "0.1.2", files: ["index.ts"] }),
+      [NEW]: JSON.stringify({ name: "Versioned", version: "0.2.0", files: ["index.ts"] }),
+    };
+    const result = await collectExtensionFetchClosure({
+      extensions: { [DEP]: `gh:${DEP}@v1` },
+      embedded: [],
+      stored: {},
+      moves: { "example-org/versioned": [{ from: { packageVersion: "^0.1.0" }, ref: NEW }] },
+      fetchSnapshot: async (reference) => okFetch(reference, contentByReference[reference] ?? manifestText("leaf")),
+    });
+    assert.ok(result.ok);
+    // The old pin's content taught its version (in range), so the moved
+    // destination is in the final closure.
+    assert.ok(result.snapshotsByReference.has(NEW));
+    assert.deepStrictEqual(result.warnings, []);
+  });
+
+  it("resolves a floating hop to a pin and lets a downstream range entry capture the pin, within one walk", async () => {
+    const DEP = "example-org/dep";
+    const X = "example-org/x";
+    const Y_REF = "gh:example-org/y@3333333333333333333333333333333333333333";
+    const contentByReference: Record<string, string> = {
+      [`gh:${DEP}@v1`]: manifestText("Dep", { [X]: `embedded:${X}` }),
+      [`gh:${X}@1.2.0`]: JSON.stringify({ name: "X", version: "1.2.0", files: ["index.ts"] }),
+      [Y_REF]: JSON.stringify({ name: "Y", version: "2.0.0", files: ["index.ts"] }),
+    };
+    const result = await collectExtensionFetchClosure({
+      extensions: { [DEP]: `gh:${DEP}@v1` },
+      embedded: [],
+      stored: {},
+      moves: {
+        [X]: [
+          { from: { transport: "embedded" }, ref: `gh:${X}` },
+          { from: { transport: "gh", packageVersion: "^1.0.0" }, ref: Y_REF },
+        ],
+      },
+      fetchSnapshot: async (reference) => okFetch(reference, contentByReference[reference] ?? manifestText("leaf")),
+      listVersions: async () => ({ ok: true, versions: ["1.2.0", "2.0.0-rc.1"] }),
+    });
+    assert.ok(result.ok);
+    // The floating hop pinned at the highest stable version, its fetched
+    // content taught the version, and the range entry completed the chain.
+    assert.equal(result.floatingPins.get(X), `gh:${X}@1.2.0`);
+    assert.ok(result.snapshotsByReference.has(Y_REF));
+    assert.deepStrictEqual(result.warnings, []);
+  });
 });
 
 describe("extension install log", () => {

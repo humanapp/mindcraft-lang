@@ -5,7 +5,11 @@ import {
   MINDCRAFT_JSON_PATH,
   parseExtensionReference,
   parseProjectContentManifest,
+  satisfiesRange,
 } from "@mindcraft-lang/app-host";
+
+export { satisfiesRange } from "@mindcraft-lang/app-host";
+
 import type { EmbeddedExtension, FetchedExtensionContentMap } from "./embedded-extensions.js";
 import { resolveProjectExtensions } from "./embedded-extensions.js";
 
@@ -512,100 +516,4 @@ export function uninstallExtension(
     return { ok: false, code: ExtensionActionResultCode.REQUIRED_BY_DEPENDENT, extensions: current };
   }
   return { ok: true, code: ExtensionActionResultCode.UNINSTALLED, extensions: next };
-}
-
-/**
- * Report whether a semantic version satisfies a semver range. Supports a
- * space-separated conjunction of comparators, each one of: `*`/`x` (any),
- * an exact `x.y.z` (optionally prefixed `=`), a caret range `^x.y.z`, a tilde
- * range `~x.y.z`, or a `>`, `>=`, `<`, or `<=` comparator. Prerelease and build
- * metadata are ignored in the comparison.
- *
- * @param version - A concrete semantic version.
- * @param range - The semver range to test against.
- */
-export function satisfiesRange(version: string, range: string): boolean {
-  const target = parseVersionTriple(version);
-  if (target === undefined) {
-    return false;
-  }
-  const comparators = range
-    .trim()
-    .split(/\s+/)
-    .filter((part) => part.length > 0);
-  if (comparators.length === 0) {
-    return true;
-  }
-  return comparators.every((comparator) => satisfiesComparator(target, comparator));
-}
-
-/** A parsed `[major, minor, patch]` version triple. */
-type VersionTriple = readonly [number, number, number];
-
-/** Parse the release triple of a version, ignoring any prerelease or build metadata. Returns `undefined` when malformed. */
-function parseVersionTriple(version: string): VersionTriple | undefined {
-  const release = version.split("-")[0].split("+")[0];
-  const parts = release.split(".");
-  if (parts.length !== 3) {
-    return undefined;
-  }
-  const triple = parts.map((part) => Number(part));
-  if (triple.some((part) => !Number.isInteger(part) || part < 0)) {
-    return undefined;
-  }
-  return [triple[0], triple[1], triple[2]];
-}
-
-/** Compare two version triples; negative when `a < b`, positive when `a > b`, zero when equal. */
-function compareTriple(a: VersionTriple, b: VersionTriple): number {
-  for (let i = 0; i < 3; i++) {
-    if (a[i] !== b[i]) {
-      return a[i] - b[i];
-    }
-  }
-  return 0;
-}
-
-/** Report whether a version triple satisfies a single range comparator. */
-function satisfiesComparator(target: VersionTriple, comparator: string): boolean {
-  if (comparator === "*" || comparator === "x" || comparator === "X") {
-    return true;
-  }
-  const operatorMatch = comparator.match(/^(>=|<=|>|<|=|\^|~)?(.*)$/);
-  if (operatorMatch === null) {
-    return false;
-  }
-  const operator = operatorMatch[1] ?? "";
-  const bound = parseVersionTriple(operatorMatch[2]);
-  if (bound === undefined) {
-    return false;
-  }
-  const order = compareTriple(target, bound);
-  switch (operator) {
-    case ">":
-      return order > 0;
-    case ">=":
-      return order >= 0;
-    case "<":
-      return order < 0;
-    case "<=":
-      return order <= 0;
-    case "^":
-      return order >= 0 && compareTriple(target, caretUpperBound(bound)) < 0;
-    case "~":
-      return order >= 0 && compareTriple(target, [bound[0], bound[1] + 1, 0]) < 0;
-    default:
-      return order === 0;
-  }
-}
-
-/** The exclusive upper bound of a caret range: the next version that changes the leftmost non-zero component. */
-function caretUpperBound(bound: VersionTriple): VersionTriple {
-  if (bound[0] > 0) {
-    return [bound[0] + 1, 0, 0];
-  }
-  if (bound[1] > 0) {
-    return [0, bound[1] + 1, 0];
-  }
-  return [0, 0, bound[2] + 1];
 }

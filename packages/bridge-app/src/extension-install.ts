@@ -1,7 +1,14 @@
-import type { ExtensionCatalogMoves, ExtensionFetchError, ExtensionFetchResult } from "@mindcraft-lang/app-host";
+import type {
+  ExtensionCatalogMoves,
+  ExtensionFetchError,
+  ExtensionFetchResult,
+  ExtensionVersionListResult,
+} from "@mindcraft-lang/app-host";
 import {
   applyCatalogMove,
+  highestListedRelease,
   MINDCRAFT_JSON_PATH,
+  parseCatalogMoveReference,
   parseExtensionReference,
   parseProjectContentManifest,
 } from "@mindcraft-lang/app-host";
@@ -10,6 +17,7 @@ import type { IBrainRuleDef } from "@mindcraft-lang/core/brain";
 import { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { WorkspaceDiagnosticEntry } from "@mindcraft-lang/ts-compiler";
 import type { EmbeddedExtension, ExtensionResolutionWarning } from "./embedded-extensions.js";
+import { CatalogMoveWarningCode, createCatalogMoveVersionLookup } from "./embedded-extensions.js";
 import type { InstalledExtensionSnapshot, InstalledExtensionSnapshots } from "./fetched-extension-snapshots.js";
 import { decodeInstalledSnapshotFiles, installedSnapshotFromFetched } from "./fetched-extension-snapshots.js";
 
@@ -216,13 +224,20 @@ export type ExtensionInstallReport =
 /** Result of {@link collectExtensionFetchClosure}. */
 export type ExtensionFetchClosureResult =
   | {
-      /** True when content is available for every reachable `gh:` reference. */
+      /** True when content is available for every reachable, non-skipped `gh:` reference. */
       readonly ok: true;
       /** Snapshot record per reachable `gh:` reference: reused stored records and fresh fetches. */
       readonly snapshotsByReference: ReadonlyMap<string, InstalledExtensionSnapshot>;
+      /** Non-fatal catalog-move findings: edges skipped this walk, retried on the next load. */
+      readonly warnings: readonly ExtensionResolutionWarning[];
+      /**
+       * Pinned `gh:` references for coordinates whose moves resolved through a
+       * floating destination during this walk, keyed by lowercased coordinate.
+       */
+      readonly floatingPins: ReadonlyMap<string, string>;
     }
   | {
-      /** False when a fetch failed; the transaction must refuse. */
+      /** False when a fetch of a reference as written failed; the transaction must refuse. */
       readonly ok: false;
       /** The failure. */
       readonly error: ExtensionFetchError;
@@ -236,11 +251,6 @@ function ownExtensions(files: ReadonlyMap<string, string>): Readonly<Record<stri
   return parsed.ok ? parsed.manifest.extensions : {};
 }
 
-/** Redirect a dependency's declared child references through the catalog moves table. */
-function movedChildren(extensions: Readonly<Record<string, string>>, moves: ExtensionCatalogMoves): string[] {
-  return Object.values(extensions).map((reference) => applyCatalogMove(reference, moves));
-}
-
 /** Build the leading-slash text file map of an embedded extension. */
 function embeddedContent(extension: EmbeddedExtension): Map<string, string> {
   const files = new Map<string, string>();
@@ -250,19 +260,303 @@ function embeddedContent(extension: EmbeddedExtension): Map<string, string> {
   return files;
 }
 
+/** One reference to walk, marked whether a catalog move rewrote it. */
+interface WalkItem {
+  readonly reference: string;
+  /** True when the reference was produced by a move rewrite of a declared edge. */
+  readonly movedByCatalog: boolean;
+}
+
+/** Options of the shared closure walk behind fetch and dry-run modes. */
+interface ClosureWalkOptions {
+  readonly extensions: Readonly<Record<string, string>>;
+  readonly embedded: readonly EmbeddedExtension[];
+  readonly stored: InstalledExtensionSnapshots;
+  readonly refetch?: ReadonlySet<string>;
+  readonly moves?: ExtensionCatalogMoves;
+  /** Fetches a snapshot for a `gh:` reference; absent in dry-run mode, where nothing is fetched. */
+  readonly fetchSnapshot?: (reference: string) => Promise<ExtensionFetchResult>;
+  /** Lists a repository's published version strings, for resolving a floating move destination. */
+  readonly listVersions?: (owner: string, repo: string) => Promise<ExtensionVersionListResult>;
+}
+
+/** Outcome of the shared closure walk. */
+type ClosureWalkOutcome =
+  | {
+      readonly ok: true;
+      readonly snapshotsByReference: Map<string, InstalledExtensionSnapshot>;
+      readonly warnings: ExtensionResolutionWarning[];
+      readonly floatingPins: Map<string, string>;
+      /** True when the walk reached a `gh:` reference with no available content (dry-run mode only). */
+      readonly missingContent: boolean;
+    }
+  | { readonly ok: false; readonly error: ExtensionFetchError };
+
+/**
+ * The stored snapshot records' pinned `gh:` references, keyed by lowercased
+ * coordinate. A floating catalog-move destination resolves through this map
+ * before any network lookup, so an already-migrated coordinate keeps its pin.
+ *
+ * @param stored - The project's stored snapshot records, keyed by coordinate.
+ */
+export function floatingPinsFromSnapshots(stored: InstalledExtensionSnapshots): Map<string, string> {
+  const pins = new Map<string, string>();
+  for (const [coordinate, record] of Object.entries(stored)) {
+    const parsed = parseExtensionReference(record.reference);
+    if (parsed?.transport === "gh" && parsed.routing.kind === "pin") {
+      pins.set(coordinate.toLowerCase(), record.reference);
+    }
+  }
+  return pins;
+}
+
 /**
  * Walk every reference reachable from an extensions map -- through embedded
  * extensions' own manifests and through fetched snapshots' manifests alike --
- * and ensure content is available for each reachable `gh:` reference: a
- * stored record whose reference matches is reused, and anything else is
- * fetched. A dependency set thus fetches as one unit before one resolution.
+ * applying catalog moves at every dependency edge. The walk iterates
+ * apply/fetch/re-apply: content fetched during a pass can determine versions
+ * that let a `packageVersion` selector capture on the next pass, until no edge
+ * rewrite changes. Root references are walked as written.
  *
- * @param options.extensions - The extensions map to walk.
+ * In fetch mode (a `fetchSnapshot` callback present), content missing for a
+ * reference as written fails the walk; content missing for a move-rewritten
+ * edge, an unresolvable floating destination, and a permanently undeterminable
+ * version each surface a stable-coded `catalog-move-failed` warning, skipping
+ * that edge for this walk. In dry-run mode nothing is fetched and the walk
+ * reports whether any reachable content is missing.
+ */
+async function walkExtensionClosure(options: ClosureWalkOptions): Promise<ClosureWalkOutcome> {
+  const moves = options.moves ?? {};
+  const dryRun = options.fetchSnapshot === undefined;
+  const embeddedByCoordinate = new Map(options.embedded.map((extension) => [extension.canonicalOrigin, extension]));
+  const storedByReference = new Map<string, InstalledExtensionSnapshot>();
+  for (const record of Object.values(options.stored)) {
+    if (options.refetch?.has(record.reference)) continue;
+    storedByReference.set(record.reference, record);
+  }
+  const fetchedRecords = new Map<string, InstalledExtensionSnapshot>();
+  const floatingPins = floatingPinsFromSnapshots(options.stored);
+  const unresolvableFloating = new Set<string>();
+
+  const versionLookup = createCatalogMoveVersionLookup({
+    embedded: options.embedded,
+    contentForReference: (reference) => {
+      const record = fetchedRecords.get(reference) ?? storedByReference.get(reference);
+      return record !== undefined ? decodeInstalledSnapshotFiles(record) : undefined;
+    },
+  });
+
+  const warnings: ExtensionResolutionWarning[] = [];
+  const warned = new Set<string>();
+  const warn = (reference: string, code: CatalogMoveWarningCode, message: string): void => {
+    const key = `${reference} ${code}`;
+    if (warned.has(key)) return;
+    warned.add(key);
+    warnings.push({
+      kind: "catalog-move-failed",
+      origin: parseCatalogMoveReference(reference)?.coordinate ?? reference,
+      reference,
+      code,
+      message,
+    });
+  };
+
+  /** Resolve a floating reference to a pinned one: a known pin, else the highest stable published version. */
+  const resolveFloating = async (coordinate: string): Promise<string | undefined> => {
+    const key = coordinate.toLowerCase();
+    const known = floatingPins.get(key);
+    if (known !== undefined) {
+      return known;
+    }
+    if (dryRun || options.listVersions === undefined || unresolvableFloating.has(key)) {
+      return undefined;
+    }
+    const slash = coordinate.indexOf("/");
+    const listed = await options.listVersions(coordinate.slice(0, slash), coordinate.slice(slash + 1));
+    const version = listed.ok ? highestListedRelease(listed.versions) : undefined;
+    if (version === undefined) {
+      unresolvableFloating.add(key);
+      return undefined;
+    }
+    const pin = `gh:${coordinate}@${version}`;
+    floatingPins.set(key, pin);
+    return pin;
+  };
+
+  /**
+   * Redirect one declared edge through the moves with the versions known so
+   * far. A floating result resolves to its pin, and the moves re-apply from
+   * the pin, until the reference is concrete and uncaptured. Returns the walk
+   * item, or `undefined` when the edge is skipped this walk. `pendingRefs`
+   * collects declared references whose version-range evaluation is still
+   * pending, and `outputs` records the edge's final reference for the fixpoint
+   * comparison.
+   */
+  const redirectEdge = async (
+    declaredReference: string,
+    pendingRefs: Set<string>,
+    outputs: Map<string, string>
+  ): Promise<WalkItem | undefined> => {
+    let reference = declaredReference;
+    let movedByCatalog = false;
+    const seenPins = new Set<string>();
+    while (true) {
+      const applied = applyCatalogMove(reference, moves, versionLookup);
+      if (!applied.ok) {
+        warn(declaredReference, applied.code, applied.message);
+        outputs.set(declaredReference, declaredReference);
+        return { reference: declaredReference, movedByCatalog: false };
+      }
+      if (applied.moved) {
+        reference = applied.reference;
+        movedByCatalog = true;
+      }
+      const parts = parseCatalogMoveReference(reference);
+      if (!parts?.floating) {
+        // Pending only counts at the edge's final concrete reference: a range
+        // blocked at an intermediate floating hop is resolved by the pin
+        // substitution and re-application.
+        if (applied.pendingVersion) {
+          pendingRefs.add(declaredReference);
+        }
+        outputs.set(declaredReference, reference);
+        return { reference, movedByCatalog };
+      }
+      const pin = await resolveFloating(parts.coordinate);
+      if (pin === undefined) {
+        outputs.set(declaredReference, reference);
+        if (dryRun) {
+          // A floating destination with no stored pin needs a fetch
+          // transaction to resolve and persist one.
+          missingContent = true;
+        } else {
+          warn(
+            declaredReference,
+            CatalogMoveWarningCode.FLOATING_UNRESOLVED,
+            `Catalog move for "${declaredReference}" resolves to the floating "${reference}" and no stable ` +
+              "published version could be pinned; the move is skipped this load."
+          );
+        }
+        return undefined;
+      }
+      if (seenPins.has(pin)) {
+        warn(
+          declaredReference,
+          CatalogMoveWarningCode.CYCLE,
+          `Catalog moves for "${declaredReference}" revisited the pinned "${pin}".`
+        );
+        outputs.set(declaredReference, declaredReference);
+        return { reference: declaredReference, movedByCatalog: false };
+      }
+      seenPins.add(pin);
+      reference = pin;
+      movedByCatalog = true;
+    }
+  };
+
+  let previousOutputs: Map<string, string> | undefined;
+  let missingContent = false;
+
+  while (true) {
+    const outputs = new Map<string, string>();
+    const pendingRefs = new Set<string>();
+    const snapshotsByReference = new Map<string, InstalledExtensionSnapshot>();
+    missingContent = false;
+
+    const visited = new Set<string>();
+    const queue: WalkItem[] = Object.values(options.extensions).map((reference) => ({
+      reference,
+      movedByCatalog: false,
+    }));
+
+    while (queue.length > 0) {
+      const item = queue.shift()!;
+      if (visited.has(item.reference)) continue;
+      visited.add(item.reference);
+
+      const parsed = parseExtensionReference(item.reference);
+      if (parsed === undefined) continue;
+
+      let files: ReadonlyMap<string, string> | undefined;
+      if (parsed.transport === "embedded") {
+        const extension = embeddedByCoordinate.get(parsed.coordinate);
+        if (extension === undefined) continue;
+        files = embeddedContent(extension);
+      } else if (parsed.transport === "gh") {
+        let record = fetchedRecords.get(item.reference) ?? storedByReference.get(item.reference);
+        if (record === undefined) {
+          if (dryRun) {
+            missingContent = true;
+            continue;
+          }
+          const fetched = await options.fetchSnapshot!(item.reference);
+          if (!fetched.ok) {
+            if (item.movedByCatalog) {
+              warn(
+                item.reference,
+                CatalogMoveWarningCode.FETCH_FAILED,
+                `Moved content "${item.reference}" could not be fetched (${fetched.error.code}); ` +
+                  "the move is skipped this load."
+              );
+              continue;
+            }
+            return { ok: false, error: fetched.error };
+          }
+          record = installedSnapshotFromFetched(fetched.snapshot);
+          fetchedRecords.set(item.reference, record);
+        }
+        snapshotsByReference.set(item.reference, record);
+        files = decodeInstalledSnapshotFiles(record);
+      }
+      if (files === undefined) continue;
+
+      for (const declaredReference of Object.values(ownExtensions(files))) {
+        const child = await redirectEdge(declaredReference, pendingRefs, outputs);
+        if (child !== undefined) {
+          queue.push(child);
+        }
+      }
+    }
+
+    const stable =
+      previousOutputs !== undefined &&
+      outputs.size === previousOutputs.size &&
+      [...outputs].every(([key, value]) => previousOutputs?.get(key) === value);
+    if (stable) {
+      if (!dryRun) {
+        for (const declaredReference of pendingRefs) {
+          warn(
+            declaredReference,
+            CatalogMoveWarningCode.VERSION_UNKNOWN,
+            `The version of "${declaredReference}" could not be determined, so its version-scoped catalog move ` +
+              "cannot be evaluated; the move is skipped this load."
+          );
+        }
+      }
+      return { ok: true, snapshotsByReference, warnings, floatingPins, missingContent };
+    }
+    previousOutputs = outputs;
+  }
+}
+
+/**
+ * Walk every reference reachable from an extensions map and ensure content is
+ * available for each reachable `gh:` reference: a stored record whose
+ * reference matches is reused, and anything else is fetched. Catalog moves
+ * apply at every dependency edge through the apply/fetch/re-apply loop of the
+ * shared walk; a moved edge that cannot complete this walk (fetch failure,
+ * unresolvable floating destination, undeterminable version) surfaces a
+ * stable-coded warning and is skipped, while a fetch failure for a reference
+ * as written fails the whole walk. A dependency set thus fetches as one unit
+ * before one resolution.
+ *
+ * @param options.extensions - The extensions map to walk; root references are walked as written.
  * @param options.embedded - The host application's bundled embedded extensions.
  * @param options.stored - The project's stored snapshot records, reused by matching reference.
  * @param options.refetch - References fetched fresh even when a stored record matches.
- * @param options.moves - Curated transport-flip moves; a transitive dependency reference whose coordinate a move targets is walked through the move's target reference.
+ * @param options.moves - Curated catalog moves applied at every dependency edge.
  * @param options.fetchSnapshot - Fetches a snapshot for a `gh:` reference.
+ * @param options.listVersions - Lists a repository's published versions, resolving floating move destinations.
  */
 export async function collectExtensionFetchClosure(options: {
   extensions: Readonly<Record<string, string>>;
@@ -271,104 +565,41 @@ export async function collectExtensionFetchClosure(options: {
   refetch?: ReadonlySet<string>;
   moves?: ExtensionCatalogMoves;
   fetchSnapshot: (reference: string) => Promise<ExtensionFetchResult>;
+  listVersions?: (owner: string, repo: string) => Promise<ExtensionVersionListResult>;
 }): Promise<ExtensionFetchClosureResult> {
-  const moves = options.moves ?? {};
-  const embeddedByCoordinate = new Map(options.embedded.map((extension) => [extension.canonicalOrigin, extension]));
-  const storedByReference = new Map<string, InstalledExtensionSnapshot>();
-  for (const record of Object.values(options.stored)) {
-    if (options.refetch?.has(record.reference)) continue;
-    storedByReference.set(record.reference, record);
+  const outcome = await walkExtensionClosure(options);
+  if (!outcome.ok) {
+    return outcome;
   }
-
-  const snapshotsByReference = new Map<string, InstalledExtensionSnapshot>();
-  const visited = new Set<string>();
-  const queue: string[] = [...Object.values(options.extensions)];
-
-  while (queue.length > 0) {
-    const reference = queue.shift()!;
-    if (visited.has(reference)) continue;
-    visited.add(reference);
-
-    const parsed = parseExtensionReference(reference);
-    if (parsed === undefined) continue;
-
-    if (parsed.transport === "embedded") {
-      const extension = embeddedByCoordinate.get(parsed.coordinate);
-      if (extension === undefined) continue;
-      queue.push(...movedChildren(ownExtensions(embeddedContent(extension)), moves));
-      continue;
-    }
-
-    if (parsed.transport === "gh") {
-      let record = storedByReference.get(reference);
-      if (record === undefined) {
-        const fetched = await options.fetchSnapshot(reference);
-        if (!fetched.ok) {
-          return { ok: false, error: fetched.error };
-        }
-        record = installedSnapshotFromFetched(fetched.snapshot);
-      }
-      snapshotsByReference.set(reference, record);
-      queue.push(...movedChildren(ownExtensions(decodeInstalledSnapshotFiles(record)), moves));
-    }
-  }
-
-  return { ok: true, snapshotsByReference };
+  return {
+    ok: true,
+    snapshotsByReference: outcome.snapshotsByReference,
+    warnings: outcome.warnings,
+    floatingPins: outcome.floatingPins,
+  };
 }
 
 /**
  * Report whether the moved closure of an extensions map reaches a `gh:`
  * reference whose content is not already available -- neither bundled as an
- * embedded extension nor held in the stored snapshot records. Walks the same
- * embedded- and stored-manifest edges as {@link collectExtensionFetchClosure},
- * applying moves at every edge, but fetches nothing: it answers whether a load
- * must run a fetch transaction to heal a transitive moved dependency whose
- * content the project never persisted (for example a dependency installed while
- * the moved library was still bundled).
+ * embedded extension nor held in the stored snapshot records. Runs the shared
+ * closure walk in dry-run mode: moves apply at every edge with the versions
+ * the stored content determines, a floating destination with no stored pin
+ * counts as missing content, and nothing is fetched. It answers whether a
+ * load must run a fetch transaction to heal a moved dependency whose content
+ * the project never persisted.
  *
  * @param options.extensions - The extensions map to walk, with any top-level moves already applied.
  * @param options.embedded - The host application's bundled embedded extensions.
  * @param options.stored - The project's stored snapshot records, matched by reference.
- * @param options.moves - Curated transport-flip moves applied at every dependency edge.
+ * @param options.moves - Curated catalog moves applied at every dependency edge.
  */
-export function movedClosureHasMissingContent(options: {
+export async function movedClosureHasMissingContent(options: {
   extensions: Readonly<Record<string, string>>;
   embedded: readonly EmbeddedExtension[];
   stored: InstalledExtensionSnapshots;
   moves?: ExtensionCatalogMoves;
-}): boolean {
-  const moves = options.moves ?? {};
-  const embeddedByCoordinate = new Map(options.embedded.map((extension) => [extension.canonicalOrigin, extension]));
-  const storedByReference = new Map<string, InstalledExtensionSnapshot>();
-  for (const record of Object.values(options.stored)) {
-    storedByReference.set(record.reference, record);
-  }
-
-  const visited = new Set<string>();
-  const queue: string[] = [...Object.values(options.extensions)];
-  while (queue.length > 0) {
-    const reference = queue.shift()!;
-    if (visited.has(reference)) continue;
-    visited.add(reference);
-
-    const parsed = parseExtensionReference(reference);
-    if (parsed === undefined) continue;
-
-    if (parsed.transport === "embedded") {
-      const extension = embeddedByCoordinate.get(parsed.coordinate);
-      if (extension === undefined) continue;
-      queue.push(...movedChildren(ownExtensions(embeddedContent(extension)), moves));
-      continue;
-    }
-
-    if (parsed.transport === "gh") {
-      const record = storedByReference.get(reference);
-      if (record === undefined) {
-        return true;
-      }
-      queue.push(...movedChildren(ownExtensions(decodeInstalledSnapshotFiles(record)), moves));
-    }
-  }
-
-  return false;
+}): Promise<boolean> {
+  const outcome = await walkExtensionClosure(options);
+  return outcome.ok ? outcome.missingContent : true;
 }

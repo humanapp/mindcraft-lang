@@ -23,6 +23,7 @@ import { BrainDef, coreModule } from "@mindcraft-lang/core/app";
 import { declarationMount } from "@mindcraft-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
+import { CatalogMoveWarningCode } from "./embedded-extensions.js";
 import { buildExtensionCatalog } from "./extension-catalog.js";
 import { parseExtensionInstallLog } from "./extension-install-log.js";
 import {
@@ -1058,7 +1059,7 @@ describe("catalog moves -- top-level transport flip", () => {
       transport: createTestTransport({ content: { [`${POSITION_COORDINATE}@${MOVE_SHA}`]: POSITION_CONTENT } }),
       hostFiles: { "main.ts": HOST_IMPORTS_POSITION },
       embeddedExtensions: [POSITION_EMBEDDED],
-      catalogMoves: { [POSITION_COORDINATE]: { ref: MOVE_REF } },
+      catalogMoves: { [POSITION_COORDINATE]: [{ ref: MOVE_REF }] },
     });
     try {
       // GREEN: load auto-applies the move; the persisted manifest ref flips to
@@ -1075,15 +1076,493 @@ describe("catalog moves -- top-level transport flip", () => {
       );
 
       // A re-encountered un-migrated map migrates on an explicit call, and the
-      // returned report commits.
+      // returned outcome's transaction commits.
       await host.projectManager.updateActive({ extensions: { [POSITION_COORDINATE]: EMBEDDED_REF } });
-      const report = await host.applyCatalogMoves();
-      assert.ok(report?.committed);
+      const outcome = await host.applyCatalogMoves();
+      assert.ok(outcome);
+      assert.equal(outcome.warnings.length, 0);
+      assert.ok(outcome.reports.some((report) => report.committed));
       assert.equal(world.extensions[POSITION_COORDINATE], MOVE_REF);
 
       // Idempotent: a project already at its move target is a no-op.
       assert.equal(await host.applyCatalogMoves(), undefined);
       assert.equal(world.extensions[POSITION_COORDINATE], MOVE_REF);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("does not drag a newer gh pin of the flipped coordinate back to the move pin", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const NEWER_SHA = "9999999999999999999999999999999999999999";
+    const newerReference = `gh:${POSITION_COORDINATE}@${NEWER_SHA}`;
+    const world: ProjectWorld = { appData: new Map(), extensions: { [POSITION_COORDINATE]: newerReference } };
+    const transport = createTestTransport({
+      content: {
+        [`${POSITION_COORDINATE}@${MOVE_SHA}`]: POSITION_CONTENT,
+        [`${POSITION_COORDINATE}@${NEWER_SHA}`]: POSITION_CONTENT,
+      },
+    });
+    const host = createHost(world, {
+      transport,
+      hostFiles: { "main.ts": HOST_IMPORTS_POSITION },
+      catalogMoves: { [POSITION_COORDINATE]: [{ ref: MOVE_REF }] },
+    });
+    try {
+      await host.initialize(PROJECT_ID);
+      // The default selector captures only references not already on the
+      // destination's (coordinate, transport) pair: the newer pin survives.
+      assert.equal(world.extensions[POSITION_COORDINATE], newerReference);
+      const stored = parseInstalledExtensionSnapshots(world.appData.get("installed-extensions"));
+      assert.equal(stored[POSITION_COORDINATE]?.reference, newerReference);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+describe("catalog moves -- per-move transaction independence", () => {
+  const HEALTHY_COORDINATE = "example-org/healthy-ext";
+  const FAILING_COORDINATE = "example-org/failing-ext";
+  const HEALTHY_SHA = "5555555555555555555555555555555555555555";
+  const FAILING_SHA = "6666666666666666666666666666666666666666";
+  const HEALTHY_REF = `gh:${HEALTHY_COORDINATE}@${HEALTHY_SHA}`;
+  const FAILING_RENAMED_COORDINATE = "example-org/failing-ext-2";
+  const FAILING_RENAME_REF = `gh:${FAILING_RENAMED_COORDINATE}@${FAILING_SHA}`;
+
+  function embeddedFixture(coordinate: string): EmbeddedExtension {
+    return {
+      canonicalOrigin: coordinate,
+      files: [
+        { path: "mindcraft.json", content: manifestText(coordinate) },
+        { path: "index.ts", content: "export const x = 1;\n" },
+      ],
+    };
+  }
+
+  const catalogMoves = {
+    [HEALTHY_COORDINATE]: [{ ref: HEALTHY_REF }],
+    [FAILING_COORDINATE]: [{ ref: FAILING_RENAME_REF }],
+  };
+
+  it("commits the healthy move while the failing rename writes nothing, warns, and succeeds once served", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const brains = JSON.stringify({
+      b1: {
+        version: 1,
+        id: "b1",
+        name: "B",
+        catalog: [],
+        pages: [
+          {
+            version: 2,
+            pageId: "p1",
+            name: "Page 1",
+            rules: [
+              {
+                version: 1,
+                when: [{ k: "action", area: "sensor", id: "aaa111", ns: FAILING_COORDINATE }],
+                do: [],
+                children: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const world: ProjectWorld = {
+      appData: new Map([["brains", brains]]),
+      extensions: {
+        [HEALTHY_COORDINATE]: `embedded:${HEALTHY_COORDINATE}`,
+        [FAILING_COORDINATE]: `embedded:${FAILING_COORDINATE}`,
+      },
+    };
+    const content: Record<string, Record<string, string>> = {
+      [`${HEALTHY_COORDINATE}@${HEALTHY_SHA}`]: {
+        "mindcraft.json": manifestText("Healthy"),
+        "index.ts": "export const x = 1;\n",
+      },
+    };
+    const embedded = [embeddedFixture(HEALTHY_COORDINATE), embeddedFixture(FAILING_COORDINATE)];
+    const first = createHost(world, {
+      transport: createTestTransport({ content }),
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      embeddedExtensions: embedded,
+      catalogMoves,
+    });
+    try {
+      await first.initialize(PROJECT_ID);
+      // The healthy move persisted...
+      assert.equal(world.extensions[HEALTHY_COORDINATE], HEALTHY_REF);
+      // ...while the failing rename wrote nothing: the manifest keeps the
+      // source coordinate at its source reference...
+      assert.equal(world.extensions[FAILING_COORDINATE], `embedded:${FAILING_COORDINATE}`);
+      assert.equal(FAILING_RENAMED_COORDINATE in world.extensions, false);
+      // ...and the saved brain's namespaces were restored with the manifest.
+      const storedBrains = world.appData.get("brains");
+      assert.ok(storedBrains?.includes(`"ns":"${FAILING_COORDINATE}"`));
+      assert.ok(!storedBrains?.includes(FAILING_RENAMED_COORDINATE));
+    } finally {
+      first.dispose();
+    }
+
+    // A later load with the destination served applies the failed move.
+    content[`${FAILING_RENAMED_COORDINATE}@${FAILING_SHA}`] = {
+      "mindcraft.json": manifestText("Failing Renamed"),
+      "index.ts": "export const x = 2;\n",
+    };
+    const second = createHost(world, {
+      transport: createTestTransport({ content }),
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      embeddedExtensions: embedded,
+      catalogMoves,
+    });
+    try {
+      await second.initialize(PROJECT_ID);
+      assert.equal(world.extensions[FAILING_RENAMED_COORDINATE], FAILING_RENAME_REF);
+      assert.equal(FAILING_COORDINATE in world.extensions, false);
+      assert.ok(world.appData.get("brains")?.includes(`"ns":"${FAILING_RENAMED_COORDINATE}"`));
+    } finally {
+      second.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("surfaces the failing move as a stable-coded warning on the outcome", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = {
+      appData: new Map(),
+      extensions: { [FAILING_COORDINATE]: `embedded:${FAILING_COORDINATE}` },
+    };
+    const host = createHost(world, {
+      transport: createTestTransport({ content: {} }),
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      embeddedExtensions: [embeddedFixture(FAILING_COORDINATE)],
+      catalogMoves: { [FAILING_COORDINATE]: [{ ref: FAILING_RENAME_REF }] },
+    });
+    try {
+      await host.initialize(PROJECT_ID);
+      const outcome = await host.applyCatalogMoves();
+      assert.ok(outcome);
+      assert.ok(
+        outcome.warnings.some(
+          (warning) => warning.kind === "catalog-move-failed" && warning.code === CatalogMoveWarningCode.FETCH_FAILED
+        )
+      );
+      assert.equal(world.extensions[FAILING_COORDINATE], `embedded:${FAILING_COORDINATE}`);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+describe("catalog moves -- version-scoped capture learned within one load", () => {
+  const COORDINATE = "example-org/versioned-ext";
+  const OLD_SHA = "7777777777777777777777777777777777777777";
+  const NEW_SHA = "8888888888888888888888888888888888888888";
+  const oldReference = `gh:${COORDINATE}@${OLD_SHA}`;
+  const newReference = `gh:${COORDINATE}@${NEW_SHA}`;
+
+  it("applies a range-scoped move to a pin whose version is only learned by fetching it", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    // The manifest pins a sha whose version is unknown until its content is
+    // fetched; the version proves in-range and the move applies in the SAME
+    // load: apply -> fetch -> re-apply.
+    const world: ProjectWorld = { appData: new Map(), extensions: { [COORDINATE]: oldReference } };
+    const transport = createTestTransport({
+      content: {
+        [`${COORDINATE}@${OLD_SHA}`]: {
+          "mindcraft.json": JSON.stringify({ name: "Versioned", version: "0.1.2", files: ["index.ts"] }),
+          "index.ts": "export const v = 1;\n",
+        },
+        [`${COORDINATE}@${NEW_SHA}`]: {
+          "mindcraft.json": JSON.stringify({ name: "Versioned", version: "0.2.0", files: ["index.ts"] }),
+          "index.ts": "export const v = 2;\n",
+        },
+      },
+    });
+    const host = createHost(world, {
+      transport,
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      catalogMoves: { [COORDINATE]: [{ from: { packageVersion: "^0.1.0" }, ref: newReference }] },
+    });
+    try {
+      await host.initialize(PROJECT_ID);
+      assert.equal(world.extensions[COORDINATE], newReference);
+      const stored = parseInstalledExtensionSnapshots(world.appData.get("installed-extensions"));
+      assert.equal(stored[COORDINATE]?.reference, newReference);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("surfaces a stable-coded warning when the version stays undeterminable, and leaves the entry unmoved", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    // The pin's content is unavailable, so its version can never be learned
+    // this load: the entry stays as written and the load reports the skip.
+    const world: ProjectWorld = { appData: new Map(), extensions: { [COORDINATE]: oldReference } };
+    const host = createHost(world, {
+      transport: createTestTransport({ content: {} }),
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      catalogMoves: { [COORDINATE]: [{ from: { packageVersion: "^0.1.0" }, ref: newReference }] },
+    });
+    try {
+      await host.initialize(PROJECT_ID);
+      const outcome = await host.applyCatalogMoves();
+      assert.ok(outcome);
+      assert.ok(
+        outcome.warnings.some(
+          (warning) => warning.kind === "catalog-move-failed" && warning.code === CatalogMoveWarningCode.VERSION_UNKNOWN
+        )
+      );
+      assert.equal(world.extensions[COORDINATE], oldReference);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+describe("catalog moves -- floating destinations", () => {
+  const COORDINATE = "example-org/floating-ext";
+  const EMBEDDED_REF = `embedded:${COORDINATE}`;
+  const embedded: EmbeddedExtension = {
+    canonicalOrigin: COORDINATE,
+    files: [
+      { path: "mindcraft.json", content: manifestText("Floating") },
+      { path: "index.ts", content: "export const f = 1;\n" },
+    ],
+  };
+  const catalogMoves = { [COORDINATE]: [{ from: { transport: "embedded" as const }, ref: `gh:${COORDINATE}` }] };
+
+  it("pins the highest stable published version, excluding prereleases, and persists the pin", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = { appData: new Map(), extensions: { [COORDINATE]: EMBEDDED_REF } };
+    const transport = createTestTransport({
+      content: {
+        [`${COORDINATE}@0.2.0`]: {
+          "mindcraft.json": JSON.stringify({ name: "Floating", version: "0.2.0", files: ["index.ts"] }),
+          "index.ts": "export const f = 2;\n",
+        },
+      },
+      versions: { [COORDINATE]: ["0.1.0", "0.2.0", "1.0.0-rc.1"] },
+    });
+    const host = createHost(world, {
+      transport,
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      embeddedExtensions: [embedded],
+      catalogMoves,
+    });
+    try {
+      await host.initialize(PROJECT_ID);
+      // The stored manifest holds the PIN, never the floating form, and the
+      // prerelease above the chosen version was not selected.
+      assert.equal(world.extensions[COORDINATE], `gh:${COORDINATE}@0.2.0`);
+      const stored = parseInstalledExtensionSnapshots(world.appData.get("installed-extensions"));
+      assert.equal(stored[COORDINATE]?.reference, `gh:${COORDINATE}@0.2.0`);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("reloading an already-migrated project performs no version listing and no fetch", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = { appData: new Map(), extensions: { [COORDINATE]: EMBEDDED_REF } };
+    const content = {
+      [`${COORDINATE}@0.2.0`]: {
+        "mindcraft.json": JSON.stringify({ name: "Floating", version: "0.2.0", files: ["index.ts"] }),
+        "index.ts": "export const f = 2;\n",
+      },
+    };
+    const first = createHost(world, {
+      transport: createTestTransport({ content, versions: { [COORDINATE]: ["0.2.0"] } }),
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      embeddedExtensions: [embedded],
+      catalogMoves,
+    });
+    try {
+      await first.initialize(PROJECT_ID);
+      assert.equal(world.extensions[COORDINATE], `gh:${COORDINATE}@0.2.0`);
+    } finally {
+      first.dispose();
+    }
+
+    const secondTransport = createTestTransport({ content, versions: { [COORDINATE]: ["0.2.0"] } });
+    const second = createHost(world, {
+      transport: secondTransport,
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      embeddedExtensions: [embedded],
+      catalogMoves,
+    });
+    try {
+      await second.initialize(PROJECT_ID);
+      assert.deepStrictEqual(secondTransport.requests, []);
+      assert.equal(world.extensions[COORDINATE], `gh:${COORDINATE}@0.2.0`);
+    } finally {
+      second.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("warns with a stable code when no stable version exists, writes nothing, and succeeds on a later load", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = { appData: new Map(), extensions: { [COORDINATE]: EMBEDDED_REF } };
+    const versions: Record<string, readonly string[]> = { [COORDINATE]: ["1.0.0-rc.1"] };
+    const content: Record<string, Record<string, string>> = {};
+    const first = createHost(world, {
+      transport: createTestTransport({ content, versions }),
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      embeddedExtensions: [embedded],
+      catalogMoves,
+    });
+    try {
+      await first.initialize(PROJECT_ID);
+      assert.equal(world.extensions[COORDINATE], EMBEDDED_REF);
+      const outcome = await first.applyCatalogMoves();
+      assert.ok(outcome);
+      assert.ok(
+        outcome.warnings.some(
+          (warning) =>
+            warning.kind === "catalog-move-failed" && warning.code === CatalogMoveWarningCode.FLOATING_UNRESOLVED
+        )
+      );
+      assert.equal(world.appData.get("installed-extensions"), undefined);
+    } finally {
+      first.dispose();
+    }
+
+    // The next load finds a stable version and migrates.
+    versions[COORDINATE] = ["1.0.0-rc.1", "0.3.0"];
+    content[`${COORDINATE}@0.3.0`] = {
+      "mindcraft.json": JSON.stringify({ name: "Floating", version: "0.3.0", files: ["index.ts"] }),
+      "index.ts": "export const f = 3;\n",
+    };
+    const second = createHost(world, {
+      transport: createTestTransport({ content, versions }),
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      embeddedExtensions: [embedded],
+      catalogMoves,
+    });
+    try {
+      await second.initialize(PROJECT_ID);
+      assert.equal(world.extensions[COORDINATE], `gh:${COORDINATE}@0.3.0`);
+    } finally {
+      second.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+describe("catalog moves -- rename chains", () => {
+  const X = "example-org/chain-x";
+  const Y = "example-org/chain-y";
+  const Z = "example-org/chain-z";
+  const SHA_Y = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const SHA_Z = "cccccccccccccccccccccccccccccccccccccccc";
+  const catalogMoves = {
+    [X]: [{ ref: `gh:${Y}@${SHA_Y}` }],
+    [Y]: [{ ref: `gh:${Z}@${SHA_Z}` }],
+  };
+
+  function chainBrains(): Map<string, string> {
+    const brain = (ns: string) => ({
+      version: 1,
+      id: ns,
+      name: ns,
+      catalog: [],
+      pages: [
+        {
+          version: 2,
+          pageId: "p1",
+          name: "Page 1",
+          rules: [{ version: 1, when: [{ k: "action", area: "sensor", id: "aaa111", ns }], do: [], children: [] }],
+        },
+      ],
+    });
+    return new Map([["brains", JSON.stringify({ bx: brain(X), by: brain(Y) })]]);
+  }
+
+  it("rewrites a source AND an intermediate coordinate's manifest entries and brain namespaces to the final coordinate", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const embedded = (coordinate: string): EmbeddedExtension => ({
+      canonicalOrigin: coordinate,
+      files: [
+        { path: "mindcraft.json", content: manifestText(coordinate) },
+        { path: "index.ts", content: "export const c = 1;\n" },
+      ],
+    });
+    const world: ProjectWorld = {
+      appData: chainBrains(),
+      extensions: { [X]: `embedded:${X}`, [Y]: `embedded:${Y}` },
+    };
+    const host = createHost(world, {
+      transport: createTestTransport({
+        content: {
+          [`${Z}@${SHA_Z}`]: {
+            "mindcraft.json": manifestText("Chain Z"),
+            "index.ts": "export const c = 3;\n",
+          },
+        },
+      }),
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      embeddedExtensions: [embedded(X), embedded(Y)],
+      catalogMoves,
+    });
+    try {
+      await host.initialize(PROJECT_ID);
+      // Both entries fixpoint to Z in one load: X -> Y -> Z, Y -> Z.
+      assert.deepStrictEqual(Object.keys(world.extensions), [Z]);
+      assert.equal(world.extensions[Z], `gh:${Z}@${SHA_Z}`);
+      // Both brains' namespaces rewrote to the FINAL coordinate.
+      const brains = JSON.parse(world.appData.get("brains") ?? "{}") as Record<
+        string,
+        { pages: { rules: { when: { ns: string }[] }[] }[] }
+      >;
+      assert.equal(brains.bx.pages[0].rules[0].when[0].ns, Z);
+      assert.equal(brains.by.pages[0].rules[0].when[0].ns, Z);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+describe("catalog moves -- ambiguous capture", () => {
+  const COORDINATE = "example-org/ambiguous-ext";
+  const SHA = "4444444444444444444444444444444444444444";
+
+  it("fails the move with a stable code and leaves the entry unmoved", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = { appData: new Map(), extensions: { [COORDINATE]: `gh:${COORDINATE}@${SHA}` } };
+    // An exact selector inside another entry's transport scope: structurally
+    // clean at parse, ambiguous only when a matching reference is applied.
+    const host = createHost(world, {
+      hostFiles: { "main.ts": "export const ok = 1;\n" },
+      catalogMoves: {
+        [COORDINATE]: [
+          { from: { transport: "gh" as const }, ref: `embedded:${COORDINATE}` },
+          { from: `gh:${COORDINATE}@${SHA}`, ref: `embedded:${COORDINATE}` },
+        ],
+      },
+    });
+    try {
+      await host.initialize(PROJECT_ID);
+      const outcome = await host.applyCatalogMoves();
+      assert.ok(outcome);
+      assert.ok(
+        outcome.warnings.some(
+          (warning) =>
+            warning.kind === "catalog-move-failed" &&
+            warning.code === CatalogMoveWarningCode.AMBIGUOUS_CAPTURE &&
+            warning.reference === `gh:${COORDINATE}@${SHA}`
+        )
+      );
+      assert.equal(world.extensions[COORDINATE], `gh:${COORDINATE}@${SHA}`);
     } finally {
       host.dispose();
       restoreLocalStorage();
@@ -1141,7 +1620,7 @@ describe("catalog moves -- transitive dependency redirect", () => {
     const host = createHost(world, {
       transport: createMoveTransport(),
       hostFiles: { "main.ts": "export const ok = 1;\n" },
-      catalogMoves: { [MOTOR_COORDINATE]: { ref: MOTOR_MOVE_REF } },
+      catalogMoves: { [MOTOR_COORDINATE]: [{ ref: MOTOR_MOVE_REF }] },
     });
     try {
       // GREEN: the move redirects `embedded:motor-ext` to the gh target during
@@ -1176,7 +1655,7 @@ describe("catalog moves -- transitive dependency redirect", () => {
     const first = createHost(world, {
       transport: createMoveTransport(),
       hostFiles: { "main.ts": "export const ok = 1;\n" },
-      catalogMoves: { [MOTOR_COORDINATE]: { ref: MOTOR_MOVE_REF } },
+      catalogMoves: { [MOTOR_COORDINATE]: [{ ref: MOTOR_MOVE_REF }] },
     });
     try {
       await first.initialize(PROJECT_ID);
@@ -1190,7 +1669,7 @@ describe("catalog moves -- transitive dependency redirect", () => {
     // transitive redirect resolves motor-ext from the stored snapshot.
     const reloaded = createHost(world, {
       hostFiles: { "main.ts": "export const ok = 1;\n" },
-      catalogMoves: { [MOTOR_COORDINATE]: { ref: MOTOR_MOVE_REF } },
+      catalogMoves: { [MOTOR_COORDINATE]: [{ ref: MOTOR_MOVE_REF }] },
     });
     try {
       await reloaded.initialize(PROJECT_ID);
@@ -1276,7 +1755,7 @@ describe("catalog moves -- coordinate rename", () => {
         },
       }),
       embeddedExtensions: [SOURCE_EMBEDDED],
-      catalogMoves: { [SOURCE_COORDINATE]: { coordinate: TARGET_COORDINATE, ref: RENAME_REF } },
+      catalogMoves: { [SOURCE_COORDINATE]: [{ ref: RENAME_REF }] },
     });
     try {
       // GREEN: load auto-applies the rename. The manifest key moves from the
@@ -1342,7 +1821,7 @@ describe("catalog moves -- coordinate rename", () => {
         },
       }),
       embeddedExtensions: [SOURCE_EMBEDDED],
-      catalogMoves: { [SOURCE_COORDINATE]: { ref: FLIP_REF } },
+      catalogMoves: { [SOURCE_COORDINATE]: [{ ref: FLIP_REF }] },
     });
     try {
       // A flip keeps the same coordinate key and updates only the reference;

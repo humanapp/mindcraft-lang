@@ -91,22 +91,28 @@ export function buildSimExtensionEntries(
 }
 
 /**
- * The bundled library catalog offered to apps/sim projects: the curated set of
- * published feature libraries, each pinned to an exact `gh:` reference.
+ * Validate a bundled catalog document, throwing with the stable error codes
+ * when it is malformed. Runs once at catalog module initialization; a fatal
+ * surfaces immediately on the dev server.
+ *
+ * @param document - The imported catalog JSON module value.
  */
-const simLibraryCatalog: ExtensionCatalogDocument = loadSimLibraryCatalog();
-
-/** The curated transport-flip moves the bundled sim catalog declares, keyed by coordinate. */
-export const simLibraryCatalogMoves = simLibraryCatalog.moves;
-
-/** Validate the bundled catalog document at module load, throwing when the bundled asset is malformed. */
-function loadSimLibraryCatalog(): ExtensionCatalogDocument {
-  const result = validateExtensionCatalogDocument(simLibraryCatalogDocument);
+export function loadSimLibraryCatalog(document: unknown): ExtensionCatalogDocument {
+  const result = validateExtensionCatalogDocument(document);
   if (!result.ok) {
     throw new Error(`Bundled sim library catalog is invalid: ${result.errors.map((error) => error.code).join(", ")}`);
   }
   return result.document;
 }
+
+/**
+ * The bundled library catalog offered to apps/sim projects: the curated set of
+ * published feature libraries, each pinned to an exact `gh:` reference.
+ */
+const simLibraryCatalog: ExtensionCatalogDocument = loadSimLibraryCatalog(simLibraryCatalogDocument);
+
+/** The curated catalog moves the bundled sim catalog declares, keyed by source coordinate. */
+export const simLibraryCatalogMoves = simLibraryCatalog.moves;
 
 /**
  * Build the catalog offers for an apps/sim project: one offer per bundled

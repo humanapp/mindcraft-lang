@@ -1,5 +1,6 @@
 import type { ExtensionTarget } from "./project-content-manifest.js";
 import { isExtensionCoordinate, parseExtensionReference, validateProjectTargets } from "./project-content-manifest.js";
+import { isSupportedVersionRange, satisfiesRange } from "./semver-range.js";
 
 /** Format marker of a Mindcraft extension catalog document. */
 export const MINDCRAFT_CATALOG_FORMAT = "mindcraft.catalog/1";
@@ -52,39 +53,61 @@ export interface ExtensionCatalogDocumentEntry {
   readonly thumbnail?: string;
 }
 
+/** Transport a catalog move selector matches: the reference's delivery scheme. */
+export type ExtensionCatalogMoveTransport = "gh" | "embedded";
+
 /**
- * One curated catalog move for a coordinate. The catalog authority (PR-reviewed,
- * pinned) declares moves; they are never read from fetched package content. A
- * move is one of two shapes, distinguished by whether it carries a new
- * `coordinate`:
- *
- * - Transport flip (`coordinate` absent): the source coordinate's content is
- *   served from a new reference for the SAME coordinate.
- * - Rename (`coordinate` present, differing from the move key): the source
- *   coordinate (the move key) is renamed to the new `coordinate`, served from
- *   `ref`.
+ * Object-form source selector of a catalog move entry. At least one field is
+ * present. When `transport` is given, the entry captures only references on
+ * that transport; when `packageVersion` is given, the entry captures only
+ * references whose resolved content version satisfies the range (a branch
+ * reference has no version and is never captured by a range).
  */
-export interface ExtensionCatalogMove {
-  /**
-   * The renamed-to `<owner>/<repo>` coordinate. Present only for a rename, and
-   * then always different from the move key; absent for a same-coordinate
-   * transport flip.
-   */
-  readonly coordinate?: string;
-  /**
-   * The reference the move resolves through:
-   * `gh:<owner>/<repo>@<full 40-character commit SHA>`. Its `<owner>/<repo>`
-   * equals the move's key coordinate for a flip, or the new {@link coordinate}
-   * for a rename.
-   */
+export interface ExtensionCatalogMoveObjectSelector {
+  /** Transport the captured reference must use. */
+  readonly transport?: ExtensionCatalogMoveTransport;
+  /** Semver range the captured reference's resolved content version must satisfy. */
+  readonly packageVersion?: string;
+}
+
+/**
+ * Source selector of a catalog move entry: an exact full reference string
+ * (captures only a reference structurally equal to it), or an object selector
+ * over transport and version range.
+ */
+export type ExtensionCatalogMoveSelector = string | ExtensionCatalogMoveObjectSelector;
+
+/**
+ * One curated catalog move entry for a source coordinate. The catalog authority
+ * (PR-reviewed, pinned) declares moves; they are never read from fetched
+ * package content.
+ *
+ * `ref` is the destination reference: `embedded:<owner>/<repo>`,
+ * `gh:<owner>/<repo>@<sha-or-tag>`, `gh:<owner>/<repo>#<branch>`, or the
+ * floating form `gh:<owner>/<repo>` with no component, which resolves to the
+ * highest stable published version at migration time (the resolved pin is what
+ * gets persisted; stored manifests never hold a floating reference). A
+ * destination whose coordinate differs from the move key is a rename.
+ *
+ * `from` selects which references of the key coordinate the entry captures.
+ * When absent, the entry captures every reference of the coordinate that is
+ * not already on the destination's (coordinate, transport) pair -- a reference
+ * already on that pair keeps its own component.
+ */
+export interface ExtensionCatalogMoveEntry {
+  /** Source selector; absent for the default selector. */
+  readonly from?: ExtensionCatalogMoveSelector;
+  /** Destination reference. */
   readonly ref: string;
 }
 
 /**
- * A catalog document's curated moves, keyed by the source `<owner>/<repo>`
- * coordinate being redirected or renamed. Empty when the document declares none.
+ * A catalog document's curated moves: for each source `<owner>/<repo>`
+ * coordinate, the move entries that capture its references. Empty when the
+ * document declares none. The document form accepts one entry or an array per
+ * key; the parsed form always carries an array.
  */
-export type ExtensionCatalogMoves = Readonly<Record<string, ExtensionCatalogMove>>;
+export type ExtensionCatalogMoves = Readonly<Record<string, readonly ExtensionCatalogMoveEntry[]>>;
 
 /** A parsed extension catalog document. */
 export interface ExtensionCatalogDocument {
@@ -93,8 +116,8 @@ export interface ExtensionCatalogDocument {
   /** The catalog's entries, in document order, with unknown-kind entries skipped. */
   readonly entries: readonly ExtensionCatalogDocumentEntry[];
   /**
-   * Curated transport-flip moves keyed by coordinate; always present, empty
-   * when the document declares none.
+   * Curated moves keyed by source coordinate; always present, empty when the
+   * document declares none.
    */
   readonly moves: ExtensionCatalogMoves;
 }
@@ -113,7 +136,11 @@ export const ExtensionCatalogDocumentErrorCode = {
   ALIAS_NOT_ALLOWED: "CATALOG_DOCUMENT_ALIAS_NOT_ALLOWED",
   INVALID_MOVES: "CATALOG_DOCUMENT_INVALID_MOVES",
   INVALID_MOVE_REF: "CATALOG_DOCUMENT_INVALID_MOVE_REF",
-  INVALID_MOVE_COORDINATE: "CATALOG_DOCUMENT_INVALID_MOVE_COORDINATE",
+  INVALID_MOVE_FROM: "CATALOG_DOCUMENT_INVALID_MOVE_FROM",
+  UNSUPPORTED_MOVE_RANGE: "CATALOG_DOCUMENT_UNSUPPORTED_MOVE_RANGE",
+  DUPLICATE_MOVE_SELECTOR: "CATALOG_DOCUMENT_DUPLICATE_MOVE_SELECTOR",
+  FLOATING_MOVE_SELECTOR: "CATALOG_DOCUMENT_FLOATING_MOVE_SELECTOR",
+  MOVE_CYCLE: "CATALOG_DOCUMENT_MOVE_CYCLE",
   NUMERIC_ALIAS: "CATALOG_DOCUMENT_NUMERIC_ALIAS",
 } as const;
 
@@ -343,14 +370,455 @@ function validateEntry(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Move reference shapes
+// ---------------------------------------------------------------------------
+
+const GH_FLOATING_REFERENCE_PATTERN = /^gh:([A-Za-z0-9][A-Za-z0-9-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)$/;
+
+/** Parsed parts of a catalog move reference. */
+export interface CatalogMoveReferenceParts {
+  /** The reference's transport. */
+  readonly transport: ExtensionCatalogMoveTransport;
+  /** The reference's `<owner>/<repo>` coordinate. */
+  readonly coordinate: string;
+  /** True for the floating `gh:<owner>/<repo>` form with no pin or branch component. */
+  readonly floating: boolean;
+}
+
+/** The shape a move reference is compared and rewritten as: transport, coordinate, and component. */
+interface MoveReferenceShape {
+  readonly transport: ExtensionCatalogMoveTransport;
+  readonly coordinate: string;
+  /** Pin or branch component; absent for `embedded:` references and the floating `gh:` form. */
+  readonly component?: { readonly kind: "pin" | "branch"; readonly value: string };
+}
+
+/** Parse a reference string into a move shape, accepting the floating `gh:<owner>/<repo>` form. */
+function parseMoveReferenceShape(reference: string): MoveReferenceShape | undefined {
+  const parsed = parseExtensionReference(reference);
+  if (parsed !== undefined) {
+    if (parsed.transport === "embedded") {
+      return { transport: "embedded", coordinate: parsed.coordinate };
+    }
+    const value = parsed.routing.kind === "pin" ? parsed.routing.pin : parsed.routing.branch;
+    return {
+      transport: "gh",
+      coordinate: `${parsed.owner}/${parsed.repo}`,
+      component: { kind: parsed.routing.kind, value },
+    };
+  }
+  const floating = GH_FLOATING_REFERENCE_PATTERN.exec(reference);
+  if (floating) {
+    return { transport: "gh", coordinate: `${floating[1]}/${floating[2]}` };
+  }
+  return undefined;
+}
+
+/** Serialize a move shape back to its reference string. */
+function serializeMoveReferenceShape(shape: MoveReferenceShape): string {
+  if (shape.transport === "embedded") {
+    return `embedded:${shape.coordinate}`;
+  }
+  if (shape.component === undefined) {
+    return `gh:${shape.coordinate}`;
+  }
+  const separator = shape.component.kind === "pin" ? "@" : "#";
+  return `gh:${shape.coordinate}${separator}${shape.component.value}`;
+}
+
+/**
+ * Canonical comparison key of a move shape. Coordinates compare
+ * case-insensitively (GitHub owner and repository names are case-insensitive);
+ * transports and components compare exactly.
+ */
+function canonicalMoveShapeKey(shape: MoveReferenceShape): string {
+  const component =
+    shape.component === undefined ? "" : `${shape.component.kind === "pin" ? "@" : "#"}${shape.component.value}`;
+  return `${shape.transport}:${shape.coordinate.toLowerCase()}${component}`;
+}
+
+/** Report whether two coordinates name the same repository, compared case-insensitively. */
+function sameCoordinate(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+/**
+ * Parse a catalog move reference into its transport, coordinate, and floating
+ * flag, accepting `embedded:<owner>/<repo>`, `gh:<owner>/<repo>@<pin>`,
+ * `gh:<owner>/<repo>#<branch>`, and the floating `gh:<owner>/<repo>` form.
+ * Returns `undefined` for an unrecognized form.
+ *
+ * @param reference - The reference string to parse.
+ */
+export function parseCatalogMoveReference(reference: string): CatalogMoveReferenceParts | undefined {
+  const shape = parseMoveReferenceShape(reference);
+  if (shape === undefined) {
+    return undefined;
+  }
+  return {
+    transport: shape.transport,
+    coordinate: shape.coordinate,
+    floating: shape.transport === "gh" && shape.component === undefined,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Move application
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves the content version of a reference, for evaluating a move entry's
+ * `packageVersion` selector. Returns `undefined` when the version is not
+ * determinable from the content currently at hand.
+ */
+export type CatalogMoveVersionLookup = (reference: string) => string | undefined;
+
+/** Stable identifiers for catalog move application failures. */
+export const CatalogMoveApplyErrorCode = {
+  /** More than one move entry captures the same reference. */
+  AMBIGUOUS_CAPTURE: "CATALOG_MOVE_AMBIGUOUS_CAPTURE",
+  /** Applying the moves revisited a reference shape already on the rewrite chain. */
+  CYCLE: "CATALOG_MOVE_CYCLE",
+} as const;
+
+/** Union of all {@link CatalogMoveApplyErrorCode} values. */
+export type CatalogMoveApplyErrorCode = (typeof CatalogMoveApplyErrorCode)[keyof typeof CatalogMoveApplyErrorCode];
+
+/** Result of applying a catalog moves table to one reference. */
+export type CatalogMoveApplication =
+  | {
+      /** True when application completed. */
+      readonly ok: true;
+      /**
+       * The final reference after the rewrite chain; the input reference when
+       * nothing captured it. May be a floating `gh:<owner>/<repo>` reference,
+       * which the caller's fetch machinery resolves to a pin.
+       */
+      readonly reference: string;
+      /** True when the reference was rewritten. */
+      readonly moved: boolean;
+      /**
+       * True when a `packageVersion` selector on the final reference's
+       * coordinate could not be evaluated because the reference's version is
+       * not determinable yet. Re-apply once the version is known.
+       */
+      readonly pendingVersion: boolean;
+    }
+  | {
+      /** False when application failed. */
+      readonly ok: false;
+      /** Stable failure code. */
+      readonly code: CatalogMoveApplyErrorCode;
+      /** The reference the failure occurred at. */
+      readonly reference: string;
+      /** Human-readable failure message naming the chain or competing entries. */
+      readonly message: string;
+    };
+
+/** The move entries declared for a coordinate, matched case-insensitively. */
+function moveEntriesForCoordinate(
+  moves: ExtensionCatalogMoves,
+  coordinate: string
+): readonly ExtensionCatalogMoveEntry[] {
+  const direct = moves[coordinate];
+  if (direct !== undefined) {
+    return direct;
+  }
+  const lower = coordinate.toLowerCase();
+  for (const [key, entries] of Object.entries(moves)) {
+    if (key.toLowerCase() === lower) {
+      return entries;
+    }
+  }
+  return [];
+}
+
+/** Parse a move entry's destination reference, throwing on a shape a validated document cannot carry. */
+function requireMoveReferenceShape(reference: string): MoveReferenceShape {
+  const shape = parseMoveReferenceShape(reference);
+  if (shape === undefined) {
+    throw new Error(`Catalog move reference "${reference}" is not a valid move reference.`);
+  }
+  return shape;
+}
+
+/** One entry's capture verdict for a shape: whether it captures now, and whether a version range is pending. */
+function evaluateMoveEntry(
+  shape: MoveReferenceShape,
+  entry: ExtensionCatalogMoveEntry,
+  versionLookup: CatalogMoveVersionLookup | undefined
+): { captured: boolean; pending: boolean } {
+  const destination = requireMoveReferenceShape(entry.ref);
+  // Universal idempotence guard: a reference structurally equal to the entry's
+  // destination is never captured.
+  if (canonicalMoveShapeKey(shape) === canonicalMoveShapeKey(destination)) {
+    return { captured: false, pending: false };
+  }
+  const from = entry.from;
+  if (from === undefined) {
+    const onDestinationPair =
+      shape.transport === destination.transport && sameCoordinate(shape.coordinate, destination.coordinate);
+    return { captured: !onDestinationPair, pending: false };
+  }
+  if (typeof from === "string") {
+    const fromShape = requireMoveReferenceShape(from);
+    return { captured: canonicalMoveShapeKey(shape) === canonicalMoveShapeKey(fromShape), pending: false };
+  }
+  if (from.transport !== undefined && from.transport !== shape.transport) {
+    return { captured: false, pending: false };
+  }
+  if (from.packageVersion !== undefined) {
+    if (shape.component?.kind === "branch") {
+      // A branch reference has no version; a range never captures it.
+      return { captured: false, pending: false };
+    }
+    if (shape.transport === "gh" && shape.component === undefined) {
+      // A floating shape has no version until it resolves to a pin.
+      return { captured: false, pending: true };
+    }
+    const version = versionLookup?.(serializeMoveReferenceShape(shape));
+    if (version === undefined) {
+      return { captured: false, pending: true };
+    }
+    return { captured: satisfiesRange(version, from.packageVersion), pending: false };
+  }
+  return { captured: true, pending: false };
+}
+
+/**
+ * Apply a catalog moves table to one extension reference, following the
+ * rewrite chain to its fixpoint. At each step, the entries declared for the
+ * reference's coordinate are evaluated; the single capturing entry's
+ * destination becomes the next reference. Application ends at the first
+ * reference no entry captures.
+ *
+ * An unparseable reference is returned unchanged. More than one entry
+ * capturing the same reference fails with
+ * {@link CatalogMoveApplyErrorCode.AMBIGUOUS_CAPTURE}; revisiting a reference
+ * shape already on the chain fails with
+ * {@link CatalogMoveApplyErrorCode.CYCLE}.
+ *
+ * @param reference - The extension reference to redirect.
+ * @param moves - The catalog moves table, keyed by source coordinate.
+ * @param versionLookup - Resolves reference versions for `packageVersion`
+ *   selectors; a selector whose version is unavailable does not capture and
+ *   marks the result `pendingVersion`.
+ */
+export function applyCatalogMove(
+  reference: string,
+  moves: ExtensionCatalogMoves,
+  versionLookup?: CatalogMoveVersionLookup
+): CatalogMoveApplication {
+  const start = parseMoveReferenceShape(reference);
+  if (start === undefined) {
+    return { ok: true, reference, moved: false, pendingVersion: false };
+  }
+  const visited = new Set([canonicalMoveShapeKey(start)]);
+  const chain = [serializeMoveReferenceShape(start)];
+  let shape = start;
+  let pendingVersion = false;
+  while (true) {
+    const entries = moveEntriesForCoordinate(moves, shape.coordinate);
+    const capturing: ExtensionCatalogMoveEntry[] = [];
+    pendingVersion = false;
+    for (const entry of entries) {
+      const verdict = evaluateMoveEntry(shape, entry, versionLookup);
+      if (verdict.captured) {
+        capturing.push(entry);
+      }
+      if (verdict.pending) {
+        pendingVersion = true;
+      }
+    }
+    if (capturing.length > 1) {
+      return {
+        ok: false,
+        code: CatalogMoveApplyErrorCode.AMBIGUOUS_CAPTURE,
+        reference: serializeMoveReferenceShape(shape),
+        message:
+          `Catalog move entries ${capturing.map((entry) => JSON.stringify(entry.ref)).join(" and ")} ` +
+          `both capture "${serializeMoveReferenceShape(shape)}".`,
+      };
+    }
+    if (capturing.length === 0) {
+      const moved = canonicalMoveShapeKey(shape) !== canonicalMoveShapeKey(start);
+      return { ok: true, reference: moved ? serializeMoveReferenceShape(shape) : reference, moved, pendingVersion };
+    }
+    const next = requireMoveReferenceShape(capturing[0].ref);
+    if (visited.has(canonicalMoveShapeKey(next))) {
+      return {
+        ok: false,
+        code: CatalogMoveApplyErrorCode.CYCLE,
+        reference,
+        message: `Catalog moves cycle: ${[...chain, serializeMoveReferenceShape(next)].join(" -> ")}.`,
+      };
+    }
+    visited.add(canonicalMoveShapeKey(next));
+    chain.push(serializeMoveReferenceShape(next));
+    shape = next;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Move validation
+// ---------------------------------------------------------------------------
+
+/** Report whether a selector can capture a reference on the given (coordinate, gh) pair. */
+function selectorCanCaptureGhCoordinate(from: ExtensionCatalogMoveSelector | undefined, coordinate: string): boolean {
+  if (from === undefined) {
+    // The default selector excludes references already on the destination pair.
+    return false;
+  }
+  if (typeof from === "string") {
+    const shape = parseMoveReferenceShape(from);
+    return shape !== undefined && shape.transport === "gh" && sameCoordinate(shape.coordinate, coordinate);
+  }
+  return from.transport === undefined || from.transport === "gh";
+}
+
+/** Validate one move entry for a key coordinate. Returns the entry or the errors that reject it. */
+function validateMoveEntry(
+  keyCoordinate: string,
+  value: unknown,
+  path: string
+): { entry: ExtensionCatalogMoveEntry } | { errors: ExtensionCatalogDocumentError[] } {
+  if (!isRecord(value) || typeof value.ref !== "string") {
+    return {
+      errors: [
+        {
+          code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF,
+          path: `${path}.ref`,
+          message: `Catalog move for "${keyCoordinate}" must be an object with a string "ref".`,
+        },
+      ],
+    };
+  }
+  const errors: ExtensionCatalogDocumentError[] = [];
+  const destination = parseMoveReferenceShape(value.ref);
+  if (destination === undefined) {
+    errors.push({
+      code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF,
+      path: `${path}.ref`,
+      message:
+        `Catalog move ref for "${keyCoordinate}" must be "embedded:<owner>/<repo>", "gh:<owner>/<repo>@<pin>", ` +
+        '"gh:<owner>/<repo>#<branch>", or the floating "gh:<owner>/<repo>".',
+    });
+  }
+
+  let from: ExtensionCatalogMoveSelector | undefined;
+  if (value.from !== undefined) {
+    if (typeof value.from === "string") {
+      const fromParsed = parseExtensionReference(value.from);
+      if (fromParsed === undefined) {
+        errors.push({
+          code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM,
+          path: `${path}.from`,
+          message: `Catalog move "from" for "${keyCoordinate}" must be a full extension reference.`,
+        });
+      } else {
+        const fromCoordinate =
+          fromParsed.transport === "embedded" ? fromParsed.coordinate : `${fromParsed.owner}/${fromParsed.repo}`;
+        if (!sameCoordinate(fromCoordinate, keyCoordinate)) {
+          errors.push({
+            code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM,
+            path: `${path}.from`,
+            message: `Catalog move "from" names "${fromCoordinate}", not the move key "${keyCoordinate}".`,
+          });
+        } else if (
+          destination !== undefined &&
+          canonicalMoveShapeKey(requireMoveReferenceShape(value.from)) === canonicalMoveShapeKey(destination)
+        ) {
+          errors.push({
+            code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM,
+            path: `${path}.from`,
+            message: `Catalog move "from" for "${keyCoordinate}" equals the entry's "ref".`,
+          });
+        } else {
+          from = value.from;
+        }
+      }
+    } else if (isRecord(value.from)) {
+      const selector = value.from;
+      const selectorErrors: ExtensionCatalogDocumentError[] = [];
+      if (selector.transport !== undefined && selector.transport !== "gh" && selector.transport !== "embedded") {
+        selectorErrors.push({
+          code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM,
+          path: `${path}.from.transport`,
+          message: `Catalog move "from.transport" for "${keyCoordinate}" must be "gh" or "embedded".`,
+        });
+      }
+      if (selector.packageVersion !== undefined) {
+        if (typeof selector.packageVersion !== "string" || !isSupportedVersionRange(selector.packageVersion)) {
+          selectorErrors.push({
+            code: ExtensionCatalogDocumentErrorCode.UNSUPPORTED_MOVE_RANGE,
+            path: `${path}.from.packageVersion`,
+            message:
+              `Catalog move "from.packageVersion" for "${keyCoordinate}" must be a semver range the range ` +
+              "evaluator supports.",
+          });
+        }
+      }
+      if (selector.transport === undefined && selector.packageVersion === undefined) {
+        selectorErrors.push({
+          code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM,
+          path: `${path}.from`,
+          message: `Catalog move "from" for "${keyCoordinate}" must carry "transport" and/or "packageVersion".`,
+        });
+      }
+      if (selectorErrors.length > 0) {
+        errors.push(...selectorErrors);
+      } else {
+        from = {
+          ...(selector.transport !== undefined
+            ? { transport: selector.transport as ExtensionCatalogMoveTransport }
+            : {}),
+          ...(selector.packageVersion !== undefined ? { packageVersion: selector.packageVersion as string } : {}),
+        };
+      }
+    } else {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM,
+        path: `${path}.from`,
+        message: `Catalog move "from" for "${keyCoordinate}" must be a reference string or a selector object.`,
+      });
+    }
+  }
+
+  // A floating destination is resolved once, at migration time. A selector
+  // able to capture references already on the destination's (coordinate, gh)
+  // pair would re-capture on every load.
+  if (
+    errors.length === 0 &&
+    destination !== undefined &&
+    destination.transport === "gh" &&
+    destination.component === undefined &&
+    sameCoordinate(destination.coordinate, keyCoordinate) &&
+    selectorCanCaptureGhCoordinate(from, destination.coordinate)
+  ) {
+    errors.push({
+      code: ExtensionCatalogDocumentErrorCode.FLOATING_MOVE_SELECTOR,
+      path: `${path}.from`,
+      message:
+        `Catalog move for "${keyCoordinate}" pairs a floating destination with a selector that captures ` +
+        "references already on the destination's coordinate and transport.",
+    });
+  }
+
+  if (errors.length > 0) {
+    return { errors };
+  }
+  return { entry: { ...(from !== undefined ? { from } : {}), ref: value.ref } };
+}
+
 /**
  * Validate a catalog document's `moves` section: an object keyed by source
- * `<owner>/<repo>` coordinate, each value an object with a `gh:` `ref` pinned to
- * a full 40-character commit SHA. A value that also carries a `coordinate` is a
- * rename: the new `coordinate` must be a valid coordinate different from the
- * key, and `ref` must name it. A value without `coordinate` is a flip: `ref`
- * must name the key coordinate. Returns the well-formed moves and one error per
- * rejected entry.
+ * `<owner>/<repo>` coordinate, each value one move entry or an array of them.
+ * Structural disjointness is enforced per key (one default selector, exact
+ * selectors pairwise distinct), the floating-destination selector rule is
+ * enforced per entry, and the whole set is checked for statically visible
+ * rewrite cycles by applying it to every entry's destination. Returns the
+ * parsed moves (always array-valued) and one error per rejected finding.
  */
 function validateExtensionCatalogMoves(value: unknown): {
   moves: ExtensionCatalogMoves;
@@ -369,8 +837,8 @@ function validateExtensionCatalogMoves(value: unknown): {
     };
   }
   const errors: ExtensionCatalogDocumentError[] = [];
-  const moves: Record<string, ExtensionCatalogMove> = {};
-  for (const [coordinate, entry] of Object.entries(value)) {
+  const moves: Record<string, ExtensionCatalogMoveEntry[]> = {};
+  for (const [coordinate, raw] of Object.entries(value)) {
     const path = `$.moves[${JSON.stringify(coordinate)}]`;
     if (!isExtensionCoordinate(coordinate)) {
       errors.push({
@@ -380,81 +848,84 @@ function validateExtensionCatalogMoves(value: unknown): {
       });
       continue;
     }
-    if (!isRecord(entry) || typeof entry.ref !== "string") {
+    const isArray = Array.isArray(raw);
+    const rawEntries: readonly unknown[] = isArray ? (raw as readonly unknown[]) : [raw];
+    const entries: ExtensionCatalogMoveEntry[] = [];
+    let rejected = false;
+    for (const [index, rawEntry] of rawEntries.entries()) {
+      const entryPath = isArray ? `${path}[${index}]` : path;
+      const result = validateMoveEntry(coordinate, rawEntry, entryPath);
+      if ("errors" in result) {
+        errors.push(...result.errors);
+        rejected = true;
+      } else {
+        entries.push(result.entry);
+      }
+    }
+    if (rejected) {
+      continue;
+    }
+    // Structural disjointness: at most one default selector per key, and exact
+    // selectors pairwise structurally distinct. Overlap this cannot see (range
+    // vs range, pin vs range) is caught by the apply-time ambiguity failure.
+    const defaultCount = entries.filter((entry) => entry.from === undefined).length;
+    if (defaultCount > 1) {
       errors.push({
-        code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF,
-        path: `${path}.ref`,
-        message: `Catalog move "${coordinate}" must be an object with a string "ref".`,
+        code: ExtensionCatalogDocumentErrorCode.DUPLICATE_MOVE_SELECTOR,
+        path,
+        message: `Catalog moves for "${coordinate}" declare ${defaultCount} entries without a "from" selector.`,
       });
       continue;
     }
-    // A rename carries a new coordinate; a flip omits it. Either way the ref
-    // must name the move's destination: the new coordinate for a rename, the
-    // source key for a flip.
-    let destinationCoordinate = coordinate;
-    let renameTo: string | undefined;
-    if (entry.coordinate !== undefined) {
-      if (!isExtensionCoordinate(entry.coordinate) || entry.coordinate === coordinate) {
-        errors.push({
-          code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_COORDINATE,
-          path: `${path}.coordinate`,
-          message: `Catalog move "${coordinate}" coordinate must be an "<owner>/<repo>" coordinate different from the move key.`,
-        });
+    const exactKeys = new Set<string>();
+    let duplicateExact = false;
+    for (const entry of entries) {
+      if (typeof entry.from !== "string") {
         continue;
       }
-      destinationCoordinate = entry.coordinate;
-      renameTo = entry.coordinate;
+      const key = canonicalMoveShapeKey(requireMoveReferenceShape(entry.from));
+      if (exactKeys.has(key)) {
+        errors.push({
+          code: ExtensionCatalogDocumentErrorCode.DUPLICATE_MOVE_SELECTOR,
+          path,
+          message: `Catalog moves for "${coordinate}" declare two entries with the exact "from" ${JSON.stringify(entry.from)}.`,
+        });
+        duplicateExact = true;
+        break;
+      }
+      exactKeys.add(key);
     }
-    const parsedRef = parseExtensionReference(entry.ref);
-    if (
-      parsedRef === undefined ||
-      parsedRef.transport !== "gh" ||
-      parsedRef.routing.kind !== "pin" ||
-      !FULL_COMMIT_SHA_PATTERN.test(parsedRef.routing.pin)
-    ) {
-      errors.push({
-        code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF,
-        path: `${path}.ref`,
-        message: `Catalog move "${coordinate}" ref must be "gh:<owner>/<repo>@<full 40-character commit SHA>".`,
-      });
+    if (duplicateExact) {
       continue;
     }
-    if (`${parsedRef.owner}/${parsedRef.repo}` !== destinationCoordinate) {
-      errors.push({
-        code: ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF,
-        path: `${path}.ref`,
-        message: `Catalog move ref names "${parsedRef.owner}/${parsedRef.repo}", not the move coordinate "${destinationCoordinate}".`,
-      });
-      continue;
+    moves[coordinate] = entries;
+  }
+
+  if (errors.length === 0) {
+    // Cycle check on the destination-application graph: apply the full move
+    // set to every entry's concrete destination; a revisited shape is a
+    // statically visible loop. Version ranges do not capture here (versions
+    // are unknown at parse), so resolution-dependent loops remain a runtime
+    // concern of the apply-time visited-set guard.
+    for (const [coordinate, entries] of Object.entries(moves)) {
+      for (const [index, entry] of entries.entries()) {
+        const result = applyCatalogMove(entry.ref, moves, () => undefined);
+        if (result.ok) {
+          continue;
+        }
+        const path = `$.moves[${JSON.stringify(coordinate)}][${index}].ref`;
+        errors.push({
+          code:
+            result.code === CatalogMoveApplyErrorCode.CYCLE
+              ? ExtensionCatalogDocumentErrorCode.MOVE_CYCLE
+              : ExtensionCatalogDocumentErrorCode.DUPLICATE_MOVE_SELECTOR,
+          path,
+          message: result.message,
+        });
+      }
     }
-    moves[coordinate] = renameTo !== undefined ? { coordinate: renameTo, ref: entry.ref } : { ref: entry.ref };
   }
   return { moves, errors };
-}
-
-/**
- * Redirect an extension reference through a catalog moves table: when a move
- * targets the reference's coordinate and its `ref` differs from the reference,
- * return the move's `ref`; otherwise return the reference unchanged. The
- * coordinate is read from the reference's transport (`embedded:<coordinate>` or
- * `gh:<owner>/<repo>`), and an unparseable reference is returned unchanged. For
- * a rename move the returned `ref` names the new coordinate, so a dependency
- * reference to a renamed source coordinate resolves the renamed content.
- *
- * @param reference - The extension reference to redirect.
- * @param moves - The catalog moves table, keyed by source coordinate.
- */
-export function applyCatalogMove(reference: string, moves: ExtensionCatalogMoves): string {
-  const parsed = parseExtensionReference(reference);
-  if (parsed === undefined) {
-    return reference;
-  }
-  const coordinate = parsed.transport === "embedded" ? parsed.coordinate : `${parsed.owner}/${parsed.repo}`;
-  const move = moves[coordinate];
-  if (move === undefined || move.ref === reference) {
-    return reference;
-  }
-  return move.ref;
 }
 
 /**

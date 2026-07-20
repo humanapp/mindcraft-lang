@@ -18,8 +18,10 @@ import {
   diffMindcraftJsonToManifest,
   ExtensionFetchErrorCode,
   fetchExtensionSnapshot,
+  highestListedRelease,
   MINDCRAFT_JSON_PATH,
   type ProjectManager,
+  parseCatalogMoveReference,
   parseExtensionAddInput,
   parseProjectContentManifest,
   resolveExtensionAddInput,
@@ -40,13 +42,24 @@ import type { Mount, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler"
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { augmentProjectFileSystem, createBridgeProject, createProjectCompiler } from "./compilation.js";
-import type { EmbeddedExtension, FetchedExtensionContentMap, ResolvedExtensions } from "./embedded-extensions.js";
-import { ExtensionResolutionCycleError, resolveProjectExtensions } from "./embedded-extensions.js";
+import type {
+  EmbeddedExtension,
+  ExtensionResolutionWarning,
+  FetchedExtensionContentMap,
+  ResolvedExtensions,
+} from "./embedded-extensions.js";
+import {
+  CatalogMoveWarningCode,
+  createCatalogMoveVersionLookup,
+  ExtensionResolutionCycleError,
+  resolveProjectExtensions,
+} from "./embedded-extensions.js";
 import type { ExtensionCatalogEntry, ExtensionFetchFailures } from "./extension-catalog.js";
 import type { ExtensionInstallReport, ProjectDiagnosticsState } from "./extension-install.js";
 import {
   collectExtensionFetchClosure,
   diffProjectDiagnostics,
+  floatingPinsFromSnapshots,
   movedClosureHasMissingContent,
   typecheckBrainProblems,
 } from "./extension-install.js";
@@ -70,6 +83,14 @@ import { applyCompiledUserTiles } from "./user-tile-registration.js";
 
 // Project app-data keys.
 const BRAINS_APP_DATA_KEY = "brains";
+
+/** The outcome of one load's catalog-move application. */
+export interface CatalogMovesOutcome {
+  /** Reports of the per-move install transactions this load ran, in application order. */
+  readonly reports: readonly ExtensionInstallReport[];
+  /** Stable-coded findings for moves that could not be applied this load. */
+  readonly warnings: readonly ExtensionResolutionWarning[];
+}
 
 // ---------------------------------------------------------------------------
 // Options
@@ -99,11 +120,11 @@ export interface AppEnvironmentHostOptions {
   extensionFetchTransport?: ExtensionFetchTransport;
 
   /**
-   * Curated transport-flip moves from the host's catalog, keyed by coordinate.
-   * On project load a top-level manifest entry whose ref differs from a move
-   * target is rewritten to the target through the install transaction, and a
-   * transitive dependency reference a move targets resolves through the target.
-   * Empty when the host declares none.
+   * Curated catalog moves from the host's catalog, keyed by source coordinate.
+   * On project load a top-level manifest entry a move entry captures is
+   * rewritten to the entry's destination through an install transaction, and a
+   * transitive dependency reference an entry captures resolves through the
+   * destination. Empty when the host declares none.
    */
   catalogMoves?: ExtensionCatalogMoves;
 
@@ -300,6 +321,7 @@ export class AppEnvironmentHost {
           embedded: this.embeddedExtensions,
           fetched: this._installedContent,
           moves: this.catalogMoves,
+          floatingPins: floatingPinsFromSnapshots(this._installedSnapshots),
         },
         this.projectManager.activeProject!.manifest.targets
       );
@@ -717,6 +739,11 @@ export class AppEnvironmentHost {
       refetch: options?.refetchReferences,
       moves: this.catalogMoves,
       fetchSnapshot: (reference) => this.fetchSnapshot(reference),
+      ...(this.extensionFetchTransport !== undefined
+        ? {
+            listVersions: (owner: string, repo: string) => this.extensionFetchTransport!.listVersionTags(owner, repo),
+          }
+        : {}),
     });
     if (!closure.ok) {
       this.resyncManifestFile();
@@ -748,6 +775,7 @@ export class AppEnvironmentHost {
           embedded: this.embeddedExtensions,
           fetched: fetchedContent,
           moves: this.catalogMoves,
+          floatingPins: closure.floatingPins,
         },
         this.projectManager.activeProject!.manifest.targets
       );
@@ -780,13 +808,19 @@ export class AppEnvironmentHost {
       this.installLogEventsForChange(previousResolution, resolution, previousSnapshots, nextSnapshots)
     );
 
+    for (const warning of closure.warnings) {
+      logger.warn(
+        `[catalog-moves] ${warning.kind === "catalog-move-failed" ? warning.code : warning.kind}: ${warning.message}`
+      );
+    }
+    const warnings = [...resolution.warnings, ...closure.warnings];
     if (outcome.kind !== "worsened") {
-      return { committed: true, outcome, warnings: resolution.warnings };
+      return { committed: true, outcome, warnings };
     }
     return {
       committed: true,
       outcome,
-      warnings: resolution.warnings,
+      warnings,
       undo: async () => {
         await this.projectManager.updateActive({ extensions: previousExtensions });
         await this.persistInstalledSnapshots(previousSnapshots);
@@ -796,77 +830,211 @@ export class AppEnvironmentHost {
     };
   }
 
+  /** Version lookup over the embed record and the project's persisted snapshot content. */
+  private moveVersionLookup(): ReturnType<typeof createCatalogMoveVersionLookup> {
+    return createCatalogMoveVersionLookup({
+      embedded: this.embeddedExtensions,
+      contentForReference: (reference) => this._installedContent.get(reference),
+    });
+  }
+
   /**
-   * Rewrite the active project's top-level manifest entries that a curated
-   * catalog move redirects. A flip rewrites a coordinate's reference to the
-   * move target for the same coordinate; a rename replaces the source
-   * coordinate key with the move's new coordinate at its reference, and in the
-   * same per-project moment rewrites the source-coordinate namespace prefix of
-   * every saved-brain reference to the new coordinate so no brain is stranded.
-   * The rewritten map runs through the install transaction, persisting the
-   * manifest and fetching the moved content. A transitive dependency a move
-   * redirects at any depth is also healed on load: when no top-level entry is
-   * moved but the moved closure reaches `gh:` content that is neither embedded
-   * nor already persisted, the transaction still runs to fetch and persist that
-   * content, so a project that installed the dependency while its library was
-   * bundled resolves after graduation. Returns the transaction's report, or
-   * undefined when the host declares no moves, or when no top-level entry is
-   * moved and the moved closure is already fully backed by embedded or persisted
-   * content (idempotent no-op). When the transaction refuses, any brain rewrite
-   * is rolled back so the project is never half-migrated.
+   * Resolve a floating catalog-move destination for a coordinate to a pinned
+   * `gh:` reference: the coordinate's persisted snapshot pin when one exists,
+   * otherwise the highest stable published version listed by the host's
+   * transport. Returns undefined when no pin can be produced.
    */
-  async applyCatalogMoves(): Promise<ExtensionInstallReport | undefined> {
+  private async resolveFloatingMoveReference(coordinate: string): Promise<string | undefined> {
+    const known = floatingPinsFromSnapshots(this._installedSnapshots).get(coordinate.toLowerCase());
+    if (known !== undefined) {
+      return known;
+    }
+    if (!this.extensionFetchTransport) {
+      return undefined;
+    }
+    const slash = coordinate.indexOf("/");
+    const listed = await this.extensionFetchTransport.listVersionTags(
+      coordinate.slice(0, slash),
+      coordinate.slice(slash + 1)
+    );
+    const version = listed.ok ? highestListedRelease(listed.versions) : undefined;
+    return version === undefined ? undefined : `gh:${coordinate}@${version}`;
+  }
+
+  /**
+   * Apply the host's curated catalog moves to the active project. Each
+   * captured top-level manifest entry is one move-application unit: its
+   * manifest rewrite, its saved-brain namespace rewrite (when the entry's
+   * final coordinate differs), and the fetches its chain requires run as one
+   * install transaction, rolled back together when the transaction refuses. A
+   * failed unit writes nothing, surfaces a stable-coded warning, and is
+   * retried on the next load, while other units proceed independently.
+   *
+   * Application interleaves apply, fetch, and re-apply: after each committed
+   * transaction the entries are re-applied with the versions the new content
+   * determines, and a transitive moved dependency whose content the project
+   * never persisted is healed by a fetch transaction, until nothing changes.
+   * A floating destination is resolved to a pin before its transaction runs;
+   * the pin is what the manifest receives. Returns undefined when the host
+   * declares no moves or the project is a true no-op; otherwise the
+   * transactions' reports and the load's stable-coded move warnings.
+   */
+  async applyCatalogMoves(): Promise<CatalogMovesOutcome | undefined> {
     if (Object.keys(this.catalogMoves).length === 0) {
       return undefined;
     }
-    const current = this.projectManager.activeProject?.manifest.extensions ?? {};
-    const next: Record<string, string> = {};
-    const renames: { from: string; to: string }[] = [];
-    let changed = false;
-    for (const [coordinate, reference] of Object.entries(current)) {
-      const move = this.catalogMoves[coordinate];
-      if (move?.coordinate !== undefined && move.coordinate !== coordinate) {
-        next[move.coordinate] = move.ref;
-        renames.push({ from: coordinate, to: move.coordinate });
-        changed = true;
+    const reports: ExtensionInstallReport[] = [];
+    const warnings: ExtensionResolutionWarning[] = [];
+    const warned = new Set<string>();
+    const warn = (reference: string, code: CatalogMoveWarningCode, message: string): void => {
+      const key = `${reference} ${code}`;
+      if (warned.has(key)) {
+        return;
+      }
+      warned.add(key);
+      warnings.push({
+        kind: "catalog-move-failed",
+        origin: parseCatalogMoveReference(reference)?.coordinate ?? reference,
+        reference,
+        code,
+        message,
+      });
+    };
+    // Entries whose unit failed this load; they are not retried until the next load.
+    const failedEntries = new Set<string>();
+
+    let progressed = true;
+    while (progressed) {
+      progressed = false;
+
+      // Top-level entries: each captured entry is its own transaction.
+      const lookup = this.moveVersionLookup();
+      const current = this.projectManager.activeProject?.manifest.extensions ?? {};
+      for (const [coordinate, reference] of Object.entries(current)) {
+        if (failedEntries.has(coordinate)) {
+          continue;
+        }
+        const applied = applyCatalogMove(reference, this.catalogMoves, lookup);
+        if (!applied.ok) {
+          warn(reference, applied.code, applied.message);
+          failedEntries.add(coordinate);
+          continue;
+        }
+        if (!applied.moved) {
+          continue;
+        }
+        let finalReference = applied.reference;
+        const parts = parseCatalogMoveReference(finalReference);
+        if (parts === undefined) {
+          continue;
+        }
+        if (parts.floating) {
+          const pin = await this.resolveFloatingMoveReference(parts.coordinate);
+          if (pin === undefined) {
+            warn(
+              reference,
+              CatalogMoveWarningCode.FLOATING_UNRESOLVED,
+              `Catalog move for "${reference}" resolves to the floating "${finalReference}" and no stable ` +
+                "published version could be pinned; the move is skipped this load."
+            );
+            failedEntries.add(coordinate);
+            continue;
+          }
+          finalReference = pin;
+        }
+        const finalCoordinate = parts.coordinate;
+
+        const next: Record<string, string> = {};
+        for (const [key, value] of Object.entries(current)) {
+          if (key !== coordinate) {
+            next[key] = value;
+          }
+        }
+        next[finalCoordinate] = finalReference;
+
+        // A rename rewrites saved-brain namespaces in the same unit, restored
+        // together when the transaction refuses.
+        let brainsBeforeRename: string | undefined;
+        let brainsRewritten = false;
+        if (finalCoordinate !== coordinate) {
+          brainsBeforeRename = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
+          brainsRewritten = await this.renameBrainNamespaces([{ from: coordinate, to: finalCoordinate }]);
+        }
+        const report = await this.updateProjectExtensions(next);
+        reports.push(report);
+        if (!report.committed) {
+          if (brainsRewritten) {
+            await this.restoreBrains(brainsBeforeRename);
+          }
+          const detail =
+            report.refusal.kind === "fetch"
+              ? `${report.refusal.error.code}: ${report.refusal.error.message}`
+              : report.refusal.message;
+          warn(
+            reference,
+            CatalogMoveWarningCode.FETCH_FAILED,
+            `Catalog move for "${reference}" to "${finalReference}" was refused (${detail}); the move is ` +
+              "skipped this load."
+          );
+          failedEntries.add(coordinate);
+          continue;
+        }
+        progressed = true;
+        break;
+      }
+      if (progressed) {
         continue;
       }
-      const moved = applyCatalogMove(reference, this.catalogMoves);
-      next[coordinate] = moved;
-      if (moved !== reference) {
-        changed = true;
-      }
-    }
-    if (!changed) {
-      // No top-level entry moved, but a transitive moved dependency at any depth
-      // may still lack content on this load -- a dependency installed while the
-      // moved library was bundled has no persisted snapshot. Heal it by running
-      // the fetch transaction, which fetches and persists exactly the missing
-      // content. A closure already fully backed by embedded or persisted content
-      // is a true no-op.
-      const needsHeal = movedClosureHasMissingContent({
-        extensions: next,
+
+      // Transitive heal: a moved dependency at any depth may lack content on
+      // this load -- a dependency installed while the moved library was
+      // bundled has no persisted snapshot, and a floating destination may not
+      // be pinned yet. The fetch transaction fetches and persists exactly the
+      // missing content; content it learns can enable further captures.
+      const extensions = this.projectManager.activeProject?.manifest.extensions ?? {};
+      const needsHeal = await movedClosureHasMissingContent({
+        extensions,
         embedded: this.embeddedExtensions,
         stored: this._installedSnapshots,
         moves: this.catalogMoves,
       });
-      if (!needsHeal) {
-        return undefined;
+      if (needsHeal) {
+        const before = new Set(Object.values(this._installedSnapshots).map((record) => record.reference));
+        const report = await this.updateProjectExtensions(extensions);
+        reports.push(report);
+        if (report.committed) {
+          if (Object.values(this._installedSnapshots).some((record) => !before.has(record.reference))) {
+            progressed = true;
+          }
+        } else if (report.refusal.kind === "fetch") {
+          warn(report.refusal.error.reference, CatalogMoveWarningCode.FETCH_FAILED, report.refusal.error.message);
+        }
       }
     }
 
-    let brainsBeforeRename: string | undefined;
-    let brainsRewritten = false;
-    if (renames.length > 0) {
-      brainsBeforeRename = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
-      brainsRewritten = await this.renameBrainNamespaces(renames);
+    // A version-scoped capture still unevaluable at the end of the loop is a
+    // loud skip, retried on the next load.
+    const lookup = this.moveVersionLookup();
+    for (const reference of Object.values(this.projectManager.activeProject?.manifest.extensions ?? {})) {
+      const applied = applyCatalogMove(reference, this.catalogMoves, lookup);
+      if (applied.ok && applied.pendingVersion) {
+        warn(
+          reference,
+          CatalogMoveWarningCode.VERSION_UNKNOWN,
+          `The version of "${reference}" could not be determined, so its version-scoped catalog move cannot be ` +
+            "evaluated; the move is skipped this load."
+        );
+      }
     }
-
-    const report = await this.updateProjectExtensions(next);
-    if (brainsRewritten && !report.committed) {
-      await this.restoreBrains(brainsBeforeRename);
+    for (const warning of warnings) {
+      if (warning.kind === "catalog-move-failed") {
+        logger.warn(`[catalog-moves] ${warning.code}: ${warning.message}`);
+      }
     }
-    return report;
+    if (reports.length === 0 && warnings.length === 0) {
+      return undefined;
+    }
+    return { reports, warnings };
   }
 
   /**

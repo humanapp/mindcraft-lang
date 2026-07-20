@@ -9,21 +9,29 @@ export {
   resolveExtensionAddInput,
 } from "./extension-add-input.js";
 export type {
+  CatalogMoveApplication,
+  CatalogMoveReferenceParts,
+  CatalogMoveVersionLookup,
   ExtensionCatalogDocument,
   ExtensionCatalogDocumentEntry,
   ExtensionCatalogDocumentError,
   ExtensionCatalogDocumentParseResult,
   ExtensionCatalogDocumentWarning,
-  ExtensionCatalogMove,
+  ExtensionCatalogMoveEntry,
+  ExtensionCatalogMoveObjectSelector,
+  ExtensionCatalogMoveSelector,
   ExtensionCatalogMoves,
+  ExtensionCatalogMoveTransport,
 } from "./extension-catalog-document.js";
 export {
   applyCatalogMove,
   CATALOG_ENTRY_KIND_EXTENSION,
   CATALOG_ENTRY_KIND_TARGET,
+  CatalogMoveApplyErrorCode,
   ExtensionCatalogDocumentErrorCode,
   ExtensionCatalogDocumentWarningCode,
   MINDCRAFT_CATALOG_FORMAT,
+  parseCatalogMoveReference,
   parseExtensionCatalogDocument,
   validateExtensionCatalogDocument,
 } from "./extension-catalog-document.js";
@@ -160,3 +168,4 @@ export {
 } from "./project-manager.js";
 export type { ProjectManifest } from "./project-manifest.js";
 export type { ProjectCollectionTabSession, ProjectStore } from "./project-store.js";
+export { isSupportedVersionRange, satisfiesRange } from "./semver-range.js";

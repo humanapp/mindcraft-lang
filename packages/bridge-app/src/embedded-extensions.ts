@@ -1,9 +1,11 @@
-import type { ExtensionCatalogMoves, ExtensionTarget } from "@mindcraft-lang/app-host";
+import type { CatalogMoveVersionLookup, ExtensionCatalogMoves, ExtensionTarget } from "@mindcraft-lang/app-host";
 import {
   applyCatalogMove,
+  CatalogMoveApplyErrorCode,
   isAbbreviatedCommitPin,
   LOWEST_CONTENT_VERSION,
   MINDCRAFT_JSON_PATH,
+  parseCatalogMoveReference,
   parseExtensionReference,
   parseProjectContentManifest,
 } from "@mindcraft-lang/app-host";
@@ -63,6 +65,23 @@ export interface ExtensionResolutionConflictWarning {
   readonly message: string;
 }
 
+/** Stable identifiers for non-fatal catalog-move findings surfaced during resolution and closure walks. */
+export const CatalogMoveWarningCode = {
+  /** More than one move entry captures the reference; the move is not applied. */
+  AMBIGUOUS_CAPTURE: CatalogMoveApplyErrorCode.AMBIGUOUS_CAPTURE,
+  /** The move application revisited a reference shape; the move is not applied. */
+  CYCLE: CatalogMoveApplyErrorCode.CYCLE,
+  /** A floating destination could not be resolved to a pinned version. */
+  FLOATING_UNRESOLVED: "CATALOG_MOVE_FLOATING_UNRESOLVED",
+  /** A version-range selector could not be evaluated: the reference's version is undeterminable. */
+  VERSION_UNKNOWN: "CATALOG_MOVE_VERSION_UNKNOWN",
+  /** The moved destination's content could not be fetched; the move is not applied. */
+  FETCH_FAILED: "CATALOG_MOVE_FETCH_FAILED",
+} as const;
+
+/** Union of all {@link CatalogMoveWarningCode} values. */
+export type CatalogMoveWarningCode = (typeof CatalogMoveWarningCode)[keyof typeof CatalogMoveWarningCode];
+
 /**
  * A non-fatal finding encountered while resolving a project's extension
  * dependency graph. Every resolved origin remains resolvable; warnings are
@@ -104,6 +123,22 @@ export type ExtensionResolutionWarning =
       readonly origin: string;
       /** Human-readable summary. */
       readonly message: string;
+    }
+  | {
+      /**
+       * A catalog move could not be applied to this reference on this load.
+       * Nothing is written for the failed move; application is retried on the
+       * next load.
+       */
+      readonly kind: "catalog-move-failed";
+      /** The `<owner>/<repo>` coordinate of the reference the move was for. */
+      readonly origin: string;
+      /** The reference the move application was for, as written. */
+      readonly reference: string;
+      /** Stable failure code. */
+      readonly code: CatalogMoveWarningCode;
+      /** Human-readable summary. */
+      readonly message: string;
     };
 
 /** The kind of finding a resolution warning reports. */
@@ -137,11 +172,18 @@ export interface ExtensionResolutionSources {
   /** Fetched snapshot content keyed by reference, resolving `gh:` references. */
   readonly fetched?: FetchedExtensionContentMap;
   /**
-   * Curated transport-flip moves, keyed by coordinate. A transitive dependency
-   * reference whose coordinate a move targets resolves through the move's
-   * target reference; absent when the host applies no moves.
+   * Curated catalog moves, keyed by source coordinate. A transitive dependency
+   * reference an entry captures resolves through the entry's destination
+   * reference; absent when the host applies no moves.
    */
   readonly moves?: ExtensionCatalogMoves;
+  /**
+   * Pinned `gh:` references for coordinates whose catalog move resolves to a
+   * floating destination, keyed by lowercased coordinate. A floating move
+   * result resolves through this map; a coordinate with no pin stays
+   * unresolved for this load. Absent when the host holds none.
+   */
+  readonly floatingPins?: ReadonlyMap<string, string>;
   /**
    * Registry pins resolving a target coordinate that no embed record carries to
    * a `gh:` reference, keyed by the target's `<owner>/<repo>` coordinate. A
@@ -285,6 +327,54 @@ function candidateFromFiles(
     targets: own.targets,
     ambient: own.ambient,
     ...(own.identity !== undefined ? { identity: own.identity } : {}),
+  };
+}
+
+/**
+ * Build a {@link CatalogMoveVersionLookup} over an embed record and a
+ * reference-keyed content getter. An `embedded:` reference answers with its
+ * embed entry's manifest version; a `gh:` reference answers with the version
+ * of the manifest in the content the getter returns for it. A reference whose
+ * content is unavailable, or whose manifest is missing or unparseable, answers
+ * `undefined`.
+ *
+ * @param options.embedded - The host application's bundled embedded extensions.
+ * @param options.contentForReference - Origin-relative text files (leading-slash paths) for a `gh:` reference.
+ */
+export function createCatalogMoveVersionLookup(options: {
+  embedded: readonly EmbeddedExtension[];
+  contentForReference: (reference: string) => ReadonlyMap<string, string> | undefined;
+}): CatalogMoveVersionLookup {
+  const byCoordinate = new Map(options.embedded.map((extension) => [extension.canonicalOrigin, extension]));
+  const cache = new Map<string, string>();
+  const manifestVersion = (files: ReadonlyMap<string, string>): string | undefined => {
+    const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+    if (manifestContent === undefined) {
+      return undefined;
+    }
+    const parsed = parseProjectContentManifest(manifestContent);
+    return parsed.ok ? parsed.manifest.version : undefined;
+  };
+  return (reference) => {
+    const cached = cache.get(reference);
+    if (cached !== undefined) {
+      return cached;
+    }
+    let version: string | undefined;
+    const parsed = parseExtensionReference(reference);
+    if (parsed?.transport === "embedded") {
+      const extension = byCoordinate.get(parsed.coordinate);
+      version = extension !== undefined ? manifestVersion(embeddedFiles(extension)) : undefined;
+    } else if (parsed?.transport === "gh") {
+      const files = options.contentForReference(reference);
+      version = files !== undefined ? manifestVersion(files) : undefined;
+    }
+    // An undetermined version is recomputed on the next call: content can
+    // arrive between calls during a fetch walk.
+    if (version !== undefined) {
+      cache.set(reference, version);
+    }
+    return version;
   };
 }
 
@@ -437,6 +527,71 @@ export function resolveProjectExtensions(
   const targetRegistry = sources.targetRegistry;
   const warnings: ExtensionResolutionWarning[] = [];
   const warnedTargets = new Set<string>();
+  const warnedMoves = new Set<string>();
+  const versionLookup = createCatalogMoveVersionLookup({
+    embedded: sources.embedded,
+    contentForReference: (reference) => fetched?.get(reference),
+  });
+
+  /** Record one catalog-move finding per (reference, code). */
+  const pushMoveWarning = (declaredReference: string, code: CatalogMoveWarningCode, message: string): void => {
+    const key = `${declaredReference} ${code}`;
+    if (warnedMoves.has(key)) {
+      return;
+    }
+    warnedMoves.add(key);
+    warnings.push({
+      kind: "catalog-move-failed",
+      origin: parseCatalogMoveReference(declaredReference)?.coordinate ?? declaredReference,
+      reference: declaredReference,
+      code,
+      message,
+    });
+  };
+
+  /**
+   * Redirect one dependency edge through the catalog moves. A floating result
+   * resolves to its pin, and the moves re-apply from the pin, until the
+   * reference is concrete and uncaptured. Returns the reference to resolve, or
+   * `undefined` when the edge cannot resolve this load (a floating destination
+   * with no pinned content yet).
+   */
+  const redirectEdge = (declaredReference: string): string | undefined => {
+    let reference = declaredReference;
+    const seenPins = new Set<string>();
+    while (true) {
+      const applied = applyCatalogMove(reference, moves, versionLookup);
+      if (!applied.ok) {
+        pushMoveWarning(declaredReference, applied.code, applied.message);
+        return declaredReference;
+      }
+      reference = applied.reference;
+      const parts = parseCatalogMoveReference(reference);
+      if (!parts?.floating) {
+        return reference;
+      }
+      const pin = sources.floatingPins?.get(parts.coordinate.toLowerCase());
+      if (pin === undefined) {
+        pushMoveWarning(
+          declaredReference,
+          CatalogMoveWarningCode.FLOATING_UNRESOLVED,
+          `Catalog move for "${declaredReference}" resolves to the floating "${reference}" and no pinned content ` +
+            "is available yet; the dependency stays unresolved this load."
+        );
+        return undefined;
+      }
+      if (seenPins.has(pin)) {
+        pushMoveWarning(
+          declaredReference,
+          CatalogMoveWarningCode.CYCLE,
+          `Catalog moves for "${declaredReference}" revisited the pinned "${pin}".`
+        );
+        return declaredReference;
+      }
+      seenPins.add(pin);
+      reference = pin;
+    }
+  };
 
   // The project's direct dependencies: each dependency's `<owner>/<repo>`
   // coordinate, which its reference resolves to. The coordinate is derived
@@ -520,7 +675,10 @@ export function resolveProjectExtensions(
     if (winner.candidate === candidate && !expanded.has(candidate.origin)) {
       expanded.add(candidate.origin);
       for (const declaredReference of Object.values(candidate.extensions)) {
-        const reference = applyCatalogMove(declaredReference, moves);
+        const reference = redirectEdge(declaredReference);
+        if (reference === undefined) {
+          continue;
+        }
         const child = candidateForReference(reference, candidate.depth + 1, byCoordinate, fetched);
         if (child === undefined) {
           continue;

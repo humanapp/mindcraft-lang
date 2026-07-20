@@ -25,7 +25,7 @@ export type {
   ProjectFileSystem,
 } from "./app-bridge.js";
 export { createAppBridge } from "./app-bridge.js";
-export type { AppEnvironmentHostOptions } from "./app-environment-host.js";
+export type { AppEnvironmentHostOptions, CatalogMovesOutcome } from "./app-environment-host.js";
 export { AppEnvironmentHost } from "./app-environment-host.js";
 export { CORE_LIB_COORDINATE, CORE_LIB_REFERENCE } from "./core-extension.js";
 export type { EmbeddedExtensionIdViolation } from "./embedded-extension-id-gate.js";
@@ -44,7 +44,12 @@ export type {
   ResolvedExtensions,
   ResolvedOriginProvenance,
 } from "./embedded-extensions.js";
-export { ExtensionResolutionCycleError, resolveProjectExtensions } from "./embedded-extensions.js";
+export {
+  CatalogMoveWarningCode,
+  createCatalogMoveVersionLookup,
+  ExtensionResolutionCycleError,
+  resolveProjectExtensions,
+} from "./embedded-extensions.js";
 export type {
   ExtensionActionResult,
   ExtensionCatalogEntry,
@@ -75,6 +80,8 @@ export type {
 export {
   collectExtensionFetchClosure,
   diffProjectDiagnostics,
+  floatingPinsFromSnapshots,
+  movedClosureHasMissingContent,
   typecheckBrainProblems,
 } from "./extension-install.js";
 export type { ExtensionInstallLogEvent } from "./extension-install-log.js";

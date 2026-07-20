@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { CATALOG_ENTRY_KIND_EXTENSION, validateExtensionCatalogDocument } from "@mindcraft-lang/app-host";
 import type { EmbeddedExtension, FetchedExtensionContentMap } from "@mindcraft-lang/bridge-app";
-import { buildSimCatalogOffers, buildSimExtensionEntries } from "./sim-extension-browser";
+import { buildSimCatalogOffers, buildSimExtensionEntries, loadSimLibraryCatalog } from "./sim-extension-browser";
 import { SIM_LIB_COORDINATE, SIM_LIB_REFERENCE } from "./sim-extension-coordinates";
 import simLibraryCatalogDocument from "./sim-library-catalog.json";
 
@@ -41,6 +41,18 @@ describe("sim library catalog document", () => {
     const versionByCoordinate = new Map(result.document.entries.map((entry) => [entry.coordinate, entry.version]));
     assert.equal(versionByCoordinate.get(TELEPORT), bundledManifestVersion("lib-ecosim-teleport"));
     assert.equal(versionByCoordinate.get(DETECT), bundledManifestVersion("lib-ecosim-detect"));
+  });
+
+  test("the startup loader throws with the stable codes when the bundled document is invalid", () => {
+    assert.throws(
+      () =>
+        loadSimLibraryCatalog({
+          format: "mindcraft.catalog/1",
+          entries: [],
+          moves: { "example-org/moved": { ref: "not-a-reference" } },
+        }),
+      (thrown: unknown) => thrown instanceof Error && thrown.message.includes("CATALOG_DOCUMENT_INVALID_MOVE_REF")
+    );
   });
 });
 

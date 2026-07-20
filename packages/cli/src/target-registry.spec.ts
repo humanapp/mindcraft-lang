@@ -76,6 +76,26 @@ describe("target registry", () => {
     );
   });
 
+  it("fails on a document whose moves section is invalid, carrying the move fatal", () => {
+    const document = JSON.stringify({
+      format: "mindcraft.catalog/1",
+      entries: [entry("example-org/trg-first", SHA_A)],
+      moves: {
+        "example-org/moved": [
+          { from: `gh:example-org/moved@${SHA_A}`, ref: `gh:example-org/moved@${SHA_B}` },
+          { from: `gh:example-org/moved@${SHA_B}`, ref: `gh:example-org/moved@${SHA_A}` },
+        ],
+      },
+    });
+    assert.throws(
+      () => parseTargetRegistry(document),
+      (thrown: unknown) =>
+        thrown instanceof TargetRegistryError &&
+        thrown.code === TargetRegistryErrorCode.REGISTRY_PARSE_FAILED &&
+        thrown.parseErrors.some((error) => error.code === "CATALOG_DOCUMENT_MOVE_CYCLE")
+    );
+  });
+
   it("resolves the bundled registry from any working directory", () => {
     const originalCwd = process.cwd();
     process.chdir(tmpdir());

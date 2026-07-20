@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { CatalogMoveVersionLookup, ExtensionCatalogMoves } from "@mindcraft-lang/app-host";
 import {
   applyCatalogMove,
+  CatalogMoveApplyErrorCode,
   ExtensionCatalogDocumentErrorCode,
   ExtensionCatalogDocumentWarningCode,
   MINDCRAFT_CATALOG_FORMAT,
+  parseCatalogMoveReference,
   parseExtensionCatalogDocument,
   validateExtensionCatalogDocument,
 } from "@mindcraft-lang/app-host";
@@ -249,6 +252,25 @@ describe("validateExtensionCatalogDocument", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Moves -- validation
+// ---------------------------------------------------------------------------
+
+/** Validate a document that carries only the given moves section. */
+function validateMoves(moves: unknown): ReturnType<typeof validateExtensionCatalogDocument> {
+  return validateExtensionCatalogDocument({ format: MINDCRAFT_CATALOG_FORMAT, entries: [], moves });
+}
+
+/** Assert the given moves section is rejected and one of its errors carries the code. */
+function assertMovesFatal(moves: unknown, code: ExtensionCatalogDocumentErrorCode): void {
+  const result = validateMoves(moves);
+  assert.ok(!result.ok, `Expected rejection for moves ${JSON.stringify(moves)}`);
+  assert.ok(
+    result.errors.some((error) => error.code === code),
+    `Expected ${code}; got ${result.errors.map((error) => error.code).join(", ")}`
+  );
+}
+
 describe("validateExtensionCatalogDocument -- moves", () => {
   const MOVE_COORDINATE = "mindcraft-lang/lib-codal-position";
   const MOVE_REF = `gh:${MOVE_COORDINATE}@${PIN_SHA}`;
@@ -259,154 +281,608 @@ describe("validateExtensionCatalogDocument -- moves", () => {
     assert.deepStrictEqual(result.document.moves, {});
   });
 
-  it("accepts a well-formed same-coordinate flip with zero errors and warnings", () => {
-    const result = validateExtensionCatalogDocument({
-      format: MINDCRAFT_CATALOG_FORMAT,
-      entries: [VALID_ENTRY],
-      moves: { [MOVE_COORDINATE]: { ref: MOVE_REF } },
-    });
+  it("normalizes a single-entry object form to a one-entry array", () => {
+    const result = validateMoves({ [MOVE_COORDINATE]: { ref: MOVE_REF } });
     assert.ok(result.ok);
     assert.deepStrictEqual(result.warnings, []);
-    assert.deepStrictEqual(result.document.moves, { [MOVE_COORDINATE]: { ref: MOVE_REF } });
+    assert.deepStrictEqual(result.document.moves, { [MOVE_COORDINATE]: [{ ref: MOVE_REF }] });
+  });
+
+  it("accepts an entry array with selector-scoped entries", () => {
+    const result = validateMoves({
+      [MOVE_COORDINATE]: [
+        { from: { transport: "embedded" }, ref: MOVE_REF },
+        { from: { transport: "gh", packageVersion: "^0.1.0" }, ref: `gh:${MOVE_COORDINATE}@v0.2.0` },
+      ],
+    });
+    assert.ok(result.ok);
+    assert.equal(result.document.moves[MOVE_COORDINATE].length, 2);
+  });
+
+  it("accepts all destination forms: embedded, gh pin, gh tag, gh branch, and floating gh", () => {
+    for (const ref of [
+      `embedded:${MOVE_COORDINATE}`,
+      MOVE_REF,
+      `gh:${MOVE_COORDINATE}@v0.2.0`,
+      `gh:${MOVE_COORDINATE}#main`,
+      `gh:${MOVE_COORDINATE}`,
+    ]) {
+      const result = validateMoves({ "other-org/source": { ref } });
+      assert.ok(result.ok, `Expected acceptance for destination ${JSON.stringify(ref)}`);
+    }
   });
 
   it("rejects a non-object moves section with INVALID_MOVES", () => {
-    const result = validateExtensionCatalogDocument({
-      format: MINDCRAFT_CATALOG_FORMAT,
-      entries: [VALID_ENTRY],
-      moves: [],
-    });
-    assert.ok(!result.ok);
-    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVES));
+    assertMovesFatal([], ExtensionCatalogDocumentErrorCode.INVALID_MOVES);
   });
 
   it("rejects a move key that is not a coordinate with INVALID_MOVES", () => {
-    const result = validateExtensionCatalogDocument({
-      format: MINDCRAFT_CATALOG_FORMAT,
-      entries: [VALID_ENTRY],
-      moves: { "no-slash": { ref: MOVE_REF } },
-    });
-    assert.ok(!result.ok);
-    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVES));
+    assertMovesFatal({ "no-slash": { ref: MOVE_REF } }, ExtensionCatalogDocumentErrorCode.INVALID_MOVES);
   });
 
-  it("rejects move refs that are not full-SHA gh pins with INVALID_MOVE_REF", () => {
-    const badRefs: unknown[] = [
-      `embedded:${MOVE_COORDINATE}`,
-      `gh:${MOVE_COORDINATE}@v0.1.0`,
-      `gh:${MOVE_COORDINATE}@${PIN_SHA.slice(0, 7)}`,
-      `gh:${MOVE_COORDINATE}#main`,
-      42,
-    ];
-    for (const ref of badRefs) {
-      const result = validateExtensionCatalogDocument({
-        format: MINDCRAFT_CATALOG_FORMAT,
-        entries: [VALID_ENTRY],
-        moves: { [MOVE_COORDINATE]: { ref } },
-      });
-      assert.ok(!result.ok, `Expected rejection for move ref ${JSON.stringify(ref)}`);
-      assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF));
+  it("rejects destination refs outside the grammar with INVALID_MOVE_REF", () => {
+    for (const ref of ["npm:a/b", "gh:owner-only", `embedded:${MOVE_COORDINATE}@v1`, 42, undefined]) {
+      assertMovesFatal({ [MOVE_COORDINATE]: { ref } }, ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF);
     }
   });
 
   it("rejects a move whose value is not an object with INVALID_MOVE_REF", () => {
-    const result = validateExtensionCatalogDocument({
-      format: MINDCRAFT_CATALOG_FORMAT,
-      entries: [VALID_ENTRY],
-      moves: { [MOVE_COORDINATE]: MOVE_REF },
-    });
-    assert.ok(!result.ok);
-    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF));
+    assertMovesFatal({ [MOVE_COORDINATE]: MOVE_REF }, ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF);
   });
 
-  it("rejects a move ref whose coordinate differs from the move key with INVALID_MOVE_REF", () => {
-    const result = validateExtensionCatalogDocument({
-      format: MINDCRAFT_CATALOG_FORMAT,
-      entries: [VALID_ENTRY],
-      moves: { [MOVE_COORDINATE]: { ref: `gh:other-org/lib-codal-position@${PIN_SHA}` } },
-    });
-    assert.ok(!result.ok);
-    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF));
-    assert.ok(result.errors.some((error) => /other-org\/lib-codal-position/.test(error.message)));
+  it("rejects a from string that is not a full reference with INVALID_MOVE_FROM", () => {
+    for (const from of [`gh:${MOVE_COORDINATE}`, "not-a-reference", 42]) {
+      assertMovesFatal(
+        { [MOVE_COORDINATE]: { from, ref: MOVE_REF } },
+        ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM
+      );
+    }
   });
 
-  const RENAME_TO = "mindcraft-lang/lib-position";
-  const RENAME_REF = `gh:${RENAME_TO}@${PIN_SHA}`;
+  it("rejects a from string whose coordinate differs from the move key with INVALID_MOVE_FROM", () => {
+    assertMovesFatal(
+      { [MOVE_COORDINATE]: { from: "embedded:other-org/elsewhere", ref: MOVE_REF } },
+      ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM
+    );
+  });
 
-  it("accepts a well-formed rename whose ref names the new coordinate", () => {
-    const result = validateExtensionCatalogDocument({
-      format: MINDCRAFT_CATALOG_FORMAT,
-      entries: [VALID_ENTRY],
-      moves: { [MOVE_COORDINATE]: { coordinate: RENAME_TO, ref: RENAME_REF } },
+  it("rejects a from string structurally equal to the entry ref with INVALID_MOVE_FROM", () => {
+    assertMovesFatal(
+      { [MOVE_COORDINATE]: { from: MOVE_REF, ref: MOVE_REF } },
+      ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM
+    );
+  });
+
+  it("rejects an empty object selector with INVALID_MOVE_FROM", () => {
+    assertMovesFatal(
+      { [MOVE_COORDINATE]: { from: {}, ref: MOVE_REF } },
+      ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM
+    );
+  });
+
+  it("rejects a selector transport outside gh/embedded with INVALID_MOVE_FROM", () => {
+    assertMovesFatal(
+      { [MOVE_COORDINATE]: { from: { transport: "npm" }, ref: MOVE_REF } },
+      ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM
+    );
+  });
+
+  it("rejects range forms the evaluator does not support with UNSUPPORTED_MOVE_RANGE", () => {
+    for (const packageVersion of ["", "  ", ">=1.0", "1.x.0", "1.0.0 || 2.0.0", 42]) {
+      assertMovesFatal(
+        { [MOVE_COORDINATE]: { from: { packageVersion }, ref: MOVE_REF } },
+        ExtensionCatalogDocumentErrorCode.UNSUPPORTED_MOVE_RANGE
+      );
+    }
+  });
+
+  it("accepts the conjunction range form the evaluator supports", () => {
+    const result = validateMoves({
+      [MOVE_COORDINATE]: { from: { packageVersion: ">=0.2.0 <=0.4.0" }, ref: MOVE_REF },
     });
     assert.ok(result.ok);
-    assert.deepStrictEqual(result.warnings, []);
-    assert.deepStrictEqual(result.document.moves, { [MOVE_COORDINATE]: { coordinate: RENAME_TO, ref: RENAME_REF } });
   });
 
-  it("rejects a rename whose new coordinate is malformed with INVALID_MOVE_COORDINATE", () => {
-    const result = validateExtensionCatalogDocument({
-      format: MINDCRAFT_CATALOG_FORMAT,
-      entries: [VALID_ENTRY],
-      moves: { [MOVE_COORDINATE]: { coordinate: "no-slash", ref: RENAME_REF } },
-    });
-    assert.ok(!result.ok);
-    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_COORDINATE));
+  it("rejects two default-selector entries for one key with DUPLICATE_MOVE_SELECTOR", () => {
+    assertMovesFatal(
+      { [MOVE_COORDINATE]: [{ ref: MOVE_REF }, { ref: `gh:${MOVE_COORDINATE}@v0.2.0` }] },
+      ExtensionCatalogDocumentErrorCode.DUPLICATE_MOVE_SELECTOR
+    );
   });
 
-  it("rejects a rename whose new coordinate equals the move key with INVALID_MOVE_COORDINATE", () => {
-    const result = validateExtensionCatalogDocument({
-      format: MINDCRAFT_CATALOG_FORMAT,
-      entries: [VALID_ENTRY],
-      moves: { [MOVE_COORDINATE]: { coordinate: MOVE_COORDINATE, ref: MOVE_REF } },
-    });
-    assert.ok(!result.ok);
-    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_COORDINATE));
+  it("rejects two structurally equal exact froms, including a case-variant coordinate, with DUPLICATE_MOVE_SELECTOR", () => {
+    const from = `gh:${MOVE_COORDINATE}@v0.1.0`;
+    assertMovesFatal(
+      {
+        [MOVE_COORDINATE]: [
+          { from, ref: MOVE_REF },
+          { from, ref: `gh:${MOVE_COORDINATE}@v0.2.0` },
+        ],
+      },
+      ExtensionCatalogDocumentErrorCode.DUPLICATE_MOVE_SELECTOR
+    );
+    // Coordinates compare case-insensitively: a case-variant exact from is the same selector.
+    assertMovesFatal(
+      {
+        [MOVE_COORDINATE]: [
+          { from, ref: MOVE_REF },
+          { from: "gh:Mindcraft-Lang/LIB-codal-position@v0.1.0", ref: `gh:${MOVE_COORDINATE}@v0.2.0` },
+        ],
+      },
+      ExtensionCatalogDocumentErrorCode.DUPLICATE_MOVE_SELECTOR
+    );
   });
 
-  it("rejects a rename whose ref names the source, not the new coordinate, with INVALID_MOVE_REF", () => {
-    const result = validateExtensionCatalogDocument({
-      format: MINDCRAFT_CATALOG_FORMAT,
-      entries: [VALID_ENTRY],
-      moves: { [MOVE_COORDINATE]: { coordinate: RENAME_TO, ref: MOVE_REF } },
+  it("rejects a floating destination whose selector captures the destination transport with FLOATING_MOVE_SELECTOR", () => {
+    const floating = `gh:${MOVE_COORDINATE}`;
+    for (const from of [
+      { transport: "gh" },
+      { packageVersion: "^0.1.0" },
+      `gh:${MOVE_COORDINATE}@v0.1.0`,
+      `gh:${MOVE_COORDINATE}#main`,
+    ]) {
+      assertMovesFatal(
+        { [MOVE_COORDINATE]: { from, ref: floating } },
+        ExtensionCatalogDocumentErrorCode.FLOATING_MOVE_SELECTOR
+      );
+    }
+  });
+
+  it("accepts a floating destination with a selector that cannot capture the destination pair", () => {
+    const floating = `gh:${MOVE_COORDINATE}`;
+    for (const from of [undefined, { transport: "embedded" }, `embedded:${MOVE_COORDINATE}`] as const) {
+      const result = validateMoves({
+        [MOVE_COORDINATE]: { ...(from !== undefined ? { from } : {}), ref: floating },
+      });
+      assert.ok(result.ok, `Expected acceptance for from ${JSON.stringify(from)}`);
+    }
+    // A floating rename destination never shares the key coordinate, so any selector is legal.
+    const rename = validateMoves({
+      [MOVE_COORDINATE]: { from: { transport: "gh" }, ref: "gh:mindcraft-lang/lib-position" },
     });
-    assert.ok(!result.ok);
-    assert.ok(result.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_REF));
+    assert.ok(rename.ok);
+  });
+
+  it("rejects a ping-pong recall pair with MOVE_CYCLE", () => {
+    const shaA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const shaB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    assertMovesFatal(
+      {
+        [MOVE_COORDINATE]: [
+          { from: `gh:${MOVE_COORDINATE}@${shaA}`, ref: `gh:${MOVE_COORDINATE}@${shaB}` },
+          { from: `gh:${MOVE_COORDINATE}@${shaB}`, ref: `gh:${MOVE_COORDINATE}@${shaA}` },
+        ],
+      },
+      ExtensionCatalogDocumentErrorCode.MOVE_CYCLE
+    );
+  });
+
+  it("rejects a cross-key chain loop with MOVE_CYCLE", () => {
+    assertMovesFatal(
+      {
+        "example-org/a": { ref: "gh:example-org/b@v1.0.0" },
+        "example-org/b": { ref: "gh:example-org/a@v1.0.0" },
+      },
+      ExtensionCatalogDocumentErrorCode.MOVE_CYCLE
+    );
   });
 });
 
-describe("applyCatalogMove", () => {
+describe("parseCatalogMoveReference", () => {
+  it("parses the four concrete forms and the floating form", () => {
+    assert.deepStrictEqual(parseCatalogMoveReference("embedded:example-org/a"), {
+      transport: "embedded",
+      coordinate: "example-org/a",
+      floating: false,
+    });
+    assert.deepStrictEqual(parseCatalogMoveReference(`gh:example-org/a@${PIN_SHA}`), {
+      transport: "gh",
+      coordinate: "example-org/a",
+      floating: false,
+    });
+    assert.deepStrictEqual(parseCatalogMoveReference("gh:example-org/a#main"), {
+      transport: "gh",
+      coordinate: "example-org/a",
+      floating: false,
+    });
+    assert.deepStrictEqual(parseCatalogMoveReference("gh:example-org/a"), {
+      transport: "gh",
+      coordinate: "example-org/a",
+      floating: true,
+    });
+    assert.equal(parseCatalogMoveReference("not-a-reference"), undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Moves -- application
+// ---------------------------------------------------------------------------
+
+/** Apply and assert success, returning the application. */
+function applyOk(
+  reference: string,
+  moves: ExtensionCatalogMoves,
+  versionLookup?: CatalogMoveVersionLookup
+): { reference: string; moved: boolean; pendingVersion: boolean } {
+  const result = applyCatalogMove(reference, moves, versionLookup);
+  assert.ok(result.ok, `Expected ok application for ${reference}; got ${!result.ok ? result.code : ""}`);
+  return result;
+}
+
+describe("applyCatalogMove -- default selector (the clobber fix)", () => {
   const COORDINATE = "example-org/position-ext";
-  const MOVED_REF = `example-org/position-ext@${PIN_SHA}`;
-  const moves = { [COORDINATE]: { ref: `gh:${MOVED_REF}` } };
+  const OLD_SHA = "1111111111111111111111111111111111111111";
+  const NEW_SHA = "2222222222222222222222222222222222222222";
+  const moves: ExtensionCatalogMoves = { [COORDINATE]: [{ ref: `gh:${COORDINATE}@${OLD_SHA}` }] };
 
-  it("redirects an embedded reference of a moved coordinate to the move target", () => {
-    assert.equal(applyCatalogMove(`embedded:${COORDINATE}`, moves), `gh:${MOVED_REF}`);
+  it("a gh reference of a flipped coordinate keeps its own component", () => {
+    const result = applyOk(`gh:${COORDINATE}@${NEW_SHA}`, moves);
+    assert.equal(result.reference, `gh:${COORDINATE}@${NEW_SHA}`);
+    assert.equal(result.moved, false);
   });
 
-  it("redirects a differing gh pin of a moved coordinate to the move target", () => {
-    assert.equal(applyCatalogMove(`gh:${COORDINATE}@v0.1.0`, moves), `gh:${MOVED_REF}`);
+  it("an embedded reference of a flipped coordinate still migrates to the pin", () => {
+    const result = applyOk(`embedded:${COORDINATE}`, moves);
+    assert.equal(result.reference, `gh:${COORDINATE}@${OLD_SHA}`);
+    assert.equal(result.moved, true);
   });
 
-  it("returns the reference unchanged when it already equals the move target", () => {
-    assert.equal(applyCatalogMove(`gh:${MOVED_REF}`, moves), `gh:${MOVED_REF}`);
+  it("a reference structurally equal to the destination is never captured", () => {
+    const result = applyOk(`gh:${COORDINATE}@${OLD_SHA}`, moves);
+    assert.equal(result.moved, false);
   });
 
-  it("returns the reference unchanged when no move targets its coordinate", () => {
-    assert.equal(applyCatalogMove("embedded:other-org/other-ext", moves), "embedded:other-org/other-ext");
+  it("a reference of an untargeted coordinate and an unparseable reference pass through", () => {
+    assert.equal(applyOk("embedded:other-org/other-ext", moves).reference, "embedded:other-org/other-ext");
+    assert.equal(applyOk("not-a-reference", moves).reference, "not-a-reference");
+  });
+});
+
+describe("applyCatalogMove -- structural equality and case", () => {
+  const COORDINATE = "example-org/src";
+  const SHA = "1111111111111111111111111111111111111111";
+
+  it("an exact from captures a case-variant coordinate spelling of the same reference", () => {
+    const moves: ExtensionCatalogMoves = {
+      [COORDINATE]: [{ from: `gh:Example-Org/SRC@${SHA}`, ref: `embedded:${COORDINATE}` }],
+    };
+    const result = applyOk(`gh:${COORDINATE}@${SHA}`, moves);
+    assert.equal(result.reference, `embedded:${COORDINATE}`);
   });
 
-  it("returns an unparseable reference unchanged", () => {
-    assert.equal(applyCatalogMove("not-a-reference", moves), "not-a-reference");
+  it("an exact from does not capture a component near-miss", () => {
+    const moves: ExtensionCatalogMoves = {
+      [COORDINATE]: [{ from: `gh:${COORDINATE}@v1.0.0`, ref: `embedded:${COORDINATE}` }],
+    };
+    assert.equal(applyOk(`gh:${COORDINATE}@v1.0.1`, moves).moved, false);
   });
 
-  it("redirects a reference of a renamed source coordinate to the new coordinate's ref", () => {
-    const RENAMED_REF = `gh:example-org/position-ext-2@${PIN_SHA}`;
-    const renameMoves = { [COORDINATE]: { coordinate: "example-org/position-ext-2", ref: RENAMED_REF } };
-    assert.equal(applyCatalogMove(`embedded:${COORDINATE}`, renameMoves), RENAMED_REF);
-    assert.equal(applyCatalogMove(`gh:${COORDINATE}@v0.1.0`, renameMoves), RENAMED_REF);
-    // A reference already at the new coordinate is not further redirected.
-    assert.equal(applyCatalogMove(RENAMED_REF, renameMoves), RENAMED_REF);
+  it("the idempotence guard fires for a case-variant spelling of the destination", () => {
+    const moves: ExtensionCatalogMoves = { [COORDINATE]: [{ ref: `gh:${COORDINATE}@${SHA}` }] };
+    const caseVariant = `gh:Example-Org/SRC@${SHA}`;
+    const result = applyOk(caseVariant, moves);
+    assert.equal(result.reference, caseVariant);
+    assert.equal(result.moved, false);
+  });
+});
+
+describe("applyCatalogMove -- version ranges", () => {
+  const COORDINATE = "example-org/src";
+  const SHA = "1111111111111111111111111111111111111111";
+  const DEST = `gh:${COORDINATE}@v9.9.9`;
+  const source = `gh:${COORDINATE}@${SHA}`;
+
+  function rangeMoves(packageVersion: string): ExtensionCatalogMoves {
+    return { [COORDINATE]: [{ from: { packageVersion }, ref: DEST }] };
+  }
+
+  it("captures on both inclusive boundaries and passes through just outside them", () => {
+    const moves = rangeMoves(">=0.2.0 <=0.4.0");
+    for (const [version, captured] of [
+      ["0.2.0", true],
+      ["0.4.0", true],
+      ["0.1.9", false],
+      ["0.4.1", false],
+    ] as const) {
+      const result = applyOk(source, moves, () => version);
+      assert.equal(result.moved, captured, `version ${version}`);
+      assert.equal(result.reference, captured ? DEST : source);
+      assert.equal(result.pendingVersion, false);
+    }
+  });
+
+  it("never captures a branch reference and does not mark it pending", () => {
+    const result = applyOk(`gh:${COORDINATE}#main`, rangeMoves("*"), () => "1.0.0");
+    assert.equal(result.moved, false);
+    assert.equal(result.pendingVersion, false);
+  });
+
+  it("marks an undeterminable version pending without capturing", () => {
+    const result = applyOk(source, rangeMoves("^1.0.0"), () => undefined);
+    assert.equal(result.moved, false);
+    assert.equal(result.pendingVersion, true);
+  });
+
+  it("captures once the version becomes determinable", () => {
+    const result = applyOk(source, rangeMoves("^1.0.0"), (reference) => (reference === source ? "1.2.3" : undefined));
+    assert.equal(result.reference, DEST);
+    assert.equal(result.pendingVersion, false);
+  });
+});
+
+describe("applyCatalogMove -- chains", () => {
+  const SHA = "3333333333333333333333333333333333333333";
+
+  it("follows a same-key flip-then-rename chain through a floating hop in one application", () => {
+    const moves: ExtensionCatalogMoves = {
+      "example-org/a": [
+        { from: { transport: "embedded" }, ref: "gh:example-org/a" },
+        { from: { transport: "gh" }, ref: `gh:example-org/c@${SHA}` },
+      ],
+    };
+    // The intermediate floating hop is captured by the gh-transport entry and
+    // is never resolved to a pin.
+    assert.equal(applyOk("embedded:example-org/a", moves).reference, `gh:example-org/c@${SHA}`);
+    assert.equal(applyOk("gh:example-org/a@v0.1.0", moves).reference, `gh:example-org/c@${SHA}`);
+    assert.equal(applyOk(`gh:example-org/c@${SHA}`, moves).moved, false);
+  });
+
+  it("follows a cross-key rename chain to the final coordinate", () => {
+    const moves: ExtensionCatalogMoves = {
+      "example-org/a": [{ ref: `gh:example-org/b@${SHA}` }],
+      "example-org/b": [{ ref: `gh:example-org/c@${SHA}` }],
+    };
+    assert.equal(applyOk("embedded:example-org/a", moves).reference, `gh:example-org/c@${SHA}`);
+    assert.equal(applyOk("embedded:example-org/b", moves).reference, `gh:example-org/c@${SHA}`);
+  });
+
+  it("a range entry downstream of a floating hop is pending until the hop resolves", () => {
+    const floatingMoves: ExtensionCatalogMoves = {
+      "example-org/a": [
+        { from: { transport: "embedded" }, ref: "gh:example-org/a" },
+        { from: { transport: "gh", packageVersion: "^1.0.0" }, ref: `gh:example-org/b@${SHA}` },
+      ],
+    };
+    // The floating hop has no version: the range entry cannot evaluate, the
+    // application ends at the floating reference, and pendingVersion is set.
+    const beforeResolution = applyOk("embedded:example-org/a", floatingMoves, () => undefined);
+    assert.equal(beforeResolution.reference, "gh:example-org/a");
+    assert.equal(beforeResolution.pendingVersion, true);
+    // Once the hop resolved to a pin (final-so-far), re-applying from the pin
+    // evaluates the range and completes the chain.
+    const pinned = applyOk("gh:example-org/a@v1.2.0", floatingMoves, () => "1.2.0");
+    assert.equal(pinned.reference, `gh:example-org/b@${SHA}`);
+  });
+});
+
+describe("applyCatalogMove -- ambiguity and cycles", () => {
+  const COORDINATE = "example-org/src";
+  const SHA_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+  it("fails with a stable code naming the reference when two entries capture it", () => {
+    const moves: ExtensionCatalogMoves = {
+      [COORDINATE]: [
+        { from: { transport: "gh" }, ref: `embedded:${COORDINATE}` },
+        { from: `gh:${COORDINATE}@${SHA_A}`, ref: `embedded:${COORDINATE}` },
+      ],
+    };
+    const result = applyCatalogMove(`gh:${COORDINATE}@${SHA_A}`, moves);
+    assert.ok(!result.ok);
+    assert.equal(result.code, CatalogMoveApplyErrorCode.AMBIGUOUS_CAPTURE);
+    assert.equal(result.reference, `gh:${COORDINATE}@${SHA_A}`);
+  });
+
+  it("fails with the cycle code, not a hang, on a resolution-dependent loop", () => {
+    const SHA_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    // Ranges do not capture at parse time, so this loop is invisible to the
+    // parse-time destination-application check; the runtime visited set is
+    // what stops it.
+    const moves: ExtensionCatalogMoves = {
+      "example-org/b": [{ from: { packageVersion: "^1.0.0" }, ref: `gh:example-org/c@${SHA_B}` }],
+      "example-org/c": [{ from: { packageVersion: "^2.0.0" }, ref: `gh:example-org/b@${SHA_A}` }],
+    };
+    const versions = new Map([
+      [`gh:example-org/b@${SHA_A}`, "1.0.0"],
+      [`gh:example-org/c@${SHA_B}`, "2.0.0"],
+    ]);
+    const result = applyCatalogMove(`gh:example-org/b@${SHA_A}`, moves, (reference) => versions.get(reference));
+    assert.ok(!result.ok);
+    assert.equal(result.code, CatalogMoveApplyErrorCode.CYCLE);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Moves -- the capture matrix
+// ---------------------------------------------------------------------------
+
+describe("applyCatalogMove -- capture matrix", () => {
+  const S = "example-org/src";
+  const D = "example-org/dst";
+  const SRC_SHA = "1111111111111111111111111111111111111111";
+  const DST_SHA = "2222222222222222222222222222222222222222";
+
+  interface SourceCell {
+    readonly name: string;
+    readonly ref: string;
+    readonly transport: "gh" | "embedded";
+    readonly branch: boolean;
+    readonly version?: string;
+  }
+
+  const sources: readonly SourceCell[] = [
+    { name: "embedded", ref: `embedded:${S}`, transport: "embedded", branch: false, version: "1.0.0" },
+    { name: "gh-sha", ref: `gh:${S}@${SRC_SHA}`, transport: "gh", branch: false, version: "1.5.0" },
+    { name: "gh-vtag", ref: `gh:${S}@v2.0.0`, transport: "gh", branch: false, version: "2.0.0" },
+    { name: "gh-branch", ref: `gh:${S}#main`, transport: "gh", branch: true },
+  ];
+
+  interface DestCell {
+    readonly name: string;
+    readonly ref: string;
+    readonly transport: "gh" | "embedded";
+    readonly floating: boolean;
+  }
+
+  function destinations(coordinate: string): readonly DestCell[] {
+    return [
+      { name: "embedded", ref: `embedded:${coordinate}`, transport: "embedded", floating: false },
+      { name: "gh-sha", ref: `gh:${coordinate}@${DST_SHA}`, transport: "gh", floating: false },
+      { name: "gh-vtag", ref: `gh:${coordinate}@v9.9.9`, transport: "gh", floating: false },
+      { name: "gh-branch", ref: `gh:${coordinate}#release`, transport: "gh", floating: false },
+      { name: "gh-floating", ref: `gh:${coordinate}`, transport: "gh", floating: true },
+    ];
+  }
+
+  type SelectorKind =
+    | "absent"
+    | "exact-match"
+    | "exact-near-miss"
+    | "transport-match"
+    | "transport-miss"
+    | "range-in"
+    | "range-out";
+
+  function selectorFrom(kind: SelectorKind, source: SourceCell): unknown {
+    switch (kind) {
+      case "absent":
+        return undefined;
+      case "exact-match":
+        return source.ref;
+      case "exact-near-miss":
+        return `gh:${S}@v7.7.7`;
+      case "transport-match":
+        return { transport: source.transport };
+      case "transport-miss":
+        return { transport: source.transport === "gh" ? "embedded" : "gh" };
+      case "range-in":
+        return { packageVersion: ">=1.0.0" };
+      case "range-out":
+        return { packageVersion: "<0.5.0" };
+    }
+  }
+
+  /** Whether the selector can capture a gh-transport reference of the source coordinate. */
+  function selectorReachesGh(kind: SelectorKind, source: SourceCell): boolean {
+    switch (kind) {
+      case "absent":
+        return false;
+      case "exact-match":
+        return source.transport === "gh";
+      case "exact-near-miss":
+        return true;
+      case "transport-match":
+        return source.transport === "gh";
+      case "transport-miss":
+        return source.transport === "embedded";
+      case "range-in":
+      case "range-out":
+        return true;
+    }
+  }
+
+  /** Whether the entry captures the source, given the cell validated. */
+  function expectedCapture(kind: SelectorKind, source: SourceCell, dest: DestCell, rename: boolean): boolean {
+    switch (kind) {
+      case "absent": {
+        if (rename) {
+          return true;
+        }
+        const onDestinationPair = source.transport === dest.transport;
+        return !onDestinationPair;
+      }
+      case "exact-match":
+        return true;
+      case "exact-near-miss":
+        return false;
+      case "transport-match":
+        return true;
+      case "transport-miss":
+        return false;
+      case "range-in":
+        return !source.branch;
+      case "range-out":
+        return false;
+    }
+  }
+
+  const versionLookup: CatalogMoveVersionLookup = (reference) => {
+    const cell = sources.find((source) => source.ref === reference);
+    return cell?.version;
+  };
+
+  const selectorKinds: readonly SelectorKind[] = [
+    "absent",
+    "exact-match",
+    "exact-near-miss",
+    "transport-match",
+    "transport-miss",
+    "range-in",
+    "range-out",
+  ];
+
+  let assertedCells = 0;
+
+  for (const rename of [false, true]) {
+    const coordinate = rename ? D : S;
+    for (const source of sources) {
+      for (const dest of destinations(coordinate)) {
+        for (const kind of selectorKinds) {
+          const from = selectorFrom(kind, source);
+          const entry = { ...(from !== undefined ? { from } : {}), ref: dest.ref };
+          const cellName = `${rename ? "rename" : "flip"} ${source.name} -> ${dest.name} [${kind}]`;
+
+          // Parse legality of the cell.
+          const fromEqualsRef = kind === "exact-match" && source.ref === dest.ref;
+          const floatingIllegal = !rename && dest.floating && selectorReachesGh(kind, source);
+
+          it(cellName, () => {
+            const validated = validateMoves({ [S]: entry });
+            if (fromEqualsRef) {
+              assert.ok(!validated.ok);
+              assert.ok(
+                validated.errors.some((error) => error.code === ExtensionCatalogDocumentErrorCode.INVALID_MOVE_FROM)
+              );
+              assertedCells++;
+              return;
+            }
+            if (floatingIllegal) {
+              assert.ok(!validated.ok);
+              assert.ok(
+                validated.errors.some(
+                  (error) => error.code === ExtensionCatalogDocumentErrorCode.FLOATING_MOVE_SELECTOR
+                )
+              );
+              assertedCells++;
+              return;
+            }
+            assert.ok(
+              validated.ok,
+              `Expected a valid cell; got ${!validated.ok ? JSON.stringify(validated.errors) : ""}`
+            );
+            const moves = validated.document.moves;
+
+            const captured = expectedCapture(kind, source, dest, rename);
+            const guardBlocks = source.ref === dest.ref;
+            const expectedRef = captured && !guardBlocks ? dest.ref : source.ref;
+
+            const result = applyOk(source.ref, moves, versionLookup);
+            assert.equal(result.reference, expectedRef, "output reference");
+            assert.equal(result.moved, expectedRef !== source.ref, "moved flag");
+            assert.equal(result.pendingVersion, false, "pendingVersion");
+
+            // Idempotence: applying the output again is a no-op.
+            const again = applyOk(result.reference, moves, versionLookup);
+            assert.equal(again.reference, result.reference, "idempotence");
+            assert.equal(again.moved, false, "idempotence moved flag");
+            assertedCells++;
+          });
+        }
+      }
+    }
+  }
+
+  it("asserted every cell of the matrix", () => {
+    assert.equal(assertedCells, 2 * sources.length * 5 * selectorKinds.length);
   });
 });
 
