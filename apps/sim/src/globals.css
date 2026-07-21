@@ -58,7 +58,7 @@
 @theme {
   --color-background: oklch(9% 0.022 262);
   --color-foreground: oklch(96% 0.008 262);
-  --color-card: oklch(24% 0.055 262);
+  --color-card: oklch(30% 0.055 262);
   --color-card-foreground: oklch(96% 0.008 262);
   --color-popover: oklch(24% 0.055 262);
   --color-popover-foreground: oklch(96% 0.008 262);
