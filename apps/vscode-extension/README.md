@@ -28,7 +28,19 @@ Once your editor is paired to your app, the connection persists and reconnects a
 
 ## Getting Started on Desktop
 
-On desktop, the extension hosts a Mindcraft app inside VS Code. Tell it which app to host with the `mindcraft.devTarget` setting, pointing at the app's built output:
+On desktop, the extension hosts a Mindcraft app inside a VS Code editor tab. Which app it hosts is the platform target the project declares in its `mindcraft.json`, fetched from the published target registry -- so an existing project opens and runs with no extra setup.
+
+1. Open the folder you want the project to live in.
+2. Run **Mindcraft: New Project** and pick a target from the list (or **Mindcraft: Open Project Folder** for an existing project).
+3. The Mindcraft editor opens in a tab. Brains you build there and tiles you author in TypeScript all save to the project folder.
+4. Use the **Mindcraft** panel in the Explorer sidebar for the common actions: create a sensor, create an actuator, open the editor, open settings. Closing the editor tab is fine -- **Mindcraft: Open Editor** brings it back.
+5. Run **Mindcraft: Update Target** to move the project to the latest published build of its target.
+
+New projects include a generated `tsconfig.json` and a `.libraries` folder so tile sources get full type information and error checking in the editor, plus a `.gitignore` that keeps the generated files out of version control.
+
+### Hosting a local or specific target build
+
+You normally do not set the hosted app by hand -- it follows the project's declared target. To override it, set `mindcraft.devTarget`. This is the setup for authoring a target app itself (host a local, unpublished build) or pinning a project to a specific published build:
 
 ```json
 "mindcraft.devTarget": {
@@ -36,14 +48,7 @@ On desktop, the extension hosts a Mindcraft app inside VS Code. Tell it which ap
 }
 ```
 
-Then:
-
-1. Open the folder you want the project to live in.
-2. Run **Mindcraft: New Project** (or **Mindcraft: Open Project Folder** for an existing project).
-3. The Mindcraft editor opens in a tab. Brains you build there and tiles you author in TypeScript all save to the project folder.
-4. Use the **Mindcraft** panel in the Explorer sidebar for the common actions: create a sensor, create an actuator, open the editor, open settings. Closing the editor tab is fine -- **Mindcraft: Open Editor** brings it back.
-
-New projects include a generated `tsconfig.json` and a `.libraries` folder so tile sources get full type information and error checking in the editor, plus a `.gitignore` that keeps the generated files out of version control.
+Use `appPath` for a local build's `dist` directory, or `appRef` (`<owner>/<repo>@<ref>`) for a published build. The override's optional `extensions` and `targets` entries are seeded into new projects you create.
 
 ### Flashing a Device
 
@@ -62,6 +67,7 @@ For targets whose hardware is programmed by copying a firmware file to a USB dri
 | `Mindcraft: New Project` | Desktop | Create a Mindcraft project in a workspace folder and open the editor |
 | `Mindcraft: Open Project Folder` | Desktop | Open the editor for an existing project folder |
 | `Mindcraft: Open Editor` | Desktop | Bring the Mindcraft editor tab to front, reopening it if closed |
+| `Mindcraft: Update Target` | Desktop | Move the project to the latest published build of its target app |
 | `Mindcraft: Create New Sensor` | Both | Scaffold a new, empty sensor tile |
 | `Mindcraft: Create New Actuator` | Both | Scaffold a new, empty actuator tile |
 | `Mindcraft: Open Settings` | Both | Open VS Code Settings filtered to Mindcraft options |
@@ -71,4 +77,4 @@ For targets whose hardware is programmed by copying a firmware file to a USB dri
 | Setting | Where | Description |
 |---|---|---|
 | `mindcraft.bridgeUrl` | Web | URL of the bridge service used to pair with a running app |
-| `mindcraft.devTarget` | Desktop | The Mindcraft target app to host for project folders, plus optional library and platform-target seeds for new projects |
+| `mindcraft.devTarget` | Desktop | Author override of the hosted target app -- a local build (`appPath`) or a pinned published build (`appRef`) -- plus optional library and platform-target seeds for new projects |
