@@ -58,6 +58,12 @@ import {
   ReplaceLastPageCommand,
 } from "./commands";
 
+// Top-edge brand accent. Uses each app's signature strip tokens when defined
+// (microbit-sim's blue->green->teal), else falls back to the brand primary/ring
+// so single-brand apps (apps/sim) still get a branded accent line.
+const brandStripBackground =
+  "linear-gradient(90deg, var(--strip-blue, var(--color-primary)) 0%, var(--strip-green, var(--color-ring)) 50%, var(--strip-teal, var(--color-primary)) 100%)";
+
 /** Props for {@link BrainEditorDialog}. */
 export interface BrainEditorDialogProps {
   isOpen: boolean;
@@ -477,12 +483,17 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       {isOpen && isDocsOpen && <div className="fixed inset-0 z-50 bg-black/80" aria-hidden="true" />}
       <Dialog open={isOpen} onOpenChange={onOpenChange} modal={!isDocsOpen}>
         <DialogContent
-          className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[75%] sm:h-[75%] sm:p-6 sm:gap-4 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl"
+          className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[75%] sm:h-[75%] sm:p-6 sm:gap-4 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl overflow-hidden"
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onFocusOutside={(e) => e.preventDefault()}
           hideClose
         >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.75"
+            style={{ background: brandStripBackground }}
+          />
           <DialogHeader className="border-b border-border pb-2 sm:pb-4">
             <DialogDescription className="sr-only">
               Edit brain pages, rules, and tiles. Use the toolbar to navigate pages, undo/redo, and manage the brain.
@@ -819,7 +830,9 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
           <div
             className="overflow-hidden grow rounded-lg"
             style={{
-              background: "linear-gradient(160deg, #191338 0%, #0E0A20 100%)",
+              background:
+                "radial-gradient(130% 90% at 50% -10%, rgba(139, 108, 243, 0.14) 0%, transparent 55%), radial-gradient(circle at center, rgba(255, 255, 255, 0.035) 1px, transparent 1.3px), linear-gradient(160deg, #191338 0%, #0E0A20 100%)",
+              backgroundSize: "100% 100%, 22px 22px, 100% 100%",
               boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 4px 20px rgba(0, 0, 0, 0.45)",
             }}
             role="region"
