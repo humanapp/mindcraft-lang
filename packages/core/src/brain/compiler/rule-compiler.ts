@@ -4,13 +4,21 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { logger } from "../../platform/logger";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
-import type { ActionRef } from "../../runtime";
-import { type BrainActionArgSlot, CoreOpId, NativeType } from "../../runtime";
-import type { Instr } from "../../runtime/bytecode";
-import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
+import type { ActionDescriptor, ActionRef, BrainActionResolver, ITypeRegistry, TypeId } from "../../runtime";
+import {
+  type BrainActionArgSlot,
+  CoreFuncId,
+  CoreOpId,
+  CoreTypeIds,
+  isBytecodeConversion,
+  NativeType,
+} from "../../runtime";
+import { NIL_VALUE, type Value } from "../../runtime/value";
+import type { ITileCatalog } from "../interfaces";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
+import type { BrainTileParameterDef } from "../tiles";
 import type { ConstantPool } from "./constant-pool";
-import { CompilationDiagCode } from "./diag-codes";
+import { CompilationDiagCode, type DiagCode, LinkDiagCode } from "./diagnostics";
 import type {
   ActuatorExpr,
   AssignmentExpr,
@@ -22,6 +30,7 @@ import type {
   FieldAccessExpr,
   LiteralExpr,
   ModifierExpr,
+  OutputExpr,
   ParameterExpr,
   SensorExpr,
   SlotExpr,
@@ -43,32 +52,29 @@ interface CompilationContext {
   variableNames: List<string>;
   /** Maps action keys to their program-local action slot */
   actionIndices: Dict<string, number>;
-  /** Program-local action refs, populated on first use */
+  /** Program-local action refs (bytecode actions only), populated on first use */
   actionRefs: List<ActionRef>;
+  /** Resolves an action descriptor to its binding (host vs bytecode) at compile time */
+  actionResolver: BrainActionResolver;
   /** Type information for each node */
   typeEnv: TypeEnv;
   /** Constant pool for managing literal values */
   constantPool: ConstantPool;
+  /** Type registry, used to instantiate the `List<T>` type of a repeated arg slot. */
+  typeRegistry: ITypeRegistry;
+  /** Tile catalogs, used to resolve a repeated slot's parameter element type. */
+  catalogs: ReadonlyList<ITileCatalog>;
   /** Counter for assigning unique call-site IDs to host and action call instructions */
   nextCallSiteId: { value: number };
   /** Diagnostics collected during compilation */
   diags: List<CompilationDiag>;
 }
 
-/** Result of compiling one rule: emitted instructions, variable names, and diagnostics. */
-export interface CompilationResult {
-  instrs: ReadonlyList<Instr>;
-  /** Variable names used in this compilation, for LOAD_VAR_SLOT/STORE_VAR_SLOT instructions */
-  variableNames: ReadonlyList<string>;
-  /** Diagnostics collected during compilation */
-  diags: ReadonlyList<CompilationDiag>;
-}
-
 /**
  * Compilation diagnostic (error or warning) with node reference.
  */
 export interface CompilationDiag {
-  code: CompilationDiagCode;
+  code: DiagCode;
   message: string;
   nodeId: number;
 }
@@ -147,11 +153,13 @@ export class ExprCompiler implements ExprVisitor<void> {
   }
 
   /**
-   * Emit a type-conversion host call if the node's TypeInfo has a
-   * conversion. The value to convert must already be on top of the
-   * stack: that single value is the conversion's slot-0 buffer, so the
-   * compiler emits `HOST_CALL convFnId, 1, csId` directly. Stack
-   * effect: `[value] -> [converted_value]`.
+   * Emit a type-conversion call if the node's TypeInfo has a conversion.
+   * The value to convert must already be on top of the stack: that single
+   * value is the conversion's slot-0 buffer. A host-function conversion
+   * emits `HOST_CALL convFnId, 1, csId`; a bytecode conversion emits
+   * `ACTION_CALL actionSlot, 1, csId` against the program-local action slot
+   * keyed by the conversion's action key, bound to the compiled convert
+   * function at link. Stack effect: `[value] -> [converted_value]`.
    */
   private emitConversionIfNeeded(nodeId: number): void {
     const typeInfo = this.context.typeEnv.get(nodeId);
@@ -160,6 +168,11 @@ export class ExprCompiler implements ExprVisitor<void> {
     }
 
     const conversion = typeInfo.conversion;
+    if (isBytecodeConversion(conversion)) {
+      const actionSlot = this.getOrCreateActionSlot(conversion.descriptor.key);
+      this.emitter.actionCall(actionSlot, 1, this.nextCallSiteId());
+      return;
+    }
     this.emitter.hostCall(conversion.id, 1, this.nextCallSiteId());
   }
 
@@ -209,17 +222,19 @@ export class ExprCompiler implements ExprVisitor<void> {
 
   private emitBinaryOp(typeInfo: TypeInfo): void {
     // The 2-slot arg buffer is already in place on the stack. Emit
-    // HOST_CALL (or HOST_CALL_ASYNC + AWAIT) to consume it.
-    if (typeInfo.overload) {
-      if (typeInfo.overload.fnEntry.isAsync) {
-        this.emitter.hostCallAsync(typeInfo.overload.fnEntry.id, 2, this.nextCallSiteId());
+    // HOST_CALL (or HOST_CALL_ASYNC + AWAIT) to consume it. Assignment never
+    // reaches here: it lowers through visitAssignment.
+    const fnEntry = typeInfo.overload?.fnEntry;
+    if (fnEntry) {
+      if (fnEntry.isAsync) {
+        this.emitter.hostCallAsync(fnEntry.id, 2, this.nextCallSiteId());
         // Automatically await async operators so their result can be used by
         // subsequent operations This makes async operators work correctly in
         // multi-step operator chains
         this.emitter.await();
         return;
       }
-      this.emitter.hostCall(typeInfo.overload.fnEntry.id, 2, this.nextCallSiteId());
+      this.emitter.hostCall(fnEntry.id, 2, this.nextCallSiteId());
     } else {
       // This should have been caught during type inference, but handle
       // gracefully The diagnostic is tracked against the operator's nodeId,
@@ -259,17 +274,17 @@ export class ExprCompiler implements ExprVisitor<void> {
   }
 
   private emitUnaryOp(typeInfo: TypeInfo): void {
-    const overload = typeInfo.overload;
-    if (overload) {
-      if (overload.fnEntry.isAsync) {
-        this.emitter.hostCallAsync(overload.fnEntry.id, 1, this.nextCallSiteId());
+    const fnEntry = typeInfo.overload?.fnEntry;
+    if (fnEntry) {
+      if (fnEntry.isAsync) {
+        this.emitter.hostCallAsync(fnEntry.id, 1, this.nextCallSiteId());
         // Automatically await async operators so their result can be used by
         // subsequent operations This makes async operators work correctly in
         // multi-step operator chains
         this.emitter.await();
         return;
       }
-      this.emitter.hostCall(overload.fnEntry.id, 1, this.nextCallSiteId());
+      this.emitter.hostCall(fnEntry.id, 1, this.nextCallSiteId());
     } else {
       // This should have been caught during type inference, but handle
       // gracefully The diagnostic is tracked against the operator's nodeId,
@@ -365,6 +380,15 @@ export class ExprCompiler implements ExprVisitor<void> {
     this.emitter.loadVarSlot(varNameIdx);
   }
 
+  visitOutput(expr: OutputExpr): void {
+    // Read the sensor output's backing rule variable. RuleContextGetVariable
+    // takes the name in arg slot 1 and ignores slot 0 (the method receiver), so
+    // slot 0 is a nil filler and slot 1 is the constant output key.
+    this.pushNil();
+    this.pushStringConstant(expr.tileDef.outputKey);
+    this.emitter.hostCall(CoreFuncId.RuleContextGetVariable, 2, this.nextCallSiteId());
+  }
+
   /**
    * Get the index for a variable name, creating a new entry if needed.
    * Variables are stored in the execution context by name.
@@ -392,14 +416,26 @@ export class ExprCompiler implements ExprVisitor<void> {
 
     if (expr.target.kind === "fieldAccess") {
       // Field assignment: object.field = value
-      // 1. Emit the object expression (pushes source onto stack)
-      // 2. Push field name constant
-      // 3. Emit the value expression
-      // 4. Call emitter.setField() -- uses SET_FIELD which supports native-backed structs
-      acceptExprVisitor(expr.target.object, this);
-      this.pushStringConstant(expr.target.accessor.fieldName);
-      acceptExprVisitor(expr.value, this);
-      this.emitter.setField();
+      const fieldId = this.context.typeEnv.get(expr.target.nodeId)?.fieldId;
+      if (fieldId !== undefined) {
+        // Id-based store. Convert the value into the field's type if inference
+        // annotated a conversion, deep-copy it to preserve the brain's struct
+        // value-semantics (STRUCT_DEEP_COPY is a runtime no-op for non-structs),
+        // then store by numeric id. STRUCT_SET_FIELD pops [struct, value].
+        acceptExprVisitor(expr.target.object, this);
+        acceptExprVisitor(expr.value, this);
+        this.emitConversionIfNeeded(expr.value.nodeId);
+        this.emitter.structDeepCopy();
+        this.emitter.structSetField(fieldId);
+      } else {
+        // Fallback: name-keyed store. SET_FIELD deep-copies the value internally, so
+        // no explicit STRUCT_DEEP_COPY here.
+        acceptExprVisitor(expr.target.object, this);
+        this.pushStringConstant(expr.target.accessor.fieldName);
+        acceptExprVisitor(expr.value, this);
+        this.emitConversionIfNeeded(expr.value.nodeId);
+        this.emitter.setField();
+      }
     } else {
       // Variable assignment: var = value
       // 1. Emit the value expression (pushes result to stack)
@@ -409,8 +445,10 @@ export class ExprCompiler implements ExprVisitor<void> {
       const varName = expr.target.tileDef.varName;
       const varNameIdx = this.getOrCreateVariableIndex(varName);
 
-      // Emit value expression (pushes result onto stack)
+      // Emit value expression (pushes result onto stack), converting it into
+      // the variable's type if inference annotated a conversion
       acceptExprVisitor(expr.value, this);
+      this.emitConversionIfNeeded(expr.value.nodeId);
 
       // Duplicate the value so assignment returns it
       this.emitter.dup();
@@ -446,18 +484,11 @@ export class ExprCompiler implements ExprVisitor<void> {
 
   visitActuator(expr: ActuatorExpr): void {
     const action = expr.tileDef.action;
-    const actionSlot = this.getOrCreateActionSlot(action.key);
     const argSlots = action.callDef.argSlots;
 
     this.emitActionArguments(argSlots, expr.anons, expr.parameters, expr.modifiers);
     const callSiteId = this.nextCallSiteId();
-
-    if (action.isAsync) {
-      this.emitter.actionCallAsync(actionSlot, argSlots.size(), callSiteId);
-      this.emitter.await();
-    } else {
-      this.emitter.actionCall(actionSlot, argSlots.size(), callSiteId);
-    }
+    this.emitActionDispatch(action, argSlots.size(), callSiteId, expr.nodeId);
 
     // Actuator return value is now on the stack, but it is ignored, currently.
   }
@@ -468,20 +499,52 @@ export class ExprCompiler implements ExprVisitor<void> {
 
   visitSensor(expr: SensorExpr): void {
     const action = expr.tileDef.action;
-    const actionSlot = this.getOrCreateActionSlot(action.key);
     const argSlots = action.callDef.argSlots;
 
     this.emitActionArguments(argSlots, expr.anons, expr.parameters, expr.modifiers);
     const callSiteId = this.nextCallSiteId();
-
-    if (action.isAsync) {
-      this.emitter.actionCallAsync(actionSlot, argSlots.size(), callSiteId);
-      this.emitter.await();
-    } else {
-      this.emitter.actionCall(actionSlot, argSlots.size(), callSiteId);
-    }
+    this.emitActionDispatch(action, argSlots.size(), callSiteId, expr.nodeId);
 
     // Result is now on the stack
+  }
+
+  /**
+   * Resolve an action's binding and emit the matching call. A host action
+   * dispatches by its stable registry id (`HOST_ACTION_CALL` /
+   * `HOST_ACTION_CALL_ASYNC`); a bytecode action dispatches by a program-local
+   * slot (`ACTION_CALL` / `ACTION_CALL_ASYNC`). An unresolvable action records a
+   * {@link LinkDiagCode.MissingActionBinding} diagnostic and falls back to the
+   * slot path so the operand stack stays balanced for error recovery.
+   */
+  private emitActionDispatch(action: ActionDescriptor, argc: number, callSiteId: number, nodeId: number): void {
+    const resolved = this.context.actionResolver.resolveAction(action);
+
+    if (resolved && resolved.binding === "host") {
+      const actionId = resolved.id ?? 0;
+      if (action.isAsync) {
+        this.emitter.hostActionCallAsync(actionId, argc, callSiteId);
+        this.emitter.await();
+      } else {
+        this.emitter.hostActionCall(actionId, argc, callSiteId);
+      }
+      return;
+    }
+
+    if (!resolved) {
+      this.context.diags.push({
+        code: LinkDiagCode.MissingActionBinding,
+        message: `Action '${action.key}' could not be resolved in this environment.`,
+        nodeId,
+      });
+    }
+
+    const actionSlot = this.getOrCreateActionSlot(action.key);
+    if (action.isAsync) {
+      this.emitter.actionCallAsync(actionSlot, argc, callSiteId);
+      this.emitter.await();
+    } else {
+      this.emitter.actionCall(actionSlot, argc, callSiteId);
+    }
   }
 
   /**
@@ -505,25 +568,10 @@ export class ExprCompiler implements ExprVisitor<void> {
       this.emitter.stackSetRel(argc - 1 - slotId);
     };
 
-    // Emit anonymous arguments
-    for (let i = 0; i < anons.size(); i++) {
-      const slot = anons.get(i);
-      emitSlotEntry(slot.slotId, () => {
-        acceptExprVisitor(slot.expr, this);
-        this.emitConversionIfNeeded(slot.expr.nodeId);
-      });
-    }
-
-    // Emit named parameters
-    for (let i = 0; i < parameters.size(); i++) {
-      const slot = parameters.get(i);
-      emitSlotEntry(slot.slotId, () => {
-        acceptExprVisitor(slot.expr, this);
-        // The conversion is stored on the ParameterExpr node (same node
-        // that validateActionCallSlot checks), not on the inner value node.
-        this.emitConversionIfNeeded(slot.expr.nodeId);
-      });
-    }
+    // Emit anonymous arguments, then named parameters. Both accept repeated
+    // slots, whose same-slot values are gathered into one `List<T>`.
+    this.emitSlotExprs(anons, argSlots, emitSlotEntry);
+    this.emitSlotExprs(parameters, argSlots, emitSlotEntry);
 
     // Emit modifiers -- count occurrences per slotId so repeated modifiers
     // produce a numeric count value instead of a boolean flag.
@@ -543,18 +591,103 @@ export class ExprCompiler implements ExprVisitor<void> {
     return argc;
   }
 
+  /**
+   * Emit a list of slot expressions (the anonymous args or the named
+   * parameters) into their positional slots. A non-repeated slot takes the
+   * single value of its entry. A repeated slot (one from a `repeat` call-spec)
+   * gathers every entry that shares its slotId, in source order, into one
+   * `List<T>` value built with `LIST_NEW` + a `LIST_PUSH` per element; the list
+   * is emitted once, at the first entry of that slot, and the slot's remaining
+   * entries are folded into it. Per-element type conversions are applied to each
+   * element before its `LIST_PUSH`, exactly as a non-repeated slot converts its
+   * single value.
+   */
+  private emitSlotExprs(
+    slotExprs: ReadonlyList<SlotExpr>,
+    argSlots: ReadonlyList<BrainActionArgSlot>,
+    emitSlotEntry: (slotId: number, emitValue: () => void) => void
+  ): void {
+    const gathered = new Dict<number, boolean>();
+    for (let i = 0; i < slotExprs.size(); i++) {
+      const slot = slotExprs.get(i);
+      const argSlot = argSlots.get(slot.slotId);
+      if (argSlot?.repeated) {
+        if (gathered.get(slot.slotId)) {
+          continue;
+        }
+        gathered.set(slot.slotId, true);
+        emitSlotEntry(slot.slotId, () => {
+          this.emitter.listNew(this.repeatedSlotListTypeIdx(argSlot, slotExprs));
+          for (let j = 0; j < slotExprs.size(); j++) {
+            const entry = slotExprs.get(j);
+            if (entry.slotId !== slot.slotId) {
+              continue;
+            }
+            acceptExprVisitor(entry.expr, this);
+            this.emitConversionIfNeeded(entry.expr.nodeId);
+            this.emitter.listPush();
+          }
+        });
+      } else {
+        emitSlotEntry(slot.slotId, () => {
+          acceptExprVisitor(slot.expr, this);
+          // The conversion is stored on the entry's node (the ParameterExpr for
+          // a named parameter, the value node for an anonymous arg) -- the same
+          // node validateActionCallSlot annotates.
+          this.emitConversionIfNeeded(slot.expr.nodeId);
+        });
+      }
+    }
+  }
+
+  /**
+   * Resolve the constant-pool type-table index for a repeated slot's gathered
+   * `List<T>`. The element type `T` is the slot parameter tile's `dataType`;
+   * when the tile cannot be resolved it falls back to the first gathered
+   * entry's inferred type, then to `Any`.
+   */
+  private repeatedSlotListTypeIdx(argSlot: BrainActionArgSlot, slotExprs: ReadonlyList<SlotExpr>): number {
+    let elementTypeId: TypeId | undefined = this.resolveParameterDataType(argSlot.argSpec.tileId);
+    if (elementTypeId === undefined) {
+      for (let i = 0; i < slotExprs.size(); i++) {
+        const entry = slotExprs.get(i);
+        if (entry.slotId === argSlot.slotId) {
+          elementTypeId = this.context.typeEnv.get(entry.expr.nodeId)?.inferred;
+          break;
+        }
+      }
+    }
+    const listTypeId = this.context.typeRegistry.instantiate("List", List.from([elementTypeId ?? CoreTypeIds.Any]));
+    return this.context.constantPool.addType(listTypeId);
+  }
+
+  /** The `dataType` of the parameter tile with `tileId`, or undefined when not a parameter tile. */
+  private resolveParameterDataType(tileId: string): TypeId | undefined {
+    for (let i = 0; i < this.context.catalogs.size(); i++) {
+      const tileDef = this.context.catalogs.get(i).get(tileId);
+      if (tileDef?.kind === "parameter") {
+        return (tileDef as BrainTileParameterDef).dataType;
+      }
+    }
+    return undefined;
+  }
+
   // ==========================================
   // Field Access
   // ==========================================
 
   visitFieldAccess(expr: FieldAccessExpr): void {
-    // TODO: Emit field access bytecode
-    // 1. Compile the object expression (pushes struct value onto stack)
-    // 2. Push the field name constant
-    // 3. Call emitter.getField()
     acceptExprVisitor(expr.object, this);
-    this.pushStringConstant(expr.accessor.fieldName);
-    this.emitter.getField();
+    const fieldId = this.context.typeEnv.get(expr.nodeId)?.fieldId;
+    if (fieldId !== undefined) {
+      // Object's static type is a concrete struct: read the field by its numeric id.
+      this.emitter.structGetField(fieldId);
+    } else {
+      // Object's static type is not a concrete struct with this field: resolve the
+      // field name to its id at runtime via the name-keyed opcode.
+      this.pushStringConstant(expr.accessor.fieldName);
+      this.emitter.getField();
+    }
   }
 
   // ==========================================
@@ -574,83 +707,4 @@ export class ExprCompiler implements ExprVisitor<void> {
     // containing errors, but it is theoretically possible.
     logger.error(`Encountered ErrorExpr during compilation: ${expr.message}`);
   }
-}
-
-/**
- * Compile a list of WHEN expressions and DO expressions into a bytecode
- * instruction stream.
- *
- * @param whenExprs - List of WHEN expressions to compile
- * @param doExprs - List of DO expressions to compile
- * @param emitter - Bytecode emitter instance
- * @param typeEnv - Type information for all nodes (from type inference pass)
- * @returns The finalized list of VM instructions
- */
-export function compileRule(
-  whenExprs: ReadonlyList<Expr>,
-  doExprs: ReadonlyList<Expr>,
-  emitter: IBytecodeEmitter,
-  typeEnv: TypeEnv,
-  constantPool: ConstantPool
-): CompilationResult {
-  // Initialize compilation context
-  const context: CompilationContext = {
-    variableIndices: Dict.empty(),
-    variableNames: List.empty(),
-    actionIndices: Dict.empty(),
-    actionRefs: List.empty(),
-    typeEnv,
-    constantPool,
-    nextCallSiteId: { value: 0 },
-    diags: List.empty(),
-  };
-
-  // Create compiler visitor
-  const compiler = new ExprCompiler(emitter, context);
-
-  // Create label for end of bytecode stream (after DO section)
-  // This is the jump target if WHEN evaluates to false
-  const endLabel = emitter.label();
-
-  emitter.whenStart();
-  // Visit the first when expression (the executable one; the rest are errors or warnings)
-  if (whenExprs.size() > 0) {
-    acceptExprVisitor(whenExprs.get(0), compiler);
-  }
-
-  // If there were no expressions, push TRUE (empty WHEN always executes DO)
-  if (whenExprs.size() === 0) {
-    const trueIdx = constantPool.addOther(TRUE_VALUE);
-    emitter.pushConst(trueIdx);
-  }
-
-  // WHEN may or may not leave a value on the stack:
-  // - If WHEN leaves a truthy value: DO executes and can use that value
-  // - If WHEN leaves a falsy value: DO is skipped
-  // Stack: [when_result] - value from WHEN for DO to use
-  emitter.whenEnd(endLabel);
-  // WHEN_END checks if stack height increased from WHEN_START
-  // If no value on stack, jumps to endLabel (skips DO)
-  // If value on stack, continues to DO section (value remains for DO to use)
-
-  emitter.doStart();
-  // Visit the first do expression (the executable one; the rest are errors or warnings)
-  if (doExprs.size() > 0) {
-    acceptExprVisitor(doExprs.get(0), compiler);
-  }
-
-  emitter.doEnd();
-
-  // Mark the end label (jumped to if WHEN was false)
-  emitter.mark(endLabel);
-
-  // Add final return instruction
-  emitter.ret();
-
-  // Finalize and return instructions with metadata
-  return {
-    instrs: emitter.finalize(),
-    variableNames: context.variableNames,
-    diags: context.diags.asReadonly(),
-  };
 }

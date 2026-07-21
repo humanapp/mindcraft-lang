@@ -1,4 +1,4 @@
-import { appHostError } from "./app-host-error.js";
+import { AppHostErrorCode, appHostError } from "./app-host-error.js";
 
 /** The stable id for the bootstrap project collection. */
 export const DEFAULT_PROJECT_COLLECTION_ID = "default";
@@ -19,11 +19,11 @@ export const PROJECT_COLLECTION_NAME_MAX_LENGTH = 80;
 export function normalizeProjectCollectionName(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) {
-    throw appHostError("INVALID_PROJECT_COLLECTION_NAME", "Workspace name is required");
+    throw appHostError(AppHostErrorCode.INVALID_PROJECT_COLLECTION_NAME, "Workspace name is required");
   }
   if (trimmed.length > PROJECT_COLLECTION_NAME_MAX_LENGTH) {
     throw appHostError(
-      "INVALID_PROJECT_COLLECTION_NAME",
+      AppHostErrorCode.INVALID_PROJECT_COLLECTION_NAME,
       `Workspace name must be ${PROJECT_COLLECTION_NAME_MAX_LENGTH} characters or fewer`
     );
   }

@@ -1,3 +1,4 @@
+import { CoreHostActions } from "@mindcraft-lang/core/runtime";
 /**
  * Behavioral tests for the Brain runtime.
  *
@@ -19,30 +20,39 @@ import {
   List,
   type ReadonlyList,
 } from "@mindcraft-lang/core";
-import { Brain, type BrainServices, mkVariableTileId, TilePlacement } from "@mindcraft-lang/core/brain";
+import {
+  Brain,
+  type BrainServices,
+  CoreCapabilityBits,
+  mkVariableTileId,
+  TilePlacement,
+} from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
+  BrainTileAccessorDef,
   BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileOperatorDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
+  buildDescriptorOutputTiles,
 } from "@mindcraft-lang/core/brain/tiles";
-import type { ExecutionContext, UserActionArtifact } from "@mindcraft-lang/core/runtime";
+import type { ExecutionContext, Instr, UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import {
   type ActionDescriptor,
   type BooleanValue,
   BYTECODE_VERSION,
-  CoreSensorId,
   CoreTypeIds,
   clearCallSiteState,
   extractBooleanValue,
   extractNumberValue,
   extractStringValue,
+  FALSE_VALUE,
   getCallSiteState,
   getRuleVariable,
+  getWhenResult,
   type HandleId,
   type HostAsyncFn,
   type IBrain,
@@ -50,16 +60,19 @@ import {
   mkCallDef,
   mkNumberValue,
   mkSensorTileId,
+  mkStringValue,
   NativeType,
   NIL_VALUE,
   Op,
   param,
   setCallSiteState,
   setRuleVariable,
+  setSensorOutput,
   TRUE_VALUE,
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/runtime";
+import { BitSet } from "@mindcraft-lang/core/util";
 
 let services: BrainServices;
 let opAdd: BrainTileOperatorDef;
@@ -235,6 +248,140 @@ describe("Brain behavioral -- WHEN condition", () => {
   });
 });
 
+describe("Brain behavioral -- presence gate", () => {
+  let presenceIdCounter = 0;
+
+  /**
+   * Register a host sensor whose delivered value is set through the returned
+   * `deliver`. When `presenceGated` is true the sensor's tile carries the
+   * {@link CoreCapabilityBits.PresenceGated} capability.
+   */
+  function makeSensor(
+    outputType: string,
+    presenceGated: boolean
+  ): { tile: BrainTileSensorDef; deliver: (v: Value) => void } {
+    presenceIdCounter += 1;
+    const holder: { value: Value } = { value: NIL_VALUE };
+    const def = createHostSensor({
+      key: `test-presence-sensor-${presenceIdCounter}`,
+      actionId: 7100 + presenceIdCounter,
+      fnId: 8100 + presenceIdCounter,
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      outputType,
+      fn: { exec: () => holder.value },
+      capabilities: presenceGated ? new BitSet().set(CoreCapabilityBits.PresenceGated) : undefined,
+    });
+    services.runtime.functions.register(
+      def.function.id,
+      def.function.name,
+      def.function.isAsync,
+      def.function.fn,
+      def.function.callDef
+    );
+    services.runtime.actions.register({
+      binding: "host",
+      descriptor: def.descriptor,
+      id: def.actionId,
+      execSync: (def.actionFn as { exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value }).exec,
+    });
+    const capabilities = presenceGated ? new BitSet().set(CoreCapabilityBits.PresenceGated) : undefined;
+    const tile = new BrainTileSensorDef(def.descriptor.key, def.descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      capabilities,
+    });
+    return {
+      tile,
+      deliver: (v) => {
+        holder.value = v;
+      },
+    };
+  }
+
+  /** Compile `brainDef` and return whether the first page's root rule emits `op`. */
+  function rootRuleEmits(brainDef: BrainDef, op: Op): boolean {
+    const program = compileBrain(
+      brainDef,
+      List.from([services.edit.tiles, brainDef.catalog()]),
+      services.shared.conversions,
+      services.runtime.actions,
+      services.runtime.types
+    ).program!;
+    const page = program.pages.get(0)!;
+    const rootFunc = program.functions.get(page.rootRuleFuncIds.get(0)!)!;
+    return rootFunc.code.findIndex((ins) => ins.op === op) !== -1;
+  }
+
+  test("bare presence-gated sensor fires its DO on a delivered 0", () => {
+    const v = mkVar("presence-zero");
+    const sensor = makeSensor(CoreTypeIds.Number, true);
+    sensor.deliver(mkNumberValue(0));
+    const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1, "DO must run on a present falsy 0");
+  });
+
+  test("bare presence-gated sensor fires its DO on a delivered empty string", () => {
+    const v = mkVar("presence-empty");
+    const sensor = makeSensor(CoreTypeIds.String, true);
+    sensor.deliver(mkStringValue(""));
+    const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1, "DO must run on a present empty string");
+  });
+
+  test("bare presence-gated sensor fires its DO on a delivered false", () => {
+    const v = mkVar("presence-false");
+    const sensor = makeSensor(CoreTypeIds.Boolean, true);
+    sensor.deliver(FALSE_VALUE);
+    const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1, "DO must run on a present false");
+  });
+
+  test("bare presence-gated sensor skips its DO when the value is nil (absent)", () => {
+    const v = mkVar("presence-nil");
+    const sensor = makeSensor(CoreTypeIds.Number, true);
+    sensor.deliver(NIL_VALUE);
+    const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
+    assert.equal(brain.getVariable(v.varName), undefined, "DO must be skipped when the sensor delivers nil");
+  });
+
+  test("a non-presence-gated sensor delivering 0 stays truthiness-gated and skips its DO", () => {
+    const v = mkVar("truthy-zero");
+    const sensor = makeSensor(CoreTypeIds.Number, false);
+    sensor.deliver(mkNumberValue(0));
+    const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
+    assert.equal(brain.getVariable(v.varName), undefined, "0 is falsy, so a truthiness-gated rule must not fire");
+  });
+
+  test("WHEN_END_PRESENT is emitted only for a bare presence-gated sensor WHEN root", () => {
+    const presence = makeSensor(CoreTypeIds.Number, true);
+    presence.deliver(mkNumberValue(0));
+    const bare = buildBrain([presence.tile], [mkVar("emit-bare"), opAssign, mkLiteral(1)]);
+    assert.ok(rootRuleEmits(bare, Op.WHEN_END_PRESENT), "bare presence-gated sensor emits WHEN_END_PRESENT");
+    assert.ok(!rootRuleEmits(bare, Op.WHEN_END), "bare presence-gated sensor does not also emit WHEN_END");
+
+    const expr = makeSensor(CoreTypeIds.Number, true);
+    expr.deliver(mkNumberValue(0));
+    const compound = buildBrain([expr.tile, opGt, mkLiteral(100)], [mkVar("emit-expr"), opAssign, mkLiteral(1)]);
+    assert.ok(
+      rootRuleEmits(compound, Op.WHEN_END),
+      "a presence-gated sensor inside an expression stays truthiness-gated"
+    );
+    assert.ok(!rootRuleEmits(compound, Op.WHEN_END_PRESENT), "an expression WHEN root does not emit WHEN_END_PRESENT");
+
+    const plain = makeSensor(CoreTypeIds.Number, false);
+    plain.deliver(mkNumberValue(1));
+    const plainBrain = buildBrain([plain.tile], [mkVar("emit-plain"), opAssign, mkLiteral(1)]);
+    assert.ok(rootRuleEmits(plainBrain, Op.WHEN_END), "a non-presence sensor emits WHEN_END");
+    assert.ok(!rootRuleEmits(plainBrain, Op.WHEN_END_PRESENT), "a non-presence sensor does not emit WHEN_END_PRESENT");
+
+    const boolBrain = buildBrain([mkBoolLiteral(true)], [mkVar("emit-bool"), opAssign, mkLiteral(1)]);
+    assert.ok(rootRuleEmits(boolBrain, Op.WHEN_END), "a boolean-condition rule emits WHEN_END");
+    assert.ok(
+      !rootRuleEmits(boolBrain, Op.WHEN_END_PRESENT),
+      "a boolean-condition rule does not emit WHEN_END_PRESENT"
+    );
+  });
+});
+
 describe("Brain behavioral -- variable read-back", () => {
   test("write then read variable in subsequent tick", () => {
     const v = mkVar("rw");
@@ -249,7 +396,7 @@ describe("Brain behavioral -- variable read-back", () => {
 
 describe("Brain behavioral -- boolean logic", () => {
   test("AND: true && false -> false", () => {
-    const v = mkVar("band");
+    const v = mkVar("band", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkBoolLiteral(true), opAnd, mkBoolLiteral(false)]);
     const brain = runBrain(brainDef);
 
@@ -262,7 +409,7 @@ describe("Brain behavioral -- boolean logic", () => {
   });
 
   test("OR: false || true -> true", () => {
-    const v = mkVar("bor");
+    const v = mkVar("bor", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkBoolLiteral(false), opOr, mkBoolLiteral(true)]);
     const brain = runBrain(brainDef);
 
@@ -273,7 +420,7 @@ describe("Brain behavioral -- boolean logic", () => {
   });
 
   test("NOT: !true -> false", () => {
-    const v = mkVar("bnot");
+    const v = mkVar("bnot", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, opNot, mkBoolLiteral(true)]);
     const brain = runBrain(brainDef);
 
@@ -286,7 +433,7 @@ describe("Brain behavioral -- boolean logic", () => {
   test("short-circuit AND: false && X -> false without evaluating X", () => {
     // Test that AND short-circuits by using false && (side-effecting expression)
     // We test indirectly: false AND true = false
-    const v = mkVar("sc-and");
+    const v = mkVar("sc-and", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkBoolLiteral(false), opAnd, mkBoolLiteral(true)]);
     const brain = runBrain(brainDef);
 
@@ -296,7 +443,7 @@ describe("Brain behavioral -- boolean logic", () => {
   });
 
   test("short-circuit OR: true || X -> true without evaluating X", () => {
-    const v = mkVar("sc-or");
+    const v = mkVar("sc-or", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkBoolLiteral(true), opOr, mkBoolLiteral(false)]);
     const brain = runBrain(brainDef);
 
@@ -308,7 +455,7 @@ describe("Brain behavioral -- boolean logic", () => {
 
 describe("Brain behavioral -- comparison operators", () => {
   test("equality: 5 == 5 -> true", () => {
-    const v = mkVar("ceq");
+    const v = mkVar("ceq", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkLiteral(5), opEq, mkLiteral(5)]);
     const brain = runBrain(brainDef);
 
@@ -318,7 +465,7 @@ describe("Brain behavioral -- comparison operators", () => {
   });
 
   test("inequality: 5 != 3 -> true", () => {
-    const v = mkVar("cneq");
+    const v = mkVar("cneq", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkLiteral(5), opNeq, mkLiteral(3)]);
     const brain = runBrain(brainDef);
 
@@ -328,7 +475,7 @@ describe("Brain behavioral -- comparison operators", () => {
   });
 
   test("less than: 3 < 5 -> true", () => {
-    const v = mkVar("clt");
+    const v = mkVar("clt", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkLiteral(3), opLt, mkLiteral(5)]);
     const brain = runBrain(brainDef);
 
@@ -338,7 +485,7 @@ describe("Brain behavioral -- comparison operators", () => {
   });
 
   test("greater than: 5 > 3 -> true", () => {
-    const v = mkVar("cgt");
+    const v = mkVar("cgt", CoreTypeIds.Boolean);
     const brainDef = buildBrain([], [v, opAssign, mkLiteral(5), opGt, mkLiteral(3)]);
     const brain = runBrain(brainDef);
 
@@ -354,6 +501,7 @@ describe("Brain behavioral -- sensors and actuators", () => {
     const anonParam = param("anon-num");
 
     const fnEntry = services.runtime.functions.register(
+      4001,
       sensorId,
       false,
       { exec: () => ({ t: NativeType.Number, v: 77 }) },
@@ -364,12 +512,13 @@ describe("Brain behavioral -- sensors and actuators", () => {
     const action = mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Number);
     services.runtime.actions.register({
       binding: "host",
+      id: 3001,
       descriptor: action,
       execSync: () => ({ t: NativeType.Number, v: 77 }),
     });
 
     const sensor = new BrainTileSensorDef(sensorId, action, {
-      placement: TilePlacement.Inline,
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
     });
 
     const v = mkVar("sensor-v");
@@ -398,6 +547,7 @@ describe("Brain behavioral -- sensors and actuators", () => {
     });
 
     const fnEntry = services.runtime.functions.register(
+      4002,
       actuatorId,
       false,
       {
@@ -412,6 +562,7 @@ describe("Brain behavioral -- sensors and actuators", () => {
     const action = mkActionDescriptor("actuator", fnEntry);
     services.runtime.actions.register({
       binding: "host",
+      id: 3002,
       descriptor: action,
       execSync: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         called = true;
@@ -446,9 +597,14 @@ describe("Brain behavioral -- rule variables (regression)", () => {
    */
   function defineHost<T extends HostSensorDefinition | HostActuatorDefinition>(def: T): T {
     const fn = def.function;
-    services.runtime.functions.register(fn.name, fn.isAsync, fn.fn, fn.callDef);
+    services.runtime.functions.register(fn.id, fn.name, fn.isAsync, fn.fn, fn.callDef);
     const exec = (def.actionFn as { exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value }).exec;
-    services.runtime.actions.register({ binding: "host", descriptor: def.descriptor, execSync: exec });
+    services.runtime.actions.register({
+      binding: "host",
+      descriptor: def.descriptor,
+      id: def.actionId,
+      execSync: exec,
+    });
     return def;
   }
 
@@ -459,6 +615,8 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const sensorDef = defineHost(
       createHostSensor({
         key: "test-rulevar-set-sensor",
+        actionId: 5001,
+        fnId: 6001,
         callDef: mkCallDef({ type: "bag", items: [] }),
         outputType: CoreTypeIds.Boolean,
         fn: {
@@ -475,6 +633,8 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const actuatorDef = defineHost(
       createHostActuator({
         key: "test-rulevar-read-actuator",
+        actionId: 5002,
+        fnId: 6002,
         callDef: mkCallDef({ type: "bag", items: [] }),
         fn: {
           exec: (ctx) => {
@@ -487,7 +647,7 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     );
 
     const sensor = new BrainTileSensorDef(sensorDef.descriptor.key, sensorDef.descriptor, {
-      placement: TilePlacement.Inline,
+      placement: TilePlacement.WhenSide | TilePlacement.Inline,
     });
     const actuator = actuatorDef.tile as BrainTileActuatorDef;
 
@@ -499,6 +659,85 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     assert.equal(extractNumberValue(out), 42, "actuator must read the same value the sensor stashed");
   });
 
+  test("a built-in sensor's ActionDescriptor outputs derive an inline tile that round-trips the written value", () => {
+    const outVarName = "builtin-output-out";
+
+    // Built-in sensor declares a numeric `count` output and writes it via setSensorOutput.
+    const sensorDef = defineHost(
+      createHostSensor({
+        key: "test-output-sensor",
+        actionId: 5101,
+        fnId: 6101,
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        outputType: CoreTypeIds.Boolean,
+        outputs: [{ name: "count", type: CoreTypeIds.Number, label: "count" }],
+        fn: {
+          exec: (ctx) => {
+            setSensorOutput(ctx, CoreTypeIds.Number, "count", mkNumberValue(42));
+            return TRUE_VALUE;
+          },
+        },
+      })
+    );
+
+    const sensor = new BrainTileSensorDef(sensorDef.descriptor.key, sensorDef.descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+
+    // Derive the output tiles from the descriptor exactly as registration does.
+    const outputTiles = buildDescriptorOutputTiles(sensorDef.descriptor.outputs!);
+    assert.equal(outputTiles.length, 1, "one output tile per declared output");
+    const countTile = outputTiles[0];
+    assert.equal(countTile.kind, "output");
+    assert.equal(countTile.outputType, CoreTypeIds.Number);
+    // The sensor advertises the output tile's identity key that gates it downstream.
+    assert.ok(
+      sensorDef.tile.providedOutputs().indexOf(countTile.outputKey) >= 0,
+      "the sensor provides the output tile's identity key"
+    );
+
+    // DO: outVar = count-output-tile -- reads back the value the sensor wrote.
+    const outVar = mkVar(outVarName);
+    const brainDef = buildBrain([sensor], [outVar, opAssign, countTile]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(
+      extractNumberValue(brain.getVariable(outVarName)),
+      42,
+      "the output value must round-trip from the sensor write to the output tile read"
+    );
+  });
+
+  test("WHEN_END captures the WHEN result into the rule's __whenResult variable", () => {
+    const brainVarName = "whenresult-out";
+
+    // Actuator: reads getWhenResult(ctx) and writes it into a brain var so the
+    // test can assert the WHEN side's value was captured at WHEN_END.
+    const actuatorDef = defineHost(
+      createHostActuator({
+        key: "test-whenresult-read",
+        actionId: 5007,
+        fnId: 6007,
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        fn: {
+          exec: (ctx) => {
+            ctx.services.brain.brainVars.setByName(brainVarName, getWhenResult(ctx));
+            return VOID_VALUE;
+          },
+        },
+      })
+    );
+
+    const actuator = actuatorDef.tile as BrainTileActuatorDef;
+    // WHEN side evaluates to 42 (truthy, so the DO runs); the VM must capture it.
+    const brainDef = buildBrain([mkLiteral(42)], [actuator]);
+    const brain = runBrain(brainDef);
+
+    const out = brain.getVariable(brainVarName);
+    assert.ok(out !== undefined, "actuator should have read __whenResult");
+    assert.equal(extractNumberValue(out), 42, "WHEN_END must capture the WHEN result (42)");
+  });
+
   test("rule var read returns NIL_VALUE when never written", () => {
     const brainVarName = "rulevar-unset-out";
     let observedIsNil = false;
@@ -506,6 +745,8 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const actuatorDef = defineHost(
       createHostActuator({
         key: "test-rulevar-read-unset",
+        actionId: 5003,
+        fnId: 6003,
         callDef: mkCallDef({ type: "bag", items: [] }),
         fn: {
           exec: (ctx) => {
@@ -537,6 +778,8 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const actuatorDef = defineHost(
       createHostActuator({
         key: "test-rulevar-isolation",
+        actionId: 5004,
+        fnId: 6004,
         callDef: mkCallDef({
           type: "bag",
           items: [
@@ -607,11 +850,16 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     // Child rule DO: actuator reads rule var "fromParent" via
     // getRuleVariable; because the child has its own funcId, this exercises
     // IBrainRule.getVariable<T>'s ancestor walk inside the dense shim.
+    // The child runs in its own fiber, spawned at the parent's tail; it drains
+    // in the same think as its parent (a synchronous cascade) and reads the
+    // parent's rule var on think 1.
     const brainVarName = "rulevar-parent-child-out";
 
     const sensorDef = defineHost(
       createHostSensor({
         key: "test-rulevar-parent-set",
+        actionId: 5005,
+        fnId: 6005,
         callDef: mkCallDef({ type: "bag", items: [] }),
         outputType: CoreTypeIds.Boolean,
         fn: {
@@ -626,6 +874,8 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const actuatorDef = defineHost(
       createHostActuator({
         key: "test-rulevar-child-read",
+        actionId: 5006,
+        fnId: 6006,
         callDef: mkCallDef({ type: "bag", items: [] }),
         fn: {
           exec: (ctx) => {
@@ -648,7 +898,7 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const childRule = parentRule.appendNewRule();
     childRule.do().appendTile(actuator as never);
 
-    const brain = runBrain(brainDef);
+    const brain = runBrain(brainDef, 1);
 
     const out = brain.getVariable(brainVarName);
     assert.ok(out !== undefined, "child actuator should have written to brain var");
@@ -693,15 +943,75 @@ describe("Brain behavioral -- multi-page", () => {
     brain.think(32);
     assert.equal(extractNumberValue(brain.getVariable(v.varName)), 2);
   });
+
+  test("switching pages cancels a firing child-rule subtree and keeps running", () => {
+    const childMarkName = "cascade-child";
+    const pageMark = mkVar("cascade-page");
+    const brainDef = new BrainDef(services);
+
+    // The child rule's DO is an async actuator that sets the child marker and
+    // then parks (leaves its handle pending), holding the child fiber live
+    // (WAITING) across thinks: a firing child-rule subtree the page-scoped
+    // cancellation cascade must reclaim on a page switch.
+    const parkFn = services.runtime.functions.register(
+      4110,
+      "test-cascade-park",
+      true,
+      { exec: () => {} },
+      mkCallDef({ type: "bag", items: [] })
+    );
+    const parkDescriptor = mkActionDescriptor("actuator", parkFn);
+    services.runtime.actions.register({
+      binding: "host",
+      id: 3110,
+      descriptor: parkDescriptor,
+      execAsync: (ctx: ExecutionContext) => {
+        ctx.services.brain.brainVars.setByName(childMarkName, mkNumberValue(1));
+      },
+    });
+    const parkTile = new BrainTileActuatorDef("test-cascade-park", parkDescriptor);
+
+    // Page 0: a parent rule whose child rule dispatches the parking actuator.
+    const p0 = brainDef.appendNewPage();
+    assert.ok(p0.success);
+    const parent = p0.value!.page.children().get(0)! as BrainRuleDef;
+    const child = parent.appendNewRule();
+    child.do().appendTile(parkTile as never);
+
+    // Page 1: a rule that assigns the page marker.
+    const p1 = brainDef.appendNewPage();
+    assert.ok(p1.success);
+    const rule1 = p1.value!.page.children().get(0)!;
+    rule1.do().appendTile(pageMark as never);
+    rule1.do().appendTile(opAssign as never);
+    rule1.do().appendTile(mkLiteral(2) as never);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+
+    // One think on page 0: the parent fires, spawns the child, and the child
+    // drains in the same think, sets its marker, and parks on the actuator.
+    brain.think(16);
+    assert.equal(extractNumberValue(brain.getVariable(childMarkName)), 1);
+
+    // Switch to page 1 while page 0's child subtree is still parked (live), then
+    // keep thinking. The cascade cancels the child subtree; the brain continues
+    // on page 1.
+    brain.requestPageChange(1);
+    brain.think(32);
+    brain.think(48);
+    assert.equal(extractNumberValue(brain.getVariable(pageMark.varName)), 2);
+  });
 });
 
 describe("Brain behavioral -- page sensors", () => {
   test("current-page sensor returns active page ID", () => {
     const v = mkVar("cp", CoreTypeIds.String);
-    const fnEntry = services.runtime.functions.get(CoreSensorId.CurrentPage);
+    const fnEntry = services.runtime.functions.get(CoreHostActions.CurrentPage.key);
     assert.ok(fnEntry, "current-page function should be registered");
     const cpSensor = new BrainTileSensorDef(
-      CoreSensorId.CurrentPage,
+      CoreHostActions.CurrentPage.key,
       mkActionDescriptor("sensor", fnEntry!, CoreTypeIds.String),
       {
         placement: TilePlacement.EitherSide | TilePlacement.Inline,
@@ -723,10 +1033,10 @@ describe("Brain behavioral -- page sensors", () => {
 
   test("previous-page returns current page when no switch has occurred", () => {
     const v = mkVar("pp-no-switch", CoreTypeIds.String);
-    const fnEntry = services.runtime.functions.get(CoreSensorId.PreviousPage);
+    const fnEntry = services.runtime.functions.get(CoreHostActions.PreviousPage.key);
     assert.ok(fnEntry, "previous-page function should be registered");
     const ppSensor = new BrainTileSensorDef(
-      CoreSensorId.PreviousPage,
+      CoreHostActions.PreviousPage.key,
       mkActionDescriptor("sensor", fnEntry!, CoreTypeIds.String),
       {
         placement: TilePlacement.EitherSide | TilePlacement.Inline,
@@ -748,10 +1058,10 @@ describe("Brain behavioral -- page sensors", () => {
 
   test("previous-page returns page 0 ID after switching to page 1", () => {
     const v = mkVar("pp-after-switch", CoreTypeIds.String);
-    const fnEntry = services.runtime.functions.get(CoreSensorId.PreviousPage);
+    const fnEntry = services.runtime.functions.get(CoreHostActions.PreviousPage.key);
     assert.ok(fnEntry);
     const ppSensor = new BrainTileSensorDef(
-      CoreSensorId.PreviousPage,
+      CoreHostActions.PreviousPage.key,
       mkActionDescriptor("sensor", fnEntry!, CoreTypeIds.String),
       {
         placement: TilePlacement.EitherSide | TilePlacement.Inline,
@@ -795,10 +1105,10 @@ describe("Brain behavioral -- page sensors", () => {
 
   test("previous-page updates after multiple page switches", () => {
     const v = mkVar("pp-multi", CoreTypeIds.String);
-    const fnEntry = services.runtime.functions.get(CoreSensorId.PreviousPage);
+    const fnEntry = services.runtime.functions.get(CoreHostActions.PreviousPage.key);
     assert.ok(fnEntry);
     const ppSensor = new BrainTileSensorDef(
-      CoreSensorId.PreviousPage,
+      CoreHostActions.PreviousPage.key,
       mkActionDescriptor("sensor", fnEntry!, CoreTypeIds.String),
       {
         placement: TilePlacement.EitherSide | TilePlacement.Inline,
@@ -864,11 +1174,11 @@ describe("Brain behavioral -- action state", () => {
   test("host-backed action state survives root-rule respawns and page restart", () => {
     let activationCount = 0;
 
-    const onPageEnteredFn = services.runtime.functions.get(CoreSensorId.OnPageEntered);
+    const onPageEnteredFn = services.runtime.functions.get(CoreHostActions.OnPageEntered.key);
     assert.ok(onPageEnteredFn, "on-page-entered function should be registered");
 
     const sensor = new BrainTileSensorDef(
-      CoreSensorId.OnPageEntered,
+      CoreHostActions.OnPageEntered.key,
       mkActionDescriptor("sensor", onPageEnteredFn!, CoreTypeIds.Boolean),
       {
         placement: TilePlacement.EitherSide | TilePlacement.Inline,
@@ -883,6 +1193,7 @@ describe("Brain behavioral -- action state", () => {
     };
     services.runtime.actions.register({
       binding: "host",
+      id: 3003,
       descriptor: actuatorDescriptor,
       execSync: () => {
         activationCount += 1;
@@ -911,6 +1222,7 @@ describe("Brain behavioral -- action state", () => {
   test("bytecode-backed activation hook runs once per activation, preserved on restart", () => {
     let activationCount = 0;
     const activationFnEntry = services.runtime.functions.register(
+      4003,
       "test-phase5-bytecode-activation-host",
       false,
       {
@@ -974,6 +1286,7 @@ describe("Brain behavioral -- action state", () => {
 
     const brain = new Brain(brainDef, services, {
       catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
+      typeRegistry: services.runtime.types,
       actionResolver: {
         resolveAction(actionDescriptor) {
           if (actionDescriptor.key === descriptor.key) {
@@ -1015,11 +1328,11 @@ describe("Brain behavioral -- action state", () => {
   test("action state resets when switching to a different page and back", () => {
     let activationCount = 0;
 
-    const onPageEnteredFn = services.runtime.functions.get(CoreSensorId.OnPageEntered);
+    const onPageEnteredFn = services.runtime.functions.get(CoreHostActions.OnPageEntered.key);
     assert.ok(onPageEnteredFn, "on-page-entered function should be registered");
 
     const sensor = new BrainTileSensorDef(
-      CoreSensorId.OnPageEntered,
+      CoreHostActions.OnPageEntered.key,
       mkActionDescriptor("sensor", onPageEnteredFn!, CoreTypeIds.Boolean),
       {
         placement: TilePlacement.EitherSide | TilePlacement.Inline,
@@ -1034,6 +1347,7 @@ describe("Brain behavioral -- action state", () => {
     };
     services.runtime.actions.register({
       binding: "host",
+      id: 3004,
       descriptor: actuatorDescriptor,
       execSync: () => {
         activationCount += 1;
@@ -1159,6 +1473,7 @@ function buildBytecodeActionBrain(
 
   const brain = new Brain(brainDef, services, {
     catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
+    typeRegistry: services.runtime.types,
     actionResolver: {
       resolveAction(ad) {
         if (ad.key !== key) return undefined;
@@ -1179,6 +1494,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
   test("bytecode initializer runs exactly once across N page activations and shutdown re-runs it", () => {
     let initCount = 0;
     const initFn = services.runtime.functions.register(
+      4004,
       "test-page-init-fn",
       false,
       {
@@ -1238,6 +1554,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     let actCount = 0;
     let deactCount = 0;
     const initFn = services.runtime.functions.register(
+      4005,
       "test-page-restart-init-fn",
       false,
       {
@@ -1249,6 +1566,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       mkCallDef({ type: "bag", items: [] })
     );
     const actFn = services.runtime.functions.register(
+      4006,
       "test-page-restart-act-fn",
       false,
       {
@@ -1260,6 +1578,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       mkCallDef({ type: "bag", items: [] })
     );
     const deactFn = services.runtime.functions.register(
+      4007,
       "test-page-restart-deact-fn",
       false,
       {
@@ -1309,6 +1628,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
   test("deactivationFuncId can call services.callsite.reset to force re-initialization on next activation", () => {
     let initCount = 0;
     const initFn = services.runtime.functions.register(
+      4008,
       "test-page-deact-reset-init-fn",
       false,
       {
@@ -1320,6 +1640,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       mkCallDef({ type: "bag", items: [] })
     );
     const resetFn = services.runtime.functions.register(
+      4009,
       "test-page-deact-reset-reset-fn",
       false,
       {
@@ -1382,6 +1703,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     };
     services.runtime.actions.register({
       binding: "host",
+      id: 3005,
       descriptor,
       execSync: (ctx) => {
         invokeCount += 1;
@@ -1431,6 +1753,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     };
     services.runtime.actions.register({
       binding: "host",
+      id: 3006,
       descriptor,
       onPageExited: (ctx) => {
         clearCallSiteState(ctx);
@@ -1482,6 +1805,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     };
     services.runtime.actions.register({
       binding: "host",
+      id: 3007,
       descriptor,
       onInitialized: () => {
         initCount += 1;
@@ -1528,6 +1852,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     };
     services.runtime.actions.register({
       binding: "host",
+      id: 3008,
       descriptor,
       onInitialized: () => {
         log.push("init");
@@ -1570,6 +1895,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     };
     services.runtime.actions.register({
       binding: "host",
+      id: 3009,
       descriptor,
       onInitialized: () => {
         initCount += 1;
@@ -1619,6 +1945,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     };
     services.runtime.actions.register({
       binding: "host",
+      id: 3010,
       descriptor,
       onInitialized: () => {
         initCount += 1;
@@ -1653,6 +1980,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     let bytecodeInitCount = 0;
     let hostExecCount = 0;
     const initFn = services.runtime.functions.register(
+      4010,
       "test-l4-mate-bytecode-init-fn",
       false,
       {
@@ -1672,6 +2000,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     };
     services.runtime.actions.register({
       binding: "host",
+      id: 3011,
       descriptor: hostDescriptor,
       execSync: () => {
         hostExecCount += 1;
@@ -1737,6 +2066,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
 
     const brain = new Brain(brainDef, services, {
       catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
+      typeRegistry: services.runtime.types,
       actionResolver: {
         resolveAction(ad) {
           if (ad.key === btKey) {
@@ -1776,6 +2106,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     };
     services.runtime.actions.register({
       binding: "host",
+      id: 3012,
       descriptor,
       onInitialized: (ctx) => {
         initCount += 1;
@@ -1817,6 +2148,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     let bytecodeInitCount = 0;
     let hostInitCount = 0;
     const initFn = services.runtime.functions.register(
+      4011,
       "test-l4-mixed-bytecode-init-fn",
       false,
       {
@@ -1836,6 +2168,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     };
     services.runtime.actions.register({
       binding: "host",
+      id: 3013,
       descriptor: hostDescriptor,
       onInitialized: () => {
         hostInitCount += 1;
@@ -1901,6 +2234,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
 
     const brain = new Brain(brainDef, services, {
       catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
+      typeRegistry: services.runtime.types,
       actionResolver: {
         resolveAction(ad) {
           if (ad.key === btKey) {
@@ -1958,9 +2292,13 @@ describe("Brain behavioral -- compiled program structure", () => {
     const program = compileBrain(
       brainDef,
       List.from([services.edit.tiles, brainDef.catalog()]),
-      services.shared.conversions
-    );
+      services.shared.conversions,
+      services.runtime.actions,
+      services.runtime.types
+    ).program!;
 
+    // An action the resolver cannot bind falls back to a program-local bytecode
+    // slot so the operand stack stays balanced for error recovery.
     assert.equal(program.actionRefs.size(), 1);
     assert.deepEqual(program.actionRefs.get(0), {
       slot: 0,
@@ -1970,6 +2308,7 @@ describe("Brain behavioral -- compiled program structure", () => {
     const page = program.pages.get(0)!;
     assert.equal(page.actionCallSites.size(), 1);
     assert.deepEqual(page.actionCallSites.get(0), {
+      binding: "bytecode",
       actionSlot: 0,
       callSiteId: 0,
     });
@@ -1982,12 +2321,12 @@ describe("Brain behavioral -- compiled program structure", () => {
     );
   });
 
-  test("brain initialization links action slots to executable host actions", () => {
-    const fnEntry = services.runtime.functions.get(CoreSensorId.CurrentPage);
+  test("host action tiles dispatch by stable id, not through the action table", () => {
+    const fnEntry = services.runtime.functions.get(CoreHostActions.CurrentPage.key);
     assert.ok(fnEntry, "current-page function should be registered");
 
     const cpSensor = new BrainTileSensorDef(
-      CoreSensorId.CurrentPage,
+      CoreHostActions.CurrentPage.key,
       mkActionDescriptor("sensor", fnEntry!, CoreTypeIds.String),
       {
         placement: TilePlacement.EitherSide | TilePlacement.Inline,
@@ -2000,10 +2339,16 @@ describe("Brain behavioral -- compiled program structure", () => {
 
     const program = brain.getProgram();
     assert.ok(program, "linked program should exist after initialize");
-    const actions = program!.actions!;
-    assert.equal(actions.size(), 1);
-    assert.equal(actions.get(0)!.binding, "host");
-    assert.equal(actions.get(0)!.descriptor.key, CoreSensorId.CurrentPage);
+    // Host actions are dispatched by stable id and are not placed in the
+    // program's bytecode-only action table.
+    assert.equal(program!.actions!.size(), 0);
+
+    const resolved = services.runtime.actions.getByKey(CoreHostActions.CurrentPage.key);
+    assert.ok(resolved && resolved.binding === "host", "current-page action should resolve as host");
+
+    const site = brain.getPages().get(0)!.actionCallSites.get(0)!;
+    assert.equal(site.binding, "host");
+    assert.equal(site.binding === "host" ? site.actionId : -1, resolved.binding === "host" ? resolved.id : -2);
   });
 });
 
@@ -2105,7 +2450,7 @@ describe("Brain behavioral -- timeout sensor", () => {
   }
 
   test("WHEN [timeout][constant 0.5] -> fires after 500ms", () => {
-    const timeoutTile = getCoreSensor(CoreSensorId.Timeout);
+    const timeoutTile = getCoreSensor(CoreHostActions.Timeout.key);
     const v = mkVar("t-const");
 
     const brainDef = buildBrain([timeoutTile, mkLiteral(0.5)], [v, opAssign, mkLiteral(1)]);
@@ -2122,8 +2467,8 @@ describe("Brain behavioral -- timeout sensor", () => {
   });
 
   test("WHEN [timeout][random + 5] -> evaluates expression as delay (does not fire under 4s)", () => {
-    const timeoutTile = getCoreSensor(CoreSensorId.Timeout);
-    const randomTile = getCoreSensor(CoreSensorId.Random);
+    const timeoutTile = getCoreSensor(CoreHostActions.Timeout.key);
+    const randomTile = getCoreSensor(CoreHostActions.Random.key);
 
     const v = mkVar("t-expr");
     const brainDef = buildBrain([timeoutTile, randomTile, opAdd, mkLiteral(5)], [v, opAssign, mkLiteral(1)]);
@@ -2153,8 +2498,8 @@ describe("Brain behavioral -- timeout sensor", () => {
   });
 
   test("WHEN [timeout][unassignedVar + random] -> nil delay uses omitted-arg default", () => {
-    const timeoutTile = getCoreSensor(CoreSensorId.Timeout);
-    const randomTile = getCoreSensor(CoreSensorId.Random);
+    const timeoutTile = getCoreSensor(CoreHostActions.Timeout.key);
+    const randomTile = getCoreSensor(CoreHostActions.Random.key);
 
     // unassignedVar is NEVER written. At runtime its value is nil. The compiler
     // typed it as number based on its declared type, so the number+number Add
@@ -2256,5 +2601,70 @@ describe("Brain -- slot-keyed variable storage", () => {
     }
     assert.ok(slotId >= 0);
     assert.equal(brain.getVariableBySlot(slotId).t, NativeType.Nil, "slot-keyed read of cleared slot returns NIL");
+  });
+});
+
+// ---- Field access emits id-based opcodes ----
+
+describe("Field access emits id-based opcodes", () => {
+  function compileToInstrs(whenTiles: unknown[], doTiles: unknown[]): Instr[] {
+    const brainDef = buildBrain(whenTiles, doTiles);
+    const result = compileBrain(
+      brainDef,
+      List.from([services.edit.tiles, brainDef.catalog()]),
+      services.shared.conversions,
+      services.runtime.actions,
+      services.runtime.types
+    );
+    assert.ok(result.program, "compile should succeed");
+    const instrs: Instr[] = [];
+    const fns = result.program!.functions;
+    for (let i = 0; i < fns.size(); i++) {
+      const code = fns.get(i).code;
+      for (let j = 0; j < code.size(); j++) {
+        instrs.push(code.get(j));
+      }
+    }
+    return instrs;
+  }
+
+  test("a concretely-typed field read emits STRUCT_GET_FIELD with the object's field id (not GET_FIELD)", () => {
+    const vec = services.runtime.types.addStructType("Vec2EmitRead", {
+      atomId: 1024,
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+      ]),
+    });
+    const vVar = new BrainTileVariableDef(mkVariableTileId("vec2-emit-read"), "vv", vec, "vec2-emit-read");
+    const nVar = mkVar("nn", CoreTypeIds.Number);
+    const accY = new BrainTileAccessorDef(vec, "y", CoreTypeIds.Number);
+
+    // DO: $n = $v.y    (reads y, id 1)
+    const instrs = compileToInstrs([], [nVar, opAssign, vVar, accY]);
+    const reads = instrs.filter((ins) => ins.op === Op.STRUCT_GET_FIELD);
+    assert.equal(reads.length, 1, "should emit exactly one STRUCT_GET_FIELD");
+    assert.equal(reads[0].a, 1, "should read Vec2.y at id 1");
+    assert.equal(instrs.filter((ins) => ins.op === Op.GET_FIELD).length, 0, "should not emit name-keyed GET_FIELD");
+  });
+
+  test("a concretely-typed field write emits STRUCT_DEEP_COPY then STRUCT_SET_FIELD (not SET_FIELD)", () => {
+    const vec = services.runtime.types.addStructType("Vec2EmitWrite", {
+      atomId: 1025,
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+      ]),
+    });
+    const vVar = new BrainTileVariableDef(mkVariableTileId("vec2-emit-write"), "vv", vec, "vec2-emit-write");
+    const accX = new BrainTileAccessorDef(vec, "x", CoreTypeIds.Number);
+
+    // DO: $v.x = 10
+    const instrs = compileToInstrs([], [vVar, accX, opAssign, mkLiteral(10)]);
+    const setIdx = instrs.findIndex((ins) => ins.op === Op.STRUCT_SET_FIELD);
+    assert.ok(setIdx >= 0, "should emit STRUCT_SET_FIELD");
+    assert.equal(instrs[setIdx].a, 0, "should write Vec2.x at id 0");
+    assert.equal(instrs[setIdx - 1].op, Op.STRUCT_DEEP_COPY, "STRUCT_DEEP_COPY must immediately precede the store");
+    assert.equal(instrs.filter((ins) => ins.op === Op.SET_FIELD).length, 0, "should not emit name-keyed SET_FIELD");
   });
 });

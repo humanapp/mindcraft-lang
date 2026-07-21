@@ -32,22 +32,17 @@ export const TileIds = {
     Priority: "parameter.priority",
     Rate: "parameter.rate",
   } as const,
-  Sensor: {
-    Bump: "sensor.bump",
-    See: "sensor.see",
-  } as const,
   Operator: {} as const,
-  Actuator: {
-    Move: "actuator.move",
-    Say: "actuator.say",
-    Eat: "actuator.eat",
-    Turn: "actuator.turn",
-    Shoot: "actuator.shoot",
-  } as const,
 } as const;
 
 export const TileCapabilityBits = {
   TargetActor: APP_CAPABILITY_BIT_OFFSET + 0,
+  Vision: APP_CAPABILITY_BIT_OFFSET + 1,
 } as const;
 
 export const TargetActorCapabilityBitSet = new BitSet().set(TileCapabilityBits.TargetActor);
+
+/** The `see` sensor provides a target actor and is the vision sensor. */
+export const SeeSensorCapabilityBitSet = new BitSet()
+  .set(TileCapabilityBits.TargetActor)
+  .set(TileCapabilityBits.Vision);

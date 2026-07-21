@@ -22,6 +22,7 @@ import {
   Vector2,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
+import { SimFuncId, SimTypeAtomId } from "./abi-ids";
 import type { Actor } from "./actor";
 import { getSelf } from "./execution-context-types";
 
@@ -35,9 +36,33 @@ export const SimTypeIds = {
   Vector2: mkTypeId(NativeType.Struct, SimTypeNames.Vector2),
 };
 
+/** Field ids (also storage slots) for the `Vector2` struct. */
+enum Vector2Field {
+  X = 0,
+  Y = 1,
+}
+
+/**
+ * Field ids (also storage slots) for the `ActorRef` struct. Single source for
+ * both the registered `fieldIndex` and the getter/setter dispatch.
+ */
+enum ActorRefField {
+  Id = 0,
+  Position = 1,
+  Rotation = 2,
+  EnergyPct = 3,
+  Forward = 4,
+}
+
+/**
+ * Field id of the `self` field this app adds to the core `Context` struct. Core
+ * owns Context ids 0-5; app extensions start at 6.
+ */
+const CONTEXT_SELF_FIELD_ID = 6;
+
 const Vector2Fields = List.from([
-  { name: "x", typeId: CoreTypeIds.Number },
-  { name: "y", typeId: CoreTypeIds.Number },
+  { name: "x", typeId: CoreTypeIds.Number, fieldIndex: Vector2Field.X },
+  { name: "y", typeId: CoreTypeIds.Number, fieldIndex: Vector2Field.Y },
 ]);
 
 let vector2TypeDef: StructTypeDef | undefined;
@@ -118,36 +143,36 @@ function actorRefSnapshotNative(source: StructValue, ctx: ExecutionContext): unk
 /**
  * Field getter for the actorRef native struct type.
  */
-function actorRefFieldGetter(source: StructValue, fieldName: string, ctx: ExecutionContext): Value | undefined {
+function actorRefFieldGetter(source: StructValue, fieldId: number, ctx: ExecutionContext): Value | undefined {
   const actor = resolveActor(source, ctx);
   if (!actor) return undefined;
-  switch (fieldName) {
-    case "id":
+  switch (fieldId) {
+    case ActorRefField.Id:
       return mkNumberValue(actor.actorId);
-    case "position":
+    case ActorRefField.Position:
       return mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y));
-    case "rotation":
+    case ActorRefField.Rotation:
       return mkNumberValue(actor.sprite.rotation);
-    case "energy pct":
+    case ActorRefField.EnergyPct:
       return mkNumberValue(actor.energy / actor.maxEnergy);
-    case "forward":
+    case ActorRefField.Forward:
       return mkVector2Value(new Vector2(Math.cos(actor.sprite.rotation), Math.sin(actor.sprite.rotation)));
     default:
       return undefined;
   }
 }
 
-function actorRefFieldSetter(source: StructValue, fieldName: string, value: Value, ctx: ExecutionContext): boolean {
+function actorRefFieldSetter(source: StructValue, fieldId: number, value: Value, ctx: ExecutionContext): boolean {
   const actor = resolveActor(source, ctx);
   if (!actor) return false;
-  switch (fieldName) {
-    case "position": {
+  switch (fieldId) {
+    case ActorRefField.Position: {
       const vec = extractVector2(value as StructValue);
       if (!vec) return false;
       actor.sprite.setPosition(vec.X, vec.Y);
       return true;
     }
-    case "rotation": {
+    case ActorRefField.Rotation: {
       const angle = extractNumberValue(value);
       if (angle === undefined) return false;
       actor.sprite.setRotation(angle);
@@ -182,6 +207,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     coreType: NativeType.Struct,
     typeId: SimTypeIds.Vector2,
     name: SimTypeNames.Vector2,
+    atomId: SimTypeAtomId.Vector2,
     fields: Vector2Fields,
     accessors: true,
     variableFactory: true,
@@ -195,12 +221,13 @@ export function registerTypes(api: MindcraftModuleApi) {
     coreType: NativeType.Struct,
     typeId: SimTypeIds.ActorRef,
     name: SimTypeNames.ActorRef,
+    atomId: SimTypeAtomId.ActorRef,
     fields: List.from([
-      { name: "id", typeId: CoreTypeIds.Number, readOnly: true },
-      { name: "position", typeId: SimTypeIds.Vector2 },
-      { name: "rotation", typeId: CoreTypeIds.Number },
-      { name: "energy pct", typeId: CoreTypeIds.Number, readOnly: true },
-      { name: "forward", typeId: SimTypeIds.Vector2, readOnly: true },
+      { name: "id", typeId: CoreTypeIds.Number, readOnly: true, fieldIndex: ActorRefField.Id },
+      { name: "position", typeId: SimTypeIds.Vector2, fieldIndex: ActorRefField.Position },
+      { name: "rotation", typeId: CoreTypeIds.Number, fieldIndex: ActorRefField.Rotation },
+      { name: "energy pct", typeId: CoreTypeIds.Number, readOnly: true, fieldIndex: ActorRefField.EnergyPct },
+      { name: "forward", typeId: SimTypeIds.Vector2, readOnly: true, fieldIndex: ActorRefField.Forward },
     ]),
     fieldGetter: actorRefFieldGetter,
     fieldSetter: actorRefFieldSetter,
@@ -210,6 +237,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   });
 
   api.registerConversion({
+    id: SimFuncId.ConvActorRefToNumber,
     fromType: SimTypeIds.ActorRef,
     toType: CoreTypeIds.Number,
     cost: 2,
@@ -222,6 +250,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     },
   });
   api.registerConversion({
+    id: SimFuncId.ConvActorRefToVector2,
     fromType: SimTypeIds.ActorRef,
     toType: SimTypeIds.Vector2,
     cost: 2,
@@ -237,6 +266,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     },
   });
   api.registerConversion({
+    id: SimFuncId.ConvVector2ToString,
     fromType: SimTypeIds.Vector2,
     toType: CoreTypeIds.String,
     cost: 3,
@@ -329,6 +359,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Add,
     "Vector2.add",
     false,
     {
@@ -343,6 +374,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Sub,
     "Vector2.sub",
     false,
     {
@@ -357,6 +389,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Mul,
     "Vector2.mul",
     false,
     {
@@ -371,6 +404,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Div,
     "Vector2.div",
     false,
     {
@@ -385,6 +419,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Dot,
     "Vector2.dot",
     false,
     {
@@ -399,6 +434,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Cross,
     "Vector2.cross",
     false,
     {
@@ -413,6 +449,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Magnitude,
     "Vector2.magnitude",
     false,
     {
@@ -426,6 +463,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Normalize,
     "Vector2.normalize",
     false,
     {
@@ -439,6 +477,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Distance,
     "Vector2.distance",
     false,
     {
@@ -453,6 +492,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Lerp,
     "Vector2.lerp",
     false,
     {
@@ -468,6 +508,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Angle,
     "Vector2.angle",
     false,
     {
@@ -482,6 +523,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   );
 
   functions.register(
+    SimFuncId.Vector2Rotate,
     "Vector2.rotate",
     false,
     {
@@ -501,9 +543,9 @@ export function registerTypes(api: MindcraftModuleApi) {
 
   types.addStructFields(
     ContextTypeIds.Context,
-    List.from([{ name: "self", typeId: SimTypeIds.ActorRef }]),
-    (source: StructValue, fieldName: string, ctx: ExecutionContext) => {
-      if (fieldName !== "self") return undefined;
+    List.from([{ name: "self", typeId: SimTypeIds.ActorRef, fieldIndex: CONTEXT_SELF_FIELD_ID }]),
+    (source: StructValue, fieldId: number, ctx: ExecutionContext) => {
+      if (fieldId !== CONTEXT_SELF_FIELD_ID) return undefined;
       const actor = getSelf(ctx);
       if (!actor) return undefined;
       return mkNativeStructValue(SimTypeIds.ActorRef, actor);

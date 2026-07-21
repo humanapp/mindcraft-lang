@@ -1,6 +1,7 @@
-import { List, type ReadonlyBitSet, type ReadonlyList } from "@mindcraft-lang/core";
+import { assertUnreachable, List, type ReadonlyBitSet, type ReadonlyList, type UniqueSet } from "@mindcraft-lang/core";
 import {
   CoreCapabilityBits,
+  type IBrainRuleDef,
   type IBrainTileDef,
   type ITileCatalog,
   type RuleSide,
@@ -14,17 +15,19 @@ import {
   suggestTiles,
   type TileSuggestion,
 } from "@mindcraft-lang/core/brain/language-service";
-import { CoreActuatorId, mkActuatorTileId, type TypeId } from "@mindcraft-lang/core/runtime";
+import { CoreHostActions, mkActuatorTileId, type TypeId } from "@mindcraft-lang/core/runtime";
 import React from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
+import { groupTilesByLibrary, type TileSourceLibrary } from "./tile-library-groups";
 import { resolveTileVisual } from "./tile-visual-utils";
 
 type TileGroup =
   | "actuator"
   | "sensor"
+  | "output"
   | "function"
   | "parameter+modifier"
   | "variable"
@@ -43,6 +46,7 @@ function allTileGroups<const T extends readonly TileGroup[]>(
 const groupNames: Record<TileGroup, string> = {
   actuator: "Actuators",
   sensor: "Sensors",
+  output: "Outputs",
   function: "Functions",
   "parameter+modifier": "Parameters",
   variable: "Variables",
@@ -65,6 +69,72 @@ function fuzzyMatch(filter: string, text: string): boolean {
   return true;
 }
 
+interface TileGroupSectionProps {
+  group: TileGroup;
+  tiles: TileSuggestion[];
+  side: RuleSide;
+  libraries?: readonly TileSourceLibrary[];
+  /** Renders the section in the muted compatible-via-conversion style. */
+  conversion?: boolean;
+  onTileClick: (tileDef: IBrainTileDef) => void;
+}
+
+/**
+ * One kind group of the picker: unattributed tiles first, then a subcluster
+ * per installed library, each under its library's display-name subheading.
+ */
+function TileGroupSection({ group, tiles, side, libraries, conversion, onTileClick }: TileGroupSectionProps) {
+  const { unattributed, clusters } = groupTilesByLibrary(tiles, (s) => s.tileDef, libraries);
+  const headingId = conversion ? `tile-group-conv-${group}` : `tile-group-${group}`;
+  const tileRowClass = conversion ? "flex flex-wrap gap-1 opacity-75" : "flex flex-wrap gap-1";
+  const renderTiles = (items: readonly TileSuggestion[]) =>
+    items.map((s) => (
+      <BrainTile key={s.tileDef.tileId} tileDef={s.tileDef} side={side} onClick={() => onTileClick(s.tileDef)} />
+    ));
+
+  return (
+    <section aria-labelledby={headingId}>
+      <h3
+        id={headingId}
+        className={
+          conversion ? "text-sm font-semibold uppercase mb-2 text-white/50" : "text-sm font-semibold uppercase mb-2"
+        }
+      >
+        {groupNames[group]}
+      </h3>
+      {unattributed.length > 0 && (
+        /* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */
+        <div
+          className={tileRowClass}
+          role="group"
+          aria-label={conversion ? `${groupNames[group]} tiles (conversion)` : `${groupNames[group]} tiles`}
+        >
+          {renderTiles(unattributed)}
+        </div>
+      )}
+      {clusters.map((cluster) => (
+        <div key={cluster.library.coordinate}>
+          <h4 className="text-xs font-semibold uppercase text-white/50 mt-2 mb-1 tracking-wider">
+            {cluster.library.name}
+          </h4>
+          {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}
+          <div
+            className={tileRowClass}
+            role="group"
+            aria-label={
+              conversion
+                ? `${groupNames[group]} tiles from ${cluster.library.name} (conversion)`
+                : `${groupNames[group]} tiles from ${cluster.library.name}`
+            }
+          >
+            {renderTiles(cluster.items)}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 /** Props for {@link BrainTilePickerDialog}. */
 export interface BrainTilePickerDialogProps {
   isOpen: boolean;
@@ -74,6 +144,9 @@ export interface BrainTilePickerDialogProps {
   expr?: Expr;
   replaceTileIndex?: number;
   availableCapabilities?: ReadonlyBitSet;
+  availableOutputKeys?: UniqueSet<string>;
+  /** The rule being edited; supplies the WHEN-result type that gates WHEN-result-consuming tiles. */
+  ruleDef?: IBrainRuleDef;
   existingTiles?: ReadonlyList<IBrainTileDef>;
   onTileSelected: (tileDef: IBrainTileDef) => boolean;
   onCancel: () => void;
@@ -94,12 +167,14 @@ export function BrainTilePickerDialog({
   expr: exprProp,
   replaceTileIndex,
   availableCapabilities,
+  availableOutputKeys,
+  ruleDef,
   existingTiles,
   onTileSelected,
   onCancel,
 }: BrainTilePickerDialogProps) {
   const editorConfig = useBrainEditorConfig();
-  const { brainServices, tileCatalogs } = editorConfig;
+  const { brainServices, tileCatalogs, libraries } = editorConfig;
   const [filter, setFilter] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -127,6 +202,8 @@ export function BrainTilePickerDialog({
       expr,
       replaceTileIndex,
       availableCapabilities,
+      availableOutputKeys,
+      ruleDef,
       unclosedParenDepth,
     };
     const result = brainServices
@@ -156,17 +233,21 @@ export function BrainTilePickerDialog({
           return "operator+controlFlow";
         case "actuator":
         case "sensor":
+        case "output":
         case "variable":
         case "accessor":
         case "literal":
         case "page":
           return tileDef.kind;
-        default:
+        case "undefined":
+        case "missing":
           return "other";
+        default:
+          return assertUnreachable(tileDef.kind);
       }
     };
 
-    const switchPageTileId = mkActuatorTileId(CoreActuatorId.SwitchPage);
+    const switchPageTileId = mkActuatorTileId(CoreHostActions.SwitchPage.key);
     const precedingIndex = replaceTileIndex != null ? replaceTileIndex - 1 : (existingTiles?.size() ?? 0) - 1;
     const precedingTile = precedingIndex >= 0 ? existingTiles?.get(precedingIndex) : undefined;
     const pagesFirst = precedingTile?.tileId === switchPageTileId;
@@ -176,6 +257,7 @@ export function BrainTilePickerDialog({
           "page",
           "literal",
           "variable",
+          "output",
           "function",
           "actuator",
           "sensor",
@@ -187,6 +269,7 @@ export function BrainTilePickerDialog({
       : allTileGroups([
           "actuator",
           "sensor",
+          "output",
           "function",
           "parameter+modifier",
           "variable",
@@ -229,7 +312,18 @@ export function BrainTilePickerDialog({
       conversionByKind: sortEntries(Array.from(convGroups.entries())),
       hasConversions: result.withConversion.size() > 0,
     };
-  }, [side, expectedType, exprProp, replaceTileIndex, availableCapabilities, existingTiles, catalogs, brainServices]);
+  }, [
+    side,
+    expectedType,
+    exprProp,
+    replaceTileIndex,
+    availableCapabilities,
+    availableOutputKeys,
+    ruleDef,
+    existingTiles,
+    catalogs,
+    brainServices,
+  ]);
 
   const filterGroups = (groups: [TileGroup, TileSuggestion[]][]): [TileGroup, TileSuggestion[]][] => {
     if (filter.length === 0) return groups;
@@ -264,10 +358,10 @@ export function BrainTilePickerDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-2xl sm:h-auto sm:p-6 sm:gap-4 bg-slate-50 border-2 border-slate-300 rounded-none sm:rounded-2xl">
-        <DialogHeader className="border-b border-slate-200 pb-4">
-          <DialogTitle className="text-slate-800 font-semibold">Pick a Brain Tile</DialogTitle>
-          <DialogDescription className="text-slate-600">Select a tile to add to the rule.</DialogDescription>
+      <DialogContent className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-2xl sm:h-auto sm:p-6 sm:gap-4 bg-popover border-2 border-border rounded-none sm:rounded-2xl">
+        <DialogHeader className="border-b border-border pb-4">
+          <DialogTitle className="text-foreground font-semibold">Pick a Brain Tile</DialogTitle>
+          <DialogDescription className="text-muted-foreground">Select a tile to add to the rule.</DialogDescription>
           <Input
             ref={inputRef}
             type="text"
@@ -275,7 +369,7 @@ export function BrainTilePickerDialog({
             aria-label="Filter tiles"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="mt-2 w-full text-black bg-white/90 focus:bg-white border-slate-900"
+            className="mt-2 w-full"
           />
         </DialogHeader>
         {/* biome-ignore lint/a11y/useSemanticElements: section is already used for each tile kind group within this container */}
@@ -284,8 +378,8 @@ export function BrainTilePickerDialog({
           role="region"
           aria-label="Available brain tiles"
           style={{
-            background: "linear-gradient(55deg, #1E1B4B 0%, #A78BFA 100%)",
-            boxShadow: "inset 0 0 0 2px rgba(255, 255, 255, 0.25)",
+            background: "linear-gradient(160deg, #191338 0%, #0E0A20 100%)",
+            boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 4px 20px rgba(0, 0, 0, 0.45)",
           }}
         >
           {noResults && (
@@ -294,22 +388,14 @@ export function BrainTilePickerDialog({
             </p>
           )}
           {filteredExact.map(([group, tiles]) => (
-            <section key={group} aria-labelledby={`tile-group-${group}`}>
-              <h3 id={`tile-group-${group}`} className="text-sm font-semibold uppercase mb-2">
-                {groupNames[group]}
-              </h3>
-              {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}
-              <div className="flex flex-wrap gap-1" role="group" aria-label={`${groupNames[group]} tiles`}>
-                {tiles.map((s) => (
-                  <BrainTile
-                    key={s.tileDef.tileId}
-                    tileDef={s.tileDef}
-                    side={side}
-                    onClick={() => handleTileClick(s.tileDef)}
-                  />
-                ))}
-              </div>
-            </section>
+            <TileGroupSection
+              key={group}
+              group={group}
+              tiles={tiles}
+              side={side}
+              libraries={libraries}
+              onTileClick={handleTileClick}
+            />
           ))}
           {hasFilteredConversions && (
             <>
@@ -319,26 +405,15 @@ export function BrainTilePickerDialog({
                 </h3>
               </div>
               {filteredConversion.map(([group, tiles]) => (
-                <section key={`conv-${group}`} aria-labelledby={`tile-group-conv-${group}`}>
-                  <h3 id={`tile-group-conv-${group}`} className="text-sm font-semibold uppercase mb-2 text-white/50">
-                    {groupNames[group]}
-                  </h3>
-                  {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}
-                  <div
-                    className="flex flex-wrap gap-1 opacity-75"
-                    role="group"
-                    aria-label={`${groupNames[group]} tiles (conversion)`}
-                  >
-                    {tiles.map((s) => (
-                      <BrainTile
-                        key={s.tileDef.tileId}
-                        tileDef={s.tileDef}
-                        side={side}
-                        onClick={() => handleTileClick(s.tileDef)}
-                      />
-                    ))}
-                  </div>
-                </section>
+                <TileGroupSection
+                  key={`conv-${group}`}
+                  group={group}
+                  tiles={tiles}
+                  side={side}
+                  libraries={libraries}
+                  conversion
+                  onTileClick={handleTileClick}
+                />
               ))}
             </>
           )}

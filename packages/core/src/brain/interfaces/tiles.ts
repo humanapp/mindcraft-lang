@@ -1,3 +1,4 @@
+import type { ReadonlyList } from "../../platform/list";
 import { MathOps } from "../../platform/math";
 import { StringUtils as SU } from "../../platform/string";
 import type { TileId } from "../../runtime/tile-ids";
@@ -5,11 +6,12 @@ import { mkTileId } from "../../runtime/tile-ids";
 import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
 
 export {
-  CoreActuatorId,
   CoreParameterId,
-  CoreSensorId,
+  mkActionTileId,
   mkActuatorTileId,
   mkModifierTileId,
+  mkOutputTileId,
+  mkOutputVarKey,
   mkParameterTileId,
   mkSensorTileId,
   mkTileId,
@@ -39,6 +41,7 @@ export type BrainTileKind =
   | "modifier"
   | "accessor"
   | "page"
+  | "output"
   | "missing";
 
 /** Identifies which side(s) of a rule (`when`, `do`, or both) a tile is allowed on. */
@@ -76,6 +79,20 @@ export interface BrainTileDefCreateOptions {
   persist?: boolean;
   capabilities?: BitSet;
   requirements?: BitSet;
+  /** Output identity keys (see `mkOutputVarKey`) this tile provides; sensors declaring outputs set these so their output value-tiles surface downstream. */
+  providedOutputs?: ReadonlyList<string>;
+  /**
+   * Declares that this tile requires the rule's WHEN result, set to the `TypeId`
+   * the tile expects. The editor offers the tile only where a WHEN result of that
+   * type is available. Omit for a tile that does not consume the WHEN result.
+   */
+  consumesWhenResult?: TypeId;
+  /**
+   * When true (sensors only), the sensor's returned value is a writable l-value:
+   * a field write on its result is permitted. Defaults to false, making the
+   * result read-only. Ignored on non-sensor tiles.
+   */
+  writableResult?: boolean;
   metadata?: ITileMetadata;
 }
 
@@ -153,6 +170,13 @@ export interface IBrainTileDef {
   persist?: boolean;
   capabilities(): ReadonlyBitSet;
   requirements(): ReadonlyBitSet;
+  /** Output identity keys this tile provides (empty for tiles that declare no outputs). */
+  providedOutputs(): ReadonlyList<string>;
+  /**
+   * The `TypeId` of the WHEN result this tile requires, or `undefined` for a tile
+   * that does not consume the WHEN result.
+   */
+  consumesWhenResult(): TypeId | undefined;
 }
 
 export interface IBrainActionTileDef extends IBrainTileDef {
@@ -222,6 +246,13 @@ export const APP_CAPABILITY_BIT_OFFSET = 32;
 export const CoreCapabilityBits = {
   PageSensor: 0,
   UserTile: 1,
+  /**
+   * Marks a value-bearing event sensor: it delivers a data value when it fires
+   * and returns nil when there is no value this think (absent). A bare WHEN that
+   * is exactly such a sensor is presence-gated (fires on a delivered falsy value,
+   * skips only on nil); nil must be excluded from the sensor's value domain.
+   */
+  PresenceGated: 2,
 } as const;
 
 // ----------------------------------------------------

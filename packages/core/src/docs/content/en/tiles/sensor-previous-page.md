@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.sensor->previous-page",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Previous Page

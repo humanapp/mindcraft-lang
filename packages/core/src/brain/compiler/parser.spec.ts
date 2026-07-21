@@ -13,9 +13,10 @@ import {
   CoreControlFlowId,
   type IBrainTileDef,
   mkVariableTileId,
+  TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { parseRule } from "@mindcraft-lang/core/brain/compiler";
+import { parseRule, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
 import {
   BrainTileAccessorDef,
   BrainTileActuatorDef,
@@ -46,6 +47,12 @@ import {
 } from "@mindcraft-lang/core/runtime";
 
 // ---- Shared setup ----
+
+let nextTypeAtomId = 20000;
+
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
 
 let services: BrainServices;
 let everySensor: BrainTileSensorDef;
@@ -108,6 +115,7 @@ before(() => {
   };
 
   const everyFnEntry = services.runtime.functions.register(
+    4001,
     kSensorId_Every,
     false,
     { exec: () => VOID_VALUE },
@@ -143,7 +151,13 @@ function runParseTest(tc: TestCase): void {
   test(tc.name, () => {
     const tiles = List.from(tc.tiles);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const hasDiags = result.parseResult.diags.size() > 0;
 
     if (tc.shouldPass) {
@@ -474,6 +488,7 @@ describe("Conditional call specs", () => {
     };
 
     const fnEntry = services.runtime.functions.register(
+      4002,
       kSensorId,
       false,
       { exec: () => VOID_VALUE },
@@ -505,6 +520,7 @@ describe("Conditional call specs", () => {
     };
 
     const fnEntry = services.runtime.functions.register(
+      4003,
       kSensorId,
       false,
       { exec: () => VOID_VALUE },
@@ -540,6 +556,7 @@ describe("Conditional call specs", () => {
     };
 
     const fnEntry = services.runtime.functions.register(
+      4004,
       kSensorId,
       false,
       { exec: () => VOID_VALUE },
@@ -566,6 +583,7 @@ describe("Conditional call specs", () => {
     };
 
     const fnEntry = services.runtime.functions.register(
+      4005,
       kSensorId,
       false,
       { exec: () => VOID_VALUE },
@@ -606,6 +624,7 @@ describe("Conditional with else branch", () => {
     };
 
     const fnEntry = services.runtime.functions.register(
+      4006,
       kSensorId,
       false,
       { exec: () => VOID_VALUE },
@@ -795,7 +814,13 @@ describe("Field access AST shape", () => {
   test("[$pos] [x] produces fieldAccess node", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorX]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "fieldAccess");
@@ -808,7 +833,13 @@ describe("Field access AST shape", () => {
   test("[$pos] [x] + [5] produces binaryOp(fieldAccess, literal)", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorX, opAdd, literal5]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "binaryOp");
@@ -821,7 +852,13 @@ describe("Field access AST shape", () => {
   test("[$pos] [x] = [10] produces assignment(fieldAccess, literal)", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorX, opAssign, literal10]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "assignment");
@@ -834,13 +871,119 @@ describe("Field access AST shape", () => {
   test("[$pos] [mag] = [10] produces errorExpr (read-only)", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorMag, opAssign, literal10]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "errorExpr");
     assert.ok(result.parseResult.diags.size() > 0, "should have diagnostic for read-only assignment");
     const diag = result.parseResult.diags.get(0);
     assert.equal(diag.code, 1014, "diagnostic code should be ReadOnlyFieldAssignment (1014)");
+  });
+});
+
+// ---- Assignment target l-value (base-aware) tests ----
+
+describe("Assignment target l-value (read-only sensor result)", () => {
+  let accessorX: BrainTileAccessorDef;
+  let accessorInner: BrainTileAccessorDef;
+  let structVar: BrainTileVariableDef;
+  let readOnlySensor: BrainTileSensorDef;
+  let writableSensor: BrainTileSensorDef;
+
+  before(() => {
+    const outerTypeId = mkTypeId(NativeType.Struct, "lvalue-outer");
+    const innerTypeId = mkTypeId(NativeType.Struct, "lvalue-inner");
+    accessorX = new BrainTileAccessorDef(innerTypeId, "x", CoreTypeIds.Number);
+    accessorInner = new BrainTileAccessorDef(outerTypeId, "inner", innerTypeId);
+    structVar = new BrainTileVariableDef(mkVariableTileId("lvalue-var"), "my_struct", innerTypeId, "lvalue-var");
+
+    const roFn = services.runtime.functions.register(
+      4901,
+      "lvalue-ro-sensor",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    readOnlySensor = new BrainTileSensorDef("lvalue-ro-sensor", mkActionDescriptor("sensor", roFn, innerTypeId), {
+      metadata: { label: "stick position" },
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+
+    const rwFn = services.runtime.functions.register(
+      4902,
+      "lvalue-rw-sensor",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    writableSensor = new BrainTileSensorDef("lvalue-rw-sensor", mkActionDescriptor("sensor", rwFn, innerTypeId), {
+      metadata: { label: "game actor" },
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      writableResult: true,
+    });
+  });
+
+  function parse(tiles: IBrainTileDef[]) {
+    return parseRule(
+      List.from(tiles),
+      List.empty<IBrainTileDef>(),
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    ).parseResult;
+  }
+
+  test("[sensor] [x] = [10] -> rejected with ReadOnlyResultFieldAssignment (1015)", () => {
+    const result = parse([readOnlySensor, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "errorExpr");
+    assert.ok(result.diags.size() > 0, "should have a diagnostic");
+    const diag = result.diags.get(0);
+    assert.equal(diag.code, 1015, "diagnostic code should be ReadOnlyResultFieldAssignment (1015)");
+    assert.ok(diag.message.indexOf("stick position") >= 0, "message should name the sensor");
+    assert.ok(diag.message.indexOf("read-only") >= 0, "message should say the result is read-only");
+  });
+
+  test("[writableSensor] [x] = [10] -> accepted (writableResult opt-in)", () => {
+    const result = parse([writableSensor, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "assignment");
+    assert.equal(result.diags.size(), 0, "should have no diagnostics");
+  });
+
+  test("[5] [x] = [10] -> rejected (literal base is not an l-value)", () => {
+    const result = parse([literal5, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "errorExpr");
+    const diag = result.diags.get(0);
+    assert.equal(diag.code, 1015, "literal base yields ReadOnlyResultFieldAssignment (1015)");
+  });
+
+  test("[$struct] [x] = [10] -> accepted (variable base)", () => {
+    const result = parse([structVar, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "assignment");
+    assert.equal(result.diags.size(), 0, "variable base is an l-value");
+  });
+
+  test("[sensor] [inner] [x] = [10] -> rejected (recurses through read-only base)", () => {
+    const result = parse([readOnlySensor, accessorInner, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "errorExpr");
+    assert.equal(result.diags.get(0).code, 1015);
+  });
+
+  test("[$struct] [inner] [x] = [10] -> accepted (variable root, all writable)", () => {
+    const result = parse([structVar, accessorInner, accessorX, opAssign, literal10]);
+    const expr = result.exprs.get(0);
+    assert.equal(expr.kind, "assignment");
+    assert.equal(result.diags.size(), 0);
   });
 });
 
@@ -859,14 +1002,20 @@ describe("Bag repeat interleaving", () => {
         optional(param(kParamPriority))
       )
     );
-    const fnEntry = services.runtime.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(4007, kActId, false, { exec: () => VOID_VALUE }, callDef);
     const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
 
     const tiles = List.from<IBrainTileDef>([actuator, modSlowly, paramPriority, literal1000, modSlowly]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      emptyTiles,
+      tiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
@@ -888,14 +1037,20 @@ describe("Bag repeat interleaving", () => {
         optional(param(kParamPriority))
       )
     );
-    const fnEntry = services.runtime.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(4008, kActId, false, { exec: () => VOID_VALUE }, callDef);
     const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
 
     const tiles = List.from<IBrainTileDef>([actuator, modSlowly, modSlowly, paramPriority, literal1000]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      emptyTiles,
+      tiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
   });
@@ -912,14 +1067,20 @@ describe("Bag repeat interleaving", () => {
         optional(param(kParamPriority))
       )
     );
-    const fnEntry = services.runtime.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(4009, kActId, false, { exec: () => VOID_VALUE }, callDef);
     const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
 
     const tiles = List.from<IBrainTileDef>([actuator, modSlowly, paramPriority, literal1000, modSlowly, modSlowly]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      emptyTiles,
+      tiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
   });
@@ -940,7 +1101,7 @@ describe("anonymous choice type discrimination", () => {
     const callDef = mkCallDef(
       bag(optional(choice(param("anon.Alpha", { anonymous: true }), param("anon.Beta", { anonymous: true }))))
     );
-    const fnEntry = services.runtime.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(4010, kActId, false, { exec: () => VOID_VALUE }, callDef);
     const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
 
     services.edit.tiles.registerTileDef(new BrainTileParameterDef("anon.Alpha", kTypeAlpha, { hidden: true }));
@@ -950,7 +1111,13 @@ describe("anonymous choice type discrimination", () => {
 
     const tiles = List.from<IBrainTileDef>([actuator, betaVar]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      emptyTiles,
+      tiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
 
@@ -968,13 +1135,19 @@ describe("anonymous choice type discrimination", () => {
 
   test("literal matches correct anonymous type in choice(anon.A, anon.B)", () => {
     const kActId = "type-disc-lit";
-    const kTypeAlpha = services.runtime.types.addStructType("AlphaLit", { fields: List.empty() });
-    const kTypeBeta = services.runtime.types.addStructType("BetaLit", { fields: List.empty() });
+    const kTypeAlpha = services.runtime.types.addStructType("AlphaLit", {
+      atomId: mkTestAtomId(),
+      fields: List.empty(),
+    });
+    const kTypeBeta = services.runtime.types.addStructType("BetaLit", {
+      atomId: mkTestAtomId(),
+      fields: List.empty(),
+    });
 
     const callDef = mkCallDef(
       bag(optional(choice(param("anon.AlphaLit", { anonymous: true }), param("anon.BetaLit", { anonymous: true }))))
     );
-    const fnEntry = services.runtime.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register(4011, kActId, false, { exec: () => VOID_VALUE }, callDef);
     const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
 
     services.edit.tiles.registerTileDef(new BrainTileParameterDef("anon.AlphaLit", kTypeAlpha, { hidden: true }));
@@ -984,7 +1157,13 @@ describe("anonymous choice type discrimination", () => {
 
     const tiles = List.from<IBrainTileDef>([actuator, betaLiteral]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([services.edit.tiles]), services.shared.conversions);
+    const result = parseRule(
+      emptyTiles,
+      tiles,
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
 
@@ -1002,5 +1181,184 @@ describe("anonymous choice type discrimination", () => {
         "literal with BetaLit type should match anon.BetaLit at slot 1, not anon.AlphaLit at slot 0"
       );
     }
+  });
+});
+
+// ---- Field id resolution from the object's type ----
+//
+// An accessor must pair with a base of its own struct type; a mismatched
+// pairing is rejected with AccessorBaseTypeMismatch. For a matching pairing,
+// the field id and field type resolve during inference from the OBJECT's
+// concrete struct type in the live registry -- never from the accessor's
+// declared fieldTypeId, which can desync from the registered definition.
+
+describe("Field id resolution from object type", () => {
+  let av2Var: BrainTileVariableDef;
+  let av3Var: BrainTileVariableDef;
+  let numVar: BrainTileVariableDef;
+  let entityVar: BrainTileVariableDef;
+  let av2AccessorX: BrainTileAccessorDef;
+  let av3AccessorX: BrainTileAccessorDef;
+  let entityPosAccessorWrongType: BrainTileAccessorDef;
+
+  before(() => {
+    const types = services.runtime.types;
+    // x is id 0 on Av2 but id 1 on Av3 -- the same field name, different ids.
+    const av2 = types.addStructType("Av2Resolve", {
+      atomId: mkTestAtomId(),
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+      ]),
+    });
+    const av3 = types.addStructType("Av3Resolve", {
+      atomId: mkTestAtomId(),
+      fields: List.from([
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 1 },
+        { name: "z", typeId: CoreTypeIds.Number, fieldIndex: 2 },
+      ]),
+    });
+    const entity = types.addStructType("EntityResolve", {
+      atomId: mkTestAtomId(),
+      fields: List.from([{ name: "pos", typeId: av2, fieldIndex: 0 }]),
+    });
+    av2Var = new BrainTileVariableDef(mkVariableTileId("av2-resolve"), "av2v", av2, "av2-resolve");
+    av3Var = new BrainTileVariableDef(mkVariableTileId("av3-resolve"), "av3v", av3, "av3-resolve");
+    numVar = new BrainTileVariableDef(mkVariableTileId("num-resolve"), "numv", CoreTypeIds.Number, "num-resolve");
+    entityVar = new BrainTileVariableDef(mkVariableTileId("entity-resolve"), "entv", entity, "entity-resolve");
+    av2AccessorX = new BrainTileAccessorDef(av2, "x", CoreTypeIds.Number);
+    av3AccessorX = new BrainTileAccessorDef(av3, "x", CoreTypeIds.Number);
+    // An Entity.pos accessor whose declared field type is wrong (Av3 rather than
+    // the real Av2) -- simulates a stale binding on a nested chain.
+    entityPosAccessorWrongType = new BrainTileAccessorDef(entity, "pos", av3);
+  });
+
+  function typeDiagCodes(result: ReturnType<typeof parseRule>): number[] {
+    const codes: number[] = [];
+    for (let i = 0; i < result.typeInfo.diags.size(); i++) {
+      codes.push(result.typeInfo.diags.get(i).code as number);
+    }
+    return codes;
+  }
+
+  test("mismatched pairing: an accessor of a different struct type is rejected with no field id", () => {
+    for (const [objectVar, accessor] of [
+      [av2Var, av3AccessorX],
+      [av3Var, av2AccessorX],
+      [numVar, av2AccessorX],
+    ] as const) {
+      const result = parseRule(
+        List.from<IBrainTileDef>([objectVar, accessor]),
+        List.empty<IBrainTileDef>(),
+        List.from([services.edit.tiles]),
+        services.shared.conversions,
+        services.runtime.types
+      );
+      const expr = result.parseResult.exprs.get(0);
+      assert.equal(expr.kind, "fieldAccess");
+      assert.ok(typeDiagCodes(result).includes(TypeDiagCode.AccessorBaseTypeMismatch));
+      assert.equal(result.typeInfo.typeEnv.get(expr.nodeId)?.fieldId, undefined);
+    }
+  });
+
+  test("nested chain: fields resolve against each object's REAL type, not the accessor's declared field type", () => {
+    // entity.pos.x : pos's accessor declares its field type as Av3, but pos's
+    // real type is Av2, so the chain pairs and x resolves to Av2.x (0), not
+    // Av3.x (1).
+    const result = parseRule(
+      List.from<IBrainTileDef>([entityVar, entityPosAccessorWrongType, av2AccessorX]),
+      List.empty<IBrainTileDef>(),
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
+    assert.deepEqual(typeDiagCodes(result), []);
+    const outer = result.parseResult.exprs.get(0);
+    assert.equal(outer.kind, "fieldAccess");
+    assert.equal(result.typeInfo.typeEnv.get(outer.nodeId)?.fieldId, 0);
+    if (outer.kind === "fieldAccess") {
+      // the inner pos access resolved to id 0 as well
+      assert.equal(result.typeInfo.typeEnv.get(outer.object.nodeId)?.fieldId, 0);
+    }
+  });
+
+  test("unregistered struct type: field id is undefined (emitter falls back to the name-keyed path)", () => {
+    const phantomTypeId = mkTypeId(NativeType.Struct, "PhantomResolve");
+    const phantomVar = new BrainTileVariableDef(
+      mkVariableTileId("phantom-resolve"),
+      "phv",
+      phantomTypeId,
+      "phantom-resolve"
+    );
+    const phantomAccessorX = new BrainTileAccessorDef(phantomTypeId, "x", CoreTypeIds.Number);
+    const result = parseRule(
+      List.from<IBrainTileDef>([phantomVar, phantomAccessorX]),
+      List.empty<IBrainTileDef>(),
+      List.from([services.edit.tiles]),
+      services.shared.conversions,
+      services.runtime.types
+    );
+    assert.deepEqual(typeDiagCodes(result), []);
+    const expr = result.parseResult.exprs.get(0);
+    assert.equal(expr.kind, "fieldAccess");
+    assert.equal(result.typeInfo.typeEnv.get(expr.nodeId)?.fieldId, undefined);
+  });
+});
+
+// ---- Continuation after a complete non-inline sensor ----
+
+describe("Continuation after a complete non-inline sensor", () => {
+  let plainStructSensor: BrainTileSensorDef;
+  let inlineStructSensor: BrainTileSensorDef;
+  let accessorF: BrainTileAccessorDef;
+
+  before(() => {
+    const structTypeId = services.runtime.types.addStructType("SensorReadingCont", {
+      atomId: mkTestAtomId(),
+      fields: List.from([{ name: "f", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+    });
+    accessorF = new BrainTileAccessorDef(structTypeId, "f", CoreTypeIds.Number);
+
+    const plainFnEntry = services.runtime.functions.register(
+      4020,
+      "reading-cont-plain",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    plainStructSensor = new BrainTileSensorDef(
+      "reading-cont-plain",
+      mkActionDescriptor("sensor", plainFnEntry, structTypeId)
+    );
+
+    const inlineFnEntry = services.runtime.functions.register(
+      4021,
+      "reading-cont-inline",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    inlineStructSensor = new BrainTileSensorDef(
+      "reading-cont-inline",
+      mkActionDescriptor("sensor", inlineFnEntry, structTypeId),
+      { placement: TilePlacement.EitherSide | TilePlacement.Inline }
+    );
+  });
+
+  test("[plain sensor] [f] - accessor cannot follow a non-inline sensor at top level", () => {
+    runParseTest({ name: "plain.f", tiles: [plainStructSensor, accessorF], shouldPass: false });
+  });
+
+  test("[plain sensor] [+] [5] - infix operator cannot follow a non-inline sensor at top level", () => {
+    runParseTest({ name: "plain+5", tiles: [plainStructSensor, opAdd, literal5], shouldPass: false });
+  });
+
+  test("[inline sensor] [f] - accessor follows an inline sensor", () => {
+    runParseTest({ name: "inline.f", tiles: [inlineStructSensor, accessorF], shouldPass: true });
+  });
+
+  test("[inline sensor] [f] [+] [5] - infix operator follows an inline sensor's field access", () => {
+    runParseTest({ name: "inline.f+5", tiles: [inlineStructSensor, accessorF, opAdd, literal5], shouldPass: true });
   });
 });

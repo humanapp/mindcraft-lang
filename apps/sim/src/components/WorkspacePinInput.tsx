@@ -25,7 +25,7 @@ export function WorkspacePinInput({
   autoFocus = false,
   wrapperClassName = "space-y-1.5",
   labelClassName = "text-sm font-medium",
-  inputClassName = "border-slate-500/60 bg-background",
+  inputClassName = "border-input bg-background",
   buttonClassName = "text-muted-foreground hover:text-foreground focus-visible:ring-ring",
   showButtonLabel,
   hideButtonLabel,

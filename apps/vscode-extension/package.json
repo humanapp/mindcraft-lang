@@ -77,21 +77,67 @@
         "title": "Mindcraft: Open Settings"
       },
       {
-        "command": "mindcraft.copyExampleToWorkspace",
-        "title": "Mindcraft: Copy Example to Workspace",
-        "icon": "$(cloud-download)"
-      },
-      {
         "command": "mindcraft.unlockMindcraftJson",
         "title": "Mindcraft: Unlock mindcraft.json for Editing"
+      },
+      {
+        "command": "mindcraft.openProjectFolder",
+        "title": "Mindcraft: Open Project Folder"
+      },
+      {
+        "command": "mindcraft.newProject",
+        "title": "Mindcraft: New Project"
+      },
+      {
+        "command": "mindcraft.openEditor",
+        "title": "Mindcraft: Open Editor"
+      },
+      {
+        "command": "mindcraft.updateTarget",
+        "title": "Mindcraft: Update Target"
       }
     ],
     "menus": {
-      "editor/title": [
+      "commandPalette": [
         {
-          "command": "mindcraft.copyExampleToWorkspace",
-          "when": "resourceScheme == mindcraft-example",
-          "group": "navigation"
+          "command": "mindcraft.show",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.connect",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.disconnect",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.hide",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.sync",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.unlockMindcraftJson",
+          "when": "mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.openProjectFolder",
+          "when": "!mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.newProject",
+          "when": "!mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.openEditor",
+          "when": "!mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.updateTarget",
+          "when": "!mindcraft.webHost"
         }
       ]
     },
@@ -101,7 +147,13 @@
           "id": "mindcraft.sessions",
           "name": "Mindcraft",
           "icon": "$(symbol-misc)",
-          "when": "mindcraft.enabled"
+          "when": "mindcraft.enabled && mindcraft.webHost"
+        },
+        {
+          "id": "mindcraft.projectActions",
+          "name": "Mindcraft",
+          "icon": "$(symbol-misc)",
+          "when": "mindcraft.enabled && !mindcraft.webHost"
         }
       ]
     },
@@ -111,7 +163,30 @@
         "mindcraft.bridgeUrl": {
           "type": "string",
           "default": "vscode-bridge.mindcraft-lang.org",
-          "description": "URL for the Mindcraft bridge service"
+          "description": "Web only: URL of the Mindcraft bridge service the web editor pairs with. Has no effect in desktop VS Code."
+        },
+        "mindcraft.devTarget": {
+          "type": "object",
+          "default": null,
+          "description": "Desktop only: author override of the target app hosted for a project folder (normally resolved from the project's own mindcraft.json targets) -- { appPath: <built app directory> } to host a local build, or { appRef: <owner>/<repo>@<ref> } to host a published build; optional extensions?: { <owner>/<repo>: <reference> } and targets?: { <owner>/<repo>: { packageVersion: <range> } } seeded into a new project. Has no effect in the web editor.",
+          "properties": {
+            "appPath": {
+              "type": "string",
+              "description": "Absolute path of the target app's built (dist) directory to host a local build"
+            },
+            "appRef": {
+              "type": "string",
+              "description": "Pinned <owner>/<repo>@<ref> reference of the target app's published bundle to host a published build"
+            },
+            "extensions": {
+              "type": "object",
+              "description": "Library dependencies seeded into a new project, keyed by coordinate"
+            },
+            "targets": {
+              "type": "object",
+              "description": "Platform-compatibility targets seeded into a new project"
+            }
+          }
         }
       }
     }
@@ -125,22 +200,27 @@
     "format:only": "biome format ./src",
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
-    "typecheck": "tsc --noEmit",
+    "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json",
     "format": "biome format ./src --write",
-    "package": "vsce package --no-dependencies --target web",
-    "publish": "vsce publish --no-dependencies --target web",
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --no-dependencies",
     "release:patch": "node ../../scripts/release.js patch",
     "release:minor": "node ../../scripts/release.js minor",
     "release:major": "node ../../scripts/release.js major"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.15",
+    "@mindcraft-lang/app-host": "file:../../packages/app-host",
+    "@mindcraft-lang/bridge-app": "file:../../packages/bridge-app",
     "@mindcraft-lang/bridge-client": "file:../../packages/bridge-client",
     "@mindcraft-lang/bridge-protocol": "file:../../packages/bridge-protocol",
+    "@types/node": "^25.3.0",
     "@types/vscode": "^1.100.0",
     "@vscode/test-web": "^0.0.80",
     "@vscode/vsce": "^3.8.0",
     "esbuild": "^0.25.0",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.3"
   }
 }

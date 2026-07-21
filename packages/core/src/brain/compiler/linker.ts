@@ -3,7 +3,9 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import type { ConstantOffsets, FunctionBytecode, Instr } from "../../runtime/bytecode";
 import { Op } from "../../runtime/bytecode";
-import type { BytecodeExecutableAction, ExecutableAction } from "../../runtime/context";
+import type { BytecodeExecutableAction } from "../../runtime/context";
+import type { IConversionRegistry } from "../../runtime/conversion-defs";
+import { isBytecodeConversion } from "../../runtime/conversion-defs";
 import type { ActionDescriptor } from "../../runtime/function-defs";
 import type {
   BrainActionResolver,
@@ -11,13 +13,19 @@ import type {
   ResolvedAction,
   UnlinkedBrainProgram,
 } from "../../runtime/host-bindings";
-import type { ProgramArtifact } from "../../runtime/program";
+import type { ProgramArtifact, ProgramTypeEntry, SystemRegistration } from "../../runtime/program";
+import { remapProgramTypeEntry } from "../../runtime/program";
 import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
 import type { IBrainActionTileDef, IBrainDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../interfaces";
+import { type BrainBuildDiagnostic, type BrainBuildResult, LinkDiagCode } from "./diagnostics";
 
 function isActionTileDef(tileDef: IBrainTileDef): tileDef is IBrainActionTileDef {
   return tileDef.kind === "sensor" || tileDef.kind === "actuator";
+}
+
+function invalidArtifact(message: string): BrainBuildDiagnostic {
+  return { code: LinkDiagCode.InvalidActionArtifact, severity: "error", message };
 }
 
 function addDescriptor(descriptors: Dict<string, ActionDescriptor>, descriptor: ActionDescriptor): void {
@@ -50,7 +58,8 @@ function collectRuleDescriptors(ruleDef: IBrainRuleDef, descriptors: Dict<string
 
 function buildActionDescriptorIndex(
   brainDef: IBrainDef,
-  catalogs: ReadonlyList<ITileCatalog>
+  catalogs: ReadonlyList<ITileCatalog>,
+  conversions: IConversionRegistry
 ): Dict<string, ActionDescriptor> {
   const descriptors = new Dict<string, ActionDescriptor>();
 
@@ -75,20 +84,31 @@ function buildActionDescriptorIndex(
     }
   }
 
+  // Bytecode conversions have no tile; their call sites resolve through the
+  // descriptor each registry entry carries.
+  conversions.forEach((conv) => {
+    if (isBytecodeConversion(conv)) {
+      addDescriptor(descriptors, conv.descriptor);
+    }
+  });
+
   return descriptors;
 }
 
-function validateResolvedAction(descriptor: ActionDescriptor, resolved: ResolvedAction): void {
+function validateResolvedAction(
+  descriptor: ActionDescriptor,
+  resolved: ResolvedAction
+): BrainBuildDiagnostic | undefined {
   if (resolved.descriptor.key !== descriptor.key) {
     throw new Error(
       `linkBrainProgram: resolver returned action '${resolved.descriptor.key}' for descriptor '${descriptor.key}'`
     );
   }
   if (resolved.descriptor.kind !== descriptor.kind) {
-    throw new Error(`linkBrainProgram: action kind mismatch for '${descriptor.key}'`);
+    return invalidArtifact(`Action '${descriptor.key}' kind does not match the registered action.`);
   }
   if (resolved.descriptor.isAsync !== descriptor.isAsync) {
-    throw new Error(`linkBrainProgram: action async flag mismatch for '${descriptor.key}'`);
+    return invalidArtifact(`Action '${descriptor.key}' async flag does not match the registered action.`);
   }
 
   if (resolved.binding === "host") {
@@ -96,55 +116,50 @@ function validateResolvedAction(descriptor: ActionDescriptor, resolved: Resolved
       if (!resolved.execAsync) {
         throw new Error(`linkBrainProgram: async host action '${descriptor.key}' is missing execAsync`);
       }
-      return;
+      return undefined;
     }
     if (!resolved.execSync) {
       throw new Error(`linkBrainProgram: sync host action '${descriptor.key}' is missing execSync`);
     }
-    return;
+    return undefined;
   }
 
   const artifact = resolved.artifact;
   const metadata = resolved.metadata;
   if (metadata.key !== descriptor.key) {
-    throw new Error(`linkBrainProgram: bytecode artifact key mismatch for '${descriptor.key}'`);
+    return invalidArtifact(`Bytecode artifact key does not match action '${descriptor.key}'.`);
   }
   if (metadata.kind !== descriptor.kind) {
-    throw new Error(`linkBrainProgram: bytecode artifact kind mismatch for '${descriptor.key}'`);
+    return invalidArtifact(`Bytecode artifact kind does not match action '${descriptor.key}'.`);
   }
   if (artifact.isAsync !== descriptor.isAsync) {
-    throw new Error(`linkBrainProgram: bytecode artifact async flag mismatch for '${descriptor.key}'`);
+    return invalidArtifact(`Bytecode artifact async flag does not match action '${descriptor.key}'.`);
   }
   if (artifact.entryFuncId < 0 || artifact.entryFuncId >= artifact.functions.size()) {
-    throw new Error(`linkBrainProgram: action '${descriptor.key}' has invalid entryFuncId ${artifact.entryFuncId}`);
+    return invalidArtifact(`Action '${descriptor.key}' has invalid entryFuncId ${artifact.entryFuncId}.`);
   }
   if (
     artifact.activationFuncId !== undefined &&
     (artifact.activationFuncId < 0 || artifact.activationFuncId >= artifact.functions.size())
   ) {
-    throw new Error(
-      `linkBrainProgram: action '${descriptor.key}' has invalid activationFuncId ${artifact.activationFuncId}`
-    );
+    return invalidArtifact(`Action '${descriptor.key}' has invalid activationFuncId ${artifact.activationFuncId}.`);
   }
   if (
     artifact.initializerFuncId !== undefined &&
     (artifact.initializerFuncId < 0 || artifact.initializerFuncId >= artifact.functions.size())
   ) {
-    throw new Error(
-      `linkBrainProgram: action '${descriptor.key}' has invalid initializerFuncId ${artifact.initializerFuncId}`
-    );
+    return invalidArtifact(`Action '${descriptor.key}' has invalid initializerFuncId ${artifact.initializerFuncId}.`);
   }
   if (
     artifact.deactivationFuncId !== undefined &&
     (artifact.deactivationFuncId < 0 || artifact.deactivationFuncId >= artifact.functions.size())
   ) {
-    throw new Error(
-      `linkBrainProgram: action '${descriptor.key}' has invalid deactivationFuncId ${artifact.deactivationFuncId}`
-    );
+    return invalidArtifact(`Action '${descriptor.key}' has invalid deactivationFuncId ${artifact.deactivationFuncId}.`);
   }
   if (artifact.numStateSlots < 0) {
-    throw new Error(`linkBrainProgram: action '${descriptor.key}' has invalid numStateSlots ${artifact.numStateSlots}`);
+    return invalidArtifact(`Action '${descriptor.key}' has invalid numStateSlots ${artifact.numStateSlots}.`);
   }
+  return undefined;
 }
 
 function remapValue(value: Value, funcOffset: number): Value {
@@ -172,11 +187,23 @@ function remapInstruction(
   instr: Instr,
   funcOffset: number,
   constOffsets: ConstantOffsets,
-  variableOffset: number
+  typeOffset: number,
+  variableOffset: number,
+  systemSlotRemap: Dict<number, number>
 ): Instr {
   switch (instr.op) {
+    case Op.LOAD_SYSTEM_VAR:
+    case Op.STORE_SYSTEM_VAR:
+      if (instr.a !== undefined) {
+        const globalSlot = systemSlotRemap.get(instr.a);
+        if (globalSlot !== undefined && globalSlot !== instr.a) {
+          return { ...instr, a: globalSlot };
+        }
+      }
+      return instr;
     case Op.CALL:
     case Op.MAKE_CLOSURE:
+    case Op.SPAWN_RULE:
       if (instr.a !== undefined) {
         return { ...instr, a: instr.a + funcOffset };
       }
@@ -198,7 +225,7 @@ function remapInstruction(
       return instr;
     case Op.INSTANCE_OF:
       if (instr.a !== undefined) {
-        return { ...instr, a: instr.a + constOffsets.strings };
+        return { ...instr, a: instr.a + typeOffset };
       }
       return instr;
     case Op.LOAD_VAR_SLOT:
@@ -212,7 +239,7 @@ function remapInstruction(
     case Op.STRUCT_NEW:
     case Op.STRUCT_COPY_EXCEPT:
       if (instr.b !== undefined) {
-        return { ...instr, b: instr.b + constOffsets.strings };
+        return { ...instr, b: instr.b + typeOffset };
       }
       return instr;
     default:
@@ -224,12 +251,16 @@ function remapInstructions(
   code: ReadonlyList<Instr>,
   funcOffset: number,
   constOffsets: ConstantOffsets,
-  variableOffset: number
+  typeOffset: number,
+  variableOffset: number,
+  systemSlotRemap: Dict<number, number>
 ): List<Instr> {
   const remapped = List.empty<Instr>();
 
   for (let i = 0; i < code.size(); i++) {
-    remapped.push(remapInstruction(code.get(i)!, funcOffset, constOffsets, variableOffset));
+    remapped.push(
+      remapInstruction(code.get(i)!, funcOffset, constOffsets, typeOffset, variableOffset, systemSlotRemap)
+    );
   }
 
   return remapped;
@@ -246,7 +277,10 @@ function appendArtifactTables(
   artifact: ProgramArtifact,
   functions: List<FunctionBytecode>,
   pools: MutableConstantPools,
-  variableNames: List<string>
+  types: List<ProgramTypeEntry>,
+  variableNames: List<string>,
+  systemSlotByIdentity: Dict<string, number>,
+  systemRegistry: List<SystemRegistration>
 ): BytecodeExecutableAction {
   const funcOffset = functions.size();
   const constOffsets: ConstantOffsets = {
@@ -254,7 +288,35 @@ function appendArtifactTables(
     strings: pools.strings.size(),
     values: pools.values.size(),
   };
+  const typeOffset = types.size();
   const variableOffset = variableNames.size();
+
+  // Resolve this artifact's local System slots to brain-global slots by
+  // identity, registering each System once (the first artifact that wins).
+  const systemSlotRemap = new Dict<number, number>();
+  const artifactSystems = artifact.artifactSystems;
+  if (artifactSystems) {
+    for (let i = 0; i < artifactSystems.size(); i++) {
+      const sys = artifactSystems.get(i)!;
+      let globalSlot = systemSlotByIdentity.get(sys.identity);
+      if (globalSlot === undefined) {
+        globalSlot = systemRegistry.size();
+        systemSlotByIdentity.set(sys.identity, globalSlot);
+        systemRegistry.push({
+          name: sys.name,
+          storeSlot: globalSlot,
+          initFuncId: sys.initFuncId + funcOffset,
+          thinkFuncId: sys.thinkFuncId !== undefined ? sys.thinkFuncId + funcOffset : undefined,
+        });
+      }
+      systemSlotRemap.set(sys.localSlot, globalSlot);
+    }
+  }
+
+  const artifactTypes = artifact.types ?? List.empty<ProgramTypeEntry>();
+  for (let i = 0; i < artifactTypes.size(); i++) {
+    types.push(remapProgramTypeEntry(artifactTypes.get(i)!, (idx) => idx + typeOffset));
+  }
 
   for (let i = 0; i < artifact.constantPools.values.size(); i++) {
     pools.values.push(remapValue(artifact.constantPools.values.get(i)!, funcOffset));
@@ -275,12 +337,12 @@ function appendArtifactTables(
   for (let i = 0; i < artifact.functions.size(); i++) {
     const fn = artifact.functions.get(i)!;
     functions.push({
-      code: remapInstructions(fn.code, funcOffset, constOffsets, variableOffset),
+      code: remapInstructions(fn.code, funcOffset, constOffsets, typeOffset, variableOffset, systemSlotRemap),
       numParams: fn.numParams,
       numLocals: fn.numLocals,
       name: fn.name,
       maxStackDepth: fn.maxStackDepth,
-      injectCtxTypeId: fn.injectCtxTypeId,
+      ...(fn.injectCtxTypeIdx === undefined ? {} : { injectCtxTypeIdx: fn.injectCtxTypeIdx + typeOffset }),
     });
   }
 
@@ -296,19 +358,6 @@ function appendArtifactTables(
   };
 }
 
-function toExecutableAction(
-  resolved: ResolvedAction,
-  functions: List<FunctionBytecode>,
-  pools: MutableConstantPools,
-  variableNames: List<string>
-): ExecutableAction {
-  if (resolved.binding === "host") {
-    return resolved;
-  }
-
-  return appendArtifactTables(resolved.descriptor, resolved.artifact, functions, pools, variableNames);
-}
-
 /**
  * Link an {@link UnlinkedBrainProgram} into a {@link LinkedBrainProgram} by
  * resolving every action reference through `resolver` and inlining bytecode-backed
@@ -320,17 +369,22 @@ export function linkBrainProgram(
   program: UnlinkedBrainProgram,
   brainDef: IBrainDef,
   catalogs: ReadonlyList<ITileCatalog>,
-  resolver: BrainActionResolver
-): LinkedBrainProgram {
-  const descriptorIndex = buildActionDescriptorIndex(brainDef, catalogs);
+  resolver: BrainActionResolver,
+  conversions: IConversionRegistry
+): BrainBuildResult {
+  const descriptorIndex = buildActionDescriptorIndex(brainDef, catalogs, conversions);
   const functions = List.empty<FunctionBytecode>();
   const pools: MutableConstantPools = {
     numbers: List.empty<number>(),
     strings: List.empty<string>(),
     values: List.empty<Value>(),
   };
+  const types = List.empty<ProgramTypeEntry>();
   const variableNames = List.empty<string>();
-  const actions = List.empty<ExecutableAction>();
+  const actions = List.empty<BytecodeExecutableAction>();
+  const systemRegistry = List.empty<SystemRegistration>();
+  const systemSlotByIdentity = new Dict<string, number>();
+  const diagnostics = List.empty<BrainBuildDiagnostic>();
 
   for (let i = 0; i < program.functions.size(); i++) {
     functions.push(program.functions.get(i)!);
@@ -344,6 +398,10 @@ export function linkBrainProgram(
   for (let i = 0; i < program.constantPools.strings.size(); i++) {
     pools.strings.push(program.constantPools.strings.get(i)!);
   }
+  const programTypes = program.types ?? List.empty<ProgramTypeEntry>();
+  for (let i = 0; i < programTypes.size(); i++) {
+    types.push(programTypes.get(i)!);
+  }
   for (let i = 0; i < program.variableNames.size(); i++) {
     variableNames.push(program.variableNames.get(i)!);
   }
@@ -352,34 +410,76 @@ export function linkBrainProgram(
     const actionRef = program.actionRefs.get(i)!;
     const descriptor = descriptorIndex.get(actionRef.key);
     if (!descriptor) {
-      throw new Error(`linkBrainProgram: missing action descriptor for '${actionRef.key}'`);
+      diagnostics.push({
+        code: LinkDiagCode.MissingActionDescriptor,
+        severity: "error",
+        message: `Brain references action '${actionRef.key}' with no descriptor in the catalog.`,
+      });
+      continue;
     }
 
     const resolved = resolver.resolveAction(descriptor);
     if (!resolved) {
-      throw new Error(`linkBrainProgram: missing action binding for '${descriptor.key}'`);
+      diagnostics.push({
+        code: LinkDiagCode.MissingActionBinding,
+        severity: "error",
+        message: `Action '${descriptor.key}' could not be resolved in this environment.`,
+      });
+      continue;
     }
 
-    validateResolvedAction(descriptor, resolved);
-    actions.push(toExecutableAction(resolved, functions, pools, variableNames));
+    const diagnostic = validateResolvedAction(descriptor, resolved);
+    if (diagnostic) {
+      diagnostics.push(diagnostic);
+      continue;
+    }
+    if (resolved.binding !== "bytecode") {
+      diagnostics.push({
+        code: LinkDiagCode.MissingActionBinding,
+        severity: "error",
+        message: `Action '${descriptor.key}' resolved to a host binding but is referenced by a bytecode action slot.`,
+      });
+      continue;
+    }
+    actions.push(
+      appendArtifactTables(
+        resolved.descriptor,
+        resolved.artifact,
+        functions,
+        pools,
+        types,
+        variableNames,
+        systemSlotByIdentity,
+        systemRegistry
+      )
+    );
+  }
+
+  if (!diagnostics.isEmpty()) {
+    return { diagnostics };
   }
 
   return {
     program: {
-      version: program.version,
-      functions,
-      constantPools: {
-        numbers: pools.numbers,
-        strings: pools.strings,
-        values: pools.values,
+      program: {
+        version: program.version,
+        functions,
+        constantPools: {
+          numbers: pools.numbers,
+          strings: pools.strings,
+          values: pools.values,
+        },
+        types,
+        variableNames,
+        entryPoint: program.entryPoint,
+        actions,
+        ruleFuncIds: program.ruleFuncIds,
+        ruleAncestors: program.ruleAncestors,
+        systems: systemRegistry.isEmpty() ? undefined : systemRegistry,
       },
-      variableNames,
-      entryPoint: program.entryPoint,
-      actions,
-      ruleFuncIds: program.ruleFuncIds,
-      ruleAncestors: program.ruleAncestors,
+      ruleIndex: program.ruleIndex,
+      pages: program.pages,
     },
-    ruleIndex: program.ruleIndex,
-    pages: program.pages,
+    diagnostics,
   };
 }

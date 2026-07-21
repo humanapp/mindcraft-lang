@@ -54,6 +54,31 @@ export declare class MemoryStream implements IReadStream, IWriteStream {
   enterChunk(tag: number): number;
   leaveChunk(): void;
   skipChunk(tag: number): void;
+
+  /** Writes a single raw byte (0..255), no `DataType` tag. */
+  writeRawU8(v: number): void;
+  /** Reads a single raw byte (0..255), no `DataType` tag. */
+  readRawU8(): number;
+  /** Writes a raw little-endian IEEE-754 binary32, no `DataType` tag. */
+  writeRawF32(v: number): void;
+  /** Reads a raw little-endian IEEE-754 binary32, no `DataType` tag. */
+  readRawF32(): number;
+  /** Writes a raw little-endian IEEE-754 binary64, no `DataType` tag. */
+  writeRawF64(v: number): void;
+  /** Reads a raw little-endian IEEE-754 binary64, no `DataType` tag. */
+  readRawF64(): number;
+  /** Writes an unsigned 32-bit integer as ULEB128 (1..5 bytes). */
+  writeVarUint(v: number): void;
+  /** Reads a ULEB128 unsigned 32-bit integer. Throws on a >32-bit value. */
+  readVarUint(): number;
+  /** Writes a signed 32-bit integer as zigzag + ULEB128 (1..5 bytes). */
+  writeVarInt(v: number): void;
+  /** Reads a zigzag + ULEB128 signed 32-bit integer. Throws on a >32-bit value. */
+  readVarInt(): number;
+  /** Writes a string as `byteLen` (var-uint) + that many raw UTF-8 bytes, no `DataType` tag. */
+  writeVarString(v: string): void;
+  /** Reads a `byteLen` (var-uint) + UTF-8 string written by {@link writeVarString}. */
+  readVarString(): string;
 }
 
 // Utility functions for IByteArray conversion
@@ -71,3 +96,10 @@ export declare function byteArrayFromUint8Array(src: unknown): IByteArray;
  * Implementation provided by platform-specific module.
  */
 export declare function byteArrayToUint8Array(bytes: IByteArray): unknown;
+
+/**
+ * Creates an IByteArray from a latin1 string, mapping each character's low 8
+ * bits to one byte (1 char => 1 byte). Implementation provided by the
+ * platform-specific module.
+ */
+export declare function byteArrayFromStringLatin1(s: string): IByteArray;

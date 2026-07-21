@@ -2,8 +2,10 @@ import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { FileText, Form, Printer } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { printPortalViaTransport } from "../print/standalone-print-document";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainPrintTextView } from "./BrainPrintTextView";
 import { BrainPrintView } from "./BrainPrintView";
 
@@ -19,6 +21,7 @@ interface BrainPrintDialogProps {
 export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintDialogProps) {
   const [mode, setMode] = useState<PrintMode>("visual");
   const printRootRef = useRef<HTMLDivElement | null>(null);
+  const { printTransport } = useBrainEditorConfig();
 
   const handlePrint = useCallback(() => {
     // Print uses a portal outside the React tree. The hidden root div is toggled
@@ -37,16 +40,26 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
     printRoot.style.display = "block";
 
     // Wait one frame for React to render the portal content into the visible root,
-    // then trigger the browser print dialog.
+    // then trigger printing.
     requestAnimationFrame(() => {
-      window.print();
-      // Hide after print dialog closes
-      const root = document.getElementById("brain-print-root");
-      if (root) {
-        root.style.display = "none";
+      const hide = () => {
+        const root = document.getElementById("brain-print-root");
+        if (root) {
+          root.style.display = "none";
+        }
+      };
+      if (printTransport) {
+        // The host cannot open the browser print dialog: serialize the print
+        // view into a self-contained document and route it to the transport.
+        void printPortalViaTransport(printRoot as HTMLDivElement, "brain-print-root", brainDef.name(), printTransport)
+          .catch(() => undefined)
+          .finally(hide);
+        return;
       }
+      window.print();
+      hide();
     });
-  }, []);
+  }, [printTransport, brainDef]);
 
   // Ensure the print root element exists in the DOM for the portal
   const getPrintRoot = useCallback((): HTMLDivElement => {
@@ -63,10 +76,12 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md bg-white border-2 border-slate-300 rounded-2xl">
+        <DialogContent className="max-w-md bg-popover border-2 border-border rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-slate-800">Print: {brainDef.name()}</DialogTitle>
-            <DialogDescription className="text-slate-500">Choose a print format and click Print.</DialogDescription>
+            <DialogTitle className="text-foreground">Print: {brainDef.name()}</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Choose a print format and click Print.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
@@ -78,8 +93,8 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
                   aria-checked={mode === "visual"}
                   className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors cursor-pointer ${
                     mode === "visual"
-                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      ? "border-primary bg-accent text-foreground"
+                      : "border-border bg-background text-muted-foreground hover:bg-accent"
                   }`}
                   onClick={() => setMode("visual")}
                 >
@@ -93,8 +108,8 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
                   aria-checked={mode === "text"}
                   className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors cursor-pointer ${
                     mode === "text"
-                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      ? "border-primary bg-accent text-foreground"
+                      : "border-border bg-background text-muted-foreground hover:bg-accent"
                   }`}
                   onClick={() => setMode("text")}
                 >
@@ -102,7 +117,7 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
                   Text Only
                 </button>
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 {mode === "visual"
                   ? "Prints with formatting faithful to what's shown in the editor."
                   : "Prints a compact text representation of the brain logic."}
@@ -113,7 +128,7 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
             <Button variant="cancel" className="rounded-lg" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button className="rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white" onClick={handlePrint}>
+            <Button className="rounded-lg" onClick={handlePrint}>
               <Printer className="h-4 w-4 mr-1" />
               Print
             </Button>

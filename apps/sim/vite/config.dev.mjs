@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { uiPlugin } from "../../../packages/ui/src/vite-plugin.ts";
+import { embeddedExtensions } from "./embedded-extensions.mjs";
 
 const appRoot = path.resolve(__dirname, ".."); // adjust if needed
 const assetsRoot = path.resolve(appRoot, "assets") + path.sep;
@@ -9,26 +10,14 @@ const assetsRoot = path.resolve(appRoot, "assets") + path.sep;
 const allowPkg =
   path.resolve(appRoot, "node_modules/@mindcraft-lang/core/dist/esm") + path.sep;
 
-function vfsServiceWorkerPlugin() {
-  return {
-    name: "vfs-sw-allowed",
-    configureServer(server) {
-      server.middlewares.use((_req, res, next) => {
-        res.setHeader("Service-Worker-Allowed", "/");
-        next();
-      });
-    },
-  };
-}
-
 // https://vitejs.dev/config/
 export default defineConfig({
   base: "/",
   appType: "spa",
   plugins: [
-    vfsServiceWorkerPlugin(),
     react(),
     uiPlugin(),
+    embeddedExtensions(),
   ],
   resolve: {
     alias: {

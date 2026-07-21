@@ -21,13 +21,15 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -35,6 +37,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -53,6 +57,7 @@ function mkScheduler(): Scheduler {
 function runSensor(source: string, args?: List<Value>): { result: Value | undefined } {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
   const result = compileUserTile(source, {
+    projectNamespace: TEST_PROJECT_NAMESPACE,
     ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
     services,
   });
@@ -86,9 +91,10 @@ describe("optional chaining", () => {
     const innerTypeId = mkTypeId(NativeType.Struct, "Inner");
     if (!types.get(innerTypeId)) {
       types.addStructType("Inner", {
+        atomId: 1024,
         fields: List.from([
-          { name: "value", typeId: numTypeId },
-          { name: "label", typeId: strTypeId },
+          { name: "value", typeId: numTypeId, fieldIndex: 0 },
+          { name: "label", typeId: strTypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -96,7 +102,8 @@ describe("optional chaining", () => {
     const outerTypeId = mkTypeId(NativeType.Struct, "Outer");
     if (!types.get(outerTypeId)) {
       types.addStructType("Outer", {
-        fields: List.from([{ name: "inner", typeId: innerTypeId }]),
+        atomId: 1025,
+        fields: List.from([{ name: "inner", typeId: innerTypeId, fieldIndex: 0 }]),
       });
     }
   });

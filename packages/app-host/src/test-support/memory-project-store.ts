@@ -1,14 +1,20 @@
 import {
+  AppHostErrorCode,
   appHostError,
+  applyProjectFileChangeToSnapshot,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_COLLECTION_NAME,
+  LOWEST_CONTENT_VERSION,
+  MINDCRAFT_JSON_PATH,
   normalizeProjectCollectionName,
   type ProjectCollection,
   type ProjectCollectionTabSession,
+  type ProjectFileChange,
   type ProjectFileSnapshot,
   type ProjectManifest,
   type ProjectStore,
 } from "@mindcraft-lang/app-host";
+import { INITIAL_CONTENT_VERSION } from "../project-content-version.js";
 
 interface MemoryProjectStoreData {
   projectCollections: ProjectCollection[];
@@ -24,6 +30,12 @@ function createMemoryProjectStoreData(): MemoryProjectStoreData {
     projectFiles: new Map(),
     appData: new Map(),
   };
+}
+
+/** Default a stored manifest that predates the `version` field to the lowest content version. */
+function withContentVersion(manifest: ProjectManifest): ProjectManifest {
+  const version = (manifest as { version?: string }).version;
+  return version === undefined ? { ...manifest, version: LOWEST_CONTENT_VERSION } : manifest;
 }
 
 /** In-memory ProjectStore implementation for app-host specs. */
@@ -85,7 +97,10 @@ export class MemoryProjectStore implements ProjectStore {
 
   async deleteProjectCollection(projectCollectionId: string): Promise<void> {
     if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
-      throw appHostError("DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the default workspace");
+      throw appHostError(
+        AppHostErrorCode.DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED,
+        "Cannot delete the default workspace"
+      );
     }
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) return;
@@ -116,9 +131,9 @@ export class MemoryProjectStore implements ProjectStore {
   async listProjects(projectCollectionId: string): Promise<ProjectManifest[]> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) return [];
-    return this.data.projects.filter(
-      (project) => project.projectCollectionId === projectCollectionId && project.deleted !== true
-    );
+    return this.data.projects
+      .filter((project) => project.projectCollectionId === projectCollectionId && project.deleted !== true)
+      .map(withContentVersion);
   }
 
   async countProjectsByCollection(): Promise<Map<string, number>> {
@@ -137,7 +152,7 @@ export class MemoryProjectStore implements ProjectStore {
   private async requireLiveProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND, `Workspace not found: ${projectCollectionId}`);
     }
     return collection;
   }
@@ -146,18 +161,19 @@ export class MemoryProjectStore implements ProjectStore {
     const project = this.data.projects.find((entry) => entry.id === id && entry.deleted !== true);
     if (!project) return undefined;
     const collection = await this.getProjectCollection(project.projectCollectionId);
-    return collection ? project : undefined;
+    return collection ? withContentVersion(project) : undefined;
   }
 
   async createProject(projectCollectionId: string, name: string): Promise<ProjectManifest> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND, `Workspace not found: ${projectCollectionId}`);
     }
     const manifest: ProjectManifest = {
       id: `id-${this.data.projects.length + 1}`,
       projectCollectionId,
       name,
+      version: INITIAL_CONTENT_VERSION,
       description: "",
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -169,20 +185,25 @@ export class MemoryProjectStore implements ProjectStore {
   async deleteProject(id: string): Promise<void> {
     const idx = this.data.projects.findIndex((project) => project.id === id);
     if (idx === -1) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     const project = this.data.projects[idx];
     if (project.deleted === true) return;
     const collection = await this.getProjectCollection(project.projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${project.projectCollectionId}`);
+      throw appHostError(
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND,
+        `Workspace not found: ${project.projectCollectionId}`
+      );
     }
     this.data.projects[idx] = { ...project, deleted: true, updatedAt: Date.now() };
   }
 
   async updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
+    updates: Partial<
+      Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions" | "targets">
+    >
   ): Promise<void> {
     await this.requireLiveProject(id);
     const idx = this.data.projects.findIndex((project) => project.id === id);
@@ -192,7 +213,7 @@ export class MemoryProjectStore implements ProjectStore {
   async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
     const source = await this.getProject(id);
     if (!source) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     const dup = await this.createProjectFromSource(source, source.projectCollectionId, newName);
     this.copyProjectContent(id, dup.id);
@@ -221,8 +242,11 @@ export class MemoryProjectStore implements ProjectStore {
       id: `id-${this.data.projects.length + 1}`,
       projectCollectionId: targetProjectCollectionId,
       name: newName,
+      version: source.version,
       description: source.description,
       ...(source.thumbnailUrl === undefined ? {} : { thumbnailUrl: source.thumbnailUrl }),
+      ...(source.extensions === undefined ? {} : { extensions: source.extensions }),
+      ...(source.targets === undefined ? {} : { targets: source.targets }),
       createdAt: now,
       updatedAt: now,
     };
@@ -246,7 +270,16 @@ export class MemoryProjectStore implements ProjectStore {
 
   async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
     await this.requireLiveProject(id);
+    snapshot.delete(MINDCRAFT_JSON_PATH);
     this.data.projectFiles.set(id, snapshot);
+  }
+
+  async applyProjectFileChanges(id: string, changes: readonly ProjectFileChange[]): Promise<void> {
+    const snapshot = (await this.loadProjectFiles(id)) ?? new Map();
+    for (const change of changes) {
+      applyProjectFileChangeToSnapshot(snapshot, change);
+    }
+    await this.saveProjectFiles(id, snapshot);
   }
 
   async loadAppData(id: string, key: string): Promise<string | undefined> {
@@ -273,12 +306,15 @@ export class MemoryProjectStore implements ProjectStore {
   private async requireLiveProject(id: string): Promise<ProjectManifest> {
     const project = this.data.projects.find((entry) => entry.id === id);
     if (!project || project.deleted === true) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     const collection = await this.getProjectCollection(project.projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${project.projectCollectionId}`);
+      throw appHostError(
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND,
+        `Workspace not found: ${project.projectCollectionId}`
+      );
     }
-    return project;
+    return withContentVersion(project);
   }
 }

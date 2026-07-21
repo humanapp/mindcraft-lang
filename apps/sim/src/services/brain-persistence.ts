@@ -12,10 +12,16 @@ function normalizeBrainDef(brainDef: unknown): BrainDef {
   return brainDef;
 }
 
-export function deserializeBrainFromArrayBuffer(env: MindcraftEnvironment, buffer: ArrayBuffer): BrainDef | undefined {
+export function deserializeBrainFromArrayBuffer(
+  env: MindcraftEnvironment,
+  buffer: ArrayBuffer,
+  projectNamespace: string
+): BrainDef | undefined {
   try {
     const text = new TextDecoder().decode(new Uint8Array(buffer));
-    const brainDef = normalizeBrainDef(env.deserializeBrainJsonFromPlain(JSON.parse(text) as unknown));
+    const brainDef = normalizeBrainDef(
+      env.deserializeBrainJsonFromPlain(JSON.parse(text) as unknown, projectNamespace)
+    );
     return brainDef;
   } catch (err) {
     console.error("Failed to deserialize brain from ArrayBuffer:", err);

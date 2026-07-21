@@ -134,6 +134,12 @@ export function emitFunction(
       case "StoreCallsiteVar":
         emitter.storeCallsiteVar(node.index);
         break;
+      case "LoadSystemVar":
+        emitter.loadSystemVar(node.index);
+        break;
+      case "StoreSystemVar":
+        emitter.storeSystemVar(node.index);
+        break;
       case "Return":
         emitter.ret();
         break;
@@ -218,7 +224,7 @@ export function emitFunction(
         emitter.mapGet();
         break;
       case "MapNew": {
-        const typeIdIdx = pool.addString(node.typeId);
+        const typeIdIdx = pool.addType(node.typeId);
         emitter.mapNew(typeIdIdx);
         break;
       }
@@ -232,24 +238,20 @@ export function emitFunction(
         emitter.mapDelete();
         break;
       case "StructNew": {
-        const typeIdIdx = pool.addString(node.typeId);
+        const typeIdIdx = pool.addType(node.typeId);
         emitter.structNew(typeIdIdx);
         break;
       }
       case "StructSet":
-        if (node.fieldIndex !== undefined) {
-          emitter.structSetField(node.fieldIndex);
-        } else {
-          emitter.structSet();
-        }
+        emitter.structSetField(node.fieldIndex);
         break;
       case "StructCopyExcept": {
-        const typeIdIdx = pool.addString(node.typeId);
+        const typeIdIdx = node.typeId === undefined ? undefined : pool.addType(node.typeId);
         emitter.structCopyExcept(node.numExclude, typeIdIdx);
         break;
       }
       case "ListNew": {
-        const typeIdIdx = pool.addString(node.typeId);
+        const typeIdIdx = pool.addType(node.typeId);
         emitter.listNew(typeIdIdx);
         break;
       }
@@ -304,7 +306,7 @@ export function emitFunction(
         emitter.typeCheck(node.nativeType);
         break;
       case "InstanceOf": {
-        const typeIdIdx = pool.addString(node.typeId);
+        const typeIdIdx = pool.addType(node.typeId);
         emitter.instanceOf(typeIdIdx);
         break;
       }
@@ -401,7 +403,13 @@ export function emitFunction(
 
   const code = emitter.finalize();
   return {
-    bytecode: { code, numParams, numLocals, name, injectCtxTypeId },
+    bytecode: {
+      code,
+      numParams,
+      numLocals,
+      name,
+      ...(injectCtxTypeId === undefined ? {} : { injectCtxTypeIdx: pool.addType(injectCtxTypeId) }),
+    },
     diagnostics,
     spans,
     pcToSpanIndex,
@@ -555,6 +563,7 @@ function stackEffect(node: IrNode): { pops: number; pushes: number } {
     case "PushConst":
     case "LoadLocal":
     case "LoadCallsiteVar":
+    case "LoadSystemVar":
     case "PushFunctionRef":
     case "LoadCapture":
     case "MapNew":
@@ -564,6 +573,7 @@ function stackEffect(node: IrNode): { pops: number; pushes: number } {
 
     case "StoreLocal":
     case "StoreCallsiteVar":
+    case "StoreSystemVar":
     case "Pop":
     case "JumpIfFalse":
     case "JumpIfTrue":
@@ -612,7 +622,7 @@ function stackEffect(node: IrNode): { pops: number; pushes: number } {
       return { pops: node.fieldIndex !== undefined ? 2 : 3, pushes: 1 };
 
     case "StructSet":
-      return { pops: node.fieldIndex !== undefined ? 2 : 3, pushes: 1 };
+      return { pops: 2, pushes: 1 };
 
     case "MapSet":
     case "ListSet":

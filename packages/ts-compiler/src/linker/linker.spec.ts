@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { Dict, List, runtime, UniqueSet } from "@mindcraft-lang/core";
+import { Dict, List, runtime } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
@@ -24,6 +24,7 @@ import {
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { compileUserTile } from "../compiler/compile.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { linkUserPrograms } from "./linker.js";
 
 function mkCtx(
@@ -33,6 +34,8 @@ function mkCtx(
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -67,8 +70,6 @@ function mkEmptyBrainProgram(): UnlinkedBrainProgram {
     pageName: "Page 0",
     rootRuleFuncIds: List.empty(),
     actionCallSites: List.empty(),
-    sensors: new UniqueSet<string>(),
-    actuators: new UniqueSet<string>(),
   };
   return {
     version: BYTECODE_VERSION,
@@ -99,8 +100,6 @@ function mkBrainProgramWithStubFunction(): UnlinkedBrainProgram {
     pageName: "Page 0",
     rootRuleFuncIds: List.from([0]),
     actionCallSites: List.empty(),
-    sensors: new UniqueSet<string>(),
-    actuators: new UniqueSet<string>(),
   };
   return {
     version: BYTECODE_VERSION,
@@ -125,7 +124,8 @@ function resolveLinkedFuncId(linkInfo: { functionOffset: number }, localFuncId: 
 describe("linker", () => {
   let services: BrainServices;
   function toVmServices(b: BrainServices) {
-    return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+    return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+      .runtime;
   }
   before(() => {
     services = __test__createBrainServices();
@@ -145,7 +145,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -182,7 +182,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -210,7 +210,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -251,7 +251,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -296,8 +296,8 @@ export default Sensor({
   },
 });
 `;
-    const result1 = compileUserTile(source1, { services });
-    const result2 = compileUserTile(source2, { services });
+    const result1 = compileUserTile(source1, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
+    const result2 = compileUserTile(source2, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result1.diagnostics, []);
     assert.deepStrictEqual(result2.diagnostics, []);
     assert.ok(result1.program);
@@ -355,7 +355,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -386,7 +386,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.program);
 
     const { linkedProgram } = linkUserPrograms(brainProg, [result.program!]);
@@ -430,7 +430,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 

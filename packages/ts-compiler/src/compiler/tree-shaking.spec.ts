@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { Dict, List, runtime, UniqueSet } from "@mindcraft-lang/core";
+import { Dict, List, runtime } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { treeshakeProgram as treeshakeLinked } from "@mindcraft-lang/core/brain/compiler";
-import type { BytecodeExecutableAction, ExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
+import type { BytecodeExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   HandleTable,
   type LinkedBrainProgram,
@@ -18,6 +18,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";
 import type { UserAuthoredProgram } from "./types.js";
@@ -25,7 +26,8 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 before(() => {
@@ -37,6 +39,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -54,7 +58,11 @@ function mkScheduler(): Scheduler {
 
 function compileProject(files: Record<string, string>) {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -66,8 +74,6 @@ function wrapAsExecutable(prog: UserAuthoredProgram): FlatExecutable {
     pageName: "Page 0",
     rootRuleFuncIds: List.empty(),
     actionCallSites: List.empty(),
-    sensors: new UniqueSet<string>(),
-    actuators: new UniqueSet<string>(),
   };
   const action: BytecodeExecutableAction = {
     binding: "bytecode",
@@ -85,11 +91,12 @@ function wrapAsExecutable(prog: UserAuthoredProgram): FlatExecutable {
     version: prog.version,
     functions: prog.functions,
     constantPools: prog.constantPools,
+    types: prog.types,
     variableNames: prog.variableNames,
     entryPoint: prog.entryFuncId,
     ruleIndex: Dict.empty(),
     pages: List.from([page]),
-    actions: List.from<ExecutableAction>([action]),
+    actions: List.from<BytecodeExecutableAction>([action]),
   };
 }
 
@@ -102,11 +109,12 @@ interface FlatExecutable {
   version: number;
   functions: UserAuthoredProgram["functions"];
   constantPools: UserAuthoredProgram["constantPools"];
+  types: UserAuthoredProgram["types"];
   variableNames: UserAuthoredProgram["variableNames"];
   entryPoint?: number;
   ruleIndex: Dict<string, number>;
   pages: List<PageMetadata>;
-  actions: List<ExecutableAction>;
+  actions: List<BytecodeExecutableAction>;
 }
 
 function treeshakeProgram(flat: FlatExecutable): FlatExecutable {
@@ -115,6 +123,7 @@ function treeshakeProgram(flat: FlatExecutable): FlatExecutable {
       version: flat.version,
       functions: flat.functions,
       constantPools: flat.constantPools,
+      types: flat.types,
       variableNames: flat.variableNames,
       entryPoint: flat.entryPoint,
       actions: flat.actions,
@@ -128,9 +137,10 @@ function treeshakeProgram(flat: FlatExecutable): FlatExecutable {
     version: out.program.version,
     functions: out.program.functions,
     constantPools: out.program.constantPools,
+    types: out.program.types,
     variableNames: out.program.variableNames,
     entryPoint: out.program.entryPoint,
-    actions: out.program.actions ?? List.empty<ExecutableAction>(),
+    actions: out.program.actions ?? List.empty<BytecodeExecutableAction>(),
     ruleIndex: out.ruleIndex,
     pages: out.pages,
   };

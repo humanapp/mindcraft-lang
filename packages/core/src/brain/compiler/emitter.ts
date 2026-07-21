@@ -2,7 +2,7 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
 import type { Instr } from "../../runtime/bytecode";
-import { Op } from "../../runtime/bytecode";
+import { instrOperandMismatch, Op } from "../../runtime/bytecode";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
 
 /**
@@ -70,6 +70,10 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   private emit(ins: Instr): void {
     if (this.finalized) {
       throw new Error("Cannot emit after finalize()");
+    }
+    const mismatch = instrOperandMismatch(ins);
+    if (mismatch !== undefined) {
+      throw new Error(`BytecodeEmitter.emit: ${mismatch}`);
     }
     this.instrs.push(ins);
   }
@@ -157,6 +161,11 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.CALL, a: funcId, b: argc });
   }
 
+  /** Spawn a fire-and-forget child-rule fiber running `funcId`. Pushes nothing. */
+  spawnRule(funcId: number): void {
+    this.emit({ op: Op.SPAWN_RULE, a: funcId });
+  }
+
   /** Call function indirectly via FunctionValue on the stack. */
   callIndirect(argc: number): void {
     this.emit({ op: Op.CALL_INDIRECT, a: argc });
@@ -199,6 +208,14 @@ export class BytecodeEmitter implements IBytecodeEmitter {
 
   actionCallAsync(actionSlot: number, argc: number, callSiteId: number): void {
     this.emit({ op: Op.ACTION_CALL_ASYNC, a: actionSlot, b: argc, c: callSiteId });
+  }
+
+  hostActionCall(actionId: number, argc: number, callSiteId: number): void {
+    this.emit({ op: Op.HOST_ACTION_CALL, a: actionId, b: argc, c: callSiteId });
+  }
+
+  hostActionCallAsync(actionId: number, argc: number, callSiteId: number): void {
+    this.emit({ op: Op.HOST_ACTION_CALL_ASYNC, a: actionId, b: argc, c: callSiteId });
   }
 
   // ==========================================
@@ -255,6 +272,18 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   }
 
   /**
+   * Mark the end of a presence-gated WHEN boundary.
+   * Skips to skipLabel when the WHEN result (popped from stack) is nil (absent);
+   * a present value, including a falsy one, falls through to the DO section.
+   *
+   * @param skipLabel - Label to jump to when the WHEN result is nil (typically after the DO section)
+   */
+  whenEndPresent(skipLabel: number): void {
+    this.emit({ op: Op.WHEN_END_PRESENT, a: 0 }); // placeholder for relative offset
+    this.addFixup(skipLabel, "a");
+  }
+
+  /**
    * Mark the start of a DO boundary.
    */
   doStart(): void {
@@ -273,8 +302,8 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   // ==========================================
 
   /** Create a new list with typeId. */
-  listNew(typeIdConstIdx: number): void {
-    this.emit({ op: Op.LIST_NEW, a: 0, b: typeIdConstIdx });
+  listNew(typeIdx: number): void {
+    this.emit({ op: Op.LIST_NEW, a: 0, b: typeIdx });
   }
 
   /** Push value onto list. */
@@ -327,8 +356,8 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   // ==========================================
 
   /** Create a new map with typeId from constant pool. */
-  mapNew(typeIdConstIdx: number): void {
-    this.emit({ op: Op.MAP_NEW, a: 0, b: typeIdConstIdx });
+  mapNew(typeIdx: number): void {
+    this.emit({ op: Op.MAP_NEW, a: 0, b: typeIdx });
   }
 
   /** Set key-value pair in map. */
@@ -355,24 +384,22 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   // Struct operations
   // ==========================================
 
-  /** Create a new empty struct. typeIdConstIdx is the constant pool index for the typeId string. */
-  structNew(typeIdConstIdx: number): void {
-    this.emit({ op: Op.STRUCT_NEW, a: 0, b: typeIdConstIdx });
+  /** Create a new empty struct. `typeIdx` is the program type-table index of the struct type. */
+  structNew(typeIdx: number): void {
+    this.emit({ op: Op.STRUCT_NEW, a: 0, b: typeIdx });
   }
 
-  /** Get field from struct. Field name is on stack. */
-  structGet(): void {
-    this.emit({ op: Op.STRUCT_GET });
-  }
-
-  /** Set field in struct. Field name and value are on stack. */
-  structSet(): void {
-    this.emit({ op: Op.STRUCT_SET });
-  }
-
-  /** Copy struct excluding N keys. Keys are on stack, then source struct. typeIdConstIdx is constant pool index for typeId. */
-  structCopyExcept(numExclude: number, typeIdConstIdx: number): void {
-    this.emit({ op: Op.STRUCT_COPY_EXCEPT, a: numExclude, b: typeIdConstIdx });
+  /**
+   * Copy struct excluding N keys. Keys are on stack, then source struct.
+   * `typeIdx` is the program type-table index of the result type; omit it for
+   * an untyped (anonymous) copy.
+   */
+  structCopyExcept(numExclude: number, typeIdx?: number): void {
+    if (typeIdx === undefined) {
+      this.emit({ op: Op.STRUCT_COPY_EXCEPT, a: numExclude });
+    } else {
+      this.emit({ op: Op.STRUCT_COPY_EXCEPT, a: numExclude, b: typeIdx });
+    }
   }
 
   /** Get a closed-struct field by field index. */
@@ -383,6 +410,11 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   /** Set a closed-struct field by field index. */
   structSetField(fieldIndex: number): void {
     this.emit({ op: Op.STRUCT_SET_FIELD, a: fieldIndex });
+  }
+
+  /** Pop a value and push a deep copy of it (copies structs; no-op for other values). */
+  structDeepCopy(): void {
+    this.emit({ op: Op.STRUCT_DEEP_COPY });
   }
 
   // ==========================================
@@ -424,6 +456,18 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   }
 
   // ==========================================
+  // System (shared-singleton) variables
+  // ==========================================
+
+  loadSystemVar(slotIdx: number): void {
+    this.emit({ op: Op.LOAD_SYSTEM_VAR, a: slotIdx });
+  }
+
+  storeSystemVar(slotIdx: number): void {
+    this.emit({ op: Op.STORE_SYSTEM_VAR, a: slotIdx });
+  }
+
+  // ==========================================
   // Type introspection
   // ==========================================
 
@@ -431,8 +475,8 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.TYPE_CHECK, a: nativeType });
   }
 
-  instanceOf(typeIdConstIdx: number): void {
-    this.emit({ op: Op.INSTANCE_OF, a: typeIdConstIdx });
+  instanceOf(typeIdx: number): void {
+    this.emit({ op: Op.INSTANCE_OF, a: typeIdx });
   }
 
   // ==========================================

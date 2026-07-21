@@ -1,10 +1,10 @@
-import type { ExampleDefinition } from "@mindcraft-lang/app-host";
-import { EXAMPLES_FOLDER } from "@mindcraft-lang/app-host";
 import type { AppClientMessage, CompileDiagnosticEntry, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core";
 import {
-  type AmbientFile,
   createWorkspaceCompiler,
+  type DependencyMount,
+  type Mount,
+  type ProjectDependency,
   type WorkspaceCompiler as TsWorkspaceCompiler,
   type WorkspaceCompileResult,
 } from "@mindcraft-lang/ts-compiler";
@@ -301,10 +301,14 @@ export type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 export interface CreateProjectCompilerOptions {
   environment: MindcraftEnvironment;
   filesystem: ProjectFileSystem;
-  /** Ordered ambient declaration files exposed to the compiler and remote VFS peers. */
-  ambientFiles: readonly AmbientFile[];
-  /** Read-only example projects materialized under the examples folder. */
-  examples?: readonly ExampleDefinition[];
+  /** Namespace of the project being compiled (its store id); prefixes every symbol key minted from the project's content. */
+  projectNamespace: string;
+  /** Read-only content mounts exposed to the compiler and remote VFS peers. */
+  mounts: readonly Mount[];
+  /** Extension dependencies of the project, each a `<owner>/<repo>` coordinate resolving its `@lib/<owner>/<repo>` imports. */
+  dependencies?: readonly ProjectDependency[];
+  /** Read-only content of each dependency, mounted for `@lib/<owner>/<repo>` resolution. */
+  dependencyMounts?: readonly DependencyMount[];
   onDidCompile?: (result: WorkspaceCompileResult) => void;
 }
 
@@ -315,58 +319,33 @@ export interface ProjectCompilerHandle {
   initialize(): void;
   /** Re-seed the compiler with the latest project file snapshot and recompile. */
   replaceProjectFiles(): void;
-  /** Replace the set of injected example projects. */
-  injectExamples(examples: ExampleDefinition[]): void;
-  /** Read the currently injected example projects. */
-  getExamples(): ExampleDefinition[];
 }
 
-/**
- * Wrap a {@link ProjectFileSystem} as a TS workspace compiler. The compiler's
- * input includes the live project files plus any injected examples.
- */
+/** Wrap a {@link ProjectFileSystem} as a TS workspace compiler over the live project files. */
 export function createProjectCompiler(options: CreateProjectCompilerOptions): ProjectCompilerHandle {
-  const { ambientFiles, environment, filesystem } = options;
+  const { mounts, environment, filesystem, projectNamespace, dependencies, dependencyMounts } = options;
 
-  const compiler = createWorkspaceCompiler({ ambientFiles, environment });
+  const compiler = createWorkspaceCompiler({
+    projectNamespace,
+    mounts,
+    environment,
+    dependencies,
+    dependencyMounts,
+  });
 
   if (options.onDidCompile) {
     compiler.onDidCompile(options.onDidCompile);
   }
 
-  let injectedExamples: ExampleDefinition[] = options.examples ? [...options.examples] : [];
-
-  function buildSnapshot(): ProjectFileSnapshot {
-    const snapshot = new Map(filesystem.exportSnapshot());
-    for (const example of injectedExamples) {
-      snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}`, { kind: "directory" });
-      for (const file of example.files) {
-        snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}/${file.path}`, {
-          kind: "file",
-          content: file.content,
-          etag: "example",
-          isReadonly: true,
-        });
-      }
-    }
-    return snapshot;
-  }
-
   return {
     compiler,
     initialize() {
-      compiler.replaceWorkspace(buildSnapshot());
+      compiler.replaceWorkspace(filesystem.exportSnapshot());
       compiler.compile();
     },
     replaceProjectFiles() {
-      compiler.replaceWorkspace(buildSnapshot());
+      compiler.replaceWorkspace(filesystem.exportSnapshot());
       compiler.compile();
-    },
-    injectExamples(examples: ExampleDefinition[]) {
-      injectedExamples = examples;
-    },
-    getExamples() {
-      return injectedExamples;
     },
   };
 }
@@ -378,7 +357,13 @@ export function createProjectCompiler(options: CreateProjectCompilerOptions): Pr
 /** Options for {@link createBridgeProject}. */
 export interface CreateBridgeProjectOptions {
   projectCompiler: ProjectCompilerHandle;
-  filesystem: ProjectFileSystem;
+  /**
+   * The served file system whose snapshot already carries the raw project
+   * files plus the compiler-controlled files (produced by
+   * {@link augmentProjectFileSystem}). The bridge exposes this to the remote
+   * peer, so the peer and any local asset server read identical content.
+   */
+  servedFileSystem: ProjectFileSystem;
   bridgeUrl: string;
   bindingToken?: string;
   onBindingTokenChange?: (token: string) => void;
@@ -393,10 +378,10 @@ export interface BridgeProjectHandle {
 
 /**
  * Wire up an {@link AppBridge} that uses `projectCompiler` for diagnostics and
- * surfaces compiler-controlled and example files to the remote peer.
+ * surfaces compiler-controlled files to the remote peer.
  */
 export function createBridgeProject(options: CreateBridgeProjectOptions): BridgeProjectHandle {
-  const { projectCompiler, filesystem } = options;
+  const { projectCompiler, servedFileSystem } = options;
   const compiler = projectCompiler.compiler;
 
   let latestBindingToken = options.bindingToken;
@@ -405,9 +390,13 @@ export function createBridgeProject(options: CreateBridgeProjectOptions): Bridge
     options.onBindingTokenChange?.(token);
   };
 
-  const augmented = augmentProjectFileSystem(filesystem, compiler, () => projectCompiler.getExamples());
   let currentBridge = buildBridge(
-    { ...options, filesystem: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
+    {
+      bridgeUrl: options.bridgeUrl,
+      filesystem: servedFileSystem,
+      bindingToken: latestBindingToken,
+      onBindingTokenChange,
+    },
     compiler
   );
 
@@ -418,30 +407,81 @@ export function createBridgeProject(options: CreateBridgeProjectOptions): Bridge
     recreateBridge(bridgeUrl: string) {
       currentBridge.stop();
       currentBridge = buildBridge(
-        { ...options, bridgeUrl, filesystem: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
+        { bridgeUrl, filesystem: servedFileSystem, bindingToken: latestBindingToken, onBindingTokenChange },
         compiler
       );
     },
   };
 }
 
-function augmentProjectFileSystem(
-  filesystem: ProjectFileSystem,
-  compiler: TsWorkspaceCompiler,
-  getExamples: () => ExampleDefinition[]
-): ProjectFileSystem {
-  const isAugmentedPath = (path: string): boolean => {
-    if (compiler.getCompilerControlledFiles().has(path)) {
+/** The directory portion of `path` (empty for a root-level path). */
+function parentDirectory(path: string): string {
+  const idx = path.lastIndexOf("/");
+  return idx <= 0 ? "" : path.slice(0, idx);
+}
+
+/**
+ * Ensure `dirPath` and each of its ancestors are present in `snapshot` as
+ * directory entries, adding any that are missing shallowest-first. An empty
+ * `dirPath` (a root-level path's parent) adds nothing.
+ */
+function ensureSnapshotDirectory(snapshot: ProjectFileSnapshot, dirPath: string): void {
+  const segments = dirPath.split("/").filter((segment) => segment.length > 0);
+  for (let i = 1; i <= segments.length; i++) {
+    const ancestor = segments.slice(0, i).join("/");
+    if (!snapshot.has(ancestor)) {
+      snapshot.set(ancestor, { kind: "directory" });
+    }
+  }
+}
+
+/** True when the two compiler-controlled file maps carry a different set of paths or content. */
+function compilerControlledFilesChanged(
+  previous: ReadonlyMap<string, string>,
+  current: ReadonlyMap<string, string>
+): boolean {
+  if (previous.size !== current.size) {
+    return true;
+  }
+  for (const [path, content] of current) {
+    if (previous.get(path) !== content) {
       return true;
     }
-    for (const example of getExamples()) {
-      const root = `${EXAMPLES_FOLDER}/${example.folder}`;
-      if (path === root || path.startsWith(`${root}/`)) {
-        return true;
-      }
-    }
-    return false;
-  };
+  }
+  return false;
+}
+
+/** Options for {@link augmentProjectFileSystem}. */
+export interface AugmentProjectFileSystemOptions {
+  /**
+   * Invoked with the full compiler-controlled file set whenever a compile
+   * changes that set.
+   */
+  onCompilerControlledFilesChanged?: (files: ReadonlyMap<string, string>) => void;
+}
+
+/**
+ * Wrap a {@link ProjectFileSystem} so its exported snapshot also carries the
+ * compiler-controlled files (ambient declarations, `tsconfig.json`, and the
+ * read-only installed-extensions tree), all marked read-only. Local and remote
+ * changes targeting those augmented paths are filtered out, leaving them
+ * read-only from the peer's side.
+ *
+ * When a compile changes the compiler-controlled file set (installing or
+ * uninstalling an extension adds or removes its `.libraries/` subtree), the
+ * wrapper emits one full-snapshot `import` local change and invokes the
+ * options' change callback with the new set. The peer reconciles the whole
+ * tree from the import: newly installed paths appear and uninstalled paths
+ * are pruned. The read-only compiler-controlled paths cannot be updated by an
+ * incremental write/delete notification, so the full-snapshot import is their
+ * propagation channel.
+ */
+export function augmentProjectFileSystem(
+  filesystem: ProjectFileSystem,
+  compiler: TsWorkspaceCompiler,
+  options?: AugmentProjectFileSystemOptions
+): ProjectFileSystem {
+  const isAugmentedPath = (path: string): boolean => compiler.getCompilerControlledFiles().has(path);
   const filterChange = (change: ProjectFileChange): ProjectFileChange | undefined => {
     switch (change.action) {
       case "write":
@@ -456,25 +496,34 @@ function augmentProjectFileSystem(
     }
   };
 
+  const buildSnapshot = (): ProjectFileSnapshot => {
+    const snapshot = filesystem.exportSnapshot();
+    const controlledFiles = compiler.getCompilerControlledFiles();
+    for (const [path, content] of controlledFiles) {
+      ensureSnapshotDirectory(snapshot, parentDirectory(path));
+      snapshot.set(path, { kind: "file", content, etag: "compiler-controlled", isReadonly: true });
+    }
+    return snapshot;
+  };
+
+  const localChangeListeners = new Set<(change: ProjectFileChange) => void>();
+  let previousControlledFiles = new Map(compiler.getCompilerControlledFiles());
+  compiler.onDidCompile(() => {
+    const currentControlledFiles = compiler.getCompilerControlledFiles();
+    if (!compilerControlledFilesChanged(previousControlledFiles, currentControlledFiles)) {
+      return;
+    }
+    previousControlledFiles = new Map(currentControlledFiles);
+    options?.onCompilerControlledFilesChanged?.(currentControlledFiles);
+    const change: ProjectFileChange = { action: "import", entries: [...buildSnapshot()] };
+    for (const listener of localChangeListeners) {
+      listener(change);
+    }
+  });
+
   return {
     exportSnapshot(): ProjectFileSnapshot {
-      const snapshot = filesystem.exportSnapshot();
-      const controlledFiles = compiler.getCompilerControlledFiles();
-      for (const [path, content] of controlledFiles) {
-        snapshot.set(path, { kind: "file", content, etag: "compiler-controlled", isReadonly: true });
-      }
-      for (const example of getExamples()) {
-        snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}`, { kind: "directory" });
-        for (const file of example.files) {
-          snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}/${file.path}`, {
-            kind: "file",
-            content: file.content,
-            etag: "example",
-            isReadonly: true,
-          });
-        }
-      }
-      return snapshot;
+      return buildSnapshot();
     },
     applyRemoteChange(change: ProjectFileChange): void {
       const filtered = filterChange(change);
@@ -489,7 +538,12 @@ function augmentProjectFileSystem(
       }
     },
     onLocalChange(listener: (change: ProjectFileChange) => void): () => void {
-      return filesystem.onLocalChange(listener);
+      localChangeListeners.add(listener);
+      const unsubscribeUnderlying = filesystem.onLocalChange(listener);
+      return () => {
+        localChangeListeners.delete(listener);
+        unsubscribeUnderlying();
+      };
     },
     onAnyChange(listener: () => void): () => void {
       return filesystem.onAnyChange(listener);
@@ -501,7 +555,12 @@ function augmentProjectFileSystem(
 }
 
 function buildBridge(
-  options: Pick<CreateBridgeProjectOptions, "bridgeUrl" | "filesystem" | "bindingToken" | "onBindingTokenChange">,
+  options: {
+    bridgeUrl: string;
+    filesystem: ProjectFileSystem;
+    bindingToken?: string;
+    onBindingTokenChange?: (token: string) => void;
+  },
   compiler: TsWorkspaceCompiler
 ): AppBridge {
   return createAppBridge({

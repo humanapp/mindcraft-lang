@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
+import { Dict, List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { treeshakeProgram as treeshakeLinked } from "@mindcraft-lang/core/brain/compiler";
 import type {
   BytecodeExecutableAction,
   ConstantPools,
-  ExecutableAction,
   ExecutionContext,
+  ProgramTypeEntry,
 } from "@mindcraft-lang/core/runtime";
 import {
   BYTECODE_VERSION,
@@ -54,9 +54,11 @@ function mkPage(pageIndex: number, rootRuleFuncIds: number[]): PageMetadata {
     pageName: `Page ${pageIndex}`,
     rootRuleFuncIds: List.from(rootRuleFuncIds),
     actionCallSites: List.empty(),
-    sensors: new UniqueSet(),
-    actuators: new UniqueSet(),
   };
+}
+
+function mkStructEntry(name: string, maxFieldId = 0): ProgramTypeEntry {
+  return { tag: "struct", typeId: `struct:<${name}>`, name, maxFieldId, fields: List.empty() };
 }
 
 function mkBytecodeAction(entryFuncId: number, activationFuncId?: number): BytecodeExecutableAction {
@@ -77,10 +79,11 @@ function mkProgram(opts: {
   constants?: Value[];
   numberConstants?: number[];
   stringConstants?: string[];
+  types?: ProgramTypeEntry[];
   variableNames?: string[];
   entryPoint?: number;
   pages?: PageMetadata[];
-  actions?: ExecutableAction[];
+  actions?: BytecodeExecutableAction[];
   ruleIndex?: [string, number][];
 }): FlatProgram {
   return {
@@ -91,6 +94,7 @@ function mkProgram(opts: {
       strings: List.from(opts.stringConstants ?? []),
       values: List.from(opts.constants ?? []),
     },
+    types: List.from(opts.types ?? []),
     variableNames: List.from(opts.variableNames ?? []),
     entryPoint: opts.entryPoint,
     ruleIndex: new Dict(opts.ruleIndex ?? []),
@@ -108,11 +112,12 @@ interface FlatProgram {
   version: number;
   functions: List<FunctionBytecode>;
   constantPools: ConstantPools;
+  types: List<ProgramTypeEntry>;
   variableNames: List<string>;
   entryPoint?: number;
   ruleIndex: Dict<string, number>;
   pages: List<PageMetadata>;
-  actions: List<ExecutableAction>;
+  actions: List<BytecodeExecutableAction>;
 }
 
 function toLinked(flat: FlatProgram): LinkedBrainProgram {
@@ -121,6 +126,7 @@ function toLinked(flat: FlatProgram): LinkedBrainProgram {
       version: flat.version,
       functions: flat.functions,
       constantPools: flat.constantPools,
+      types: flat.types,
       variableNames: flat.variableNames,
       entryPoint: flat.entryPoint,
       actions: flat.actions,
@@ -135,9 +141,10 @@ function flatten(linked: LinkedBrainProgram): FlatProgram {
     version: linked.program.version,
     functions: linked.program.functions,
     constantPools: linked.program.constantPools,
+    types: linked.program.types ?? List.empty<ProgramTypeEntry>(),
     variableNames: linked.program.variableNames,
     entryPoint: linked.program.entryPoint,
-    actions: linked.program.actions ?? List.empty<ExecutableAction>(),
+    actions: linked.program.actions ?? List.empty<BytecodeExecutableAction>(),
     ruleIndex: linked.ruleIndex,
     pages: linked.pages,
   };
@@ -359,20 +366,6 @@ describe("treeshakeProgram", () => {
     assert.equal(result.constantPools.values.get(1).t, NativeType.String);
   });
 
-  test("host actions are preserved as-is", () => {
-    const hostAction: ExecutableAction = {
-      binding: "host",
-      descriptor: { key: "host-action", kind: "action" } as never,
-    };
-    const prog = mkProgram({
-      functions: [mkFunc([mkInstr(Op.RET)], 0, "main")],
-      entryPoint: 0,
-      actions: [hostAction],
-    });
-    const result = treeshakeProgram(prog);
-    assert.equal(result.actions.get(0).binding, "host");
-  });
-
   test("unreferenced variable names are removed", () => {
     const prog = mkProgram({
       functions: [mkFunc([mkInstr(Op.RET)], 0, "main"), mkFunc([mkInstr(Op.RET)], 0, "dead")],
@@ -436,46 +429,101 @@ describe("treeshakeProgram", () => {
     assert.equal(result.constantPools.values.size(), 3);
   });
 
-  test("typeId constants referenced via LIST_NEW b are retained", () => {
+  test("type-table entries referenced via LIST_NEW b are retained", () => {
     const prog = mkProgram({
       functions: [mkFunc([mkInstr(Op.LIST_NEW, 0, 0), mkInstr(Op.RET)], 0, "main")],
-      stringConstants: ["List<number>", "unused-type"],
+      types: [mkStructEntry("Used"), mkStructEntry("Unused")],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constantPools.strings.size(), 1);
-    assert.equal(result.constantPools.strings.get(0), "List<number>");
+    assert.equal(result.types.size(), 1);
+    assert.equal(result.types.get(0)!.typeId, "struct:<Used>");
   });
 
-  test("typeId constants referenced via STRUCT_NEW b are retained", () => {
+  test("type-table entries referenced via STRUCT_NEW b are retained", () => {
     const prog = mkProgram({
       functions: [mkFunc([mkInstr(Op.STRUCT_NEW, 2, 0), mkInstr(Op.RET)], 0, "main")],
-      stringConstants: ["MyStruct", "unused-type"],
+      types: [mkStructEntry("Used"), mkStructEntry("Unused")],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constantPools.strings.size(), 1);
-    assert.equal(result.constantPools.strings.get(0), "MyStruct");
+    assert.equal(result.types.size(), 1);
+    assert.equal(result.types.get(0)!.typeId, "struct:<Used>");
   });
 
-  test("typeId constants referenced via MAP_NEW b are retained", () => {
+  test("type-table entries referenced via MAP_NEW b are retained", () => {
     const prog = mkProgram({
       functions: [mkFunc([mkInstr(Op.MAP_NEW, 0, 0), mkInstr(Op.RET)], 0, "main")],
-      stringConstants: ["Map<string,number>", "unused"],
+      types: [mkStructEntry("Used"), mkStructEntry("Unused")],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constantPools.strings.size(), 1);
+    assert.equal(result.types.size(), 1);
   });
 
-  test("typeId constants referenced via STRUCT_COPY_EXCEPT b are retained", () => {
+  test("type-table entries referenced via STRUCT_COPY_EXCEPT b are retained", () => {
     const prog = mkProgram({
       functions: [mkFunc([mkInstr(Op.STRUCT_COPY_EXCEPT, 1, 0), mkInstr(Op.RET)], 0, "main")],
-      stringConstants: ["CopiedStruct", "unused"],
+      types: [mkStructEntry("Used"), mkStructEntry("Unused")],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constantPools.strings.size(), 1);
+    assert.equal(result.types.size(), 1);
+  });
+
+  test("a structural entry keeps its children alive and child references remap", () => {
+    const listEntry: ProgramTypeEntry = { tag: "list", typeId: "list:<List<struct:<Elem>>>", elem: 1 };
+    const prog = mkProgram({
+      functions: [mkFunc([mkInstr(Op.LIST_NEW, 0, 2), mkInstr(Op.RET)], 0, "main")],
+      types: [mkStructEntry("Unused"), mkStructEntry("Elem"), listEntry],
+      entryPoint: 0,
+    });
+    const result = treeshakeProgram(prog);
+    assert.equal(result.types.size(), 2);
+    assert.equal(result.types.get(0)!.typeId, "struct:<Elem>");
+    const shakenList = result.types.get(1)!;
+    assert.equal(shakenList.tag, "list");
+    assert.equal((shakenList as { elem: number }).elem, 0);
+    assert.equal(result.functions.get(0).code.get(0).b, 1);
+  });
+
+  test("entries referenced only by reachable constant values are retained", () => {
+    const enumEntry: ProgramTypeEntry = {
+      tag: "enum",
+      typeId: "enum:<ValEnum>",
+      name: "ValEnum",
+      symbols: List.from([
+        { key: "A", value: 0 },
+        { key: "B", value: 1 },
+      ]),
+    };
+    const prog = mkProgram({
+      functions: [mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.RET)], 0, "main")],
+      constants: [{ t: NativeType.Enum, typeId: "enum:<ValEnum>", v: "A" } as Value],
+      types: [mkStructEntry("Unused"), enumEntry],
+      entryPoint: 0,
+    });
+    const result = treeshakeProgram(prog);
+    assert.equal(result.types.size(), 1);
+    assert.equal(result.types.get(0)!.typeId, "enum:<ValEnum>");
+  });
+
+  test("injectCtxTypeIdx keeps its entry alive and remaps", () => {
+    const fn: FunctionBytecode = {
+      code: List.from<Instr>([mkInstr(Op.RET)]),
+      numParams: 0,
+      name: "main",
+      injectCtxTypeIdx: 1,
+    };
+    const prog = mkProgram({
+      functions: [fn],
+      types: [mkStructEntry("Unused"), mkStructEntry("Ctx")],
+      entryPoint: 0,
+    });
+    const result = treeshakeProgram(prog);
+    assert.equal(result.types.size(), 1);
+    assert.equal(result.types.get(0)!.typeId, "struct:<Ctx>");
+    assert.equal(result.functions.get(0).injectCtxTypeIdx, 0);
   });
 
   test("PUSH_CONST operands are remapped after constant shaking", () => {
@@ -500,31 +548,31 @@ describe("treeshakeProgram", () => {
     const prog = mkProgram({
       functions: [
         mkFunc([mkInstr(Op.LIST_NEW, 0, 1), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.PUSH_CONST_STR, 0), mkInstr(Op.RET)], 0, "dead"),
+        mkFunc([mkInstr(Op.STRUCT_NEW, 0, 0), mkInstr(Op.RET)], 0, "dead"),
       ],
-      stringConstants: ["dead-type", "List<number>"],
+      types: [mkStructEntry("DeadType"), mkStructEntry("LiveType")],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constantPools.strings.size(), 1);
-    assert.equal(result.constantPools.strings.get(0), "List<number>");
+    assert.equal(result.types.size(), 1);
+    assert.equal(result.types.get(0)!.typeId, "struct:<LiveType>");
     const listInstr = result.functions.get(0).code.get(0);
     assert.equal(listInstr.op, Op.LIST_NEW);
     assert.equal(listInstr.b, 0);
   });
 
-  test("INSTANCE_OF a operand is remapped after constant shaking", () => {
+  test("INSTANCE_OF a operand is remapped after type shaking", () => {
     const prog = mkProgram({
       functions: [
         mkFunc([mkInstr(Op.INSTANCE_OF, 1), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.PUSH_CONST_STR, 0), mkInstr(Op.RET)], 0, "dead"),
+        mkFunc([mkInstr(Op.INSTANCE_OF, 0), mkInstr(Op.RET)], 0, "dead"),
       ],
-      stringConstants: ["dead-type", "MyClass"],
+      types: [mkStructEntry("DeadType"), mkStructEntry("MyClass")],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constantPools.strings.size(), 1);
-    assert.equal(result.constantPools.strings.get(0), "MyClass");
+    assert.equal(result.types.size(), 1);
+    assert.equal(result.types.get(0)!.typeId, "struct:<MyClass>");
     const instOfInstr = result.functions.get(0).code.get(0);
     assert.equal(instOfInstr.op, Op.INSTANCE_OF);
     assert.equal(instOfInstr.a, 0);
@@ -623,26 +671,34 @@ describe("treeshakeProgram", () => {
     assert.equal(code.get(2).a, 1);
   });
 
-  test("duplicate string constants including typeId strings are collapsed", () => {
+  test("duplicate string constants are collapsed", () => {
     const prog = mkProgram({
-      functions: [
-        mkFunc(
-          [mkInstr(Op.PUSH_CONST_STR, 0), mkInstr(Op.PUSH_CONST_STR, 1), mkInstr(Op.LIST_NEW, 0, 2), mkInstr(Op.RET)],
-          0,
-          "main"
-        ),
-      ],
-      stringConstants: ["hello", "hello", "List<number>"],
+      functions: [mkFunc([mkInstr(Op.PUSH_CONST_STR, 0), mkInstr(Op.PUSH_CONST_STR, 1), mkInstr(Op.RET)], 0, "main")],
+      stringConstants: ["hello", "hello"],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constantPools.strings.size(), 2);
+    assert.equal(result.constantPools.strings.size(), 1);
     assert.equal(result.constantPools.strings.get(0), "hello");
-    assert.equal(result.constantPools.strings.get(1), "List<number>");
     const code = result.functions.get(0).code;
     assert.equal(code.get(0).a, 0);
     assert.equal(code.get(1).a, 0);
-    assert.equal(code.get(2).b, 1);
+  });
+
+  test("duplicate type-table entries are collapsed and operands repointed", () => {
+    const dupA = mkStructEntry("Dup");
+    const dupB = mkStructEntry("Dup");
+    const prog = mkProgram({
+      functions: [mkFunc([mkInstr(Op.STRUCT_NEW, 0, 0), mkInstr(Op.STRUCT_NEW, 0, 1), mkInstr(Op.RET)], 0, "main")],
+      types: [dupA, dupB],
+      entryPoint: 0,
+    });
+    const result = treeshakeProgram(prog);
+    assert.equal(result.types.size(), 1);
+    assert.equal(result.types.get(0)!.typeId, "struct:<Dup>");
+    const code = result.functions.get(0).code;
+    assert.equal(code.get(0).b, 0);
+    assert.equal(code.get(1).b, 0);
   });
 
   test("duplicate boolean/nil/void constants are collapsed", () => {
@@ -735,14 +791,14 @@ describe("treeshakeProgram", () => {
         ),
       ],
       numberConstants: [42, 42],
-      stringConstants: ["MyType", "MyType", "MyType"],
+      types: [mkStructEntry("MyType"), mkStructEntry("MyType"), mkStructEntry("MyType")],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
     assert.equal(result.constantPools.numbers.size(), 1);
     assert.equal(result.constantPools.numbers.get(0), 42);
-    assert.equal(result.constantPools.strings.size(), 1);
-    assert.equal(result.constantPools.strings.get(0), "MyType");
+    assert.equal(result.types.size(), 1);
+    assert.equal(result.types.get(0)!.typeId, "struct:<MyType>");
     const code = result.functions.get(0).code;
     assert.equal(code.get(0).a, 0);
     assert.equal(code.get(1).a, 0);
@@ -781,7 +837,7 @@ let services: BrainServices;
 function toVmServices(b: BrainServices) {
   return __test__createPlatformServices({
     runtime: { functions: b.runtime.functions, types: b.runtime.types },
-  });
+  }).runtime;
 }
 
 before(() => {
@@ -801,6 +857,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
       while (slots.size() <= slotId) slots.push(undefined);
       slots.set(slotId, value);
     },
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,

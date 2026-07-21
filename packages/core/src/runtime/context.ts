@@ -1,12 +1,22 @@
 import type { ReadonlyList } from "../platform/list";
 import type { ActionDescriptor } from "./function-defs";
 import type { PlatformServices } from "./services";
-import type { HandleId, Value } from "./value";
+import { mkOutputVarKey } from "./tile-ids";
+import type { TypeId } from "./type-defs";
+import type { AsyncHandle, Value } from "./value";
 
 /** Action binding implemented by a host (sync or async) function. */
 export interface HostActionBinding {
   binding: "host";
   descriptor: ActionDescriptor;
+  /**
+   * Author-assigned stable numeric action id, validated by the brain action
+   * registry at registration: a non-negative integer, unique across the
+   * registry's host actions, and inside the registering owner's range. Used
+   * by `HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC` dispatch via the
+   * registry's `getById`. Once assigned, never changed or reused.
+   */
+  id: number;
   /**
    * Invoked exactly once per `(brainInstance, callSiteId)`, on the first
    * activation that allocates the call site, before {@link onPageEntered}
@@ -32,7 +42,7 @@ export interface HostActionBinding {
    */
   onPageExited?: (ctx: ExecutionContext) => void;
   execSync?: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
-  execAsync?: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
+  execAsync?: (ctx: ExecutionContext, args: ReadonlyList<Value>, handle: AsyncHandle) => void;
 }
 
 /**
@@ -70,9 +80,6 @@ export interface BytecodeExecutableAction {
   deactivationFuncId?: number;
   numStateSlots: number;
 }
-
-/** Tagged-union of executable action bindings: host function or executable bytecode. */
-export type ExecutableAction = HostActionBinding | BytecodeExecutableAction;
 
 /**
  * Execution context passed to host functions and bytecode dispatch paths.
@@ -115,6 +122,27 @@ export interface ExecutionContext {
    * @param value - The value to store
    */
   setVariableBySlot(slotId: number, value: Value): void;
+
+  /**
+   * Read a System's state by its compiler-assigned store slot. The slot index
+   * is the operand of `LOAD_SYSTEM_VAR` and indexes the brain-global System
+   * store, a namespace separate from `variableNames`. Returns the slot's
+   * current value, or `NIL_VALUE` if the slot has never been written.
+   *
+   * @param slotId - System store slot assigned by the linker
+   */
+  getSystemVarBySlot(slotId: number): Value;
+
+  /**
+   * Write a System's state by its compiler-assigned store slot. The slot index
+   * is the operand of `STORE_SYSTEM_VAR`. The value is written by reference
+   * (no deep copy), so a System's state struct mutates in place across
+   * methods, `think`, and callsites.
+   *
+   * @param slotId - System store slot assigned by the linker
+   * @param value - The value to store
+   */
+  setSystemVarBySlot(slotId: number, value: Value): void;
 
   /**
    * Optional application-specific data attached to the execution context.
@@ -185,6 +213,33 @@ export function getRuleVariable<T extends Value = Value>(ctx: ExecutionContext, 
  */
 export function setRuleVariable(ctx: ExecutionContext, name: string, value: Value): void {
   ctx.services.brain.ruleVars.setByName(ctx.currentRuleFuncId, name, value);
+}
+
+/**
+ * Write a built-in sensor's named, typed output for the current evaluation. Sugar
+ * over {@link setRuleVariable} keyed by {@link mkOutputVarKey}; the matching
+ * output value-tile reads the same backing rule variable. Pass `NIL_VALUE` to
+ * clear an output.
+ *
+ * @param ctx - The execution context
+ * @param typeId - The output's resolved {@link TypeId}
+ * @param name - The output name as declared on the sensor's descriptor
+ * @param value - The value to store
+ */
+export function setSensorOutput(ctx: ExecutionContext, typeId: TypeId, name: string, value: Value): void {
+  setRuleVariable(ctx, mkOutputVarKey(typeId, name), value);
+}
+
+/**
+ * Read the value the WHEN side of the current rule last evaluated to. The VM
+ * captures it into the reserved `__whenResult` rule variable at every
+ * `WHEN_END`. Returns `NIL_VALUE` when execution is not inside any rule or the
+ * current rule has not run its WHEN section.
+ *
+ * @param ctx - The execution context
+ */
+export function getWhenResult(ctx: ExecutionContext): Value {
+  return ctx.services.brain.ruleVars.getByName(ctx.currentRuleFuncId, "__whenResult");
 }
 
 // ============================================================================

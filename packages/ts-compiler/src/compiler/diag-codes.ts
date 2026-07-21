@@ -5,7 +5,7 @@
  * Codes are organized by compiler phase:
  * - 1000-1099: Validator diagnostics (forbidden syntax)
  * - 2000-2099: Descriptor extraction diagnostics
- * - 3000-3199: Lowering diagnostics
+ * - 3000-3999: Lowering diagnostics
  * - 4000-4099: Emit diagnostics
  * - 5000-5099: Compile orchestration diagnostics
  */
@@ -120,6 +120,8 @@ export enum DescriptorDiagCode {
   TagsMustBeArrayLiteral = 2023,
   /** tags array element is not a string literal */
   TagElementMustBeStringLiteral = 2024,
+  /** id property value is not a string literal */
+  IdMustBeStringLiteral = 2026,
 
   /** args value is not an array literal */
   ArgsMustBeArrayLiteral = 2030,
@@ -163,10 +165,62 @@ export enum DescriptorDiagCode {
   SeqRequiresArguments = 2050,
   /** onPageExited property is not a function */
   OnPageExitedMustBeFunction = 2051,
+  /** a config's `consumesWhenResult` is not a type name string literal or type reference identifier */
+  ConsumesWhenResultMustBeNameOrRef = 2052,
+  /** Free slot -- available for reuse. */
+  Unused2053 = 2053,
+  /** outputs property value is not an array literal */
+  OutputsMustBeArrayLiteral = 2054,
+  /** an outputs array element is not an object literal */
+  OutputEntryMustBeObjectLiteral = 2055,
+  /** an output's name is not a string literal */
+  OutputNameMustBeStringLiteral = 2056,
+  /** an output entry is missing the required name property */
+  OutputNameRequired = 2057,
+  /** an output's type is not a string literal */
+  OutputTypeMustBeStringLiteral = 2058,
+  /** an output entry is missing the required type property */
+  OutputTypeRequired = 2059,
+  /** an output's label is not a string literal */
+  OutputLabelMustBeStringLiteral = 2060,
+  /** an output's icon is not a string literal */
+  OutputIconMustBeStringLiteral = 2061,
+  /** an output's docs is not a string literal */
+  OutputDocsMustBeStringLiteral = 2062,
+  /** an output's tags property is not an array literal */
+  OutputTagsMustBeArrayLiteral = 2063,
+  /** an output's tags array element is not a string literal */
+  OutputTagElementMustBeStringLiteral = 2064,
+  /** two outputs on the same sensor share a name (output names must be unique per sensor) */
+  DuplicateOutputName = 2065,
+  /** a Conversion config is missing the required from or to member */
+  ConversionTypeRequired = 2066,
+  /** a Conversion config's cost is missing or not a positive numeric literal */
+  ConversionCostMustBePositiveNumber = 2067,
+  /** a Conversion config is missing the required convert member */
+  ConversionConvertRequired = 2068,
+  /** a Conversion config's convert member is not a function */
+  ConversionConvertMustBeFunction = 2069,
+  /** a Conversion config's convert function does not take exactly one parameter */
+  ConversionConvertParamCount = 2070,
+  /** a Conversion config's convert function is async (conversions are synchronous) */
+  ConversionConvertMustBeSync = 2071,
+  /** a sensor config's returnType is not a type name string literal or type reference identifier */
+  ReturnTypeMustBeNameOrRef = 2072,
+  /** a config object uses spread; members must be written inline */
+  ConfigMemberNotInline = 2073,
+  /** a shorthand config member does not resolve to a declared value */
+  ShorthandMemberUnresolvable = 2074,
+  /** a sensor config's `inline` value is not a boolean literal */
+  InlineMustBeBoolean = 2075,
+  /** a sensor config's `presenceGated` value is not a boolean literal */
+  PresenceGatedMustBeBoolean = 2076,
+  /** a sensor config declares `inline: true` together with a non-empty `args` (inline sensors take no arguments) */
+  InlineSensorTakesNoArgs = 2077,
 }
 
 /**
- * Lowering diagnostic codes (3000-3199)
+ * Lowering diagnostic codes (3000-3999)
  *
  * Emitted during AST-to-IR lowering when a construct cannot be
  * translated to the user-tile instruction set.
@@ -194,8 +248,8 @@ export enum LoweringDiagCode {
   ContinueOutsideLoop = 3012,
   /** Destructuring declaration is missing an initializer */
   DestructuringMissingInitializer = 3020,
-  /** Rest (...) patterns in destructuring are not supported */
-  RestPatternsNotSupported = 3021,
+  /** Free slot -- available for reuse. */
+  Unused3021 = 3021,
   /** Destructuring in onExecute parameter position is not supported */
   DestructuringInOnExecuteNotSupported = 3024,
   /** Rest element must be the last element in an array destructuring pattern */
@@ -346,8 +400,12 @@ export enum LoweringDiagCode {
   UnsupportedStringMethod = 3130,
   /** String method called with wrong number of arguments */
   StringMethodWrongArgCount = 3131,
-  /** Class declaration has no name */
-  ClassDeclarationMissingName = 3140,
+  /** Buffer constructor or method is not supported */
+  UnsupportedBufferMethod = 3135,
+  /** Buffer constructor or method called with wrong number of arguments */
+  BufferMethodWrongArgCount = 3136,
+  /** Free slot -- available for reuse. */
+  Unused3140 = 3140,
   /** Cannot resolve the type of a class field */
   UnresolvableClassFieldType = 3141,
   /** `this` keyword used outside of a class constructor or method */
@@ -368,12 +426,12 @@ export enum LoweringDiagCode {
   UnresolvableInterfaceFieldType = 3150,
   /** Interface has unsupported members (index signatures, call signatures, etc.) */
   UnsupportedInterfaceMember = 3151,
-  /** Generic interfaces are not supported */
-  GenericInterfaceNotSupported = 3152,
+  /** Free slot -- available for reuse. */
+  Unused3152 = 3152,
   /** User interface name collides with an ambient (runtime-registered) type */
   InterfaceCollidesWithAmbientType = 3153,
-  /** Generic type aliases are not supported */
-  GenericTypeAliasNotSupported = 3154,
+  /** Free slot -- available for reuse. */
+  Unused3154 = 3154,
   /** User type alias name collides with an ambient (runtime-registered) type */
   TypeAliasCollidesWithAmbientType = 3155,
   /** Class objects cannot be used as runtime values; only property access and `new` are supported */
@@ -400,6 +458,66 @@ export enum LoweringDiagCode {
   ReadOnlyFieldAssignment = 3171,
   /** onPageExited function has no body */
   OnPageExitedHasNoBody = 3172,
+  /** Async host call lowered into a body that cannot suspend (sync onExecute, page hook, or module initializer) */
+  AsyncHostCallInNonSuspendableContext = 3173,
+  /** A method (e.g. `.then`/`.catch`) is called on an async result */
+  UnsupportedAsyncResultMethod = 3174,
+  /** An async action's result is discarded without `await` (warning) */
+  UnawaitedAsyncCall = 3175,
+
+  /** A `System({...})` config `name` is missing or not a string literal */
+  SystemNameNotStringLiteral = 3180,
+  /** A `System({...})` config `state` is missing or not an object literal */
+  SystemStateNotObject = 3181,
+  /** A `System({...})` `init` or `think` member is not a method or inline function */
+  SystemLifecycleNotFunction = 3182,
+  /** A `System({...})` config member (other than name/state/init/think) is not a method */
+  SystemMemberNotMethod = 3183,
+  /** A `System({...})` `state` shape cannot be lowered to a struct of VM-representable fields */
+  SystemStateUnresolvable = 3184,
+  /** A `const X = System({...})` binding's declaration symbol cannot be resolved */
+  SystemBindingUnresolvable = 3185,
+  /** A System method reference is read as a value; a System method must be called */
+  SystemMethodUsedAsValue = 3186,
+
+  /** `setOutput(ctx, name, value)` was not called with exactly three arguments */
+  SetOutputWrongArgCount = 3187,
+  /** `setOutput`'s name argument is not a string literal */
+  SetOutputNameNotStringLiteral = 3188,
+  /** `setOutput` names an output not declared in the enclosing sensor's `outputs` */
+  SetOutputUnknownOutput = 3189,
+  /** `setOutput` is used outside a sensor `onExecute` (no outputs are in scope) */
+  SetOutputOutsideSensor = 3190,
+  /** A declared sensor output's type name does not resolve to a known type */
+  OutputTypeUnresolvable = 3191,
+  /** A `setOutput` value's type does not match (and is not convertible to) the output's declared type */
+  SetOutputValueTypeMismatch = 3192,
+  /**
+   * A System body references a top-level binding of its defining module that is
+   * neither a `const` value nor a `function` (for example a module-level `let`
+   * or a class); only `const` values and `function` declarations can be used
+   * across the module boundary.
+   */
+  SystemModuleReferenceNotCarryable = 3193,
+
+  /**
+   * `!` applied to a maybe-absent number, string, or boolean; absence must be
+   * tested with an explicit `=== undefined` comparison.
+   */
+  NotOnNullablePrimitive = 3194,
+
+  /** A `StructType({...})` config `name` is missing or not a string literal */
+  StructTypeNameNotStringLiteral = 3195,
+  /** A `StructType({...})` config member is malformed: `fields` missing, empty, or not `name: type` entries, or `accessors`/`variables` not boolean literals */
+  StructTypeMemberInvalid = 3196,
+  /** A `StructType({...})` field's type does not name a known type */
+  StructTypeFieldTypeUnresolvable = 3197,
+  /** Two `StructType({...})` fields share a name */
+  StructTypeDuplicateField = 3198,
+  /** A `StructType(...)` call's config argument is not a single inline object literal */
+  StructTypeConfigNotObjectLiteral = 3199,
+  /** A `StructType({...})` field contains its own struct type, directly or through other struct fields */
+  StructTypeRecursiveField = 3200,
 }
 
 /**
@@ -438,6 +556,40 @@ export enum CompileDiagCode {
   InvalidEnumDeclaration = 5005,
   /** A metadata file (icon or docs) referenced by a tile config was not found */
   MetadataFileNotFound = 5006,
+  /** A shared `parameter.` id is declared with a type that conflicts with an earlier declaration or a registered tile */
+  SharedParameterTypeConflict = 5007,
+  /** A bare shared `modifier.` reference names a modifier that is neither declared with a label nor already registered */
+  UnregisteredModifierReference = 5008,
+  /** A shared `parameter.` id is declared with a type name that does not resolve, so its shared tile cannot be materialized */
+  SharedParameterUnresolvedType = 5009,
+  /** A Conversion's `from` or `to` does not name a known type (unresolvable name or invalid type token) */
+  ConversionTypeUnresolved = 5010,
+  /** A Conversion declares a `(from, to)` pair that another registration already holds */
+  DuplicateConversionPair = 5011,
+  /** A `returnType`, output `type`, param `type`, or `consumesWhenResult` reference does not name a known type */
+  UnresolvedTypeReference = 5012,
+  /** A Conversion's `from` and `to` name the same type */
+  ConversionSameType = 5013,
+  /** Two declarations carry the same stable `id` */
+  DuplicateActionId = 5014,
+  /** An action reads the WHEN result (`ctx.getWhenResult()`) but does not declare `consumesWhenResult` (warning) */
+  WhenResultReadWithoutDeclaration = 5015,
+  /** `consumesWhenResult` resolves to the top type (`any`), which no concrete WHEN result is exactly-or-convertible to, so the tile could never be offered */
+  ConsumesWhenResultIsAny = 5016,
+  /** A param `type` name does not resolve to a registered type, so the tile's parameter tiles cannot be built */
+  ParameterUnresolvedType = 5017,
+  /** A shared `modifier.` id is declared with a label that conflicts with an earlier declaration or a registered tile */
+  SharedModifierLabelConflict = 5018,
+  /** An `@lib/<owner>/<repo>/...` import names a module inside an extension; only the entry surface `@lib/<owner>/<repo>` is importable */
+  ExtensionDeepImport = 5019,
+  /** The entry module exports one declaration under two or more names; a declaration is published under exactly one name */
+  MultiplePublishedNames = 5020,
+  /** A published type or tile surface references a name-keyed type that is not published by its declaring project */
+  UnpublishedTypeReference = 5021,
+  /** A declaration in a read-only extension omits the required stable `id`; the compiler cannot mint one because the extension source is regenerated on load and never saved */
+  ExtensionDeclarationMissingId = 5022,
+  /** A module this file imports, directly or transitively, has compile errors, so this file cannot compile */
+  ImportedFileHasErrors = 5023,
 }
 
 /**

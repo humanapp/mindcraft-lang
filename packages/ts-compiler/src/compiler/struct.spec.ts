@@ -5,6 +5,7 @@ import { type BrainServices, compiler } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
+  type AsyncHandle,
   type BooleanValue,
   ContextTypeIds,
   CoreTypeIds,
@@ -35,6 +36,8 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -45,8 +48,14 @@ import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
+let nextTypeAtomId = 1024;
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
+
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -54,6 +63,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -192,10 +203,11 @@ function emitSyntheticHostCallBuffer(
 ): FunctionBytecode {
   const localServices = __test__createBrainServices();
   localServices.runtime.functions.register(
+    6101,
     "$$emit_host_call_matrix",
     op === Op.HOST_CALL_ASYNC,
     op === Op.HOST_CALL_ASYNC ? { exec: () => {} } : { exec: () => NIL_VALUE },
-    buildCallDef("emit-host-call-matrix", [])
+    buildCallDef(TEST_PROJECT_NAMESPACE, "emit-host-call-matrix", [])
   );
 
   const rawArgc = argSlotIds?.length ?? argc;
@@ -284,25 +296,28 @@ describe("struct literal compilation", () => {
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
+        atomId: mkTestAtomId(),
         fields: List.from([
-          { name: "x", typeId: numTypeId },
-          { name: "y", typeId: numTypeId },
+          { name: "x", typeId: numTypeId, fieldIndex: 0 },
+          { name: "y", typeId: numTypeId, fieldIndex: 1 },
         ]),
       });
     }
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
+        atomId: mkTestAtomId(),
         fields: List.from([
-          { name: "name", typeId: strTypeId },
-          { name: "position", typeId: vec2TypeId },
+          { name: "name", typeId: strTypeId, fieldIndex: 0 },
+          { name: "position", typeId: vec2TypeId, fieldIndex: 1 },
         ]),
       });
     }
     const nativeTypeId = mkTypeId(NativeType.Struct, "NativeObj");
     if (!types.get(nativeTypeId)) {
       types.addStructType("NativeObj", {
-        fields: List.from([{ name: "id", typeId: numTypeId }]),
+        atomId: mkTestAtomId(),
+        fields: List.from([{ name: "id", typeId: numTypeId, fieldIndex: 0 }]),
         fieldGetter: () => undefined,
       });
     }
@@ -322,6 +337,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -362,6 +378,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -401,6 +418,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -443,6 +461,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -463,6 +482,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -483,9 +503,10 @@ describe("property access chains + host calls", () => {
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
       types.addStructType("Vector2", {
+        atomId: mkTestAtomId(),
         fields: List.from([
-          { name: "x", typeId: numTypeId },
-          { name: "y", typeId: numTypeId },
+          { name: "x", typeId: numTypeId, fieldIndex: 0 },
+          { name: "y", typeId: numTypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -493,9 +514,10 @@ describe("property access chains + host calls", () => {
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
+        atomId: mkTestAtomId(),
         fields: List.from([
-          { name: "name", typeId: strTypeId },
-          { name: "position", typeId: vec2TypeId },
+          { name: "name", typeId: strTypeId, fieldIndex: 0 },
+          { name: "position", typeId: vec2TypeId, fieldIndex: 1 },
         ]),
       });
     }
@@ -526,7 +548,7 @@ describe("property access chains + host calls", () => {
     }
 
     if (!fns.get("EngineContext.queryNearby")) {
-      fns.register("EngineContext.queryNearby", false, { exec: () => NIL_VALUE }, emptyCallDef);
+      fns.register(6105, "EngineContext.queryNearby", false, { exec: () => NIL_VALUE }, emptyCallDef);
     }
   });
 
@@ -544,6 +566,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -583,6 +606,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -605,7 +629,7 @@ export default Sensor({
     }
   });
 
-  test("ctx.time compiles to GET_FIELD", () => {
+  test("ctx.time native field read returns the context value at runtime", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -618,6 +642,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -640,7 +665,7 @@ export default Sensor({
     }
   });
 
-  test("ctx.dt compiles to GET_FIELD", () => {
+  test("ctx.dt native field read returns the context value at runtime", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -653,6 +678,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -689,6 +715,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -714,7 +741,7 @@ export default Sensor({
         },
       },
     });
-    const vm = new runtime.VM(prog, customServices, { handles });
+    const vm = new runtime.VM(prog, customServices.runtime, { handles });
     const execCtx = mkCtx({ services: customServices });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), execCtx);
@@ -738,6 +765,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -760,6 +788,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -781,6 +810,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -803,6 +833,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -840,6 +871,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -862,15 +894,16 @@ export default Sensor({
     }
   });
 
-  test("native-backed struct field access uses GET_FIELD", () => {
+  test("native-backed struct field access uses STRUCT_GET_FIELD (id-based, dispatched through the fieldGetter)", () => {
     const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const nativeActorId = mkTypeId(NativeType.Struct, "NativeActor");
     if (!types.get(nativeActorId)) {
       types.addStructType("NativeActor", {
-        fields: List.from([{ name: "health", typeId: numTypeId }]),
-        fieldGetter: (source, fieldName) => {
-          if (fieldName === "health") return mkNumberValue(100);
+        atomId: mkTestAtomId(),
+        fields: List.from([{ name: "health", typeId: numTypeId, fieldIndex: 0 }]),
+        fieldGetter: (source, fieldId) => {
+          if (fieldId === 0) return mkNumberValue(100);
           return undefined;
         },
       });
@@ -891,12 +924,54 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
-    findFunctionContainingOp(result.program, Op.GET_FIELD);
+    findFunctionContainingOp(result.program, Op.STRUCT_GET_FIELD);
+  });
+
+  test("struct field assignment has JavaScript reference semantics (STRUCT_SET_FIELD does not copy)", () => {
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+interface Vec2 { x: number; y: number; }
+interface Holder { v: Vec2; }
+
+export default Sensor({
+  name: "ref-semantics",
+  onExecute(ctx: Context): number {
+    const a: Vec2 = { x: 1, y: 2 };
+    const h: Holder = { v: a };
+    a.x = 9;
+    return h.v.x;
+  },
+});
+`;
+    const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      // h.v aliases `a` (the field write does not copy), so mutating a.x is observable
+      // through h.v.x. Value semantics would instead yield 1.
+      assert.equal((runResult.result as NumberValue).v, 9);
+    }
   });
 
   test("unknown struct field produces compile error (caught by TS checker)", () => {
@@ -913,6 +988,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -937,6 +1013,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -974,6 +1051,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -994,15 +1072,16 @@ describe("struct method calls", () => {
 
     const numListTypeId = mkTypeId(NativeType.List, "NumberList");
     if (!types.get(numListTypeId)) {
-      types.addListType("NumberList", { elementTypeId: numTypeId });
+      types.addListType("NumberList", { atomId: mkTestAtomId(), elementTypeId: numTypeId });
     }
 
     const widgetTypeId = mkTypeId(NativeType.Struct, "Widget");
     if (!types.get(widgetTypeId)) {
       types.addStructType("Widget", {
-        fields: List.from([{ name: "id", typeId: numTypeId }]),
-        fieldGetter: (source, fieldName) => {
-          if (fieldName === "id") return mkNumberValue((source.native as { id: number }).id);
+        atomId: mkTestAtomId(),
+        fields: List.from([{ name: "id", typeId: numTypeId, fieldIndex: 0 }]),
+        fieldGetter: (source, fieldId) => {
+          if (fieldId === 0) return mkNumberValue((source.native as { id: number }).id);
           return undefined;
         },
         methods: List.from([
@@ -1041,6 +1120,7 @@ describe("struct method calls", () => {
 
     if (!fns.get("Widget.getValue")) {
       fns.register(
+        6102,
         "Widget.getValue",
         false,
         {
@@ -1056,11 +1136,12 @@ describe("struct method calls", () => {
     }
 
     if (!fns.get("Widget.reset")) {
-      fns.register("Widget.reset", false, { exec: () => NIL_VALUE }, emptyCallDef);
+      fns.register(6106, "Widget.reset", false, { exec: () => NIL_VALUE }, emptyCallDef);
     }
 
     if (!fns.get("Widget.add")) {
       fns.register(
+        6103,
         "Widget.add",
         false,
         {
@@ -1076,9 +1157,10 @@ describe("struct method calls", () => {
 
     if (!fns.get("Widget.fetchData")) {
       fns.register(
+        6104,
         "Widget.fetchData",
         true,
-        { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, _handleId: number) => {} },
+        { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, _handle: AsyncHandle) => {} },
         emptyCallDef
       );
     }
@@ -1100,6 +1182,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1124,6 +1207,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1147,6 +1231,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1170,6 +1255,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1196,6 +1282,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1238,6 +1325,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1289,13 +1377,14 @@ export default Sensor({
   args: [
     param("w", { type: "Widget" }),
   ],
-  onExecute(ctx: Context, args: { w: Widget }): number {
-    args.w.fetchData("http://example.com");
+  async onExecute(ctx: Context, args: { w: Widget }): Promise<number> {
+    await args.w.fetchData("http://example.com");
     return 0;
   },
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1327,6 +1416,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1357,6 +1447,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1391,6 +1482,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1426,6 +1518,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1460,6 +1553,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1499,6 +1593,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1536,6 +1631,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1574,6 +1670,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1612,6 +1709,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1650,6 +1748,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1686,6 +1785,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1721,11 +1821,12 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.SortRequiresComparatorFn));
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.SortRequiresComparatorFn);
   });
 
   test(".sort() mutates the original array", () => {
@@ -1743,6 +1844,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -1778,7 +1880,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1807,7 +1909,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1839,7 +1941,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1882,7 +1984,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1912,7 +2014,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1942,7 +2044,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1972,7 +2074,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2002,7 +2104,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 

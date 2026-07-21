@@ -1,7 +1,8 @@
 import type { BrainServices } from "../brain/services";
 import { List, type ReadonlyList } from "../platform/list";
+import { CoreFuncId, CoreTypeAtomId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
-import { getRuleVariable, setRuleVariable } from "./context";
+import { getRuleVariable, getWhenResult, setRuleVariable } from "./context";
 import { CoreTypeIds, mkTypeId } from "./core-types";
 import { mkCallDef } from "./function-defs";
 import { NativeType } from "./type-defs";
@@ -23,11 +24,26 @@ export const ContextTypeIds = {
   RuleContext: mkTypeId(NativeType.Struct, ContextTypeNames.RuleContext),
 };
 
+/**
+ * Numeric field ids for the {@link ContextTypeNames.Context} struct. Each value
+ * is the field's durable id and its storage slot; it is the single source for
+ * both the registered `fieldIndex` and the `fieldGetter` dispatch below.
+ */
+enum ContextField {
+  Time = 0,
+  Dt = 1,
+  Tick = 2,
+  Brain = 3,
+  Engine = 4,
+  Rule = 5,
+}
+
 /** Register the built-in context struct types and their host method bindings. */
 export function registerContextTypes(services: BrainServices) {
   const { types, functions } = services.runtime;
 
   const brainContextTypeId = types.addStructType(ContextTypeNames.BrainContext, {
+    atomId: CoreTypeAtomId.BrainContext,
     fields: List.empty(),
     fieldGetter: () => undefined,
     methods: List.from([
@@ -48,11 +64,13 @@ export function registerContextTypes(services: BrainServices) {
   });
 
   const engineContextTypeId = types.addStructType(ContextTypeNames.EngineContext, {
+    atomId: CoreTypeAtomId.EngineContext,
     fields: List.empty(),
     fieldGetter: () => undefined,
   });
 
   const ruleContextTypeId = types.addStructType(ContextTypeNames.RuleContext, {
+    atomId: CoreTypeAtomId.RuleContext,
     fields: List.empty(),
     fieldGetter: () => undefined,
     methods: List.from([
@@ -73,28 +91,36 @@ export function registerContextTypes(services: BrainServices) {
   });
 
   types.addStructType(ContextTypeNames.Context, {
+    atomId: CoreTypeAtomId.Context,
     fields: List.from([
-      { name: "time", typeId: CoreTypeIds.Number },
-      { name: "dt", typeId: CoreTypeIds.Number },
-      { name: "tick", typeId: CoreTypeIds.Number },
-      { name: "brain", typeId: brainContextTypeId },
-      { name: "engine", typeId: engineContextTypeId },
-      { name: "rule", typeId: ruleContextTypeId },
+      { name: "time", typeId: CoreTypeIds.Number, fieldIndex: ContextField.Time },
+      { name: "dt", typeId: CoreTypeIds.Number, fieldIndex: ContextField.Dt },
+      { name: "tick", typeId: CoreTypeIds.Number, fieldIndex: ContextField.Tick },
+      { name: "brain", typeId: brainContextTypeId, fieldIndex: ContextField.Brain },
+      { name: "engine", typeId: engineContextTypeId, fieldIndex: ContextField.Engine },
+      { name: "rule", typeId: ruleContextTypeId, fieldIndex: ContextField.Rule },
     ]),
-    fieldGetter: (source: StructValue, fieldName: string) => {
+    methods: List.from([
+      {
+        name: "getWhenResult",
+        params: List.empty(),
+        returnTypeId: CoreTypeIds.Any,
+      },
+    ]),
+    fieldGetter: (source: StructValue, fieldId: number) => {
       const execCtx = source.native as ExecutionContext;
-      switch (fieldName) {
-        case "time":
+      switch (fieldId) {
+        case ContextField.Time:
           return mkNumberValue(execCtx.time);
-        case "dt":
+        case ContextField.Dt:
           return mkNumberValue(execCtx.dt);
-        case "tick":
+        case ContextField.Tick:
           return mkNumberValue(execCtx.currentTick);
-        case "brain":
+        case ContextField.Brain:
           return mkNativeStructValue(brainContextTypeId, execCtx);
-        case "engine":
+        case ContextField.Engine:
           return mkNativeStructValue(engineContextTypeId, execCtx);
-        case "rule":
+        case ContextField.Rule:
           return mkNativeStructValue(ruleContextTypeId, execCtx);
         default:
           return undefined;
@@ -107,6 +133,7 @@ export function registerContextTypes(services: BrainServices) {
   // Struct method calling convention: the emitter pushes the struct value itself as
   // arg index 0 (the receiver). User-visible arguments start at index 1.
   functions.register(
+    CoreFuncId.BrainContextGetVariable,
     "BrainContext.getVariable",
     false,
     {
@@ -119,6 +146,7 @@ export function registerContextTypes(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.BrainContextSetVariable,
     "BrainContext.setVariable",
     false,
     {
@@ -133,6 +161,7 @@ export function registerContextTypes(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.RuleContextGetVariable,
     "RuleContext.getVariable",
     false,
     {
@@ -145,6 +174,7 @@ export function registerContextTypes(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.RuleContextSetVariable,
     "RuleContext.setVariable",
     false,
     {
@@ -154,6 +184,16 @@ export function registerContextTypes(services: BrainServices) {
         setRuleVariable(ctx, name, value);
         return NIL_VALUE;
       },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    CoreFuncId.ContextGetWhenResult,
+    "Context.getWhenResult",
+    false,
+    {
+      exec: (ctx: ExecutionContext) => getWhenResult(ctx),
     },
     emptyCallDef
   );

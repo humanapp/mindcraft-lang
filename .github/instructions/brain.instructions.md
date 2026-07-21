@@ -24,7 +24,7 @@ Tiles -> Parser (Pratt + grammar) -> AST (Expr) -> Type Inference -> Bytecode Co
 - **Inline sensors** must use an empty call spec -- arguments would create grammar ambiguities with the Pratt parser
 - All operators are implemented as HOST_CALLs
 - Runtime values are tagged unions with `.t: NativeType`; use singletons (`NIL_VALUE`, `TRUE_VALUE`, etc.) and builders (`mkNumberValue`, etc.)
-- **Runtime registration happens BEFORE tile registration.** `registerCoreRuntimeComponents()` runs first; tile defs then look up `fnEntry` from the function registry
+- Runtime registration happens before tile registration: `registerCoreRuntimeComponents()` runs first; tile defs then look up `fnEntry` from the function registry
 - VM runtime details are in `vm.instructions.md` (loaded only for `runtime/` files)
 
 ## Adding New Sensors / Actuators

@@ -103,7 +103,7 @@ To add a new shadcn/ui component:
 ## Documentation System
 
 The documentation sidebar, registry, markdown renderer, and standalone docs page live in
-`packages/docs` (`@mindcraft-lang/docs`). See `docs.instructions.md` for full details.
+`packages/docs` (`@mindcraft-lang/docs`). See `language-docs.instructions.md` for full details.
 
 The brain editor integrates with docs via two optional `BrainEditorConfig` fields:
 

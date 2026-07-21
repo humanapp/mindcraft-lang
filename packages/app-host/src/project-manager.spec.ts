@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import {
+  AppHostErrorCode,
   createProjectCollectionPinVerifier,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_NAME,
+  diffMindcraftJsonToManifest,
   normalizeProjectCollectionPin,
   PROJECT_COLLECTION_NAME_MAX_LENGTH,
   type ProjectCollection,
@@ -12,12 +14,14 @@ import {
   type ProjectCollectionState,
   type ProjectCollectionSummaryChange,
   type ProjectCollectionTabSession,
+  type ProjectFileChange,
   type ProjectFileSnapshot,
   ProjectManager,
   type ProjectManifest,
   type ProjectPersistenceError,
   RELOAD_UNLOCK_REFRESH_INTERVAL_MS,
   RELOAD_UNLOCK_TTL_MS,
+  serializeProjectContentManifest,
   verifyProjectCollectionPin,
 } from "@mindcraft-lang/app-host";
 import { logger } from "@mindcraft-lang/core";
@@ -86,6 +90,38 @@ describe("ProjectManager", () => {
     });
   });
 
+  describe("default extensions", () => {
+    it("seeds the host default extensions into a newly created project's manifest", async () => {
+      const defaults = { "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" };
+      const withDefaults = new ProjectManager(memStore, { defaultExtensions: defaults });
+      try {
+        const manifest = await withDefaults.create("Seeded");
+        assert.deepStrictEqual(manifest.extensions, defaults);
+        const stored = await memStore.getProject(manifest.id);
+        assert.deepStrictEqual(stored?.extensions, defaults);
+      } finally {
+        await withDefaults.close();
+        withDefaults.dispose();
+      }
+    });
+
+    it("creates a project with no extensions when the host designates none", async () => {
+      const manifest = await pm.create("Plain");
+      assert.strictEqual(manifest.extensions, undefined);
+    });
+
+    it("treats an empty default set as no defaults", async () => {
+      const withEmpty = new ProjectManager(memStore, { defaultExtensions: {} });
+      try {
+        const manifest = await withEmpty.create("Empty");
+        assert.strictEqual(manifest.extensions, undefined);
+      } finally {
+        await withEmpty.close();
+        withEmpty.dispose();
+      }
+    });
+  });
+
   describe("open / close", () => {
     it("opens a project by ID", async () => {
       const m = await pm.create("Openable");
@@ -97,7 +133,7 @@ describe("ProjectManager", () => {
     });
 
     it("throws when opening nonexistent project", async () => {
-      await assertRejectsWithCode(() => pm.open("ghost"), "PROJECT_NOT_FOUND");
+      await assertRejectsWithCode(() => pm.open("ghost"), AppHostErrorCode.PROJECT_NOT_FOUND);
     });
 
     it("throws when opening a project from another project collection", async () => {
@@ -105,7 +141,7 @@ describe("ProjectManager", () => {
       const otherCollection = await memStore.createProjectCollection("Other");
       const otherProject = await memStore.createProject(otherCollection.projectCollectionId, "Other Project");
 
-      await assertRejectsWithCode(() => pm.open(otherProject.id), "PROJECT_NOT_IN_ACTIVE_COLLECTION");
+      await assertRejectsWithCode(() => pm.open(otherProject.id), AppHostErrorCode.PROJECT_NOT_IN_ACTIVE_COLLECTION);
     });
 
     it("throws when opening tombstoned projects or projects in tombstoned collections", async () => {
@@ -117,8 +153,8 @@ describe("ProjectManager", () => {
       await memStore.deleteProject(local.id);
       await memStore.deleteProjectCollection(otherCollection.projectCollectionId);
 
-      await assertRejectsWithCode(() => pm.open(local.id), "PROJECT_NOT_FOUND");
-      await assertRejectsWithCode(() => pm.open(otherProject.id), "PROJECT_NOT_FOUND");
+      await assertRejectsWithCode(() => pm.open(local.id), AppHostErrorCode.PROJECT_NOT_FOUND);
+      await assertRejectsWithCode(() => pm.open(otherProject.id), AppHostErrorCode.PROJECT_NOT_FOUND);
     });
 
     it("fires active project listener on open and close", async () => {
@@ -164,7 +200,7 @@ describe("ProjectManager", () => {
               callbackCount++;
             },
           }),
-        "PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB"
+        AppHostErrorCode.PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB
       );
 
       assert.strictEqual(callbackCount, 0);
@@ -191,7 +227,10 @@ describe("ProjectManager", () => {
 
     it("throws when deleting the active project", async () => {
       await pm.create("Active");
-      await assertRejectsWithCode(() => pm.delete(pm.activeProject!.manifest.id), "ACTIVE_PROJECT_DELETE_BLOCKED");
+      await assertRejectsWithCode(
+        () => pm.delete(pm.activeProject!.manifest.id),
+        AppHostErrorCode.ACTIVE_PROJECT_DELETE_BLOCKED
+      );
     });
 
     it("fires project list listener", async () => {
@@ -208,7 +247,7 @@ describe("ProjectManager", () => {
       const otherCollection = await memStore.createProjectCollection("Other");
       const otherProject = await memStore.createProject(otherCollection.projectCollectionId, "Other Project");
 
-      await assertRejectsWithCode(() => pm.delete(otherProject.id), "PROJECT_NOT_IN_ACTIVE_COLLECTION");
+      await assertRejectsWithCode(() => pm.delete(otherProject.id), AppHostErrorCode.PROJECT_NOT_IN_ACTIVE_COLLECTION);
     });
   });
 
@@ -239,7 +278,10 @@ describe("ProjectManager", () => {
       const otherCollection = await memStore.createProjectCollection("Other");
       const otherProject = await memStore.createProject(otherCollection.projectCollectionId, "Other Project");
 
-      await assertRejectsWithCode(() => pm.duplicate(otherProject.id, "Copy"), "PROJECT_NOT_IN_ACTIVE_COLLECTION");
+      await assertRejectsWithCode(
+        () => pm.duplicate(otherProject.id, "Copy"),
+        AppHostErrorCode.PROJECT_NOT_IN_ACTIVE_COLLECTION
+      );
     });
   });
 
@@ -286,7 +328,7 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.copyProjectToCollection(source.id, targetCollection.projectCollectionId, "Copy"),
-        "PROJECT_COLLECTION_LOCKED"
+        AppHostErrorCode.PROJECT_COLLECTION_LOCKED
       );
       assert.deepStrictEqual(await memStore.listProjects(targetCollection.projectCollectionId), []);
 
@@ -296,7 +338,7 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.copyProjectToCollection(source.id, targetCollection.projectCollectionId, "Copy"),
-        "PROJECT_COLLECTION_LOCKED"
+        AppHostErrorCode.PROJECT_COLLECTION_LOCKED
       );
       assert.deepStrictEqual(await memStore.listProjects(targetCollection.projectCollectionId), []);
     });
@@ -306,14 +348,14 @@ describe("ProjectManager", () => {
       const targetCollection = await pm.createProjectCollection("Target");
       await assertRejectsWithCode(
         () => pm.copyProjectToCollection("missing", targetCollection.projectCollectionId, "Copy"),
-        "PROJECT_NOT_FOUND"
+        AppHostErrorCode.PROJECT_NOT_FOUND
       );
 
       const source = await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Source");
       await memStore.deleteProject(source.id);
       await assertRejectsWithCode(
         () => pm.copyProjectToCollection(source.id, targetCollection.projectCollectionId, "Copy"),
-        "PROJECT_NOT_FOUND"
+        AppHostErrorCode.PROJECT_NOT_FOUND
       );
       assert.deepStrictEqual(await memStore.listProjects(targetCollection.projectCollectionId), []);
     });
@@ -325,11 +367,11 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.copyProjectToCollection(source.id, "missing", "Copy"),
-        "PROJECT_COLLECTION_NOT_FOUND"
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
       );
       await assertRejectsWithCode(
         () => pm.copyProjectToCollection(source.id, targetCollection.projectCollectionId, "Copy"),
-        "PROJECT_COLLECTION_NOT_FOUND"
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
       );
       assert.deepStrictEqual(
         (await memStore.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).map((project) => project.id),
@@ -352,7 +394,7 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.copyProjectToCollection(source.id, targetCollection.projectCollectionId, "Copy"),
-        "PROJECT_COLLECTION_NOT_FOUND"
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
       );
       assert.deepStrictEqual(await memStore.listProjects(targetCollection.projectCollectionId), []);
     });
@@ -371,6 +413,31 @@ describe("ProjectManager", () => {
       assert.strictEqual(pm.activeProject?.manifest.description, "A cool project");
     });
 
+    it("applies a mindcraft.json version edit through to the store", async () => {
+      await pm.create("Versioned");
+      const active = pm.activeProject!.manifest;
+      const content = serializeProjectContentManifest({ name: active.name, version: "2.3.4", extensions: {} });
+      const patch = diffMindcraftJsonToManifest(content, active);
+      assert.ok(patch);
+      await pm.updateActive(patch);
+      assert.strictEqual(pm.activeProject?.manifest.version, "2.3.4");
+      const [stored] = await memStore.listProjects(DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(stored.version, "2.3.4");
+    });
+
+    it("does not downgrade the stored version when mindcraft.json omits it", async () => {
+      await pm.create("Versioned");
+      const active = pm.activeProject!.manifest;
+      const originalVersion = active.version;
+      const content = JSON.stringify({ name: active.name, description: active.description });
+      const patch = diffMindcraftJsonToManifest(content, active);
+      if (patch) {
+        await pm.updateActive(patch);
+      }
+      const [stored] = await memStore.listProjects(DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(stored.version, originalVersion);
+    });
+
     it("fires both listeners", async () => {
       await pm.create("X");
       const activeCalls: string[] = [];
@@ -383,7 +450,7 @@ describe("ProjectManager", () => {
     });
 
     it("throws when no active project", async () => {
-      await assertRejectsWithCode(() => pm.updateActive({ name: "Nope" }), "NO_ACTIVE_PROJECT");
+      await assertRejectsWithCode(() => pm.updateActive({ name: "Nope" }), AppHostErrorCode.NO_ACTIVE_PROJECT);
     });
 
     it("recovers active state before rethrowing stale active project write errors", async () => {
@@ -392,7 +459,7 @@ describe("ProjectManager", () => {
       pm.onProjectCollectionStateChange((state) => states.push(state));
 
       await memStore.deleteProject(active.id);
-      await assertRejectsWithCode(() => pm.updateActive({ name: "Renamed" }), "PROJECT_NOT_FOUND");
+      await assertRejectsWithCode(() => pm.updateActive({ name: "Renamed" }), AppHostErrorCode.PROJECT_NOT_FOUND);
 
       assert.notStrictEqual(pm.activeProject?.manifest.id, active.id);
       assert.strictEqual(pm.activeProject?.manifest.name, DEFAULT_PROJECT_NAME);
@@ -413,7 +480,7 @@ describe("ProjectManager", () => {
     });
 
     it("throws on save when no active project", async () => {
-      await assertRejectsWithCode(() => pm.saveAppData("key1", "value1"), "NO_ACTIVE_PROJECT");
+      await assertRejectsWithCode(() => pm.saveAppData("key1", "value1"), AppHostErrorCode.NO_ACTIVE_PROJECT);
     });
 
     it("recovers active state before rethrowing stale active project app data write errors", async () => {
@@ -422,7 +489,7 @@ describe("ProjectManager", () => {
       pm.onProjectCollectionStateChange((state) => states.push(state));
 
       await memStore.deleteProject(active.id);
-      await assertRejectsWithCode(() => pm.saveAppData("key1", "value1"), "PROJECT_NOT_FOUND");
+      await assertRejectsWithCode(() => pm.saveAppData("key1", "value1"), AppHostErrorCode.PROJECT_NOT_FOUND);
 
       assert.notStrictEqual(pm.activeProject?.manifest.id, active.id);
       assert.strictEqual(pm.activeProject?.manifest.name, DEFAULT_PROJECT_NAME);
@@ -530,6 +597,75 @@ describe("ProjectManager", () => {
       await restored.close();
       first.dispose();
       restored.dispose();
+    });
+
+    it("autosaves local-only edits through the change-granular store write path", async () => {
+      const countingStore = new CountingFileWriteStore();
+      const manager = new ProjectManager(countingStore, { autoSaveDelayMs: 0 });
+      try {
+        await manager.create("Change Granular");
+        countingStore.saveProjectFilesCount = 0;
+        countingStore.appliedChangeBatches.length = 0;
+        manager.activeProject?.filesystem.applyLocalChange({
+          action: "write",
+          path: "src/a.ts",
+          content: "a",
+          newEtag: "etag-a",
+        });
+        manager.activeProject?.filesystem.applyLocalChange({
+          action: "write",
+          path: "src/b.ts",
+          content: "b",
+          newEtag: "etag-b",
+        });
+        await waitForTimers();
+
+        assert.strictEqual(countingStore.saveProjectFilesCount, 0);
+        assert.strictEqual(countingStore.appliedChangeBatches.length, 1);
+        assert.deepStrictEqual(
+          countingStore.appliedChangeBatches[0].map((change) => (change.action === "write" ? change.path : "")),
+          ["src/a.ts", "src/b.ts"]
+        );
+        const saved = await countingStore.loadProjectFiles(manager.activeProject!.manifest.id);
+        const entry = saved?.get("src/b.ts");
+        assert.ok(entry && entry.kind === "file");
+        assert.strictEqual(entry.content, "b");
+      } finally {
+        await manager.close();
+        manager.dispose();
+      }
+    });
+
+    it("autosaves with a whole-snapshot store write when a remote change arrived", async () => {
+      const countingStore = new CountingFileWriteStore();
+      const manager = new ProjectManager(countingStore, { autoSaveDelayMs: 0 });
+      try {
+        await manager.create("Remote Fallback");
+        countingStore.saveProjectFilesCount = 0;
+        countingStore.appliedChangeBatches.length = 0;
+        manager.activeProject?.filesystem.applyLocalChange({
+          action: "write",
+          path: "src/local.ts",
+          content: "local",
+          newEtag: "etag-local",
+        });
+        manager.activeProject?.filesystem.applyRemoteChange({
+          action: "write",
+          path: "src/remote.ts",
+          content: "remote",
+          newEtag: "etag-remote",
+        });
+        await waitForTimers();
+
+        assert.strictEqual(countingStore.saveProjectFilesCount, 1);
+        assert.strictEqual(countingStore.appliedChangeBatches.length, 0);
+        const saved = await countingStore.loadProjectFiles(manager.activeProject!.manifest.id);
+        assert.ok(saved?.has("src/local.ts"));
+        assert.ok(saved?.has("src/remote.ts"));
+      } finally {
+        await manager.close();
+        manager.dispose();
+      }
     });
 
     it("emits onProjectPersistenceError and logs non-tombstone autosave failures", async () => {
@@ -838,7 +974,10 @@ describe("ProjectManager", () => {
         [otherProject.id]
       );
       assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
-      await assertRejectsWithCode(() => pm.listProjectsForCollection("missing"), "PROJECT_COLLECTION_NOT_FOUND");
+      await assertRejectsWithCode(
+        () => pm.listProjectsForCollection("missing"),
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
+      );
     });
 
     it("watches project lists for non-active collections and refreshes after tombstone broadcasts", async () => {
@@ -964,7 +1103,7 @@ describe("ProjectManager", () => {
       try {
         await assertRejectsWithCode(
           () => createProjectCollectionPinVerifier("1234"),
-          "PROJECT_COLLECTION_PIN_CAPABILITY_UNAVAILABLE"
+          AppHostErrorCode.PROJECT_COLLECTION_PIN_CAPABILITY_UNAVAILABLE
         );
       } finally {
         Object.defineProperty(globalThis, "crypto", {
@@ -1018,7 +1157,7 @@ describe("ProjectManager", () => {
       assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, collection.projectCollectionId);
       assert.strictEqual(memStore.getProjectSession()?.activeProjectId, undefined);
       assert.strictEqual((await memStore.loadProjectFiles(source.id)) !== undefined, true);
-      await assertRejectsWithCode(() => pm.listProjects(), "PROJECT_COLLECTION_LOCKED");
+      await assertRejectsWithCode(() => pm.listProjects(), AppHostErrorCode.PROJECT_COLLECTION_LOCKED);
     });
 
     it("rejects open, create, delete, and import-target actions while protected collections are locked", async () => {
@@ -1030,19 +1169,19 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.switchProjectCollectionAndOpenProject(collection.projectCollectionId, project.id),
-        "PROJECT_COLLECTION_LOCKED"
+        AppHostErrorCode.PROJECT_COLLECTION_LOCKED
       );
       await assertRejectsWithCode(
         () => pm.switchProjectCollectionAndCreateProject(collection.projectCollectionId, "Nope"),
-        "PROJECT_COLLECTION_LOCKED"
+        AppHostErrorCode.PROJECT_COLLECTION_LOCKED
       );
       await assertRejectsWithCode(
         () => pm.listProjectsForCollection(collection.projectCollectionId),
-        "PROJECT_COLLECTION_LOCKED"
+        AppHostErrorCode.PROJECT_COLLECTION_LOCKED
       );
       await assertRejectsWithCode(
         () => pm.deleteProjectCollection(collection.projectCollectionId),
-        "PROJECT_COLLECTION_LOCKED"
+        AppHostErrorCode.PROJECT_COLLECTION_LOCKED
       );
 
       assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
@@ -1058,11 +1197,11 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.setProjectCollectionPin(collection.projectCollectionId, "5678"),
-        "PROJECT_COLLECTION_LOCKED"
+        AppHostErrorCode.PROJECT_COLLECTION_LOCKED
       );
       await assertRejectsWithCode(
         () => pm.clearProjectCollectionPin(collection.projectCollectionId),
-        "PROJECT_COLLECTION_LOCKED"
+        AppHostErrorCode.PROJECT_COLLECTION_LOCKED
       );
 
       await pm.unlockProjectCollection(collection.projectCollectionId, "1234");
@@ -1080,7 +1219,7 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.renameProjectCollection(collection.projectCollectionId, "Renamed"),
-        "PROJECT_COLLECTION_LOCKED"
+        AppHostErrorCode.PROJECT_COLLECTION_LOCKED
       );
       assert.strictEqual((await memStore.getProjectCollection(collection.projectCollectionId))?.name, "Protected");
 
@@ -1444,14 +1583,14 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.unlockProjectCollection(collection.projectCollectionId, "9999"),
-        "PROJECT_COLLECTION_PIN_INVALID"
+        AppHostErrorCode.PROJECT_COLLECTION_PIN_INVALID
       );
       assert.strictEqual(pm.isProjectCollectionUnlocked(collection.projectCollectionId), false);
 
       await memStore.deleteProjectCollection(collection.projectCollectionId);
       await assertRejectsWithCode(
         () => pm.unlockProjectCollection(collection.projectCollectionId, "1234"),
-        "PROJECT_COLLECTION_NOT_FOUND"
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
       );
       assert.strictEqual(pm.isProjectCollectionUnlocked(collection.projectCollectionId), false);
     });
@@ -1486,7 +1625,7 @@ describe("ProjectManager", () => {
       try {
         await assertRejectsWithCode(
           () => pm.unlockProjectCollection(collection.projectCollectionId, "1234"),
-          "PROJECT_COLLECTION_NOT_FOUND"
+          AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
         );
         assert.strictEqual(deriveBitsCalled, true);
         assert.strictEqual(pm.isProjectCollectionUnlocked(collection.projectCollectionId), false);
@@ -1518,15 +1657,21 @@ describe("ProjectManager", () => {
       const collection = await pm.createProjectCollection("Valid");
       const tooLong = "x".repeat(PROJECT_COLLECTION_NAME_MAX_LENGTH + 1);
 
-      await assertRejectsWithCode(() => pm.createProjectCollection("   "), "INVALID_PROJECT_COLLECTION_NAME");
-      await assertRejectsWithCode(() => pm.createProjectCollection(tooLong), "INVALID_PROJECT_COLLECTION_NAME");
+      await assertRejectsWithCode(
+        () => pm.createProjectCollection("   "),
+        AppHostErrorCode.INVALID_PROJECT_COLLECTION_NAME
+      );
+      await assertRejectsWithCode(
+        () => pm.createProjectCollection(tooLong),
+        AppHostErrorCode.INVALID_PROJECT_COLLECTION_NAME
+      );
       await assertRejectsWithCode(
         () => pm.renameProjectCollection(collection.projectCollectionId, ""),
-        "INVALID_PROJECT_COLLECTION_NAME"
+        AppHostErrorCode.INVALID_PROJECT_COLLECTION_NAME
       );
       await assertRejectsWithCode(
         () => pm.renameProjectCollection(collection.projectCollectionId, tooLong),
-        "INVALID_PROJECT_COLLECTION_NAME"
+        AppHostErrorCode.INVALID_PROJECT_COLLECTION_NAME
       );
       assert.strictEqual(
         (await pm.listProjectCollections()).find(
@@ -1612,7 +1757,7 @@ describe("ProjectManager", () => {
       const tabB = new ProjectManager(memStore.cloneForNewTab(), { lock });
       const active = await pm.create("Locked");
 
-      await assertRejectsWithCode(() => tabB.open(active.id), "PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB");
+      await assertRejectsWithCode(() => tabB.open(active.id), AppHostErrorCode.PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB);
 
       await tabB.close();
       tabB.dispose();
@@ -1704,7 +1849,7 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.switchProjectCollectionAndOpenProject(targetCollection.projectCollectionId, otherProject.id),
-        "PROJECT_NOT_IN_ACTIVE_COLLECTION"
+        AppHostErrorCode.PROJECT_NOT_IN_ACTIVE_COLLECTION
       );
 
       assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
@@ -1716,7 +1861,7 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.switchProjectCollectionAndCreateProject("missing", "Created"),
-        "PROJECT_COLLECTION_NOT_FOUND"
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
       );
 
       assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
@@ -1737,7 +1882,7 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.switchProjectCollectionAndCreateProject(targetCollection.projectCollectionId, "Created"),
-        "PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB"
+        AppHostErrorCode.PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB
       );
 
       assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
@@ -1769,7 +1914,7 @@ describe("ProjectManager", () => {
       assert.strictEqual(pm.activeProject?.manifest.id, active.id);
       assert.deepStrictEqual(await pm.listProjectsForCollection(targetCollection.projectCollectionId), []);
       const tabB = new ProjectManager(failingStore.cloneForNewTab(), { lock });
-      await assertRejectsWithCode(() => tabB.open(active.id), "PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB");
+      await assertRejectsWithCode(() => tabB.open(active.id), AppHostErrorCode.PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB);
       tabB.dispose();
     });
 
@@ -1806,10 +1951,13 @@ describe("ProjectManager", () => {
       const targetCollection = await pm.createProjectCollection("Gone");
       await memStore.deleteProjectCollection(targetCollection.projectCollectionId);
 
-      await assertRejectsWithCode(() => pm.switchProjectCollection("missing"), "PROJECT_COLLECTION_NOT_FOUND");
+      await assertRejectsWithCode(
+        () => pm.switchProjectCollection("missing"),
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
+      );
       await assertRejectsWithCode(
         () => pm.switchProjectCollection(targetCollection.projectCollectionId),
-        "PROJECT_COLLECTION_NOT_FOUND"
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
       );
       assert.strictEqual(pm.activeProjectCollection?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
     });
@@ -1821,11 +1969,11 @@ describe("ProjectManager", () => {
 
       await assertRejectsWithCode(
         () => pm.deleteProjectCollection(targetCollection.projectCollectionId),
-        "ACTIVE_PROJECT_COLLECTION_DELETE_BLOCKED"
+        AppHostErrorCode.ACTIVE_PROJECT_COLLECTION_DELETE_BLOCKED
       );
       await assertRejectsWithCode(
         () => pm.deleteProjectCollection(DEFAULT_PROJECT_COLLECTION_ID),
-        "DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED"
+        AppHostErrorCode.DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED
       );
     });
 
@@ -2043,6 +2191,29 @@ class FailingSaveProjectStore extends MemoryProjectStore {
       throw new Error("autosave failed");
     }
     await super.saveProjectFiles(id, snapshot);
+  }
+}
+
+class CountingFileWriteStore extends MemoryProjectStore {
+  saveProjectFilesCount = 0;
+  appliedChangeBatches: ProjectFileChange[][] = [];
+  private inChangeApply = false;
+
+  override async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
+    if (!this.inChangeApply) {
+      this.saveProjectFilesCount += 1;
+    }
+    await super.saveProjectFiles(id, snapshot);
+  }
+
+  override async applyProjectFileChanges(id: string, changes: readonly ProjectFileChange[]): Promise<void> {
+    this.appliedChangeBatches.push([...changes]);
+    this.inChangeApply = true;
+    try {
+      await super.applyProjectFileChanges(id, changes);
+    } finally {
+      this.inChangeApply = false;
+    }
   }
 }
 

@@ -54,6 +54,15 @@ function filterSnapshot(
   return filtered;
 }
 
+/**
+ * Apply a single {@link ProjectFileChange} to a snapshot map in place. A
+ * `write` creates any missing parent directories; `delete` and `rmdir` remove
+ * the path and its descendants; `import` replaces the whole snapshot.
+ */
+export function applyProjectFileChangeToSnapshot(snapshot: ProjectFileSnapshot, change: ProjectFileChange): void {
+  applyChange(snapshot, change);
+}
+
 function applyChange(snapshot: ProjectFileSnapshot, change: ProjectFileChange): void {
   switch (change.action) {
     case "write":

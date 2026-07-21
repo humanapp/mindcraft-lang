@@ -1,5 +1,5 @@
 import type { ProjectCollection } from "./project-collection.js";
-import type { ProjectFileSnapshot } from "./project-file-snapshot.js";
+import type { ProjectFileChange, ProjectFileSnapshot } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
 
 /** Tab-scoped project collection and project restore state. */
@@ -44,10 +44,15 @@ export interface ProjectStore {
   createProject(projectCollectionId: string, name: string): Promise<ProjectManifest>;
   /** Tombstone the project manifest while preserving project files and app data. */
   deleteProject(id: string): Promise<void>;
-  /** Patch the mutable fields of a project's manifest. */
+  /**
+   * Patch the mutable fields of a project's manifest. `version` is the
+   * project's own content semver.
+   */
   updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
+    updates: Partial<
+      Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions" | "targets">
+    >
   ): Promise<void>;
   /** Create a copy of `id` (project files and app data) under `newName`. */
   duplicateProject(id: string, newName: string): Promise<ProjectManifest>;
@@ -60,8 +65,19 @@ export interface ProjectStore {
 
   /** Load the persisted project file snapshot for `id`, or `undefined` if none. */
   loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined>;
-  /** Persist `snapshot` as the project file contents of `id`. */
+  /**
+   * Persist `snapshot` as the project file contents of `id`. The
+   * `mindcraft.json` entry is not persisted; that file is derived from the
+   * project manifest when the project is opened.
+   */
   saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void>;
+  /**
+   * Apply an ordered batch of changes to the stored project files of `id`.
+   * Equivalent to loading the stored snapshot, applying each change in order,
+   * and saving the result. Changes to the `mindcraft.json` entry are not
+   * persisted; that file is derived from the project manifest.
+   */
+  applyProjectFileChanges(id: string, changes: readonly ProjectFileChange[]): Promise<void>;
 
   /** Load a per-project app-data value by key. */
   loadAppData(id: string, key: string): Promise<string | undefined>;

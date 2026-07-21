@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2020"],
+    "module": "ES2020",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["**/*.ts"],
+  "files": [
+    "../../../packages/core/lib/mindcraft.core.d.ts",
+    "../lib/mindcraft.sim.d.ts"
+  ]
+}

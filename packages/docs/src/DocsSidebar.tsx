@@ -1,12 +1,15 @@
 import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
+import { groupTilesByLibrary, type LibraryTileGroups } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Printer, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DocMarkdown } from "./DocMarkdown";
+import { DocsEntryLink } from "./DocsEntryLink";
 import { DocsPrintView } from "./DocsPrintView";
 import type { DocsConceptEntry, DocsPatternEntry, DocsTileEntry } from "./DocsRegistry";
 import { type DocTab, useDocsResolveTileVisual, useDocsSidebar } from "./DocsSidebarContext";
+import { DocsTileArgsSection } from "./DocsTileArgs";
 import { useDocsPrint } from "./useDocsPrint";
 
 // ---------------------------------------------------------------------------
@@ -137,6 +140,15 @@ function getTileIconUrl(
   return getTileVisual(tileCatalog, resolveTileVisual, tileId)?.iconUrl;
 }
 
+/**
+ * True for tile kinds documented in the arg-tile section of their placing
+ * action's doc page. The browse list omits entries of these kinds; search
+ * still surfaces them.
+ */
+function isActionArgTileKind(kind: IBrainTileDef["kind"] | undefined): boolean {
+  return kind === "parameter" || kind === "modifier";
+}
+
 // ---------------------------------------------------------------------------
 // Shared sub-components
 // ---------------------------------------------------------------------------
@@ -149,16 +161,16 @@ interface SearchBarProps {
 
 function SearchBar({ value, onChange, inputRef }: SearchBarProps) {
   return (
-    <div className="px-3 py-2 border-b border-slate-700 shrink-0">
-      <div className="flex items-center gap-2 rounded-md bg-slate-800 border border-slate-600 px-2.5 py-1.5">
-        <Search className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
+    <div className="px-3 py-2 border-b border-border shrink-0">
+      <div className="flex items-center gap-2 rounded-md bg-muted border border-border px-2.5 py-1.5">
+        <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
         <input
           ref={inputRef}
           type="search"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Search docs..."
-          className="flex-1 bg-transparent text-sm text-slate-300 placeholder:text-slate-500 outline-none"
+          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
           aria-label="Search documentation"
         />
       </div>
@@ -196,7 +208,7 @@ function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarPro
 
   return (
     <div
-      className="flex border-b border-slate-700 shrink-0"
+      className="flex border-b border-border shrink-0"
       role="tablist"
       aria-label="Documentation sections"
       onKeyDown={handleKeyDown}
@@ -214,8 +226,8 @@ function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarPro
             onClick={() => setTab(tab.id)}
             className={`flex-1 font-medium transition-colors border-b-2 ${itemClassName} ${
               isActive
-                ? "text-slate-100 border-slate-400"
-                : "text-slate-500 border-transparent hover:text-slate-300 hover:border-slate-600"
+                ? "text-foreground border-foreground"
+                : "text-muted-foreground border-transparent hover:text-foreground hover:border-border"
             }`}
           >
             {tab.label}
@@ -264,7 +276,7 @@ function CategorySection({ category, children, defaultOpen = true }: CategorySec
         type="button"
         onClick={() => setIsOpen((o) => !o)}
         aria-expanded={isOpen}
-        className="flex items-center gap-1.5 w-full px-1 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider hover:text-slate-300 transition-colors"
+        className="flex items-center gap-1.5 w-full px-1 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
       >
         <ChevronRight className={`w-3 h-3 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden="true" />
         {category}
@@ -288,29 +300,19 @@ function TileCard({ entry, onClick }: TileCardProps) {
   const resolveTileVisual = useDocsResolveTileVisual();
   const label = getTileLabel(tileCatalog, resolveTileVisual, entry.tileId);
   const iconUrl = getTileIconUrl(tileCatalog, resolveTileVisual, entry.tileId);
-  const href = `/docs/tiles/${encodeURIComponent(entry.tileId)}`;
 
   return (
-    <a
-      href={href}
-      onClick={(e) => {
-        if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-slate-800/50 hover:bg-slate-700/60 border border-slate-700/50 hover:border-slate-600 transition-colors text-left"
-    >
+    <DocsEntryLink href={`/docs/tiles/${encodeURIComponent(entry.tileId)}`} onOpen={onClick}>
       {iconUrl ? (
         <img src={iconUrl} alt="" className="w-6 h-6 shrink-0" aria-hidden="true" />
       ) : (
-        <div className="w-6 h-6 rounded bg-slate-600 opacity-40 shrink-0" aria-hidden="true" />
+        <div className="w-6 h-6 rounded bg-muted opacity-40 shrink-0" aria-hidden="true" />
       )}
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-slate-200 truncate">{label}</div>
+        <div className="text-sm font-medium text-foreground truncate">{label}</div>
       </div>
-      <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
-    </a>
+      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+    </DocsEntryLink>
   );
 }
 
@@ -320,24 +322,14 @@ interface PatternCardProps {
 }
 
 function PatternCard({ entry, onClick }: PatternCardProps) {
-  const href = `/docs/patterns/${encodeURIComponent(entry.id)}`;
   return (
-    <a
-      href={href}
-      onClick={(e) => {
-        if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-slate-800/50 hover:bg-slate-700/60 border border-slate-700/50 hover:border-slate-600 transition-colors text-left"
-    >
+    <DocsEntryLink href={`/docs/patterns/${encodeURIComponent(entry.id)}`} onOpen={onClick}>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-slate-200 truncate">{entry.title}</div>
-        <div className="text-xs text-slate-500 truncate">{entry.tags.join(", ")}</div>
+        <div className="text-sm font-medium text-foreground truncate">{entry.title}</div>
+        <div className="text-xs text-muted-foreground truncate">{entry.tags.join(", ")}</div>
       </div>
-      <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
-    </a>
+      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+    </DocsEntryLink>
   );
 }
 
@@ -347,24 +339,14 @@ interface ConceptCardProps {
 }
 
 function ConceptCard({ entry, onClick }: ConceptCardProps) {
-  const href = `/docs/concepts/${encodeURIComponent(entry.id)}`;
   return (
-    <a
-      href={href}
-      onClick={(e) => {
-        if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-slate-800/50 hover:bg-slate-700/60 border border-slate-700/50 hover:border-slate-600 transition-colors text-left"
-    >
+    <DocsEntryLink href={`/docs/concepts/${encodeURIComponent(entry.id)}`} onOpen={onClick}>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-slate-200 truncate">{entry.title}</div>
-        <div className="text-xs text-slate-500 truncate">{entry.tags.join(", ")}</div>
+        <div className="text-sm font-medium text-foreground truncate">{entry.title}</div>
+        <div className="text-xs text-muted-foreground truncate">{entry.tags.join(", ")}</div>
       </div>
-      <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
-    </a>
+      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+    </DocsEntryLink>
   );
 }
 
@@ -381,7 +363,8 @@ export interface DocsPanelContentProps {
 
 /** Tab bar plus searchable list/detail content shared by the desktop and mobile sidebars. */
 export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", searchRef }: DocsPanelContentProps) {
-  const { activeTab, setTab, registry, navKey, navTab, navigateToEntry, navigateBack, tileCatalog } = useDocsSidebar();
+  const { activeTab, setTab, registry, navKey, navTab, navigateToEntry, navigateBack, tileCatalog, libraries } =
+    useDocsSidebar();
   const resolveTileVisual = useDocsResolveTileVisual();
   const [search, setSearch] = useState("");
 
@@ -407,7 +390,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
       const tileDef = tileCatalog?.get(t.tileId);
       return !tileDef?.hidden && !tileDef?.deprecated;
     });
-    if (!search) return tiles;
+    if (!search) return tiles.filter((t) => !isActionArgTileKind(tileCatalog?.get(t.tileId)?.kind));
     return tiles.filter((t) =>
       matchesSearch(
         search,
@@ -432,7 +415,9 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
     return concepts.filter((c) => matchesSearch(search, c.title, c.tags, c.content));
   }, [registry, search]);
 
-  // Group tiles by category, sorted by the canonical tile picker section order.
+  // Group tiles by category, sorted by the canonical tile picker section
+  // order, then subgroup each category by source library (unattributed
+  // entries first, one cluster per library) to mirror the tile picker.
   const tilesByCategory = useMemo(() => {
     const groups = new Map<string, DocsTileEntry[]>();
     for (const tile of filteredTiles) {
@@ -444,17 +429,19 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
       }
     }
     // Reorder groups to match the tile picker's section order.
-    const ordered = new Map<string, DocsTileEntry[]>();
+    const ordered = new Map<string, LibraryTileGroups<DocsTileEntry>>();
+    const subgroup = (entries: DocsTileEntry[]) =>
+      groupTilesByLibrary(entries, (entry) => tileCatalog?.get(entry.tileId), libraries);
     for (const cat of TILES_CATEGORY_ORDER) {
       const entries = groups.get(cat);
-      if (entries) ordered.set(cat, entries);
+      if (entries) ordered.set(cat, subgroup(entries));
     }
     // Append remaining categories not covered by the order list.
     for (const [cat, entries] of groups) {
-      if (!ordered.has(cat)) ordered.set(cat, entries);
+      if (!ordered.has(cat)) ordered.set(cat, subgroup(entries));
     }
     return ordered;
-  }, [filteredTiles]);
+  }, [filteredTiles, tileCatalog, libraries]);
 
   // Group patterns by category
   const patternsByCategory = useMemo(() => {
@@ -489,11 +476,11 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
   if (navKey && detailContent) {
     return (
       <>
-        <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-700 shrink-0">
+        <div className="flex items-center gap-1 px-3 py-2 border-b border-border shrink-0">
           <button
             type="button"
             onClick={navigateBack}
-            className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors text-sm"
+            className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors text-sm"
             aria-label="Back to list"
           >
             <ChevronLeft className="w-4 h-4" aria-hidden="true" />
@@ -505,6 +492,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
           onWheel={(e) => e.nativeEvent.stopPropagation()}
         >
           <DocMarkdown>{detailContent}</DocMarkdown>
+          {navTab === "tiles" && <DocsTileArgsSection tileId={navKey} />}
         </article>
       </>
     );
@@ -515,11 +503,11 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
     const tileLabel = getTileLabel(tileCatalog, resolveTileVisual, navKey);
     return (
       <>
-        <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-700 shrink-0">
+        <div className="flex items-center gap-1 px-3 py-2 border-b border-border shrink-0">
           <button
             type="button"
             onClick={navigateBack}
-            className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors text-sm"
+            className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors text-sm"
             aria-label="Back to list"
           >
             <ChevronLeft className="w-4 h-4" aria-hidden="true" />
@@ -528,11 +516,11 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         </div>
         <div className={`flex-1 min-h-0 overflow-y-auto ${scrollClassName}`}>
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center mb-3">
-              <BookOpen className="w-5 h-5 text-slate-500" aria-hidden="true" />
+            <div className="w-12 h-12 rounded-full bg-muted border border-border flex items-center justify-center mb-3">
+              <BookOpen className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
             </div>
-            <p className="text-sm font-medium text-slate-300 mb-1">No documentation available</p>
-            <p className="text-xs text-slate-500 max-w-48">
+            <p className="text-sm font-medium text-foreground mb-1">No documentation available</p>
+            <p className="text-xs text-muted-foreground max-w-48">
               {tileLabel ? `There is no doc page for "${tileLabel}" yet.` : "There is no doc page for this tile yet."}
             </p>
           </div>
@@ -565,12 +553,20 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         {activeTab === "tiles" && (
           <>
             {filteredTiles.length === 0 && (
-              <p className="text-sm text-slate-500 text-center py-6">No tiles match your search.</p>
+              <p className="text-sm text-muted-foreground text-center py-6">No tiles match your search.</p>
             )}
-            {Array.from(tilesByCategory.entries()).map(([category, tiles]) => (
+            {Array.from(tilesByCategory.entries()).map(([category, groups]) => (
               <CategorySection key={category} category={category}>
-                {tiles.map((tile) => (
+                {groups.unattributed.map((tile) => (
                   <TileCard key={tile.tileId} entry={tile} onClick={() => openDetail(tile.tileId)} />
+                ))}
+                {groups.clusters.map((cluster) => (
+                  <div key={cluster.library.coordinate} className="space-y-1">
+                    <div className="px-1 pt-1.5 text-xs font-medium text-muted-foreground">{cluster.library.name}</div>
+                    {cluster.items.map((tile) => (
+                      <TileCard key={tile.tileId} entry={tile} onClick={() => openDetail(tile.tileId)} />
+                    ))}
+                  </div>
                 ))}
               </CategorySection>
             ))}
@@ -580,7 +576,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         {activeTab === "patterns" && (
           <>
             {filteredPatterns.length === 0 && (
-              <p className="text-sm text-slate-500 text-center py-6">No patterns match your search.</p>
+              <p className="text-sm text-muted-foreground text-center py-6">No patterns match your search.</p>
             )}
             {Array.from(patternsByCategory.entries()).map(([category, patterns]) => (
               <CategorySection key={category} category={category}>
@@ -595,7 +591,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         {activeTab === "concepts" && (
           <>
             {filteredConcepts.length === 0 && (
-              <p className="text-sm text-slate-500 text-center py-6">No concepts match your search.</p>
+              <p className="text-sm text-muted-foreground text-center py-6">No concepts match your search.</p>
             )}
             <div className="space-y-1">
               {filteredConcepts.map((concept) => (
@@ -614,8 +610,8 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
 // ---------------------------------------------------------------------------
 
 function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }) {
-  const { close, activeTab, navKey, navTab, registry } = useDocsSidebar();
-  const { printContent, triggerPrint, getPrintRoot } = useDocsPrint();
+  const { close, activeTab, navKey, navTab, registry, showDocsPageLinks, printTransport } = useDocsSidebar();
+  const { printContent, triggerPrint, getPrintRoot } = useDocsPrint(printTransport);
 
   // Resolve the current detail content for the print button
   const detailContent = useMemo(() => {
@@ -637,27 +633,29 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-700 shrink-0">
-        <div className="flex items-center gap-2 text-slate-200">
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-border shrink-0">
+        <div className="flex items-center gap-2 text-foreground">
           <BookOpen className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-semibold tracking-tight">Docs</span>
         </div>
         <div className="flex items-center gap-1">
-          <a
-            href={docsPageUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
-            aria-label="Open in docs page"
-            title="Open in docs page"
-          >
-            <ExternalLink className="w-4 h-4" aria-hidden="true" />
-          </a>
+          {showDocsPageLinks && (
+            <a
+              href={docsPageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              aria-label="Open in docs page"
+              title="Open in docs page"
+            >
+              <ExternalLink className="w-4 h-4" aria-hidden="true" />
+            </a>
+          )}
           {canPrint && (
             <button
               type="button"
               onClick={() => triggerPrint(detailContent)}
-              className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+              className="flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               aria-label="Print this page"
               title="Print this page"
             >
@@ -667,7 +665,7 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
           <button
             type="button"
             onClick={close}
-            className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            className="flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             aria-label="Close docs"
           >
             <X className="w-4 h-4" aria-hidden="true" />
@@ -688,8 +686,8 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
 // ---------------------------------------------------------------------------
 
 function MobilePanel() {
-  const { close, navKey, navTab, registry } = useDocsSidebar();
-  const { printContent, triggerPrint, getPrintRoot } = useDocsPrint();
+  const { close, navKey, navTab, registry, printTransport } = useDocsSidebar();
+  const { printContent, triggerPrint, getPrintRoot } = useDocsPrint(printTransport);
 
   const detailContent = useMemo(() => {
     if (!navKey || !navTab) return null;
@@ -706,19 +704,19 @@ function MobilePanel() {
       role="dialog"
       aria-modal="true"
       aria-label="Documentation"
-      className="fixed inset-0 z-60 pointer-events-auto bg-slate-900 flex flex-col"
+      className="fixed inset-0 z-60 pointer-events-auto bg-background flex flex-col"
     >
       {/* Header with back button */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-slate-700 shrink-0">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border shrink-0">
         <button
           type="button"
           onClick={close}
-          className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors text-sm"
+          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors text-sm"
         >
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           Back
         </button>
-        <div className="flex-1 flex items-center gap-2 text-slate-200 ml-2">
+        <div className="flex-1 flex items-center gap-2 text-foreground ml-2">
           <BookOpen className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-semibold tracking-tight">Docs</span>
         </div>
@@ -726,7 +724,7 @@ function MobilePanel() {
           <button
             type="button"
             onClick={() => triggerPrint(detailContent)}
-            className="flex items-center justify-center w-7 h-7 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            className="flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             aria-label="Print this page"
             title="Print this page"
           >
@@ -840,7 +838,7 @@ export function DocsSidebar() {
     <aside
       ref={asideRef}
       id="docs-sidebar"
-      className="fixed right-0 inset-y-0 z-60 pointer-events-auto flex flex-col bg-slate-900 border-l border-slate-700 transition-transform duration-300 ease-in-out"
+      className="fixed right-0 inset-y-0 z-60 pointer-events-auto flex flex-col bg-background border-l border-border transition-transform duration-300 ease-in-out"
       style={{
         width: `${widthPct}%`,
         transform: isOpen ? "translateX(0)" : "translateX(100%)",
@@ -871,10 +869,10 @@ export function DocsSidebar() {
         onKeyDown={handleSeparatorKeyDown}
       >
         {/* Visual affordance: thin line + grip dots, highlighted on hover/focus */}
-        <div className="w-px h-full bg-slate-700 group-hover:bg-slate-500 group-focus-visible:bg-blue-500 transition-colors" />
+        <div className="w-px h-full bg-border group-hover:bg-muted-foreground group-focus-visible:bg-primary transition-colors" />
         <div className="absolute flex flex-col items-center gap-0.5 pointer-events-none">
           <GripVertical
-            className="w-3 h-3 text-slate-600 group-hover:text-slate-400 group-focus-visible:text-blue-400 transition-colors"
+            className="w-3 h-3 text-muted-foreground group-hover:text-foreground group-focus-visible:text-primary transition-colors"
             aria-hidden="true"
           />
         </div>

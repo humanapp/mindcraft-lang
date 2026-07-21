@@ -10,7 +10,7 @@ export function Toaster() {
       position="bottom-center"
       theme="dark"
       toastOptions={{
-        className: "bg-slate-800 text-slate-200 border-slate-700 text-sm",
+        className: "bg-popover text-popover-foreground border-border text-sm",
       }}
     />
   );

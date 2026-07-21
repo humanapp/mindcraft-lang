@@ -1,5 +1,11 @@
 import { List } from "@mindcraft-lang/core";
-import { BrainDef, type BrainPageDef, brainJsonFromPlain } from "@mindcraft-lang/core/brain/model";
+import {
+  BrainDef,
+  type BrainPageDef,
+  brainJsonFromPlain,
+  deserializePersistedBrainJson,
+  encodePersistedBrainJson,
+} from "@mindcraft-lang/core/brain/model";
 import {
   BookOpen,
   ChevronDown,
@@ -19,8 +25,9 @@ import {
   Undo,
   Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { staticAssetUrl } from "../asset-url";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
@@ -51,6 +58,12 @@ import {
   ReplaceLastPageCommand,
 } from "./commands";
 
+// Top-edge brand accent. Uses each app's signature strip tokens when defined
+// (microbit-sim's blue->green->teal), else falls back to the brand primary/ring
+// so single-brand apps (apps/sim) still get a branded accent line.
+const brandStripBackground =
+  "linear-gradient(90deg, var(--strip-blue, var(--color-primary)) 0%, var(--strip-green, var(--color-ring)) 50%, var(--strip-teal, var(--color-primary)) 100%)";
+
 /** Props for {@link BrainEditorDialog}. */
 export interface BrainEditorDialogProps {
   isOpen: boolean;
@@ -65,7 +78,7 @@ export interface BrainEditorDialogProps {
  * `onSubmit` is invoked with the resulting brain when the user confirms.
  */
 export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
-  const { getDefaultBrain, docsIntegration, brainServices, tileCatalogs } = useBrainEditorConfig();
+  const { getDefaultBrain, docsIntegration, brainServices, tileCatalogs, projectNamespace } = useBrainEditorConfig();
   const isDocsOpen = docsIntegration?.isOpen ?? false;
   const toggleDocs = docsIntegration?.toggle;
   const closeDocs = docsIntegration?.close;
@@ -114,10 +127,19 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     updateUndoRedoState();
   }, [commandHistory]);
 
-  // Clone brainDef when it changes or dialog opens
+  // Read through a ref so the working copy resets only when the dialog opens
+  // or the source brain changes. The host config (and with it this callback's
+  // identity) legitimately rebuilds mid-edit -- docs sidebar toggles, tile
+  // installs, asset revision bumps -- and an open draft must survive those.
+  const createEditableBrainRef = useRef(createEditableBrain);
+  useEffect(() => {
+    createEditableBrainRef.current = createEditableBrain;
+  }, [createEditableBrain]);
+
+  // Clone brainDef when the source brain changes or the dialog opens
   useEffect(() => {
     if (isOpen && srcBrainDef) {
-      const newBrainDef = createEditableBrain(srcBrainDef);
+      const newBrainDef = createEditableBrainRef.current(srcBrainDef);
       setBrainDef(newBrainDef);
       setCurrentPageNumber(1);
       setTotalPageCount(newBrainDef.pages().size());
@@ -127,7 +149,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setBrainDef(undefined);
       commandHistory.clear();
     }
-  }, [isOpen, srcBrainDef, commandHistory, createEditableBrain]);
+  }, [isOpen, srcBrainDef, commandHistory]);
 
   useEffect(() => {
     return onBrainClipboardChanged(() => setHasBrainClipboard(hasBrainInClipboard()));
@@ -267,8 +289,9 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     if (!brainDef) return;
 
     try {
-      // Serialize the brain to JSON
-      const json = brainDef.toJson();
+      // Serialize the brain to its persisted JSON form
+      const json =
+        projectNamespace !== undefined ? encodePersistedBrainJson(brainDef, projectNamespace) : brainDef.toJson();
       const text = JSON.stringify(json, null, 2);
 
       // Use File System Access API to save
@@ -292,7 +315,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         console.error("Failed to save brain:", err);
       }
     }
-  }, [brainDef]);
+  }, [brainDef, projectNamespace]);
 
   const handleLoadFromFile = useCallback(async () => {
     try {
@@ -312,9 +335,12 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       const arrayBuffer = await file.arrayBuffer();
       const text = new TextDecoder().decode(new Uint8Array(arrayBuffer));
 
-      let loadedBrain: BrainDef;
       const extraCatalogs = tileCatalogs ? List.from(tileCatalogs) : undefined;
-      loadedBrain = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown), brainServices!, extraCatalogs);
+      const plain = JSON.parse(text) as unknown;
+      const loadedBrain: BrainDef =
+        projectNamespace !== undefined
+          ? deserializePersistedBrainJson(plain, projectNamespace, brainServices!, extraCatalogs)
+          : BrainDef.fromJson(brainJsonFromPlain(plain), brainServices!, extraCatalogs);
 
       if (loadedBrain.pages().size() === 0) {
         loadedBrain.appendNewPage();
@@ -332,7 +358,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         console.error("Failed to load brain:", err);
       }
     }
-  }, [commandHistory, brainServices, tileCatalogs]);
+  }, [commandHistory, brainServices, tileCatalogs, projectNamespace]);
 
   const handleLoadDefault = useCallback(() => {
     const defaultBrain = getDefaultBrain?.();
@@ -457,13 +483,18 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       {isOpen && isDocsOpen && <div className="fixed inset-0 z-50 bg-black/80" aria-hidden="true" />}
       <Dialog open={isOpen} onOpenChange={onOpenChange} modal={!isDocsOpen}>
         <DialogContent
-          className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[75%] sm:h-[75%] sm:p-6 sm:gap-4 flex flex-col bg-slate-100 border-2 border-slate-300 rounded-none sm:rounded-2xl"
+          className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[75%] sm:h-[75%] sm:p-6 sm:gap-4 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl overflow-hidden"
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onFocusOutside={(e) => e.preventDefault()}
           hideClose
         >
-          <DialogHeader className="border-b border-slate-200 pb-2 sm:pb-4">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.75"
+            style={{ background: brandStripBackground }}
+          />
+          <DialogHeader className="border-b border-border pb-2 sm:pb-4">
             <DialogDescription className="sr-only">
               Edit brain pages, rules, and tiles. Use the toolbar to navigate pages, undo/redo, and manage the brain.
             </DialogDescription>
@@ -471,14 +502,14 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
               <div className="flex flex-wrap justify-center items-center gap-2 sm:gap-3">
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex bg-white rounded-lg p-1 sm:p-1.5 border border-slate-200"
+                  className="flex bg-muted rounded-lg p-1 sm:p-1.5 border border-border"
                   role="group"
                   aria-label="Page name controls"
                 >
                   <img
-                    src="/assets/brain/icons/page.svg"
+                    src={staticAssetUrl("assets/brain/icons/page.svg")}
                     alt="Page icon"
-                    className="h-8 w-8 bg-slate-300 rounded-sm"
+                    className="h-8 w-8 bg-muted rounded-sm"
                     aria-hidden="true"
                   />
                   <div className="flex items-center gap-1">
@@ -490,14 +521,14 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                           onBlur={handlePageNameBlur}
                           onKeyDown={handlePageNameKeyDown}
                           autoFocus
-                          className="text-slate-800 font-semibold h-8 px-2 py-1 max-w-xs bg-white border-slate-300 focus-visible:ring-slate-400"
+                          className="text-foreground font-semibold h-8 px-2 py-1 max-w-xs bg-background border-input focus-visible:ring-ring"
                         />
                         <Button
                           onMouseDown={(e) => {
                             e.preventDefault();
                             handlePageNameBlur();
                           }}
-                          className="h-8 w-8 min-w-8 p-0 bg-green-500 hover:bg-green-600 text-white rounded-sm"
+                          className="h-8 w-8 min-w-8 p-0 rounded-sm"
                           title="Save page name"
                           aria-label="Save page name"
                         >
@@ -508,7 +539,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                       <>
                         <button
                           type="button"
-                          className="text-slate-800 font-semibold cursor-pointer hover:bg-slate-200 px-2 py-1 rounded bg-transparent"
+                          className="text-foreground font-semibold cursor-pointer hover:bg-accent px-2 py-1 rounded bg-transparent"
                           onClick={handlePageNameClick}
                           title="Click to edit page name"
                           aria-label={`Page name: ${currentPageDef ? currentPageDef.name() : "Page"}. Click to edit.`}
@@ -517,7 +548,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                         </button>
                         <Button
                           onClick={handlePageNameClick}
-                          className="h-8 w-8 bg-white hover:bg-slate-50 text-slate-700 rounded-md border border-slate-300"
+                          className="h-8 w-8 bg-background hover:bg-muted text-muted-foreground hover:text-foreground rounded-md border border-border"
                           title="Edit page name"
                           aria-label="Edit page name"
                         >
@@ -530,14 +561,14 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 <div className="hidden sm:block grow" />
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex bg-white rounded-lg p-1 sm:p-1.5 border border-slate-200"
+                  className="flex bg-muted rounded-lg p-1 sm:p-1.5 border border-border"
                   role="group"
                   aria-label="Brain name controls"
                 >
                   <img
-                    src="/assets/brain/icons/brain2.svg"
+                    src={staticAssetUrl("assets/brain/icons/brain2.svg")}
                     alt="Brain icon"
-                    className="h-8 w-8 bg-slate-300 rounded-sm"
+                    className="h-8 w-8 bg-muted rounded-sm"
                     aria-hidden="true"
                   />
                   <div className="flex items-center gap-1">
@@ -549,14 +580,14 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                           onBlur={handleBrainNameBlur}
                           onKeyDown={handleBrainNameKeyDown}
                           autoFocus
-                          className="text-slate-800 font-semibold h-8 px-2 py-1 max-w-xs bg-white border-slate-300 focus-visible:ring-slate-400"
+                          className="text-foreground font-semibold h-8 px-2 py-1 max-w-xs bg-background border-input focus-visible:ring-ring"
                         />
                         <Button
                           onMouseDown={(e) => {
                             e.preventDefault();
                             handleBrainNameBlur();
                           }}
-                          className="h-8 w-8 min-w-8 p-0 bg-green-500 hover:bg-green-600 text-white rounded-sm"
+                          className="h-8 w-8 min-w-8 p-0 rounded-sm"
                           title="Save brain name"
                           aria-label="Save brain name"
                         >
@@ -567,7 +598,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                       <>
                         <button
                           type="button"
-                          className="text-slate-800 font-semibold cursor-pointer hover:bg-slate-200 px-2 py-1 rounded bg-transparent"
+                          className="text-foreground font-semibold cursor-pointer hover:bg-accent px-2 py-1 rounded bg-transparent"
                           onClick={handleBrainNameClick}
                           title="Click to edit brain name"
                           aria-label={`Brain name: ${brainDef ? brainDef.name() : "Brain Editor"}. Click to edit.`}
@@ -576,7 +607,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                         </button>
                         <Button
                           onClick={handleBrainNameClick}
-                          className="h-8 w-8 bg-white hover:bg-slate-50 text-slate-700 rounded-md border border-slate-300"
+                          className="h-8 w-8 bg-background hover:bg-muted text-muted-foreground hover:text-foreground rounded-md border border-border"
                           title="Edit brain name"
                           aria-label="Edit brain name"
                         >
@@ -589,12 +620,12 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 <div className="hidden sm:block grow" />
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex items-center gap-2 bg-white rounded-lg p-1 sm:p-1.5 border border-slate-200 sm:mr-2"
+                  className="flex items-center gap-2 bg-muted rounded-lg p-1 sm:p-1.5 border border-border sm:mr-2"
                   role="group"
                   aria-label="Undo, redo, and documentation controls"
                 >
                   <Button
-                    className="h-8 w-8 px-3 bg-slate-500 hover:bg-slate-600 text-white rounded-md disabled:opacity-50"
+                    className="h-8 w-8 px-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md disabled:opacity-50"
                     onClick={handleUndo}
                     disabled={!canUndo}
                     title="Undo (Ctrl/Cmd+Z)"
@@ -603,7 +634,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                     <Undo className="h-4 w-4" aria-hidden="true" />
                   </Button>
                   <Button
-                    className="h-8 w-8 px-3 bg-slate-500 hover:bg-slate-600 text-white rounded-md disabled:opacity-50"
+                    className="h-8 w-8 px-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md disabled:opacity-50"
                     onClick={handleRedo}
                     disabled={!canRedo}
                     title="Redo (Ctrl/Cmd+Shift+Z)"
@@ -613,9 +644,9 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                   </Button>
                   {toggleDocs && (
                     <>
-                      <span className="w-px h-5 bg-slate-200" aria-hidden="true" />
+                      <span className="w-px h-5 bg-border" aria-hidden="true" />
                       <Button
-                        className="h-8 w-8 px-3 bg-slate-500 hover:bg-slate-600 text-white rounded-md"
+                        className="h-8 w-8 px-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md"
                         onClick={toggleDocs}
                         title="Documentation"
                         aria-label="Toggle documentation panel"
@@ -629,13 +660,13 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 </div>
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex items-center gap-1 sm:gap-2 bg-white rounded-lg p-1 sm:p-1.5 border border-slate-200"
+                  className="flex items-center gap-1 sm:gap-2 bg-muted rounded-lg p-1 sm:p-1.5 border border-border"
                   role="group"
                   aria-label="Page navigation controls"
                 >
                   <Button
                     title="Previous Page"
-                    className="h-8 w-8 bg-white hover:bg-slate-50 text-slate-700 rounded-md border border-slate-300"
+                    className="h-8 w-8 bg-background hover:bg-muted text-muted-foreground hover:text-foreground rounded-md border border-border"
                     onClick={handlePrevPageClick}
                     aria-label="Go to previous page"
                     disabled={currentPageNumber <= 1}
@@ -646,18 +677,18 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        className="flex items-center gap-1 px-3 h-8 text-sm font-medium text-slate-700 whitespace-nowrap bg-white hover:bg-slate-50 rounded-md border border-slate-300 cursor-pointer"
+                        className="flex items-center gap-1 px-3 h-8 text-sm font-medium text-muted-foreground hover:text-foreground whitespace-nowrap bg-background hover:bg-muted rounded-md border border-border cursor-pointer"
                         aria-live="polite"
                         aria-atomic="true"
                         aria-label={`Page ${currentPageNumber} of ${totalPageCount}. Click to select a page.`}
                       >
                         {`Page ${currentPageNumber} of ${totalPageCount}`}
-                        <ChevronDown className="h-3 w-3 ml-1 text-slate-400" aria-hidden="true" />
+                        <ChevronDown className="h-3 w-3 ml-1 text-muted-foreground" aria-hidden="true" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="center"
-                      className="bg-white border-slate-300 text-slate-700 max-h-64 overflow-y-auto"
+                      className="bg-popover border-border text-popover-foreground max-h-64 overflow-y-auto"
                     >
                       {brainDef
                         ?.pages()
@@ -666,11 +697,11 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                           <DropdownMenuItem
                             key={`page-${page.name()}-${index}`}
                             onClick={() => setCurrentPageNumber(index + 1)}
-                            className={`cursor-pointer focus:bg-slate-100 focus:text-slate-900 ${
-                              index + 1 === currentPageNumber ? "bg-slate-100 font-semibold" : ""
+                            className={`cursor-pointer focus:bg-accent focus:text-accent-foreground ${
+                              index + 1 === currentPageNumber ? "bg-accent font-semibold" : ""
                             }`}
                           >
-                            <span className="text-slate-400 text-xs w-6 text-right mr-2">{index + 1}</span>
+                            <span className="text-muted-foreground text-xs w-6 text-right mr-2">{index + 1}</span>
                             {page.name()}
                           </DropdownMenuItem>
                         ))}
@@ -678,7 +709,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                   </DropdownMenu>
                   <Button
                     title="Next Page"
-                    className="h-8 w-8 bg-white hover:bg-slate-50 text-slate-700 rounded-md border border-slate-300"
+                    className="h-8 w-8 bg-background hover:bg-muted text-muted-foreground hover:text-foreground rounded-md border border-border"
                     onClick={handleNextPageClick}
                     aria-label="Go to next page"
                     disabled={currentPageNumber >= totalPageCount}
@@ -689,7 +720,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                     <DropdownMenuTrigger asChild>
                       <Button
                         title="Page Actions"
-                        className="h-8 w-8 bg-white hover:bg-slate-50 text-slate-700 rounded-md border border-slate-300"
+                        className="h-8 w-8 bg-background hover:bg-muted text-muted-foreground hover:text-foreground rounded-md border border-border"
                         variant="default"
                         aria-label="Open page actions menu"
                         aria-haspopup="menu"
@@ -697,22 +728,22 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                         <MoreVertical className="h-4 w-4" aria-hidden="true" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-white border-slate-300 text-slate-700">
+                    <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground">
                       <DropdownMenuItem
                         onClick={handleLoadDefault}
                         disabled={!getDefaultBrain}
-                        className="cursor-pointer focus:bg-slate-100 focus:text-slate-900"
+                        className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
                       >
-                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-slate-300">
+                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-border">
                           <RotateCcw className="h-4 grow mx-1" />
                         </div>
                         <span className="w-full">Load Default Brain</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={handleLoadFromFile}
-                        className="cursor-pointer focus:bg-slate-100 focus:text-slate-900"
+                        className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
                       >
-                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-slate-300">
+                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-border">
                           <Upload className="h-4 grow mx-1" />
                         </div>
                         <span className="w-full">Load Brain from File</span>
@@ -720,9 +751,9 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                       <DropdownMenuItem
                         onClick={handleSaveToFile}
                         disabled={!brainDef}
-                        className="cursor-pointer focus:bg-slate-100 focus:text-slate-900"
+                        className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
                       >
-                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-slate-300">
+                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-border">
                           <Download className="h-4 grow mx-1" />
                         </div>
                         <span className="w-full">Save Brain to File</span>
@@ -730,20 +761,20 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                       <DropdownMenuItem
                         onClick={() => setIsPrintDialogOpen(true)}
                         disabled={!brainDef}
-                        className="cursor-pointer focus:bg-slate-100 focus:text-slate-900"
+                        className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
                       >
-                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-slate-300">
+                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-border">
                           <Printer className="h-4 grow mx-1" />
                         </div>
                         <span className="w-full">Print Brain</span>
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-slate-200" />
+                      <DropdownMenuSeparator className="bg-border" />
                       <DropdownMenuItem
                         onClick={handleCopyBrain}
                         disabled={!brainDef}
-                        className="cursor-pointer focus:bg-slate-100 focus:text-slate-900"
+                        className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
                       >
-                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-slate-300">
+                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-border">
                           <Copy className="h-4 grow mx-1" />
                         </div>
                         <span className="w-full">Copy Brain</span>
@@ -751,19 +782,19 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                       <DropdownMenuItem
                         onClick={handlePasteBrain}
                         disabled={!brainDef || !hasBrainClipboard}
-                        className="cursor-pointer focus:bg-slate-100 focus:text-slate-900"
+                        className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
                       >
-                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-slate-300">
+                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-border">
                           <ClipboardPaste className="h-4 grow mx-1" />
                         </div>
                         <span className="w-full">Paste Brain</span>
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-slate-200" />
+                      <DropdownMenuSeparator className="bg-border" />
                       <DropdownMenuItem
                         onClick={handleInsertPageBeforeCurrentClick}
-                        className="cursor-pointer focus:bg-slate-100 focus:text-slate-900"
+                        className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
                       >
-                        <div className="flex text-center items-center border rounded-md h-8 border-slate-300">
+                        <div className="flex text-center items-center border rounded-md h-8 border-border">
                           <ChevronLeft className="h-4 w-4 ml-1" />
                           <Plus className="h-4 w-4 mr-1" />
                         </div>
@@ -771,20 +802,20 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={handleInsertPageAfterCurrentClick}
-                        className="cursor-pointer focus:bg-slate-100 focus:text-slate-900"
+                        className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
                       >
-                        <div className="flex text-center items-center border rounded-md h-8 border-slate-300">
+                        <div className="flex text-center items-center border rounded-md h-8 border-border">
                           <Plus className="h-4 w-4 ml-1" />
                           <ChevronRight className="h-4 w-4 mr-1" />
                         </div>
                         <span className="w-full">Add Page After</span>
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-slate-200" />
+                      <DropdownMenuSeparator className="bg-border" />
                       <DropdownMenuItem
                         onClick={handleRemovePageClick}
-                        className="cursor-pointer text-rose-600 focus:bg-rose-50 focus:text-rose-700"
+                        className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive"
                       >
-                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-slate-300">
+                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-border">
                           <Minus className="h-4 grow mx-1" />
                         </div>
                         <span className="w-full">Delete Page</span>
@@ -799,8 +830,10 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
           <div
             className="overflow-hidden grow rounded-lg"
             style={{
-              background: "linear-gradient(55deg, #1E1B4B 0%, #A78BFA 100%)",
-              boxShadow: "inset 0 0 0 2px rgba(255, 255, 255, 0.25)",
+              background:
+                "radial-gradient(130% 90% at 50% -10%, rgba(139, 108, 243, 0.14) 0%, transparent 55%), radial-gradient(circle at center, rgba(255, 255, 255, 0.035) 1px, transparent 1.3px), linear-gradient(160deg, #191338 0%, #0E0A20 100%)",
+              backgroundSize: "100% 100%, 22px 22px, 100% 100%",
+              boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 4px 20px rgba(0, 0, 0, 0.45)",
             }}
             role="region"
             aria-label="Brain page editor content"
@@ -814,12 +847,12 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 zoom={zoom}
               />
             ) : (
-              <p className="text-slate-600 p-6">No BrainDef attached to this object.</p>
+              <p className="text-white/80 p-6">No BrainDef attached to this object.</p>
             )}
           </div>
-          <DialogFooter className="pt-2 sm:pt-4 border-t border-slate-200 flex flex-row flex-wrap items-center gap-2 sm:justify-between">
+          <DialogFooter className="pt-2 sm:pt-4 border-t border-border flex flex-row flex-wrap items-center gap-2 sm:justify-between">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-xs text-slate-500 whitespace-nowrap">{Math.round(zoom * 100)}%</span>
+              <span className="text-xs text-muted-foreground whitespace-nowrap">{Math.round(zoom * 100)}%</span>
               <Slider
                 className="w-32"
                 min={0.5}
@@ -842,7 +875,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
               <Button
                 title="Save Changes"
                 aria-label="Save changes"
-                className="rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white"
+                className="rounded-lg"
                 onClick={handleSubmit}
                 disabled={!brainDef}
               >

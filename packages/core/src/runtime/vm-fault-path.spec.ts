@@ -36,12 +36,14 @@ test("THROW with a non-error value faults the fiber with ScriptError", () => {
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
   };
 
-  const vm = new VM(program, __test__createPlatformServices());
+  const vm = new VM(program, __test__createPlatformServices().runtime);
   const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
   fiber.instrBudget = 20;
   const result = vm.runFiber(fiber, {

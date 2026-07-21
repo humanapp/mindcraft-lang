@@ -3,6 +3,7 @@ import type { IConversionRegistry } from "./conversion-defs";
 import type { IFunctionRegistry } from "./function-defs";
 import type { IBrainActionRegistry } from "./host-bindings";
 import type { IOperatorOverloads, IOperatorTable } from "./operator-defs";
+import type { ProfileNumerics } from "./profile-numerics";
 import type { ITypeRegistry } from "./type-defs";
 import type { Value } from "./value";
 
@@ -18,6 +19,13 @@ export interface IProgramServices {
    * are not owned by any rule.
    */
   getRuleFuncIdForFunc(funcId: number): number | undefined;
+
+  /**
+   * Resolve an enum symbol's declared primitive value through the loaded
+   * program's type table. Returns `undefined` when the program's type table
+   * carries no enum entry for `typeId` or the entry has no symbol `key`.
+   */
+  getEnumSymbolValue(typeId: string, key: string): string | number | undefined;
 }
 
 /**
@@ -145,13 +153,20 @@ export interface ICallsiteServices {
 /**
  * Host-supplied capabilities the embedding application provides at
  * environment construction. These cross the host/core seam and are not
- * configured by `coreModule()` or other Mindcraft modules. Today RNG is
- * the only entry; future host-injected capabilities (logger, network,
- * clock, persistence, etc.) land here.
+ * configured by `coreModule()` or other Mindcraft modules. Future
+ * host-injected capabilities (logger, network, clock, persistence, etc.)
+ * land here.
  */
 export interface AppServices {
   /** Random-number stream. */
   rng: IRngServices;
+
+  /**
+   * Brain-observable numeric semantics for the environment's device
+   * profile. Captured by the operator, conversion, and math-builtin exec
+   * bodies when the core components are registered.
+   */
+  numerics: ProfileNumerics;
 }
 
 /**

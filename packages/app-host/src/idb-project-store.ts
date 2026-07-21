@@ -1,5 +1,7 @@
+import { LOWEST_CONTENT_VERSION } from "@mindcraft-lang/service-api";
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
-import { appHostError } from "./app-host-error.js";
+import { AppHostErrorCode, appHostError } from "./app-host-error.js";
+import { applyProjectFileChangeToSnapshot } from "./in-memory-project-file-system.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import {
   DEFAULT_PROJECT_COLLECTION_ID,
@@ -7,7 +9,8 @@ import {
   normalizeProjectCollectionName,
   type ProjectCollection,
 } from "./project-collection.js";
-import type { ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
+import { INITIAL_CONTENT_VERSION } from "./project-content-version.js";
+import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectCollectionTabSession, ProjectStore } from "./project-store.js";
 
@@ -38,6 +41,12 @@ const DB_VERSION = 4;
 
 function dbName(keyPrefix: string): string {
   return `${keyPrefix}-projects`;
+}
+
+/** Default a stored manifest that predates the `version` field to the lowest content version. */
+function withContentVersion(manifest: ProjectManifest): ProjectManifest {
+  const version = (manifest as { version?: string }).version;
+  return version === undefined ? { ...manifest, version: LOWEST_CONTENT_VERSION } : manifest;
 }
 
 function appDataKey(projectId: string, key: string): string {
@@ -183,7 +192,10 @@ class IdbProjectStore implements ProjectStore {
 
   async deleteProjectCollection(projectCollectionId: string): Promise<void> {
     if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
-      throw appHostError("DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the default workspace");
+      throw appHostError(
+        AppHostErrorCode.DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED,
+        "Cannot delete the default workspace"
+      );
     }
 
     const collection = await this.getProjectCollection(projectCollectionId);
@@ -247,7 +259,9 @@ class IdbProjectStore implements ProjectStore {
       return [];
     }
     const projects = await this.db.getAll("projects");
-    return projects.filter((project) => project.projectCollectionId === projectCollectionId && isLiveProject(project));
+    return projects
+      .filter((project) => project.projectCollectionId === projectCollectionId && isLiveProject(project))
+      .map(withContentVersion);
   }
 
   async countProjectsByCollection(): Promise<Map<string, number>> {
@@ -266,7 +280,7 @@ class IdbProjectStore implements ProjectStore {
   private async requireLiveProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND, `Workspace not found: ${projectCollectionId}`);
     }
     return collection;
   }
@@ -280,13 +294,13 @@ class IdbProjectStore implements ProjectStore {
     if (!collection) {
       return undefined;
     }
-    return project;
+    return withContentVersion(project);
   }
 
   async createProject(projectCollectionId: string, name: string): Promise<ProjectManifest> {
     const collection = await this.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND, `Workspace not found: ${projectCollectionId}`);
     }
 
     const now = Date.now();
@@ -294,6 +308,7 @@ class IdbProjectStore implements ProjectStore {
       id: crypto.randomUUID(),
       projectCollectionId,
       name,
+      version: INITIAL_CONTENT_VERSION,
       description: "",
       createdAt: now,
       updatedAt: now,
@@ -305,14 +320,17 @@ class IdbProjectStore implements ProjectStore {
   async deleteProject(id: string): Promise<void> {
     const project = await this.db.get("projects", id);
     if (!project) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     if (!isLiveProject(project)) {
       return;
     }
     const collection = await this.getProjectCollection(project.projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${project.projectCollectionId}`);
+      throw appHostError(
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND,
+        `Workspace not found: ${project.projectCollectionId}`
+      );
     }
 
     await this.db.put("projects", {
@@ -324,7 +342,9 @@ class IdbProjectStore implements ProjectStore {
 
   async updateProject(
     id: string,
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
+    updates: Partial<
+      Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions" | "targets">
+    >
   ): Promise<void> {
     const manifest = await this.requireLiveProject(id);
     await this.db.put("projects", {
@@ -337,22 +357,25 @@ class IdbProjectStore implements ProjectStore {
   private async requireLiveProject(id: string): Promise<ProjectManifest> {
     const manifest = await this.db.get("projects", id);
     if (!manifest) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     if (!isLiveProject(manifest)) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     const collection = await this.getProjectCollection(manifest.projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${manifest.projectCollectionId}`);
+      throw appHostError(
+        AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND,
+        `Workspace not found: ${manifest.projectCollectionId}`
+      );
     }
-    return manifest;
+    return withContentVersion(manifest);
   }
 
   async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
     const source = await this.getProject(id);
     if (!source) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     const newManifest = await this.createProjectFromSource(source, source.projectCollectionId, newName);
     await this.copyProjectContent(id, newManifest.id);
@@ -381,8 +404,11 @@ class IdbProjectStore implements ProjectStore {
       id: crypto.randomUUID(),
       projectCollectionId: targetProjectCollectionId,
       name: newName,
+      version: source.version,
       description: source.description,
       ...(source.thumbnailUrl === undefined ? {} : { thumbnailUrl: source.thumbnailUrl }),
+      ...(source.extensions === undefined ? {} : { extensions: source.extensions }),
+      ...(source.targets === undefined ? {} : { targets: source.targets }),
       createdAt: now,
       updatedAt: now,
     };
@@ -422,6 +448,14 @@ class IdbProjectStore implements ProjectStore {
     snapshot.delete(MINDCRAFT_JSON_PATH);
     await this.db.put("files", [...snapshot], id);
     await this.updateProject(id, {});
+  }
+
+  async applyProjectFileChanges(id: string, changes: readonly ProjectFileChange[]): Promise<void> {
+    const snapshot = (await this.loadProjectFiles(id)) ?? new Map();
+    for (const change of changes) {
+      applyProjectFileChangeToSnapshot(snapshot, change);
+    }
+    await this.saveProjectFiles(id, snapshot);
   }
 
   async loadAppData(id: string, key: string): Promise<string | undefined> {

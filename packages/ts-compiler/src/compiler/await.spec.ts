@@ -5,6 +5,7 @@ import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
+  type AsyncHandle,
   type BooleanValue,
   ContextTypeIds,
   CoreTypeIds,
@@ -33,6 +34,8 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -42,7 +45,8 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -50,6 +54,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -113,7 +119,8 @@ describe("await expression", () => {
     const widgetTypeId = mkTypeId(NativeType.Struct, "Widget");
     if (!types.get(widgetTypeId)) {
       types.addStructType("Widget", {
-        fields: List.from([{ name: "id", typeId: numTypeId }]),
+        atomId: 1024,
+        fields: List.from([{ name: "id", typeId: numTypeId, fieldIndex: 0 }]),
         methods: List.from([
           {
             name: "fetchData",
@@ -137,15 +144,17 @@ describe("await expression", () => {
 
     if (!fns.get("Widget.fetchData")) {
       fns.register(
+        6001,
         "Widget.fetchData",
         true,
-        { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, _handleId: number) => {} },
+        { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, _handle: AsyncHandle) => {} },
         emptyCallDef
       );
     }
 
     if (!fns.get("Widget.getValue")) {
       fns.register(
+        6002,
         "Widget.getValue",
         false,
         {
@@ -158,7 +167,7 @@ describe("await expression", () => {
     }
 
     if (!fns.get("Widget.reset")) {
-      fns.register("Widget.reset", false, { exec: () => NIL_VALUE }, emptyCallDef);
+      fns.register(6003, "Widget.reset", false, { exec: () => NIL_VALUE }, emptyCallDef);
     }
   });
 
@@ -179,6 +188,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -230,6 +240,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -289,6 +300,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -332,13 +344,11 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
     assert.ok(result.diagnostics.length > 0, "Expected compile error for await on sync call");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.AwaitOnNonAsyncHostCall),
-      `Expected AwaitOnNonAsyncHostCall diagnostic, got: ${JSON.stringify(result.diagnostics)}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.AwaitOnNonAsyncHostCall);
   });
 });

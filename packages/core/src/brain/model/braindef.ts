@@ -2,7 +2,7 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
-import type { IBrain, IConversionRegistry } from "../../runtime";
+import type { IBrain, IConversionRegistry, IOperatorOverloads, ITypeRegistry } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util/event-emitter";
 import { type OpResult, opFailure, opSuccess } from "../../util/op-result";
 import { Brain } from "..";
@@ -18,12 +18,17 @@ import {
 import type { BrainServices } from "../services";
 import { type CatalogTileJson, TileCatalog } from "../tiles/catalog";
 import { BrainTilePageDef } from "../tiles/pagetiles";
+import type { PersistedIdRef } from "./brain-json-persisted";
 import { BrainPageDef, type PageJson } from "./pagedef";
 import type { RuleJson } from "./ruledef";
 
-/** Serialized form of an {@link IBrainDef}: name, tile catalog, and page list. */
+/** Serialized form of an {@link IBrainDef}: id, name, tile catalog, and page list. */
 export interface BrainJson {
   version: number;
+
+  /** Stable unique brain id. Optional; a missing id is minted on load. */
+  id?: string;
+
   name: string;
   catalog: ReadonlyList<CatalogTileJson>;
   pages: ReadonlyList<PageJson>;
@@ -40,10 +45,13 @@ export const kMaxBrainNameLength = 100; // never reduce this value!
 export const kMaxBrainPageCount = 20; // never reduce this value!
 
 /** Warning codes emitted by {@link BrainDef} during page operations. */
-export enum BrainDefWarningCode {
-  MaxPagesExceeded = "MaxPagesExceeded",
-  PageIndexOutOfBounds = "PageIndexOutOfBounds",
-}
+export const BrainDefWarningCode = {
+  MaxPagesExceeded: "MaxPagesExceeded",
+  PageIndexOutOfBounds: "PageIndexOutOfBounds",
+} as const;
+
+/** Union of all {@link BrainDefWarningCode} values. */
+export type BrainDefWarningCode = (typeof BrainDefWarningCode)[keyof typeof BrainDefWarningCode];
 
 // Current serialization version.
 const kVersion = 1;
@@ -105,14 +113,14 @@ function convertPlainPage_(plain: unknown): PageJson {
  * Call this function on the JSON.parse output before passing it to fromJson.
  */
 export function brainJsonFromPlain(plain: unknown): BrainJson {
-  const obj = plain as { version: number; name: string; catalog: CatalogTileJson[]; pages: unknown[] };
+  const obj = plain as { version: number; id?: string; name: string; catalog: CatalogTileJson[]; pages: unknown[] };
   const catalog = List.from(obj.catalog);
   const plainPages = List.from(obj.pages);
   const pages = new List<PageJson>();
   for (let i = 0; i < plainPages.size(); i++) {
     pages.push(convertPlainPage_(plainPages.get(i)));
   }
-  return { version: obj.version, name: obj.name, catalog, pages };
+  return { version: obj.version, id: obj.id, name: obj.name, catalog, pages };
 }
 
 /** Concrete {@link IBrainDef} implementation: in-memory brain model with mutation, serialization, and compilation. */
@@ -123,10 +131,13 @@ export class BrainDef implements IBrainDef {
   private readonly pageSubscriptions_ = new Dict<BrainPageDef, () => void>();
   private readonly catalog_ = new TileCatalog();
   private readonly services_: BrainServices;
+  private readonly id_: string;
   private extraCatalogs_?: ReadonlyList<ITileCatalog>;
+  private readonly persistedIdRefs_ = new Dict<string, PersistedIdRef>();
 
-  constructor(services: BrainServices) {
+  constructor(services: BrainServices, id?: string) {
     this.services_ = services;
+    this.id_ = id ?? this.mintBrainId_();
   }
 
   setExtraCatalogs(catalogs: ReadonlyList<ITileCatalog> | undefined): void {
@@ -145,6 +156,14 @@ export class BrainDef implements IBrainDef {
     return this.services_.shared.conversions;
   }
 
+  servicesTypeRegistry(): ITypeRegistry {
+    return this.services_.runtime.types;
+  }
+
+  servicesOperatorOverloads(): IOperatorOverloads {
+    return this.services_.edit.operatorOverloads;
+  }
+
   static emptyBrainDef(services: BrainServices, name?: string): BrainDef {
     const brainDef = new BrainDef(services);
     if (name) {
@@ -160,6 +179,10 @@ export class BrainDef implements IBrainDef {
 
   events(): EventEmitterConsumer<BrainDefEvents> {
     return this.emitter_.consumer();
+  }
+
+  id(): string {
+    return this.id_;
   }
 
   name(): string {
@@ -193,8 +216,16 @@ export class BrainDef implements IBrainDef {
     return new Brain(this, this.services_);
   }
 
+  private mintPageId_(): string {
+    return SU.mkid(16, () => this.services_.app.rng.next());
+  }
+
+  private mintBrainId_(): string {
+    return SU.mkid(16, () => this.services_.app.rng.next());
+  }
+
   appendNewPage(): OpResult<{ page: BrainPageDef; index: number }> {
-    const page = new BrainPageDef();
+    const page = new BrainPageDef(this.mintPageId_());
     const addPageResult = this.addPage(page);
     if (!addPageResult.success) {
       return opFailure(BrainDefWarningCode.MaxPagesExceeded);
@@ -248,7 +279,7 @@ export class BrainDef implements IBrainDef {
   }
 
   insertNewPageAtIndex(index: number): OpResult<{ page: BrainPageDef; index: number }> {
-    const page = new BrainPageDef();
+    const page = new BrainPageDef(this.mintPageId_());
     // Add a blank rule to the new page
     page.appendNewRule();
     return this.insertPageAtIndex(index, page);
@@ -284,9 +315,28 @@ export class BrainDef implements IBrainDef {
     this.syncPageTiles_();
   }
 
+  /**
+   * Structured persisted references keyed by the runtime identifier they
+   * minted at load time. Consulted when this brain is serialized so
+   * identifiers without a live model backing (unresolved tiles, unregistered
+   * variable types) keep their persisted identity.
+   */
+  persistedIdRefs(): Dict<string, PersistedIdRef> {
+    return this.persistedIdRefs_;
+  }
+
+  private copyPersistedIdRefsFrom_(source: BrainDef): void {
+    source.persistedIdRefs_.forEach((ref, id) => {
+      this.persistedIdRefs_.set(id, ref);
+    });
+  }
+
   clone(extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
-    const json = this.toJson();
-    return BrainDef.fromJson(json, this.services_, extraCatalogs ?? this.extraCatalogs_);
+    // A clone is a new brain: it drops the source id and mints its own.
+    const json: BrainJson = { ...this.toJson(), id: undefined };
+    const cloned = BrainDef.fromJson(json, this.services_, extraCatalogs ?? this.extraCatalogs_);
+    cloned.copyPersistedIdRefsFrom_(this);
+    return cloned;
   }
 
   /**
@@ -298,6 +348,7 @@ export class BrainDef implements IBrainDef {
    * than per-page events, so callers can update UI state in one shot.
    */
   replaceContentFrom(source: BrainDef, extraCatalogs?: ReadonlyList<ITileCatalog>): void {
+    this.copyPersistedIdRefsFrom_(source);
     this.replaceContentFromJson(source.toJson(), extraCatalogs);
   }
 
@@ -350,7 +401,7 @@ export class BrainDef implements IBrainDef {
       pages.push(this.pages_.get(i).toJson());
     }
 
-    return { version: kVersion, name: this.name_, catalog: this.catalog_.toJson(), pages };
+    return { version: kVersion, id: this.id_, name: this.name_, catalog: this.catalog_.toJson(), pages };
   }
 
   static fromJson(json: BrainJson, services: BrainServices, extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
@@ -358,7 +409,7 @@ export class BrainDef implements IBrainDef {
       throw new Error(`BrainDef.fromJson: unsupported version ${json.version}`);
     }
 
-    const brain = new BrainDef(services);
+    const brain = new BrainDef(services, json.id);
     brain.extraCatalogs_ = extraCatalogs;
     brain.setName(json.name);
 

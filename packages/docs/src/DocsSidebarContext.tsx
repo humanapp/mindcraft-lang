@@ -1,3 +1,4 @@
+import { assertUnreachable } from "@mindcraft-lang/core";
 import {
   type BrainServices,
   type IBrainTileDef,
@@ -11,7 +12,9 @@ import {
   type BrainTileVariableDef,
   getCatalogFallbackLabel,
 } from "@mindcraft-lang/core/brain/tiles";
+import type { TileSourceLibrary } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
+import type { PrintTransport } from "@mindcraft-lang/ui/print/standalone-print-document";
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import { DocsRegistry } from "./DocsRegistry";
 
@@ -24,6 +27,19 @@ interface DocsSidebarContextValue {
   registry: DocsRegistry;
   tileCatalog: ITileCatalog | undefined;
   brainServices: BrainServices | undefined;
+  /** Installed libraries of the active project; the tiles tab subgroups entries attributed to them. */
+  libraries: readonly TileSourceLibrary[] | undefined;
+  /** App-supplied friendly type names keyed by type id. */
+  dataTypeNames: ReadonlyMap<string, string> | undefined;
+  /** App-supplied type icon URLs keyed by type id. */
+  dataTypeIcons: ReadonlyMap<string, string> | undefined;
+  /** Whether panel entries and the panel header link to the app's standalone docs pages. */
+  showDocsPageLinks: boolean;
+  /**
+   * Sink for the printable doc-page document when the host cannot open the
+   * browser print dialog; when absent, printing calls `window.print()`.
+   */
+  printTransport: PrintTransport | undefined;
   resolveTileVisual: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** The key of the entry currently shown in detail view, or null for list view. */
   navKey: string | null;
@@ -44,23 +60,33 @@ interface DocsSidebarContextValue {
 const DocsSidebarContext = createContext<DocsSidebarContextValue | null>(null);
 
 function defaultTileLabel(tileDef: IBrainTileDef): string {
-  if (tileDef.kind === "literal") {
-    const literalDef = tileDef as BrainTileLiteralDef;
-    const format = literalDef.displayFormat;
-    return format && format !== LiteralDisplayFormats.Default && typeof literalDef.value === "number"
-      ? applyDisplayFormat(literalDef.value, format)
-      : literalDef.valueLabel || String(literalDef.value);
+  switch (tileDef.kind) {
+    case "literal": {
+      const literalDef = tileDef as BrainTileLiteralDef;
+      const format = literalDef.displayFormat;
+      return format && format !== LiteralDisplayFormats.Default && typeof literalDef.value === "number"
+        ? applyDisplayFormat(literalDef.value, format)
+        : literalDef.valueLabel || String(literalDef.value);
+    }
+    case "variable":
+      return (tileDef as BrainTileVariableDef).varName;
+    case "accessor":
+      return (tileDef as BrainTileAccessorDef).fieldName;
+    case "undefined":
+    case "sensor":
+    case "actuator":
+    case "parameter":
+    case "operator":
+    case "factory":
+    case "controlFlow":
+    case "modifier":
+    case "page":
+    case "output":
+    case "missing":
+      return getCatalogFallbackLabel(tileDef);
+    default:
+      return assertUnreachable(tileDef.kind);
   }
-
-  if (tileDef.kind === "variable") {
-    return (tileDef as BrainTileVariableDef).varName;
-  }
-
-  if (tileDef.kind === "accessor") {
-    return (tileDef as BrainTileAccessorDef).fieldName;
-  }
-
-  return getCatalogFallbackLabel(tileDef);
 }
 
 interface DocsSidebarProviderProps {
@@ -68,6 +94,19 @@ interface DocsSidebarProviderProps {
   registry?: DocsRegistry;
   tileCatalog?: ITileCatalog;
   brainServices?: BrainServices;
+  /** Installed libraries of the active project; the tiles tab subgroups entries attributed to them. */
+  libraries?: readonly TileSourceLibrary[];
+  /** App-supplied friendly type names keyed by type id. */
+  dataTypeNames?: ReadonlyMap<string, string>;
+  /** App-supplied type icon URLs keyed by type id. */
+  dataTypeIcons?: ReadonlyMap<string, string>;
+  /** Whether panel entries and the panel header link to the app's standalone docs pages (default true). */
+  showDocsPageLinks?: boolean;
+  /**
+   * Sink for the printable doc-page document when the host cannot open the
+   * browser print dialog; when absent, printing calls `window.print()`.
+   */
+  printTransport?: PrintTransport;
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Initial active tab (defaults to "tiles"). */
   initialTab?: DocTab;
@@ -86,6 +125,11 @@ export function DocsSidebarProvider({
   registry: externalRegistry,
   tileCatalog: externalTileCatalog,
   brainServices: externalBrainServices,
+  libraries,
+  dataTypeNames,
+  dataTypeIcons,
+  showDocsPageLinks,
+  printTransport,
   resolveTileVisual: resolveTileVisualProp,
   initialTab,
   initialNavKey,
@@ -131,18 +175,35 @@ export function DocsSidebarProvider({
     setIsOpen(true);
     // Variable and literal tiles are dynamic (one per variable/value) and
     // don't have individual tile doc pages. Redirect to the relevant concept.
-    if (tileDef.kind === "variable") {
-      setActiveTab("concepts");
-      setNavKey("variables");
-      setNavTab("concepts");
-    } else if (tileDef.kind === "literal") {
-      setActiveTab("concepts");
-      setNavKey("literals");
-      setNavTab("concepts");
-    } else {
-      setActiveTab("tiles");
-      setNavKey(tileDef.tileId);
-      setNavTab("tiles");
+    switch (tileDef.kind) {
+      case "variable":
+        setActiveTab("concepts");
+        setNavKey("variables");
+        setNavTab("concepts");
+        break;
+      case "literal":
+        setActiveTab("concepts");
+        setNavKey("literals");
+        setNavTab("concepts");
+        break;
+      case "undefined":
+      case "sensor":
+      case "actuator":
+      case "parameter":
+      case "operator":
+      case "factory":
+      case "controlFlow":
+      case "modifier":
+      case "accessor":
+      case "page":
+      case "output":
+      case "missing":
+        setActiveTab("tiles");
+        setNavKey(tileDef.tileId);
+        setNavTab("tiles");
+        break;
+      default:
+        assertUnreachable(tileDef.kind);
     }
   }, []);
 
@@ -162,6 +223,11 @@ export function DocsSidebarProvider({
     registry,
     tileCatalog,
     brainServices: externalBrainServices,
+    libraries,
+    dataTypeNames,
+    dataTypeIcons,
+    showDocsPageLinks: showDocsPageLinks ?? true,
+    printTransport,
     resolveTileVisual,
     navKey,
     navTab,

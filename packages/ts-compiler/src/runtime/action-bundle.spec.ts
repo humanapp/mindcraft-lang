@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment, type HydratedTileMetadataSnapshot } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { type BrainServices, CoreCapabilityBits } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
+import { CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId, Op } from "@mindcraft-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import type { ExtractedParam } from "../compiler/types.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";
 
 function resolveCoreTypeId(typeName: string): string | undefined {
@@ -23,7 +24,7 @@ function resolveCoreTypeId(typeName: string): string | undefined {
 }
 
 function compileProject(files: ReadonlyMap<string, string>) {
-  const project = new UserTileProject({ services });
+  const project = new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services });
   project.setFiles(files);
   return project.compileAll();
 }
@@ -44,6 +45,7 @@ describe("buildCompiledActionBundle", () => {
 import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
+  id: "snscan",
   name: "scan",
   onExecute(ctx: Context): number {
     return 1;
@@ -57,6 +59,7 @@ export default Sensor({
 import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
+  id: "acmove",
   name: "move",
   args: [
     param("target", { type: "number", anonymous: true }),
@@ -72,6 +75,7 @@ export default Actuator({
 import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
+  id: "acturn",
   name: "turn",
   args: [
     param("angle", { type: "number", anonymous: true }),
@@ -88,15 +92,83 @@ export default Actuator({
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
 
     assert.ok(bundle);
-    assert.deepEqual(bundle.actions.keys().toArray(), ["user.actuator.move", "user.actuator.turn", "user.sensor.scan"]);
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkSensorTileId("user.sensor.scan")));
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId("user.actuator.move")));
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId("user.actuator.turn")));
+    assert.deepEqual(bundle.actions.keys().toArray(), [
+      `${TEST_PROJECT_NAMESPACE}:user.actuator.acmove`,
+      `${TEST_PROJECT_NAMESPACE}:user.actuator.acturn`,
+      `${TEST_PROJECT_NAMESPACE}:user.sensor.snscan`,
+    ]);
+    assert.ok(
+      bundle.tiles.some((tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snscan`))
+    );
+    assert.ok(
+      bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId(`${TEST_PROJECT_NAMESPACE}:user.actuator.acmove`))
+    );
+    assert.ok(
+      bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId(`${TEST_PROJECT_NAMESPACE}:user.actuator.acturn`))
+    );
     assert.equal(bundle.tiles.filter((tile) => tile.tileId === mkParameterTileId("anon.number")).length, 1);
-    assert.ok(bundle.tiles.some((tile) => tile.tileId === mkParameterTileId("user.turn.label")));
+    assert.ok(
+      bundle.tiles.some((tile) => tile.tileId === mkParameterTileId(`${TEST_PROJECT_NAMESPACE}:user.acturn.label`))
+    );
   });
 
-  test("returns no bundle when the compile output still has diagnostics", () => {
+  test("a user sensor declaring presenceGated: true carries the bit and emits WHEN_END_PRESENT", () => {
+    const result = compileProject(
+      new Map([
+        [
+          "rx.ts",
+          `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "snrx",
+  name: "rx",
+  presenceGated: true,
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`,
+        ],
+      ])
+    );
+
+    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
+    assert.ok(bundle);
+
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snrx`)
+    );
+    assert.ok(sensorTile);
+    assert.equal(
+      sensorTile.capabilities().get(CoreCapabilityBits.PresenceGated),
+      1,
+      "the declared capability must land on the generated tile def"
+    );
+
+    // The brain compiler reads that bit from the user tile and emits
+    // WHEN_END_PRESENT for a bare WHEN, identically to a built-in sensor.
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    environment.hydrateTileMetadata({ revision: bundle.revision, tiles: bundle.tiles });
+    environment.replaceActionBundle(bundle);
+
+    const brainDef = BrainDef.emptyBrainDef(services, "Presence Brain");
+    brainDef.pages().get(0)!.children().get(0)!.when().appendTile(sensorTile);
+    const brain = environment.createBrain(environment.deserializeBrainJson(brainDef.toJson()));
+    assert.equal(brain.status, "active");
+
+    const program = brain.getProgram();
+    assert.ok(program);
+    const page = brain.getPages().get(0)!;
+    const rootFunc = program.functions.get(page.rootRuleFuncIds.get(0)!)!;
+    assert.notEqual(
+      rootFunc.code.findIndex((ins) => ins.op === Op.WHEN_END_PRESENT),
+      -1,
+      "a bare user presence-gated sensor must emit WHEN_END_PRESENT"
+    );
+  });
+
+  test("returns no bundle when every file is blocked", () => {
     const result = compileProject(
       new Map([
         [
@@ -119,7 +191,9 @@ export default Sensor({
     assert.equal(buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services }), undefined);
   });
 
-  test("returns no bundle when a program parameter type cannot be resolved at bundle time", () => {
+  // Re-anchored for definition presence: a bundle-time surface failure
+  // withholds that tile and its action; it never withholds the bundle.
+  test("a program whose parameter type cannot be resolved at bundle time is withheld from the bundle", () => {
     const result = compileProject(
       new Map([
         [
@@ -142,10 +216,18 @@ export default Actuator({
 
     const entry = result.results.get("move.ts");
     assert.ok(entry?.program);
+    const actionKey = entry.program.key;
 
     (entry.program.args[0] as ExtractedParam).type = "vector2";
 
-    assert.equal(buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services }), undefined);
+    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
+    assert.ok(bundle, "the bundle still builds");
+    assert.equal(bundle.actions.get(actionKey), undefined, "the unresolvable tile's action is withheld");
+    assert.equal(
+      bundle.tiles.some((tile) => tile.tileId === mkActuatorTileId(actionKey)),
+      false,
+      "the unresolvable tile is withheld"
+    );
   });
 
   test("bundle tiles can hydrate deserialization before executable actions are installed", () => {
@@ -157,6 +239,7 @@ export default Actuator({
 import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
+  id: "snprobe",
   name: "probe",
   onExecute(ctx: Context): number {
     return 2;
@@ -170,7 +253,9 @@ export default Sensor({
     const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
 
-    const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.probe"));
+    const sensorTile = bundle.tiles.find(
+      (tile) => tile.tileId === mkSensorTileId(`${TEST_PROJECT_NAMESPACE}:user.sensor.snprobe`)
+    );
     assert.ok(sensorTile);
 
     const brainDef = BrainDef.emptyBrainDef(services, "Probe Brain");
@@ -193,9 +278,28 @@ export default Sensor({
     const restored = environment.deserializeBrainJson(json);
     assert.equal(restored.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.tileId, sensorTile!.tileId);
 
-    assert.throws(() => environment.createBrain(restored), /user\.sensor\.probe/);
+    // Before the executable actions are installed, linking the restored brain
+    // reports the missing action by its key.
+    const linkResult = environment.linkBrain(restored);
+    assert.equal(linkResult.program, undefined);
+    assert.ok(
+      linkResult.diagnostics
+        .toArray()
+        .some((diag) => diag.message.includes(`${TEST_PROJECT_NAMESPACE}:user.sensor.snprobe`))
+    );
 
+    // With the action still missing, createBrain yields a tracked, invalidated
+    // brain that has no executable program.
+    const bornInvalidated = environment.createBrain(restored);
+    assert.equal(bornInvalidated.status, "invalidated");
+    assert.equal(bornInvalidated.getProgram(), undefined);
+
+    // Installing the executable actions revives the born-invalidated brain
+    // through the per-tick rebuild retry path.
     environment.replaceActionBundle(bundle);
+    environment.rebuildInvalidatedBrains();
+    assert.equal(bornInvalidated.status, "active");
+    assert.ok(bornInvalidated.getProgram());
 
     const brain = environment.createBrain(restored);
     assert.equal(brain.status, "active");

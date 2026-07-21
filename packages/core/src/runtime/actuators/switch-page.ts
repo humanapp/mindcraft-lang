@@ -1,8 +1,9 @@
 import type { ReadonlyList } from "../../platform/list";
+import { CoreHostActions } from "../abi-ids";
 import { choice, param } from "../call-spec";
 import type { ExecutionContext, HostActionBinding } from "../context";
 import { type ActionDescriptor, getSlotId, mkCallDef } from "../function-defs";
-import { CoreActuatorId, CoreParameterId, mkActuatorTileId } from "../tile-ids";
+import { CoreParameterId, mkActuatorTileId } from "../tile-ids";
 import { isNilValue, isNumberValue, isStringValue, type Value, VOID_VALUE } from "../value";
 
 const AnonNumber = param(CoreParameterId.AnonymousNumber, { anonymous: true });
@@ -11,7 +12,7 @@ const AnonString = param(CoreParameterId.AnonymousString, { anonymous: true });
 const callDef = mkCallDef(choice(AnonNumber, AnonString));
 
 const descriptor: ActionDescriptor = {
-  key: CoreActuatorId.SwitchPage,
+  key: CoreHostActions.SwitchPage.key,
   kind: "actuator",
   callDef,
   isAsync: false,
@@ -42,12 +43,13 @@ function fnSwitchPage(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
 const binding: HostActionBinding = {
   binding: "host",
   descriptor,
+  id: CoreHostActions.SwitchPage.actionId,
   execSync: fnSwitchPage,
 };
 
 export default {
-  fnId: CoreActuatorId.SwitchPage,
-  tileId: mkActuatorTileId(CoreActuatorId.SwitchPage),
+  key: CoreHostActions.SwitchPage.key,
+  tileId: mkActuatorTileId(CoreHostActions.SwitchPage.key),
   isAsync: false,
   descriptor,
   binding,

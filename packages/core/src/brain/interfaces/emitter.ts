@@ -119,6 +119,13 @@ export interface IBytecodeEmitter {
   call(funcId: number, argc: number): void;
 
   /**
+   * Spawn a fire-and-forget child-rule fiber running `funcId`. Pushes nothing
+   * onto the operand stack; the spawning fiber continues at the next
+   * instruction.
+   */
+  spawnRule(funcId: number): void;
+
+  /**
    * Call function indirectly via FunctionValue on the stack.
    * Pops argc arguments, then pops a FunctionValue, calls the function by funcId.
    */
@@ -173,6 +180,24 @@ export interface IBytecodeEmitter {
    * @param callSiteId - Unique ID for this call site (for per-call-site state)
    */
   actionCallAsync(actionSlot: number, argc: number, callSiteId: number): void;
+
+  /**
+   * Call a host action synchronously by its stable registry id.
+   * Consumes `argc` positional values from the operand stack.
+   * @param actionId - The stable action id from the brain action registry
+   * @param argc - Width of the arg buffer on the stack
+   * @param callSiteId - Unique ID for this call site (for per-call-site state)
+   */
+  hostActionCall(actionId: number, argc: number, callSiteId: number): void;
+
+  /**
+   * Call a host action asynchronously by its stable registry id.
+   * Consumes `argc` positional values from the operand stack.
+   * @param actionId - The stable action id from the brain action registry
+   * @param argc - Width of the arg buffer on the stack
+   * @param callSiteId - Unique ID for this call site (for per-call-site state)
+   */
+  hostActionCallAsync(actionId: number, argc: number, callSiteId: number): void;
 
   // ==========================================
   // Async operations
@@ -304,16 +329,6 @@ export interface IBytecodeEmitter {
   structNew(typeIdConstIdx: number): void;
 
   /**
-   * Get field from struct. Field name is on stack.
-   */
-  structGet(): void;
-
-  /**
-   * Set field in struct. Field name and value are on stack.
-   */
-  structSet(): void;
-
-  /**
    * Get field from a closed struct by `StructFieldDef.fieldIndex`.
    */
   structGetField(fieldIndex: number): void;
@@ -322,6 +337,12 @@ export interface IBytecodeEmitter {
    * Set field on a closed struct by `StructFieldDef.fieldIndex`.
    */
   structSetField(fieldIndex: number): void;
+
+  /**
+   * Pop a value and push a deep copy of it. Copies structs (value semantics);
+   * a no-op for lists, maps, and primitives (reference/immutable).
+   */
+  structDeepCopy(): void;
 
   // ==========================================
   // Generic field access
@@ -368,6 +389,23 @@ export interface IBytecodeEmitter {
    * @param slotIdx Index into the fiber's callsiteVars array
    */
   storeCallsiteVar(slotIdx: number): void;
+
+  // ==========================================
+  // System (shared-singleton) variables
+  // ==========================================
+
+  /**
+   * Load a System's state from the brain-global System store onto the stack.
+   * @param slotIdx System store slot (program-local until linked)
+   */
+  loadSystemVar(slotIdx: number): void;
+
+  /**
+   * Store the top stack value into the brain-global System store (by reference,
+   * no copy).
+   * @param slotIdx System store slot (program-local until linked)
+   */
+  storeSystemVar(slotIdx: number): void;
 
   // ==========================================
   // Finalization

@@ -1,9 +1,8 @@
 import {
-  CoreActuatorId,
   CoreControlFlowId,
+  CoreHostActions,
   CoreLiteralFactoryId,
   CoreOpId,
-  CoreSensorId,
   CoreTypeIds,
   CoreVariableFactoryId,
   mkAccessorTileId,
@@ -60,15 +59,15 @@ export const tileVisuals = new Map<string, Partial<TileVisual>>([
   // Modifiers
   // Parameters
   // Sensors
-  [mkSensorTileId(CoreSensorId.Random), { label: "random number", iconUrl: "/assets/brain/icons/random.svg" }],
-  [mkSensorTileId(CoreSensorId.OnPageEntered), { label: "on page entered", iconUrl: "/assets/brain/icons/on-page-enter.svg" }],
-  [mkSensorTileId(CoreSensorId.Timeout), { label: "timeout", iconUrl: "/assets/brain/icons/timer.svg" }],
-  [mkSensorTileId(CoreSensorId.CurrentPage), { label: "current page", iconUrl: "/assets/brain/icons/page.svg" }],
-  [mkSensorTileId(CoreSensorId.PreviousPage), { label: "previous page", iconUrl: "/assets/brain/icons/page2.svg" }],
+  [mkSensorTileId(CoreHostActions.Random.key), { label: "random number", iconUrl: "/assets/brain/icons/random.svg" }],
+  [mkSensorTileId(CoreHostActions.OnPageEntered.key), { label: "on page entered", iconUrl: "/assets/brain/icons/on-page-enter.svg" }],
+  [mkSensorTileId(CoreHostActions.Timeout.key), { label: "timeout", iconUrl: "/assets/brain/icons/timer.svg" }],
+  [mkSensorTileId(CoreHostActions.CurrentPage.key), { label: "current page", iconUrl: "/assets/brain/icons/page.svg" }],
+  [mkSensorTileId(CoreHostActions.PreviousPage.key), { label: "previous page", iconUrl: "/assets/brain/icons/page2.svg" }],
   // Actuators
-  [mkActuatorTileId(CoreActuatorId.SwitchPage), { label: "switch page", iconUrl: "/assets/brain/icons/switch_page.svg" }],
-  [mkActuatorTileId(CoreActuatorId.RestartPage), { label: "restart page", iconUrl: "/assets/brain/icons/restart-page.svg" }],
-  [mkActuatorTileId(CoreActuatorId.Yield), { label: "yield", iconUrl: "/assets/brain/icons/yield.svg" }],
+  [mkActuatorTileId(CoreHostActions.SwitchPage.key), { label: "switch page", iconUrl: "/assets/brain/icons/switch_page.svg" }],
+  [mkActuatorTileId(CoreHostActions.RestartPage.key), { label: "restart page", iconUrl: "/assets/brain/icons/restart-page.svg" }],
+  [mkActuatorTileId(CoreHostActions.Yield.key), { label: "yield", iconUrl: "/assets/brain/icons/yield.svg" }],
   // Field Accessors
   [mkAccessorTileId(SimTypeIds.Vector2, "x"), { label: "x", iconUrl: "/assets/brain/icons/vector2_x.svg" }],
   [mkAccessorTileId(SimTypeIds.Vector2, "y"), { label: "y", iconUrl: "/assets/brain/icons/vector2_y.svg" }],

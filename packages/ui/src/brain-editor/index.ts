@@ -1,9 +1,11 @@
 // Context and types
 
+// Action call-spec arg entries
+export type { ActionArgEntry, ActionArgTileEntry, ActionArgTypeEntry, TypeDisplaySources } from "./action-arg-tiles";
+export { getActionArgEntries, resolveTypeDisplayName } from "./action-arg-tiles";
 export type { BrainEditorConfig, CustomLiteralType } from "./BrainEditorContext";
 export { BrainEditorProvider, useBrainEditorConfig } from "./BrainEditorContext";
 export type { BrainEditorDialogProps } from "./BrainEditorDialog";
-
 // Components
 export { BrainEditorDialog } from "./BrainEditorDialog";
 export { BrainPageEditor } from "./BrainPageEditor";
@@ -50,7 +52,7 @@ export {
 export { DisplayFormatPicker } from "./DisplayFormatPicker";
 export { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
 // Hooks
-export { useRuleCapabilities } from "./hooks/useRuleCapabilities";
+export { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 export { useTileSelection } from "./hooks/useTileSelection";
 export { RenameVariableDialog } from "./RenameVariableDialog";
 // Clipboard utilities
@@ -71,5 +73,8 @@ export {
   importTileFromClipboard,
   onTileClipboardChanged,
 } from "./tile-clipboard";
+export type { LibraryTileCluster, LibraryTileGroups, TileSourceLibrary } from "./tile-library-groups";
+// Library attribution
+export { groupTilesByLibrary, tileSourceNamespace } from "./tile-library-groups";
 export { formatValue } from "./tile-value-utils";
 export type { TileColorDef, TileVisual } from "./types";

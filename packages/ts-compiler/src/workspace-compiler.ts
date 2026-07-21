@@ -1,8 +1,12 @@
 import type { CompiledActionBundle, MindcraftEnvironment } from "@mindcraft-lang/core";
+import type { DiagnosticSeverity } from "@mindcraft-lang/core/brain";
 import type { ProjectCompileResult } from "./compiler/compile.js";
+import { type DependencyMount, extensionWorkspacePath, type ProjectDependency } from "./compiler/extension-mounts.js";
+import { declarationMounts, type Mount, mountedFiles, sourceMounts } from "./compiler/mounts.js";
 import { COMPILER_CONTROLLED_TSCONFIG_PATH, UserTileProject } from "./compiler/project.js";
-import type { AmbientFile, CompileDiagnostic, DiagnosticSeverity } from "./compiler/types.js";
-import { buildCompiledActionBundle } from "./runtime/action-bundle.js";
+import { MultiRootSession, type ProjectRoot } from "./compiler/project-set.js";
+import type { CompileDiagnostic } from "./compiler/types.js";
+import { buildMultiRootActionBundle } from "./runtime/action-bundle.js";
 
 /** A file in a {@link WorkspaceSnapshot}: `content` plus the `etag` used for optimistic concurrency. */
 export type WorkspaceFileEntry = {
@@ -80,28 +84,61 @@ export interface WorkspaceDiagnosticEntry {
 export interface WorkspaceCompileResult {
   /** Diagnostics keyed by workspace path. Files with no diagnostics are absent. */
   files: ReadonlyMap<string, readonly WorkspaceDiagnosticEntry[]>;
+  /** The host project's compile result. Diagnostics surfaced to the user come from here only. */
   projectResult: ProjectCompileResult;
-  /** Compiled action bundle. Absent when the project has blocking diagnostics. */
+  /**
+   * Every compilation root whose tiles enter {@link bundle}: the host project
+   * followed by one result per installed extension. Equals `[projectResult]`
+   * when the project has no extensions.
+   */
+  rootResults: readonly ProjectCompileResult[];
+  /** Compiled action bundle. Absent only when every root has a blocked file and no file contributes a program. */
   bundle?: CompiledActionBundle;
 }
 
 /** Options for {@link createWorkspaceCompiler}. */
 export interface CreateWorkspaceCompilerOptions {
   environment: MindcraftEnvironment;
-  /** Ordered ambient declaration files available to the TypeScript compiler and remote VFS peers. */
-  ambientFiles: readonly AmbientFile[];
+  /** Namespace of the project being compiled (its store id, or an extension origin); prefixes every symbol key minted from the project's content. */
+  projectNamespace: string;
+  /**
+   * Read-only content mounts available to the TypeScript compiler and remote
+   * VFS peers. Declaration mounts are always in scope; source mounts are
+   * resolvable by user import.
+   */
+  mounts: readonly Mount[];
+  /**
+   * Extension dependencies of the project being compiled, each pairing a
+   * dependency's `@lib/<owner>/<repo>` coordinate with its namespace. Empty
+   * when the project has no extensions.
+   */
+  dependencies?: readonly ProjectDependency[];
+  /**
+   * Read-only content of each dependency named in {@link dependencies},
+   * including the transitive closure, mounted for `@lib/<owner>/<repo>`
+   * resolution.
+   */
+  dependencyMounts?: readonly DependencyMount[];
 }
 
 /** Driver for incremental workspace compilation. Receives snapshot/change inputs and emits diagnostics and a bundle. */
 export interface WorkspaceCompiler {
   replaceWorkspace(snapshot: WorkspaceSnapshot): void;
   applyWorkspaceChange(change: WorkspaceChange): void;
+  /**
+   * Replace the project's extension dependencies and their mounted content.
+   * A subsequent compile registers the new mounts and tears down the type
+   * registrations of any origin dropped since the previous compile.
+   */
+  setDependencies(dependencies: readonly ProjectDependency[], dependencyMounts: readonly DependencyMount[]): void;
   compile(): WorkspaceCompileResult;
   /** Subscribe to compile results. Returns a disposer. */
   onDidCompile(listener: (result: WorkspaceCompileResult) => void): () => void;
   /**
-   * Files synthesized by the compiler (ambient declarations and `tsconfig.json`).
-   * The host should keep these in sync with the workspace.
+   * Files the compiler controls: ambient declarations, `tsconfig.json`, and the
+   * read-only installed-extensions tree (`.libraries/<owner>/<repo>/...`)
+   * materialized from the resolved extension set. The host should keep these in
+   * sync with the workspace and exclude them from the project's saved bytes.
    */
   getCompilerControlledFiles(): ReadonlyMap<string, string>;
 }
@@ -120,22 +157,31 @@ function mapDiagnostic(diagnostic: CompileDiagnostic): WorkspaceDiagnosticEntry 
   };
 }
 
-function buildDiagnosticSnapshot(projectResult: ProjectCompileResult): WorkspaceCompileResult["files"] {
-  const files = new Map<string, readonly WorkspaceDiagnosticEntry[]>();
+/**
+ * Fold one compile root's diagnostics into `files`, mapping each root-relative
+ * path to its workspace path with `toWorkspacePath`. Diagnostics on a path
+ * already present are appended, so a host path carrying both TypeScript and
+ * descriptor diagnostics accumulates both.
+ */
+function foldRootDiagnostics(
+  files: Map<string, readonly WorkspaceDiagnosticEntry[]>,
+  projectResult: ProjectCompileResult,
+  toWorkspacePath: (path: string) => string
+): void {
+  const add = (path: string, diagnostics: readonly CompileDiagnostic[]): void => {
+    const key = toWorkspacePath(path);
+    const entries = diagnostics.map(mapDiagnostic);
+    const existing = files.get(key);
+    files.set(key, existing ? existing.concat(entries) : entries);
+  };
 
   for (const [path, diagnostics] of projectResult.tsErrors) {
-    const entries = diagnostics.map(mapDiagnostic);
-    const existing = files.get(path);
-    files.set(path, existing ? existing.concat(entries) : entries);
+    add(path, diagnostics);
   }
 
   for (const [path, compileResult] of projectResult.results) {
-    const entries = compileResult.diagnostics.map(mapDiagnostic);
-    const existing = files.get(path);
-    files.set(path, existing ? existing.concat(entries) : entries);
+    add(path, compileResult.diagnostics);
   }
-
-  return files;
 }
 
 function snapshotToProjectFiles(snapshot: WorkspaceSnapshot): Map<string, string> {
@@ -153,11 +199,28 @@ function snapshotToProjectFiles(snapshot: WorkspaceSnapshot): Map<string, string
 class WorkspaceCompilerController implements WorkspaceCompiler {
   private readonly project: UserTileProject;
   private readonly compileListeners = new Set<(result: WorkspaceCompileResult) => void>();
+  /** The dependency mounts materialized into the installed-extensions tree at the latest compile. */
+  private _dependencyMounts: readonly DependencyMount[];
+  /**
+   * Session that compiles each installed extension under its own namespace
+   * scope. Present once the project has at least one extension; undefined
+   * otherwise.
+   */
+  private _extensionSession?: MultiRootSession;
+  /** The latest per-extension compile results paired with their coordinate namespace, in dependency order; reused across host-only recompiles. */
+  private _extensionResults: readonly (readonly [string, ProjectCompileResult])[] = [];
+  /** Set when the resolved extension set changed since the last extension compile. */
+  private _extensionsDirty = true;
 
   constructor(private readonly options: CreateWorkspaceCompilerOptions) {
+    this._dependencyMounts = options.dependencyMounts ?? [];
     this.project = new UserTileProject({
-      ambientFiles: options.ambientFiles,
+      projectNamespace: options.projectNamespace,
+      ambientFiles: mountedFiles(declarationMounts(options.mounts)),
+      stdlibFiles: mountedFiles(sourceMounts(options.mounts)),
       services: options.environment.brainServices,
+      dependencies: options.dependencies,
+      dependencyMounts: options.dependencyMounts,
     });
   }
 
@@ -185,16 +248,39 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
     }
   }
 
+  setDependencies(dependencies: readonly ProjectDependency[], dependencyMounts: readonly DependencyMount[]): void {
+    this._dependencyMounts = dependencyMounts;
+    this._extensionsDirty = true;
+    this.project.setDependencies(dependencies, dependencyMounts);
+  }
+
   compile(): WorkspaceCompileResult {
+    // Extensions must be compiled before the host: the host's on-demand type
+    // resolution reads their registered tiles.
+    this.refreshExtensions();
+
     const projectResult = this.project.compileAll();
-    const files = buildDiagnosticSnapshot(projectResult);
-    const bundle = buildCompiledActionBundle(projectResult, {
+    const rootResults = [projectResult, ...this._extensionResults.map(([, result]) => result)];
+
+    // Host diagnostics key on their project-relative workspace path; each
+    // extension root's diagnostics key under its installed-extensions path
+    // (`.libraries/<owner>/<repo>/...`), the path space the VFS and extension
+    // tree serve from. Host paths and extension paths never overlap: the host
+    // compile skips the `.libraries/` tree, and each extension keys under its
+    // own coordinate. Diagnostics on a shared key accumulate, never overwrite.
+    const files = new Map<string, readonly WorkspaceDiagnosticEntry[]>();
+    foldRootDiagnostics(files, projectResult, (path) => path);
+    for (const [namespace, extensionResult] of this._extensionResults) {
+      foldRootDiagnostics(files, extensionResult, (path) => extensionWorkspacePath(namespace, path));
+    }
+    const bundle = buildMultiRootActionBundle(rootResults, {
       services: this.options.environment.brainServices,
     });
 
     const result: WorkspaceCompileResult = {
       files,
       projectResult,
+      rootResults,
       bundle,
     };
 
@@ -203,6 +289,40 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
     }
 
     return result;
+  }
+
+  /** The resolved extension set as compilation roots, one per dependency mount. */
+  private extensionRoots(): ProjectRoot[] {
+    return this._dependencyMounts.map((mount) => ({
+      namespace: mount.namespace,
+      files: mount.files,
+      dependencies: mount.dependencies,
+      readOnlySource: true,
+    }));
+  }
+
+  /**
+   * Recompile the extension scopes when the resolved set changed. Dropping the
+   * last extension tears down every scope's registrations; an intermediate
+   * change tears down only the origins no longer present.
+   */
+  private refreshExtensions(): void {
+    if (!this._extensionsDirty) return;
+    this._extensionsDirty = false;
+
+    const roots = this.extensionRoots();
+    if (roots.length === 0) {
+      this._extensionSession?.setRoots([]);
+      this._extensionResults = [];
+      return;
+    }
+
+    if (!this._extensionSession) {
+      this._extensionSession = new MultiRootSession({ services: this.options.environment.brainServices });
+    }
+    this._extensionSession.setRoots(roots);
+    const { roots: results } = this._extensionSession.compile();
+    this._extensionResults = [...results];
   }
 
   onDidCompile(listener: (result: WorkspaceCompileResult) => void): () => void {
@@ -214,10 +334,17 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
 
   getCompilerControlledFiles(): ReadonlyMap<string, string> {
     const files = new Map<string, string>();
-    for (const file of this.options.ambientFiles) {
+    for (const file of mountedFiles(this.options.mounts)) {
       files.set(file.path, file.content);
     }
     files.set(COMPILER_CONTROLLED_TSCONFIG_PATH, TSCONFIG_CONTENT);
+    // The resolved extensions materialize as read-only source under the
+    // installed-extensions tree, one subtree per `<owner>/<repo>` coordinate.
+    for (const mount of this._dependencyMounts) {
+      for (const [path, content] of mount.files) {
+        files.set(extensionWorkspacePath(mount.namespace, path), content);
+      }
+    }
     return files;
   }
 }
@@ -231,7 +358,13 @@ const TSCONFIG_CONTENT = JSON.stringify(
       strict: true,
       noEmit: true,
       skipLibCheck: true,
+      paths: {
+        "@lib/*": ["./.libraries/*"],
+      },
     },
+    // TypeScript's default `**/*` include skips dot-directories; the
+    // materialized installed-extensions tree is listed explicitly to cover it.
+    include: ["**/*", ".libraries/**/*"],
   },
   undefined,
   2

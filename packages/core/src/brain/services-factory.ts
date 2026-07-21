@@ -16,6 +16,7 @@ import { BrainActionRegistry } from "../runtime/action-registry";
 import { ConversionRegistry } from "../runtime/conversions";
 import { FunctionRegistry } from "../runtime/functions";
 import { OperatorOverloads, OperatorTable } from "../runtime/operators";
+import { createF64ProfileNumerics, type ProfileNumerics } from "../runtime/profile-numerics";
 import { TypeRegistry } from "../runtime/type-system";
 import type { IBrainTileDefBuilder, ITileCatalog } from "./interfaces";
 import { BrainServices } from "./services";
@@ -94,10 +95,12 @@ export function createDefaultRng(): IRngServices {
 
 /**
  * Creates an {@link AppServices} aggregate of host-supplied capabilities.
- * The RNG defaults to {@link createDefaultRng} when `rng` is omitted.
+ * The RNG defaults to {@link createDefaultRng} when `rng` is omitted; the
+ * numerics default to {@link createF64ProfileNumerics} when `numerics` is
+ * omitted.
  */
-export function createAppServices(rng?: IRngServices): AppServices {
-  return { rng: rng ?? createDefaultRng() };
+export function createAppServices(rng?: IRngServices, numerics?: ProfileNumerics): AppServices {
+  return { rng: rng ?? createDefaultRng(), numerics: numerics ?? createF64ProfileNumerics() };
 }
 
 /**

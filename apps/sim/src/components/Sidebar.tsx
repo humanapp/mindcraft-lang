@@ -1,13 +1,44 @@
+import { parseExtensionReference } from "@mindcraft-lang/app-host";
+import type { ExtensionTransactionToasts, LibraryUninstallImpact } from "@mindcraft-lang/bridge-app";
+import { presentExtensionTransaction, runGuardedLibraryUninstall } from "@mindcraft-lang/bridge-app";
 import { useDocsSidebar } from "@mindcraft-lang/docs";
-import { Button, Slider, Switch } from "@mindcraft-lang/ui";
-import { BookOpen, Check, ChevronDown, ChevronRight, CircleHelp, Copy, FileText, Info, Settings } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { Button, ExtensionBrowserDialog, Slider, Switch } from "@mindcraft-lang/ui";
+import {
+  Blocks,
+  BookOpen,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  Copy,
+  FileText,
+  Info,
+  Settings,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { toast } from "sonner";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
+import { BrainDiagnosticsList, BrainErrorBadge, toggledBrainKey } from "@/components/BrainDiagnostics";
+import { CompileDiagnosticsConsole } from "@/components/CompileDiagnosticsConsole";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import { UninstallImpactMessage } from "@/components/UninstallImpactMessage";
 import { useSimEnvironment } from "@/contexts/sim-environment";
 import { clearBindingToken } from "@/services/binding-token-persistence";
+import { collectSimLibraryUninstallImpact } from "@/services/library-uninstall-guard";
+import { simEmbeddedExtensions } from "@/services/sim-embedded-extensions";
+import {
+  buildSimCatalogOffers,
+  buildSimExtensionEntries,
+  checkSimExtensionUpdates,
+  installSimExtension,
+  installSimReference,
+  simCatalogCoordinateOrder,
+  simLibraryDisplayName,
+  uninstallSimExtension,
+} from "@/services/sim-extension-browser";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   carnivore: "#e63946",
@@ -22,6 +53,37 @@ const ARCHETYPE_LABELS: Record<string, string> = {
 };
 
 const ARCHETYPES_LIST: Archetype[] = ["carnivore", "herbivore", "plant"];
+
+/** An uninstall waiting on the in-use confirmation dialog. */
+interface PendingUninstall {
+  /** The library's display name; titles the dialog. */
+  name: string;
+  /** The computed in-use impact the dialog lists. */
+  impact: LibraryUninstallImpact;
+  /** Resolves the confirmation: true removes anyway, false cancels. */
+  resolve: (confirmed: boolean) => void;
+}
+
+function failedToast(prefix: string): ExtensionTransactionToasts["failed"] {
+  return ({ code, message }) => {
+    toast.error(`${prefix} ${code !== undefined ? `${code}: ` : ""}${message}`);
+  };
+}
+
+const installToasts: ExtensionTransactionToasts = {
+  failed: failedToast("Could not install library."),
+  confirmed: (name) => toast.success(`Installed ${name}`),
+};
+
+const uninstallToasts: ExtensionTransactionToasts = {
+  failed: failedToast("Could not remove library."),
+  confirmed: (name) => toast.success(`Removed ${name}`),
+};
+
+const refreshToasts: ExtensionTransactionToasts = {
+  failed: failedToast("Could not load libraries."),
+  confirmed: () => undefined,
+};
 
 function fmtTime(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -68,9 +130,184 @@ export function Sidebar({
     store.getCollapsedArchetypes()
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [extensionsOpen, setExtensionsOpen] = useState(false);
+  const [pendingUninstall, setPendingUninstall] = useState<PendingUninstall | null>(null);
+  const [expandedDiagnostics, setExpandedDiagnostics] = useState<ReadonlySet<string>>(new Set());
+  const [devPanelCollapsed, setDevPanelCollapsed] = useState(() => store.getDevPanelCollapsed());
+  const toggleDevPanelCollapsed = () =>
+    setDevPanelCollapsed((previous) => {
+      const next = !previous;
+      store.updateDevPanelCollapsed(next);
+      return next;
+    });
+  useSyncExternalStore(store.subscribeToBrainDiagnostics, store.getBrainDiagnosticsRevision);
+  const subscribeToActiveProject = useCallback(
+    (listener: () => void) => store.projectManager.onActiveProjectChange(listener),
+    [store]
+  );
+  const extensions = useSyncExternalStore(subscribeToActiveProject, () => store.activeProjectManifest?.extensions);
+  const catalogOffers = useMemo(() => buildSimCatalogOffers(extensions, simEmbeddedExtensions), [extensions]);
+  const extensionEntries = useMemo(
+    () =>
+      buildSimExtensionEntries(
+        extensions,
+        simEmbeddedExtensions,
+        store.host.installedExtensionContent,
+        store.host.extensionFetchFailures
+      ),
+    [extensions, store]
+  );
+
+  const handleInstallExtension = (coordinate: string) => {
+    void (async () => {
+      const result = await installSimExtension(
+        store.host,
+        store.activeProjectManifest?.extensions,
+        coordinate,
+        simEmbeddedExtensions
+      );
+      if (!result.action.ok) {
+        toast.error(`Could not install library (${result.action.code})`);
+        return;
+      }
+      presentExtensionTransaction({
+        report: result.report,
+        flavor: "install",
+        libraryName: simLibraryDisplayName(store.host.installedLibraries, coordinate),
+        toasts: installToasts,
+      });
+    })();
+  };
+
+  const handleInstallExtensionReference = (input: string) => {
+    void (async () => {
+      const result = await installSimReference(
+        store.host,
+        store.activeProjectManifest?.extensions,
+        simEmbeddedExtensions,
+        input
+      );
+      if (!result.ok) {
+        toast.error(`Could not add library. ${result.code}: ${result.message}`);
+        return;
+      }
+      if (!result.action.ok) {
+        toast.error(`Could not add library (${result.action.code})`);
+        return;
+      }
+      const parsed = parseExtensionReference(result.reference);
+      const coordinate =
+        parsed === undefined
+          ? result.reference
+          : parsed.transport === "gh"
+            ? `${parsed.owner}/${parsed.repo}`
+            : parsed.coordinate;
+      presentExtensionTransaction({
+        report: result.report,
+        flavor: "install",
+        libraryName: simLibraryDisplayName(store.host.installedLibraries, coordinate),
+        toasts: installToasts,
+      });
+    })();
+  };
+
+  const handleUninstallExtension = (coordinate: string) => {
+    void (async () => {
+      const extensionsMap = store.activeProjectManifest?.extensions;
+      const name = simLibraryDisplayName(store.host.installedLibraries, coordinate);
+      const impact = collectSimLibraryUninstallImpact(
+        store.host,
+        extensionsMap,
+        coordinate,
+        simEmbeddedExtensions,
+        store.host.installedExtensionContent,
+        (key) => ARCHETYPE_LABELS[key] ?? key
+      );
+      await runGuardedLibraryUninstall({
+        impact,
+        confirmRemoval: () =>
+          new Promise<boolean>((resolve) => {
+            setPendingUninstall({ name, impact, resolve });
+          }),
+        uninstall: async () => {
+          const result = await uninstallSimExtension(
+            store.host,
+            extensionsMap,
+            coordinate,
+            simEmbeddedExtensions,
+            store.host.installedExtensionContent
+          );
+          if (!result.action.ok) {
+            toast.error(`Could not remove library (${result.action.code})`);
+            return;
+          }
+          presentExtensionTransaction({
+            report: result.report,
+            flavor: "uninstall",
+            libraryName: name,
+            toasts: uninstallToasts,
+          });
+        },
+      });
+    })();
+  };
+
+  const handleCheckUpdates = (coordinates: readonly string[]) => {
+    void (async () => {
+      const summary = await checkSimExtensionUpdates(store.host, coordinates);
+      for (const failure of summary.failures) {
+        toast.error(
+          `Could not check ${failure.coordinate} for updates. ${failure.error.code}: ${failure.error.message}`
+        );
+      }
+      if (summary.updates.length === 0) {
+        if (summary.failures.length === 0) {
+          toast.success("Libraries are up to date");
+        }
+        return;
+      }
+      const updates = summary.updates;
+      const description = updates
+        .map((update) => `${update.coordinate} -> ${update.latestVersion ?? update.resolvedSha?.slice(0, 12) ?? ""}`)
+        .join("\n");
+      toast.info(`${updates.length} update(s) available`, {
+        description,
+        action: {
+          label: updates.length > 1 ? "Update all" : "Update",
+          onClick: () => {
+            void (async () => {
+              presentExtensionTransaction({
+                report: await store.host.applyExtensionUpdates(updates),
+                flavor: "refresh",
+                toasts: refreshToasts,
+              });
+            })();
+          },
+        },
+      });
+    })();
+  };
+
+  const handleCheckAllUpdates = () => {
+    handleCheckUpdates(extensionEntries.filter((entry) => entry.updatable === true).map((entry) => entry.coordinate));
+  };
+
+  const handleRetryExtension = () => {
+    void (async () => {
+      presentExtensionTransaction({
+        report: await store.host.updateProjectExtensions(store.activeProjectManifest?.extensions ?? {}),
+        flavor: "refresh",
+        toasts: refreshToasts,
+      });
+    })();
+  };
   const [bridgeEnabled, setBridgeEnabled] = useState(() => store.getUiPreferences().bridgeEnabled);
   const bridgeStatus = useSyncExternalStore(store.subscribeToBridgeStatus, store.getBridgeStatusSnapshot);
   const joinCode = useSyncExternalStore(store.subscribeToBridgeJoinCode, store.getBridgeJoinCodeSnapshot);
+  const compileDiagnostics = useSyncExternalStore(
+    store.subscribeToCompileDiagnostics,
+    store.getCompileDiagnosticsSnapshot
+  );
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -138,6 +375,16 @@ export function Sidebar({
           <BookOpen className="h-4 w-4" aria-hidden="true" />
         </Button>
         <Button
+          onClick={() => setExtensionsOpen(true)}
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          title="Libraries"
+          aria-label="Open libraries"
+        >
+          <Blocks className="h-4 w-4" aria-hidden="true" />
+        </Button>
+        <Button
           onClick={() => setSettingsOpen(true)}
           variant="ghost"
           size="sm"
@@ -153,6 +400,35 @@ export function Sidebar({
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         onBridgeDisabled={() => setBridgeEnabled(false)}
+      />
+
+      {pendingUninstall !== null && (
+        <ConfirmDialog
+          title={pendingUninstall.name}
+          message={<UninstallImpactMessage impact={pendingUninstall.impact} />}
+          confirmLabel="Remove anyway"
+          destructive
+          onConfirm={async () => pendingUninstall.resolve(true)}
+          onClose={() => {
+            pendingUninstall.resolve(false);
+            setPendingUninstall(null);
+          }}
+        />
+      )}
+
+      <ExtensionBrowserDialog
+        open={extensionsOpen}
+        onOpenChange={setExtensionsOpen}
+        entries={extensionEntries}
+        onInstall={handleInstallExtension}
+        onUninstall={handleUninstallExtension}
+        onCheckUpdate={(coordinate) => handleCheckUpdates([coordinate])}
+        onRetry={handleRetryExtension}
+        onOpenRepo={(url) => window.open(url, "_blank", "noopener")}
+        onCheckAllUpdates={handleCheckAllUpdates}
+        onInstallReference={handleInstallExtensionReference}
+        catalogOffers={catalogOffers}
+        catalogCoordinates={simCatalogCoordinateOrder}
       />
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -205,6 +481,8 @@ export function Sidebar({
           const avgLife = s && s.deaths > 0 ? s.totalLifespan / s.deaths : 0;
           const avgEnergy = s && s.aliveCount > 0 ? s.totalEnergy / s.aliveCount : 0;
           const isCollapsed = collapsedArchetypes[arch] ?? false;
+          const diagnostics = store.getBrainDiagnostics(arch);
+          const diagnosticsExpanded = expandedDiagnostics.has(arch) && diagnostics.length > 0;
           const toggleCollapsed = () =>
             setCollapsedArchetypes((prev) => {
               const next = { ...prev, [arch]: !prev[arch] };
@@ -215,7 +493,7 @@ export function Sidebar({
             // biome-ignore lint/a11y/useSemanticElements: fieldset would break layout; role="group" provides accessible grouping
             <div
               key={arch}
-              className="space-y-2 rounded-lg bg-gray-900 p-2.5"
+              className="space-y-2 rounded-lg bg-panel p-2.5"
               role="group"
               aria-label={`${ARCHETYPE_LABELS[arch]} settings`}
             >
@@ -242,12 +520,22 @@ export function Sidebar({
                 <span className="text-sm font-medium" style={{ color: ARCHETYPE_COLORS[arch] }}>
                   {ARCHETYPE_LABELS[arch]}
                 </span>
+                {diagnostics.length > 0 && (
+                  <BrainErrorBadge
+                    count={diagnostics.length}
+                    expanded={diagnosticsExpanded}
+                    onToggle={() => setExpandedDiagnostics((previous) => toggledBrainKey(previous, arch))}
+                    brainName={ARCHETYPE_LABELS[arch] ?? arch}
+                  />
+                )}
                 {s && (
                   <span className="ml-auto font-mono tabular-nums text-xs text-muted-foreground">
                     {s.aliveCount} alive
                   </span>
                 )}
               </div>
+
+              {diagnosticsExpanded && <BrainDiagnosticsList diagnostics={diagnostics} />}
 
               {/* Stats */}
               {!isCollapsed && s && (
@@ -301,7 +589,7 @@ export function Sidebar({
                   }}
                   variant="outline"
                   size="sm"
-                  className="w-full h-7 text-xs border-slate-600"
+                  className="w-full h-7 text-xs border-border"
                   aria-label={`Edit ${ARCHETYPE_LABELS[arch]} brain`}
                 >
                   Edit Brain
@@ -323,87 +611,114 @@ export function Sidebar({
           </div>
         )}
 
-        {/* VS Code Bridge */}
+        {/* Dev Panel: the VS Code bridge section and the build-output console */}
         {store.getAppSettings().showBridgePanel && (
-          <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-0.5">
-                <span className="text-sm font-medium">VS Code Bridge</span>
-                <button
-                  type="button"
-                  className="shrink-0 flex items-center p-0.5 rounded hover:bg-gray-700 text-slate-400 hover:text-slate-200 transition-colors"
-                  aria-label="VS Code Bridge Help"
-                  onClick={() => {
-                    openDocs();
-                    navigateToEntry("concepts", "vscode");
-                  }}
-                >
-                  <CircleHelp className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
-                </button>
-              </div>
-              <Switch
-                id="bridge-toggle"
-                checked={bridgeEnabled}
-                onCheckedChange={(checked) => {
-                  setBridgeEnabled(checked);
-                  store.updateUiPreferences({ bridgeEnabled: checked });
-                  if (!checked) {
-                    store.disconnectBridge();
-                    clearBindingToken();
-                  }
-                }}
-                aria-label="Toggle VS Code bridge connection"
-              />
-            </div>
-            <output
-              className={`text-xs font-mono ${
-                bridgeStatus === "connected"
-                  ? "text-green-400"
-                  : bridgeStatus === "connecting" || bridgeStatus === "reconnecting"
-                    ? "text-yellow-400"
-                    : "text-muted-foreground"
-              }`}
-            >
-              {bridgeStatus}
-            </output>
-            {joinCode && (bridgeStatus === "connected" || bridgeStatus === "reconnecting") && (
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-mono text-slate-300 truncate">{joinCode}</span>
-                <button
-                  type="button"
-                  className="shrink-0 p-0.5 rounded hover:bg-gray-700 text-slate-400 hover:text-slate-200 transition-colors"
-                  aria-label={copied ? "Copied to clipboard" : "Copy join code"}
-                  onClick={() => {
-                    navigator.clipboard.writeText(joinCode);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  }}
-                >
-                  {copied ? (
-                    <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                  )}
-                </button>
-              </div>
-            )}
-            <div className="text-center w-full">
+          // biome-ignore lint/a11y/useSemanticElements: fieldset would break layout; role="group" provides accessible grouping
+          <div className="space-y-2 rounded-lg bg-panel p-2.5" role="group" aria-label="Dev Panel">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                className="text-xs text-slate-300 underline-offset-2 hover:underline hover:text-slate-100 transition-colors text-left cursor-pointer"
-                onClick={() => {
-                  openDocs();
-                  navigateToEntry("concepts", "vscode");
-                }}
+                onClick={toggleDevPanelCollapsed}
+                className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={devPanelCollapsed ? "Expand Dev Panel" : "Collapse Dev Panel"}
+                aria-expanded={!devPanelCollapsed}
               >
-                <span className="flex items-center gap-1">How to connect VS Code</span>
+                {devPanelCollapsed ? (
+                  <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+                )}
               </button>
+              <span className="text-sm font-medium">Dev Panel</span>
             </div>
+            {!devPanelCollapsed && (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-xs font-medium">VS Code Bridge</span>
+                    <button
+                      type="button"
+                      className="shrink-0 flex items-center p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label="VS Code Bridge Help"
+                      onClick={() => {
+                        openDocs();
+                        navigateToEntry("concepts", "vscode");
+                      }}
+                    >
+                      <CircleHelp className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    </button>
+                  </div>
+                  <Switch
+                    id="bridge-toggle"
+                    checked={bridgeEnabled}
+                    onCheckedChange={(checked) => {
+                      setBridgeEnabled(checked);
+                      store.updateUiPreferences({ bridgeEnabled: checked });
+                      if (!checked) {
+                        store.disconnectBridge();
+                        clearBindingToken();
+                      }
+                    }}
+                    aria-label="Toggle VS Code bridge connection"
+                  />
+                </div>
+                <output
+                  className={`text-xs font-mono ${
+                    bridgeStatus === "connected"
+                      ? "text-success"
+                      : bridgeStatus === "connecting" || bridgeStatus === "reconnecting"
+                        ? "text-warning"
+                        : "text-muted-foreground"
+                  }`}
+                >
+                  {bridgeStatus}
+                </output>
+                {joinCode && (bridgeStatus === "connected" || bridgeStatus === "reconnecting") && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-mono text-foreground truncate">{joinCode}</span>
+                    <button
+                      type="button"
+                      className="shrink-0 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label={copied ? "Copied to clipboard" : "Copy join code"}
+                      onClick={() => {
+                        navigator.clipboard.writeText(joinCode);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      }}
+                    >
+                      {copied ? (
+                        <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                      )}
+                    </button>
+                  </div>
+                )}
+                <div className="text-center w-full">
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground underline-offset-2 hover:underline hover:text-foreground transition-colors text-left cursor-pointer"
+                    onClick={() => {
+                      openDocs();
+                      navigateToEntry("concepts", "vscode");
+                    }}
+                  >
+                    <span className="flex items-center gap-1">How to connect VS Code</span>
+                  </button>
+                </div>
+                {compileDiagnostics.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-xs font-medium">Build issues</span>
+                    <CompileDiagnosticsConsole diagnostics={compileDiagnostics} />
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
         {/* Debug toggle */}
-        <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
+        <div className="space-y-2 rounded-lg bg-panel p-2.5">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Debug Draw</span>
             <Switch

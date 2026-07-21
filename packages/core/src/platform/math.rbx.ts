@@ -17,6 +17,11 @@ export const MathOps = {
     const floored = n | 0;
     return n - floored >= 0.5 ? floored + 1 : floored;
   },
+  fround: (n: number) => {
+    const b = buffer.create(4);
+    buffer.writef32(b, 0, n);
+    return buffer.readf32(b, 0);
+  },
   random: () => {
     // Simple LCG (Linear Congruential Generator) for cross-platform deterministic random
     // Uses a = 1664525, c = 1013904223, m = 2^32 (Numerical Recipes parameters)

@@ -1,8 +1,17 @@
 import { List, type ReadonlyList } from "../../platform/list";
-import { type BrainActionArgSlot, CoreTypeNames, type IConversionRegistry } from "../../runtime";
+import {
+  type BrainActionArgSlot,
+  CoreTypeIds,
+  CoreTypeNames,
+  type IConversionRegistry,
+  type ITypeRegistry,
+  NativeType,
+  type StructTypeDef,
+  type TypeId,
+} from "../../runtime";
 import type { IBrainTileDef, ITileCatalog } from "../interfaces";
 import type { BrainTileParameterDef } from "../tiles";
-import { TypeDiagCode } from "./diag-codes";
+import { TypeDiagCode } from "./diagnostics";
 import type {
   ActuatorExpr,
   AssignmentExpr,
@@ -14,6 +23,7 @@ import type {
   FieldAccessExpr,
   LiteralExpr,
   ModifierExpr,
+  OutputExpr,
   ParameterExpr,
   SensorExpr,
   UnaryOpExpr,
@@ -23,15 +33,13 @@ import { acceptExprVisitor, type TypeEnv, type TypeInfo, type TypeInfoDiag } fro
 
 class InferredTypeVisitor implements ExprVisitor<void> {
   diags = List.empty<TypeInfoDiag>();
-  private readonly conversions: IConversionRegistry;
 
   constructor(
     private readonly catalogs: ReadonlyList<ITileCatalog>,
     private readonly env: TypeEnv,
-    conversions: IConversionRegistry
-  ) {
-    this.conversions = conversions;
-  }
+    private readonly conversions: IConversionRegistry,
+    private readonly typeRegistry: ITypeRegistry
+  ) {}
 
   private ensureTypeInfo(nodeId: number): TypeInfo {
     let typeInfo = this.env.get(nodeId);
@@ -87,39 +95,61 @@ class InferredTypeVisitor implements ExprVisitor<void> {
     const parmTileDef = tileDef as BrainTileParameterDef;
     const slotTileType = parmTileDef.dataType;
 
-    // If this slot is part of a choice group, check if the type matches any option in the choice
-    if (slotDef.choiceGroup !== undefined) {
-      // Find all slots in this choice group
-      const choiceSlots = argSlots.filter((s) => s.choiceGroup === slotDef.choiceGroup);
-
-      // Check if any choice option accepts this type
-      let matchFound = false;
-      choiceSlots.forEach((choiceSlot) => {
-        const choiceTileDef = this.findTileDefById(choiceSlot.argSpec.tileId);
-        if (choiceTileDef && choiceTileDef.kind === "parameter") {
-          const choiceParmTileDef = choiceTileDef as BrainTileParameterDef;
-          if (typeInfo.inferred === choiceParmTileDef.dataType) {
-            matchFound = true;
-          }
+    // An anonymous slot in a choice group settles against the whole option
+    // set: an exact option match wins, otherwise the first option (in
+    // declaration order) reachable via a registered conversion takes the
+    // value with that conversion, otherwise the fill is a type mismatch.
+    if (slotDef.choiceGroup !== undefined && slotDef.argSpec.anonymous) {
+      // The group's anonymous options, in declaration order, with their types.
+      const options: { slot: BrainActionArgSlot; dataType: TypeId }[] = [];
+      argSlots.forEach((s) => {
+        if (s.choiceGroup !== slotDef.choiceGroup || !s.argSpec.anonymous) return;
+        const td = this.findTileDefById(s.argSpec.tileId);
+        if (td && td.kind === "parameter") {
+          options.push({ slot: s, dataType: (td as BrainTileParameterDef).dataType });
         }
       });
 
-      if (!matchFound) {
-        const expectedTypes: string[] = [];
-        choiceSlots.forEach((s) => {
-          const td = this.findTileDefById(s.argSpec.tileId);
-          if (td && td.kind === "parameter") {
-            expectedTypes.push((td as BrainTileParameterDef).dataType);
-          } else {
-            expectedTypes.push("invalid choice option"); // to indicate an invalid choice option
-          }
-        });
-        this.diags.push({
-          code: TypeDiagCode.DataTypeMismatch,
-          nodeId: slotEntry.expr.nodeId,
-          message: `${context} ${slotType} slot type mismatch: expected ${expectedTypes.join(" or ")}, got ${typeInfo.inferred}`,
-        });
+      // Exact option match wins; the value moves to that option's slot.
+      for (const option of options) {
+        if (typeInfo.inferred === option.dataType) {
+          slotEntry.slotId = option.slot.slotId;
+          return;
+        }
       }
+
+      // First conversion-reachable option in declaration order.
+      for (const option of options) {
+        const convPath = this.conversions.findBestPath(typeInfo.inferred, option.dataType, 1);
+        if (convPath && convPath.size() > 0) {
+          const conversion = convPath.get(0);
+          slotEntry.slotId = option.slot.slotId;
+          typeInfo.conversion = conversion;
+          this.diags.push({
+            code: TypeDiagCode.DataTypeConverted,
+            nodeId: slotEntry.expr.nodeId,
+            message: `Applied conversion from ${typeInfo.inferred} to ${option.dataType} for ${context} ${slotType} slot (cost: ${conversion.cost})`,
+          });
+          return;
+        }
+      }
+
+      // No option matches exactly or via conversion.
+      const expectedTypes: string[] = [];
+      argSlots.forEach((s) => {
+        if (s.choiceGroup !== slotDef.choiceGroup) return;
+        const td = this.findTileDefById(s.argSpec.tileId);
+        if (td && td.kind === "parameter") {
+          expectedTypes.push((td as BrainTileParameterDef).dataType);
+        } else {
+          expectedTypes.push("invalid choice option"); // to indicate an invalid choice option
+        }
+      });
+      this.diags.push({
+        code: TypeDiagCode.DataTypeMismatch,
+        nodeId: slotEntry.expr.nodeId,
+        message: `${context} ${slotType} slot type mismatch: expected ${expectedTypes.join(" or ")}, got ${typeInfo.inferred}`,
+      });
     } else if (typeInfo.inferred !== slotTileType) {
       // Non-choice slot: try conversion before reporting mismatch
       const convPath = this.conversions.findBestPath(typeInfo.inferred, slotTileType, 1);
@@ -222,7 +252,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       }
 
       // Since we can't enumerate all overloads, try converting to common types
-      const commonTypes = [CoreTypeNames.Number, CoreTypeNames.Boolean, CoreTypeNames.String];
+      const commonTypes = [CoreTypeIds.Number, CoreTypeIds.Boolean, CoreTypeIds.String];
 
       for (const targetType of commonTypes) {
         if (targetType === operandType) continue; // Already tried
@@ -264,6 +294,11 @@ class InferredTypeVisitor implements ExprVisitor<void> {
     typeInfo.inferred = expr.tileDef.varType;
   }
 
+  visitOutput(expr: OutputExpr): void {
+    const typeInfo = this.ensureTypeInfo(expr.nodeId);
+    typeInfo.inferred = expr.tileDef.outputType;
+  }
+
   visitAssignment(expr: AssignmentExpr): void {
     // Visit the target variable (l-value)
     acceptExprVisitor(expr.target, this);
@@ -274,17 +309,31 @@ class InferredTypeVisitor implements ExprVisitor<void> {
     acceptExprVisitor(expr.value, this);
     const valueTypeInfo = this.env.get(expr.value.nodeId);
 
-    // The assignment expression itself has the same type as the value
     const assignmentTypeInfo = this.ensureTypeInfo(expr.nodeId);
-    assignmentTypeInfo.inferred = valueTypeInfo?.inferred || CoreTypeNames.Unknown;
+
+    // The type the assignment stores: the value's type, or the target's type
+    // when a conversion bridges a mismatch.
+    let storedType = valueTypeInfo?.inferred || CoreTypeNames.Unknown;
 
     // Check type compatibility: target should accept the value type
     if (
       valueTypeInfo &&
       targetTypeInfo.inferred !== CoreTypeNames.Unknown &&
-      valueTypeInfo.inferred !== CoreTypeNames.Unknown
+      valueTypeInfo.inferred !== CoreTypeNames.Unknown &&
+      targetTypeInfo.inferred !== valueTypeInfo.inferred
     ) {
-      if (targetTypeInfo.inferred !== valueTypeInfo.inferred) {
+      // Try conversion before reporting mismatch
+      const convPath = this.conversions.findBestPath(valueTypeInfo.inferred, targetTypeInfo.inferred, 1);
+      if (convPath && convPath.size() > 0) {
+        const conversion = convPath.get(0);
+        valueTypeInfo.conversion = conversion;
+        storedType = targetTypeInfo.inferred;
+        this.diags.push({
+          code: TypeDiagCode.DataTypeConverted,
+          nodeId: expr.value.nodeId,
+          message: `Applied conversion from ${valueTypeInfo.inferred} to ${targetTypeInfo.inferred} for assignment (cost: ${conversion.cost})`,
+        });
+      } else {
         this.diags.push({
           code: TypeDiagCode.DataTypeMismatch,
           nodeId: expr.nodeId,
@@ -293,8 +342,10 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       }
     }
 
-    // Update the target variable's type based on the assigned value
-    targetTypeInfo.inferred = valueTypeInfo?.inferred || CoreTypeNames.Unknown;
+    // The assignment expression produces the stored value, and the target's
+    // type tracks it.
+    assignmentTypeInfo.inferred = storedType;
+    targetTypeInfo.inferred = storedType;
   }
 
   visitParameter(expr: ParameterExpr): void {
@@ -358,6 +409,45 @@ class InferredTypeVisitor implements ExprVisitor<void> {
   visitFieldAccess(expr: FieldAccessExpr): void {
     const typeInfo = this.ensureTypeInfo(expr.nodeId);
     acceptExprVisitor(expr.object, this);
+
+    // The accessor must be applied to a base of its own struct type. A base
+    // whose type cannot be determined (an unfinished or error expression) is
+    // not judged here; its own diagnostics cover it.
+    const objectTypeId = this.env.get(expr.object.nodeId)?.inferred;
+    const baseIsDeterminate =
+      objectTypeId !== undefined && objectTypeId !== CoreTypeNames.Unknown && objectTypeId !== CoreTypeIds.Unknown;
+    if (baseIsDeterminate && objectTypeId !== expr.accessor.structTypeId) {
+      const fieldLabel = expr.accessor.metadata?.label ?? expr.accessor.fieldName;
+      const structTypeName = this.typeRegistry.get(expr.accessor.structTypeId)?.name ?? expr.accessor.structTypeId;
+      const baseTypeName = this.typeRegistry.get(objectTypeId)?.name ?? objectTypeId;
+      this.diags.push({
+        code: TypeDiagCode.AccessorBaseTypeMismatch,
+        nodeId: expr.nodeId,
+        message: `Field "${fieldLabel}" belongs to ${structTypeName} and cannot be read from a value of type ${baseTypeName}`,
+      });
+      typeInfo.inferred = expr.accessor.fieldTypeId;
+      return;
+    }
+
+    // Resolve the field against the OBJECT's concrete struct type. Look the
+    // field up by name so a sparse/author-assigned field id space is handled
+    // correctly, and set this node's type from the object's actual field so a
+    // nested chain stays reliable.
+    const objectDef = objectTypeId !== undefined ? this.typeRegistry.get(objectTypeId) : undefined;
+    if (objectDef !== undefined && objectDef.coreType === NativeType.Struct) {
+      const fields = (objectDef as StructTypeDef).fields;
+      for (let i = 0; i < fields.size(); i++) {
+        const field = fields.get(i);
+        if (field.name === expr.accessor.fieldName) {
+          typeInfo.fieldId = field.fieldIndex;
+          typeInfo.inferred = field.typeId;
+          return;
+        }
+      }
+    }
+
+    // Object is not a concrete struct with this field: leave fieldId undefined (the
+    // emitter falls back to the name-keyed path) and best-effort the result type.
     typeInfo.inferred = expr.accessor.fieldTypeId;
   }
 
@@ -386,15 +476,19 @@ class InferredTypeVisitor implements ExprVisitor<void> {
  * @param expr - The root expression node to analyze
  * @param catalogs - Array of tile catalogs used to resolve tile definitions
  * @param env - The type environment to populate with inferred type information
+ * @param conversions - Conversion registry used to resolve operator/slot type conversions
+ * @param typeRegistry - Type registry used to resolve a field access to the numeric field
+ *   id of the accessed field on its object's concrete struct type
  * @returns A list of type diagnostics for any type errors or mismatches encountered during analysis
  */
 export function computeInferredTypes(
   expr: Expr,
   catalogs: ReadonlyList<ITileCatalog>,
   env: TypeEnv,
-  conversions: IConversionRegistry
+  conversions: IConversionRegistry,
+  typeRegistry: ITypeRegistry
 ): List<TypeInfoDiag> {
-  const visitor = new InferredTypeVisitor(catalogs, env, conversions);
+  const visitor = new InferredTypeVisitor(catalogs, env, conversions, typeRegistry);
   acceptExprVisitor(expr, visitor);
   return visitor.diags;
 }

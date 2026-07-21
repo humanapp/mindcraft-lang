@@ -1,9 +1,12 @@
 import { Dict } from "../../platform/dict";
+import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
 import { MathOps } from "../../platform/math";
 import type { ConstantPools } from "../../runtime/bytecode";
-import { NativeType } from "../../runtime/type-defs";
+import type { ProgramTypeEntry } from "../../runtime/program";
+import { type ITypeRegistry, NativeType, type TypeId } from "../../runtime/type-defs";
 import type { Value } from "../../runtime/value";
+import { ProgramTypeTableBuilder } from "./type-table-builder";
 
 /** Identifies which typed sub-pool a constant entry lives in. */
 export type ConstantPoolKind = "number" | "string" | "value";
@@ -36,6 +39,34 @@ export class ConstantPool {
   private values: List<Value> = List.empty();
   private valueIndex: Dict<string, number> = Dict.empty();
 
+  private typeTable?: ProgramTypeTableBuilder;
+
+  /**
+   * A pool constructed with a type registry also builds the program's type
+   * table: {@link addType} interns typeIds, and {@link addOther} /
+   * {@link addValue} intern the typeIds of pooled constant values. Without a
+   * registry the pool manages only the constant sub-pools and {@link addType}
+   * throws.
+   */
+  constructor(typeRegistry?: ITypeRegistry) {
+    if (typeRegistry) {
+      this.typeTable = new ProgramTypeTableBuilder(typeRegistry);
+    }
+  }
+
+  /** Intern a typeId into the program type table, returning its table index. */
+  addType(typeId: TypeId): number {
+    if (!this.typeTable) {
+      throw new Error(`ConstantPool.addType(${typeId}): pool was constructed without a type registry`);
+    }
+    return this.typeTable.intern(typeId);
+  }
+
+  /** The program type table built so far (empty without a type registry). */
+  typeEntries(): List<ProgramTypeEntry> {
+    return this.typeTable ? this.typeTable.entriesList() : List.empty<ProgramTypeEntry>();
+  }
+
   /** Add a number to the number sub-pool, returning its index. Deduplicates. */
   addNumber(n: number): number {
     const existing = this.numberIndex.get(n);
@@ -67,6 +98,7 @@ export class ConstantPool {
    * to dispatch automatically.
    */
   addOther(value: Value): number {
+    this.typeTable?.internValue(value);
     const key = this.serializeOther(value);
     if (key !== undefined) {
       const existing = this.valueIndex.get(key);
@@ -111,7 +143,7 @@ export class ConstantPool {
     return this.numbers.size() + this.strings.size() + this.values.size();
   }
 
-  /** Reset every sub-pool. */
+  /** Reset every sub-pool and the type table. */
   reset(): void {
     this.numbers = List.empty();
     this.numberIndex = Dict.empty();
@@ -119,6 +151,7 @@ export class ConstantPool {
     this.stringIndex = Dict.empty();
     this.values = List.empty();
     this.valueIndex = Dict.empty();
+    this.typeTable?.reset();
   }
 
   private serializeOther(value: Value): string | undefined {

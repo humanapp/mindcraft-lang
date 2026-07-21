@@ -9,6 +9,7 @@ import type {
   FieldAccessExpr,
   LiteralExpr,
   ModifierExpr,
+  OutputExpr,
   ParameterExpr,
   ParseResult,
   SensorExpr,
@@ -71,7 +72,8 @@ export function buildNodeMap(parseResult: ParseResult): Map<number, Expr> {
 }
 
 /**
- * Computes a map of tile index -> badge type from a per-side parse result.
+ * Computes a map of tile index -> badge type from a per-side parse result and
+ * the rule's type diagnostics (resolved to tiles via `nodeMap`).
  *
  * Error badges: tiles covered by ErrorExpr nodes -- either the first expression
  * is itself an ErrorExpr, or additional expressions (position > 0) which are
@@ -84,8 +86,8 @@ export function buildNodeMap(parseResult: ParseResult): Map<number, Expr> {
  */
 export function computeTileBadges(
   parseResult: ParseResult,
-  typeDiags?: ReadonlyArray<TypeInfoDiag>,
-  nodeMap?: Map<number, Expr>
+  typeDiags: ReadonlyArray<TypeInfoDiag>,
+  nodeMap: Map<number, Expr>
 ): Map<number, TileBadge> {
   const badges = new Map<number, TileBadge>();
   const exprs = parseResult.exprs;
@@ -130,20 +132,18 @@ export function computeTileBadges(
     }
   });
 
-  if (typeDiags && nodeMap) {
-    for (const diag of typeDiags) {
-      if (diag.code === TypeDiagCode.DataTypeConverted) continue;
-      const node = nodeMap.get(diag.nodeId);
-      if (!node || !("span" in node) || !node.span) continue;
-      const span = node.span as Span;
-      const msg = diagMessage(diag.code);
-      const width = span.to - span.from;
-      if (width === 0 && span.from > 0) {
-        applyDiag(span.from - 1, width, msg);
-      } else {
-        for (let i = span.from; i < span.to; i++) {
-          if (applyDiag(i, width, msg)) break;
-        }
+  for (const diag of typeDiags) {
+    if (diag.code === TypeDiagCode.DataTypeConverted) continue;
+    const node = nodeMap.get(diag.nodeId);
+    if (!node || !("span" in node) || !node.span) continue;
+    const span = node.span as Span;
+    const msg = diagMessage(diag.code);
+    const width = span.to - span.from;
+    if (width === 0 && span.from > 0) {
+      applyDiag(span.from - 1, width, msg);
+    } else {
+      for (let i = span.from; i < span.to; i++) {
+        if (applyDiag(i, width, msg)) break;
       }
     }
   }
@@ -210,6 +210,9 @@ class MarkAllVisitor implements ExprVisitor<void> {
     this.markAndRecurse(expr);
   }
   visitVariable(expr: VariableExpr): void {
+    this.markAndRecurse(expr);
+  }
+  visitOutput(expr: OutputExpr): void {
     this.markAndRecurse(expr);
   }
   visitAssignment(expr: AssignmentExpr): void {
@@ -281,6 +284,7 @@ class WarningCollector implements ExprVisitor<void> {
 
   visitLiteral(_expr: LiteralExpr): void {}
   visitVariable(_expr: VariableExpr): void {}
+  visitOutput(_expr: OutputExpr): void {}
 
   visitAssignment(expr: AssignmentExpr): void {
     acceptExprVisitor(expr.target, this);
@@ -355,6 +359,9 @@ class NodeMapCollector implements ExprVisitor<void> {
     this.add(expr);
   }
   visitVariable(expr: VariableExpr): void {
+    this.add(expr);
+  }
+  visitOutput(expr: OutputExpr): void {
     this.add(expr);
   }
   visitAssignment(expr: AssignmentExpr): void {

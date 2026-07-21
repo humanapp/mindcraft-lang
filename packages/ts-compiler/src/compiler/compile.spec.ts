@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, DescriptorDiagCode, LoweringDiagCode, ValidatorDiagCode } from "./diag-codes.js";
 import type { ExtractedOptional, ExtractedParam } from "./types.js";
@@ -27,7 +29,7 @@ describe("compileUserTile", () => {
     services = __test__createBrainServices();
   });
   test("valid sensor source produces zero diagnostics", () => {
-    const result = compileUserTile(VALID_SENSOR_SOURCE, { services });
+    const result = compileUserTile(VALID_SENSOR_SOURCE, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
   });
 
@@ -39,7 +41,7 @@ function doStuff(ctx: Context): void {
   ctx.engine.nonExistent();
 }
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0, "expected at least one diagnostic");
     const msg = result.diagnostics[0].message;
     assert.ok(msg.includes("nonExistent"), `expected diagnostic to mention 'nonExistent', got: ${msg}`);
@@ -53,7 +55,7 @@ function doStuff(ctx: Context): void {
   ctx.brain.setVariable(123, "value");
 }
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0, "expected at least one diagnostic");
   });
 
@@ -65,7 +67,7 @@ function doStuff(ctx: Context): void {
   ctx.engine.nonExistent();
 }
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
     const diag = result.diagnostics[0];
     assert.ok(typeof diag.line === "number", "expected line number");
@@ -73,7 +75,7 @@ function doStuff(ctx: Context): void {
   });
 
   test("empty source produces missing default export diagnostic", () => {
-    const result = compileUserTile("", { services });
+    const result = compileUserTile("", { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0, "expected at least one diagnostic");
     assert.ok(
       result.diagnostics.some((d) => d.code === DescriptorDiagCode.MissingDefaultExport),
@@ -100,7 +102,7 @@ export default Sensor({
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.ClassExpressionsNotSupported));
   });
@@ -116,7 +118,7 @@ export default Sensor({
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.VarNotAllowed));
   });
@@ -136,9 +138,9 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.ForInOnUnsupportedType));
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.ForInOnUnsupportedType);
   });
 
   test("eval reference produces diagnostic", () => {
@@ -153,7 +155,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
@@ -171,7 +173,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.ComputedPropertyNamesNotSupported));
   });
@@ -192,7 +194,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
   });
 
@@ -212,7 +214,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.InvalidEnumDeclaration));
   });
@@ -233,13 +235,13 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.EnumObjectUsageNotSupported));
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.EnumObjectUsageNotSupported);
   });
 
   test("let and const pass validation", () => {
-    const result = compileUserTile(VALID_SENSOR_SOURCE, { services });
+    const result = compileUserTile(VALID_SENSOR_SOURCE, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
   });
 
@@ -259,7 +261,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
   });
 
@@ -274,7 +276,7 @@ export default Sensor({
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.UnsupportedTypeReference));
   });
@@ -291,7 +293,7 @@ export default Sensor({
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
-      const result = compileUserTile(source, { services });
+      const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
       assert.ok(
         result.diagnostics.some((d) => d.code === ValidatorDiagCode.UnsupportedTypeReference),
         `expected UnsupportedTypeReference for ${typeName}`
@@ -310,14 +312,14 @@ export default Sensor({
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(!result.diagnostics.some((d) => d.code === ValidatorDiagCode.UnsupportedTypeReference));
   });
 });
 
 describe("descriptor extraction", () => {
   test("valid sensor extracts correct descriptor", () => {
-    const result = compileUserTile(VALID_SENSOR_SOURCE, { services });
+    const result = compileUserTile(VALID_SENSOR_SOURCE, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.kind, "sensor");
@@ -349,7 +351,7 @@ export default Actuator({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.kind, "actuator");
@@ -368,7 +370,7 @@ export default Sensor({
   onPageEntered(ctx: Context): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.ok(result.descriptor.onPageEnteredNode !== null, "expected onPageEnteredNode to be present");
@@ -390,7 +392,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.args.length, 3);
@@ -426,7 +428,7 @@ export default Sensor({
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
@@ -440,7 +442,7 @@ export default Sensor({
   onExecute(ctx: Context) { return true; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(result.diagnostics.some((d) => d.code === DescriptorDiagCode.SensorReturnTypeRequired));
   });
@@ -453,7 +455,7 @@ export default Sensor({
   name: "test",
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
@@ -467,7 +469,7 @@ export default Sensor({
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.onPageEnteredNode, null);
@@ -482,7 +484,7 @@ export default Actuator({
   onExecute(ctx: Context): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.kind, "actuator");
@@ -502,7 +504,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { target: number; speed: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.args.length, 2);
@@ -531,7 +533,7 @@ export default Sensor({
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.args.length, 0);

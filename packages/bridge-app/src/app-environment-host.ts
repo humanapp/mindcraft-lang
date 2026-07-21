@@ -1,26 +1,104 @@
 import type {
-  ExampleDefinition,
-  MindcraftJsonHostInfo,
+  ExtensionAddInputResolution,
+  ExtensionCatalogMoves,
+  ExtensionFetchResult,
+  ExtensionFetchTransport,
+  ExtensionUpdateApplication,
+  ExtensionUpdateCheck,
   ProjectCollectionProjectCommitResult,
   ProjectCollectionUnlockResult,
   ProjectFileSystem,
   ProjectManifest,
+  UnstableDependency,
 } from "@mindcraft-lang/app-host";
 import {
+  applyCatalogMove,
+  checkExtensionReferenceUpdate,
+  collectUnstableDependencies,
   diffMindcraftJsonToManifest,
+  ExtensionFetchErrorCode,
+  fetchExtensionSnapshot,
+  highestListedRelease,
   MINDCRAFT_JSON_PATH,
   type ProjectManager,
+  parseCatalogMoveReference,
+  parseExtensionAddInput,
+  parseProjectContentManifest,
+  resolveExtensionAddInput,
   syncManifestToMindcraftJson,
 } from "@mindcraft-lang/app-host";
+import type { FolderInstalledExtensionMetadata } from "@mindcraft-lang/bridge-protocol";
 import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
-import { createMindcraftEnvironment, Dict, logger } from "@mindcraft-lang/core/app";
-import type { IRngServices } from "@mindcraft-lang/core/runtime";
-import type { AmbientFile, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+import {
+  createMindcraftEnvironment,
+  Dict,
+  encodePersistedBrainJson,
+  logger,
+  renameBrainNamespaces,
+} from "@mindcraft-lang/core/app";
+import type { PersistedBrainJson } from "@mindcraft-lang/core/brain/model";
+import type { IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
+import type { Mount, WorkspaceCompileResult, WorkspaceDiagnosticEntry } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
-import { createBridgeProject, createProjectCompiler } from "./compilation.js";
+import { augmentProjectFileSystem, createBridgeProject, createProjectCompiler } from "./compilation.js";
+import type {
+  EmbeddedExtension,
+  ExtensionResolutionWarning,
+  FetchedExtensionContentMap,
+  ResolvedExtensions,
+} from "./embedded-extensions.js";
+import {
+  CatalogMoveWarningCode,
+  createCatalogMoveVersionLookup,
+  ExtensionResolutionCycleError,
+  resolveProjectExtensions,
+} from "./embedded-extensions.js";
+import type { ExtensionCatalogEntry, ExtensionFetchFailures } from "./extension-catalog.js";
+import type { ExtensionInstallReport, ProjectDiagnosticsState } from "./extension-install.js";
+import {
+  collectExtensionFetchClosure,
+  diffProjectDiagnostics,
+  floatingPinsFromSnapshots,
+  movedClosureHasMissingContent,
+  typecheckBrainProblems,
+} from "./extension-install.js";
+import type { ExtensionInstallLogEvent } from "./extension-install-log.js";
+import {
+  appendExtensionInstallLog,
+  EXTENSION_INSTALL_LOG_APP_DATA_KEY,
+  parseExtensionInstallLog,
+} from "./extension-install-log.js";
+import type { InstalledExtensionSnapshot, InstalledExtensionSnapshots } from "./fetched-extension-snapshots.js";
+import {
+  decodeInstalledSnapshotFiles,
+  fetchedContentFromSnapshots,
+  INSTALLED_EXTENSIONS_APP_DATA_KEY,
+  installedExtensionMetadataFromSnapshots,
+  parseInstalledExtensionSnapshots,
+  serializeInstalledExtensionSnapshots,
+} from "./fetched-extension-snapshots.js";
 import type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
-import { applyCompiledUserTiles, hydrateUserTilesFromCache } from "./user-tile-registration.js";
+import { applyCompiledUserTiles } from "./user-tile-registration.js";
+
+// Project app-data keys.
+const BRAINS_APP_DATA_KEY = "brains";
+
+/** The outcome of one load's catalog-move application. */
+export interface CatalogMovesOutcome {
+  /** Reports of the per-move install transactions this load ran, in application order. */
+  readonly reports: readonly ExtensionInstallReport[];
+  /** Stable-coded findings for moves that could not be applied this load. */
+  readonly warnings: readonly ExtensionResolutionWarning[];
+}
+
+/** One diagnostic of the latest workspace compile, located at its workspace path. */
+export type WorkspaceCompileDiagnostic = WorkspaceDiagnosticEntry & {
+  /** Workspace path of the file the diagnostic is located in. */
+  readonly path: string;
+};
+
+const NO_COMPILE_DIAGNOSTICS: readonly WorkspaceCompileDiagnostic[] = [];
 
 // ---------------------------------------------------------------------------
 // Options
@@ -31,14 +109,32 @@ export interface AppEnvironmentHostOptions {
   projectManager: ProjectManager;
   /** Mindcraft modules to register with the environment. */
   modules: readonly MindcraftModule[];
-  /** Ordered ambient declaration files supplied to the project compiler and remote VFS. */
-  ambientFiles: readonly AmbientFile[];
-  /** Identifies the host application when writing `mindcraft.json`. */
-  host: MindcraftJsonHostInfo;
-  /** `localStorage` key under which the user-tile metadata cache is stored. */
-  userTileStorageKey: string;
-  /** Read-only example projects materialized under the examples folder. */
-  examples?: readonly ExampleDefinition[];
+  /** Read-only content mounts supplied to the project compiler and remote VFS. */
+  mounts: readonly Mount[];
+  /**
+   * Extensions bundled with the host application. A project's `embedded:<repo>`
+   * dependency resolves against this record by the origin's repository segment,
+   * delivering the extension's content to the compiler as a mounted dependency
+   * keyed by its `<owner>/<repo>` coordinate. Empty when the app bundles none.
+   */
+  embeddedExtensions?: readonly EmbeddedExtension[];
+
+  /**
+   * Transport used to fetch remote (`gh:`) extension content at install time.
+   * When omitted, an install transaction needing a fetch refuses as
+   * unreachable; already-installed fetched extensions still load from their
+   * stored snapshots.
+   */
+  extensionFetchTransport?: ExtensionFetchTransport;
+
+  /**
+   * Curated catalog moves from the host's catalog, keyed by source coordinate.
+   * On project load a top-level manifest entry a move entry captures is
+   * rewritten to the entry's destination through an install transaction, and a
+   * transitive dependency reference an entry captures resolves through the
+   * destination. Empty when the host declares none.
+   */
+  catalogMoves?: ExtensionCatalogMoves;
 
   /**
    * Host-supplied RNG. The bridge app forwards this to
@@ -47,6 +143,13 @@ export interface AppEnvironmentHostOptions {
    * to a `Math.random()`-backed default.
    */
   rng?: IRngServices;
+
+  /**
+   * Brain-observable numeric semantics for the host's device profile,
+   * forwarded to {@link createMindcraftEnvironment}. When omitted, the
+   * environment falls back to the f64 (native double-precision) default.
+   */
+  numerics?: ProfileNumerics;
 
   /** When set, enables the optional bridge connection to a remote peer. */
   bridgeUrl?: string;
@@ -72,13 +175,28 @@ export class AppEnvironmentHost {
   readonly env: MindcraftEnvironment;
   readonly projectManager: ProjectManager;
 
-  private readonly host: MindcraftJsonHostInfo;
-  private readonly userTileStorageKey: string;
-  private readonly ambientFiles: readonly AmbientFile[];
+  private readonly mounts: readonly Mount[];
+  private readonly embeddedExtensions: readonly EmbeddedExtension[];
+  private readonly extensionFetchTransport: ExtensionFetchTransport | undefined;
+  private readonly catalogMoves: ExtensionCatalogMoves;
   private readonly onDidCompileCallback?: (
     result: WorkspaceCompileResult,
     tileResult: UserTileApplyResult | undefined
   ) => void;
+
+  // -- Installed fetched-extension snapshots (persisted in the project store) --
+  private _installedSnapshots: InstalledExtensionSnapshots = {};
+  private _installedContent: FetchedExtensionContentMap = new Map();
+
+  // -- Latest resolved extension closure of the active project --
+  private _lastResolution: ResolvedExtensions | undefined;
+  private readonly _resolutionWarningsListeners = new Set<() => void>();
+
+  // -- Last recorded fetch failure per reference (seeded from the install log) --
+  private _fetchFailures = new Map<string, { code: string; message: string }>();
+
+  // -- Latest workspace compile result --
+  private _lastCompileResult: WorkspaceCompileResult | undefined;
 
   // -- Brain cache --
   private readonly _brainCache = new Map<string, IBrainDef>();
@@ -92,6 +210,14 @@ export class AppEnvironmentHost {
   private _vfsRevision = 0;
   private readonly _docRevisionListeners = new Set<() => void>();
   private readonly _vfsRevisionListeners = new Set<() => void>();
+
+  // -- Brain-diagnostics revision counter (useSyncExternalStore pattern) --
+  private _brainDiagnosticsRevision = 0;
+  private readonly _brainDiagnosticsListeners = new Set<() => void>();
+
+  // -- Latest workspace-compile diagnostics (useSyncExternalStore pattern) --
+  private _compileDiagnostics: readonly WorkspaceCompileDiagnostic[] = NO_COMPILE_DIAGNOSTICS;
+  private readonly _compileDiagnosticsListeners = new Set<() => void>();
 
   // -- Project lifecycle --
   private readonly _projectUnloadingListeners = new Set<() => void>();
@@ -109,7 +235,6 @@ export class AppEnvironmentHost {
 
   private readonly _loadBindingToken: () => string | undefined;
   private readonly _saveBindingToken: (token: string) => void;
-  private readonly _examples: readonly ExampleDefinition[];
 
   // -- User tile metadata (last known) --
   private _lastUserTileMetadata: readonly UserTileMetadata[] | undefined;
@@ -117,18 +242,28 @@ export class AppEnvironmentHost {
   // -- Compilation --
   private _compiler: ProjectCompilerHandle | undefined;
 
+  // -- Served file system (raw project files plus compiler-controlled files) --
+  private _servedFileSystem: ProjectFileSystem | undefined;
+
+  // -- Compiler-controlled file set changes --
+  private readonly _compilerControlledFilesListeners = new Set<(files: ReadonlyMap<string, string>) => void>();
+
   constructor(options: AppEnvironmentHostOptions) {
     this.projectManager = options.projectManager;
-    this.host = options.host;
-    this.ambientFiles = options.ambientFiles;
-    this.userTileStorageKey = options.userTileStorageKey;
+    this.mounts = options.mounts;
+    this.embeddedExtensions = options.embeddedExtensions ?? [];
+    this.extensionFetchTransport = options.extensionFetchTransport;
+    this.catalogMoves = options.catalogMoves ?? {};
     this.onDidCompileCallback = options.onDidCompile;
     this._bridgeUrl = options.bridgeUrl;
     this._loadBindingToken = options.loadBindingToken ?? (() => undefined);
     this._saveBindingToken = options.saveBindingToken ?? (() => {});
-    this._examples = options.examples ?? [];
 
-    this.env = createMindcraftEnvironment({ modules: [...options.modules], rng: options.rng });
+    this.env = createMindcraftEnvironment({
+      modules: [...options.modules],
+      rng: options.rng,
+      numerics: options.numerics,
+    });
 
     this.env.onBrainsInvalidated((event) => {
       if (event.invalidatedBrains.length > 0) {
@@ -143,6 +278,18 @@ export class AppEnvironmentHost {
 
   get projectFileSystem(): ProjectFileSystem {
     return this.projectManager.activeProject!.filesystem;
+  }
+
+  /**
+   * The file system whose exported snapshot carries both the raw project files
+   * and the compiler-controlled files (ambient declarations, `tsconfig.json`,
+   * and the installed-extensions tree), including extension-owned assets such
+   * as tile icons. Each `exportSnapshot()` reads the live compiler, so
+   * installing or uninstalling an extension is reflected without a rebuild.
+   * Falls back to the raw project file system until the compiler is wired.
+   */
+  get servedProjectFileSystem(): ProjectFileSystem {
+    return this._servedFileSystem ?? this.projectFileSystem;
   }
 
   get activeProjectManifest(): ProjectManifest | undefined {
@@ -166,11 +313,8 @@ export class AppEnvironmentHost {
       return;
     }
     await this.projectManager.ensureDefaultProject(defaultProjectName);
-    this._lastUserTileMetadata =
-      hydrateUserTilesFromCache(this.env, {
-        storageKey: this.userTileStorageKey,
-      }) ?? undefined;
-    this.initCompiler();
+    await this.initCompiler();
+    this.absorbCatalogMovesOutcome(await this.applyCatalogMoves());
     await this.loadBrainsFromProject();
   }
 
@@ -178,26 +322,119 @@ export class AppEnvironmentHost {
   // Compilation (always available, independent of bridge)
   // ---------------------------------------------------------------------------
 
-  private initCompiler(): void {
+  /**
+   * Resolve the active project's extension dependency graph against the host's
+   * embed record and the project's stored fetched snapshots. Logs any conflict
+   * warnings. On this load path a dependency cycle is logged and resolution
+   * falls back to no extension dependencies, so the project still loads and
+   * unresolved imports surface as ordinary compiler diagnostics; an install
+   * transaction refuses on a cycle instead.
+   */
+  private resolveExtensions(): ResolvedExtensions {
+    try {
+      const resolved = resolveProjectExtensions(
+        this.projectManager.activeProject!.manifest.extensions,
+        {
+          embedded: this.embeddedExtensions,
+          fetched: this._installedContent,
+          moves: this.catalogMoves,
+          floatingPins: floatingPinsFromSnapshots(this._installedSnapshots),
+        },
+        this.projectManager.activeProject!.manifest.targets
+      );
+      for (const warning of resolved.warnings) {
+        logger.warn(`[extension-resolution] ${warning.message}`);
+      }
+      return resolved;
+    } catch (err) {
+      if (err instanceof ExtensionResolutionCycleError) {
+        logger.warn(`[extension-resolution] ${err.message}`);
+        return { dependencies: [], dependencyMounts: [], origins: [], warnings: [] };
+      }
+      throw err;
+    }
+  }
+
+  /** Replace the project's installed snapshot records, in memory and in the project store. */
+  private async persistInstalledSnapshots(snapshots: InstalledExtensionSnapshots): Promise<void> {
+    this._installedSnapshots = snapshots;
+    this._installedContent = fetchedContentFromSnapshots(snapshots);
+    await this.projectManager.saveAppData(
+      INSTALLED_EXTENSIONS_APP_DATA_KEY,
+      serializeInstalledExtensionSnapshots(snapshots)
+    );
+  }
+
+  private async initCompiler(): Promise<void> {
+    // The installed-extensions tree regenerates from the stored snapshots;
+    // loading a project never reaches the network.
+    this._installedSnapshots = parseInstalledExtensionSnapshots(
+      await this.projectManager.loadAppData(INSTALLED_EXTENSIONS_APP_DATA_KEY)
+    );
+    this._installedContent = fetchedContentFromSnapshots(this._installedSnapshots);
+    this._fetchFailures = new Map();
+    for (const event of parseExtensionInstallLog(
+      await this.projectManager.loadAppData(EXTENSION_INSTALL_LOG_APP_DATA_KEY)
+    )) {
+      if (event.kind === "fetch-refusal") {
+        this._fetchFailures.set(event.reference, { code: event.code, message: event.message });
+      }
+    }
+    const resolution = this.resolveExtensions();
+    this.setLastResolution(resolution);
+    const { dependencies, dependencyMounts } = resolution;
     this._compiler = createProjectCompiler({
       environment: this.env,
       filesystem: this.projectFileSystem,
-      ambientFiles: this.ambientFiles,
-      examples: [...this._examples],
+      projectNamespace: this.projectManager.activeProject!.manifest.id,
+      mounts: this.mounts,
+      dependencies,
+      dependencyMounts,
       onDidCompile: (result) => {
+        this._lastCompileResult = result;
+        this.setCompileDiagnostics(result);
+        this.persistMintedActionIds(result.projectResult.sourceRewrites);
         logWorkspaceCompile(result);
-        const tileResult = applyCompiledUserTiles(this.env, result, {
-          storageKey: this.userTileStorageKey,
-        });
+        const tileResult = applyCompiledUserTiles(this.env, result);
         if (tileResult) {
           this._lastUserTileMetadata = tileResult.metadata;
           this.bumpDocRevision();
+          if (tileResult.changedActionKeys.length > 0) {
+            // A changed action bundle can make a previously unbuildable brain
+            // buildable, including one born invalidated because its action was
+            // missing at creation. Schedule the rebuild flush to retry the
+            // invalidated set even when this compile invalidated no live brain.
+            this._pendingBrainRebuild = true;
+          }
         }
         this.onDidCompileCallback?.(result, tileResult);
       },
     });
-    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest, this.host);
+    this._servedFileSystem = augmentProjectFileSystem(this.projectFileSystem, this._compiler.compiler, {
+      onCompilerControlledFilesChanged: (files) => {
+        for (const listener of this._compilerControlledFilesListeners) {
+          listener(files);
+        }
+      },
+    });
+    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
     this._compiler.initialize();
+  }
+
+  /**
+   * Persist source files whose user-action declaration had a stable `id` minted
+   * during compilation. Writes the updated text to the project file system and
+   * to the compiler's in-memory view.
+   */
+  private persistMintedActionIds(sourceRewrites: ReadonlyMap<string, string>): void {
+    if (sourceRewrites.size === 0) {
+      return;
+    }
+    for (const [path, content] of sourceRewrites) {
+      const newEtag = `idgen-${Date.now()}`;
+      this.projectFileSystem.applyLocalChange({ action: "write", path, content, newEtag });
+      this._compiler?.compiler.applyWorkspaceChange({ action: "write", path, content, newEtag });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -207,33 +444,44 @@ export class AppEnvironmentHost {
   async saveBrainForKey(key: string, brainDef: IBrainDef): Promise<void> {
     this._brainCache.set(key, brainDef);
     const record = await this.loadBrainRecord();
-    record[key] = brainDef.toJson();
-    await this.projectManager.saveAppData("brains", JSON.stringify(record));
+    record[key] = this.serializeBrainForStorage(brainDef);
+    await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
+    this.bumpBrainDiagnosticsRevision();
+  }
+
+  /**
+   * Serialize a brain into its persisted form: identifiers qualified by the
+   * active project's namespace are stored with the namespace absent.
+   */
+  serializeBrainForStorage(brainDef: IBrainDef): PersistedBrainJson {
+    return encodePersistedBrainJson(brainDef, this.projectManager.activeProject!.manifest.id);
   }
 
   async removeBrain(key: string): Promise<void> {
     this._brainCache.delete(key);
     const record = await this.loadBrainRecord();
     delete record[key];
-    await this.projectManager.saveAppData("brains", JSON.stringify(record));
+    await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
   }
 
   async loadBrainFromProject(key: string): Promise<IBrainDef | undefined> {
-    try {
-      const raw = await this.projectManager.loadAppData("brains");
-      if (!raw) return undefined;
-      const record = JSON.parse(raw) as Record<string, unknown>;
-      const json = record[key];
-      if (!json) return undefined;
-      const brainDef = this.env.deserializeBrainJsonFromPlain(json);
-      if (brainDef.pages().size() === 0) {
-        brainDef.appendNewPage();
-      }
-      return brainDef;
-    } catch (err) {
-      logger.warn(`Failed to load brain "${key}":`, err);
-      return undefined;
-    }
+    const record = await this.loadBrainRecord();
+    const json = record[key];
+    if (!json) return undefined;
+    return this.deserializeBrainForKey(key, json);
+  }
+
+  /**
+   * Returns the active project's in-memory brain for `key`, or undefined when none is cached. The
+   * cache is loaded on project load and updated by `saveBrainForKey` and `removeBrain`.
+   */
+  getCachedBrain(key: string): IBrainDef | undefined {
+    return this._brainCache.get(key);
+  }
+
+  /** Returns the keys of the active project's cached brains, in cache order. */
+  getCachedBrainKeys(): readonly string[] {
+    return [...this._brainCache.keys()];
   }
 
   setDefaultBrain(key: string, brainDef: IBrainDef): void {
@@ -245,16 +493,18 @@ export class AppEnvironmentHost {
   }
 
   private async saveAllBrains(): Promise<void> {
-    const record: Record<string, unknown> = {};
+    // Overlay the cache onto the stored record: an entry that failed to
+    // deserialize on load has no cache slot, and its stored bytes must survive.
+    const record = await this.loadBrainRecord();
     for (const [key, def] of this._brainCache) {
-      record[key] = def.toJson();
+      record[key] = this.serializeBrainForStorage(def);
     }
-    await this.projectManager.saveAppData("brains", JSON.stringify(record));
+    await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
   }
 
   private async loadBrainRecord(): Promise<Record<string, unknown>> {
     try {
-      const raw = await this.projectManager.loadAppData("brains");
+      const raw = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
       if (raw) return JSON.parse(raw) as Record<string, unknown>;
     } catch (err) {
       logger.warn("Failed to load brain record:", err);
@@ -262,12 +512,81 @@ export class AppEnvironmentHost {
     return {};
   }
 
+  /**
+   * Deserialize the project's stored brains into the cache. Call after the
+   * load's catalog moves have applied: deserialization resolves saved tile
+   * references against the current action bundle.
+   */
   private async loadBrainsFromProject(): Promise<void> {
     const record = await this.loadBrainRecord();
-    for (const key of Object.keys(record)) {
-      const def = await this.loadBrainFromProject(key);
+    for (const [key, json] of Object.entries(record)) {
+      const def = this.deserializeBrainForKey(key, json);
       if (def) {
         this._brainCache.set(key, def);
+      }
+    }
+  }
+
+  /**
+   * Reconcile the in-memory brain cache against the project store's current
+   * brain record: cached brains absent from the record are dropped, and
+   * record entries whose stored form differs from the cached brain are
+   * deserialized into the cache. Returns the changed and removed brain keys.
+   */
+  async reconcileBrainsFromStore(): Promise<{ changed: readonly string[]; removed: readonly string[] }> {
+    const record = await this.loadBrainRecord();
+    const changed: string[] = [];
+    const removed: string[] = [];
+    for (const key of [...this._brainCache.keys()]) {
+      if (!(key in record)) {
+        this._brainCache.delete(key);
+        removed.push(key);
+      }
+    }
+    for (const [key, json] of Object.entries(record)) {
+      const cached = this._brainCache.get(key);
+      if (cached && JSON.stringify(json) === JSON.stringify(this.serializeBrainForStorage(cached))) {
+        continue;
+      }
+      const def = this.deserializeBrainForKey(key, json);
+      if (!def) {
+        continue;
+      }
+      this._brainCache.set(key, def);
+      changed.push(key);
+    }
+    return { changed, removed };
+  }
+
+  private deserializeBrainForKey(key: string, json: unknown): IBrainDef | undefined {
+    try {
+      const brainDef = this.env.deserializeBrainJsonFromPlain(json, this.projectManager.activeProject!.manifest.id);
+      if (brainDef.pages().size() === 0) {
+        brainDef.appendNewPage();
+      }
+      // Establish the stored typecheck state consumers of the loaded brain
+      // read (badges, diagnostics baselines).
+      typecheckBrainProblems(brainDef);
+      return brainDef;
+    } catch (err) {
+      logger.warn(`Failed to load brain "${key}":`, err);
+      return undefined;
+    }
+  }
+
+  /**
+   * Re-resolve every cached brain's tile references against the current
+   * catalogs by round-tripping it through its persisted form -- the same
+   * resolution a project load performs, so a tile whose library left the
+   * closure becomes a placeholder and a placeholder whose library returned
+   * becomes the real tile again. A brain whose round-trip fails keeps its
+   * current definition.
+   */
+  private refreshBrainCache(): void {
+    for (const [key, brainDef] of [...this._brainCache]) {
+      const refreshed = this.deserializeBrainForKey(key, this.serializeBrainForStorage(brainDef));
+      if (refreshed) {
+        this._brainCache.set(key, refreshed);
       }
     }
   }
@@ -278,7 +597,687 @@ export class AppEnvironmentHost {
 
   async updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
     await this.projectManager.updateActive(updates);
-    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest, this.host);
+    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
+  }
+
+  /** The installed fetched-extension content available to the active project, keyed by reference. */
+  get installedExtensionContent(): FetchedExtensionContentMap {
+    return this._installedContent;
+  }
+
+  /**
+   * The compiler-controlled file set of the active project's workspace: the
+   * generated `tsconfig.json`, ambient declarations, and the materialized
+   * installed-extensions tree. Undefined until the compiler is wired.
+   */
+  getCompilerControlledFiles(): ReadonlyMap<string, string> | undefined {
+    return this._compiler?.compiler.getCompilerControlledFiles();
+  }
+
+  /**
+   * Subscribe to compiler-controlled file set changes. The listener receives
+   * the full new set after each compile that changed it. Returns an
+   * unsubscribe function.
+   */
+  onCompilerControlledFilesChanged(listener: (files: ReadonlyMap<string, string>) => void): () => void {
+    this._compilerControlledFilesListeners.add(listener);
+    return () => {
+      this._compilerControlledFilesListeners.delete(listener);
+    };
+  }
+
+  /** Install provenance of every installed fetched dependency, keyed by `<owner>/<repo>` origin. */
+  getInstalledExtensionMetadata(): Record<string, FolderInstalledExtensionMetadata> {
+    return installedExtensionMetadataFromSnapshots(this._installedSnapshots);
+  }
+
+  /**
+   * The installed libraries of the active project's resolved extension
+   * closure: one record per resolved origin, carrying the coordinate a
+   * compiled tile's identity namespace names and the display name the
+   * library's own `mindcraft.json` declares. Empty until the compiler is
+   * wired.
+   */
+  get installedLibraries(): readonly Pick<ExtensionCatalogEntry, "coordinate" | "name">[] {
+    const origins = this._lastResolution?.origins ?? [];
+    return origins.map((origin) => ({ coordinate: origin.origin, name: origin.name }));
+  }
+
+  /** The last recorded fetch failure per reference, keyed by the reference string as written. */
+  get extensionFetchFailures(): ExtensionFetchFailures {
+    return this._fetchFailures;
+  }
+
+  /**
+   * Non-fatal warnings of the active project's latest extension resolution,
+   * including the stable-coded catalog-move findings the load's move
+   * application recorded. Empty until the compiler is wired.
+   */
+  get resolutionWarnings(): readonly ExtensionResolutionWarning[] {
+    return this._lastResolution?.warnings ?? NO_RESOLUTION_WARNINGS;
+  }
+
+  /**
+   * Subscribe to resolution-warning changes for `useSyncExternalStore`. The
+   * listener fires whenever the active project's latest resolution is
+   * replaced: on project load and switch, and after each install transaction.
+   * Returns an unsubscribe function.
+   */
+  subscribeToResolutionWarnings = (listener: () => void): (() => void) => {
+    this._resolutionWarningsListeners.add(listener);
+    return () => this._resolutionWarningsListeners.delete(listener);
+  };
+
+  /** Snapshot of {@link resolutionWarnings} for `useSyncExternalStore`. */
+  getResolutionWarningsSnapshot = (): readonly ExtensionResolutionWarning[] => {
+    return this.resolutionWarnings;
+  };
+
+  /** Record the latest resolution and notify resolution-warning subscribers. */
+  private setLastResolution(resolution: ResolvedExtensions | undefined): void {
+    this._lastResolution = resolution;
+    for (const listener of this._resolutionWarningsListeners) {
+      listener();
+    }
+  }
+
+  /** Merge a load's catalog-move findings into the latest resolution's warnings, skipping duplicates. */
+  private absorbCatalogMovesOutcome(outcome: CatalogMovesOutcome | undefined): void {
+    if (outcome === undefined || outcome.warnings.length === 0 || this._lastResolution === undefined) {
+      return;
+    }
+    const seen = new Set(this._lastResolution.warnings.map(resolutionWarningKey));
+    const added = outcome.warnings.filter((warning) => !seen.has(resolutionWarningKey(warning)));
+    if (added.length === 0) {
+      return;
+    }
+    this.setLastResolution({
+      ...this._lastResolution,
+      warnings: [...this._lastResolution.warnings, ...added],
+    });
+  }
+
+  /** Fetch one `gh:` reference's snapshot through the host's transport. */
+  private fetchSnapshot(reference: string): Promise<ExtensionFetchResult> {
+    if (!this.extensionFetchTransport) {
+      return Promise.resolve({
+        ok: false,
+        error: {
+          code: ExtensionFetchErrorCode.UNREACHABLE,
+          reference,
+          message: "The host application provides no extension fetch transport.",
+        },
+      });
+    }
+    return fetchExtensionSnapshot(reference, this.extensionFetchTransport);
+  }
+
+  /** Materialize a resolution: dependencies, `mindcraft.json`, and a recompile of the whole workspace. */
+  private applyResolution(resolution: ResolvedExtensions): void {
+    if (!this._compiler) {
+      return;
+    }
+    this.setLastResolution(resolution);
+    this._compiler.compiler.setDependencies(resolution.dependencies, resolution.dependencyMounts);
+    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
+    this._compiler.replaceProjectFiles();
+  }
+
+  /** Rewrite `mindcraft.json` from the store manifest, restoring the file after a refused transaction. */
+  private resyncManifestFile(): void {
+    const active = this.projectManager.activeProject;
+    if (active) {
+      syncManifestToMindcraftJson(this.projectFileSystem, active.manifest);
+    }
+  }
+
+  /**
+   * The active project's diagnostic state: the latest workspace compile's
+   * per-file diagnostics plus a fresh typecheck of every cached brain.
+   */
+  private captureProjectDiagnostics(): ProjectDiagnosticsState {
+    const files = this._lastCompileResult?.files ?? new Map<string, never>();
+    const brains = new Map<string, readonly string[]>();
+    for (const [key, brain] of this._brainCache) {
+      brains.set(key, typecheckBrainProblems(brain));
+    }
+    return { files, brains };
+  }
+
+  /** Append the transaction's events to the project's install log. */
+  private async appendInstallLogEvents(events: readonly ExtensionInstallLogEvent[]): Promise<void> {
+    if (events.length === 0) {
+      return;
+    }
+    const raw = await this.projectManager.loadAppData(EXTENSION_INSTALL_LOG_APP_DATA_KEY);
+    await this.projectManager.saveAppData(EXTENSION_INSTALL_LOG_APP_DATA_KEY, appendExtensionInstallLog(raw, events));
+  }
+
+  /**
+   * The install and remove events between two resolved closures, plus the new
+   * resolution's warnings. An origin present in both closures records an
+   * install event when its winning reference or installed specifier changed
+   * (an update).
+   */
+  private installLogEventsForChange(
+    previous: ResolvedExtensions,
+    next: ResolvedExtensions,
+    previousSnapshots: InstalledExtensionSnapshots,
+    nextSnapshots: InstalledExtensionSnapshots
+  ): ExtensionInstallLogEvent[] {
+    const at = Date.now();
+    const previousByOrigin = new Map(previous.origins.map((origin) => [origin.origin, origin]));
+    const nextOrigins = new Set(next.origins.map((origin) => origin.origin));
+    const events: ExtensionInstallLogEvent[] = [];
+    for (const origin of next.origins) {
+      const specifier = nextSnapshots[origin.origin]?.specifier;
+      const before = previousByOrigin.get(origin.origin);
+      if (
+        before !== undefined &&
+        before.reference === origin.reference &&
+        previousSnapshots[origin.origin]?.specifier === specifier
+      ) {
+        continue;
+      }
+      events.push({
+        kind: "install",
+        at,
+        origin: origin.origin,
+        reference: origin.reference,
+        ...(specifier !== undefined ? { specifier } : {}),
+      });
+    }
+    for (const origin of previous.origins) {
+      if (!nextOrigins.has(origin.origin)) {
+        events.push({ kind: "remove", at, origin: origin.origin });
+      }
+    }
+    for (const warning of next.warnings) {
+      events.push({ kind: "resolution-warning", at, warning });
+    }
+    return events;
+  }
+
+  /**
+   * Apply an extensions-map change to the active project as one transaction:
+   * fetch content for every newly reachable `gh:` reference, resolve the
+   * transitive dependency graph, then commit -- persist the manifest entries
+   * and the fetched snapshots, re-materialize the installed-extensions tree,
+   * recompile the workspace, and re-typecheck the project's brains -- and
+   * report the diagnostic difference against the pre-change baseline.
+   *
+   * Improved, unchanged, and worsened outcomes all commit. The transaction
+   * refuses outright only on mechanics failures -- an unreachable source, a
+   * missing or unparseable manifest, a missing listed file, or a dependency
+   * cycle -- leaving the project unchanged. Every commit appends its install,
+   * remove, and resolution-warning events to the project's install log.
+   *
+   * @param extensions - The active project's next extensions map, keyed by coordinate.
+   * @param options.refetchReferences - References fetched fresh even when a stored snapshot matches.
+   */
+  async updateProjectExtensions(
+    extensions: Readonly<Record<string, string>>,
+    options?: { refetchReferences?: ReadonlySet<string> }
+  ): Promise<ExtensionInstallReport> {
+    const previousSnapshots = this._installedSnapshots;
+    const previousResolution = this.resolveExtensions();
+    const baseline = this.captureProjectDiagnostics();
+
+    const closure = await collectExtensionFetchClosure({
+      extensions,
+      embedded: this.embeddedExtensions,
+      stored: previousSnapshots,
+      refetch: options?.refetchReferences,
+      moves: this.catalogMoves,
+      fetchSnapshot: (reference) => this.fetchSnapshot(reference),
+      ...(this.extensionFetchTransport !== undefined
+        ? {
+            listVersions: (owner: string, repo: string) => this.extensionFetchTransport!.listVersionTags(owner, repo),
+          }
+        : {}),
+    });
+    if (!closure.ok) {
+      this.resyncManifestFile();
+      this._fetchFailures.set(closure.error.reference, {
+        code: closure.error.code,
+        message: closure.error.message,
+      });
+      await this.appendInstallLogEvents([
+        {
+          kind: "fetch-refusal",
+          at: Date.now(),
+          reference: closure.error.reference,
+          code: closure.error.code,
+          message: closure.error.message,
+        },
+      ]);
+      return { committed: false, refusal: { kind: "fetch", error: closure.error } };
+    }
+
+    const fetchedContent = new Map<string, ReadonlyMap<string, string>>();
+    for (const [reference, record] of closure.snapshotsByReference) {
+      fetchedContent.set(reference, decodeInstalledSnapshotFiles(record));
+    }
+    let resolution: ResolvedExtensions;
+    try {
+      resolution = resolveProjectExtensions(
+        extensions,
+        {
+          embedded: this.embeddedExtensions,
+          fetched: fetchedContent,
+          moves: this.catalogMoves,
+          floatingPins: closure.floatingPins,
+        },
+        this.projectManager.activeProject!.manifest.targets
+      );
+    } catch (err) {
+      if (err instanceof ExtensionResolutionCycleError) {
+        this.resyncManifestFile();
+        return { committed: false, refusal: { kind: "cycle", cycle: err.cycle, message: err.message } };
+      }
+      throw err;
+    }
+
+    // Commit. Snapshot records persist for exactly the fetched origins in the
+    // resolved closure; records for origins the change dropped are pruned.
+    // Invariant: the installed content swaps in before the manifest commit,
+    // and the commit's active-project notification observes the new closure's
+    // content. A manifest commit failure restores the previous snapshots.
+    const nextSnapshots: Record<string, InstalledExtensionSnapshot> = {};
+    for (const origin of resolution.origins) {
+      const record = closure.snapshotsByReference.get(origin.reference);
+      if (record) {
+        nextSnapshots[origin.origin] = record;
+      }
+    }
+    await this.persistInstalledSnapshots(nextSnapshots);
+    try {
+      await this.projectManager.updateActive({ extensions });
+    } catch (err) {
+      await this.persistInstalledSnapshots(previousSnapshots);
+      throw err;
+    }
+    for (const reference of closure.snapshotsByReference.keys()) {
+      this._fetchFailures.delete(reference);
+    }
+    this.applyResolution(resolution);
+    this.refreshBrainCache();
+
+    const outcome = diffProjectDiagnostics(baseline, this.captureProjectDiagnostics());
+    this.bumpBrainDiagnosticsRevision();
+    await this.appendInstallLogEvents(
+      this.installLogEventsForChange(previousResolution, resolution, previousSnapshots, nextSnapshots)
+    );
+
+    for (const warning of closure.warnings) {
+      logger.warn(
+        `[catalog-moves] ${warning.kind === "catalog-move-failed" ? warning.code : warning.kind}: ${warning.message}`
+      );
+    }
+    const warnings = [...resolution.warnings, ...closure.warnings];
+    return { committed: true, outcome, warnings };
+  }
+
+  /** Version lookup over the embed record and the project's persisted snapshot content. */
+  private moveVersionLookup(): ReturnType<typeof createCatalogMoveVersionLookup> {
+    return createCatalogMoveVersionLookup({
+      embedded: this.embeddedExtensions,
+      contentForReference: (reference) => this._installedContent.get(reference),
+    });
+  }
+
+  /**
+   * Resolve a floating catalog-move destination for a coordinate to a pinned
+   * `gh:` reference: the coordinate's persisted snapshot pin when one exists,
+   * otherwise the highest stable published version listed by the host's
+   * transport. Returns undefined when no pin can be produced.
+   */
+  private async resolveFloatingMoveReference(coordinate: string): Promise<string | undefined> {
+    const known = floatingPinsFromSnapshots(this._installedSnapshots).get(coordinate.toLowerCase());
+    if (known !== undefined) {
+      return known;
+    }
+    if (!this.extensionFetchTransport) {
+      return undefined;
+    }
+    const slash = coordinate.indexOf("/");
+    const listed = await this.extensionFetchTransport.listVersionTags(
+      coordinate.slice(0, slash),
+      coordinate.slice(slash + 1)
+    );
+    const version = listed.ok ? highestListedRelease(listed.versions) : undefined;
+    return version === undefined ? undefined : `gh:${coordinate}@${version}`;
+  }
+
+  /**
+   * Apply the host's curated catalog moves to the active project. Each
+   * captured top-level manifest entry is one move-application unit: its
+   * manifest rewrite, its saved-brain namespace rewrite (when the entry's
+   * final coordinate differs), and the fetches its chain requires run as one
+   * install transaction, rolled back together when the transaction refuses. A
+   * failed unit writes nothing, surfaces a stable-coded warning, and is
+   * retried on the next load, while other units proceed independently.
+   *
+   * Application interleaves apply, fetch, and re-apply: after each committed
+   * transaction the entries are re-applied with the versions the new content
+   * determines, and a transitive moved dependency whose content the project
+   * never persisted is healed by a fetch transaction, until nothing changes.
+   * A floating destination is resolved to a pin before its transaction runs;
+   * the pin is what the manifest receives. Returns undefined when the host
+   * declares no moves or the project is a true no-op; otherwise the
+   * transactions' reports and the load's stable-coded move warnings.
+   */
+  async applyCatalogMoves(): Promise<CatalogMovesOutcome | undefined> {
+    if (Object.keys(this.catalogMoves).length === 0) {
+      return undefined;
+    }
+    const reports: ExtensionInstallReport[] = [];
+    const warnings: ExtensionResolutionWarning[] = [];
+    const warned = new Set<string>();
+    const warn = (reference: string, code: CatalogMoveWarningCode, message: string): void => {
+      const key = `${reference} ${code}`;
+      if (warned.has(key)) {
+        return;
+      }
+      warned.add(key);
+      warnings.push({
+        kind: "catalog-move-failed",
+        origin: parseCatalogMoveReference(reference)?.coordinate ?? reference,
+        reference,
+        code,
+        message,
+      });
+    };
+    // Entries whose unit failed this load; they are not retried until the next load.
+    const failedEntries = new Set<string>();
+
+    let progressed = true;
+    while (progressed) {
+      progressed = false;
+
+      // Top-level entries: each captured entry is its own transaction.
+      const lookup = this.moveVersionLookup();
+      const current = this.projectManager.activeProject?.manifest.extensions ?? {};
+      for (const [coordinate, reference] of Object.entries(current)) {
+        if (failedEntries.has(coordinate)) {
+          continue;
+        }
+        const applied = applyCatalogMove(reference, this.catalogMoves, lookup);
+        if (!applied.ok) {
+          warn(reference, applied.code, applied.message);
+          failedEntries.add(coordinate);
+          continue;
+        }
+        if (!applied.moved) {
+          continue;
+        }
+        let finalReference = applied.reference;
+        const parts = parseCatalogMoveReference(finalReference);
+        if (parts === undefined) {
+          continue;
+        }
+        if (parts.floating) {
+          const pin = await this.resolveFloatingMoveReference(parts.coordinate);
+          if (pin === undefined) {
+            warn(
+              reference,
+              CatalogMoveWarningCode.FLOATING_UNRESOLVED,
+              `Catalog move for "${reference}" resolves to the floating "${finalReference}" and no stable ` +
+                "published version could be pinned; the move is skipped this load."
+            );
+            failedEntries.add(coordinate);
+            continue;
+          }
+          finalReference = pin;
+        }
+        const finalCoordinate = parts.coordinate;
+
+        const next: Record<string, string> = {};
+        for (const [key, value] of Object.entries(current)) {
+          if (key !== coordinate) {
+            next[key] = value;
+          }
+        }
+        next[finalCoordinate] = finalReference;
+
+        // A rename rewrites saved-brain namespaces in the same unit, restored
+        // together when the transaction refuses.
+        let brainsBeforeRename: string | undefined;
+        let brainsRewritten = false;
+        if (finalCoordinate !== coordinate) {
+          brainsBeforeRename = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
+          brainsRewritten = await this.renameBrainNamespaces([{ from: coordinate, to: finalCoordinate }]);
+        }
+        const report = await this.updateProjectExtensions(next);
+        reports.push(report);
+        if (!report.committed) {
+          if (brainsRewritten) {
+            await this.restoreBrains(brainsBeforeRename);
+          }
+          const detail =
+            report.refusal.kind === "fetch"
+              ? `${report.refusal.error.code}: ${report.refusal.error.message}`
+              : report.refusal.message;
+          warn(
+            reference,
+            CatalogMoveWarningCode.FETCH_FAILED,
+            `Catalog move for "${reference}" to "${finalReference}" was refused (${detail}); the move is ` +
+              "skipped this load."
+          );
+          failedEntries.add(coordinate);
+          continue;
+        }
+        progressed = true;
+        break;
+      }
+      if (progressed) {
+        continue;
+      }
+
+      // Transitive heal: a moved dependency at any depth may lack content on
+      // this load -- a dependency installed while the moved library was
+      // bundled has no persisted snapshot, and a floating destination may not
+      // be pinned yet. The fetch transaction fetches and persists exactly the
+      // missing content; content it learns can enable further captures.
+      const extensions = this.projectManager.activeProject?.manifest.extensions ?? {};
+      const needsHeal = await movedClosureHasMissingContent({
+        extensions,
+        embedded: this.embeddedExtensions,
+        stored: this._installedSnapshots,
+        moves: this.catalogMoves,
+      });
+      if (needsHeal) {
+        const before = new Set(Object.values(this._installedSnapshots).map((record) => record.reference));
+        const report = await this.updateProjectExtensions(extensions);
+        reports.push(report);
+        if (report.committed) {
+          if (Object.values(this._installedSnapshots).some((record) => !before.has(record.reference))) {
+            progressed = true;
+          }
+        } else if (report.refusal.kind === "fetch") {
+          warn(report.refusal.error.reference, CatalogMoveWarningCode.FETCH_FAILED, report.refusal.error.message);
+        }
+      }
+    }
+
+    // A version-scoped capture still unevaluable at the end of the loop is a
+    // loud skip, retried on the next load.
+    const lookup = this.moveVersionLookup();
+    for (const reference of Object.values(this.projectManager.activeProject?.manifest.extensions ?? {})) {
+      const applied = applyCatalogMove(reference, this.catalogMoves, lookup);
+      if (applied.ok && applied.pendingVersion) {
+        warn(
+          reference,
+          CatalogMoveWarningCode.VERSION_UNKNOWN,
+          `The version of "${reference}" could not be determined, so its version-scoped catalog move cannot be ` +
+            "evaluated; the move is skipped this load."
+        );
+      }
+    }
+    for (const warning of warnings) {
+      if (warning.kind === "catalog-move-failed") {
+        logger.warn(`[catalog-moves] ${warning.code}: ${warning.message}`);
+      }
+    }
+    if (reports.length === 0 && warnings.length === 0) {
+      return undefined;
+    }
+    return { reports, warnings };
+  }
+
+  /**
+   * Rewrite every saved brain's foreign-namespace references from each rename's
+   * source coordinate to its target, persisting the rewritten brains record and
+   * re-deserializing the changed brains into the cache. Returns true when at
+   * least one brain changed.
+   */
+  private async renameBrainNamespaces(renames: readonly { from: string; to: string }[]): Promise<boolean> {
+    const rewrite = (namespace: string): string => {
+      for (const rename of renames) {
+        if (rename.from === namespace) {
+          return rename.to;
+        }
+      }
+      return namespace;
+    };
+    const record = await this.loadBrainRecord();
+    const changedKeys: string[] = [];
+    for (const [key, json] of Object.entries(record)) {
+      const result = renameBrainNamespaces(json, rewrite);
+      if (result.changed) {
+        record[key] = result.brain;
+        changedKeys.push(key);
+      }
+    }
+    if (changedKeys.length === 0) {
+      return false;
+    }
+    await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
+    for (const key of changedKeys) {
+      const def = this.deserializeBrainForKey(key, record[key]);
+      if (def) {
+        this._brainCache.set(key, def);
+      }
+    }
+    return true;
+  }
+
+  /** Restore the brains record and cache to a pre-rewrite snapshot after a refused migration. */
+  private async restoreBrains(raw: string | undefined): Promise<void> {
+    if (raw === undefined) {
+      return;
+    }
+    await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, raw);
+    const record = JSON.parse(raw) as Record<string, unknown>;
+    for (const [key, json] of Object.entries(record)) {
+      const def = this.deserializeBrainForKey(key, json);
+      if (def) {
+        this._brainCache.set(key, def);
+      }
+    }
+  }
+
+  /**
+   * Normalize add-by-reference input to an installable extension reference: a
+   * complete reference, an `<owner>/<repo>` coordinate, or a GitHub repository
+   * URL. Input naming a repository without a version resolves to the
+   * repository's latest published version through the host's transport. Fails
+   * with a stable code when the input is unrecognized, no version can be
+   * resolved, or the host has no transport to resolve one through.
+   *
+   * @param input - The pasted add-field text.
+   */
+  async resolveExtensionInstallInput(input: string): Promise<ExtensionAddInputResolution> {
+    if (this.extensionFetchTransport) {
+      return resolveExtensionAddInput(input, this.extensionFetchTransport);
+    }
+    const parsed = parseExtensionAddInput(input);
+    switch (parsed.kind) {
+      case "reference":
+        return { ok: true, reference: parsed.reference };
+      case "coordinate":
+        return {
+          ok: false,
+          code: ExtensionFetchErrorCode.UNREACHABLE,
+          message: "The host application provides no extension fetch transport.",
+        };
+      case "invalid":
+        return { ok: false, code: parsed.code, message: parsed.message };
+    }
+  }
+
+  /**
+   * Check one installed fetched dependency of the active project for a newer
+   * version at its source: a `@<pin>` reference against the source's published
+   * versions, a `#<branch>` reference against the branch's head commit. The
+   * check runs on request, reaches the source through the host's transport,
+   * and changes nothing.
+   *
+   * @param coordinate - The dependency's `<owner>/<repo>` coordinate in the project's extensions map.
+   */
+  async checkExtensionUpdate(coordinate: string): Promise<ExtensionUpdateCheck> {
+    const reference = this.projectManager.activeProject!.manifest.extensions?.[coordinate];
+    const record = this._installedSnapshots[coordinate];
+    if (reference === undefined || record === undefined || record.reference !== reference) {
+      return {
+        ok: false,
+        error: {
+          code: ExtensionFetchErrorCode.INVALID_REFERENCE,
+          reference: reference ?? coordinate,
+          message: `"${coordinate}" is not an installed fetched dependency of the active project.`,
+        },
+      };
+    }
+    if (!this.extensionFetchTransport) {
+      return {
+        ok: false,
+        error: {
+          code: ExtensionFetchErrorCode.UNREACHABLE,
+          reference,
+          message: "The host application provides no extension fetch transport.",
+        },
+      };
+    }
+    const manifestContent = decodeInstalledSnapshotFiles(record).get(`/${MINDCRAFT_JSON_PATH}`);
+    const parsed = manifestContent !== undefined ? parseProjectContentManifest(manifestContent) : undefined;
+    return checkExtensionReferenceUpdate({
+      reference,
+      installedSpecifier: record.specifier,
+      installedVersion: parsed?.ok ? parsed.manifest.version : "0.0.0",
+      transport: this.extensionFetchTransport,
+    });
+  }
+
+  /**
+   * Apply one or more dependency updates to the active project as a single
+   * install transaction with one outcome: each update's coordinate takes its
+   * new reference in the extensions map, and each updated reference is fetched
+   * fresh, never satisfied from its stored snapshot. The report and the
+   * install log are those of {@link updateProjectExtensions}.
+   *
+   * @param updates - The updates to apply, as returned by update checks.
+   */
+  async applyExtensionUpdates(updates: readonly ExtensionUpdateApplication[]): Promise<ExtensionInstallReport> {
+    const next: Record<string, string> = { ...(this.projectManager.activeProject!.manifest.extensions ?? {}) };
+    const refetchReferences = new Set<string>();
+    for (const update of updates) {
+      next[update.coordinate] = update.reference;
+      refetchReferences.add(update.reference);
+    }
+    return this.updateProjectExtensions(next, { refetchReferences });
+  }
+
+  /**
+   * Collect the active project's dependencies that are not stable for
+   * consumers: branch references, and pinned references whose content the
+   * project has no installed snapshot for. Exporting or publishing such a
+   * project should ask for confirmation first.
+   */
+  async collectUnstableProjectDependencies(): Promise<readonly UnstableDependency[]> {
+    const extensions = this.projectManager.activeProject!.manifest.extensions ?? {};
+    return collectUnstableDependencies(extensions, async (owner, repo, pin) =>
+      this._installedContent.has(`gh:${owner}/${repo}@${pin}`)
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -408,18 +1407,24 @@ export class AppEnvironmentHost {
     this._brainCache.clear();
     this._pendingBrainRebuild = false;
     this.env.replaceActionBundle({ revision: "", tiles: [], actions: Dict.empty() });
+    // Compiles invalidate types per project namespace, so the outgoing
+    // project's registrations must be cleared here or they outlive it.
+    this.env.brainServices.runtime.types.removeUserTypes();
     this._lastUserTileMetadata = undefined;
+    this._installedSnapshots = {};
+    this._installedContent = new Map();
+    this._fetchFailures = new Map();
+    this._lastCompileResult = undefined;
+    this.setCompileDiagnostics(undefined);
+    this.setLastResolution(undefined);
     this.bumpDocRevision();
     this.teardownBridge();
   }
 
   private async completeProjectTransition(): Promise<void> {
     this.completeProjectUnload();
-    this._lastUserTileMetadata =
-      hydrateUserTilesFromCache(this.env, {
-        storageKey: this.userTileStorageKey,
-      }) ?? undefined;
-    this.initCompiler();
+    await this.initCompiler();
+    this.absorbCatalogMovesOutcome(await this.applyCatalogMoves());
     await this.loadBrainsFromProject();
 
     for (const listener of this._projectLoadedListeners) {
@@ -478,6 +1483,61 @@ export class AppEnvironmentHost {
     return () => this._docRevisionListeners.delete(listener);
   };
 
+  /**
+   * Subscribe to brain-diagnostics revision changes for
+   * `useSyncExternalStore`. The revision bumps whenever the stored typecheck
+   * state of the project's brains may have changed: after each extension
+   * transaction and after each brain save. Returns an unsubscribe function.
+   */
+  subscribeToBrainDiagnostics = (listener: () => void): (() => void) => {
+    this._brainDiagnosticsListeners.add(listener);
+    return () => this._brainDiagnosticsListeners.delete(listener);
+  };
+
+  /** Snapshot of the current brain-diagnostics revision for `useSyncExternalStore`. */
+  getBrainDiagnosticsRevision = (): number => {
+    return this._brainDiagnosticsRevision;
+  };
+
+  private bumpBrainDiagnosticsRevision(): void {
+    this._brainDiagnosticsRevision++;
+    for (const listener of this._brainDiagnosticsListeners) {
+      listener();
+    }
+  }
+
+  /**
+   * Subscribe to workspace-compile diagnostic changes for
+   * `useSyncExternalStore`. The listener fires after every workspace compile
+   * and on project unload. Returns an unsubscribe function.
+   */
+  subscribeToCompileDiagnostics = (listener: () => void): (() => void) => {
+    this._compileDiagnosticsListeners.add(listener);
+    return () => this._compileDiagnosticsListeners.delete(listener);
+  };
+
+  /** Snapshot of the latest workspace compile's diagnostics for `useSyncExternalStore`; empty when clean. */
+  getCompileDiagnosticsSnapshot = (): readonly WorkspaceCompileDiagnostic[] => {
+    return this._compileDiagnostics;
+  };
+
+  /** Record a compile's per-file diagnostics as one flat located list and notify subscribers. */
+  private setCompileDiagnostics(result: WorkspaceCompileResult | undefined): void {
+    const diagnostics: WorkspaceCompileDiagnostic[] = [];
+    for (const [path, entries] of result?.files ?? []) {
+      for (const entry of entries) {
+        diagnostics.push({ ...entry, path });
+      }
+    }
+    if (diagnostics.length === 0 && this._compileDiagnostics.length === 0) {
+      return;
+    }
+    this._compileDiagnostics = diagnostics.length === 0 ? NO_COMPILE_DIAGNOSTICS : diagnostics;
+    for (const listener of this._compileDiagnosticsListeners) {
+      listener();
+    }
+  }
+
   getDocRevisionSnapshot = (): number => {
     return this._docRevision;
   };
@@ -504,7 +1564,7 @@ export class AppEnvironmentHost {
 
     this._bridge = createBridgeProject({
       projectCompiler: this._compiler,
-      filesystem: this.projectFileSystem,
+      servedFileSystem: this.servedProjectFileSystem,
       bridgeUrl: this._bridgeUrl,
       bindingToken: this._loadBindingToken(),
       onBindingTokenChange: (token) => {
@@ -587,6 +1647,46 @@ export class AppEnvironmentHost {
     return this._bridgeJoinCode;
   };
 
+  /**
+   * Apply a project file change observed outside the app (a folder-session
+   * external edit): applies it to the project file system and the workspace
+   * compiler, recompiles, and absorbs any `mindcraft.json` manifest change.
+   */
+  applyExternalProjectFileChange(change: ProjectFileChange): void {
+    this.projectFileSystem.applyRemoteChange(change);
+    if (this._compiler) {
+      this._compiler.compiler.applyWorkspaceChange(change);
+      this._compiler.compiler.compile();
+    }
+    this.handleRemoteProjectFileChange(change);
+  }
+
+  /**
+   * Absorb a project file change made by a remote peer: bumps the VFS
+   * revision, and a `mindcraft.json` write is diffed against the active
+   * manifest -- an extensions change runs through the install transaction and
+   * the remaining synced fields patch the manifest. The change itself must
+   * already be applied to the project file system.
+   */
+  handleRemoteProjectFileChange(change: ProjectFileChange): void {
+    this.bumpVfsRevision();
+    if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
+      const patch = diffMindcraftJsonToManifest(change.content, this.projectManager.activeProject.manifest);
+      if (patch) {
+        // An extensions change flows through the install transaction, the
+        // same pipeline the extension browser uses; the remaining synced
+        // fields patch the manifest directly.
+        const { extensions, ...rest } = patch;
+        if (extensions !== undefined) {
+          void this.updateProjectExtensions(extensions);
+        }
+        if (Object.keys(rest).length > 0) {
+          void this.projectManager.updateActive(rest);
+        }
+      }
+    }
+  }
+
   private wireBridgeState(bridge: AppBridge): void {
     this._bridgeStateUnsub?.();
     this._remoteChangeUnsub?.();
@@ -594,13 +1694,7 @@ export class AppEnvironmentHost {
       this.applyBridgeSnapshot(bridge);
     });
     this._remoteChangeUnsub = bridge.onRemoteChange((change: ProjectFileChange) => {
-      this.bumpVfsRevision();
-      if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
-        const patch = diffMindcraftJsonToManifest(change.content, this.projectManager.activeProject.manifest);
-        if (patch) {
-          void this.projectManager.updateActive(patch);
-        }
-      }
+      this.handleRemoteProjectFileChange(change);
     });
     this.applyBridgeSnapshot(bridge);
   }
@@ -627,6 +1721,16 @@ export class AppEnvironmentHost {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Stable empty warnings array, the snapshot value while no resolution is recorded. */
+const NO_RESOLUTION_WARNINGS: readonly ExtensionResolutionWarning[] = [];
+
+/** Identity key of a resolution warning: the fields that name the same finding across sources. */
+function resolutionWarningKey(warning: ExtensionResolutionWarning): string {
+  const reference = "reference" in warning ? warning.reference : "";
+  const code = warning.kind === "catalog-move-failed" ? warning.code : "";
+  return `${warning.kind} ${warning.origin} ${reference} ${code}`;
+}
 
 function logWorkspaceCompile(result: WorkspaceCompileResult): void {
   const resultsByPath = result.projectResult.results;

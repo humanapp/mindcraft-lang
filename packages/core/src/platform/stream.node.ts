@@ -549,6 +549,97 @@ export class MemoryStream implements IReadStream, IWriteStream {
     this.skip(len);
   }
 
+  // ---- Raw / variable-length primitives ----
+
+  writeRawU8(v: number): void {
+    const x = v | 0;
+    if (x < 0 || x > 0xff) throw new Error(`writeRawU8 out of range: ${v}`);
+    this.writeRawByte(x);
+  }
+
+  readRawU8(): number {
+    return this.readRawByte();
+  }
+
+  writeRawF32(v: number): void {
+    if (this.chunkStack.length > 0) {
+      this.chunkStack[this.chunkStack.length - 1].stream.writeRawF32(v);
+      return;
+    }
+    this.ensureWritable(4);
+    this.view.setFloat32(this.wpos, v, true);
+    this.wpos += 4;
+  }
+
+  readRawF32(): number {
+    this.ensureReadable(4);
+    const v = this.view.getFloat32(this.rpos, true);
+    this.rpos += 4;
+    return v;
+  }
+
+  writeVarUint(v: number): void {
+    if (!Number.isInteger(v) || v < 0 || v > 0xffffffff) {
+      throw new Error(`writeVarUint out of range (must be a u32): ${v}`);
+    }
+    let x = v;
+    while (x >= 0x80) {
+      this.writeRawByte((x & 0x7f) | 0x80);
+      x = Math.floor(x / 128);
+    }
+    this.writeRawByte(x);
+  }
+
+  readVarUint(): number {
+    let result = 0;
+    let shift = 0;
+    for (let i = 0; i < 5; i++) {
+      const byte = this.readRawByte();
+      const payload = byte & 0x7f;
+      // The 5th byte carries bits 28..34; only bits 28..31 are valid for a u32.
+      if (i === 4 && payload > 0x0f) {
+        throw new Error(`[varint] readVarUint: value exceeds 32 bits`);
+      }
+      result += payload * 2 ** shift;
+      if ((byte & 0x80) === 0) {
+        return result;
+      }
+      shift += 7;
+    }
+    // Five continuation-flagged bytes means a 6th byte would be required.
+    throw new Error(`[varint] readVarUint: value exceeds 32 bits`);
+  }
+
+  writeVarInt(v: number): void {
+    if (!Number.isInteger(v) || v < -2147483648 || v > 2147483647) {
+      throw new Error(`writeVarInt out of range (must be an i32): ${v}`);
+    }
+    const zigzag = ((v << 1) ^ (v >> 31)) >>> 0;
+    this.writeVarUint(zigzag);
+  }
+
+  readVarInt(): number {
+    const u = this.readVarUint();
+    return (u >>> 1) ^ -(u & 1);
+  }
+
+  writeVarString(v: string): void {
+    const bytes = this.encoder.encode(v);
+    if (bytes.length > kMaxLongStringLength) throw new Error(`String too large: ${bytes.length} bytes`);
+    this.writeVarUint(bytes.length);
+    this.writeRawBytes(bytes, bytes.length);
+  }
+
+  readVarString(): string {
+    const byteLen = this.readVarUint();
+    if (byteLen > kMaxLongStringLength) throw new Error(`String too large: ${byteLen} bytes`);
+    this.ensureReadable(byteLen);
+    const start = this.rpos;
+    const end = start + byteLen;
+    this.rpos = end;
+    return this.decoder.decode(this.buf.subarray(start, end));
+  }
+
   // ---- internals ----
 
   // ---- internals ----
@@ -623,6 +714,14 @@ export class MemoryStream implements IReadStream, IWriteStream {
  */
 export function byteArrayFromUint8Array(src: Uint8Array): IByteArray {
   return NodeByteArray.fromUint8ArrayCopy(src);
+}
+
+/**
+ * Creates an IByteArray from a latin1 string, mapping each character's low 8
+ * bits to one byte (1 char => 1 byte).
+ */
+export function byteArrayFromStringLatin1(s: string): IByteArray {
+  return NodeByteArray.fromStringLatin1(s);
 }
 
 /**

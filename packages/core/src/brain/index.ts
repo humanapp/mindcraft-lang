@@ -2,6 +2,14 @@
 
 export * from "./brain";
 export * as compiler from "./compiler";
+export {
+  type BrainBuildDiagnostic,
+  BrainBuildError,
+  type BrainBuildResult,
+  type DiagnosticSeverity,
+  isBrainBuildError,
+  LinkDiagCode,
+} from "./compiler/diagnostics";
 export * from "./compiler/types";
 export * from "./interfaces";
 export * as languageService from "./language-service";

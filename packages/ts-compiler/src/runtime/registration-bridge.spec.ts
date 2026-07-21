@@ -5,12 +5,13 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import { mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
 import { compileUserTile } from "../compiler/compile.js";
 import type { ExtractedParam } from "../compiler/types.js";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { registerUserTile } from "./registration-bridge.js";
 
 let services: BrainServices;
 
 function compileProgram(source: string) {
-  const result = compileUserTile(source, { services });
+  const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
   assert.deepStrictEqual(result.diagnostics, [], `Compile errors: ${JSON.stringify(result.diagnostics)}`);
   assert.ok(result.program);
   return result.program!;
@@ -55,6 +56,7 @@ export default Sensor({
 import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
+  id: "regactuator",
   name: "phase6-reg-actuator",
   args: [
     param("distance", { type: "number" }),
@@ -70,8 +72,8 @@ export default Actuator({
 
     const { tiles } = services.edit;
     assert.ok(tiles.has(mkActuatorTileId(program.key)), "actuator tile metadata should be registered");
-    assert.ok(tiles.has(mkParameterTileId("user.phase6-reg-actuator.distance")));
-    assert.ok(tiles.has(mkParameterTileId("user.phase6-reg-actuator.label")));
+    assert.ok(tiles.has(mkParameterTileId(`${TEST_PROJECT_NAMESPACE}:user.regactuator.distance`)));
+    assert.ok(tiles.has(mkParameterTileId(`${TEST_PROJECT_NAMESPACE}:user.regactuator.label`)));
     assert.ok(tiles.has(mkParameterTileId("anon.number")));
   });
 
@@ -80,6 +82,7 @@ export default Actuator({
 import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
+  id: "regunknownparam",
   name: "phase6-reg-unknown-param",
   args: [
     param("target", { type: "number" }),
@@ -93,7 +96,7 @@ export default Actuator({
 
     assert.throws(
       () => registerUserTile(program, services),
-      /Unknown parameter type "vector2" for "user\.actuator\.phase6-reg-unknown-param"/
+      /Unknown parameter type "vector2" for "test-project:user\.actuator\.regunknownparam"/
     );
   });
 

@@ -1,0 +1,215 @@
+{
+  "program": {
+    "version": 1,
+    "functions": [
+      {
+        "code": [
+          {
+            "op": 0,
+            "a": 0
+          },
+          {
+            "op": 0,
+            "a": 13
+          },
+          {
+            "op": 1
+          },
+          {
+            "op": 31
+          }
+        ],
+        "numParams": 0,
+        "numLocals": 0
+      }
+    ],
+    "constantPools": {
+      "numbers": [],
+      "strings": [],
+      "values": [
+        {
+          "t": -1
+        },
+        {
+          "t": 0
+        },
+        {
+          "t": 1
+        },
+        {
+          "t": 2,
+          "v": true
+        },
+        {
+          "t": 2,
+          "v": false
+        },
+        {
+          "t": 3,
+          "v": 42
+        },
+        {
+          "t": 3,
+          "v": -7
+        },
+        {
+          "t": 4,
+          "v": "hello"
+        },
+        {
+          "t": 5,
+          "typeId": "enum:</fixture.ts::Color>",
+          "v": "Red"
+        },
+        {
+          "t": 6,
+          "typeId": "list:<List<number:<number>>>",
+          "v": [
+            {
+              "t": 3,
+              "v": 1
+            },
+            {
+              "t": 3,
+              "v": 2
+            }
+          ]
+        },
+        {
+          "t": 7,
+          "typeId": "map:<Map<any:<any>,any:<any>>>",
+          "v": [
+            {
+              "key": 1,
+              "value": {
+                "t": 4,
+                "v": "one"
+              }
+            },
+            {
+              "key": "k",
+              "value": {
+                "t": 3,
+                "v": 9
+              }
+            }
+          ]
+        },
+        {
+          "t": 8,
+          "typeId": "struct:</fixture.ts::Point>",
+          "v": [
+            {
+              "t": 3,
+              "v": 3
+            },
+            {
+              "t": 3,
+              "v": 4
+            }
+          ]
+        },
+        {
+          "t": 11,
+          "funcId": 2
+        },
+        {
+          "t": 11,
+          "funcId": 3,
+          "captures": [
+            {
+              "t": 3,
+              "v": 5
+            },
+            {
+              "t": 4,
+              "v": "cap"
+            }
+          ]
+        }
+      ]
+    },
+    "types": [
+      {
+        "tag": "atom",
+        "typeId": "number:<number>",
+        "atomId": 3
+      },
+      {
+        "tag": "atom",
+        "typeId": "any:<any>",
+        "atomId": 5
+      },
+      {
+        "tag": "atom",
+        "typeId": "string:<string>",
+        "atomId": 4
+      },
+      {
+        "tag": "list",
+        "typeId": "list:<List<number:<number>>>",
+        "elem": 0
+      },
+      {
+        "tag": "map",
+        "typeId": "map:<Map<any:<any>,any:<any>>>",
+        "key": 1,
+        "value": 1
+      },
+      {
+        "tag": "union",
+        "typeId": "union:<number:<number>,string:<string>>",
+        "members": [
+          0,
+          2
+        ]
+      },
+      {
+        "tag": "function",
+        "typeId": "function:<Function<(number:<number>)=>number:<number>>>",
+        "params": [
+          0
+        ],
+        "result": 0
+      },
+      {
+        "tag": "nullable",
+        "typeId": "number:<number?>",
+        "base": 0
+      },
+      {
+        "tag": "struct",
+        "typeId": "struct:</fixture.ts::Point>",
+        "name": "/fixture.ts::Point",
+        "maxFieldId": 1,
+        "fields": [
+          {
+            "name": "x",
+            "fieldIndex": 0
+          },
+          {
+            "name": "y",
+            "fieldIndex": 1
+          }
+        ]
+      },
+      {
+        "tag": "enum",
+        "typeId": "enum:</fixture.ts::Color>",
+        "name": "/fixture.ts::Color",
+        "symbols": [
+          {
+            "key": "Red",
+            "value": 0
+          },
+          {
+            "key": "Green",
+            "value": 1
+          }
+        ]
+      }
+    ],
+    "variableNames": []
+  },
+  "pages": []
+}

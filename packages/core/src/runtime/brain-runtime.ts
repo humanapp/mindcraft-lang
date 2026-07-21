@@ -11,7 +11,8 @@ import { createProgramServices, createRuleVariableServices, type RuleVariableSto
 import { createRuntimeServices } from "./runtime-services";
 import type { PlatformServices } from "./services";
 import { NIL_VALUE, type Value } from "./value";
-import { FiberScheduler, VM } from "./vm";
+import { DEFAULT_SCHEDULER_CONFIG, FiberScheduler, type SchedulerConfig, VM } from "./vm";
+import type { VmConfig } from "./vm-types";
 import { FiberState, VmStatus } from "./vm-types";
 
 /**
@@ -49,6 +50,16 @@ export class BrainRuntime implements IBrainRuntime {
   private varSlotByName: Dict<string, number> = new Dict<string, number>();
 
   /**
+   * Brain-global System state storage, indexed by the linker-assigned store
+   * slot (the operand of `LOAD_SYSTEM_VAR` / `STORE_SYSTEM_VAR`). One slot per
+   * registered System; shared across all callsites and not reachable from brain
+   * code. Writes are by reference (no deep copy), so a System's state struct
+   * mutates in place. Grows lazily on out-of-range writes; reads of an unwritten
+   * slot observe `NIL_VALUE`.
+   */
+  private systemStore: List<Value | undefined> = List.empty();
+
+  /**
    * The linked program loaded into the VM.
    */
   private readonly program: Program;
@@ -68,6 +79,12 @@ export class BrainRuntime implements IBrainRuntime {
    * Single scheduler for managing all fibers.
    */
   private readonly scheduler: FiberScheduler;
+
+  /**
+   * Resolved scheduler tunables for this brain instance. Also supplies the
+   * instruction budget for page-lifecycle hook fibers.
+   */
+  private readonly schedulerConfig: SchedulerConfig;
 
   /**
    * Persistent execution context shared across all fibers. Provides variable
@@ -128,6 +145,10 @@ export class BrainRuntime implements IBrainRuntime {
    * @param previousVariables - Optional snapshot of the prior runtime's
    *   variable storage, used to carry variable values across a
    *   re-initialization (hot reload).
+   * @param schedulerConfig - Optional scheduler tunables for this brain
+   *   (fiber slice budget, hook budget, fiber cap). Omitted fields fall
+   *   back to {@link DEFAULT_SCHEDULER_CONFIG}. Device profiles pin these
+   *   values so the reference VM and a device VM schedule identically.
    */
   constructor(
     program: Program,
@@ -135,7 +156,9 @@ export class BrainRuntime implements IBrainRuntime {
     hostServices: Omit<PlatformServices, "brain">,
     contextData: unknown = undefined,
     previousVariables?: VariableSnapshot,
-    vmEvents?: VmEvents
+    vmEvents?: VmEvents,
+    schedulerConfig?: Partial<SchedulerConfig> &
+      Partial<Pick<VmConfig, "maxStackSize" | "maxLocalsSize" | "maxFrameDepth" | "maxHandlers" | "maxHandles">>
   ) {
     this.program = program;
     this.pageMetadata = pageMetadata;
@@ -167,12 +190,18 @@ export class BrainRuntime implements IBrainRuntime {
       },
     };
 
-    this.vm = new VM(program, services, vmEvents ? { events: vmEvents } : undefined);
-    this.scheduler = new FiberScheduler(this.vm, {
-      maxFibersPerTick: 64,
-      defaultBudget: 1000,
-      autoGcHandles: true,
+    // Thread the per-fiber caps into the VM config; undefined entries fall back
+    // to the VM defaults.
+    this.vm = new VM(program, services.runtime, {
+      events: vmEvents,
+      maxStackSize: schedulerConfig?.maxStackSize,
+      maxLocalsSize: schedulerConfig?.maxLocalsSize,
+      maxFrameDepth: schedulerConfig?.maxFrameDepth,
+      maxHandlers: schedulerConfig?.maxHandlers,
+      maxHandles: schedulerConfig?.maxHandles,
     });
+    this.schedulerConfig = { ...DEFAULT_SCHEDULER_CONFIG, ...schedulerConfig };
+    this.scheduler = new FiberScheduler(this.vm, this.schedulerConfig);
 
     const runtime = this;
     this.executionContext = {
@@ -182,6 +211,12 @@ export class BrainRuntime implements IBrainRuntime {
       },
       setVariableBySlot(slotId: number, value: Value): void {
         runtime.setVariableBySlot(slotId, value);
+      },
+      getSystemVarBySlot(slotId: number): Value {
+        return runtime.getSystemVarBySlot(slotId);
+      },
+      setSystemVarBySlot(slotId: number, value: Value): void {
+        runtime.setSystemVarBySlot(slotId, value);
       },
       time: 0,
       dt: 0,
@@ -297,6 +332,29 @@ export class BrainRuntime implements IBrainRuntime {
       this.variables.push(undefined);
     }
     this.variables.set(slotId, value);
+  }
+
+  /**
+   * Read a System's state by its store slot. Returns `NIL_VALUE` if the slot is
+   * out of range or has never been written. Called by the VM on `LOAD_SYSTEM_VAR`.
+   */
+  getSystemVarBySlot(slotId: number): Value {
+    if (slotId < 0 || slotId >= this.systemStore.size()) return NIL_VALUE;
+    const v = this.systemStore.get(slotId);
+    return v === undefined ? NIL_VALUE : v;
+  }
+
+  /**
+   * Write a System's state by its store slot. Grows the store lazily. Writes by
+   * reference (no deep copy): a System's state struct mutates in place. Called
+   * by the VM on `STORE_SYSTEM_VAR`.
+   */
+  setSystemVarBySlot(slotId: number, value: Value): void {
+    if (slotId < 0) return;
+    while (this.systemStore.size() <= slotId) {
+      this.systemStore.push(undefined);
+    }
+    this.systemStore.set(slotId, value);
   }
 
   /**
@@ -416,7 +474,7 @@ export class BrainRuntime implements IBrainRuntime {
       callSiteId,
       isAsync: false,
     };
-    hookFiber.instrBudget = 10000;
+    hookFiber.instrBudget = this.schedulerConfig.hookBudget;
 
     const result = vm.runFiber(hookFiber, scheduler);
     if (result.status === VmStatus.FAULT) {
@@ -558,6 +616,8 @@ export class BrainRuntime implements IBrainRuntime {
     this.lastThinkTime = 0;
     this.interrupted = false;
 
+    this.runSystemInits();
+
     if (this.pageMetadata.size() > 0) {
       this.activatePage(0);
     }
@@ -619,20 +679,12 @@ export class BrainRuntime implements IBrainRuntime {
 
     for (let i = 0; i < meta.actionCallSites.size(); i++) {
       const site = meta.actionCallSites.get(i)!;
-      const actions = this.program.actions;
-      const action = actions ? actions.get(site.actionSlot) : undefined;
-      if (!action) {
-        continue;
-      }
 
-      if (action.binding === "bytecode" && action.initializerFuncId !== undefined) {
-        const newlyAllocated = this.callsiteStore.ensure(site.callSiteId);
-        if (newlyAllocated) {
-          this.runBytecodeInitializerHook(action, site.callSiteId);
+      if (site.binding === "host") {
+        const action = this.executionContext.services.runtime.actions.getById(site.actionId);
+        if (!action || action.binding !== "host") {
+          continue;
         }
-      }
-
-      if (action.binding === "host") {
         if (action.onInitialized) {
           const newlyAllocated = this.callsiteStore.ensure(site.callSiteId);
           if (newlyAllocated) {
@@ -645,6 +697,17 @@ export class BrainRuntime implements IBrainRuntime {
         continue;
       }
 
+      const actions = this.program.actions;
+      const action = actions ? actions.get(site.actionSlot) : undefined;
+      if (!action) {
+        continue;
+      }
+      if (action.initializerFuncId !== undefined) {
+        const newlyAllocated = this.callsiteStore.ensure(site.callSiteId);
+        if (newlyAllocated) {
+          this.runBytecodeInitializerHook(action, site.callSiteId);
+        }
+      }
       if (action.activationFuncId !== undefined) {
         this.runBytecodeActivationHook(action, site.callSiteId);
       }
@@ -663,7 +726,8 @@ export class BrainRuntime implements IBrainRuntime {
   }
 
   /**
-   * Cancel all active fibers for the current page.
+   * Cancel all active fibers for the current page: every root-rule fiber and,
+   * via the cascade, every child-rule fiber spawned beneath them.
    */
   private cancelActiveFibers(): void {
     for (let i = 0; i < this.activeRuleFiberIds.size(); i++) {
@@ -672,6 +736,7 @@ export class BrainRuntime implements IBrainRuntime {
         this.scheduler.cancel(entry.fiberId);
       }
     }
+    this.scheduler.cancelChildRuleFibers();
   }
 
   /**
@@ -698,21 +763,20 @@ export class BrainRuntime implements IBrainRuntime {
     const meta = this.pageMetadata.get(this.currentPageIndex);
     if (!meta) return;
 
-    const actions = this.program.actions;
-    if (!actions) return;
-
     for (let i = 0; i < meta.actionCallSites.size(); i++) {
       const site = meta.actionCallSites.get(i)!;
-      const action = actions.get(site.actionSlot);
-      if (!action) continue;
 
-      if (action.binding === "host") {
-        if (action.onPageExited) {
+      if (site.binding === "host") {
+        const action = this.executionContext.services.runtime.actions.getById(site.actionId);
+        if (action && action.binding === "host" && action.onPageExited) {
           this.runHostDeactivationHook(site.callSiteId, action.onPageExited);
         }
         continue;
       }
 
+      const actions = this.program.actions;
+      const action = actions ? actions.get(site.actionSlot) : undefined;
+      if (!action) continue;
       if (action.deactivationFuncId !== undefined) {
         this.runBytecodeDeactivationHook(action, site.callSiteId);
       }
@@ -729,7 +793,11 @@ export class BrainRuntime implements IBrainRuntime {
 
     for (let i = 0; i < this.activeRuleFiberIds.size(); i++) {
       const entry = this.activeRuleFiberIds.get(i)!;
-      const needsRespawn = this.shouldRespawnFiber(entry.fiberId);
+      // A root rule re-fires only once it is dead and no descendant child-rule
+      // fiber is still in flight (the rule quiesces while a child it spawned is
+      // parked).
+      const needsRespawn =
+        this.shouldRespawnFiber(entry.fiberId) && !this.scheduler.hasLiveDescendantOfRoot(entry.funcId);
 
       if (needsRespawn) {
         const newFiberId = this.scheduler.spawn(entry.funcId, List.empty(), this.executionContext);
@@ -738,7 +806,59 @@ export class BrainRuntime implements IBrainRuntime {
     }
 
     this.scheduler.tick();
+    this.runSystemThinks();
     this.scheduler.gc();
+  }
+
+  /**
+   * Run every registered System's `init` once, in registration order. State
+   * persists for the brain instance lifetime; `init` runs before the first
+   * page activation, rule, or `think`.
+   */
+  private runSystemInits(): void {
+    const systems = this.program.systems;
+    if (!systems) return;
+    for (let i = 0; i < systems.size(); i++) {
+      const initFuncId = systems.get(i)!.initFuncId;
+      if (initFuncId !== undefined) {
+        this.runSystemFunction(initFuncId, "init");
+      }
+    }
+  }
+
+  /**
+   * Run every registered System's `think` once, in registration order. Runs
+   * every think regardless of the active page; state persists across page
+   * switches.
+   */
+  private runSystemThinks(): void {
+    const systems = this.program.systems;
+    if (!systems) return;
+    for (let i = 0; i < systems.size(); i++) {
+      const thinkFuncId = systems.get(i)!.thinkFuncId;
+      if (thinkFuncId !== undefined) {
+        this.runSystemFunction(thinkFuncId, "think");
+      }
+    }
+  }
+
+  /**
+   * Spawn a synchronous fiber for a System lifecycle function and run it to
+   * completion. The function receives the injected `ctx` as its sole argument.
+   * Throws a platform {@link Error} if the fiber faults or suspends (a System
+   * `init` / `think` may not await).
+   */
+  private runSystemFunction(funcId: number, label: string): void {
+    const fiber = this.vm.spawnFiber(this.nextInlineFiberId--, funcId, List.empty(), this.executionContext);
+    fiber.instrBudget = this.schedulerConfig.hookBudget;
+
+    const result = this.vm.runFiber(fiber, this.scheduler);
+    if (result.status === VmStatus.FAULT) {
+      throw new Error(`System ${label} faulted: ${result.error.message}`);
+    }
+    if (result.status !== VmStatus.DONE) {
+      throw new Error(`System ${label} cannot suspend`);
+    }
   }
 
   /**

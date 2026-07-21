@@ -1,0 +1,25 @@
+mcprogram-dump 2
+profile 0
+precision f32
+strings 1
+  string 0 "label"
+types 1
+  type 0 atom b
+numbers 1
+  number 0 3f800000
+values 0
+functions 1
+  function 0 params 1 locals 2 ctx 0 code b
+    instr 82 0
+    instr 72 0
+    instr 83 1
+    instr 82 0
+    instr 4 0
+    instr 74
+    instr 73 1
+    instr 5 0
+    instr 78
+    instr 1
+    instr 1f
+vars 0
+pages 0

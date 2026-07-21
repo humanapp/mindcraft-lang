@@ -1,0 +1,42 @@
+{
+  "name": "mindcraft-cli",
+  "version": "0.1.0",
+  "description": "Command-line tools for Mindcraft projects",
+  "license": "MIT",
+  "author": "humanapp",
+  "type": "module",
+  "files": [
+    "dist",
+    "targets.json"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "mindcraft": "dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "build:prod": "tsc --build tsconfig.prod.json",
+    "clean": "tsc --build --clean",
+    "watch": "tsc --build --watch",
+    "lint:only": "biome lint ./src",
+    "check:only": "biome check ./src",
+    "format:only": "biome format ./src",
+    "lint": "biome lint ./src --write",
+    "check": "biome check ./src --write",
+    "format": "biome format ./src --write",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json",
+    "pretest": "npm run build:prod",
+    "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.15",
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "@mindcraft-lang/app-host": "file:../app-host",
+    "@mindcraft-lang/service-api": "file:../service-api"
+  }
+}

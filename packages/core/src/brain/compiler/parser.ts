@@ -10,13 +10,23 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { UniqueSet } from "../../platform/uniqueset";
-import { type BrainActionCallArgSpec, type BrainActionCallSpec, CoreOpId } from "../../runtime";
+import {
+  type BrainActionCallArgSpec,
+  type BrainActionCallSpec,
+  CoreOpId,
+  type IConversionRegistry,
+  type ITypeRegistry,
+  type TypeId,
+} from "../../runtime";
+import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
 import {
   type BrainTileKind,
   CoreControlFlowId,
   type IBrainActionTileDef,
   type IBrainTileDef,
+  type ITileCatalog,
   parseTileId,
+  RuleSide,
   TilePlacement,
 } from "../interfaces";
 import {
@@ -26,13 +36,37 @@ import {
   type BrainTileLiteralDef,
   type BrainTileModifierDef,
   type BrainTileOperatorDef,
+  type BrainTileOutputDef,
   BrainTilePageDef,
   type BrainTileParameterDef,
   type BrainTileSensorDef,
   type BrainTileVariableDef,
 } from "../tiles";
-import { ParseDiagCode } from "./diag-codes";
-import type { Expr, ParseDiag, ParseResult, SlotExpr } from "./types";
+import { ParseDiagCode } from "./diagnostics";
+import { isLValue } from "./lvalue";
+import type { Expr, FieldAccessExpr, ParseDiag, ParseResult, SlotExpr } from "./types";
+
+/**
+ * Build the diagnostic message for an assignment whose target is a writable
+ * field hanging off a read-only base. Names the specific read-only element in
+ * the access chain (a read-only field, or a sensor whose result is read-only)
+ * so the message describes the user's actual situation.
+ */
+function describeReadOnlyResultAssignment(target: FieldAccessExpr): string {
+  let cur: Expr = target.object;
+  while (cur.kind === "fieldAccess") {
+    if (cur.accessor.readOnly) {
+      const field = cur.accessor.metadata?.label ?? cur.accessor.fieldName;
+      return `Cannot assign to a field of read-only field "${field}"`;
+    }
+    cur = cur.object;
+  }
+  if (cur.kind === "sensor") {
+    const sensorLabel = cur.tileDef.metadata?.label ?? cur.tileDef.sensorId;
+    return `Cannot assign to a field of "${sensorLabel}" because its result is read-only`;
+  }
+  return `Cannot assign to a field of a read-only value`;
+}
 
 /**
  * Parsing options that control recursive descent behavior.
@@ -122,6 +156,7 @@ class BrainParser {
     this.nudHandlers = new Dict<BrainTileKind, NudHandler>([
       ["literal", (tok, startPos, opts) => this.parseNudLiteral(tok, startPos, opts)],
       ["variable", (tok, startPos, opts) => this.parseNudVariable(tok, startPos, opts)],
+      ["output", (tok, startPos, opts) => this.parseNudOutput(tok, startPos, opts)],
       ["operator", (tok, startPos, opts) => this.parseNudOperator(tok, startPos, opts)],
       ["controlFlow", (tok, startPos, opts) => this.parseNudControlFlow(tok, startPos, opts)],
       ["sensor", (tok, startPos, opts) => this.parseNudSensor(tok, startPos, opts)],
@@ -543,7 +578,14 @@ class BrainParser {
   }
 
   /**
-   * Parse exactly one of the options
+   * Parse exactly one of the options.
+   *
+   * Options are first tried with the choice type filter, so a value whose
+   * type names one option lands in that option's slot. When no option matches
+   * under the filter, an outermost choice retries its options with the filter
+   * off: the value lands in the first anonymous option's slot, and type
+   * inference then settles the option -- converting the value into the first
+   * conversion-reachable option or reporting the type mismatch.
    */
   private parseChoiceSpec(
     spec: BrainActionCallSpec & { type: "choice" },
@@ -556,6 +598,16 @@ class BrainParser {
     for (const option of spec.options) {
       if (this.tryParseWithBacktrack(option, choiceOpts, ctx, outerCtx)) {
         return true;
+      }
+    }
+
+    // A nested choice keeps its enclosing choice's filter: the retry belongs
+    // to the outermost choice only.
+    if (!opts.choiceTypeFilter) {
+      for (const option of spec.options) {
+        if (this.tryParseWithBacktrack(option, opts, ctx, outerCtx)) {
+          return true;
+        }
       }
     }
 
@@ -805,6 +857,23 @@ class BrainParser {
             expr: left,
           };
         }
+        // A writable field on a read-only base (e.g. a sensor result) is not an
+        // l-value; the field has storage but the base it hangs off does not.
+        if (left.kind === "fieldAccess" && !isLValue(left)) {
+          const message = describeReadOnlyResultAssignment(left);
+          this.diags.push({
+            code: ParseDiagCode.ReadOnlyResultFieldAssignment,
+            message,
+            span: { from: startPos, to: this.i },
+          });
+          return {
+            nodeId: this.nextNodeId(),
+            kind: "errorExpr",
+            message,
+            span: { from: startPos, to: this.i },
+            expr: left,
+          };
+        }
         left = {
           nodeId: this.nextNodeId(),
           kind: "assignment",
@@ -885,6 +954,15 @@ class BrainParser {
       nodeId: this.nextNodeId(),
       kind: "variable",
       tileDef: tok as BrainTileVariableDef,
+      span: { from: startPos, to: this.i },
+    };
+  }
+
+  private parseNudOutput(tok: IBrainTileDef, startPos: number, opts: ParseOpts): Expr {
+    return {
+      nodeId: this.nextNodeId(),
+      kind: "output",
+      tileDef: tok as BrainTileOutputDef,
       span: { from: startPos, to: this.i },
     };
   }
@@ -1154,4 +1232,209 @@ export function parseBrainTiles(
 ): ParseResult {
   const parser = new BrainParser(src, to, from, startNodeId);
   return parser.parse();
+}
+
+/**
+ * Validate that every tile in a rule side's tile list is allowed on that side
+ * by its placement flags. A tile with no placement flags is allowed on either
+ * side. Returns one {@link ParseDiagCode.TilePlacementSideMismatch} diagnostic
+ * per offending tile, spanning the tile's index in `tiles`.
+ */
+export function validateTilePlacement(tiles: ReadonlyList<IBrainTileDef>, side: RuleSide): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  for (let i = 0; i < tiles.size(); i++) {
+    const tile = tiles.get(i);
+    const placement = tile.placement;
+    if (placement !== undefined && (placement & side) === 0) {
+      const label = tile.metadata?.label ?? tile.tileId;
+      const sideName = side === RuleSide.When ? "WHEN" : "DO";
+      diags.push({
+        code: ParseDiagCode.TilePlacementSideMismatch,
+        message: `Tile "${label}" cannot be used on the ${sideName} side`,
+        span: { from: i, to: i + 1 },
+      });
+    }
+  }
+  return diags;
+}
+
+/**
+ * Add the output identity keys (see `mkOutputVarKey`) provided by every tile in
+ * `tiles` to `keys`.
+ */
+export function collectProvidedOutputKeys(tiles: ReadonlyList<IBrainTileDef>, keys: UniqueSet<string>): void {
+  for (let i = 0; i < tiles.size(); i++) {
+    const provided = tiles.get(i).providedOutputs();
+    for (let j = 0; j < provided.size(); j++) {
+      keys.add(provided.get(j));
+    }
+  }
+}
+
+/**
+ * Validate that every output value-tile in a rule side's tile list has a
+ * providing tile: its `outputKey` must be a member of `providedKeys` (the keys
+ * provided across the rule's WHEN and DO sides and its ancestor rules). Returns
+ * one {@link ParseDiagCode.OutputTileMissingProvider} diagnostic per offending
+ * tile, spanning the tile's index in `tiles`.
+ */
+export function validateOutputProviders(
+  tiles: ReadonlyList<IBrainTileDef>,
+  providedKeys: UniqueSet<string>
+): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  for (let i = 0; i < tiles.size(); i++) {
+    const tile = tiles.get(i);
+    if (tile.kind !== "output") continue;
+    const outputDef = tile as BrainTileOutputDef;
+    if (providedKeys.has(outputDef.outputKey)) continue;
+    const label = tile.metadata?.label ?? outputDef.outputName;
+    diags.push({
+      code: ParseDiagCode.OutputTileMissingProvider,
+      message: `Output tile "${label}" has no providing sensor in this rule or an enclosing rule`,
+      span: { from: i, to: i + 1 },
+    });
+  }
+  return diags;
+}
+
+/**
+ * Whether a tile is valid with respect to the WHEN result available at its
+ * position. A tile that declares `consumesWhenResult(T)` requires a WHEN
+ * result of type `T`: it is valid only when `availableType` is present and is
+ * `T` exactly or converts to `T`. A tile that declares nothing is always valid.
+ */
+export function whenResultConsumerEligible(
+  tileDef: IBrainTileDef,
+  availableType: TypeId | undefined,
+  conversions: IConversionRegistry
+): boolean {
+  const required = tileDef.consumesWhenResult();
+  if (required === undefined) return true;
+  if (availableType === undefined) return false;
+  if (availableType === required) return true;
+  const path = conversions.findBestPath(availableType, required);
+  return path !== undefined && path.size() > 0;
+}
+
+/**
+ * Validate that every tile in a rule side's tile list that declares
+ * `consumesWhenResult(T)` has a compatible WHEN result available:
+ * `availableWhenResultType` must be present and be `T` exactly or convert to
+ * `T`. Returns one {@link ParseDiagCode.TileWhenResultUnavailable} diagnostic
+ * per offending tile, spanning the tile's index in `tiles`. The message names
+ * the required type by its registered name when `typeRegistry` knows it.
+ */
+export function validateWhenResultConsumers(
+  tiles: ReadonlyList<IBrainTileDef>,
+  availableWhenResultType: TypeId | undefined,
+  conversions: IConversionRegistry,
+  typeRegistry: ITypeRegistry
+): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  for (let i = 0; i < tiles.size(); i++) {
+    const tile = tiles.get(i);
+    if (whenResultConsumerEligible(tile, availableWhenResultType, conversions)) continue;
+    const required = tile.consumesWhenResult()!;
+    const label = tile.metadata?.label ?? tile.tileId;
+    const typeName = typeRegistry.get(required)?.name ?? required;
+    diags.push({
+      code: ParseDiagCode.TileWhenResultUnavailable,
+      message: `Tile "${label}" requires the WHEN to produce a ${typeName} result, but no compatible WHEN result is available here`,
+      span: { from: i, to: i + 1 },
+    });
+  }
+  return diags;
+}
+
+/**
+ * OR the `capabilities()` bits of every tile in `tiles` into `acc` and return
+ * the combined set.
+ */
+export function collectProvidedCapabilities(tiles: ReadonlyList<IBrainTileDef>, acc: BitSet): BitSet {
+  let result = acc;
+  for (let i = 0; i < tiles.size(); i++) {
+    const cap = tiles.get(i).capabilities();
+    if (!cap.isEmpty()) {
+      result = result.or(cap as BitSet);
+    }
+  }
+  return result;
+}
+
+/**
+ * Labels of the visible sensor tiles in `catalogs` whose `capabilities()`
+ * cover every bit in `neededBits`, deduplicated, in catalog order.
+ */
+function capabilityProviderLabels(neededBits: List<number>, catalogs: ReadonlyList<ITileCatalog>): List<string> {
+  const labels = List.empty<string>();
+  const seen = new UniqueSet<string>();
+  for (let ci = 0; ci < catalogs.size(); ci++) {
+    const all = catalogs.get(ci).getAll();
+    for (let i = 0; i < all.size(); i++) {
+      const tile = all.get(i);
+      if (tile.kind !== "sensor" || tile.hidden === true || tile.deprecated === true) continue;
+      const provided = tile.capabilities();
+      if (provided.isEmpty()) continue;
+      let coversAll = true;
+      for (let b = 0; b < neededBits.size(); b++) {
+        if (provided.get(neededBits.get(b)) === 0) {
+          coversAll = false;
+          break;
+        }
+      }
+      if (!coversAll) continue;
+      const label = tile.metadata?.label ?? tile.tileId;
+      if (seen.has(label)) continue;
+      seen.add(label);
+      labels.push(label);
+    }
+  }
+  return labels;
+}
+
+/**
+ * Validate that every tile in a rule side's tile list has its `requirements()`
+ * bits covered by `availableCapabilities` (the OR'd `capabilities()` of every
+ * tile in the rule's WHEN and DO sides and its ancestor rules). Returns one
+ * {@link ParseDiagCode.TileRequirementsNotProvided} diagnostic per offending
+ * tile, spanning the tile's index in `tiles`. The message suggests providing
+ * sensors by label when `catalogs` contains sensors covering the missing bits.
+ */
+export function validateCapabilityRequirements(
+  tiles: ReadonlyList<IBrainTileDef>,
+  availableCapabilities: ReadonlyBitSet,
+  catalogs: ReadonlyList<ITileCatalog>
+): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  for (let i = 0; i < tiles.size(); i++) {
+    const tile = tiles.get(i);
+    const requirements = tile.requirements();
+    if (requirements.isEmpty()) continue;
+    const uncovered = List.empty<number>();
+    const msb = requirements.msb();
+    for (let b = 0; b <= msb; b++) {
+      if (requirements.get(b) === 1 && availableCapabilities.get(b) === 0) {
+        uncovered.push(b);
+      }
+    }
+    if (uncovered.size() === 0) continue;
+    const label = tile.metadata?.label ?? tile.tileId;
+    const providers = capabilityProviderLabels(uncovered, catalogs);
+    let providerText = "";
+    for (let j = 0; j < providers.size(); j++) {
+      if (j > 0) providerText += " or ";
+      providerText += `"${providers.get(j)}"`;
+    }
+    const message =
+      providers.size() > 0
+        ? `Tile "${label}" requires a sensor like ${providerText} in this rule or an enclosing rule`
+        : `Tile "${label}" requires a providing sensor in this rule or an enclosing rule`;
+    diags.push({
+      code: ParseDiagCode.TileRequirementsNotProvided,
+      message,
+      span: { from: i, to: i + 1 },
+    });
+  }
+  return diags;
 }

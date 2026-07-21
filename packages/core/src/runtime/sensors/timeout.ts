@@ -1,11 +1,12 @@
 import type { ReadonlyList } from "../../platform/list";
 import { MathOps } from "../../platform/math";
+import { CoreHostActions } from "../abi-ids";
 import { bag, optional, param } from "../call-spec";
 import type { ExecutionContext, HostActionBinding } from "../context";
 import { getCallSiteState, setCallSiteState } from "../context";
 import { CoreTypeIds } from "../core-types";
 import { type ActionDescriptor, type BrainActionCallDef, getSlotId, mkCallDef } from "../function-defs";
-import { CoreParameterId, CoreSensorId, mkSensorTileId } from "../tile-ids";
+import { CoreParameterId, mkSensorTileId } from "../tile-ids";
 import { FALSE_VALUE, isNilValue, isNumberValue, TRUE_VALUE, type Value } from "../value";
 
 const AnonNumber = param(CoreParameterId.AnonymousNumber, {
@@ -17,7 +18,7 @@ const AnonNumber = param(CoreParameterId.AnonymousNumber, {
 const callDef: BrainActionCallDef = mkCallDef(bag(optional(AnonNumber)));
 
 const descriptor: ActionDescriptor = {
-  key: CoreSensorId.Timeout,
+  key: CoreHostActions.Timeout.key,
   kind: "sensor",
   callDef,
   isAsync: false,
@@ -88,13 +89,14 @@ function execTimeout(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
 const binding: HostActionBinding = {
   binding: "host",
   descriptor,
+  id: CoreHostActions.Timeout.actionId,
   onPageEntered,
   execSync: execTimeout,
 };
 
 export default {
-  fnId: CoreSensorId.Timeout,
-  tileId: mkSensorTileId(CoreSensorId.Timeout),
+  key: CoreHostActions.Timeout.key,
+  tileId: mkSensorTileId(CoreHostActions.Timeout.key),
   isAsync: false,
   descriptor,
   binding,

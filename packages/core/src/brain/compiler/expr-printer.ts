@@ -11,6 +11,7 @@ import type {
   FieldAccessExpr,
   LiteralExpr,
   ModifierExpr,
+  OutputExpr,
   ParameterExpr,
   SensorExpr,
   UnaryOpExpr,
@@ -50,6 +51,10 @@ export class ExprPrinter implements ExprVisitor<string> {
 
   visitVariable(expr: VariableExpr): string {
     return `${this.getIndent()}Variable[${expr.tileDef.varName}] (${expr.span.from}-${expr.span.to}) #${expr.nodeId}`;
+  }
+
+  visitOutput(expr: OutputExpr): string {
+    return `${this.getIndent()}Output[${expr.tileDef.outputName}] (${expr.span.from}-${expr.span.to}) #${expr.nodeId}`;
   }
 
   visitAssignment(expr: AssignmentExpr): string {

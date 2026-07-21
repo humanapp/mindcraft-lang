@@ -43,6 +43,8 @@ function mkVar(name: string) {
  * of a single inline sync sensor. Page 1 is empty so a `requestPageChange(1)`
  * deactivates page 0 and a subsequent `requestPageChange(0)` reactivates it.
  */
+let nextActionId = 3001;
+
 function buildSingleSensorBrain(
   descriptor: ActionDescriptor,
   exec: (ctx: ExecutionContext) => { t: number; v: number },
@@ -50,6 +52,7 @@ function buildSingleSensorBrain(
 ) {
   services.runtime.actions.register({
     binding: "host",
+    id: nextActionId++,
     descriptor,
     execSync: exec,
   });

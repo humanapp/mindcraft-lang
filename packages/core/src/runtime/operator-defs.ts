@@ -54,11 +54,14 @@ export type OpSpec = {
   parse: OpParse;
 };
 
-/** A registered operator overload bound to specific arg types and a host function. */
+/**
+ * A registered operator overload bound to specific arg types. `fnEntry` is
+ * the implementing host function.
+ */
 export type OpOverload = {
   argTypes: TypeId[];
   resultType: TypeId;
-  fnEntry: BrainFunctionEntry;
+  fnEntry?: BrainFunctionEntry;
 };
 
 /** Read-only view of a registered operator and its overloads. */
@@ -85,8 +88,24 @@ export interface IOperatorTable {
 /** High-level operator/overload registry combining the operator table with type-aware lookup. */
 export interface IOperatorOverloads {
   table(): IOperatorTable;
-  binary(op: OpId, lhs: TypeId, rhs: TypeId, result: TypeId, fn: HostFn, isAsync: boolean): IRegisteredOperator;
-  unary(op: OpId, arg: TypeId, result: TypeId, fn: HostFn, isAsync: boolean): IRegisteredOperator;
+  /**
+   * Register a binary overload whose host function registers under the
+   * author-assigned stable `fnId`.
+   */
+  binary(
+    op: OpId,
+    lhs: TypeId,
+    rhs: TypeId,
+    result: TypeId,
+    fnId: number,
+    fn: HostFn,
+    isAsync: boolean
+  ): IRegisteredOperator;
+  /**
+   * Register a unary overload whose host function registers under the
+   * author-assigned stable `fnId`.
+   */
+  unary(op: OpId, arg: TypeId, result: TypeId, fnId: number, fn: HostFn, isAsync: boolean): IRegisteredOperator;
   remove(op: OpId, argTypes: TypeId[]): boolean;
   resolve(id: OpId, argTypes: TypeId[]): { overload: OpOverload; parse: OpParse } | undefined;
 }

@@ -125,6 +125,19 @@ interface StringConstructor {
 }
 declare var String: StringConstructor;
 
+interface Buffer {
+  length(): number;
+  get(index: number): number;
+}
+
+interface BufferConstructor {
+  from(values: number[]): Buffer;
+  fromHex(hex: string): Buffer;
+  fromString(value: string): Buffer;
+  isBuffer(arg: any): arg is Buffer;
+}
+declare var Buffer: BufferConstructor;
+
 interface Boolean {
   valueOf(): boolean;
 }
@@ -294,6 +307,8 @@ type Record<K extends keyof any, T> = { [P in K]: T };
 type Exclude<T, U> = T extends U ? never : T;
 type Extract<T, U> = T extends U ? T : never;
 type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
+/** Marker that binds \`this\` to \`T\` inside the methods of a contextually-typed object literal. */
+interface ThisType<T> {}
 type NonNullable<T> = T & {};
 type Parameters<T extends (...args: any) => any> = T extends (...args: infer P) => any ? P : never;
 type ConstructorParameters<T extends abstract new (...args: any) => any> = T extends abstract new (
@@ -327,11 +342,14 @@ declare module "mindcraft" {
     boolean: boolean;
     number: number;
     string: string;
+    buffer: Buffer;
 `;
 
 const AMBIENT_MODULE_END = `
   type MindcraftValue = MindcraftTypeMap[keyof MindcraftTypeMap];
   type MindcraftType = keyof MindcraftTypeMap | (string & {});
+  /** An \`enum\` binding used where a type is named; it names the enum's registered type. */
+  type EnumTypeRef = Record<string, string | number>;
 
   export interface MindcraftPlatformContext {}
 
@@ -359,7 +377,10 @@ const AMBIENT_MODULE_END = `
   type ArgSpec = ModifierSpec | ParamSpec | ChoiceSpec | OptionalSpec | RepeatedSpec | ConditionalSpec | SeqSpec;
 
   export function modifier(id: string, opts?: { label: string; icon?: string }): ModifierSpec;
-  export function param(name: string, opts: { type: MindcraftType; default?: unknown; anonymous?: boolean }): ParamSpec;
+  export function param(
+    name: string,
+    opts: { type: MindcraftType | TypeRef<unknown> | EnumTypeRef; default?: unknown; anonymous?: boolean }
+  ): ParamSpec;
   export function choice(name: string, ...items: ArgSpec[]): ChoiceSpec;
   export function choice(...items: ArgSpec[]): ChoiceSpec;
   export function optional(item: ArgSpec): OptionalSpec;
@@ -367,24 +388,76 @@ const AMBIENT_MODULE_END = `
   export function conditional(condition: string, thenItem: ArgSpec, elseItem?: ArgSpec): ConditionalSpec;
   export function seq(...items: ArgSpec[]): SeqSpec;
 
+  /**
+   * One named, typed output a sensor exposes. The \`(type, name)\` pair is the
+   * output identity: it derives a downstream inline value-tile and the backing
+   * rule variable that \`setOutput\` writes and the tile reads. Two sensors that
+   * declare the same identity share one tile and one variable.
+   */
+  export interface OutputSpec {
+    /** Output name; the second half of the output identity. */
+    name: string;
+    /** Output value type, named by TypeRef token (preferred) or type name; the first half of the output identity. */
+    type: MindcraftType | TypeRef<unknown> | EnumTypeRef;
+    label?: string;
+    icon?: string;
+    docs?: string;
+    tags?: string[];
+  }
+
   export interface SensorConfig {
+    /** Stable identifier for this action, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
+    id?: string;
     name: string;
     label?: string;
     icon?: string;
     docs?: string;
     tags?: string[];
+    /**
+     * When true, this sensor reads as an inline value in a mid-rule value slot
+     * and the tile picker offers it in those positions. An inline sensor takes
+     * no arguments.
+     */
+    inline?: boolean;
+    /**
+     * When true, a bare WHEN that is exactly this sensor gates on value
+     * presence: it fires on a delivered falsy value (0, "", false) and skips
+     * only when \`onExecute\` returns null (absent). Exclude null from the
+     * sensor's value domain when set.
+     */
+    presenceGated?: boolean;
+    /** Return value type, named by TypeRef token (preferred) or type name; defaults to the \`onExecute\` return annotation. */
+    returnType?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
+    /**
+     * Declares that this sensor consumes the rule's WHEN result, named by TypeRef
+     * token (preferred) or type name. The editor uses it to offer and validate the
+     * tile against the WHEN-result type. Declare it when \`onExecute\` reads
+     * \`ctx.getWhenResult()\`.
+     */
+    consumesWhenResult?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
     args?: ArgSpec[];
+    /** Named, typed outputs this sensor exposes; each surfaces downstream as an inline value-tile written via \`setOutput\`. */
+    outputs?: OutputSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): unknown;
     onPageEntered?(ctx: Context): void;
     onPageExited?(ctx: Context): void;
   }
 
   export interface ActuatorConfig {
+    /** Stable identifier for this action, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
+    id?: string;
     name: string;
     label?: string;
     icon?: string;
     docs?: string;
     tags?: string[];
+    /**
+     * Declares that this actuator consumes the rule's WHEN result, named by TypeRef
+     * token (preferred) or type name. The editor uses it to offer and validate the
+     * tile against the WHEN-result type. Declare it when \`onExecute\` reads
+     * \`ctx.getWhenResult()\`.
+     */
+    consumesWhenResult?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
     args?: ArgSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): void | Promise<void>;
     onPageEntered?(ctx: Context): void;
@@ -393,6 +466,123 @@ const AMBIENT_MODULE_END = `
 
   export function Sensor(config: SensorConfig): unknown;
   export function Actuator(config: ActuatorConfig): unknown;
+
+  /**
+   * Write one of the enclosing sensor's declared outputs for this evaluation.
+   * \`name\` must be a string literal matching an entry of the sensor's
+   * \`outputs\`; \`value\` is stored where the matching output tile reads it. Pass
+   * \`null\` to clear an output. Valid only inside a sensor \`onExecute\`.
+   */
+  export function setOutput(ctx: Context, name: string, value: unknown): void;
+
+  /**
+   * Lifecycle config for a {@link System}. \`init\` and \`think\` plus any extra
+   * methods run with \`this\` bound to the System's state \`S\` and its methods \`M\`.
+   */
+  export interface SystemConfig<S> {
+    /** Display / debug name for this System. */
+    name: string;
+    /** Initial state: a plain object of VM-representable values (numbers, strings, booleans, small structs). */
+    state: S;
+    /** Runs once at brain startup, before any rule or think. \`this\` is the state and methods. */
+    init?(ctx: Context): void;
+    /** Runs every think, after rule evaluation, regardless of the active page. \`this\` is the state and methods. */
+    think?(ctx: Context): void;
+  }
+
+  /**
+   * Declare a System: one shared, brain-global singleton with persistent state,
+   * a one-time \`init\`, a per-think \`think\`, and methods. Every reference to the
+   * returned binding -- in this module or an importing one -- coordinates through
+   * the single instance. Inside \`init\`/\`think\`/methods, \`this\` reads and writes
+   * state fields and calls sibling methods.
+   */
+  export function System<S, M>(config: SystemConfig<S> & M & ThisType<S & M>): S & M;
+
+  /**
+   * Value token naming a registered Mindcraft type. \`T\` is the TS-side value
+   * type the token names; a surface that accepts a TypeRef infers its argument
+   * and return types from the token.
+   */
+  export interface TypeRef<T> {
+    readonly __typeRefBrand: T;
+  }
+
+  /** Token for the core \`number\` type. */
+  export const NumberType: TypeRef<number>;
+  /** Token for the core \`string\` type. */
+  export const StringType: TypeRef<string>;
+  /** Token for the core \`boolean\` type. */
+  export const BooleanType: TypeRef<boolean>;
+  /** Token for the core \`buffer\` type. */
+  export const BufferType: TypeRef<Buffer>;
+
+  /** Configuration for a {@link StructType} declaration. */
+  export interface StructTypeConfig<F> {
+    /** Display name (tiles, picker). */
+    name: string;
+    /** Field name -> field type, in declaration order; declaration order is storage order. */
+    fields: F;
+    /** When true, derive one accessor tile per field. */
+    accessors?: boolean;
+    /** When true, derive a "create variable" factory tile for the type. */
+    variables?: boolean;
+  }
+
+  /** The TS value type a struct field type spec names. */
+  type StructFieldValue<S> = S extends TypeRef<infer V>
+    ? V
+    : S extends keyof MindcraftTypeMap
+      ? MindcraftTypeMap[S]
+      : unknown;
+
+  /** The TS object type of a struct instance, derived from a fields config. */
+  type StructValueOf<F> = { -readonly [K in keyof F]: StructFieldValue<F[K]> };
+
+  /**
+   * Binding returned by a {@link StructType} declaration: a {@link TypeRef}
+   * naming the declared type, and a callable factory constructing instances
+   * (\`Position({x: 1, y: 2})\`).
+   */
+  export interface StructTypeBinding<T> extends TypeRef<T> {
+    (init: T): T;
+  }
+
+  /**
+   * Declare a struct type: a named record of typed fields usable across the
+   * tile surface. The returned binding names the type wherever a TypeRef is
+   * accepted and constructs instances when called. Every importer of the
+   * binding resolves to the one declared type.
+   */
+  export function StructType<const F extends Record<string, TypeRef<unknown> | MindcraftType>>(
+    config: StructTypeConfig<F>
+  ): StructTypeBinding<StructValueOf<F>>;
+
+  /** The TS instance type of a {@link StructType} binding: \`StructOf<typeof Position>\`. */
+  export type StructOf<R> = R extends TypeRef<infer T> ? T : never;
+
+  /** Configuration for a {@link Conversion} declaration. */
+  export interface ConversionConfig<F, T> {
+    /** Stable identifier for this conversion, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
+    id?: string;
+    /** Source type, named by an imported TypeRef token (preferred) or a type name. */
+    from: TypeRef<F> | MindcraftType;
+    /** Target type, named by an imported TypeRef token (preferred) or a type name. */
+    to: TypeRef<T> | MindcraftType;
+    /** Relative cost used to pick among conversion paths; a small positive integer. */
+    cost: number;
+    /** Computes the \`to\`-typed value from a \`from\`-typed value. Must be synchronous. */
+    convert(value: F): T;
+  }
+
+  /**
+   * Declare an implicit value conversion from \`from\`-typed values to
+   * \`to\`-typed values. The brain compiler inserts it wherever a \`from\`-typed
+   * value fills a \`to\`-expected slot; \`convert\` compiles as a user function
+   * and runs once per inserted conversion. One declaration registers one
+   * \`(from, to)\` pair program-wide.
+   */
+  export function Conversion<F, T>(config: ConversionConfig<F, T>): unknown;
 }
 `;
 
@@ -428,6 +618,8 @@ function typeDefToTs(def: TypeDef, registry: ITypeRegistry): string {
       return "number";
     case NativeType.String:
       return "string";
+    case NativeType.Buffer:
+      return "Buffer";
     case NativeType.Any:
       return "MindcraftValue";
     case NativeType.Struct:
@@ -496,7 +688,7 @@ function generateStructInterface(def: StructTypeDef, registry: ITypeRegistry): s
   def.methods?.forEach((method) => {
     const params: string[] = [];
     method.params.forEach((p) => {
-      params.push(`${p.name}: ${typeIdToTs(p.typeId, registry)}`);
+      params.push(`${p.name}${p.optional ? "?" : ""}: ${typeIdToTs(p.typeId, registry)}`);
     });
     const returnType = typeIdToTs(method.returnTypeId, registry);
     const fullReturn = method.isAsync ? `Promise<${returnType}>` : returnType;
@@ -598,7 +790,7 @@ function generateStructAugmentation(def: StructTypeDef, baseDef: StructTypeDef, 
     if (hasMethod(baseDef, method.name)) return;
     const params: string[] = [];
     method.params.forEach((p) => {
-      params.push(`${p.name}: ${typeIdToTs(p.typeId, registry)}`);
+      params.push(`${p.name}${p.optional ? "?" : ""}: ${typeIdToTs(p.typeId, registry)}`);
     });
     const returnType = typeIdToTs(method.returnTypeId, registry);
     const fullReturn = method.isAsync ? `Promise<${returnType}>` : returnType;
@@ -629,9 +821,33 @@ export function buildCoreAmbientDeclarations(types: ITypeRegistry): string {
   return buildAmbientDeclarationsFromRegistry(types);
 }
 
+/** Options that restrict which platform declarations a generated ambient file carries. */
+export interface PlatformAmbientOptions {
+  /**
+   * Predicate selecting which non-core platform types the file declares. When
+   * omitted, every non-core platform type is included. Use it to partition a
+   * platform surface across several declaration-merging layer files.
+   */
+  includeType?: (def: TypeDef) => boolean;
+  /**
+   * Whether to emit augmentations of core structs (for example `Context`).
+   * Defaults to true; set false on a layer file that should not carry them.
+   */
+  includeAugmentations?: boolean;
+}
+
 /** Generate a platform ambient declaration file that augments the core Mindcraft module declarations. */
-export function buildPlatformAmbientDeclarations(baseTypes: ITypeRegistry, platformTypes: ITypeRegistry): string {
-  const parts = buildAmbientDeclarationParts(platformTypes, (def) => baseTypes.get(def.typeId) === undefined);
-  const augmentations = buildStructAugmentations(baseTypes, platformTypes);
+export function buildPlatformAmbientDeclarations(
+  baseTypes: ITypeRegistry,
+  platformTypes: ITypeRegistry,
+  options?: PlatformAmbientOptions
+): string {
+  const includeType = options?.includeType ?? (() => true);
+  const includeAugmentations = options?.includeAugmentations ?? true;
+  const parts = buildAmbientDeclarationParts(
+    platformTypes,
+    (def) => baseTypes.get(def.typeId) === undefined && includeType(def)
+  );
+  const augmentations = includeAugmentations ? buildStructAugmentations(baseTypes, platformTypes) : "";
   return `declare module "mindcraft" {\n  interface MindcraftTypeMap {\n${parts.typeMapEntries}  }\n\n${parts.typeDeclarations}${augmentations}}\n`;
 }

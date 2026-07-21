@@ -25,7 +25,7 @@ import {
   ReplaceTileCommand,
 } from "./commands";
 import { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
-import { useRuleCapabilities } from "./hooks/useRuleCapabilities";
+import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
 import { RenameVariableDialog } from "./RenameVariableDialog";
 import type { TileBadge } from "./tile-badges";
@@ -36,16 +36,27 @@ interface BrainTileEditorProps {
   tileIndex: number;
   side: RuleSide;
   ruleDef: BrainRuleDef;
+  /** The page editor's update counter; increments whenever tiles change. */
+  updateCounter: number;
   commandHistory: BrainCommandHistory;
   badge?: TileBadge;
 }
 
 /** A {@link BrainTile} wrapped with a context menu offering insert/replace/delete and tile-specific edit actions. */
-export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHistory, badge }: BrainTileEditorProps) {
+export function BrainTileEditor({
+  tileDef,
+  tileIndex,
+  side,
+  ruleDef,
+  updateCounter,
+  commandHistory,
+  badge,
+}: BrainTileEditorProps) {
   const [pickerMode, setPickerMode] = useState<"insert" | "replace" | null>(null);
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
-  const availableCapabilities = useRuleCapabilities(ruleDef);
+  const availableCapabilities = useRuleCapabilities(ruleDef, updateCounter);
+  const availableOutputKeys = useRuleOutputKeys(ruleDef, updateCounter);
   const { onTileHelp, brainServices } = useBrainEditorConfig();
 
   const isNumericLiteral =
@@ -208,6 +219,8 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
               replaceTileIndex={isInsert ? undefined : tileIndex}
               existingTiles={isInsert ? tileSet.tiles().slice(0, tileIndex) : tileSet.tiles()}
               availableCapabilities={availableCapabilities}
+              availableOutputKeys={availableOutputKeys}
+              ruleDef={ruleDef}
               onTileSelected={handleTileSelected}
               onCancel={handlePickerCancel}
             />

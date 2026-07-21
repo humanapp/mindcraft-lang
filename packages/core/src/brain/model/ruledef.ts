@@ -3,9 +3,11 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { task, type thread } from "../../platform/task";
+import { UniqueSet } from "../../platform/uniqueset";
 import type { IConversionRegistry } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
-import { parseRule } from "../compiler";
+import { BitSet } from "../../util/bitset";
+import { collectProvidedCapabilities, collectProvidedOutputKeys, parseRule } from "../compiler";
 import {
   type BrainRuleDefEvents,
   type IBrainDef,
@@ -15,6 +17,7 @@ import {
   type ITileCatalog,
   RuleSide,
 } from "../interfaces";
+import { getRuleWhenResultType } from "../language-service/tile-suggestions";
 import type { BrainPageDef } from "./pagedef";
 import { BrainTileSet } from "./tileset";
 
@@ -156,34 +159,58 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   private gatherCatalogs(): List<ITileCatalog> {
-    const catalogs = List.empty<ITileCatalog>();
     const brain = this.page()?.brain();
-    if (brain) {
-      catalogs.push(brain.servicesTiles());
+    if (!brain) {
+      return List.empty<ITileCatalog>();
     }
-    const brainCatalog = brain?.catalog();
-    if (brainCatalog) {
-      catalogs.push(brainCatalog);
-    }
-    // FUTURE: push ancestor rule catalogs
-    let currentRule: IBrainRuleDef | undefined = this.ancestor_;
-    while (currentRule) {
-      currentRule = currentRule.ancestor();
-    }
-    return catalogs;
+    // Resolve tile ids at edit-time against the same catalog set link-time uses,
+    // including the environment's user/extension bundle catalog. A struct-typed
+    // anonymous parameter tile derived from a user/extension action lives only
+    // in that bundle catalog, so a narrower set would miss it and report the
+    // slot as an unknown tile even though the brain links and runs.
+    return brain.deserializationCatalogs();
   }
 
   typecheck(): void {
-    // Compile this rule if either side is dirty
-    if (this.when_.isDirty() || this.do_.isDirty()) {
+    // Compile this rule if either side is dirty or has never been typechecked
+    // (e.g. a freshly deserialized rule).
+    if (this.when_.isDirty() || this.do_.isDirty() || !this.when_.typecheckResult() || !this.do_.typecheckResult()) {
       const catalogs = this.gatherCatalogs();
       const whenTiles = this.when_.tiles();
       const doTiles = this.do_.tiles();
       const brain = this.page()?.brain();
       const conversions = brain?.servicesConversions();
+      const typeRegistry = brain?.servicesTypeRegistry();
 
-      if (conversions) {
-        const typecheckResult = parseRule(whenTiles, doTiles, catalogs, conversions);
+      if (conversions && typeRegistry) {
+        // Output and capability providers in ancestor rules are visible to
+        // this rule's tiles, as is the nearest enclosing rule's WHEN result.
+        const inheritedOutputKeys = new UniqueSet<string>();
+        let inheritedCapabilities = new BitSet();
+        let ancestor = this.ancestor();
+        while (ancestor) {
+          collectProvidedOutputKeys(ancestor.when().tiles(), inheritedOutputKeys);
+          collectProvidedOutputKeys(ancestor.do().tiles(), inheritedOutputKeys);
+          inheritedCapabilities = collectProvidedCapabilities(ancestor.when().tiles(), inheritedCapabilities);
+          inheritedCapabilities = collectProvidedCapabilities(ancestor.do().tiles(), inheritedCapabilities);
+          ancestor = ancestor.ancestor();
+        }
+        const operatorOverloads = brain?.servicesOperatorOverloads();
+        const enclosing = this.ancestor();
+        const inheritedWhenResultType = enclosing
+          ? getRuleWhenResultType(enclosing, operatorOverloads, conversions)
+          : undefined;
+        const typecheckResult = parseRule(
+          whenTiles,
+          doTiles,
+          catalogs,
+          conversions,
+          typeRegistry,
+          inheritedOutputKeys,
+          inheritedCapabilities,
+          inheritedWhenResultType,
+          operatorOverloads
+        );
         this.when_.setTypecheckResult(typecheckResult);
         this.do_.setTypecheckResult(typecheckResult);
       }

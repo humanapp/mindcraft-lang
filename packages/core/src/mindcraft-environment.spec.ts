@@ -12,12 +12,22 @@ import {
   type MindcraftModule,
   type ReadonlyList,
 } from "@mindcraft-lang/core";
-import { type BrainServices, type ITileCatalog, mkVariableTileId, TilePlacement } from "@mindcraft-lang/core/brain";
+import {
+  type BrainServices,
+  type ITileCatalog,
+  mkVariableFactoryTileId,
+  mkVariableTileId,
+  TilePlacement,
+} from "@mindcraft-lang/core/brain";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileParameterDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import {
+  BrainTileParameterDef,
+  BrainTileSensorDef,
+  BrainTileVariableDef,
+  getCatalogFallbackLabel,
+} from "@mindcraft-lang/core/brain/tiles";
 import {
   BYTECODE_VERSION,
-  CoreSensorId,
   CoreTypeIds,
   type ExecutionContext,
   mkCallDef,
@@ -84,6 +94,7 @@ function createAlphaModule(capture: {
         typeId: alphaTypeId,
         codec: noopCodec,
         name: "AlphaThing",
+        atomId: 1024,
         fields: List.empty(),
         fieldIndexByName: new Dict<string, number>(),
       };
@@ -91,6 +102,7 @@ function createAlphaModule(capture: {
 
       const helperCallDef = mkCallDef({ type: "bag", items: [] });
       api.registerFunction({
+        id: 2101,
         name: "alpha.helper",
         isAsync: false,
         fn: {
@@ -108,6 +120,7 @@ function createAlphaModule(capture: {
           {
             argTypes: [CoreTypeIds.Number, CoreTypeIds.Number],
             resultType: CoreTypeIds.Boolean,
+            fnId: 2102,
             fn: {
               exec: () => TRUE_VALUE,
             },
@@ -131,7 +144,9 @@ function createAlphaModule(capture: {
       });
       api.registerHostSensor({
         descriptor,
+        actionId: 3401,
         function: {
+          id: 4401,
           name: "alpha.sensor",
           isAsync: false,
           fn: {
@@ -142,6 +157,25 @@ function createAlphaModule(capture: {
         actionFn: { exec: () => TRUE_VALUE },
         tile: capture.sensorTile,
       });
+    },
+  };
+}
+
+function createVariableFactoryStructModule(capture: { typeId?: string }): MindcraftModule {
+  return {
+    id: "gamma-module",
+    install(api): void {
+      const gammaDef: StructTypeDef & { variableFactory: boolean } = {
+        coreType: NativeType.Struct,
+        typeId: mkTypeId(NativeType.Struct, "GammaThing"),
+        codec: noopCodec,
+        name: "GammaThing",
+        atomId: 1030,
+        fields: List.empty(),
+        fieldIndexByName: new Dict<string, number>(),
+        variableFactory: true,
+      };
+      capture.typeId = api.defineType(gammaDef);
     },
   };
 }
@@ -170,7 +204,9 @@ function createHostSensorModule(
       install(api): void {
         api.registerHostSensor({
           descriptor,
+          actionId: 3301,
           function: {
+            id: 4301,
             name: key,
             isAsync: false,
             fn: {
@@ -268,6 +304,23 @@ function createSensorBrainDef(services: BrainServices, name: string, sensorTile:
 }
 
 describe("mindcraft environment", () => {
+  test("an app-registered struct variable factory reads with the type's display name", () => {
+    const capture: { typeId?: string } = {};
+    const environment = createMindcraftEnvironment({
+      modules: [coreModule(), createVariableFactoryStructModule(capture)],
+    });
+    const services = getEnvironmentServices(environment);
+
+    const factory = services.edit.tiles.get(mkVariableFactoryTileId(capture.typeId!));
+    assert.ok(factory, "expected the app struct variable factory tile to be registered");
+    assert.equal(factory.metadata?.label, "GammaThing", "the factory reads with the struct's display name");
+    assert.notEqual(
+      factory.metadata?.label,
+      getCatalogFallbackLabel(factory),
+      "the label must not collapse to the raw tile-id fallback"
+    );
+  });
+
   test("isolates module-owned registries between environments", () => {
     const capture: {
       sensorTile?: BrainTileSensorDef;
@@ -315,7 +368,8 @@ describe("mindcraft environment", () => {
 
     const alphaBrain = envA.createBrain(brainDef);
     assert.equal(alphaBrain.status, "active");
-    assert.throws(() => envB.createBrain(brainDef), /alpha.sensor/);
+    const envBBrain = envB.createBrain(brainDef);
+    assert.equal(envBBrain.status, "invalidated");
   });
 
   test("creates independent runnable brains from one definition", () => {
@@ -391,9 +445,14 @@ describe("mindcraft environment", () => {
       bundled.tile.tileId
     );
 
-    assert.throws(() => environment.createBrain(restoredFromJson), /bundle\.persisted/);
+    const bornInvalidated = environment.createBrain(restoredFromJson);
+    assert.equal(bornInvalidated.status, "invalidated");
 
+    // Providing the missing action revives the born-invalidated brain through
+    // the same per-tick retry path that revives a brain whose rebuild failed.
     environment.replaceActionBundle(createActionBundle("bundle.persisted.rev1", [bundled]));
+    environment.rebuildInvalidatedBrains();
+    assert.equal(bornInvalidated.status, "active");
 
     const brain = environment.createBrain(restoredFromJson);
     assert.equal(brain.status, "active");
@@ -532,6 +591,36 @@ describe("mindcraft environment", () => {
     assert.equal(alphaBrain.status, "active");
     assert.equal(betaBrain.status, "active");
     assert.equal(localBrain.status, "active");
+  });
+
+  test("rebuildInvalidatedBrains rebuilds valid brains even when another fails to rebuild", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const good = createBundleSensor("bundle.good");
+    const bad = createBundleSensor("bundle.bad");
+    environment.replaceActionBundle(createActionBundle("bundle.rev1", [good, bad]));
+
+    const goodBrain = environment.createBrain(
+      createSensorBrainDef(getEnvironmentServices(environment), "Good Brain", good.tile)
+    );
+    const badBrain = environment.createBrain(
+      createSensorBrainDef(getEnvironmentServices(environment), "Bad Brain", bad.tile)
+    );
+
+    // New bundle changes good's revision (invalidates goodBrain) and drops bad
+    // (invalidates badBrain and leaves its action unresolvable on rebuild).
+    environment.replaceActionBundle(
+      createActionBundle("bundle.rev2", [
+        { artifact: withRevision(good.artifact, "bundle.good.rev2"), tile: good.tile },
+      ])
+    );
+
+    assert.equal(goodBrain.status, "invalidated");
+    assert.equal(badBrain.status, "invalidated");
+
+    environment.rebuildInvalidatedBrains();
+
+    assert.equal(goodBrain.status, "active");
+    assert.equal(badBrain.status, "invalidated");
   });
 
   test("rebuildInvalidatedBrains without args rebuilds all brains invalidated across overlapping replacements", () => {

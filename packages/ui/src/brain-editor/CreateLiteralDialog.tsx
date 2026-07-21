@@ -3,6 +3,7 @@ import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import { useState } from "react";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Input } from "../ui/input";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { DisplayFormatPicker } from "./DisplayFormatPicker";
 
@@ -80,10 +81,10 @@ export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, 
     if (literalType === CoreTypeIds.String) {
       return (
         <div className="grid grid-cols-4 items-center gap-4">
-          <label htmlFor="stringValue" className="text-right text-slate-700 font-medium">
+          <label htmlFor="stringValue" className="text-right text-foreground font-medium">
             Value
           </label>
-          <input
+          <Input
             id="stringValue"
             type="text"
             value={stringValue}
@@ -95,10 +96,9 @@ export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, 
                 handleSubmit();
               }
             }}
-            className="col-span-3 flex h-10 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="col-span-3"
             placeholder="Enter string value"
             autoComplete="off"
-            // biome-ignore lint/a11y/noAutofocus: dialog input should focus immediately for keyboard users
             autoFocus
           />
         </div>
@@ -107,10 +107,10 @@ export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, 
       return (
         <>
           <div className="grid grid-cols-4 items-center gap-4">
-            <label htmlFor="numberValue" className="text-right text-slate-700 font-medium">
+            <label htmlFor="numberValue" className="text-right text-foreground font-medium">
               Value
             </label>
-            <input
+            <Input
               id="numberValue"
               type="number"
               value={numberValue}
@@ -122,10 +122,9 @@ export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, 
                   handleSubmit();
                 }
               }}
-              className="col-span-3 flex h-10 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="col-span-3"
               placeholder="0"
               autoComplete="off"
-              // biome-ignore lint/a11y/noAutofocus: dialog input should focus immediately for keyboard users
               autoFocus
             />
           </div>
@@ -151,22 +150,17 @@ export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, 
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-106.25 bg-slate-50 border-2 border-slate-300 rounded-2xl">
-        <DialogHeader className="border-b border-slate-200 pb-4">
-          <DialogTitle className="text-slate-800 font-semibold">{title}</DialogTitle>
-          <DialogDescription className="text-slate-600">{getDescription()}</DialogDescription>
+      <DialogContent className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl">
+        <DialogHeader className="border-b border-border pb-4">
+          <DialogTitle className="text-foreground font-semibold">{title}</DialogTitle>
+          <DialogDescription className="text-muted-foreground">{getDescription()}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">{renderInputFields()}</div>
-        <DialogFooter className="gap-2 pt-4 border-t border-slate-200">
+        <DialogFooter className="gap-2 pt-4 border-t border-border">
           <Button variant="cancel" className="rounded-lg" onClick={handleCancel} aria-label="Cancel creating literal">
             Cancel
           </Button>
-          <Button
-            className="rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white"
-            onClick={handleSubmit}
-            disabled={!isValid()}
-            aria-label="Create literal value"
-          >
+          <Button className="rounded-lg" onClick={handleSubmit} disabled={!isValid()} aria-label="Create literal value">
             Create
           </Button>
         </DialogFooter>

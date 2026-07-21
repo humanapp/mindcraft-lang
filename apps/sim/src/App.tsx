@@ -17,7 +17,8 @@ import { toast } from "sonner";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
 import { buildBrainEditorConfig } from "./brain/editor/config";
-import { genVisualForTile } from "./brain/editor/visual-provider";
+import { dataTypeIconMap, dataTypeNameMap } from "./brain/editor/data-type-icons";
+import { createVfsAwareVisualProvider } from "./brain/editor/visual-provider";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { NewWorkspaceDialog } from "./components/NewWorkspaceDialog";
 import { ProjectHeader } from "./components/ProjectHeader";
@@ -61,17 +62,17 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
   const { openDocsForTile, isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs } = useDocsSidebar();
   const store = useSimEnvironment();
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
-  const config = useMemo(
-    () =>
-      buildBrainEditorConfig({
-        store,
-        archetype: archetype ?? undefined,
-        vfsRevision,
-        onTileHelp: openDocsForTile,
-        docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
-      }),
-    [store, archetype, vfsRevision, openDocsForTile, isDocsOpen, toggleDocs, closeDocs]
-  );
+  const config = useMemo(() => {
+    // A VFS revision bump re-creates the config so tiles re-resolve their
+    // asset URLs against the new generation.
+    void vfsRevision;
+    return buildBrainEditorConfig({
+      store,
+      archetype: archetype ?? undefined,
+      onTileHelp: openDocsForTile,
+      docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
+    });
+  }, [store, archetype, vfsRevision, openDocsForTile, isDocsOpen, toggleDocs, closeDocs]);
   return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
 }
 
@@ -454,19 +455,30 @@ function App() {
   );
 
   const handleExportProject = useCallback(() => {
-    store.exportProject().then(
-      (json) => {
+    void (async () => {
+      try {
+        const unstable = await store.host.collectUnstableProjectDependencies();
+        if (unstable.length > 0) {
+          const detail = unstable.map((dependency) => `${dependency.coordinate} (${dependency.code})`).join(", ");
+          const proceed = window.confirm(
+            `This project depends on libraries that are not stable for consumers: ${detail}. ` +
+              "The exported project may not work, or may not keep working, for anyone else. Export anyway?"
+          );
+          if (!proceed) {
+            return;
+          }
+        }
+        const json = await store.exportProject();
         const safeName =
           (store.activeProjectManifest?.name ?? "project")
             .replace(/[^a-zA-Z0-9]+/g, "-")
             .replace(/^-+|-+$/g, "")
             .toLowerCase() || "project";
         downloadTextFile(json, `${safeName}.mindcraft`);
-      },
-      () => {
+      } catch {
         toast.error("Failed to export project");
       }
-    );
+    })();
   }, [store]);
 
   const handleImportProject = useCallback(() => {
@@ -527,17 +539,18 @@ function App() {
   const docRevision = useSyncExternalStore(store.subscribeToDocRevision, store.getDocRevisionSnapshot);
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
   const docsResolveTileVisual = useMemo(() => {
-    return (tileDef: Parameters<typeof genVisualForTile>[0]) => {
-      const visual = genVisualForTile(tileDef);
-      if (visual.iconUrl?.startsWith("/vfs/")) {
-        return { ...visual, iconUrl: `${visual.iconUrl}?_v=${vfsRevision}` };
-      }
-      return visual;
-    };
-  }, [vfsRevision]);
+    // A VFS revision bump re-creates the resolver so docs tiles re-resolve
+    // their asset URLs against the new generation.
+    void vfsRevision;
+    return createVfsAwareVisualProvider((url) => store.resolveVfsAssetUrl(url));
+  }, [store, vfsRevision]);
   const docsRegistry = useMemo(() => {
     void docRevision;
     return createDocsRegistry(store.userTileDocEntries);
+  }, [docRevision, store]);
+  const docsLibraries = useMemo(() => {
+    void docRevision;
+    return store.host.installedLibraries;
   }, [docRevision, store]);
   const docsTileCatalog = useMemo<ITileCatalog>(() => {
     return {
@@ -648,25 +661,28 @@ function App() {
       registry={docsRegistry}
       tileCatalog={docsTileCatalog}
       brainServices={store.env.brainServices}
+      libraries={docsLibraries}
+      dataTypeNames={dataTypeNameMap}
+      dataTypeIcons={dataTypeIconMap}
       resolveTileVisual={docsResolveTileVisual}
     >
       <div className="h-screen flex bg-background overflow-hidden">
         <h1 className="sr-only">Mindcraft Simulation</h1>
         {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
-        <main className="flex-1 min-w-0 relative" aria-label="Game canvas" style={{ backgroundColor: "#2d3561" }}>
+        <main className="flex-1 min-w-0 relative bg-canvas" aria-label="Game canvas">
           {activeWorkspaceLocked ? (
-            <div className="flex h-full min-h-screen items-center justify-center bg-slate-950 p-4 text-white">
+            <div className="flex h-full min-h-screen items-center justify-center bg-background p-4 text-foreground">
               <form
-                className="w-full max-w-sm rounded-lg border border-white/15 bg-slate-900/95 p-5 shadow-2xl"
+                className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-2xl"
                 onSubmit={handleActiveWorkspaceUnlock}
               >
                 <div className="mb-4 flex items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-400/15 text-amber-200">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
                     <Lock className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <div className="min-w-0">
                     <h2 className="truncate text-lg font-semibold">Workspace Locked</h2>
-                    <p className="truncate text-sm text-slate-300">{activeWorkspaceName}</p>
+                    <p className="truncate text-sm text-muted-foreground">{activeWorkspaceName}</p>
                   </div>
                 </div>
                 <WorkspacePinInput
@@ -674,9 +690,9 @@ function App() {
                   value={activeUnlockPin}
                   disabled={activeUnlockBusy}
                   autoFocus
-                  labelClassName="text-sm font-medium text-slate-100"
-                  inputClassName="border-slate-400 bg-white text-slate-950"
-                  buttonClassName="text-slate-500 hover:text-slate-950 focus-visible:ring-slate-950"
+                  labelClassName="text-sm font-medium text-foreground"
+                  inputClassName="border-input bg-background"
+                  buttonClassName="text-muted-foreground hover:text-foreground focus-visible:ring-ring"
                   resetVisibilityKey={projectCollectionState?.activeProjectCollection?.projectCollectionId}
                   onValueChange={(value) => {
                     setActiveUnlockPin(value);
@@ -684,7 +700,7 @@ function App() {
                   }}
                 />
                 {activeUnlockError && (
-                  <p className="mt-2 text-sm text-red-300" role="alert">
+                  <p className="mt-2 text-sm text-destructive" role="alert">
                     {activeUnlockError}
                   </p>
                 )}

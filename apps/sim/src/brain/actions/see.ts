@@ -26,10 +26,11 @@ import {
   type Value,
   Vector2,
 } from "@mindcraft-lang/core/app";
+import { SimHostActions } from "@/brain/abi-ids";
 import { hasArg } from "@/brain/actions/utils";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
-import { TargetActorCapabilityBitSet, TileIds } from "@/brain/tileids";
+import { SeeSensorCapabilityBitSet, TileIds } from "@/brain/tileids";
 import { mkVector2Value } from "@/brain/type-system";
 import type { SightResult } from "@/brain/vision";
 
@@ -203,7 +204,7 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
 }
 
 export default {
-  key: TileIds.Sensor.See,
+  ...SimHostActions.See,
   callDef,
   fn: {
     onInitialized: initSee,
@@ -212,7 +213,7 @@ export default {
   isAsync: false,
   outputType: CoreTypeIds.Boolean,
   metadata: { label: "see", iconUrl: "/assets/brain/icons/see.svg" },
-  capabilities: TargetActorCapabilityBitSet,
+  capabilities: SeeSensorCapabilityBitSet,
 } satisfies CreateHostSensorOptions;
 
 export const modifiers: ModifierTileInput[] = [

@@ -14,11 +14,12 @@ import type {
   BrainTileLiteralDef,
   BrainTileModifierDef,
   BrainTileOperatorDef,
+  BrainTileOutputDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
 } from "../tiles";
-import type { DiagCode } from "./diag-codes";
+import type { DiagCode } from "./diagnostics";
 
 /**
  * Parse diagnostic (error or warning) with source location.
@@ -91,6 +92,13 @@ export type VariableExpr = {
   nodeId: number;
   kind: "variable";
   tileDef: BrainTileVariableDef;
+  span: Span;
+};
+/** AST node for a sensor output value-tile (an inline read of a backing rule variable). */
+export type OutputExpr = {
+  nodeId: number;
+  kind: "output";
+  tileDef: BrainTileOutputDef;
   span: Span;
 };
 /** AST node for an assignment to a variable or struct field. */
@@ -170,6 +178,7 @@ export type Expr =
   | UnaryOpExpr
   | LiteralExpr
   | VariableExpr
+  | OutputExpr
   | AssignmentExpr
   | ParameterExpr
   | ModifierExpr
@@ -194,6 +203,7 @@ export interface ExprVisitor<T> {
   visitUnaryOp(expr: UnaryOpExpr): T;
   visitLiteral(expr: LiteralExpr): T;
   visitVariable(expr: VariableExpr): T;
+  visitOutput(expr: OutputExpr): T;
   visitAssignment(expr: AssignmentExpr): T;
   visitParameter(expr: ParameterExpr): T;
   visitModifier(expr: ModifierExpr): T;
@@ -222,6 +232,8 @@ export function acceptExprVisitor<T>(expr: Expr, visitor: ExprVisitor<T>): T {
       return visitor.visitLiteral(expr);
     case "variable":
       return visitor.visitVariable(expr);
+    case "output":
+      return visitor.visitOutput(expr);
     case "assignment":
       return visitor.visitAssignment(expr);
     case "parameter":
@@ -248,6 +260,13 @@ export type TypeInfo = {
   isLVal?: boolean;
   overload?: OpOverload;
   conversion?: Conversion;
+  /**
+   * For a field-access node, the numeric id of the accessed field, resolved
+   * during inference against the OBJECT's concrete struct type. Undefined when
+   * the object is not a concrete struct with that field; the emitter then falls
+   * back to the name-keyed `GET_FIELD`/`SET_FIELD` path.
+   */
+  fieldId?: number;
 };
 
 /** Type-checking diagnostic attached to a specific AST node. */

@@ -61,6 +61,7 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
+    "@mindcraft-lang/core": "file:../core",
     "zod": "^4.3.6"
   },
   "devDependencies": {

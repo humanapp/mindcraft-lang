@@ -1,4 +1,5 @@
 import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
+import type { TileSourceLibrary } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, Printer } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -93,17 +94,17 @@ function DocsPageLayout({ backLabel = "Home", backHref = "/" }: DocsPageLayoutPr
   const canPrint = detailContent !== null;
 
   return (
-    <div className="h-screen flex flex-col bg-slate-900 text-slate-200">
+    <div className="h-screen flex flex-col bg-background text-foreground">
       {/* Header */}
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-slate-700 shrink-0">
+      <header className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
         <a
           href={backHref}
-          className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition-colors"
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           {backLabel}
         </a>
-        <div className="flex items-center gap-2 text-slate-200">
+        <div className="flex items-center gap-2 text-foreground">
           <BookOpen className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-semibold tracking-tight">Documentation</span>
         </div>
@@ -111,7 +112,7 @@ function DocsPageLayout({ backLabel = "Home", backHref = "/" }: DocsPageLayoutPr
           <button
             type="button"
             onClick={() => triggerPrint(detailContent)}
-            className="ml-auto flex items-center justify-center w-7 h-7 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            className="ml-auto flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             aria-label="Print this page"
             title="Print this page"
           >
@@ -141,6 +142,12 @@ export interface DocsPageProps {
   tileCatalog?: ITileCatalog;
   /** Optional BrainServices instance for direct access. */
   brainServices?: BrainServices;
+  /** Installed libraries of the active project; the tiles tab subgroups entries attributed to them. */
+  libraries?: readonly TileSourceLibrary[];
+  /** App-supplied friendly type names keyed by type id. */
+  dataTypeNames?: ReadonlyMap<string, string>;
+  /** App-supplied type icon URLs keyed by type id. */
+  dataTypeIcons?: ReadonlyMap<string, string>;
   /** Optional tile visual resolver for app-provided labels, icons, and colors. */
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Label displayed in the back link (top-left). Defaults to "Home". */
@@ -155,6 +162,9 @@ export function DocsPage({
   registry,
   tileCatalog,
   brainServices,
+  libraries,
+  dataTypeNames,
+  dataTypeIcons,
   resolveTileVisual,
   backLabel,
   backHref,
@@ -167,6 +177,9 @@ export function DocsPage({
       registry={registry}
       tileCatalog={tileCatalog}
       brainServices={brainServices}
+      libraries={libraries}
+      dataTypeNames={dataTypeNames}
+      dataTypeIcons={dataTypeIcons}
       resolveTileVisual={resolveTileVisual}
       initialTab={tab}
       initialNavKey={key}

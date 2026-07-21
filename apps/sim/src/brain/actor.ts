@@ -1,19 +1,48 @@
 import {
-  BrainDef,
   type CreateBrainOptions,
   type IBrainDef,
+  type IBrainPageDef,
+  type IBrainRuleDef,
+  type IBrainTileSet,
   logger,
   type MindcraftBrain,
-  mkSensorTileId,
   type Vector2,
 } from "@mindcraft-lang/core/app";
 import { ARCHETYPES } from "./archetypes";
 import { Engine } from "./engine";
 import { Mover, type MoverConfig, type Steering, steerAvoidObstacles } from "./movement";
-import { TileIds } from "./tileids";
+import { TileCapabilityBits } from "./tileids";
 import type { SightResult } from "./vision";
 
 export type Archetype = "carnivore" | "herbivore" | "plant";
+
+/** True when any tile in the tile set carries the given capability bit. */
+function tileSetHasCapability(tileSet: IBrainTileSet, bit: number): boolean {
+  const tiles = tileSet.tiles();
+  for (let i = 0; i < tiles.size(); i++) {
+    if (tiles.get(i).capabilities().get(bit) !== 0) return true;
+  }
+  return false;
+}
+
+/** True when the rule or any of its descendant rules uses a tile with the given capability bit. */
+function ruleHasCapability(rule: IBrainRuleDef, bit: number): boolean {
+  if (tileSetHasCapability(rule.when(), bit) || tileSetHasCapability(rule.do(), bit)) return true;
+  const children = rule.children();
+  for (let i = 0; i < children.size(); i++) {
+    if (ruleHasCapability(children.get(i), bit)) return true;
+  }
+  return false;
+}
+
+/** True when any rule on the page uses a tile that carries the given capability bit. */
+function pageHasCapability(page: IBrainPageDef, bit: number): boolean {
+  const rules = page.children();
+  for (let i = 0; i < rules.size(); i++) {
+    if (ruleHasCapability(rules.get(i), bit)) return true;
+  }
+  return false;
+}
 
 export class AnimalComp {
   steeringQueue: Steering[] = [];
@@ -154,7 +183,7 @@ export class Actor {
     this.actorId = 0; // to be assigned later
     this.archetype = archetype;
     this.brainDef = brainDef;
-    this.brain = this.tryCreateBrain();
+    this.brain = this.createBrain();
     this.mover = new Mover(moverCfg);
     this.sprite = null!; // to be assigned later
     this.bornAt = this.engine.simTime;
@@ -178,7 +207,13 @@ export class Actor {
     this.brain.startup();
   }
 
-  private tryCreateBrain(): MindcraftBrain {
+  /**
+   * Create this actor's brain from its current def. When the def references an
+   * action the active bundle does not provide, the returned brain is tracked
+   * and invalidated by the environment; the per-tick rebuild revives it once
+   * the action becomes available.
+   */
+  private createBrain(): MindcraftBrain {
     const env = this.engine.env;
     const brainOptions: CreateBrainOptions = {
       context: this,
@@ -194,34 +229,22 @@ export class Actor {
         },
       },
     };
-    try {
-      return env.createBrain(this.brainDef, brainOptions);
-    } catch (err) {
-      console.warn(`[Actor] Failed to create brain for ${this.archetype}:`, err);
-      const emptyDef = env.withServices((services) => BrainDef.emptyBrainDef(services, `${this.archetype} Brain`));
-      return env.createBrain(emptyDef, brainOptions);
-    }
+    return env.createBrain(this.brainDef, brainOptions);
   }
 
   replaceBrain(brainDef: IBrainDef = this.brainDef) {
     this.brainDef = brainDef;
     this.brain.events().removeAllListeners();
     this.brain.dispose();
-    this.brain = this.tryCreateBrain();
+    this.brain = this.createBrain();
     this.brain.events().on("page_activated", this.pageActivated);
     this.brain.events().on("page_deactivated", this.pageDeactivated);
     this.brain.startup();
   }
 
   pageActivated = ({ pageIndex }: { pageIndex: number }) => {
-    const pageMeta = this.brain.getPages().get(pageIndex);
-    if (!pageMeta) return;
-    const sensors = pageMeta.sensors;
-    if (sensors.has(mkSensorTileId(TileIds.Sensor.See))) {
-      this.hasVision = true;
-    } else {
-      this.hasVision = false;
-    }
+    const page = this.brainDef.pages().get(pageIndex);
+    this.hasVision = page !== undefined && pageHasCapability(page, TileCapabilityBits.Vision);
   };
 
   pageDeactivated = (_: { pageIndex: number }) => {

@@ -1,37 +1,53 @@
 import {
-  buildActiveProjectExportCommon,
   createIdbProjectStore,
+  createJsDelivrExtensionTransport,
   createWebLocksProjectLock,
   DEFAULT_PROJECT_NAME,
+  type ImportAppChunkResult,
   type ImportResult,
-  importProject as importProjectCommon,
-  type MindcraftExportDocument,
+  importProjectDocument,
   type ProjectCollection,
   type ProjectCollectionProjectCommitResult,
   type ProjectFileSystem,
   ProjectManager,
   type ProjectManifest,
 } from "@mindcraft-lang/app-host";
-import { type AppBridgeState, AppEnvironmentHost, type UserTileMetadata } from "@mindcraft-lang/bridge-app";
 import {
+  type AppBridgeState,
+  AppEnvironmentHost,
+  type BrainDiagnosticEntry,
+  collectBrainErrorDiagnostics,
+  createVfsAssetUrlProvider,
+  type UserTileMetadata,
+  type VfsAssetUrlProvider,
+  type WorkspaceCompileDiagnostic,
+} from "@mindcraft-lang/bridge-app";
+import {
+  type ActionKind,
   type BrainDef,
   coreModule,
   MathOps,
   type MindcraftEnvironment,
-  mkActuatorTileId,
-  mkSensorTileId,
+  mkActionTileId,
 } from "@mindcraft-lang/core/app";
 import type { DocsTileEntry } from "@mindcraft-lang/docs";
-import { isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
+import { isCompilerControlledPath, type Mount } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { Obstacle } from "@/brain/vision";
-import { loadExamples } from "@/examples";
-import { name as simName, version as simVersion } from "../../package.json";
+import { name as simName } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
-import { simAmbientFiles } from "./sim-ambient-files";
-import { initVfsServiceWorker } from "./vfs-service-worker";
+import { buildSimExportDocument } from "./project-io";
+import { simDefaultExtensions, simEmbeddedExtensions } from "./sim-embedded-extensions";
+import { simLibraryCatalogMoves } from "./sim-extension-browser";
+
+/**
+ * Platform content mounts for the sim, applied at the workspace root. Empty:
+ * the layer ambient `.d.ts` are carried by the resolved layer extensions as
+ * their own extension content.
+ */
+const simMounts: readonly Mount[] = [];
 
 // -- AppSettings --
 
@@ -104,6 +120,26 @@ function persistCollapsedArchetypes(value: Record<string, boolean>): void {
   }
 }
 
+// -- Collapsed Dev Panel (global, not per-project) --
+
+const DEV_PANEL_COLLAPSED_KEY = `${simName}:dev-panel-collapsed`;
+
+function loadDevPanelCollapsed(): boolean {
+  try {
+    return localStorage.getItem(DEV_PANEL_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function persistDevPanelCollapsed(value: boolean): void {
+  try {
+    localStorage.setItem(DEV_PANEL_COLLAPSED_KEY, String(value));
+  } catch {
+    // storage full or unavailable
+  }
+}
+
 function loadUiPreferences(projectId: string): UiPreferences {
   try {
     const raw = localStorage.getItem(`${UI_PREFS_KEY_PREFIX}${projectId}`);
@@ -162,6 +198,49 @@ function parseObstacles(value: unknown): Obstacle[] | undefined {
   return result;
 }
 
+function translateSimAppChunk(app: unknown): ImportAppChunkResult {
+  const diagnostics: { severity: "error" | "warning"; message: string }[] = [];
+  const appData = app as { actors?: unknown[]; obstacles?: unknown } | null;
+  if (!appData?.actors || !Array.isArray(appData.actors) || appData.actors.length === 0) {
+    return {
+      diagnostics: [{ severity: "error", message: "No actor data found in the sim's app chunk." }],
+    };
+  }
+
+  const counts: Record<string, number> = {};
+  for (const entry of appData.actors) {
+    const actorEntry = entry as { archetype?: string; desiredCount?: number } | null;
+    if (!actorEntry?.archetype || !(actorEntry.archetype in ARCHETYPES)) {
+      diagnostics.push({
+        severity: "warning",
+        message: `Skipped unknown archetype: "${actorEntry?.archetype ?? "(none)"}".`,
+      });
+      continue;
+    }
+    if (typeof actorEntry.desiredCount === "number") {
+      counts[actorEntry.archetype] = Math.max(0, Math.min(100, Math.round(actorEntry.desiredCount)));
+    }
+  }
+
+  const importedAppData: Record<string, string> = { actors: JSON.stringify(counts) };
+  if (appData.obstacles !== undefined) {
+    const obstacles = parseObstacles(appData.obstacles);
+    if (obstacles) {
+      importedAppData.obstacles = JSON.stringify(obstacles);
+    } else {
+      diagnostics.push({
+        severity: "warning",
+        message: "Ignored malformed obstacle data in the sim's app chunk.",
+      });
+    }
+  }
+
+  return {
+    diagnostics,
+    appData: importedAppData,
+  };
+}
+
 const DESIRED_COUNTS_DEBOUNCE_MS = 200;
 
 export class SimEnvironmentStore {
@@ -174,6 +253,7 @@ export class SimEnvironmentStore {
 
   private _uiPreferences: UiPreferences = { ...DEFAULT_UI_PREFS };
   private _collapsedArchetypes: Record<string, boolean> = loadCollapsedArchetypes();
+  private _devPanelCollapsed: boolean = loadDevPanelCollapsed();
 
   private _desiredCounts: Record<Archetype, number> = defaultDesiredCounts();
   private readonly _desiredCountsListeners = new Set<() => void>();
@@ -183,10 +263,15 @@ export class SimEnvironmentStore {
   private _projectDataReloadPromise: Promise<void> = Promise.resolve();
 
   private _isSwitchingProject = false;
-  private _vfsServiceWorkerInitialized = false;
+  private _vfsRevisionWiringInitialized = false;
+  private readonly _vfsAssetUrlProvider: VfsAssetUrlProvider;
 
   private constructor(host: AppEnvironmentHost) {
     this.host = host;
+    this._vfsAssetUrlProvider = createVfsAssetUrlProvider({
+      getProjectFileSystem: () => this.host.servedProjectFileSystem,
+      getVfsRevision: () => this.host.getVfsRevisionSnapshot(),
+    });
 
     this.host.onProjectLoaded(() => {
       const prefs = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
@@ -257,18 +342,19 @@ export class SimEnvironmentStore {
     const host = new AppEnvironmentHost({
       projectManager: new ProjectManager(projectStore, {
         filesystemOptions: {
-          shouldExclude: (path) => isCompilerControlledPath(path, { ambientFiles: simAmbientFiles }),
+          shouldExclude: (path) => isCompilerControlledPath(path, simMounts),
         },
         lock: createWebLocksProjectLock(simName),
+        defaultExtensions: simDefaultExtensions,
       }),
       modules: [coreModule(), createSimModule()],
-      ambientFiles: simAmbientFiles,
-      host: { name: simName, version: simVersion },
-      userTileStorageKey: `${simName}:user-tile-metadata`,
+      mounts: simMounts,
+      embeddedExtensions: simEmbeddedExtensions,
+      extensionFetchTransport: createJsDelivrExtensionTransport(),
+      catalogMoves: simLibraryCatalogMoves,
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,
       saveBindingToken,
-      examples: loadExamples(),
       rng: {
         next: () => MathOps.random(),
       },
@@ -294,6 +380,10 @@ export class SimEnvironmentStore {
 
   get projectFileSystem(): ProjectFileSystem {
     return this.host.projectFileSystem;
+  }
+
+  get servedProjectFileSystem(): ProjectFileSystem {
+    return this.host.servedProjectFileSystem;
   }
 
   get activeProjectManifest(): ProjectManifest | undefined {
@@ -322,11 +412,24 @@ export class SimEnvironmentStore {
     }
     this._projectDataReloadPromise = this.reloadProjectData();
     await this._projectDataReloadPromise;
-    if (!this._vfsServiceWorkerInitialized) {
-      initVfsServiceWorker(this);
-      this._vfsServiceWorkerInitialized = true;
+    if (!this._vfsRevisionWiringInitialized) {
+      this.initVfsRevisionWiring();
+      this._vfsRevisionWiringInitialized = true;
     }
     this.host.initBridge();
+  }
+
+  /**
+   * Bumps the VFS revision on every local file-system change, re-subscribing
+   * to the new project's file system on each project load.
+   */
+  private initVfsRevisionWiring(): void {
+    let unsubLocalChange = this.projectFileSystem.onLocalChange(() => this.bumpVfsRevision());
+    this.host.onProjectLoaded(() => {
+      unsubLocalChange();
+      unsubLocalChange = this.projectFileSystem.onLocalChange(() => this.bumpVfsRevision());
+      this.bumpVfsRevision();
+    });
   }
 
   /** Release host resources owned by this store. */
@@ -354,6 +457,38 @@ export class SimEnvironmentStore {
 
   getDefaultBrain(archetype: Archetype): BrainDef | undefined {
     return this.host.getDefaultBrain(archetype) as BrainDef | undefined;
+  }
+
+  /** Subscribes to brain-diagnostics revision changes for `useSyncExternalStore`. Returns an unsubscribe function. */
+  subscribeToBrainDiagnostics = (listener: () => void): (() => void) => {
+    return this.host.subscribeToBrainDiagnostics(listener);
+  };
+
+  /** Snapshot of the current brain-diagnostics revision for `useSyncExternalStore`. */
+  getBrainDiagnosticsRevision = (): number => {
+    return this.host.getBrainDiagnosticsRevision();
+  };
+
+  /** Subscribes to workspace-compile diagnostic changes for `useSyncExternalStore`. Returns an unsubscribe function. */
+  subscribeToCompileDiagnostics = (listener: () => void): (() => void) => {
+    return this.host.subscribeToCompileDiagnostics(listener);
+  };
+
+  /** Snapshot of the latest workspace compile's diagnostics for `useSyncExternalStore`; empty when clean. */
+  getCompileDiagnosticsSnapshot = (): readonly WorkspaceCompileDiagnostic[] => {
+    return this.host.getCompileDiagnosticsSnapshot();
+  };
+
+  /**
+   * The verbatim error diagnostics of an archetype brain's stored typecheck
+   * state. Empty when the brain is not cached or is clean.
+   */
+  getBrainDiagnostics(archetype: Archetype): readonly BrainDiagnosticEntry[] {
+    const brain = this.host.getCachedBrain(archetype);
+    if (!brain) {
+      return [];
+    }
+    return collectBrainErrorDiagnostics(brain);
   }
 
   // -- Project metadata --
@@ -431,83 +566,12 @@ export class SimEnvironmentStore {
   // -- Project export / import --
 
   async exportProject(): Promise<string> {
-    const pm = this.host.projectManager;
-
-    const common = await buildActiveProjectExportCommon({ name: simName, version: simVersion }, pm);
-
-    const counts = this.getDesiredCounts();
-    const actors: { archetype: string; brain: string | null; desiredCount: number }[] = [];
-    for (const archetype of Object.keys(ARCHETYPES)) {
-      const hasBrain = archetype in (common.brains as Record<string, unknown>);
-      actors.push({
-        archetype,
-        brain: hasBrain ? archetype : null,
-        desiredCount: counts[archetype as Archetype] ?? 0,
-      });
-    }
-
-    const app: { actors: typeof actors; obstacles?: Obstacle[] } = { actors };
-    const obstacles = this._obstacles;
-    if (obstacles && obstacles.length > 0) {
-      app.obstacles = obstacles.map((o) => ({
-        x: o.x,
-        y: o.y,
-        width: o.width,
-        height: o.height,
-        ...(o.rotation !== undefined ? { rotation: o.rotation } : {}),
-      }));
-    }
-
-    const doc: MindcraftExportDocument = { ...common, app };
-    return JSON.stringify(doc, null, 2);
+    return buildSimExportDocument(this.host.projectManager, this.getDesiredCounts(), this._obstacles);
   }
 
   async importProject(file: File): Promise<ImportResult> {
-    const pm = this.host.projectManager;
-
-    return importProjectCommon(file, simName, simVersion, pm, {
-      appLayerCallback: (app) => {
-        const diagnostics: { severity: "error" | "warning"; message: string }[] = [];
-        const appData = app as { actors?: unknown[]; obstacles?: unknown } | null;
-        if (!appData?.actors || !Array.isArray(appData.actors) || appData.actors.length === 0) {
-          return {
-            diagnostics: [{ severity: "error", message: "No actor data found in app layer." }],
-          };
-        }
-
-        const counts: Record<string, number> = {};
-        for (const entry of appData.actors) {
-          const actorEntry = entry as { archetype?: string; desiredCount?: number } | null;
-          if (!actorEntry?.archetype || !(actorEntry.archetype in ARCHETYPES)) {
-            diagnostics.push({
-              severity: "warning",
-              message: `Skipped unknown archetype: "${actorEntry?.archetype ?? "(none)"}".`,
-            });
-            continue;
-          }
-          if (typeof actorEntry.desiredCount === "number") {
-            counts[actorEntry.archetype] = Math.max(0, Math.min(100, Math.round(actorEntry.desiredCount)));
-          }
-        }
-
-        const importedAppData: Record<string, string> = { actors: JSON.stringify(counts) };
-        if (appData.obstacles !== undefined) {
-          const obstacles = parseObstacles(appData.obstacles);
-          if (obstacles) {
-            importedAppData.obstacles = JSON.stringify(obstacles);
-          } else {
-            diagnostics.push({
-              severity: "warning",
-              message: "Ignored malformed obstacle data in app layer.",
-            });
-          }
-        }
-
-        return {
-          diagnostics,
-          appData: importedAppData,
-        };
-      },
+    return importProjectDocument(file, simName, this.host.projectManager, {
+      appChunkCallback: translateSimAppChunk,
     });
   }
 
@@ -548,6 +612,15 @@ export class SimEnvironmentStore {
   getVfsRevisionSnapshot = (): number => {
     return this.host.getVfsRevisionSnapshot();
   };
+
+  /**
+   * Resolves a compiler-minted `/vfs/<path>` asset URL to an object URL over
+   * the served project file system, cached per VFS revision. Other URLs pass
+   * through unchanged.
+   */
+  resolveVfsAssetUrl(url: string): string {
+    return this._vfsAssetUrlProvider.resolveAssetUrl(url);
+  }
 
   // -- App Settings (sim-specific) --
 
@@ -598,6 +671,17 @@ export class SimEnvironmentStore {
   updateCollapsedArchetypes(value: Record<string, boolean>): void {
     this._collapsedArchetypes = value;
     persistCollapsedArchetypes(value);
+  }
+
+  // -- Collapsed Dev Panel (global) --
+
+  getDevPanelCollapsed(): boolean {
+    return this._devPanelCollapsed;
+  }
+
+  updateDevPanelCollapsed(value: boolean): void {
+    this._devPanelCollapsed = value;
+    persistDevPanelCollapsed(value);
   }
 
   // -- Desired population counts (per-project, debounced auto-save) --
@@ -675,14 +759,19 @@ export class SimEnvironmentStore {
   };
 }
 
+/** Docs category label for each tile-bearing user-action kind. */
+const kUserTileDocCategories: Record<Exclude<ActionKind, "conversion">, string> = {
+  sensor: "Sensors",
+  actuator: "Actuators",
+};
+
 function buildDocEntries(metadata: readonly UserTileMetadata[]): DocsTileEntry[] {
   const entries: DocsTileEntry[] = [];
   for (const entry of metadata) {
-    const tileId = entry.kind === "sensor" ? mkSensorTileId(entry.key) : mkActuatorTileId(entry.key);
     entries.push({
-      tileId,
+      tileId: mkActionTileId(entry.kind, entry.key),
       tags: entry.tags ? [...entry.tags] : [],
-      category: entry.kind === "sensor" ? "Sensors" : "Actuators",
+      category: kUserTileDocCategories[entry.kind],
       content: entry.docsMarkdown ?? "",
     });
   }

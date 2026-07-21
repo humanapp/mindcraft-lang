@@ -1,6 +1,7 @@
 import type { BrainServices } from "../brain/services";
 import { List, type ReadonlyList } from "../platform/list";
 import { StringUtils as SU } from "../platform/string";
+import { CoreFuncId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
 import { CoreTypeIds } from "./core-types";
 import { mkCallDef } from "./function-defs";
@@ -28,6 +29,7 @@ export function registerStringBuiltins(services: BrainServices) {
   const { functions, types } = services.runtime;
 
   functions.register(
+    CoreFuncId.StrLength,
     "$$str_length",
     false,
     {
@@ -37,6 +39,7 @@ export function registerStringBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StrCharAt,
     "$$str_charAt",
     false,
     {
@@ -46,6 +49,7 @@ export function registerStringBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StrCharCodeAt,
     "$$str_charCodeAt",
     false,
     {
@@ -56,6 +60,7 @@ export function registerStringBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StrIndexOf,
     "$$str_indexOf",
     false,
     {
@@ -66,6 +71,7 @@ export function registerStringBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StrLastIndexOf,
     "$$str_lastIndexOf",
     false,
     {
@@ -76,6 +82,7 @@ export function registerStringBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StrSlice,
     "$$str_slice",
     false,
     {
@@ -86,6 +93,7 @@ export function registerStringBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StrSubstring,
     "$$str_substring",
     false,
     {
@@ -96,6 +104,7 @@ export function registerStringBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StrToLowerCase,
     "$$str_toLowerCase",
     false,
     {
@@ -105,6 +114,7 @@ export function registerStringBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StrToUpperCase,
     "$$str_toUpperCase",
     false,
     {
@@ -114,6 +124,7 @@ export function registerStringBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StrTrim,
     "$$str_trim",
     false,
     {
@@ -123,6 +134,7 @@ export function registerStringBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StrSplit,
     "$$str_split",
     false,
     {
@@ -140,6 +152,7 @@ export function registerStringBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StrConcat,
     "$$str_concat",
     false,
     {

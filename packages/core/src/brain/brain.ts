@@ -1,3 +1,4 @@
+import { EventEmitter } from "../platform/event-emitter";
 import { List } from "../platform/list";
 import {
   type BrainEvents,
@@ -5,24 +6,20 @@ import {
   BrainRuntime,
   type IBrain,
   type PageMetadata,
-  type UnlinkedBrainProgram,
   type VmEvents,
 } from "../runtime";
 import type { Program } from "../runtime/program";
 import type { Value } from "../runtime/value";
 import type { EventEmitterConsumer } from "../util";
-import { compileBrain } from "./compiler";
-import { linkBrainProgram } from "./compiler/linker";
-import { treeshakeProgram } from "./compiler/tree-shaker";
+import { BrainBuildError, runBrainLinkPipeline, summarizeBrainBuildDiagnostics } from "./compiler";
 import type { IBrainDef, IBrainPageDef } from "./interfaces";
 import { BrainPage } from "./page";
 import type { BrainServices } from "./services";
 
 /**
- * Authoring-side facade for a compiled Mindcraft brain. Compiles a
- * {@link IBrainDef} through the compile, link, and treeshake pipeline,
- * then constructs a {@link BrainRuntime} from the resulting program and
- * delegates all runtime operations to it.
+ * Live, running instance of a Mindcraft brain. Compiles an {@link IBrainDef} through the compile,
+ * link, and treeshake pipeline, constructs a {@link BrainRuntime} from the resulting program, and
+ * delegates all runtime operations (think, variables, page lifecycle) to it.
  */
 export class Brain implements IBrain {
   /** Runtime page instances */
@@ -31,13 +28,11 @@ export class Brain implements IBrain {
   /** `BrainRuntime` instance constructed by {@link initialize}. */
   private runtime: BrainRuntime | undefined;
 
-  /**
-   * Unlinked program emitted by the brain compiler.
-   */
-  private compiledProgram: UnlinkedBrainProgram | undefined;
-
   /** Unsubscribe callbacks for the page-lifecycle event bridge registered in {@link initialize}. */
   private readonly unsubs: List<() => void> = new List<() => void>();
+
+  /** Emitter returned by {@link events} before the first successful {@link initialize}, when no runtime exists yet. */
+  private uninitializedEmitter: EventEmitter<BrainEvents> | undefined;
 
   constructor(
     public readonly brainDef: IBrainDef,
@@ -52,7 +47,13 @@ export class Brain implements IBrain {
   }
 
   events(): EventEmitterConsumer<BrainEvents> {
-    return this.runtime!.events();
+    if (this.runtime) {
+      return this.runtime.events();
+    }
+    if (!this.uninitializedEmitter) {
+      this.uninitializedEmitter = new EventEmitter<BrainEvents>();
+    }
+    return this.uninitializedEmitter;
   }
 
   /**
@@ -62,18 +63,12 @@ export class Brain implements IBrain {
   initialize(contextData?: unknown, vmEvents?: VmEvents): void {
     const previousVariables = this.runtime?.snapshotVariables();
 
-    const linkEnvironment = this.getLinkEnvironment();
+    const result = runBrainLinkPipeline(this.brainDef, this.getLinkEnvironment(), this.services.shared.conversions);
+    if (!result.program) {
+      throw new BrainBuildError(summarizeBrainBuildDiagnostics(result.diagnostics), result.diagnostics);
+    }
 
-    this.compiledProgram = compileBrain(this.brainDef, linkEnvironment.catalogs, this.services.shared.conversions);
-    let linked = linkBrainProgram(
-      this.compiledProgram,
-      this.brainDef,
-      linkEnvironment.catalogs,
-      linkEnvironment.actionResolver
-    );
-    linked = treeshakeProgram(linked);
-
-    const { program, ruleIndex, pages: pageMetadata } = linked;
+    const { program, ruleIndex, pages: pageMetadata } = result.program;
 
     for (let pageIdx = 0; pageIdx < this.pages.size(); pageIdx++) {
       const page = this.pages.get(pageIdx)!;
@@ -111,10 +106,6 @@ export class Brain implements IBrain {
    */
   getProgram(): Program | undefined {
     return this.runtime?.getProgram();
-  }
-
-  getCompiledProgram(): UnlinkedBrainProgram | undefined {
-    return this.compiledProgram;
   }
 
   getPages(): List<PageMetadata> {
@@ -240,6 +231,7 @@ export class Brain implements IBrain {
     return {
       catalogs: List.from([this.services.edit.tiles]),
       actionResolver: this.services.runtime.actions,
+      typeRegistry: this.services.runtime.types,
     };
   }
 }

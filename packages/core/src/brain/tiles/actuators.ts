@@ -1,5 +1,5 @@
 import { Error } from "../../platform/error";
-import { type ActionDescriptor, mkActuatorTileId } from "../../runtime";
+import { type ActionDescriptor, mkActuatorTileId, type UserActionIdentity } from "../../runtime";
 import fnRestartPage from "../../runtime/actuators/restart-page";
 import fnSwitchPage from "../../runtime/actuators/switch-page";
 import fnYield from "../../runtime/actuators/yield";
@@ -12,13 +12,21 @@ export class BrainTileActuatorDef extends BrainActionTileBase {
   readonly kind = "actuator";
   readonly actuatorId: string;
 
-  constructor(actuatorId: string, action: ActionDescriptor, opts: BrainTileDefCreateOptions = {}) {
+  /** Namespace and stable id of the compiled user action backing this tile. Absent for platform actuators. */
+  readonly userIdentity?: UserActionIdentity;
+
+  constructor(
+    actuatorId: string,
+    action: ActionDescriptor,
+    opts: BrainTileDefCreateOptions & { userIdentity?: UserActionIdentity } = {}
+  ) {
     if (action.kind !== "actuator") {
       throw new Error(`BrainTileActuatorDef: expected actuator action for ${actuatorId}`);
     }
     if (opts.placement === undefined) opts.placement = TilePlacement.DoSide;
     super(mkActuatorTileId(actuatorId), action, opts);
     this.actuatorId = actuatorId;
+    this.userIdentity = opts.userIdentity;
   }
 }
 
@@ -33,7 +41,7 @@ export function registerCoreActuatorTileDefs(services: BrainServices) {
     const tileDef = new BrainTileActuatorDef(actuatorId, action, opts);
     tiles.registerTileDef(tileDef);
   };
-  register(fnSwitchPage.fnId, fnSwitchPage.descriptor);
-  register(fnRestartPage.fnId, fnRestartPage.descriptor, { deprecated: true });
-  //register(fnYield.fnId);
+  register(fnSwitchPage.key, fnSwitchPage.descriptor);
+  register(fnRestartPage.key, fnRestartPage.descriptor, { deprecated: true });
+  //register(fnYield.key);
 }

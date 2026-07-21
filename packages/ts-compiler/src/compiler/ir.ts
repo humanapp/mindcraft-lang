@@ -21,6 +21,8 @@ export type IrNode =
   | IrStoreLocal
   | IrLoadCallsiteVar
   | IrStoreCallsiteVar
+  | IrLoadSystemVar
+  | IrStoreSystemVar
   | IrReturn
   | IrPop
   | IrDup
@@ -90,6 +92,26 @@ export interface IrLoadCallsiteVar extends IrNodeBase {
 /** Pop the top of stack and store it into the brain-scoped variable at index `index`. */
 export interface IrStoreCallsiteVar extends IrNodeBase {
   kind: "StoreCallsiteVar";
+  index: number;
+}
+
+/**
+ * Load a System's state at System-store slot `index` onto the stack. `index` is
+ * program-local at lowering time; the linker remaps it to the brain-global
+ * store slot for the System's exported-symbol identity.
+ */
+export interface IrLoadSystemVar extends IrNodeBase {
+  kind: "LoadSystemVar";
+  index: number;
+}
+
+/**
+ * Pop the top of stack and store it into the System-store slot `index` (by
+ * reference, no copy). `index` is program-local at lowering time; the linker
+ * remaps it to the brain-global store slot for the System's identity.
+ */
+export interface IrStoreSystemVar extends IrNodeBase {
+  kind: "StoreSystemVar";
   index: number;
 }
 
@@ -226,14 +248,19 @@ export interface IrStructNew extends IrNodeBase {
 /** Set a field on a struct: pop value, field name, and struct. */
 export interface IrStructSet extends IrNodeBase {
   kind: "StructSet";
-  fieldIndex?: number;
+  /** Storage slot id (`StructFieldDef.fieldIndex`) of the field being written. */
+  fieldIndex: number;
 }
 
-/** Copy a struct of type `typeId` while excluding the top `numExclude` field names from the stack. */
+/**
+ * Copy a struct of type `typeId` while excluding the top `numExclude` field
+ * names from the stack. An undefined `typeId` produces an untyped (anonymous)
+ * copy: the instruction's type operand is omitted.
+ */
 export interface IrStructCopyExcept extends IrNodeBase {
   kind: "StructCopyExcept";
   numExclude: number;
-  typeId: string;
+  typeId: string | undefined;
 }
 
 /** Construct a new list of element type `typeId` and push it. */

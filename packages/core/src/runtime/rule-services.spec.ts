@@ -19,11 +19,16 @@ import {
   mkStringValue,
   NIL_VALUE,
   type Program,
+  type ProgramTypeEntry,
   type RuleVariableStores,
   type Value,
 } from "@mindcraft-lang/core/runtime";
 
-function makeProgram(opts: { ruleFuncIds?: UniqueSet<number>; ruleAncestors?: Dict<number, number> }): Program {
+function makeProgram(opts: {
+  ruleFuncIds?: UniqueSet<number>;
+  ruleAncestors?: Dict<number, number>;
+  types?: List<ProgramTypeEntry>;
+}): Program {
   return {
     version: 1,
     functions: List.empty(),
@@ -31,6 +36,7 @@ function makeProgram(opts: { ruleFuncIds?: UniqueSet<number>; ruleAncestors?: Di
     variableNames: List.empty(),
     ruleFuncIds: opts.ruleFuncIds,
     ruleAncestors: opts.ruleAncestors,
+    types: opts.types,
   };
 }
 
@@ -67,6 +73,37 @@ describe("createProgramServices", () => {
     const services = createProgramServices(program);
     assert.equal(services.getRuleFuncIdForFunc(0), undefined);
     assert.equal(services.getRuleFuncIdForFunc(5), undefined);
+  });
+
+  test("resolves enum symbol values through the program type table", () => {
+    const types = List.from<ProgramTypeEntry>([
+      {
+        tag: "enum",
+        typeId: "enum:</m.ts::Mode>",
+        name: "/m.ts::Mode",
+        symbols: List.from([
+          { key: "Stop", value: 0 },
+          { key: "Go", value: 2 },
+        ]),
+      },
+      {
+        tag: "enum",
+        typeId: "enum:</m.ts::Label>",
+        name: "/m.ts::Label",
+        symbols: List.from([{ key: "Ready", value: "ready" }]),
+      },
+    ]);
+    const services = createProgramServices(makeProgram({ types }));
+    assert.equal(services.getEnumSymbolValue("enum:</m.ts::Mode>", "Go"), 2);
+    assert.equal(services.getEnumSymbolValue("enum:</m.ts::Mode>", "Stop"), 0);
+    assert.equal(services.getEnumSymbolValue("enum:</m.ts::Label>", "Ready"), "ready");
+    assert.equal(services.getEnumSymbolValue("enum:</m.ts::Mode>", "Missing"), undefined);
+    assert.equal(services.getEnumSymbolValue("enum:</m.ts::Absent>", "Go"), undefined);
+  });
+
+  test("returns undefined for enum symbol values when the program has no type table", () => {
+    const services = createProgramServices(makeProgram({}));
+    assert.equal(services.getEnumSymbolValue("enum:</m.ts::Mode>", "Go"), undefined);
   });
 });
 

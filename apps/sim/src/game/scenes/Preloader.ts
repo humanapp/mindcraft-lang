@@ -37,11 +37,12 @@ export class Preloader extends Scene {
 
   create() {
     const store = this.game.registry.get(STORE_REGISTRY_KEY) as SimEnvironmentStore;
+    const projectNamespace = store.activeProjectManifest!.id;
     // Deserialize default brains from loaded binary assets and cache them
     for (const archetype of DEFAULT_BRAIN_ARCHETYPES) {
       const data = this.cache.binary.get(`default-brain-${archetype}`) as ArrayBuffer | undefined;
       if (data) {
-        const brainDef = deserializeBrainFromArrayBuffer(store.env, data);
+        const brainDef = deserializeBrainFromArrayBuffer(store.env, data, projectNamespace);
         if (brainDef) {
           store.setDefaultBrain(archetype, brainDef);
           console.log(`Default brain loaded for ${archetype}`);

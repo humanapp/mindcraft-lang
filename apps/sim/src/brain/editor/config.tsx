@@ -6,10 +6,10 @@ import type { Archetype } from "@/brain/actor";
 import { SimTypeIds } from "@/brain/type-system";
 import type { SimEnvironmentStore } from "@/services/sim-environment-store";
 import { dataTypeIconMap, dataTypeNameMap } from "./data-type-icons";
-import { genVisualForTile } from "./visual-provider";
+import { createVfsAwareVisualProvider } from "./visual-provider";
 
 const inputClass =
-  "col-span-3 flex h-10 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50";
+  "col-span-3 flex h-10 w-full rounded-lg border-2 border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50";
 
 const vector2LiteralType: CustomLiteralType = {
   typeId: SimTypeIds.Vector2,
@@ -47,7 +47,7 @@ const vector2LiteralType: CustomLiteralType = {
     return (
       <div className="grid gap-4">
         <div className="grid grid-cols-4 items-center gap-4">
-          <label htmlFor="vector2X" className="text-right text-slate-700 font-medium">
+          <label htmlFor="vector2X" className="text-right text-foreground font-medium">
             X
           </label>
           <input
@@ -64,7 +64,7 @@ const vector2LiteralType: CustomLiteralType = {
           />
         </div>
         <div className="grid grid-cols-4 items-center gap-4">
-          <label htmlFor="vector2Y" className="text-right text-slate-700 font-medium">
+          <label htmlFor="vector2Y" className="text-right text-foreground font-medium">
             Y
           </label>
           <input
@@ -94,24 +94,14 @@ const vector2LiteralType: CustomLiteralType = {
 interface BuildBrainEditorConfigOptions {
   store: SimEnvironmentStore;
   archetype?: Archetype;
-  vfsRevision?: number;
   onTileHelp?: BrainEditorConfig["onTileHelp"];
   docsIntegration?: BrainEditorConfig["docsIntegration"];
 }
 
 export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): BrainEditorConfig {
-  const { store, archetype, vfsRevision, onTileHelp, docsIntegration } = options;
+  const { store, archetype, onTileHelp, docsIntegration } = options;
   const environment = store.env;
-  const resolveTileVisual =
-    vfsRevision !== undefined
-      ? (tileDef: Parameters<typeof genVisualForTile>[0]) => {
-          const visual = genVisualForTile(tileDef);
-          if (visual.iconUrl?.startsWith("/vfs/")) {
-            return { ...visual, iconUrl: `${visual.iconUrl}?_v=${vfsRevision}` };
-          }
-          return visual;
-        }
-      : genVisualForTile;
+  const resolveTileVisual = createVfsAwareVisualProvider((url) => store.resolveVfsAssetUrl(url));
 
   return {
     dataTypeIcons: dataTypeIconMap,
@@ -120,7 +110,9 @@ export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): 
     customLiteralTypes: [vector2LiteralType],
     getDefaultBrain: archetype ? () => store.getDefaultBrain(archetype) : undefined,
     brainServices: environment.brainServices,
+    projectNamespace: store.activeProjectManifest?.id,
     tileCatalogs: environment.tileCatalogs(),
+    libraries: store.host.installedLibraries,
     onTileHelp,
     docsIntegration,
   };

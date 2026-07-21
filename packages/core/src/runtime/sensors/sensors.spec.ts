@@ -6,7 +6,7 @@ import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
   type BrainSyncFunctionEntry,
-  CoreSensorId,
+  CoreHostActions,
   type ExecutionContext,
   extractNumberValue,
   FALSE_VALUE,
@@ -55,7 +55,7 @@ describe("timeout sensor", () => {
   let fn: HostSyncFn;
 
   before(() => {
-    fn = getSyncEntry(CoreSensorId.Timeout).fn;
+    fn = getSyncEntry(CoreHostActions.Timeout.key).fn;
   });
 
   function setupCtx(callSiteId = 1): ExecutionContext {
@@ -225,7 +225,7 @@ describe("on-page-entered sensor", () => {
   let fn: HostSyncFn;
 
   before(() => {
-    fn = getSyncEntry(CoreSensorId.OnPageEntered).fn;
+    fn = getSyncEntry(CoreHostActions.OnPageEntered.key).fn;
   });
 
   function setupCtx(callSiteId = 1): ExecutionContext {
@@ -270,7 +270,7 @@ describe("random sensor", () => {
   let fn: HostSyncFn;
 
   before(() => {
-    fn = getSyncEntry(CoreSensorId.Random).fn;
+    fn = getSyncEntry(CoreHostActions.Random.key).fn;
   });
 
   test("returns value from brain.rng()", () => {

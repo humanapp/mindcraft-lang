@@ -1,11 +1,15 @@
-import { List } from "@mindcraft-lang/core";
+import { assertUnreachable, List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import {
   ContextTypeIds,
   CoreOpId,
   CoreTypeIds,
   conversionFnName,
+  type EnumTypeDef,
+  isBytecodeConversion,
+  isSharedHostFnConversion,
   mkNumberValue,
+  mkOutputVarKey,
   mkStringValue,
   NativeType,
   NIL_VALUE,
@@ -18,9 +22,19 @@ import {
 import ts from "typescript";
 import { type ArgSlot, collectArgSlots } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
+import { qualifiedDeclarationName } from "./extension-mounts.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import { type LocalMetadata, type ScopeMetadata, ScopeStack } from "./scope.js";
-import type { CompileDiagnostic, ExtractedDescriptor } from "./types.js";
+import { scopedOutputName } from "./symbol-keys.js";
+import {
+  ambientTypeTokenName,
+  isMindcraftModuleDeclaration,
+  resolveTypeNameExpression,
+  shorthandValueExpression,
+  structTypeCallExpression,
+  structTypeConfigObject,
+} from "./type-ref.js";
+import type { ArtifactStructTypeInfo, CompileDiagnostic, ExtractedDescriptor } from "./types.js";
 
 const TRUE_VALUE: Value = { t: 2, v: true };
 const FALSE_VALUE: Value = { t: 2, v: false };
@@ -95,6 +109,44 @@ interface ClassInfo {
   staticSetterFuncIds: Map<string, number>;
 }
 
+/** A function-like config member of a `System({...})` (method shorthand, function, or arrow). */
+type SystemFnNode = ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction;
+
+/**
+ * A `const X = System({...})` binding collected during lowering. Holds the
+ * program-local store slot, the registered state struct type, and the func ids
+ * for the user `init` / `think` bodies, the generated wrappers the runtime
+ * calls, and each method (a struct-receiver function over the state).
+ */
+interface SystemBinding {
+  /** Stable cross-module identity (`<declaring-file>::<binding-name>`); the store key. */
+  identity: string;
+  /** Display / debug name from `config.name`. */
+  name: string;
+  /** Program-local System store slot. */
+  localSlot: number;
+  /** Registered state struct type id, or `undefined` when the state shape did not resolve. */
+  stateTypeId: TypeId | undefined;
+  /** The `state` initializer expression, lowered into the store by the init wrapper. */
+  stateNode: ts.Expression;
+  /** Generated ctx-injected init wrapper func id (builds state, then calls the user `init`). */
+  initWrapperFuncId: number;
+  /** Generated ctx-injected think wrapper func id, when a `think` is declared. */
+  thinkWrapperFuncId?: number;
+  /** User `init` body func id (struct-receiver + ctx), when declared. */
+  userInitFuncId?: number;
+  /** User `init` body node, when declared. */
+  initNode?: SystemFnNode;
+  /** User `think` body func id (struct-receiver + ctx), when declared. */
+  userThinkFuncId?: number;
+  /** User `think` body node, when declared. */
+  thinkNode?: SystemFnNode;
+  /** Method name -> struct-receiver func id. */
+  methodFuncIds: Map<string, number>;
+  /** Method name -> body node. */
+  methodNodes: Map<string, SystemFnNode>;
+}
+
 interface InterfaceInfo {
   node: ts.InterfaceDeclaration;
   name: string;
@@ -107,10 +159,7 @@ interface TypeAliasInfo {
   sourceFile: ts.SourceFile;
 }
 
-/** Build the function-table key for a class declared in `fileName` with class name `className`. */
-export function qualifiedClassName(fileName: string, className: string): string {
-  return `${fileName}::${className}`;
-}
+export { qualifiedClassName } from "./symbol-keys.js";
 
 function resolveAliasedSymbol(symbol: ts.Symbol | undefined, checker?: ts.TypeChecker): ts.Symbol | undefined {
   if (!symbol || !checker || !(symbol.flags & ts.SymbolFlags.Alias)) {
@@ -151,6 +200,29 @@ export interface ProgramLoweringResult {
   numStateSlots: number;
   functionTable: Map<string, number>;
   diagnostics: CompileDiagnostic[];
+  /**
+   * Systems (user-code shared singletons) referenced by this program, each with
+   * its program-local store slot and generated init/think wrapper func ids. The
+   * linker resolves `identity` to a brain-global store slot and registers each
+   * System once across all artifacts.
+   */
+  systems: LoweredSystem[];
+  /** Struct types this program declared or imported, in collection order. */
+  structTypes: ArtifactStructTypeInfo[];
+}
+
+/** A System referenced by a lowered program, carrying program-local ids for the linker to remap. */
+export interface LoweredSystem {
+  /** Stable cross-module identity (`<declaring-file>::<binding-name>`); the store key. */
+  identity: string;
+  /** Display / debug name from the `System({ name })` config. */
+  name: string;
+  /** Program-local System store slot (operand of `LOAD_SYSTEM_VAR` / `STORE_SYSTEM_VAR`). */
+  localSlot: number;
+  /** Program-local func id of the generated ctx-injected init wrapper. */
+  initFuncId: number;
+  /** Program-local func id of the generated ctx-injected think wrapper, if a `think` is declared. */
+  thinkFuncId?: number;
 }
 
 interface LoopContext {
@@ -160,9 +232,19 @@ interface LoopContext {
 
 interface LowerContext {
   services: BrainServices;
+  /** Namespace of the project being compiled; prefixes every symbol key minted from its content. */
+  projectNamespace: string;
   checker: ts.TypeChecker;
   paramsSymbol: ts.Symbol | undefined;
   paramLocals: Map<string, number>;
+  /**
+   * Action arg property name -> its positional local slot (locals `1..N`), set
+   * for a sensor/actuator `onExecute` that declares args. Consulted only by the
+   * `args.<prop>` access path. Bare identifiers and assignment targets resolve
+   * against {@link scopeStack}; a local with the same name as an arg shadows it.
+   * Absent outside `onExecute`.
+   */
+  argLocals?: Map<string, number>;
   scopeStack: ScopeStack;
   ir: IrNode[];
   diagnostics: CompileDiagnostic[];
@@ -175,12 +257,73 @@ interface LowerContext {
   funcIdCounter: { value: number };
   closureFunctions: Map<number, FunctionEntry>;
   thisLocalIndex?: number;
+  /**
+   * Registered struct type id of `this` inside a System method body. Set only
+   * when lowering a System `init` / `think` / method, whose `this` is the
+   * anonymous state struct the TS type resolver does not map to a registry name.
+   */
+  thisStructTypeId?: TypeId;
+  /**
+   * The enclosing System's method name -> func id map, used to dispatch a
+   * `this.method(...)` sibling call. Set alongside {@link thisStructTypeId} when
+   * lowering a System `init` / `think` / method body.
+   */
+  thisSystemMethodFuncIds?: Map<string, number>;
   staticClassInfo?: ClassInfo;
   currentFunctionName: string;
   currentReturnTypeId?: TypeId;
   optionalChainSubstitution?: { targetExpr: ts.Expression; localIndex: number };
   classInfos: ClassInfo[];
+  /**
+   * System bindings in scope, keyed by the resolved declaration symbol of the
+   * `const X = System({...})` variable. A reference to such a symbol lowers to
+   * `LOAD_SYSTEM_VAR`; a `X.method(...)` call lowers to a struct-receiver call
+   * over the System's state. Absent in contexts that cannot reach a System.
+   */
+  systemBindings?: Map<ts.Symbol, SystemBinding>;
+  /**
+   * Declared outputs of the enclosing sensor, mapping each output name to its
+   * resolved value {@link TypeId}. A `setOutput(ctx, name, value)` call resolves
+   * `name` here to form the backing rule-variable key. Set only when lowering a
+   * sensor `onExecute` that declares `outputs`; absent elsewhere, so `setOutput`
+   * outside a sensor body is diagnosed.
+   */
+  sensorOutputs?: Map<string, TypeId>;
+  /**
+   * Every output name the enclosing sensor declares, including any whose declared
+   * type did not resolve. Set alongside {@link sensorOutputs}.
+   */
+  sensorOutputNames?: Set<string>;
   hoistedFunctionNodes?: Set<ts.Node>;
+  /**
+   * Defining-module `const` bindings an imported System body references, keyed by
+   * declaration symbol. A reference resolving to such a symbol re-lowers the
+   * const's initializer inline; the per-callsite slot backing a module-level
+   * const is not bound in the fiber that runs a System's `init` / `think` /
+   * methods. Set on System `init` / `think` / method bodies, a System's `init`
+   * state wrapper, and the helper functions they call.
+   */
+  inlineConsts?: Map<ts.Symbol, ts.Expression>;
+  /**
+   * Const symbols currently being inlined, guarding the re-lowering recursion in
+   * {@link lowerIdentifier} against a cyclic `const` reference. Created alongside
+   * {@link inlineConsts}.
+   */
+  inliningConsts?: Set<ts.Symbol>;
+  /**
+   * Carried non-exported functions in scope, keyed by declaration symbol to their
+   * function-table identity key. A call or reference whose callee resolves to such
+   * a symbol looks up the identity key, keeping same-named private helpers from
+   * different modules distinct. Set on the same bodies as {@link inlineConsts}.
+   */
+  carriedFunctionKeys?: Map<ts.Symbol, string>;
+  /**
+   * When the body being lowered cannot suspend, the clause naming it for an
+   * async-host-call diagnostic (e.g. "a synchronous `onExecute`"). Absent for a
+   * suspendable body (an `async onExecute`) and for plain helper and closure
+   * bodies.
+   */
+  nonSuspendableContext?: string;
 }
 
 function allocLabel(ctx: LowerContext): number {
@@ -230,7 +373,7 @@ function findOptionalChainRoot(
 }
 
 function resolveOperator(opId: string, argTypes: string[], services: BrainServices): string | undefined {
-  return services.edit.operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
+  return services.edit.operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry?.name;
 }
 
 // Operator resolution with type expansion: if a direct overload lookup fails,
@@ -306,13 +449,14 @@ type TargetTypedConversionResolution =
 function resolveRegisteredEnumTypeIdFromSymbol(
   sym: ts.Symbol,
   services: BrainServices,
+  projectNamespace: string,
   checker?: ts.TypeChecker
 ): string | undefined {
   const resolvedSym = resolveAliasedSymbol(sym, checker);
   if (!resolvedSym) return undefined;
 
   const registry = services.runtime.types;
-  const typeId = registry.resolveByName(resolveRegistryName(resolvedSym, services, checker));
+  const typeId = registry.resolveByName(resolveRegistryName(resolvedSym, services, projectNamespace, checker));
   if (!typeId) return undefined;
 
   const typeDef = registry.get(typeId);
@@ -326,11 +470,58 @@ function resolveRegisteredEnumTypeIdFromSymbol(
 function resolveRegisteredEnumTypeId(
   type: ts.Type,
   services: BrainServices,
+  projectNamespace: string,
   checker?: ts.TypeChecker
 ): string | undefined {
   const sym = type.getSymbol() ?? type.aliasSymbol;
   if (!sym) return undefined;
-  return resolveRegisteredEnumTypeIdFromSymbol(sym, services, checker);
+  return resolveRegisteredEnumTypeIdFromSymbol(sym, services, projectNamespace, checker);
+}
+
+/**
+ * Resolve an enum-literal type (a single member type, the enum type itself,
+ * or a union of member literals of one enum) to the registered enum's typeId.
+ * Returns undefined for any other type, including a union that mixes members
+ * of different enums or non-enum constituents.
+ */
+function resolveEnumLiteralTypeId(
+  type: ts.Type,
+  services: BrainServices,
+  projectNamespace: string,
+  checker?: ts.TypeChecker
+): string | undefined {
+  if (type.isUnion()) {
+    let resolved: string | undefined;
+    for (const member of type.types) {
+      const memberId = resolveEnumMemberOwnerTypeId(member, services, projectNamespace, checker);
+      if (!memberId || (resolved !== undefined && resolved !== memberId)) {
+        return undefined;
+      }
+      resolved = memberId;
+    }
+    return resolved;
+  }
+  return resolveEnumMemberOwnerTypeId(type, services, projectNamespace, checker);
+}
+
+function resolveEnumMemberOwnerTypeId(
+  type: ts.Type,
+  services: BrainServices,
+  projectNamespace: string,
+  checker?: ts.TypeChecker
+): string | undefined {
+  if (!(type.flags & ts.TypeFlags.EnumLiteral)) {
+    return undefined;
+  }
+  const sym = resolveAliasedSymbol(type.getSymbol() ?? type.aliasSymbol, checker);
+  if (!sym) return undefined;
+  const memberDecl = sym.getDeclarations()?.find(ts.isEnumMember);
+  if (memberDecl && checker) {
+    const enumSym = checker.getSymbolAtLocation(memberDecl.parent.name);
+    if (!enumSym) return undefined;
+    return resolveRegisteredEnumTypeIdFromSymbol(enumSym, services, projectNamespace, checker);
+  }
+  return resolveRegisteredEnumTypeIdFromSymbol(sym, services, projectNamespace, checker);
 }
 
 function unwrapTypeResolutionExpression(expr: ts.Expression): ts.Expression {
@@ -354,7 +545,7 @@ function resolveDeclaredEnumTypeId(exprNode: ts.Expression, ctx: LowerContext): 
   }
 
   const declaredType = ctx.checker.getTypeOfSymbolAtLocation(symbol, declaration);
-  return resolveRegisteredEnumTypeId(declaredType, ctx.services, ctx.checker);
+  return resolveRegisteredEnumTypeId(declaredType, ctx.services, ctx.projectNamespace, ctx.checker);
 }
 
 function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): string | undefined {
@@ -362,6 +553,14 @@ function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): st
     const enumValue = tryResolveEnumValue(exprNode, ctx);
     if (enumValue && enumValue.t === NativeType.Enum) {
       return enumValue.typeId;
+    }
+  }
+
+  // A struct factory call produces the declared struct type.
+  if (ts.isCallExpression(exprNode) && ts.isIdentifier(exprNode.expression)) {
+    const structDef = resolveStructTypeFactory(exprNode.expression, ctx);
+    if (structDef) {
+      return structDef.typeId;
     }
   }
 
@@ -378,7 +577,7 @@ function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): st
   }
 
   const exprType = ctx.checker.getTypeAtLocation(exprNode);
-  return tsTypeToTypeId(exprType, ctx.checker, ctx.services);
+  return tsTypeToTypeId(exprType, ctx.checker, ctx.services, ctx.projectNamespace);
 }
 
 function resolveSingleStepConversion(
@@ -394,6 +593,26 @@ function resolveSingleStepConversion(
   const conversion = conversionPath?.get(0);
   if (!conversion) {
     return undefined;
+  }
+
+  // A bytecode conversion lives in another artifact; user-code expressions can
+  // only reach host-function conversions, so it does not apply here.
+  if (isBytecodeConversion(conversion)) {
+    return undefined;
+  }
+
+  // A shared-host-function conversion dispatches to a function registered
+  // independently of the (from, to) pair; resolve its name by funcId.
+  if (isSharedHostFnConversion(conversion)) {
+    const entry = services.runtime.functions.getSyncById(conversion.id);
+    if (!entry) {
+      return undefined;
+    }
+    return {
+      fromTypeId: conversion.fromType,
+      toTypeId: conversion.toType,
+      fnName: entry.name,
+    };
   }
 
   return {
@@ -554,19 +773,20 @@ function lowerExpressionWithExpectedType(
 function resolveSignatureReturnTypeId(
   signatureDecl: ts.SignatureDeclarationBase,
   checker: ts.TypeChecker,
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): TypeId | undefined {
   const signature = checker.getSignatureFromDeclaration(signatureDecl as ts.SignatureDeclaration);
   if (!signature) {
     return undefined;
   }
 
-  return tsTypeToTypeId(checker.getReturnTypeOfSignature(signature), checker, services);
+  return tsTypeToTypeId(checker.getReturnTypeOfSignature(signature), checker, services, projectNamespace);
 }
 
 function resolveVariableDeclarationTargetTypeId(decl: ts.VariableDeclaration, ctx: LowerContext): TypeId | undefined {
   const targetType = ctx.checker.getTypeAtLocation(decl.name);
-  return tsTypeToTypeId(targetType, ctx.checker, ctx.services);
+  return tsTypeToTypeId(targetType, ctx.checker, ctx.services, ctx.projectNamespace);
 }
 
 function resolveCallArgumentTargetTypeId(
@@ -597,7 +817,7 @@ function resolveCallArgumentTargetTypeId(
   const parameter = parameters[parameterIndex];
   const parameterLocation = parameter.valueDeclaration ?? parameter.declarations?.[0] ?? callExpr.expression;
   const parameterType = ctx.checker.getTypeOfSymbolAtLocation(parameter, parameterLocation);
-  return tsTypeToTypeId(parameterType, ctx.checker, ctx.services);
+  return tsTypeToTypeId(parameterType, ctx.checker, ctx.services, ctx.projectNamespace);
 }
 
 interface RestParamInfo {
@@ -829,18 +1049,26 @@ export function lowerProgram(
   descriptor: ExtractedDescriptor,
   checker: ts.TypeChecker,
   services: BrainServices,
+  projectNamespace: string,
   importedFunctions?: ImportedFunction[],
   importedVariables?: ImportedVariable[],
   moduleInitOrder?: string[],
   importedClasses?: ImportedClass[],
   importedEnums?: ImportedEnum[],
   importedInterfaces?: ImportedInterface[],
-  importedTypeAliases?: ImportedTypeAlias[]
+  importedTypeAliases?: ImportedTypeAlias[],
+  inlinedSystemConsts?: InlinedSystemConst[],
+  carriedPrivateFunctions?: CarriedPrivateFunction[],
+  importedStructTypeDecls?: ImportedStructTypeDecl[]
 ): ProgramLoweringResult {
   const diagnostics: CompileDiagnostic[] = [];
   const callsiteVars = new Map<string, number>();
   const functionTable = new Map<string, number>();
-  const helperNodes: ts.FunctionDeclaration[] = [];
+  // Module-level function-table contributors (helpers and classes) in func-id
+  // reservation order. Body lowering walks this list in the same order, so each
+  // lowered entry's index in the function array equals its reserved func id.
+  const moduleFunctionDecls: ({ kind: "helper"; node: ts.FunctionDeclaration } | { kind: "class"; info: ClassInfo })[] =
+    [];
   const classInfos: ClassInfo[] = [];
   const interfaceInfos: InterfaceInfo[] = [];
   const typeAliasInfos: TypeAliasInfo[] = [];
@@ -853,12 +1081,78 @@ export function lowerProgram(
   // Callsite vars are distinct per user tile instance, persist across invocations.
   let nextCallsiteVar = 0;
 
+  // Defining-module `const` bindings an imported System body references, keyed by
+  // declaration symbol; re-lowered inline wherever the System body or a helper it
+  // calls references them.
+  const inlineConsts = new Map<ts.Symbol, ts.Expression>();
+  for (const ic of inlinedSystemConsts ?? []) {
+    inlineConsts.set(ic.symbol, ic.initializer);
+  }
+
+  // Carried non-exported functions, keyed by declaration symbol -> function-table
+  // identity key, so a call inside a re-lowered body resolves to the right helper
+  // even when two modules define same-named private helpers. Populated below.
+  const carriedFunctionKeys = new Map<ts.Symbol, string>();
+
+  // `const X = System({...})` bindings: a brain-global store separate from
+  // callsite vars. Collected here (local and imported), then registered below.
+  const systemBindings = new Map<ts.Symbol, SystemBinding>();
+  const systemDecls: { symbol: ts.Symbol; declName: string; config: ts.ObjectLiteralExpression }[] = [];
+  let nextSystemSlot = 0;
+  const collectSystemDecl = (nameNode: ts.Identifier, initializer: ts.Expression | undefined): boolean => {
+    const config = systemConfigObject(initializer);
+    if (!config) return false;
+    const symbol = checker.getSymbolAtLocation(nameNode);
+    if (!symbol) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SystemBindingUnresolvable,
+          `Cannot resolve the declaration of System '${nameNode.text}'.`,
+          nameNode
+        )
+      );
+      return true;
+    }
+    if (!systemBindings.has(symbol) && !systemDecls.some((d) => d.symbol === symbol)) {
+      systemDecls.push({ symbol, declName: nameNode.text, config });
+    }
+    return true;
+  };
+
+  // `const X = StructType({...})` bindings: gathered here across the entry
+  // module and every imported module, then resolved and registered as one set
+  // (register-if-absent, keyed by `<namespace>:<file>::<binding>` identity). Field
+  // resolution never depends on declaration or import-visit order.
+  const structTypes: ArtifactStructTypeInfo[] = [];
+  const pendingStructTypeDecls: PendingStructTypeDecl[] = [];
+  const collectedStructIdentities = new Set<string>();
+  const collectStructTypeDecl = (nameNode: ts.Identifier, initializer: ts.Expression | undefined): boolean => {
+    const call = structTypeCallExpression(initializer);
+    if (!call) return false;
+    const config = structTypeConfigObject(initializer);
+    if (!config) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.StructTypeConfigNotObjectLiteral,
+          `\`StructType\` for '${nameNode.text}' requires a single inline object-literal config.`,
+          call
+        )
+      );
+      return true;
+    }
+    const identity = qualifiedDeclarationName(projectNamespace, config.getSourceFile().fileName, nameNode.text);
+    if (collectedStructIdentities.has(identity)) return true;
+    collectedStructIdentities.add(identity);
+    pendingStructTypeDecls.push({ identity, declName: nameNode.text, config });
+    return true;
+  };
+
   const entryFuncId = funcIdCounter.value++;
 
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.name) {
       functionTable.set(stmt.name.text, funcIdCounter.value++);
-      helperNodes.push(stmt);
+      moduleFunctionDecls.push({ kind: "helper", node: stmt });
     } else if (ts.isEnumDeclaration(stmt)) {
       localEnumNodes.push(stmt);
     } else if (ts.isClassDeclaration(stmt) && stmt.name) {
@@ -918,7 +1212,7 @@ export function lowerProgram(
           }
         }
       }
-      classInfos.push({
+      const info: ClassInfo = {
         node: stmt,
         name: className,
         sourceFile,
@@ -930,7 +1224,9 @@ export function lowerProgram(
         setterFuncIds,
         staticGetterFuncIds,
         staticSetterFuncIds,
-      });
+      };
+      classInfos.push(info);
+      moduleFunctionDecls.push({ kind: "class", info });
     } else if (ts.isInterfaceDeclaration(stmt) && stmt.name) {
       interfaceInfos.push({ node: stmt, name: stmt.name.text, sourceFile });
     } else if (ts.isTypeAliasDeclaration(stmt) && stmt.name) {
@@ -938,6 +1234,8 @@ export function lowerProgram(
     } else if (ts.isVariableStatement(stmt) && !isInsideDescriptor(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
         if (ts.isIdentifier(decl.name)) {
+          if (collectSystemDecl(decl.name, decl.initializer)) continue;
+          if (collectStructTypeDecl(decl.name, decl.initializer)) continue;
           callsiteVars.set(decl.name.text, nextCallsiteVar++);
         }
       }
@@ -946,11 +1244,32 @@ export function lowerProgram(
 
   if (importedVariables) {
     for (const iv of importedVariables) {
+      const declNode = iv.initializer?.parent;
+      const importedDeclName =
+        iv.initializer && declNode && ts.isVariableDeclaration(declNode) && ts.isIdentifier(declNode.name)
+          ? declNode.name
+          : undefined;
+      if (importedDeclName && collectSystemDecl(importedDeclName, iv.initializer)) {
+        continue;
+      }
+      if (importedDeclName && collectStructTypeDecl(importedDeclName, iv.initializer)) {
+        continue;
+      }
       if (!callsiteVars.has(iv.name)) {
         callsiteVars.set(iv.name, nextCallsiteVar++);
       }
     }
   }
+
+  if (importedStructTypeDecls) {
+    for (const decl of importedStructTypeDecls) {
+      collectStructTypeDecl(decl.nameNode, decl.initializer);
+    }
+  }
+
+  structTypes.push(
+    ...registerCollectedStructTypes(pendingStructTypeDecls, checker, services, projectNamespace, diagnostics)
+  );
 
   if (importedFunctions) {
     for (const imp of importedFunctions) {
@@ -958,11 +1277,24 @@ export function lowerProgram(
       if (!declaredName) continue;
       if (!functionTable.has(declaredName)) {
         functionTable.set(declaredName, funcIdCounter.value++);
-        helperNodes.push(imp.node);
+        moduleFunctionDecls.push({ kind: "helper", node: imp.node });
       }
       if (imp.localName !== declaredName && !functionTable.has(imp.localName)) {
         functionTable.set(imp.localName, functionTable.get(declaredName)!);
       }
+    }
+  }
+
+  if (carriedPrivateFunctions) {
+    for (const cpf of carriedPrivateFunctions) {
+      const name = cpf.node.name?.text;
+      if (!name) continue;
+      const key = carriedFunctionKey(cpf.node.getSourceFile().fileName, name);
+      if (!functionTable.has(key)) {
+        functionTable.set(key, funcIdCounter.value++);
+        moduleFunctionDecls.push({ kind: "helper", node: cpf.node });
+      }
+      carriedFunctionKeys.set(cpf.symbol, key);
     }
   }
 
@@ -1026,7 +1358,7 @@ export function lowerProgram(
           }
         }
       }
-      classInfos.push({
+      const info: ClassInfo = {
         node: ic.node,
         name: className,
         sourceFile: ic.sourceFile,
@@ -1038,7 +1370,9 @@ export function lowerProgram(
         setterFuncIds,
         staticGetterFuncIds,
         staticSetterFuncIds,
-      });
+      };
+      classInfos.push(info);
+      moduleFunctionDecls.push({ kind: "class", info });
     }
   }
 
@@ -1083,30 +1417,104 @@ export function lowerProgram(
 
   const functions: FunctionEntry[] = [];
 
-  registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics, services);
+  registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics, services, projectNamespace);
 
+  // Reserve all user-declared named types before finalizing any: a field
+  // naming another user class, interface, or type alias resolves to its
+  // qualified reservation regardless of declaration or import-visit order.
+  const reservedClasses: { info: ClassInfo; typeId: string }[] = [];
   for (const ci of classInfos) {
-    registerClassStructType(ci, checker, diagnostics, services);
+    const typeId = reserveClassStructType(ci, services, projectNamespace);
+    if (typeId) reservedClasses.push({ info: ci, typeId });
   }
 
   const reservedInterfaces: { info: InterfaceInfo; typeId: string }[] = [];
   for (const ii of interfaceInfos) {
-    const typeId = reserveInterfaceStructType(ii, checker, diagnostics, services);
+    const typeId = reserveInterfaceStructType(ii, checker, diagnostics, services, projectNamespace);
     if (typeId) reservedInterfaces.push({ info: ii, typeId });
   }
 
   const reservedTypeAliases: { info: TypeAliasInfo; typeId: string }[] = [];
   for (const tai of typeAliasInfos) {
-    const typeId = reserveTypeAliasStructType(tai, checker, diagnostics, services);
+    const typeId = reserveTypeAliasStructType(tai, checker, diagnostics, services, projectNamespace);
     if (typeId) reservedTypeAliases.push({ info: tai, typeId });
   }
 
+  for (const { info, typeId } of reservedClasses) {
+    finalizeClassStructType(info, typeId, checker, diagnostics, services, projectNamespace);
+  }
+
   for (const { info, typeId } of reservedInterfaces) {
-    finalizeInterfaceStructType(info, typeId, checker, diagnostics, services);
+    finalizeInterfaceStructType(info, typeId, checker, diagnostics, services, projectNamespace);
   }
 
   for (const { info, typeId } of reservedTypeAliases) {
-    finalizeTypeAliasStructType(info, typeId, checker, diagnostics, services);
+    finalizeTypeAliasStructType(info, typeId, checker, diagnostics, services, projectNamespace);
+  }
+
+  // Register each System's state struct type and reserve its func ids (methods,
+  // user init/think bodies, and the generated wrappers) before any body is
+  // lowered, so references resolve and func ids stay contiguous. State field
+  // types resolve against the completed registry: every user-declared named
+  // type (StructType, enum, class, interface, type alias) registers above.
+  // Reservation order here must match the push order in the System
+  // body-lowering pass below.
+  const orderedSystemBindings: SystemBinding[] = [];
+  for (const decl of systemDecls) {
+    const parts = extractSystemConfig(decl.config, diagnostics);
+    if (!parts) continue;
+    const stateDef = autoRegisterAnonymousStruct(
+      checker.getTypeAtLocation(parts.stateNode),
+      checker,
+      services,
+      projectNamespace
+    );
+    if (!stateDef) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SystemStateUnresolvable,
+          "`System` `state` must be a non-empty object of VM-representable fields (numbers, strings, booleans, enums, or struct values such as class, interface, type alias, or StructType instances).",
+          parts.stateNode
+        )
+      );
+      continue;
+    }
+    const localSlot = nextSystemSlot++;
+    const methodFuncIds = new Map<string, number>();
+    parts.methodNodes.forEach((_node, methodName) => {
+      methodFuncIds.set(methodName, funcIdCounter.value++);
+    });
+    const userInitFuncId = parts.initNode ? funcIdCounter.value++ : undefined;
+    const userThinkFuncId = parts.thinkNode ? funcIdCounter.value++ : undefined;
+    const initWrapperFuncId = funcIdCounter.value++;
+    const thinkWrapperFuncId = parts.thinkNode ? funcIdCounter.value++ : undefined;
+    const binding: SystemBinding = {
+      identity: qualifiedDeclarationName(projectNamespace, decl.config.getSourceFile().fileName, decl.declName),
+      name: parts.name,
+      localSlot,
+      stateTypeId: stateDef.typeId,
+      stateNode: parts.stateNode,
+      initWrapperFuncId,
+      thinkWrapperFuncId,
+      userInitFuncId,
+      initNode: parts.initNode,
+      userThinkFuncId,
+      thinkNode: parts.thinkNode,
+      methodFuncIds,
+      methodNodes: parts.methodNodes,
+    };
+    systemBindings.set(decl.symbol, binding);
+    orderedSystemBindings.push(binding);
+  }
+
+  // Co-located Systems (defined in this module) reference module-level `const`s
+  // whose per-callsite backing store is not bound in the System fiber; add them
+  // to the inline map.
+  const coLocatedSystemConfigs = systemDecls
+    .filter((decl) => decl.config.getSourceFile() === sourceFile)
+    .map((decl) => decl.config);
+  for (const ic of collectCoLocatedSystemConsts(coLocatedSystemConfigs, sourceFile, checker, diagnostics)) {
+    inlineConsts.set(ic.symbol, ic.initializer);
   }
 
   const onExecEntry = lowerOnExecuteBody(
@@ -1118,38 +1526,47 @@ export function lowerProgram(
     funcIdCounter,
     closureFunctions,
     services,
-    classInfos
+    projectNamespace,
+    classInfos,
+    systemBindings
   );
   functions.push(onExecEntry);
 
-  for (const helperNode of helperNodes) {
-    const entry = lowerHelperFunction(
-      helperNode,
-      checker,
-      callsiteVars,
-      functionTable,
-      diagnostics,
-      funcIdCounter,
-      closureFunctions,
-      services,
-      classInfos
-    );
-    functions.push(entry);
-  }
-
-  for (const ci of classInfos) {
-    const classEntries = lowerClassDeclaration(
-      ci,
-      checker,
-      callsiteVars,
-      functionTable,
-      diagnostics,
-      funcIdCounter,
-      closureFunctions,
-      services,
-      classInfos
-    );
-    functions.push(...classEntries);
+  for (const decl of moduleFunctionDecls) {
+    if (decl.kind === "helper") {
+      functions.push(
+        lowerHelperFunction(
+          decl.node,
+          checker,
+          callsiteVars,
+          functionTable,
+          diagnostics,
+          funcIdCounter,
+          closureFunctions,
+          services,
+          projectNamespace,
+          classInfos,
+          systemBindings,
+          inlineConsts,
+          carriedFunctionKeys
+        )
+      );
+    } else {
+      functions.push(
+        ...lowerClassDeclaration(
+          decl.info,
+          checker,
+          callsiteVars,
+          functionTable,
+          diagnostics,
+          funcIdCounter,
+          closureFunctions,
+          services,
+          projectNamespace,
+          classInfos
+        )
+      );
+    }
   }
 
   if (descriptor.onPageEnteredNode) {
@@ -1162,7 +1579,9 @@ export function lowerProgram(
       funcIdCounter,
       closureFunctions,
       services,
-      classInfos
+      projectNamespace,
+      classInfos,
+      systemBindings
     );
     functions.push(entry);
   }
@@ -1179,7 +1598,9 @@ export function lowerProgram(
       importedVariables ?? [],
       moduleInitOrder ?? [],
       classInfos,
-      services
+      services,
+      projectNamespace,
+      systemBindings
     );
     functions.push(initEntry);
   }
@@ -1199,9 +1620,117 @@ export function lowerProgram(
       funcIdCounter,
       closureFunctions,
       services,
-      classInfos
+      projectNamespace,
+      classInfos,
+      systemBindings
     );
     functions.push(exitEntry);
+  }
+
+  // System bodies and generated wrappers. Pushed after the page hooks and
+  // before closures so each entry's array index equals its reserved func id.
+  const systems: LoweredSystem[] = [];
+  for (const binding of orderedSystemBindings) {
+    binding.methodNodes.forEach((node, methodName) => {
+      functions.push(
+        lowerSystemFnEntry(
+          node,
+          `${binding.name}.${methodName}`,
+          checker,
+          callsiteVars,
+          functionTable,
+          diagnostics,
+          funcIdCounter,
+          closureFunctions,
+          services,
+          projectNamespace,
+          classInfos,
+          systemBindings,
+          binding.stateTypeId,
+          binding.methodFuncIds,
+          inlineConsts,
+          carriedFunctionKeys
+        )
+      );
+    });
+    if (binding.initNode) {
+      functions.push(
+        lowerSystemFnEntry(
+          binding.initNode,
+          `${binding.name}.init`,
+          checker,
+          callsiteVars,
+          functionTable,
+          diagnostics,
+          funcIdCounter,
+          closureFunctions,
+          services,
+          projectNamespace,
+          classInfos,
+          systemBindings,
+          binding.stateTypeId,
+          binding.methodFuncIds,
+          inlineConsts,
+          carriedFunctionKeys
+        )
+      );
+    }
+    if (binding.thinkNode) {
+      functions.push(
+        lowerSystemFnEntry(
+          binding.thinkNode,
+          `${binding.name}.think`,
+          checker,
+          callsiteVars,
+          functionTable,
+          diagnostics,
+          funcIdCounter,
+          closureFunctions,
+          services,
+          projectNamespace,
+          classInfos,
+          systemBindings,
+          binding.stateTypeId,
+          binding.methodFuncIds,
+          inlineConsts,
+          carriedFunctionKeys
+        )
+      );
+    }
+    functions.push(
+      generateSystemInitWrapper(
+        binding,
+        checker,
+        callsiteVars,
+        functionTable,
+        diagnostics,
+        funcIdCounter,
+        closureFunctions,
+        services,
+        projectNamespace,
+        classInfos,
+        systemBindings,
+        inlineConsts,
+        carriedFunctionKeys
+      )
+    );
+    if (binding.thinkNode && binding.thinkWrapperFuncId !== undefined && binding.userThinkFuncId !== undefined) {
+      functions.push(
+        generateSystemThinkWrapper(
+          binding.name,
+          binding.localSlot,
+          binding.userThinkFuncId,
+          binding.thinkNode.parameters.length > 0
+        )
+      );
+    }
+    systems.push({
+      identity: binding.identity,
+      name: binding.name,
+      localSlot: binding.localSlot,
+      initFuncId: binding.initWrapperFuncId,
+      thinkFuncId: binding.thinkWrapperFuncId,
+    });
   }
 
   const closureEntries = Array.from(closureFunctions.entries())
@@ -1218,6 +1747,8 @@ export function lowerProgram(
     numStateSlots: nextCallsiteVar,
     functionTable,
     diagnostics,
+    systems,
+    structTypes,
   };
 }
 
@@ -1230,7 +1761,9 @@ function lowerOnPageEnteredBody(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
-  classInfos: ClassInfo[]
+  projectNamespace: string,
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const funcNode = descriptor.onPageEnteredNode!;
@@ -1250,6 +1783,7 @@ function lowerOnPageEnteredBody(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals,
@@ -1264,8 +1798,10 @@ function lowerOnPageEnteredBody(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onPageEntered`,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services, projectNamespace),
     classInfos,
+    systemBindings,
+    nonSuspendableContext: "`onPageEntered` (page handlers cannot suspend)",
   };
 
   const body = funcNode.body;
@@ -1317,7 +1853,9 @@ function lowerOnPageExitedBody(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
-  classInfos: ClassInfo[]
+  projectNamespace: string,
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const funcNode = descriptor.onPageExitedNode!;
@@ -1337,6 +1875,7 @@ function lowerOnPageExitedBody(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals,
@@ -1351,8 +1890,10 @@ function lowerOnPageExitedBody(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onPageExited`,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services, projectNamespace),
     classInfos,
+    systemBindings,
+    nonSuspendableContext: "`onPageExited` (page handlers cannot suspend)",
   };
 
   const body = funcNode.body;
@@ -1419,6 +1960,1189 @@ function generateActivationFunction(name: string, userOnPageEnteredFuncId: numbe
   };
 }
 
+/** Returns the `System({...})` config object literal when `expr` is a `System(...)` call, else undefined. */
+export function systemConfigObject(expr: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined {
+  if (!expr || !ts.isCallExpression(expr)) return undefined;
+  if (!ts.isIdentifier(expr.expression) || expr.expression.text !== "System") return undefined;
+  const arg = expr.arguments[0];
+  return arg && ts.isObjectLiteralExpression(arg) ? arg : undefined;
+}
+
+function propertyNameText(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) return name.text;
+  return undefined;
+}
+
+/** A System's config members split into state, lifecycle, and methods. */
+interface SystemConfigParts {
+  name: string;
+  stateNode: ts.Expression;
+  initNode?: SystemFnNode;
+  thinkNode?: SystemFnNode;
+  methodNodes: Map<string, SystemFnNode>;
+}
+
+/** Pull a function-like config member out of a method shorthand or a property whose value is a function/arrow. */
+function systemMemberFn(member: ts.ObjectLiteralElementLike): SystemFnNode | undefined {
+  if (ts.isMethodDeclaration(member)) return member;
+  if (ts.isPropertyAssignment(member)) {
+    const init = member.initializer;
+    if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) return init;
+  }
+  return undefined;
+}
+
+/**
+ * Parse a `System({...})` config object literal into its parts. Every member is
+ * validated: a malformed or unrecognized member (spread, computed key, getter,
+ * a non-string `name`, a non-object `state`, a non-function `init`/`think`/
+ * method) reports a diagnostic. Returns `undefined` when `name` or `state` is
+ * missing or invalid (the System cannot be built); otherwise returns the parts,
+ * with any individually-invalid `init`/`think`/method omitted.
+ */
+function extractSystemConfig(
+  config: ts.ObjectLiteralExpression,
+  diagnostics: CompileDiagnostic[]
+): SystemConfigParts | undefined {
+  let name: string | undefined;
+  let stateNode: ts.Expression | undefined;
+  let initNode: SystemFnNode | undefined;
+  let thinkNode: SystemFnNode | undefined;
+  const methodNodes = new Map<string, SystemFnNode>();
+  let sawName = false;
+  let sawState = false;
+
+  for (const member of config.properties) {
+    if (!member.name) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SystemMemberNotMethod,
+          "Spread members are not supported in a `System` config.",
+          member
+        )
+      );
+      continue;
+    }
+    const key = propertyNameText(member.name);
+    if (key === undefined) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SystemMemberNotMethod,
+          "Computed member names are not supported in a `System` config.",
+          member.name
+        )
+      );
+      continue;
+    }
+
+    if (key === "name") {
+      sawName = true;
+      if (ts.isPropertyAssignment(member) && ts.isStringLiteralLike(member.initializer)) {
+        name = member.initializer.text;
+      } else {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.SystemNameNotStringLiteral,
+            "`System` config `name` must be a string literal.",
+            member
+          )
+        );
+      }
+      continue;
+    }
+    if (key === "state") {
+      sawState = true;
+      if (ts.isPropertyAssignment(member)) {
+        stateNode = member.initializer;
+      } else {
+        diagnostics.push(
+          makeDiag(LoweringDiagCode.SystemStateNotObject, "`System` config `state` must be an object.", member)
+        );
+      }
+      continue;
+    }
+    if (key === "init" || key === "think") {
+      const fn = systemMemberFn(member);
+      if (fn) {
+        if (key === "init") initNode = fn;
+        else thinkNode = fn;
+      } else {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.SystemLifecycleNotFunction,
+            `\`System\` config \`${key}\` must be a method or inline function.`,
+            member
+          )
+        );
+      }
+      continue;
+    }
+    const fn = systemMemberFn(member);
+    if (fn) {
+      methodNodes.set(key, fn);
+    } else {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SystemMemberNotMethod,
+          `\`System\` member '${key}' must be a method (use a method or inline function).`,
+          member
+        )
+      );
+    }
+  }
+
+  if (name === undefined) {
+    if (!sawName) {
+      diagnostics.push(
+        makeDiag(LoweringDiagCode.SystemNameNotStringLiteral, "`System` config requires a string `name`.", config)
+      );
+    }
+    return undefined;
+  }
+  if (stateNode === undefined) {
+    if (!sawState) {
+      diagnostics.push(
+        makeDiag(LoweringDiagCode.SystemStateNotObject, "`System` config requires a `state` object.", config)
+      );
+    }
+    return undefined;
+  }
+  return { name, stateNode, initNode, thinkNode, methodNodes };
+}
+
+/**
+ * A `const X = StructType(...)` declaration collected from an imported module
+ * (exported or not); the entry compile registers its type so references in
+ * re-lowered bodies resolve.
+ */
+export interface ImportedStructTypeDecl {
+  nameNode: ts.Identifier;
+  initializer: ts.Expression;
+}
+
+/** Validated members of a `StructType({...})` config. Field types are canonical registry names, not yet resolved against the registry. */
+interface StructTypeConfigParts {
+  name: string;
+  accessors: boolean;
+  variables: boolean;
+  fields: { name: string; typeName: string; typeExpr: ts.Expression }[];
+}
+
+/**
+ * Extract and validate a `StructType({...})` config: a string `name`, a
+ * non-empty `fields` object of `name: type` entries (types normalized to
+ * canonical registry names through the type-name expression forms), and
+ * optional boolean-literal `accessors` and `variables`. Each malformed member
+ * pushes its own diagnostic; returns undefined when any member fails.
+ */
+export function extractStructTypeConfig(
+  config: ts.ObjectLiteralExpression,
+  checker: ts.TypeChecker,
+  projectNamespace: string,
+  diagnostics: CompileDiagnostic[]
+): StructTypeConfigParts | undefined {
+  let name: string | undefined;
+  let accessors = false;
+  let variables = false;
+  let fieldsNode: ts.ObjectLiteralExpression | undefined;
+  let sawFields = false;
+  let failed = false;
+
+  const readBooleanMember = (memberName: string, value: ts.Expression): boolean => {
+    if (value.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (value.kind === ts.SyntaxKind.FalseKeyword) return false;
+    diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.StructTypeMemberInvalid,
+        `\`StructType\` \`${memberName}\` must be a boolean literal.`,
+        value
+      )
+    );
+    failed = true;
+    return false;
+  };
+
+  for (const prop of config.properties) {
+    if (ts.isSpreadAssignment(prop)) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.StructTypeMemberInvalid,
+          "`StructType` config members must be written inline; spread is not supported.",
+          prop
+        )
+      );
+      failed = true;
+      continue;
+    }
+
+    let memberName: string | undefined;
+    let value: ts.Expression | undefined;
+    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+      memberName = prop.name.text;
+      value = prop.initializer;
+    } else if (ts.isShorthandPropertyAssignment(prop)) {
+      memberName = prop.name.text;
+      if (memberName === "fields") {
+        sawFields = true;
+      }
+      value = shorthandValueExpression(prop, checker);
+      if (!value) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeMemberInvalid,
+            `\`StructType\` \`${memberName}\` does not resolve to a declared value.`,
+            prop
+          )
+        );
+        failed = true;
+        continue;
+      }
+    } else {
+      continue;
+    }
+
+    switch (memberName) {
+      case "name":
+        if (ts.isStringLiteral(value)) {
+          name = value.text;
+        } else {
+          diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.StructTypeNameNotStringLiteral,
+              "`StructType` `name` must be a string literal.",
+              value
+            )
+          );
+          failed = true;
+        }
+        break;
+      case "fields":
+        sawFields = true;
+        if (ts.isObjectLiteralExpression(value)) {
+          fieldsNode = value;
+        } else {
+          diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.StructTypeMemberInvalid,
+              "`StructType` `fields` must be an object literal of `name: type` entries.",
+              value
+            )
+          );
+          failed = true;
+        }
+        break;
+      case "accessors":
+        accessors = readBooleanMember("accessors", value);
+        break;
+      case "variables":
+        variables = readBooleanMember("variables", value);
+        break;
+    }
+  }
+
+  if (name === undefined && !failed) {
+    diagnostics.push(
+      makeDiag(LoweringDiagCode.StructTypeNameNotStringLiteral, "`StructType` config requires a string `name`.", config)
+    );
+    failed = true;
+  }
+  if (fieldsNode === undefined && !sawFields) {
+    diagnostics.push(
+      makeDiag(LoweringDiagCode.StructTypeMemberInvalid, "`StructType` config requires a `fields` object.", config)
+    );
+    failed = true;
+  }
+
+  const fields: { name: string; typeName: string; typeExpr: ts.Expression }[] = [];
+  if (fieldsNode) {
+    for (const prop of fieldsNode.properties) {
+      let fieldName: string | undefined;
+      let typeExpr: ts.Expression | undefined;
+      if (ts.isPropertyAssignment(prop) && (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name))) {
+        fieldName = prop.name.text;
+        typeExpr = prop.initializer;
+      } else if (ts.isShorthandPropertyAssignment(prop)) {
+        fieldName = prop.name.text;
+        typeExpr = shorthandValueExpression(prop, checker);
+      }
+      if (fieldName === undefined) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeMemberInvalid,
+            "Each `StructType` field must be a `name: type` entry.",
+            prop
+          )
+        );
+        failed = true;
+        continue;
+      }
+      if (typeExpr === undefined) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeFieldTypeUnresolvable,
+            `\`StructType\` field '${fieldName}' does not resolve to a declared type value.`,
+            prop
+          )
+        );
+        failed = true;
+        continue;
+      }
+      if (fields.some((field) => field.name === fieldName)) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeDuplicateField,
+            `\`StructType\` field '${fieldName}' is declared more than once.`,
+            prop
+          )
+        );
+        failed = true;
+        continue;
+      }
+      const resolved = resolveTypeNameExpression(typeExpr, checker, projectNamespace);
+      if ("error" in resolved) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeFieldTypeUnresolvable,
+            `\`StructType\` field '${fieldName}' type ${resolved.error}.`,
+            typeExpr
+          )
+        );
+        failed = true;
+        continue;
+      }
+      fields.push({ name: fieldName, typeName: resolved.name, typeExpr });
+    }
+
+    if (fields.length === 0 && !failed) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.StructTypeMemberInvalid,
+          "`StructType` `fields` must declare at least one field.",
+          fieldsNode
+        )
+      );
+      failed = true;
+    }
+  }
+
+  if (failed || name === undefined) {
+    return undefined;
+  }
+  return { name, accessors, variables, fields };
+}
+
+/** A `const X = StructType({...})` declaration gathered during collection, awaiting resolution and registration. */
+interface PendingStructTypeDecl {
+  /** Cross-module identity: `<declaring-file>::<binding-name>`. */
+  identity: string;
+  /** The declared binding name, used in diagnostics. */
+  declName: string;
+  config: ts.ObjectLiteralExpression;
+}
+
+/**
+ * Resolve and register every gathered `StructType({...})` declaration against
+ * the completed set, in dependency order; a struct-typed field resolves no
+ * matter where its declaration sits. A field naming a declaration on the
+ * current visit path closes a containment cycle and fails with
+ * {@link LoweringDiagCode.StructTypeRecursiveField}; a field naming a
+ * declaration that failed for its own reasons fails without a second
+ * diagnostic. Returns artifact metadata for every registered declaration in
+ * collection order.
+ */
+function registerCollectedStructTypes(
+  pending: PendingStructTypeDecl[],
+  checker: ts.TypeChecker,
+  services: BrainServices,
+  projectNamespace: string,
+  diagnostics: CompileDiagnostic[]
+): ArtifactStructTypeInfo[] {
+  const registry = services.runtime.types;
+  const extracted = new Map<string, { decl: PendingStructTypeDecl; parts: StructTypeConfigParts }>();
+  const failed = new Set<string>();
+  for (const decl of pending) {
+    const parts = extractStructTypeConfig(decl.config, checker, projectNamespace, diagnostics);
+    if (parts) {
+      extracted.set(decl.identity, { decl, parts });
+    } else {
+      failed.add(decl.identity);
+    }
+  }
+
+  const registered = new Map<string, ArtifactStructTypeInfo>();
+  const VISITING = 1;
+  const DONE = 2;
+  const visitState = new Map<string, number>();
+  const visitPath: string[] = [];
+
+  const declNameOf = (identity: string): string => extracted.get(identity)?.decl.declName ?? identity;
+
+  const finalize = (identity: string): void => {
+    if (failed.has(identity)) return;
+    const entry = extracted.get(identity)!;
+    const fields: { name: string; typeId: TypeId }[] = [];
+    for (const field of entry.parts.fields) {
+      const fieldTypeId = registry.resolveByName(field.typeName);
+      if (fieldTypeId === undefined) {
+        // A field naming a declaration that already failed carries no second
+        // diagnostic; that declaration's own diagnostic names the root cause.
+        if (!failed.has(field.typeName)) {
+          diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.StructTypeFieldTypeUnresolvable,
+              `\`StructType\` field '${field.name}' names unknown type "${field.typeName}".`,
+              field.typeExpr
+            )
+          );
+        }
+        failed.add(identity);
+        continue;
+      }
+      fields.push({ name: field.name, typeId: fieldTypeId });
+    }
+    if (failed.has(identity)) return;
+    let typeId = registry.resolveByName(identity);
+    if (typeId === undefined) {
+      typeId = registry.withOwner("dynamic", () =>
+        registry.addStructType(identity, {
+          fields: List.from(
+            fields.map((field, index) => ({ name: field.name, typeId: field.typeId, fieldIndex: index }))
+          ),
+        })
+      );
+    }
+    registered.set(identity, {
+      identity,
+      name: entry.parts.name,
+      typeId,
+      accessors: entry.parts.accessors,
+      variables: entry.parts.variables,
+      fields,
+    });
+  };
+
+  const visit = (identity: string): void => {
+    if (visitState.get(identity) === DONE) return;
+    visitState.set(identity, VISITING);
+    visitPath.push(identity);
+    const entry = extracted.get(identity)!;
+    for (const field of entry.parts.fields) {
+      const dep = extracted.get(field.typeName);
+      if (!dep) continue;
+      if (visitState.get(field.typeName) === VISITING) {
+        const cycle = visitPath.slice(visitPath.indexOf(field.typeName));
+        const pathNames = [identity, ...cycle.slice(0, -1), identity].map(declNameOf);
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.StructTypeRecursiveField,
+            `\`StructType\` '${declNameOf(identity)}' field '${field.name}' creates a containment cycle: ${pathNames.join(" -> ")}. A struct value cannot contain its own type.`,
+            field.typeExpr
+          )
+        );
+        for (const member of cycle) {
+          failed.add(member);
+        }
+        continue;
+      }
+      visit(field.typeName);
+    }
+    visitPath.pop();
+    visitState.set(identity, DONE);
+    finalize(identity);
+  };
+
+  for (const decl of pending) {
+    if (extracted.has(decl.identity)) {
+      visit(decl.identity);
+    }
+  }
+
+  const infos: ArtifactStructTypeInfo[] = [];
+  for (const decl of pending) {
+    const info = registered.get(decl.identity);
+    if (info) infos.push(info);
+  }
+  return infos;
+}
+
+/** Name-keyed declarations gathered from a set of a project's modules. */
+export interface GatheredNamedDeclarations {
+  structTypes: ImportedStructTypeDecl[];
+  enums: ImportedEnum[];
+  classes: ImportedClass[];
+  interfaces: ImportedInterface[];
+  typeAliases: ImportedTypeAlias[];
+  /** `const X = System({...})` config objects; each System's state struct registers. */
+  systemConfigs: ts.ObjectLiteralExpression[];
+}
+
+/** Registry facts produced by {@link registerGatheredNamedDeclarations}. */
+export interface GatheredRegistrationResult {
+  /** Each gathered System config's registered state struct type. */
+  systemStateTypes: Map<ts.ObjectLiteralExpression, TypeId>;
+}
+
+/**
+ * Register every gathered name-keyed declaration into the live registry with
+ * the sequence a tile compile uses: `StructType` declarations
+ * (gather-then-register in dependency order), enums, then reserve-all /
+ * finalize-all classes, interfaces, and type aliases, then System state
+ * structs. Registration is register-if-absent throughout, so a declaration a
+ * tile compile already registered resolves to its existing id.
+ */
+export function registerGatheredNamedDeclarations(
+  gathered: GatheredNamedDeclarations,
+  checker: ts.TypeChecker,
+  services: BrainServices,
+  projectNamespace: string,
+  diagnostics: CompileDiagnostic[]
+): GatheredRegistrationResult {
+  const pending: PendingStructTypeDecl[] = [];
+  const seenIdentities = new Set<string>();
+  for (const decl of gathered.structTypes) {
+    const config = structTypeConfigObject(decl.initializer);
+    if (!config) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.StructTypeConfigNotObjectLiteral,
+          `\`StructType\` for '${decl.nameNode.text}' requires a single inline object-literal config.`,
+          decl.initializer
+        )
+      );
+      continue;
+    }
+    const identity = qualifiedDeclarationName(projectNamespace, config.getSourceFile().fileName, decl.nameNode.text);
+    if (seenIdentities.has(identity)) continue;
+    seenIdentities.add(identity);
+    pending.push({ identity, declName: decl.nameNode.text, config });
+  }
+  registerCollectedStructTypes(pending, checker, services, projectNamespace, diagnostics);
+
+  registerUserEnumTypes([], gathered.enums, checker, diagnostics, services, projectNamespace);
+
+  const reservedClasses: { info: ImportedClass; typeId: string }[] = [];
+  for (const ci of gathered.classes) {
+    const typeId = reserveClassStructType(ci, services, projectNamespace);
+    if (typeId) reservedClasses.push({ info: ci, typeId });
+  }
+  const reservedInterfaces: { info: InterfaceInfo; typeId: string }[] = [];
+  for (const ii of gathered.interfaces) {
+    const typeId = reserveInterfaceStructType(ii, checker, diagnostics, services, projectNamespace);
+    if (typeId) reservedInterfaces.push({ info: ii, typeId });
+  }
+  const reservedTypeAliases: { info: TypeAliasInfo; typeId: string }[] = [];
+  for (const tai of gathered.typeAliases) {
+    const typeId = reserveTypeAliasStructType(tai, checker, diagnostics, services, projectNamespace);
+    if (typeId) reservedTypeAliases.push({ info: tai, typeId });
+  }
+  for (const { info, typeId } of reservedClasses) {
+    finalizeClassStructType(info, typeId, checker, diagnostics, services, projectNamespace);
+  }
+  for (const { info, typeId } of reservedInterfaces) {
+    finalizeInterfaceStructType(info, typeId, checker, diagnostics, services, projectNamespace);
+  }
+  for (const { info, typeId } of reservedTypeAliases) {
+    finalizeTypeAliasStructType(info, typeId, checker, diagnostics, services, projectNamespace);
+  }
+
+  const systemStateTypes = new Map<ts.ObjectLiteralExpression, TypeId>();
+  for (const config of gathered.systemConfigs) {
+    const parts = extractSystemConfig(config, diagnostics);
+    if (!parts) continue;
+    const stateDef = autoRegisterAnonymousStruct(
+      checker.getTypeAtLocation(parts.stateNode),
+      checker,
+      services,
+      projectNamespace
+    );
+    if (stateDef) {
+      systemStateTypes.set(config, stateDef.typeId);
+    }
+  }
+  return { systemStateTypes };
+}
+
+/** True when `node` carries an `export` modifier. */
+function hasExportModifierNode(node: ts.Node): boolean {
+  if (!ts.canHaveModifiers(node)) return false;
+  const mods = ts.getModifiers(node);
+  return mods?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+}
+
+/** True when `id` sits inside a type node (a type-position reference). */
+function isInTypeContext(id: ts.Identifier): boolean {
+  let n: ts.Node | undefined = id.parent;
+  while (n) {
+    if (ts.isTypeNode(n)) return true;
+    if (ts.isSourceFile(n) || ts.isBlock(n) || ts.isStatement(n)) return false;
+    n = n.parent;
+  }
+  return false;
+}
+
+/** True when `id` is a value-reference position (not a declaration name, member name, or property key). */
+function isValueReferenceIdentifier(id: ts.Identifier): boolean {
+  const parent = id.parent;
+  if (ts.isPropertyAccessExpression(parent) && parent.name === id) return false;
+  if (ts.isQualifiedName(parent) && parent.right === id) return false;
+  if (ts.isPropertyAssignment(parent) && parent.name === id) return false;
+  if (
+    (ts.isMethodDeclaration(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isGetAccessorDeclaration(parent) ||
+      ts.isSetAccessorDeclaration(parent)) &&
+    parent.name === id
+  ) {
+    return false;
+  }
+  if (ts.isParameter(parent) && parent.name === id) return false;
+  if (ts.isBindingElement(parent) && (parent.name === id || parent.propertyName === id)) return false;
+  if (ts.isVariableDeclaration(parent) && parent.name === id) return false;
+  if (ts.isFunctionDeclaration(parent) && parent.name === id) return false;
+  if (isInTypeContext(id)) return false;
+  return true;
+}
+
+/**
+ * True when `decl`'s initializer has a primitive value type (number, string,
+ * boolean, or an enum member). A primitive-valued `const` can be re-lowered
+ * inline at each reference; a `const` holding a struct, array, or object cannot
+ * (each site would build a distinct instance).
+ */
+function isPrimitiveValuedConst(decl: ts.VariableDeclaration, checker: ts.TypeChecker): boolean {
+  if (!decl.initializer) return false;
+  const flags = checker.getTypeAtLocation(decl.initializer).flags;
+  const primitive =
+    ts.TypeFlags.NumberLike | ts.TypeFlags.StringLike | ts.TypeFlags.BooleanLike | ts.TypeFlags.EnumLike;
+  return (flags & primitive) !== 0;
+}
+
+/**
+ * Classify a value-reference `id` against its defining `moduleFile`. When `id`
+ * resolves to a top-level `function` declaration, `onFunction` is invoked (the
+ * caller carries a non-exported one and traverses an exported one); when it
+ * resolves to a primitive-valued `const`, `onConst` is invoked. A reference to
+ * a `StructType({...})` binding is left alone: it resolves through the
+ * registered struct type in any fiber. A class or enum declared in `localFile`
+ * (the module whose compile lowers the System body) is left alone: it resolves
+ * through that compile's own class and enum registration. When `diagnostics` is
+ * provided, a reference to a top-level binding that cannot be used from a
+ * System fiber -- a module-level `let`/`var`, a co-located System, a
+ * non-primitive `const`, or a non-exported class/enum in another module --
+ * pushes a {@link LoweringDiagCode.SystemModuleReferenceNotCarryable}
+ * diagnostic; passing `undefined` leaves those references alone (they resolve
+ * normally in an ordinary fiber). Any reference resolving outside `moduleFile`,
+ * to a nested local, or to a member is left alone.
+ */
+function classifySystemModuleReference(
+  id: ts.Identifier,
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[] | undefined,
+  localFile: ts.SourceFile | undefined,
+  onFunction: (decl: ts.FunctionDeclaration, symbol: ts.Symbol) => void,
+  onConst: (decl: ts.VariableDeclaration, symbol: ts.Symbol) => void
+): void {
+  const symbol = resolveAliasedSymbol(checker.getSymbolAtLocation(id), checker);
+  if (!symbol) return;
+  const decls = symbol.getDeclarations();
+  if (!decls || decls.length === 0) return;
+  for (const decl of decls) {
+    // Ambient (.d.ts) bindings are host-provided and resolve through their own
+    // machinery; only user-module top-level bindings are inlined / carried.
+    if (!isUserSourceDecl(decl)) continue;
+    const declFile = decl.getSourceFile();
+
+    if (ts.isFunctionDeclaration(decl) && decl.parent === declFile) {
+      onFunction(decl, symbol);
+      return;
+    }
+
+    if (ts.isVariableDeclaration(decl)) {
+      const list = decl.parent;
+      if (
+        ts.isVariableDeclarationList(list) &&
+        ts.isVariableStatement(list.parent) &&
+        list.parent.parent === declFile
+      ) {
+        const isConst = (list.flags & ts.NodeFlags.Const) !== 0;
+        if (isConst && structTypeCallExpression(decl.initializer)) {
+          return;
+        }
+        if (isConst && !systemConfigObject(decl.initializer)) {
+          if (isPrimitiveValuedConst(decl, checker)) {
+            onConst(decl, symbol);
+          } else {
+            diagnostics?.push(
+              makeDiag(
+                LoweringDiagCode.SystemModuleReferenceNotCarryable,
+                `A System body references '${id.text}', a module-level \`const\` holding a non-primitive value (a struct, array, or object); reference it through a \`function\` or store it in System state.`,
+                id
+              )
+            );
+          }
+          return;
+        }
+        const kind = !isConst ? "a mutable ('let'/'var') binding" : "a co-located System";
+        diagnostics?.push(
+          makeDiag(
+            LoweringDiagCode.SystemModuleReferenceNotCarryable,
+            `A System body references '${id.text}', ${kind} in its defining module; only module-level \`const\` values and \`function\` declarations can be used from a System body.`,
+            id
+          )
+        );
+        return;
+      }
+      return;
+    }
+
+    if (decl.parent === declFile && !hasExportModifierNode(decl) && declFile !== localFile) {
+      diagnostics?.push(
+        makeDiag(
+          LoweringDiagCode.SystemModuleReferenceNotCarryable,
+          `A System body references '${id.text}', a non-exported binding in its defining module; export it (or use a \`const\` value or \`function\`) so importing modules can resolve it.`,
+          id
+        )
+      );
+    }
+    return;
+  }
+}
+
+/**
+ * A defining-module `const` an imported System body references, re-lowered inline
+ * at each reference site in the importing module. The store where module-level
+ * consts live (per-callsite state) is not bound in the fiber that runs a System's
+ * `init` / `think` / methods.
+ */
+export interface InlinedSystemConst {
+  /** Declaration symbol of the `const` (resolved against the shared checker); the reference key. */
+  symbol: ts.Symbol;
+  /** The `const`'s initializer expression, re-lowered inline at each reference. */
+  initializer: ts.Expression;
+}
+
+/**
+ * A non-exported `function` an imported System body (or a helper it calls)
+ * references, re-lowered into the importer. It is registered in the function
+ * table under its {@link carriedFunctionKey} identity key and its call sites
+ * resolve by declaration symbol, so same-named private helpers from different
+ * modules do not collide.
+ */
+export interface CarriedPrivateFunction {
+  /** Declaration symbol of the function (resolved against the shared checker); the call-site key. */
+  symbol: ts.Symbol;
+  /** The function declaration, re-lowered into the importer. */
+  node: ts.FunctionDeclaration;
+}
+
+/** The function-table key for a carried private function declared in `fileName` with name `name`. */
+function carriedFunctionKey(fileName: string, name: string): string {
+  return `${fileName}::${name}`;
+}
+
+/**
+ * BFS the closure of defining-module bindings that `seedNodes` (System config
+ * literals or function bodies) reference, transitively following function bodies
+ * and const initializers. Each referenced top-level `function` invokes
+ * `onFunction` and each carryable `const` invokes `onConst`, both given an
+ * `enqueue` to push a body / initializer node for further traversal. References
+ * resolve whole-program (a binding is classified against its own defining file).
+ * When `diagnoseNonCarryable` is true, a reference to a binding that cannot be
+ * used from a System fiber (a `let`, a non-primitive `const`, a class/enum) is
+ * diagnosed; when false those references are left alone (they resolve normally in
+ * an ordinary fiber).
+ */
+function walkSystemBindingClosure(
+  seedNodes: ts.Node[],
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[],
+  diagnoseNonCarryable: boolean,
+  localFile: ts.SourceFile | undefined,
+  onFunction: (decl: ts.FunctionDeclaration, symbol: ts.Symbol, enqueue: (node: ts.Node) => void) => void,
+  onConst: (decl: ts.VariableDeclaration, symbol: ts.Symbol, enqueue: (node: ts.Node) => void) => void
+): void {
+  const visited = new Set<ts.Node>();
+  const worklist: ts.Node[] = [...seedNodes];
+  const enqueue = (node: ts.Node): void => {
+    worklist.push(node);
+  };
+  while (worklist.length > 0) {
+    const node = worklist.pop();
+    if (!node || visited.has(node)) continue;
+    visited.add(node);
+    const visitNode = (n: ts.Node): void => {
+      if (ts.isIdentifier(n)) {
+        if (isValueReferenceIdentifier(n)) {
+          classifySystemModuleReference(
+            n,
+            checker,
+            diagnoseNonCarryable ? diagnostics : undefined,
+            localFile,
+            (fnDecl, symbol) => onFunction(fnDecl, symbol, enqueue),
+            (constDecl, symbol) => onConst(constDecl, symbol, enqueue)
+          );
+        }
+        return;
+      }
+      ts.forEachChild(n, visitNode);
+    };
+    visitNode(node);
+  }
+}
+
+/**
+ * Collect the module-level `const` bindings that co-located Systems (Systems
+ * defined in the same module as their consuming tile, `entryFile`) reference,
+ * transitively through the functions they call, for the inline map. Their
+ * per-callsite backing store is not bound in a System fiber. Non-carryable
+ * references are diagnosed.
+ */
+function collectCoLocatedSystemConsts(
+  systemConfigs: ts.ObjectLiteralExpression[],
+  entryFile: ts.SourceFile,
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[]
+): InlinedSystemConst[] {
+  if (systemConfigs.length === 0) return [];
+  const constsToInline = new Set<ts.VariableDeclaration>();
+  const inlinedConsts: InlinedSystemConst[] = [];
+  walkSystemBindingClosure(
+    systemConfigs,
+    checker,
+    diagnostics,
+    true,
+    entryFile,
+    (fnDecl, _symbol, enqueue) => {
+      if (fnDecl.body) enqueue(fnDecl.body);
+    },
+    (constDecl, symbol, enqueue) => {
+      if (!constsToInline.has(constDecl) && constDecl.initializer) {
+        constsToInline.add(constDecl);
+        inlinedConsts.push({ symbol, initializer: constDecl.initializer });
+        enqueue(constDecl.initializer);
+      }
+    }
+  );
+  return inlinedConsts;
+}
+
+/**
+ * Collect the defining-module top-level bindings that exported Systems in
+ * `visitedModuleFiles` reference, so an importing module re-lowering a System
+ * body can resolve them. The compiler re-lowers a System's `state` / `init` /
+ * `think` / method bodies in every importing module; those bodies may reference
+ * top-level `const` values and `function` declarations declared beside the
+ * System, which a plain named import does not pull in. Walks each module's
+ * exported System configs (transitively, following functions into consts and
+ * back) and returns:
+ * - `privateFunctions`: referenced non-exported `function` declarations, carried
+ *   into the importer under an identity key that keeps same-named helpers from
+ *   different modules distinct;
+ * - `inlinedConsts`: referenced `const` bindings, re-lowered inline at each
+ *   reference site; their per-callsite backing store is not bound in a System fiber.
+ * A reference to a top-level binding that is neither a carryable `const` nor a
+ * `function` yields a diagnostic.
+ */
+export function collectSystemModuleBindings(
+  visitedModuleFiles: ts.SourceFile[],
+  checker: ts.TypeChecker
+): {
+  privateFunctions: CarriedPrivateFunction[];
+  inlinedConsts: InlinedSystemConst[];
+  diagnostics: CompileDiagnostic[];
+} {
+  const privateFunctions: CarriedPrivateFunction[] = [];
+  const inlinedConsts: InlinedSystemConst[] = [];
+  const diagnostics: CompileDiagnostic[] = [];
+
+  for (const moduleFile of visitedModuleFiles) {
+    const systemConfigs: ts.ObjectLiteralExpression[] = [];
+    const exportedFunctionBodies: ts.Node[] = [];
+    for (const stmt of moduleFile.statements) {
+      if (ts.isVariableStatement(stmt) && hasExportModifierNode(stmt)) {
+        for (const decl of stmt.declarationList.declarations) {
+          const config = systemConfigObject(decl.initializer);
+          if (config) systemConfigs.push(config);
+        }
+      } else if (ts.isFunctionDeclaration(stmt) && hasExportModifierNode(stmt) && stmt.body) {
+        exportedFunctionBodies.push(stmt.body);
+      }
+    }
+    if (systemConfigs.length === 0 && exportedFunctionBodies.length === 0) continue;
+
+    const fnsToCarry = new Set<ts.FunctionDeclaration>();
+    const constsToCarry = new Set<ts.VariableDeclaration>();
+    const carryFunction = (
+      fnDecl: ts.FunctionDeclaration,
+      symbol: ts.Symbol,
+      enqueue: (node: ts.Node) => void
+    ): void => {
+      // An exported function is already collected by the import walker; traverse
+      // its body so consts it reaches still resolve, without re-carrying it.
+      if (hasExportModifierNode(fnDecl)) {
+        if (fnDecl.body) enqueue(fnDecl.body);
+        return;
+      }
+      if (!fnsToCarry.has(fnDecl) && fnDecl.body) {
+        fnsToCarry.add(fnDecl);
+        privateFunctions.push({ symbol, node: fnDecl });
+        enqueue(fnDecl.body);
+      }
+    };
+    const carryConst = (
+      constDecl: ts.VariableDeclaration,
+      symbol: ts.Symbol,
+      enqueue: (node: ts.Node) => void
+    ): void => {
+      if (!constsToCarry.has(constDecl) && constDecl.initializer) {
+        constsToCarry.add(constDecl);
+        inlinedConsts.push({ symbol, initializer: constDecl.initializer });
+        enqueue(constDecl.initializer);
+      }
+    };
+    // System roots: strict -- consts reached from a System fiber (exported or not)
+    // must inline, and non-carryable references are diagnosed.
+    walkSystemBindingClosure(systemConfigs, checker, diagnostics, true, undefined, carryFunction, carryConst);
+    // Exported-function roots: lenient -- carry only the non-exported bindings a
+    // re-lowered function needs; exported consts keep their callsite-var backing.
+    walkSystemBindingClosure(
+      exportedFunctionBodies,
+      checker,
+      diagnostics,
+      false,
+      undefined,
+      carryFunction,
+      (constDecl, symbol, enqueue) => {
+        const stmt = constDecl.parent.parent;
+        if (ts.isVariableStatement(stmt) && hasExportModifierNode(stmt)) return;
+        carryConst(constDecl, symbol, enqueue);
+      }
+    );
+  }
+
+  return { privateFunctions, inlinedConsts, diagnostics };
+}
+
+/**
+ * Lower a System function-like member (method, `init`, or `think`) as a
+ * struct-receiver function: `this` (the state struct) at local 0, the source
+ * parameters at locals 1..N. Mirrors class-method lowering.
+ */
+function lowerSystemFnEntry(
+  fnNode: SystemFnNode,
+  name: string,
+  checker: ts.TypeChecker,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  diagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices,
+  projectNamespace: string,
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>,
+  thisStructTypeId: TypeId | undefined,
+  thisSystemMethodFuncIds: Map<string, number>,
+  inlineConsts: Map<ts.Symbol, ts.Expression>,
+  carriedFunctionKeys: Map<ts.Symbol, string>
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  const params = fnNode.parameters;
+  const userParamCount = params.length;
+  const totalParamCount = userParamCount + 1;
+
+  const paramLocals = new Map<string, number>();
+  for (let i = 0; i < userParamCount; i++) {
+    const p = params[i];
+    if (ts.isIdentifier(p.name)) paramLocals.set(p.name.text, i + 1);
+  }
+
+  const scopeStack = new ScopeStack(totalParamCount);
+  const funcScopeId = scopeStack.initFunctionScope(0, name);
+  scopeStack.addParameterMetadata("this", 0, funcScopeId);
+  for (let i = 0; i < userParamCount; i++) {
+    const p = params[i];
+    if (ts.isIdentifier(p.name)) scopeStack.addParameterMetadata(p.name.text, i + 1, funcScopeId);
+  }
+
+  const ctx: LowerContext = {
+    services,
+    projectNamespace,
+    checker,
+    paramsSymbol: undefined,
+    paramLocals,
+    scopeStack,
+    ir,
+    diagnostics,
+    loopStack: [],
+    breakStack: [],
+    nextLabelId: 0,
+    callsiteVars,
+    functionTable,
+    funcIdCounter,
+    closureFunctions,
+    thisLocalIndex: 0,
+    thisStructTypeId,
+    thisSystemMethodFuncIds,
+    currentFunctionName: name,
+    currentReturnTypeId: resolveSignatureReturnTypeId(fnNode, checker, services, projectNamespace),
+    classInfos,
+    systemBindings,
+    inlineConsts,
+    inliningConsts: new Set<ts.Symbol>(),
+    carriedFunctionKeys,
+    nonSuspendableContext: "a System method (System `init`, `think`, and methods cannot suspend)",
+  };
+
+  for (let i = 0; i < userParamCount; i++) {
+    const p = params[i];
+    if (ts.isObjectBindingPattern(p.name)) {
+      lowerObjectBindingPattern(p.name, i + 1, ctx);
+    } else if (ts.isArrayBindingPattern(p.name)) {
+      lowerArrayBindingPattern(p.name, i + 1, ctx);
+    }
+  }
+
+  const body = fnNode.body;
+  if (body && ts.isBlock(body)) {
+    lowerStatements(body.statements, ctx);
+    ir.push({ kind: "PushConst", value: NIL_VALUE });
+    ir.push({ kind: "Return" });
+  } else if (body) {
+    lowerExpressionWithExpectedType(body, ctx.currentReturnTypeId, "return statement", body, ctx);
+    ir.push({ kind: "Return" });
+  } else {
+    ir.push({ kind: "PushConst", value: NIL_VALUE });
+    ir.push({ kind: "Return" });
+  }
+
+  scopeStack.finalizeFunctionScope(ir.length);
+  return {
+    ir,
+    numParams: totalParamCount,
+    numLocals: scopeStack.nextLocal,
+    name,
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
+    isGenerated: false,
+    sourceFileName: fnNode.getSourceFile()?.fileName,
+    functionSpan: spanFromNode(fnNode),
+  };
+}
+
+/**
+ * Generate the ctx-injected init wrapper the runtime calls once at startup: it
+ * builds the initial state struct from the `state` literal, stores it into the
+ * System slot, then calls the user `init` (if any) with `(state, ctx)`.
+ */
+function generateSystemInitWrapper(
+  binding: SystemBinding,
+  checker: ts.TypeChecker,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  diagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices,
+  projectNamespace: string,
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>,
+  inlineConsts: Map<ts.Symbol, ts.Expression>,
+  carriedFunctionKeys: Map<ts.Symbol, string>
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  const scopeStack = new ScopeStack(1);
+  scopeStack.initFunctionScope(0, `${binding.name}.<init>`);
+
+  const ctx: LowerContext = {
+    services,
+    projectNamespace,
+    checker,
+    paramsSymbol: undefined,
+    paramLocals: new Map<string, number>(),
+    scopeStack,
+    ir,
+    diagnostics,
+    loopStack: [],
+    breakStack: [],
+    nextLabelId: 0,
+    callsiteVars,
+    functionTable,
+    funcIdCounter,
+    closureFunctions,
+    currentFunctionName: `${binding.name}.<init>`,
+    classInfos,
+    systemBindings,
+    inlineConsts,
+    inliningConsts: new Set<ts.Symbol>(),
+    carriedFunctionKeys,
+    nonSuspendableContext: "a System `init` (cannot suspend)",
+  };
+
+  // Build the initial state struct from the `state` literal against the
+  // registered state struct def when known, else lower the expression directly.
+  const stateDef =
+    binding.stateTypeId !== undefined
+      ? (services.runtime.types.get(binding.stateTypeId) as StructTypeDef | undefined)
+      : undefined;
+  if (stateDef && ts.isObjectLiteralExpression(binding.stateNode)) {
+    lowerObjectLiteralAsStruct(binding.stateNode, stateDef, ctx);
+  } else {
+    lowerExpression(binding.stateNode, ctx);
+  }
+  ir.push({ kind: "StoreSystemVar", index: binding.localSlot });
+
+  if (binding.userInitFuncId !== undefined) {
+    const hasCtx = (binding.initNode?.parameters.length ?? 0) > 0;
+    ir.push({ kind: "LoadSystemVar", index: binding.localSlot });
+    if (hasCtx) ir.push({ kind: "LoadLocal", index: 0 });
+    ir.push({ kind: "Call", funcIndex: binding.userInitFuncId, argc: hasCtx ? 2 : 1 });
+    ir.push({ kind: "Pop" });
+  }
+
+  ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ir.push({ kind: "Return" });
+
+  scopeStack.finalizeFunctionScope(ir.length);
+  return {
+    ir,
+    numParams: 1,
+    numLocals: scopeStack.nextLocal,
+    name: `${binding.name}.<init>`,
+    injectCtxTypeId: ContextTypeIds.Context,
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
+    isGenerated: true,
+  };
+}
+
+/**
+ * Generate the ctx-injected think wrapper the runtime calls every think: it
+ * loads the System's state and calls the user `think` with `(state, ctx)`.
+ */
+function generateSystemThinkWrapper(
+  name: string,
+  localSlot: number,
+  userThinkFuncId: number,
+  hasCtx: boolean
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  ir.push({ kind: "LoadSystemVar", index: localSlot });
+  if (hasCtx) ir.push({ kind: "LoadLocal", index: 0 });
+  ir.push({ kind: "Call", funcIndex: userThinkFuncId, argc: hasCtx ? 2 : 1 });
+  ir.push({ kind: "Pop" });
+  ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ir.push({ kind: "Return" });
+  return {
+    ir,
+    numParams: 1,
+    numLocals: 1,
+    name: `${name}.<think>`,
+    injectCtxTypeId: ContextTypeIds.Context,
+    isGenerated: true,
+  };
+}
+
 function isInsideDescriptor(stmt: ts.VariableStatement): boolean {
   return stmt.parent !== undefined && !ts.isSourceFile(stmt.parent);
 }
@@ -1427,7 +3151,9 @@ function hasTopLevelInitializers(sourceFile: ts.SourceFile): boolean {
   for (const stmt of sourceFile.statements) {
     if (ts.isVariableStatement(stmt) && ts.isSourceFile(stmt.parent)) {
       for (const decl of stmt.declarationList.declarations) {
-        if (decl.initializer && ts.isIdentifier(decl.name)) {
+        // System bindings have no callsite-var slot; their state is built by the
+        // System init wrapper, not the module-scope initializer.
+        if (decl.initializer && ts.isIdentifier(decl.name) && !systemConfigObject(decl.initializer)) {
           return true;
         }
       }
@@ -1443,6 +3169,98 @@ function argSlotPropertyName(slot: ArgSlot): string {
   return lastDot >= 0 ? id.substring(lastDot + 1) : id;
 }
 
+/**
+ * Lower a conversion's `convert` function as the artifact entry. The single
+ * declared parameter is the positional argument of the conversion's
+ * `ACTION_CALL` site (local 0); no execution context is injected.
+ */
+function lowerConvertBody(
+  descriptor: ExtractedDescriptor,
+  checker: ts.TypeChecker,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  sharedDiagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices,
+  projectNamespace: string,
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  const funcNode = descriptor.onExecuteNode;
+  const funcName = `${descriptor.name}.convert`;
+
+  const paramLocals = new Map<string, number>();
+  const valueParam = funcNode.parameters[0];
+  if (valueParam && ts.isIdentifier(valueParam.name)) {
+    paramLocals.set(valueParam.name.text, 0);
+  } else if (valueParam) {
+    sharedDiagnostics.push(
+      makeDiag(
+        LoweringDiagCode.DestructuringInOnExecuteNotSupported,
+        "Destructuring in convert parameters is not supported",
+        valueParam
+      )
+    );
+  }
+
+  const scopeStack = new ScopeStack(1);
+  const funcScopeId = scopeStack.initFunctionScope(0, funcName);
+  if (valueParam && ts.isIdentifier(valueParam.name)) {
+    scopeStack.addParameterMetadata(valueParam.name.text, 0, funcScopeId);
+  }
+
+  const ctx: LowerContext = {
+    services,
+    projectNamespace,
+    checker,
+    paramsSymbol: undefined,
+    paramLocals,
+    scopeStack,
+    ir,
+    diagnostics: sharedDiagnostics,
+    loopStack: [],
+    breakStack: [],
+    nextLabelId: 0,
+    callsiteVars,
+    functionTable,
+    funcIdCounter,
+    closureFunctions,
+    currentFunctionName: funcName,
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services, projectNamespace),
+    classInfos,
+    systemBindings,
+    nonSuspendableContext: "a conversion `convert` (conversions are synchronous)",
+  };
+
+  const body = funcNode.body;
+  if (!body || !ts.isBlock(body)) {
+    sharedDiagnostics.push({
+      code: LoweringDiagCode.OnExecuteHasNoBody,
+      message: "convert function has no body",
+      severity: "error",
+    });
+  } else {
+    lowerStatements(body.statements, ctx);
+    ir.push({ kind: "PushConst", value: NIL_VALUE });
+    ir.push({ kind: "Return" });
+  }
+
+  scopeStack.finalizeFunctionScope(ir.length);
+  return {
+    ir,
+    numParams: 1,
+    numLocals: scopeStack.nextLocal,
+    name: funcName,
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
+    isGenerated: false,
+    sourceFileName: funcNode.getSourceFile()?.fileName,
+    functionSpan: spanFromNode(funcNode),
+  };
+}
+
 function lowerOnExecuteBody(
   descriptor: ExtractedDescriptor,
   checker: ts.TypeChecker,
@@ -1452,8 +3270,32 @@ function lowerOnExecuteBody(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
-  classInfos: ClassInfo[]
+  projectNamespace: string,
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
+  switch (descriptor.kind) {
+    case "conversion":
+      return lowerConvertBody(
+        descriptor,
+        checker,
+        callsiteVars,
+        functionTable,
+        sharedDiagnostics,
+        funcIdCounter,
+        closureFunctions,
+        services,
+        projectNamespace,
+        classInfos,
+        systemBindings
+      );
+    case "sensor":
+    case "actuator":
+      break;
+    default:
+      assertUnreachable(descriptor.kind);
+  }
+
   const ir: IrNode[] = [];
   const argSlots = collectArgSlots(descriptor.args);
   const hasArgs = argSlots.length > 0;
@@ -1482,6 +3324,7 @@ function lowerOnExecuteBody(
     paramLocals.set(ctxParam.name.text, 0);
   }
 
+  const argLocals = new Map<string, number>();
   let paramsSymbol: ts.Symbol | undefined;
   const nextLabelId = 0;
   if (hasArgs) {
@@ -1493,7 +3336,29 @@ function lowerOnExecuteBody(
     for (const slot of argSlots) {
       const name = argSlotPropertyName(slot);
       const localIdx = 1 + slot.slotId;
-      paramLocals.set(name, localIdx);
+      argLocals.set(name, localIdx);
+    }
+  }
+
+  let sensorOutputs: Map<string, TypeId> | undefined;
+  let sensorOutputNames: Set<string> | undefined;
+  if (descriptor.kind === "sensor" && descriptor.outputs && descriptor.outputs.length > 0) {
+    sensorOutputs = new Map<string, TypeId>();
+    sensorOutputNames = new Set<string>();
+    for (const output of descriptor.outputs) {
+      sensorOutputNames.add(output.name);
+      const typeId = resolveOutputTypeId(output.type, services);
+      if (typeId === undefined) {
+        sharedDiagnostics.push(
+          makeDiag(
+            LoweringDiagCode.OutputTypeUnresolvable,
+            `Sensor output \`${output.name}\` declares type \`${output.type}\`, which does not resolve to a registered type.`,
+            funcNode
+          )
+        );
+        continue;
+      }
+      sensorOutputs.set(output.name, typeId);
     }
   }
 
@@ -1506,7 +3371,7 @@ function lowerOnExecuteBody(
   if (hasArgs) {
     for (const slot of argSlots) {
       const name = argSlotPropertyName(slot);
-      const idx = paramLocals.get(name);
+      const idx = argLocals.get(name);
       if (idx !== undefined) {
         scopeStack.addParameterMetadata(name, idx, funcScopeId);
       }
@@ -1515,9 +3380,11 @@ function lowerOnExecuteBody(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol,
     paramLocals,
+    argLocals,
     scopeStack,
     ir,
     diagnostics: sharedDiagnostics,
@@ -1529,8 +3396,14 @@ function lowerOnExecuteBody(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onExecute`,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services, projectNamespace),
     classInfos,
+    systemBindings,
+    sensorOutputs,
+    sensorOutputNames,
+    nonSuspendableContext: descriptor.execIsAsync
+      ? undefined
+      : "a synchronous `onExecute`. Declare `onExecute` as `async` and `await` the call",
   };
 
   const body = funcNode.body;
@@ -1584,7 +3457,11 @@ function lowerHelperFunction(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
-  classInfos: ClassInfo[]
+  projectNamespace: string,
+  classInfos: ClassInfo[],
+  systemBindings: Map<ts.Symbol, SystemBinding>,
+  inlineConsts: Map<ts.Symbol, ts.Expression>,
+  carriedFunctionKeys: Map<ts.Symbol, string>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const paramLocals = new Map<string, number>();
@@ -1610,6 +3487,7 @@ function lowerHelperFunction(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals,
@@ -1624,8 +3502,12 @@ function lowerHelperFunction(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: funcName,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services, projectNamespace),
     classInfos,
+    systemBindings,
+    inlineConsts,
+    inliningConsts: new Set<ts.Symbol>(),
+    carriedFunctionKeys,
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -1684,7 +3566,9 @@ function generateModuleInitWithImports(
   importedVariables: ImportedVariable[],
   moduleInitOrder: string[],
   classInfos: ClassInfo[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string,
+  systemBindings: Map<ts.Symbol, SystemBinding>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const scopeStack = new ScopeStack(0);
@@ -1692,6 +3576,7 @@ function generateModuleInitWithImports(
 
   const ctx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals: new Map(),
@@ -1707,6 +3592,8 @@ function generateModuleInitWithImports(
     closureFunctions,
     currentFunctionName: "<module-init>",
     classInfos,
+    systemBindings,
+    nonSuspendableContext: "a module-level initializer",
   };
 
   for (const moduleName of moduleInitOrder) {
@@ -1769,7 +3656,7 @@ function generateModuleInitWithImports(
 
       if (member.initializer) {
         const memberType = checker.getTypeAtLocation(member);
-        const fieldTypeId = tsTypeToTypeId(memberType, checker, services);
+        const fieldTypeId = tsTypeToTypeId(memberType, checker, services, projectNamespace);
         lowerExpressionWithExpectedType(
           member.initializer,
           fieldTypeId,
@@ -1779,7 +3666,7 @@ function generateModuleInitWithImports(
         );
       } else {
         const memberType = checker.getTypeAtLocation(member);
-        const fieldTypeId = tsTypeToTypeId(memberType, checker, services);
+        const fieldTypeId = tsTypeToTypeId(memberType, checker, services, projectNamespace);
         if (!fieldTypeId) {
           ctx.diagnostics.push(
             makeDiag(
@@ -1912,7 +3799,11 @@ function hoistNestedFunctionDeclarations(stmts: ts.NodeArray<ts.Statement>, ctx:
       ctx.funcIdCounter,
       ctx.closureFunctions,
       ctx.services,
-      ctx.classInfos
+      ctx.projectNamespace,
+      ctx.classInfos,
+      ctx.systemBindings ?? new Map<ts.Symbol, SystemBinding>(),
+      ctx.inlineConsts ?? new Map<ts.Symbol, ts.Expression>(),
+      ctx.carriedFunctionKeys ?? new Map<ts.Symbol, string>()
     );
     ctx.closureFunctions.set(funcId, entry);
     ctx.ir.push({ kind: "PushFunctionRef", funcName: name });
@@ -1943,6 +3834,17 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     ctx.ir.push({ kind: "Return" });
   } else if (ts.isExpressionStatement(stmt)) {
     lowerExpression(stmt.expression, ctx);
+    const lastNode = ctx.ir[ctx.ir.length - 1];
+    if (lastNode?.kind === "HostCallAsync" && ctx.nonSuspendableContext === undefined) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.UnawaitedAsyncCall,
+          `The result of async action \`${lastNode.fnName}\` is discarded. Add \`await\` to wait for it to complete.`,
+          stmt.expression,
+          "warning"
+        )
+      );
+    }
     ctx.ir.push({ kind: "Pop" });
   } else if (ts.isVariableStatement(stmt)) {
     lowerVariableDeclarationList(stmt.declarationList, ctx);
@@ -2189,26 +4091,51 @@ function lowerObjectRestElement(
   ctx: LowerContext
 ): void {
   const restType = ctx.checker.getTypeAtLocation(element.name);
-  const typeId = tsTypeToTypeId(restType, ctx.checker, ctx.services) ?? "struct:<anonymous>";
+  const typeId = tsTypeToTypeId(restType, ctx.checker, ctx.services, ctx.projectNamespace);
 
-  ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
-
-  let numExclude = 0;
+  let hasComputedKeys = false;
   for (const other of pattern.elements) {
-    if (other === element) continue;
-    const computedKeyLocal = computedKeyLocals.get(other);
-    if (computedKeyLocal !== undefined) {
-      ctx.ir.push({ kind: "LoadLocal", index: computedKeyLocal });
-      numExclude++;
-    } else if (other.propertyName && ts.isIdentifier(other.propertyName)) {
-      ctx.ir.push({ kind: "PushConst", value: mkStringValue(other.propertyName.text) });
-      numExclude++;
-    } else if (ts.isIdentifier(other.name)) {
-      ctx.ir.push({ kind: "PushConst", value: mkStringValue(other.name.text) });
-      numExclude++;
+    if (other !== element && computedKeyLocals.has(other)) {
+      hasComputedKeys = true;
     }
   }
-  ctx.ir.push({ kind: "StructCopyExcept", numExclude, typeId });
+  const restDef = typeId === undefined ? undefined : ctx.services.runtime.types.get(typeId);
+  const restStruct =
+    restDef !== undefined && restDef.coreType === NativeType.Struct ? (restDef as StructTypeDef) : undefined;
+  const sourceTypeId = tsTypeToTypeId(
+    ctx.checker.getTypeAtLocation(pattern),
+    ctx.checker,
+    ctx.services,
+    ctx.projectNamespace
+  );
+  const sourceDef = sourceTypeId === undefined ? undefined : ctx.services.runtime.types.get(sourceTypeId);
+  const sourceStruct =
+    sourceDef !== undefined && sourceDef.coreType === NativeType.Struct ? (sourceDef as StructTypeDef) : undefined;
+
+  if (!hasComputedKeys && (restStruct !== undefined || sourceStruct !== undefined)) {
+    lowerStaticRestCopy(restStruct, sourceStruct, element, pattern, srcLocal, ctx);
+  } else {
+    // Dynamic fallback: the excluded keys (or the rest type itself) are only
+    // known at runtime, so the copy stays name-keyed via STRUCT_COPY_EXCEPT.
+    ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+
+    let numExclude = 0;
+    for (const other of pattern.elements) {
+      if (other === element) continue;
+      const computedKeyLocal = computedKeyLocals.get(other);
+      if (computedKeyLocal !== undefined) {
+        ctx.ir.push({ kind: "LoadLocal", index: computedKeyLocal });
+        numExclude++;
+      } else if (other.propertyName && ts.isIdentifier(other.propertyName)) {
+        ctx.ir.push({ kind: "PushConst", value: mkStringValue(other.propertyName.text) });
+        numExclude++;
+      } else if (ts.isIdentifier(other.name)) {
+        ctx.ir.push({ kind: "PushConst", value: mkStringValue(other.name.text) });
+        numExclude++;
+      }
+    }
+    ctx.ir.push({ kind: "StructCopyExcept", numExclude, typeId });
+  }
 
   if (ts.isIdentifier(element.name)) {
     const localIdx = ctx.scopeStack.declareLocal(element.name.text);
@@ -2222,6 +4149,50 @@ function lowerObjectRestElement(
     ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
     lowerArrayBindingPattern(element.name, tempLocal, ctx);
   }
+}
+
+/**
+ * Build a statically-keyed rest struct by field id: construct the result
+ * type, then copy each kept field from the source by id. The result type is
+ * the resolved rest type when the checker produced one, else the source type
+ * (matching the dynamic fallback's typing, with excluded fields left unset).
+ * Leaves the rest struct on the stack.
+ */
+function lowerStaticRestCopy(
+  restStruct: StructTypeDef | undefined,
+  sourceStruct: StructTypeDef | undefined,
+  element: ts.BindingElement,
+  pattern: ts.ObjectBindingPattern,
+  srcLocal: number,
+  ctx: LowerContext
+): void {
+  const excluded = new Set<string>();
+  for (const other of pattern.elements) {
+    if (other === element) continue;
+    if (other.propertyName && ts.isIdentifier(other.propertyName)) {
+      excluded.add(other.propertyName.text);
+    } else if (ts.isIdentifier(other.name)) {
+      excluded.add(other.name.text);
+    }
+  }
+
+  const resultStruct = restStruct ?? (sourceStruct as StructTypeDef);
+  const copied = (restStruct ?? sourceStruct ?? resultStruct).fields;
+
+  ctx.ir.push({ kind: "StructNew", typeId: resultStruct.typeId });
+  copied.forEach((field) => {
+    if (restStruct === undefined && excluded.has(field.name)) return;
+    const dstFieldIndex = resultStruct.fieldIndexByName.get(field.name);
+    if (dstFieldIndex === undefined) return;
+    const srcFieldIndex = sourceStruct?.fieldIndexByName.get(field.name);
+    ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+    if (srcFieldIndex !== undefined) {
+      ctx.ir.push({ kind: "GetField", fieldName: field.name, fieldIndex: srcFieldIndex });
+    } else {
+      ctx.ir.push({ kind: "GetField", fieldName: field.name });
+    }
+    ctx.ir.push({ kind: "StructSet", fieldIndex: dstFieldIndex });
+  });
 }
 
 function lowerArrayDestructuring(
@@ -2290,10 +4261,10 @@ function lowerArrayRestElement(
   ctx: LowerContext
 ): void {
   const restType = ctx.checker.getTypeAtLocation(element.name);
-  let listTypeId = tsTypeToTypeId(restType, ctx.checker, ctx.services);
+  let listTypeId = tsTypeToTypeId(restType, ctx.checker, ctx.services, ctx.projectNamespace);
   if (!listTypeId) {
     const srcType = ctx.checker.getTypeAtLocation(element.parent);
-    listTypeId = tsTypeToTypeId(srcType, ctx.checker, ctx.services) ?? "list:any";
+    listTypeId = tsTypeToTypeId(srcType, ctx.checker, ctx.services, ctx.projectNamespace) ?? "list:any";
   }
 
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
@@ -2363,7 +4334,7 @@ function lowerArrayRestElement(
 }
 
 function lowerIfStatement(stmt: ts.IfStatement, ctx: LowerContext): void {
-  lowerExpression(stmt.expression, ctx);
+  lowerCondition(stmt.expression, ctx);
 
   if (stmt.elseStatement) {
     const elseLabel = allocLabel(ctx);
@@ -2392,7 +4363,7 @@ function lowerWhileStatement(stmt: ts.WhileStatement, ctx: LowerContext): void {
 
   ctx.ir.push({ kind: "Label", labelId: loopStart });
   const condStart = ctx.ir.length;
-  lowerExpression(stmt.expression, ctx);
+  lowerCondition(stmt.expression, ctx);
   annotateFirstNode(ctx.ir, condStart, stmt.expression, true);
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
   lowerStatement(stmt.statement, ctx);
@@ -2413,7 +4384,7 @@ function lowerDoWhileStatement(stmt: ts.DoStatement, ctx: LowerContext): void {
   lowerStatement(stmt.statement, ctx);
   ctx.ir.push({ kind: "Label", labelId: continueTarget });
   const condStart = ctx.ir.length;
-  lowerExpression(stmt.expression, ctx);
+  lowerCondition(stmt.expression, ctx);
   annotateFirstNode(ctx.ir, condStart, stmt.expression, true);
   ctx.ir.push({ kind: "JumpIfTrue", labelId: loopStart });
   ctx.ir.push({ kind: "Label", labelId: loopEnd });
@@ -2443,7 +4414,7 @@ function lowerForStatement(stmt: ts.ForStatement, ctx: LowerContext): void {
 
   if (stmt.condition) {
     const condStart = ctx.ir.length;
-    lowerExpression(stmt.condition, ctx);
+    lowerCondition(stmt.condition, ctx);
     annotateFirstNode(ctx.ir, condStart, stmt.condition, true);
     ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
   }
@@ -2512,7 +4483,7 @@ function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
     return;
   }
 
-  const structDef = resolveStructType(iteratedType, ctx.services, ctx.checker);
+  const structDef = resolveStructType(iteratedType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (structDef) {
     lowerForInOverKeyList(
       stmt,
@@ -2977,9 +4948,25 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
     }
   }
 
+  const systemBinding = resolveSystemBinding(expr, ctx);
+  if (systemBinding) {
+    ctx.ir.push({ kind: "LoadSystemVar", index: systemBinding.localSlot });
+    return;
+  }
+
+  if (ctx.inlineConsts && lowerInlinedConstReference(expr, ctx)) {
+    return;
+  }
+
   const csvIdx = ctx.callsiteVars.get(expr.text);
   if (csvIdx !== undefined) {
     ctx.ir.push({ kind: "LoadCallsiteVar", index: csvIdx });
+    return;
+  }
+
+  const carriedKey = resolveCarriedFunctionKey(expr, ctx);
+  if (carriedKey !== undefined) {
+    ctx.ir.push({ kind: "PushFunctionRef", funcName: carriedKey });
     return;
   }
 
@@ -2990,7 +4977,7 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
 
   const enumSymbol = resolveAliasedSymbol(ctx.checker.getSymbolAtLocation(expr), ctx.checker);
   if (enumSymbol && resolveEnumDeclaration(enumSymbol, ctx.checker)) {
-    const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.services, ctx.checker);
+    const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.services, ctx.projectNamespace, ctx.checker);
     if (typeId) {
       ctx.diagnostics.push(
         makeDiag(
@@ -3016,6 +5003,14 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
       );
       return;
     }
+  }
+
+  // An ambient TypeRef token has no runtime binding; as a value it evaluates
+  // to its canonical type name, so module consts carrying tokens lower inertly.
+  const tokenName = ambientTypeTokenName(expr, ctx.checker);
+  if (tokenName !== undefined) {
+    ctx.ir.push({ kind: "PushConst", value: mkStringValue(tokenName) });
+    return;
   }
 
   ctx.diagnostics.push(makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.text}`, expr));
@@ -3174,9 +5169,130 @@ function lowerOptionalChainCall(expr: ts.CallExpression, ctx: LowerContext): voi
   ctx.ir.push({ kind: "Label", labelId: endLabel });
 }
 
+/** Resolve a declared output type name to a registry {@link TypeId}, matching the registration-side resolution. */
+function resolveOutputTypeId(typeName: string, services: BrainServices): TypeId | undefined {
+  const types = services.runtime.types;
+  if (types.get(typeName)) return typeName;
+  return types.resolveByName(typeName);
+}
+
+/**
+ * Lower a `setOutput(ctx, name, value)` intrinsic call. Resolves `name` against
+ * the enclosing sensor's declared outputs to form the backing rule-variable key
+ * (see {@link mkOutputVarKey}), then emits a RuleContextSetVariable host call:
+ * arg slot 0 is the ignored receiver, slot 1 the constant key, slot 2 the value.
+ * Leaves the call's nil result on the stack (the expression statement pops it).
+ */
+function lowerSetOutputCall(expr: ts.CallExpression, ctx: LowerContext): void {
+  if (expr.arguments.length !== 3) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.SetOutputWrongArgCount,
+        "`setOutput` requires exactly three arguments: (ctx, name, value).",
+        expr
+      )
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+
+  const nameArg = expr.arguments[1];
+  if (!ts.isStringLiteral(nameArg)) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.SetOutputNameNotStringLiteral, "`setOutput` name must be a string literal.", nameArg)
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+
+  const outputName = nameArg.text;
+  if (ctx.sensorOutputs === undefined) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.SetOutputOutsideSensor,
+        "`setOutput` is only valid inside a sensor `onExecute` that declares `outputs`.",
+        expr
+      )
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+
+  const typeId = ctx.sensorOutputs.get(outputName);
+  if (typeId === undefined) {
+    // A declared output whose type did not resolve is already reported at its
+    // declaration; only a genuinely undeclared name is flagged here.
+    if (!ctx.sensorOutputNames?.has(outputName)) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SetOutputUnknownOutput,
+          `\`setOutput\` names output \`${outputName}\`, which is not declared in this sensor's \`outputs\`.`,
+          nameArg
+        )
+      );
+    }
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+
+  ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ctx.ir.push({
+    kind: "PushConst",
+    value: mkStringValue(mkOutputVarKey(typeId, scopedOutputName(ctx.projectNamespace, outputName))),
+  });
+  const valueExpr = expr.arguments[2];
+  lowerExpression(valueExpr, ctx);
+  coerceSetOutputValue(valueExpr, typeId, outputName, ctx);
+  ctx.ir.push({ kind: "HostCall", fnName: "RuleContext.setVariable", argc: 3 });
+}
+
+/**
+ * Coerce the just-lowered `setOutput` value (on top of the operand stack) to the
+ * output's declared type. A value already of the declared type, or `nil` (clearing
+ * an output), passes through unchanged; a single-step-convertible value is
+ * converted; any other type is diagnosed and the value left as lowered.
+ */
+function coerceSetOutputValue(
+  valueExpr: ts.Expression,
+  declaredTypeId: TypeId,
+  outputName: string,
+  ctx: LowerContext
+): void {
+  const valueTypeId = resolveExpressionTypeId(valueExpr, ctx);
+  if (valueTypeId === undefined || valueTypeId === declaredTypeId || valueTypeId === CoreTypeIds.Nil) {
+    return;
+  }
+  const conversion = resolveSingleStepConversion(valueTypeId, declaredTypeId, ctx.services);
+  if (conversion) {
+    emitSingleStepConversion(conversion.fnName, ctx);
+    return;
+  }
+  ctx.diagnostics.push(
+    makeDiag(
+      LoweringDiagCode.SetOutputValueTypeMismatch,
+      `\`setOutput\` value of type \`${valueTypeId}\` does not match output \`${outputName}\`'s declared type \`${declaredTypeId}\`.`,
+      valueExpr
+    )
+  );
+}
+
 function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): void {
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "setOutput") {
+    lowerSetOutputCall(expr, ctx);
+    return;
+  }
+
   if (ts.isIdentifier(expr.expression)) {
-    const funcId = ctx.functionTable.get(expr.expression.text);
+    const structDef = resolveStructTypeFactory(expr.expression, ctx);
+    if (structDef) {
+      lowerStructFactoryCall(expr, structDef, ctx);
+      return;
+    }
+  }
+
+  if (ts.isIdentifier(expr.expression)) {
+    const carriedKey = resolveCarriedFunctionKey(expr.expression, ctx);
+    const funcId = ctx.functionTable.get(carriedKey ?? expr.expression.text);
     if (funcId !== undefined) {
       const argc = lowerCallArgumentsWithTargetTypes(expr, ctx);
       ctx.ir.push({ kind: "Call", funcIndex: funcId, argc });
@@ -3185,7 +5301,19 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
   }
 
   if (ts.isPropertyAccessExpression(expr.expression)) {
+    if (lowerPromiseMethodCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerArrayFromCall(expr, expr.expression, ctx)) {
+      return;
+    }
+    if (lowerArrayIsArrayCall(expr, expr.expression, ctx)) {
+      return;
+    }
+    if (lowerBufferIsBufferCall(expr, expr.expression, ctx)) {
+      return;
+    }
+    if (lowerBufferConstructorCall(expr, expr.expression, ctx)) {
       return;
     }
     if (lowerMathCall(expr, expr.expression, ctx)) {
@@ -3194,10 +5322,16 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
     if (lowerStringMethodCall(expr, expr.expression, ctx)) {
       return;
     }
+    if (lowerBufferMethodCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerThisStaticMethodCall(expr, expr.expression, ctx)) {
       return;
     }
     if (lowerStaticMethodCall(expr, expr.expression, ctx)) {
+      return;
+    }
+    if (lowerSystemMethodCall(expr, expr.expression, ctx)) {
       return;
     }
     if (lowerStructMethodCall(expr, expr.expression, ctx)) {
@@ -3333,13 +5467,205 @@ function lowerStaticMethodCall(
   return false;
 }
 
+/**
+ * Rejects a method call whose receiver is an async result (a `Promise` or
+ * `PromiseLike`), reporting `UnsupportedAsyncResultMethod` at `expr`. Returns
+ * true and pushes a nil placeholder when it handles the call; false when the
+ * receiver is not an async result.
+ */
+function lowerPromiseMethodCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
+  const sym = receiverType.aliasSymbol ?? receiverType.getSymbol();
+  const typeName = sym?.getName();
+  if (typeName !== "Promise" && typeName !== "PromiseLike") return false;
+
+  ctx.diagnostics.push(
+    makeDiag(
+      LoweringDiagCode.UnsupportedAsyncResultMethod,
+      `\`.${propAccess.name.text}()\` is not supported on an async result. Use \`await\` to obtain the resolved value.`,
+      expr
+    )
+  );
+  ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+  return true;
+}
+
+/**
+ * Resolve an identifier to the registered struct type of its `StructType({...})`
+ * declaration (following import aliases), or undefined when the identifier is
+ * not a StructType binding or its type is not registered.
+ */
+function resolveStructTypeFactory(idNode: ts.Identifier, ctx: LowerContext): StructTypeDef | undefined {
+  let sym = ctx.checker.getSymbolAtLocation(idNode);
+  if (!sym) return undefined;
+  if (sym.flags & ts.SymbolFlags.Alias) {
+    sym = ctx.checker.getAliasedSymbol(sym);
+  }
+  const decls = sym.getDeclarations();
+  const decl = decls && decls.length > 0 ? decls[0] : undefined;
+  if (!decl || !ts.isVariableDeclaration(decl) || !ts.isIdentifier(decl.name)) return undefined;
+  if (!structTypeConfigObject(decl.initializer)) return undefined;
+
+  const identity = qualifiedDeclarationName(ctx.projectNamespace, decl.getSourceFile().fileName, decl.name.text);
+  const typeId = ctx.services.runtime.types.resolveByName(identity);
+  if (typeId === undefined) return undefined;
+  const typeDef = ctx.services.runtime.types.get(typeId);
+  if (!typeDef || typeDef.coreType !== NativeType.Struct) return undefined;
+  return typeDef as StructTypeDef;
+}
+
+/**
+ * Lower a struct factory call `Position({...})`: an object-literal argument
+ * constructs the instance directly; any other struct-typed argument passes
+ * through.
+ */
+function lowerStructFactoryCall(expr: ts.CallExpression, structDef: StructTypeDef, ctx: LowerContext): void {
+  const arg = expr.arguments.length === 1 ? expr.arguments[0] : undefined;
+  if (!arg) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.UnsupportedFunctionCall,
+        `\`${structDef.name}\` construction takes exactly one argument (the field values).`,
+        expr
+      )
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+  if (ts.isObjectLiteralExpression(arg)) {
+    lowerObjectLiteralAsStruct(arg, structDef, ctx);
+    return;
+  }
+  lowerExpression(arg, ctx);
+}
+
+/** Resolve an identifier to its System binding (following import aliases), or undefined. */
+function resolveSystemBinding(idNode: ts.Identifier, ctx: LowerContext): SystemBinding | undefined {
+  if (!ctx.systemBindings) return undefined;
+  let sym = ctx.checker.getSymbolAtLocation(idNode);
+  if (!sym) return undefined;
+  if (sym.flags & ts.SymbolFlags.Alias) {
+    sym = ctx.checker.getAliasedSymbol(sym);
+  }
+  return ctx.systemBindings.get(sym);
+}
+
+/**
+ * The function-table identity key for `idNode` when it resolves to a carried
+ * non-exported function (see {@link LowerContext.carriedFunctionKeys}), else
+ * undefined. A call site inside a re-lowered body resolves to the right helper by
+ * declaration symbol, keeping same-named private helpers from different modules
+ * distinct.
+ */
+function resolveCarriedFunctionKey(idNode: ts.Identifier, ctx: LowerContext): string | undefined {
+  const keys = ctx.carriedFunctionKeys;
+  if (!keys || keys.size === 0) return undefined;
+  let sym = ctx.checker.getSymbolAtLocation(idNode);
+  if (!sym) return undefined;
+  if (sym.flags & ts.SymbolFlags.Alias) {
+    sym = ctx.checker.getAliasedSymbol(sym);
+  }
+  return keys.get(sym);
+}
+
+/**
+ * When `id` resolves to a defining-module `const` carried for inlining (see
+ * {@link LowerContext.inlineConsts}), re-lower the const's initializer inline and
+ * return true. A cyclic `const` reference reached through this re-lowering pushes
+ * {@link LoweringDiagCode.SystemModuleReferenceNotCarryable} and emits a nil.
+ * Returns false when `id` is not a carried inline const.
+ */
+function lowerInlinedConstReference(id: ts.Identifier, ctx: LowerContext): boolean {
+  const inlineConsts = ctx.inlineConsts;
+  if (!inlineConsts || inlineConsts.size === 0) return false;
+  let sym = ctx.checker.getSymbolAtLocation(id);
+  if (!sym) return false;
+  if (sym.flags & ts.SymbolFlags.Alias) {
+    sym = ctx.checker.getAliasedSymbol(sym);
+  }
+  const initializer = inlineConsts.get(sym);
+  if (!initializer) return false;
+
+  const inlining = ctx.inliningConsts ?? new Set<ts.Symbol>();
+  if (inlining.has(sym)) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.SystemModuleReferenceNotCarryable,
+        `A System body references '${id.text}', a module-level \`const\` whose initializer refers back to itself; a cyclic \`const\` cannot be inlined into a System body.`,
+        id
+      )
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return true;
+  }
+  inlining.add(sym);
+  const prevInlining = ctx.inliningConsts;
+  ctx.inliningConsts = inlining;
+  lowerExpression(initializer, ctx);
+  ctx.inliningConsts = prevInlining;
+  inlining.delete(sym);
+  return true;
+}
+
+/**
+ * Lower a System method call -- either `Movement.method(...)` (external, the
+ * receiver loaded from the System store) or `this.method(...)` (a sibling call
+ * inside a System body, the receiver loaded from the `this` local) -- to a call
+ * of the method's struct-receiver function with the state plus the arguments.
+ */
+function lowerSystemMethodCall(expr: ts.CallExpression, callee: ts.LeftHandSideExpression, ctx: LowerContext): boolean {
+  if (!ts.isPropertyAccessExpression(callee)) return false;
+  const methodName = callee.name.text;
+
+  if (
+    callee.expression.kind === ts.SyntaxKind.ThisKeyword &&
+    ctx.thisSystemMethodFuncIds !== undefined &&
+    ctx.thisLocalIndex !== undefined
+  ) {
+    const funcId = ctx.thisSystemMethodFuncIds.get(methodName);
+    if (funcId === undefined) {
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.UnsupportedFunctionCall, `System has no method '${methodName}'`, expr)
+      );
+      ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+      return true;
+    }
+    ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+    const argc = lowerCallArgumentsWithTargetTypes(expr, ctx) + 1;
+    ctx.ir.push({ kind: "Call", funcIndex: funcId, argc });
+    return true;
+  }
+
+  if (!ts.isIdentifier(callee.expression)) return false;
+  const binding = resolveSystemBinding(callee.expression, ctx);
+  if (!binding) return false;
+
+  const funcId = binding.methodFuncIds.get(methodName);
+  if (funcId === undefined) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UnsupportedFunctionCall, `System '${binding.name}' has no method '${methodName}'`, expr)
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return true;
+  }
+
+  ctx.ir.push({ kind: "LoadSystemVar", index: binding.localSlot });
+  const argc = lowerCallArgumentsWithTargetTypes(expr, ctx) + 1;
+  ctx.ir.push({ kind: "Call", funcIndex: funcId, argc });
+  return true;
+}
+
 function lowerStructMethodCall(
   expr: ts.CallExpression,
   propAccess: ts.PropertyAccessExpression,
   ctx: LowerContext
 ): boolean {
   const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
-  const structDef = resolveStructType(receiverType, ctx.services, ctx.checker);
+  const structDef = resolveStructType(receiverType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (!structDef) return false;
 
   const methodName = propAccess.name.text;
@@ -3371,11 +5697,24 @@ function lowerStructMethodCall(
   lowerExpression(propAccess.expression, ctx);
   const argc = lowerCallArgumentsWithTargetTypes(expr, ctx) + 1;
   if (fnEntry.isAsync) {
-    ctx.ir.push({ kind: "HostCallAsync", fnName, argc });
+    emitHostCallAsync(ctx, expr, fnName, argc);
   } else {
     ctx.ir.push({ kind: "HostCall", fnName, argc });
   }
   return true;
+}
+
+/**
+ * Emits a `HostCallAsync` for an async host function. When the enclosing body
+ * cannot suspend, also reports an error at `node`.
+ */
+function emitHostCallAsync(ctx: LowerContext, node: ts.Node, fnName: string, argc: number): void {
+  const context = ctx.nonSuspendableContext;
+  if (context !== undefined) {
+    const message = `\`${fnName}\` is an async action and cannot be called from ${context}.`;
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.AsyncHostCallInNonSuspendableContext, message, node));
+  }
+  ctx.ir.push({ kind: "HostCallAsync", fnName, argc });
 }
 
 interface CaptureInfo {
@@ -3525,6 +5864,7 @@ function lowerClosureExpression(
 
   const closureCtx: LowerContext = {
     services: ctx.services,
+    projectNamespace: ctx.projectNamespace,
     checker: ctx.checker,
     paramsSymbol: undefined,
     paramLocals: closureParamLocals,
@@ -3540,8 +5880,9 @@ function lowerClosureExpression(
     funcIdCounter: ctx.funcIdCounter,
     closureFunctions: ctx.closureFunctions,
     currentFunctionName: closureName,
-    currentReturnTypeId: resolveSignatureReturnTypeId(expr, ctx.checker, ctx.services),
+    currentReturnTypeId: resolveSignatureReturnTypeId(expr, ctx.checker, ctx.services, ctx.projectNamespace),
     classInfos: ctx.classInfos,
+    systemBindings: ctx.systemBindings,
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -3646,8 +5987,8 @@ function checkStructAssignmentCompat(lhsNode: ts.Node, rhsNode: ts.Node, diagNod
   const registry = ctx.services.runtime.types;
   const lhsType = ctx.checker.getTypeAtLocation(lhsNode);
   const rhsType = ctx.checker.getTypeAtLocation(rhsNode);
-  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
   if (!lhsTypeId || !rhsTypeId || lhsTypeId === rhsTypeId) return;
 
   const lhsDef = registry.get(lhsTypeId);
@@ -3728,7 +6069,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
     }
 
     const lhsObjType = ctx.checker.getTypeAtLocation(expr.left.expression);
-    const lhsStruct = resolveStructType(lhsObjType, ctx.services, ctx.checker);
+    const lhsStruct = resolveStructType(lhsObjType, ctx.services, ctx.projectNamespace, ctx.checker);
     if (lhsStruct) {
       const fName = expr.left.name.text;
       const clsName = bareClassName(lhsStruct.name);
@@ -3760,8 +6101,8 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
           }
           const lhsType = ctx.checker.getTypeAtLocation(expr.left);
           const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-          const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-          const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+          const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+          const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
           if (!lhsTypeId || !rhsTypeId) {
             ctx.diagnostics.push(
               makeDiag(
@@ -3848,8 +6189,8 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
         const lhsType = ctx.checker.getTypeAtLocation(expr.left);
         const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
         if (!lhsTypeId || !rhsTypeId) {
           ctx.diagnostics.push(
             makeDiag(
@@ -3932,8 +6273,8 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
       const lhsType = ctx.checker.getTypeAtLocation(expr.left);
       const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-      const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-      const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+      const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+      const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
       if (!lhsTypeId || !rhsTypeId) {
         ctx.diagnostics.push(
           makeDiag(
@@ -4027,8 +6368,8 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
     const lhsType = ctx.checker.getTypeAtLocation(expr.left);
     const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
 
     if (!lhsTypeId || !rhsTypeId) {
       ctx.diagnostics.push(
@@ -4074,8 +6415,7 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
     return;
   }
 
-  const thisType = ctx.checker.getTypeAtLocation(propAccess.expression);
-  const structDef = resolveStructType(thisType, ctx.services, ctx.checker);
+  const structDef = resolveThisReceiverStructDef(propAccess.expression, ctx);
   if (structDef) {
     const className = bareClassName(structDef.name);
     const ci = ctx.classInfos.find((c) => c.name === className);
@@ -4106,8 +6446,8 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
         }
         const lhsType = ctx.checker.getTypeAtLocation(expr.left);
         const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
         if (!lhsTypeId || !rhsTypeId) {
           ctx.diagnostics.push(
             makeDiag(
@@ -4159,7 +6499,13 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
   }
 
   const field = structDef ? findStructField(structDef, fieldName) : undefined;
-  const fieldIndex = field && structDef && isIndexedStruct(structDef) ? field.fieldIndex : undefined;
+  if (!field) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.PropertyNotOnStruct, `Cannot resolve field id for '${fieldName}'`, expr.left)
+    );
+    return;
+  }
+  const fieldIndex = field.fieldIndex;
 
   if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
     const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
@@ -4176,8 +6522,8 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
 
     const lhsType = ctx.checker.getTypeAtLocation(expr.left);
     const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
 
     if (!lhsTypeId || !rhsTypeId) {
       ctx.diagnostics.push(
@@ -4203,27 +6549,19 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
     }
 
     ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
-    if (fieldIndex === undefined) {
-      ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
-    }
     ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
-    ctx.ir.push(
-      fieldIndex !== undefined ? { kind: "GetField", fieldName, fieldIndex } : { kind: "GetField", fieldName }
-    );
+    ctx.ir.push({ kind: "GetField", fieldName, fieldIndex });
     lowerExpression(expr.right, ctx);
     ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
-    ctx.ir.push(fieldIndex !== undefined ? { kind: "StructSet", fieldIndex } : { kind: "StructSet" });
+    ctx.ir.push({ kind: "StructSet", fieldIndex });
     ctx.ir.push({ kind: "Dup" });
     ctx.ir.push({ kind: "StoreLocal", index: ctx.thisLocalIndex });
     return;
   }
 
   ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
-  if (fieldIndex === undefined) {
-    ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
-  }
   lowerExpression(expr.right, ctx);
-  ctx.ir.push(fieldIndex !== undefined ? { kind: "StructSet", fieldIndex } : { kind: "StructSet" });
+  ctx.ir.push({ kind: "StructSet", fieldIndex });
   ctx.ir.push({ kind: "Dup" });
   ctx.ir.push({ kind: "StoreLocal", index: ctx.thisLocalIndex });
 }
@@ -4279,8 +6617,8 @@ function lowerStaticFieldAssignment(
         }
         const lhsType = ctx.checker.getTypeAtLocation(expr.left);
         const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
         if (!lhsTypeId || !rhsTypeId) {
           ctx.diagnostics.push(
             makeDiag(
@@ -4399,8 +6737,8 @@ function lowerStaticFieldAssignment(
 
     const lhsType = ctx.checker.getTypeAtLocation(expr.left);
     const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
 
     if (!lhsTypeId || !rhsTypeId) {
       ctx.diagnostics.push(
@@ -4479,10 +6817,31 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
   } else if (expr.operator === ts.SyntaxKind.ExclamationToken) {
     lowerExpression(expr.operand, ctx);
     const operandType = ctx.checker.getTypeAtLocation(expr.operand);
-    const operandTypeId = tsTypeToTypeId(operandType, ctx.checker, ctx.services);
+    const operandTypeId = tsTypeToTypeId(operandType, ctx.checker, ctx.services, ctx.projectNamespace);
     if (!operandTypeId) {
       ctx.diagnostics.push(
         makeDiag(LoweringDiagCode.CannotDetermineTypeForNotOperand, "Cannot determine type for `!` operand", expr)
+      );
+      return;
+    }
+    const nullableBase = nullableCoreType(operandTypeId, ctx.services);
+    if (nullableBase !== undefined && ALWAYS_TRUTHY_CORE_TYPES.includes(nullableBase)) {
+      // A present value of these types is always truthy, so `!x` is exactly
+      // the nil test.
+      ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+      return;
+    }
+    if (
+      nullableBase === NativeType.Boolean ||
+      nullableBase === NativeType.Number ||
+      nullableBase === NativeType.String
+    ) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.NotOnNullablePrimitive,
+          '`!` on a maybe-absent number, string, or boolean conflates absence with 0, "", or false; compare `=== undefined` to test absence',
+          expr
+        )
       );
       return;
     }
@@ -4613,13 +6972,31 @@ function lowerPostfixIncDecStaticGetterSetter(
   ctx.ir.push({ kind: "Pop" });
 }
 
+/**
+ * Resolve a `this.field` operand to its System state-struct field id when
+ * lowering inside a System body. Returns `undefined` outside a System body or
+ * when the field is not on the state struct.
+ */
+function resolveSystemThisField(
+  operand: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): { fieldName: string; fieldIndex: number } | undefined {
+  if (operand.expression.kind !== ts.SyntaxKind.ThisKeyword) return undefined;
+  if (ctx.thisStructTypeId === undefined || ctx.thisLocalIndex === undefined) return undefined;
+  const structDef = resolveThisReceiverStructDef(operand.expression, ctx);
+  if (!structDef) return undefined;
+  const field = findStructField(structDef, operand.name.text);
+  if (!field) return undefined;
+  return { fieldName: operand.name.text, fieldIndex: field.fieldIndex };
+}
+
 function resolveInstanceGetterSetterPair(
   operand: ts.PropertyAccessExpression,
   ctx: LowerContext
 ): { getterFuncId: number; setterFuncId: number; isThis: boolean } | undefined {
   const fieldName = operand.name.text;
   const objType = ctx.checker.getTypeAtLocation(operand.expression);
-  const structDef = resolveStructType(objType, ctx.services, ctx.checker);
+  const structDef = resolveStructType(objType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (!structDef) return undefined;
   const className = bareClassName(structDef.name);
   const ci = ctx.classInfos.find((c) => c.name === className);
@@ -4774,16 +7151,31 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
       loadEmit = () => ctx.ir.push({ kind: "LoadCallsiteVar", index });
       storeEmit = () => ctx.ir.push({ kind: "StoreCallsiteVar", index });
     } else {
-      const incDecResult = lowerPrefixIncDecInstanceGetterSetter(expr, expr.operand, ctx);
-      if (incDecResult !== undefined) return;
-      ctx.diagnostics.push(
-        makeDiag(
-          LoweringDiagCode.IncrDecrTargetNotVariable,
-          "Increment/decrement target must be a variable",
-          expr.operand
-        )
-      );
-      return;
+      const sysField = resolveSystemThisField(expr.operand, ctx);
+      if (sysField) {
+        const thisLocal = ctx.thisLocalIndex!;
+        loadEmit = () => {
+          ctx.ir.push({ kind: "LoadLocal", index: thisLocal });
+          ctx.ir.push({ kind: "GetField", fieldName: sysField.fieldName, fieldIndex: sysField.fieldIndex });
+        };
+        storeEmit = () => {
+          ctx.ir.push({ kind: "LoadLocal", index: thisLocal });
+          ctx.ir.push({ kind: "Swap" });
+          ctx.ir.push({ kind: "StructSet", fieldIndex: sysField.fieldIndex });
+          ctx.ir.push({ kind: "Pop" });
+        };
+      } else {
+        const incDecResult = lowerPrefixIncDecInstanceGetterSetter(expr, expr.operand, ctx);
+        if (incDecResult !== undefined) return;
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.IncrDecrTargetNotVariable,
+            "Increment/decrement target must be a variable",
+            expr.operand
+          )
+        );
+        return;
+      }
     }
   } else if (ts.isIdentifier(expr.operand)) {
     const target = resolveVarTarget(expr.operand.text, ctx);
@@ -4859,16 +7251,31 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
       loadEmit = () => ctx.ir.push({ kind: "LoadCallsiteVar", index });
       storeEmit = () => ctx.ir.push({ kind: "StoreCallsiteVar", index });
     } else {
-      const incDecResult = lowerPostfixIncDecInstanceGetterSetter(expr, expr.operand, ctx);
-      if (incDecResult !== undefined) return;
-      ctx.diagnostics.push(
-        makeDiag(
-          LoweringDiagCode.IncrDecrTargetNotVariable,
-          "Increment/decrement target must be a variable",
-          expr.operand
-        )
-      );
-      return;
+      const sysField = resolveSystemThisField(expr.operand, ctx);
+      if (sysField) {
+        const thisLocal = ctx.thisLocalIndex!;
+        loadEmit = () => {
+          ctx.ir.push({ kind: "LoadLocal", index: thisLocal });
+          ctx.ir.push({ kind: "GetField", fieldName: sysField.fieldName, fieldIndex: sysField.fieldIndex });
+        };
+        storeEmit = () => {
+          ctx.ir.push({ kind: "LoadLocal", index: thisLocal });
+          ctx.ir.push({ kind: "Swap" });
+          ctx.ir.push({ kind: "StructSet", fieldIndex: sysField.fieldIndex });
+          ctx.ir.push({ kind: "Pop" });
+        };
+      } else {
+        const incDecResult = lowerPostfixIncDecInstanceGetterSetter(expr, expr.operand, ctx);
+        if (incDecResult !== undefined) return;
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.IncrDecrTargetNotVariable,
+            "Increment/decrement target must be a variable",
+            expr.operand
+          )
+        );
+        return;
+      }
     }
   } else if (ts.isIdentifier(expr.operand)) {
     const target = resolveVarTarget(expr.operand.text, ctx);
@@ -4910,14 +7317,73 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
   storeEmit();
 }
 
+/**
+ * The core type behind a nullable type id, or undefined when the id does not
+ * name a registered nullable type.
+ */
+function nullableCoreType(typeId: TypeId | undefined, services: BrainServices): NativeType | undefined {
+  if (!typeId) return undefined;
+  const def = services.runtime.types.get(typeId);
+  return def?.nullable ? def.coreType : undefined;
+}
+
+/** Core types whose present values are always truthy in TypeScript. */
+const ALWAYS_TRUTHY_CORE_TYPES: readonly NativeType[] = [
+  NativeType.Struct,
+  NativeType.List,
+  NativeType.Map,
+  NativeType.Buffer,
+  NativeType.Enum,
+  NativeType.Function,
+];
+
+/**
+ * True when a truthiness test on the expression is a presence test: the
+ * expression's type is nullable and any present value of its base type is
+ * truthy in TypeScript, so the test can only distinguish present from absent.
+ */
+function isPresenceConditionExpression(expr: ts.Expression, ctx: LowerContext): boolean {
+  const coreType = nullableCoreType(resolveExpressionTypeId(expr, ctx), ctx.services);
+  return coreType !== undefined && ALWAYS_TRUTHY_CORE_TYPES.includes(coreType);
+}
+
+/**
+ * Lowers a condition expression, leaving a value whose VM truthiness matches
+ * TypeScript truthiness. A presence-test condition (see
+ * {@link isPresenceConditionExpression}) lowers to an explicit nil test, since
+ * VM truthiness of a present empty list, map, or buffer would otherwise
+ * diverge from TypeScript.
+ */
+function lowerCondition(expr: ts.Expression, ctx: LowerContext): void {
+  lowerExpression(expr, ctx);
+  if (!isPresenceConditionExpression(expr, ctx)) {
+    return;
+  }
+  ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+  const notFn = resolveOperator(CoreOpId.Not, [CoreTypeIds.Boolean], ctx.services);
+  if (!notFn) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UnsupportedOperator, "Missing not() operator for presence condition", expr)
+    );
+    return;
+  }
+  ctx.ir.push({ kind: "HostCall", fnName: notFn, argc: 1 });
+}
+
 function lowerShortCircuit(expr: ts.BinaryExpression, ctx: LowerContext): void {
   const endLabel = allocLabel(ctx);
+  const isAnd = expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken;
   lowerExpression(expr.left, ctx);
-  // Dup before JumpIfFalse/JumpIfTrue because the conditional jump consumes the
-  // value it tests. The duplicate is what remains on the stack as the result when
-  // the short-circuit branch is taken (the left-hand value is the overall result).
+  // Dup before the branch test because the test consumes the value it examines.
+  // The duplicate is what remains on the stack as the result when the
+  // short-circuit branch is taken (the left-hand value is the overall result).
   ctx.ir.push({ kind: "Dup" });
-  if (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+  if (isPresenceConditionExpression(expr.left, ctx)) {
+    // Presence-typed left operand: short-circuit on nil-ness, matching
+    // TypeScript truthiness where any present object value is truthy.
+    ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+    ctx.ir.push(isAnd ? { kind: "JumpIfTrue", labelId: endLabel } : { kind: "JumpIfFalse", labelId: endLabel });
+  } else if (isAnd) {
     ctx.ir.push({ kind: "JumpIfFalse", labelId: endLabel });
   } else {
     ctx.ir.push({ kind: "JumpIfTrue", labelId: endLabel });
@@ -4930,7 +7396,7 @@ function lowerShortCircuit(expr: ts.BinaryExpression, ctx: LowerContext): void {
 function lowerConditionalExpression(expr: ts.ConditionalExpression, ctx: LowerContext): void {
   const elseLabel = allocLabel(ctx);
   const endLabel = allocLabel(ctx);
-  lowerExpression(expr.condition, ctx);
+  lowerCondition(expr.condition, ctx);
   ctx.ir.push({ kind: "JumpIfFalse", labelId: elseLabel });
   lowerExpression(expr.whenTrue, ctx);
   ctx.ir.push({ kind: "Jump", labelId: endLabel });
@@ -5125,7 +7591,7 @@ function lowerInstanceOf(expr: ts.BinaryExpression, ctx: LowerContext): void {
   }
 
   const instanceType = ctx.checker.getDeclaredTypeOfSymbol(resolvedSym);
-  const typeId = tsTypeToTypeId(instanceType, ctx.checker, ctx.services);
+  const typeId = tsTypeToTypeId(instanceType, ctx.checker, ctx.services, ctx.projectNamespace);
   if (!typeId) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.InstanceofRhsNotClass, "Cannot resolve type for instanceof check", expr.right)
@@ -5157,7 +7623,7 @@ function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext)
     if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
     return;
   }
-  if (resolveStructType(objType, ctx.services, ctx.checker)) {
+  if (resolveStructType(objType, ctx.services, ctx.projectNamespace, ctx.checker)) {
     lowerExpression(expr.expression, ctx);
     const guard = isOptChain ? emitNilGuard(ctx) : undefined;
     lowerExpression(expr.argumentExpression, ctx);
@@ -5258,8 +7724,8 @@ function lowerCompoundElementAccessAssignment(
 
   const lhsType = ctx.checker.getTypeAtLocation(elemAccess);
   const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
-  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services, ctx.projectNamespace);
+  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services, ctx.projectNamespace);
   if (!lhsTypeId || !rhsTypeId) {
     ctx.diagnostics.push(
       makeDiag(
@@ -6150,7 +8616,7 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
   ctx.ir.push({ kind: "LoadLocal", index: searchLocal });
 
   const searchType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
-  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services);
+  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services, ctx.projectNamespace);
   const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId], ctx.services) : undefined;
   if (!eqFn) {
     ctx.diagnostics.push(
@@ -6512,7 +8978,7 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
   ctx.ir.push({ kind: "LoadLocal", index: searchLocal });
 
   const searchType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
-  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services);
+  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services, ctx.projectNamespace);
   const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId], ctx.services) : undefined;
   if (!eqFn) {
     ctx.diagnostics.push(
@@ -7255,7 +9721,7 @@ function lowerListLastIndexOf(
   ctx.ir.push({ kind: "LoadLocal", index: searchLocal });
 
   const searchType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
-  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services);
+  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services, ctx.projectNamespace);
   const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId], ctx.services) : undefined;
   if (!eqFn) {
     ctx.diagnostics.push(
@@ -7735,6 +10201,32 @@ function lowerArrayFromCall(
   return true;
 }
 
+function lowerArrayIsArrayCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  if (!isArrayGlobal(propAccess.expression, ctx)) return false;
+  if (propAccess.name.text !== "isArray") return false;
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.List });
+  return true;
+}
+
+function lowerBufferIsBufferCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  if (!isBufferGlobal(propAccess.expression, ctx)) return false;
+  if (propAccess.name.text !== "isBuffer") return false;
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Buffer });
+  return true;
+}
+
 function lowerMathCall(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): boolean {
   if (!isMathGlobal(propAccess.expression, ctx)) return false;
 
@@ -7782,17 +10274,133 @@ function lowerMathCall(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   return true;
 }
 
+function isBufferGlobal(expr: ts.Expression, ctx: LowerContext): boolean {
+  if (!ts.isIdentifier(expr) || expr.text !== "Buffer") return false;
+  const sym = ctx.checker.getSymbolAtLocation(expr);
+  if (!sym) return false;
+  const decls = sym.getDeclarations();
+  if (!decls || decls.length === 0) return false;
+  for (const d of decls) {
+    if (ts.isVariableDeclaration(d) || ts.isInterfaceDeclaration(d)) {
+      const sf = d.getSourceFile();
+      if (sf.isDeclarationFile || sf.fileName.includes("lib.")) return true;
+    }
+  }
+  return false;
+}
+
+function isBufferType(type: ts.Type): boolean {
+  const sym = type.getSymbol();
+  if (!sym || sym.name !== "Buffer") return false;
+  const decls = sym.getDeclarations();
+  if (!decls || decls.length === 0) return false;
+  for (const d of decls) {
+    if (ts.isInterfaceDeclaration(d) && d.getSourceFile().isDeclarationFile) return true;
+  }
+  return false;
+}
+
+function lowerBufferConstructorCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  if (!isBufferGlobal(propAccess.expression, ctx)) return false;
+
+  const methodName = propAccess.name.text;
+  const constructors = new Map<string, string>([
+    ["from", "$$buf_from"],
+    ["fromHex", "$$buf_fromHex"],
+    ["fromString", "$$buf_fromString"],
+  ]);
+  const fnName = constructors.get(methodName);
+  if (!fnName) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UnsupportedBufferMethod, `Buffer.${methodName}() is not supported`, expr)
+    );
+    return true;
+  }
+
+  if (expr.arguments.length !== 1) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.BufferMethodWrongArgCount, `Buffer.${methodName}() requires exactly 1 argument`, expr)
+    );
+    return true;
+  }
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "HostCall", fnName, argc: 1 });
+  return true;
+}
+
+function lowerBufferMethodCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  const objType = ctx.checker.getTypeAtLocation(propAccess.expression);
+  if (!isBufferType(objType)) return false;
+
+  const methodName = propAccess.name.text;
+
+  if (methodName === "length") {
+    if (expr.arguments.length !== 0) {
+      ctx.diagnostics.push(makeDiag(LoweringDiagCode.BufferMethodWrongArgCount, ".length() takes no arguments", expr));
+      return true;
+    }
+    lowerExpression(propAccess.expression, ctx);
+    ctx.ir.push({ kind: "HostCall", fnName: "$$buf_length", argc: 1 });
+    return true;
+  }
+
+  if (methodName === "get") {
+    if (expr.arguments.length !== 1) {
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.BufferMethodWrongArgCount, ".get() requires exactly 1 argument", expr)
+      );
+      return true;
+    }
+    lowerExpression(propAccess.expression, ctx);
+    lowerExpression(expr.arguments[0], ctx);
+    ctx.ir.push({ kind: "HostCall", fnName: "$$buf_get", argc: 2 });
+    return true;
+  }
+
+  ctx.diagnostics.push(
+    makeDiag(LoweringDiagCode.UnsupportedBufferMethod, `Buffer.${methodName}() is not supported`, expr)
+  );
+  return true;
+}
+
 function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContext): void {
   if (ts.isIdentifier(expr.expression) && ctx.paramsSymbol) {
     const objSymbol = ctx.checker.getSymbolAtLocation(expr.expression);
     if (objSymbol === ctx.paramsSymbol) {
       const paramName = expr.name.text;
-      const localIdx = ctx.paramLocals.get(paramName);
+      const localIdx = ctx.argLocals?.get(paramName);
       if (localIdx !== undefined) {
         ctx.ir.push({ kind: "LoadLocal", index: localIdx });
         return;
       }
     }
+  }
+
+  // A System method name in a non-call position is read as a value; a method has
+  // no value representation. A call routes through `lowerSystemMethodCall`.
+  if (
+    expr.expression.kind === ts.SyntaxKind.ThisKeyword
+      ? ctx.thisSystemMethodFuncIds?.has(expr.name.text)
+      : ts.isIdentifier(expr.expression) &&
+        resolveSystemBinding(expr.expression, ctx)?.methodFuncIds.has(expr.name.text)
+  ) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.SystemMethodUsedAsValue,
+        `System method '${expr.name.text}' must be called, not read as a value.`,
+        expr
+      )
+    );
+    return;
   }
 
   if (isMathGlobal(expr.expression, ctx)) {
@@ -7911,7 +10519,10 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     }
   }
 
-  const structDef = resolveStructType(objType, ctx.services, ctx.checker);
+  const structDef =
+    expr.expression.kind === ts.SyntaxKind.ThisKeyword && ctx.thisStructTypeId !== undefined
+      ? resolveThisReceiverStructDef(expr.expression, ctx)
+      : resolveStructType(objType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (structDef) {
     const fieldName = expr.name.text;
     const className = bareClassName(structDef.name);
@@ -7962,12 +10573,17 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
   ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedPropertyAccess, "Unsupported property access", expr));
 }
 
-function resolveRegistryName(sym: ts.Symbol, services: BrainServices, checker?: ts.TypeChecker): string {
+function resolveRegistryName(
+  sym: ts.Symbol,
+  services: BrainServices,
+  projectNamespace: string,
+  checker?: ts.TypeChecker
+): string {
   const resolvedSym = resolveAliasedSymbol(sym, checker) ?? sym;
   const name = resolvedSym.getName();
   const decls = resolvedSym.getDeclarations();
   if (decls && decls.length > 0 && isUserSourceDecl(decls[0])) {
-    const qualName = qualifiedClassName(decls[0].getSourceFile().fileName, name);
+    const qualName = qualifiedDeclarationName(projectNamespace, decls[0].getSourceFile().fileName, name);
     if (services.runtime.types.resolveByName(qualName)) {
       return qualName;
     }
@@ -7978,18 +10594,19 @@ function resolveRegistryName(sym: ts.Symbol, services: BrainServices, checker?: 
 function resolveStructType(
   type: ts.Type,
   services: BrainServices,
+  projectNamespace: string,
   checker?: ts.TypeChecker
 ): StructTypeDef | undefined {
   const registry = services.runtime.types;
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
     if (nonNullish.length === 1) {
-      return resolveStructType(nonNullish[0], services, checker);
+      return resolveStructType(nonNullish[0], services, projectNamespace, checker);
     }
     return undefined;
   }
   if (type.isIntersection() && checker) {
-    const typeId = tsTypeToTypeId(type, checker, services);
+    const typeId = tsTypeToTypeId(type, checker, services, projectNamespace);
     if (!typeId) return undefined;
     const def = registry.get(typeId);
     if (!def || def.coreType !== NativeType.Struct) return undefined;
@@ -7997,15 +10614,28 @@ function resolveStructType(
   }
   const sym = type.aliasSymbol ?? type.getSymbol();
   if (!sym) return undefined;
-  const resolvedName = resolveRegistryName(sym, services);
+  const resolvedName = resolveRegistryName(sym, services, projectNamespace);
   let typeId = registry.resolveByName(resolvedName);
   if (!typeId && checker) {
-    typeId = tsTypeToTypeId(type, checker, services) ?? undefined;
+    typeId = tsTypeToTypeId(type, checker, services, projectNamespace) ?? undefined;
   }
   if (!typeId) return undefined;
   const def = registry.get(typeId);
   if (!def || def.coreType !== NativeType.Struct) return undefined;
   return def as StructTypeDef;
+}
+
+/**
+ * Resolve the struct def of a `this.field` receiver. When `this` is a System
+ * state struct, uses the state struct id carried on the context
+ * (`ctx.thisStructTypeId`); otherwise resolves from the receiver's TS type.
+ */
+function resolveThisReceiverStructDef(receiver: ts.Expression, ctx: LowerContext): StructTypeDef | undefined {
+  if (receiver.kind === ts.SyntaxKind.ThisKeyword && ctx.thisStructTypeId !== undefined) {
+    const def = ctx.services.runtime.types.get(ctx.thisStructTypeId);
+    if (def && def.coreType === NativeType.Struct) return def as StructTypeDef;
+  }
+  return resolveStructType(ctx.checker.getTypeAtLocation(receiver), ctx.services, ctx.projectNamespace, ctx.checker);
 }
 
 function resolveEnumDeclaration(sym: ts.Symbol, checker?: ts.TypeChecker): ts.EnumDeclaration | undefined {
@@ -8038,26 +10668,35 @@ function registerUserEnumTypes(
   importedEnums: ImportedEnum[],
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): void {
   const seenNames = new Set<string>();
 
   for (const enumNode of localEnumNodes) {
-    const qualifiedName = qualifiedClassName(enumNode.getSourceFile().fileName, enumNode.name.text);
+    const qualifiedName = qualifiedDeclarationName(
+      projectNamespace,
+      enumNode.getSourceFile().fileName,
+      enumNode.name.text
+    );
     if (seenNames.has(qualifiedName)) {
       continue;
     }
     seenNames.add(qualifiedName);
-    registerUserEnumType(enumNode, checker, diagnostics, services);
+    registerUserEnumType(enumNode, checker, diagnostics, services, projectNamespace);
   }
 
   for (const importedEnum of importedEnums) {
-    const qualifiedName = qualifiedClassName(importedEnum.sourceFile.fileName, importedEnum.name);
+    const qualifiedName = qualifiedDeclarationName(
+      projectNamespace,
+      importedEnum.sourceFile.fileName,
+      importedEnum.name
+    );
     if (seenNames.has(qualifiedName)) {
       continue;
     }
     seenNames.add(qualifiedName);
-    registerUserEnumType(importedEnum.node, checker, diagnostics, services);
+    registerUserEnumType(importedEnum.node, checker, diagnostics, services, projectNamespace);
   }
 }
 
@@ -8065,10 +10704,15 @@ function registerUserEnumType(
   enumNode: ts.EnumDeclaration,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): void {
   const registry = services.runtime.types;
-  const qualifiedName = qualifiedClassName(enumNode.getSourceFile().fileName, enumNode.name.text);
+  const qualifiedName = qualifiedDeclarationName(
+    projectNamespace,
+    enumNode.getSourceFile().fileName,
+    enumNode.name.text
+  );
   if (registry.resolveByName(qualifiedName)) {
     return;
   }
@@ -8119,13 +10763,17 @@ function registerUserEnumType(
 
   try {
     if (symbols.isEmpty()) {
-      registry.addEnumType(qualifiedName, { symbols });
+      registry.withOwner("dynamic", () => {
+        registry.addEnumType(qualifiedName, { symbols });
+      });
       return;
     }
 
-    registry.addEnumType(qualifiedName, {
-      symbols,
-      defaultKey: symbols.get(0).key,
+    registry.withOwner("dynamic", () => {
+      registry.addEnumType(qualifiedName, {
+        symbols,
+        defaultKey: symbols.get(0).key,
+      });
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : `Invalid enum declaration '${enumNode.name.text}'`;
@@ -8149,7 +10797,7 @@ function resolveEnumPropertyAccess(
     return undefined;
   }
 
-  const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.services, ctx.checker);
+  const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.services, ctx.projectNamespace, ctx.checker);
   if (!typeId) {
     return undefined;
   }
@@ -8161,14 +10809,29 @@ function resolveEnumPropertyAccess(
   }
 
   const key = getEnumMemberKey(memberDecl);
-  if (!key || !ctx.services.runtime.types.getEnumSymbol(typeId, key)) {
+  const symbol = key ? ctx.services.runtime.types.getEnumSymbol(typeId, key) : undefined;
+  if (!key || !symbol) {
     return { kind: "unsupported" };
   }
 
+  // Runtime enum equality is symbol identity, so an alias member (a later key
+  // sharing an earlier key's value) lowers to the first key with that value,
+  // preserving TypeScript's value-equality for aliases.
+  const canonicalKey = canonicalEnumKeyForValue(typeId, symbol.value, ctx.services) ?? key;
+
   return {
     kind: "member",
-    value: { t: NativeType.Enum, typeId, v: key },
+    value: { t: NativeType.Enum, typeId, v: canonicalKey },
   };
+}
+
+function canonicalEnumKeyForValue(typeId: string, value: string | number, services: BrainServices): string | undefined {
+  const def = services.runtime.types.get(typeId);
+  if (!def || def.coreType !== NativeType.Enum) {
+    return undefined;
+  }
+  const first = (def as EnumTypeDef).symbols.find((symbol) => symbol.value === value);
+  return first?.key;
 }
 
 type StaticMemberAccessResolution =
@@ -8254,8 +10917,12 @@ function findStructField(def: StructTypeDef, fieldName: string) {
   return fieldIndex !== undefined ? def.fields.get(fieldIndex) : undefined;
 }
 
-function isIndexedStruct(def: StructTypeDef): boolean {
-  return !isNativeBackedStruct(def);
+function isIndexedStruct(_def: StructTypeDef): boolean {
+  // Every struct is accessed by numeric field id: closed structs store fields in
+  // `struct.v` indexed by id, and native-backed structs resolve the same id through
+  // their registered fieldGetter/fieldSetter (so STRUCT_GET_FIELD/STRUCT_SET_FIELD
+  // dispatch correctly for both).
+  return true;
 }
 
 function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext): void {
@@ -8272,7 +10939,7 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
     return;
   }
 
-  const structDef = resolveStructType(resolvedType, ctx.services, ctx.checker);
+  const structDef = resolveStructType(resolvedType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (structDef) {
     if (isNativeBackedStruct(structDef)) {
       ctx.diagnostics.push(
@@ -8303,7 +10970,7 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
       let matchedMapId: string | undefined;
       let matchCount = 0;
       for (const member of nonNullish) {
-        const sd = resolveStructType(member, ctx.services, ctx.checker);
+        const sd = resolveStructType(member, ctx.services, ctx.projectNamespace, ctx.checker);
         if (sd && !isNativeBackedStruct(sd)) {
           matchedStruct = sd;
           matchCount++;
@@ -8327,7 +10994,7 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
   }
 
   if (!contextualType) {
-    const anonDef = autoRegisterAnonymousStruct(resolvedType, ctx.checker, ctx.services);
+    const anonDef = autoRegisterAnonymousStruct(resolvedType, ctx.checker, ctx.services, ctx.projectNamespace);
     if (anonDef) {
       lowerObjectLiteralAsStruct(expr, anonDef, ctx);
       return;
@@ -8368,29 +11035,35 @@ function lowerObjectLiteralAsStruct(
         return;
       }
       const field = findStructField(structDef, fieldName);
-      if (!field || !isIndexedStruct(structDef)) {
-        ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+      if (!field) {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.PropertyNotOnStruct,
+            `Field '${fieldName}' is not a member of struct '${structDef.name}'`,
+            prop
+          )
+        );
+        continue;
       }
       lowerClosureExpression(prop, ctx);
-      ctx.ir.push(
-        field && isIndexedStruct(structDef)
-          ? { kind: "StructSet", fieldIndex: field.fieldIndex }
-          : { kind: "StructSet" }
-      );
+      ctx.ir.push({ kind: "StructSet", fieldIndex: field.fieldIndex });
       continue;
     }
     if (ts.isShorthandPropertyAssignment(prop)) {
       const fieldName = prop.name.text;
       const field = findStructField(structDef, fieldName);
-      if (!field || !isIndexedStruct(structDef)) {
-        ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+      if (!field) {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.PropertyNotOnStruct,
+            `Field '${fieldName}' is not a member of struct '${structDef.name}'`,
+            prop
+          )
+        );
+        continue;
       }
       lowerExpression(prop.name, ctx);
-      ctx.ir.push(
-        field && isIndexedStruct(structDef)
-          ? { kind: "StructSet", fieldIndex: field.fieldIndex }
-          : { kind: "StructSet" }
-      );
+      ctx.ir.push({ kind: "StructSet", fieldIndex: field.fieldIndex });
       continue;
     }
     if (ts.isSpreadAssignment(prop)) {
@@ -8405,11 +11078,13 @@ function lowerObjectLiteralAsStruct(
       lowerExpression(prop.expression, ctx);
       const tempLocal = ctx.scopeStack.allocLocal();
       ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
-      const sourceStruct = resolveStructType(spreadType, ctx.services, ctx.checker);
+      const sourceStruct = resolveStructType(spreadType, ctx.services, ctx.projectNamespace, ctx.checker);
       for (const sym of properties) {
         const targetField = findStructField(structDef, sym.name);
-        if (!targetField || !isIndexedStruct(structDef)) {
-          ctx.ir.push({ kind: "PushConst", value: mkStringValue(sym.name) });
+        // A spread source property that is not a field of the target struct has no
+        // storage slot; there is nothing to write.
+        if (!targetField) {
+          continue;
         }
         ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
         const sourceField = sourceStruct ? findStructField(sourceStruct, sym.name) : undefined;
@@ -8418,11 +11093,7 @@ function lowerObjectLiteralAsStruct(
             ? { kind: "GetField", fieldName: sym.name, fieldIndex: sourceField.fieldIndex }
             : { kind: "GetField", fieldName: sym.name }
         );
-        ctx.ir.push(
-          targetField && isIndexedStruct(structDef)
-            ? { kind: "StructSet", fieldIndex: targetField.fieldIndex }
-            : { kind: "StructSet" }
-        );
+        ctx.ir.push({ kind: "StructSet", fieldIndex: targetField.fieldIndex });
       }
       continue;
     }
@@ -8452,13 +11123,18 @@ function lowerObjectLiteralAsStruct(
       return;
     }
     const field = findStructField(structDef, fieldName);
-    if (!field || !isIndexedStruct(structDef)) {
-      ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    if (!field) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.PropertyNotOnStruct,
+          `Field '${fieldName}' is not a member of struct '${structDef.name}'`,
+          prop
+        )
+      );
+      continue;
     }
     lowerExpression(prop.initializer, ctx);
-    ctx.ir.push(
-      field && isIndexedStruct(structDef) ? { kind: "StructSet", fieldIndex: field.fieldIndex } : { kind: "StructSet" }
-    );
+    ctx.ir.push({ kind: "StructSet", fieldIndex: field.fieldIndex });
   }
 }
 
@@ -8485,12 +11161,12 @@ function lowerObjectLiteralAsMap(expr: ts.ObjectLiteralExpression, mapTypeId: st
       lowerExpression(prop.expression, ctx);
       const tempLocal = ctx.scopeStack.allocLocal();
       ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
-      const sourceIsStruct = !!resolveStructType(spreadType, ctx.services, ctx.checker);
+      const sourceIsStruct = !!resolveStructType(spreadType, ctx.services, ctx.projectNamespace, ctx.checker);
       for (const sym of properties) {
         ctx.ir.push({ kind: "PushConst", value: mkStringValue(sym.name) });
         ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
         if (sourceIsStruct) {
-          const sourceStruct = resolveStructType(spreadType, ctx.services, ctx.checker);
+          const sourceStruct = resolveStructType(spreadType, ctx.services, ctx.projectNamespace, ctx.checker);
           const sourceField = sourceStruct ? findStructField(sourceStruct, sym.name) : undefined;
           ctx.ir.push(
             sourceStruct && sourceField && isIndexedStruct(sourceStruct)
@@ -8551,8 +11227,9 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
       const typeArgs =
         (type as ts.TypeReference).typeArguments ?? ctx.checker.getTypeArguments(type as ts.TypeReference);
       if (typeArgs && typeArgs.length >= 2) {
-        const keyTypeId = tsTypeToTypeId(typeArgs[0], ctx.checker, ctx.services) ?? CoreTypeIds.String;
-        const valueTypeId = tsTypeToTypeId(typeArgs[1], ctx.checker, ctx.services);
+        const keyTypeId =
+          tsTypeToTypeId(typeArgs[0], ctx.checker, ctx.services, ctx.projectNamespace) ?? CoreTypeIds.String;
+        const valueTypeId = tsTypeToTypeId(typeArgs[1], ctx.checker, ctx.services, ctx.projectNamespace);
         if (valueTypeId) {
           return registry.instantiate("Map", List.from([keyTypeId, valueTypeId]));
         }
@@ -8568,7 +11245,7 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
 
   const indexType = type.getStringIndexType();
   if (indexType) {
-    const valueTypeId = tsTypeToTypeId(indexType, ctx.checker, ctx.services);
+    const valueTypeId = tsTypeToTypeId(indexType, ctx.checker, ctx.services, ctx.projectNamespace);
     if (valueTypeId) {
       return registry.instantiate("Map", List.from([CoreTypeIds.String, valueTypeId]));
     }
@@ -8605,7 +11282,7 @@ function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | unde
   if (!typeArgs || typeArgs.length === 0) return undefined;
 
   const elementType = typeArgs[0];
-  const elementTypeId = tsTypeToTypeId(elementType, ctx.checker, ctx.services);
+  const elementTypeId = tsTypeToTypeId(elementType, ctx.checker, ctx.services, ctx.projectNamespace);
   if (!elementTypeId) return undefined;
 
   return registry.instantiate("List", List.from([elementTypeId]));
@@ -8719,7 +11396,7 @@ function expandTypeIdMembers(typeId: string, services: BrainServices): string[] 
 function tryResolveEnumValue(expr: ts.StringLiteral, ctx: LowerContext): Value | undefined {
   const contextualType = ctx.checker.getContextualType(expr);
   if (!contextualType) return undefined;
-  const typeId = resolveRegisteredEnumTypeId(contextualType, ctx.services, ctx.checker);
+  const typeId = resolveRegisteredEnumTypeId(contextualType, ctx.services, ctx.projectNamespace, ctx.checker);
   if (!typeId) return undefined;
   const registry = ctx.services.runtime.types;
   const typeDef = registry.get(typeId);
@@ -8727,11 +11404,59 @@ function tryResolveEnumValue(expr: ts.StringLiteral, ctx: LowerContext): Value |
   return { t: NativeType.Enum, typeId, v: expr.text };
 }
 
+/**
+ * Resolve a TS type that is the instance type of a user `StructType({...})`
+ * declaration to the declared struct's registered type id. An instance type
+ * surfaces as a `StructValueOf<F>` instantiation of the ambient `mindcraft`
+ * alias; `F`'s declaration site sits inside the declaring
+ * `const X = StructType({...})`, which names the registered identity.
+ * Returns undefined when the type is not such an instance type or the
+ * declaration is not registered.
+ */
+function resolveDeclaredStructInstanceTypeId(
+  type: ts.Type,
+  services: BrainServices,
+  projectNamespace: string
+): TypeId | undefined {
+  const alias = type.aliasSymbol;
+  if (!alias) return undefined;
+  if (alias.getName() !== "StructValueOf") return undefined;
+  const aliasDecl = alias.getDeclarations()?.[0];
+  if (!aliasDecl || !isMindcraftModuleDeclaration(aliasDecl)) return undefined;
+  const argType =
+    type.aliasTypeArguments && type.aliasTypeArguments.length > 0 ? type.aliasTypeArguments[0] : undefined;
+  const argDecl = argType?.getSymbol()?.getDeclarations()?.[0];
+  if (!argDecl) return undefined;
+
+  let node: ts.Node | undefined = argDecl;
+  while (node && !ts.isSourceFile(node)) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && structTypeConfigObject(node.initializer)) {
+      const identity = qualifiedDeclarationName(projectNamespace, node.getSourceFile().fileName, node.name.text);
+      const typeId = services.runtime.types.resolveByName(identity);
+      if (typeId !== undefined) {
+        const def = services.runtime.types.get(typeId);
+        if (def && def.coreType === NativeType.Struct) return typeId;
+      }
+      return undefined;
+    }
+    node = node.parent;
+  }
+  return undefined;
+}
+
 function tsTypeToTypeId(
   type: ts.Type,
   checker: ts.TypeChecker | undefined,
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): string | undefined {
+  // Enum member literals carry the NumberLike/StringLike flags of their
+  // underlying values, so enum-literal resolution must precede the primitive
+  // checks or an enum-typed expression collapses to number/string.
+  const enumLiteralTypeId = resolveEnumLiteralTypeId(type, services, projectNamespace, checker);
+  if (enumLiteralTypeId) {
+    return enumLiteralTypeId;
+  }
   if (type.flags & ts.TypeFlags.NumberLike) {
     return CoreTypeIds.Number;
   }
@@ -8751,14 +11476,17 @@ function tsTypeToTypeId(
     if (checker) {
       const constraint = checker.getBaseConstraintOfType(type);
       if (constraint) {
-        return tsTypeToTypeId(constraint, checker, services);
+        return tsTypeToTypeId(constraint, checker, services, projectNamespace);
       }
     }
     return CoreTypeIds.Any;
   }
-  const enumTypeId = resolveRegisteredEnumTypeId(type, services, checker);
+  const enumTypeId = resolveRegisteredEnumTypeId(type, services, projectNamespace, checker);
   if (enumTypeId) {
     return enumTypeId;
+  }
+  if (isBufferType(type)) {
+    return CoreTypeIds.Buffer;
   }
   const callSigs = type.getCallSignatures();
   if (callSigs.length > 0 && checker) {
@@ -8767,7 +11495,7 @@ function tsTypeToTypeId(
     let allResolved = true;
     for (const param of sig.parameters) {
       const paramType = checker.getTypeOfSymbol(param);
-      const paramTid = tsTypeToTypeId(paramType, checker, services);
+      const paramTid = tsTypeToTypeId(paramType, checker, services, projectNamespace);
       if (!paramTid) {
         allResolved = false;
         break;
@@ -8776,7 +11504,7 @@ function tsTypeToTypeId(
     }
     if (allResolved) {
       const retType = sig.getReturnType();
-      const retTid = tsTypeToTypeId(retType, checker, services);
+      const retTid = tsTypeToTypeId(retType, checker, services, projectNamespace);
       if (retTid) {
         return services.runtime.types.getOrCreateFunctionType({
           paramTypeIds,
@@ -8793,7 +11521,7 @@ function tsTypeToTypeId(
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
     const hasNullish = nonNullish.length < type.types.length;
     if (nonNullish.length === 1) {
-      const baseTypeId = tsTypeToTypeId(nonNullish[0], checker, services);
+      const baseTypeId = tsTypeToTypeId(nonNullish[0], checker, services, projectNamespace);
       if (!baseTypeId) return undefined;
       if (hasNullish) {
         return services.runtime.types.addNullableType(baseTypeId);
@@ -8803,7 +11531,7 @@ function tsTypeToTypeId(
     if (nonNullish.length >= 2) {
       const memberIds = new List<string>();
       for (const t of nonNullish) {
-        const id = tsTypeToTypeId(t, checker, services);
+        const id = tsTypeToTypeId(t, checker, services, projectNamespace);
         if (!id) return CoreTypeIds.Any;
         memberIds.push(id);
       }
@@ -8836,8 +11564,12 @@ function tsTypeToTypeId(
         )
     );
     if (!hasPrimitive) {
-      return autoRegisterIntersectionType(type, checker, services);
+      return autoRegisterIntersectionType(type, checker, services, projectNamespace);
     }
+  }
+  const declaredStructId = resolveDeclaredStructInstanceTypeId(type, services, projectNamespace);
+  if (declaredStructId) {
+    return declaredStructId;
   }
   const sym = type.aliasSymbol ?? type.getSymbol();
   if (sym) {
@@ -8847,7 +11579,7 @@ function tsTypeToTypeId(
     if (symName === "Array" && checker) {
       const typeArgs = (type as ts.TypeReference).typeArguments ?? checker.getTypeArguments(type as ts.TypeReference);
       if (typeArgs && typeArgs.length > 0) {
-        const elementTypeId = tsTypeToTypeId(typeArgs[0], checker, services);
+        const elementTypeId = tsTypeToTypeId(typeArgs[0], checker, services, projectNamespace);
         if (elementTypeId) {
           return registry.instantiate("List", List.from([elementTypeId]));
         }
@@ -8857,19 +11589,19 @@ function tsTypeToTypeId(
     if (symName === "Map" && checker) {
       const typeArgs = (type as ts.TypeReference).typeArguments ?? checker.getTypeArguments(type as ts.TypeReference);
       if (typeArgs && typeArgs.length >= 2) {
-        const keyTypeId = tsTypeToTypeId(typeArgs[0], checker, services) ?? CoreTypeIds.String;
-        const valueTypeId = tsTypeToTypeId(typeArgs[1], checker, services);
+        const keyTypeId = tsTypeToTypeId(typeArgs[0], checker, services, projectNamespace) ?? CoreTypeIds.String;
+        const valueTypeId = tsTypeToTypeId(typeArgs[1], checker, services, projectNamespace);
         if (valueTypeId) {
           return registry.instantiate("Map", List.from([keyTypeId, valueTypeId]));
         }
       }
     }
 
-    const typeId = registry.resolveByName(resolveRegistryName(sym, services));
+    const typeId = registry.resolveByName(resolveRegistryName(sym, services, projectNamespace));
     if (typeId) return typeId;
 
     if (checker) {
-      const autoId = autoRegisterObjectType(type, sym, checker, services);
+      const autoId = autoRegisterObjectType(type, sym, checker, services, projectNamespace);
       if (autoId) return autoId;
     }
   }
@@ -8877,7 +11609,7 @@ function tsTypeToTypeId(
   if (checker) {
     const indexType = type.getStringIndexType();
     if (indexType) {
-      const valueTypeId = tsTypeToTypeId(indexType, checker, services);
+      const valueTypeId = tsTypeToTypeId(indexType, checker, services, projectNamespace);
       if (valueTypeId) {
         return services.runtime.types.instantiate("Map", List.from([CoreTypeIds.String, valueTypeId]));
       }
@@ -8890,11 +11622,12 @@ function tsTypeToTypeId(
 function autoRegisterIntersectionType(
   type: ts.IntersectionType,
   checker: ts.TypeChecker,
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): string | undefined {
   const aliasSym = type.aliasSymbol;
   if (aliasSym) {
-    const aliasName = resolveRegistryName(aliasSym, services);
+    const aliasName = resolveRegistryName(aliasSym, services, projectNamespace);
     const existing = services.runtime.types.resolveByName(aliasName);
     if (existing) return existing;
   }
@@ -8906,26 +11639,26 @@ function autoRegisterIntersectionType(
   const props = type.getProperties();
   if (props.length === 0) return undefined;
 
-  const fields = new List<{ name: string; typeId: TypeId }>();
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
   for (const prop of props) {
     const propType = checker.getTypeOfSymbol(prop);
     if (propType.getCallSignatures().length > 0) return undefined;
-    let fieldTypeId = tsTypeToTypeId(propType, checker, services);
+    let fieldTypeId = tsTypeToTypeId(propType, checker, services, projectNamespace);
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
-    fields.push({ name: prop.name, typeId: fieldTypeId });
+    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
   }
 
   let structName: string;
   if (aliasSym) {
-    structName = resolveRegistryName(aliasSym, services);
+    structName = resolveRegistryName(aliasSym, services, projectNamespace);
   } else {
     const constituentNames: string[] = [];
     for (const t of type.types) {
-      const id = tsTypeToTypeId(t, checker, services);
+      const id = tsTypeToTypeId(t, checker, services, projectNamespace);
       if (!id) return undefined;
       constituentNames.push(id);
     }
@@ -8943,7 +11676,8 @@ function autoRegisterIntersectionType(
 function autoRegisterAnonymousStruct(
   type: ts.Type,
   checker: ts.TypeChecker,
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): StructTypeDef | undefined {
   const callSigs = type.getCallSignatures();
   if (callSigs.length > 0) return undefined;
@@ -8952,18 +11686,20 @@ function autoRegisterAnonymousStruct(
   const props = type.getProperties();
   if (props.length === 0) return undefined;
 
-  const fields = new List<{ name: string; typeId: TypeId }>();
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
   const nameParts: string[] = [];
   for (const prop of props) {
-    const propType = checker.getTypeOfSymbol(prop);
+    // Literal field types widen to their declared types (an enum member
+    // becomes its enum), matching the object type TypeScript itself infers.
+    const propType = checker.getBaseTypeOfLiteralType(checker.getTypeOfSymbol(prop));
     if (propType.getCallSignatures().length > 0) return undefined;
-    let fieldTypeId = tsTypeToTypeId(propType, checker, services);
+    let fieldTypeId = tsTypeToTypeId(propType, checker, services, projectNamespace);
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
-    fields.push({ name: prop.name, typeId: fieldTypeId });
+    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
     nameParts.push(`${prop.name}:${fieldTypeId}`);
   }
 
@@ -8987,7 +11723,8 @@ function autoRegisterObjectType(
   type: ts.Type,
   sym: ts.Symbol,
   checker: ts.TypeChecker,
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): string | undefined {
   const resolvedSym = resolveAliasedSymbol(sym, checker) ?? sym;
   const decls = resolvedSym.getDeclarations();
@@ -9020,20 +11757,20 @@ function autoRegisterObjectType(
   const props = type.getProperties();
   if (props.length === 0) return undefined;
 
-  const fields = new List<{ name: string; typeId: TypeId }>();
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
   for (const prop of props) {
     const propType = checker.getTypeOfSymbol(prop);
     if (propType.getCallSignatures().length > 0) return undefined;
-    let fieldTypeId = tsTypeToTypeId(propType, checker, services);
+    let fieldTypeId = tsTypeToTypeId(propType, checker, services, projectNamespace);
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
-    fields.push({ name: prop.name, typeId: fieldTypeId });
+    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
   }
 
-  const baseName = resolveRegistryName(sym, services);
+  const baseName = resolveRegistryName(sym, services, projectNamespace);
   const typeArgs =
     type.aliasTypeArguments ??
     (type as ts.TypeReference).typeArguments ??
@@ -9042,7 +11779,7 @@ function autoRegisterObjectType(
   if (typeArgs && typeArgs.length > 0) {
     const argIds: string[] = [];
     for (const ta of typeArgs) {
-      const argId = tsTypeToTypeId(ta, checker, services);
+      const argId = tsTypeToTypeId(ta, checker, services, projectNamespace);
       argIds.push(argId ?? "?");
     }
     structName = `${baseName}<${argIds.join(",")}>`;
@@ -9067,9 +11804,10 @@ function extractClassFields(
   classNode: ts.ClassDeclaration,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
-): List<{ name: string; typeId: TypeId }> | undefined {
-  const fields = new List<{ name: string; typeId: TypeId }>();
+  services: BrainServices,
+  projectNamespace: string
+): List<{ name: string; typeId: TypeId; fieldIndex: number }> | undefined {
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
   const seen = new Set<string>();
 
   for (const member of classNode.members) {
@@ -9090,7 +11828,7 @@ function extractClassFields(
     seen.add(fieldName);
 
     const memberType = checker.getTypeAtLocation(member);
-    const fieldTypeId = tsTypeToTypeId(memberType, checker, services);
+    const fieldTypeId = tsTypeToTypeId(memberType, checker, services, projectNamespace);
     if (!fieldTypeId) {
       diagnostics.push(
         makeDiag(
@@ -9101,7 +11839,7 @@ function extractClassFields(
       );
       return undefined;
     }
-    fields.push({ name: fieldName, typeId: fieldTypeId });
+    fields.push({ name: fieldName, typeId: fieldTypeId, fieldIndex: fields.size() });
   }
 
   const ctor = classNode.members.find(ts.isConstructorDeclaration);
@@ -9119,7 +11857,7 @@ function extractClassFields(
       seen.add(fieldName);
 
       const assignType = checker.getTypeAtLocation(expr.left);
-      const fieldTypeId = tsTypeToTypeId(assignType, checker, services);
+      const fieldTypeId = tsTypeToTypeId(assignType, checker, services, projectNamespace);
       if (!fieldTypeId) {
         diagnostics.push(
           makeDiag(
@@ -9130,7 +11868,7 @@ function extractClassFields(
         );
         return undefined;
       }
-      fields.push({ name: fieldName, typeId: fieldTypeId });
+      fields.push({ name: fieldName, typeId: fieldTypeId, fieldIndex: fields.size() });
     }
   }
 
@@ -9141,7 +11879,8 @@ function extractClassMethodDecls(
   classNode: ts.ClassDeclaration,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): List<{ name: string; params: List<{ name: string; typeId: TypeId }>; returnTypeId: TypeId }> {
   const methods = new List<{
     name: string;
@@ -9169,12 +11908,12 @@ function extractClassMethodDecls(
     const params = new List<{ name: string; typeId: TypeId }>();
     for (const param of sig.parameters) {
       const paramType = checker.getTypeOfSymbol(param);
-      const paramTypeId = tsTypeToTypeId(paramType, checker, services) ?? CoreTypeIds.Any;
+      const paramTypeId = tsTypeToTypeId(paramType, checker, services, projectNamespace) ?? CoreTypeIds.Any;
       params.push({ name: param.getName(), typeId: paramTypeId });
     }
 
     const retType = sig.getReturnType();
-    const returnTypeId = tsTypeToTypeId(retType, checker, services) ?? CoreTypeIds.Void;
+    const returnTypeId = tsTypeToTypeId(retType, checker, services, projectNamespace) ?? CoreTypeIds.Void;
 
     methods.push({ name: member.name.text, params, returnTypeId });
   }
@@ -9182,33 +11921,43 @@ function extractClassMethodDecls(
   return methods;
 }
 
-function registerClassStructType(
-  ci: ClassInfo,
+function reserveClassStructType(
+  ci: ImportedClass,
+  services: BrainServices,
+  projectNamespace: string
+): string | undefined {
+  const registry = services.runtime.types;
+  const qualName = qualifiedDeclarationName(projectNamespace, ci.sourceFile.fileName, ci.name);
+  const existing = registry.resolveByName(qualName);
+  if (existing) return undefined;
+
+  return registry.withOwner("dynamic", () => registry.reserveStructType(qualName));
+}
+
+function finalizeClassStructType(
+  ci: ImportedClass,
+  typeId: string,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): void {
-  const registry = services.runtime.types;
-  const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
-  const existing = registry.resolveByName(qualName);
-  if (existing) return;
-
-  const fields = extractClassFields(ci.node, checker, diagnostics, services);
+  const fields = extractClassFields(ci.node, checker, diagnostics, services, projectNamespace);
   if (!fields) return;
 
-  const methods = extractClassMethodDecls(ci.node, checker, diagnostics, services);
-
-  registry.addStructType(qualName, { fields, methods });
+  const methods = extractClassMethodDecls(ci.node, checker, diagnostics, services, projectNamespace);
+  services.runtime.types.finalizeStructType(typeId, { fields, methods });
 }
 
 function reserveInterfaceStructType(
   ii: InterfaceInfo,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): string | undefined {
   const registry = services.runtime.types;
-  const qualName = qualifiedClassName(ii.sourceFile.fileName, ii.name);
+  const qualName = qualifiedDeclarationName(projectNamespace, ii.sourceFile.fileName, ii.name);
 
   if (registry.resolveByName(ii.name)) {
     diagnostics.push(
@@ -9239,10 +11988,11 @@ function finalizeInterfaceStructType(
   typeId: string,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): void {
   const type = checker.getTypeAtLocation(ii.node);
-  const fields = extractInterfaceFields(type, ii.node, checker, diagnostics, services);
+  const fields = extractInterfaceFields(type, ii.node, checker, diagnostics, services, projectNamespace);
   if (!fields) return;
 
   services.runtime.types.finalizeStructType(typeId, { fields });
@@ -9252,10 +12002,11 @@ function reserveTypeAliasStructType(
   tai: TypeAliasInfo,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): string | undefined {
   const registry = services.runtime.types;
-  const qualName = qualifiedClassName(tai.sourceFile.fileName, tai.name);
+  const qualName = qualifiedDeclarationName(projectNamespace, tai.sourceFile.fileName, tai.name);
 
   if (registry.resolveByName(tai.name)) {
     diagnostics.push(
@@ -9285,10 +12036,11 @@ function finalizeTypeAliasStructType(
   typeId: string,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
+  services: BrainServices,
+  projectNamespace: string
 ): void {
   const type = checker.getTypeAtLocation(tai.node);
-  const fields = extractInterfaceFields(type, tai.node, checker, diagnostics, services);
+  const fields = extractInterfaceFields(type, tai.node, checker, diagnostics, services, projectNamespace);
   if (!fields) return;
 
   services.runtime.types.finalizeStructType(typeId, { fields });
@@ -9299,9 +12051,10 @@ function extractInterfaceFields(
   node: ts.Node,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
-  services: BrainServices
-): List<{ name: string; typeId: TypeId }> | undefined {
-  const fields = new List<{ name: string; typeId: TypeId }>();
+  services: BrainServices,
+  projectNamespace: string
+): List<{ name: string; typeId: TypeId; fieldIndex: number }> | undefined {
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
 
   const indexInfo = checker.getIndexInfosOfType(type);
   if (indexInfo.length > 0) {
@@ -9336,7 +12089,7 @@ function extractInterfaceFields(
     const propType = checker.getTypeOfSymbol(prop);
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
 
-    let fieldTypeId = tsTypeToTypeId(propType, checker, services);
+    let fieldTypeId = tsTypeToTypeId(propType, checker, services, projectNamespace);
     if (!fieldTypeId) {
       diagnostics.push(
         makeDiag(
@@ -9352,7 +12105,7 @@ function extractInterfaceFields(
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
 
-    fields.push({ name: prop.name, typeId: fieldTypeId });
+    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
   }
 
   return fields;
@@ -9367,12 +12120,13 @@ function lowerClassDeclaration(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   services: BrainServices,
+  projectNamespace: string,
   classInfos: ClassInfo[]
 ): FunctionEntry[] {
   const entries: FunctionEntry[] = [];
 
   const registry = services.runtime.types;
-  const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
+  const qualName = qualifiedDeclarationName(projectNamespace, ci.sourceFile.fileName, ci.name);
   const typeId = registry.resolveByName(qualName);
 
   const ctor = ci.node.members.find(ts.isConstructorDeclaration);
@@ -9401,6 +12155,7 @@ function lowerClassDeclaration(
 
   const ctorCtx: LowerContext = {
     services,
+    projectNamespace,
     checker,
     paramsSymbol: undefined,
     paramLocals: ctorParamLocals,
@@ -9416,7 +12171,7 @@ function lowerClassDeclaration(
     closureFunctions,
     thisLocalIndex: thisLocal,
     currentFunctionName: `${ci.name}$new`,
-    currentReturnTypeId: ctor ? resolveSignatureReturnTypeId(ctor, checker, services) : undefined,
+    currentReturnTypeId: ctor ? resolveSignatureReturnTypeId(ctor, checker, services, projectNamespace) : undefined,
     classInfos,
   };
 
@@ -9436,13 +12191,15 @@ function lowerClassDeclaration(
     const fieldName = member.name.text;
     const structDef = typeId ? (services.runtime.types.get(typeId) as StructTypeDef | undefined) : undefined;
     const field = structDef ? findStructField(structDef, fieldName) : undefined;
-    const fieldIndex = field && structDef && isIndexedStruct(structDef) ? field.fieldIndex : undefined;
-    ctorIr.push({ kind: "LoadLocal", index: thisLocal });
-    if (fieldIndex === undefined) {
-      ctorIr.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    if (!field) {
+      ctorCtx.diagnostics.push(
+        makeDiag(LoweringDiagCode.PropertyNotOnStruct, `Cannot resolve field id for '${fieldName}'`, member)
+      );
+      continue;
     }
+    ctorIr.push({ kind: "LoadLocal", index: thisLocal });
     lowerExpression(member.initializer, ctorCtx);
-    ctorIr.push(fieldIndex !== undefined ? { kind: "StructSet", fieldIndex } : { kind: "StructSet" });
+    ctorIr.push({ kind: "StructSet", fieldIndex: field.fieldIndex });
     ctorIr.push({ kind: "StoreLocal", index: thisLocal });
   }
 
@@ -9498,6 +12255,7 @@ function lowerClassDeclaration(
 
     const methodCtx: LowerContext = {
       services,
+      projectNamespace,
       checker,
       paramsSymbol: undefined,
       paramLocals: methodParamLocals,
@@ -9513,7 +12271,7 @@ function lowerClassDeclaration(
       closureFunctions,
       thisLocalIndex: 0,
       currentFunctionName: `${ci.name}.${methodName}`,
-      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services, projectNamespace),
       classInfos,
     };
 
@@ -9586,6 +12344,7 @@ function lowerClassDeclaration(
 
     const methodCtx: LowerContext = {
       services,
+      projectNamespace,
       checker,
       paramsSymbol: undefined,
       paramLocals: methodParamLocals,
@@ -9602,7 +12361,7 @@ function lowerClassDeclaration(
       thisLocalIndex: undefined,
       staticClassInfo: ci,
       currentFunctionName: `${ci.name}$${methodName}`,
-      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services, projectNamespace),
       classInfos,
     };
 
@@ -9636,20 +12395,8 @@ function lowerClassDeclaration(
     });
   }
 
-  for (const member of ci.node.members) {
-    if (!ts.isGetAccessorDeclaration(member)) continue;
-    if (!ts.isIdentifier(member.name)) {
-      diagnostics.push(
-        makeDiag(
-          LoweringDiagCode.ComputedClassMemberNameNotSupported,
-          "Computed property names are not supported in class declarations",
-          member.name
-        )
-      );
-      continue;
-    }
+  const lowerGetterEntry = (member: ts.GetAccessorDeclaration, propName: string): void => {
     const isStatic = hasStaticModifier(member);
-    const propName = member.name.text;
 
     if (isStatic) {
       const funcName = `${ci.name}$get_${propName}`;
@@ -9659,6 +12406,7 @@ function lowerClassDeclaration(
 
       const getterCtx: LowerContext = {
         services,
+        projectNamespace,
         checker,
         paramsSymbol: undefined,
         paramLocals: new Map(),
@@ -9675,7 +12423,7 @@ function lowerClassDeclaration(
         thisLocalIndex: undefined,
         staticClassInfo: ci,
         currentFunctionName: funcName,
-        currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+        currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services, projectNamespace),
         classInfos,
       };
 
@@ -9707,6 +12455,7 @@ function lowerClassDeclaration(
 
       const getterCtx: LowerContext = {
         services,
+        projectNamespace,
         checker,
         paramsSymbol: undefined,
         paramLocals: new Map(),
@@ -9722,7 +12471,7 @@ function lowerClassDeclaration(
         closureFunctions,
         thisLocalIndex: 0,
         currentFunctionName: funcName,
-        currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+        currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services, projectNamespace),
         classInfos,
       };
 
@@ -9746,22 +12495,10 @@ function lowerClassDeclaration(
         functionSpan: spanFromNode(member),
       });
     }
-  }
+  };
 
-  for (const member of ci.node.members) {
-    if (!ts.isSetAccessorDeclaration(member)) continue;
-    if (!ts.isIdentifier(member.name)) {
-      diagnostics.push(
-        makeDiag(
-          LoweringDiagCode.ComputedClassMemberNameNotSupported,
-          "Computed property names are not supported in class declarations",
-          member.name
-        )
-      );
-      continue;
-    }
+  const lowerSetterEntry = (member: ts.SetAccessorDeclaration, propName: string): void => {
     const isStatic = hasStaticModifier(member);
-    const propName = member.name.text;
 
     if (isStatic) {
       const funcName = `${ci.name}$set_${propName}`;
@@ -9788,6 +12525,7 @@ function lowerClassDeclaration(
 
       const setterCtx: LowerContext = {
         services,
+        projectNamespace,
         checker,
         paramsSymbol: undefined,
         paramLocals: setterParamLocals,
@@ -9854,6 +12592,7 @@ function lowerClassDeclaration(
 
       const setterCtx: LowerContext = {
         services,
+        projectNamespace,
         checker,
         paramsSymbol: undefined,
         paramLocals: setterParamLocals,
@@ -9893,14 +12632,40 @@ function lowerClassDeclaration(
         functionSpan: spanFromNode(member),
       });
     }
+  };
+
+  // Accessors lower in member order, matching their func-id reservation order.
+  for (const member of ci.node.members) {
+    if (!ts.isGetAccessorDeclaration(member) && !ts.isSetAccessorDeclaration(member)) continue;
+    if (!ts.isIdentifier(member.name)) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ComputedClassMemberNameNotSupported,
+          "Computed property names are not supported in class declarations",
+          member.name
+        )
+      );
+      continue;
+    }
+    const propName = member.name.text;
+    if (ts.isGetAccessorDeclaration(member)) {
+      lowerGetterEntry(member, propName);
+    } else {
+      lowerSetterEntry(member, propName);
+    }
   }
 
   return entries;
 }
 
-function makeDiag(code: LoweringDiagCode, message: string, node: ts.Node): CompileDiagnostic {
+function makeDiag(
+  code: LoweringDiagCode,
+  message: string,
+  node: ts.Node,
+  severity: CompileDiagnostic["severity"] = "error"
+): CompileDiagnostic {
   const sourceFile = node.getSourceFile();
-  const diag: CompileDiagnostic = { code, message, severity: "error" };
+  const diag: CompileDiagnostic = { code, message, severity };
   if (sourceFile) {
     const start = sourceFile.getLineAndCharacterOfPosition(node.getStart());
     const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());

@@ -1,6 +1,6 @@
 import { task, thread } from "@mindcraft-lang/core";
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
-import { parseBrainTiles, type TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
+import type { TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { kMaxBrainRuleCommentLength } from "@mindcraft-lang/core/brain/model";
 import { Plus, Save } from "lucide-react";
@@ -32,7 +32,7 @@ import {
   PasteRuleAboveCommand,
   SetRuleCommentCommand,
 } from "./commands";
-import { useRuleCapabilities } from "./hooks/useRuleCapabilities";
+import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
 import { useRuleDragController } from "./RuleDragContext";
 import { copyRuleToClipboard, hasRuleInClipboard, onClipboardChanged } from "./rule-clipboard";
@@ -141,6 +141,7 @@ export function BrainRuleEditor({
   const [doBadges, setDoBadges] = useState<Map<number, TileBadge>>(new Map());
 
   const availableCapabilities = useRuleCapabilities(ruleDef, updateCounter);
+  const availableOutputKeys = useRuleOutputKeys(ruleDef, updateCounter);
 
   // Use the tile selection hook
   const {
@@ -198,25 +199,21 @@ export function BrainRuleEditor({
     const whenTileSet = ruleDef.when();
     const doTileSet = ruleDef.do();
 
-    // Compute initial badges for tilesets that were already parsed before mount
-    for (const [tileSet, side] of [
-      [whenTileSet, RuleSide.When],
-      [doTileSet, RuleSide.Do],
-    ] as const) {
-      if (!tileSet.isDirty() && !tileSet.isEmpty()) {
-        const parseResult = parseBrainTiles(tileSet.tiles());
-        const badges = computeTileBadges(parseResult);
-        if (side === RuleSide.When) setWhenBadges(badges);
-        else setDoBadges(badges);
-      }
-    }
-
     const unsubWhen = whenTileSet.events().on("tileSet_typechecked", (data) => {
       updateBadgesForSide(RuleSide.When, data.typecheckResult);
     });
     const unsubDo = doTileSet.events().on("tileSet_typechecked", (data) => {
       updateBadgesForSide(RuleSide.Do, data.typecheckResult);
     });
+
+    // Badges derive from the stored full typecheck result. A rule with no
+    // stored result yet (e.g. freshly deserialized or pasted) is typechecked
+    // now; typecheck() is a no-op for rules that are clean and already checked.
+    if (!whenTileSet.typecheckResult() || !doTileSet.typecheckResult()) {
+      ruleDef.typecheck();
+    }
+    updateBadgesForSide(RuleSide.When, whenTileSet.typecheckResult());
+    updateBadgesForSide(RuleSide.Do, doTileSet.typecheckResult());
 
     return () => {
       unsubWhen();
@@ -496,6 +493,7 @@ export function BrainRuleEditor({
                 tileIndex={idx}
                 side={RuleSide.When}
                 ruleDef={ruleDef}
+                updateCounter={updateCounter}
                 commandHistory={commandHistory}
                 badge={whenBadges.get(idx)}
               />
@@ -546,6 +544,7 @@ export function BrainRuleEditor({
                 tileIndex={idx}
                 side={RuleSide.Do}
                 ruleDef={ruleDef}
+                updateCounter={updateCounter}
                 commandHistory={commandHistory}
                 badge={doBadges.get(idx)}
               />
@@ -579,6 +578,8 @@ export function BrainRuleEditor({
                 expr={tileSet.expr()}
                 existingTiles={tileSet.tiles()}
                 availableCapabilities={availableCapabilities}
+                availableOutputKeys={availableOutputKeys}
+                ruleDef={ruleDef}
                 onTileSelected={handleTileSelected}
                 onCancel={handleTilePickerCancel}
               />

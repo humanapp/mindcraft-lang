@@ -1,3 +1,4 @@
+import { assertUnreachable } from "@mindcraft-lang/core";
 import type {
   BrainTileAccessorDef,
   BrainTileKind,
@@ -10,20 +11,24 @@ import { dataTypeIconMap } from "./data-type-icons";
 import { tileVisuals } from "./tile-visuals";
 import type { TileColorDef, TileVisual } from "./types";
 
-const tileColorMap = new Map<BrainTileKind, TileColorDef>([
-  ["operator", { when: "#AA94EB", do: "#93A6EB" }],
-  ["controlFlow", { when: "#AA94EB", do: "#93A6EB" }],
-  ["variable", { when: "#AA94EB", do: "#93A6EB" }],
-  ["literal", { when: "#AA94EB", do: "#93A6EB" }],
-  ["sensor", { when: "#AA94EB", do: "#93A6EB" }],
-  ["actuator", { when: "#AA94EB", do: "#93A6EB" }],
-  ["parameter", { when: "#AA94EB", do: "#93A6EB" }],
-  ["modifier", { when: "#AA94EB", do: "#93A6EB" }],
-  ["factory", { when: "#AA94EB", do: "#93A6EB" }],
-  ["accessor", { when: "#AA94EB", do: "#93A6EB" }],
-  ["page", { when: "#AA94EB", do: "#93A6EB" }],
-  ["missing", { when: "#E57373", do: "#E57373" }],
-]);
+const defaultTileColor: TileColorDef = { when: "#AA94EB", do: "#93A6EB" };
+
+const tileColorMap: Record<BrainTileKind, TileColorDef | undefined> = {
+  undefined: undefined,
+  operator: defaultTileColor,
+  controlFlow: defaultTileColor,
+  variable: defaultTileColor,
+  literal: defaultTileColor,
+  sensor: defaultTileColor,
+  actuator: defaultTileColor,
+  parameter: defaultTileColor,
+  modifier: defaultTileColor,
+  factory: defaultTileColor,
+  accessor: defaultTileColor,
+  page: defaultTileColor,
+  output: undefined,
+  missing: { when: "#E57373", do: "#E57373" },
+};
 
 function stripGenericCatalogLabel(tileDef: IBrainTileDef, visual: TileVisual | undefined): Partial<TileVisual> {
   if (!visual) {
@@ -40,6 +45,27 @@ function stripGenericCatalogLabel(tileDef: IBrainTileDef, visual: TileVisual | u
 
 const warnedMissingIcons = new Set<string>();
 
+/**
+ * Builds a tile visual resolver that generates each tile's visual via
+ * {@link genVisualForTile} and passes its icon URL through
+ * `resolveVfsAssetUrl`, replacing compiler-minted `/vfs/<path>` references
+ * with loadable asset URLs.
+ */
+export function createVfsAwareVisualProvider(
+  resolveVfsAssetUrl: (url: string) => string
+): (tileDef: IBrainTileDef) => TileVisual {
+  return (tileDef) => {
+    const visual = genVisualForTile(tileDef);
+    if (visual.iconUrl) {
+      const iconUrl = resolveVfsAssetUrl(visual.iconUrl);
+      if (iconUrl !== visual.iconUrl) {
+        return { ...visual, iconUrl };
+      }
+    }
+    return visual;
+  };
+}
+
 export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
   const intrinsicVisual = stripGenericCatalogLabel(tileDef, tileDef.metadata as TileVisual | undefined);
   const mappedVisual = tileVisuals.get(tileDef.tileId);
@@ -49,31 +75,49 @@ export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
   };
 
   if (!vis.colorDef) {
-    vis.colorDef = tileColorMap.get(tileDef.kind);
+    vis.colorDef = tileColorMap[tileDef.kind];
   }
 
-  if (tileDef.kind === "variable") {
-    const varTileDef = tileDef as BrainTileVariableDef;
-    if (!vis.iconUrl) {
-      const dataTypeIcon = dataTypeIconMap.get(varTileDef.varType);
-      vis.iconUrl = dataTypeIcon;
+  switch (tileDef.kind) {
+    case "variable": {
+      const varTileDef = tileDef as BrainTileVariableDef;
+      if (!vis.iconUrl) {
+        vis.iconUrl = dataTypeIconMap.get(varTileDef.varType);
+      }
+      break;
     }
-  } else if (tileDef.kind === "accessor") {
-    const accTileDef = tileDef as BrainTileAccessorDef;
-    if (!vis.iconUrl) {
-      const dataTypeIcon = dataTypeIconMap.get(accTileDef.fieldTypeId);
-      vis.iconUrl = dataTypeIcon;
+    case "accessor": {
+      const accTileDef = tileDef as BrainTileAccessorDef;
+      if (!vis.iconUrl) {
+        vis.iconUrl = dataTypeIconMap.get(accTileDef.fieldTypeId);
+      }
+      break;
     }
-  } else if (tileDef.kind === "literal") {
-    const litTileDef = tileDef as BrainTileLiteralDef;
-    if (!vis.iconUrl) {
-      const dataTypeIcon = dataTypeIconMap.get(litTileDef.valueType);
-      vis.iconUrl = dataTypeIcon;
+    case "literal": {
+      const litTileDef = tileDef as BrainTileLiteralDef;
+      if (!vis.iconUrl) {
+        vis.iconUrl = dataTypeIconMap.get(litTileDef.valueType);
+      }
+      break;
     }
-  } else if (tileDef.kind === "page") {
-    if (!vis.iconUrl) {
-      vis.iconUrl = "/assets/brain/icons/page3.svg";
-    }
+    case "page":
+      if (!vis.iconUrl) {
+        vis.iconUrl = "/assets/brain/icons/page3.svg";
+      }
+      break;
+    case "undefined":
+    case "sensor":
+    case "actuator":
+    case "parameter":
+    case "operator":
+    case "factory":
+    case "controlFlow":
+    case "modifier":
+    case "output":
+    case "missing":
+      break;
+    default:
+      assertUnreachable(tileDef.kind);
   }
 
   if (!vis.iconUrl) {

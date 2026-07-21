@@ -1,3 +1,4 @@
+import { CoreHostActions } from "../abi-ids";
 import type { ExecutionContext, HostActionBinding } from "../context";
 import {
   type ActionDescriptor,
@@ -5,7 +6,7 @@ import {
   type BrainActionCallSpec,
   callSpecToArgSlots,
 } from "../function-defs";
-import { CoreActuatorId, mkActuatorTileId } from "../tile-ids";
+import { mkActuatorTileId } from "../tile-ids";
 import { type Value, VOID_VALUE } from "../value";
 
 const callSpec: BrainActionCallSpec = {
@@ -21,7 +22,7 @@ const callDef: BrainActionCallDef = {
 };
 
 const descriptor: ActionDescriptor = {
-  key: CoreActuatorId.Yield,
+  key: CoreHostActions.Yield.key,
   kind: "actuator",
   callDef,
   isAsync: false,
@@ -34,12 +35,13 @@ function fnYield(_ctx: ExecutionContext): Value {
 const binding: HostActionBinding = {
   binding: "host",
   descriptor,
+  id: CoreHostActions.Yield.actionId,
   execSync: fnYield,
 };
 
 export default {
-  fnId: CoreActuatorId.Yield,
-  tileId: mkActuatorTileId(CoreActuatorId.Yield),
+  key: CoreHostActions.Yield.key,
+  tileId: mkActuatorTileId(CoreHostActions.Yield.key),
   isAsync: false,
   descriptor,
   binding,

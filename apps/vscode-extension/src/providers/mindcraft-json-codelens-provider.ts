@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
+import { MINDCRAFT_JSON } from "../mindcraft-json";
 import type { MindcraftFileSystemProvider } from "../services/mindcraft-fs-provider";
-import { MINDCRAFT_JSON, MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
+import { MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
 
 export class MindcraftJsonCodeLensProvider implements vscode.CodeLensProvider {
   private readonly _onDidChangeCodeLenses = new vscode.EventEmitter<void>();

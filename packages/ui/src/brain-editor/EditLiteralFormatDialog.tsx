@@ -29,22 +29,22 @@ export function EditLiteralFormatDialog({ isOpen, literalDef, onOpenChange, onSu
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-106.25 bg-slate-50 border-2 border-slate-300 rounded-2xl">
-        <DialogHeader className="border-b border-slate-200 pb-4">
-          <DialogTitle className="text-slate-800 font-semibold">Edit Display Format</DialogTitle>
-          <DialogDescription className="text-slate-600">
+      <DialogContent className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl">
+        <DialogHeader className="border-b border-border pb-4">
+          <DialogTitle className="text-foreground font-semibold">Edit Display Format</DialogTitle>
+          <DialogDescription className="text-muted-foreground">
             Change how the value {String(literalDef.value)} is displayed.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <DisplayFormatPicker value={displayFormat} onChange={setDisplayFormat} />
         </div>
-        <DialogFooter className="gap-2 pt-4 border-t border-slate-200">
+        <DialogFooter className="gap-2 pt-4 border-t border-border">
           <Button variant="cancel" className="rounded-lg" onClick={handleCancel} aria-label="Cancel editing format">
             Cancel
           </Button>
           <Button
-            className="rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white"
+            className="rounded-lg"
             onClick={handleSubmit}
             disabled={!hasChanged}
             aria-label="Apply display format"

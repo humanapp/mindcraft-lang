@@ -14,13 +14,16 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 function mkCtx(): ExecutionContext {
@@ -28,6 +31,8 @@ function mkCtx(): ExecutionContext {
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -56,7 +61,7 @@ export default Sensor({
 }
 
 function compileAndRun(source: string): Value {
-  const result = compileUserTile(source, { services });
+  const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
   assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   assert.ok(result.program, "expected program");
 
@@ -320,31 +325,31 @@ describe("Math diagnostics", () => {
 
   test("Math.abs() with no args produces TS error", () => {
     const source = sensorReturningNumber("return Math.abs();");
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 
   test("Math.abs(1, 2) with too many args produces TS error", () => {
     const source = sensorReturningNumber("return Math.abs(1, 2);");
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 
   test("Math.max(1) with too few args produces lowering diagnostic", () => {
     const source = sensorReturningNumber("return Math.max(1);");
-    const result = compileUserTile(source, { services });
-    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.MathMinMaxRequiresTwoArgs));
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.MathMinMaxRequiresTwoArgs);
   });
 
   test("Math.pow(1, 2, 3) with too many args produces TS error", () => {
     const source = sensorReturningNumber("return Math.pow(1, 2, 3);");
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 
   test("Math.nonexistent() produces TS error", () => {
     const source = sensorReturningNumber("return Math.nonexistent();");
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 });

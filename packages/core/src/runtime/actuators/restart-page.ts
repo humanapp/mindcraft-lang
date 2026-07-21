@@ -1,3 +1,4 @@
+import { CoreHostActions } from "../abi-ids";
 import type { ExecutionContext, HostActionBinding } from "../context";
 import {
   type ActionDescriptor,
@@ -5,7 +6,7 @@ import {
   type BrainActionCallSpec,
   callSpecToArgSlots,
 } from "../function-defs";
-import { CoreActuatorId, mkActuatorTileId } from "../tile-ids";
+import { mkActuatorTileId } from "../tile-ids";
 import { type Value, VOID_VALUE } from "../value";
 
 const callSpec: BrainActionCallSpec = {
@@ -21,7 +22,7 @@ const callDef: BrainActionCallDef = {
 };
 
 const descriptor: ActionDescriptor = {
-  key: CoreActuatorId.RestartPage,
+  key: CoreHostActions.RestartPage.key,
   kind: "actuator",
   callDef,
   isAsync: false,
@@ -35,12 +36,13 @@ function fnRestartPage(ctx: ExecutionContext): Value {
 const binding: HostActionBinding = {
   binding: "host",
   descriptor,
+  id: CoreHostActions.RestartPage.actionId,
   execSync: fnRestartPage,
 };
 
 export default {
-  fnId: CoreActuatorId.RestartPage,
-  tileId: mkActuatorTileId(CoreActuatorId.RestartPage),
+  key: CoreHostActions.RestartPage.key,
+  tileId: mkActuatorTileId(CoreHostActions.RestartPage.key),
   isAsync: false,
   descriptor,
   binding,

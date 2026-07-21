@@ -1,5 +1,5 @@
 ```brain noframe do
-{ "tile": "tile.actuator->actuator.move" }
+{ "tile": "${tileId}" }
 ```
 
 # Move

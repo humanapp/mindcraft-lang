@@ -20,6 +20,7 @@ import {
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
+import { SimHostActions } from "@/brain/abi-ids";
 import { hasArg, resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
@@ -190,7 +191,7 @@ function execTurn(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
 }
 
 export default {
-  key: TileIds.Actuator.Turn,
+  ...SimHostActions.Turn,
   callDef,
   fn: { exec: execTurn },
   isAsync: false,

@@ -6,7 +6,7 @@ import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
   type BrainSyncFunctionEntry,
-  CoreActuatorId,
+  CoreHostActions,
   CoreParameterId,
   type ExecutionContext,
   getSlotId,
@@ -25,6 +25,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -59,7 +61,7 @@ describe("switch-page actuator", () => {
   let stringSlotId: number;
 
   before(() => {
-    const entry = getSyncEntry(CoreActuatorId.SwitchPage);
+    const entry = getSyncEntry(CoreHostActions.SwitchPage.key);
     fn = entry.fn;
     numberSlotId = getSlotId(entry.callDef, mkParameterTileId(CoreParameterId.AnonymousNumber));
     stringSlotId = getSlotId(entry.callDef, mkParameterTileId(CoreParameterId.AnonymousString));
@@ -137,7 +139,7 @@ describe("restart-page actuator", () => {
   let fn: HostSyncFn;
 
   before(() => {
-    fn = getSyncEntry(CoreActuatorId.RestartPage).fn;
+    fn = getSyncEntry(CoreHostActions.RestartPage.key).fn;
   });
 
   test("calls requestPageRestart", () => {

@@ -6,21 +6,36 @@ import { UniqueSet } from "../../platform/uniqueset";
 import type {
   ActionCallSiteEntry,
   ActionRef,
+  BrainActionResolver,
   IConversionRegistry,
+  IOperatorOverloads,
+  ITypeRegistry,
   PageMetadata,
   UnlinkedBrainProgram,
 } from "../../runtime";
 import { BYTECODE_VERSION, type FunctionBytecode, type Instr, Op } from "../../runtime/bytecode";
 import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
-import type { IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog, TileId } from "../interfaces";
+import type { IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog } from "../interfaces";
+import { CoreCapabilityBits, RuleSide } from "../interfaces";
+import {
+  availableWhenResultType,
+  collectRuleHierarchyCapabilities,
+  collectRuleHierarchyOutputKeys,
+} from "../language-service/tile-suggestions";
 import { ConstantPool } from "./constant-pool";
+import { type BrainBuildDiagnostic, type BrainBuildResult, TypeDiagCode } from "./diagnostics";
 import { BytecodeEmitter } from "./emitter";
 import { computeExpectedTypes } from "./expected-types";
 import { computeInferredTypes } from "./inferred-types";
-import { parseBrainTiles } from "./parser";
+import {
+  parseBrainTiles,
+  validateCapabilityRequirements,
+  validateOutputProviders,
+  validateTilePlacement,
+  validateWhenResultConsumers,
+} from "./parser";
 import { type CompilationDiag, ExprCompiler } from "./rule-compiler";
-import type { ActuatorExpr, Expr, SensorExpr, TypeEnv, TypeInfo } from "./types";
-import { acceptExprVisitor } from "./types";
+import { acceptExprVisitor, type Expr, type ParseDiag, type TypeEnv, type TypeInfo, type TypeInfoDiag } from "./types";
 
 // Manual character-by-character iteration instead of String.replace() for
 // Roblox-TS compatibility -- Roblox-TS doesn't support regex or string.replace.
@@ -36,62 +51,14 @@ function replaceAllSlashes(str: string): string {
 }
 
 /**
- * Recursively walk an Expr tree to collect sensor and actuator tile IDs.
+ * True when `expr` is exactly a sensor tile whose def carries the
+ * {@link CoreCapabilityBits.PresenceGated} capability. Used to select
+ * `WHEN_END_PRESENT` for a rule whose WHEN root is a bare presence-gated value
+ * sensor; a sensor nested inside an expression is not the root and reports
+ * false.
  */
-function collectTileIds(expr: Expr, sensors: UniqueSet<TileId>, actuators: UniqueSet<TileId>): void {
-  switch (expr.kind) {
-    case "sensor": {
-      sensors.add(expr.tileDef.tileId);
-      collectSlotExprs(expr, sensors, actuators);
-      break;
-    }
-    case "actuator": {
-      actuators.add(expr.tileDef.tileId);
-      collectSlotExprs(expr, sensors, actuators);
-      break;
-    }
-    case "binaryOp":
-      collectTileIds(expr.left, sensors, actuators);
-      collectTileIds(expr.right, sensors, actuators);
-      break;
-    case "unaryOp":
-      collectTileIds(expr.operand, sensors, actuators);
-      break;
-    case "assignment":
-      collectTileIds(expr.value, sensors, actuators);
-      break;
-    case "parameter":
-      collectTileIds(expr.value, sensors, actuators);
-      break;
-    case "errorExpr":
-      if (expr.expr) collectTileIds(expr.expr, sensors, actuators);
-      break;
-    case "literal":
-    case "variable":
-    case "modifier":
-    case "empty":
-      break;
-  }
-}
-
-/**
- * Collect tile IDs from the slot expressions (anons, parameters, modifiers)
- * of a sensor or actuator expression.
- */
-function collectSlotExprs(
-  expr: SensorExpr | ActuatorExpr,
-  sensors: UniqueSet<TileId>,
-  actuators: UniqueSet<TileId>
-): void {
-  for (let i = 0; i < expr.anons.size(); i++) {
-    collectTileIds(expr.anons.get(i)!.expr, sensors, actuators);
-  }
-  for (let i = 0; i < expr.parameters.size(); i++) {
-    collectTileIds(expr.parameters.get(i)!.expr, sensors, actuators);
-  }
-  for (let i = 0; i < expr.modifiers.size(); i++) {
-    collectTileIds(expr.modifiers.get(i)!.expr, sensors, actuators);
-  }
+function isBarePresenceGatedSensor(expr: Expr): boolean {
+  return expr.kind === "sensor" && expr.tileDef.capabilities().get(CoreCapabilityBits.PresenceGated) === 1;
 }
 
 /**
@@ -104,7 +71,7 @@ interface RuleCompileResult {
   /** Variable names used by this rule (for LOAD_VAR_SLOT/STORE_VAR_SLOT) */
   variableNames: ReadonlyList<string>;
 
-  /** Function IDs of child rules that need to be CALLed */
+  /** Function IDs of child rules that the parent spawns as fibers */
   childFuncIds: List<number>;
 }
 
@@ -114,7 +81,7 @@ interface RuleCompileResult {
  * Architecture:
  * - Each rule becomes a single function in the program
  * - Functions are assigned IDs in depth-first traversal order
- * - Parent rules CALL their child rules after DO section completes
+ * - Parent rules spawn their child rules as fibers after the DO section completes
  * - All rules share a single constant pool
  * - Variables are resolved at Brain level (shared across all rules)
  *
@@ -123,12 +90,12 @@ interface RuleCompileResult {
  * func[rule]:
  *   WHEN_START
  *   ... when bytecode ...
- *   WHEN_END              ; jumps to skip_label if false
+ *   WHEN_END               ; jumps to skip_label if false
  *   DO_START
  *   ... do bytecode ...
  *   DO_END
- *   CALL child_rule_0, 0  ; execute children in order
- *   CALL child_rule_1, 0
+ *   SPAWN_RULE child_rule_0  ; spawn children in order, fire-and-forget
+ *   SPAWN_RULE child_rule_1
  *   ...
  * skip_label:
  *   RET
@@ -146,6 +113,12 @@ export class BrainCompiler {
   private nextFuncId: number;
   private catalogs: ReadonlyList<ITileCatalog>;
   private conversions: IConversionRegistry;
+  /** Resolves action descriptors to bindings (host vs bytecode) at compile time */
+  private actionResolver: BrainActionResolver;
+  /** Type registry used during inference to resolve struct field ids from object types */
+  private typeRegistry: ITypeRegistry;
+  /** Operator overload table of the brain under compilation, used to type WHEN expressions. */
+  private operatorOverloads?: IOperatorOverloads;
   /** Global variable name pool for LOAD_VAR_SLOT/STORE_VAR_SLOT instructions */
   private variableNames: List<string>;
   /** Maps variable names to their index in variableNames */
@@ -156,9 +129,16 @@ export class BrainCompiler {
   private actionIndices: Dict<string, number>;
   /** Counter for unique call-site IDs (shared across all rules for uniqueness) */
   private nextCallSiteIdCounter: { value: number };
+  /** Code-generation diagnostics collected across all compiled rules. */
+  private compileDiags: List<BrainBuildDiagnostic>;
 
-  constructor(catalogs: ReadonlyList<ITileCatalog>, conversions: IConversionRegistry) {
-    this.constantPool = new ConstantPool();
+  constructor(
+    catalogs: ReadonlyList<ITileCatalog>,
+    conversions: IConversionRegistry,
+    actionResolver: BrainActionResolver,
+    typeRegistry: ITypeRegistry
+  ) {
+    this.constantPool = new ConstantPool(typeRegistry);
     this.functions = List.empty();
     this.ruleIndex = Dict.empty();
     this.ruleFuncIds = new UniqueSet<number>();
@@ -167,11 +147,19 @@ export class BrainCompiler {
     this.nextFuncId = 0;
     this.catalogs = catalogs;
     this.conversions = conversions;
+    this.actionResolver = actionResolver;
+    this.typeRegistry = typeRegistry;
     this.variableNames = List.empty();
     this.variableIndices = Dict.empty();
     this.actionRefs = List.empty();
     this.actionIndices = Dict.empty();
     this.nextCallSiteIdCounter = { value: 1 };
+    this.compileDiags = List.empty();
+  }
+
+  /** Code-generation diagnostics collected during the last {@link compile}. */
+  diagnostics(): ReadonlyList<BrainBuildDiagnostic> {
+    return this.compileDiags;
   }
 
   /**
@@ -182,7 +170,7 @@ export class BrainCompiler {
    */
   compile(brainDef: IBrainDef): UnlinkedBrainProgram {
     // Reset state for fresh compilation
-    this.constantPool = new ConstantPool();
+    this.constantPool = new ConstantPool(this.typeRegistry);
     this.functions = List.empty();
     this.ruleIndex = Dict.empty();
     this.ruleFuncIds = new UniqueSet<number>();
@@ -194,6 +182,8 @@ export class BrainCompiler {
     this.actionRefs = List.empty();
     this.actionIndices = Dict.empty();
     this.nextCallSiteIdCounter = { value: 0 };
+    this.compileDiags = List.empty();
+    this.operatorOverloads = brainDef.servicesOperatorOverloads();
 
     // First pass: assign function IDs to all rules (depth-first)
     const pageList = brainDef.pages();
@@ -212,6 +202,7 @@ export class BrainCompiler {
       version: BYTECODE_VERSION,
       functions: this.functions,
       constantPools: this.constantPool.toPools(),
+      types: this.constantPool.typeEntries(),
       variableNames: this.variableNames,
       entryPoint: 0, // First page's first rule
       ruleIndex: this.ruleIndex,
@@ -242,8 +233,6 @@ export class BrainCompiler {
       pageId: pageDef.pageId(),
       rootRuleFuncIds,
       actionCallSites: List.empty(),
-      sensors: new UniqueSet(),
-      actuators: new UniqueSet(),
     });
   }
 
@@ -284,7 +273,7 @@ export class BrainCompiler {
 
     for (let ruleIdx = 0; ruleIdx < rules.size(); ruleIdx++) {
       const ruleDef = rules.get(ruleIdx);
-      this.compileRule(ruleDef, `${pageIdx}/${ruleIdx}`, pageMetadata);
+      this.compileRule(ruleDef, `${pageIdx}/${ruleIdx}`);
     }
 
     // Collect all action callsites from all compiled rules in this page
@@ -293,9 +282,11 @@ export class BrainCompiler {
   }
 
   /**
-   * Recursively collect all ACTION_CALL / ACTION_CALL_ASYNC call sites from a set
-   * of rule functions and their children (via CALL instructions). Each call
-   * site is recorded with its actionSlot and callSiteId.
+   * Recursively collect all action call sites from a set of rule functions and
+   * their children (via SPAWN_RULE instructions). Host call sites
+   * (`HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC`) are recorded with their
+   * stable `actionId`; bytecode call sites (`ACTION_CALL` / `ACTION_CALL_ASYNC`)
+   * with their program-local `actionSlot`.
    */
   private collectActionCallSites(
     funcIds: List<number>,
@@ -314,8 +305,10 @@ export class BrainCompiler {
       for (let pc = 0; pc < fn.code.size(); pc++) {
         const ins = fn.code.get(pc)!;
         if (ins.op === Op.ACTION_CALL || ins.op === Op.ACTION_CALL_ASYNC) {
-          out.push({ actionSlot: ins.a ?? 0, callSiteId: ins.c ?? 0 });
-        } else if (ins.op === Op.CALL) {
+          out.push({ binding: "bytecode", actionSlot: ins.a ?? 0, callSiteId: ins.c ?? 0 });
+        } else if (ins.op === Op.HOST_ACTION_CALL || ins.op === Op.HOST_ACTION_CALL_ASYNC) {
+          out.push({ binding: "host", actionId: ins.a ?? 0, callSiteId: ins.c ?? 0 });
+        } else if (ins.op === Op.SPAWN_RULE) {
           childFuncIds.push(ins.a ?? 0);
         }
       }
@@ -330,7 +323,7 @@ export class BrainCompiler {
   /**
    * Compile a single rule and its children recursively.
    */
-  private compileRule(ruleDef: IBrainRuleDef, rulePath: string, pageMetadata: PageMetadata): void {
+  private compileRule(ruleDef: IBrainRuleDef, rulePath: string): void {
     const funcId = this.ruleIndex.get(rulePath);
     if (funcId === undefined) {
       throw new Error(`BrainCompiler: No function ID assigned for rule at ${rulePath}`);
@@ -348,7 +341,7 @@ export class BrainCompiler {
     }
 
     // Compile this rule's WHEN and DO
-    const result = this.compileRuleBody(ruleDef, childFuncIds, pageMetadata);
+    const result = this.compileRuleBody(ruleDef, childFuncIds);
 
     // Update the function in place
     const fn = this.functions.get(funcId)!;
@@ -357,32 +350,72 @@ export class BrainCompiler {
     // Recursively compile children
     for (let childIdx = 0; childIdx < children.size(); childIdx++) {
       const childDef = children.get(childIdx);
-      this.compileRule(childDef, `${rulePath}/${childIdx}`, pageMetadata);
+      this.compileRule(childDef, `${rulePath}/${childIdx}`);
+    }
+  }
+
+  /** Push each diagnostic as an error-severity build diagnostic. */
+  private pushErrorDiags(diags: ReadonlyList<ParseDiag>): void {
+    for (let i = 0; i < diags.size(); i++) {
+      const diag = diags.get(i)!;
+      this.compileDiags.push({ code: diag.code, severity: "error", message: diag.message });
+    }
+  }
+
+  /**
+   * Push the blocking validation errors from a side's inference diagnostics.
+   * Other inference diagnostics do not block the build here.
+   */
+  private pushBlockingTypeErrors(diags: ReadonlyList<TypeInfoDiag>): void {
+    for (let i = 0; i < diags.size(); i++) {
+      const diag = diags.get(i)!;
+      if (diag.code === TypeDiagCode.AccessorBaseTypeMismatch) {
+        this.compileDiags.push({ code: diag.code, severity: "error", message: diag.message });
+      }
     }
   }
 
   /**
    * Compile a rule's WHEN/DO body and emit CALL instructions for children.
    */
-  private compileRuleBody(
-    ruleDef: IBrainRuleDef,
-    childFuncIds: List<number>,
-    pageMetadata: PageMetadata
-  ): RuleCompileResult {
+  private compileRuleBody(ruleDef: IBrainRuleDef, childFuncIds: List<number>): RuleCompileResult {
     const whenTiles = ruleDef.when().tiles();
     const doTiles = ruleDef.do().tiles();
+
+    // A tile whose placement excludes the side it appears on blocks the build.
+    this.pushErrorDiags(validateTilePlacement(whenTiles, RuleSide.When));
+    this.pushErrorDiags(validateTilePlacement(doTiles, RuleSide.Do));
+
+    // An output tile with no providing sensor in the rule hierarchy (this
+    // rule's WHEN and DO sides plus every ancestor rule's) blocks the build.
+    const providedOutputKeys = collectRuleHierarchyOutputKeys(ruleDef);
+    this.pushErrorDiags(validateOutputProviders(whenTiles, providedOutputKeys));
+    this.pushErrorDiags(validateOutputProviders(doTiles, providedOutputKeys));
+
+    // A tile whose required capabilities no tile in the rule hierarchy
+    // provides blocks the build.
+    const availableCapabilities = collectRuleHierarchyCapabilities(ruleDef);
+    this.pushErrorDiags(validateCapabilityRequirements(whenTiles, availableCapabilities, this.catalogs));
+    this.pushErrorDiags(validateCapabilityRequirements(doTiles, availableCapabilities, this.catalogs));
+
+    // A tile declaring `consumesWhenResult(T)` with no compatible WHEN result
+    // available on its side (the enclosing rule's result for the WHEN side,
+    // this rule's own for the DO side) blocks the build.
+    const whenSideWhenResult = availableWhenResultType(
+      ruleDef,
+      RuleSide.When,
+      this.operatorOverloads,
+      this.conversions
+    );
+    const doSideWhenResult = availableWhenResultType(ruleDef, RuleSide.Do, this.operatorOverloads, this.conversions);
+    this.pushErrorDiags(
+      validateWhenResultConsumers(whenTiles, whenSideWhenResult, this.conversions, this.typeRegistry)
+    );
+    this.pushErrorDiags(validateWhenResultConsumers(doTiles, doSideWhenResult, this.conversions, this.typeRegistry));
 
     // Parse WHEN and DO sides
     const whenParseResult = parseBrainTiles(whenTiles, -1, 0);
     const doParseResult = parseBrainTiles(doTiles, -1, 0, whenParseResult.nextNodeId);
-
-    // Collect sensor/actuator tile IDs from parsed expressions
-    for (let i = 0; i < whenParseResult.exprs.size(); i++) {
-      collectTileIds(whenParseResult.exprs.get(i), pageMetadata.sensors, pageMetadata.actuators);
-    }
-    for (let i = 0; i < doParseResult.exprs.size(); i++) {
-      collectTileIds(doParseResult.exprs.get(i), pageMetadata.sensors, pageMetadata.actuators);
-    }
 
     // Type checking
     const typeEnv: TypeEnv = new Dict<number, TypeInfo>();
@@ -395,32 +428,47 @@ export class BrainCompiler {
     }
 
     for (let i = 0; i < whenParseResult.exprs.size(); i++) {
-      computeInferredTypes(whenParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions);
+      this.pushBlockingTypeErrors(
+        computeInferredTypes(whenParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions, this.typeRegistry)
+      );
     }
     for (let i = 0; i < doParseResult.exprs.size(); i++) {
-      computeInferredTypes(doParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions);
+      this.pushBlockingTypeErrors(
+        computeInferredTypes(doParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions, this.typeRegistry)
+      );
     }
 
     // Create emitter for this rule's function
     const emitter = new BytecodeEmitter();
     const endLabel = emitter.label();
 
-    // Emit WHEN section
-    emitter.whenStart();
-    this.emitExprs(whenParseResult.exprs, emitter, typeEnv, true);
-    emitter.whenEnd(endLabel);
+    // Emit WHEN section. A bare presence-gated value sensor as the WHEN root
+    // gates DO on presence (non-nil); every other WHEN gates on truthiness. A
+    // rule with no WHEN condition captures no WHEN result and fires
+    // unconditionally: it emits no WHEN section, so getWhenResult in its DO reads
+    // no own slot and falls through to an enclosing rule's captured result.
+    const whenIsEmpty = whenParseResult.exprs.get(0).kind === "empty";
+    if (!whenIsEmpty) {
+      emitter.whenStart();
+      this.emitExprs(whenParseResult.exprs, emitter, typeEnv, true);
+      if (isBarePresenceGatedSensor(whenParseResult.exprs.get(0))) {
+        emitter.whenEndPresent(endLabel);
+      } else {
+        emitter.whenEnd(endLabel);
+      }
+    }
 
     // Emit DO section
     emitter.doStart();
     this.emitExprs(doParseResult.exprs, emitter, typeEnv, false);
     emitter.doEnd();
 
-    // Emit CALL for each child rule (only if WHEN was true, i.e., we're before endLabel)
+    // Spawn each child rule in its own fiber (only if WHEN was true, i.e., we're
+    // before endLabel). Each child rule runs concurrently with its siblings and
+    // resumes across the think boundary; the parent does not wait for it.
     for (let i = 0; i < childFuncIds.size(); i++) {
       const childFuncId = childFuncIds.get(i)!;
-      emitter.call(childFuncId, 0);
-      // Pop the return value from child (children don't return meaningful values)
-      emitter.pop();
+      emitter.spawnRule(childFuncId);
     }
 
     // Mark end label (jumped to if WHEN was false - skips DO and children)
@@ -463,8 +511,11 @@ export class BrainCompiler {
       variableNames: this.variableNames,
       actionIndices: this.actionIndices,
       actionRefs: this.actionRefs,
+      actionResolver: this.actionResolver,
       typeEnv,
       constantPool: this.constantPool,
+      typeRegistry: this.typeRegistry,
+      catalogs: this.catalogs,
       nextCallSiteId: this.nextCallSiteIdCounter,
       diags: List.empty<CompilationDiag>(),
     };
@@ -487,6 +538,11 @@ export class BrainCompiler {
 
     // Emit the expression
     acceptExprVisitor(expr, compiler);
+
+    for (let i = 0; i < context.diags.size(); i++) {
+      const diag = context.diags.get(i)!;
+      this.compileDiags.push({ code: diag.code, severity: "error", message: diag.message });
+    }
   }
 }
 
@@ -496,13 +552,21 @@ export class BrainCompiler {
  *
  * @param brainDef - The brain definition to compile
  * @param catalogs - Tile catalogs for type resolution
+ * @param conversions - Conversion registry used during type inference
+ * @param actionResolver - Resolves each action's binding (host vs bytecode) so
+ *   the compiler emits host calls by stable id and bytecode calls by slot
+ * @param typeRegistry - Type registry used during inference to resolve struct
+ *   field ids from a field-access object's type
  * @returns A complete BrainProgram
  */
 export function compileBrain(
   brainDef: IBrainDef,
   catalogs: ReadonlyList<ITileCatalog>,
-  conversions: IConversionRegistry
-): UnlinkedBrainProgram {
-  const compiler = new BrainCompiler(catalogs, conversions);
-  return compiler.compile(brainDef);
+  conversions: IConversionRegistry,
+  actionResolver: BrainActionResolver,
+  typeRegistry: ITypeRegistry
+): BrainBuildResult<UnlinkedBrainProgram> {
+  const compiler = new BrainCompiler(catalogs, conversions, actionResolver, typeRegistry);
+  const program = compiler.compile(brainDef);
+  return { program, diagnostics: compiler.diagnostics() };
 }

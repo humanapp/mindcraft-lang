@@ -1,13 +1,22 @@
 import type { BrainServices } from "../brain/services";
 import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
-import { List, type ReadonlyList } from "../platform/list";
+import { List } from "../platform/list";
+import { MathOps } from "../platform/math";
 import { StringUtils as SU } from "../platform/string";
 import { TypeUtils } from "../platform/types";
 import { UniqueSet } from "../platform/uniqueset";
-import type { ExecutionContext } from "./context";
+import { CoreFuncId, CoreTypeAtomId, type StableIdOwner, TARGET_TYPE_ATOM_BASE } from "./abi-ids";
 import { registerEnumConversions } from "./conversions";
-import { CoreTypeIds, CoreTypeNames, mkTypeId } from "./core-types";
+import {
+  CoreTypeIds,
+  CoreTypeNames,
+  mkConstructedTypeName,
+  mkFunctionTypeName,
+  mkNullableTypeName,
+  mkTypeId,
+  mkUnionTypeName,
+} from "./core-types";
 import { CoreOpId } from "./operator-defs";
 import {
   type EnumPrimitiveValue,
@@ -34,23 +43,46 @@ import {
   type TypeId,
   type UnionTypeDef,
 } from "./type-defs";
-import { type EnumValue, mkBooleanValue, type Value } from "./value";
+import { type BufferValue, bufferToHex, isBufferValue, type Value } from "./value";
 import type { StructFieldGetterFn } from "./vm-types";
 
 /**
- * Build a `List<StructFieldDef>` by assigning each input field a stable
- * `fieldIndex` starting at `baseIndex`. Used by every struct registration
- * path so `fields.get(i).fieldIndex === baseIndex + i` always holds.
+ * Validate author-assigned field ids and return them as `StructFieldDef`s.
+ * Each field's `fieldIndex` must be a non-negative integer that is unique
+ * within `inputs` and against `existing` (the struct's already-registered
+ * fields, empty for a fresh struct). The id is the field's durable storage
+ * slot; the registry does not assign ids, it only validates them.
  */
-function assignFieldIndices(inputs: List<StructFieldInput>, baseIndex: number): List<StructFieldDef> {
-  return inputs.map(
-    (field, i): StructFieldDef => ({
+function toStructFieldDefs(
+  typeId: TypeId,
+  inputs: List<StructFieldInput>,
+  existing: List<StructFieldDef>
+): List<StructFieldDef> {
+  const usedById = new Dict<number, string>();
+  existing.forEach((field) => {
+    usedById.set(field.fieldIndex, field.name);
+  });
+  return inputs.map((field): StructFieldDef => {
+    const id = field.fieldIndex;
+    if (id < 0 || MathOps.floor(id) !== id) {
+      throw new Error(
+        `Struct type ${typeId} field ${field.name} has invalid field id ${id}: must be a non-negative integer`
+      );
+    }
+    const prior = usedById.get(id);
+    if (prior !== undefined) {
+      throw new Error(
+        `Struct type ${typeId} field ${field.name} reuses field id ${id} already assigned to field ${prior}`
+      );
+    }
+    usedById.set(id, field.name);
+    return {
       name: field.name,
       typeId: field.typeId,
       readOnly: field.readOnly,
-      fieldIndex: baseIndex + i,
-    })
-  );
+      fieldIndex: id,
+    };
+  });
 }
 
 function buildFieldIndexByName(fields: List<StructFieldDef>): Dict<string, number> {
@@ -65,12 +97,25 @@ function buildFieldIndexByName(fields: List<StructFieldDef>): Dict<string, numbe
 export class TypeRegistry implements ITypeRegistry {
   private defs = new Dict<TypeId, TypeDef>();
   private nameToId = new Dict<string, TypeId>();
+  private aliasToId = new Dict<string, TypeId>();
+  private atomToId = new Dict<number, TypeId>();
   private constructors = new Dict<string, TypeConstructor>();
   private compatCache = new Dict<string, boolean>();
   private services_?: BrainServices;
+  private owner: StableIdOwner = "target";
 
   setServices(services: BrainServices): void {
     this.services_ = services;
+  }
+
+  withOwner<T>(owner: StableIdOwner, body: () => T): T {
+    const previous = this.owner;
+    this.owner = owner;
+    try {
+      return body();
+    } finally {
+      this.owner = previous;
+    }
   }
 
   private add(def: TypeDef) {
@@ -79,6 +124,42 @@ export class TypeRegistry implements ITypeRegistry {
     }
     this.defs.set(def.typeId, def);
     this.nameToId.set(def.name, def.typeId);
+    if (def.atomId !== undefined) {
+      this.atomToId.set(def.atomId, def.typeId);
+    }
+  }
+
+  /**
+   * Validate an atom id for a named registration against the active owner
+   * scope: `core` and `target` owners must supply one inside their partition
+   * of the atom space, `dynamic` owners must not supply one. Also rejects
+   * non-integer, negative, and already-assigned atom ids.
+   */
+  private validateAtomId(atomId: number | undefined, name: string): void {
+    if (this.owner === "dynamic") {
+      if (atomId !== undefined) {
+        throw new Error(`Dynamic type '${name}' must not declare an atomId (got ${atomId})`);
+      }
+      return;
+    }
+    if (atomId === undefined) {
+      throw new Error(`${this.owner === "core" ? "Core" : "Target"} type '${name}' requires an atomId`);
+    }
+    if (atomId < 0 || MathOps.floor(atomId) !== atomId) {
+      throw new Error(`Type '${name}' has invalid atomId ${atomId}: must be a non-negative integer`);
+    }
+    const existing = this.atomToId.get(atomId);
+    if (existing !== undefined) {
+      throw new Error(`Type '${name}' reuses atomId ${atomId} already assigned to type ${existing}`);
+    }
+    if (this.owner === "core" && atomId >= TARGET_TYPE_ATOM_BASE) {
+      throw new Error(`Core type '${name}' has atomId ${atomId} outside the core range [0, ${TARGET_TYPE_ATOM_BASE})`);
+    }
+    if (this.owner === "target" && atomId < TARGET_TYPE_ATOM_BASE) {
+      throw new Error(
+        `Target type '${name}' has atomId ${atomId} below the target range base ${TARGET_TYPE_ATOM_BASE}`
+      );
+    }
   }
 
   private validateTypeName(name: string) {
@@ -101,8 +182,9 @@ export class TypeRegistry implements ITypeRegistry {
     return (def as EnumTypeDef).symbols.find((symbol) => symbol.key === key);
   }
 
-  addVoidType(name: string): TypeId {
+  addVoidType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Void, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -110,12 +192,14 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new VoidCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
 
-  addNilType(name: string): TypeId {
+  addNilType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Nil, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -123,12 +207,14 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new NilCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
 
-  addBooleanType(name: string): TypeId {
+  addBooleanType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Boolean, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -136,12 +222,14 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new BooleanCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
 
-  addNumberType(name: string): TypeId {
+  addNumberType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Number, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -149,12 +237,14 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new NumberCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
 
-  addStringType(name: string): TypeId {
+  addStringType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.String, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -162,12 +252,29 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new StringCodec(),
       name,
+      atomId,
+    });
+    return typeId;
+  }
+
+  addBufferType(name: string, atomId?: number): TypeId {
+    this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
+    const typeId = mkTypeId(NativeType.Buffer, name);
+    this.validateTypeNotRegistered(typeId);
+    this.add({
+      coreType: NativeType.Buffer,
+      typeId,
+      codec: new BufferCodec(),
+      name,
+      atomId,
     });
     return typeId;
   }
 
   addEnumType(name: string, shape: EnumTypeShape): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(shape.atomId, name);
     const typeId = mkTypeId(NativeType.Enum, name);
     this.validateTypeNotRegistered(typeId);
     const symbols = normalizeEnumSymbols(typeId, shape.symbols);
@@ -180,10 +287,13 @@ export class TypeRegistry implements ITypeRegistry {
       name,
       symbols,
       defaultKey,
+      atomId: shape.atomId,
     };
     this.add(enumTypeDef);
-    this.registerEnumConversions(typeId);
-    this.registerEnumOperators(typeId);
+    if (symbols.size() > 0) {
+      this.registerEnumConversions(typeId);
+      this.registerEnumOperators(typeId);
+    }
     return typeId;
   }
 
@@ -192,6 +302,11 @@ export class TypeRegistry implements ITypeRegistry {
     registerEnumConversions(typeId, this.services_);
   }
 
+  /**
+   * Adds the `==` / `!=` overload entries for an enum type. Both entries
+   * reference the shared core enum-equality host functions
+   * (`CoreFuncId.OpEqualToEnum` / `CoreFuncId.OpNotEqualToEnum`).
+   */
   private registerEnumOperators(typeId: TypeId): void {
     if (!this.services_) return;
     const def = this.get(typeId);
@@ -201,63 +316,35 @@ export class TypeRegistry implements ITypeRegistry {
     if ((def as EnumTypeDef).symbols.size() === 0) {
       return;
     }
-    const overloads = this.services_.edit.operatorOverloads;
-    overloads.binary(
-      CoreOpId.EqualTo,
-      typeId,
-      typeId,
-      CoreTypeIds.Boolean,
-      {
-        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
-          const a = args.get(0) as EnumValue;
-          const b = args.get(1) as EnumValue;
-          if (a.typeId !== typeId || b.typeId !== typeId) {
-            return mkBooleanValue(false);
-          }
-          const lhs = this.getEnumSymbol(typeId, a.v);
-          const rhs = this.getEnumSymbol(typeId, b.v);
-          if (!lhs || !rhs) {
-            return mkBooleanValue(false);
-          }
-          return mkBooleanValue(lhs.value === rhs.value);
-        },
-      },
-      false
-    );
-    overloads.binary(
-      CoreOpId.NotEqualTo,
-      typeId,
-      typeId,
-      CoreTypeIds.Boolean,
-      {
-        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
-          const a = args.get(0) as EnumValue;
-          const b = args.get(1) as EnumValue;
-          if (a.typeId !== typeId || b.typeId !== typeId) {
-            return mkBooleanValue(false);
-          }
-          const lhs = this.getEnumSymbol(typeId, a.v);
-          const rhs = this.getEnumSymbol(typeId, b.v);
-          if (!lhs || !rhs) {
-            return mkBooleanValue(false);
-          }
-          return mkBooleanValue(lhs.value !== rhs.value);
-        },
-      },
-      false
-    );
+    const functions = this.services_.runtime.functions;
+    const eqEntry = functions.getSyncById(CoreFuncId.OpEqualToEnum);
+    const neEntry = functions.getSyncById(CoreFuncId.OpNotEqualToEnum);
+    if (!eqEntry || !neEntry) {
+      throw new Error(`Enum type ${typeId} requires the shared enum equality host functions to be registered`);
+    }
+    const opTable = this.services_.edit.operatorOverloads.table();
+    opTable
+      .get(CoreOpId.EqualTo)
+      ?.add({ argTypes: [typeId, typeId], resultType: CoreTypeIds.Boolean, fnEntry: eqEntry });
+    opTable
+      .get(CoreOpId.NotEqualTo)
+      ?.add({ argTypes: [typeId, typeId], resultType: CoreTypeIds.Boolean, fnEntry: neEntry });
   }
 
+  // The operator and conversion entries reference shared core host
+  // functions; removing an enum type must leave those functions registered.
   private unregisterEnumArtifacts(typeId: TypeId): void {
     if (!this.services_) return;
     this.services_.shared.conversions.remove(typeId, CoreTypeIds.String);
     this.services_.shared.conversions.remove(typeId, CoreTypeIds.Number);
-    this.services_.edit.operatorOverloads.remove(CoreOpId.EqualTo, [typeId, typeId]);
-    this.services_.edit.operatorOverloads.remove(CoreOpId.NotEqualTo, [typeId, typeId]);
+    const opTable = this.services_.edit.operatorOverloads.table();
+    opTable.get(CoreOpId.EqualTo)?.remove([typeId, typeId]);
+    opTable.get(CoreOpId.NotEqualTo)?.remove([typeId, typeId]);
   }
 
   addListType(name: string, shape: ListTypeShape): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(shape.atomId, name);
     const typeId = mkTypeId(NativeType.List, name);
     this.validateTypeNotRegistered(typeId);
     const { elementTypeId } = shape;
@@ -282,6 +369,7 @@ export class TypeRegistry implements ITypeRegistry {
 
   addMapType(name: string, shape: MapTypeShape): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(shape.atomId, name);
     const typeId = mkTypeId(NativeType.Map, name);
     this.validateTypeNotRegistered(typeId);
     const { keyTypeId, valueTypeId } = shape;
@@ -306,6 +394,7 @@ export class TypeRegistry implements ITypeRegistry {
 
   addStructType(name: string, shape: StructTypeShape): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(shape.atomId, name);
     const typeId = mkTypeId(NativeType.Struct, name);
     this.validateTypeNotRegistered(typeId);
     const fieldNames = new UniqueSet<string>();
@@ -324,7 +413,7 @@ export class TypeRegistry implements ITypeRegistry {
       fieldCodecs.set(field.name, fieldTypeDef.codec);
     });
 
-    const indexedFields = assignFieldIndices(shape.fields, 0);
+    const indexedFields = toStructFieldDefs(typeId, shape.fields, List.empty<StructFieldDef>());
     const structTypeDef: StructTypeDef = {
       coreType: NativeType.Struct,
       typeId,
@@ -337,11 +426,16 @@ export class TypeRegistry implements ITypeRegistry {
       fieldSetter: shape.fieldSetter,
       snapshotNative: shape.snapshotNative,
       methods: shape.methods,
+      atomId: shape.atomId,
     };
     this.add(structTypeDef);
     return typeId;
   }
 
+  /**
+   * Register a placeholder for a program-local struct, to be completed with
+   * {@link finalizeStructType}. Program-local types carry no atom id.
+   */
   reserveStructType(name: string): TypeId {
     this.validateTypeName(name);
     const typeId = mkTypeId(NativeType.Struct, name);
@@ -366,6 +460,9 @@ export class TypeRegistry implements ITypeRegistry {
     if (existing.coreType !== NativeType.Struct) {
       throw new Error(`Cannot finalize non-struct type: ${typeId}`);
     }
+    if (shape.atomId !== undefined) {
+      throw new Error(`Program-local struct type ${typeId} must not declare an atomId (got ${shape.atomId})`);
+    }
     const fieldNames = new UniqueSet<string>();
     shape.fields.forEach((field) => {
       if (fieldNames.has(field.name)) {
@@ -382,7 +479,7 @@ export class TypeRegistry implements ITypeRegistry {
       fieldCodecs.set(field.name, fieldTypeDef.codec);
     });
     const structDef = existing as StructTypeDef;
-    const indexedFields = assignFieldIndices(shape.fields, 0);
+    const indexedFields = toStructFieldDefs(typeId, shape.fields, List.empty<StructFieldDef>());
     structDef.fields = indexedFields;
     structDef.fieldIndexByName = buildFieldIndexByName(indexedFields);
     structDef.codec = new StructCodec(fieldCodecs);
@@ -439,21 +536,21 @@ export class TypeRegistry implements ITypeRegistry {
       fieldCodecs.set(field.name, fieldTypeDef.codec);
     });
 
-    const baseIndex = structDef.fields.size();
-    structDef.fields = structDef.fields.concat(assignFieldIndices(fields, baseIndex));
+    structDef.fields = structDef.fields.concat(toStructFieldDefs(typeId, fields, structDef.fields));
     structDef.fieldIndexByName = buildFieldIndexByName(structDef.fields);
     structDef.codec = new StructCodec(fieldCodecs);
 
     if (fieldGetter) {
       const existing = structDef.fieldGetter;
       structDef.fieldGetter = existing
-        ? (source, fieldName, ctx) => fieldGetter(source, fieldName, ctx) ?? existing(source, fieldName, ctx)
+        ? (source, fieldId, ctx) => fieldGetter(source, fieldId, ctx) ?? existing(source, fieldId, ctx)
         : fieldGetter;
     }
   }
 
-  addAnyType(name: string): TypeId {
+  addAnyType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Any, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -461,12 +558,14 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new AnyCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
 
-  addFunctionType(name: string): TypeId {
+  addFunctionType(name: string, atomId?: number): TypeId {
     this.validateTypeName(name);
+    this.validateAtomId(atomId, name);
     const typeId = mkTypeId(NativeType.Function, name);
     this.validateTypeNotRegistered(typeId);
     this.add({
@@ -474,6 +573,7 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new FunctionCodec(),
       name,
+      atomId,
     });
     return typeId;
   }
@@ -486,7 +586,7 @@ export class TypeRegistry implements ITypeRegistry {
     if (baseDef.nullable) {
       return baseTypeId;
     }
-    const nullableName = `${baseDef.name}?`;
+    const nullableName = mkNullableTypeName(baseDef.name);
     const typeId = mkTypeId(baseDef.coreType, nullableName);
     if (this.defs.has(typeId)) {
       return typeId;
@@ -521,12 +621,7 @@ export class TypeRegistry implements ITypeRegistry {
         `Type constructor '${constructorName}' expects ${SU.toString(ctor.arity)} argument(s), got ${SU.toString(args.size())}`
       );
     }
-    const parts: string[] = [];
-    args.forEach((a) => {
-      parts.push(a);
-    });
-    const argsStr = parts.join(",");
-    const constructedName = `${constructorName}<${argsStr}>`;
+    const constructedName = mkConstructedTypeName(constructorName, args);
     const typeId = mkTypeId(ctor.coreType, constructedName);
     if (this.defs.has(typeId)) {
       return typeId;
@@ -540,12 +635,7 @@ export class TypeRegistry implements ITypeRegistry {
   }
 
   getOrCreateFunctionType(shape: FunctionTypeShape): TypeId {
-    const parts: string[] = [];
-    shape.paramTypeIds.forEach((pid) => {
-      parts.push(pid);
-    });
-    const paramsStr = parts.join(",");
-    const canonicalName = `Function<(${paramsStr})=>${shape.returnTypeId}>`;
+    const canonicalName = mkFunctionTypeName(shape.paramTypeIds, shape.returnTypeId);
     const typeId = mkTypeId(NativeType.Function, canonicalName);
     if (this.defs.has(typeId)) {
       return typeId;
@@ -610,11 +700,7 @@ export class TypeRegistry implements ITypeRegistry {
       return this.addNullableType(otherTypeId as TypeId);
     }
 
-    const nameParts: string[] = [];
-    sorted.forEach((id) => {
-      nameParts.push(id);
-    });
-    const name = nameParts.join(",");
+    const name = mkUnionTypeName(sorted);
     const typeId = mkTypeId(NativeType.Union, name);
     if (this.defs.has(typeId)) {
       return typeId;
@@ -650,18 +736,34 @@ export class TypeRegistry implements ITypeRegistry {
   }
 
   resolveByName(name: string): TypeId | undefined {
-    return this.nameToId.get(name);
+    const direct = this.nameToId.get(name);
+    if (direct !== undefined) return direct;
+    return this.aliasToId.get(name);
+  }
+
+  addTypeNameAlias(alias: string, typeId: TypeId): void {
+    this.validateTypeName(alias);
+    this.aliasToId.set(alias, typeId);
+  }
+
+  resolveByAtomId(atomId: number): TypeId | undefined {
+    return this.atomToId.get(atomId);
   }
 
   entries(): Iterable<[TypeId, TypeDef]> {
     return this.defs.entries().toArray();
   }
 
-  removeUserTypes(): void {
+  removeUserTypes(projectNamespace?: string): void {
+    // A namespaced user-type name carries `<namespace>:/` -- either as its own
+    // binding-keyed prefix or embedded in a derived structural name that
+    // references the namespace's types.
+    const namespaceMarker = projectNamespace === undefined ? undefined : `${projectNamespace}:/`;
     const toRemove = new List<TypeId>();
     this.defs.forEach((def) => {
       if (def.coreType !== NativeType.Struct && def.coreType !== NativeType.Enum) return;
       if (SU.indexOf(def.name, "::") < 0) return;
+      if (namespaceMarker !== undefined && SU.indexOf(def.name, namespaceMarker) < 0) return;
       toRemove.push(def.typeId);
     });
     toRemove.forEach((typeId) => {
@@ -675,6 +777,17 @@ export class TypeRegistry implements ITypeRegistry {
       this.defs.delete(typeId);
     });
     if (toRemove.size() > 0) {
+      // Aliases follow their aliased type: an alias whose target was removed
+      // resolves to nothing and is dropped.
+      const deadAliases = new List<string>();
+      this.aliasToId.forEach((typeId, alias) => {
+        if (!this.defs.has(typeId)) {
+          deadAliases.push(alias);
+        }
+      });
+      deadAliases.forEach((alias) => {
+        this.aliasToId.delete(alias);
+      });
       this.compatCache = new Dict<string, boolean>();
     }
   }
@@ -740,17 +853,21 @@ export class TypeRegistry implements ITypeRegistry {
 // ----------------------------------------------------
 // Register core types
 
-/** Register the built-in core types (`Void`, `Nil`, `Boolean`, `Number`, `String`, `Any`, `Function`, list/map constructors) on `services.runtime.types`. */
+/** Register the built-in core types (`Void`, `Nil`, `Boolean`, `Number`, `String`, `Buffer`, `Any`, `Function`, list/map constructors) on `services.runtime.types`. */
 export function registerCoreTypes(services: BrainServices) {
   const typeRegistry = services.runtime.types;
-  typeRegistry.addVoidType(CoreTypeNames.Void);
-  typeRegistry.addNilType(CoreTypeNames.Nil);
-  typeRegistry.addBooleanType(CoreTypeNames.Boolean);
-  typeRegistry.addNumberType(CoreTypeNames.Number);
-  typeRegistry.addStringType(CoreTypeNames.String);
-  typeRegistry.addAnyType(CoreTypeNames.Any);
-  typeRegistry.addFunctionType(CoreTypeNames.Function);
-  typeRegistry.addListType("AnyList", { elementTypeId: mkTypeId(NativeType.Any, CoreTypeNames.Any) });
+  typeRegistry.addVoidType(CoreTypeNames.Void, CoreTypeAtomId.Void);
+  typeRegistry.addNilType(CoreTypeNames.Nil, CoreTypeAtomId.Nil);
+  typeRegistry.addBooleanType(CoreTypeNames.Boolean, CoreTypeAtomId.Boolean);
+  typeRegistry.addNumberType(CoreTypeNames.Number, CoreTypeAtomId.Number);
+  typeRegistry.addStringType(CoreTypeNames.String, CoreTypeAtomId.String);
+  typeRegistry.addBufferType(CoreTypeNames.Buffer, CoreTypeAtomId.Buffer);
+  typeRegistry.addAnyType(CoreTypeNames.Any, CoreTypeAtomId.Any);
+  typeRegistry.addFunctionType(CoreTypeNames.Function, CoreTypeAtomId.Function);
+  typeRegistry.addListType("AnyList", {
+    elementTypeId: mkTypeId(NativeType.Any, CoreTypeNames.Any),
+    atomId: CoreTypeAtomId.AnyList,
+  });
   typeRegistry.registerConstructor(new ListConstructor());
   typeRegistry.registerConstructor(new MapConstructor());
 }
@@ -785,6 +902,12 @@ class NumberCodec implements TypeCodec {
 class StringCodec implements TypeCodec {
   stringify(value: string): string {
     return value;
+  }
+}
+
+class BufferCodec implements TypeCodec {
+  stringify(value: unknown): string {
+    return isBufferValue(value as Value) ? bufferToHex(value as BufferValue) : "buffer";
   }
 }
 

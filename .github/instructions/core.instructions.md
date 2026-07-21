@@ -111,9 +111,11 @@ The post-build scripts (`scripts/post-build-node.js`, `post-build-esm.js`, `post
 
 5. **Platform-specific types**: Use `unknown` in base `.ts` declarations when the actual type differs by platform (e.g., `Uint8Array` in Node vs `buffer` in Roblox). Only use `unknown` when necessary.
 
-6. **Don't cross-reference platform files**: The base `.ts` file should NOT import from `.node.ts` or `.rbx.ts` files, as these are excluded from different build configurations.
+6. **Don't cross-reference platform files**: The base `.ts` file must not import from `.node.ts` or `.rbx.ts` files, as these are excluded from different build configurations.
 
-**Current modules using this pattern:**
+Current modules using this pattern: `dict`, `error`, `list`, `logger`, `math`,
+`stream`, `string`, `task`, `time`, `types`, `uniqueset`, `vector2`, and
+`vector3`.
 
 ## Type Organization
 
@@ -122,5 +124,3 @@ event payloads, and similar concerns belong in the same file as the class that c
 consumes them -- not in standalone type-only files. This keeps related code together and
 avoids single-purpose type modules that would be at odds with the project's organization
 patterns.
-
-Most modules in `platform/` use this pattern, including `dict`, `error`, `list`, `logger`, `math`, `stream`, `string`, `task`, `time`, `types`, `uniqueset`, `vector2`, and `vector3`.

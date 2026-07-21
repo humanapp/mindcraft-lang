@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.actuator->restart-page",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Restart Page

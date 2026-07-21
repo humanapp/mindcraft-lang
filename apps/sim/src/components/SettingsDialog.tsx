@@ -46,14 +46,14 @@ export function SettingsDialog({ open, onOpenChange, onBridgeDisabled }: Setting
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-slate-100 border-2 border-slate-300 rounded-2xl text-slate-900">
-        <DialogHeader className="border-b border-slate-200 pb-3">
-          <DialogTitle className="text-slate-900">Settings</DialogTitle>
-          <DialogDescription className="text-slate-500">Configure application settings</DialogDescription>
+      <DialogContent className="sm:max-w-md rounded-2xl">
+        <DialogHeader className="border-b border-border pb-3">
+          <DialogTitle>Settings</DialogTitle>
+          <DialogDescription>Configure application settings</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="flex items-center justify-between">
-            <label htmlFor="show-bridge-panel" className="text-sm font-medium text-slate-700">
+            <label htmlFor="show-bridge-panel" className="text-sm font-medium">
               Show VS Code Bridge Panel
             </label>
             <Switch
@@ -63,23 +63,22 @@ export function SettingsDialog({ open, onOpenChange, onBridgeDisabled }: Setting
             />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="vscode-bridge-url" className="text-sm font-medium text-slate-700">
+            <label htmlFor="vscode-bridge-url" className="text-sm font-medium">
               VS Code Bridge URL
             </label>
             <Input
               id="vscode-bridge-url"
-              className="bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
               value={draft.vscodeBridgeUrl}
               onChange={(e) => setDraft((prev) => ({ ...prev, vscodeBridgeUrl: e.target.value }))}
               placeholder="vscode-bridge.mindcraft-lang.org"
             />
           </div>
         </div>
-        <DialogFooter className="border-t border-slate-200 pt-3">
+        <DialogFooter className="border-t border-border pt-3">
           <Button variant="cancel" className="rounded-lg" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button className="rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white" onClick={save}>
+          <Button className="rounded-lg" onClick={save}>
             Save
           </Button>
         </DialogFooter>

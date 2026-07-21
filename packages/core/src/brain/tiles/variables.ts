@@ -1,6 +1,6 @@
 import { Error } from "../../platform/error";
 import { StringUtils as SU } from "../../platform/string";
-import { CoreTypeIds, type TileId, type TypeId } from "../../runtime";
+import { CoreTypeIds, CoreTypeNames, type TileId, type TypeId } from "../../runtime";
 import {
   type BrainTileDefCreateOptions,
   CoreVariableFactoryId,
@@ -77,12 +77,13 @@ export class BrainTileVariableDef extends BrainTileDefBase {
 export function createVariableFactoryTileDef(
   factoryId: string,
   producedDataType: TypeId,
-  opts: BrainTileDefCreateOptions = {}
+  opts: BrainTileDefCreateOptions = {},
+  services?: BrainServices
 ): BrainTileFactoryDef {
   return new BrainTileFactoryDef(
     mkVariableFactoryTileId(factoryId),
     factoryId,
-    manufactureVarTileDef,
+    (factoryTileDef, manufactureOpts) => manufactureVarTileDef(factoryTileDef, manufactureOpts, services),
     producedDataType,
     opts
   );
@@ -95,14 +96,21 @@ export function registerVariableFactoryTileDef(
   opts: BrainTileDefCreateOptions = {},
   services: BrainServices
 ) {
-  services.edit.tiles.registerTileDef(createVariableFactoryTileDef(factoryId, producedDataType, opts));
+  services.edit.tiles.registerTileDef(createVariableFactoryTileDef(factoryId, producedDataType, opts, services));
 }
 
 function manufactureVarTileDef(
   factoryTileDef: BrainTileFactoryDef,
-  opts: { [key: string]: unknown }
+  opts: { [key: string]: unknown },
+  services?: BrainServices
 ): BrainTileVariableDef {
-  const uniqueId = SU.mkid();
+  let uniqueId: string;
+  if (services) {
+    const rng = services.app.rng;
+    uniqueId = SU.mkid(16, () => rng.next());
+  } else {
+    uniqueId = SU.mkid();
+  }
   const varName: string = (opts.name ? opts.name : uniqueId) as string;
   const varType: TypeId = (factoryTileDef.producedDataType as TypeId) || CoreTypeIds.Unknown;
   const tileDef = new BrainTileVariableDef(mkVariableTileId(uniqueId), varName, varType, uniqueId);
@@ -111,7 +119,22 @@ function manufactureVarTileDef(
 
 /** Register the built-in variable factories for `Boolean`, `Number`, and `String` types. */
 export function registerCoreVariableFactoryTileDefs(services: BrainServices) {
-  registerVariableFactoryTileDef(CoreVariableFactoryId.Boolean, CoreTypeIds.Boolean, {}, services);
-  registerVariableFactoryTileDef(CoreVariableFactoryId.Number, CoreTypeIds.Number, {}, services);
-  registerVariableFactoryTileDef(CoreVariableFactoryId.String, CoreTypeIds.String, {}, services);
+  registerVariableFactoryTileDef(
+    CoreVariableFactoryId.Boolean,
+    CoreTypeIds.Boolean,
+    { metadata: { label: CoreTypeNames.Boolean } },
+    services
+  );
+  registerVariableFactoryTileDef(
+    CoreVariableFactoryId.Number,
+    CoreTypeIds.Number,
+    { metadata: { label: CoreTypeNames.Number } },
+    services
+  );
+  registerVariableFactoryTileDef(
+    CoreVariableFactoryId.String,
+    CoreTypeIds.String,
+    { metadata: { label: CoreTypeNames.String } },
+    services
+  );
 }

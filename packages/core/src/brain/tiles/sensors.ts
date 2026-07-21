@@ -1,5 +1,12 @@
 import { Error } from "../../platform/error";
-import { type ActionDescriptor, mkSensorTileId, type TypeId } from "../../runtime";
+import { List } from "../../platform/list";
+import {
+  type ActionDescriptor,
+  mkOutputVarKey,
+  mkSensorTileId,
+  type TypeId,
+  type UserActionIdentity,
+} from "../../runtime";
 import fnCurrentPage from "../../runtime/sensors/current-page";
 import fnOnPageEntered from "../../runtime/sensors/on-page-entered";
 import fnPreviousPage from "../../runtime/sensors/previous-page";
@@ -29,13 +36,26 @@ export class BrainTileSensorDef extends BrainActionTileBase {
   readonly outputType: TypeId;
 
   /**
+   * When true, the sensor's returned value is a writable l-value: a field write
+   * on its result is permitted. Defaults to false, making the result read-only.
+   */
+  readonly writableResult: boolean;
+
+  /** Namespace and stable id of the compiled user action backing this tile. Absent for platform sensors. */
+  readonly userIdentity?: UserActionIdentity;
+
+  /**
    * Creates a new sensor tile definition.
    *
    * @param sensorId - Unique identifier for this sensor
    * @param action - Stable action metadata for this sensor
    * @param opts - Optional configuration for tile placement and display properties
    */
-  constructor(sensorId: string, action: ActionDescriptor, opts: BrainTileDefCreateOptions = {}) {
+  constructor(
+    sensorId: string,
+    action: ActionDescriptor,
+    opts: BrainTileDefCreateOptions & { userIdentity?: UserActionIdentity } = {}
+  ) {
     if (action.kind !== "sensor") {
       throw new Error(`BrainTileSensorDef: expected sensor action for ${sensorId}`);
     }
@@ -44,9 +64,15 @@ export class BrainTileSensorDef extends BrainActionTileBase {
     }
     // Default sensors to WhenSide placement if not specified
     if (opts.placement === undefined) opts.placement = TilePlacement.WhenSide;
+    // A sensor provides the identity key of every output its descriptor declares.
+    if (opts.providedOutputs === undefined && action.outputs !== undefined) {
+      opts.providedOutputs = List.from(action.outputs.map((output) => mkOutputVarKey(output.type, output.name)));
+    }
     super(mkSensorTileId(sensorId), action, opts);
     this.sensorId = sensorId;
     this.outputType = action.outputType;
+    this.writableResult = opts.writableResult ?? false;
+    this.userIdentity = opts.userIdentity;
   }
 }
 
@@ -57,17 +83,17 @@ export function registerCoreSensorTileDefs(services: BrainServices) {
     const tileDef = new BrainTileSensorDef(sensorId, action, opts);
     tiles.registerTileDef(tileDef);
   };
-  register(fnRandom.fnId, fnRandom.descriptor, {
+  register(fnRandom.key, fnRandom.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
   });
-  register(fnOnPageEntered.fnId, fnOnPageEntered.descriptor);
-  register(fnTimeout.fnId, fnTimeout.descriptor);
+  register(fnOnPageEntered.key, fnOnPageEntered.descriptor);
+  register(fnTimeout.key, fnTimeout.descriptor);
   const pageSensorCaps = new BitSet().set(CoreCapabilityBits.PageSensor);
-  register(fnCurrentPage.fnId, fnCurrentPage.descriptor, {
+  register(fnCurrentPage.key, fnCurrentPage.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
     capabilities: pageSensorCaps,
   });
-  register(fnPreviousPage.fnId, fnPreviousPage.descriptor, {
+  register(fnPreviousPage.key, fnPreviousPage.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
     capabilities: pageSensorCaps,
   });

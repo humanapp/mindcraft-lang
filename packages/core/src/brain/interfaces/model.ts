@@ -1,6 +1,8 @@
 import type { List, ReadonlyList } from "../../platform/list";
 import type { IConversionRegistry } from "../../runtime/conversion-defs";
 import type { IBrain } from "../../runtime/host-bindings";
+import type { IOperatorOverloads } from "../../runtime/operator-defs";
+import type { ITypeRegistry } from "../../runtime/type-defs";
 import type { EventEmitterConsumer } from "../../util/event-emitter";
 import type { OpResult } from "../../util/op-result";
 import type { ITileCatalog } from "./catalog";
@@ -18,6 +20,8 @@ export type BrainDefEvents = {
 
 /** Definition of a brain: name, pages, catalogs, and conversion registry. Compile to an {@link IBrain} via `compile()`. */
 export interface IBrainDef {
+  /** Stable, unique identifier for this brain. Assigned at creation and preserved across serialization. */
+  id(): string;
   name(): string;
   setName(newName: string): void;
   pages(): ReadonlyList<IBrainPageDef>;
@@ -26,6 +30,8 @@ export interface IBrainDef {
   servicesTiles(): ITileCatalog;
   deserializationCatalogs(): List<ITileCatalog>;
   servicesConversions(): IConversionRegistry;
+  servicesTypeRegistry(): ITypeRegistry;
+  servicesOperatorOverloads(): IOperatorOverloads;
   typecheck(): void;
   compile(): IBrain;
   appendNewPage(): OpResult<{ page: IBrainPageDef; index: number }>;

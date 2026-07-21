@@ -1,0 +1,72 @@
+{
+  "program": {
+    "version": 1,
+    "functions": [
+      {
+        "code": [
+          {
+            "op": 130,
+            "a": 0
+          },
+          {
+            "op": 114,
+            "a": 0
+          },
+          {
+            "op": 131,
+            "a": 1
+          },
+          {
+            "op": 130,
+            "a": 0
+          },
+          {
+            "op": 4,
+            "a": 0
+          },
+          {
+            "op": 116
+          },
+          {
+            "op": 115,
+            "a": 1
+          },
+          {
+            "op": 5,
+            "a": 0
+          },
+          {
+            "op": 120
+          },
+          {
+            "op": 1
+          },
+          {
+            "op": 31
+          }
+        ],
+        "numParams": 1,
+        "numLocals": 2,
+        "injectCtxTypeIdx": 0
+      }
+    ],
+    "constantPools": {
+      "numbers": [
+        1
+      ],
+      "strings": [
+        "label"
+      ],
+      "values": []
+    },
+    "types": [
+      {
+        "tag": "atom",
+        "typeId": "struct:<Context>",
+        "atomId": 11
+      }
+    ],
+    "variableNames": []
+  },
+  "pages": []
+}

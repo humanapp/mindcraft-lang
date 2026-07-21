@@ -5,6 +5,13 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/vite-env.d.ts", "src/**/*.spec.ts"],
+  "include": [
+    "src/vite-env.d.ts",
+    "src/**/*.spec.ts",
+    "src/components/BrainDiagnostics.tsx",
+    "src/components/CompileDiagnosticsConsole.tsx",
+    "src/components/ConsoleOutputList.tsx",
+    "src/components/UninstallImpactMessage.tsx"
+  ],
   "exclude": ["node_modules", "dist"]
 }

@@ -34,7 +34,7 @@ function createMissingTileFallback(tileId: string): BrainTileMissingDef {
 export class BrainTileSet implements IBrainTileSet {
   private readonly tiles_ = new List<IBrainTileDef>();
   private readonly emitter_ = new EventEmitter<BrainTileSetEvents>();
-  private typecheckResult: TypecheckResult | undefined;
+  private typecheckResult_: TypecheckResult | undefined;
   private sideExpr_: Expr | undefined;
   private dirty: boolean = false; // dirty = needs recompilation
 
@@ -66,6 +66,14 @@ export class BrainTileSet implements IBrainTileSet {
 
   side(): RuleSide {
     return this.side_;
+  }
+
+  /**
+   * Returns the most recent typecheck result stored for this tileset, or
+   * undefined if the tileset has never been typechecked.
+   */
+  typecheckResult(): TypecheckResult | undefined {
+    return this.typecheckResult_;
   }
 
   isDirty(): boolean {
@@ -114,7 +122,7 @@ export class BrainTileSet implements IBrainTileSet {
    * @param result The combined compile result for both WHEN and DO sides
    */
   setTypecheckResult(result: TypecheckResult): void {
-    this.typecheckResult = result;
+    this.typecheckResult_ = result;
 
     // Extract per-side expression
     const sideResult = this.side_ === RuleSide.When ? result.whenParseResult : result.doParseResult;
@@ -123,18 +131,18 @@ export class BrainTileSet implements IBrainTileSet {
     if (logger.isDebugEnabled()) {
       const locationPath =
         (this.side_ === RuleSide.When ? "WHEN: " : "DO: ") + (this.rule_ ? this.rule_.getLocationPath() : "<unruled>");
-      logger.debug(`${locationPath}\n${printExpr(this.typecheckResult.parseResult.exprs)}`);
+      logger.debug(`${locationPath}\n${printExpr(this.typecheckResult_.parseResult.exprs)}`);
       // Log diagnostics
-      this.typecheckResult.parseResult.diags.forEach((diag) => {
+      this.typecheckResult_.parseResult.diags.forEach((diag) => {
         logger.debug(`  PARSE DIAG: ${diag.message} (from ${diag.span.from} to ${diag.span.to})`);
       });
-      this.typecheckResult.typeInfo.diags.forEach((diag) => {
+      this.typecheckResult_.typeInfo.diags.forEach((diag) => {
         logger.debug(`  TYPE DIAG: ${diag.message} (node #${diag.nodeId})`);
       });
     }
 
     this.dirty = false;
-    this.emitter_.emit("tileSet_typechecked", { side: this.side_, typecheckResult: this.typecheckResult });
+    this.emitter_.emit("tileSet_typechecked", { side: this.side_, typecheckResult: this.typecheckResult_ });
     this.emitter_.emit("tileSet_dirtyChanged", { side: this.side_, isDirty: false });
   }
 

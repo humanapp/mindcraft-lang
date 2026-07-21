@@ -19,22 +19,29 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
+import { qualifiedClassName } from "./symbol-keys.js";
 import type { ExtractedOptional, ExtractedParam, UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    services: __test__createPlatformServices(),
+    services: __test__createPlatformServices({
+      runtime: { functions: services.runtime.functions, types: services.runtime.types },
+    }),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -52,7 +59,11 @@ function mkScheduler(): Scheduler {
 
 function compileProject(files: Record<string, string>) {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
+  const project = new UserTileProject({
+    projectNamespace: TEST_PROJECT_NAMESPACE,
+    ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+    services,
+  });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -533,7 +544,12 @@ export default Sensor({
 
     assert.ok(result.tsErrors.size > 0, "expected TypeScript errors");
     assert.ok(result.tsErrors.has("lib/broken.ts"), "error should be associated with the broken helper file");
-    assert.equal(result.results.size, 0, "no results when there are TS errors");
+    // Compilation is per-file: the entry importing the broken helper is
+    // withheld with its own diagnostic.
+    const entry = result.results.get("sensors/use-broken.ts");
+    assert.ok(entry, "the dependent entry appears in results");
+    assert.equal(entry.program, undefined, "the dependent entry compiles no program");
+    assert.ok(entry.diagnostics.some((diag) => diag.code === CompileDiagCode.ImportedFileHasErrors));
   });
 
   test("transitive import: A imports B which imports C", () => {
@@ -676,6 +692,7 @@ describe("multi-file: enum recompilation cleanup", () => {
 
   test("deleting a user enum removes its registered type and derived artifacts", () => {
     const project = new UserTileProject({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: buildAmbientDeclarations(services.runtime.types) }],
       services,
     });
@@ -711,7 +728,7 @@ export default Sensor({
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
 
     const registry = services.runtime.types;
-    const typeId = registry.resolveByName("/helpers/mode.ts::Mode");
+    const typeId = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/helpers/mode.ts", "Mode"));
     assert.ok(typeId, "Mode should be registered before deletion");
     assert.ok(services.shared.conversions.get(typeId!, CoreTypeIds.String));
     assert.ok(services.shared.conversions.get(typeId!, CoreTypeIds.Number));
@@ -738,7 +755,10 @@ export default Sensor({
     assert.ok(entry);
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
 
-    assert.equal(registry.resolveByName("/helpers/mode.ts::Mode"), undefined);
+    assert.equal(
+      registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/helpers/mode.ts", "Mode")),
+      undefined
+    );
     assert.equal(services.shared.conversions.get(typeId!, CoreTypeIds.String), undefined);
     assert.equal(services.shared.conversions.get(typeId!, CoreTypeIds.Number), undefined);
     assert.equal(services.edit.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]), undefined);
@@ -746,6 +766,7 @@ export default Sensor({
 
   test("changing a user enum between numeric and string forms refreshes conversions", () => {
     const project = new UserTileProject({
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: buildAmbientDeclarations(services.runtime.types) }],
       services,
     });
@@ -778,7 +799,7 @@ export default Sensor({
     assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
 
     const registry = services.runtime.types;
-    const typeId = registry.resolveByName("/helpers/mode.ts::Mode");
+    const typeId = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/helpers/mode.ts", "Mode"));
     assert.ok(typeId, "Mode should be registered before recompilation");
     assert.ok(services.shared.conversions.get(typeId!, CoreTypeIds.Number));
 
@@ -812,7 +833,10 @@ export default Sensor({
     assert.ok(entry);
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
 
-    assert.equal(registry.resolveByName("/helpers/mode.ts::Mode"), typeId);
+    assert.equal(
+      registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/helpers/mode.ts", "Mode")),
+      typeId
+    );
     assert.ok(services.shared.conversions.get(typeId!, CoreTypeIds.String));
     assert.equal(services.shared.conversions.get(typeId!, CoreTypeIds.Number), undefined);
   });
@@ -872,8 +896,8 @@ export default Sensor({
     assert.ok(entryB.program);
 
     const registry = services.runtime.types;
-    const typeIdA = registry.resolveByName("/sensors/a.ts::Foo");
-    const typeIdB = registry.resolveByName("/sensors/b.ts::Foo");
+    const typeIdA = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/sensors/a.ts", "Foo"));
+    const typeIdB = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/sensors/b.ts", "Foo"));
     assert.ok(typeIdA, "Foo from a.ts should be registered");
     assert.ok(typeIdB, "Foo from b.ts should be registered");
     assert.notEqual(typeIdA, typeIdB, "TypeIds should be distinct");
@@ -942,7 +966,7 @@ export default Sensor({
     assert.ok(entry.program);
 
     const registry = services.runtime.types;
-    const typeId = registry.resolveByName("/sensors/single.ts::Point");
+    const typeId = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/sensors/single.ts", "Point"));
     assert.ok(typeId, "Point should be registered with qualified name");
 
     const bareTypeId = registry.resolveByName("Point");
@@ -981,7 +1005,9 @@ export default Sensor({
     assert.ok(entry.program);
 
     const registry = services.runtime.types;
-    const qualifiedTypeId = registry.resolveByName("/sensors/detect.ts::Result");
+    const qualifiedTypeId = registry.resolveByName(
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/sensors/detect.ts", "Result")
+    );
     assert.ok(qualifiedTypeId, "Result should be registered with qualified name");
     assert.equal(entry.program!.outputType, qualifiedTypeId, "program outputType should use qualified TypeId");
   });
@@ -1017,7 +1043,7 @@ export default Actuator({
 
     assert.equal(
       (entry.program!.args[0] as ExtractedParam).type,
-      "/actuators/move.ts::Vec2",
+      qualifiedClassName(TEST_PROJECT_NAMESPACE, "/actuators/move.ts", "Vec2"),
       "param type should carry qualified name"
     );
   });

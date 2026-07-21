@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.op->lt",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Less Than

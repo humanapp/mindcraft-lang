@@ -33,6 +33,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -42,7 +43,8 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -50,6 +52,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -114,7 +118,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
 
@@ -150,7 +154,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -183,7 +187,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -215,7 +219,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -243,7 +247,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -274,7 +278,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -307,7 +311,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.program);
 
     const prog = result.program!;
@@ -336,7 +340,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.equal(result.diagnostics.length, 1);
     assert.equal(result.diagnostics[0].code, CompileDiagCode.UnknownOutputType);
   });
@@ -346,7 +350,8 @@ export default Sensor({
     const actorRefTypeId = mkTypeId(NativeType.Struct, "ActorRef");
     if (!types.get(actorRefTypeId)) {
       types.addStructType("ActorRef", {
-        fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number") }]),
+        atomId: 1024,
+        fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 }]),
       });
     }
     const appAmbient = buildAmbientDeclarations(services.runtime.types);
@@ -361,6 +366,7 @@ export default Sensor({
     });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: appAmbient }],
       services,
     });
@@ -380,7 +386,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
     assert.equal(result.program!.outputType, "struct:<ActorRef>");
@@ -393,33 +399,37 @@ describe("buildCallDef", () => {
   });
 
   test("empty params produces empty bag", () => {
-    const callDef = buildCallDef("test-tile", []);
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "test-tile", []);
     assert.equal(callDef.callSpec.type, "bag");
     assert.equal(callDef.argSlots.size(), 0);
   });
 
   test("one required param produces correct callDef", () => {
-    const callDef = buildCallDef("my-sensor", [{ kind: "param", name: "range", type: "number", anonymous: false }]);
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "my-sensor", [
+      { kind: "param", name: "range", type: "number", anonymous: false },
+    ]);
     assert.equal(callDef.callSpec.type, "bag");
     assert.equal(callDef.argSlots.size(), 1);
     const slot = callDef.argSlots.get(0)!;
     assert.equal(slot.slotId, 0);
-    assert.equal(slot.argSpec.tileId, "tile.parameter->user.my-sensor.range");
+    assert.equal(slot.argSpec.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.my-sensor.range`);
   });
 
   test("one optional param is wrapped in optional", () => {
-    const callDef = buildCallDef("my-sensor", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "my-sensor", [
       { kind: "optional", item: { kind: "param", name: "range", type: "number", defaultValue: 5, anonymous: false } },
     ]);
     assert.equal(callDef.callSpec.type, "bag");
     assert.equal(callDef.argSlots.size(), 1);
     const slot = callDef.argSlots.get(0)!;
     assert.equal(slot.slotId, 0);
-    assert.equal(slot.argSpec.tileId, "tile.parameter->user.my-sensor.range");
+    assert.equal(slot.argSpec.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.my-sensor.range`);
   });
 
   test("anonymous param uses anon tile id", () => {
-    const callDef = buildCallDef("chase", [{ kind: "param", name: "target", type: "ActorRef", anonymous: true }]);
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "chase", [
+      { kind: "param", name: "target", type: "ActorRef", anonymous: true },
+    ]);
     assert.equal(callDef.argSlots.size(), 1);
     const slot = callDef.argSlots.get(0)!;
     assert.equal(slot.argSpec.tileId, "tile.parameter->anon.ActorRef");
@@ -427,7 +437,7 @@ describe("buildCallDef", () => {
   });
 
   test("mixed required, optional, and anonymous params", () => {
-    const callDef = buildCallDef("chase", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "chase", [
       { kind: "param", name: "target", type: "ActorRef", anonymous: true },
       { kind: "optional", item: { kind: "param", name: "speed", type: "number", defaultValue: 1, anonymous: false } },
     ]);
@@ -440,6 +450,6 @@ describe("buildCallDef", () => {
 
     const slot1 = callDef.argSlots.get(1)!;
     assert.equal(slot1.slotId, 1);
-    assert.equal(slot1.argSpec.tileId, "tile.parameter->user.chase.speed");
+    assert.equal(slot1.argSpec.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.chase.speed`);
   });
 });

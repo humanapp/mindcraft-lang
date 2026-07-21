@@ -1,21 +1,82 @@
-import { CoreCapabilityBits, type ITileMetadata } from "@mindcraft-lang/core/brain";
-import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
-import { type ActionDescriptor, mkParameterTileId, type TypeId } from "@mindcraft-lang/core/runtime";
+import { assertUnreachable, List } from "@mindcraft-lang/core";
+import {
+  type BrainServices,
+  CoreCapabilityBits,
+  type IBrainTileDef,
+  type ITileMetadata,
+  TilePlacement,
+} from "@mindcraft-lang/core/brain";
+import {
+  BrainTileActuatorDef,
+  BrainTileModifierDef,
+  BrainTileOutputDef,
+  BrainTileParameterDef,
+  BrainTileSensorDef,
+  createAccessorTileDef,
+  createVariableFactoryTileDef,
+} from "@mindcraft-lang/core/brain/tiles";
+import {
+  type ActionDescriptor,
+  mkAnonParameterId,
+  mkModifierTileId,
+  mkParameterTileId,
+  type NamespacedTypeName,
+  splitNamespacedTypeName,
+  type TypeId,
+  type UserArgIdentity,
+} from "@mindcraft-lang/core/runtime";
 import { BitSet } from "@mindcraft-lang/core/util";
-import { collectParams } from "../compiler/arg-spec-utils.js";
-import type { ExtractedParam, UserAuthoredProgram } from "../compiler/types.js";
+import { collectModifiers, collectParams } from "../compiler/arg-spec-utils.js";
+import { privateArgTileId } from "../compiler/symbol-keys.js";
+import type { ExtractedModifier, ExtractedParam, UserAuthoredProgram, UserTileDefinition } from "../compiler/types.js";
 
 /** Resolve a parameter type name to a runtime `TypeId`, or `undefined` when the type is not registered. */
 export type UserTileTypeResolver = (typeName: string) => TypeId | undefined;
+
+/** A tile surface a bundle registers: a compiled program or a program-less tile definition. */
+export type UserTileSurface = UserAuthoredProgram | UserTileDefinition;
+
+/**
+ * Accessor tiles and variable-factory tiles derived from a program's declared
+ * struct types: one accessor per field for `accessors: true` declarations, one
+ * variable factory for `variables: true` declarations. Tile ids derive from
+ * the struct's registered type id, so every program collecting one declared
+ * type derives the identical tile set (register-if-absent by tile id).
+ */
+export function buildStructTypeTiles(program: UserAuthoredProgram, services?: BrainServices): readonly IBrainTileDef[] {
+  const tiles: IBrainTileDef[] = [];
+  for (const structType of program.structTypes ?? []) {
+    if (structType.accessors) {
+      for (const field of structType.fields) {
+        tiles.push(createAccessorTileDef(structType.typeId, field.name, field.typeId));
+      }
+    }
+    if (structType.variables) {
+      tiles.push(
+        createVariableFactoryTileDef(
+          structType.typeId,
+          structType.typeId,
+          { metadata: { label: structType.name } },
+          services
+        )
+      );
+    }
+  }
+  return tiles;
+}
 
 /** Output of {@link buildUserTileMetadata}: the tile metadata pieces a brain needs to register a user tile. */
 export interface BuiltUserTileMetadata {
   actionDescriptor: ActionDescriptor;
   actionTile: BrainTileActuatorDef | BrainTileSensorDef;
   parameterTiles: readonly BrainTileParameterDef[];
+  /** Modifier tiles the tile's call spec places: private ones keyed `<namespace>:user.<id>.<modifier>`, shared ones by their unscoped `modifier.` id. */
+  modifierTiles: readonly BrainTileModifierDef[];
+  /** Inline output value-tiles derived from a sensor's `outputs` (empty for actuators or sensors without outputs). */
+  outputTiles: readonly BrainTileOutputDef[];
 }
 
-function buildActionDescriptor(program: UserAuthoredProgram): ActionDescriptor {
+function buildActionDescriptor(program: UserTileSurface): ActionDescriptor {
   return {
     key: program.key,
     kind: program.kind,
@@ -25,21 +86,39 @@ function buildActionDescriptor(program: UserAuthoredProgram): ActionDescriptor {
   };
 }
 
-function getParameterId(tileName: string, param: ExtractedParam): string {
-  if (param.anonymous) return `anon.${param.type}`;
+function getParameterId(program: UserTileSurface, param: ExtractedParam): string {
+  if (param.anonymous) return mkAnonParameterId(param.type);
   if (param.name.startsWith("parameter.")) return param.name;
-  return `user.${tileName}.${param.name}`;
+  return privateArgTileId(program.projectNamespace, program.id, param.name);
+}
+
+/** Identity components of a parameter tile, matching {@link getParameterId}'s three id forms. */
+function getParameterIdentity(
+  program: UserTileSurface,
+  param: ExtractedParam
+): { userArg?: UserArgIdentity; anonType?: NamespacedTypeName } {
+  if (param.anonymous) {
+    const split = splitNamespacedTypeName(param.type);
+    return { anonType: split ?? { localName: param.type } };
+  }
+  if (param.name.startsWith("parameter.")) return {};
+  return { userArg: { namespace: program.projectNamespace, actionId: program.id, argName: param.name } };
+}
+
+/** Resolve a modifier's tile id: shared `modifier.` ids stay unscoped; private ids are scoped by the stable action id under the project namespace. */
+function getModifierId(program: UserTileSurface, modifier: ExtractedModifier): string {
+  if (modifier.id.startsWith("modifier.")) return modifier.id;
+  return privateArgTileId(program.projectNamespace, program.id, modifier.id);
 }
 
 function buildParameterTiles(
-  program: UserAuthoredProgram,
+  program: UserTileSurface,
   resolveTypeId: UserTileTypeResolver
 ): readonly BrainTileParameterDef[] | undefined {
   const parameterTiles = new Map<string, BrainTileParameterDef>();
 
   for (const param of collectParams(program.args)) {
-    const parameterId = getParameterId(program.name, param);
-    if (param.name.startsWith("parameter.")) continue;
+    const parameterId = getParameterId(program, param);
     const tileId = mkParameterTileId(parameterId);
     if (parameterTiles.has(tileId)) {
       continue;
@@ -50,22 +129,87 @@ function buildParameterTiles(
       return undefined;
     }
 
-    parameterTiles.set(tileId, new BrainTileParameterDef(parameterId, typeId));
+    parameterTiles.set(tileId, new BrainTileParameterDef(parameterId, typeId, getParameterIdentity(program, param)));
   }
 
   return Array.from(parameterTiles.values());
 }
 
-/** Build the action descriptor, action tile, and parameter tiles for a compiled user tile. Returns undefined when a parameter type cannot be resolved. */
+/**
+ * Build the modifier tiles a user tile's call spec places. Materializes private
+ * modifiers (keyed `<namespace>:user.<id>.<modifier>`) and shared modifiers declared with a
+ * label (keyed by their unscoped `modifier.` id). A bare shared reference (a
+ * `modifier.` id with no label) references a modifier declared or registered
+ * elsewhere and materializes nothing.
+ */
+function buildModifierTiles(program: UserTileSurface): readonly BrainTileModifierDef[] {
+  const modifierTiles = new Map<string, BrainTileModifierDef>();
+
+  for (const modifier of collectModifiers(program.args)) {
+    const isSharedReference = modifier.id.startsWith("modifier.") && modifier.label === "";
+    if (isSharedReference) {
+      continue;
+    }
+    const modifierId = getModifierId(program, modifier);
+    const tileId = mkModifierTileId(modifierId);
+    if (modifierTiles.has(tileId)) {
+      continue;
+    }
+    const metadata: ITileMetadata = { label: modifier.label, iconUrl: modifier.icon };
+    const userArg = modifier.id.startsWith("modifier.")
+      ? undefined
+      : { namespace: program.projectNamespace, actionId: program.id, argName: modifier.id };
+    modifierTiles.set(tileId, new BrainTileModifierDef(modifierId, { metadata, userArg }));
+  }
+
+  return Array.from(modifierTiles.values());
+}
+
+/**
+ * Build the inline output value-tiles for a sensor's declared outputs. Output
+ * identity is the resolved type plus the output name scoped by the declaring
+ * project's namespace; the tile's label stays the bare declared name. Returns
+ * undefined when an output's type cannot be resolved.
+ */
+function buildOutputTiles(
+  program: UserTileSurface,
+  resolveTypeId: UserTileTypeResolver
+): readonly BrainTileOutputDef[] | undefined {
+  const outputTiles: BrainTileOutputDef[] = [];
+  for (const output of program.outputs ?? []) {
+    const typeId = resolveTypeId(output.type);
+    if (!typeId) {
+      return undefined;
+    }
+    const metadata: ITileMetadata = {
+      label: output.label ?? output.name,
+      iconUrl: output.icon,
+      docsMarkdown: output.docs,
+      tags: output.tags,
+    };
+    outputTiles.push(new BrainTileOutputDef(typeId, output.name, { metadata, namespace: program.projectNamespace }));
+  }
+  return outputTiles;
+}
+
+/**
+ * Build the action descriptor, action tile, parameter tiles, and output tiles for
+ * a compiled user tile. Returns undefined when a parameter or output type cannot
+ * be resolved.
+ */
 export function buildUserTileMetadata(
-  program: UserAuthoredProgram,
+  program: UserTileSurface,
   resolveTypeId: UserTileTypeResolver
 ): BuiltUserTileMetadata | undefined {
+  if (program.kind === "conversion") {
+    throw new Error(`Conversion "${program.key}" has no tile metadata`);
+  }
   const actionDescriptor = buildActionDescriptor(program);
   const parameterTiles = buildParameterTiles(program, resolveTypeId);
   if (!parameterTiles) {
     return undefined;
   }
+  const modifierTiles = buildModifierTiles(program);
 
   const metadata: ITileMetadata = {
     label: program.label ?? program.name,
@@ -75,15 +219,50 @@ export function buildUserTileMetadata(
   };
 
   const userTileCaps = new BitSet().set(CoreCapabilityBits.UserTile);
+  if (program.presenceGated) {
+    userTileCaps.set(CoreCapabilityBits.PresenceGated);
+  }
 
-  const actionTile =
-    program.kind === "sensor"
-      ? new BrainTileSensorDef(program.key, actionDescriptor, { metadata, capabilities: userTileCaps })
-      : new BrainTileActuatorDef(program.key, actionDescriptor, { metadata, capabilities: userTileCaps });
+  let outputTiles: readonly BrainTileOutputDef[] = [];
+  if (program.kind === "sensor") {
+    const built = buildOutputTiles(program, resolveTypeId);
+    if (!built) {
+      return undefined;
+    }
+    outputTiles = built;
+  }
+
+  const providedOutputs = List.from(outputTiles.map((tile) => tile.outputKey));
+  const userIdentity = { namespace: program.projectNamespace, actionId: program.id };
+  let actionTile: BrainTileSensorDef | BrainTileActuatorDef;
+  switch (program.kind) {
+    case "sensor":
+      actionTile = new BrainTileSensorDef(program.key, actionDescriptor, {
+        metadata,
+        capabilities: userTileCaps,
+        providedOutputs,
+        consumesWhenResult: program.consumesWhenResult,
+        placement: program.inline ? TilePlacement.EitherSide | TilePlacement.Inline : undefined,
+        userIdentity,
+      });
+      break;
+    case "actuator":
+      actionTile = new BrainTileActuatorDef(program.key, actionDescriptor, {
+        metadata,
+        capabilities: userTileCaps,
+        consumesWhenResult: program.consumesWhenResult,
+        userIdentity,
+      });
+      break;
+    default:
+      return assertUnreachable(program.kind);
+  }
 
   return {
     actionDescriptor,
     actionTile,
     parameterTiles,
+    modifierTiles,
+    outputTiles,
   };
 }

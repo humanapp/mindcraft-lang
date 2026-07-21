@@ -5,7 +5,7 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.spec.ts"],
+  "include": ["src/**/*.spec.ts", "src/testsupport/**/*.ts"],
   "exclude": ["node_modules", "dist"],
   "references": [{ "path": "../core/tsconfig.esm.json" }]
 }

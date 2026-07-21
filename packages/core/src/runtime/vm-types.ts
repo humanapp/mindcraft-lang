@@ -5,7 +5,7 @@ import type { List, ReadonlyList } from "../platform/list";
 import { Time } from "../platform/time";
 import { UniqueSet } from "../platform/uniqueset";
 import type { ExecutionContext } from "./context";
-import { ErrorCode, type ErrorValue, type HandleId, type StructValue, type Value } from "./value";
+import { type AsyncHandle, ErrorCode, type ErrorValue, type HandleId, type StructValue, type Value } from "./value";
 
 ///////////////////////////
 // Capacity-violation signaling
@@ -76,6 +76,8 @@ export interface VmConfig {
   maxFrameDepth: number;
   /** Maximum operand stack size per fiber */
   maxStackSize: number;
+  /** Maximum total locals across all live frames per fiber */
+  maxLocalsSize: number;
   /** Maximum number of handlers per fiber */
   maxHandlers: number;
   /** Maximum number of pending handles */
@@ -121,36 +123,38 @@ export type HostSyncFn = {
  * -- `args.get(getSlotId(callDef, ...))` -- not by name. Unsupplied
  * slots are filled with `NIL_VALUE`; check via `isNilValue`.
  *
- * **Lifetime:** the wrapper is owned. Free to retain `args` and
- * close over individual values across the async boundary; resolve or
- * reject the handle whenever the async work completes.
+ * **Lifetime:** the wrapper is owned. Free to retain `args` and `handle` and
+ * close over individual values across the async boundary; settle the handle
+ * via {@link AsyncHandle} whenever the async work completes.
  *
  * @param ctx - Execution context providing access to variables, rule, etc.
  * @param args - Positional snapshot of arguments, indexed by slotId.
- * @param handleId - Handle ID for resolving the async operation
+ * @param handle - Bound settle handle for resolving the async operation
  */
 export type HostAsyncFn = {
   onInitialized?: (ctx: ExecutionContext) => void;
   onPageEntered?: (ctx: ExecutionContext) => void;
   onPageExited?: (ctx: ExecutionContext) => void;
-  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
+  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handle: AsyncHandle) => void;
 };
 
 /**
  * Field getter function for native-backed struct types.
- * Called by GET_FIELD when a StructTypeDef has a fieldGetter registered.
+ * Called when reading a field whose `StructTypeDef` has a `fieldGetter` registered,
+ * dispatched by the field's numeric `fieldId` (its `StructFieldDef.fieldIndex`).
  * The source is the StructValue; ctx provides the execution context for resolver-based natives.
  */
-export type StructFieldGetterFn = (source: StructValue, fieldName: string, ctx: ExecutionContext) => Value | undefined;
+export type StructFieldGetterFn = (source: StructValue, fieldId: number, ctx: ExecutionContext) => Value | undefined;
 
 /**
  * Field setter function for native-backed struct types.
- * Called by SET_FIELD when a StructTypeDef has a fieldSetter registered.
- * Returns true if the field was successfully set.
+ * Called when writing a field whose `StructTypeDef` has a `fieldSetter` registered,
+ * dispatched by the field's numeric `fieldId` (its `StructFieldDef.fieldIndex`).
+ * Returns true if the field was successfully set (false rejects the write, e.g. a read-only field).
  */
 export type StructFieldSetterFn = (
   source: StructValue,
-  fieldName: string,
+  fieldId: number,
   value: Value,
   ctx: ExecutionContext
 ) => boolean;
@@ -261,6 +265,12 @@ export interface Fiber {
    * `cancelAsyncActionHandle`. Never holds an authoring-object reference.
    */
   asyncResultHandleId?: HandleId;
+  /**
+   * Function id of the root rule whose subtree this child-rule fiber belongs to,
+   * set when spawned by `SPAWN_RULE`. `undefined` for root-rule, async-action
+   * child, and hook fibers, so its presence marks a child-rule fiber.
+   */
+  rootRuleFuncId?: number;
 }
 
 ///////////////////////////
@@ -301,6 +311,15 @@ export class HandleTable {
   public readonly events = this.eventEmitter.consumer();
 
   constructor(public readonly maxHandles: number) {}
+
+  /**
+   * True when a {@link createPending} would succeed right now: the live-handle
+   * count is below {@link maxHandles}. Non-mutating; an async dispatch checks it
+   * to decide whether to allocate or to park and retry next round.
+   */
+  hasCapacity(): boolean {
+    return this.handles.size() < this.maxHandles;
+  }
 
   createPending(): HandleId {
     if (this.handles.size() >= this.maxHandles) {
@@ -414,6 +433,12 @@ export interface Scheduler {
    * (`ACTION_CALL_ASYNC` bytecode branch).
    */
   addFiber?: (fiber: Fiber) => void;
+  /**
+   * Spawns a fire-and-forget child-rule fiber for `funcId`, tagged with
+   * `subtreeRootFuncId` (its root rule), and enqueued for the next round.
+   * Present only on schedulers that support child-rule spawning (`SPAWN_RULE`).
+   */
+  spawnChildRule?: (funcId: number, subtreeRootFuncId: number, executionContext: ExecutionContext) => void;
 }
 
 ///////////////////////////
@@ -505,6 +530,15 @@ export interface IFiberScheduler extends Scheduler {
   addFiber(fiber: Fiber): void;
 
   /**
+   * Spawn a fire-and-forget child-rule fiber for `funcId`, tagged with its root
+   * rule, and enqueued for the next round.
+   * @param funcId - Rule entry function to run
+   * @param subtreeRootFuncId - Funcid of the root rule whose subtree it belongs to
+   * @param executionContext - Execution context for the child fiber
+   */
+  spawnChildRule(funcId: number, subtreeRootFuncId: number, executionContext: ExecutionContext): void;
+
+  /**
    * Remove a fiber from the scheduler
    * @param fiberId - ID of fiber to remove
    */
@@ -517,7 +551,25 @@ export interface IFiberScheduler extends Scheduler {
   cancel(fiberId: number): void;
 
   /**
-   * Execute one scheduler tick, running fibers until budget exhausted
+   * Cancel every live child-rule fiber (those spawned via `SPAWN_RULE`). Used
+   * by the page-scoped cancellation cascade when the active page deactivates,
+   * restarts, or is switched away; exactly one page is active, so every live
+   * child-rule fiber belongs to it. Root-rule, async-action child, and hook
+   * fibers are left untouched.
+   */
+  cancelChildRuleFibers(): void;
+
+  /**
+   * Returns true when a live (runnable or waiting) child-rule fiber belongs to
+   * the subtree of the root rule `rootRuleFuncId`. Used to hold a root rule's
+   * re-fire while any of its descendant child rules is still in flight.
+   */
+  hasLiveDescendantOfRoot(rootRuleFuncId: number): boolean;
+
+  /**
+   * Execute one scheduler tick: every fiber runnable at tick entry gets
+   * exactly one budget slice; fibers enqueued during the tick run in the
+   * next tick.
    * @returns Number of fibers executed in this tick
    */
   tick(): number;

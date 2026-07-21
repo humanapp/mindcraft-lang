@@ -478,3 +478,126 @@ describe("MemoryStream -- skip", () => {
     assert.equal(s2.readU8(), 30);
   });
 });
+
+// ---- Variable-length and raw primitives ----
+
+describe("MemoryStream -- var-int and raw primitives", () => {
+  const U32_VALUES = [0, 1, 127, 128, 255, 16383, 16384, 0x0fffffff, 0x10000000, 0xffffffff];
+  const I32_VALUES = [0, -1, 1, 63, -64, 8191, -8192, 2147483647, -2147483648];
+
+  test("writeVarUint/readVarUint round-trip across boundaries", () => {
+    const s = new MemoryStream();
+    for (const v of U32_VALUES) s.writeVarUint(v);
+    s.resetRead();
+    for (const v of U32_VALUES) assert.equal(s.readVarUint(), v);
+    assert.ok(s.eof());
+  });
+
+  test("writeVarUint uses minimal byte counts", () => {
+    const cases: ReadonlyArray<[number, number]> = [
+      [0, 1],
+      [127, 1],
+      [128, 2],
+      [16383, 2],
+      [16384, 3],
+      [0xffffffff, 5],
+    ];
+    for (const [value, expectedLen] of cases) {
+      const s = new MemoryStream();
+      s.writeVarUint(value);
+      assert.equal(s.toBytes().length(), expectedLen, `value ${value}`);
+    }
+  });
+
+  test("writeVarInt/readVarInt round-trip across sign boundaries", () => {
+    const s = new MemoryStream();
+    for (const v of I32_VALUES) s.writeVarInt(v);
+    s.resetRead();
+    for (const v of I32_VALUES) assert.equal(s.readVarInt(), v);
+    assert.ok(s.eof());
+  });
+
+  test("writeVarUint rejects out-of-range values", () => {
+    const s = new MemoryStream();
+    assert.throws(() => s.writeVarUint(-1));
+    assert.throws(() => s.writeVarUint(0x100000000));
+    assert.throws(() => s.writeVarUint(1.5));
+  });
+
+  test("writeVarInt rejects values outside the i32 range", () => {
+    const s = new MemoryStream();
+    assert.throws(() => s.writeVarInt(2147483648));
+    assert.throws(() => s.writeVarInt(-2147483649));
+  });
+
+  test("readVarUint rejects a 6th continuation byte (overflow)", () => {
+    const s = new MemoryStream();
+    // Five continuation-flagged bytes -> a 6th byte would be required.
+    for (let i = 0; i < 5; i++) s.writeRawU8(0x80);
+    s.writeRawU8(0x01);
+    s.resetRead();
+    assert.throws(() => s.readVarUint(), /varint/);
+  });
+
+  test("readVarUint rejects a 5th byte exceeding 32 bits", () => {
+    const s = new MemoryStream();
+    s.writeRawU8(0x80);
+    s.writeRawU8(0x80);
+    s.writeRawU8(0x80);
+    s.writeRawU8(0x80);
+    s.writeRawU8(0x10); // bit 32 set -> exceeds u32
+    s.resetRead();
+    assert.throws(() => s.readVarUint(), /varint/);
+  });
+
+  test("writeRawU8/readRawU8 round-trip without a data-type tag", () => {
+    const s = new MemoryStream();
+    s.writeRawU8(0);
+    s.writeRawU8(200);
+    s.writeRawU8(255);
+    assert.equal(s.toBytes().length(), 3);
+    s.resetRead();
+    assert.equal(s.readRawU8(), 0);
+    assert.equal(s.readRawU8(), 200);
+    assert.equal(s.readRawU8(), 255);
+    assert.ok(s.eof());
+  });
+
+  test("writeRawF32/readRawF32 round-trip an f32-exact value", () => {
+    const s = new MemoryStream();
+    s.writeRawF32(Math.fround(1.5));
+    s.writeRawF32(Math.fround(-0.25));
+    assert.equal(s.toBytes().length(), 8);
+    s.resetRead();
+    assert.equal(s.readRawF32(), 1.5);
+    assert.equal(s.readRawF32(), -0.25);
+  });
+
+  test("writeVarString/readVarString round-trip UTF-8", () => {
+    const values = ["", "abc", "struct:<Context>", "héllo 世界"];
+    const s = new MemoryStream();
+    for (const v of values) s.writeVarString(v);
+    s.resetRead();
+    for (const v of values) assert.equal(s.readVarString(), v);
+    assert.ok(s.eof());
+  });
+
+  test("var-ints and raw bytes route into the current chunk", () => {
+    const TAG = 0x41424344; // 'ABCD'
+    const s = new MemoryStream();
+    s.pushChunk(TAG, 1);
+    s.writeVarUint(300);
+    s.writeVarInt(-5);
+    s.writeVarString("hi");
+    s.popChunk();
+    s.resetRead();
+
+    const version = s.enterChunk(TAG);
+    assert.equal(version, 1);
+    assert.equal(s.readVarUint(), 300);
+    assert.equal(s.readVarInt(), -5);
+    assert.equal(s.readVarString(), "hi");
+    s.leaveChunk();
+    assert.ok(s.eof());
+  });
+});

@@ -8,13 +8,14 @@ import { Time } from "../platform/time";
 import { UniqueSet } from "../platform/uniqueset";
 import type { FunctionBytecode, Instr } from "./bytecode";
 import { Op } from "./bytecode";
-import type { ExecutableAction, ExecutionContext } from "./context";
+import type { BytecodeExecutableAction, ExecutionContext, HostActionBinding } from "./context";
 import type { VmEvents } from "./events";
-import type { Program } from "./program";
-import type { PlatformServices, RuntimeLangServices } from "./services";
+import type { Program, ProgramStructField } from "./program";
+import { resolveProgramTypeId } from "./program";
+import type { RuntimeLangServices } from "./services";
 import type { ITypeRegistry } from "./type-defs";
 import { NativeType, type StructTypeDef, type TypeId } from "./type-defs";
-import type { ErrorValue, HandleId, Value } from "./value";
+import type { AsyncHandle, ErrorValue, HandleId, StructValue, Value } from "./value";
 import {
   ErrorCode,
   FALSE_VALUE,
@@ -109,6 +110,8 @@ export interface VmOptions extends Partial<VmConfig> {
 export const DEFAULT_VM_CONFIG: VmConfig = {
   maxFrameDepth: 256,
   maxStackSize: 4096,
+  // Large default (matches maxStackSize); device profiles override it.
+  maxLocalsSize: 4096,
   maxHandlers: 64,
   maxHandles: 100000,
   defaultBudget: 1000,
@@ -236,6 +239,8 @@ function isTruthy(v: Value): boolean {
       return true;
     case NativeType.Function:
       return true;
+    case NativeType.Buffer:
+      return v.v.length() > 0;
     case "handle":
       return true;
     case "err":
@@ -269,24 +274,23 @@ const VALID_TRANSITIONS: Record<FiberState, UniqueSet<FiberState>> = {
  */
 export class VM implements IVM {
   private config: VmConfig;
-  private services: PlatformServices;
-  private fns: RuntimeLangServices["functions"];
+  private runtime: RuntimeLangServices;
   private events?: VmEvents;
   private nextInternalFiberId = -1;
   public handles: HandleTable;
 
   constructor(
     private prog: Program,
-    services: PlatformServices,
+    services: RuntimeLangServices,
     options?: VmOptions
   ) {
-    this.services = services;
-    this.fns = services.runtime.functions;
+    this.runtime = services;
     const events = options?.events;
     const injectedHandles = options?.handles;
     const configOverrides: Partial<VmConfig> = {};
     if (options?.maxFrameDepth !== undefined) configOverrides.maxFrameDepth = options.maxFrameDepth;
     if (options?.maxStackSize !== undefined) configOverrides.maxStackSize = options.maxStackSize;
+    if (options?.maxLocalsSize !== undefined) configOverrides.maxLocalsSize = options.maxLocalsSize;
     if (options?.maxHandlers !== undefined) configOverrides.maxHandlers = options.maxHandlers;
     if (options?.maxHandles !== undefined) configOverrides.maxHandles = options.maxHandles;
     if (options?.defaultBudget !== undefined) configOverrides.defaultBudget = options.defaultBudget;
@@ -322,6 +326,11 @@ export class VM implements IVM {
     const vstack = List.empty<Value>();
     const base = 0;
 
+    // Root frame: the entry function's locals alone must fit the cap.
+    const rootNumLocals = fn.numLocals ?? fn.numParams;
+    if (rootNumLocals > this.config.maxLocalsSize) {
+      throwOverflow(`Stack overflow: locals limit ${SU.toString(this.config.maxLocalsSize)} exceeded`);
+    }
     const locals = this.allocLocals(fn, effectiveArgs);
     const ruleFuncId = this.resolveDirectRuleFuncId(executionContext, funcId);
 
@@ -435,6 +444,10 @@ export class VM implements IVM {
           return this.execLoadVar(fiber, ins, frame);
         case Op.STORE_VAR_SLOT:
           return this.execStoreVar(fiber, ins, frame);
+        case Op.LOAD_SYSTEM_VAR:
+          return this.execLoadSystemVar(fiber, ins, frame);
+        case Op.STORE_SYSTEM_VAR:
+          return this.execStoreSystemVar(fiber, ins, frame);
         case Op.JMP:
           return this.execJmp(fiber, ins, frame);
         case Op.JMP_IF_FALSE:
@@ -445,6 +458,8 @@ export class VM implements IVM {
           return this.execCall(fiber, ins, frame);
         case Op.RET:
           return this.execRet(fiber, scheduler);
+        case Op.SPAWN_RULE:
+          return this.execSpawnRule(fiber, ins, frame, scheduler);
         case Op.HOST_CALL:
           return this.execHostCall(fiber, ins, frame);
         case Op.HOST_CALL_ASYNC:
@@ -453,6 +468,10 @@ export class VM implements IVM {
           return this.execActionCall(fiber, ins, frame);
         case Op.ACTION_CALL_ASYNC:
           return this.execActionCallAsync(fiber, ins, frame, scheduler);
+        case Op.HOST_ACTION_CALL:
+          return this.execHostActionCall(fiber, ins, frame);
+        case Op.HOST_ACTION_CALL_ASYNC:
+          return this.execHostActionCallAsync(fiber, ins, frame);
         case Op.STACK_SET_REL:
           return this.execStackSetRel(fiber, ins, frame);
         case Op.AWAIT:
@@ -471,6 +490,8 @@ export class VM implements IVM {
           return this.execWhenStart(fiber, ins, frame);
         case Op.WHEN_END:
           return this.execWhenEnd(fiber, ins, frame);
+        case Op.WHEN_END_PRESENT:
+          return this.execWhenEndPresent(fiber, ins, frame);
         case Op.DO_START:
           return this.execDoStart(fiber, ins, frame);
         case Op.DO_END:
@@ -507,16 +528,14 @@ export class VM implements IVM {
           return this.execMapDelete(fiber, frame);
         case Op.STRUCT_NEW:
           return this.execStructNew(fiber, ins, frame);
-        case Op.STRUCT_GET:
-          return this.execStructGet(fiber, ins, frame);
-        case Op.STRUCT_SET:
-          return this.execStructSet(fiber, ins, frame);
         case Op.STRUCT_COPY_EXCEPT:
           return this.execStructCopyExcept(fiber, ins, frame);
         case Op.STRUCT_GET_FIELD:
           return this.execStructGetField(fiber, ins, frame);
         case Op.STRUCT_SET_FIELD:
           return this.execStructSetField(fiber, ins, frame);
+        case Op.STRUCT_DEEP_COPY:
+          return this.execStructDeepCopy(fiber, frame);
         case Op.GET_FIELD:
           return this.execGetField(fiber, frame);
         case Op.SET_FIELD:
@@ -641,8 +660,22 @@ export class VM implements IVM {
     if (slotId < 0 || slotId >= this.prog.variableNames.size()) {
       throw new Error(`STORE_VAR_SLOT: slot index ${slotId} out of bounds`);
     }
-    const value = deepCopyValue(this.pop(fiber), this.services.runtime.types, fiber.executionContext);
+    const value = deepCopyValue(this.pop(fiber), this.runtime.types, fiber.executionContext);
     fiber.executionContext.setVariableBySlot(slotId, value);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execLoadSystemVar(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const slotId = ins.a ?? 0;
+    this.push(fiber, fiber.executionContext.getSystemVarBySlot(slotId));
+    frame.pc++;
+    return undefined;
+  }
+
+  private execStoreSystemVar(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const slotId = ins.a ?? 0;
+    fiber.executionContext.setSystemVarBySlot(slotId, this.pop(fiber));
     frame.pc++;
     return undefined;
   }
@@ -742,11 +775,12 @@ export class VM implements IVM {
 
   private execInstanceOf(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const value = this.pop(fiber);
-    const constIdx = ins.a ?? 0;
-    if (constIdx < 0 || constIdx >= this.prog.constantPools.strings.size()) {
-      throw new Error(`INSTANCE_OF: string-constant index ${constIdx} out of bounds`);
+    const typeIdx = ins.a ?? 0;
+    const types = this.prog.types;
+    if (!types || typeIdx < 0 || typeIdx >= types.size()) {
+      throw new Error(`INSTANCE_OF: type-table index ${typeIdx} out of bounds`);
     }
-    const targetTypeId = this.prog.constantPools.strings.get(constIdx)!;
+    const targetTypeId = types.get(typeIdx)!.typeId;
     const result = isStructValue(value) && value.typeId === targetTypeId;
     this.push(fiber, V.bool(result));
     frame.pc++;
@@ -784,6 +818,7 @@ export class VM implements IVM {
     if (argc !== callee.numParams) {
       throw new Error(`CALL_INDIRECT: argc ${SU.toString(argc)} != numParams ${SU.toString(callee.numParams)}`);
     }
+    this.assertLocalsCapacity(fiber, callee.numLocals ?? callee.numParams);
 
     const caller = this.topFrame(fiber);
     if (caller) caller.pc++;
@@ -839,6 +874,7 @@ export class VM implements IVM {
     while (args.size() < needed) {
       args.push(V.nil());
     }
+    this.assertLocalsCapacity(fiber, callee.numLocals ?? callee.numParams);
 
     const caller = this.topFrame(fiber);
     if (caller) caller.pc++;
@@ -899,13 +935,29 @@ export class VM implements IVM {
     return undefined;
   }
 
+  private execSpawnRule(fiber: Fiber, ins: Instr, frame: Frame, scheduler: Scheduler): undefined {
+    const childFuncId = ins.a ?? 0;
+    if (!scheduler.spawnChildRule) {
+      throw new Error("SPAWN_RULE: scheduler cannot spawn child-rule fibers");
+    }
+    // Fire-and-forget: spawn the child rule in its own fiber, tagged with this
+    // subtree's root rule (this fiber's own root, or its rule funcId when it is
+    // the root), and continue without awaiting. The child runs in a later round
+    // (the round-tick rule). Nothing is pushed.
+    const subtreeRootFuncId = fiber.rootRuleFuncId ?? fiber.frames.get(0)!.funcId;
+    scheduler.spawnChildRule(childFuncId, subtreeRootFuncId, fiber.executionContext);
+    frame.pc++;
+    return undefined;
+  }
+
   private execHostCall(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const fnId = ins.a ?? 0;
     const argc = ins.b ?? 0;
     const callSiteId = ins.c ?? 0;
 
-    if (fnId < 0 || fnId >= this.fns.size()) {
-      throw new Error(`HOST_CALL: function index ${fnId} out of bounds`);
+    const fnEntry = this.runtime.functions.getSyncById(fnId);
+    if (!fnEntry) {
+      throw new Error(`HOST_CALL: no sync host function registered under id ${fnId}`);
     }
 
     const stackSize = fiber.vstack.size();
@@ -916,7 +968,7 @@ export class VM implements IVM {
     this.bindExecutionContext(fiber, frame, callSiteId);
 
     const args = fiber.vstack.subview(stackSize - argc, argc);
-    const result = this.fns.getSyncById(fnId)!.fn.exec(fiber.executionContext, args);
+    const result = fnEntry.fn.exec(fiber.executionContext, args);
 
     for (let i = 0; i < argc; i++) {
       fiber.vstack.pop();
@@ -927,6 +979,28 @@ export class VM implements IVM {
     return undefined;
   }
 
+  /**
+   * Builds the {@link AsyncHandle} handed to an async host body for `id`. Each
+   * settle method is a no-op when the handle is no longer pending (already
+   * settled, cancelled with its fiber, or cleared on shutdown).
+   */
+  private makeAsyncHandle(id: HandleId): AsyncHandle {
+    const handles = this.handles;
+    const pending = (): boolean => handles.get(id)?.state === HandleState.PENDING;
+    return {
+      id,
+      resolve(value: Value): void {
+        if (pending()) handles.resolve(id, value);
+      },
+      reject(code: ErrorCode, message = ""): void {
+        if (pending()) handles.reject(id, { code, message });
+      },
+      cancel(message?: string): void {
+        if (pending()) handles.cancel(id, message);
+      },
+    };
+  }
+
   private execHostCallAsync(fiber: Fiber, ins: Instr, frame: Frame, _scheduler: Scheduler): VmRunResult | undefined {
     this.assertCanSuspend(fiber, Op.HOST_CALL_ASYNC);
 
@@ -934,13 +1008,23 @@ export class VM implements IVM {
     const argc = ins.b ?? 0;
     const callSiteId = ins.c ?? 0;
 
-    if (fnId < 0 || fnId >= this.fns.size()) {
-      throw new Error(`HOST_CALL_ASYNC: function index ${fnId} out of bounds`);
+    const fnEntry = this.runtime.functions.getAsyncById(fnId);
+    if (!fnEntry) {
+      throw new Error(`HOST_CALL_ASYNC: no async host function registered under id ${fnId}`);
     }
 
     const stackSize = fiber.vstack.size();
     if (argc < 0 || argc > stackSize) {
       throwUnderflow(`HOST_CALL_ASYNC: argc ${argc} exceeds stack size ${stackSize}`);
+    }
+
+    // Backpressure on handle exhaustion: with no free handle, yield without
+    // advancing the pc, so the fiber re-enters the run queue and re-executes this
+    // same dispatch next round. The check precedes every side effect (no args
+    // popped, no handle allocated, no action started, pc unchanged), so the retry
+    // is an exact re-execution once an in-flight async settles a slot.
+    if (!this.handles.hasCapacity()) {
+      return { status: VmStatus.YIELDED };
     }
 
     const args = List.empty<Value>();
@@ -956,7 +1040,7 @@ export class VM implements IVM {
 
     this.bindExecutionContext(fiber, frame, callSiteId);
 
-    this.fns.getAsyncById(fnId)!.fn.exec(fiber.executionContext, args, hid);
+    fnEntry.fn.exec(fiber.executionContext, args, this.makeAsyncHandle(hid));
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
@@ -974,7 +1058,7 @@ export class VM implements IVM {
     return undefined;
   }
 
-  private getExecutableAction(actionSlot: number, opName: string): ExecutableAction {
+  private getExecutableAction(actionSlot: number, opName: string): BytecodeExecutableAction {
     const actions = this.prog.actions;
     if (!actions) {
       throw new Error(`${opName}: program does not define executable actions`);
@@ -996,29 +1080,8 @@ export class VM implements IVM {
       throwUnderflow(`ACTION_CALL: argc ${argc} exceeds stack size ${stackSize}`);
     }
 
+    // Sync vs async dispatch is determined by the opcode (ACTION_CALL here), not by the action.
     const action = this.getExecutableAction(actionSlot, "ACTION_CALL");
-    const actionKey = action.descriptor.key;
-    if (action.descriptor.isAsync) {
-      throw new Error(`ACTION_CALL: action ${actionKey} requires ACTION_CALL_ASYNC`);
-    }
-
-    if (action.binding === "host") {
-      if (!action.execSync) {
-        throw new Error(`ACTION_CALL: host action ${actionKey} is missing execSync`);
-      }
-
-      this.bindExecutionContext(fiber, frame, callSiteId);
-
-      const args = fiber.vstack.subview(stackSize - argc, argc);
-      const result = action.execSync(fiber.executionContext, args);
-      for (let i = 0; i < argc; i++) {
-        fiber.vstack.pop();
-      }
-      this.push(fiber, result);
-      frame.pc++;
-      this.syncExecutionContextFromTopFrame(fiber);
-      return undefined;
-    }
 
     const args = this.snapshotStackArgs(fiber, argc, "ACTION_CALL");
     for (let i = 0; i < argc; i++) {
@@ -1040,39 +1103,17 @@ export class VM implements IVM {
       throwUnderflow(`ACTION_CALL_ASYNC: argc ${argc} exceeds stack size ${stackSize}`);
     }
 
+    // Sync vs async dispatch is determined by the opcode (ACTION_CALL_ASYNC here), not by the action.
     const action = this.getExecutableAction(actionSlot, "ACTION_CALL_ASYNC");
     const actionKey = action.descriptor.key;
-    if (!action.descriptor.isAsync) {
-      throw new Error(`ACTION_CALL_ASYNC: action ${actionKey} must use ACTION_CALL`);
-    }
 
-    if (action.binding === "host") {
-      if (!action.execAsync) {
-        throw new Error(`ACTION_CALL_ASYNC: host action ${actionKey} is missing execAsync`);
-      }
-
-      const args = List.empty<Value>();
-      for (let i = 0; i < argc; i++) {
-        args.push(fiber.vstack.get(stackSize - argc + i)!);
-      }
-      for (let i = 0; i < argc; i++) {
-        fiber.vstack.pop();
-      }
-
-      const hid = this.handles.createPending();
-      this.push(fiber, V.handle(hid));
-
-      this.bindExecutionContext(fiber, frame, callSiteId);
-
-      try {
-        action.execAsync(fiber.executionContext, args, hid);
-      } catch (error) {
-        this.handles.delete(hid);
-        throw error;
-      }
-      frame.pc++;
-      this.syncExecutionContextFromTopFrame(fiber);
-      return undefined;
+    // Backpressure on handle exhaustion: with no free handle, yield without
+    // advancing the pc, so the fiber re-enters the run queue and re-executes this
+    // same dispatch next round. The check precedes every side effect (no args
+    // popped, no child fiber spawned, no handle allocated, pc unchanged), so the
+    // retry is an exact re-execution once an in-flight async settles a slot.
+    if (!this.handles.hasCapacity()) {
+      return { status: VmStatus.YIELDED };
     }
 
     const args = this.snapshotStackArgs(fiber, argc, "ACTION_CALL_ASYNC");
@@ -1096,6 +1137,105 @@ export class VM implements IVM {
 
     this.push(fiber, V.handle(hid));
     this.bindExecutionContext(fiber, frame, callSiteId);
+    frame.pc++;
+    this.syncExecutionContextFromTopFrame(fiber);
+    return undefined;
+  }
+
+  /**
+   * Resolve a host action by its stable registry id and validate it against the
+   * opcode. Faults (surfacing as a `ScriptError`) when no action holds the id,
+   * the resolved action is not host-backed, or its sync/async-ness does not
+   * match the opcode that issued the call.
+   */
+  private resolveHostAction(actionId: number, wantAsync: boolean, opName: string): HostActionBinding {
+    const action = this.runtime.actions.getById(actionId);
+    if (!action) {
+      throw new Error(`${opName}: no action registered with id ${actionId}`);
+    }
+    if (action.binding !== "host") {
+      throw new Error(`${opName}: action id ${actionId} (${action.descriptor.key}) is not a host action`);
+    }
+    if (action.descriptor.isAsync !== wantAsync) {
+      const needed = action.descriptor.isAsync ? "HOST_ACTION_CALL_ASYNC" : "HOST_ACTION_CALL";
+      throw new Error(`${opName}: host action ${action.descriptor.key} requires ${needed}`);
+    }
+    return action;
+  }
+
+  private execHostActionCall(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const actionId = ins.a ?? 0;
+    const argc = ins.b ?? 0;
+    const callSiteId = ins.c ?? 0;
+
+    const stackSize = fiber.vstack.size();
+    if (argc < 0 || argc > stackSize) {
+      throwUnderflow(`HOST_ACTION_CALL: argc ${argc} exceeds stack size ${stackSize}`);
+    }
+
+    const action = this.resolveHostAction(actionId, false, "HOST_ACTION_CALL");
+    if (!action.execSync) {
+      throw new Error(`HOST_ACTION_CALL: host action ${action.descriptor.key} is missing execSync`);
+    }
+
+    this.bindExecutionContext(fiber, frame, callSiteId);
+
+    const args = fiber.vstack.subview(stackSize - argc, argc);
+    const result = action.execSync(fiber.executionContext, args);
+    for (let i = 0; i < argc; i++) {
+      fiber.vstack.pop();
+    }
+    this.push(fiber, result);
+    frame.pc++;
+    this.syncExecutionContextFromTopFrame(fiber);
+    return undefined;
+  }
+
+  private execHostActionCallAsync(fiber: Fiber, ins: Instr, frame: Frame): VmRunResult | undefined {
+    this.assertCanSuspend(fiber, Op.HOST_ACTION_CALL_ASYNC);
+
+    const actionId = ins.a ?? 0;
+    const argc = ins.b ?? 0;
+    const callSiteId = ins.c ?? 0;
+
+    const stackSize = fiber.vstack.size();
+    if (argc < 0 || argc > stackSize) {
+      throwUnderflow(`HOST_ACTION_CALL_ASYNC: argc ${argc} exceeds stack size ${stackSize}`);
+    }
+
+    const action = this.resolveHostAction(actionId, true, "HOST_ACTION_CALL_ASYNC");
+    if (!action.execAsync) {
+      throw new Error(`HOST_ACTION_CALL_ASYNC: host action ${action.descriptor.key} is missing execAsync`);
+    }
+
+    // Backpressure on handle exhaustion: with no free handle, yield without
+    // advancing the pc, so the fiber re-enters the run queue and re-executes this
+    // same dispatch next round. The check precedes every side effect (no args
+    // popped, no handle allocated, no action started, pc unchanged), so the retry
+    // is an exact re-execution once an in-flight async settles a slot.
+    if (!this.handles.hasCapacity()) {
+      return { status: VmStatus.YIELDED };
+    }
+
+    const args = List.empty<Value>();
+    for (let i = 0; i < argc; i++) {
+      args.push(fiber.vstack.get(stackSize - argc + i)!);
+    }
+    for (let i = 0; i < argc; i++) {
+      fiber.vstack.pop();
+    }
+
+    const hid = this.handles.createPending();
+    this.push(fiber, V.handle(hid));
+
+    this.bindExecutionContext(fiber, frame, callSiteId);
+
+    try {
+      action.execAsync(fiber.executionContext, args, this.makeAsyncHandle(hid));
+    } catch (error) {
+      this.handles.delete(hid);
+      throw error;
+    }
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
@@ -1201,12 +1341,37 @@ export class VM implements IVM {
     // WHEN always pushes exactly one value - pop it and check truthiness
     const whenResult = this.pop(fiber);
 
+    // Capture the WHEN result into the rule's reserved __whenResult variable.
+    // Every rule captures, regardless of the truthiness gate below.
+    const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, frame);
+    fiber.executionContext.services.brain.ruleVars.setByName(ruleFuncId, "__whenResult", whenResult);
+
     if (!isTruthy(whenResult)) {
       // WHEN evaluated to falsy - skip DO section and children
       const offset = ins.a ?? 0;
       frame.pc += offset; // Jump to end label
     } else {
       // WHEN evaluated to truthy - continue to DO section
+      frame.pc++;
+    }
+    return undefined;
+  }
+
+  private execWhenEndPresent(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    // WHEN always pushes exactly one value - pop it and check presence (non-nil).
+    const whenResult = this.pop(fiber);
+
+    // Capture the WHEN result into the rule's reserved __whenResult variable,
+    // identically to execWhenEnd. Every rule captures, regardless of the gate.
+    const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, frame);
+    fiber.executionContext.services.brain.ruleVars.setByName(ruleFuncId, "__whenResult", whenResult);
+
+    if (whenResult.t === NativeType.Nil) {
+      // No value this think (absent) - skip DO section and children.
+      const offset = ins.a ?? 0;
+      frame.pc += offset; // Jump to end label
+    } else {
+      // A value is present (including a falsy 0 / "" / false) - run DO.
       frame.pc++;
     }
     return undefined;
@@ -1225,8 +1390,8 @@ export class VM implements IVM {
   // List operations
   private execListNew(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     let typeId: TypeId = "list:<unknown>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
-      typeId = this.prog.constantPools.strings.get(ins.b)!;
+    if (ins.b !== undefined) {
+      typeId = resolveProgramTypeId(this.prog.types, ins.b);
     }
     this.push(fiber, V.list(List.empty<Value>(), typeId));
     frame.pc++;
@@ -1365,8 +1530,8 @@ export class VM implements IVM {
   // Map operations
   private execMapNew(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     let typeId: TypeId = "map:<unknown>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
-      typeId = this.prog.constantPools.strings.get(ins.b)!;
+    if (ins.b !== undefined) {
+      typeId = resolveProgramTypeId(this.prog.types, ins.b);
     }
     this.push(fiber, V.map(new ValueDict(), typeId));
     frame.pc++;
@@ -1436,89 +1601,129 @@ export class VM implements IVM {
   }
 
   // Struct operations
+
+  /**
+   * The program-local struct type-table entry for `typeId`, or undefined when
+   * the program type table has no struct entry with that typeId.
+   */
+  private programStructEntry(typeId: TypeId): { maxFieldId: number; fields: List<ProgramStructField> } | undefined {
+    const types = this.prog.types;
+    if (types === undefined) {
+      return undefined;
+    }
+    for (let i = 0; i < types.size(); i++) {
+      const entry = types.get(i)!;
+      if (entry.tag === "struct" && entry.typeId === typeId) {
+        return entry;
+      }
+    }
+    return undefined;
+  }
+
+  /** Field name -> id list for `typeId`, from the runtime registry when present, else the program type table. */
+  private structFieldList(typeId: TypeId): List<ProgramStructField> | undefined {
+    const typeDef = this.runtime.types.get(typeId) as StructTypeDef | undefined;
+    if (typeDef !== undefined) {
+      return typeDef.fields.map((field) => ({ name: field.name, fieldIndex: field.fieldIndex }));
+    }
+    return this.programStructEntry(typeId)?.fields;
+  }
+
   private findStructField(typeId: TypeId, fieldName: string): number | undefined {
-    const typeDef = this.services.runtime.types.get(typeId) as StructTypeDef | undefined;
-    return typeDef?.fieldIndexByName.get(fieldName);
+    const typeDef = this.runtime.types.get(typeId) as StructTypeDef | undefined;
+    const fromRegistry = typeDef?.fieldIndexByName.get(fieldName);
+    if (fromRegistry !== undefined) {
+      return fromRegistry;
+    }
+    const fields = this.programStructEntry(typeId)?.fields;
+    if (fields !== undefined) {
+      for (let i = 0; i < fields.size(); i++) {
+        const field = fields.get(i)!;
+        if (field.name === fieldName) {
+          return field.fieldIndex;
+        }
+      }
+    }
+    return undefined;
   }
 
   private makeStructFields(typeId: TypeId): List<Value> {
     const fields = List.empty<Value>();
-    const typeDef = this.services.runtime.types.get(typeId) as StructTypeDef | undefined;
-    const fieldCount = typeDef?.fields.size() ?? 0;
-    for (let i = 0; i < fieldCount; i++) {
+    const typeDef = this.runtime.types.get(typeId) as StructTypeDef | undefined;
+    // Storage holds the highest field id + 1 slots; a field id indexes its slot
+    // directly and retired ids leave nil holes.
+    let slotCount = 0;
+    if (typeDef !== undefined) {
+      typeDef.fields.forEach((field) => {
+        if (field.fieldIndex + 1 > slotCount) {
+          slotCount = field.fieldIndex + 1;
+        }
+      });
+    } else {
+      const entry = this.programStructEntry(typeId);
+      if (entry !== undefined) {
+        slotCount = entry.maxFieldId + 1;
+      }
+    }
+    for (let i = 0; i < slotCount; i++) {
       fields.push(NIL_VALUE);
     }
     return fields;
   }
 
   private execStructNew(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    const numFields = ins.a ?? 0;
+    if (ins.a !== undefined && ins.a !== 0) {
+      throw new Error(`STRUCT_NEW: reserved operand a must be 0 (got ${ins.a})`);
+    }
     let typeId = "struct:<anonymous>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
-      typeId = this.prog.constantPools.strings.get(ins.b)!;
+    if (ins.b !== undefined) {
+      typeId = resolveProgramTypeId(this.prog.types, ins.b);
     }
 
     const fields = this.makeStructFields(typeId);
-
-    for (let i = 0; i < numFields; i++) {
-      const value = this.pop(fiber);
-      const fieldName = this.pop(fiber);
-      if (!isStringValue(fieldName)) {
-        throw new Error("STRUCT_NEW: field name must be string");
-      }
-      const fieldIndex = this.findStructField(typeId, fieldName.v);
-      if (fieldIndex !== undefined) {
-        fields.set(fieldIndex, value);
-      }
-    }
-
     this.push(fiber, V.struct(fields, typeId));
     frame.pc++;
     return undefined;
   }
 
-  private execStructGet(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    const fieldName = this.pop(fiber);
-    const struct = this.pop(fiber);
-    if (!isStructValue(struct)) {
-      throw new Error("STRUCT_GET: requires struct");
+  /**
+   * Read a struct field by its numeric id: dispatch to the native `fieldGetter` when
+   * one is registered, else read the indexed storage slot. Shared by `STRUCT_GET_FIELD`
+   * and the name-keyed `GET_FIELD` shim.
+   */
+  private readStructFieldById(source: StructValue, fieldId: number, fiber: Fiber): Value {
+    const typeDef = this.runtime.types.get(source.typeId) as StructTypeDef | undefined;
+    if (typeDef?.fieldGetter) {
+      return typeDef.fieldGetter(source, fieldId, fiber.executionContext) ?? V.nil();
     }
-    if (!isStringValue(fieldName)) {
-      throw new Error("STRUCT_GET: field name must be string");
-    }
-    const fieldIndex = this.findStructField(struct.typeId, fieldName.v);
-    const value = fieldIndex !== undefined ? struct.v?.get(fieldIndex) : undefined;
-    this.push(fiber, value ?? V.nil());
-    frame.pc++;
-    return undefined;
+    return source.v?.get(fieldId) ?? V.nil();
   }
 
-  private execStructSet(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    const value = this.pop(fiber);
-    const fieldName = this.pop(fiber);
-    const struct = this.pop(fiber);
-    if (!isStructValue(struct)) {
-      throw new Error("STRUCT_SET: requires struct");
+  /**
+   * Write a struct field by its numeric id (a pure store -- no value copy): dispatch to
+   * the native `fieldSetter` when one is registered (throwing if it rejects the write),
+   * else write the indexed storage slot. Shared by `STRUCT_SET_FIELD` and the name-keyed
+   * `SET_FIELD` shim.
+   */
+  private writeStructFieldById(source: StructValue, fieldId: number, value: Value, fiber: Fiber): void {
+    const typeDef = this.runtime.types.get(source.typeId) as StructTypeDef | undefined;
+    if (typeDef?.fieldSetter) {
+      const ok = typeDef.fieldSetter(source, fieldId, value, fiber.executionContext);
+      if (!ok) {
+        throw new Error(`STRUCT_SET_FIELD: cannot set field id ${fieldId} on type ${source.typeId}`);
+      }
+      return;
     }
-    if (!isStringValue(fieldName)) {
-      throw new Error("STRUCT_SET: field name must be string");
-    }
-    const fieldIndex = this.findStructField(struct.typeId, fieldName.v);
-    if (fieldIndex !== undefined) {
-      struct.v?.set(fieldIndex, value);
-    }
-    this.push(fiber, struct);
-    frame.pc++;
-    return undefined;
+    source.v?.set(fieldId, value);
   }
 
   private execStructGetField(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    const fieldIndex = ins.a ?? 0;
+    const fieldId = ins.a ?? 0;
     const struct = this.pop(fiber);
     if (!isStructValue(struct)) {
       throw new Error("STRUCT_GET_FIELD: requires struct");
     }
-    this.push(fiber, struct.v?.get(fieldIndex) ?? V.nil());
+    this.push(fiber, this.readStructFieldById(struct, fieldId, fiber));
     frame.pc++;
     return undefined;
   }
@@ -1529,8 +1734,15 @@ export class VM implements IVM {
     if (!isStructValue(struct)) {
       throw new Error("STRUCT_SET_FIELD: requires struct");
     }
-    struct.v?.set(ins.a ?? 0, value);
+    this.writeStructFieldById(struct, ins.a ?? 0, value, fiber);
     this.push(fiber, struct);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execStructDeepCopy(fiber: Fiber, frame: Frame): undefined {
+    const value = this.pop(fiber);
+    this.push(fiber, deepCopyValue(value, this.runtime.types, fiber.executionContext));
     frame.pc++;
     return undefined;
   }
@@ -1551,23 +1763,23 @@ export class VM implements IVM {
     }
 
     let typeId = "struct:<anonymous>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
-      typeId = this.prog.constantPools.strings.get(ins.b)!;
+    if (ins.b !== undefined) {
+      typeId = resolveProgramTypeId(this.prog.types, ins.b);
     }
 
     let resultTypeId = typeId;
     let fields = this.makeStructFields(resultTypeId);
-    const sourceDef = this.services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
-    if (source.v && sourceDef && fields.size() === 0) {
+    const sourceFields = this.structFieldList(source.typeId);
+    if (source.v && sourceFields && fields.size() === 0) {
       resultTypeId = source.typeId;
       fields = List.empty<Value>();
       for (let i = 0; i < source.v.size(); i++) {
         fields.push(source.v.get(i));
       }
     }
-    if (source.v && sourceDef) {
-      for (let i = 0; i < sourceDef.fields.size(); i++) {
-        const field = sourceDef.fields.get(i);
+    if (source.v && sourceFields) {
+      for (let i = 0; i < sourceFields.size(); i++) {
+        const field = sourceFields.get(i)!;
         if (exclude.has(field.name)) {
           if (resultTypeId === source.typeId) {
             fields.set(field.fieldIndex, NIL_VALUE);
@@ -1586,6 +1798,8 @@ export class VM implements IVM {
     return undefined;
   }
 
+  // GET_FIELD is the dynamic (runtime-computed-key) struct read: resolve the field name
+  // to its numeric id, then dispatch through the same id-based path as STRUCT_GET_FIELD.
   private execGetField(fiber: Fiber, frame: Frame): undefined {
     const fieldName = this.pop(fiber);
     const source = this.pop(fiber);
@@ -1594,28 +1808,25 @@ export class VM implements IVM {
       throw new Error("GET_FIELD: field name must be string");
     }
 
-    let result: Value | undefined;
-
+    let result: Value;
     if (isStructValue(source)) {
-      // Check for a registered fieldGetter on the struct type
-      const typeDef = this.services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
-      if (typeDef?.fieldGetter) {
-        result = typeDef.fieldGetter(source, fieldName.v, fiber.executionContext);
-      } else {
-        const fieldIndex = this.findStructField(source.typeId, fieldName.v);
-        result = fieldIndex !== undefined ? source.v?.get(fieldIndex) : undefined;
-      }
+      const fieldId = this.findStructField(source.typeId, fieldName.v);
+      result = fieldId !== undefined ? this.readStructFieldById(source, fieldId, fiber) : V.nil();
     } else {
       result = NIL_VALUE;
     }
 
-    this.push(fiber, result ?? V.nil());
+    this.push(fiber, result);
     frame.pc++;
     return undefined;
   }
 
+  // SET_FIELD is the dynamic (runtime-computed-key) struct write: resolve the field name
+  // to its numeric id, then dispatch through the same id-based path as STRUCT_SET_FIELD.
+  // It deep-copies the value (struct value-semantics) for the name-keyed callers that
+  // still emit it; STRUCT_SET_FIELD itself is a pure store.
   private execSetField(fiber: Fiber, frame: Frame): undefined {
-    const value = deepCopyValue(this.pop(fiber), this.services.runtime.types, fiber.executionContext);
+    const value = deepCopyValue(this.pop(fiber), this.runtime.types, fiber.executionContext);
     const fieldName = this.pop(fiber);
     const source = this.pop(fiber);
 
@@ -1623,25 +1834,15 @@ export class VM implements IVM {
       throw new Error("SET_FIELD: field name must be string");
     }
 
-    if (isStructValue(source)) {
-      // Check for a registered fieldSetter on the struct type
-      const typeDef = this.services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
-      if (typeDef?.fieldSetter) {
-        const success = typeDef.fieldSetter(source, fieldName.v, value, fiber.executionContext);
-        if (!success) {
-          throw new Error(`SET_FIELD: cannot set field '${fieldName.v}' on type ${source.typeId}`);
-        }
-      } else {
-        const fieldIndex = this.findStructField(source.typeId, fieldName.v);
-        if (fieldIndex !== undefined) {
-          source.v?.set(fieldIndex, value);
-        }
-      }
-      this.push(fiber, source);
-    } else {
+    if (!isStructValue(source)) {
       throw new Error(`SET_FIELD: cannot set field '${fieldName.v}' on type ${source.t}`);
     }
 
+    const fieldId = this.findStructField(source.typeId, fieldName.v);
+    if (fieldId !== undefined) {
+      this.writeStructFieldById(source, fieldId, value, fiber);
+    }
+    this.push(fiber, source);
     frame.pc++;
     return undefined;
   }
@@ -1652,7 +1853,7 @@ export class VM implements IVM {
     executionContext: ExecutionContext,
     label: string
   ): ReadonlyList<Value> {
-    if (fn.injectCtxTypeId !== undefined) {
+    if (fn.injectCtxTypeIdx !== undefined) {
       const expectedArgs = fn.numParams - 1;
       if (args.size() !== expectedArgs) {
         throw new Error(
@@ -1660,7 +1861,10 @@ export class VM implements IVM {
         );
       }
 
-      const ctxStruct = mkNativeStructValue(fn.injectCtxTypeId, executionContext);
+      const ctxStruct = mkNativeStructValue(
+        resolveProgramTypeId(this.prog.types, fn.injectCtxTypeIdx),
+        executionContext
+      );
       const effectiveArgs = List.empty<Value>();
       effectiveArgs.push(ctxStruct);
       for (let i = 0; i < args.size(); i++) {
@@ -1764,7 +1968,7 @@ export class VM implements IVM {
   private enterBytecodeActionFrame(
     fiber: Fiber,
     callerFrame: Frame,
-    action: Extract<ExecutableAction, { binding: "bytecode" }>,
+    action: BytecodeExecutableAction,
     args: ReadonlyList<Value>,
     callSiteId: number
   ): void {
@@ -1780,6 +1984,7 @@ export class VM implements IVM {
       `ACTION_CALL:${action.descriptor.key}`
     );
     const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, callerFrame);
+    this.assertLocalsCapacity(fiber, fn.numLocals ?? fn.numParams);
     const base = fiber.vstack.size();
     const locals = this.allocLocals(fn, effectiveArgs);
 
@@ -1802,7 +2007,7 @@ export class VM implements IVM {
 
   private spawnBytecodeActionFiber(
     parentFiber: Fiber,
-    action: Extract<ExecutableAction, { binding: "bytecode" }>,
+    action: BytecodeExecutableAction,
     args: List<Value>,
     callSiteId: number
   ): Fiber {
@@ -1978,6 +2183,21 @@ export class VM implements IVM {
     return locals;
   }
 
+  /**
+   * Faults with an {@link OverflowError} when pushing a frame with `numLocals`
+   * locals would carry the fiber's total live locals (summed across every live
+   * frame) past `maxLocalsSize`.
+   */
+  private assertLocalsCapacity(fiber: Fiber, numLocals: number): void {
+    let total = 0;
+    for (let i = 0; i < fiber.frames.size(); i++) {
+      total += fiber.frames.get(i)!.locals.size();
+    }
+    if (total + numLocals > this.config.maxLocalsSize) {
+      throwOverflow(`Stack overflow: locals limit ${SU.toString(this.config.maxLocalsSize)} exceeded`);
+    }
+  }
+
   private doCall(fiber: Fiber, calleeId: number, argc: number): void {
     if (calleeId < 0 || calleeId >= this.prog.functions.size()) {
       throw new Error(`CALL: function ${calleeId} out of bounds`);
@@ -1991,6 +2211,7 @@ export class VM implements IVM {
     if (argc !== callee.numParams) {
       throw new Error(`CALL: argc ${argc} != numParams ${callee.numParams}`);
     }
+    this.assertLocalsCapacity(fiber, callee.numLocals ?? callee.numParams);
 
     // Pop arguments from stack in correct order
     const args = List.empty<Value>();
@@ -2119,17 +2340,26 @@ export class VM implements IVM {
 
 /** Tunables for {@link FiberScheduler}. */
 export interface SchedulerConfig {
-  maxFibersPerTick: number;
+  /** Instruction budget granted to each fiber's slice of a tick. */
   defaultBudget: number;
+  /**
+   * Instruction budget granted to a page-lifecycle hook fiber. Hook fibers
+   * run to completion outside the tick loop via a direct `runFiber` call.
+   */
+  hookBudget: number;
   autoGcHandles: boolean;
-  /** Maximum number of fibers tracked by the scheduler at any one time. */
+  /**
+   * Maximum number of fibers the scheduler tracks at once. Checked at spawn;
+   * exceeding it throws an {@link OverflowError}, surfacing as a `StackOverflow`
+   * fault when the spawn came from bytecode.
+   */
   maxFibers: number;
 }
 
 /** Default values for {@link SchedulerConfig}. */
 export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
-  maxFibersPerTick: 64,
   defaultBudget: 1000,
+  hookBudget: 10000,
   autoGcHandles: true,
   maxFibers: 10000,
 };
@@ -2139,6 +2369,11 @@ export class FiberScheduler implements IFiberScheduler {
   private config: SchedulerConfig;
   private fibers = new Dict<number, Fiber>();
   private runQueue = List.empty<number>();
+  // Child-rule fibers spawned during the current tick, held out of the run queue.
+  // They drain within this same tick (a synchronous same-think cascade). Empty
+  // whenever no SPAWN_RULE ran this tick, which keeps `tick()` byte-identical for
+  // a brain that spawns no child rules.
+  private pendingSpawns = List.empty<number>();
   private nextFiberId = 1;
 
   constructor(
@@ -2157,11 +2392,21 @@ export class FiberScheduler implements IFiberScheduler {
   }
 
   addFiber(fiber: Fiber): void {
+    this.registerFiber(fiber);
+    this.enqueueRunnable(fiber.id);
+  }
+
+  /**
+   * Records a newly constructed fiber in the fiber table, enforcing the
+   * `maxFibers` cap. Leaves the fiber out of the run queue; the caller decides
+   * whether it joins the run queue ({@link addFiber}) or the same-think spawn
+   * drain ({@link spawnChildRule}).
+   */
+  private registerFiber(fiber: Fiber): void {
     if (this.fibers.size() >= this.config.maxFibers) {
       throwOverflow(`Fiber limit exceeded: ${this.config.maxFibers}`);
     }
     this.fibers.set(fiber.id, fiber);
-    this.enqueueRunnable(fiber.id);
   }
 
   removeFiber(fiberId: number): void {
@@ -2201,7 +2446,11 @@ export class FiberScheduler implements IFiberScheduler {
       }
     }
 
-    if (this.config.autoGcHandles && h.state !== HandleState.PENDING) {
+    // A settle with waiters has been consumed by their resume, so it can be
+    // collected now. A settle with no waiters happened before its AWAIT (a
+    // handle resolved during dispatch); it must survive for that AWAIT to read,
+    // so it is left for the think-boundary sweep in gc() after AWAIT consumes it.
+    if (this.config.autoGcHandles && waiters.size() > 0 && h.state !== HandleState.PENDING) {
       this.vm.handles.delete(handleId);
     }
   };
@@ -2213,11 +2462,66 @@ export class FiberScheduler implements IFiberScheduler {
     }
   }
 
+  /**
+   * Spawns a fire-and-forget child-rule fiber for `funcId`, tagged with
+   * `subtreeRootFuncId` (the funcId of the root rule whose subtree it belongs
+   * to), and holds it in the same-think spawn drain. The child runs later in the
+   * current `tick()`, after its parent's slice, as a synchronous cascade.
+   */
+  spawnChildRule(funcId: number, subtreeRootFuncId: number, executionContext: ExecutionContext): void {
+    const fiberId = this.nextFiberId++;
+    const fiber = this.vm.spawnFiber(fiberId, funcId, List.empty(), executionContext);
+    fiber.rootRuleFuncId = subtreeRootFuncId;
+    this.registerFiber(fiber);
+    this.pendingSpawns.push(fiberId);
+  }
+
+  hasLiveDescendantOfRoot(rootRuleFuncId: number): boolean {
+    for (const [, fiber] of this.fibers.entries().toArray()) {
+      if (
+        fiber.rootRuleFuncId === rootRuleFuncId &&
+        (fiber.state === FiberState.RUNNABLE || fiber.state === FiberState.WAITING)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Cancels every live child-rule fiber (those carrying a `rootRuleFuncId`). The
+   * page-scoped cancellation cascade: exactly one page is active, so every live
+   * child-rule fiber descends from one of its root rules. Cancelling marks each
+   * `CANCELLED`; `tick` skips cancelled fibers still in the run queue, so the
+   * cascade is safe mid-round.
+   */
+  cancelChildRuleFibers(): void {
+    for (const [, fiber] of this.fibers.entries().toArray()) {
+      if (
+        fiber.rootRuleFuncId !== undefined &&
+        (fiber.state === FiberState.RUNNABLE || fiber.state === FiberState.WAITING)
+      ) {
+        this.vm.cancelFiber(fiber, this);
+      }
+    }
+  }
+
+  /**
+   * Executes one round: every fiber in the runnable queue at entry receives
+   * exactly one `defaultBudget` slice, in FIFO order. After each slice, the
+   * child rules that slice spawned drain within this same tick as a synchronous
+   * cascade ({@link drainSpawnedSubtrees}). Fibers enqueued while the round runs
+   * for another reason -- a `YIELD` or budget-exhaustion re-enqueue, a handle
+   * resume -- stay queued and run in the next tick.
+   *
+   * @returns Number of fibers that received a slice this tick, including drained
+   * child-rule fibers.
+   */
   tick(): number {
     let executed = 0;
-    const maxFibers = this.config.maxFibersPerTick;
+    const roundSize = this.runQueue.size();
 
-    while (this.runQueue.size() > 0 && executed < maxFibers) {
+    for (let i = 0; i < roundSize; i++) {
       const fiberId = this.runQueue.shift()!;
       const fiber = this.getFiber(fiberId);
 
@@ -2226,21 +2530,66 @@ export class FiberScheduler implements IFiberScheduler {
       }
 
       fiber.instrBudget = this.config.defaultBudget;
-
       const result = this.vm.runFiber(fiber, this);
+      this.routeSliceResult(fiberId, result);
+      executed++;
 
-      switch (result.status) {
-        case VmStatus.YIELDED:
-          this.enqueueRunnable(fiberId);
-          break;
-        case VmStatus.WAITING:
-          break;
-        case VmStatus.DONE:
-        case VmStatus.FAULT:
-          break;
+      executed += this.drainSpawnedSubtrees();
+    }
+
+    return executed;
+  }
+
+  /**
+   * Routes the outcome of a single fiber slice. A `YIELDED` fiber (a `YIELD`
+   * opcode or budget exhaustion) re-enters the run queue for the next round. A
+   * `WAITING`, `DONE`, or `FAULT` fiber needs no queue action: the VM parked it
+   * on its handle or transitioned it terminal during the slice.
+   */
+  private routeSliceResult(fiberId: number, result: VmRunResult): void {
+    switch (result.status) {
+      case VmStatus.YIELDED:
+        this.enqueueRunnable(fiberId);
+        break;
+      case VmStatus.WAITING:
+      case VmStatus.DONE:
+      case VmStatus.FAULT:
+        break;
+    }
+  }
+
+  /**
+   * Runs the child-rule fibers spawned during the just-finished slice as a
+   * same-think synchronous cascade, depth-first: each child receives a budget
+   * slice, and any grandchildren it spawns drain immediately -- before that
+   * child's next sibling -- so one subtree completes before the next begins. A
+   * child that completes frees within this tick; a child that parks on `AWAIT`,
+   * yields, or exhausts its budget takes its normal next-round or handle-wait
+   * path, unchanged.
+   *
+   * @returns Number of child-rule slices run.
+   */
+  private drainSpawnedSubtrees(): number {
+    if (this.pendingSpawns.size() === 0) {
+      return 0;
+    }
+    let executed = 0;
+    const children = this.pendingSpawns;
+    this.pendingSpawns = List.empty<number>();
+
+    for (let i = 0; i < children.size(); i++) {
+      const childId = children.get(i)!;
+      const fiber = this.getFiber(childId);
+      if (!fiber || fiber.state !== FiberState.RUNNABLE) {
+        continue;
       }
 
+      fiber.instrBudget = this.config.defaultBudget;
+      const result = this.vm.runFiber(fiber, this);
+      this.routeSliceResult(childId, result);
       executed++;
+
+      executed += this.drainSpawnedSubtrees();
     }
 
     return executed;
@@ -2299,6 +2648,12 @@ export class FiberScheduler implements IFiberScheduler {
         this.fibers.delete(id);
         removed++;
       }
+    }
+    // Sweep settled handles consumed by an AWAIT this round but left live because
+    // they had no waiter when they settled (resolved during dispatch). Pending
+    // handles and those still awaited are retained.
+    if (this.config.autoGcHandles) {
+      removed += this.vm.handles.gc();
     }
     return removed;
   }

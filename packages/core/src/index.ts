@@ -29,6 +29,7 @@ export {
   createMindcraftEnvironment,
   withMindcraftEnvironmentServices,
 } from "./mindcraft";
+export { assertUnreachable } from "./platform/assert";
 export { Dict } from "./platform/dict";
 export { Error } from "./platform/error";
 // Platform utilities

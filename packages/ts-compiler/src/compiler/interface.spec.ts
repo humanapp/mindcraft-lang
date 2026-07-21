@@ -20,14 +20,18 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 import { LoweringDiagCode } from "./diag-codes.js";
+import { qualifiedClassName } from "./symbol-keys.js";
 
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -35,6 +39,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -73,13 +79,14 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
     const registry = services.runtime.types;
-    const typeId = registry.resolveByName("/user-code.ts::Point");
+    const typeId = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/user-code.ts", "Point"));
     assert.ok(typeId, "Point struct type should be registered");
     const def = registry.get(typeId!);
     assert.ok(def, "Point type def should exist");
@@ -112,13 +119,14 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
     const registry = services.runtime.types;
-    const typeId = registry.resolveByName("/user-code.ts::Config");
+    const typeId = registry.resolveByName(qualifiedClassName(TEST_PROJECT_NAMESPACE, "/user-code.ts", "Config"));
     assert.ok(typeId, "Config struct type should be registered");
     const structDef = registry.get(typeId!) as StructTypeDef;
 
@@ -155,6 +163,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -202,6 +211,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -241,6 +251,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -250,9 +261,10 @@ export default Sensor({
   test("interface colliding with ambient type emits diagnostic", () => {
     const types = services.runtime.types;
     types.addStructType("AmbientPoint", {
+      atomId: 1024,
       fields: List.from([
-        { name: "x", typeId: CoreTypeIds.Number },
-        { name: "y", typeId: CoreTypeIds.Number },
+        { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1 },
       ]),
     });
     const ambientSource = buildAmbientDeclarations(types);
@@ -272,11 +284,11 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
-    const collisionDiag = result.diagnostics.find((d) => d.code === LoweringDiagCode.InterfaceCollidesWithAmbientType);
-    assert.ok(collisionDiag, "should emit InterfaceCollidesWithAmbientType diagnostic");
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.InterfaceCollidesWithAmbientType);
   });
 
   test("interface with index signature emits diagnostic", () => {
@@ -296,11 +308,15 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
-    const indexDiag = result.diagnostics.find((d) => d.code === LoweringDiagCode.UnsupportedInterfaceMember);
-    assert.ok(indexDiag, "should emit UnsupportedInterfaceMember diagnostic for index signatures");
+    expectDiagnostic(
+      result.diagnostics,
+      LoweringDiagCode.UnsupportedInterfaceMember,
+      "should emit UnsupportedInterfaceMember diagnostic for index signatures"
+    );
   });
 
   test("interface with call signature emits diagnostic", () => {
@@ -320,11 +336,15 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
-    const callDiag = result.diagnostics.find((d) => d.code === LoweringDiagCode.UnsupportedInterfaceMember);
-    assert.ok(callDiag, "should emit UnsupportedInterfaceMember diagnostic for call signatures");
+    expectDiagnostic(
+      result.diagnostics,
+      LoweringDiagCode.UnsupportedInterfaceMember,
+      "should emit UnsupportedInterfaceMember diagnostic for call signatures"
+    );
   });
 
   test("interface with boolean and string fields", () => {
@@ -347,6 +367,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });

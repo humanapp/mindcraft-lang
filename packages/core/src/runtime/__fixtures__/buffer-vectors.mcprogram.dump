@@ -1,0 +1,33 @@
+mcprogram-dump 2
+profile 0
+precision f32
+strings 0
+types 0
+numbers 0
+values 7
+  value 0 buffer 0
+  value 1 buffer 1 2a
+  value 2 buffer 4 007f80ff
+  value 3 buffer 20 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  value 4 buffer 3 010203
+  value 5 buffer 3 010203
+  value 6 buffer 3 010204
+functions 1
+  function 0 params 0 locals 0 ctx - code f
+    instr 0 0
+    instr 1
+    instr 0 1
+    instr 1
+    instr 0 2
+    instr 1
+    instr 0 3
+    instr 1
+    instr 0 4
+    instr 1
+    instr 0 5
+    instr 1
+    instr 0 6
+    instr 1
+    instr 1f
+vars 0
+pages 0

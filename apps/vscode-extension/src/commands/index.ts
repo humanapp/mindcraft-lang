@@ -1,31 +1,11 @@
+import { addManifestFilesEntry, removeManifestFilesEntry } from "@mindcraft-lang/bridge-app/manifest-files";
 import * as vscode from "vscode";
-import { MINDCRAFT_EXAMPLE_SCHEME } from "../services/mindcraft-example-fs-provider";
-import { EXAMPLES_FOLDER, MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
+import { MINDCRAFT_JSON } from "../mindcraft-json";
+import { isBuildMembershipPath } from "../services/build-membership-tracker";
+import { MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
 import type { ProjectManager } from "../services/project-manager";
+import { ACTUATOR_SCAFFOLD, findUniqueFolderName, SENSOR_SCAFFOLD, type TileScaffold } from "../services/tile-scaffold";
 import { isMindcraftEnabled, setMindcraftEnabled } from "../state/context";
-
-const SENSOR_TEMPLATE = `import { Sensor } from "mindcraft";
-
-export default Sensor({
-  name: "my sensor",
-  // icon: "./my-sensor.svg",
-  // docs: "./my-sensor.md",
-  onExecute(ctx, params): boolean {
-    return false;
-  },
-});
-`;
-
-const ACTUATOR_TEMPLATE = `import { Actuator } from "mindcraft";
-
-export default Actuator({
-  name: "my actuator",
-  // icon: "./my-actuator.svg",
-  // docs: "./my-actuator.md",
-  onExecute(ctx, params) {
-  },
-});
-`;
 
 export function registerCommands(context: vscode.ExtensionContext, projectManager: ProjectManager): void {
   context.subscriptions.push(
@@ -79,11 +59,11 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
     }),
 
     vscode.commands.registerCommand("mindcraft.createSensor", async () => {
-      await createFileFromTemplate(projectManager, "my-sensor", SENSOR_TEMPLATE);
+      await createFileFromScaffold(projectManager, SENSOR_SCAFFOLD);
     }),
 
     vscode.commands.registerCommand("mindcraft.createActuator", async () => {
-      await createFileFromTemplate(projectManager, "my-actuator", ACTUATOR_TEMPLATE);
+      await createFileFromScaffold(projectManager, ACTUATOR_SCAFFOLD);
     }),
 
     vscode.commands.registerCommand("mindcraft.sync", async () => {
@@ -100,28 +80,55 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
       vscode.window.showInformationMessage("Mindcraft view hidden.");
     }),
 
-    vscode.commands.registerCommand("mindcraft.openSettings", () => {
-      vscode.commands.executeCommand(
-        "workbench.action.openSettings",
-        "@ext:mindcraft-lang.mindcraft-lang-vscode-extension"
-      );
-    }),
-
-    vscode.commands.registerCommand("mindcraft.copyExampleToWorkspace", async (arg?: string | vscode.Uri) => {
-      await copyExampleToWorkspace(projectManager, arg);
-    }),
-
     vscode.commands.registerCommand("mindcraft.unlockMindcraftJson", () => {
       projectManager.fsProvider.unlockMindcraftJson();
+    }),
+
+    vscode.commands.registerCommand("mindcraft.toggleFileInBuild", (uri: vscode.Uri) => {
+      toggleFileInBuild(projectManager, uri);
     })
   );
 }
 
-async function createFileFromTemplate(
-  projectManager: ProjectManager,
-  baseName: string,
-  content: string
-): Promise<void> {
+/**
+ * Toggle `uri`'s membership in the manifest `files` list: add the file when
+ * it is not listed, remove it when it is. Applies a conservative text edit to
+ * mindcraft.json through the project filesystem.
+ */
+function toggleFileInBuild(projectManager: ProjectManager, uri: vscode.Uri): void {
+  const project = projectManager.project;
+  if (!project) {
+    vscode.window.showWarningMessage("Not connected to a Mindcraft session.");
+    return;
+  }
+
+  const path = uri.path.replace(/^\//, "");
+  if (!isBuildMembershipPath(path)) {
+    return;
+  }
+
+  let manifestText: string;
+  try {
+    manifestText = project.files.raw.read(MINDCRAFT_JSON);
+  } catch {
+    vscode.window.showWarningMessage("mindcraft.json could not be read.");
+    return;
+  }
+
+  const tracker = projectManager.buildMembership;
+  const edited = tracker.isInBuild(path)
+    ? removeManifestFilesEntry(manifestText, path)
+    : addManifestFilesEntry(manifestText, path);
+  if (edited === undefined) {
+    vscode.window.showWarningMessage(`Could not update the "files" list in mindcraft.json for ${path}.`);
+    return;
+  }
+
+  project.files.toRemote.write(MINDCRAFT_JSON, edited);
+  projectManager.notifyLocalWrite([MINDCRAFT_JSON]);
+}
+
+async function createFileFromScaffold(projectManager: ProjectManager, scaffold: TileScaffold): Promise<void> {
   if (!projectManager.project) {
     vscode.window.showWarningMessage("Not connected to a Mindcraft session.");
     return;
@@ -136,122 +143,14 @@ async function createFileFromTemplate(
   }
 
   const existingNames = new Set(existingEntries.map(([name]) => name));
-  const targetFolder = findUniqueFolderName(baseName, existingNames);
-  const fileName = `${baseName}.ts`;
+  const targetFolder = findUniqueFolderName(scaffold.baseName, existingNames);
+  const fileName = `${scaffold.baseName}.ts`;
 
   const writeFs = projectManager.project.files.toRemote;
   writeFs.mkdir(targetFolder);
-  writeFs.write(`${targetFolder}/${fileName}`, content);
+  writeFs.write(`${targetFolder}/${fileName}`, scaffold.content);
   projectManager.notifyLocalCreate([targetFolder, `${targetFolder}/${fileName}`]);
 
   const fileUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${targetFolder}/${fileName}` });
   await vscode.commands.executeCommand("vscode.open", fileUri);
-}
-
-async function resolveExampleFolder(
-  projectManager: ProjectManager,
-  arg?: string | vscode.Uri
-): Promise<string | undefined> {
-  if (typeof arg === "string") {
-    return arg;
-  }
-
-  if (arg instanceof vscode.Uri) {
-    const segments = arg.path.replace(/^\//, "").split("/");
-    if (segments.length > 0 && segments[0]) {
-      return segments[0];
-    }
-  }
-
-  const fs = projectManager.project?.files.raw;
-  if (!fs) return undefined;
-
-  try {
-    const entries = fs.list(EXAMPLES_FOLDER);
-    const folders = entries
-      .filter((e) => e.kind === "directory")
-      .map((e) => e.name)
-      .sort();
-
-    if (folders.length === 0) {
-      vscode.window.showInformationMessage("No examples available.");
-      return undefined;
-    }
-
-    return vscode.window.showQuickPick(folders, {
-      placeHolder: "Select an example to copy to your workspace",
-    });
-  } catch {
-    return undefined;
-  }
-}
-
-function findUniqueFolderName(baseName: string, existing: Set<string>): string {
-  if (!existing.has(baseName)) return baseName;
-
-  for (let i = 2; ; i++) {
-    const candidate = `${baseName}-${i}`;
-    if (!existing.has(candidate)) return candidate;
-  }
-}
-
-async function copyExampleToWorkspace(projectManager: ProjectManager, arg?: string | vscode.Uri): Promise<void> {
-  if (!projectManager.project) {
-    vscode.window.showWarningMessage("Not connected to a Mindcraft session.");
-    return;
-  }
-
-  const folder = await resolveExampleFolder(projectManager, arg);
-  if (!folder) return;
-
-  const fs = projectManager.project.files.raw;
-  const examplePath = `${EXAMPLES_FOLDER}/${folder}`;
-
-  let fileEntries: { name: string; content: string }[];
-  try {
-    const entries = fs.list(examplePath);
-    fileEntries = entries
-      .filter((e) => e.kind === "file")
-      .map((e) => ({
-        name: e.name,
-        content: fs.read(`${examplePath}/${e.name}`),
-      }));
-  } catch {
-    vscode.window.showErrorMessage(`Example '${folder}' not found.`);
-    return;
-  }
-
-  if (fileEntries.length === 0) {
-    vscode.window.showErrorMessage(`Example '${folder}' contains no files.`);
-    return;
-  }
-
-  const rootUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: "/" });
-  let existingEntries: [string, vscode.FileType][];
-  try {
-    existingEntries = await vscode.workspace.fs.readDirectory(rootUri);
-  } catch {
-    existingEntries = [];
-  }
-
-  const existingNames = new Set(existingEntries.map(([name]) => name));
-  const targetFolder = findUniqueFolderName(folder, existingNames);
-
-  const writeFs = projectManager.project.files.toRemote;
-  writeFs.mkdir(targetFolder);
-  for (const file of fileEntries) {
-    writeFs.write(`${targetFolder}/${file.name}`, file.content);
-  }
-  projectManager.notifyLocalCreate([targetFolder, ...fileEntries.map((file) => `${targetFolder}/${file.name}`)]);
-
-  vscode.window.showInformationMessage(`Copied example '${folder}' to workspace as '${targetFolder}'.`);
-
-  // Open the example's first TypeScript file (by name) so the user lands on its code.
-  const firstTsFile = fileEntries
-    .filter((file) => file.name.endsWith(".ts"))
-    .sort((a, b) => a.name.localeCompare(b.name))[0];
-  if (firstTsFile) {
-    const fileUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${targetFolder}/${firstTsFile.name}` });
-    await vscode.commands.executeCommand("vscode.open", fileUri);
-  }
 }

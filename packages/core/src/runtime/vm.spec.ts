@@ -17,9 +17,12 @@ import { Dict, List, type ReadonlyList } from "@mindcraft-lang/core";
 import { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
+  type AsyncHandle,
+  BrainActionRegistry,
   BYTECODE_VERSION,
   ContextTypeIds,
   CoreOpId,
+  CoreTypeAtomId,
   CoreTypeIds,
   ErrorCode,
   type ExecutionContext,
@@ -34,6 +37,7 @@ import {
   type FunctionValue,
   HandleState,
   HandleTable,
+  type HostActionBinding,
   type Instr,
   isFunctionValue,
   isOverflowError,
@@ -48,10 +52,12 @@ import {
   type NumberValue,
   Op,
   type Program,
+  type ProgramTypeEntry,
   TRUE_VALUE,
   type Value,
   ValueDict,
   VM,
+  type VmRunResult,
   VmStatus,
   VOID_VALUE,
 } from "@mindcraft-lang/core/runtime";
@@ -63,10 +69,31 @@ before(() => {
   services = __test__createBrainServices();
 });
 
+let nextTypeAtomId = 20000;
+
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
+
 function toVmServices(b: BrainServices) {
   return __test__createPlatformServices({
     runtime: { functions: b.runtime.functions, types: b.runtime.types },
-  });
+  }).runtime;
+}
+
+/**
+ * Build the VM runtime services with `action` registered in a fresh action
+ * registry, returning the runtime tier and the stable id assigned to the action
+ * so a test can emit `HOST_ACTION_CALL` / `HOST_ACTION_CALL_ASYNC` against it.
+ */
+function vmServicesWithAction(b: BrainServices, action: HostActionBinding) {
+  const actions = new BrainActionRegistry();
+  const registered = actions.register(action);
+  const runtime = __test__createPlatformServices({
+    runtime: { functions: b.runtime.functions, types: b.runtime.types, actions },
+  }).runtime;
+  const actionId = registered.binding === "host" ? (registered.id ?? 0) : 0;
+  return { runtime, actionId };
 }
 
 // -- Helpers --
@@ -98,6 +125,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
       while (slots.size() <= slotId) slots.push(NIL_VALUE);
       slots.set(slotId, value);
     },
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -120,9 +149,10 @@ describe("VM -- closed struct field opcodes", () => {
     const typeId = mkTypeId(NativeType.Struct, "IndexedPair");
     if (!services.runtime.types.get(typeId)) {
       services.runtime.types.addStructType("IndexedPair", {
+        atomId: mkTestAtomId(),
         fields: List.from([
-          { name: "left", typeId: CoreTypeIds.Number },
-          { name: "right", typeId: CoreTypeIds.Number },
+          { name: "left", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+          { name: "right", typeId: CoreTypeIds.Number, fieldIndex: 1 },
         ]),
       });
     }
@@ -139,9 +169,21 @@ describe("VM -- closed struct field opcodes", () => {
       ]),
       constantPools: {
         numbers: List.empty<number>(),
-        strings: List.from([typeId]),
+        strings: List.empty<string>(),
         values: List.from([mkNumberValue(42)]),
       },
+      types: List.from<ProgramTypeEntry>([
+        {
+          tag: "struct",
+          typeId,
+          name: "IndexedPair",
+          maxFieldId: 1,
+          fields: List.from([
+            { name: "left", fieldIndex: 0 },
+            { name: "right", fieldIndex: 1 },
+          ]),
+        },
+      ]),
       variableNames: List.empty<string>(),
       entryPoint: 0,
     };
@@ -157,13 +199,14 @@ describe("VM -- closed struct field opcodes", () => {
     }
   });
 
-  test("GET_FIELD remains name-keyed for native-backed structs", () => {
+  test("GET_FIELD resolves the field name to its id and dispatches native-backed structs by id", () => {
     const typeId = mkTypeId(NativeType.Struct, "V33NativePoint");
     if (!services.runtime.types.get(typeId)) {
       services.runtime.types.addStructType("V33NativePoint", {
-        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
-        fieldGetter: (source, fieldName) => {
-          if (fieldName === "x") {
+        atomId: mkTestAtomId(),
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+        fieldGetter: (source, fieldId) => {
+          if (fieldId === 0) {
             return mkNumberValue((source.native as { x: number }).x);
           }
           return undefined;
@@ -191,6 +234,142 @@ describe("VM -- closed struct field opcodes", () => {
     assert.equal(result.status, VmStatus.DONE);
     if (result.status === VmStatus.DONE) {
       assert.equal((result.result as NumberValue).v, 77);
+    }
+  });
+});
+
+describe("VM -- native struct dispatch by field id", () => {
+  function runToNumber(prog: Program): VmRunResult {
+    const vm = new VM(prog, toVmServices(services), { handles: new HandleTable(100) });
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+    return vm.runFiber(fiber, mkSchedulerCallbacks());
+  }
+
+  test("STRUCT_GET_FIELD dispatches a native struct through the id-based fieldGetter", () => {
+    const typeId = mkTypeId(NativeType.Struct, "P2NativeGet");
+    if (!services.runtime.types.get(typeId)) {
+      services.runtime.types.addStructType("P2NativeGet", {
+        atomId: mkTestAtomId(),
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+        fieldGetter: (source, fieldId) =>
+          fieldId === 0 ? mkNumberValue((source.native as { x: number }).x) : undefined,
+      });
+    }
+    const struct: Value = { t: NativeType.Struct, typeId, native: { x: 77 }, v: List.empty<Value>() };
+    const result = runToNumber(
+      mkProgram(
+        [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.STRUCT_GET_FIELD, a: 0 }, { op: Op.RET }])],
+        [struct]
+      )
+    );
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 77);
+    }
+  });
+
+  test("STRUCT_SET_FIELD dispatches a native struct through the id-based fieldSetter", () => {
+    const typeId = mkTypeId(NativeType.Struct, "P2NativeSet");
+    if (!services.runtime.types.get(typeId)) {
+      services.runtime.types.addStructType("P2NativeSet", {
+        atomId: mkTestAtomId(),
+        fields: List.from([
+          { name: "x", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+          { name: "y", typeId: CoreTypeIds.Number, fieldIndex: 1, readOnly: true },
+        ]),
+        fieldGetter: (source, fieldId) => {
+          const native = source.native as { x: number; y: number };
+          if (fieldId === 0) return mkNumberValue(native.x);
+          if (fieldId === 1) return mkNumberValue(native.y);
+          return undefined;
+        },
+        // id 0 (x) is writable; id 1 (y) rejects the write (read-only).
+        fieldSetter: (source, fieldId, value) => {
+          if (fieldId === 0) {
+            (source.native as { x: number }).x = (value as NumberValue).v;
+            return true;
+          }
+          return false;
+        },
+      });
+    }
+
+    // Writing x (id 0) routes through the setter, then reading it back yields the new value.
+    const writable: Value = { t: NativeType.Struct, typeId, native: { x: 1, y: 2 }, v: List.empty<Value>() };
+    const ok = runToNumber(
+      mkProgram(
+        [
+          mkFunc([
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
+            { op: Op.STRUCT_SET_FIELD, a: 0 },
+            { op: Op.STRUCT_GET_FIELD, a: 0 },
+            { op: Op.RET },
+          ]),
+        ],
+        [writable, mkNumberValue(99)]
+      )
+    );
+    assert.equal(ok.status, VmStatus.DONE);
+    if (ok.status === VmStatus.DONE) {
+      assert.equal((ok.result as NumberValue).v, 99);
+    }
+
+    // Writing y (id 1) -- the setter returns false, which faults the fiber.
+    const readonly: Value = { t: NativeType.Struct, typeId, native: { x: 1, y: 2 }, v: List.empty<Value>() };
+    const rejected = runToNumber(
+      mkProgram(
+        [
+          mkFunc([
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
+            { op: Op.STRUCT_SET_FIELD, a: 1 },
+            { op: Op.RET },
+          ]),
+        ],
+        [readonly, mkNumberValue(99)]
+      )
+    );
+    assert.equal(rejected.status, VmStatus.FAULT);
+  });
+
+  test("STRUCT_DEEP_COPY copies a struct so mutating the copy leaves the original untouched", () => {
+    const typeId = mkTypeId(NativeType.Struct, "P2CopyPair");
+    const original: Value = { t: NativeType.Struct, typeId, v: List.from<Value>([mkNumberValue(7)]) };
+    const result = runToNumber(
+      mkProgram(
+        [
+          mkFunc([
+            { op: Op.PUSH_CONST_VAL, a: 0 }, // original
+            { op: Op.DUP },
+            { op: Op.STRUCT_DEEP_COPY }, // -> [original, copy]
+            { op: Op.PUSH_CONST_VAL, a: 1 }, // 99
+            { op: Op.STRUCT_SET_FIELD, a: 0 }, // copy.field0 = 99 -> [original, copy]
+            { op: Op.POP }, // drop the copy -> [original]
+            { op: Op.STRUCT_GET_FIELD, a: 0 }, // original.field0 (unchanged)
+            { op: Op.RET },
+          ]),
+        ],
+        [original, mkNumberValue(99)]
+      )
+    );
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 7);
+    }
+  });
+
+  test("STRUCT_DEEP_COPY is a no-op for a non-struct value", () => {
+    const result = runToNumber(
+      mkProgram(
+        [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.STRUCT_DEEP_COPY }, { op: Op.RET }])],
+        [mkNumberValue(5)]
+      )
+    );
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 5);
     }
   });
 });
@@ -810,6 +989,10 @@ describe("VM -- malformed bytecode faults as ScriptError", () => {
     );
   });
 
+  test("STRUCT_NEW with a non-zero reserved operand faults", () => {
+    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.STRUCT_NEW, a: 1 }, { op: Op.RET }])], []));
+  });
+
   test("JMP target out of bounds faults via PC bounds check", () => {
     expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.JMP, a: 99 }, { op: Op.RET }])], []));
   });
@@ -1089,46 +1272,43 @@ describe("VM -- callsite-persistent variables", () => {
 
   test("distinct action callsites in the same rule fiber keep independent host-backed state", () => {
     const seenValues: number[] = [];
-    const descriptor = {
-      key: "test-vm-host-action-state-isolation",
-      kind: "actuator" as const,
-      callDef: mkCallDef({ type: "bag", items: [] }),
-      isAsync: false,
+    const action: HostActionBinding = {
+      binding: "host",
+      id: 3101,
+      descriptor: {
+        key: "test-vm-host-action-state-isolation",
+        kind: "actuator",
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        isAsync: false,
+      },
+      execSync: (ctx: ExecutionContext) => {
+        const callSiteId = ctx.currentCallSiteId!;
+        const nextValue = ((ctx.services.brain.callsite.getHostState(callSiteId) as number | undefined) ?? 0) + 1;
+        ctx.services.brain.callsite.setHostState(callSiteId, nextValue);
+        seenValues.push(nextValue);
+        return mkNumberValue(nextValue);
+      },
     };
-    const prog = {
-      ...mkProgram(
-        [
-          mkFunc(
-            [
-              { op: Op.ACTION_CALL, a: 0, b: 0, c: 1 },
-              { op: Op.POP },
-              { op: Op.ACTION_CALL, a: 0, b: 0, c: 2 },
-              { op: Op.POP },
-              { op: Op.ACTION_CALL, a: 0, b: 0, c: 1 },
-              { op: Op.RET },
-            ],
-            0,
-            "root"
-          ),
-        ],
-        [NIL_VALUE]
-      ),
-      actions: List.from([
-        {
-          binding: "host" as const,
-          descriptor,
-          execSync: (ctx: ExecutionContext) => {
-            const callSiteId = ctx.currentCallSiteId!;
-            const nextValue = ((ctx.services.brain.callsite.getHostState(callSiteId) as number | undefined) ?? 0) + 1;
-            ctx.services.brain.callsite.setHostState(callSiteId, nextValue);
-            seenValues.push(nextValue);
-            return mkNumberValue(nextValue);
-          },
-        },
-      ]),
-    };
+    const { runtime, actionId } = vmServicesWithAction(services, action);
+    const prog = mkProgram(
+      [
+        mkFunc(
+          [
+            { op: Op.HOST_ACTION_CALL, a: actionId, b: 0, c: 1 },
+            { op: Op.POP },
+            { op: Op.HOST_ACTION_CALL, a: actionId, b: 0, c: 2 },
+            { op: Op.POP },
+            { op: Op.HOST_ACTION_CALL, a: actionId, b: 0, c: 1 },
+            { op: Op.RET },
+          ],
+          0,
+          "root"
+        ),
+      ],
+      [NIL_VALUE]
+    );
 
-    const vm = new VM(prog, toVmServices(services));
+    const vm = new VM(prog, runtime);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1200,30 +1380,30 @@ describe("VM -- fiber state machine", () => {
 
 describe("VM -- action calls", () => {
   test("ACTION_CALL resolves action slot through executable actions", () => {
-    const actionId = "test-vm-action-call";
     let seenCallSiteId: number | undefined;
 
-    const descriptor = {
-      key: actionId,
-      kind: "actuator" as const,
-      callDef: mkCallDef({ type: "bag", items: [] }),
-      isAsync: false,
-    };
-    const action = {
-      binding: "host" as const,
-      descriptor,
+    const action: HostActionBinding = {
+      binding: "host",
+      id: 3102,
+      descriptor: {
+        key: "test-vm-action-call",
+        kind: "actuator",
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        isAsync: false,
+      },
       execSync: (ctx: ExecutionContext) => {
         seenCallSiteId = ctx.currentCallSiteId;
         return mkNumberValue(321);
       },
     };
+    const { runtime, actionId } = vmServicesWithAction(services, action);
 
-    const prog = {
-      ...mkProgram([mkFunc([{ op: Op.ACTION_CALL, a: 0, b: 0, c: 9 }, { op: Op.RET }])], [NIL_VALUE]),
-      actions: List.from([action]),
-    };
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.HOST_ACTION_CALL, a: actionId, b: 0, c: 9 }, { op: Op.RET }])],
+      [NIL_VALUE]
+    );
 
-    const vm = new VM(prog, toVmServices(services));
+    const vm = new VM(prog, runtime);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1238,21 +1418,21 @@ describe("VM -- action calls", () => {
 
   test("ACTION_CALL passes host-bound action args as positional stack values", () => {
     let observed: List<Value> | undefined;
-    const descriptor = {
-      key: "test-vm-action-call-positional-host",
-      kind: "sensor" as const,
-      callDef: mkCallDef({
-        type: "seq",
-        items: [
-          { type: "arg", tileId: "action.arg.a", name: "a", required: true },
-          { type: "arg", tileId: "action.arg.b", name: "b", required: true },
-        ],
-      }),
-      isAsync: false,
-    };
-    const action = {
-      binding: "host" as const,
-      descriptor,
+    const action: HostActionBinding = {
+      binding: "host",
+      id: 3103,
+      descriptor: {
+        key: "test-vm-action-call-positional-host",
+        kind: "sensor",
+        callDef: mkCallDef({
+          type: "seq",
+          items: [
+            { type: "arg", tileId: "action.arg.a", name: "a", required: true },
+            { type: "arg", tileId: "action.arg.b", name: "b", required: true },
+          ],
+        }),
+        isAsync: false,
+      },
       execSync: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const snap = List.empty<Value>();
         for (let i = 0; i < args.size(); i++) snap.push(args.get(i));
@@ -1262,27 +1442,25 @@ describe("VM -- action calls", () => {
         return mkNumberValue(a.v + b.v);
       },
     };
+    const { runtime, actionId } = vmServicesWithAction(services, action);
 
-    const prog = {
-      ...mkProgram(
-        [
-          mkFunc([
-            { op: Op.PUSH_CONST_VAL, a: 2 },
-            { op: Op.PUSH_CONST_VAL, a: 2 },
-            { op: Op.PUSH_CONST_VAL, a: 0 },
-            { op: Op.STACK_SET_REL, a: 1 },
-            { op: Op.PUSH_CONST_VAL, a: 1 },
-            { op: Op.STACK_SET_REL, a: 0 },
-            { op: Op.ACTION_CALL, a: 0, b: 2, c: 12 },
-            { op: Op.RET },
-          ]),
-        ],
-        [mkNumberValue(7), mkNumberValue(11), NIL_VALUE]
-      ),
-      actions: List.from([action]),
-    };
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST_VAL, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.STACK_SET_REL, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
+          { op: Op.STACK_SET_REL, a: 0 },
+          { op: Op.HOST_ACTION_CALL, a: actionId, b: 2, c: 12 },
+          { op: Op.RET },
+        ]),
+      ],
+      [mkNumberValue(7), mkNumberValue(11), NIL_VALUE]
+    );
 
-    const vm = new VM(prog, toVmServices(services));
+    const vm = new VM(prog, runtime);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1302,14 +1480,15 @@ describe("VM -- action calls", () => {
       ...mkProgram([mkFunc([{ op: Op.ACTION_CALL, a: 1, b: 0, c: 0 }, { op: Op.RET }])], [NIL_VALUE]),
       actions: List.from([
         {
-          binding: "host" as const,
+          binding: "bytecode" as const,
           descriptor: {
             key: "test-vm-action-verifier",
             kind: "actuator" as const,
             callDef: mkCallDef({ type: "bag", items: [] }),
             isAsync: false,
           },
-          execSync: () => VOID_VALUE,
+          entryFuncId: 0,
+          numStateSlots: 0,
         },
       ]),
     };
@@ -1326,30 +1505,27 @@ describe("VM -- action calls", () => {
   });
 
   test("ACTION_CALL_ASYNC preserves host-backed handle behavior", () => {
-    const descriptor = {
-      key: "test-vm-action-call-async-host",
-      kind: "actuator" as const,
-      callDef: mkCallDef({ type: "bag", items: [] }),
-      isAsync: true,
-    };
-    const prog = {
-      ...mkProgram(
-        [mkFunc([{ op: Op.ACTION_CALL_ASYNC, a: 0, b: 0, c: 7 }, { op: Op.AWAIT }, { op: Op.RET }])],
-        [NIL_VALUE]
-      ),
-      actions: List.from([
-        {
-          binding: "host" as const,
-          descriptor,
-          execAsync: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, handleId: number) => {
-            handles.resolve(handleId, mkNumberValue(654));
-          },
-        },
-      ]),
-    };
-
     const handles = new HandleTable(100);
-    const vm = new VM(prog, toVmServices(services), { handles });
+    const action: HostActionBinding = {
+      binding: "host",
+      id: 3104,
+      descriptor: {
+        key: "test-vm-action-call-async-host",
+        kind: "actuator",
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        isAsync: true,
+      },
+      execAsync: (_ctx, _args, handle) => {
+        handle.resolve(mkNumberValue(654));
+      },
+    };
+    const { runtime, actionId } = vmServicesWithAction(services, action);
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.HOST_ACTION_CALL_ASYNC, a: actionId, b: 0, c: 7 }, { op: Op.AWAIT }, { op: Op.RET }])],
+      [NIL_VALUE]
+    );
+
+    const vm = new VM(prog, runtime, { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1363,52 +1539,49 @@ describe("VM -- action calls", () => {
 
   test("ACTION_CALL_ASYNC passes host-bound action args as an owned snapshot", () => {
     let captured: ReadonlyList<Value> | undefined;
-    const descriptor = {
-      key: "test-vm-action-call-async-positional-host",
-      kind: "actuator" as const,
-      callDef: mkCallDef({
-        type: "seq",
-        items: [
-          { type: "arg", tileId: "action.async.a", name: "a", required: true },
-          { type: "arg", tileId: "action.async.b", name: "b", required: true },
-        ],
-      }),
-      isAsync: true,
+    const action: HostActionBinding = {
+      binding: "host",
+      id: 3105,
+      descriptor: {
+        key: "test-vm-action-call-async-positional-host",
+        kind: "actuator",
+        callDef: mkCallDef({
+          type: "seq",
+          items: [
+            { type: "arg", tileId: "action.async.a", name: "a", required: true },
+            { type: "arg", tileId: "action.async.b", name: "b", required: true },
+          ],
+        }),
+        isAsync: true,
+      },
+      execAsync: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        captured = args;
+      },
     };
-    const prog = {
-      ...mkProgram(
-        [
-          mkFunc([
-            { op: Op.PUSH_CONST_VAL, a: 2 },
-            { op: Op.PUSH_CONST_VAL, a: 2 },
-            { op: Op.PUSH_CONST_VAL, a: 0 },
-            { op: Op.STACK_SET_REL, a: 1 },
-            { op: Op.PUSH_CONST_VAL, a: 1 },
-            { op: Op.STACK_SET_REL, a: 0 },
-            { op: Op.ACTION_CALL_ASYNC, a: 0, b: 2, c: 13 },
-            { op: Op.POP },
-            { op: Op.PUSH_CONST_VAL, a: 0 },
-            { op: Op.PUSH_CONST_VAL, a: 1 },
-            { op: Op.POP },
-            { op: Op.POP },
-            { op: Op.PUSH_CONST_VAL, a: 2 },
-            { op: Op.RET },
-          ]),
-        ],
-        [mkNumberValue(23), mkNumberValue(29), NIL_VALUE]
-      ),
-      actions: List.from([
-        {
-          binding: "host" as const,
-          descriptor,
-          execAsync: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
-            captured = args;
-          },
-        },
-      ]),
-    };
+    const { runtime, actionId } = vmServicesWithAction(services, action);
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST_VAL, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.STACK_SET_REL, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
+          { op: Op.STACK_SET_REL, a: 0 },
+          { op: Op.HOST_ACTION_CALL_ASYNC, a: actionId, b: 2, c: 13 },
+          { op: Op.POP },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
+          { op: Op.POP },
+          { op: Op.POP },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
+          { op: Op.RET },
+        ]),
+      ],
+      [mkNumberValue(23), mkNumberValue(29), NIL_VALUE]
+    );
 
-    const vm = new VM(prog, toVmServices(services));
+    const vm = new VM(prog, runtime);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1502,12 +1675,15 @@ describe("VM -- action calls", () => {
             code: List.from([{ op: Op.LOAD_LOCAL, a: 2 }, { op: Op.RET }]),
             numParams: 3,
             numLocals: 5,
-            injectCtxTypeId: ContextTypeIds.Context,
+            injectCtxTypeIdx: 0,
             name: "action-entry",
           },
         ],
         [mkNumberValue(31), mkNumberValue(37), NIL_VALUE]
       ),
+      types: List.from<ProgramTypeEntry>([
+        { tag: "atom", typeId: ContextTypeIds.Context, atomId: CoreTypeAtomId.Context },
+      ]),
       actions: List.from([
         {
           binding: "bytecode" as const,
@@ -1534,6 +1710,7 @@ describe("VM -- action calls", () => {
     let seenRuleFuncId: number | undefined;
 
     const hostFnEntry = services.runtime.functions.register(
+      4001,
       "test-vm-bytecode-action-rule-host",
       false,
       {
@@ -1577,7 +1754,10 @@ describe("VM -- action calls", () => {
       mkCtx({
         services: __test__createPlatformServices({
           runtime: { functions: services.runtime.functions, types: services.runtime.types },
-          program: { getRuleFuncIdForFunc: (funcId: number) => (funcId === 0 ? 0 : undefined) },
+          program: {
+            getRuleFuncIdForFunc: (funcId: number) => (funcId === 0 ? 0 : undefined),
+            getEnumSymbolValue: () => undefined,
+          },
         }),
       })
     );
@@ -1663,13 +1843,16 @@ describe("VM -- action calls", () => {
       },
     });
     const scheduler = new FiberScheduler(vm, {
-      maxFibersPerTick: 64,
       defaultBudget: 100,
       autoGcHandles: true,
     });
     rootFiberId = scheduler.spawn(0, List.empty(), mkCtx());
 
-    scheduler.tick();
+    // Round-based ticks: the child fiber spawned by ACTION_CALL_ASYNC, its
+    // YIELD resume, and the root's handle resume each land in a later round.
+    for (let i = 0; i < 4; i++) {
+      scheduler.tick();
+    }
 
     const rootFiber = scheduler.getFiber(rootFiberId);
     assert.ok(rootFiber !== undefined, "root fiber should still be tracked until gc");
@@ -1678,31 +1861,28 @@ describe("VM -- action calls", () => {
     assert.equal((rootResult as NumberValue).v, 42);
   });
 
-  test("ACTION_CALL_ASYNC rolls back the handle when host execAsync throws synchronously", () => {
-    const descriptor = {
-      key: "test-vm-action-call-async-host-throw",
-      kind: "actuator" as const,
-      callDef: mkCallDef({ type: "bag", items: [] }),
-      isAsync: true,
+  test("HOST_ACTION_CALL_ASYNC rolls back the handle when host execAsync throws synchronously", () => {
+    const action: HostActionBinding = {
+      binding: "host",
+      id: 3106,
+      descriptor: {
+        key: "test-vm-action-call-async-host-throw",
+        kind: "actuator",
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        isAsync: true,
+      },
+      execAsync: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
+        throw new Error("execAsync sync throw");
+      },
     };
-    const prog = {
-      ...mkProgram(
-        [mkFunc([{ op: Op.ACTION_CALL_ASYNC, a: 0, b: 0, c: 9 }, { op: Op.AWAIT }, { op: Op.RET }])],
-        [NIL_VALUE]
-      ),
-      actions: List.from([
-        {
-          binding: "host" as const,
-          descriptor,
-          execAsync: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
-            throw new Error("execAsync sync throw");
-          },
-        },
-      ]),
-    };
+    const { runtime, actionId } = vmServicesWithAction(services, action);
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.HOST_ACTION_CALL_ASYNC, a: actionId, b: 0, c: 9 }, { op: Op.AWAIT }, { op: Op.RET }])],
+      [NIL_VALUE]
+    );
 
     const handles = new HandleTable(100);
-    const vm = new VM(prog, toVmServices(services), { handles });
+    const vm = new VM(prog, runtime, { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2766,7 +2946,7 @@ describe("FiberScheduler", () => {
   test("spawn creates a runnable fiber and tick executes it", () => {
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
     const vm = new VM(prog, toVmServices(services));
-    const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 10, defaultBudget: 1000, autoGcHandles: true });
+    const scheduler = new FiberScheduler(vm, { defaultBudget: 1000, autoGcHandles: true });
 
     const fiberId = scheduler.spawn(0, List.empty(), mkCtx());
     const fiber = scheduler.getFiber(fiberId);
@@ -2784,7 +2964,7 @@ describe("FiberScheduler", () => {
       [NIL_VALUE]
     );
     const vm = new VM(prog, toVmServices(services));
-    const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 10, defaultBudget: 1000, autoGcHandles: true });
+    const scheduler = new FiberScheduler(vm, { defaultBudget: 1000, autoGcHandles: true });
 
     const fiberId = scheduler.spawn(0, List.empty(), mkCtx());
     scheduler.cancel(fiberId);
@@ -2796,7 +2976,7 @@ describe("FiberScheduler", () => {
   test("gc removes completed/faulted/cancelled fibers", () => {
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
     const vm = new VM(prog, toVmServices(services));
-    const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 64, defaultBudget: 1000, autoGcHandles: true });
+    const scheduler = new FiberScheduler(vm, { defaultBudget: 1000, autoGcHandles: true });
 
     scheduler.spawn(0, List.empty(), mkCtx());
     scheduler.spawn(0, List.empty(), mkCtx());
@@ -2823,7 +3003,7 @@ describe("FiberScheduler", () => {
     );
 
     const vm = new VM(prog, toVmServices(services), { handles });
-    const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 64, defaultBudget: 1000, autoGcHandles: true });
+    const scheduler = new FiberScheduler(vm, { defaultBudget: 1000, autoGcHandles: true });
 
     const fiberId = scheduler.spawn(0, List.empty(), mkCtx());
     scheduler.tick();
@@ -2981,30 +3161,6 @@ describe("VM -- overflow faults", () => {
     assert.ok(isOverflowError(caught), "expected OverflowError to be thrown");
   });
 
-  test("FiberScheduler.spawn throws OverflowError when fiber pool is full", () => {
-    // Long-running program (infinite loop) so fibers stay RUNNABLE and occupy slots.
-    const prog = mkProgram([mkFunc([{ op: Op.JMP, a: 0 }])]);
-    const vm = new VM(prog, toVmServices(services));
-    const scheduler = new FiberScheduler(vm, {
-      maxFibersPerTick: 1,
-      defaultBudget: 1,
-      autoGcHandles: true,
-      maxFibers: 3,
-    });
-
-    scheduler.spawn(0, List.empty(), mkCtx());
-    scheduler.spawn(0, List.empty(), mkCtx());
-    scheduler.spawn(0, List.empty(), mkCtx());
-
-    let caught: unknown;
-    try {
-      scheduler.spawn(0, List.empty(), mkCtx());
-    } catch (e) {
-      caught = e;
-    }
-    assert.ok(isOverflowError(caught), "expected OverflowError to be thrown");
-  });
-
   test("operand stack underflow surfaces as ErrorCode.StackUnderflow", () => {
     // POP on an empty operand stack: malformed bytecode that hits the
     // pop() underflow guard.
@@ -3053,7 +3209,7 @@ describe("VM -- operator monomorphization", () => {
   test("primitive number arithmetic does not consult ITypeRegistry on the dispatch hot path", () => {
     const resolved = services.edit.operatorOverloads.resolve(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
     assert.ok(resolved !== undefined, "add(number, number) overload must be registered");
-    const addFnId = resolved!.overload.fnEntry.id;
+    const addFnId = resolved!.overload.fnEntry!.id;
 
     // Tight number-heavy loop: 1000 iterations of `1 + 1` via HOST_CALL.
     const ITER = 1000;
@@ -3121,6 +3277,8 @@ describe("VM -- slot-keyed variable dispatch", () => {
         while (slots.size() <= slotId) slots.push(NIL_VALUE);
         slots.set(slotId, value);
       },
+      getSystemVarBySlot: () => NIL_VALUE,
+      setSystemVarBySlot: () => {},
       time: 0,
       dt: 0,
       currentTick: 0,
@@ -3162,6 +3320,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
       ],
     });
     const fnEntry = services.runtime.functions.register(
+      4002,
       "$$test_v4_1_add",
       false,
       {
@@ -3237,11 +3396,12 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
       ],
     });
     const fnEntry = services.runtime.functions.register(
+      4003,
       "$$test_v4_1_async_capture",
       true,
       {
-        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: number) => {
-          captured = { args, handleId };
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>, handle: AsyncHandle) => {
+          captured = { args, handleId: handle.id };
         },
       },
       callDef
@@ -3333,6 +3493,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
     });
     let observed: List<Value> | undefined;
     const fnEntry = services.runtime.functions.register(
+      4004,
       "$$test_v4_1_spy",
       false,
       {

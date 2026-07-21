@@ -1,5 +1,7 @@
-<!-- Last reviewed: 2026-02-22 -->
-<!-- Sync: Multi-Target Core rules duplicated in .github/instructions/core.instructions.md -->
+<!-- Last reviewed: 2026-07-17 -->
+<!-- Sync: Multi-Target Core rules duplicated in .github/instructions/core.instructions.md;
+     Shared UI rules duplicated in .github/instructions/ui.instructions.md. This file stays
+     self-sufficient because inline completions do not load the instruction files. -->
 
 # Copilot Instructions
 
@@ -21,8 +23,10 @@ These instructions apply to all Copilot features, including inline tab completio
   suggest the minimal correct skeleton rather than a placeholder body.
 - Do not add comments that just restate what the code does. Only include comments that
   explain non-obvious intent, invariants, or constraints.
-- Do not suggest comments in new code blocks that say things like "// no implementation yet, but could add things like `this` or `that`...". This is not helpful. It is better to leave it blank or with a minimal concrete code suggestion.
-- Do not use phrases like "TODO: implement this function" or "implementation goes here" in comments. If the user is asking for a function implementation, just provide the implementation without any placeholder comments, or leave it blank if you cannot infer the implementation. Do not add comments that explain what code should be written rather than writing the code itself.
+- Do not write stub or planning comments such as `// no implementation yet, but could add
+  things like ...`, `// TODO: implement this function`, or `// implementation goes here`.
+  Write the implementation, or leave the body blank if it cannot be inferred; never
+  describe what code should be written instead of writing it.
 
 ## Import Style
 
@@ -67,9 +71,9 @@ These instructions apply to all Copilot features, including inline tab completio
 
 ### Shared UI (`packages/ui`)
 
-- This is a **source-only** package -- no build step. Consuming apps resolve the source
+- This is a source-only package -- no build step. Consuming apps resolve the source
   directly via Vite aliases and tsconfig paths.
-- Use **relative imports** within the package (no path aliases). Consuming apps map
+- Use relative imports within the package (no path aliases). Consuming apps map
   `@mindcraft-lang/ui` to the source directory.
 - All shadcn/ui primitives live here. Do not duplicate them in app directories.
 - The brain editor is decoupled from app-specific concepts via `BrainEditorProvider`

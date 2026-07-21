@@ -1,0 +1,27 @@
+export {
+  ExtensionBrowserDialog,
+  type ExtensionBrowserDialogProps,
+  ExtensionBrowserList,
+  type ExtensionBrowserListProps,
+  ExtensionReferenceInstallRow,
+  type ExtensionReferenceInstallRowProps,
+} from "./ExtensionBrowserDialog";
+export {
+  DEFAULT_EXTENSION_THUMBNAIL,
+  type ExtensionBrowserEntry,
+  type ExtensionBrowserItem,
+  type ExtensionCardActionKind,
+  type ExtensionCardCallbacks,
+  type ExtensionCardMenuItem,
+  type ExtensionCatalogOffer,
+  extensionBrowserItemCoordinate,
+  extensionBrowserShowsCheckAllUpdates,
+  extensionBrowserShowsNoMatch,
+  extensionCardMenuItems,
+  extensionCardShowsInstall,
+  extensionCardShowsRetry,
+  filterExtensionEntries,
+  filterExtensionOffers,
+  orderExtensionBrowserItems,
+  runExtensionCardAction,
+} from "./extension-browser-model";

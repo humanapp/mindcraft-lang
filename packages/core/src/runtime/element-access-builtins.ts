@@ -2,6 +2,7 @@ import type { BrainServices } from "../brain/services";
 import type { ReadonlyList } from "../platform/list";
 import { INFINITY, MathOps } from "../platform/math";
 import { StringUtils as SU } from "../platform/string";
+import { CoreFuncId } from "./abi-ids";
 import type { ExecutionContext } from "./context";
 import { mkCallDef } from "./function-defs";
 import { NativeType } from "./type-defs";
@@ -83,6 +84,7 @@ export function registerElementAccessBuiltins(services: BrainServices) {
   const { functions } = services.runtime;
 
   functions.register(
+    CoreFuncId.ListGet,
     "$$list_get_js",
     false,
     {
@@ -98,6 +100,7 @@ export function registerElementAccessBuiltins(services: BrainServices) {
   );
 
   functions.register(
+    CoreFuncId.StringGet,
     "$$str_get_js",
     false,
     {

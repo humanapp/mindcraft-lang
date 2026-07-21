@@ -1,0 +1,284 @@
+/**
+ * One extension shown in {@link ExtensionBrowserDialog}. The host application
+ * adapts its own catalog entry into this platform-agnostic view model.
+ */
+export interface ExtensionBrowserEntry {
+  /** The extension's `<owner>/<repo>` coordinate: its stable key in the list. */
+  readonly coordinate: string;
+  /** Display name shown as the card title. */
+  readonly name: string;
+  /** Semantic version shown on the card. */
+  readonly version: string;
+  /** Description shown on the card; omitted when the library declares none. */
+  readonly description?: string;
+  /** Thumbnail URL or data URI; the bundled default thumbnail is shown when absent. */
+  readonly thumbnailUrl?: string;
+  /** True when the extension is part of the project. */
+  readonly installed: boolean;
+  /** GitHub repository URL opened by the card's Open Repository action; present only for remote (`gh:`) entries, whose coordinate is their repository. The action is omitted when absent. */
+  readonly repoUrl?: string;
+  /** True for a fetched dependency with installed content; the card offers an on-request update check. */
+  readonly updatable?: boolean;
+  /** Present when a declared remote dependency has no installed content; the card renders the reason and offers Retry. */
+  readonly broken?: {
+    /** Stable failure code of the most recent recorded install attempt; absent when none is recorded. */
+    readonly code?: string;
+    /** Human-readable description of the broken state. */
+    readonly message: string;
+  };
+  /** Present when the installed content publishes under a different identity than the entry coordinate. */
+  readonly identityMismatch?: {
+    /** The `<owner>/<repo>` identity the installed content's manifest declares. */
+    readonly declaredIdentity: string;
+  };
+}
+
+/**
+ * An affordance a card can trigger: install a not-installed add-on, uninstall
+ * an installed one, check an installed fetched dependency for an update, retry
+ * a broken dependency's install, or open its GitHub repository.
+ */
+export type ExtensionCardActionKind = "install" | "uninstall" | "check-update" | "retry" | "open-repo";
+
+/** One item in a card's kebab menu: its stable action kind and its display label. */
+export interface ExtensionCardMenuItem {
+  readonly action: Exclude<ExtensionCardActionKind, "install" | "retry">;
+  readonly label: string;
+}
+
+/** Callbacks a card invokes when one of its affordances is triggered. */
+export interface ExtensionCardCallbacks {
+  /** Install the add-on named by the coordinate. */
+  onInstall: (coordinate: string) => void;
+  /** Uninstall the add-on named by the coordinate. */
+  onUninstall: (coordinate: string) => void;
+  /** Check the fetched dependency named by the coordinate for an update. Absent when the host offers no update checks. */
+  onCheckUpdate?: (coordinate: string) => void;
+  /** Re-run the install transaction for the broken dependency named by the coordinate. Absent when the host offers no retry. */
+  onRetry?: (coordinate: string) => void;
+  /** Open the given GitHub repository URL. Absent when the host does not handle external navigation. */
+  onOpenRepo?: (url: string) => void;
+}
+
+/**
+ * One catalog entry offered in the browser's catalog section, rendered from
+ * the catalog document's display metadata alone. Only libraries the project has
+ * not yet installed are offered; an installed library is represented by its
+ * manageable entry card instead.
+ */
+export interface ExtensionCatalogOffer {
+  /** The extension's `<owner>/<repo>` coordinate: its stable key in the section. */
+  readonly coordinate: string;
+  /** Display name shown as the card title. */
+  readonly name: string;
+  /** Published version shown on the card. */
+  readonly version: string;
+  /** Description shown on the card. */
+  readonly description: string;
+  /** Thumbnail URL or data URI; the bundled default thumbnail is shown when absent. */
+  readonly thumbnailUrl?: string;
+  /** The pinned `gh:` reference installing this offer writes. */
+  readonly ref: string;
+}
+
+const svgThumbnail = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#e2e8f0"/><path d="M24 24h16v16H24z" fill="#94a3b8"/><path d="M40 20a6 6 0 0 1 0 12M20 32a6 6 0 0 1 12 0" fill="none" stroke="#94a3b8" stroke-width="4"/></svg>`;
+
+/**
+ * Bundled default thumbnail, a self-contained SVG data URI shown on cards whose
+ * {@link ExtensionBrowserEntry.thumbnailUrl} is absent.
+ */
+export const DEFAULT_EXTENSION_THUMBNAIL = `data:image/svg+xml,${encodeURIComponent(svgThumbnail)}`;
+
+/**
+ * Filter entries by a search query, matching case-insensitively against each
+ * entry's name and coordinate. A blank query returns the entries unchanged.
+ *
+ * @param entries - The entries to filter.
+ * @param query - The search text.
+ */
+export function filterExtensionEntries(
+  entries: readonly ExtensionBrowserEntry[],
+  query: string
+): ExtensionBrowserEntry[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) {
+    return [...entries];
+  }
+  return entries.filter(
+    (entry) => entry.name.toLowerCase().includes(needle) || entry.coordinate.toLowerCase().includes(needle)
+  );
+}
+
+/**
+ * Filter catalog offers by a search query, matching case-insensitively against
+ * each offer's name, coordinate, and description. A blank query returns the
+ * offers unchanged.
+ *
+ * @param offers - The offers to filter.
+ * @param query - The search text.
+ */
+export function filterExtensionOffers(
+  offers: readonly ExtensionCatalogOffer[],
+  query: string
+): ExtensionCatalogOffer[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) {
+    return [...offers];
+  }
+  return offers.filter(
+    (offer) =>
+      offer.name.toLowerCase().includes(needle) ||
+      offer.coordinate.toLowerCase().includes(needle) ||
+      offer.description.toLowerCase().includes(needle)
+  );
+}
+
+/** One item of the browser list: an installed/manageable entry card or a catalog offer card. */
+export type ExtensionBrowserItem =
+  | { readonly kind: "entry"; readonly entry: ExtensionBrowserEntry }
+  | { readonly kind: "offer"; readonly offer: ExtensionCatalogOffer };
+
+/** The coordinate identifying an item, regardless of its card kind. */
+export function extensionBrowserItemCoordinate(item: ExtensionBrowserItem): string {
+  return item.kind === "entry" ? item.entry.coordinate : item.offer.coordinate;
+}
+
+/**
+ * Order the browser's cards into one stable list: catalog-listed items at
+ * their catalog-document positions regardless of install status, then items
+ * with no catalog position in coordinate order. Installing or uninstalling a
+ * library changes only its card kind, never any item's position.
+ *
+ * @param entries - The installed/manageable entry cards, already filtered.
+ * @param offers - The catalog offer cards, already filtered.
+ * @param catalogCoordinates - The catalog document's coordinates in document order.
+ */
+export function orderExtensionBrowserItems(
+  entries: readonly ExtensionBrowserEntry[],
+  offers: readonly ExtensionCatalogOffer[],
+  catalogCoordinates: readonly string[]
+): ExtensionBrowserItem[] {
+  const positions = new Map(catalogCoordinates.map((coordinate, index) => [coordinate, index]));
+  const items: ExtensionBrowserItem[] = [
+    ...entries.map((entry) => ({ kind: "entry" as const, entry })),
+    ...offers.map((offer) => ({ kind: "offer" as const, offer })),
+  ];
+  return items.sort((a, b) => {
+    const coordinateA = extensionBrowserItemCoordinate(a);
+    const coordinateB = extensionBrowserItemCoordinate(b);
+    const positionA = positions.get(coordinateA);
+    const positionB = positions.get(coordinateB);
+    if (positionA !== undefined && positionB !== undefined) {
+      return positionA - positionB;
+    }
+    if (positionA !== undefined) {
+      return -1;
+    }
+    if (positionB !== undefined) {
+      return 1;
+    }
+    return coordinateA < coordinateB ? -1 : coordinateA > coordinateB ? 1 : 0;
+  });
+}
+
+/**
+ * Report whether the browser shows the no-match message: true only when a
+ * search is active and no card survived the filter. With no active search an
+ * empty list shows nothing.
+ *
+ * @param itemCount - Number of cards surviving the filter.
+ * @param searchActive - True when the search box holds a non-blank query.
+ */
+export function extensionBrowserShowsNoMatch(itemCount: number, searchActive: boolean): boolean {
+  return searchActive && itemCount === 0;
+}
+
+/**
+ * Report whether the browser shows the Check for Updates affordance: true
+ * when at least one listed library is installed, regardless of how many
+ * uninstalled libraries are also listed.
+ *
+ * @param entries - The browser's entry cards, unfiltered.
+ */
+export function extensionBrowserShowsCheckAllUpdates(entries: readonly ExtensionBrowserEntry[]): boolean {
+  return entries.some((entry) => entry.installed);
+}
+
+/**
+ * The kebab-menu items a card offers for an entry. An installed updatable
+ * dependency offers Check for Update; any installed add-on or broken dependency
+ * offers Uninstall; any entry with a `repoUrl` offers Open Repository. A
+ * not-installed add-on with no `repoUrl` offers no menu items and shows the
+ * inline Add affordance from {@link extensionCardShowsInstall}.
+ *
+ * @param entry - The entry whose menu items to compute.
+ */
+export function extensionCardMenuItems(entry: ExtensionBrowserEntry): ExtensionCardMenuItem[] {
+  const items: ExtensionCardMenuItem[] = [];
+  if (entry.broken === undefined && entry.installed && entry.updatable === true) {
+    items.push({ action: "check-update", label: "Check for Update" });
+  }
+  if (entry.repoUrl !== undefined) {
+    items.push({ action: "open-repo", label: "Open Repository" });
+  }
+  if (entry.broken !== undefined || entry.installed) {
+    items.push({ action: "uninstall", label: "Uninstall" });
+  }
+  return items;
+}
+
+/**
+ * Report whether a card shows the inline Add affordance: true for a not-installed
+ * add-on, false for an already-installed extension or a broken dependency (which
+ * shows Retry instead).
+ *
+ * @param entry - The entry to test.
+ */
+export function extensionCardShowsInstall(entry: ExtensionBrowserEntry): boolean {
+  return !entry.installed && entry.broken === undefined;
+}
+
+/**
+ * Report whether a card shows the inline Retry affordance: true for a broken
+ * dependency.
+ *
+ * @param entry - The entry to test.
+ */
+export function extensionCardShowsRetry(entry: ExtensionBrowserEntry): boolean {
+  return entry.broken !== undefined;
+}
+
+/**
+ * Dispatch a card affordance to the matching callback: `install`, `uninstall`,
+ * `check-update`, and `retry` call their callbacks with the entry's
+ * coordinate; `open-repo` calls `onOpenRepo` with the entry's `repoUrl`. An
+ * absent optional callback or `repoUrl` makes the action do nothing.
+ *
+ * @param entry - The entry the action applies to.
+ * @param action - The affordance triggered.
+ * @param callbacks - The host callbacks to dispatch to.
+ */
+export function runExtensionCardAction(
+  entry: ExtensionBrowserEntry,
+  action: ExtensionCardActionKind,
+  callbacks: ExtensionCardCallbacks
+): void {
+  switch (action) {
+    case "install":
+      callbacks.onInstall(entry.coordinate);
+      return;
+    case "uninstall":
+      callbacks.onUninstall(entry.coordinate);
+      return;
+    case "check-update":
+      callbacks.onCheckUpdate?.(entry.coordinate);
+      return;
+    case "retry":
+      callbacks.onRetry?.(entry.coordinate);
+      return;
+    default:
+      if (entry.repoUrl !== undefined) {
+        callbacks.onOpenRepo?.(entry.repoUrl);
+      }
+  }
+}

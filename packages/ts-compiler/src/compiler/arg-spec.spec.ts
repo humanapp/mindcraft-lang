@@ -3,6 +3,7 @@ import { before, describe, test } from "node:test";
 import { List, runtime } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { BrainTileModifierDef } from "@mindcraft-lang/core/brain/tiles";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
@@ -27,6 +28,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
 import { DescriptorDiagCode } from "./diag-codes.js";
@@ -44,7 +46,8 @@ import type {
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 describe("descriptor arg spec extraction", () => {
@@ -64,7 +67,7 @@ export default Actuator({
   onExecute(ctx: Context): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.args.length, 1);
@@ -87,7 +90,7 @@ export default Actuator({
   onExecute(ctx: Context): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const mod = result.descriptor!.args[0] as ExtractedModifier;
     assert.equal(mod.kind, "modifier");
@@ -108,7 +111,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { speed: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const p = result.descriptor!.args[0] as ExtractedParam;
     assert.equal(p.kind, "param");
@@ -130,7 +133,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { speed: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const p = result.descriptor!.args[0] as ExtractedParam;
     assert.equal(p.defaultValue, 5);
@@ -148,7 +151,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { message: string }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const p = result.descriptor!.args[0] as ExtractedParam;
     assert.equal(p.defaultValue, "hello");
@@ -166,7 +169,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { active: boolean }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const p = result.descriptor!.args[0] as ExtractedParam;
     assert.equal(p.defaultValue, true);
@@ -184,7 +187,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { val: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const p = result.descriptor!.args[0] as ExtractedParam;
     assert.equal(p.defaultValue, null);
@@ -202,7 +205,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { target: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const p = result.descriptor!.args[0] as ExtractedParam;
     assert.equal(p.anonymous, true);
@@ -223,7 +226,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { left: number; right: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const c = result.descriptor!.args[0] as ExtractedChoice;
     assert.equal(c.kind, "choice");
@@ -248,7 +251,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { up: number; down: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const c = result.descriptor!.args[0] as ExtractedChoice;
     assert.equal(c.kind, "choice");
@@ -268,7 +271,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { altitude: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const opt = result.descriptor!.args[0] as ExtractedOptional;
     assert.equal(opt.kind, "optional");
@@ -290,7 +293,7 @@ export default Actuator({
   onExecute(ctx: Context): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const rep = result.descriptor!.args[0] as ExtractedRepeated;
     assert.equal(rep.kind, "repeated");
@@ -313,7 +316,7 @@ export default Actuator({
   onExecute(ctx: Context): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const rep = result.descriptor!.args[0] as ExtractedRepeated;
     assert.equal(rep.kind, "repeated");
@@ -333,7 +336,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { speed: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const cond = result.descriptor!.args[0] as ExtractedConditional;
     assert.equal(cond.kind, "conditional");
@@ -356,7 +359,7 @@ export default Actuator({
   onExecute(ctx: Context, args: Record<string, unknown>): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const cond = result.descriptor!.args[0] as ExtractedConditional;
     assert.equal(cond.kind, "conditional");
@@ -383,7 +386,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { power: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const s = result.descriptor!.args[0] as ExtractedSeq;
     assert.equal(s.kind, "seq");
@@ -407,7 +410,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { x: number; y: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const opt = result.descriptor!.args[0] as ExtractedOptional;
     assert.equal(opt.kind, "optional");
@@ -432,7 +435,7 @@ export default Actuator({
   onExecute(ctx: Context, args: { boost: number }): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const s = result.descriptor!.args[0] as ExtractedSeq;
     assert.equal(s.kind, "seq");
@@ -467,7 +470,7 @@ export default Actuator({
   onExecute(ctx: Context, args: Record<string, unknown>): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.args.length, 7);
@@ -495,7 +498,7 @@ export default Sensor({
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.equal(result.descriptor!.returnType, "boolean");
   });
@@ -509,7 +512,7 @@ export default Sensor({
   onExecute(ctx: Context): number { return 0; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.equal(result.descriptor!.returnType, "number");
   });
@@ -523,7 +526,7 @@ export default Sensor({
   onExecute(ctx: Context): string { return ""; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.equal(result.descriptor!.returnType, "string");
   });
@@ -537,7 +540,7 @@ export default Sensor({
   async onExecute(ctx: Context): Promise<number> { return 0; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.equal(result.descriptor!.returnType, "number");
   });
@@ -551,7 +554,7 @@ export default Sensor({
   onExecute(ctx: Context): number | null { return 0; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.some((d) => d.code === DescriptorDiagCode.SensorReturnTypeRequired));
   });
 
@@ -564,7 +567,7 @@ export default Sensor({
   onExecute(ctx: Context): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.some((d) => d.code === DescriptorDiagCode.SensorReturnTypeMustNotBeVoid));
   });
 
@@ -577,7 +580,7 @@ export default Sensor({
   onExecute(ctx: Context) { return true; },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.some((d) => d.code === DescriptorDiagCode.SensorReturnTypeRequired));
   });
 
@@ -590,7 +593,7 @@ export default Actuator({
   onExecute(ctx: Context): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.equal(result.descriptor!.returnType, undefined);
   });
@@ -600,6 +603,35 @@ describe("descriptor arg spec extraction diagnostics", () => {
   before(() => {
     services = __test__createBrainServices();
   });
+
+  /**
+   * Compile an actuator whose `args` array holds the given element source and
+   * return its diagnostics. The element source may include TypeScript directive
+   * comments to reach extractor checks that TypeScript would otherwise reject first.
+   */
+  function argDiagnostics(argElement: string) {
+    const source = `
+import { Actuator, type Context, choice, conditional, modifier, optional, param, repeated, seq } from "mindcraft";
+
+export default Actuator({
+  name: "test",
+  args: [
+${argElement}
+  ],
+  onExecute(ctx: Context): void {},
+});
+`;
+    return compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services }).diagnostics;
+  }
+
+  /** Assert that compiling an actuator with `argElement` emits `code`. */
+  function assertArgDiag(argElement: string, code: DescriptorDiagCode) {
+    const diagnostics = argDiagnostics(argElement);
+    assert.ok(
+      diagnostics.some((d) => d.code === code),
+      `expected ${DescriptorDiagCode[code]}, got ${JSON.stringify(diagnostics)}`
+    );
+  }
 
   test("args as non-array expression produces diagnostic", () => {
     const source = `
@@ -611,71 +643,160 @@ export default Actuator({
   onExecute(ctx: Context): void {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.some((d) => d.code === DescriptorDiagCode.ArgsMustBeArrayLiteral));
   });
 
-  test("non-call expression in args array produces diagnostic", () => {
-    const source = `
-import { Actuator, type Context } from "mindcraft";
-
-export default Actuator({
-  name: "test",
-  args: [
-    "not-a-call" as any,
-  ],
-  onExecute(ctx: Context): void {},
-});
-`;
-    const result = compileUserTile(source, { services });
-    assert.ok(result.diagnostics.some((d) => d.code === DescriptorDiagCode.ArgSpecMustBeCallExpression));
+  test("non-call expression in args array", () => {
+    assertArgDiag(`    "not-a-call" as any,`, DescriptorDiagCode.ArgSpecMustBeCallExpression);
   });
 
-  test("param missing type property produces diagnostic", () => {
-    const source = `
-import { Actuator, type Context, param } from "mindcraft";
+  test("callee that is not a recognized arg spec function", () => {
+    assertArgDiag(`    (param as any)("x"),`, DescriptorDiagCode.UnrecognizedArgSpecCall);
+  });
 
-export default Actuator({
-  name: "test",
-  args: [
-    param("x", {} as any),
-  ],
-  onExecute(ctx: Context): void {},
-});
-`;
-    const result = compileUserTile(source, { services });
-    assert.ok(result.diagnostics.length > 0);
+  test("modifier id that is not a string literal", () => {
+    assertArgDiag(`    modifier(123 as any),`, DescriptorDiagCode.ModifierIdMustBeStringLiteral);
+  });
+
+  test("custom modifier without an opts object", () => {
+    assertArgDiag(`    modifier("custom"),`, DescriptorDiagCode.ModifierOptsMustBeObjectLiteral);
+  });
+
+  test("modifier label that is not a string literal", () => {
+    assertArgDiag(
+      `    modifier("custom", { label: 123 as any }),`,
+      DescriptorDiagCode.ModifierLabelMustBeStringLiteral
+    );
+  });
+
+  test("custom modifier opts missing the label", () => {
+    assertArgDiag(
+      `    // @ts-ignore missing required modifier label\n    modifier("custom", { icon: "i.svg" }),`,
+      DescriptorDiagCode.ModifierLabelRequired
+    );
+  });
+
+  test("modifier icon that is not a string literal", () => {
+    assertArgDiag(
+      `    modifier("custom", { label: "L", icon: 123 as any }),`,
+      DescriptorDiagCode.ModifierIconMustBeStringLiteral
+    );
+  });
+
+  test("param name that is not a string literal", () => {
+    assertArgDiag(`    param(123 as any, { type: "number" }),`, DescriptorDiagCode.ParamNameMustBeStringLiteral);
+  });
+
+  test("param opts that is not an object literal", () => {
+    assertArgDiag(`    param("x", "nope" as any),`, DescriptorDiagCode.ParamOptsMustBeObjectLiteral);
+  });
+
+  test("param type that is not a string literal", () => {
+    assertArgDiag(`    param("x", { type: 123 as any }),`, DescriptorDiagCode.ParamTypeMustBeStringLiteral);
+  });
+
+  test("param default that is not a literal value", () => {
+    assertArgDiag(`    param("x", { type: "number", default: [] }),`, DescriptorDiagCode.ParamDefaultMustBeLiteral);
+  });
+
+  test("param anonymous that is not a boolean literal", () => {
+    assertArgDiag(
+      `    param("x", { type: "number", anonymous: 1 as any }),`,
+      DescriptorDiagCode.ParamAnonymousMustBeBoolean
+    );
+  });
+
+  test("param opts missing the type property", () => {
+    assertArgDiag(
+      `    // @ts-ignore missing required param type\n    param("x", { default: 5 }),`,
+      DescriptorDiagCode.ParamDefinitionMissingType
+    );
+  });
+
+  test("choice with no arguments", () => {
+    assertArgDiag(`    choice(),`, DescriptorDiagCode.ChoiceRequiresArguments);
+  });
+
+  test("optional with a number of arguments other than one", () => {
+    assertArgDiag(
+      `    // @ts-ignore optional requires exactly one argument\n    optional(),`,
+      DescriptorDiagCode.OptionalRequiresOneArgument
+    );
+  });
+
+  test("repeated with no arguments", () => {
+    assertArgDiag(
+      `    // @ts-ignore repeated requires at least one argument\n    repeated(),`,
+      DescriptorDiagCode.RepeatedRequiresModifier
+    );
+  });
+
+  test("repeated opts that is not an object literal", () => {
+    assertArgDiag(
+      `    repeated(modifier("m", { label: "M" }), "nope" as any),`,
+      DescriptorDiagCode.RepeatedOptsMustBeObjectLiteral
+    );
+  });
+
+  test("repeated bound that is not a numeric literal", () => {
+    assertArgDiag(
+      `    repeated(modifier("m", { label: "M" }), { min: "x" as any }),`,
+      DescriptorDiagCode.RepeatedBoundMustBeNumericLiteral
+    );
+  });
+
+  test("conditional with fewer than two arguments", () => {
+    assertArgDiag(
+      `    // @ts-ignore conditional requires condition and thenItem\n    conditional("c"),`,
+      DescriptorDiagCode.ConditionalRequiresAtLeastTwoArguments
+    );
+  });
+
+  test("conditional condition that is not a string literal", () => {
+    assertArgDiag(
+      `    conditional(123 as any, param("x", { type: "number" })),`,
+      DescriptorDiagCode.ConditionalConditionMustBeStringLiteral
+    );
+  });
+
+  test("seq with no arguments", () => {
+    assertArgDiag(`    seq(),`, DescriptorDiagCode.SeqRequiresArguments);
   });
 });
 
 describe("buildCallDef grammar shapes", () => {
   test("modifier lowers to mod tile id", () => {
-    const callDef = buildCallDef("walk", [{ kind: "modifier", id: "fast", label: "Fast" }]);
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "walk", [{ kind: "modifier", id: "fast", label: "Fast" }]);
     assert.equal(callDef.callSpec.type, "bag");
     const bag = callDef.callSpec as BrainActionCallBagSpec;
     assert.equal(bag.items.length, 1);
     assert.equal(bag.items[0].type, "arg");
-    assert.equal(bag.items[0].tileId, "tile.modifier->user.walk.fast");
+    assert.equal(bag.items[0].tileId, `tile.modifier->${TEST_PROJECT_NAMESPACE}:user.walk.fast`);
     assert.equal(callDef.argSlots.size(), 1);
-    assert.equal(callDef.argSlots.get(0)!.argSpec.tileId, "tile.modifier->user.walk.fast");
+    assert.equal(callDef.argSlots.get(0)!.argSpec.tileId, `tile.modifier->${TEST_PROJECT_NAMESPACE}:user.walk.fast`);
   });
 
   test("param lowers to parameter tile id", () => {
-    const callDef = buildCallDef("chase", [{ kind: "param", name: "speed", type: "number", anonymous: false }]);
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "chase", [
+      { kind: "param", name: "speed", type: "number", anonymous: false },
+    ]);
     const bag = callDef.callSpec as BrainActionCallBagSpec;
     assert.equal(bag.items[0].type, "arg");
-    assert.equal(bag.items[0].tileId, "tile.parameter->user.chase.speed");
-    assert.equal(callDef.argSlots.get(0)!.argSpec.tileId, "tile.parameter->user.chase.speed");
+    assert.equal(bag.items[0].tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.chase.speed`);
+    assert.equal(callDef.argSlots.get(0)!.argSpec.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.chase.speed`);
   });
 
   test("anonymous param uses anon tile id", () => {
-    const callDef = buildCallDef("chase", [{ kind: "param", name: "target", type: "number", anonymous: true }]);
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "chase", [
+      { kind: "param", name: "target", type: "number", anonymous: true },
+    ]);
     assert.equal(callDef.argSlots.get(0)!.argSpec.tileId, "tile.parameter->anon.number");
     assert.equal(callDef.argSlots.get(0)!.argSpec.anonymous, true);
   });
 
   test("choice lowers to choice spec with options", () => {
-    const callDef = buildCallDef("move", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "move", [
       {
         kind: "choice",
         name: "direction",
@@ -693,8 +814,8 @@ describe("buildCallDef grammar shapes", () => {
     assert.equal(choiceSpec.options.length, 2);
     const opt0 = choiceSpec.options[0] as BrainActionCallArgSpec;
     const opt1 = choiceSpec.options[1] as BrainActionCallArgSpec;
-    assert.equal(opt0.tileId, "tile.parameter->user.move.left");
-    assert.equal(opt1.tileId, "tile.parameter->user.move.right");
+    assert.equal(opt0.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.move.left`);
+    assert.equal(opt1.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.move.right`);
 
     assert.equal(callDef.argSlots.size(), 2);
     const group0 = callDef.argSlots.get(0)!.choiceGroup;
@@ -704,7 +825,7 @@ describe("buildCallDef grammar shapes", () => {
   });
 
   test("choice without name produces unnamed choice spec", () => {
-    const callDef = buildCallDef("test", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "test", [
       {
         kind: "choice",
         items: [
@@ -720,7 +841,7 @@ describe("buildCallDef grammar shapes", () => {
   });
 
   test("optional lowers to optional spec", () => {
-    const callDef = buildCallDef("fly", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "fly", [
       {
         kind: "optional",
         item: { kind: "param", name: "altitude", type: "number", defaultValue: 10, anonymous: false },
@@ -731,14 +852,17 @@ describe("buildCallDef grammar shapes", () => {
     const optSpec = bag.items[0] as BrainActionCallOptionalSpec;
     assert.equal(optSpec.type, "optional");
     assert.equal(optSpec.item.type, "arg");
-    assert.equal(optSpec.item.tileId, "tile.parameter->user.fly.altitude");
+    assert.equal(optSpec.item.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.fly.altitude`);
 
     assert.equal(callDef.argSlots.size(), 1);
-    assert.equal(callDef.argSlots.get(0)!.argSpec.tileId, "tile.parameter->user.fly.altitude");
+    assert.equal(
+      callDef.argSlots.get(0)!.argSpec.tileId,
+      `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.fly.altitude`
+    );
   });
 
   test("repeated lowers to repeat spec with bounds", () => {
-    const callDef = buildCallDef("patrol", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "patrol", [
       {
         kind: "repeated",
         item: { kind: "modifier", id: "wp", label: "Waypoint" },
@@ -752,11 +876,11 @@ describe("buildCallDef grammar shapes", () => {
     assert.equal(repSpec.min, 1);
     assert.equal(repSpec.max, 5);
     assert.equal(repSpec.item.type, "arg");
-    assert.equal(repSpec.item.tileId, "tile.modifier->user.patrol.wp");
+    assert.equal(repSpec.item.tileId, `tile.modifier->${TEST_PROJECT_NAMESPACE}:user.patrol.wp`);
   });
 
   test("repeated without bounds omits min/max", () => {
-    const callDef = buildCallDef("patrol", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "patrol", [
       {
         kind: "repeated",
         item: { kind: "modifier", id: "stop", label: "Stop" },
@@ -770,7 +894,7 @@ describe("buildCallDef grammar shapes", () => {
   });
 
   test("conditional lowers to conditional spec", () => {
-    const callDef = buildCallDef("react", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "react", [
       {
         kind: "conditional",
         condition: "mode",
@@ -782,14 +906,17 @@ describe("buildCallDef grammar shapes", () => {
     assert.equal(condSpec.type, "conditional");
     assert.equal(condSpec.condition, "mode");
     assert.equal(condSpec.then.type, "arg");
-    assert.equal((condSpec.then as BrainActionCallArgSpec).tileId, "tile.parameter->user.react.speed");
+    assert.equal(
+      (condSpec.then as BrainActionCallArgSpec).tileId,
+      `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.react.speed`
+    );
 
     assert.equal(callDef.argSlots.size(), 1);
-    assert.equal(callDef.argSlots.get(0)!.argSpec.tileId, "tile.parameter->user.react.speed");
+    assert.equal(callDef.argSlots.get(0)!.argSpec.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.react.speed`);
   });
 
   test("conditional with else lowers both branches", () => {
-    const callDef = buildCallDef("react", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "react", [
       {
         kind: "conditional",
         condition: "mode",
@@ -802,16 +929,22 @@ describe("buildCallDef grammar shapes", () => {
     assert.equal(condSpec.type, "conditional");
     assert.equal(condSpec.condition, "mode");
     assert.equal(condSpec.then.type, "arg");
-    assert.equal((condSpec.then as BrainActionCallArgSpec).tileId, "tile.parameter->user.react.fast-speed");
+    assert.equal(
+      (condSpec.then as BrainActionCallArgSpec).tileId,
+      `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.react.fast-speed`
+    );
     assert.ok(condSpec.else, "expected else branch");
     assert.equal(condSpec.else!.type, "arg");
-    assert.equal((condSpec.else as BrainActionCallArgSpec).tileId, "tile.parameter->user.react.slow-speed");
+    assert.equal(
+      (condSpec.else as BrainActionCallArgSpec).tileId,
+      `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.react.slow-speed`
+    );
 
     assert.equal(callDef.argSlots.size(), 2);
   });
 
   test("seq lowers to seq spec preserving order", () => {
-    const callDef = buildCallDef("combo", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "combo", [
       {
         kind: "seq",
         items: [
@@ -826,15 +959,15 @@ describe("buildCallDef grammar shapes", () => {
     assert.equal(seqSpec.type, "seq");
     assert.equal(seqSpec.items.length, 2);
     assert.equal(seqSpec.items[0].type, "arg");
-    assert.equal(seqSpec.items[0].tileId, "tile.modifier->user.combo.warm-up");
+    assert.equal(seqSpec.items[0].tileId, `tile.modifier->${TEST_PROJECT_NAMESPACE}:user.combo.warm-up`);
     assert.equal(seqSpec.items[1].type, "arg");
-    assert.equal(seqSpec.items[1].tileId, "tile.parameter->user.combo.power");
+    assert.equal(seqSpec.items[1].tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.combo.power`);
 
     assert.equal(callDef.argSlots.size(), 2);
   });
 
   test("deeply nested: optional choice of params", () => {
-    const callDef = buildCallDef("deep", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "deep", [
       {
         kind: "optional",
         item: {
@@ -863,7 +996,7 @@ describe("buildCallDef grammar shapes", () => {
   });
 
   test("optional(choice(anon_A, anon_B)) has correct argSlots with choiceGroup", () => {
-    const callDef = buildCallDef("teleport", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "teleport", [
       {
         kind: "optional",
         item: {
@@ -901,7 +1034,7 @@ describe("buildCallDef grammar shapes", () => {
   });
 
   test("seq containing repeated modifier and param", () => {
-    const callDef = buildCallDef("attack", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "attack", [
       {
         kind: "seq",
         items: [
@@ -929,7 +1062,7 @@ describe("buildCallDef grammar shapes", () => {
   });
 
   test("all grammar shapes together in one callDef", () => {
-    const callDef = buildCallDef("mega", [
+    const callDef = buildCallDef(TEST_PROJECT_NAMESPACE, "mega", [
       { kind: "modifier", id: "sprint", label: "Sprint" },
       { kind: "param", name: "target", type: "number", anonymous: false },
       {
@@ -969,10 +1102,10 @@ describe("buildCallDef grammar shapes", () => {
     assert.equal(bag.items.length, 7);
 
     assert.equal(bag.items[0].type, "arg");
-    assert.equal(bag.items[0].tileId, "tile.modifier->user.mega.sprint");
+    assert.equal(bag.items[0].tileId, `tile.modifier->${TEST_PROJECT_NAMESPACE}:user.mega.sprint`);
 
     assert.equal(bag.items[1].type, "arg");
-    assert.equal(bag.items[1].tileId, "tile.parameter->user.mega.target");
+    assert.equal(bag.items[1].tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.mega.target`);
 
     assert.equal((bag.items[2] as BrainActionCallChoiceSpec).type, "choice");
     assert.equal((bag.items[3] as BrainActionCallOptionalSpec).type, "optional");
@@ -983,34 +1116,34 @@ describe("buildCallDef grammar shapes", () => {
     assert.equal(callDef.argSlots.size(), 9);
 
     const slot0 = callDef.argSlots.get(0)!;
-    assert.equal(slot0.argSpec.tileId, "tile.modifier->user.mega.sprint");
+    assert.equal(slot0.argSpec.tileId, `tile.modifier->${TEST_PROJECT_NAMESPACE}:user.mega.sprint`);
     assert.equal(slot0.choiceGroup, undefined);
 
     const slot1 = callDef.argSlots.get(1)!;
-    assert.equal(slot1.argSpec.tileId, "tile.parameter->user.mega.target");
+    assert.equal(slot1.argSpec.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.mega.target`);
     assert.equal(slot1.choiceGroup, undefined);
 
     const slot2 = callDef.argSlots.get(2)!;
-    assert.equal(slot2.argSpec.tileId, "tile.parameter->user.mega.aggressive");
+    assert.equal(slot2.argSpec.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.mega.aggressive`);
     assert.ok(slot2.choiceGroup !== undefined);
     const slot3 = callDef.argSlots.get(3)!;
-    assert.equal(slot3.argSpec.tileId, "tile.parameter->user.mega.cautious");
+    assert.equal(slot3.argSpec.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.mega.cautious`);
     assert.equal(slot2.choiceGroup, slot3.choiceGroup);
 
     const slot4 = callDef.argSlots.get(4)!;
-    assert.equal(slot4.argSpec.tileId, "tile.parameter->user.mega.duration");
+    assert.equal(slot4.argSpec.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.mega.duration`);
 
     const slot5 = callDef.argSlots.get(5)!;
-    assert.equal(slot5.argSpec.tileId, "tile.modifier->user.mega.checkpoint");
+    assert.equal(slot5.argSpec.tileId, `tile.modifier->${TEST_PROJECT_NAMESPACE}:user.mega.checkpoint`);
 
     const slot6 = callDef.argSlots.get(6)!;
-    assert.equal(slot6.argSpec.tileId, "tile.parameter->user.mega.rage");
+    assert.equal(slot6.argSpec.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.mega.rage`);
 
     const slot7 = callDef.argSlots.get(7)!;
-    assert.equal(slot7.argSpec.tileId, "tile.modifier->user.mega.begin");
+    assert.equal(slot7.argSpec.tileId, `tile.modifier->${TEST_PROJECT_NAMESPACE}:user.mega.begin`);
 
     const slot8 = callDef.argSlots.get(8)!;
-    assert.equal(slot8.argSpec.tileId, "tile.parameter->user.mega.intensity");
+    assert.equal(slot8.argSpec.tileId, `tile.parameter->${TEST_PROJECT_NAMESPACE}:user.mega.intensity`);
   });
 });
 
@@ -1045,7 +1178,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -1088,7 +1221,7 @@ export default Actuator({
   async onExecute(ctx: Context, args: Record<string, unknown>): Promise<void> {},
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
     assert.equal(result.program.kind, "actuator");
@@ -1112,6 +1245,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -1171,7 +1306,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(7) }));
     assert.equal(value!.t, NativeType.Number);
@@ -1194,7 +1329,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(
       result.program!,
@@ -1222,7 +1357,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(result.program!, mkArgsList({ 0: mkStringValue("hello") }));
     assert.equal(value!.t, NativeType.String);
@@ -1243,7 +1378,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(20) }));
     assert.equal(value!.t, NativeType.Number);
@@ -1267,7 +1402,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(
       result.program!,
@@ -1294,7 +1429,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(4) }));
     assert.equal(value!.t, NativeType.Number);
@@ -1318,7 +1453,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(
       result.program!,
@@ -1358,7 +1493,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(
       result.program!,
@@ -1393,7 +1528,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
 
     const boolTrue: Value = { t: NativeType.Boolean, v: true };
@@ -1421,7 +1556,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(result.program!, mkArgsList({ 1: mkNumberValue(42) }));
     assert.equal(value!.t, NativeType.Number);
@@ -1443,7 +1578,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
 
     const with3 = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(3), 1: mkNumberValue(5) }));
@@ -1467,7 +1602,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     const rep = result.descriptor.args[0];
@@ -1496,7 +1631,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(result.program!, mkArgsList({ 1: mkNumberValue(42) }));
     assert.equal(value!.t, NativeType.Number);
@@ -1520,7 +1655,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(99) }));
     assert.equal(value!.t, NativeType.Number);
@@ -1542,7 +1677,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(1) }));
     assert.equal(value!.t, NativeType.Number);
@@ -1564,7 +1699,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(result.program!, mkArgsList({}));
     assert.equal(value!.t, NativeType.Number);
@@ -1589,7 +1724,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
 
     const withMod = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(1) }));
@@ -1600,6 +1735,9 @@ export default Sensor({
   });
 
   test("existing modifier ref without opts compiles", () => {
+    services.edit.tiles.registerTileDef(
+      new BrainTileModifierDef("modifier.distance.nearby", { metadata: { label: "nearby" } })
+    );
     const source = `
 import { Sensor, modifier, type Context } from "mindcraft";
 
@@ -1614,7 +1752,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     const mod = result.descriptor.args[0] as ExtractedModifier;
@@ -1643,7 +1781,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, []);
 
     const neitherMod = execSensor(result.program!, mkArgsList({ 2: mkNumberValue(5) }));

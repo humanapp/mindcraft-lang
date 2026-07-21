@@ -1,5 +1,5 @@
 import { logger } from "@mindcraft-lang/core";
-import { AppHostError, appHostError } from "./app-host-error.js";
+import { AppHostError, AppHostErrorCode, appHostError } from "./app-host-error.js";
 import type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";
 import { createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";
 import {
@@ -13,7 +13,8 @@ import {
   type ProjectCollectionBroadcastMessage,
 } from "./project-collection-broadcast.js";
 import { createProjectCollectionPinVerifier, verifyProjectCollectionPin } from "./project-collection-pin.js";
-import type { ProjectFileSnapshot } from "./project-file-snapshot.js";
+import type { ExtensionTarget } from "./project-content-manifest.js";
+import type { ProjectFileChange, ProjectFileSnapshot } from "./project-file-snapshot.js";
 import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 import type { ProjectManifest } from "./project-manifest.js";
@@ -155,6 +156,13 @@ export interface ProjectManagerOptions {
   lock?: ProjectLock;
   /** Debounce delay before persisting project files after a change. Defaults to 2000 ms. */
   autoSaveDelayMs?: number;
+  /**
+   * Extension dependencies keyed by `<owner>/<repo>` coordinate, seeded into
+   * every newly created project's manifest. Each value is an extension
+   * reference string. Empty or omitted when the host designates no default
+   * extensions.
+   */
+  defaultExtensions?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -167,6 +175,7 @@ export class ProjectManager {
   private readonly filesystemOptions: InMemoryProjectFileSystemOptions;
   private readonly lock: ProjectLock | undefined;
   private readonly autoSaveDelayMs: number;
+  private readonly defaultExtensions: Readonly<Record<string, string>> | undefined;
   private readonly projectCollectionBroadcast: ProjectCollectionBroadcast;
   private readonly projectCollectionBroadcastUnsub: () => void;
   private readonly activeProjectListeners = new Set<(project: ActiveProject | undefined) => void>();
@@ -178,7 +187,10 @@ export class ProjectManager {
   private currentActive: ActiveProject | undefined;
   private currentLockHandle: ProjectLockHandle | undefined;
   private autoSaveUnsub: (() => void) | undefined;
+  private autoSaveLocalUnsub: (() => void) | undefined;
   private autoSaveTimerId: ReturnType<typeof setTimeout> | undefined;
+  private pendingLocalChanges: ProjectFileChange[] = [];
+  private remoteChangesSinceFlush = false;
   private reloadUnlockRefreshTimerId: ReturnType<typeof setInterval> | undefined;
   private reloadUnlockRefreshProjectCollectionId: string | undefined;
   private readonly unlockedProjectCollectionIds = new Set<string>();
@@ -189,6 +201,10 @@ export class ProjectManager {
     this.filesystemOptions = options?.filesystemOptions ?? {};
     this.lock = options?.lock;
     this.autoSaveDelayMs = options?.autoSaveDelayMs ?? 2000;
+    this.defaultExtensions =
+      options?.defaultExtensions && Object.keys(options.defaultExtensions).length > 0
+        ? options.defaultExtensions
+        : undefined;
     this.projectCollectionBroadcast = createProjectCollectionBroadcast(store.keyPrefix);
     this.projectCollectionBroadcastUnsub = this.projectCollectionBroadcast.subscribe((message) => {
       void this.handleProjectCollectionBroadcast(message);
@@ -236,13 +252,30 @@ export class ProjectManager {
     options?: ProjectTransitionOptions
   ): Promise<ProjectManifest> {
     const collection = await this.ensureActiveProjectCollectionReady();
-    const manifest = await this.store.createProject(collection.projectCollectionId, name);
+    const created = await this.store.createProject(collection.projectCollectionId, name);
+    const manifest = await this.seedDefaultExtensions(created);
     await this.notifyProjectListChangedForCollection(collection.projectCollectionId);
     const active = await this.tryOpen(manifest.id, shouldNotifyProjectCollectionState, options);
     if (!active) {
-      throw appHostError("PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB", "Project is already open in another tab");
+      throw appHostError(
+        AppHostErrorCode.PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB,
+        "Project is already open in another tab"
+      );
     }
     return manifest;
+  }
+
+  /**
+   * Seed the host's default extensions into a freshly created project's
+   * manifest. Returns the updated manifest, or the original when the host
+   * designates no defaults.
+   */
+  private async seedDefaultExtensions(manifest: ProjectManifest): Promise<ProjectManifest> {
+    if (!this.defaultExtensions) {
+      return manifest;
+    }
+    await this.store.updateProject(manifest.id, { extensions: this.defaultExtensions });
+    return { ...manifest, extensions: this.defaultExtensions };
   }
 
   async createFromSnapshot(
@@ -250,11 +283,20 @@ export class ProjectManager {
     description: string,
     snapshot: ProjectFileSnapshot,
     appData?: Record<string, string>,
-    thumbnailUrl?: string
+    thumbnailUrl?: string,
+    extensions?: Readonly<Record<string, string>>,
+    version?: string,
+    targets?: Readonly<Record<string, ExtensionTarget>>
   ): Promise<ProjectManifest> {
     const collection = await this.requireActiveProjectCollectionReady();
     const manifest = await this.store.createProject(collection.projectCollectionId, name);
-    await this.store.updateProject(manifest.id, { description, thumbnailUrl });
+    await this.store.updateProject(manifest.id, {
+      description,
+      thumbnailUrl,
+      extensions,
+      ...(version === undefined ? {} : { version }),
+      ...(targets === undefined ? {} : { targets }),
+    });
     await this.store.saveProjectFiles(manifest.id, snapshot);
     if (appData) {
       for (const [key, value] of Object.entries(appData)) {
@@ -268,7 +310,10 @@ export class ProjectManager {
   async open(id: string, options?: ProjectTransitionOptions): Promise<ActiveProject> {
     const result = await this.tryOpen(id, true, options);
     if (!result) {
-      throw appHostError("PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB", "Project is already open in another tab");
+      throw appHostError(
+        AppHostErrorCode.PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB,
+        "Project is already open in another tab"
+      );
     }
     return result;
   }
@@ -281,10 +326,13 @@ export class ProjectManager {
     const collection = await this.ensureActiveProjectCollectionReady();
     const manifest = await this.store.getProject(id);
     if (!manifest) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${id}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${id}`);
     }
     if (manifest.projectCollectionId !== collection.projectCollectionId) {
-      throw appHostError("PROJECT_NOT_IN_ACTIVE_COLLECTION", `Project not found in active workspace: ${id}`);
+      throw appHostError(
+        AppHostErrorCode.PROJECT_NOT_IN_ACTIVE_COLLECTION,
+        `Project not found in active workspace: ${id}`
+      );
     }
 
     if (this.currentActive?.manifest.id === id) {
@@ -326,7 +374,7 @@ export class ProjectManager {
 
   async delete(id: string): Promise<void> {
     if (this.currentActive?.manifest.id === id) {
-      throw appHostError("ACTIVE_PROJECT_DELETE_BLOCKED", "Cannot delete the active project");
+      throw appHostError(AppHostErrorCode.ACTIVE_PROJECT_DELETE_BLOCKED, "Cannot delete the active project");
     }
     const manifest = await this.getProjectInActiveCollection(id);
     await this.store.deleteProject(id);
@@ -359,7 +407,7 @@ export class ProjectManager {
   ): Promise<ProjectManifest> {
     const source = await this.store.getProject(sourceProjectId);
     if (!source) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${sourceProjectId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${sourceProjectId}`);
     }
     const sourceCollection = await this.requireProjectCollection(source.projectCollectionId);
     this.assertProjectCollectionReady(sourceCollection);
@@ -370,9 +418,13 @@ export class ProjectManager {
     return manifest;
   }
 
-  async updateActive(updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>): Promise<void> {
+  async updateActive(
+    updates: Partial<
+      Pick<ProjectManifest, "name" | "version" | "description" | "thumbnailUrl" | "extensions" | "targets">
+    >
+  ): Promise<void> {
     if (!this.currentActive) {
-      throw appHostError("NO_ACTIVE_PROJECT", "No active project");
+      throw appHostError(AppHostErrorCode.NO_ACTIVE_PROJECT, "No active project");
     }
     await this.requireActiveProjectCollectionReady();
     if (updates.name !== undefined && !updates.name.trim()) {
@@ -579,7 +631,7 @@ export class ProjectManager {
       }
       void this.listProjectsForCollection(projectCollectionId)
         .catch((error: unknown) => {
-          if (error instanceof AppHostError && error.code === "PROJECT_COLLECTION_NOT_FOUND") {
+          if (error instanceof AppHostError && error.code === AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND) {
             collectionUnavailable = true;
             return [];
           }
@@ -696,7 +748,10 @@ export class ProjectManager {
   async setProjectCollectionPin(projectCollectionId: string, pin: string): Promise<ProjectCollection> {
     const collection = await this.requireProjectCollection(projectCollectionId);
     if (collection.pinVerifier && !this.isProjectCollectionUnlocked(projectCollectionId)) {
-      throw appHostError("PROJECT_COLLECTION_LOCKED", "Workspace must be unlocked before changing its PIN");
+      throw appHostError(
+        AppHostErrorCode.PROJECT_COLLECTION_LOCKED,
+        "Workspace must be unlocked before changing its PIN"
+      );
     }
     const pinVerifier = await createProjectCollectionPinVerifier(pin);
     await this.store.updateProjectCollection(projectCollectionId, { pinVerifier });
@@ -719,7 +774,10 @@ export class ProjectManager {
   async clearProjectCollectionPin(projectCollectionId: string): Promise<ProjectCollection> {
     const collection = await this.requireProjectCollection(projectCollectionId);
     if (collection.pinVerifier && !this.isProjectCollectionUnlocked(projectCollectionId)) {
-      throw appHostError("PROJECT_COLLECTION_LOCKED", "Workspace must be unlocked before removing its PIN");
+      throw appHostError(
+        AppHostErrorCode.PROJECT_COLLECTION_LOCKED,
+        "Workspace must be unlocked before removing its PIN"
+      );
     }
     await this.store.updateProjectCollection(projectCollectionId, { pinVerifier: undefined });
     const updated = await this.requireProjectCollection(projectCollectionId);
@@ -746,7 +804,7 @@ export class ProjectManager {
     let unlocked = await verifyProjectCollectionPin(pin, collection.pinVerifier);
     const current = await this.store.getProjectCollection(projectCollectionId);
     if (!current) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND, `Workspace not found: ${projectCollectionId}`);
     }
     if (!current.pinVerifier) {
       return { collection: current, access: "ready" };
@@ -755,7 +813,7 @@ export class ProjectManager {
       unlocked = await verifyProjectCollectionPin(pin, current.pinVerifier);
     }
     if (!unlocked) {
-      throw appHostError("PROJECT_COLLECTION_PIN_INVALID", "Invalid workspace PIN");
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_PIN_INVALID, "Invalid workspace PIN");
     }
     this.unlockedProjectCollectionIds.add(projectCollectionId);
     await this.refreshCurrentProjectCollection(current);
@@ -805,7 +863,7 @@ export class ProjectManager {
   async switchProjectCollection(projectCollectionId: string): Promise<ProjectCollectionSwitchResult> {
     const target = await this.store.getProjectCollection(projectCollectionId);
     if (!target) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND, `Workspace not found: ${projectCollectionId}`);
     }
     if (this.currentProjectCollection?.projectCollectionId === target.projectCollectionId) {
       this.currentProjectCollection = target;
@@ -845,11 +903,17 @@ export class ProjectManager {
   /** Tombstone a non-active, non-default project collection and its projects. */
   async deleteProjectCollection(projectCollectionId: string): Promise<void> {
     if (projectCollectionId === DEFAULT_PROJECT_COLLECTION_ID) {
-      throw appHostError("DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the default workspace");
+      throw appHostError(
+        AppHostErrorCode.DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED,
+        "Cannot delete the default workspace"
+      );
     }
     const active = await this.ensureActiveProjectCollection();
     if (active.projectCollectionId === projectCollectionId) {
-      throw appHostError("ACTIVE_PROJECT_COLLECTION_DELETE_BLOCKED", "Cannot delete the active workspace");
+      throw appHostError(
+        AppHostErrorCode.ACTIVE_PROJECT_COLLECTION_DELETE_BLOCKED,
+        "Cannot delete the active workspace"
+      );
     }
     const target = await this.requireProjectCollection(projectCollectionId);
     this.assertProjectCollectionReady(target);
@@ -878,10 +942,13 @@ export class ProjectManager {
     this.assertProjectCollectionReady(collection);
     const project = await this.store.getProject(projectId);
     if (!project) {
-      throw appHostError("PROJECT_NOT_FOUND", `Project not found: ${projectId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_NOT_FOUND, `Project not found: ${projectId}`);
     }
     if (project.projectCollectionId !== projectCollectionId) {
-      throw appHostError("PROJECT_NOT_IN_ACTIVE_COLLECTION", `Project not found in workspace: ${projectId}`);
+      throw appHostError(
+        AppHostErrorCode.PROJECT_NOT_IN_ACTIVE_COLLECTION,
+        `Project not found in workspace: ${projectId}`
+      );
     }
     return this.commitProjectCollectionProject(collection, project, options);
   }
@@ -894,7 +961,8 @@ export class ProjectManager {
   ): Promise<ProjectCollectionProjectCommitResult> {
     const collection = await this.requireProjectCollection(projectCollectionId);
     this.assertProjectCollectionReady(collection);
-    const project = await this.store.createProject(collection.projectCollectionId, name);
+    const created = await this.store.createProject(collection.projectCollectionId, name);
+    const project = await this.seedDefaultExtensions(created);
     let result: ProjectCollectionProjectCommitResult;
     try {
       result = await this.commitProjectCollectionProject(collection, project, options);
@@ -911,7 +979,7 @@ export class ProjectManager {
 
   async saveAppData(key: string, data: string): Promise<void> {
     if (!this.currentActive) {
-      throw appHostError("NO_ACTIVE_PROJECT", "No active project");
+      throw appHostError(AppHostErrorCode.NO_ACTIVE_PROJECT, "No active project");
     }
     const { id, projectCollectionId } = this.currentActive.manifest;
     await this.requireActiveProjectCollectionReady();
@@ -932,7 +1000,7 @@ export class ProjectManager {
 
   async deleteAppData(key: string): Promise<void> {
     if (!this.currentActive) {
-      throw appHostError("NO_ACTIVE_PROJECT", "No active project");
+      throw appHostError(AppHostErrorCode.NO_ACTIVE_PROJECT, "No active project");
     }
     const { id, projectCollectionId } = this.currentActive.manifest;
     await this.requireActiveProjectCollectionReady();
@@ -1016,7 +1084,19 @@ export class ProjectManager {
   }
 
   private startAutoSave(filesystem: ProjectFileSystem): void {
+    // applyLocalChange notifies local-change listeners before any-change
+    // listeners, so an any-change event without a preceding local record is a
+    // remote change.
+    let lastChangeWasLocal = false;
+    this.autoSaveLocalUnsub = filesystem.onLocalChange((change) => {
+      lastChangeWasLocal = true;
+      this.pendingLocalChanges.push(change);
+    });
     this.autoSaveUnsub = filesystem.onAnyChange(() => {
+      if (!lastChangeWasLocal) {
+        this.remoteChangesSinceFlush = true;
+      }
+      lastChangeWasLocal = false;
       this.scheduleAutoSave();
     });
   }
@@ -1028,6 +1108,10 @@ export class ProjectManager {
     }
     this.autoSaveUnsub?.();
     this.autoSaveUnsub = undefined;
+    this.autoSaveLocalUnsub?.();
+    this.autoSaveLocalUnsub = undefined;
+    this.pendingLocalChanges = [];
+    this.remoteChangesSinceFlush = false;
   }
 
   private scheduleAutoSave(): void {
@@ -1036,13 +1120,39 @@ export class ProjectManager {
     }
     this.autoSaveTimerId = setTimeout(() => {
       this.autoSaveTimerId = undefined;
-      if (this.currentActive) {
-        const { manifest, filesystem } = this.currentActive;
-        this.store.saveProjectFiles(manifest.id, filesystem.exportSnapshot()).catch((error: unknown) => {
-          void this.handleAutoSaveError(manifest.projectCollectionId, manifest.id, error);
-        });
-      }
+      void this.flushAutoSave();
     }, this.autoSaveDelayMs);
+  }
+
+  /**
+   * Persist the changes accumulated since the last flush: local-only edits go
+   * through the store's change-granular write path; any remote change since
+   * the last flush falls back to a whole-snapshot save.
+   */
+  private async flushAutoSave(): Promise<void> {
+    const active = this.currentActive;
+    if (!active) {
+      return;
+    }
+    const { manifest, filesystem } = active;
+    const changes = this.pendingLocalChanges;
+    const hadRemoteChanges = this.remoteChangesSinceFlush;
+    this.pendingLocalChanges = [];
+    this.remoteChangesSinceFlush = false;
+    if (changes.length === 0 && !hadRemoteChanges) {
+      return;
+    }
+    try {
+      if (hadRemoteChanges) {
+        await this.store.saveProjectFiles(manifest.id, filesystem.exportSnapshot());
+      } else {
+        await this.store.applyProjectFileChanges(manifest.id, changes);
+      }
+    } catch (error) {
+      this.pendingLocalChanges = [...changes, ...this.pendingLocalChanges];
+      this.remoteChangesSinceFlush = this.remoteChangesSinceFlush || hadRemoteChanges;
+      void this.handleAutoSaveError(manifest.projectCollectionId, manifest.id, error);
+    }
   }
 
   private notifyActiveProject(): void {
@@ -1172,7 +1282,7 @@ export class ProjectManager {
 
   private async requireActiveProjectCollection(): Promise<ProjectCollection> {
     if (!this.currentProjectCollection) {
-      throw appHostError("NO_ACTIVE_PROJECT_COLLECTION", "No active workspace");
+      throw appHostError(AppHostErrorCode.NO_ACTIVE_PROJECT_COLLECTION, "No active workspace");
     }
     const collection = await this.requireProjectCollection(this.currentProjectCollection.projectCollectionId);
     this.currentProjectCollection = collection;
@@ -1188,7 +1298,7 @@ export class ProjectManager {
   private async requireProjectCollection(projectCollectionId: string): Promise<ProjectCollection> {
     const collection = await this.store.getProjectCollection(projectCollectionId);
     if (!collection) {
-      throw appHostError("PROJECT_COLLECTION_NOT_FOUND", `Workspace not found: ${projectCollectionId}`);
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND, `Workspace not found: ${projectCollectionId}`);
     }
     return collection;
   }
@@ -1209,7 +1319,10 @@ export class ProjectManager {
     const collection = await this.ensureActiveProjectCollectionReady();
     const manifest = await this.store.getProject(id);
     if (!manifest || manifest.projectCollectionId !== collection.projectCollectionId) {
-      throw appHostError("PROJECT_NOT_IN_ACTIVE_COLLECTION", `Project not found in active workspace: ${id}`);
+      throw appHostError(
+        AppHostErrorCode.PROJECT_NOT_IN_ACTIVE_COLLECTION,
+        `Project not found in active workspace: ${id}`
+      );
     }
     return manifest;
   }
@@ -1253,7 +1366,10 @@ export class ProjectManager {
 
     const handle = await this.acquireLock(project.id);
     if (!handle) {
-      throw appHostError("PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB", "Project is already open in another tab");
+      throw appHostError(
+        AppHostErrorCode.PROJECT_ALREADY_OPEN_IN_ANOTHER_TAB,
+        "Project is already open in another tab"
+      );
     }
 
     try {
@@ -1397,7 +1513,7 @@ export class ProjectManager {
   private async replaceTombstonedActiveProject(): Promise<ActiveProject> {
     const collection = await this.ensureActiveProjectCollection();
     if (this.collectionAccess(collection) === "locked") {
-      throw appHostError("PROJECT_COLLECTION_LOCKED", "Workspace is locked");
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_LOCKED, "Workspace is locked");
     }
     const existing = await this.openFirstAvailableProject(false);
     if (existing) {
@@ -1506,7 +1622,7 @@ export class ProjectManager {
 
   private assertProjectCollectionReady(collection: ProjectCollection): void {
     if (this.collectionAccess(collection) === "locked") {
-      throw appHostError("PROJECT_COLLECTION_LOCKED", "Workspace is locked");
+      throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_LOCKED, "Workspace is locked");
     }
   }
 

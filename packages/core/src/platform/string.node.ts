@@ -47,11 +47,11 @@ export namespace StringUtils {
     return String.fromCharCode(...codes);
   }
 
-  export function mkid(len: number = 16): string {
+  export function mkid(len: number = 16, random: () => number = Math.random): string {
     const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let result = "";
     for (let i = 0; i < len; i++) {
-      const randIndex = Math.floor(Math.random() * chars.length);
+      const randIndex = Math.floor(random() * chars.length);
       result += chars.charAt(randIndex);
     }
     return result;

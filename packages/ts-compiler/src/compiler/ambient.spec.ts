@@ -4,10 +4,16 @@ import { List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { mkTypeId, NativeType } from "@mindcraft-lang/core/runtime";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 
 let services: BrainServices;
+
+let nextTypeAtomId = 1024;
+function mkTestAtomId(): number {
+  return nextTypeAtomId++;
+}
 
 describe("buildAmbientDeclarations", () => {
   before(() => {
@@ -19,9 +25,10 @@ describe("buildAmbientDeclarations", () => {
     const vecId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vecId)) {
       types.addStructType("Vector2", {
+        atomId: mkTestAtomId(),
         fields: List.from([
-          { name: "x", typeId: mkTypeId(NativeType.Number, "number") },
-          { name: "y", typeId: mkTypeId(NativeType.Number, "number") },
+          { name: "x", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 },
+          { name: "y", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 1 },
         ]),
       });
     }
@@ -42,9 +49,10 @@ describe("buildAmbientDeclarations", () => {
     const actorRefId = mkTypeId(NativeType.Struct, "ActorRef");
     if (!types.get(actorRefId)) {
       types.addStructType("ActorRef", {
+        atomId: mkTestAtomId(),
         fields: List.from([
-          { name: "id", typeId: mkTypeId(NativeType.Number, "number") },
-          { name: "energy pct", typeId: mkTypeId(NativeType.Number, "number") },
+          { name: "id", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 },
+          { name: "energy pct", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 1 },
         ]),
         fieldGetter: () => undefined,
       });
@@ -71,7 +79,11 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientFiles: [{ path: "ambient.d.ts", content: ambient }], services });
+    const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      ambientFiles: [{ path: "ambient.d.ts", content: ambient }],
+      services,
+    });
     assert.ok(result.diagnostics.length > 0, "should have diagnostics due to brand mismatch");
   });
 
@@ -91,7 +103,11 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientFiles: [{ path: "ambient.d.ts", content: ambient }], services });
+    const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
+      ambientFiles: [{ path: "ambient.d.ts", content: ambient }],
+      services,
+    });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
   });
@@ -101,18 +117,20 @@ export default Sensor({
     const posId = mkTypeId(NativeType.Struct, "Position");
     if (!types.get(posId)) {
       types.addStructType("Position", {
+        atomId: mkTestAtomId(),
         fields: List.from([
-          { name: "x", typeId: mkTypeId(NativeType.Number, "number") },
-          { name: "y", typeId: mkTypeId(NativeType.Number, "number") },
+          { name: "x", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 0 },
+          { name: "y", typeId: mkTypeId(NativeType.Number, "number"), fieldIndex: 1 },
         ]),
       });
     }
     const entityId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityId)) {
       types.addStructType("Entity", {
+        atomId: mkTestAtomId(),
         fields: List.from([
-          { name: "name", typeId: mkTypeId(NativeType.String, "string") },
-          { name: "pos", typeId: posId },
+          { name: "name", typeId: mkTypeId(NativeType.String, "string"), fieldIndex: 0 },
+          { name: "pos", typeId: posId, fieldIndex: 1 },
         ]),
       });
     }
@@ -126,7 +144,7 @@ export default Sensor({
     const types = services.runtime.types;
     const healthId = mkTypeId(NativeType.Number, "health");
     if (!types.get(healthId)) {
-      types.addNumberType("health");
+      types.addNumberType("health", mkTestAtomId());
     }
 
     const ambient = buildAmbientDeclarations(services.runtime.types);
@@ -138,6 +156,7 @@ export default Sensor({
     const dirId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirId)) {
       types.addEnumType("Direction", {
+        atomId: mkTestAtomId(),
         symbols: List.from([
           { key: "north", label: "North", value: "north" },
           { key: "south", label: "South", value: "south" },
@@ -160,6 +179,7 @@ export default Sensor({
     const listId = mkTypeId(NativeType.List, "NumberList");
     if (!types.get(listId)) {
       types.addListType("NumberList", {
+        atomId: mkTestAtomId(),
         elementTypeId: mkTypeId(NativeType.Number, "number"),
       });
     }
@@ -173,6 +193,20 @@ export default Sensor({
     const ambient = buildAmbientDeclarations(services.runtime.types);
     const matches = ambient.match(/boolean: boolean;/g);
     assert.equal(matches?.length, 1, "boolean should appear exactly once in MindcraftTypeMap");
+  });
+
+  test("buffer joins MindcraftTypeMap exactly once under its lowercase registry key", () => {
+    const ambient = buildAmbientDeclarations(services.runtime.types);
+    const matches = ambient.match(/buffer: Buffer;/g);
+    assert.equal(matches?.length, 1, "buffer should appear exactly once in MindcraftTypeMap");
+  });
+
+  test("BufferConstructor exposes the isBuffer type guard", () => {
+    const ambient = buildAmbientDeclarations(services.runtime.types);
+    assert.ok(
+      ambient.includes("isBuffer(arg: any): arg is Buffer;"),
+      "ambient should declare Buffer.isBuffer as a Buffer type guard"
+    );
   });
 
   test("function type emits arrow syntax in typeDefToTs", () => {
@@ -203,7 +237,7 @@ export default Sensor({
   },
 });
 `;
-    const sensorResult = compileUserTile(sensorSource, { services });
+    const sensorResult = compileUserTile(sensorSource, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     const sensorErrors = sensorResult.diagnostics.filter((d) => d.severity === "error");
     assert.deepStrictEqual(sensorErrors, []);
     assert.ok(sensorResult.program);
@@ -220,7 +254,7 @@ export default Actuator({
   onExecute(ctx: Context): void {},
 });
 `;
-    const actuatorResult = compileUserTile(actuatorSource, { services });
+    const actuatorResult = compileUserTile(actuatorSource, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     const actuatorErrors = actuatorResult.diagnostics.filter((d) => d.severity === "error");
     assert.deepStrictEqual(actuatorErrors, []);
     assert.ok(actuatorResult.program);

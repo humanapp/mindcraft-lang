@@ -1,4 +1,4 @@
-import { appHostError } from "./app-host-error.js";
+import { AppHostErrorCode, appHostError } from "./app-host-error.js";
 import type { ProjectCollectionPinVerifier } from "./project-collection.js";
 
 /** PBKDF2 iteration count for v1 project collection PIN verifiers. */
@@ -31,7 +31,7 @@ export function normalizeProjectCollectionPin(pin: string): string {
     containsControlCharacter(trimmed)
   ) {
     throw appHostError(
-      "INVALID_PROJECT_COLLECTION_PIN",
+      AppHostErrorCode.INVALID_PROJECT_COLLECTION_PIN,
       `Workspace PIN must be ${PROJECT_COLLECTION_PIN_MIN_LENGTH} to ${PROJECT_COLLECTION_PIN_MAX_LENGTH} printable characters`
     );
   }
@@ -73,12 +73,12 @@ export async function verifyProjectCollectionPin(
 ): Promise<boolean> {
   const normalized = normalizeProjectCollectionPin(pin);
   if (verifier.scheme !== "v1") {
-    throw appHostError("PROJECT_COLLECTION_PIN_INVALID", "Unsupported workspace PIN verifier scheme");
+    throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_PIN_INVALID, "Unsupported workspace PIN verifier scheme");
   }
   const salt = base64ToBytes(verifier.salt);
   const expected = base64ToBytes(verifier.hash);
   if (salt.length !== PIN_SALT_BYTES || expected.length !== PIN_HASH_BYTES) {
-    throw appHostError("PROJECT_COLLECTION_PIN_INVALID", "Invalid workspace PIN verifier");
+    throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_PIN_INVALID, "Invalid workspace PIN verifier");
   }
   const actual = await derivePinHash(normalized, salt);
   return timingSafeBytesEqual(actual, expected);
@@ -98,7 +98,7 @@ function getPinCrypto(): Crypto {
   const candidate = globalThis.crypto;
   if (!candidate?.subtle || typeof candidate.getRandomValues !== "function") {
     throw appHostError(
-      "PROJECT_COLLECTION_PIN_CAPABILITY_UNAVAILABLE",
+      AppHostErrorCode.PROJECT_COLLECTION_PIN_CAPABILITY_UNAVAILABLE,
       "WebCrypto PBKDF2 is required for workspace PINs"
     );
   }
@@ -143,7 +143,7 @@ function base64ToBytes(value: string): Uint8Array {
     }
     return bytes;
   } catch {
-    throw appHostError("PROJECT_COLLECTION_PIN_INVALID", "Invalid workspace PIN verifier");
+    throw appHostError(AppHostErrorCode.PROJECT_COLLECTION_PIN_INVALID, "Invalid workspace PIN verifier");
   }
 }
 

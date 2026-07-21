@@ -18,6 +18,7 @@ import {
   type MindcraftModuleApi,
   runtime,
 } from "@mindcraft-lang/core";
+import { CoreHostActions } from "@mindcraft-lang/core/runtime";
 
 type RootContracts = [
   ActionBundleUpdate,
@@ -91,8 +92,8 @@ test("coreModule installs through MindcraftModuleApi with brainServices", () => 
   coreModule().install(api);
 
   assert.ok(services.runtime.types.resolveByName("number"));
-  assert.ok(services.runtime.functions.get(brain.CoreSensorId.CurrentPage));
-  assert.ok(services.runtime.actions.getByKey(brain.CoreSensorId.CurrentPage));
-  assert.ok(services.edit.tiles.get(brain.mkSensorTileId(brain.CoreSensorId.CurrentPage)));
+  assert.ok(services.runtime.functions.get(CoreHostActions.CurrentPage.key));
+  assert.ok(services.runtime.actions.getByKey(CoreHostActions.CurrentPage.key));
+  assert.ok(services.edit.tiles.get(brain.mkSensorTileId(CoreHostActions.CurrentPage.key)));
   assert.ok(services.runtime.operatorTable.get(runtime.CoreOpId.Add));
 });

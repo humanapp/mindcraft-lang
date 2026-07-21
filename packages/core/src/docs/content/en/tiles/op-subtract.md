@@ -1,8 +1,5 @@
 ```brain noframe do
-{
-  "tileId": "tile.op->sub",
-  "catalog": []
-}
+{ "tile": "${tileId}" }
 ```
 
 # Subtract

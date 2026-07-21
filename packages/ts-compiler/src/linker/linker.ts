@@ -1,6 +1,12 @@
 import { List } from "@mindcraft-lang/core";
-import type { ConstantOffsets, FunctionBytecode, Instr, UnlinkedBrainProgram } from "@mindcraft-lang/core/runtime";
-import { isFunctionValue, NativeType, Op, type Value } from "@mindcraft-lang/core/runtime";
+import type {
+  ConstantOffsets,
+  FunctionBytecode,
+  Instr,
+  ProgramTypeEntry,
+  UnlinkedBrainProgram,
+} from "@mindcraft-lang/core/runtime";
+import { isFunctionValue, NativeType, Op, remapProgramTypeEntry, type Value } from "@mindcraft-lang/core/runtime";
 import type { DebugMetadata, LinkedUserProgram, UserAuthoredProgram } from "../compiler/types.js";
 
 /** Output of {@link linkUserPrograms}: the merged brain program and per-program offset metadata. */
@@ -15,6 +21,7 @@ export function linkUserPrograms(brainProgram: UnlinkedBrainProgram, userProgram
   const linkedValues: Value[] = brainProgram.constantPools.values.toArray();
   const linkedNumbers: number[] = brainProgram.constantPools.numbers.toArray();
   const linkedStrings: string[] = brainProgram.constantPools.strings.toArray();
+  const linkedTypes: ProgramTypeEntry[] = (brainProgram.types ?? List.empty<ProgramTypeEntry>()).toArray();
   const linkedVariableNames = brainProgram.variableNames.toArray();
   const linkedArtifacts: LinkedUserProgram[] = [];
 
@@ -25,7 +32,13 @@ export function linkUserPrograms(brainProgram: UnlinkedBrainProgram, userProgram
       strings: linkedStrings.length,
       values: linkedValues.length,
     };
+    const typeOffset = linkedTypes.length;
     const variableOffset = linkedVariableNames.length;
+
+    const userTypes = userProg.types ?? List.empty<ProgramTypeEntry>();
+    for (let i = 0; i < userTypes.size(); i++) {
+      linkedTypes.push(remapProgramTypeEntry(userTypes.get(i)!, (idx) => idx + typeOffset));
+    }
 
     for (let i = 0; i < userProg.constantPools.values.size(); i++) {
       const c = userProg.constantPools.values.get(i);
@@ -50,14 +63,14 @@ export function linkUserPrograms(brainProgram: UnlinkedBrainProgram, userProgram
 
     for (let i = 0; i < userProg.functions.size(); i++) {
       const fn = userProg.functions.get(i);
-      const remappedCode = remapInstructions(fn.code, funcOffset, constantOffsets, variableOffset);
+      const remappedCode = remapInstructions(fn.code, funcOffset, constantOffsets, typeOffset, variableOffset);
       linkedFunctions.push({
         code: remappedCode,
         numParams: fn.numParams,
         numLocals: fn.numLocals,
         name: fn.name,
         maxStackDepth: fn.maxStackDepth,
-        injectCtxTypeId: fn.injectCtxTypeId,
+        ...(fn.injectCtxTypeIdx === undefined ? {} : { injectCtxTypeIdx: fn.injectCtxTypeIdx + typeOffset }),
       });
     }
 
@@ -78,6 +91,7 @@ export function linkUserPrograms(brainProgram: UnlinkedBrainProgram, userProgram
       strings: List.from(linkedStrings),
       values: List.from(linkedValues),
     },
+    types: List.from(linkedTypes),
     variableNames: List.from(linkedVariableNames),
     entryPoint: brainProgram.entryPoint,
     ruleIndex: brainProgram.ruleIndex,
@@ -95,6 +109,7 @@ function remapInstructions(
   code: List<Instr>,
   funcOffset: number,
   constOffsets: ConstantOffsets,
+  typeOffset: number,
   variableOffset: number
 ): List<Instr> {
   const remapped: Instr[] = [];
@@ -111,7 +126,7 @@ function remapInstructions(
     } else if (instr.op === Op.PUSH_CONST_STR && instr.a !== undefined) {
       remapped.push({ ...instr, a: instr.a + constOffsets.strings });
     } else if (instr.op === Op.INSTANCE_OF && instr.a !== undefined) {
-      remapped.push({ ...instr, a: instr.a + constOffsets.strings });
+      remapped.push({ ...instr, a: instr.a + typeOffset });
     } else if ((instr.op === Op.LOAD_VAR_SLOT || instr.op === Op.STORE_VAR_SLOT) && instr.a !== undefined) {
       remapped.push({ ...instr, a: instr.a + variableOffset });
     } else if (
@@ -121,7 +136,7 @@ function remapInstructions(
         instr.op === Op.STRUCT_COPY_EXCEPT) &&
       instr.b !== undefined
     ) {
-      remapped.push({ ...instr, b: instr.b + constOffsets.strings });
+      remapped.push({ ...instr, b: instr.b + typeOffset });
     } else {
       remapped.push(instr);
     }

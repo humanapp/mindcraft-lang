@@ -2,6 +2,7 @@ import "fake-indexeddb/auto";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
+  AppHostErrorCode,
   createIdbProjectStore,
   createProjectCollectionPinVerifier,
   DEFAULT_PROJECT_COLLECTION_ID,
@@ -162,15 +163,21 @@ describe("createIdbProjectStore project collections", () => {
     const collection = await store.createProjectCollection("Valid");
     const tooLong = "x".repeat(PROJECT_COLLECTION_NAME_MAX_LENGTH + 1);
 
-    await assertRejectsWithCode(() => store.createProjectCollection("   "), "INVALID_PROJECT_COLLECTION_NAME");
-    await assertRejectsWithCode(() => store.createProjectCollection(tooLong), "INVALID_PROJECT_COLLECTION_NAME");
+    await assertRejectsWithCode(
+      () => store.createProjectCollection("   "),
+      AppHostErrorCode.INVALID_PROJECT_COLLECTION_NAME
+    );
+    await assertRejectsWithCode(
+      () => store.createProjectCollection(tooLong),
+      AppHostErrorCode.INVALID_PROJECT_COLLECTION_NAME
+    );
     await assertRejectsWithCode(
       () => store.updateProjectCollection(collection.projectCollectionId, { name: "" }),
-      "INVALID_PROJECT_COLLECTION_NAME"
+      AppHostErrorCode.INVALID_PROJECT_COLLECTION_NAME
     );
     await assertRejectsWithCode(
       () => store.updateProjectCollection(collection.projectCollectionId, { name: tooLong }),
-      "INVALID_PROJECT_COLLECTION_NAME"
+      AppHostErrorCode.INVALID_PROJECT_COLLECTION_NAME
     );
     assert.strictEqual((await store.getProjectCollection(collection.projectCollectionId))?.name, "Valid");
   });
@@ -186,7 +193,7 @@ describe("createIdbProjectStore project collections", () => {
 
     await assertRejectsWithCode(
       () => store.deleteProjectCollection(DEFAULT_PROJECT_COLLECTION_ID),
-      "DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED"
+      AppHostErrorCode.DEFAULT_PROJECT_COLLECTION_DELETE_BLOCKED
     );
 
     await store.deleteProjectCollection(nonDefault.projectCollectionId);
@@ -291,13 +298,16 @@ describe("createIdbProjectStore project collection membership", () => {
   it("creates projects only in non-deleted project collections", async () => {
     const store = await createIdbProjectStore(nextKeyPrefix());
 
-    await assertRejectsWithCode(() => store.createProject("missing", "No Collection"), "PROJECT_COLLECTION_NOT_FOUND");
+    await assertRejectsWithCode(
+      () => store.createProject("missing", "No Collection"),
+      AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
+    );
 
     const collection = await store.createProjectCollection("Transient");
     await store.deleteProjectCollection(collection.projectCollectionId);
     await assertRejectsWithCode(
       () => store.createProject(collection.projectCollectionId, "Tombstoned Collection"),
-      "PROJECT_COLLECTION_NOT_FOUND"
+      AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
     );
 
     assert.strictEqual((await store.listProjects(collection.projectCollectionId)).length, 0);
@@ -350,11 +360,11 @@ describe("createIdbProjectStore project collection membership", () => {
     const store = await createIdbProjectStore(nextKeyPrefix());
     const targetCollection = await store.ensureDefaultProjectCollection();
 
-    await assertRejectsWithCode(() => store.deleteProject("missing"), "PROJECT_NOT_FOUND");
-    await assertRejectsWithCode(() => store.duplicateProject("missing", "Copy"), "PROJECT_NOT_FOUND");
+    await assertRejectsWithCode(() => store.deleteProject("missing"), AppHostErrorCode.PROJECT_NOT_FOUND);
+    await assertRejectsWithCode(() => store.duplicateProject("missing", "Copy"), AppHostErrorCode.PROJECT_NOT_FOUND);
     await assertRejectsWithCode(
       () => store.copyProjectToCollection("missing", targetCollection.projectCollectionId, "Copy"),
-      "PROJECT_NOT_FOUND"
+      AppHostErrorCode.PROJECT_NOT_FOUND
     );
   });
 
@@ -365,11 +375,11 @@ describe("createIdbProjectStore project collection membership", () => {
     await (store as TestStoreInternals).db.delete("projectCollections", collection.projectCollectionId);
 
     assert.strictEqual(await store.getProject(project.id), undefined);
-    await assertRejectsWithCode(() => store.deleteProject(project.id), "PROJECT_COLLECTION_NOT_FOUND");
-    await assertRejectsWithCode(() => store.duplicateProject(project.id, "Copy"), "PROJECT_NOT_FOUND");
+    await assertRejectsWithCode(() => store.deleteProject(project.id), AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND);
+    await assertRejectsWithCode(() => store.duplicateProject(project.id, "Copy"), AppHostErrorCode.PROJECT_NOT_FOUND);
     await assertRejectsWithCode(
       () => store.copyProjectToCollection(project.id, DEFAULT_PROJECT_COLLECTION_ID, "Copy"),
-      "PROJECT_COLLECTION_NOT_FOUND"
+      AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
     );
   });
 
@@ -385,6 +395,7 @@ describe("createIdbProjectStore project collection membership", () => {
     await store.updateProject(project.id, {
       description: "source description",
       thumbnailUrl: "data:image/png;base64,source",
+      targets: { "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" } },
     });
 
     const copy = await store.duplicateProject(project.id, "Copy");
@@ -392,6 +403,7 @@ describe("createIdbProjectStore project collection membership", () => {
     assert.strictEqual(copy.projectCollectionId, collection.projectCollectionId);
     assert.strictEqual(copy.description, "source description");
     assert.strictEqual(copy.thumbnailUrl, "data:image/png;base64,source");
+    assert.deepStrictEqual(copy.targets, { "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" } });
     assert.strictEqual((await store.loadProjectFiles(copy.id))?.get("src/main.ts")?.kind, "file");
     assert.strictEqual(await store.loadAppData(copy.id, "brains"), '{"source":true}');
   });
@@ -404,6 +416,7 @@ describe("createIdbProjectStore project collection membership", () => {
     await store.updateProject(project.id, {
       description: "source description",
       thumbnailUrl: "data:image/png;base64,source",
+      targets: { "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" } },
     });
     await store.saveProjectFiles(
       project.id,
@@ -419,11 +432,12 @@ describe("createIdbProjectStore project collection membership", () => {
     assert.strictEqual(copy.name, "Copy");
     assert.strictEqual(copy.description, "source description");
     assert.strictEqual(copy.thumbnailUrl, "data:image/png;base64,source");
+    assert.deepStrictEqual(copy.targets, { "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" } });
     assert.strictEqual((await store.loadProjectFiles(copy.id))?.get("src/main.ts")?.kind, "file");
     assert.strictEqual(await store.loadAppData(copy.id, "brains"), '{"source":true}');
     await assertRejectsWithCode(
       () => store.copyProjectToCollection(project.id, "missing", "No Target"),
-      "PROJECT_COLLECTION_NOT_FOUND"
+      AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
     );
   });
 
@@ -475,16 +489,22 @@ describe("createIdbProjectStore project collection membership", () => {
 
     await store.deleteProject(project.id);
 
-    await assertRejectsWithCode(() => store.updateProject(project.id, { name: "Nope" }), "PROJECT_NOT_FOUND");
+    await assertRejectsWithCode(
+      () => store.updateProject(project.id, { name: "Nope" }),
+      AppHostErrorCode.PROJECT_NOT_FOUND
+    );
     await assertRejectsWithCode(
       () =>
         store.saveProjectFiles(
           project.id,
           new Map([["src/main.ts", { kind: "file", content: "x", etag: "etag-1", isReadonly: false }]])
         ),
-      "PROJECT_NOT_FOUND"
+      AppHostErrorCode.PROJECT_NOT_FOUND
     );
-    await assertRejectsWithCode(() => store.saveAppData(project.id, "brains", "{}"), "PROJECT_NOT_FOUND");
+    await assertRejectsWithCode(
+      () => store.saveAppData(project.id, "brains", "{}"),
+      AppHostErrorCode.PROJECT_NOT_FOUND
+    );
   });
 
   it("rejects guarded writes after project collection tombstone", async () => {
@@ -496,9 +516,12 @@ describe("createIdbProjectStore project collection membership", () => {
 
     await assertRejectsWithCode(
       () => store.updateProjectCollection(collection.projectCollectionId, { name: "Nope" }),
-      "PROJECT_COLLECTION_NOT_FOUND"
+      AppHostErrorCode.PROJECT_COLLECTION_NOT_FOUND
     );
-    await assertRejectsWithCode(() => store.saveAppData(project.id, "brains", "{}"), "PROJECT_NOT_FOUND");
+    await assertRejectsWithCode(
+      () => store.saveAppData(project.id, "brains", "{}"),
+      AppHostErrorCode.PROJECT_NOT_FOUND
+    );
   });
 });
 

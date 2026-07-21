@@ -14,6 +14,53 @@
   --font-math: "Latin Modern Math", serif;
 }
 
+/* ==========================================================================
+   Semantic color token contract for shared UI components
+
+   Shared components reference these token NAMES only. Each consuming app
+   overrides the VALUES in its own globals.css, which is imported after this
+   file so the app values win. These defaults are single-brand and keep
+   components legible when an app omits an override.
+   ========================================================================== */
+
+@theme {
+  --color-background: oklch(100% 0 0);
+  --color-foreground: oklch(9% 0 0);
+  --color-card: oklch(100% 0 0);
+  --color-card-foreground: oklch(9% 0 0);
+  --color-popover: oklch(100% 0 0);
+  --color-popover-foreground: oklch(9% 0 0);
+  --color-panel: oklch(96% 0 0);
+  --color-panel-foreground: oklch(9% 0 0);
+  --color-primary: oklch(9% 0 0);
+  --color-primary-foreground: oklch(98% 0 0);
+  --color-secondary: oklch(96% 0 0);
+  --color-secondary-foreground: oklch(9% 0 0);
+  --color-muted: oklch(96% 0 0);
+  --color-muted-foreground: oklch(45% 0 0);
+  --color-accent: oklch(96% 0 0);
+  --color-accent-foreground: oklch(9% 0 0);
+  --color-destructive: oklch(60% 0.21 29);
+  --color-destructive-foreground: oklch(98% 0 0);
+  --color-success: oklch(62% 0.17 149);
+  --color-success-foreground: oklch(98% 0 0);
+  --color-warning: oklch(70% 0.17 75);
+  --color-warning-foreground: oklch(20% 0 0);
+  --color-border: oklch(90% 0 0);
+  --color-input: oklch(90% 0 0);
+  --color-ring: oklch(9% 0 0);
+  --color-chart-1: oklch(61% 0.15 29);
+  --color-chart-2: oklch(39% 0.11 197);
+  --color-chart-3: oklch(24% 0.09 237);
+  --color-chart-4: oklch(66% 0.17 83);
+  --color-chart-5: oklch(67% 0.19 27);
+  --radius: 0.5rem;
+  /* Corner radius of the shared button primitives. */
+  --radius-button: 0.375rem;
+  --font-mono:
+    "Roboto Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+
 /* Animations */
 
 @keyframes marquee-scroll {

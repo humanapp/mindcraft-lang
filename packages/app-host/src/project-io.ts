@@ -1,46 +1,50 @@
-import type { MindcraftExportCommon, MindcraftExportFile, MindcraftExportHost } from "@mindcraft-lang/service-api";
-import { appHostError } from "./app-host-error.js";
-import { EXAMPLES_FOLDER } from "./examples.js";
+import type {
+  MindcraftProjectDocument,
+  MindcraftProjectDocumentValidationCode,
+  MindcraftProjectDocumentValidationError,
+  MindcraftProjectExtensions,
+} from "@mindcraft-lang/service-api";
+import { MINDCRAFT_PROJECT_FORMAT, parseMindcraftProjectDocument } from "@mindcraft-lang/service-api";
+import { AppHostErrorCode, appHostError } from "./app-host-error.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
+import { contentManifestFromManifest } from "./mindcraft-json-sync.js";
+import type { ProjectContentManifest, ProjectContentManifestErrorCode } from "./project-content-manifest.js";
+import { projectContentManifestToJson, validateProjectContentManifest } from "./project-content-manifest.js";
 import type { ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectManager } from "./project-manager.js";
 import { DEFAULT_PROJECT_NAME } from "./project-manager.js";
 import type { ProjectManifest } from "./project-manifest.js";
 
-export type {
-  MindcraftExportCommon,
-  MindcraftExportDocument,
-  MindcraftExportFile,
-  MindcraftExportHost,
-} from "@mindcraft-lang/service-api";
+export type { MindcraftProjectDocument, MindcraftProjectExtensions } from "@mindcraft-lang/service-api";
+
+/** App-data key holding the project's serialized brains, keyed by brain key. */
+const BRAINS_APP_DATA_KEY = "brains";
+
+/** App-data key holding the per-app session chunks, keyed by app name. */
+const APP_CHUNKS_APP_DATA_KEY = "app";
 
 /** Stable identifiers for import diagnostics produced by app-host. */
-export type ImportDiagnosticCode =
-  | "IMPORT_FILE_TOO_LARGE"
-  | "IMPORT_HOST_MISMATCH"
-  | "IMPORT_INVALID_BRAINS"
-  | "IMPORT_INVALID_DESCRIPTION"
-  | "IMPORT_INVALID_FILE_ENTRY"
-  | "IMPORT_INVALID_FILE_PATH"
-  | "IMPORT_INVALID_FILES"
-  | "IMPORT_INVALID_JSON"
-  | "IMPORT_INVALID_NAME"
-  | "IMPORT_INVALID_THUMBNAIL_URL"
-  | "IMPORT_MISSING_APP_DATA"
-  | "IMPORT_NEWER_HOST_VERSION"
-  | "IMPORT_SERIALIZE_BRAINS_FAILED"
-  | "IMPORT_UNEXPECTED_ERROR";
+export const ImportDiagnosticCode = {
+  IMPORT_FILE_TOO_LARGE: "IMPORT_FILE_TOO_LARGE",
+  IMPORT_INVALID_BRAINS: "IMPORT_INVALID_BRAINS",
+  IMPORT_INVALID_APP_CHUNKS: "IMPORT_INVALID_APP_CHUNKS",
+  IMPORT_APP_TRANSLATION_FAILED: "IMPORT_APP_TRANSLATION_FAILED",
+  IMPORT_UNEXPECTED_ERROR: "IMPORT_UNEXPECTED_ERROR",
+} as const;
+
+/** Union of all {@link ImportDiagnosticCode} values. */
+export type ImportDiagnosticCode = (typeof ImportDiagnosticCode)[keyof typeof ImportDiagnosticCode];
 
 /** A diagnostic produced while importing a project. */
 export interface ImportDiagnostic {
   severity: "error" | "warning";
   /** Stable identifier for app-host import diagnostics. */
-  code?: ImportDiagnosticCode;
+  code?: ImportDiagnosticCode | MindcraftProjectDocumentValidationCode | ProjectContentManifestErrorCode;
   message: string;
 }
 
-/** Result of {@link importProject}. */
+/** Result of {@link importProjectDocument}. */
 export interface ImportResult {
   /** `true` when the project was created. `false` if any error diagnostics were produced. */
   success: boolean;
@@ -50,259 +54,274 @@ export interface ImportResult {
   diagnostics: ImportDiagnostic[];
 }
 
-/** Result returned by an {@link ImportAppLayerCallback}. */
-export interface ImportAppLayerResult {
-  /** Diagnostics produced by the app layer. Any `error` aborts the import. */
+/** Result returned by an {@link ImportAppChunkCallback}. */
+export interface ImportAppChunkResult {
+  /** Diagnostics produced by the app translator. Any `error` aborts the import. */
   diagnostics: ImportDiagnostic[];
   /** Optional app-data entries to seed into the new project (key -> serialized value). */
   appData?: Record<string, string>;
 }
 
 /**
- * Hook invoked by {@link importProject} to validate and translate the host's
- * `app` payload into project app-data.
+ * Hook invoked by {@link importProjectDocument} to validate and translate the
+ * importing app's session chunk into project app-data.
  *
- * @param app - The raw `app` field from the export document.
- * @param hostVersion - The semver of the host that produced the export.
+ * @param appChunk - The importing app's entry in the manifest's `app` chunk
+ *   map, or `undefined` when the document carries none.
  */
-export type ImportAppLayerCallback = (app: unknown, hostVersion: string) => ImportAppLayerResult;
+export type ImportAppChunkCallback = (appChunk: unknown) => ImportAppChunkResult;
+
+/** An app's session chunk to embed in an export document's manifest. */
+export interface ExportAppChunk {
+  /** App name the chunk is keyed under in the manifest's `app` map. */
+  name: string;
+  /** JSON-serializable session state owned by the app. */
+  chunk: unknown;
+}
+
+/** Treats an empty extensions map as absent. */
+function normalizeExtensions(
+  extensions: MindcraftProjectExtensions | undefined
+): MindcraftProjectExtensions | undefined {
+  return extensions && Object.keys(extensions).length > 0 ? extensions : undefined;
+}
+
+async function loadAppDataRecord(
+  loadAppData: (key: string) => Promise<string | undefined>,
+  key: string
+): Promise<Record<string, unknown>> {
+  const raw = await loadAppData(key);
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (isRecord(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // parse failure -- use an empty record
+  }
+  return {};
+}
 
 /**
- * Build the common (non-app-specific) portion of an export document from the
- * active project. The result still needs an app-specific `app` field added by
- * the caller before serialization.
+ * Build a shared `.mindcraft` project document from a project snapshot: the
+ * project's content manifest embedded verbatim (carrying its brains and
+ * per-app session chunks) plus the contents of its files.
+ *
+ * @param manifest - Project metadata the embedded manifest is projected from.
+ * @param filesystem - Project files to include in the document.
+ * @param loadAppData - App-data loader used for brains and stored app chunks.
+ * @param options.appChunk - The exporting app's session chunk, keyed into the
+ *   manifest's `app` map alongside any stored chunks from other apps.
  */
-export async function buildExportCommon(
-  host: MindcraftExportHost,
+export async function buildProjectExportDocument(
   manifest: ProjectManifest,
   filesystem: ProjectFileSystem,
-  loadAppData: (key: string) => Promise<string | undefined>
-): Promise<MindcraftExportCommon> {
+  loadAppData: (key: string) => Promise<string | undefined>,
+  options?: {
+    appChunk?: ExportAppChunk;
+  }
+): Promise<MindcraftProjectDocument> {
   const snapshot = filesystem.exportSnapshot();
-  const examplesPrefix = `${EXAMPLES_FOLDER}/`;
-
-  const files: MindcraftExportFile[] = [];
+  const contents: Record<string, string> = {};
   for (const [path, entry] of snapshot) {
     if (entry.kind !== "file") continue;
     if (entry.isReadonly) continue;
     if (path === MINDCRAFT_JSON_PATH) continue;
-    if (path.startsWith(examplesPrefix)) continue;
-    files.push({ path, content: entry.content });
+    contents[path] = entry.content;
   }
 
-  let brains: Record<string, unknown> = {};
-  const raw = await loadAppData("brains");
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-        brains = parsed as Record<string, unknown>;
-      }
-    } catch {
-      // parse failure -- use empty brains
-    }
+  const brains = await loadAppDataRecord(loadAppData, BRAINS_APP_DATA_KEY);
+  const appChunks = await loadAppDataRecord(loadAppData, APP_CHUNKS_APP_DATA_KEY);
+  if (options?.appChunk) {
+    appChunks[options.appChunk.name] = options.appChunk.chunk;
   }
+
+  const extras: Record<string, unknown> = {
+    ...(Object.keys(brains).length > 0 ? { brains } : {}),
+    ...(Object.keys(appChunks).length > 0 ? { app: appChunks } : {}),
+  };
+  const contentManifest: ProjectContentManifest = {
+    ...contentManifestFromManifest(manifest),
+    ...(Object.keys(extras).length > 0 ? { extras } : {}),
+  };
 
   return {
-    host,
-    name: manifest.name,
-    description: manifest.description,
-    thumbnailUrl: manifest.thumbnailUrl,
-    files,
-    brains,
+    format: MINDCRAFT_PROJECT_FORMAT,
+    manifest: projectContentManifestToJson(contentManifest),
+    contents,
   };
 }
 
 /**
- * Build the common export document fields for the active project managed by
- * `projectManager`.
+ * Build a shared `.mindcraft` project document for the active project managed
+ * by `projectManager`.
  */
-export async function buildActiveProjectExportCommon(
-  host: MindcraftExportHost,
-  projectManager: ProjectManager
-): Promise<MindcraftExportCommon> {
+export async function buildActiveProjectExportDocument(
+  projectManager: ProjectManager,
+  options?: {
+    appChunk?: ExportAppChunk;
+  }
+): Promise<MindcraftProjectDocument> {
   const active = projectManager.activeProject;
   if (!active) {
-    throw appHostError("NO_ACTIVE_PROJECT", "No active project");
+    throw appHostError(AppHostErrorCode.NO_ACTIVE_PROJECT, "No active project");
   }
-  return buildExportCommon(host, active.manifest, active.filesystem, (key) => projectManager.loadAppData(key));
+  return buildProjectExportDocument(
+    active.manifest,
+    active.filesystem,
+    (key) => projectManager.loadAppData(key),
+    options
+  );
 }
 
 /** Default upper bound on import file size, in bytes (5 MB). */
 export const DEFAULT_MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
-function compareSemver(a: string, b: string): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
-  for (let i = 0; i < 3; i++) {
-    const va = pa[i] ?? 0;
-    const vb = pb[i] ?? 0;
-    if (va !== vb) return va - vb;
-  }
-  return 0;
-}
-
 function errorResult(code: ImportDiagnosticCode, message: string): ImportResult {
   return { success: false, projectId: undefined, diagnostics: [{ severity: "error", code, message }] };
 }
 
-function isValidFilePath(path: unknown): path is string {
-  if (typeof path !== "string") return false;
-  if (path.includes("..")) return false;
-  if (path.startsWith("/")) return false;
-  if (path.includes("\\")) return false;
-  return true;
+function validationErrorResult(
+  errors: readonly (
+    | MindcraftProjectDocumentValidationError
+    | { code: ProjectContentManifestErrorCode; path: string; message: string }
+  )[]
+): ImportResult {
+  return {
+    success: false,
+    projectId: undefined,
+    diagnostics: errors.map((error) => ({
+      severity: "error",
+      code: error.code,
+      message: `${error.path}: ${error.message}`,
+    })),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function buildSnapshotFromContents(contents: Readonly<Record<string, string>>): Map<string, ProjectFileSystemEntry> {
+  const snapshot = new Map<string, ProjectFileSystemEntry>();
+  for (const [path, content] of Object.entries(contents)) {
+    if (path === MINDCRAFT_JSON_PATH) continue;
+    snapshot.set(path, {
+      kind: "file",
+      content,
+      etag: crypto.randomUUID(),
+      isReadonly: false,
+    });
+  }
+  return snapshot;
+}
+
+function mapAppChunkDiagnostics(diagnostics: readonly ImportDiagnostic[]): ImportDiagnostic[] {
+  return diagnostics.map((diagnostic) => {
+    if (diagnostic.severity === "error" && diagnostic.code === undefined) {
+      return { ...diagnostic, code: ImportDiagnosticCode.IMPORT_APP_TRANSLATION_FAILED };
+    }
+    return diagnostic;
+  });
 }
 
 /**
- * Import a project from a `.mindcraft` export file produced by
- * {@link buildExportCommon}. Validates the host name/version, file paths, and
- * brain payload before creating the project via `projectManager`.
+ * Import a project from a `.mindcraft` document: the embedded content manifest
+ * is validated and extracted, its brains and app chunks are seeded into the
+ * new project's app data, and the document's contents become the project's
+ * files. The new project gets a freshly minted store id.
  *
  * @param file - The user-selected export file.
- * @param hostName - Expected host application identifier; imports from other
- *   hosts are rejected.
- * @param hostVersion - Current host semver; imports from newer hosts are
- *   rejected.
+ * @param hostName - Importing app's identifier; selects its entry in the
+ *   manifest's `app` chunk map.
  * @param projectManager - Manager used to create the new project.
  * @param options.maxFileSize - Override the {@link DEFAULT_MAX_FILE_SIZE} cap.
- * @param options.appLayerCallback - Hook to validate/translate the export's
- *   `app` payload. If provided, the export must include an `app` field.
+ * @param options.appChunkCallback - Hook to validate/translate the importing
+ *   app's session chunk into app data.
  */
-export async function importProject(
+export async function importProjectDocument(
   file: File,
   hostName: string,
-  hostVersion: string,
   projectManager: ProjectManager,
   options?: {
     maxFileSize?: number;
-    appLayerCallback?: ImportAppLayerCallback;
+    appChunkCallback?: ImportAppChunkCallback;
   }
 ): Promise<ImportResult> {
   try {
     const maxSize = options?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
     if (file.size > maxSize) {
-      return errorResult("IMPORT_FILE_TOO_LARGE", `File exceeds the maximum size of ${maxSize} bytes.`);
-    }
-
-    const text = await file.text();
-
-    let doc: Record<string, unknown>;
-    try {
-      doc = JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      return errorResult("IMPORT_INVALID_JSON", "The file is not valid JSON.");
-    }
-
-    const docHost = doc.host as Record<string, unknown> | undefined;
-    if (docHost?.name !== hostName) {
       return errorResult(
-        "IMPORT_HOST_MISMATCH",
-        `This project was created by ${(docHost?.name as string) ?? "an unknown app"} and cannot be imported here.`
+        ImportDiagnosticCode.IMPORT_FILE_TOO_LARGE,
+        `File exceeds the maximum size of ${maxSize} bytes.`
       );
     }
 
-    const docHostVersion = docHost.version as string;
-    if (typeof docHostVersion === "string" && compareSemver(docHostVersion, hostVersion) > 0) {
+    const parsed = parseMindcraftProjectDocument(await file.text());
+    if (!parsed.ok) {
+      return validationErrorResult(parsed.errors);
+    }
+
+    const manifestResult = validateProjectContentManifest(parsed.document.manifest);
+    if (!manifestResult.ok) {
+      return validationErrorResult(manifestResult.errors);
+    }
+    const manifest = manifestResult.manifest;
+
+    const rawBrains = manifest.extras?.brains;
+    if (rawBrains !== undefined && !isRecord(rawBrains)) {
       return errorResult(
-        "IMPORT_NEWER_HOST_VERSION",
-        `This project was exported by a newer version of ${hostName} (${docHostVersion}). Update the app before importing.`
+        ImportDiagnosticCode.IMPORT_INVALID_BRAINS,
+        'The manifest\'s "brains" chunk must be an object keyed by brain key.'
       );
     }
+    const brains = (rawBrains as Record<string, unknown> | undefined) ?? {};
 
-    if (typeof doc.name !== "string") {
-      return errorResult("IMPORT_INVALID_NAME", 'Invalid export file: "name" must be a string.');
-    }
-    if (typeof doc.description !== "string") {
-      return errorResult("IMPORT_INVALID_DESCRIPTION", 'Invalid export file: "description" must be a string.');
-    }
-    if (doc.thumbnailUrl !== undefined && typeof doc.thumbnailUrl !== "string") {
+    const rawAppChunks = manifest.extras?.app;
+    if (rawAppChunks !== undefined && !isRecord(rawAppChunks)) {
       return errorResult(
-        "IMPORT_INVALID_THUMBNAIL_URL",
-        'Invalid export file: "thumbnailUrl" must be a string when present.'
+        ImportDiagnosticCode.IMPORT_INVALID_APP_CHUNKS,
+        'The manifest\'s "app" chunk must be an object keyed by app name.'
       );
     }
-    if (!Array.isArray(doc.files)) {
-      return errorResult("IMPORT_INVALID_FILES", 'Invalid export file: "files" must be an array.');
-    }
-    if (doc.brains === null || typeof doc.brains !== "object" || Array.isArray(doc.brains)) {
-      return errorResult("IMPORT_INVALID_BRAINS", 'Invalid export file: "brains" must be an object.');
-    }
+    const appChunks = (rawAppChunks as Record<string, unknown> | undefined) ?? {};
 
-    const name = typeof doc.name === "string" && doc.name.trim() ? doc.name.trim() : DEFAULT_PROJECT_NAME;
-    const description = doc.description;
-    const thumbnailUrl = typeof doc.thumbnailUrl === "string" ? doc.thumbnailUrl : undefined;
-
-    const warnings: ImportDiagnostic[] = [];
-
-    const snapshot = new Map<string, ProjectFileSystemEntry>();
-    for (const entry of doc.files as unknown[]) {
-      const fileEntry = entry as Record<string, unknown>;
-      if (typeof fileEntry?.path !== "string" || typeof fileEntry?.content !== "string") {
-        warnings.push({
-          severity: "warning",
-          code: "IMPORT_INVALID_FILE_ENTRY",
-          message: `Skipped file entry with invalid path or content.`,
-        });
-        continue;
-      }
-      if (!isValidFilePath(fileEntry.path)) {
-        warnings.push({
-          severity: "warning",
-          code: "IMPORT_INVALID_FILE_PATH",
-          message: `Skipped file with invalid path: "${fileEntry.path}".`,
-        });
-        continue;
-      }
-      snapshot.set(fileEntry.path, {
-        kind: "file",
-        content: fileEntry.content,
-        etag: crypto.randomUUID(),
-        isReadonly: false,
-      });
+    const appResult = options?.appChunkCallback?.(appChunks[hostName]);
+    const appDiagnostics = appResult ? mapAppChunkDiagnostics(appResult.diagnostics) : [];
+    const errors = appDiagnostics.filter((diagnostic) => diagnostic.severity === "error");
+    if (errors.length > 0) {
+      return { success: false, projectId: undefined, diagnostics: appDiagnostics };
     }
 
-    let serializedBrains: string;
-    try {
-      serializedBrains = JSON.stringify(doc.brains);
-    } catch {
-      warnings.push({
-        severity: "warning",
-        code: "IMPORT_SERIALIZE_BRAINS_FAILED",
-        message: "Failed to serialize brains data. Using empty brains.",
-      });
-      serializedBrains = "{}";
-    }
+    const appData: Record<string, string> = {
+      ...appResult?.appData,
+      ...(Object.keys(appChunks).length > 0 ? { [APP_CHUNKS_APP_DATA_KEY]: JSON.stringify(appChunks) } : {}),
+      ...(Object.keys(brains).length > 0 ? { [BRAINS_APP_DATA_KEY]: JSON.stringify(brains) } : {}),
+    };
 
-    const callbackAppData: Record<string, string> = {};
-    if (options?.appLayerCallback) {
-      if (doc.app === undefined) {
-        return errorResult("IMPORT_MISSING_APP_DATA", "No app-specific data found in the export file.");
-      }
-      const appResult = options.appLayerCallback(doc.app, docHostVersion);
-      const errors = appResult.diagnostics.filter((d) => d.severity === "error");
-      if (errors.length > 0) {
-        return { success: false, projectId: undefined, diagnostics: appResult.diagnostics };
-      }
-      warnings.push(...appResult.diagnostics);
-      if (appResult.appData) {
-        for (const [key, value] of Object.entries(appResult.appData)) {
-          callbackAppData[key] = value;
-        }
-      }
-    }
+    const name = manifest.name.trim() ? manifest.name.trim() : DEFAULT_PROJECT_NAME;
+    const snapshot = buildSnapshotFromContents(parsed.document.contents);
+    const created = await projectManager.createFromSnapshot(
+      name,
+      manifest.description ?? "",
+      snapshot,
+      appData,
+      manifest.thumbnailUrl,
+      normalizeExtensions(manifest.extensions),
+      manifest.version,
+      manifest.targets
+    );
 
-    const appData: Record<string, string> = { ...callbackAppData, brains: serializedBrains };
-
-    const manifest = await projectManager.createFromSnapshot(name, description, snapshot, appData, thumbnailUrl);
-
-    return { success: true, projectId: manifest.id, diagnostics: warnings };
+    return { success: true, projectId: created.id, diagnostics: appDiagnostics };
   } catch (e) {
     const message = e instanceof Error ? e.message : "An unexpected error occurred during import.";
     return {
       success: false,
       projectId: undefined,
-      diagnostics: [{ severity: "error", code: "IMPORT_UNEXPECTED_ERROR", message }],
+      diagnostics: [{ severity: "error", code: ImportDiagnosticCode.IMPORT_UNEXPECTED_ERROR, message }],
     };
   }
 }

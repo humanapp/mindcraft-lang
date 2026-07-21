@@ -1,13 +1,81 @@
-export type { AppHostErrorCode } from "./app-host-error.js";
-export { AppHostError, appHostError } from "./app-host-error.js";
-export type { ExampleDefinition, ExampleFile } from "./examples.js";
-export { EXAMPLES_FOLDER } from "./examples.js";
+export { LOWEST_CONTENT_VERSION } from "@mindcraft-lang/service-api";
+export { AppHostError, AppHostErrorCode, appHostError } from "./app-host-error.js";
+export type { DependencyPinProbe, UnstableDependency } from "./dependency-stability.js";
+export { collectUnstableDependencies, UnstableDependencyCode } from "./dependency-stability.js";
+export type { ExtensionAddInput, ExtensionAddInputResolution } from "./extension-add-input.js";
+export {
+  ExtensionAddInputErrorCode,
+  parseExtensionAddInput,
+  resolveExtensionAddInput,
+} from "./extension-add-input.js";
+export type {
+  CatalogMoveApplication,
+  CatalogMoveReferenceParts,
+  CatalogMoveVersionLookup,
+  ExtensionCatalogDocument,
+  ExtensionCatalogDocumentEntry,
+  ExtensionCatalogDocumentError,
+  ExtensionCatalogDocumentParseResult,
+  ExtensionCatalogDocumentWarning,
+  ExtensionCatalogMoveEntry,
+  ExtensionCatalogMoveObjectSelector,
+  ExtensionCatalogMoveSelector,
+  ExtensionCatalogMoves,
+  ExtensionCatalogMoveTransport,
+} from "./extension-catalog-document.js";
+export {
+  applyCatalogMove,
+  CATALOG_ENTRY_KIND_EXTENSION,
+  CATALOG_ENTRY_KIND_TARGET,
+  CatalogMoveApplyErrorCode,
+  ExtensionCatalogDocumentErrorCode,
+  ExtensionCatalogDocumentWarningCode,
+  MINDCRAFT_CATALOG_FORMAT,
+  parseCatalogMoveReference,
+  parseExtensionCatalogDocument,
+  validateExtensionCatalogDocument,
+} from "./extension-catalog-document.js";
+export type {
+  ExtensionFetchBranchResult,
+  ExtensionFetchError,
+  ExtensionFetchFileResult,
+  ExtensionFetchResult,
+  ExtensionFetchTransport,
+  ExtensionVersionListResult,
+  FetchedExtensionFile,
+  FetchedExtensionSnapshot,
+} from "./extension-fetch.js";
+export { ExtensionFetchErrorCode, fetchExtensionSnapshot } from "./extension-fetch.js";
+export type {
+  ExtensionPublishBackend,
+  ExtensionPublishCommit,
+  ExtensionPublishError,
+  ExtensionPublishOptions,
+  ExtensionPublishResult,
+  ExtensionPublishSource,
+  PublishFile,
+  PublishVersionBump,
+} from "./extension-publish.js";
+export {
+  bumpVersion,
+  deriveCoordinateFromRemoteUrl,
+  ExtensionPublishErrorCode,
+  generatePublishedReadme,
+  githubRemoteUrlForCoordinate,
+  publishExtensionVersion,
+} from "./extension-publish.js";
+export type { ExtensionUpdateApplication, ExtensionUpdateCheck } from "./extension-update.js";
+export { checkExtensionReferenceUpdate, highestListedRelease } from "./extension-update.js";
 export { createIdbProjectStore } from "./idb-project-store.js";
 export type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";
-export { createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";
-export type { MindcraftJson } from "./mindcraft-json.js";
-export { MINDCRAFT_JSON_PATH, parseMindcraftJson, serializeMindcraftJson } from "./mindcraft-json.js";
-export type { MindcraftJsonHostInfo } from "./mindcraft-json-sync.js";
+export { applyProjectFileChangeToSnapshot, createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";
+export type { JsDelivrExtensionTransportOptions } from "./jsdelivr-extension-transport.js";
+export {
+  createJsDelivrExtensionTransport,
+  GITHUB_API_BASE_URL,
+  JSDELIVR_CDN_BASE_URL,
+} from "./jsdelivr-extension-transport.js";
+export { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 export { diffMindcraftJsonToManifest, syncManifestToMindcraftJson } from "./mindcraft-json-sync.js";
 export type { ProjectCollection, ProjectCollectionPinVerifier } from "./project-collection.js";
 export {
@@ -27,6 +95,28 @@ export {
   verifyProjectCollectionPin,
 } from "./project-collection-pin.js";
 export type {
+  ExtensionReference,
+  ExtensionTarget,
+  GhRoutingSpecifier,
+  ProjectContentManifest,
+  ProjectContentManifestError,
+  ProjectContentManifestHostApp,
+  ProjectContentManifestParseResult,
+} from "./project-content-manifest.js";
+export {
+  isAbbreviatedCommitPin,
+  isExtensionCoordinate,
+  ProjectContentManifestErrorCode,
+  parseExtensionReference,
+  parseProjectContentManifest,
+  projectContentManifestToJson,
+  serializeProjectContentManifest,
+  validateProjectContentManifest,
+  validateProjectExtensions,
+  validateProjectHostApp,
+  validateProjectTargets,
+} from "./project-content-manifest.js";
+export type {
   ProjectDirectoryEntry,
   ProjectFileChange,
   ProjectFileEntry,
@@ -35,21 +125,20 @@ export type {
 } from "./project-file-snapshot.js";
 export type { ProjectFileSystem } from "./project-file-system.js";
 export type {
-  ImportAppLayerCallback,
-  ImportAppLayerResult,
+  ExportAppChunk,
+  ImportAppChunkCallback,
+  ImportAppChunkResult,
   ImportDiagnostic,
-  ImportDiagnosticCode,
   ImportResult,
-  MindcraftExportCommon,
-  MindcraftExportDocument,
-  MindcraftExportFile,
-  MindcraftExportHost,
+  MindcraftProjectDocument,
+  MindcraftProjectExtensions,
 } from "./project-io.js";
 export {
-  buildActiveProjectExportCommon,
-  buildExportCommon,
+  buildActiveProjectExportDocument,
+  buildProjectExportDocument,
   DEFAULT_MAX_FILE_SIZE,
-  importProject,
+  ImportDiagnosticCode,
+  importProjectDocument,
 } from "./project-io.js";
 export type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 export { createWebLocksProjectLock } from "./project-lock.js";
@@ -79,3 +168,4 @@ export {
 } from "./project-manager.js";
 export type { ProjectManifest } from "./project-manifest.js";
 export type { ProjectCollectionTabSession, ProjectStore } from "./project-store.js";
+export { isSupportedVersionRange, satisfiesRange } from "./semver-range.js";

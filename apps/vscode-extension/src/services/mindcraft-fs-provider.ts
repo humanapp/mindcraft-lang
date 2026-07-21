@@ -1,9 +1,8 @@
 import { ErrorCode, type IFileSystem, ProtocolError } from "@mindcraft-lang/bridge-client";
 import * as vscode from "vscode";
+import { MINDCRAFT_JSON } from "../mindcraft-json";
 
 export const MINDCRAFT_SCHEME = "mindcraft";
-export const EXAMPLES_FOLDER = "__examples__";
-export const MINDCRAFT_JSON = "mindcraft.json";
 
 export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, vscode.FileDecorationProvider {
   private readonly _onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
@@ -94,10 +93,10 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
     const path = toFsPath(uri);
     try {
       const entries = fs.list(path || undefined);
-      const isRoot = !path;
-      return entries
-        .filter((entry) => !isRoot || entry.name !== EXAMPLES_FOLDER)
-        .map((entry) => [entry.name, entry.kind === "directory" ? vscode.FileType.Directory : vscode.FileType.File]);
+      return entries.map((entry) => [
+        entry.name,
+        entry.kind === "directory" ? vscode.FileType.Directory : vscode.FileType.File,
+      ]);
     } catch (e) {
       if (e instanceof ProtocolError) {
         throw vscode.FileSystemError.FileNotFound(uri);

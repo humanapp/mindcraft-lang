@@ -33,6 +33,8 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
+import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -42,14 +44,19 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } })
+    .runtime;
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    services: __test__createPlatformServices(),
+    services: __test__createPlatformServices({
+      runtime: { functions: services.runtime.functions, types: services.runtime.types },
+    }),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
+    getSystemVarBySlot: () => NIL_VALUE,
+    setSystemVarBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -103,6 +110,7 @@ describe("binary operator implicit conversions", () => {
     const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirTypeId)) {
       types.addEnumType("Direction", {
+        atomId: 1024,
         symbols: List.from([
           { key: "north", label: "North", value: "north" },
           { key: "south", label: "South", value: "south" },
@@ -129,7 +137,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -163,7 +171,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -196,12 +204,9 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0, "expected a lowering diagnostic");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.NoOperatorOverload),
-      `Expected no-overload diagnostic but got: ${JSON.stringify(result.diagnostics)}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.NoOperatorOverload);
   });
 
   test("binary lowering reports ambiguous implicit conversions", () => {
@@ -220,12 +225,9 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0, "expected an ambiguity diagnostic");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.AmbiguousImplicitBinaryConversion),
-      `Expected ambiguity diagnostic but got: ${JSON.stringify(result.diagnostics)}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.AmbiguousImplicitBinaryConversion);
   });
 
   test("enum values concatenate with strings through enum-to-string conversion", () => {
@@ -245,6 +247,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -274,6 +277,7 @@ describe("target-typed implicit conversions", () => {
     const signalTypeId = mkTypeId(NativeType.Enum, "Signal");
     if (!types.get(signalTypeId)) {
       types.addEnumType("Signal", {
+        atomId: 1025,
         symbols: List.from([
           { key: "go", label: "Go", value: "green" },
           { key: "stop", label: "Stop", value: "red" },
@@ -285,6 +289,7 @@ describe("target-typed implicit conversions", () => {
     const throttleTypeId = mkTypeId(NativeType.Enum, "Throttle");
     if (!types.get(throttleTypeId)) {
       types.addEnumType("Throttle", {
+        atomId: 1026,
         symbols: List.from([
           { key: "idle", label: "Idle", value: 0 },
           { key: "fast", label: "Fast", value: 2 },
@@ -308,6 +313,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -346,6 +352,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -385,6 +392,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
+      projectNamespace: TEST_PROJECT_NAMESPACE,
       ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
       services,
     });
@@ -421,11 +429,8 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { services });
+    const result = compileUserTile(source, { projectNamespace: TEST_PROJECT_NAMESPACE, services });
     assert.ok(result.diagnostics.length > 0, "expected a lowering diagnostic");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.NoConversionToTargetType),
-      `Expected target-type conversion diagnostic but got: ${JSON.stringify(result.diagnostics)}`
-    );
+    expectDiagnostic(result.diagnostics, LoweringDiagCode.NoConversionToTargetType);
   });
 });

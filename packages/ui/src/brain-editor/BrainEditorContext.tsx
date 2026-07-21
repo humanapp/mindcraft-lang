@@ -1,6 +1,8 @@
 import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { createContext, type ReactNode, useContext } from "react";
+import type { PrintTransport } from "../print/standalone-print-document";
+import type { TileSourceLibrary } from "./tile-library-groups";
 import type { TileVisual } from "./types";
 
 /**
@@ -48,8 +50,12 @@ export interface BrainEditorConfig {
   getDefaultBrain?: () => BrainDef | undefined;
   /** Optional BrainServices instance for direct access to tiles, types, etc. */
   brainServices?: BrainServices;
+  /** Namespace of the active project. Brain files save and load namespace-relative to it. */
+  projectNamespace?: string;
   /** Tile catalogs from the host environment (core + user tile catalogs). */
   tileCatalogs?: readonly ITileCatalog[];
+  /** Installed libraries of the active project; the tile picker subgroups tiles attributed to them. */
+  libraries?: readonly TileSourceLibrary[];
   /** Optional callback invoked when the user requests help for a tile (e.g. right-click -> Help). */
   onTileHelp?: (tileDef: IBrainTileDef) => void;
   /** Optional docs sidebar integration for the brain editor dialog toolbar. */
@@ -58,6 +64,13 @@ export interface BrainEditorConfig {
     toggle: () => void;
     close: () => void;
   };
+  /**
+   * Sink for the printable document when the host cannot open the browser
+   * print dialog. When set, the print action serializes the print view into a
+   * self-contained HTML document and hands it to this transport; when absent,
+   * printing calls `window.print()` directly.
+   */
+  printTransport?: PrintTransport;
 }
 
 const BrainEditorContext = createContext<BrainEditorConfig | null>(null);

@@ -1,5 +1,4 @@
 import type { List } from "../platform/list";
-import type { TypeId } from "./type-defs";
 import type { Value } from "./value";
 
 ///////////////////////////
@@ -31,6 +30,13 @@ export enum Op {
   LOAD_VAR_SLOT = 10,
   STORE_VAR_SLOT,
 
+  // System variables: a brain-global, internal store separate from the
+  // variableNames pool. One value slot per registered System; shared across all
+  // callsites and not reachable from brain code. STORE_SYSTEM_VAR writes by
+  // reference (no deep copy), so a System's state struct mutates in place.
+  LOAD_SYSTEM_VAR = 12,
+  STORE_SYSTEM_VAR,
+
   // Control flow
   JMP = 20,
   JMP_IF_FALSE,
@@ -39,6 +45,8 @@ export enum Op {
   // Function calls
   CALL = 30,
   RET,
+  /** Spawns a fire-and-forget child-rule fiber for `funcId` (operand `a`). */
+  SPAWN_RULE = 32,
 
   // Host calls (positional arg buffer on stack: vstack[top-argc+1 .. top])
   HOST_CALL = 40,
@@ -47,6 +55,10 @@ export enum Op {
   // Action calls (positional arg buffer on stack: vstack[top-argc+1 .. top])
   ACTION_CALL = 42,
   ACTION_CALL_ASYNC,
+
+  // Host action calls by stable registry id (positional arg buffer on stack: vstack[top-argc+1 .. top])
+  HOST_ACTION_CALL = 44,
+  HOST_ACTION_CALL_ASYNC,
 
   // Async operations and cooperative scheduling
   AWAIT = 50,
@@ -62,6 +74,16 @@ export enum Op {
   WHEN_END,
   DO_START,
   DO_END,
+  /**
+   * Presence-gated WHEN boundary. Captures `__whenResult` exactly as `WHEN_END`
+   * does, then gates the DO section on the WHEN-result being present (non-nil):
+   * a delivered falsy value (0, "", false, empty collection) runs DO; only nil
+   * (absent) skips by the signed `a` offset. Same operand schema as `WHEN_END`
+   * (one signed skip offset). The compiler emits this when the WHEN root
+   * expression is exactly a sensor whose tile carries the `PresenceGated`
+   * capability.
+   */
+  WHEN_END_PRESENT = 74,
 
   // List operations
   LIST_NEW = 90,
@@ -84,11 +106,13 @@ export enum Op {
 
   // Struct operations
   STRUCT_NEW = 110,
-  STRUCT_GET,
-  STRUCT_SET,
+  // Reserved opcode slots with no VM handler. Keep these members; removing them renumbers 113+.
+  RESERVED_111,
+  RESERVED_112,
   STRUCT_COPY_EXCEPT,
   STRUCT_GET_FIELD,
   STRUCT_SET_FIELD,
+  STRUCT_DEEP_COPY, // pop value -> push a deep copy (copies structs; no-op otherwise)
 
   // Generic field access (works with Struct, extensible for custom types)
   GET_FIELD = 120,
@@ -119,6 +143,112 @@ export enum Op {
 export const BYTECODE_VERSION = 1;
 
 ///////////////////////////
+// Operand schema
+///////////////////////////
+
+/**
+ * Var-int encoding of a single instruction operand: `uvar` is an unsigned
+ * ULEB128 var-int; `svar` is a zigzag + ULEB128 signed var-int.
+ */
+export type OperandEncoding = "uvar" | "svar";
+
+/** One operand slot in an opcode's {@link OPERAND_SCHEMA} entry. */
+export interface OperandSpec {
+  /** Var-int encoding used for this operand. */
+  readonly encoding: OperandEncoding;
+  /**
+   * When true, the operand may be absent. Allowed only on the trailing slot.
+   * Absence is sentinel-biased on the wire (`0` = absent, `value + 1` =
+   * present), so an optional operand always occupies exactly one var-uint.
+   */
+  readonly optional?: boolean;
+}
+
+const UVAR: OperandSpec = { encoding: "uvar" };
+const SVAR: OperandSpec = { encoding: "svar" };
+const UVAR_OPT: OperandSpec = { encoding: "uvar", optional: true };
+
+/**
+ * Per-opcode operand layout for binary instruction serialization, transcribed
+ * from the operand columns of `docs/specs/contracts/vm-contract.md`. Each opcode
+ * maps to its operands as a contiguous prefix of `a, b, c`, in order. `svar`
+ * marks the six signed rel-offset opcodes (`JMP`, `JMP_IF_FALSE`,
+ * `JMP_IF_TRUE`, `WHEN_END`, `WHEN_END_PRESENT`, `TRY`); the optional trailing `b` marks the four
+ * typeId-carrying constructors (`LIST_NEW`, `MAP_NEW`, `STRUCT_NEW`,
+ * `STRUCT_COPY_EXCEPT`); every other operand is `uvar`.
+ */
+export const OPERAND_SCHEMA: Readonly<Record<Op, readonly OperandSpec[]>> = {
+  [Op.PUSH_CONST_VAL]: [UVAR],
+  [Op.POP]: [],
+  [Op.DUP]: [],
+  [Op.SWAP]: [],
+  [Op.PUSH_CONST_NUM]: [UVAR],
+  [Op.PUSH_CONST_STR]: [UVAR],
+  [Op.STACK_SET_REL]: [UVAR],
+  [Op.LOAD_VAR_SLOT]: [UVAR],
+  [Op.STORE_VAR_SLOT]: [UVAR],
+  [Op.LOAD_SYSTEM_VAR]: [UVAR],
+  [Op.STORE_SYSTEM_VAR]: [UVAR],
+  [Op.JMP]: [SVAR],
+  [Op.JMP_IF_FALSE]: [SVAR],
+  [Op.JMP_IF_TRUE]: [SVAR],
+  [Op.CALL]: [UVAR, UVAR],
+  [Op.RET]: [],
+  [Op.SPAWN_RULE]: [UVAR],
+  [Op.HOST_CALL]: [UVAR, UVAR, UVAR],
+  [Op.HOST_CALL_ASYNC]: [UVAR, UVAR, UVAR],
+  [Op.ACTION_CALL]: [UVAR, UVAR, UVAR],
+  [Op.ACTION_CALL_ASYNC]: [UVAR, UVAR, UVAR],
+  [Op.HOST_ACTION_CALL]: [UVAR, UVAR, UVAR],
+  [Op.HOST_ACTION_CALL_ASYNC]: [UVAR, UVAR, UVAR],
+  [Op.AWAIT]: [],
+  [Op.YIELD]: [],
+  [Op.TRY]: [SVAR],
+  [Op.END_TRY]: [],
+  [Op.THROW]: [],
+  [Op.WHEN_START]: [],
+  [Op.WHEN_END]: [SVAR],
+  [Op.DO_START]: [],
+  [Op.DO_END]: [],
+  [Op.WHEN_END_PRESENT]: [SVAR],
+  [Op.LIST_NEW]: [UVAR, UVAR_OPT],
+  [Op.LIST_PUSH]: [],
+  [Op.LIST_GET]: [],
+  [Op.LIST_SET]: [],
+  [Op.LIST_LEN]: [],
+  [Op.LIST_POP]: [],
+  [Op.LIST_SHIFT]: [],
+  [Op.LIST_REMOVE]: [],
+  [Op.LIST_INSERT]: [],
+  [Op.LIST_SWAP]: [],
+  [Op.MAP_NEW]: [UVAR, UVAR_OPT],
+  [Op.MAP_SET]: [],
+  [Op.MAP_GET]: [],
+  [Op.MAP_HAS]: [],
+  [Op.MAP_DELETE]: [],
+  [Op.STRUCT_NEW]: [UVAR, UVAR_OPT],
+  // Reserved (see Op enum).
+  [Op.RESERVED_111]: [],
+  [Op.RESERVED_112]: [],
+  [Op.STRUCT_COPY_EXCEPT]: [UVAR, UVAR_OPT],
+  [Op.STRUCT_GET_FIELD]: [UVAR],
+  [Op.STRUCT_SET_FIELD]: [UVAR],
+  [Op.STRUCT_DEEP_COPY]: [],
+  [Op.GET_FIELD]: [],
+  [Op.SET_FIELD]: [],
+  [Op.LOAD_LOCAL]: [UVAR],
+  [Op.STORE_LOCAL]: [UVAR],
+  [Op.LOAD_CALLSITE_VAR]: [UVAR],
+  [Op.STORE_CALLSITE_VAR]: [UVAR],
+  [Op.TYPE_CHECK]: [UVAR],
+  [Op.INSTANCE_OF]: [UVAR],
+  [Op.CALL_INDIRECT]: [UVAR],
+  [Op.CALL_INDIRECT_ARGS]: [UVAR],
+  [Op.MAKE_CLOSURE]: [UVAR, UVAR],
+  [Op.LOAD_CAPTURE]: [UVAR],
+};
+
+///////////////////////////
 // Bytecode Structures
 ///////////////////////////
 
@@ -130,6 +260,51 @@ export interface Instr {
   c?: number;
 }
 
+/**
+ * Checks an {@link Instr}'s operands against its opcode's {@link OPERAND_SCHEMA}
+ * entry. Returns a human-readable reason when the opcode has no schema entry, the
+ * operands are not a contiguous `a, b, c` prefix, or the operand count falls
+ * outside the schema's required..total range; returns `undefined` when the
+ * operand shape is valid. Validates operand shape (arity, contiguity) only, not
+ * operand values.
+ *
+ * @param instr - Instruction to check.
+ */
+export function instrOperandMismatch(instr: Instr): string | undefined {
+  const schema = OPERAND_SCHEMA[instr.op as keyof typeof OPERAND_SCHEMA] as readonly OperandSpec[] | undefined;
+  if (schema === undefined) {
+    return `unknown opcode ${instr.op}`;
+  }
+
+  let defined: number;
+  if (instr.a === undefined) {
+    if (instr.b !== undefined || instr.c !== undefined) {
+      return `opcode ${instr.op} operands are not a contiguous a,b,c prefix`;
+    }
+    defined = 0;
+  } else if (instr.b === undefined) {
+    if (instr.c !== undefined) {
+      return `opcode ${instr.op} operands are not a contiguous a,b,c prefix`;
+    }
+    defined = 1;
+  } else {
+    defined = instr.c === undefined ? 2 : 3;
+  }
+
+  let total = 0;
+  let required = 0;
+  for (const spec of schema) {
+    total += 1;
+    if (!spec.optional) {
+      required += 1;
+    }
+  }
+  if (defined < required || defined > total) {
+    return `opcode ${instr.op} expects ${required}..${total} operands, got ${defined}`;
+  }
+  return undefined;
+}
+
 /** Compiled function body: instruction list plus param/local counts and optional metadata. */
 export interface FunctionBytecode {
   code: List<Instr>;
@@ -138,7 +313,12 @@ export interface FunctionBytecode {
   numLocals?: number;
   name?: string;
   maxStackDepth?: number;
-  injectCtxTypeId?: TypeId;
+  /**
+   * Type-table index of the context struct type injected as the function's
+   * implicit first argument. Absent when the function takes no injected
+   * context.
+   */
+  injectCtxTypeIdx?: number;
 }
 
 /**
@@ -149,11 +329,7 @@ export interface FunctionBytecode {
 export interface ConstantPools {
   /** Raw `number` values pushed by `PUSH_CONST_NUM` (wrapped into `NumberValue` at runtime). */
   numbers: List<number>;
-  /**
-   * Raw `string` values pushed by `PUSH_CONST_STR`, and used directly
-   * (without `Value` wrapping) as the typeId payload for `INSTANCE_OF.a`,
-   * `LIST_NEW.b`, `MAP_NEW.b`, `STRUCT_NEW.b`, and `STRUCT_COPY_EXCEPT.b`.
-   */
+  /** Raw `string` values pushed by `PUSH_CONST_STR`. */
   strings: List<string>;
   /**
    * Residual heterogeneous pool addressed by `PUSH_CONST_VAL`. Carries every

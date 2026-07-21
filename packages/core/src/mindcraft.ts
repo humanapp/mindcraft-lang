@@ -1,4 +1,5 @@
 import { Brain, installCoreBrainComponents } from "./brain";
+import { type BrainBuildResult, isBrainBuildError, runBrainLinkPipeline } from "./brain/compiler";
 import type {
   BrainTileDefCreateOptions,
   IBrainActionTileDef,
@@ -7,8 +8,9 @@ import type {
   ITileCatalog,
   ITileMetadata,
 } from "./brain/interfaces";
+import { TilePlacement } from "./brain/interfaces";
 import type { BrainJson } from "./brain/model";
-import { BrainDef, brainJsonFromPlain } from "./brain/model";
+import { BrainDef, deserializePersistedBrainJson } from "./brain/model";
 import type { BrainServices } from "./brain/services";
 import { createAppServices, createBrainServices } from "./brain/services-factory";
 import { registerAccessorTileDef } from "./brain/tiles/accessors";
@@ -24,9 +26,11 @@ import { List, type ReadonlyList } from "./platform/list";
 import { TypeUtils } from "./platform/types";
 import type {
   ActionDescriptor,
+  ActionOutputSpec,
   AppServices,
   BrainActionCallDef,
   BrainActionResolver,
+  BrainLinkEnvironment,
   Conversion,
   EnumTypeDef,
   EnumTypeShape,
@@ -44,6 +48,7 @@ import type {
   NullableTypeDef,
   NullableTypeShape,
   OpSpec,
+  ProfileNumerics,
   ResolvedAction,
   StructTypeDef,
   StructTypeShape,
@@ -54,16 +59,15 @@ import type {
   UserActionArtifact,
   VmEvents,
 } from "./runtime";
-import { CoreOpId, NativeType } from "./runtime";
+import { NativeType } from "./runtime";
 import type { ExecutionContext, HostActionBinding } from "./runtime/context";
-import type { HandleId, Value } from "./runtime/value";
-import { NIL_VALUE } from "./runtime/value";
+import type { AsyncHandle, Value } from "./runtime/value";
 
 /** Tile definition value. Alias for {@link IBrainTileDef}. */
 export type TileDefinitionInput = IBrainTileDef;
 
-/** Definition of a value-conversion overload. Same as {@link Conversion} but without the auto-assigned `id`. */
-export type ConversionDefinition = Omit<Conversion, "id">;
+/** Definition of a value-conversion overload, including its author-assigned stable funcId. */
+export type ConversionDefinition = Conversion;
 
 type TypeDefInput = Omit<TypeDef, "codec">;
 
@@ -90,6 +94,10 @@ export type CompiledActionArtifact = UserActionArtifact;
 
 /** A host-implemented function registered with a brain's function registry. */
 export interface HostFunctionDefinition {
+  /**
+   * Author-assigned stable funcId. Once assigned, never changed or reused.
+   */
+  readonly id: number;
   readonly name: string;
   readonly isAsync: boolean;
   readonly fn: HostFn;
@@ -99,6 +107,11 @@ export interface HostFunctionDefinition {
 /** A host-implemented sensor: descriptor + function + action exec + sensor tile. Build with {@link createHostSensor}. */
 export interface HostSensorDefinition {
   readonly descriptor: ActionDescriptor;
+  /**
+   * Author-assigned stable host-action id. Once assigned, never changed or
+   * reused.
+   */
+  readonly actionId: number;
   readonly function: HostFunctionDefinition;
   readonly actionFn: SyncHostActionFn | AsyncHostActionFn;
   readonly tile: IBrainActionTileDef;
@@ -107,6 +120,11 @@ export interface HostSensorDefinition {
 /** A host-implemented actuator: descriptor + function + action exec + actuator tile. Build with {@link createHostActuator}. */
 export interface HostActuatorDefinition {
   readonly descriptor: ActionDescriptor;
+  /**
+   * Author-assigned stable host-action id. Once assigned, never changed or
+   * reused.
+   */
+  readonly actionId: number;
   readonly function: HostFunctionDefinition;
   readonly actionFn: SyncHostActionFn | AsyncHostActionFn;
   readonly tile: IBrainActionTileDef;
@@ -125,14 +143,30 @@ export type AsyncHostActionFn = {
   onInitialized?: (ctx: ExecutionContext) => void;
   onPageEntered?: (ctx: ExecutionContext) => void;
   onPageExited?: (ctx: ExecutionContext) => void;
-  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
+  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handle: AsyncHandle) => void;
 };
 
 type HostActionOptionsBase = {
   readonly key: string;
+  /**
+   * Author-assigned stable host-action id. Once assigned, never changed or
+   * reused.
+   */
+  readonly actionId: number;
+  /**
+   * Author-assigned stable funcId for the action's host function. Once
+   * assigned, never changed or reused.
+   */
+  readonly fnId: number;
   readonly callDef: BrainActionCallDef;
   readonly metadata?: ITileMetadata;
   readonly capabilities?: BrainTileDefCreateOptions["capabilities"];
+  /**
+   * Declares that this action's tile requires the rule's WHEN result, set to the
+   * expected `TypeId`. The editor offers the tile only where a WHEN result of that
+   * type is available.
+   */
+  readonly consumesWhenResult?: BrainTileDefCreateOptions["consumesWhenResult"];
 };
 
 type SyncHostActionOptions = HostActionOptionsBase & {
@@ -163,9 +197,20 @@ function adaptAsyncActionFn(fn: AsyncHostActionFn): HostAsyncFn {
   };
 }
 
-/** Options for {@link createHostSensor}. Sensors return a value of `outputType`. */
+/** Options for {@link createHostSensor}. Sensors return a value of `outputType` and may expose named `outputs`. */
 export type CreateHostSensorOptions = (SyncHostActionOptions | AsyncHostActionOptions) & {
   readonly outputType: TypeId;
+  /** Named, typed outputs this sensor exposes as inline output value-tiles. */
+  readonly outputs?: readonly ActionOutputSpec[];
+  /** When true, the sensor's returned value is a writable l-value; a field write on its result is permitted. Defaults to false. */
+  readonly writableResult?: boolean;
+  /**
+   * When true, the sensor tile parses inline in a value expression, so operators
+   * and accessors can follow its result (for example `[light level] [>] [50]`).
+   * An inline sensor takes no arguments; combining `inline: true` with a non-empty
+   * `callDef` throws. Defaults to false, placing the tile on the WHEN side only.
+   */
+  readonly inline?: boolean;
 };
 
 /** Options for {@link createHostActuator}. Actuators do not return a value. */
@@ -174,23 +219,31 @@ export type CreateHostActuatorOptions = SyncHostActionOptions | AsyncHostActionO
 /** Build a {@link HostSensorDefinition} from `options`. */
 export function createHostSensor(options: CreateHostSensorOptions): HostSensorDefinition {
   const isAsync = options.isAsync ?? false;
+  if (options.inline && options.callDef.argSlots.size() > 0) {
+    throw new Error(`Inline sensor '${options.key}' takes no arguments; remove the args or 'inline: true'`);
+  }
   const descriptor: ActionDescriptor = {
     key: options.key,
     kind: "sensor",
     callDef: options.callDef,
     isAsync,
     outputType: options.outputType,
+    outputs: options.outputs,
   };
   const hostFn: HostFn = options.isAsync
     ? adaptAsyncActionFn(options.fn)
     : adaptSyncActionFn(options.fn as SyncHostActionFn);
   return {
     descriptor,
-    function: { name: options.key, isAsync, fn: hostFn, callDef: options.callDef },
+    actionId: options.actionId,
+    function: { id: options.fnId, name: options.key, isAsync, fn: hostFn, callDef: options.callDef },
     actionFn: options.fn,
     tile: new BrainTileSensorDef(options.key, descriptor, {
       metadata: options.metadata,
       capabilities: options.capabilities,
+      consumesWhenResult: options.consumesWhenResult,
+      writableResult: options.writableResult,
+      placement: options.inline ? TilePlacement.EitherSide | TilePlacement.Inline : undefined,
     }),
   };
 }
@@ -209,11 +262,13 @@ export function createHostActuator(options: CreateHostActuatorOptions): HostActu
     : adaptSyncActionFn(options.fn as SyncHostActionFn);
   return {
     descriptor,
-    function: { name: options.key, isAsync, fn: hostFn, callDef: options.callDef },
+    actionId: options.actionId,
+    function: { id: options.fnId, name: options.key, isAsync, fn: hostFn, callDef: options.callDef },
     actionFn: options.fn,
     tile: new BrainTileActuatorDef(options.key, descriptor, {
       metadata: options.metadata,
       capabilities: options.capabilities,
+      consumesWhenResult: options.consumesWhenResult,
     }),
   };
 }
@@ -222,6 +277,11 @@ export function createHostActuator(options: CreateHostActuatorOptions): HostActu
 export interface OperatorOverloadDefinition {
   readonly argTypes: readonly TypeId[];
   readonly resultType: TypeId;
+  /**
+   * Author-assigned stable funcId of the implementing host function. Once
+   * assigned, never changed or reused.
+   */
+  readonly fnId: number;
   readonly fn: HostFn;
   readonly isAsync?: boolean;
 }
@@ -341,10 +401,22 @@ export interface MindcraftEnvironment {
   readonly appServices: AppServices;
   withServices<T>(callback: (services: BrainServices) => T): T;
   createCatalog(): MindcraftCatalog;
+  /**
+   * Deserialize in-memory brain JSON whose identifiers are already fully
+   * qualified runtime ids (the shape produced by `IBrainDef.toJson`).
+   */
   deserializeBrainJson(json: BrainJson): IBrainDef;
-  deserializeBrainJsonFromPlain(plain: unknown): IBrainDef;
+  /**
+   * Deserialize the raw `JSON.parse` output of persisted brain JSON for the
+   * project identified by `projectNamespace`. Runs registered brain JSON
+   * migrations, then decodes structured identifier references: the loading
+   * project's namespace qualifies refs whose namespace field is absent.
+   */
+  deserializeBrainJsonFromPlain(plain: unknown, projectNamespace: string): IBrainDef;
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void;
   createBrain(definition: IBrainDef, options?: CreateBrainOptions): MindcraftBrain;
+  /** Compiles and links a brain definition into a {@link BrainBuildResult}. */
+  linkBrain(definition: IBrainDef): BrainBuildResult;
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate;
   onBrainsInvalidated(listener: (event: BrainInvalidationEvent) => void): () => void;
   rebuildInvalidatedBrains(brains?: readonly MindcraftBrain[]): void;
@@ -358,15 +430,24 @@ type CreateMindcraftEnvironmentOptions = {
    * Defaults to {@link createDefaultRng} when omitted.
    */
   readonly rng?: IRngServices;
+  /**
+   * Brain-observable numeric semantics for the environment's device profile.
+   * Captured by the core operator, conversion, and math-builtin exec bodies
+   * at module installation. Defaults to the f64 (native double-precision)
+   * implementation when omitted.
+   */
+  readonly numerics?: ProfileNumerics;
 };
 
 function buildHostActionBinding(
   descriptor: ActionDescriptor,
+  actionId: number,
   actionFn: SyncHostActionFn | AsyncHostActionFn
 ): HostActionBinding {
   const binding: HostActionBinding = {
     binding: "host",
     descriptor,
+    id: actionId,
     onInitialized: actionFn.onInitialized,
     onPageEntered: actionFn.onPageEntered,
     onPageExited: actionFn.onPageExited,
@@ -386,7 +467,13 @@ function ensureFunctionRegistered(services: BrainServices, definition: HostFunct
     return;
   }
 
-  services.runtime.functions.register(definition.name, definition.isAsync, definition.fn, definition.callDef);
+  services.runtime.functions.register(
+    definition.id,
+    definition.name,
+    definition.isAsync,
+    definition.fn,
+    definition.callDef
+  );
 }
 
 function assertRegisteredTypeId(actual: string, expected: string, name: string): string {
@@ -396,18 +483,16 @@ function assertRegisteredTypeId(actual: string, expected: string, name: string):
   return actual;
 }
 
-const assignNoop: HostSyncFn = { exec: () => NIL_VALUE };
-
-function autoRegisterAssignment(services: BrainServices, typeId: TypeId): void {
-  if (services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId])) {
-    return;
+function rejectStructuralAtomId(definition: MindcraftTypeDefinition): void {
+  if (definition.atomId !== undefined) {
+    throw new Error(`Structural type '${definition.name}' must not declare an atomId (got ${definition.atomId})`);
   }
-  services.edit.operatorOverloads.binary(CoreOpId.Assign, typeId, typeId, typeId, assignNoop, false);
 }
 
 function registerMindcraftTypeDefinition(services: BrainServices, definition: MindcraftTypeDefinition): string {
   const nullableDef = definition as NullableTypeDef;
   if (definition.nullable && nullableDef.baseTypeId !== undefined) {
+    rejectStructuralAtomId(definition);
     return assertRegisteredTypeId(
       services.runtime.types.addNullableType(nullableDef.baseTypeId),
       nullableDef.typeId,
@@ -420,31 +505,31 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
   switch (definition.coreType) {
     case NativeType.Void:
       return assertRegisteredTypeId(
-        services.runtime.types.addVoidType(definition.name),
+        services.runtime.types.addVoidType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     case NativeType.Nil:
       return assertRegisteredTypeId(
-        services.runtime.types.addNilType(definition.name),
+        services.runtime.types.addNilType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     case NativeType.Boolean:
       return assertRegisteredTypeId(
-        services.runtime.types.addBooleanType(definition.name),
+        services.runtime.types.addBooleanType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     case NativeType.Number:
       return assertRegisteredTypeId(
-        services.runtime.types.addNumberType(definition.name),
+        services.runtime.types.addNumberType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     case NativeType.String:
       return assertRegisteredTypeId(
-        services.runtime.types.addStringType(definition.name),
+        services.runtime.types.addStringType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
@@ -454,6 +539,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         services.runtime.types.addEnumType(enumDef.name, {
           symbols: enumDef.symbols,
           defaultKey: enumDef.defaultKey,
+          atomId: enumDef.atomId,
         }),
         enumDef.typeId,
         enumDef.name
@@ -463,7 +549,10 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
     case NativeType.List: {
       const listDef = definition as ListTypeDef;
       registeredTypeId = assertRegisteredTypeId(
-        services.runtime.types.addListType(listDef.name, { elementTypeId: listDef.elementTypeId }),
+        services.runtime.types.addListType(listDef.name, {
+          elementTypeId: listDef.elementTypeId,
+          atomId: listDef.atomId,
+        }),
         listDef.typeId,
         listDef.name
       );
@@ -475,6 +564,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         services.runtime.types.addMapType(mapDef.name, {
           keyTypeId: mapDef.keyTypeId,
           valueTypeId: mapDef.valueTypeId,
+          atomId: mapDef.atomId,
         }),
         mapDef.typeId,
         mapDef.name
@@ -491,6 +581,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
           fieldSetter: structDef.fieldSetter,
           snapshotNative: structDef.snapshotNative,
           methods: structDef.methods,
+          atomId: structDef.atomId,
         }),
         structDef.typeId,
         structDef.name
@@ -510,19 +601,25 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         }
       }
       if (structDef.variableFactory) {
-        registerVariableFactoryTileDef(registeredTypeId, registeredTypeId, {}, services);
+        registerVariableFactoryTileDef(
+          registeredTypeId,
+          registeredTypeId,
+          { metadata: { label: structDef.name } },
+          services
+        );
       }
       break;
     }
     case NativeType.Any:
       return assertRegisteredTypeId(
-        services.runtime.types.addAnyType(definition.name),
+        services.runtime.types.addAnyType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     case NativeType.Function: {
       const functionDef = definition as FunctionTypeDef;
       if (functionDef.paramTypeIds !== undefined && functionDef.returnTypeId !== undefined) {
+        rejectStructuralAtomId(definition);
         return assertRegisteredTypeId(
           services.runtime.types.getOrCreateFunctionType({
             paramTypeIds: functionDef.paramTypeIds,
@@ -533,13 +630,14 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         );
       }
       return assertRegisteredTypeId(
-        services.runtime.types.addFunctionType(definition.name),
+        services.runtime.types.addFunctionType(definition.name, definition.atomId),
         definition.typeId,
         definition.name
       );
     }
     case NativeType.Union: {
       const unionDef = definition as UnionTypeDef;
+      rejectStructuralAtomId(definition);
       return assertRegisteredTypeId(
         services.runtime.types.getOrCreateUnionType(unionDef.memberTypeIds),
         unionDef.typeId,
@@ -550,7 +648,6 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
       throw new Error(`Unsupported mindcraft type '${definition.name}' (coreType: ${definition.coreType})`);
   }
 
-  autoRegisterAssignment(services, registeredTypeId);
   return registeredTypeId;
 }
 
@@ -570,6 +667,7 @@ function registerOperatorDefinition(services: BrainServices, definition: Operato
         definition.spec.id,
         argTypes.get(0)!,
         overload.resultType,
+        overload.fnId,
         overload.fn,
         overload.isAsync ?? false
       );
@@ -582,6 +680,7 @@ function registerOperatorDefinition(services: BrainServices, definition: Operato
         argTypes.get(0)!,
         argTypes.get(1)!,
         overload.resultType,
+        overload.fnId,
         overload.fn,
         overload.isAsync ?? false
       );
@@ -708,7 +807,7 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
     }
 
     ensureFunctionRegistered(this.brainServices, def.function);
-    this.brainServices.runtime.actions.register(buildHostActionBinding(def.descriptor, def.actionFn));
+    this.brainServices.runtime.actions.register(buildHostActionBinding(def.descriptor, def.actionId, def.actionFn));
     this.brainServices.edit.tiles.registerTileDef(def.tile);
   }
 
@@ -718,7 +817,7 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
     }
 
     ensureFunctionRegistered(this.brainServices, def.function);
-    this.brainServices.runtime.actions.register(buildHostActionBinding(def.descriptor, def.actionFn));
+    this.brainServices.runtime.actions.register(buildHostActionBinding(def.descriptor, def.actionId, def.actionFn));
     this.brainServices.edit.tiles.registerTileDef(def.tile);
   }
 
@@ -770,14 +869,16 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   readonly appServices: AppServices;
   private readonly bundleCatalog = new TileCatalog();
   private readonly bundleResolver = new Dict<string, CompiledActionArtifact>();
+  /** `(fromType, toType)` pairs this environment registered from the active bundle's conversion artifacts. */
+  private readonly bundleConversionPairs = new List<{ fromType: TypeId; toType: TypeId }>();
   private readonly trackedBrains = List.empty<ManagedMindcraftBrain>();
   private readonly invalidatedBrains = List.empty<ManagedMindcraftBrain>();
   private readonly invalidationListeners = List.empty<(event: BrainInvalidationEvent) => void>();
   private readonly actionResolver: BrainActionResolver;
   private readonly brainJsonMigrations_ = List.empty<BrainJsonMigration>();
 
-  constructor(modules: readonly MindcraftModule[], rng?: IRngServices) {
-    this.appServices = createAppServices(rng);
+  constructor(modules: readonly MindcraftModule[], rng?: IRngServices, numerics?: ProfileNumerics) {
+    this.appServices = createAppServices(rng, numerics);
     this.brainServices = createBrainServices(this.appServices);
     this.actionResolver = new EnvironmentActionResolver(this);
     this.installModules(modules);
@@ -799,11 +900,11 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     return BrainDef.fromJson(json, this.brainServices, this.buildDeserializeCatalogs());
   }
 
-  deserializeBrainJsonFromPlain(plain: unknown): IBrainDef {
+  deserializeBrainJsonFromPlain(plain: unknown, projectNamespace: string): IBrainDef {
     for (let i = 0; i < this.brainJsonMigrations_.size(); i++) {
       this.brainJsonMigrations_.get(i)!(plain);
     }
-    return this.deserializeBrainJson(brainJsonFromPlain(plain));
+    return deserializePersistedBrainJson(plain, projectNamespace, this.brainServices, this.buildDeserializeCatalogs());
   }
 
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void {
@@ -813,9 +914,30 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   createBrain(definition: IBrainDef, options?: CreateBrainOptions): MindcraftBrain {
     const overlayCatalogs = this.resolveOverlayCatalogs(options?.catalogs);
     const brain = new ManagedMindcraftBrain(this, definition, overlayCatalogs);
-    brain.initialize(options?.context, options?.vmEvents);
     this.trackBrain(brain);
+    try {
+      brain.initialize(options?.context, options?.vmEvents);
+    } catch (err) {
+      if (!isBrainBuildError(err)) {
+        this.removeBrain(brain);
+        throw err;
+      }
+      // The initial build failed (a required action is missing from the current
+      // bundle). The brain retains its definition and enters the invalidated set
+      // so the per-tick rebuild retries it once the action becomes available,
+      // exactly as a brain whose later rebuild fails does.
+      this.markBrainInvalidated(brain);
+    }
     return brain;
+  }
+
+  linkBrain(definition: IBrainDef): BrainBuildResult {
+    const result = runBrainLinkPipeline(
+      definition,
+      this.buildLinkEnvironment(definition, List.empty<ITileCatalog>()),
+      this.brainServices.shared.conversions
+    );
+    return { program: result.program, diagnostics: result.diagnostics };
   }
 
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate {
@@ -832,6 +954,8 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
       const key = nextKeys.get(i)!;
       this.bundleResolver.set(key, nextActions.get(key)!);
     }
+
+    this.replaceBundleConversions(nextActions);
 
     const invalidated = List.empty<MindcraftBrain>();
     if (hasChangedActions) {
@@ -880,7 +1004,15 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
       if (candidate.owner() !== this || candidate.isDisposed()) {
         continue;
       }
-      candidate.rebuild();
+      try {
+        candidate.rebuild();
+      } catch (err) {
+        if (!isBrainBuildError(err)) {
+          throw err;
+        }
+        // The brain's content is invalid; it stays invalidated and is retried on
+        // the next rebuild. Continue rebuilding the rest of the batch.
+      }
     }
   }
 
@@ -895,6 +1027,14 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     }
     catalogs.push(definition.catalog());
     return catalogs;
+  }
+
+  buildLinkEnvironment(definition: IBrainDef, overlays: List<ITileCatalog>): BrainLinkEnvironment {
+    return {
+      catalogs: this.buildCatalogChain(definition, overlays),
+      actionResolver: this.actionBindings(),
+      typeRegistry: this.brainServices.runtime.types,
+    };
   }
 
   buildDeserializeCatalogs(): List<ITileCatalog> {
@@ -990,6 +1130,42 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     }
   }
 
+  /**
+   * Sync the shared conversion registry to the bundle's conversion artifacts:
+   * drop every pair the previous bundle registered, then register each
+   * artifact carrying conversion metadata. Registration is if-absent -- a pair
+   * already held by another registration (a host conversion or an earlier
+   * artifact in key order) keeps it; the compiler reports the conflict.
+   */
+  private replaceBundleConversions(nextActions: Dict<string, CompiledActionArtifact>): void {
+    const conversions = this.brainServices.shared.conversions;
+    for (let i = 0; i < this.bundleConversionPairs.size(); i++) {
+      const pair = this.bundleConversionPairs.get(i)!;
+      conversions.remove(pair.fromType, pair.toType);
+    }
+    this.bundleConversionPairs.clear();
+
+    const keys = nextActions.keys();
+    for (let i = 0; i < keys.size(); i++) {
+      const artifact = nextActions.get(keys.get(i)!)!;
+      const info = artifact.conversion;
+      if (!info) {
+        continue;
+      }
+      if (conversions.get(info.fromType, info.toType)) {
+        continue;
+      }
+      conversions.register({
+        binding: "bytecode",
+        fromType: info.fromType,
+        toType: info.toType,
+        cost: info.cost,
+        descriptor: descriptorFromArtifact(artifact),
+      });
+      this.bundleConversionPairs.push({ fromType: info.fromType, toType: info.toType });
+    }
+  }
+
   private resolveOverlayCatalogs(catalogs?: readonly MindcraftCatalog[]): List<ITileCatalog> {
     const resolved = List.empty<ITileCatalog>();
     if (!catalogs) {
@@ -1010,10 +1186,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
 
 class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
   status: "active" | "invalidated" | "disposed" = "active";
-  private readonly linkEnvironmentRef: {
-    catalogs: List<ITileCatalog>;
-    actionResolver: BrainActionResolver;
-  };
+  private readonly linkEnvironmentRef: BrainLinkEnvironment;
   private readonly linkedActionRevisions = new Dict<string, string>();
   private readonly overlayCatalogs: List<ITileCatalog>;
   private contextData: unknown;
@@ -1025,10 +1198,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
     public readonly definition: IBrainDef,
     overlayCatalogs: List<ITileCatalog>
   ) {
-    const linkEnvironment = {
-      catalogs: environment.buildCatalogChain(definition, overlayCatalogs),
-      actionResolver: environment.actionBindings(),
-    };
+    const linkEnvironment = environment.buildLinkEnvironment(definition, overlayCatalogs);
     super(definition, environment.brainServices, linkEnvironment);
     this.linkEnvironmentRef = linkEnvironment;
     this.overlayCatalogs = overlayCatalogs;
@@ -1147,8 +1317,9 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
   }
 
   private refreshLinkEnvironment(): void {
-    this.linkEnvironmentRef.catalogs = this.environment.buildCatalogChain(this.definition, this.overlayCatalogs);
-    this.linkEnvironmentRef.actionResolver = this.environment.actionBindings();
+    const linkEnvironment = this.environment.buildLinkEnvironment(this.definition, this.overlayCatalogs);
+    this.linkEnvironmentRef.catalogs = linkEnvironment.catalogs;
+    this.linkEnvironmentRef.actionResolver = linkEnvironment.actionResolver;
   }
 
   private refreshLinkedActionRevisions(): void {
@@ -1181,7 +1352,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
 
 /** Construct a {@link MindcraftEnvironment}, installing each module in `options.modules`. */
 export function createMindcraftEnvironment(options: CreateMindcraftEnvironmentOptions = {}): MindcraftEnvironment {
-  return new MindcraftEnvironmentImpl(options.modules ?? [], options.rng);
+  return new MindcraftEnvironmentImpl(options.modules ?? [], options.rng, options.numerics);
 }
 
 /** The built-in `mindcraft.core` module: registers the core types, operators, and tile components every brain needs. */

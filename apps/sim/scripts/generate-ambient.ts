@@ -6,7 +6,7 @@ import { buildPlatformAmbientDeclarations } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ambientPath = resolve(appDir, "ambient/mindcraft.sim.d.ts");
+const ambientPath = resolve(appDir, "lib/mindcraft.sim.d.ts");
 
 const coreEnvironment = createMindcraftEnvironment({ modules: [coreModule()] });
 const simEnvironment = createMindcraftEnvironment({ modules: [coreModule(), createSimModule()] });

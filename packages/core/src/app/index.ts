@@ -23,12 +23,27 @@ export { coreModule, createHostActuator, createHostSensor, createMindcraftEnviro
 
 // -- Brain model ----------------------------------------------------------------
 
-export type { IBrainDef } from "../brain/interfaces";
-export { BrainDef, brainJsonFromPlain } from "../brain/model";
+export type { IBrainDef, IBrainPageDef, IBrainRuleDef, IBrainTileSet } from "../brain/interfaces";
+export type {
+  NamespaceRewrite,
+  PersistedBrainJson,
+  PersistedIdRef,
+  PersistedTileRef,
+  PersistedTypeRef,
+  RenamedBrainJson,
+} from "../brain/model";
+export {
+  BrainDef,
+  brainJsonFromPlain,
+  decodePersistedBrainJson,
+  deserializePersistedBrainJson,
+  encodePersistedBrainJson,
+  renameBrainNamespaces,
+} from "../brain/model";
 
 // -- Call-spec builders ---------------------------------------------------------
 
-export type { BrainActionCallChoiceSpec, BrainActionCallSpec } from "../runtime";
+export type { ActionKind, BrainActionCallChoiceSpec, BrainActionCallSpec } from "../runtime";
 export { bag, choice, conditional, mkCallDef, mod, optional, param, repeated } from "../runtime";
 
 // -- Tile definitions -----------------------------------------------------------
@@ -38,9 +53,11 @@ export {
   BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileModifierDef,
+  BrainTileOutputDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
+  buildDescriptorOutputTiles,
   createAccessorTileDef,
   createVariableFactoryTileDef,
   getCatalogFallbackLabel,
@@ -50,12 +67,15 @@ export {
 
 export {
   mkAccessorTileId,
+  mkActionTileId,
   mkActuatorTileId,
   mkControlFlowTileId,
   mkLiteralFactoryTileId,
   mkLiteralTileId,
   mkModifierTileId,
   mkOperatorTileId,
+  mkOutputTileId,
+  mkOutputVarKey,
   mkPageTileId,
   mkParameterTileId,
   mkSensorTileId,
@@ -65,14 +85,17 @@ export {
 // -- Core ID enums --------------------------------------------------------------
 
 export {
-  CoreActuatorId,
   CoreControlFlowId,
   CoreLiteralFactoryId,
   CoreParameterId,
-  CoreSensorId,
   CoreVariableFactoryId,
 } from "../brain/interfaces";
 export { CoreOpId, CoreTypeIds } from "../runtime";
+
+// -- Stable ABI ids ---------------------------------------------------------------
+
+export type { HostActionIds, StableIdOwner } from "../runtime";
+export { CoreFuncId, CoreHostActions, TARGET_ACTION_ID_BASE, TARGET_FUNC_ID_BASE } from "../runtime";
 
 // -- Context type IDs (for extending EngineContext, BrainContext, etc.) ----------
 
@@ -90,18 +113,22 @@ export type { AppServices, IRngServices } from "../runtime";
 
 // -- Runtime values & helpers ---------------------------------------------------
 
-export { APP_CAPABILITY_BIT_OFFSET, CoreCapabilityBits } from "../brain/interfaces";
+export { APP_CAPABILITY_BIT_OFFSET, CoreCapabilityBits, TilePlacement } from "../brain/interfaces";
 export type { StructFieldGetterFn, StructTypeDef } from "../runtime";
 export { getSlotId } from "../runtime";
+export { formatF32 } from "../runtime/binary32-format";
 export type { ExecutionContext } from "../runtime/context";
 export {
   clearCallSiteState,
   getCallSiteState,
   getRuleVariable,
+  getWhenResult,
   setCallSiteState,
   setRuleVariable,
+  setSensorOutput,
 } from "../runtime/context";
 export type {
+  AsyncHandle,
   ListValue,
   MapValue,
   NumberValue,

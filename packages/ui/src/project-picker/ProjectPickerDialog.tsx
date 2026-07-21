@@ -131,7 +131,7 @@ function ProjectCard({
           <div className="flex items-center gap-1.5">
             <span className="truncate text-sm font-medium">{project.title}</span>
             {isActive && (
-              <span className="shrink-0 rounded border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">
+              <span className="shrink-0 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[10px] text-success">
                 active
               </span>
             )}

@@ -1,13 +1,15 @@
-import { CoreCapabilityBits, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import { type IBrainActionTileDef, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, ClockFading } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
+import { staticAssetUrl } from "../asset-url";
 import { adjustColor, saturateColor } from "../lib/color";
 import { glassEffect } from "../lib/glass-effect";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { TileValue } from "./TileValue";
 import type { TileBadge } from "./tile-badges";
-import { resolveTileVisual } from "./tile-visual-utils";
+import { isProjectAuthoredActionTile } from "./tile-library-groups";
+import { resolveTileVisual, tileVisualCategory } from "./tile-visual-utils";
 
 interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   tileDef: IBrainTileDef;
@@ -22,22 +24,25 @@ interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "
 export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
   ({ tileDef, side, badge, className = "", ...props }, ref) => {
     const editorConfig = useBrainEditorConfig();
-    const { dataTypeIcons, dataTypeNames } = editorConfig;
+    const { dataTypeIcons, dataTypeNames, projectNamespace } = editorConfig;
     const [isOverflowing, setIsOverflowing] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [labelBasedWidth, setLabelBasedWidth] = useState<number | undefined>(undefined);
 
     const visual = resolveTileVisual(editorConfig, tileDef);
     const label = visual.label;
-    const iconUrl = visual.iconUrl || "/assets/brain/icons/question_mark.svg";
+    const iconUrl = visual.iconUrl || staticAssetUrl("assets/brain/icons/question_mark.svg");
     const baseColor =
       (side === RuleSide.When ? visual?.colorDef?.when : side === RuleSide.Do ? visual?.colorDef?.do : undefined) ||
       "#475569";
 
-    const isValueTile = tileDef.kind === "literal" || tileDef.kind === "variable" || tileDef.kind === "accessor";
-    const isParamTile = tileDef.kind === "parameter";
-    const isFactoryTile = tileDef.kind === "factory";
-    const isUserTile = tileDef.capabilities().get(CoreCapabilityBits.UserTile) !== 0;
+    const category = tileVisualCategory(tileDef);
+    const isValueTile = category === "value";
+    const isParamTile = category === "parameter";
+    const isFactoryTile = category === "factory";
+    const isProjectAuthoredAction = isProjectAuthoredActionTile(tileDef, projectNamespace);
+    const isActionTile = category === "action";
+    const isAsyncAction = isActionTile && (tileDef as IBrainActionTileDef).action.isAsync === true;
     let tileTypeIcon: string | undefined;
     let tileTypeName: string | undefined;
 
@@ -104,6 +109,18 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
 
     return (
       <div className="relative self-center hover:scale-105 transition-transform duration-100">
+        {isAsyncAction && (
+          <span
+            className="group/clock absolute -top-1.5 -left-1.5 z-30 flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-slate-200 border-slate-300 text-slate-600"
+            role="img"
+            aria-label="May take time to complete"
+          >
+            <ClockFading className="w-4 h-4" />
+            <span className="absolute bottom-full left-0 mb-1 hidden group-hover/clock:block whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg pointer-events-none">
+              May take time to complete
+            </span>
+          </span>
+        )}
         {badge && (
           <span
             className={`group/badge absolute -top-1.5 -right-1.5 z-30 flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto ${
@@ -152,15 +169,15 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
               aria-hidden="true"
             />
           )}
-          {isUserTile && (
+          {isProjectAuthoredAction && (
             <div
               style={{
                 backgroundColor: darkerSaturatedColor,
-                WebkitMaskImage: "url(/assets/brain/icons/ts-logo-128.svg)",
+                WebkitMaskImage: `url(${staticAssetUrl("assets/brain/icons/ts-logo-128.svg")})`,
                 WebkitMaskSize: "contain",
                 WebkitMaskRepeat: "no-repeat",
                 WebkitMaskPosition: "center",
-                maskImage: "url(/assets/brain/icons/ts-logo-128.svg)",
+                maskImage: `url(${staticAssetUrl("assets/brain/icons/ts-logo-128.svg")})`,
                 maskSize: "contain",
                 maskRepeat: "no-repeat",
                 maskPosition: "center",
