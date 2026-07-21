@@ -8,6 +8,7 @@ import type {
   ITileCatalog,
   ITileMetadata,
 } from "./brain/interfaces";
+import { TilePlacement } from "./brain/interfaces";
 import type { BrainJson } from "./brain/model";
 import { BrainDef, deserializePersistedBrainJson } from "./brain/model";
 import type { BrainServices } from "./brain/services";
@@ -203,6 +204,13 @@ export type CreateHostSensorOptions = (SyncHostActionOptions | AsyncHostActionOp
   readonly outputs?: readonly ActionOutputSpec[];
   /** When true, the sensor's returned value is a writable l-value; a field write on its result is permitted. Defaults to false. */
   readonly writableResult?: boolean;
+  /**
+   * When true, the sensor tile parses inline in a value expression, so operators
+   * and accessors can follow its result (for example `[light level] [>] [50]`).
+   * An inline sensor takes no arguments; combining `inline: true` with a non-empty
+   * `callDef` throws. Defaults to false, placing the tile on the WHEN side only.
+   */
+  readonly inline?: boolean;
 };
 
 /** Options for {@link createHostActuator}. Actuators do not return a value. */
@@ -211,6 +219,9 @@ export type CreateHostActuatorOptions = SyncHostActionOptions | AsyncHostActionO
 /** Build a {@link HostSensorDefinition} from `options`. */
 export function createHostSensor(options: CreateHostSensorOptions): HostSensorDefinition {
   const isAsync = options.isAsync ?? false;
+  if (options.inline && options.callDef.argSlots.size() > 0) {
+    throw new Error(`Inline sensor '${options.key}' takes no arguments; remove the args or 'inline: true'`);
+  }
   const descriptor: ActionDescriptor = {
     key: options.key,
     kind: "sensor",
@@ -232,6 +243,7 @@ export function createHostSensor(options: CreateHostSensorOptions): HostSensorDe
       capabilities: options.capabilities,
       consumesWhenResult: options.consumesWhenResult,
       writableResult: options.writableResult,
+      placement: options.inline ? TilePlacement.EitherSide | TilePlacement.Inline : undefined,
     }),
   };
 }

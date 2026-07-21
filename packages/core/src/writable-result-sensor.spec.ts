@@ -173,6 +173,56 @@ describe("createHostSensor `writableResult` forwarding", () => {
   });
 });
 
+describe("createHostSensor `inline` forwarding", () => {
+  test("inline: true gives the sensor tile inline placement", () => {
+    const def = createHostSensor({
+      key: "inl.on",
+      actionId: 41003,
+      fnId: 41103,
+      isAsync: false,
+      fn: { exec: () => mkNumberValue(0) },
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      outputType: CoreTypeIds.Number,
+      inline: true,
+    });
+    const placement = (def.tile as BrainTileSensorDef).placement;
+    assert.ok(placement !== undefined);
+    assert.equal((placement & TilePlacement.Inline) !== 0, true, "an inline sensor must carry the Inline bit");
+    assert.equal((placement & TilePlacement.EitherSide) === TilePlacement.EitherSide, true);
+  });
+
+  test("a sensor without inline keeps the default WHEN-side-only placement", () => {
+    const def = createHostSensor({
+      key: "inl.off",
+      actionId: 41004,
+      fnId: 41104,
+      isAsync: false,
+      fn: { exec: () => mkNumberValue(0) },
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      outputType: CoreTypeIds.Number,
+    });
+    const placement = (def.tile as BrainTileSensorDef).placement;
+    assert.equal(placement !== undefined && (placement & TilePlacement.Inline) !== 0, false);
+  });
+
+  test("inline: true with a non-empty callDef throws", () => {
+    assert.throws(
+      () =>
+        createHostSensor({
+          key: "inl.args",
+          actionId: 41005,
+          fnId: 41105,
+          isAsync: false,
+          fn: { exec: () => mkNumberValue(0) },
+          callDef: mkCallDef({ type: "bag", items: [{ type: "arg", tileId: "x" }] }),
+          outputType: CoreTypeIds.Number,
+          inline: true,
+        }),
+      /takes no arguments/
+    );
+  });
+});
+
 describe("writableResult sensor field write (headless, native reference struct)", () => {
   function setup(host: ActorState) {
     const { module, captured } = createActorModule(host);
