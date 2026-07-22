@@ -1,4 +1,4 @@
-import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
+import type { BrainServices, IBrainActionTileDef, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { createContext, type ReactNode, useContext } from "react";
 import type { PrintTransport } from "../print/standalone-print-document";
@@ -44,6 +44,14 @@ export interface BrainEditorConfig {
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Returns true if the given tile ID is an app-specific variable factory tile. */
   isAppVariableFactoryTileId?: (tileId: string) => boolean;
+  /**
+   * Reports whether a rule action tile's underlying user-authored definition
+   * failed to compile. When it returns true, the editor marks every instance of
+   * that tile with a broken-tile error badge, overriding any per-rule
+   * diagnostic badge on the tile. Host apps that do not compile user-authored
+   * tiles leave this undefined, and no broken-tile badges are shown.
+   */
+  isBrokenTile?: (tile: IBrainActionTileDef) => boolean;
   /** Custom literal types beyond the core String/Number. */
   customLiteralTypes: ReadonlyArray<CustomLiteralType>;
   /** Optional callback to load a default brain (replaces the archetype-specific load). */

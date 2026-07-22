@@ -37,7 +37,7 @@ import {
   renameBrainNamespaces,
 } from "@mindcraft-lang/core/app";
 import type { PersistedBrainJson } from "@mindcraft-lang/core/brain/model";
-import type { IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
+import type { ActionKey, IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
 import type { Mount, WorkspaceCompileResult, WorkspaceDiagnosticEntry } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
@@ -78,8 +78,8 @@ import {
   parseInstalledExtensionSnapshots,
   serializeInstalledExtensionSnapshots,
 } from "./fetched-extension-snapshots.js";
-import type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
-import { applyCompiledUserTiles } from "./user-tile-registration.js";
+import type { TileCompileDiagnostics, UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
+import { applyCompiledUserTiles, collectTileSourceCompileErrors } from "./user-tile-registration.js";
 
 // Project app-data keys.
 const BRAINS_APP_DATA_KEY = "brains";
@@ -197,6 +197,9 @@ export class AppEnvironmentHost {
 
   // -- Latest workspace compile result --
   private _lastCompileResult: WorkspaceCompileResult | undefined;
+
+  // -- Per-tile error compile diagnostics and source path, keyed by ActionKey; rebuilt from the latest compile --
+  private _tileCompileDiagnostics: Map<ActionKey, TileCompileDiagnostics> = new Map();
 
   // -- Brain cache --
   private readonly _brainCache = new Map<string, IBrainDef>();
@@ -408,6 +411,10 @@ export class AppEnvironmentHost {
           }
         }
         this.onDidCompileCallback?.(result, tileResult);
+        // A compile can change a tile's broken/clean status, which the per-brain
+        // diagnostics feed reads through the tile-compile map. Refresh the feed's
+        // subscribers so the brain-list badge tracks the newest compile.
+        this.bumpBrainDiagnosticsRevision();
       },
     });
     this._servedFileSystem = augmentProjectFileSystem(this.projectFileSystem, this._compiler.compiler, {
@@ -1456,6 +1463,18 @@ export class AppEnvironmentHost {
     return this._lastUserTileMetadata;
   }
 
+  /**
+   * Error compile diagnostics of the user tile registered under `key` together
+   * with the defining source file's path, from the latest workspace compile.
+   * Undefined when the tile compiled cleanly, produced only warnings or infos,
+   * or is absent from the latest compile. Each stored diagnostic is the
+   * compiler's verbatim object, exposing `message`, `severity`, and
+   * `line`/`column`.
+   */
+  getTileCompileDiagnostics(key: ActionKey): TileCompileDiagnostics | undefined {
+    return this._tileCompileDiagnostics.get(key);
+  }
+
   // ---------------------------------------------------------------------------
   // Doc / VFS revision (useSyncExternalStore pattern)
   // ---------------------------------------------------------------------------
@@ -1485,9 +1504,10 @@ export class AppEnvironmentHost {
 
   /**
    * Subscribe to brain-diagnostics revision changes for
-   * `useSyncExternalStore`. The revision bumps whenever the stored typecheck
-   * state of the project's brains may have changed: after each extension
-   * transaction and after each brain save. Returns an unsubscribe function.
+   * `useSyncExternalStore`. The revision bumps whenever the diagnostics a brain
+   * surfaces may have changed: after each extension transaction, after each brain
+   * save, and after each workspace compile (which can change a used tile's
+   * broken/clean status). Returns an unsubscribe function.
    */
   subscribeToBrainDiagnostics = (listener: () => void): (() => void) => {
     this._brainDiagnosticsListeners.add(listener);
@@ -1523,6 +1543,10 @@ export class AppEnvironmentHost {
 
   /** Record a compile's per-file diagnostics as one flat located list and notify subscribers. */
   private setCompileDiagnostics(result: WorkspaceCompileResult | undefined): void {
+    // Rebuilt from the latest compile so a fixed tile drops out and a newly
+    // broken tile appears; cleared to empty when a project unloads.
+    this._tileCompileDiagnostics = result ? collectTileSourceCompileErrors(result) : new Map();
+
     const diagnostics: WorkspaceCompileDiagnostic[] = [];
     for (const [path, entries] of result?.files ?? []) {
       for (const entry of entries) {

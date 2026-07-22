@@ -62,17 +62,26 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
   const { openDocsForTile, isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs } = useDocsSidebar();
   const store = useSimEnvironment();
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
+  // Rebuild the config (and thus the isBrokenTile predicate identity) after each
+  // workspace compile so broken-tile badges appear/disappear as tiles change
+  // their compile status while the editor is open.
+  const compileDiagnostics = useSyncExternalStore(
+    store.subscribeToCompileDiagnostics,
+    store.getCompileDiagnosticsSnapshot
+  );
   const config = useMemo(() => {
     // A VFS revision bump re-creates the config so tiles re-resolve their
     // asset URLs against the new generation.
     void vfsRevision;
+    void compileDiagnostics;
     return buildBrainEditorConfig({
       store,
       archetype: archetype ?? undefined,
       onTileHelp: openDocsForTile,
       docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
+      isBrokenTile: (tile) => store.host.getTileCompileDiagnostics(tile.action.key) !== undefined,
     });
-  }, [store, archetype, vfsRevision, openDocsForTile, isDocsOpen, toggleDocs, closeDocs]);
+  }, [store, archetype, vfsRevision, compileDiagnostics, openDocsForTile, isDocsOpen, toggleDocs, closeDocs]);
   return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
 }
 

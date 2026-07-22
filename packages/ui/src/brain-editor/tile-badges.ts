@@ -7,6 +7,8 @@ import type {
   Expr,
   ExprVisitor,
   FieldAccessExpr,
+  IBrainActionTileDef,
+  IBrainTileDef,
   LiteralExpr,
   ModifierExpr,
   OutputExpr,
@@ -17,7 +19,7 @@ import type {
   UnaryOpExpr,
   VariableExpr,
 } from "@mindcraft-lang/core/brain";
-import { acceptExprVisitor } from "@mindcraft-lang/core/brain";
+import { acceptExprVisitor, isActionTileDef } from "@mindcraft-lang/core/brain";
 import type { TypeInfoDiag } from "@mindcraft-lang/core/brain/compiler";
 import { ParseDiagCode, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
 
@@ -25,6 +27,29 @@ import { ParseDiagCode, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler
 export interface TileBadge {
   type: "error" | "warning";
   message: string;
+}
+
+/** Fixed, generic message shown on a rule tile whose underlying user-authored definition failed to compile. */
+export const BROKEN_TILE_BADGE_MESSAGE = "Tile has a compile error";
+
+/**
+ * Overlays broken-tile error badges onto a per-side badge map. For each action
+ * tile the `isBrokenTile` predicate reports broken, sets an error badge at that
+ * tile's index, overriding any per-rule badge already present at that index.
+ * Non-action tiles (which carry no `action` descriptor) are skipped. Mutates
+ * and returns `badges`.
+ */
+export function applyBrokenTileBadges(
+  tiles: readonly IBrainTileDef[],
+  badges: Map<number, TileBadge>,
+  isBrokenTile: (tile: IBrainActionTileDef) => boolean
+): Map<number, TileBadge> {
+  tiles.forEach((tileDef, index) => {
+    if (isActionTileDef(tileDef) && isBrokenTile(tileDef)) {
+      badges.set(index, { type: "error", message: BROKEN_TILE_BADGE_MESSAGE });
+    }
+  });
+  return badges;
 }
 
 const parseDiagMessages: Record<number, string> = {

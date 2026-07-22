@@ -183,6 +183,11 @@ export interface IBrainActionTileDef extends IBrainTileDef {
   readonly action: ActionDescriptor;
 }
 
+/** Narrows a tile def to {@link IBrainActionTileDef} (a sensor or actuator, the only kinds carrying an `action` descriptor). */
+export function isActionTileDef(tileDef: IBrainTileDef): tileDef is IBrainActionTileDef {
+  return "action" in tileDef;
+}
+
 // ----------------------------------------------------
 // Tile ID Factory Functions
 // ----------------------------------------------------

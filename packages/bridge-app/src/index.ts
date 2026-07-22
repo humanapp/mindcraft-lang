@@ -31,8 +31,8 @@ export type {
   WorkspaceCompileDiagnostic,
 } from "./app-environment-host.js";
 export { AppEnvironmentHost } from "./app-environment-host.js";
-export type { BrainDiagnosticEntry } from "./brain-diagnostics.js";
-export { collectBrainErrorDiagnostics } from "./brain-diagnostics.js";
+export type { BrainDiagnosticEntry, TileCompileDiagnosticsLookup } from "./brain-diagnostics.js";
+export { collectBrainErrorDiagnostics, collectBrainTileCompileDiagnostics } from "./brain-diagnostics.js";
 export { CORE_LIB_COORDINATE, CORE_LIB_REFERENCE } from "./core-extension.js";
 export type { EmbeddedExtensionIdViolation } from "./embedded-extension-id-gate.js";
 export {
@@ -128,7 +128,7 @@ export type {
 } from "./library-uninstall-guard.js";
 export { collectLibraryUninstallImpact, runGuardedLibraryUninstall } from "./library-uninstall-guard.js";
 
-export type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
+export type { TileCompileDiagnostics, UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
 export { applyCompiledUserTiles, collectMetadataFromCompile } from "./user-tile-registration.js";
 
 export type { VfsAssetUrlProvider, VfsAssetUrlProviderOptions } from "./vfs-asset-url-provider.js";

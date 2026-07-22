@@ -17,6 +17,7 @@ import {
   AppEnvironmentHost,
   type BrainDiagnosticEntry,
   collectBrainErrorDiagnostics,
+  collectBrainTileCompileDiagnostics,
   createVfsAssetUrlProvider,
   type UserTileMetadata,
   type VfsAssetUrlProvider,
@@ -480,15 +481,20 @@ export class SimEnvironmentStore {
   };
 
   /**
-   * The verbatim error diagnostics of an archetype brain's stored typecheck
-   * state. Empty when the brain is not cached or is clean.
+   * The verbatim error diagnostics an archetype brain surfaces: the stored
+   * per-rule typecheck errors, followed by the compile diagnostics of any
+   * broken user tile the brain uses (deduplicated per distinct tile key).
+   * Empty when the brain is not cached or is clean.
    */
   getBrainDiagnostics(archetype: Archetype): readonly BrainDiagnosticEntry[] {
     const brain = this.host.getCachedBrain(archetype);
     if (!brain) {
       return [];
     }
-    return collectBrainErrorDiagnostics(brain);
+    return [
+      ...collectBrainErrorDiagnostics(brain),
+      ...collectBrainTileCompileDiagnostics(brain, (key) => this.host.getTileCompileDiagnostics(key)),
+    ];
   }
 
   // -- Project metadata --

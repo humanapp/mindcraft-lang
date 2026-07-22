@@ -15,9 +15,10 @@ import {
 } from "@mindcraft-lang/app-host";
 import type { IBrainDef, MindcraftBrain } from "@mindcraft-lang/core/app";
 import { BrainDef, CoreTypeIds, coreModule, List, mkSensorTileId } from "@mindcraft-lang/core/app";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { declarationMount, type WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+import type { IBrainActionTileDef, IBrainTileDef } from "@mindcraft-lang/core/brain";
+import { type CompileDiagnostic, declarationMount, type WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
+import { collectBrainTileCompileDiagnostics } from "./brain-diagnostics.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 
 class EmptyProjectFileSystem implements ProjectFileSystem {
@@ -1388,6 +1389,274 @@ describe("AppEnvironmentHost workspace-compile diagnostics surface", () => {
       assert.deepEqual(host.getCompileDiagnosticsSnapshot(), [], "a clean compile empties the snapshot");
     } finally {
       unsubscribe();
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-tile compile errors (ActionKey -> error diagnostics)
+// ---------------------------------------------------------------------------
+
+describe("AppEnvironmentHost tile compile errors", () => {
+  it("keys a broken tile to its verbatim error diagnostics and refreshes the map each compile", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem();
+    filesystem.applyLocalChange({ action: "write", path: "level.ts", content: EXT_SENSOR_SOURCE, newEtag: "e1" });
+    const projectManager = stubProjectManagerWithLiveExtensions(filesystem, {});
+
+    // Capture every compile: the accessor stores diagnostics off the same
+    // WorkspaceCompileResult this callback receives, so the compiler's own
+    // error diagnostics for level.ts are the assertion baseline.
+    let latest: WorkspaceCompileResult | undefined;
+    const host = new AppEnvironmentHost({
+      projectManager,
+      modules: [coreModule()],
+      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      embeddedExtensions: [DEMO_EXTENSION],
+      onDidCompile: (result) => {
+        latest = result;
+      },
+    });
+
+    const levelKey = (): string => {
+      const key = (host.lastUserTileMetadata ?? []).find((entry) => entry.id === "extSensor00000001")?.key;
+      assert.ok(key, "the level tile is registered");
+      return key;
+    };
+    // The tile's compile errors are the per-file union the workspace surfaces:
+    // TypeScript pre-emit diagnostics plus the result's own diagnostics.
+    const levelSourceErrors = (): readonly CompileDiagnostic[] => {
+      for (const root of latest?.rootResults ?? []) {
+        for (const [path, compileResult] of root.results) {
+          if (path.endsWith("level.ts")) {
+            return [...(root.tsErrors.get(path) ?? []), ...compileResult.diagnostics].filter(
+              (diagnostic) => diagnostic.severity === "error"
+            );
+          }
+        }
+      }
+      return [];
+    };
+
+    try {
+      await host.initialize(PROJECT_ID);
+
+      // Uninstalled: the `@lib` import is unresolved, so level.ts fails through
+      // the definition-fallback path. Its key maps to the compiler's verbatim
+      // error diagnostics.
+      const brokenErrors = levelSourceErrors();
+      assert.ok(brokenErrors.length > 0, "level.ts compiled with error diagnostics while the add-on is uninstalled");
+      assert.deepEqual(
+        host.getTileCompileDiagnostics(levelKey())?.diagnostics,
+        brokenErrors,
+        "the accessor returns the compiler's own error diagnostics for the tile's key"
+      );
+      assert.ok(
+        (host.getTileCompileDiagnostics(levelKey())?.diagnostics ?? []).every(
+          (diagnostic) => diagnostic.severity === "error"
+        ),
+        "only error-severity diagnostics are stored"
+      );
+
+      // Installed: level.ts compiles cleanly. The map is rebuilt from this
+      // compile, so the fixed tile drops out.
+      await host.updateProjectExtensions({ [DEMO_COORDINATE]: DEMO_REFERENCE });
+      assert.equal(levelSourceErrors().length, 0, "the clean compile emits no error diagnostics for level.ts");
+      assert.equal(host.getTileCompileDiagnostics(levelKey()), undefined, "a fixed tile has no compile diagnostics");
+
+      // Uninstalled again: level.ts breaks through the last-good-program path;
+      // its key repopulates from the newest compile.
+      await host.updateProjectExtensions({});
+      const reBrokenErrors = levelSourceErrors();
+      assert.ok(reBrokenErrors.length > 0, "level.ts breaks again once the add-on is uninstalled");
+      assert.deepEqual(
+        host.getTileCompileDiagnostics(levelKey())?.diagnostics,
+        reBrokenErrors,
+        "a newly-broken tile repopulates with the latest compile's error diagnostics"
+      );
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Broken-tile compile diagnostics on the per-brain feed
+// ---------------------------------------------------------------------------
+
+/** The `level` sensor rewritten without the `@lib` import, so it compiles cleanly. */
+const EXT_SENSOR_FIXED_SOURCE = `import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  id: "extSensor00000001",
+  name: "level",
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`;
+
+/** The compile-root path of `level.ts` and its verbatim error diagnostics, read straight off the raw compile result. */
+function levelSourceErrors(latest: WorkspaceCompileResult | undefined): {
+  path: string;
+  errors: readonly CompileDiagnostic[];
+} {
+  for (const root of latest?.rootResults ?? []) {
+    for (const [path, compileResult] of root.results) {
+      if (path.endsWith("level.ts")) {
+        const errors = [...(root.tsErrors.get(path) ?? []), ...compileResult.diagnostics].filter(
+          (diagnostic) => diagnostic.severity === "error"
+        );
+        return { path, errors };
+      }
+    }
+  }
+  return { path: "", errors: [] };
+}
+
+/** Compose the source location string a feed entry carries for one diagnostic, mirroring the collector. */
+function expectedLocation(path: string, diagnostic: CompileDiagnostic): string {
+  if (diagnostic.line === undefined) {
+    return path;
+  }
+  if (diagnostic.column === undefined) {
+    return `${path}:${diagnostic.line}`;
+  }
+  return `${path}:${diagnostic.line}:${diagnostic.column}`;
+}
+
+/** The placeable action tile registered for `key` in the latest compile's bundle. */
+function bundleActionTile(latest: WorkspaceCompileResult | undefined, key: string): IBrainTileDef {
+  for (const tile of latest?.bundle?.tiles ?? []) {
+    if ("action" in tile && (tile as IBrainActionTileDef).action.key === key) {
+      return tile;
+    }
+  }
+  assert.fail(`the broken tile ${key} is placeable in the compiled bundle`);
+}
+
+describe("AppEnvironmentHost broken-tile brain diagnostics", () => {
+  it("surfaces a used broken tile's verbatim diagnostics on the feed, deduped, and refreshes them per compile", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const filesystem = createInMemoryProjectFileSystem();
+    filesystem.applyLocalChange({ action: "write", path: "level.ts", content: EXT_SENSOR_SOURCE, newEtag: "e1" });
+    const projectManager = stubProjectManagerWithLiveExtensions(filesystem, {});
+
+    let latest: WorkspaceCompileResult | undefined;
+    const host = new AppEnvironmentHost({
+      projectManager,
+      modules: [coreModule()],
+      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      embeddedExtensions: [DEMO_EXTENSION],
+      onDidCompile: (result) => {
+        latest = result;
+      },
+    });
+
+    const levelKey = (): string => {
+      const key = (host.lastUserTileMetadata ?? []).find((entry) => entry.id === "extSensor00000001")?.key;
+      assert.ok(key, "the level tile is registered");
+      return key;
+    };
+    const lookup = (key: string): ReturnType<typeof host.getTileCompileDiagnostics> =>
+      host.getTileCompileDiagnostics(key);
+
+    try {
+      await host.initialize(PROJECT_ID);
+
+      // The `@lib` add-on is uninstalled, so level.ts fails to compile.
+      const brokenSource = levelSourceErrors(latest);
+      assert.ok(
+        brokenSource.errors.length > 0,
+        "level.ts compiled with error diagnostics while the add-on is uninstalled"
+      );
+
+      const brokenTile = bundleActionTile(latest, levelKey());
+
+      // A brain that uses the broken tile in a single rule.
+      const brainUsing = BrainDef.emptyBrainDef(host.env.brainServices, "uses-broken");
+      brainUsing.pages().get(0)!.children().get(0)!.when().appendTile(brokenTile);
+
+      const feed = collectBrainTileCompileDiagnostics(brainUsing, lookup);
+      // The badge count is the feed length; it reflects every source error, once.
+      assert.equal(feed.length, brokenSource.errors.length, "one feed entry per source error");
+      feed.forEach((entry, index) => {
+        const source = brokenSource.errors[index]!;
+        // Message and code are the compiler's own, verbatim (equality-to-source, no literal prose).
+        assert.equal(entry.message, source.message, "the feed message equals the source diagnostic verbatim");
+        assert.equal(entry.code, source.code, "the feed carries the source diagnostic code");
+        // Location is machine-composed from the tile's source path and the diagnostic position.
+        assert.equal(
+          entry.location,
+          expectedLocation(brokenSource.path, source),
+          "location composed from source path and position"
+        );
+      });
+
+      // A brain that uses no broken tile carries no such entry.
+      const brainClean = BrainDef.emptyBrainDef(host.env.brainServices, "uses-nothing");
+      assert.deepEqual(
+        collectBrainTileCompileDiagnostics(brainClean, lookup),
+        [],
+        "a brain not using the broken tile gets no entry"
+      );
+
+      // The same broken tile in two rules contributes its diagnostics once, not doubled.
+      const brainDup = BrainDef.emptyBrainDef(host.env.brainServices, "uses-broken-twice");
+      const firstPage = brainDup.pages().get(0)!;
+      firstPage.children().get(0)!.when().appendTile(brokenTile);
+      const secondRule = firstPage.appendNewRule();
+      assert.ok(secondRule, "a second rule was appended");
+      secondRule.when().appendTile(brokenTile);
+      assert.equal(
+        collectBrainTileCompileDiagnostics(brainDup, lookup).length,
+        brokenSource.errors.length,
+        "a tile used in two rules contributes its diagnostics once"
+      );
+
+      // Recompile to a clean tile through a plain file edit: the feed clears and the revision bumps.
+      const revBroken = host.getBrainDiagnosticsRevision();
+      host.applyExternalProjectFileChange({
+        action: "write",
+        path: "level.ts",
+        content: EXT_SENSOR_FIXED_SOURCE,
+        newEtag: "e2",
+      });
+      assert.ok(
+        host.getBrainDiagnosticsRevision() > revBroken,
+        "the fixing compile bumped the brain-diagnostics revision"
+      );
+      assert.equal(
+        host.getTileCompileDiagnostics(levelKey()),
+        undefined,
+        "the fixed tile drops out of the compile map"
+      );
+      assert.deepEqual(
+        collectBrainTileCompileDiagnostics(brainUsing, lookup),
+        [],
+        "the feed clears once the tile compiles cleanly"
+      );
+
+      // Recompile back to a broken tile: the feed repopulates and the revision bumps again.
+      const revFixed = host.getBrainDiagnosticsRevision();
+      host.applyExternalProjectFileChange({
+        action: "write",
+        path: "level.ts",
+        content: EXT_SENSOR_SOURCE,
+        newEtag: "e3",
+      });
+      assert.ok(host.getBrainDiagnosticsRevision() > revFixed, "the re-breaking compile bumped the revision again");
+      const reBroken = levelSourceErrors(latest);
+      assert.ok(reBroken.errors.length > 0, "level.ts breaks again once the import is restored");
+      assert.equal(
+        collectBrainTileCompileDiagnostics(brainUsing, lookup).length,
+        reBroken.errors.length,
+        "the feed repopulates with the newest compile's diagnostics"
+      );
+    } finally {
       host.dispose();
       restoreLocalStorage();
     }

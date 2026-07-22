@@ -17,12 +17,9 @@ import type { ProgramArtifact, ProgramTypeEntry, SystemRegistration } from "../.
 import { remapProgramTypeEntry } from "../../runtime/program";
 import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
-import type { IBrainActionTileDef, IBrainDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../interfaces";
+import type { IBrainDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../interfaces";
+import { isActionTileDef } from "../interfaces";
 import { type BrainBuildDiagnostic, type BrainBuildResult, LinkDiagCode } from "./diagnostics";
-
-function isActionTileDef(tileDef: IBrainTileDef): tileDef is IBrainActionTileDef {
-  return tileDef.kind === "sensor" || tileDef.kind === "actuator";
-}
 
 function invalidArtifact(message: string): BrainBuildDiagnostic {
   return { code: LinkDiagCode.InvalidActionArtifact, severity: "error", message };

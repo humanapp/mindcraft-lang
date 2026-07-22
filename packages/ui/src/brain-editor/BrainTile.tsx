@@ -1,4 +1,4 @@
-import { type IBrainActionTileDef, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import { type IBrainTileDef, isActionTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 import { CircleAlert, ClockFading } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
@@ -41,8 +41,8 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
     const isParamTile = category === "parameter";
     const isFactoryTile = category === "factory";
     const isProjectAuthoredAction = isProjectAuthoredActionTile(tileDef, projectNamespace);
-    const isActionTile = category === "action";
-    const isAsyncAction = isActionTile && (tileDef as IBrainActionTileDef).action.isAsync === true;
+    const isActionTile = isActionTileDef(tileDef);
+    const isAsyncAction = isActionTile && tileDef.action.isAsync === true;
     let tileTypeIcon: string | undefined;
     let tileTypeName: string | undefined;
 
