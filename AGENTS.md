@@ -32,7 +32,7 @@ gotchas), and `ui.instructions.md` covers the source-only shared UI package.
 - Complete functions fully. If a complete implementation cannot be inferred
   from context, suggest the minimal correct skeleton rather than a placeholder
   body.
-- Never use inline `import()` type expressions in `.ts` or `.tsx` files; use a
-  top-level `import type` statement instead. Exception: `.d.ts` ambient
-  declaration files and Roblox `.rbx.ts` platform shims where top-level imports
-  would break the ambient module context.
+- Write type-only imports as a top-level `import type` statement in `.ts` and
+  `.tsx` files; do not use inline `import()` type expressions. Exception: `.d.ts`
+  ambient declaration files and Roblox `.rbx.ts` platform shims where top-level
+  imports would break the ambient module context.

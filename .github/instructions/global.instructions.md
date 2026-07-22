@@ -12,12 +12,10 @@ zero-noise check policy, the display-prose test rule, and the broad-view rule.
 
 ## Code Examples and Documentation
 
-Never create example source files in a project's `src` folder.
-
-If creating ad-hoc feature documentation or example files, place them in a
-`generated-docs/` folder at the project root to clearly indicate non-source,
-auto-generated status. Include the creation date in the file name, for example
-`example-feature-2026-05-10.ts` or `docs-feature-2026-05-10.md`.
+Place ad-hoc feature documentation and example files in a `generated-docs/`
+folder at the project root, never in a `src` folder, so their non-source,
+generated status is clear. Include the creation date in the file name, for
+example `example-feature-2026-05-10.ts` or `docs-feature-2026-05-10.md`.
 
 ## Comments in Source Files
 
@@ -41,44 +39,30 @@ What not to write:
   a certain way, why a refactor was done, or what constraints drove a past
   design decision.
 - Comments that just restate what the code literally does.
-- Stub-style placeholders like `// no implementation yet, but could add things
-  like ...`.
+- Stub-style placeholder comments that stand in for unwritten future code.
 
 Avoid design-justification comments that explain why the current shape was
 chosen rather than what it is. A reader who has never seen the alternative gains
 nothing from them.
 
-Treat the following phrasings as red flags in JSDoc on exported symbols and
-delete them when they introduce design rationale:
-
-- "... so that ..."
-- "... rather than ..." when comparing the chosen design to an alternative
-- "... instead of ..." when comparing the chosen design to an alternative
-- "... not a ... -- ..."
-- "... is exposed because ..."
-- "... was chosen ..."
-
-Removal test: cover the comment with your hand and re-read the code. If a
-reader cannot figure out what the field or function is, or how to use it
-correctly, without the comment, keep it. If covering the comment only removes
-justification of the current design, delete it.
+Watch for JSDoc that justifies a design decision when it should simply describe
+the symbol. Apply the removal test: cover the comment with your hand and re-read
+the code. If a reader cannot figure out what the field or function is, or how to
+use it correctly, without the comment, keep it. If covering the comment only
+removes justification of the current design, delete it.
 
 Scope each comment to its own symbol. Document what the symbol is, its inputs,
-outputs, and errors -- nothing about what it is not, or what a different symbol
-does. Do not redirect the reader to another API for a related-but-different
-task, and do not contrast this symbol with an alternative. Phrasings like "to do
-X instead, use `Y`", "use `Y` to ...", or "unlike `Y`, this ..." pull in scope
-the reader did not ask about and invite tangential questions ("can this not do
-X?", "what is `Y`?"). A cross-reference is justified only when a reader cannot
-use this symbol correctly without it -- a required companion call or a
-precondition established elsewhere -- and then state it as a plain instruction
-("call `init()` first"), never as a contrast or a redirect to alternative
-functionality.
+outputs, and errors -- the symbol itself, not what it is not or what a
+neighboring symbol does. Keep a cross-reference only when a reader cannot use
+this symbol correctly without it -- a required companion call or a precondition
+established elsewhere -- and state it as a plain instruction ("call `init()`
+first"). A comment that contrasts the symbol against an alternative, or redirects
+the reader to a different API for a related task, pulls in scope the reader did
+not ask about and invites tangential questions.
 
-- Avoid: `Compiles and links a brain. To run one instead, use createBrain().`
-- Avoid: `Builds the image without constructing a runtime.`
-- Prefer: `Compiles and links a brain and returns the linked program. Throws if
-  it fails to compile or link.`
+- Prefer a comment that states what the symbol does and how it fails:
+  `Compiles and links a brain and returns the linked program. Throws if it fails
+  to compile or link.`
 
 ## ASCII-Only Text in Comments and Documentation
 
@@ -100,9 +84,8 @@ Common substitutions:
 
 ## Communication Style
 
-Avoid excessive agreement and reinforcement phrases such as "You're right!",
-"Exactly!", and "Perfect!". Be direct and matter-of-fact in responses. Focus on
-providing solutions and information rather than validating statements.
+Be direct and matter-of-fact. Lead with solutions and information, and skip
+agreement or reinforcement filler that only validates the user's statement.
 
 ## Generated Files -- Do Not Read
 
