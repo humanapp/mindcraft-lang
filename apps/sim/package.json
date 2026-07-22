@@ -30,7 +30,7 @@
   "scripts": {
     "predev": "npm run build --prefix ../../packages/core",
     "dev": "vite --config vite/config.dev.mjs --force",
-    "prebuild": "npm run build --prefix ../../packages/core && tsc --build tsconfig.refs.json",
+    "prebuild": "npm run install:packages --prefix ../.. && npm run build:deps && tsc --build tsconfig.refs.json",
     "build": "vite build --config vite/config.prod.mjs",
     "pregenerate:ambient": "npm run generate:ambient --prefix ../../packages/core",
     "generate:ambient": "tsx --tsconfig scripts/tsconfig.json scripts/generate-ambient.ts",
