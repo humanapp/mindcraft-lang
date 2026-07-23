@@ -634,6 +634,65 @@ describe("getOrCreateFunctionType", () => {
   });
 });
 
+describe("struct field optional flag", () => {
+  before(() => {
+    services = __test__createBrainServices();
+  });
+
+  test("addStructType preserves the optional flag on the stored field def", () => {
+    const registry = services.runtime.types;
+    const typeId = registry.addStructType("OptsA", {
+      atomId: mkTestAtomId(),
+      fields: List.from([
+        { name: "loud", typeId: CoreTypeIds.Boolean, fieldIndex: 0 },
+        { name: "immediately", typeId: CoreTypeIds.Boolean, fieldIndex: 1, optional: true },
+      ]),
+    });
+    const def = registry.get(typeId) as StructTypeDef;
+    assert.equal(def.fields.get(0)!.optional, undefined, "a plain field carries no optional flag");
+    assert.equal(def.fields.get(1)!.optional, true, "the optional field carries optional: true");
+  });
+
+  test("optional coexists with readOnly on the same field", () => {
+    const registry = services.runtime.types;
+    const typeId = registry.addStructType("OptsB", {
+      atomId: mkTestAtomId(),
+      fields: List.from([{ name: "tag", typeId: CoreTypeIds.String, fieldIndex: 0, readOnly: true, optional: true }]),
+    });
+    const def = registry.get(typeId) as StructTypeDef;
+    assert.equal(def.fields.get(0)!.readOnly, true);
+    assert.equal(def.fields.get(0)!.optional, true);
+  });
+
+  test("addStructFields carries the optional flag on extension fields", () => {
+    const registry = services.runtime.types;
+    const typeId = registry.addStructType("OptsC", {
+      atomId: mkTestAtomId(),
+      fields: List.from([{ name: "base", typeId: CoreTypeIds.Number, fieldIndex: 0 }]),
+    });
+    registry.addStructFields(
+      typeId,
+      List.from([{ name: "extra", typeId: CoreTypeIds.Number, fieldIndex: 1, optional: true }])
+    );
+    const def = registry.get(typeId) as StructTypeDef;
+    assert.equal(def.fields.get(1)!.name, "extra");
+    assert.equal(def.fields.get(1)!.optional, true);
+  });
+
+  test("finalizeStructType carries the optional flag", () => {
+    const registry = services.runtime.types;
+    const typeId = registry.reserveStructType("OptsD");
+    registry.finalizeStructType(typeId, {
+      fields: List.from([
+        { name: "a", typeId: CoreTypeIds.Number, fieldIndex: 0 },
+        { name: "b", typeId: CoreTypeIds.Number, fieldIndex: 1, optional: true },
+      ]),
+    });
+    const def = registry.get(typeId) as StructTypeDef;
+    assert.equal(def.fields.get(1)!.optional, true);
+  });
+});
+
 describe("isStructurallyCompatible", () => {
   before(() => {
     services = __test__createBrainServices();
