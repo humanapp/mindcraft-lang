@@ -1,6 +1,6 @@
 {
   "name": "@mindcraft-lang/service-api",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Request/response schemas, shared enums, error shapes, and serialization formats for the Mindcraft backend service API",
   "license": "MIT",
   "type": "module",
