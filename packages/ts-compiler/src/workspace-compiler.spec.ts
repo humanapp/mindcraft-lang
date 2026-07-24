@@ -49,7 +49,7 @@ function ambientFilesFor(environment: ReturnType<typeof createMindcraftEnvironme
       content: buildAmbientDeclarations(environment.brainServices.runtime.types),
     },
     {
-      path: "mindcraft.sim.d.ts",
+      path: "mindcraft.ecosim.d.ts",
       content: "",
     },
   ];
@@ -127,7 +127,7 @@ export default Sensor({
           },
         ],
         [
-          "mindcraft.sim.d.ts",
+          "mindcraft.ecosim.d.ts",
           {
             kind: "file",
             content: 'declare module "mindcraft" { export type AlsoBroken = ; }',
@@ -170,7 +170,7 @@ export default Sensor({
     const sourceDiagnostics = result.files.get("sensors/look.ts") ?? [];
 
     assert.equal(result.files.get("mindcraft.core.d.ts"), undefined);
-    assert.equal(result.files.get("mindcraft.sim.d.ts"), undefined);
+    assert.equal(result.files.get("mindcraft.ecosim.d.ts"), undefined);
     assert.equal(result.files.get("tsconfig.json"), undefined);
     assert.ok(
       sourceDiagnostics.some((diagnostic) => diagnostic.message.includes("implicitly has an 'any' type")),
@@ -191,7 +191,7 @@ export default Sensor({
     const controlledFiles = compiler.getCompilerControlledFiles();
 
     assert.equal(controlledFiles.get("mindcraft.core.d.ts"), ambientFiles[0]!.content);
-    assert.equal(controlledFiles.get("mindcraft.sim.d.ts"), ambientFiles[1]!.content);
+    assert.equal(controlledFiles.get("mindcraft.ecosim.d.ts"), ambientFiles[1]!.content);
     assert.ok(controlledFiles.get("tsconfig.json")?.includes('"strict": true'));
   });
 

@@ -91,7 +91,7 @@ implementing the same seam.
 +--------------------------------------------------------------+
 ```
 
-The brain pipeline (`apps/sim`, the visual editor) is itself a "platform
+The brain pipeline (`apps/ecosim`, the visual editor) is itself a "platform
 app" in this taxonomy: it constructs a `PlatformServices` whose registry
 includes sensors/actuators, calls the compiler in tile mode, and runs the
 result inside a `Brain` (a richer wrapper around the same VM). The seam

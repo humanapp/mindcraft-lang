@@ -60,7 +60,7 @@ import {
 
 // Top-edge brand accent. Uses each app's signature strip tokens when defined
 // (microbit-sim's blue->green->teal), else falls back to the brand primary/ring
-// so single-brand apps (apps/sim) still get a branded accent line.
+// so single-brand apps (apps/ecosim) still get a branded accent line.
 const brandStripBackground =
   "linear-gradient(90deg, var(--strip-blue, var(--color-primary)) 0%, var(--strip-green, var(--color-ring)) 50%, var(--strip-teal, var(--color-primary)) 100%)";
 

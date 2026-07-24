@@ -88,7 +88,7 @@ npm. Their tags trigger deploy workflows instead of publish workflows.
 `sim` uses `--skip-deps` so upstream packages are not published as a side effect:
 
 ```sh
-cd apps/sim
+cd apps/ecosim
 npm run release:patch
 ```
 

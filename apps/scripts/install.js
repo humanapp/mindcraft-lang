@@ -3,7 +3,7 @@
 const { execSync } = require("node:child_process");
 
 const apps = [
-    "sim",
+    "ecosim",
     "vscode-bridge",
     "vscode-extension",
 ];

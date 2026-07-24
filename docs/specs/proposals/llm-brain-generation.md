@@ -172,7 +172,7 @@ the prompt stays in sync as tiles are added or changed.
 
 **Step 3 -- Curate few-shot examples** _(depends on step 1)_
 
-Source from existing docs content (`apps/sim/src/docs/content/en/tiles/`) and test
+Source from existing docs content (`apps/ecosim/src/docs/content/en/tiles/`) and test
 fixtures. Each example:
 
 - Natural language description
@@ -360,15 +360,15 @@ The LLM must produce tile sequences that satisfy these grammars. Invalid combina
 - `packages/core/src/brain/tiles/sensors.ts` -- Core sensor tile defs
 - `packages/core/src/brain/tiles/actuators.ts` -- Core actuator tile defs
 - `packages/core/src/brain/tiles/operators.ts` -- Operator tile defs
-- `apps/sim/src/brain/tiles/index.ts` -- Sim-specific tile registration orchestration
-- `apps/sim/src/brain/fns/sensors/see.ts` -- See sensor implementation
-- `apps/sim/src/brain/fns/sensors/bump.ts` -- Bump sensor implementation
-- `apps/sim/src/brain/fns/actuators/move.ts` -- Move actuator implementation
-- `apps/sim/src/brain/fns/actuators/turn.ts` -- Turn actuator implementation
-- `apps/sim/src/brain/fns/actuators/eat.ts` -- Eat actuator implementation
-- `apps/sim/src/brain/fns/actuators/say.ts` -- Say actuator implementation
-- `apps/sim/src/brain/fns/actuators/shoot.ts` -- Shoot actuator implementation
-- `apps/sim/src/docs/content/en/` -- Existing tile docs (few-shot material)
+- `apps/ecosim/src/brain/tiles/index.ts` -- Sim-specific tile registration orchestration
+- `apps/ecosim/src/brain/fns/sensors/see.ts` -- See sensor implementation
+- `apps/ecosim/src/brain/fns/sensors/bump.ts` -- Bump sensor implementation
+- `apps/ecosim/src/brain/fns/actuators/move.ts` -- Move actuator implementation
+- `apps/ecosim/src/brain/fns/actuators/turn.ts` -- Turn actuator implementation
+- `apps/ecosim/src/brain/fns/actuators/eat.ts` -- Eat actuator implementation
+- `apps/ecosim/src/brain/fns/actuators/say.ts` -- Say actuator implementation
+- `apps/ecosim/src/brain/fns/actuators/shoot.ts` -- Shoot actuator implementation
+- `apps/ecosim/src/docs/content/en/` -- Existing tile docs (few-shot material)
 - `packages/docs/src/DocsRegistry.ts` -- Documentation registry pattern
 - `packages/ui/src/brain-editor/commands/` -- BrainCommand system (undo/redo)
 - `packages/ui/src/brain-editor/commands/BrainCommands.ts` -- `ReplaceBrainCommand` for applying LLM output
@@ -431,7 +431,7 @@ The LLM must produce tile sequences that satisfy these grammars. Invalid combina
 2. **Module placement**: Where does each piece of code live?
    - Tile catalog export function: `packages/core/src/brain/llm/`? Needs to be
      app-agnostic since it accepts multiple catalogs.
-   - LLM service module (API call, validation, retry): `apps/sim/src/services/`?
+   - LLM service module (API call, validation, retry): `apps/ecosim/src/services/`?
      App-specific since it depends on server infrastructure.
    - Conversation state manager: `packages/ui/`? Or sim app?
    - Chat panel component: `packages/ui/src/brain-editor/` alongside existing editor

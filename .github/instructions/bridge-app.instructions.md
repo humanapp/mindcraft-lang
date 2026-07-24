@@ -8,7 +8,7 @@ applyTo: "packages/bridge-app/**"
 
 App-role client for the Mindcraft bridge. Wraps `bridge-client` with app-specific
 behavior: automatic join code management and the `"app"` WebSocket path. Apps (e.g.
-`apps/sim`) depend on this package rather than using `bridge-client` directly.
+`apps/ecosim`) depend on this package rather than using `bridge-client` directly.
 
 ## Build & Scripts
 
