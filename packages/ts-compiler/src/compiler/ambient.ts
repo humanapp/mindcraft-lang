@@ -679,11 +679,9 @@ function generateStructInterface(def: StructTypeDef, registry: ITypeRegistry): s
     const tsType = typeIdToTs(field.typeId, registry);
     const fieldName = propertyName(field.name);
     const isReadOnly = hasPerFieldReadOnly ? field.readOnly === true : nativeBacked;
-    if (isReadOnly) {
-      result += `    readonly ${fieldName}: ${tsType};\n`;
-    } else {
-      result += `    ${fieldName}: ${tsType};\n`;
-    }
+    const prefix = isReadOnly ? "readonly " : "";
+    const optionalMark = field.optional === true ? "?" : "";
+    result += `    ${prefix}${fieldName}${optionalMark}: ${tsType};\n`;
   });
   def.methods?.forEach((method) => {
     const params: string[] = [];
@@ -784,7 +782,9 @@ function generateStructAugmentation(def: StructTypeDef, baseDef: StructTypeDef, 
     const tsType = typeIdToTs(field.typeId, registry);
     const fieldName = propertyName(field.name);
     const isReadOnly = hasPerFieldReadOnly ? field.readOnly === true : isNativeBacked(def);
-    body += isReadOnly ? `    readonly ${fieldName}: ${tsType};\n` : `    ${fieldName}: ${tsType};\n`;
+    const prefix = isReadOnly ? "readonly " : "";
+    const optionalMark = field.optional === true ? "?" : "";
+    body += `    ${prefix}${fieldName}${optionalMark}: ${tsType};\n`;
   });
   def.methods?.forEach((method) => {
     if (hasMethod(baseDef, method.name)) return;

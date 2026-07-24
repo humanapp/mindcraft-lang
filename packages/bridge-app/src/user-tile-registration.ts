@@ -1,6 +1,8 @@
 import type { ActionKind, BrainActionCallSpec, MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { logger, mkActionTileId } from "@mindcraft-lang/core/app";
+import type { ActionKey } from "@mindcraft-lang/core/runtime";
 import type {
+  CompileDiagnostic,
   ExtractedArgSpec,
   ExtractedOutput,
   UserAuthoredProgram,
@@ -101,6 +103,56 @@ export function collectMetadataFromCompile(result: WorkspaceCompileResult): User
 
   metadata.sort((left, right) => left.key.localeCompare(right.key));
   return metadata;
+}
+
+/**
+ * A user tile's error compile diagnostics together with the source file path
+ * that produced them. `path` is the compilation-root path keyed by the tile's
+ * {@link ActionKey}; a consumer composes a source location from `path` and each
+ * diagnostic's `line`/`column`.
+ */
+export interface TileCompileDiagnostics {
+  /** Compilation-root path of the source file that contributed the tile. */
+  readonly path: string;
+  /** The file's error compile diagnostics, verbatim and in emit order. */
+  readonly diagnostics: readonly CompileDiagnostic[];
+}
+
+/**
+ * Map each user tile's {@link ActionKey} to the error compile diagnostics of the
+ * source file that contributed it and that source's path, built from a single
+ * workspace compile. Iterates every compilation root's per-file results, keying
+ * by `(program ?? definition).key` and collecting that file's compile errors:
+ * the TypeScript pre-emit diagnostics (`tsErrors` for the file's path) together
+ * with the result's own descriptor, lowering, and emit diagnostics, filtered to
+ * `severity === "error"`. Conversions surface no tile and are excluded. A file
+ * that compiled cleanly, or produced only warnings and infos, is absent from the
+ * map.
+ *
+ * The stored diagnostics are the compiler's verbatim {@link CompileDiagnostic}
+ * objects, so a consumer reads `message`, `severity`, and `line`/`column` directly.
+ */
+export function collectTileSourceCompileErrors(result: WorkspaceCompileResult): Map<ActionKey, TileCompileDiagnostics> {
+  const byKey = new Map<ActionKey, TileCompileDiagnostics>();
+
+  for (const rootResult of result.rootResults) {
+    for (const [path, compileResult] of rootResult.results) {
+      const surface = compileResult.program ?? compileResult.definition;
+      // Conversions compile to a program but surface no tile, so they contribute no tile diagnostics.
+      if (!surface || surface.kind === "conversion") {
+        continue;
+      }
+      const tsErrors = rootResult.tsErrors.get(path) ?? [];
+      const diagnostics = [...tsErrors, ...compileResult.diagnostics].filter(
+        (diagnostic) => diagnostic.severity === "error"
+      );
+      if (diagnostics.length > 0) {
+        byKey.set(surface.key, { path, diagnostics });
+      }
+    }
+  }
+
+  return byKey;
 }
 
 /**

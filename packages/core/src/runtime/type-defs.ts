@@ -197,6 +197,13 @@ export interface StructFieldInput {
   readonly name: string;
   readonly typeId: TypeId;
   readonly readOnly?: boolean;
+  /**
+   * When true, the field may be omitted when constructing a value via object
+   * literal, and reads as nil when it was not supplied; the generated ambient
+   * declares such a field as `name?: T`. Governs omittability of the key, which
+   * is independent of whether the value {@link typeId} admits nil.
+   */
+  readonly optional?: boolean;
   readonly fieldIndex: number;
 }
 

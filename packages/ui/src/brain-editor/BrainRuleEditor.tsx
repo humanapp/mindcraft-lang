@@ -36,7 +36,7 @@ import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilit
 import { useTileSelection } from "./hooks/useTileSelection";
 import { useRuleDragController } from "./RuleDragContext";
 import { copyRuleToClipboard, hasRuleInClipboard, onClipboardChanged } from "./rule-clipboard";
-import { buildNodeMap, computeTileBadges, type TileBadge } from "./tile-badges";
+import { applyBrokenTileBadges, buildNodeMap, computeTileBadges, type TileBadge } from "./tile-badges";
 
 // Pre-compute glass effects for each element type
 const containerGlass = glassEffect({
@@ -109,7 +109,7 @@ export function BrainRuleEditor({
   updateCounter,
   commandHistory,
 }: BrainRuleEditorProps) {
-  const { brainServices, tileCatalogs } = useBrainEditorConfig();
+  const { brainServices, tileCatalogs, isBrokenTile } = useBrainEditorConfig();
   const dragController = useRuleDragController();
   const isDragging = dragController.draggingRuleId === ruleDef.id();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -179,21 +179,30 @@ export function BrainRuleEditor({
     };
   }, [ruleDef, updateCounter]);
 
-  // Compute tile badges from typecheck results
-  const updateBadgesForSide = useCallback((side: RuleSide, typecheckResult: unknown) => {
-    const result = typecheckResult as TypecheckResult | undefined;
-    if (!result) {
-      if (side === RuleSide.When) setWhenBadges(new Map());
-      else setDoBadges(new Map());
-      return;
-    }
-    const sideParseResult = side === RuleSide.When ? result.whenParseResult : result.doParseResult;
-    const nodeMap = buildNodeMap(sideParseResult);
-    const typeDiags = result.typeInfo.diags.toArray().filter((d) => nodeMap.has(d.nodeId));
-    const badges = computeTileBadges(sideParseResult, typeDiags, nodeMap);
-    if (side === RuleSide.When) setWhenBadges(badges);
-    else setDoBadges(badges);
-  }, []);
+  // Compute tile badges from typecheck results, then overlay broken-tile badges
+  // (an action tile whose definition failed to compile), which take precedence
+  // over any per-rule diagnostic on the same tile.
+  const updateBadgesForSide = useCallback(
+    (side: RuleSide, typecheckResult: unknown) => {
+      const result = typecheckResult as TypecheckResult | undefined;
+      let badges: Map<number, TileBadge>;
+      if (!result) {
+        badges = new Map();
+      } else {
+        const sideParseResult = side === RuleSide.When ? result.whenParseResult : result.doParseResult;
+        const nodeMap = buildNodeMap(sideParseResult);
+        const typeDiags = result.typeInfo.diags.toArray().filter((d) => nodeMap.has(d.nodeId));
+        badges = computeTileBadges(sideParseResult, typeDiags, nodeMap);
+      }
+      if (isBrokenTile) {
+        const tiles = (side === RuleSide.When ? ruleDef.when() : ruleDef.do()).tiles().toArray();
+        applyBrokenTileBadges(tiles, badges, isBrokenTile);
+      }
+      if (side === RuleSide.When) setWhenBadges(badges);
+      else setDoBadges(badges);
+    },
+    [ruleDef, isBrokenTile]
+  );
 
   useEffect(() => {
     const whenTileSet = ruleDef.when();

@@ -1,5 +1,5 @@
-import type { IBrainActionTileDef, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { mkVariableFactoryTileId } from "@mindcraft-lang/core/brain";
+import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
+import { isActionTileDef, mkVariableFactoryTileId } from "@mindcraft-lang/core/brain";
 import type { BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 
 /** A documented parameter or modifier tile placed by an action's call spec. */
@@ -54,10 +54,10 @@ export function getActionArgEntries(
   tileDef: IBrainTileDef | undefined,
   getTileDef: (tileId: string) => IBrainTileDef | undefined
 ): readonly ActionArgEntry[] {
-  if (!tileDef || (tileDef.kind !== "sensor" && tileDef.kind !== "actuator")) {
+  if (!tileDef || !isActionTileDef(tileDef)) {
     return [];
   }
-  const argSlots = (tileDef as IBrainActionTileDef).action.callDef.argSlots;
+  const argSlots = tileDef.action.callDef.argSlots;
   const seen = new Set<string>();
   const entries: ActionArgEntry[] = [];
   for (let i = 0; i < argSlots.size(); i++) {

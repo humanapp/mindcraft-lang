@@ -11639,7 +11639,7 @@ function autoRegisterIntersectionType(
   const props = type.getProperties();
   if (props.length === 0) return undefined;
 
-  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number; optional?: boolean }>();
   for (const prop of props) {
     const propType = checker.getTypeOfSymbol(prop);
     if (propType.getCallSignatures().length > 0) return undefined;
@@ -11649,7 +11649,12 @@ function autoRegisterIntersectionType(
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
-    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
+    fields.push({
+      name: prop.name,
+      typeId: fieldTypeId,
+      fieldIndex: fields.size(),
+      optional: isOptional ? true : undefined,
+    });
   }
 
   let structName: string;
@@ -11686,7 +11691,7 @@ function autoRegisterAnonymousStruct(
   const props = type.getProperties();
   if (props.length === 0) return undefined;
 
-  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number; optional?: boolean }>();
   const nameParts: string[] = [];
   for (const prop of props) {
     // Literal field types widen to their declared types (an enum member
@@ -11699,7 +11704,12 @@ function autoRegisterAnonymousStruct(
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
-    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
+    fields.push({
+      name: prop.name,
+      typeId: fieldTypeId,
+      fieldIndex: fields.size(),
+      optional: isOptional ? true : undefined,
+    });
     nameParts.push(`${prop.name}:${fieldTypeId}`);
   }
 
@@ -11757,7 +11767,7 @@ function autoRegisterObjectType(
   const props = type.getProperties();
   if (props.length === 0) return undefined;
 
-  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number; optional?: boolean }>();
   for (const prop of props) {
     const propType = checker.getTypeOfSymbol(prop);
     if (propType.getCallSignatures().length > 0) return undefined;
@@ -11767,7 +11777,12 @@ function autoRegisterObjectType(
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
-    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
+    fields.push({
+      name: prop.name,
+      typeId: fieldTypeId,
+      fieldIndex: fields.size(),
+      optional: isOptional ? true : undefined,
+    });
   }
 
   const baseName = resolveRegistryName(sym, services, projectNamespace);
@@ -11806,8 +11821,8 @@ function extractClassFields(
   diagnostics: CompileDiagnostic[],
   services: BrainServices,
   projectNamespace: string
-): List<{ name: string; typeId: TypeId; fieldIndex: number }> | undefined {
-  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
+): List<{ name: string; typeId: TypeId; fieldIndex: number; optional?: boolean }> | undefined {
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number; optional?: boolean }>();
   const seen = new Set<string>();
 
   for (const member of classNode.members) {
@@ -11839,7 +11854,13 @@ function extractClassFields(
       );
       return undefined;
     }
-    fields.push({ name: fieldName, typeId: fieldTypeId, fieldIndex: fields.size() });
+    const isOptional = member.questionToken !== undefined;
+    fields.push({
+      name: fieldName,
+      typeId: fieldTypeId,
+      fieldIndex: fields.size(),
+      optional: isOptional ? true : undefined,
+    });
   }
 
   const ctor = classNode.members.find(ts.isConstructorDeclaration);
@@ -12053,8 +12074,8 @@ function extractInterfaceFields(
   diagnostics: CompileDiagnostic[],
   services: BrainServices,
   projectNamespace: string
-): List<{ name: string; typeId: TypeId; fieldIndex: number }> | undefined {
-  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number }>();
+): List<{ name: string; typeId: TypeId; fieldIndex: number; optional?: boolean }> | undefined {
+  const fields = new List<{ name: string; typeId: TypeId; fieldIndex: number; optional?: boolean }>();
 
   const indexInfo = checker.getIndexInfosOfType(type);
   if (indexInfo.length > 0) {
@@ -12105,7 +12126,12 @@ function extractInterfaceFields(
       fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
 
-    fields.push({ name: prop.name, typeId: fieldTypeId, fieldIndex: fields.size() });
+    fields.push({
+      name: prop.name,
+      typeId: fieldTypeId,
+      fieldIndex: fields.size(),
+      optional: isOptional ? true : undefined,
+    });
   }
 
   return fields;

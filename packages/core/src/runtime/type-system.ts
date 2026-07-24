@@ -80,6 +80,7 @@ function toStructFieldDefs(
       name: field.name,
       typeId: field.typeId,
       readOnly: field.readOnly,
+      optional: field.optional,
       fieldIndex: id,
     };
   });

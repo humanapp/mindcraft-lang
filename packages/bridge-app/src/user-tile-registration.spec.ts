@@ -18,7 +18,11 @@ import {
   type WorkspaceCompileResult,
 } from "@mindcraft-lang/ts-compiler";
 import { TEST_PROJECT_NAMESPACE } from "@mindcraft-lang/ts-compiler/testing";
-import { applyCompiledUserTiles, collectMetadataFromCompile } from "./user-tile-registration.js";
+import {
+  applyCompiledUserTiles,
+  collectMetadataFromCompile,
+  collectTileSourceCompileErrors,
+} from "./user-tile-registration.js";
 
 function resolveCoreTypeId(typeName: string): string | undefined {
   switch (typeName) {
@@ -156,6 +160,59 @@ export default Actuator({
       undefined,
       "the definition offers no executable action"
     );
+  });
+});
+
+const BROKEN_SENSOR = `
+import { Sensor, type Context } from "mindcraft";
+import { Position } from "@lib/acme/pos";
+
+export default Sensor({
+  id: "snbroken00000001",
+  name: "broken",
+  onExecute(ctx: Context): number {
+    const position: Position | undefined = undefined;
+    return 1;
+  },
+});
+`;
+
+describe("collectTileSourceCompileErrors", () => {
+  test("a tile whose file fails to compile maps its key to the compiler's verbatim error diagnostics and source path", () => {
+    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const result = compile(env, { "sensor.ts": INLINE_PRESENCE_SENSOR, "broken.ts": BROKEN_SENSOR });
+
+    const brokenResult = result.projectResult.results.get("broken.ts");
+    assert.ok(brokenResult, "broken.ts produced a compile result");
+    // The tile's compile errors are the per-file union the workspace surfaces:
+    // TypeScript pre-emit diagnostics plus the result's own diagnostics.
+    const sourceErrors = [
+      ...(result.projectResult.tsErrors.get("broken.ts") ?? []),
+      ...brokenResult.diagnostics,
+    ].filter((diagnostic) => diagnostic.severity === "error");
+    assert.ok(sourceErrors.length > 0, "broken.ts compiled with at least one error diagnostic");
+
+    const byKey = collectTileSourceCompileErrors(result);
+    const brokenKey = `${TEST_PROJECT_NAMESPACE}:user.sensor.snbroken00000001`;
+    const entry = byKey.get(brokenKey);
+    assert.equal(entry?.path, "broken.ts", "the entry carries the tile's compile-root source path");
+    assert.deepEqual(
+      entry?.diagnostics,
+      sourceErrors,
+      "the map stores the compiler's own error diagnostics verbatim, keyed by ActionKey"
+    );
+    for (const diagnostic of entry?.diagnostics ?? []) {
+      assert.equal(diagnostic.severity, "error");
+    }
+  });
+
+  test("a cleanly-compiling tile contributes no entry", () => {
+    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const result = compile(env, { "sensor.ts": INLINE_PRESENCE_SENSOR });
+
+    const byKey = collectTileSourceCompileErrors(result);
+    assert.equal(byKey.size, 0, "a clean compile yields an empty map");
+    assert.equal(byKey.has(`${TEST_PROJECT_NAMESPACE}:user.sensor.snstick`), false);
   });
 });
 
