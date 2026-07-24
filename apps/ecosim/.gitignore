@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Generated target-package bundle (manifest stays tracked)
+target-package/app
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

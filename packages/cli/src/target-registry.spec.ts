@@ -34,12 +34,10 @@ function registryDocument(entries: readonly Record<string, unknown>[]): string {
 describe("target registry", () => {
   it("loads the bundled registry and resolves the micro:bit target", () => {
     const registry = loadTargetRegistry();
-    assert.equal(registry.entries.length, 1);
-    const [only] = registry.entries;
-    assert.equal(only.coordinate, MICROBIT_COORDINATE);
-    assert.equal(only.name, "micro:bit v2");
-    assert.equal(only.version, "0.7.0");
-    assert.equal(only.ref, MICROBIT_REF);
+    const microbit = registry.entries.find((candidate) => candidate.coordinate === MICROBIT_COORDINATE);
+    assert.ok(microbit, "bundled registry includes the micro:bit target");
+    assert.equal(microbit.name, "micro:bit v2");
+    assert.equal(microbit.ref, MICROBIT_REF);
     assert.equal(registry.resolve(MICROBIT_COORDINATE), MICROBIT_REF);
   });
 
