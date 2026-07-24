@@ -57,7 +57,16 @@ jobs:
           fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
           EOF
-          npm install --package-lock-only
+          n=0
+          until npm install --package-lock-only; do
+            n=$((n + 1))
+            if [ "$n" -ge 5 ]; then
+              echo "npm install --package-lock-only failed after $n attempts" >&2
+              exit 1
+            fi
+            echo "Attempt $n failed (a just-published dependency version may not be resolvable yet); retrying in $((n * 15))s..." >&2
+            sleep $((n * 15))
+          done
 
       - name: Install dependencies
         run: npm ci
