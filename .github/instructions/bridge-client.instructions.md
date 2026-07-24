@@ -7,7 +7,7 @@ applyTo: "packages/bridge-client/**"
 # bridge-client -- Rules & Patterns
 
 Client-side SDK for vscode-bridge communication: WebSocket lifecycle, in-memory
-filesystem, and bidirectional sync. Consumed by `bridge-app`, `apps/sim`, and
+filesystem, and bidirectional sync. Consumed by `bridge-app`, `apps/ecosim`, and
 `apps/vscode-extension`. Message types and schemas live in `bridge-protocol`.
 
 ## Build & Scripts

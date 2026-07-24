@@ -36,7 +36,7 @@ Mindcraft draws inspiration from other tile-based programming systems past and p
 
 | App | Description |
 |-----|-------------|
-| [Ecosystem Sim](apps/sim/) | Demo: carnivores, herbivores, and plants driven by user-editable Mindcraft brains |
+| [Ecosystem Sim](apps/ecosim/) | Demo: carnivores, herbivores, and plants driven by user-editable Mindcraft brains |
 | [VS Code Extension](apps/vscode-extension/) | Author Mindcraft sensors and actuators in TypeScript using VS Code Web ([Marketplace](https://marketplace.visualstudio.com/items?itemName=mindcraft-lang.mindcraft-lang-vscode-extension)) |
 | [VS Code Bridge](apps/vscode-bridge/) | Bridge server that relays between the VS Code extension and Mindcraft apps |
 
@@ -54,7 +54,7 @@ npm install @mindcraft-lang/core @mindcraft-lang/ui
 # Full stack (adds documentation sidebar and renderer)
 npm install @mindcraft-lang/core @mindcraft-lang/ui @mindcraft-lang/docs
 
-# For VS Code integration, see apps/sim for example implementation.
+# For VS Code integration, see apps/ecosim for example implementation.
 ```
 
 For full setup instructions -- Vite config, TypeScript paths, Tailwind, and component usage -- see the [Integration Guide](INTEGRATION.md).

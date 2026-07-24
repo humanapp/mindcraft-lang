@@ -68,7 +68,7 @@ const config: BrainEditorConfig = {
 </BrainEditorProvider>
 ```
 
-See `apps/sim/src/brain-editor-config.tsx` for a working example.
+See `apps/ecosim/src/brain-editor-config.tsx` for a working example.
 
 ## Package Layout
 

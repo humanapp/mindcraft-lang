@@ -8,7 +8,7 @@ Draft
 
 The Ecosystem Sim is a browser-based 2D ecosystem simulation built with Vite, React 19, Phaser 3, and Matter.js physics. It serves as the flagship demo for the Mindcraft brain programming language (implemented in `packages/core`). Users observe and control a top-down world populated by three actor archetypes -- carnivores, herbivores, and plants -- each driven by a user-editable visual brain program. A React sidebar provides live statistics, population controls, and a time-scale slider. A modal brain editor (from `@mindcraft-lang/ui`) lets users visually program each archetype's behavior by placing tiles together forming rules. An integrated docs sidebar provides contextual help for tiles and programming patterns.
 
-The app lives at `apps/sim/` within the `mindcraft-lang` monorepo.
+The app lives at `apps/ecosim/` within the `mindcraft-lang` monorepo.
 
 ## Product Goals
 
@@ -75,7 +75,7 @@ The dev server watches `packages/core` ESM output for live reload. The prod buil
 ### Directory Layout
 
 ```
-apps/sim/
+apps/ecosim/
   index.html                     # SPA entry point
   biome.json                     # Biome config (120 char, 2-space indent)
   postcss.config.js              # Tailwind PostCSS plugin

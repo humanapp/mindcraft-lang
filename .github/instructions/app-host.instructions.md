@@ -7,7 +7,7 @@ applyTo: "packages/app-host/**"
 # app-host -- Rules & Patterns
 
 Project collection management, project file storage, and persistence for
-Mindcraft host apps. Apps (e.g. `apps/sim`) depend on this package for named
+Mindcraft host apps. Apps (e.g. `apps/ecosim`) depend on this package for named
 project collections, named projects, in-memory project file systems, and
 IDB-backed persistence. No dependency on
 `bridge-app`, `bridge-client`, or `bridge-protocol`.

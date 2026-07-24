@@ -183,7 +183,7 @@ function readFetchedManifest(files: ReadonlyMap<string, string>): EmbeddedManife
  * sits on, each with its declared version. The stack is the intersection of the
  * project's resolved extension closure with the declared platform-layer
  * coordinates; a microbit-sim project resolves `core`, `wodal`, and
- * `microbit-v2`, an apps/sim project resolves `core` and `sim`.
+ * `microbit-v2`, an apps/ecosim project resolves `core` and `sim`.
  *
  * @param extensions - The project's extensions map, keyed by coordinate.
  * @param embedRecord - The host application's bundled embedded extensions.

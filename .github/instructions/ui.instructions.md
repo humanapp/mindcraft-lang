@@ -112,7 +112,7 @@ The brain editor integrates with docs via two optional `BrainEditorConfig` field
 - `docsIntegration` -- `{ isOpen, toggle, close }` for the docs toggle button in the
   brain editor toolbar and close-on-exit behavior (used by `BrainEditorDialog.tsx`)
 
-These are wired up by the host app (see `apps/sim/src/App.tsx` `DocsBrainEditorProvider`).
+These are wired up by the host app (see `apps/ecosim/src/App.tsx` `DocsBrainEditorProvider`).
 
 ## Consuming This Package
 

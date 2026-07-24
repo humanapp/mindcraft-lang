@@ -50,9 +50,9 @@ function ext(
 const CORE = "mindcraft-lang/core";
 const CODAL = "mindcraft-lang/codal";
 const MICROBIT = "mindcraft-lang/microbit-v2";
-const SIM = "mindcraft-lang/sim";
+const SIM = "mindcraft-lang/lib-ecosim";
 const POSITION = "mindcraft-lang/microbit-position";
-const FLOCK = "mindcraft-lang/sim-flock";
+const FLOCK = "mindcraft-lang/lib-ecosim-flock";
 const SHARED_MATH = "mindcraft-lang/shared-math";
 const LEGACY = "mindcraft-lang/legacy-widget";
 
@@ -63,7 +63,7 @@ const microbitLib = ext(MICROBIT, {
   version: "0.2.1",
   extensions: { [CODAL]: `embedded:${CODAL}` },
 });
-const simLib = ext(SIM, { name: "Sim", version: "0.1.0", extensions: { [CORE]: `embedded:${CORE}` } });
+const ecosimLib = ext(SIM, { name: "Sim", version: "0.1.0", extensions: { [CORE]: `embedded:${CORE}` } });
 
 /** A compatible add-on targeting the micro:bit stack, carrying a thumbnail. */
 const positionAddon = ext(POSITION, {
@@ -90,7 +90,7 @@ const legacyAddon = ext(LEGACY, {
 const ADDONS = [positionAddon, flockAddon, sharedMathAddon, legacyAddon];
 
 const microbitEmbedRecord: readonly EmbeddedExtension[] = [microbitLib, codalLib, coreLib, ...ADDONS];
-const simEmbedRecord: readonly EmbeddedExtension[] = [simLib, coreLib, ...ADDONS];
+const ecosimEmbedRecord: readonly EmbeddedExtension[] = [ecosimLib, coreLib, ...ADDONS];
 
 const microbitLayers = new Set([CORE, CODAL, MICROBIT]);
 const simLayers = new Set([CORE, SIM]);
@@ -114,8 +114,8 @@ describe("deriveProjectPlatformStack -- two platforms", () => {
     assert.equal(stack.find((layer) => layer.coordinate === CORE)?.version, "0.2.1");
   });
 
-  test("an apps/sim project's stack is core and sim with their declared versions", () => {
-    const stack = deriveProjectPlatformStack(simProject, simEmbedRecord, simLayers);
+  test("an apps/ecosim project's stack is core and sim with their declared versions", () => {
+    const stack = deriveProjectPlatformStack(simProject, ecosimEmbedRecord, simLayers);
     assert.deepEqual(coordinatesOf(stack), [CORE, SIM]);
     assert.equal(stack.find((layer) => layer.coordinate === SIM)?.version, "0.1.0");
     assert.equal(stack.find((layer) => layer.coordinate === CORE)?.version, "0.2.1");
@@ -124,7 +124,7 @@ describe("deriveProjectPlatformStack -- two platforms", () => {
 
 describe("isExtensionCompatible -- stack inclusion and semver ranges", () => {
   const microbitStack = deriveProjectPlatformStack(microbitProject, microbitEmbedRecord, microbitLayers);
-  const simStack = deriveProjectPlatformStack(simProject, simEmbedRecord, simLayers);
+  const simStack = deriveProjectPlatformStack(simProject, ecosimEmbedRecord, simLayers);
 
   test("a micro:bit-targeting add-on is compatible with the micro:bit stack and not the sim stack", () => {
     const targets = { [MICROBIT]: { packageVersion: "^0.2.0" } };
@@ -232,8 +232,8 @@ describe("buildExtensionCatalog -- two platforms", () => {
     assert.equal(entryFor(entries, LEGACY), undefined);
   });
 
-  test("a fresh apps/sim project lists nothing: its platform layer is not an entry card", () => {
-    const entries = buildExtensionCatalog(simProject, simEmbedRecord, simLayers);
+  test("a fresh apps/ecosim project lists nothing: its platform layer is not an entry card", () => {
+    const entries = buildExtensionCatalog(simProject, ecosimEmbedRecord, simLayers);
     assert.deepEqual(coordinatesOf(entries), []);
     assert.equal(entryFor(entries, SIM), undefined);
     assert.equal(entryFor(entries, POSITION), undefined);

@@ -79,7 +79,7 @@ const config: BrainEditorConfig = {
 };
 ```
 
-See `apps/sim/src/App.tsx` for a working example.
+See `apps/ecosim/src/App.tsx` for a working example.
 
 ## Package Layout
 
