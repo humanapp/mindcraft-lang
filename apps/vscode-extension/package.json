@@ -89,6 +89,10 @@
         "title": "Mindcraft: New Project"
       },
       {
+        "command": "mindcraft.importProject",
+        "title": "Mindcraft: Import Project"
+      },
+      {
         "command": "mindcraft.openEditor",
         "title": "Mindcraft: Open Editor"
       },
@@ -129,6 +133,10 @@
         },
         {
           "command": "mindcraft.newProject",
+          "when": "!mindcraft.webHost"
+        },
+        {
+          "command": "mindcraft.importProject",
           "when": "!mindcraft.webHost"
         },
         {
@@ -215,6 +223,7 @@
     "@mindcraft-lang/bridge-app": "file:../../packages/bridge-app",
     "@mindcraft-lang/bridge-client": "file:../../packages/bridge-client",
     "@mindcraft-lang/bridge-protocol": "file:../../packages/bridge-protocol",
+    "@mindcraft-lang/service-api": "file:../../packages/service-api",
     "@types/node": "^25.3.0",
     "@types/vscode": "^1.100.0",
     "@vscode/test-web": "^0.0.80",

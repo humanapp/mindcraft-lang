@@ -1,5 +1,5 @@
 import type { ExtensionCatalogDocumentEntry } from "@mindcraft-lang/app-host";
-import { validateExtensionCatalogDocument } from "@mindcraft-lang/app-host";
+import { registryTargetEntry, validateExtensionCatalogDocument } from "@mindcraft-lang/app-host";
 import bundledTargetsRegistry from "../../../../packages/cli/targets.json";
 import type { FolderTargetDescriptor } from "./project-skeleton";
 
@@ -112,6 +112,6 @@ export function registryProjectSeed(
 ): Pick<FolderTargetDescriptor, "extensions" | "targets"> {
   return {
     extensions: { [coordinate]: `embedded:${coordinate}` },
-    targets: { [coordinate]: { packageVersion: `^${packageVersion}` } },
+    targets: { [coordinate]: registryTargetEntry(packageVersion) },
   };
 }

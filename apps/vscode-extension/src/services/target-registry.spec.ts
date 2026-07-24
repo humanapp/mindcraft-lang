@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ExtensionCatalogDocumentEntry } from "@mindcraft-lang/app-host";
-import { parseExtensionReference, validateExtensionCatalogDocument } from "@mindcraft-lang/app-host";
+import {
+  parseExtensionReference,
+  parseProjectContentManifest,
+  seedProjectTargets,
+  validateExtensionCatalogDocument,
+} from "@mindcraft-lang/app-host";
 import bundledTargetsRegistry from "../../../../packages/cli/targets.json";
 import {
   findTargetRegistryEntry,
@@ -127,5 +132,29 @@ describe("registryProjectSeed", () => {
       extensions: { [MICROBIT_V2_COORDINATE]: `embedded:${MICROBIT_V2_COORDINATE}` },
       targets: { [MICROBIT_V2_COORDINATE]: { packageVersion: "^0.3.0" } },
     });
+  });
+});
+
+describe("seedProjectTargets wiring", () => {
+  it("seeds an imported project from the bundled registry entries, resolving to that target", () => {
+    const entry = findTargetRegistryEntry(MICROBIT_V2_COORDINATE);
+    assert.ok(entry !== undefined);
+    const seeded = seedProjectTargets(
+      JSON.stringify({
+        name: "Imported",
+        version: "0.1.0",
+        extensions: { [MICROBIT_V2_COORDINATE]: `embedded:${MICROBIT_V2_COORDINATE}` },
+      }),
+      targetRegistryEntries()
+    );
+    const parsed = parseProjectContentManifest(seeded);
+    assert.ok(parsed.ok);
+    assert.deepEqual(parsed.manifest.targets, { [MICROBIT_V2_COORDINATE]: { packageVersion: `^${entry.version}` } });
+    const resolution = resolveProjectTargetDescriptor(
+      undefined,
+      Object.keys(parsed.manifest.targets ?? {}),
+      targetRegistryEntries()
+    );
+    assert.deepStrictEqual(resolution, { ok: true, descriptor: { appRef: entry.ref } });
   });
 });

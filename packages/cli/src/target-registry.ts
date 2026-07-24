@@ -53,6 +53,8 @@ export class TargetRegistryError extends Error {
 export interface TargetRegistryEntry {
   /** The target's `<owner>/<repo>` coordinate. */
   readonly coordinate: string;
+  /** Entry kind; one of `"library"` or `"target"`. */
+  readonly kind: string;
   /** Display name shown for the target. */
   readonly name: string;
   /** Published version the pin corresponds to. */
@@ -123,6 +125,7 @@ export function parseTargetRegistry(content: string): TargetRegistry {
   }
   const entries = result.document.entries.map((entry) => ({
     coordinate: entry.coordinate,
+    kind: entry.kind,
     name: entry.name,
     version: entry.version,
     description: entry.description,
