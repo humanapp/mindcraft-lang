@@ -7,6 +7,7 @@ import type {
   IBrainTileDef,
 } from "@mindcraft-lang/core/app";
 import { getCatalogFallbackLabel } from "@mindcraft-lang/core/app";
+import { ICON_BASE } from "../icon-base";
 import { dataTypeIconMap } from "./data-type-icons";
 import { tileVisuals } from "./tile-visuals";
 import type { TileColorDef, TileVisual } from "./types";
@@ -102,7 +103,7 @@ export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
     }
     case "page":
       if (!vis.iconUrl) {
-        vis.iconUrl = "/assets/brain/icons/page3.svg";
+        vis.iconUrl = `${ICON_BASE}/page3.svg`;
       }
       break;
     case "undefined":
@@ -125,7 +126,7 @@ export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
       warnedMissingIcons.add(tileDef.tileId);
       console.warn(`No icon found for tile ${tileDef.tileId}`);
     }
-    vis.iconUrl = "/assets/brain/icons/question_mark.svg";
+    vis.iconUrl = `${ICON_BASE}/question_mark.svg`;
   }
 
   return vis as TileVisual;

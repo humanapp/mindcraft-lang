@@ -30,6 +30,7 @@ import { EcosimHostActions } from "@/brain/abi-ids";
 import { hasArg } from "@/brain/actions/utils";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
+import { ICON_BASE } from "@/brain/icon-base";
 import { SeeSensorCapabilityBitSet, TileIds } from "@/brain/tileids";
 import { mkVector2Value } from "@/brain/type-system";
 import type { SightResult } from "@/brain/vision";
@@ -212,14 +213,14 @@ export default {
   },
   isAsync: false,
   outputType: CoreTypeIds.Boolean,
-  metadata: { label: "see", iconUrl: "/assets/brain/icons/see.svg" },
+  metadata: { label: "see", iconUrl: `${ICON_BASE}/see.svg` },
   capabilities: SeeSensorCapabilityBitSet,
 } satisfies CreateHostSensorOptions;
 
 export const modifiers: ModifierTileInput[] = [
-  { id: TileIds.Modifier.ActorKindCarnivore, label: "carnivore", iconUrl: "/assets/brain/icons/carnivore.svg" },
-  { id: TileIds.Modifier.ActorKindHerbivore, label: "herbivore", iconUrl: "/assets/brain/icons/herbivore.svg" },
-  { id: TileIds.Modifier.ActorKindPlant, label: "plant", iconUrl: "/assets/brain/icons/plant.svg" },
-  { id: TileIds.Modifier.DistanceNearby, label: "nearby", iconUrl: "/assets/brain/icons/nearby.svg" },
-  { id: TileIds.Modifier.DistanceFarAway, label: "far away", iconUrl: "/assets/brain/icons/faraway.svg" },
+  { id: TileIds.Modifier.ActorKindCarnivore, label: "carnivore", iconUrl: `${ICON_BASE}/carnivore.svg` },
+  { id: TileIds.Modifier.ActorKindHerbivore, label: "herbivore", iconUrl: `${ICON_BASE}/herbivore.svg` },
+  { id: TileIds.Modifier.ActorKindPlant, label: "plant", iconUrl: `${ICON_BASE}/plant.svg` },
+  { id: TileIds.Modifier.DistanceNearby, label: "nearby", iconUrl: `${ICON_BASE}/nearby.svg` },
+  { id: TileIds.Modifier.DistanceFarAway, label: "far away", iconUrl: `${ICON_BASE}/faraway.svg` },
 ];

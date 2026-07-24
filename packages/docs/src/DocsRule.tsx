@@ -1,7 +1,7 @@
 import { assertUnreachable } from "@mindcraft-lang/core";
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { adjustColor, cn, formatValue, glassEffect, saturateColor } from "@mindcraft-lang/ui";
+import { adjustColor, cn, formatValue, glassEffect, saturateColor, staticAssetUrl } from "@mindcraft-lang/ui";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { useLayoutEffect, useState } from "react";
 import { useDocsResolveTileVisual } from "./DocsSidebarContext";
@@ -80,7 +80,7 @@ export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
   const resolveTileVisual = useDocsResolveTileVisual();
   const visual = resolveTileVisual(tileDef);
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
-  const iconUrl = visual?.iconUrl || "/assets/brain/icons/question_mark.svg";
+  const iconUrl = visual?.iconUrl || staticAssetUrl("assets/brain/icons/question_mark.svg");
   const baseColor = (side === RuleSide.When ? visual?.colorDef?.when : visual?.colorDef?.do) || "#475569";
 
   const value = docsTileValue(tileDef);

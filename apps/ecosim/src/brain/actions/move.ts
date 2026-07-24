@@ -33,6 +33,7 @@ import { EcosimHostActions } from "@/brain/abi-ids";
 import { hasArg, resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
+import { ICON_BASE } from "@/brain/icon-base";
 import { type Steering, steerAvoid, steerAwayFrom, steerForward, steerToward } from "@/brain/movement";
 import { TileIds } from "@/brain/tileids";
 import { EcosimTypeIds, extractVector2, mkVector2Value } from "@/brain/type-system";
@@ -252,17 +253,17 @@ export default {
   callDef,
   fn: { exec: execMove },
   isAsync: false,
-  metadata: { label: "move", iconUrl: "/assets/brain/icons/move2.svg" },
+  metadata: { label: "move", iconUrl: `${ICON_BASE}/move2.svg` },
 } satisfies CreateHostActuatorOptions;
 
 export const modifiers: ModifierTileInput[] = [
-  { id: TileIds.Modifier.MovementForward, label: "forward", iconUrl: "/assets/brain/icons/forward.svg" },
-  { id: TileIds.Modifier.MovementToward, label: "toward", iconUrl: "/assets/brain/icons/toward.svg" },
-  { id: TileIds.Modifier.MovementAwayFrom, label: "away from", iconUrl: "/assets/brain/icons/awayfrom.svg" },
-  { id: TileIds.Modifier.MovementAvoid, label: "avoid", iconUrl: "/assets/brain/icons/avoid.svg" },
-  { id: TileIds.Modifier.MovementWander, label: "wander", iconUrl: "/assets/brain/icons/wander.svg" },
-  { id: TileIds.Modifier.Quickly, label: "quickly", iconUrl: "/assets/brain/icons/quickly.svg" },
-  { id: TileIds.Modifier.Slowly, label: "slowly", iconUrl: "/assets/brain/icons/slowly.svg" },
+  { id: TileIds.Modifier.MovementForward, label: "forward", iconUrl: `${ICON_BASE}/forward.svg` },
+  { id: TileIds.Modifier.MovementToward, label: "toward", iconUrl: `${ICON_BASE}/toward.svg` },
+  { id: TileIds.Modifier.MovementAwayFrom, label: "away from", iconUrl: `${ICON_BASE}/awayfrom.svg` },
+  { id: TileIds.Modifier.MovementAvoid, label: "avoid", iconUrl: `${ICON_BASE}/avoid.svg` },
+  { id: TileIds.Modifier.MovementWander, label: "wander", iconUrl: `${ICON_BASE}/wander.svg` },
+  { id: TileIds.Modifier.Quickly, label: "quickly", iconUrl: `${ICON_BASE}/quickly.svg` },
+  { id: TileIds.Modifier.Slowly, label: "slowly", iconUrl: `${ICON_BASE}/slowly.svg` },
 ];
 
 export const parameters: ParameterTileInput[] = [
@@ -271,6 +272,6 @@ export const parameters: ParameterTileInput[] = [
     id: TileIds.Parameter.Priority,
     dataType: CoreTypeIds.Number,
     label: "priority",
-    iconUrl: "/assets/brain/icons/priority.svg",
+    iconUrl: `${ICON_BASE}/priority.svg`,
   },
 ];

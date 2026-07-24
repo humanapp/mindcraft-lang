@@ -19,6 +19,7 @@ import {
 import { EcosimHostActions } from "@/brain/abi-ids";
 import { ARCHETYPES } from "@/brain/archetypes";
 import { getSelf } from "@/brain/execution-context-types";
+import { ICON_BASE } from "@/brain/icon-base";
 import { TileIds } from "@/brain/tileids";
 import { EcosimTypeIds } from "@/brain/type-system";
 import { resolveTargetActor } from "./utils";
@@ -90,7 +91,7 @@ export default {
   callDef,
   fn: { onInitialized: initEat, exec: execEat },
   isAsync: false,
-  metadata: { label: "eat", iconUrl: "/assets/brain/icons/eat.svg" },
+  metadata: { label: "eat", iconUrl: `${ICON_BASE}/eat.svg` },
 } satisfies CreateHostActuatorOptions;
 
 export const parameters: ParameterTileInput[] = [
