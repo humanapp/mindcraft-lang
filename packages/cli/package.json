@@ -1,6 +1,6 @@
 {
   "name": "mindcraft-cli",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Command-line tools for Mindcraft projects",
   "license": "MIT",
   "author": "humanapp",
