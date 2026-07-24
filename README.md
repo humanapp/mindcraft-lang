@@ -10,11 +10,14 @@ Mindcraft programs are built by arranging **tiles** -- typed, composable tokens 
 
 The core library compiles to Roblox (Luau), Node.js, and browser (ESM) targets from a single TypeScript codebase.
 
+The companion [mindcraft-mcu](https://github.com/humanapp/mindcraft-mcu) repository extends Mindcraft to embedded hardware, starting with the BBC micro:bit: a native C++ implementation of the bytecode VM that runs brains on the device, plus a browser simulator and CODAL-inspired web device runtime for authoring and testing. A brain you build and test in the browser flashes to a real micro:bit over WebUSB and runs unchanged.
+
 Mindcraft draws inspiration from other tile-based programming systems past and present, including [Kodu Game Lab](https://www.kodugamelab.com/), [Project Spark](https://en.wikipedia.org/wiki/Project_Spark) ([Wiki](https://projectspark.fandom.com/wiki/How_the_brains_work)), and [MicroCode](https://microbit-apps.org/microcode-classic/docs/language).
 
 ## Demos
 
 - [Ecosystem Sim](https://sim.mindcraft-lang.org) -- carnivores, herbivores, and plants driven by user-editable Mindcraft brains
+- [Code a BBC micro:bit](https://microbit.mindcraft-lang.org) -- program a micro:bit with Mindcraft in your browser, then flash the brain to real hardware ([mindcraft-mcu](https://github.com/humanapp/mindcraft-mcu))
 
 ## Packages
 
