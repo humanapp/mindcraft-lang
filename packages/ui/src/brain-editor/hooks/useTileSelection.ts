@@ -18,6 +18,40 @@ interface UseTileSelectionOptions {
 }
 
 /**
+ * Effects invoked when a picked factory tile defers completion to a
+ * create-variable or create-literal dialog. Each receives the factory tile
+ * and the pending `action` to run once the tile has been manufactured.
+ */
+export interface TileSelectionDeferralEffects {
+  deferVariableCreation(factoryTileDef: BrainTileFactoryDef, action: (tileDef: IBrainTileDef) => void): void;
+  deferLiteralCreation(factoryTileDef: BrainTileFactoryDef, action: (tileDef: IBrainTileDef) => void): void;
+}
+
+/**
+ * Route a picked tile to its selection action. Variable and literal factory
+ * tiles defer: the matching effect receives the factory tile and the pending
+ * action, and false is returned so the picker stays open. Any other tile runs
+ * `action` immediately and returns true (the selection completed).
+ */
+export function routeTileSelection(
+  tileDef: IBrainTileDef,
+  action: (tileDef: IBrainTileDef) => void,
+  effects: TileSelectionDeferralEffects
+): boolean {
+  if (tileDef.kind === "factory") {
+    if (isVariableFactoryTileId(tileDef.tileId)) {
+      effects.deferVariableCreation(tileDef as BrainTileFactoryDef, action);
+      return false;
+    } else if (isCoreLiteralFactoryTileId(tileDef.tileId)) {
+      effects.deferLiteralCreation(tileDef as BrainTileFactoryDef, action);
+      return false;
+    }
+  }
+  action(tileDef);
+  return true;
+}
+
+/**
  * Hook to handle tile selection flow, including variable creation for factory tiles.
  */
 export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelectionOptions) {
@@ -38,25 +72,22 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
 
   const handleTileSelected = useCallback(
     (tileDef: IBrainTileDef, action: (tileDef: IBrainTileDef) => void) => {
-      if (tileDef.kind === "factory") {
-        if (isVariableFactoryTileId(tileDef.tileId)) {
-          const factoryTileDef = tileDef as BrainTileFactoryDef;
+      const completed = routeTileSelection(tileDef, action, {
+        deferVariableCreation: (factoryTileDef, pendingAction) => {
           setPendingFactoryTile(factoryTileDef);
-          setPendingTileAction(() => action);
+          setPendingTileAction(() => pendingAction);
           setShowCreateVariableDialog(true);
-          return false;
-        } else if (isCoreLiteralFactoryTileId(tileDef.tileId)) {
-          const factoryTileDef = tileDef as BrainTileFactoryDef;
+        },
+        deferLiteralCreation: (factoryTileDef, pendingAction) => {
           setPendingFactoryTile(factoryTileDef);
-          setPendingTileAction(() => action);
+          setPendingTileAction(() => pendingAction);
           setShowCreateLiteralDialog(true);
-          return false;
-        }
+        },
+      });
+      if (completed) {
+        onComplete?.();
       }
-
-      action(tileDef);
-      onComplete?.();
-      return true;
+      return completed;
     },
     [onComplete]
   );

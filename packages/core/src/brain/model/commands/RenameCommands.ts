@@ -1,6 +1,8 @@
-import type { IBrainDef, IBrainRuleDef, IBrainTileSet } from "@mindcraft-lang/core/brain";
-import type { BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import type { IBrainDef, IBrainRuleDef, IBrainTileSet } from "../../interfaces";
+import { BrainTileVariableDef } from "../../tiles/variables";
+import type { BrainDef } from "../braindef";
+import type { BrainPageDef } from "../pagedef";
+import type { BrainRuleDef } from "../ruledef";
 import type { BrainCommand } from "./BrainCommand";
 
 /**

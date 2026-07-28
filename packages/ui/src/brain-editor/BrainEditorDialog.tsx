@@ -1,10 +1,17 @@
 import { List } from "@mindcraft-lang/core";
 import {
+  AddPageCommand,
+  BrainCommandHistory,
   BrainDef,
   type BrainPageDef,
   brainJsonFromPlain,
   deserializePersistedBrainJson,
   encodePersistedBrainJson,
+  RemovePageCommand,
+  RenameBrainCommand,
+  RenamePageCommand,
+  ReplaceBrainCommand,
+  ReplaceLastPageCommand,
 } from "@mindcraft-lang/core/brain/model";
 import {
   BookOpen,
@@ -39,6 +46,7 @@ import {
 } from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
 import { Slider } from "../ui/slider";
+import { ArmedTargetProvider, useArmedTargetState } from "./ArmedTargetContext";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainPageEditor } from "./BrainPageEditor";
 import { BrainPrintDialog } from "./BrainPrintDialog";
@@ -48,15 +56,6 @@ import {
   hasBrainInClipboard,
   onBrainClipboardChanged,
 } from "./brain-clipboard";
-import {
-  AddPageCommand,
-  BrainCommandHistory,
-  RemovePageCommand,
-  RenameBrainCommand,
-  RenamePageCommand,
-  ReplaceBrainCommand,
-  ReplaceLastPageCommand,
-} from "./commands";
 
 // Top-edge brand accent. Uses each app's signature strip tokens when defined
 // (microbit-sim's blue->green->teal), else falls back to the brand primary/ring
@@ -106,6 +105,9 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
 
   // Command history for undo/redo
   const [commandHistory] = useState(() => new BrainCommandHistory());
+  // Armed target for the tile picker, shared with the rule and tile editors.
+  const armedTarget = useArmedTargetState();
+  const disarmTileTarget = armedTarget.disarm;
   const [canUndo, setCanUndo] = useState(false);
   const [hasBrainClipboard, setHasBrainClipboard] = useState(hasBrainInClipboard);
   const [canRedo, setCanRedo] = useState(false);
@@ -278,12 +280,34 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   };
 
   const handleUndo = useCallback(() => {
+    // Undo can restructure the document out from under an armed picker
+    // target, so drop the target before mutating.
+    disarmTileTarget();
     commandHistory.undo();
-  }, [commandHistory]);
+  }, [commandHistory, disarmTileTarget]);
 
   const handleRedo = useCallback(() => {
+    disarmTileTarget();
     commandHistory.redo();
-  }, [commandHistory]);
+  }, [commandHistory, disarmTileTarget]);
+
+  // The armed target carries closures from the arming components, which are
+  // remounted on a page switch or page-editor key bump. Disarm at those
+  // boundaries so a stale target never survives them.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: currentPageNumber and pageChangeCounter are intentional trigger signals
+  useEffect(() => {
+    disarmTileTarget();
+  }, [currentPageNumber, pageChangeCounter, disarmTileTarget]);
+
+  // A structural change that deletes the armed rule invalidates the target's
+  // closures; disarm when the armed rule leaves the document.
+  useEffect(() => {
+    const target = armedTarget.target;
+    if (!target) return;
+    return target.ruleDef.events().on("rule_deleted", () => {
+      disarmTileTarget();
+    });
+  }, [armedTarget.target, disarmTileTarget]);
 
   const handleSaveToFile = useCallback(async () => {
     if (!brainDef) return;
@@ -839,13 +863,15 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
             aria-label="Brain page editor content"
           >
             {brainDef && currentPageDef ? (
-              <BrainPageEditor
-                key={`${currentPageNumber}-${pageChangeCounter}`}
-                pageDef={currentPageDef as BrainPageDef}
-                pageNumber={currentPageNumber}
-                commandHistory={commandHistory}
-                zoom={zoom}
-              />
+              <ArmedTargetProvider value={armedTarget}>
+                <BrainPageEditor
+                  key={`${currentPageNumber}-${pageChangeCounter}`}
+                  pageDef={currentPageDef as BrainPageDef}
+                  pageNumber={currentPageNumber}
+                  commandHistory={commandHistory}
+                  zoom={zoom}
+                />
+              </ArmedTargetProvider>
             ) : (
               <p className="text-white/80 p-6">No BrainDef attached to this object.</p>
             )}

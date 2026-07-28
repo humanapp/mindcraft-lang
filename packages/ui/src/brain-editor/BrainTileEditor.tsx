@@ -1,5 +1,12 @@
 import { type IBrainTileDef, type LiteralDisplayFormat, RuleSide } from "@mindcraft-lang/core/brain";
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainCommandHistory, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import {
+  InsertTileCommand,
+  PasteTileBeforeCommand,
+  RemoveTileCommand,
+  RenameVariableCommand,
+  ReplaceTileCommand,
+} from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef, type BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import { useEffect, useState } from "react";
@@ -11,25 +18,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { isTileTargetForTile, useArmedTargetController } from "./ArmedTargetContext";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
 import { BrainTilePickerDialog } from "./BrainTilePickerDialog";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { CreateVariableDialog } from "./CreateVariableDialog";
-import {
-  type BrainCommandHistory,
-  InsertTileCommand,
-  PasteTileBeforeCommand,
-  RemoveTileCommand,
-  RenameVariableCommand,
-  ReplaceTileCommand,
-} from "./commands";
 import { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
 import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
 import { RenameVariableDialog } from "./RenameVariableDialog";
 import type { TileBadge } from "./tile-badges";
-import { copyTileToClipboard, hasTileInClipboard, onTileClipboardChanged } from "./tile-clipboard";
+import {
+  copyTileToClipboard,
+  hasTileInClipboard,
+  importTileFromClipboard,
+  onTileClipboardChanged,
+} from "./tile-clipboard";
 
 interface BrainTileEditorProps {
   tileDef: IBrainTileDef;
@@ -52,7 +57,8 @@ export function BrainTileEditor({
   commandHistory,
   badge,
 }: BrainTileEditorProps) {
-  const [pickerMode, setPickerMode] = useState<"insert" | "replace" | null>(null);
+  const armedTarget = useArmedTargetController();
+  const tileTarget = isTileTargetForTile(armedTarget.target, ruleDef, side, tileIndex) ? armedTarget.target : null;
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
   const availableCapabilities = useRuleCapabilities(ruleDef, updateCounter);
@@ -77,7 +83,7 @@ export function BrainTileEditor({
   } = useTileSelection({
     ruleDef,
     side,
-    onComplete: () => setPickerMode(null),
+    onComplete: armedTarget.disarm,
   });
 
   const [canPaste, setCanPaste] = useState(hasTileInClipboard());
@@ -92,7 +98,9 @@ export function BrainTileEditor({
   };
 
   const handlePasteTileBefore = () => {
-    const command = new PasteTileBeforeCommand(ruleDef, side, tileIndex, brainServices);
+    const command = new PasteTileBeforeCommand(ruleDef, side, tileIndex, (destBrain) =>
+      importTileFromClipboard(destBrain, brainServices)
+    );
     commandHistory.executeCommand(command);
   };
 
@@ -102,11 +110,31 @@ export function BrainTileEditor({
   };
 
   const handleInsertBefore = () => {
-    setPickerMode("insert");
+    armedTarget.arm({
+      ruleDef,
+      side,
+      mode: "insert",
+      tileIndex,
+      onTileSelected: (picked: IBrainTileDef) =>
+        handleTileSelectedWithVariable(picked, (tile) => {
+          const command = new InsertTileCommand(ruleDef, side, tileIndex, tile);
+          commandHistory.executeCommand(command);
+        }),
+    });
   };
 
   const handleReplaceTile = () => {
-    setPickerMode("replace");
+    armedTarget.arm({
+      ruleDef,
+      side,
+      mode: "replace",
+      tileIndex,
+      onTileSelected: (picked: IBrainTileDef) =>
+        handleTileSelectedWithVariable(picked, (tile) => {
+          const command = new ReplaceTileCommand(ruleDef, side, tileIndex, tile);
+          commandHistory.executeCommand(command);
+        }),
+    });
   };
 
   const handleEditFormat = () => {
@@ -164,21 +192,7 @@ export function BrainTileEditor({
   };
 
   const handlePickerCancel = () => {
-    setPickerMode(null);
-  };
-
-  const handleTileSelected = (tileDef: IBrainTileDef) => {
-    if (!pickerMode) return true;
-
-    return handleTileSelectedWithVariable(tileDef, (tile) => {
-      if (pickerMode === "insert") {
-        const command = new InsertTileCommand(ruleDef, side, tileIndex, tile);
-        commandHistory.executeCommand(command);
-      } else if (pickerMode === "replace") {
-        const command = new ReplaceTileCommand(ruleDef, side, tileIndex, tile);
-        commandHistory.executeCommand(command);
-      }
-    });
+    armedTarget.disarm();
   };
 
   return (
@@ -206,10 +220,10 @@ export function BrainTileEditor({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {pickerMode &&
+      {tileTarget &&
         (() => {
           const tileSet = side === RuleSide.When ? ruleDef.when() : ruleDef.do();
-          const isInsert = pickerMode === "insert";
+          const isInsert = tileTarget.mode === "insert";
           return (
             <BrainTilePickerDialog
               isOpen={true}
@@ -221,7 +235,7 @@ export function BrainTileEditor({
               availableCapabilities={availableCapabilities}
               availableOutputKeys={availableOutputKeys}
               ruleDef={ruleDef}
-              onTileSelected={handleTileSelected}
+              onTileSelected={tileTarget.onTileSelected}
               onCancel={handlePickerCancel}
             />
           );

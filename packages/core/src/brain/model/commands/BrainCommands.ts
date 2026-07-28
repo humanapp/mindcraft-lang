@@ -1,6 +1,6 @@
-import type { ReadonlyList } from "@mindcraft-lang/core";
-import type { ITileCatalog } from "@mindcraft-lang/core/brain";
-import type { BrainDef, BrainJson } from "@mindcraft-lang/core/brain/model";
+import type { ReadonlyList } from "../../../platform/list";
+import type { ITileCatalog } from "../../interfaces";
+import type { BrainDef, BrainJson } from "../braindef";
 import type { BrainCommand } from "./BrainCommand";
 
 /**

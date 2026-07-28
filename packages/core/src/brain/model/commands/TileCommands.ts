@@ -1,6 +1,5 @@
-import type { BrainServices, IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { importTileFromClipboard } from "../tile-clipboard";
+import type { IBrainDef, IBrainTileDef, RuleSide } from "../../interfaces";
+import type { BrainRuleDef } from "../ruledef";
 import type { BrainCommand } from "./BrainCommand";
 
 /**
@@ -120,10 +119,13 @@ export class RemoveTileCommand implements BrainCommand {
 }
 
 /**
- * Command to paste a tile from the tile clipboard before an existing tile.
+ * Command to paste a tile before an existing tile.
  *
- * Imports the tile def into the destination brain's catalog (handling
- * cross-brain page matching) and inserts it at the target index.
+ * The tile is produced by `importTile`, which is invoked with the destination
+ * brain on every execute (including redo) so the paste reflects its source at
+ * execution time. The caller's producer is expected to import the tile def
+ * into the destination brain's catalog, and returns undefined when no tile is
+ * available (in which case the command is a no-op).
  */
 export class PasteTileBeforeCommand implements BrainCommand {
   private importedTileDef?: IBrainTileDef;
@@ -132,13 +134,13 @@ export class PasteTileBeforeCommand implements BrainCommand {
     private rule: BrainRuleDef,
     private side: RuleSide,
     private tileIndex: number,
-    private readonly brainServices?: BrainServices
+    private readonly importTile: (destBrain: IBrainDef) => IBrainTileDef | undefined
   ) {}
 
   execute(): void {
     const brain = this.rule.brain();
     if (!brain) return;
-    const tileDef = importTileFromClipboard(brain, this.brainServices);
+    const tileDef = this.importTile(brain);
     if (tileDef) {
       this.importedTileDef = tileDef;
       this.rule.side(this.side).insertTileAtIndex(this.tileIndex, tileDef);

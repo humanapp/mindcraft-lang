@@ -1,8 +1,7 @@
 import { task, type thread } from "@mindcraft-lang/core";
-import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainCommandHistory, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrainRuleEditor } from "./BrainRuleEditor";
-import type { BrainCommandHistory } from "./commands";
 import { useRuleDrag } from "./hooks/useRuleDrag";
 import { RuleDragProvider } from "./RuleDragContext";
 

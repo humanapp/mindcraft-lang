@@ -38,6 +38,7 @@ src/
   brain-editor/             Brain editor components
     index.ts                Barrel
     types.ts                TileVisual, TileColorDef
+    ArmedTargetContext.tsx   Armed tile-picker target (arm/disarm state + matching predicates)
     BrainEditorContext.tsx   BrainEditorConfig interface, BrainEditorProvider, useBrainEditorConfig
     BrainEditorDialog.tsx    Full editor (page nav, toolbar, undo/redo, save/load)
     BrainPageEditor.tsx      Page rules list with depth flattening
@@ -54,16 +55,16 @@ src/
     rule-clipboard.ts        Serialize/deserialize rules for clipboard
     tile-clipboard.ts        Serialize/deserialize tiles for clipboard
     tile-badges.ts           Tile badge rendering helpers
-    commands/                Command pattern for undo/redo
-      BrainCommand.ts        BrainCommand interface + BrainCommandHistory
-      PageCommands.ts        Add/Remove/ReplaceLast page commands
-      RenameCommands.ts      Rename brain/page commands
-      RuleCommands.ts        Add/Delete/Move/Indent/Outdent rule commands
-      TileCommands.ts        Add/Insert/Replace/Remove tile commands
+    insertion-context.ts     buildInsertionContext for the tile picker
     hooks/
       useRuleCapabilities.ts   Rule capability detection
       useTileSelection.ts      Tile selection flow + factory tile handoff
 ```
+
+The editing command classes and `BrainCommandHistory` (undo/redo) live in
+`packages/core/src/brain/model/commands/` and are imported from
+`@mindcraft-lang/core/brain/model`; this package re-exports them from its
+barrel for consuming apps.
 
 ## BrainEditorContext
 

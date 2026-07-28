@@ -1,8 +1,19 @@
-import { task, thread } from "@mindcraft-lang/core";
+import { List, task, thread } from "@mindcraft-lang/core";
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
-import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { kMaxBrainRuleCommentLength } from "@mindcraft-lang/core/brain/model";
+import type { BrainCommandHistory, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import {
+  AddTileCommand,
+  DeleteRuleCommand,
+  IndentRuleCommand,
+  InsertRuleBeforeCommand,
+  kMaxBrainRuleCommentLength,
+  MoveRuleDownCommand,
+  MoveRuleUpCommand,
+  OutdentRuleCommand,
+  PasteRuleAboveCommand,
+  SetRuleCommentCommand,
+} from "@mindcraft-lang/core/brain/model";
 import { Plus, Save } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -15,27 +26,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { isAppendTargetForRule, useArmedTargetController } from "./ArmedTargetContext";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTileEditor } from "./BrainTileEditor";
 import { BrainTilePickerDialog } from "./BrainTilePickerDialog";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { CreateVariableDialog } from "./CreateVariableDialog";
-import {
-  AddTileCommand,
-  type BrainCommandHistory,
-  DeleteRuleCommand,
-  IndentRuleCommand,
-  InsertRuleBeforeCommand,
-  MoveRuleDownCommand,
-  MoveRuleUpCommand,
-  OutdentRuleCommand,
-  PasteRuleAboveCommand,
-  SetRuleCommentCommand,
-} from "./commands";
 import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
 import { useRuleDragController } from "./RuleDragContext";
-import { copyRuleToClipboard, hasRuleInClipboard, onClipboardChanged } from "./rule-clipboard";
+import {
+  copyRuleToClipboard,
+  deserializeAllRulesFromClipboard,
+  hasRuleInClipboard,
+  onClipboardChanged,
+} from "./rule-clipboard";
 import { applyBrokenTileBadges, buildNodeMap, computeTileBadges, type TileBadge } from "./tile-badges";
 
 // Pre-compute glass effects for each element type
@@ -135,7 +140,8 @@ export function BrainRuleEditor({
   const [canMoveDown, setCanMoveDown] = useState(ruleDef.canMoveDown());
   const [canIndent, setCanIndent] = useState(ruleDef.canIndent());
   const [canOutdent, setCanOutdent] = useState(ruleDef.canOutdent());
-  const [ruleSideForPicker, setRuleSideForPicker] = useState<RuleSide | null>(null);
+  const armedTarget = useArmedTargetController();
+  const appendTarget = isAppendTargetForRule(armedTarget.target, ruleDef) ? armedTarget.target : null;
   const [isDirty, setIsDirty] = useState(ruleDef.isDirty());
   const [whenBadges, setWhenBadges] = useState<Map<number, TileBadge>>(new Map());
   const [doBadges, setDoBadges] = useState<Map<number, TileBadge>>(new Map());
@@ -157,8 +163,8 @@ export function BrainRuleEditor({
     handleLiteralDialogClose,
   } = useTileSelection({
     ruleDef,
-    side: ruleSideForPicker || RuleSide.When,
-    onComplete: () => setRuleSideForPicker(null),
+    side: appendTarget?.side ?? RuleSide.When,
+    onComplete: armedTarget.disarm,
   });
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter is an intentional trigger signal
@@ -272,7 +278,9 @@ export function BrainRuleEditor({
   };
 
   const handlePasteRuleAbove = () => {
-    const command = new PasteRuleAboveCommand(ruleDef, tileCatalogs, brainServices);
+    const command = new PasteRuleAboveCommand(ruleDef, (destBrain) =>
+      List.from(deserializeAllRulesFromClipboard(destBrain, tileCatalogs, brainServices))
+    );
     commandHistory.executeCommand(command);
   };
 
@@ -338,20 +346,20 @@ export function BrainRuleEditor({
   const showComment = isEditingComment || !!currentComment;
 
   const handleAppendTileClick = (side: RuleSide) => () => {
-    setRuleSideForPicker(side);
+    armedTarget.arm({
+      ruleDef,
+      side,
+      mode: "append",
+      onTileSelected: (tileDef: IBrainTileDef) =>
+        handleTileSelectedWithVariable(tileDef, (tile) => {
+          const command = new AddTileCommand(ruleDef, side, tile);
+          commandHistory.executeCommand(command);
+        }),
+    });
   };
 
   const handleTilePickerCancel = () => {
-    setRuleSideForPicker(null);
-  };
-
-  const handleTileSelected = (tileDef: IBrainTileDef) => {
-    if (!ruleSideForPicker) return true;
-
-    return handleTileSelectedWithVariable(tileDef, (tile) => {
-      const command = new AddTileCommand(ruleDef, ruleSideForPicker, tile);
-      commandHistory.executeCommand(command);
-    });
+    armedTarget.disarm();
   };
 
   const indentStyle = { marginLeft: `${depth * 32}px` };
@@ -576,20 +584,20 @@ export function BrainRuleEditor({
             </button>
           </div>
         </div>
-        {ruleSideForPicker &&
+        {appendTarget &&
           (() => {
-            const tileSet = ruleSideForPicker === RuleSide.When ? ruleDef.when() : ruleDef.do();
+            const tileSet = appendTarget.side === RuleSide.When ? ruleDef.when() : ruleDef.do();
             return (
               <BrainTilePickerDialog
                 isOpen={true}
-                side={ruleSideForPicker}
+                side={appendTarget.side}
                 localCatalog={ruleDef.brain()?.catalog()}
                 expr={tileSet.expr()}
                 existingTiles={tileSet.tiles()}
                 availableCapabilities={availableCapabilities}
                 availableOutputKeys={availableOutputKeys}
                 ruleDef={ruleDef}
-                onTileSelected={handleTileSelected}
+                onTileSelected={appendTarget.onTileSelected}
                 onCancel={handleTilePickerCancel}
               />
             );

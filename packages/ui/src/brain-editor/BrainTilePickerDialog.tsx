@@ -8,19 +8,14 @@ import {
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import type { Expr } from "@mindcraft-lang/core/brain/compiler";
-import {
-  countUnclosedParens,
-  type InsertionContext,
-  parseTilesForSuggestions,
-  suggestTiles,
-  type TileSuggestion,
-} from "@mindcraft-lang/core/brain/language-service";
+import { suggestTiles, type TileSuggestion } from "@mindcraft-lang/core/brain/language-service";
 import { CoreHostActions, mkActuatorTileId, type TypeId } from "@mindcraft-lang/core/runtime";
 import React from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
+import { buildInsertionContext } from "./insertion-context";
 import { groupTilesByLibrary, type TileSourceLibrary } from "./tile-library-groups";
 import { resolveTileVisual } from "./tile-visual-utils";
 
@@ -194,18 +189,16 @@ export function BrainTilePickerDialog({
   }, [localCatalog, tileCatalogs]);
 
   const { exactByKind, conversionByKind, hasConversions } = React.useMemo(() => {
-    const expr = exprProp ?? (existingTiles ? parseTilesForSuggestions(existingTiles) : undefined);
-    const unclosedParenDepth = existingTiles ? countUnclosedParens(existingTiles, replaceTileIndex) : 0;
-    const context: InsertionContext = {
-      ruleSide: side,
+    const context = buildInsertionContext({
+      side,
       expectedType,
-      expr,
+      expr: exprProp,
       replaceTileIndex,
       availableCapabilities,
       availableOutputKeys,
       ruleDef,
-      unclosedParenDepth,
-    };
+      existingTiles,
+    });
     const result = brainServices
       ? suggestTiles(context, catalogs, brainServices)
       : { exact: List.empty<TileSuggestion>(), withConversion: List.empty<TileSuggestion>() };

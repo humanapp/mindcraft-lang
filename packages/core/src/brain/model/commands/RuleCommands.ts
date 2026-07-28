@@ -1,6 +1,8 @@
-import type { BrainServices, ITileCatalog } from "@mindcraft-lang/core/brain";
-import { type BrainDef, type BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { deserializeAllRulesFromClipboard } from "../rule-clipboard";
+import { Error } from "../../../platform/error";
+import { List, type ReadonlyList } from "../../../platform/list";
+import type { BrainDef } from "../braindef";
+import type { BrainPageDef } from "../pagedef";
+import { BrainRuleDef } from "../ruledef";
 import type { BrainCommand } from "./BrainCommand";
 
 /**
@@ -246,40 +248,41 @@ export class OutdentRuleCommand implements BrainCommand {
 }
 
 /**
- * Command to paste rules from the clipboard above an existing rule.
+ * Command to paste rules above an existing rule.
  *
- * Deserializes the clipboard contents into the destination brain, importing
- * any missing catalog entries (literals, variables) and substituting
- * missing-tile placeholders for unresolvable page references.
+ * The rules are produced by `deserializeRules`, which is invoked with the
+ * destination brain on every execute (including redo) so the paste reflects
+ * its source at execution time. The caller's producer is expected to import
+ * any missing catalog entries (literals, variables) into the destination
+ * brain as part of deserialization.
  *
- * Supports multi-rule clipboard: all rules are inserted sequentially above
+ * Supports multi-rule producers: all rules are inserted sequentially above
  * the target rule, preserving their original order.
  */
 export class PasteRuleAboveCommand implements BrainCommand {
-  private pastedRules: BrainRuleDef[] = [];
+  private pastedRules: ReadonlyList<BrainRuleDef> = List.empty<BrainRuleDef>();
 
   constructor(
     private targetRule: BrainRuleDef,
-    private readonly tileCatalogs?: readonly ITileCatalog[],
-    private readonly brainServices?: BrainServices
+    private readonly deserializeRules: (destBrain: BrainDef) => ReadonlyList<BrainRuleDef>
   ) {}
 
   execute(): void {
     const brain = this.targetRule.brain() as BrainDef | undefined;
     if (!brain) return;
 
-    const newRules = deserializeAllRulesFromClipboard(brain, this.tileCatalogs, this.brainServices);
-    if (newRules.length === 0) return;
+    const newRules = this.deserializeRules(brain);
+    if (newRules.size() === 0) return;
 
     const state = getRuleState(this.targetRule);
 
     // Insert rules in order at the target index. Each subsequent rule goes
     // after the previous one so they appear in the same order as copied.
-    for (let i = 0; i < newRules.length; i++) {
+    for (let i = 0; i < newRules.size(); i++) {
       if (state.parentRule) {
-        (state.parentRule as BrainRuleDef).addRuleAtIndex(state.index + i, newRules[i]);
+        state.parentRule.addRuleAtIndex(state.index + i, newRules.get(i));
       } else if (state.pageDef) {
-        state.pageDef.addRuleAtIndex(state.index + i, newRules[i]);
+        state.pageDef.addRuleAtIndex(state.index + i, newRules.get(i));
       }
     }
 
@@ -288,14 +291,14 @@ export class PasteRuleAboveCommand implements BrainCommand {
 
   undo(): void {
     // Delete in reverse order to maintain stable indices
-    for (let i = this.pastedRules.length - 1; i >= 0; i--) {
-      this.pastedRules[i].delete();
+    for (let i = this.pastedRules.size() - 1; i >= 0; i--) {
+      this.pastedRules.get(i).delete();
     }
-    this.pastedRules = [];
+    this.pastedRules = List.empty<BrainRuleDef>();
   }
 
   getDescription(): string {
-    const count = this.pastedRules.length;
+    const count = this.pastedRules.size();
     return count <= 1 ? "Paste rule above" : `Paste ${count} rules above`;
   }
 }

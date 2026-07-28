@@ -1,3 +1,5 @@
+import { List } from "../../../platform/list";
+
 /**
  * Base interface for all brain editing commands.
  * Commands follow the Command Pattern to enable undo/redo functionality.
@@ -23,8 +25,8 @@ export interface BrainCommand {
  * Manages the undo/redo stack for brain editing commands.
  */
 export class BrainCommandHistory {
-  private undoStack: BrainCommand[] = [];
-  private redoStack: BrainCommand[] = [];
+  private readonly undoStack = new List<BrainCommand>();
+  private readonly redoStack = new List<BrainCommand>();
   private onChangeCallback?: () => void;
 
   constructor(private maxHistorySize: number = 100) {}
@@ -35,10 +37,10 @@ export class BrainCommandHistory {
   executeCommand(command: BrainCommand): void {
     command.execute();
     this.undoStack.push(command);
-    this.redoStack = []; // Clear redo stack when new command is executed
+    this.redoStack.clear(); // Clear redo stack when new command is executed
 
     // Limit stack size
-    if (this.undoStack.length > this.maxHistorySize) {
+    if (this.undoStack.size() > this.maxHistorySize) {
       this.undoStack.shift();
     }
 
@@ -54,9 +56,9 @@ export class BrainCommandHistory {
    */
   recordCommand(command: BrainCommand): void {
     this.undoStack.push(command);
-    this.redoStack = [];
+    this.redoStack.clear();
 
-    if (this.undoStack.length > this.maxHistorySize) {
+    if (this.undoStack.size() > this.maxHistorySize) {
       this.undoStack.shift();
     }
 
@@ -91,22 +93,22 @@ export class BrainCommandHistory {
    * Check if undo is available.
    */
   canUndo(): boolean {
-    return this.undoStack.length > 0;
+    return this.undoStack.size() > 0;
   }
 
   /**
    * Check if redo is available.
    */
   canRedo(): boolean {
-    return this.redoStack.length > 0;
+    return this.redoStack.size() > 0;
   }
 
   /**
    * Clear all history.
    */
   clear(): void {
-    this.undoStack = [];
-    this.redoStack = [];
+    this.undoStack.clear();
+    this.redoStack.clear();
     this.notifyChange();
   }
 
@@ -125,13 +127,15 @@ export class BrainCommandHistory {
    * Get the description of the next command that would be undone.
    */
   getUndoDescription(): string | undefined {
-    return this.undoStack[this.undoStack.length - 1]?.getDescription();
+    const size = this.undoStack.size();
+    return size > 0 ? this.undoStack.get(size - 1).getDescription() : undefined;
   }
 
   /**
    * Get the description of the next command that would be redone.
    */
   getRedoDescription(): string | undefined {
-    return this.redoStack[this.redoStack.length - 1]?.getDescription();
+    const size = this.redoStack.size();
+    return size > 0 ? this.redoStack.get(size - 1).getDescription() : undefined;
   }
 }

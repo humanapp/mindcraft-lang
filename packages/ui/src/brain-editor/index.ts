@@ -1,5 +1,29 @@
 // Context and types
 
+export type { BrainCommand } from "@mindcraft-lang/core/brain/model";
+// Commands (relocated to @mindcraft-lang/core/brain/model; re-exported for API stability)
+export {
+  AddPageCommand,
+  AddTileCommand,
+  BrainCommandHistory,
+  DeleteRuleCommand,
+  IndentRuleCommand,
+  InsertRuleBeforeCommand,
+  InsertTileCommand,
+  MoveRuleDownCommand,
+  MoveRuleUpCommand,
+  OutdentRuleCommand,
+  PasteRuleAboveCommand,
+  PasteTileBeforeCommand,
+  RemovePageCommand,
+  RemoveTileCommand,
+  RenameBrainCommand,
+  RenamePageCommand,
+  RenameVariableCommand,
+  ReplaceBrainCommand,
+  ReplaceLastPageCommand,
+  ReplaceTileCommand,
+} from "@mindcraft-lang/core/brain/model";
 // Action call-spec arg entries
 export type { ActionArgEntry, ActionArgTileEntry, ActionArgTypeEntry, TypeDisplaySources } from "./action-arg-tiles";
 export { getActionArgEntries, resolveTypeDisplayName } from "./action-arg-tiles";
@@ -25,30 +49,6 @@ export {
 } from "./brain-clipboard";
 export { CreateLiteralDialog } from "./CreateLiteralDialog";
 export { CreateVariableDialog } from "./CreateVariableDialog";
-export type { BrainCommand } from "./commands";
-// Commands
-export {
-  AddPageCommand,
-  AddTileCommand,
-  BrainCommandHistory,
-  DeleteRuleCommand,
-  IndentRuleCommand,
-  InsertRuleBeforeCommand,
-  InsertTileCommand,
-  MoveRuleDownCommand,
-  MoveRuleUpCommand,
-  OutdentRuleCommand,
-  PasteRuleAboveCommand,
-  PasteTileBeforeCommand,
-  RemovePageCommand,
-  RemoveTileCommand,
-  RenameBrainCommand,
-  RenamePageCommand,
-  RenameVariableCommand,
-  ReplaceBrainCommand,
-  ReplaceLastPageCommand,
-  ReplaceTileCommand,
-} from "./commands";
 export { DisplayFormatPicker } from "./DisplayFormatPicker";
 export { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
 // Hooks
