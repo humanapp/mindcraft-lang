@@ -1,3 +1,4 @@
+import type { ITileLanguageMetadata, TileSentenceFrame } from "@mindcraft-lang/core/brain";
 import type { ActionKind } from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
 import { DescriptorDiagCode } from "./diag-codes.js";
@@ -148,6 +149,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
   let docs: string | undefined;
   let docsSpan: SourceSpan | undefined;
   let tags: string[] | undefined;
+  let language: ITileLanguageMetadata | undefined;
   let inline = false;
   let inlineNode: ts.Expression | undefined;
   let presenceGated = false;
@@ -289,6 +291,10 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
         }
         break;
 
+      case "language":
+        language = extractTileLanguage(value, checker, addDiag);
+        break;
+
       case "inline":
         inlineNode = value;
         if (value.kind === ts.SyntaxKind.TrueKeyword) {
@@ -368,6 +374,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile, checker: ts.TypeChe
       docs,
       docsSpan,
       tags,
+      language,
       inline: kind === "sensor" ? inline : undefined,
       presenceGated: kind === "sensor" ? presenceGated : undefined,
       outputs,
@@ -538,6 +545,78 @@ function extractConversionDescriptor(
     },
     diagnostics: [],
   };
+}
+
+/** The frame names a `language.frame` member may spell. */
+const kTileSentenceFrames: readonly TileSentenceFrame[] = ["verb", "state", "event"];
+
+function isTileSentenceFrame(text: string): text is TileSentenceFrame {
+  return (kTileSentenceFrames as readonly string[]).includes(text);
+}
+
+/**
+ * Extract the `language` group of a sensor or actuator config: a
+ * `{ form?, frame?, bare? }` object literal whose members are string literals,
+ * with `frame` spelling one of the frame names. Each malformed member yields
+ * its own diagnostic and is dropped; a `language` value that is not an object
+ * literal yields undefined.
+ */
+function extractTileLanguage(
+  node: ts.Expression,
+  checker: ts.TypeChecker,
+  addDiag: AddDiag
+): ITileLanguageMetadata | undefined {
+  if (!ts.isObjectLiteralExpression(node)) {
+    addDiag(DescriptorDiagCode.LanguageMustBeObjectLiteral, node, "`language` must be an object literal.");
+    return undefined;
+  }
+
+  let form: string | undefined;
+  let frame: TileSentenceFrame | undefined;
+  let bare: string | undefined;
+
+  for (const prop of node.properties) {
+    const member = configMember(prop, checker, addDiag);
+    if (!member) continue;
+    const value = member.value;
+    switch (member.name) {
+      case "form":
+        if (ts.isStringLiteral(value)) {
+          form = value.text;
+        } else {
+          addDiag(
+            DescriptorDiagCode.LanguageFormMustBeStringLiteral,
+            value,
+            "`language.form` must be a string literal."
+          );
+        }
+        break;
+      case "frame":
+        if (ts.isStringLiteral(value) && isTileSentenceFrame(value.text)) {
+          frame = value.text;
+        } else {
+          addDiag(
+            DescriptorDiagCode.LanguageFrameMustBeFrameName,
+            value,
+            "`language.frame` must be the string literal `verb`, `state`, or `event`."
+          );
+        }
+        break;
+      case "bare":
+        if (ts.isStringLiteral(value)) {
+          bare = value.text;
+        } else {
+          addDiag(
+            DescriptorDiagCode.LanguageBareMustBeStringLiteral,
+            value,
+            "`language.bare` must be a string literal."
+          );
+        }
+        break;
+    }
+  }
+
+  return { form, frame, bare };
 }
 
 /** Extract and validate the `outputs` array of a sensor config. Each malformed entry yields a precise diagnostic; valid entries are returned. */
