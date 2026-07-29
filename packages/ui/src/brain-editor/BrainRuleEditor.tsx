@@ -29,6 +29,7 @@ import {
 import { isAppendTargetForRule, useArmedTargetController } from "./ArmedTargetContext";
 import { BrainCandidateStrip, kCandidateDragMimeType } from "./BrainCandidateStrip";
 import { useBrainEditorConfig } from "./BrainEditorContext";
+import { BrainRuleSentence } from "./BrainRuleSentence";
 import { BrainTileEditor } from "./BrainTileEditor";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { CreateVariableDialog } from "./CreateVariableDialog";
@@ -391,12 +392,15 @@ export function BrainRuleEditor({
   };
 
   const indentStyle = { marginLeft: `${depth * 32}px` };
+  // A rule with no tiles projects no sentence, so the trailing empty rule keeps
+  // the compact fixed height the card had before the sentence line.
+  const hasTiles = !ruleDef.when().tiles().isEmpty() || !ruleDef.do().tiles().isEmpty();
 
   return (
     <>
       {/* biome-ignore lint/a11y/useSemanticElements: changing to li requires restructuring BrainPageEditor */}
       <div
-        className={`flex flex-col p-2 sm:p-3 mb-1 rounded-xl shadow-sm hover:shadow-md transition-shadow w-fit relative${showComment || stripTarget ? "" : " h-30"}`}
+        className={`flex flex-col p-2 sm:p-3 mb-1 rounded-xl shadow-sm hover:shadow-md transition-shadow w-fit relative${showComment || stripTarget || hasTiles ? "" : " h-30"}`}
         style={{
           ...indentStyle,
           background: "linear-gradient(55deg, #16143A 0%, #8B6CF3 100%)",
@@ -616,6 +620,7 @@ export function BrainRuleEditor({
             </button>
           </div>
         </div>
+        <BrainRuleSentence ruleDef={ruleDef} updateCounter={updateCounter} />
         {stripTarget && (
           <BrainCandidateStrip
             id={stripId}

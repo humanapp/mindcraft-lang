@@ -37,6 +37,7 @@ export { BrainPrintDialog } from "./BrainPrintDialog";
 export { BrainPrintTextView } from "./BrainPrintTextView";
 export { BrainPrintView } from "./BrainPrintView";
 export { BrainRuleEditor } from "./BrainRuleEditor";
+export { BrainPrintRuleSentence, BrainRuleSentence } from "./BrainRuleSentence";
 export { BrainTile } from "./BrainTile";
 export { BrainTileEditor } from "./BrainTileEditor";
 export {
@@ -61,6 +62,9 @@ export {
   hasRuleInClipboard,
   onClipboardChanged,
 } from "./rule-clipboard";
+// Sentence projection consumption
+export type { SentenceSegmentIdentity } from "./sentence-reflection";
+export { changedSentenceSegments, sentenceSegmentIdentities } from "./sentence-reflection";
 export { TileValue } from "./TileValue";
 export type { TileBadge } from "./tile-badges";
 // Tile badges

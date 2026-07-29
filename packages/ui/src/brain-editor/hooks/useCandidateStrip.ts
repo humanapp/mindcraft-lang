@@ -1,10 +1,10 @@
 import { List, type ReadonlyBitSet, type UniqueSet } from "@mindcraft-lang/core";
 import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
-import { suggestTiles, type TileSuggestion } from "@mindcraft-lang/core/brain/language-service";
+import { suggestTiles, type TileSuggestion, tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type ArmedTileTarget, useArmedTargetController } from "../ArmedTargetContext";
-import { useBrainEditorConfig } from "../BrainEditorContext";
+import { useBrainEditorConfig, useLocalizer } from "../BrainEditorContext";
 import {
   arrangeCandidateSubcategories,
   buildStripCandidates,
@@ -109,9 +109,16 @@ export function useCandidateStrip({
     return list.asReadonly();
   }, [ruleDef, tileCatalogs]);
 
+  // A placeable tile's chip carries the word its sentence reads it with. A
+  // factory manufactures the tile that gets placed, and keeps the label the
+  // host app presents it under.
+  const localizer = useLocalizer();
   const labelOf = useCallback(
-    (tileDef: IBrainTileDef) => resolveTileVisual(editorConfig, tileDef).label,
-    [editorConfig]
+    (tileDef: IBrainTileDef) =>
+      tileDef.kind === "factory"
+        ? resolveTileVisual(editorConfig, tileDef).label
+        : tileSentenceWord(tileDef, localizer),
+    [editorConfig, localizer]
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter and commitCounter are intentional re-query signals

@@ -2,24 +2,35 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import type { BrainServices, IBrainRuleDef, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { mkActuatorTileId, mkSensorTileId, mkVariableTileId, TilePlacement } from "@mindcraft-lang/core/brain";
+import {
+  CoreControlFlowId,
+  CoreLiteralFactoryId,
+  mkActuatorTileId,
+  mkControlFlowTileId,
+  mkLiteralFactoryTileId,
+  mkOperatorTileId,
+  mkSensorTileId,
+  mkVariableTileId,
+  TilePlacement,
+} from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
   flattenRuleTiles,
   projectRuleSentence,
   type SentenceSegment,
   sentenceText,
+  tileSentenceWord,
 } from "@mindcraft-lang/core/brain/language-service";
 import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileModifierDef,
-  BrainTileOperatorDef,
   BrainTilePageDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
+  getCatalogFallbackLabel,
 } from "@mindcraft-lang/core/brain/tiles";
 import type { LocaleCatalog, Localizer } from "@mindcraft-lang/core/localization";
 import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@mindcraft-lang/core/localization";
@@ -85,10 +96,6 @@ function makeVariable(varName: string, varType: TypeId = CoreTypeIds.Number): Br
   return new BrainTileVariableDef(mkVariableTileId(varName), varName, varType, varName);
 }
 
-function makeOperator(opId: string, label: string): BrainTileOperatorDef {
-  return new BrainTileOperatorDef(opId, { metadata: { label } }, services);
-}
-
 function coreTile(tileId: string): IBrainTileDef {
   const tileDef = services.edit.tiles.get(tileId);
   assert.ok(tileDef, `core tile ${tileId} is registered`);
@@ -138,13 +145,13 @@ function fixtureRules(): IBrainRuleDef[] {
       [coreTile(mkActuatorTileId(CoreHostActions.SwitchPage.key)), new BrainTilePageDef("page-home", "Home")]
     ),
     makeRule(
-      [makeVariable("speed"), makeOperator(CoreOpId.GreaterThan, ">"), makeLiteral(CoreTypeIds.Number, 5)],
+      [makeVariable("speed"), coreTile(mkOperatorTileId(CoreOpId.GreaterThan)), makeLiteral(CoreTypeIds.Number, 5)],
       [makeActuator("walk", { label: "walk" })]
     ),
     makeRule(
       [
         makeInlineSensor("light level", { label: "light level" }),
-        makeOperator(CoreOpId.GreaterThan, ">"),
+        coreTile(mkOperatorTileId(CoreOpId.GreaterThan)),
         makeLiteral(CoreTypeIds.Number, 5),
       ],
       [makeActuator("walk", { label: "walk" })]
@@ -212,7 +219,7 @@ describe("sentence projection golden segments", () => {
 
   test("a comparison-headed WHEN reads with no subject", () => {
     const rule = makeRule(
-      [makeVariable("speed"), makeOperator(CoreOpId.GreaterThan, ">"), makeLiteral(CoreTypeIds.Number, 5)],
+      [makeVariable("speed"), coreTile(mkOperatorTileId(CoreOpId.GreaterThan)), makeLiteral(CoreTypeIds.Number, 5)],
       []
     );
 
@@ -220,17 +227,17 @@ describe("sentence projection golden segments", () => {
       glue("When "),
       word("speed", 0),
       glue(" "),
-      word(">", 1),
+      word("greater than", 1),
       glue(" "),
       word("5", 2),
       glue("."),
     ]);
-    assert.equal(projectedText(rule), "When speed > 5.");
+    assert.equal(projectedText(rule), "When speed greater than 5.");
   });
 
   test("a comparison-headed WHEN keeps its subjectless reading before a DO clause", () => {
     const rule = makeRule(
-      [makeVariable("speed"), makeOperator(CoreOpId.GreaterThan, ">"), makeLiteral(CoreTypeIds.Number, 5)],
+      [makeVariable("speed"), coreTile(mkOperatorTileId(CoreOpId.GreaterThan)), makeLiteral(CoreTypeIds.Number, 5)],
       [makeActuator("walk", { label: "walk" })]
     );
 
@@ -238,21 +245,21 @@ describe("sentence projection golden segments", () => {
       glue("When "),
       word("speed", 0),
       glue(" "),
-      word(">", 1),
+      word("greater than", 1),
       glue(" "),
       word("5", 2),
       glue(", "),
       word("walk", 3),
       glue("."),
     ]);
-    assert.equal(projectedText(rule), "When speed > 5, walk.");
+    assert.equal(projectedText(rule), "When speed greater than 5, walk.");
   });
 
   test("an inline sensor heading a comparison reads with no subject", () => {
     const rule = makeRule(
       [
         makeInlineSensor("light level", { label: "light level" }),
-        makeOperator(CoreOpId.GreaterThan, ">"),
+        coreTile(mkOperatorTileId(CoreOpId.GreaterThan)),
         makeLiteral(CoreTypeIds.Number, 5),
       ],
       []
@@ -262,19 +269,19 @@ describe("sentence projection golden segments", () => {
       glue("When "),
       word("light level", 0),
       glue(" "),
-      word(">", 1),
+      word("greater than", 1),
       glue(" "),
       word("5", 2),
       glue("."),
     ]);
-    assert.equal(projectedText(rule), "When light level > 5.");
+    assert.equal(projectedText(rule), "When light level greater than 5.");
   });
 
   test("an inline sensor comparison keeps its subjectless reading before a DO clause", () => {
     const rule = makeRule(
       [
         makeInlineSensor("light level", { label: "light level" }),
-        makeOperator(CoreOpId.GreaterThan, ">"),
+        coreTile(mkOperatorTileId(CoreOpId.GreaterThan)),
         makeLiteral(CoreTypeIds.Number, 5),
       ],
       [makeActuator("walk", { label: "walk" })]
@@ -284,14 +291,14 @@ describe("sentence projection golden segments", () => {
       glue("When "),
       word("light level", 0),
       glue(" "),
-      word(">", 1),
+      word("greater than", 1),
       glue(" "),
       word("5", 2),
       glue(", "),
       word("walk", 3),
       glue("."),
     ]);
-    assert.equal(projectedText(rule), "When light level > 5, walk.");
+    assert.equal(projectedText(rule), "When light level greater than 5, walk.");
   });
 
   test("a non-inline sensor keeps its frame reading when tiles follow it", () => {
@@ -348,6 +355,120 @@ describe("sentence projection golden segments", () => {
 
   test("a rule with no tiles projects no segments", () => {
     assert.deepEqual(project(makeRule([], [])), []);
+  });
+});
+
+// -- tile words ---------------------------------------------------------------
+
+/** The word a tile's own metadata authors: its sentence form, else its label. */
+function authoredWord(tileDef: IBrainTileDef): string | undefined {
+  return tileDef.metadata?.language?.form || tileDef.metadata?.label;
+}
+
+/** The registered core tiles of each vocabulary set the word resolver serves. */
+function coreVocabularyTiles(): { operators: IBrainTileDef[]; parens: IBrainTileDef[]; factories: IBrainTileDef[] } {
+  const registered = (tileIds: string[]) =>
+    tileIds.map((tileId) => services.edit.tiles.get(tileId)).filter((tileDef) => !!tileDef) as IBrainTileDef[];
+  return {
+    operators: registered(Object.values(CoreOpId).map((opId) => mkOperatorTileId(opId))),
+    parens: registered([
+      mkControlFlowTileId(CoreControlFlowId.OpenParen),
+      mkControlFlowTileId(CoreControlFlowId.CloseParen),
+    ]),
+    factories: registered([
+      mkLiteralFactoryTileId(CoreLiteralFactoryId.Number),
+      mkLiteralFactoryTileId(CoreLiteralFactoryId.String),
+    ]),
+  };
+}
+
+describe("tile sentence words", () => {
+  test("an authored form outranks the tile's label", () => {
+    const tileDef = makeSensor("word-form-and-label", { label: "authored label", language: { form: "authored form" } });
+    assert.equal(tileSentenceWord(tileDef, localizer), "authored form");
+  });
+
+  test("a tile with no form reads as its label", () => {
+    const tileDef = makeSensor("word-label-only", { label: "authored label" });
+    assert.equal(tileSentenceWord(tileDef, localizer), "authored label");
+  });
+
+  test("a tile with neither form nor label reads as its catalog name", () => {
+    const tileDef = makeSensor("word.unlabelled");
+    assert.equal(tileSentenceWord(tileDef, localizer), getCatalogFallbackLabel(tileDef));
+  });
+
+  test("a variable reads as its own name, which never localizes", () => {
+    const catalog: LocaleCatalog = {
+      locale: "xx",
+      pluralRule: defaultPluralRule,
+      entries: { speedy: "XX-speedy" },
+      contexts: { "tile-label": { speedy: "XX-speedy" } },
+    };
+    assert.equal(tileSentenceWord(makeVariable("speedy"), createLocalizer(catalog)), "speedy");
+  });
+
+  test("an authored form localizes through the active catalog", () => {
+    const catalog: LocaleCatalog = {
+      locale: "xx",
+      pluralRule: defaultPluralRule,
+      entries: {},
+      contexts: { "tile-label": { "authored form": "XX-form" } },
+    };
+    const tileDef = makeSensor("word-localized-form", {
+      label: "authored label",
+      language: { form: "authored form" },
+    });
+    assert.equal(tileSentenceWord(tileDef, createLocalizer(catalog)), "XX-form");
+  });
+
+  test("the projection reads every tile of a rule with its sentence word", () => {
+    for (const rule of fixtureRules()) {
+      const tiles = flattenRuleTiles(rule);
+      const words = project(rule)
+        .filter((segment) => segment.kind === "word")
+        .map((segment) => segment.text);
+      for (let i = 0; i < tiles.size(); i++) {
+        const tileDef = tiles.get(i).tileDef;
+        assert.ok(words.includes(tileSentenceWord(tileDef, localizer)), tileDef.tileId);
+      }
+    }
+  });
+
+  test("core registers a word for every operator, paren, and literal factory", () => {
+    const { operators, parens, factories } = coreVocabularyTiles();
+    assert.equal(operators.length, 15);
+    assert.equal(parens.length, 2);
+    assert.equal(factories.length, 2);
+    const unauthored = [...operators, ...parens, ...factories]
+      .filter((tileDef) => !authoredWord(tileDef))
+      .map((tileDef) => tileDef.tileId);
+    assert.deepEqual(unauthored, [], `core tiles authoring no word: ${unauthored.join(", ")}`);
+  });
+
+  test("no core operator, paren, or literal factory reads as its tile id", () => {
+    const { operators, parens, factories } = coreVocabularyTiles();
+    const leaking = [...operators, ...parens, ...factories]
+      .filter((tileDef) => tileSentenceWord(tileDef, localizer) === getCatalogFallbackLabel(tileDef))
+      .map((tileDef) => tileDef.tileId);
+    assert.deepEqual(leaking, [], `core tiles reading as their tile id: ${leaking.join(", ")}`);
+  });
+
+  test("each core operator, paren, and literal factory reads as the word it authors", () => {
+    const { operators, parens, factories } = coreVocabularyTiles();
+    for (const tileDef of [...operators, ...parens, ...factories]) {
+      assert.equal(tileSentenceWord(tileDef, localizer), authoredWord(tileDef), tileDef.tileId);
+    }
+  });
+
+  test("an operator declaring a spoken form reads with it, not with its chip label", () => {
+    const spoken = coreVocabularyTiles().operators.filter((tileDef) => !!tileDef.metadata?.language?.form);
+    assert.ok(spoken.length > 0, "some operators declare a spoken form distinct from their chip label");
+    for (const tileDef of spoken) {
+      const form = tileDef.metadata?.language?.form;
+      assert.equal(tileSentenceWord(tileDef, localizer), form, tileDef.tileId);
+      assert.notEqual(form, tileDef.metadata?.label, tileDef.tileId);
+    }
   });
 });
 
@@ -490,7 +611,7 @@ describe("sentence projection locale parameterization", () => {
   test("the subjectless template translates too", () => {
     const translated = createLocalizer(testLocaleCatalog());
     const rule = makeRule(
-      [makeVariable("speed"), makeOperator(CoreOpId.GreaterThan, ">"), makeLiteral(CoreTypeIds.Number, 5)],
+      [makeVariable("speed"), coreTile(mkOperatorTileId(CoreOpId.GreaterThan)), makeLiteral(CoreTypeIds.Number, 5)],
       []
     );
 
@@ -498,12 +619,12 @@ describe("sentence projection locale parameterization", () => {
       glue("ZORP KA "),
       word("speed", 0),
       glue("-"),
-      word(">", 1),
+      word("greater than", 1),
       glue("-"),
       word("5", 2),
       glue("!"),
     ]);
-    assert.equal(projectedText(rule, translated), "ZORP KA speed->-5!");
+    assert.equal(projectedText(rule, translated), "ZORP KA speed-greater than-5!");
   });
 
   test("an inline sensor comparison renders through the translated subjectless template", () => {
@@ -511,7 +632,7 @@ describe("sentence projection locale parameterization", () => {
     const rule = makeRule(
       [
         makeInlineSensor("light level", { label: "light level" }),
-        makeOperator(CoreOpId.GreaterThan, ">"),
+        coreTile(mkOperatorTileId(CoreOpId.GreaterThan)),
         makeLiteral(CoreTypeIds.Number, 5),
       ],
       []
@@ -521,7 +642,7 @@ describe("sentence projection locale parameterization", () => {
       glue("ZORP KA "),
       word("light level", 0),
       glue("-"),
-      word(">", 1),
+      word("greater than", 1),
       glue("-"),
       word("5", 2),
       glue("!"),

@@ -306,11 +306,18 @@ function vocabularyName(tileDef: IBrainTileDef): string {
 }
 
 /**
- * The word `tileDef` reads as: its authored form, else its label, else its
- * name. Vocabulary localizes through the tile-label context; user content does
- * not localize at all.
+ * The word `tileDef` reads as in the locale `localizer` renders, resolved in
+ * this order: the tile's authored `metadata.language.form`, else its user
+ * content (a literal's value, a variable's name, a page's name), else its
+ * `metadata.label`, else the vocabulary term naming it (an accessor's field
+ * name, an output's name, or the trailing segment of its tile id).
+ *
+ * Vocabulary localizes through the tile-label context; user content is the
+ * author's own text and never localizes. {@link projectRuleSentence} reads
+ * every tile through this function: call it wherever a surface has to label a
+ * tile with the word its sentence uses.
  */
-function tileWord(localizer: Localizer, tileDef: IBrainTileDef): string {
+export function tileSentenceWord(tileDef: IBrainTileDef, localizer: Localizer): string {
   const form = tileLanguage(tileDef)?.form;
   if (form !== undefined && form !== "") {
     return localizer.tr(form, undefined, kTileLabelContext);
@@ -341,7 +348,7 @@ function bareWord(localizer: Localizer, tileDef: IBrainTileDef): string {
 
 function wordPhrase(localizer: Localizer, tileDef: IBrainTileDef, sourceTileIndex: number): List<SentenceSegment> {
   const phrase = new List<SentenceSegment>();
-  phrase.push(wordSegment(tileWord(localizer, tileDef), sourceTileIndex));
+  phrase.push(wordSegment(tileSentenceWord(tileDef, localizer), sourceTileIndex));
   return phrase;
 }
 

@@ -3,6 +3,7 @@ import type { BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 import { staticAssetUrl } from "../asset-url";
 import { useBrainEditorConfig } from "./BrainEditorContext";
+import { BrainPrintRuleSentence } from "./BrainRuleSentence";
 import { TileValue } from "./TileValue";
 import { resolveTileVisual, tileVisualCategory } from "./tile-visual-utils";
 
@@ -111,6 +112,9 @@ function PrintRule({ ruleDef, depth, lineNumber }: PrintRuleProps) {
         // biome-ignore lint/suspicious/noArrayIndexKey: tiles have no stable IDs in print view
         <PrintTile key={`d${idx}`} tileDef={tileDef} side={RuleSide.Do} />
       ))}
+
+      {/* The rule read as a sentence, on its own line under the tiles */}
+      <BrainPrintRuleSentence ruleDef={ruleDef} />
     </div>
   );
 }

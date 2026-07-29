@@ -6,6 +6,10 @@
  * restores the prior document, redo reapplies the change) and that
  * canUndo()/canRedo() transition correctly. Fixtures are real BrainDef
  * documents built through the real model APIs.
+ *
+ * Also pins clone isolation: the editor edits a clone of the saved program and
+ * drops it on discard, so every command must leave the source document
+ * untouched when it runs against a clone.
  */
 
 import assert from "node:assert/strict";
@@ -574,4 +578,257 @@ describe("tile commands round-trip the document", () => {
     command.undo();
     assert.deepEqual(ruleShape(rule.toJson()), beforeShape);
   });
+});
+
+// ---- Clone isolation -------------------------------------------------------
+// The editor edits `sourceBrain.clone()` and drops the clone on discard, so a
+// command executed against the clone must leave the source brain byte-identical
+// to its pre-clone snapshot. The snapshot extends the document shape with a
+// catalog projection, because catalog-touching commands (variable rename, page
+// add/remove) would otherwise leak through shared tile-def instances unseen.
+
+interface CatalogEntryShape {
+  tileId: string;
+  kind: string;
+  label?: string;
+  hidden: boolean;
+  varName?: string;
+}
+
+function catalogShape(brain: BrainDef): CatalogEntryShape[] {
+  return brain
+    .catalog()
+    .getAll()
+    .toArray()
+    .map((tileDef) => {
+      const entry: CatalogEntryShape = {
+        tileId: tileDef.tileId,
+        kind: tileDef.kind,
+        hidden: tileDef.hidden === true,
+      };
+      if (tileDef.metadata) entry.label = tileDef.metadata.label;
+      const varName = (tileDef as BrainTileVariableDef).varName;
+      if (varName !== undefined) entry.varName = varName;
+      return entry;
+    })
+    .sort((a, b) => (a.tileId < b.tileId ? -1 : a.tileId > b.tileId ? 1 : 0));
+}
+
+function brainSnapshot(brain: BrainDef): unknown {
+  return { document: documentShape(brain), catalog: catalogShape(brain) };
+}
+
+/**
+ * One row of the clone-isolation table: `build` populates a fresh brain, and
+ * `makeCommand` locates its targets positionally so the same row can be applied
+ * to the clone.
+ */
+interface CloneIsolationCase {
+  name: string;
+  build: (brain: BrainDef) => void;
+  makeCommand: (brain: BrainDef) => BrainCommand;
+}
+
+/** Two root rules, the first carrying a tile so ordering shows up in the shape. */
+function buildTwoRules(brain: BrainDef): void {
+  const page = firstPage(brain);
+  (page.children().get(0) as BrainRuleDef).do().appendTile(actuatorTile());
+  const ruleB = page.appendNewRule();
+  ruleB.when().appendTile(sensorTile());
+}
+
+function ruleAt(brain: BrainDef, index: number): BrainRuleDef {
+  return firstPage(brain).children().get(index) as BrainRuleDef;
+}
+
+const cloneIsolationCases: CloneIsolationCase[] = [
+  {
+    name: "AddPageCommand",
+    build: () => {},
+    makeCommand: (brain) => new AddPageCommand(brain),
+  },
+  {
+    name: "RemovePageCommand",
+    build: (brain) => {
+      brain.appendNewPage();
+    },
+    makeCommand: (brain) => new RemovePageCommand(brain, 0),
+  },
+  {
+    name: "ReplaceLastPageCommand",
+    build: (brain) => {
+      firstRule(brain).do().appendTile(actuatorTile());
+    },
+    makeCommand: (brain) => new ReplaceLastPageCommand(brain, 0),
+  },
+  {
+    name: "RenameBrainCommand",
+    build: () => {},
+    makeCommand: (brain) => new RenameBrainCommand(brain, "Renamed On The Clone"),
+  },
+  {
+    name: "RenamePageCommand",
+    build: () => {},
+    makeCommand: (brain) => new RenamePageCommand(firstPage(brain), "Renamed On The Clone"),
+  },
+  {
+    name: "RenameVariableCommand",
+    build: (brain) => {
+      firstRule(brain).do().appendTile(numberVariableTile(brain, "score"));
+    },
+    makeCommand: (brain) => {
+      const varTile = firstRule(brain).do().tiles().get(0) as BrainTileVariableDef;
+      return new RenameVariableCommand(brain, varTile, "points");
+    },
+  },
+  {
+    name: "SetRuleCommentCommand",
+    build: () => {},
+    makeCommand: (brain) => new SetRuleCommentCommand(firstRule(brain), "comment on the clone"),
+  },
+  {
+    name: "ReplaceBrainCommand",
+    build: (brain) => {
+      firstRule(brain).do().appendTile(actuatorTile());
+    },
+    makeCommand: (brain) => {
+      const replacement = BrainDef.emptyBrainDef(services);
+      replacement.setName("Replacement Brain");
+      (replacement.pages().get(0).children().get(0) as BrainRuleDef).when().appendTile(sensorTile());
+      return new ReplaceBrainCommand(brain, replacement.toJson());
+    },
+  },
+  {
+    name: "AddRuleCommand",
+    build: () => {},
+    makeCommand: (brain) => new AddRuleCommand(firstPage(brain)),
+  },
+  {
+    name: "InsertRuleBeforeCommand",
+    build: buildTwoRules,
+    makeCommand: (brain) => new InsertRuleBeforeCommand(ruleAt(brain, 0)),
+  },
+  {
+    name: "DeleteRuleCommand",
+    build: buildTwoRules,
+    makeCommand: (brain) => new DeleteRuleCommand(ruleAt(brain, 0)),
+  },
+  {
+    name: "MoveRuleUpCommand",
+    build: buildTwoRules,
+    makeCommand: (brain) => new MoveRuleUpCommand(ruleAt(brain, 1)),
+  },
+  {
+    name: "MoveRuleDownCommand",
+    build: buildTwoRules,
+    makeCommand: (brain) => new MoveRuleDownCommand(ruleAt(brain, 0)),
+  },
+  {
+    name: "MoveRuleUpCommand (child rule)",
+    build: (brain) => {
+      const parent = firstRule(brain);
+      parent.do().appendTile(actuatorTile());
+      parent.appendNewRule().when().appendTile(sensorTile());
+      parent.appendNewRule().do().appendTile(numberLiteralTile(brain, 5));
+    },
+    makeCommand: (brain) => new MoveRuleUpCommand(firstRule(brain).children().get(1) as BrainRuleDef),
+  },
+  {
+    name: "MoveRuleDownCommand (child rule)",
+    build: (brain) => {
+      const parent = firstRule(brain);
+      parent.do().appendTile(actuatorTile());
+      parent.appendNewRule().when().appendTile(sensorTile());
+      parent.appendNewRule().do().appendTile(numberLiteralTile(brain, 5));
+    },
+    makeCommand: (brain) => new MoveRuleDownCommand(firstRule(brain).children().get(0) as BrainRuleDef),
+  },
+  {
+    name: "MoveRuleCommand",
+    build: buildTwoRules,
+    makeCommand: (brain) => {
+      const page = firstPage(brain);
+      return new MoveRuleCommand(ruleAt(brain, 0), { pageDef: page, index: 0 }, { pageDef: page, index: 1 });
+    },
+  },
+  {
+    name: "IndentRuleCommand",
+    build: buildTwoRules,
+    makeCommand: (brain) => new IndentRuleCommand(ruleAt(brain, 1)),
+  },
+  {
+    name: "OutdentRuleCommand",
+    build: (brain) => {
+      buildTwoRules(brain);
+      ruleAt(brain, 1).indent();
+    },
+    makeCommand: (brain) => new OutdentRuleCommand(ruleAt(brain, 0).children().get(0) as BrainRuleDef),
+  },
+  {
+    name: "PasteRuleAboveCommand",
+    build: buildTwoRules,
+    makeCommand: (brain) => {
+      const copiedRuleJson = ruleAt(brain, 0).toJson();
+      return new PasteRuleAboveCommand(ruleAt(brain, 1), (destBrain) => {
+        const rule = new BrainRuleDef();
+        rule.deserializeJson(copiedRuleJson, destBrain.deserializationCatalogs());
+        return List.from([rule]);
+      });
+    },
+  },
+  {
+    name: "AddTileCommand",
+    build: () => {},
+    makeCommand: (brain) => new AddTileCommand(firstRule(brain), RuleSide.When, sensorTile()),
+  },
+  {
+    name: "InsertTileCommand",
+    build: (brain) => {
+      firstRule(brain).do().appendTile(actuatorTile());
+    },
+    makeCommand: (brain) => new InsertTileCommand(firstRule(brain), RuleSide.Do, 0, numberLiteralTile(brain, 7)),
+  },
+  {
+    name: "ReplaceTileCommand",
+    build: (brain) => {
+      firstRule(brain).do().appendTile(numberLiteralTile(brain, 1));
+    },
+    makeCommand: (brain) => new ReplaceTileCommand(firstRule(brain), RuleSide.Do, 0, numberLiteralTile(brain, 2)),
+  },
+  {
+    name: "RemoveTileCommand",
+    build: (brain) => {
+      firstRule(brain).do().appendTile(actuatorTile());
+    },
+    makeCommand: (brain) => new RemoveTileCommand(firstRule(brain), RuleSide.Do, 0),
+  },
+  {
+    name: "PasteTileBeforeCommand",
+    build: (brain) => {
+      firstRule(brain).do().appendTile(actuatorTile());
+    },
+    makeCommand: (brain) => {
+      const literal = numberLiteralTile(brain, 9);
+      return new PasteTileBeforeCommand(firstRule(brain), RuleSide.Do, 0, (destBrain) =>
+        destBrain.catalog().get(literal.tileId)
+      );
+    },
+  },
+];
+
+describe("commands run against a clone leave the source brain untouched", () => {
+  for (const testCase of cloneIsolationCases) {
+    test(testCase.name, () => {
+      const source = newBrain();
+      testCase.build(source);
+      const sourceSnapshot = brainSnapshot(source);
+
+      const working = source.clone();
+      const history = new BrainCommandHistory();
+      history.executeCommand(testCase.makeCommand(working));
+
+      assert.notDeepEqual(brainSnapshot(working), sourceSnapshot, "execute must change the working copy");
+      assert.deepEqual(brainSnapshot(source), sourceSnapshot, "the source brain must be untouched");
+    });
+  }
 });

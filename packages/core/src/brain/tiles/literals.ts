@@ -171,8 +171,18 @@ export function registerCoreLiteralFactoryTileDefs(services: BrainServices) {
   const tiles = services.edit.tiles;
   // --------------------------------------------------------------
   // Literal Factories
-  registerLiteralFactoryTileDef(CoreLiteralFactoryId.Number, CoreTypeIds.Number, {}, services);
-  registerLiteralFactoryTileDef(CoreLiteralFactoryId.String, CoreTypeIds.String, {}, services);
+  registerLiteralFactoryTileDef(
+    CoreLiteralFactoryId.Number,
+    CoreTypeIds.Number,
+    { metadata: { label: "create a number tile" } },
+    services
+  );
+  registerLiteralFactoryTileDef(
+    CoreLiteralFactoryId.String,
+    CoreTypeIds.String,
+    { metadata: { label: "create a text tile" } },
+    services
+  );
   // --------------------------------------------------------------
   // Well-known Literals
   const trueTileDef = new BrainTileLiteralDef(CoreTypeIds.Boolean, true, { persist: false }, services);
