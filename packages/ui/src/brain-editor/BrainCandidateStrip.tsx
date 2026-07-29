@@ -62,6 +62,16 @@ function horizontalArrowDelta(key: string): 1 | -1 | undefined {
 }
 
 /**
+ * Scroll the rule card `strip` is rendered inside back into view, moving each
+ * scrollport as little as the card allows. The card carries the strip, so a
+ * card taller than its scrollport settles with its tile row at the scrollport's
+ * top edge and the strip overflowing below it.
+ */
+function revealArmedRuleCard(strip: HTMLElement | null): void {
+  strip?.closest("[data-rule-id]")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+/**
  * The chip bands in display order: the best-next row when it holds a chip, then
  * every section `isOpen` accepts, in section order.
  */
@@ -193,18 +203,24 @@ export function BrainCandidateStrip({ state, side, id, onDismiss }: BrainCandida
   const isFiltering = state.filter.trim().length > 0;
 
   // The arming control keeps the keyboard's place: the strip takes focus while
-  // it is open and hands it back when it closes.
+  // it is open and hands it back when it closes. Taking focus never scrolls;
+  // the reveal effect below settles the view.
   useEffect(() => {
     const armingControl = document.activeElement as HTMLElement | null;
-    const frame = requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      containerRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    });
+    const frame = requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
     return () => {
       cancelAnimationFrame(frame);
       if (armingControl?.isConnected) armingControl.focus();
     };
   }, []);
+
+  // Opening the strip and every placement made in it grow the rule card, which
+  // is brought back into view once the card has been laid out at its new height.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: commitTick is an intentional trigger signal
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => revealArmedRuleCard(containerRef.current));
+    return () => cancelAnimationFrame(frame);
+  }, [commitTick]);
 
   const libraryNames = useMemo(
     () => new Map((editorConfig.libraries ?? []).map((library) => [library.coordinate, library.name])),
@@ -287,7 +303,7 @@ export function BrainCandidateStrip({ state, side, id, onDismiss }: BrainCandida
     setCommitTick((tick) => tick + 1);
     setActiveOptionId(undefined);
     setHighlightMode("typing");
-    inputRef.current?.focus();
+    inputRef.current?.focus({ preventScroll: true });
   };
 
   const commitCandidate = (candidate: StripCandidate) => {
