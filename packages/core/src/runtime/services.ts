@@ -1,4 +1,5 @@
 import type { IBrainTileDefBuilder, ITileCatalog } from "../brain/interfaces/catalog";
+import type { Localizer } from "../localization/localizer";
 import type { IConversionRegistry } from "./conversion-defs";
 import type { IFunctionRegistry } from "./function-defs";
 import type { IBrainActionRegistry } from "./host-bindings";
@@ -167,6 +168,13 @@ export interface AppServices {
    * bodies when the core components are registered.
    */
   numerics: ProfileNumerics;
+
+  /**
+   * Display-time translation service for the host's current locale. Every
+   * user-visible string core renders goes through it; nothing it produces is
+   * persisted or compiled.
+   */
+  localizer: Localizer;
 }
 
 /**

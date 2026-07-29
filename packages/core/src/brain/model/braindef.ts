@@ -1,3 +1,4 @@
+import type { Localizer } from "../../localization/localizer";
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
@@ -125,7 +126,7 @@ export function brainJsonFromPlain(plain: unknown): BrainJson {
 
 /** Concrete {@link IBrainDef} implementation: in-memory brain model with mutation, serialization, and compilation. */
 export class BrainDef implements IBrainDef {
-  private name_: string = "Unnamed Brain"; // TODO: i18n
+  private name_: string = "Unnamed Brain";
   private readonly pages_ = new List<BrainPageDef>();
   private readonly emitter_ = new EventEmitter<BrainDefEvents>();
   private readonly pageSubscriptions_ = new Dict<BrainPageDef, () => void>();
@@ -164,6 +165,10 @@ export class BrainDef implements IBrainDef {
     return this.services_.edit.operatorOverloads;
   }
 
+  servicesLocalizer(): Localizer {
+    return this.services_.app.localizer;
+  }
+
   static emptyBrainDef(services: BrainServices, name?: string): BrainDef {
     const brainDef = new BrainDef(services);
     if (name) {
@@ -194,7 +199,7 @@ export class BrainDef implements IBrainDef {
   }
 
   setName(newName: string) {
-    newName = newName || "Unnamed Brain"; // TODO: i18n
+    newName = newName || "Unnamed Brain";
     if (newName === this.name_) {
       return;
     }

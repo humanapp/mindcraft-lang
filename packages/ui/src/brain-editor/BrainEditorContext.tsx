@@ -1,6 +1,8 @@
 import type { BrainServices, IBrainActionTileDef, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { createContext, type ReactNode, useContext } from "react";
+import type { LocalizedValue, Localizer } from "@mindcraft-lang/core/localization";
+import { createDefaultLocalizer } from "@mindcraft-lang/core/localization";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
 import type { PrintTransport } from "../print/standalone-print-document";
 import type { TileSourceLibrary } from "./tile-library-groups";
 import type { TileVisual } from "./types";
@@ -58,6 +60,12 @@ export interface BrainEditorConfig {
   getDefaultBrain?: () => BrainDef | undefined;
   /** Optional BrainServices instance for direct access to tiles, types, etc. */
   brainServices?: BrainServices;
+  /**
+   * Display-time translation service for the app's current locale. Swap it for
+   * one built on another locale's catalog and the editor re-renders in that
+   * locale. Omitted, the editor renders every source string as authored.
+   */
+  localizer?: Localizer;
   /** Namespace of the active project. Brain files save and load namespace-relative to it. */
   projectNamespace?: string;
   /** Tile catalogs from the host environment (core + user tile catalogs). */
@@ -95,4 +103,26 @@ export function useBrainEditorConfig(): BrainEditorConfig {
     throw new Error("useBrainEditorConfig must be used within a BrainEditorProvider");
   }
   return config;
+}
+
+/** The default localizer used when the host config supplies none. */
+const fallbackLocalizer = createDefaultLocalizer();
+
+/**
+ * Read the active {@link Localizer}. Falls back to the default localizer when
+ * the host config supplies none. Components re-render when the host swaps the
+ * config's localizer for another locale.
+ */
+export function useLocalizer(): Localizer {
+  return useBrainEditorConfig().localizer ?? fallbackLocalizer;
+}
+
+/**
+ * Read the active localizer's `tr`, bound to the current locale. Call it with
+ * the English source string, its named parameters, and an optional context
+ * tag.
+ */
+export function useTr(): (source: string, params?: Record<string, LocalizedValue>, context?: string) => string {
+  const localizer = useLocalizer();
+  return useMemo(() => localizer.tr.bind(localizer), [localizer]);
 }

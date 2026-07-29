@@ -2,8 +2,8 @@
  * Runtime allow-list firewall test.
  *
  * Mechanizes the architectural invariant: every value-import reachable
- * from `packages/core/src/runtime/` resolves only to `runtime/` or
- * `platform/`. Runs the `dependency-cruiser` programmatic API against
+ * from `packages/core/src/runtime/` resolves only to `runtime/`,
+ * `platform/`, or `localization/`. Runs the `dependency-cruiser` programmatic API against
  * the rule defined in `packages/core/.dependency-cruiser.cjs` and
  * asserts the live violation count equals `BASELINE_VIOLATIONS`.
  *

@@ -353,27 +353,6 @@
       },
       "default": "./dist/rbx/util/init.luau"
     },
-    "./i18n": {
-      "node": {
-        "import": {
-          "types": "./dist/node/i18n/index.d.ts",
-          "default": "./dist/node/i18n/index.js"
-        },
-        "require": {
-          "types": "./dist/node/i18n/index.d.ts",
-          "default": "./dist/node/i18n/index.js"
-        }
-      },
-      "browser": {
-        "types": "./dist/esm/i18n/index.d.ts",
-        "default": "./dist/esm/i18n/index.js"
-      },
-      "import": {
-        "types": "./dist/esm/i18n/index.d.ts",
-        "default": "./dist/esm/i18n/index.js"
-      },
-      "default": "./dist/rbx/i18n/init.luau"
-    },
     "./docs": {
       "node": {
         "import": {
@@ -413,6 +392,46 @@
         "types": "./dist/esm/docs/_generated/en.d.ts",
         "default": "./dist/esm/docs/_generated/en.js"
       }
+    },
+    "./localization": {
+      "node": {
+        "import": {
+          "types": "./dist/node/localization/index.d.ts",
+          "default": "./dist/node/localization/index.js"
+        },
+        "require": {
+          "types": "./dist/node/localization/index.d.ts",
+          "default": "./dist/node/localization/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/localization/index.d.ts",
+        "default": "./dist/esm/localization/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/localization/index.d.ts",
+        "default": "./dist/esm/localization/index.js"
+      }
+    },
+    "./localization/*": {
+      "node": {
+        "import": {
+          "types": "./dist/node/localization/_generated/*.d.ts",
+          "default": "./dist/node/localization/_generated/*.js"
+        },
+        "require": {
+          "types": "./dist/node/localization/_generated/*.d.ts",
+          "default": "./dist/node/localization/_generated/*.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/localization/_generated/*.d.ts",
+        "default": "./dist/esm/localization/_generated/*.js"
+      },
+      "import": {
+        "types": "./dist/esm/localization/_generated/*.d.ts",
+        "default": "./dist/esm/localization/_generated/*.js"
+      }
     }
   },
   "files": [
@@ -428,6 +447,8 @@
     "build:rbx": "rbxtsc --type package --project tsconfig.rbx.json && node scripts/post-build-rbx.js",
     "pregenerate:ambient": "npm run build:node && npm run build:prod --prefix ../ts-compiler",
     "generate:ambient": "tsx --tsconfig scripts/tsconfig.json scripts/generate-ambient.ts",
+    "pregenerate:localization": "npm run build:node",
+    "generate:localization": "tsx --tsconfig scripts/tsconfig.json scripts/generate-localization.ts",
     "watch:rbx": "node scripts/watch-rbx.js",
     "clean": "rm -rf ./dist",
     "lint:only": "biome lint ./src",

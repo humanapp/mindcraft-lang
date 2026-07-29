@@ -37,6 +37,7 @@ import {
   renameBrainNamespaces,
 } from "@mindcraft-lang/core/app";
 import type { PersistedBrainJson } from "@mindcraft-lang/core/brain/model";
+import type { Localizer } from "@mindcraft-lang/core/localization";
 import type { ActionKey, IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
 import type { Mount, WorkspaceCompileResult, WorkspaceDiagnosticEntry } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
@@ -150,6 +151,14 @@ export interface AppEnvironmentHostOptions {
    * environment falls back to the f64 (native double-precision) default.
    */
   numerics?: ProfileNumerics;
+
+  /**
+   * Host-supplied display-time translation service, forwarded to
+   * {@link createMindcraftEnvironment}. When omitted, the environment falls
+   * back to the default localizer, which renders every source string as
+   * authored.
+   */
+  localizer?: Localizer;
 
   /** When set, enables the optional bridge connection to a remote peer. */
   bridgeUrl?: string;
@@ -266,6 +275,7 @@ export class AppEnvironmentHost {
       modules: [...options.modules],
       rng: options.rng,
       numerics: options.numerics,
+      localizer: options.localizer,
     });
 
     this.env.onBrainsInvalidated((event) => {

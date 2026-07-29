@@ -1,3 +1,4 @@
+import { createDefaultLocalizer, type Localizer } from "../localization/localizer";
 import { MathOps } from "../platform/math";
 import type {
   AppServices,
@@ -95,12 +96,16 @@ export function createDefaultRng(): IRngServices {
 
 /**
  * Creates an {@link AppServices} aggregate of host-supplied capabilities.
- * The RNG defaults to {@link createDefaultRng} when `rng` is omitted; the
- * numerics default to {@link createF64ProfileNumerics} when `numerics` is
- * omitted.
+ * The RNG defaults to {@link createDefaultRng} when `rng` is omitted, the
+ * numerics to {@link createF64ProfileNumerics} when `numerics` is omitted, and
+ * the localizer to {@link createDefaultLocalizer} when `localizer` is omitted.
  */
-export function createAppServices(rng?: IRngServices, numerics?: ProfileNumerics): AppServices {
-  return { rng: rng ?? createDefaultRng(), numerics: numerics ?? createF64ProfileNumerics() };
+export function createAppServices(rng?: IRngServices, numerics?: ProfileNumerics, localizer?: Localizer): AppServices {
+  return {
+    rng: rng ?? createDefaultRng(),
+    numerics: numerics ?? createF64ProfileNumerics(),
+    localizer: localizer ?? createDefaultLocalizer(),
+  };
 }
 
 /**

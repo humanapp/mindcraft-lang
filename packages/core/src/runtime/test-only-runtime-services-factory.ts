@@ -1,3 +1,4 @@
+import { createDefaultLocalizer } from "../localization/localizer";
 import { Dict } from "../platform/dict";
 import { MathOps } from "../platform/math";
 import { BrainActionRegistry } from "./action-registry";
@@ -29,7 +30,7 @@ export interface __test__PlatformServicesOptions {
   runtime?: Partial<RuntimeLangServices>;
   /** Override individual fields of the {@link SharedLangServices} tier (conversions). */
   shared?: Partial<SharedLangServices>;
-  /** Override individual fields of the {@link AppServices} tier (rng, numerics). */
+  /** Override individual fields of the {@link AppServices} tier (rng, numerics, localizer). */
   app?: Partial<AppServices>;
   /** Override the program services (rule funcId resolution). */
   program?: IProgramServices;
@@ -125,6 +126,7 @@ export function __test__createPlatformServices(options?: __test__PlatformService
         },
       },
       numerics: app?.numerics ?? createF64ProfileNumerics(),
+      localizer: app?.localizer ?? createDefaultLocalizer(),
     },
     brain: {
       program: options?.program ?? {
