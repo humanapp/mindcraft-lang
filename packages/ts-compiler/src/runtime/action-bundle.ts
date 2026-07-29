@@ -30,15 +30,18 @@ export function compileResultContributes(result: CompileResult): boolean {
   return result.program !== undefined || result.definition !== undefined;
 }
 
-/** True when one compilation root has at least one failed file: an error-severity TypeScript diagnostic or a per-file compile result carrying an error. */
-function rootHasBlockedFile(result: ProjectCompileResult): boolean {
-  for (const diagnostics of result.tsErrors.values()) {
-    if (diagnostics.some((diag) => diag.severity === "error")) {
-      return true;
-    }
-  }
-
+/**
+ * True when one compilation root still holds a tile-bearing source file that
+ * contributed nothing this compile: a per-file compile result carrying an
+ * error-severity diagnostic with neither a program nor a surface definition.
+ * A file that merely fails to typecheck without bearing a tile does not count,
+ * and a file deleted since the previous compile leaves no result at all.
+ */
+function rootHasBlockedTileFile(result: ProjectCompileResult): boolean {
   for (const compileResult of result.results.values()) {
+    if (compileResultContributes(compileResult)) {
+      continue;
+    }
     if (compileResult.diagnostics.some((diag) => diag.severity === "error")) {
       return true;
     }
@@ -108,9 +111,11 @@ export function buildCompiledActionBundle(
  * file carrying only a tile surface definition contributes its tiles without
  * an action, so the tile is placeable and typechecks while a brain using it
  * reports a link failure. A tile whose surface types cannot be resolved is
- * withheld. Returns undefined only when every root has a failed file and no
- * file anywhere contributes; a project whose sole root fails entirely then
- * keeps its last good bundle.
+ * withheld. Returns undefined only when no file anywhere contributes and every
+ * root still holds a tile-bearing file blocked from contributing; a project
+ * whose sole tile file is mid-edit then keeps its last good bundle. A project
+ * whose tile files are all gone returns an empty bundle, so the host clears the
+ * tiles they registered.
  */
 export function buildMultiRootActionBundle(
   results: Iterable<ProjectCompileResult>,
@@ -122,7 +127,7 @@ export function buildMultiRootActionBundle(
     options.resolveTypeId ?? ((typeName: string) => options.services.runtime.types.resolveByName(typeName));
   const contributions = collectContributions(resultList);
   const contributionCount = contributions.programs.length + contributions.definitions.length;
-  if (contributionCount === 0 && resultList.length > 0 && resultList.every(rootHasBlockedFile)) {
+  if (contributionCount === 0 && resultList.length > 0 && resultList.every(rootHasBlockedTileFile)) {
     return undefined;
   }
   const actions = new Dict<string, UserAuthoredProgram>();

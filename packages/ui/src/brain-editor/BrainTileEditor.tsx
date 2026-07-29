@@ -1,4 +1,4 @@
-import { type IBrainTileDef, type LiteralDisplayFormat, RuleSide } from "@mindcraft-lang/core/brain";
+import type { IBrainTileDef, LiteralDisplayFormat, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainCommandHistory, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   InsertTileCommand,
@@ -9,7 +9,7 @@ import {
 } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef, type BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -21,11 +21,9 @@ import {
 import { isTileTargetForTile, useArmedTargetController } from "./ArmedTargetContext";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
-import { BrainTilePickerDialog } from "./BrainTilePickerDialog";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { CreateVariableDialog } from "./CreateVariableDialog";
 import { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
-import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
 import { RenameVariableDialog } from "./RenameVariableDialog";
 import type { TileBadge } from "./tile-badges";
@@ -41,28 +39,17 @@ interface BrainTileEditorProps {
   tileIndex: number;
   side: RuleSide;
   ruleDef: BrainRuleDef;
-  /** The page editor's update counter; increments whenever tiles change. */
-  updateCounter: number;
   commandHistory: BrainCommandHistory;
   badge?: TileBadge;
 }
 
 /** A {@link BrainTile} wrapped with a context menu offering insert/replace/delete and tile-specific edit actions. */
-export function BrainTileEditor({
-  tileDef,
-  tileIndex,
-  side,
-  ruleDef,
-  updateCounter,
-  commandHistory,
-  badge,
-}: BrainTileEditorProps) {
+export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHistory, badge }: BrainTileEditorProps) {
   const armedTarget = useArmedTargetController();
   const tileTarget = isTileTargetForTile(armedTarget.target, ruleDef, side, tileIndex) ? armedTarget.target : null;
+  const armedHintId = useId();
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
-  const availableCapabilities = useRuleCapabilities(ruleDef, updateCounter);
-  const availableOutputKeys = useRuleOutputKeys(ruleDef, updateCounter);
   const { onTileHelp, brainServices } = useBrainEditorConfig();
 
   const isNumericLiteral =
@@ -191,15 +178,18 @@ export function BrainTileEditor({
     setShowEditFormatDialog(false);
   };
 
-  const handlePickerCancel = () => {
-    armedTarget.disarm();
-  };
-
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <BrainTile tileDef={tileDef} side={side} badge={badge} aria-haspopup="menu" />
+          <BrainTile
+            tileDef={tileDef}
+            side={side}
+            badge={badge}
+            aria-haspopup="menu"
+            aria-describedby={tileTarget ? armedHintId : undefined}
+            className={tileTarget ? "ring-4 ring-amber-300/90" : ""}
+          />
         </DropdownMenuTrigger>
         <DropdownMenuContent>
           <DropdownMenuItem onClick={handleInsertBefore}>Insert Before</DropdownMenuItem>
@@ -220,26 +210,11 @@ export function BrainTileEditor({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {tileTarget &&
-        (() => {
-          const tileSet = side === RuleSide.When ? ruleDef.when() : ruleDef.do();
-          const isInsert = tileTarget.mode === "insert";
-          return (
-            <BrainTilePickerDialog
-              isOpen={true}
-              side={side}
-              localCatalog={ruleDef.brain()?.catalog()}
-              expr={isInsert ? undefined : tileSet.expr()}
-              replaceTileIndex={isInsert ? undefined : tileIndex}
-              existingTiles={isInsert ? tileSet.tiles().slice(0, tileIndex) : tileSet.tiles()}
-              availableCapabilities={availableCapabilities}
-              availableOutputKeys={availableOutputKeys}
-              ruleDef={ruleDef}
-              onTileSelected={tileTarget.onTileSelected}
-              onCancel={handlePickerCancel}
-            />
-          );
-        })()}
+      {tileTarget && (
+        <span id={armedHintId} className="sr-only">
+          {tileTarget.mode === "replace" ? "armed to be replaced" : "armed to insert a tile before it"}
+        </span>
+      )}
 
       {showCreateVariableDialog && (
         <CreateVariableDialog

@@ -118,6 +118,15 @@ export enum CompilationDiagCode {
 
   /** No overload found for operator during code generation */
   MissingOperatorOverload = 3001,
+
+  /**
+   * Code generation reached an expression it cannot compile and emitted nothing
+   * for it, so the enclosing rule side runs without that expression. Emitted at
+   * "warning" severity: the surrounding program still compiles, links, and runs.
+   * The message names the rule path, the rule side, and the tile the dropped
+   * expression starts at when one resolves.
+   */
+  UncompilableExpressionDropped = 3002,
 }
 
 /**

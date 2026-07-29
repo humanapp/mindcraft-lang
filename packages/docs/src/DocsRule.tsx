@@ -1,7 +1,15 @@
 import { assertUnreachable } from "@mindcraft-lang/core";
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { adjustColor, cn, formatValue, glassEffect, saturateColor, staticAssetUrl } from "@mindcraft-lang/ui";
+import {
+  adjustColor,
+  cn,
+  formatValue,
+  glassEffect,
+  readableInk,
+  saturateColor,
+  staticAssetUrl,
+} from "@mindcraft-lang/ui";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { useLayoutEffect, useState } from "react";
 import { useDocsResolveTileVisual } from "./DocsSidebarContext";
@@ -15,7 +23,8 @@ const tileGlass = glassEffect({
   bandPeak: 32,
   bandEnd: 100,
   bottomReflection: 0.06,
-  verticalShade: 0.0,
+  // Shades the tile toward its bottom edge, the band the label sits in.
+  verticalShade: 0.18,
 });
 
 const chipGlass = glassEffect({
@@ -179,7 +188,12 @@ export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
           <img src={iconUrl} alt="" className="h-16 w-full" aria-hidden="true" />
         )}
         <span className="flex-1 flex items-end w-full text-sm overflow-hidden justify-center">
-          <span className="whitespace-nowrap inline-block font-mono font-semibold text-black">{label}</span>
+          <span
+            className="whitespace-nowrap inline-block font-mono font-semibold"
+            style={{ color: readableInk(darkerColor) }}
+          >
+            {label}
+          </span>
         </span>
       </div>
     </div>

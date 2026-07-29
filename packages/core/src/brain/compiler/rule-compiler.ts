@@ -14,11 +14,12 @@ import {
   NativeType,
 } from "../../runtime";
 import { NIL_VALUE, type Value } from "../../runtime/value";
-import type { ITileCatalog } from "../interfaces";
+import type { IBrainTileDef, ITileCatalog } from "../interfaces";
+import { RuleSide } from "../interfaces";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
 import type { BrainTileParameterDef } from "../tiles";
 import type { ConstantPool } from "./constant-pool";
-import { CompilationDiagCode, type DiagCode, LinkDiagCode } from "./diagnostics";
+import { CompilationDiagCode, type DiagCode, type DiagnosticSeverity, LinkDiagCode } from "./diagnostics";
 import type {
   ActuatorExpr,
   AssignmentExpr,
@@ -66,15 +67,23 @@ interface CompilationContext {
   catalogs: ReadonlyList<ITileCatalog>;
   /** Counter for assigning unique call-site IDs to host and action call instructions */
   nextCallSiteId: { value: number };
+  /** Rule path of the rule being compiled, in `page/rule[/child]` form. */
+  rulePath: string;
+  /** Rule side being compiled. */
+  ruleSide: RuleSide;
+  /** Tiles of the rule side being compiled, indexed by expression span position. */
+  sideTiles: ReadonlyList<IBrainTileDef>;
   /** Diagnostics collected during compilation */
   diags: List<CompilationDiag>;
 }
 
 /**
- * Compilation diagnostic (error or warning) with node reference.
+ * Compilation diagnostic with node reference. An "error" blocks producing a
+ * program; a "warning" reports degraded output that still compiles.
  */
 export interface CompilationDiag {
   code: DiagCode;
+  severity: DiagnosticSeverity;
   message: string;
   nodeId: number;
 }
@@ -117,6 +126,7 @@ export class ExprCompiler implements ExprVisitor<void> {
     if (!typeInfo) {
       this.context.diags.push({
         code: CompilationDiagCode.MissingTypeInfo,
+        severity: "error",
         message: `Missing type information for binary operator`,
         nodeId: expr.nodeId,
       });
@@ -256,6 +266,7 @@ export class ExprCompiler implements ExprVisitor<void> {
     if (!typeInfo) {
       this.context.diags.push({
         code: CompilationDiagCode.MissingTypeInfo,
+        severity: "error",
         message: `Missing type information for unary operator`,
         nodeId: expr.nodeId,
       });
@@ -533,6 +544,7 @@ export class ExprCompiler implements ExprVisitor<void> {
     if (!resolved) {
       this.context.diags.push({
         code: LinkDiagCode.MissingActionBinding,
+        severity: "error",
         message: `Action '${action.key}' could not be resolved in this environment.`,
         nodeId,
       });
@@ -703,8 +715,39 @@ export class ExprCompiler implements ExprVisitor<void> {
   // ==========================================
 
   visitError(expr: ErrorExpr): void {
-    // We should never hit this in practice because we don't compile rules
-    // containing errors, but it is theoretically possible.
-    logger.error(`Encountered ErrorExpr during compilation: ${expr.message}`);
+    // No bytecode exists for an unparseable expression: report the drop so the
+    // build result names the code that did not make it into the program.
+    this.reportDroppedExpr(expr.nodeId, expr.span?.from, expr.message);
+  }
+
+  /**
+   * Record that code generation emitted nothing for an expression, so the build
+   * result carries the drop. Call for every expression the compiler discards.
+   *
+   * @param nodeId - Node id of the discarded expression.
+   * @param tileIndex - Index of the expression's first tile in the rule side, when known.
+   * @param reason - Parser text describing why the expression is uncompilable.
+   */
+  reportDroppedExpr(nodeId: number, tileIndex: number | undefined, reason: string): void {
+    const tileId = this.tileIdAt(tileIndex);
+    const sideName = this.context.ruleSide === RuleSide.When ? "WHEN" : "DO";
+    const where = `rule '${this.context.rulePath}' ${sideName}`;
+    const at = tileId === undefined ? where : `${where} at tile '${tileId}'`;
+    const message = `Dropped uncompilable expression in ${at}: ${reason}`;
+    logger.warn(message);
+    this.context.diags.push({
+      code: CompilationDiagCode.UncompilableExpressionDropped,
+      severity: "warning",
+      message,
+      nodeId,
+    });
+  }
+
+  /** Tile id of the rule side's tile at `index`, or undefined when out of range. */
+  private tileIdAt(index: number | undefined): string | undefined {
+    if (index === undefined || index < 0 || index >= this.context.sideTiles.size()) {
+      return undefined;
+    }
+    return this.context.sideTiles.get(index).tileId;
   }
 }

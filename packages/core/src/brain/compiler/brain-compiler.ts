@@ -15,7 +15,7 @@ import type {
 } from "../../runtime";
 import { BYTECODE_VERSION, type FunctionBytecode, type Instr, Op } from "../../runtime/bytecode";
 import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
-import type { IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog } from "../interfaces";
+import type { IBrainDef, IBrainPageDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../interfaces";
 import { CoreCapabilityBits, RuleSide } from "../interfaces";
 import {
   availableWhenResultType,
@@ -341,7 +341,7 @@ export class BrainCompiler {
     }
 
     // Compile this rule's WHEN and DO
-    const result = this.compileRuleBody(ruleDef, childFuncIds);
+    const result = this.compileRuleBody(ruleDef, childFuncIds, rulePath);
 
     // Update the function in place
     const fn = this.functions.get(funcId)!;
@@ -378,7 +378,7 @@ export class BrainCompiler {
   /**
    * Compile a rule's WHEN/DO body and emit CALL instructions for children.
    */
-  private compileRuleBody(ruleDef: IBrainRuleDef, childFuncIds: List<number>): RuleCompileResult {
+  private compileRuleBody(ruleDef: IBrainRuleDef, childFuncIds: List<number>, rulePath: string): RuleCompileResult {
     const whenTiles = ruleDef.when().tiles();
     const doTiles = ruleDef.do().tiles();
 
@@ -450,7 +450,7 @@ export class BrainCompiler {
     const whenIsEmpty = whenParseResult.exprs.get(0).kind === "empty";
     if (!whenIsEmpty) {
       emitter.whenStart();
-      this.emitExprs(whenParseResult.exprs, emitter, typeEnv, true);
+      this.emitExprs(whenParseResult.exprs, emitter, typeEnv, true, rulePath, RuleSide.When, whenTiles);
       if (isBarePresenceGatedSensor(whenParseResult.exprs.get(0))) {
         emitter.whenEndPresent(endLabel);
       } else {
@@ -460,7 +460,7 @@ export class BrainCompiler {
 
     // Emit DO section
     emitter.doStart();
-    this.emitExprs(doParseResult.exprs, emitter, typeEnv, false);
+    this.emitExprs(doParseResult.exprs, emitter, typeEnv, false, rulePath, RuleSide.Do, doTiles);
     emitter.doEnd();
 
     // Spawn each child rule in its own fiber (only if WHEN was true, i.e., we're
@@ -499,12 +499,18 @@ export class BrainCompiler {
    * @param typeEnv - Type environment
    * @param isWhenContext - If true, empty expressions push TRUE; if false, they
    * emit nothing
+   * @param rulePath - Rule path of the enclosing rule, in `page/rule[/child]` form
+   * @param ruleSide - Rule side being emitted
+   * @param sideTiles - Tiles of the side being emitted, indexed by expression span position
    */
   private emitExprs(
     exprs: ReadonlyList<Expr>,
     emitter: BytecodeEmitter,
     typeEnv: TypeEnv,
-    isWhenContext: boolean
+    isWhenContext: boolean,
+    rulePath: string,
+    ruleSide: RuleSide,
+    sideTiles: ReadonlyList<IBrainTileDef>
   ): void {
     const context = {
       variableIndices: this.variableIndices,
@@ -517,31 +523,37 @@ export class BrainCompiler {
       typeRegistry: this.typeRegistry,
       catalogs: this.catalogs,
       nextCallSiteId: this.nextCallSiteIdCounter,
+      rulePath,
+      ruleSide,
+      sideTiles,
       diags: List.empty<CompilationDiag>(),
     };
 
     const compiler = new ExprCompiler(emitter, context);
 
-    // Get the first expression (rest are errors/recovery)
-    const expr = exprs.get(0);
+    // Only the first expression is emitted; every later one is parser recovery
+    // output that code generation discards.
+    for (let i = 1; i < exprs.size(); i++) {
+      const extra = exprs.get(i);
+      const reason = extra.kind === "errorExpr" ? extra.message : "Expression after the side's first expression";
+      const tileIndex = extra.kind === "errorExpr" ? extra.span?.from : undefined;
+      compiler.reportDroppedExpr(extra.nodeId, tileIndex, reason);
+    }
 
-    // Handle empty expressions based on context
+    const expr = exprs.get(0);
     if (expr.kind === "empty") {
+      // Empty WHEN means "always true"; empty DO means "do nothing".
       if (isWhenContext) {
-        // Empty WHEN means "always true" - push TRUE
         const trueIdx = this.constantPool.addOther(TRUE_VALUE);
         emitter.pushConst(trueIdx);
       }
-      // Empty DO means "do nothing" - emit nothing
-      return;
+    } else {
+      acceptExprVisitor(expr, compiler);
     }
-
-    // Emit the expression
-    acceptExprVisitor(expr, compiler);
 
     for (let i = 0; i < context.diags.size(); i++) {
       const diag = context.diags.get(i)!;
-      this.compileDiags.push({ code: diag.code, severity: "error", message: diag.message });
+      this.compileDiags.push({ code: diag.code, severity: diag.severity, message: diag.message });
     }
   }
 }

@@ -511,6 +511,11 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onFocusOutside={(e) => e.preventDefault()}
+          // While a tile picker is armed, Escape belongs to the candidate strip:
+          // it clears the strip's filter text and then disarms.
+          onEscapeKeyDown={(e) => {
+            if (armedTarget.target) e.preventDefault();
+          }}
           hideClose
         >
           <div

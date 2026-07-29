@@ -45,7 +45,7 @@ src/
     BrainRuleEditor.tsx      WHEN/DO rule row with glass effects
     BrainTile.tsx            Individual tile button with marquee overflow
     BrainTileEditor.tsx      Tile with dropdown context menu (insert/replace/delete)
-    BrainTilePickerDialog.tsx  Available tiles grouped by kind
+    BrainCandidateStrip.tsx  Inline candidate strip under the armed rule (type or tap)
     TileValue.tsx            Renders literal values or variable names
     CreateVariableDialog.tsx   Dialog for naming a new variable
     CreateLiteralDialog.tsx    Dialog for app-specific custom literal types
@@ -55,10 +55,12 @@ src/
     rule-clipboard.ts        Serialize/deserialize rules for clipboard
     tile-clipboard.ts        Serialize/deserialize tiles for clipboard
     tile-badges.ts           Tile badge rendering helpers
-    insertion-context.ts     buildInsertionContext for the tile picker
+    insertion-context.ts     buildInsertionContext for the armed position
+    candidate-strip-model.ts Candidate grouping, filtering, commit keys, ranker seam
     hooks/
       useRuleCapabilities.ts   Rule capability detection
       useTileSelection.ts      Tile selection flow + factory tile handoff
+      useCandidateStrip.ts     Oracle query + filter/commit state for the strip
 ```
 
 The editing command classes and `BrainCommandHistory` (undo/redo) live in

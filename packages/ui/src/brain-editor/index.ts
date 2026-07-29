@@ -39,8 +39,6 @@ export { BrainPrintView } from "./BrainPrintView";
 export { BrainRuleEditor } from "./BrainRuleEditor";
 export { BrainTile } from "./BrainTile";
 export { BrainTileEditor } from "./BrainTileEditor";
-export type { BrainTilePickerDialogProps } from "./BrainTilePickerDialog";
-export { BrainTilePickerDialog } from "./BrainTilePickerDialog";
 export {
   copyBrainToClipboard,
   getBrainFromClipboard,

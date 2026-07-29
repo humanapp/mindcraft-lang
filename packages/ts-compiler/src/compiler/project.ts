@@ -280,15 +280,39 @@ export class UserTileProject {
     this._files.set(path, content);
   }
 
-  deleteFile(path: string): void {
+  /**
+   * Remove the file at `path` together with every file under it, so a `path`
+   * naming a directory drops the whole subtree. A `path` present in neither
+   * form leaves the file set unchanged.
+   */
+  deletePath(path: string): void {
     this._files.delete(path);
+    const prefix = `${path}/`;
+    for (const key of [...this._files.keys()]) {
+      if (key.startsWith(prefix)) {
+        this._files.delete(key);
+      }
+    }
   }
 
-  renameFile(oldPath: string, newPath: string): void {
+  /**
+   * Move the file at `oldPath`, and every file under it, to the same position
+   * beneath `newPath`, so an `oldPath` naming a directory carries its whole
+   * subtree. An `oldPath` present in neither form leaves the file set
+   * unchanged.
+   */
+  renamePath(oldPath: string, newPath: string): void {
     const content = this._files.get(oldPath);
     if (content !== undefined) {
       this._files.delete(oldPath);
       this._files.set(newPath, content);
+    }
+    const prefix = `${oldPath}/`;
+    for (const [key, value] of [...this._files]) {
+      if (key.startsWith(prefix)) {
+        this._files.delete(key);
+        this._files.set(`${newPath}${key.slice(oldPath.length)}`, value);
+      }
     }
   }
 

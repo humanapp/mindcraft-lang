@@ -15,7 +15,7 @@ import {
   SetRuleCommentCommand,
 } from "@mindcraft-lang/core/brain/model";
 import { Plus, Save } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { glassEffect } from "../lib/glass-effect";
 import { Button } from "../ui/button";
@@ -27,11 +27,12 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { isAppendTargetForRule, useArmedTargetController } from "./ArmedTargetContext";
+import { BrainCandidateStrip, kCandidateDragMimeType } from "./BrainCandidateStrip";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTileEditor } from "./BrainTileEditor";
-import { BrainTilePickerDialog } from "./BrainTilePickerDialog";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { CreateVariableDialog } from "./CreateVariableDialog";
+import { useCandidateStrip } from "./hooks/useCandidateStrip";
 import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
 import { useRuleDragController } from "./RuleDragContext";
@@ -142,12 +143,23 @@ export function BrainRuleEditor({
   const [canOutdent, setCanOutdent] = useState(ruleDef.canOutdent());
   const armedTarget = useArmedTargetController();
   const appendTarget = isAppendTargetForRule(armedTarget.target, ruleDef) ? armedTarget.target : null;
+  const stripId = useId();
+  // The strip serves every armed mode for this rule: the append flow armed
+  // here, and the insert/replace flows armed by the rule's tile editors.
+  const stripTarget = armedTarget.target?.ruleDef === ruleDef ? armedTarget.target : null;
   const [isDirty, setIsDirty] = useState(ruleDef.isDirty());
   const [whenBadges, setWhenBadges] = useState<Map<number, TileBadge>>(new Map());
   const [doBadges, setDoBadges] = useState<Map<number, TileBadge>>(new Map());
 
   const availableCapabilities = useRuleCapabilities(ruleDef, updateCounter);
   const availableOutputKeys = useRuleOutputKeys(ruleDef, updateCounter);
+  const candidateStrip = useCandidateStrip({
+    ruleDef,
+    target: stripTarget,
+    availableCapabilities,
+    availableOutputKeys,
+    updateCounter,
+  });
 
   // Use the tile selection hook
   const {
@@ -362,13 +374,29 @@ export function BrainRuleEditor({
     armedTarget.disarm();
   };
 
+  // Dropping a candidate chip on the armed rule places it at the armed
+  // position, the same placement tapping the chip performs.
+  const handleCandidateDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!stripTarget || !event.dataTransfer.types.includes(kCandidateDragMimeType)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleCandidateDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!stripTarget) return;
+    const candidateKey = event.dataTransfer.getData(kCandidateDragMimeType);
+    if (!candidateKey) return;
+    event.preventDefault();
+    candidateStrip.commitByKey(candidateKey);
+  };
+
   const indentStyle = { marginLeft: `${depth * 32}px` };
 
   return (
     <>
       {/* biome-ignore lint/a11y/useSemanticElements: changing to li requires restructuring BrainPageEditor */}
       <div
-        className={`flex flex-col p-2 sm:p-3 mb-1 rounded-xl shadow-sm hover:shadow-md transition-shadow w-fit relative${showComment ? "" : " h-30"}`}
+        className={`flex flex-col p-2 sm:p-3 mb-1 rounded-xl shadow-sm hover:shadow-md transition-shadow w-fit relative${showComment || stripTarget ? "" : " h-30"}`}
         style={{
           ...indentStyle,
           background: "linear-gradient(55deg, #16143A 0%, #8B6CF3 100%)",
@@ -381,6 +409,8 @@ export function BrainRuleEditor({
         data-rule-id={ruleDef.id()}
         role="listitem"
         aria-label={`Rule ${lineNumber}${isDirty ? " (modified)" : ""}`}
+        onDragOver={handleCandidateDragOver}
+        onDrop={handleCandidateDrop}
       >
         {/* Glass glint overlay */}
         <div
@@ -510,7 +540,6 @@ export function BrainRuleEditor({
                 tileIndex={idx}
                 side={RuleSide.When}
                 ruleDef={ruleDef}
-                updateCounter={updateCounter}
                 commandHistory={commandHistory}
                 badge={whenBadges.get(idx)}
               />
@@ -523,6 +552,8 @@ export function BrainRuleEditor({
               style={addButtonGlass.containerStyle}
               onClick={handleAppendTileClick(RuleSide.When)}
               aria-label="Add tile to when condition"
+              aria-expanded={appendTarget?.side === RuleSide.When}
+              aria-controls={appendTarget?.side === RuleSide.When ? stripId : undefined}
             >
               <span
                 className="absolute inset-0 rounded-full pointer-events-none"
@@ -561,7 +592,6 @@ export function BrainRuleEditor({
                 tileIndex={idx}
                 side={RuleSide.Do}
                 ruleDef={ruleDef}
-                updateCounter={updateCounter}
                 commandHistory={commandHistory}
                 badge={doBadges.get(idx)}
               />
@@ -574,6 +604,8 @@ export function BrainRuleEditor({
               style={addButtonGlass.containerStyle}
               onClick={handleAppendTileClick(RuleSide.Do)}
               aria-label="Add tile to do action"
+              aria-expanded={appendTarget?.side === RuleSide.Do}
+              aria-controls={appendTarget?.side === RuleSide.Do ? stripId : undefined}
             >
               <span
                 className="absolute inset-0 rounded-full pointer-events-none"
@@ -584,24 +616,14 @@ export function BrainRuleEditor({
             </button>
           </div>
         </div>
-        {appendTarget &&
-          (() => {
-            const tileSet = appendTarget.side === RuleSide.When ? ruleDef.when() : ruleDef.do();
-            return (
-              <BrainTilePickerDialog
-                isOpen={true}
-                side={appendTarget.side}
-                localCatalog={ruleDef.brain()?.catalog()}
-                expr={tileSet.expr()}
-                existingTiles={tileSet.tiles()}
-                availableCapabilities={availableCapabilities}
-                availableOutputKeys={availableOutputKeys}
-                ruleDef={ruleDef}
-                onTileSelected={appendTarget.onTileSelected}
-                onCancel={handleTilePickerCancel}
-              />
-            );
-          })()}
+        {stripTarget && (
+          <BrainCandidateStrip
+            id={stripId}
+            state={candidateStrip}
+            side={stripTarget.side}
+            onDismiss={handleTilePickerCancel}
+          />
+        )}
         {showCreateVariableDialog && (
           <CreateVariableDialog
             isOpen={showCreateVariableDialog}

@@ -3,7 +3,7 @@ import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang
 import { CircleAlert, ClockFading } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
 import { staticAssetUrl } from "../asset-url";
-import { adjustColor, saturateColor } from "../lib/color";
+import { adjustColor, readableInk, saturateColor } from "../lib/color";
 import { glassEffect } from "../lib/glass-effect";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { TileValue } from "./TileValue";
@@ -60,6 +60,8 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
     const darkerColor = adjustColor(baseColor, 0);
     const saturatedColor = saturateColor(baseColor, 0.5);
     const darkerSaturatedColor = adjustColor(saturatedColor, -0.4);
+    // The label sits over the gradient's dark stop, so its ink is chosen against that stop.
+    const labelInk = readableInk(darkerColor);
     const tileGlass = glassEffect({
       highlightSize: 4,
       shadowSize: 6,
@@ -69,7 +71,8 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
       bandPeak: 32,
       bandEnd: 100,
       bottomReflection: 0.06,
-      verticalShade: 0.0,
+      // Shades the tile toward its bottom edge, the band the label sits in.
+      verticalShade: 0.18,
     });
     const gradientStyle = {
       background: `radial-gradient(circle at center, ${lighterColor}, ${darkerColor})`,
@@ -213,13 +216,10 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
             >
               <span
                 className="whitespace-nowrap inline-block font-mono font-semibold"
-                style={
-                  isOverflowing && isHovered
-                    ? {
-                        animation: "marquee-scroll 4s linear infinite",
-                      }
-                    : undefined
-                }
+                style={{
+                  color: labelInk,
+                  ...(isOverflowing && isHovered ? { animation: "marquee-scroll 4s linear infinite" } : {}),
+                }}
               >
                 {isOverflowing
                   ? `${label}\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0${label}\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0${label}\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0`

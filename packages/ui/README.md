@@ -97,7 +97,7 @@ src/
     BrainRuleEditor.tsx      WHEN/DO rule row with glass effects
     BrainTile.tsx            Individual tile button with marquee overflow
     BrainTileEditor.tsx      Tile with dropdown context menu
-    BrainTilePickerDialog.tsx  Available tiles grouped by kind
+    BrainCandidateStrip.tsx  Inline candidate strip under the armed rule (type or tap)
     TileValue.tsx            Renders literal values or variable names
     CreateVariableDialog.tsx   Dialog for naming a new variable
     CreateLiteralDialog.tsx    Dialog for custom literal types
