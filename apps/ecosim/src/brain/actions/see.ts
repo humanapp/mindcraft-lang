@@ -218,9 +218,24 @@ export default {
 } satisfies CreateHostSensorOptions;
 
 export const modifiers: ModifierTileInput[] = [
-  { id: TileIds.Modifier.ActorKindCarnivore, label: "carnivore", iconUrl: `${ICON_BASE}/carnivore.svg` },
-  { id: TileIds.Modifier.ActorKindHerbivore, label: "herbivore", iconUrl: `${ICON_BASE}/herbivore.svg` },
-  { id: TileIds.Modifier.ActorKindPlant, label: "plant", iconUrl: `${ICON_BASE}/plant.svg` },
+  {
+    id: TileIds.Modifier.ActorKindCarnivore,
+    label: "carnivore",
+    iconUrl: `${ICON_BASE}/carnivore.svg`,
+    language: { form: "a carnivore" },
+  },
+  {
+    id: TileIds.Modifier.ActorKindHerbivore,
+    label: "herbivore",
+    iconUrl: `${ICON_BASE}/herbivore.svg`,
+    language: { form: "a herbivore" },
+  },
+  {
+    id: TileIds.Modifier.ActorKindPlant,
+    label: "plant",
+    iconUrl: `${ICON_BASE}/plant.svg`,
+    language: { form: "a plant" },
+  },
   { id: TileIds.Modifier.DistanceNearby, label: "nearby", iconUrl: `${ICON_BASE}/nearby.svg` },
   { id: TileIds.Modifier.DistanceFarAway, label: "far away", iconUrl: `${ICON_BASE}/faraway.svg` },
 ];

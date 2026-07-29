@@ -261,7 +261,12 @@ export const modifiers: ModifierTileInput[] = [
   { id: TileIds.Modifier.MovementToward, label: "toward", iconUrl: `${ICON_BASE}/toward.svg` },
   { id: TileIds.Modifier.MovementAwayFrom, label: "away from", iconUrl: `${ICON_BASE}/awayfrom.svg` },
   { id: TileIds.Modifier.MovementAvoid, label: "avoid", iconUrl: `${ICON_BASE}/avoid.svg` },
-  { id: TileIds.Modifier.MovementWander, label: "wander", iconUrl: `${ICON_BASE}/wander.svg` },
+  {
+    id: TileIds.Modifier.MovementWander,
+    label: "wander",
+    iconUrl: `${ICON_BASE}/wander.svg`,
+    language: { form: "wandering" },
+  },
   { id: TileIds.Modifier.Quickly, label: "quickly", iconUrl: `${ICON_BASE}/quickly.svg` },
   { id: TileIds.Modifier.Slowly, label: "slowly", iconUrl: `${ICON_BASE}/slowly.svg` },
 ];

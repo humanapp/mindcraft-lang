@@ -67,27 +67,27 @@ export function registerCoreOperatorTileDefs(services: BrainServices) {
   });
   registerCoreOperatorTileDef(CoreOpId.EqualTo, {
     placement: TilePlacement.WhenSide,
-    metadata: { label: "equal to" },
+    metadata: { label: "equal to", language: { form: "is equal to" } },
   });
   registerCoreOperatorTileDef(CoreOpId.NotEqualTo, {
     placement: TilePlacement.WhenSide,
-    metadata: { label: "not equal to" },
+    metadata: { label: "not equal to", language: { form: "is not equal to" } },
   });
   registerCoreOperatorTileDef(CoreOpId.LessThan, {
     placement: TilePlacement.WhenSide,
-    metadata: { label: "less than" },
+    metadata: { label: "less than", language: { form: "is less than" } },
   });
   registerCoreOperatorTileDef(CoreOpId.LessThanOrEqualTo, {
     placement: TilePlacement.WhenSide,
-    metadata: { label: "less than or equal to" },
+    metadata: { label: "less than or equal to", language: { form: "is less than or equal to" } },
   });
   registerCoreOperatorTileDef(CoreOpId.GreaterThan, {
     placement: TilePlacement.WhenSide,
-    metadata: { label: "greater than" },
+    metadata: { label: "greater than", language: { form: "is greater than" } },
   });
   registerCoreOperatorTileDef(CoreOpId.GreaterThanOrEqualTo, {
     placement: TilePlacement.WhenSide,
-    metadata: { label: "greater than or equal to" },
+    metadata: { label: "greater than or equal to", language: { form: "is greater than or equal to" } },
   });
   registerCoreOperatorTileDef(CoreOpId.Assign, {
     placement: TilePlacement.DoSide,

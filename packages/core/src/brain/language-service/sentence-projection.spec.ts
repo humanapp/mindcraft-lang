@@ -3,6 +3,7 @@ import { before, describe, test } from "node:test";
 
 import type { BrainServices, IBrainRuleDef, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import {
+  CoreCapabilityBits,
   CoreControlFlowId,
   CoreLiteralFactoryId,
   mkActuatorTileId,
@@ -35,6 +36,7 @@ import {
 import type { LocaleCatalog, Localizer } from "@mindcraft-lang/core/localization";
 import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@mindcraft-lang/core/localization";
 import {
+  type BrainActionCallSpec,
   bag,
   CoreHostActions,
   CoreOpId,
@@ -42,8 +44,11 @@ import {
   mkActionDescriptor,
   mkCallDef,
   NIL_VALUE,
+  optional,
+  param,
   type TypeId,
 } from "@mindcraft-lang/core/runtime";
+import { BitSet } from "@mindcraft-lang/core/util";
 
 let services: BrainServices;
 let localizer: Localizer;
@@ -57,7 +62,7 @@ before(() => {
 // -- fixture builders (real tile defs on a real brain document) ---------------
 
 /** Register a stub host function under a name unique to this call. */
-function registerFn(name: string) {
+function registerFn(name: string, callSpec: BrainActionCallSpec = bag()) {
   const fnId = nextFnId;
   nextFnId += 1;
   return services.runtime.functions.register(
@@ -65,13 +70,30 @@ function registerFn(name: string) {
     `${name}#${fnId}`,
     false,
     { exec: () => NIL_VALUE },
-    mkCallDef(bag())
+    mkCallDef(callSpec)
   );
 }
 
+/** A sensor whose call spec declares no argument slot at all. */
 function makeSensor(sensorId: string, metadata?: IBrainTileDef["metadata"]): BrainTileSensorDef {
   const descriptor = mkActionDescriptor("sensor", registerFn(sensorId), CoreTypeIds.Boolean);
   return new BrainTileSensorDef(sensorId, descriptor, { metadata });
+}
+
+/** A sensor declaring one optional object argument, as a sensor taking a target builds it. */
+function makeObjectSensor(sensorId: string, metadata?: IBrainTileDef["metadata"]): BrainTileSensorDef {
+  const callSpec = bag(optional(param(`${sensorId}-object`)));
+  const descriptor = mkActionDescriptor("sensor", registerFn(sensorId, callSpec), CoreTypeIds.Boolean);
+  return new BrainTileSensorDef(sensorId, descriptor, { metadata });
+}
+
+/** A presence-gated value sensor: it delivers a value when it fires and nil otherwise. */
+function makePresenceGatedSensor(sensorId: string, metadata?: IBrainTileDef["metadata"]): BrainTileSensorDef {
+  const descriptor = mkActionDescriptor("sensor", registerFn(sensorId), CoreTypeIds.Number);
+  return new BrainTileSensorDef(sensorId, descriptor, {
+    metadata,
+    capabilities: new BitSet().set(CoreCapabilityBits.PresenceGated),
+  });
 }
 
 /** A value-producing sensor readable mid-expression, as `inline: true` builds it. */
@@ -136,8 +158,10 @@ function fixtureRules(): IBrainRuleDef[] {
   return [
     makeRule([makeSensor("hear", { label: "hear" }), makeLiteral(CoreTypeIds.String, "a bang", "a bang")], []),
     makeRule([coreTile(mkSensorTileId(CoreHostActions.Timeout.key))], []),
+    makeRule([makeSensor("hungry", { label: "hungry" })], []),
+    makeRule([makePresenceGatedSensor("radio message", { label: "radio message" })], []),
     makeRule(
-      [makeSensor("see", { label: "see" })],
+      [makeObjectSensor("see", { label: "see" })],
       [makeActuator("walk", { label: "walk" }), makeLiteral(CoreTypeIds.Number, 3)]
     ),
     makeRule(
@@ -203,18 +227,50 @@ describe("sentence projection golden segments", () => {
     assert.equal(projectedText(rule), "When I wait for a moment.");
   });
 
-  test("a bare sensor with no bare word completes with the frame default", () => {
-    const rule = makeRule([makeSensor("see", { label: "see" })], []);
+  test("a sensor declaring an object argument completes with the frame default", () => {
+    const rule = makeRule([makeObjectSensor("see", { label: "see" })], []);
 
     assert.deepEqual(project(rule), [glue("When I "), word("see", 0), glue(" "), word("anything", 0), glue(".")]);
     assert.equal(projectedText(rule), "When I see anything.");
   });
 
+  test("a sensor declaring no argument takes no bare completion", () => {
+    const rule = makeRule([makeSensor("hungry", { label: "hungry" })], []);
+
+    assert.deepEqual(project(rule), [glue("When I "), word("hungry", 0), glue(".")]);
+    assert.equal(projectedText(rule), "When I hungry.");
+  });
+
+  test("an argless sensor still completes with the bare word its metadata supplies", () => {
+    const rule = makeRule([makeSensor("nap", { label: "nap", language: { bare: "for a while" } })], []);
+
+    assert.equal(projectedText(rule), "When I nap for a while.");
+  });
+
+  test("a presence-gated sensor alone reads through the sensing template", () => {
+    const rule = makeRule([makePresenceGatedSensor("radio message", { label: "radio message" })], []);
+
+    assert.deepEqual(project(rule), [glue("When I sense "), word("radio message", 0), glue(".")]);
+    assert.equal(projectedText(rule), "When I sense radio message.");
+  });
+
+  test("a presence-gated sensor that more tiles follow keeps its frame reading", () => {
+    const rule = makeRule(
+      [
+        makePresenceGatedSensor("radio message", { label: "radio message" }),
+        new BrainTileModifierDef("loudly", { metadata: { label: "loudly" } }),
+      ],
+      []
+    );
+
+    assert.equal(projectedText(rule), "When I radio message loudly.");
+  });
+
   test("a tile with no language metadata reads from its name", () => {
     const rule = makeRule([makeSensor("sensor.notice")], []);
 
-    assert.deepEqual(project(rule), [glue("When I "), word("notice", 0), glue(" "), word("anything", 0), glue(".")]);
-    assert.equal(projectedText(rule), "When I notice anything.");
+    assert.deepEqual(project(rule), [glue("When I "), word("notice", 0), glue(".")]);
+    assert.equal(projectedText(rule), "When I notice.");
   });
 
   test("a comparison-headed WHEN reads with no subject", () => {
@@ -227,12 +283,12 @@ describe("sentence projection golden segments", () => {
       glue("When "),
       word("speed", 0),
       glue(" "),
-      word("greater than", 1),
+      word("is greater than", 1),
       glue(" "),
       word("5", 2),
       glue("."),
     ]);
-    assert.equal(projectedText(rule), "When speed greater than 5.");
+    assert.equal(projectedText(rule), "When speed is greater than 5.");
   });
 
   test("a comparison-headed WHEN keeps its subjectless reading before a DO clause", () => {
@@ -245,14 +301,14 @@ describe("sentence projection golden segments", () => {
       glue("When "),
       word("speed", 0),
       glue(" "),
-      word("greater than", 1),
+      word("is greater than", 1),
       glue(" "),
       word("5", 2),
       glue(", "),
       word("walk", 3),
       glue("."),
     ]);
-    assert.equal(projectedText(rule), "When speed greater than 5, walk.");
+    assert.equal(projectedText(rule), "When speed is greater than 5, walk.");
   });
 
   test("an inline sensor heading a comparison reads with no subject", () => {
@@ -269,12 +325,12 @@ describe("sentence projection golden segments", () => {
       glue("When "),
       word("light level", 0),
       glue(" "),
-      word("greater than", 1),
+      word("is greater than", 1),
       glue(" "),
       word("5", 2),
       glue("."),
     ]);
-    assert.equal(projectedText(rule), "When light level greater than 5.");
+    assert.equal(projectedText(rule), "When light level is greater than 5.");
   });
 
   test("an inline sensor comparison keeps its subjectless reading before a DO clause", () => {
@@ -291,14 +347,14 @@ describe("sentence projection golden segments", () => {
       glue("When "),
       word("light level", 0),
       glue(" "),
-      word("greater than", 1),
+      word("is greater than", 1),
       glue(" "),
       word("5", 2),
       glue(", "),
       word("walk", 3),
       glue("."),
     ]);
-    assert.equal(projectedText(rule), "When light level greater than 5, walk.");
+    assert.equal(projectedText(rule), "When light level is greater than 5, walk.");
   });
 
   test("a non-inline sensor keeps its frame reading when tiles follow it", () => {
@@ -314,19 +370,13 @@ describe("sentence projection golden segments", () => {
   test("an inline sensor alone reads through its frame", () => {
     const rule = makeRule([makeInlineSensor("light level", { label: "light level" })], []);
 
-    assert.deepEqual(project(rule), [
-      glue("When I "),
-      word("light level", 0),
-      glue(" "),
-      word("anything", 0),
-      glue("."),
-    ]);
-    assert.equal(projectedText(rule), "When I light level anything.");
+    assert.deepEqual(project(rule), [glue("When I "), word("light level", 0), glue(".")]);
+    assert.equal(projectedText(rule), "When I light level.");
   });
 
   test("a DO side reads its action, modifiers, parameters, and values in tile order", () => {
     const rule = makeRule(
-      [makeSensor("see", { label: "see" })],
+      [makeObjectSensor("see", { label: "see" })],
       [
         makeActuator("walk", { label: "walk" }),
         new BrainTileModifierDef("quickly", { metadata: { label: "quickly" } }),
@@ -515,7 +565,7 @@ describe("sentence projection spans", () => {
 
   test("flattened tiles carry the side and per-side index of each tile", () => {
     const rule = makeRule(
-      [makeSensor("see", { label: "see" })],
+      [makeObjectSensor("see", { label: "see" })],
       [makeActuator("walk", { label: "walk" }), makeLiteral(CoreTypeIds.Number, 3)]
     );
     const tiles = flattenRuleTiles(rule);
@@ -557,6 +607,7 @@ function testLocaleCatalog(): LocaleCatalog {
         "When I am {form} {object}": "ZORP MI {form} {object}",
         "When {form} {object}": "ZORP {form} {object}",
         "When {condition}": "ZORP KA {condition}",
+        "When I sense {form}": "ZORP SENSA {form}",
         Always: "ALWAZ",
       },
       "sentence-bare": {
@@ -581,7 +632,7 @@ describe("sentence projection locale parameterization", () => {
   test("a catalog drives every projected word and connective", () => {
     const translated = createLocalizer(testLocaleCatalog());
     const rule = makeRule(
-      [makeSensor("see", { label: "see" })],
+      [makeObjectSensor("see", { label: "see" })],
       [makeActuator("walk", { label: "walk" }), new BrainTilePageDef("page-home", "Home")]
     );
 
@@ -608,6 +659,13 @@ describe("sentence projection locale parameterization", () => {
     assert.equal(projectedText(state, translated), "ZORP MI hungry!");
   });
 
+  test("the presence-gated template translates too", () => {
+    const translated = createLocalizer(testLocaleCatalog());
+    const rule = makeRule([makePresenceGatedSensor("radio message", { label: "radio message" })], []);
+
+    assert.deepEqual(project(rule, translated), [glue("ZORP SENSA "), word("radio message", 0), glue("!")]);
+  });
+
   test("the subjectless template translates too", () => {
     const translated = createLocalizer(testLocaleCatalog());
     const rule = makeRule(
@@ -619,12 +677,12 @@ describe("sentence projection locale parameterization", () => {
       glue("ZORP KA "),
       word("speed", 0),
       glue("-"),
-      word("greater than", 1),
+      word("is greater than", 1),
       glue("-"),
       word("5", 2),
       glue("!"),
     ]);
-    assert.equal(projectedText(rule, translated), "ZORP KA speed-greater than-5!");
+    assert.equal(projectedText(rule, translated), "ZORP KA speed-is greater than-5!");
   });
 
   test("an inline sensor comparison renders through the translated subjectless template", () => {
@@ -642,7 +700,7 @@ describe("sentence projection locale parameterization", () => {
       glue("ZORP KA "),
       word("light level", 0),
       glue("-"),
-      word("greater than", 1),
+      word("is greater than", 1),
       glue("-"),
       word("5", 2),
       glue("!"),
@@ -650,7 +708,7 @@ describe("sentence projection locale parameterization", () => {
   });
 
   test("switching locale is a pure re-render of the same rule", () => {
-    const rule = makeRule([makeSensor("see", { label: "see" })], []);
+    const rule = makeRule([makeObjectSensor("see", { label: "see" })], []);
 
     assert.equal(projectedText(rule), "When I see anything.");
     assert.equal(projectedText(rule, createLocalizer(testLocaleCatalog())), "ZORP ZEE ANYTHINGZ ZAP!");

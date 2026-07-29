@@ -251,7 +251,7 @@ describe("projected sentences of user tiles", () => {
   test("the same sensor without the group reads through the default frame", () => {
     const { services, tiles } = compileTiles({ "hungry.ts": UNMARKED_STATE_SENSOR });
     const tile = requireTile(tiles, sensorTileId("snhungry"));
-    assert.equal(projectedText(services, [tile]), "When I hungry anything.");
+    assert.equal(projectedText(services, [tile]), "When I hungry.");
   });
 
   test("an authored bare word completes an objectless sensor", () => {
@@ -271,7 +271,7 @@ describe("projected sentences of user tiles", () => {
     const { services, tiles } = compileTiles({ "wiggle.ts": UNMARKED_SENSOR, "leap.ts": FORM_ACTUATOR });
     const sensor = requireTile(tiles, sensorTileId("snwiggle"));
     const actuator = requireTile(tiles, actuatorTileId("acleap"));
-    assert.equal(projectedText(services, [sensor], [actuator]), "When I wiggle anything, jump.");
+    assert.equal(projectedText(services, [sensor], [actuator]), "When I wiggle, jump.");
   });
 });
 
@@ -310,7 +310,7 @@ export default Sensor({
     const { services, tiles } = compileTiles({ "lab-form.ts": LABELED_WITH_FORM });
     const tile = requireTile(tiles, sensorTileId("snlabform"));
     assert.equal(tile.metadata?.label, "spots", "the label is untouched");
-    assert.equal(projectedText(services, [tile]), "When I see anything.");
+    assert.equal(projectedText(services, [tile]), "When I see.");
   });
 
   test("a group without a form reads the label through its frame", () => {
@@ -372,7 +372,9 @@ export default Sensor({
     const { services, tiles } = compileTiles({ "thirst.ts": GATED_STATE_SENSOR });
     const tile = requireTile(tiles, sensorTileId("snthirst"));
     assert.equal(tile.capabilities().get(CoreCapabilityBits.PresenceGated), 1);
-    assert.equal(projectedText(services, [tile]), "When I am thirsty.");
+    assert.equal(tile.metadata?.language?.form, "thirsty");
+    assert.equal(tile.metadata?.language?.frame, "state");
+    assert.equal(projectedText(services, [tile]), "When I sense thirsty.", "the gate selects the sentence template");
   });
 });
 
@@ -466,7 +468,7 @@ describe("recompiling a tile's language group", () => {
 
     project.setFiles(new Map([["hungry.ts", UNMARKED_STATE_SENSOR]]));
     applyCompile();
-    assert.equal(sentence(), "When I hungry anything.", "the unmarked tile reads plainly");
+    assert.equal(sentence(), "When I hungry.", "the unmarked tile reads plainly");
 
     project.updateFile("hungry.ts", STATE_SENSOR);
     applyCompile();
@@ -476,7 +478,7 @@ describe("recompiling a tile's language group", () => {
     project.updateFile("hungry.ts", UNMARKED_STATE_SENSOR);
     applyCompile();
     assert.equal(liveTile().metadata?.language, undefined, "removing the group clears it from the registered tile");
-    assert.equal(sentence(), "When I hungry anything.", "the sentence returns to the plain reading");
+    assert.equal(sentence(), "When I hungry.", "the sentence returns to the plain reading");
   });
 });
 
@@ -641,6 +643,6 @@ export default Sensor({
     const tile = requireTile(tiles, sensorTileId("snempty"));
     assert.equal(tile.metadata?.language?.form, undefined);
     assert.equal(tile.metadata?.language?.frame, undefined);
-    assert.equal(projectedText(services, [tile]), "When I hungry anything.");
+    assert.equal(projectedText(services, [tile]), "When I hungry.");
   });
 });

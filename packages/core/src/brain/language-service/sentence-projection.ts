@@ -6,9 +6,11 @@ import { MathOps } from "../../platform/math";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
 import {
+  CoreCapabilityBits,
   type IBrainRuleDef,
   type IBrainTileDef,
   type ITileLanguageMetadata,
+  isActionTileDef,
   isInlineTileDef,
   LiteralDisplayFormats,
   RuleSide,
@@ -93,6 +95,7 @@ const kVerbTemplate = "When I {form} {object}";
 const kStateTemplate = "When I am {form} {object}";
 const kEventTemplate = "When {form} {object}";
 const kSubjectlessTemplate = "When {condition}";
+const kPresenceTemplate = "When I sense {form}";
 const kAlwaysWord = "Always";
 const kBareDefaultTemplate = "{frame, select, verb {anything} other {}}";
 const kWordGlueTemplate = "{a} {b}";
@@ -333,11 +336,24 @@ export function tileSentenceWord(tileDef: IBrainTileDef, localizer: Localizer): 
   return localizer.tr(vocabularyName(tileDef), undefined, kTileLabelContext);
 }
 
-/** The word completing a sensor placed with no object argument. */
+/** Whether `tileDef`'s call spec declares at least one argument slot a tile can fill. */
+function declaresArgument(tileDef: IBrainTileDef): boolean {
+  return isActionTileDef(tileDef) && tileDef.action.callDef.argSlots.size() > 0;
+}
+
+/**
+ * The word completing a sensor placed with no object argument: the tile's own
+ * authored `bare`, else the frame's default word, which a sensor takes only
+ * when its call spec declares an argument that could have filled the object
+ * position. A sensor that declares none reads with no completion at all.
+ */
 function bareWord(localizer: Localizer, tileDef: IBrainTileDef): string {
   const bare = tileLanguage(tileDef)?.bare;
   if (bare !== undefined && bare !== "") {
     return localizer.tr(bare, undefined, kTileLabelContext);
+  }
+  if (!declaresArgument(tileDef)) {
+    return "";
   }
   return localizer.tr(kBareDefaultTemplate, { frame: tileFrame(tileDef) }, kBareContext);
 }
@@ -402,8 +418,18 @@ function isSubjectlessWhenSide(tiles: ReadonlyList<IBrainTileDef>): boolean {
   return isInlineTileDef(head) && tiles.size() > 1;
 }
 
+/** Whether `tiles` is exactly one presence-gated sensor. */
+function isBarePresenceGatedWhenSide(tiles: ReadonlyList<IBrainTileDef>): boolean {
+  if (tiles.size() !== 1) {
+    return false;
+  }
+  const head = tiles.get(0);
+  return head.kind === "sensor" && head.capabilities().get(CoreCapabilityBits.PresenceGated) === 1;
+}
+
 /**
- * Render the WHEN side through its head tile's frame template when a sensor
+ * Render the WHEN side through the presence template when a lone presence-gated
+ * sensor is the whole side, through its head tile's frame template when a sensor
  * heads it, and through the subjectless template otherwise: a side headed by an
  * operator, value, parameter, literal, or variable reads as a bare condition, as
  * does an inline sensor continued by an expression, with every tile of the side
@@ -412,6 +438,10 @@ function isSubjectlessWhenSide(tiles: ReadonlyList<IBrainTileDef>): boolean {
 function projectWhenClause(localizer: Localizer, tiles: ReadonlyList<IBrainTileDef>): List<SentenceSegment> {
   const head = tiles.get(0);
   const slots = new List<SentenceSlot>();
+  if (isBarePresenceGatedWhenSide(tiles)) {
+    slots.push(slot("form", wordPhrase(localizer, head, 0)));
+    return renderPhrase(localizer, kPresenceTemplate, kWhenContext, slots);
+  }
   if (isSubjectlessWhenSide(tiles)) {
     slots.push(slot("condition", joinWords(localizer, tiles, 0, 0)));
     return renderPhrase(localizer, kSubjectlessTemplate, kWhenContext, slots);

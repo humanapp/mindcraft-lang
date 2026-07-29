@@ -6,6 +6,7 @@ import type {
   IBrainDef,
   IBrainTileDef,
   ITileCatalog,
+  ITileLanguageMetadata,
   ITileMetadata,
 } from "./brain/interfaces";
 import { TilePlacement } from "./brain/interfaces";
@@ -351,6 +352,11 @@ export interface ModifierTileInput {
   readonly id: string;
   readonly label: string;
   readonly iconUrl?: string;
+  /**
+   * Words the sentence projection reads this tile with. Omit for a tile whose
+   * sentence word is its label.
+   */
+  readonly language?: ITileLanguageMetadata;
 }
 
 /** Definition of a parameter tile. */
@@ -839,7 +845,7 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
 
   registerModifiers(defs: readonly ModifierTileInput[]): void {
     for (const def of defs) {
-      const metadata: ITileMetadata = { label: def.label, iconUrl: def.iconUrl };
+      const metadata: ITileMetadata = { label: def.label, iconUrl: def.iconUrl, language: def.language };
       this.brainServices.edit.tiles.registerTileDef(new BrainTileModifierDef(def.id, { metadata }));
     }
   }
