@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export type { LocaleCatalog, MessageCatalog } from "./catalog";
-export { kDefaultLocale, kListContext } from "./catalog";
+export { kDefaultLocale, kListContext, kTileLabelContext } from "./catalog";
 export type {
   CatalogBuildIssue,
   CatalogEntryInput,

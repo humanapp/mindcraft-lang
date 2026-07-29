@@ -85,16 +85,23 @@ export function registerCoreSensorTileDefs(services: BrainServices) {
   };
   register(fnRandom.key, fnRandom.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    metadata: { label: "random number", language: { form: "a random number" } },
   });
-  register(fnOnPageEntered.key, fnOnPageEntered.descriptor);
-  register(fnTimeout.key, fnTimeout.descriptor);
+  register(fnOnPageEntered.key, fnOnPageEntered.descriptor, {
+    metadata: { label: "on page entered", language: { form: "this page starts", frame: "event" } },
+  });
+  register(fnTimeout.key, fnTimeout.descriptor, {
+    metadata: { label: "timeout", language: { form: "wait for", bare: "a moment" } },
+  });
   const pageSensorCaps = new BitSet().set(CoreCapabilityBits.PageSensor);
   register(fnCurrentPage.key, fnCurrentPage.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
     capabilities: pageSensorCaps,
+    metadata: { label: "current page", language: { form: "the current page" } },
   });
   register(fnPreviousPage.key, fnPreviousPage.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
     capabilities: pageSensorCaps,
+    metadata: { label: "previous page", language: { form: "the previous page" } },
   });
 }

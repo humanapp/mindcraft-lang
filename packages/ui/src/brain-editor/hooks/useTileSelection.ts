@@ -84,6 +84,32 @@ export function manufactureLiteralTile(
 }
 
 /**
+ * Manufacture the variable tile a variable factory produces for `varName` and
+ * resolve it against `catalog`: a registered variable of the same name and type
+ * is reused, otherwise the new tile is registered. Returns undefined when the
+ * name is empty or the factory manufactures nothing.
+ */
+export function manufactureVariableTile(
+  factoryTileDef: BrainTileFactoryDef,
+  catalog: ITileCatalog | undefined,
+  varName: string
+): BrainTileVariableDef | undefined {
+  const name = varName.trim();
+  if (!name) return undefined;
+  const newTileDef = factoryTileDef.manufacture(factoryTileDef, { name }) as BrainTileVariableDef | undefined;
+  if (!newTileDef) return undefined;
+  if (!catalog) return newTileDef;
+  const existingDef = catalog.find((td) => {
+    if (td.kind !== "variable") return false;
+    const varTileDef = td as BrainTileVariableDef;
+    return varTileDef.varName === name && varTileDef.varType === newTileDef.varType;
+  }) as BrainTileVariableDef | undefined;
+  if (existingDef) return existingDef;
+  catalog.registerTileDef(newTileDef);
+  return newTileDef;
+}
+
+/**
  * Hook to handle tile selection flow, including variable creation for factory tiles.
  */
 export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelectionOptions) {
@@ -126,29 +152,12 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
 
   const handleVariableNameSubmit = useCallback(
     (varName: string) => {
-      varName = varName.trim();
-      if (!varName || !pendingFactoryTile || !pendingTileAction) return;
+      if (!varName.trim() || !pendingFactoryTile || !pendingTileAction) return;
 
       const catalog = ruleDefRef.current.brain()?.catalog();
 
-      let newTileDef = pendingFactoryTile.manufacture(pendingFactoryTile, {
-        name: varName,
-      }) as BrainTileVariableDef;
+      const newTileDef = manufactureVariableTile(pendingFactoryTile, catalog, varName);
       if (newTileDef) {
-        if (catalog) {
-          const existingDef = catalog.find((td) => {
-            if (td.kind !== "variable") return false;
-            const varTileDef = td as BrainTileVariableDef;
-            return (
-              td.kind === "variable" && varTileDef.varName === varName && varTileDef.varType === newTileDef.varType
-            );
-          }) as BrainTileVariableDef | undefined;
-          if (existingDef) {
-            newTileDef = existingDef;
-          } else {
-            catalog.registerTileDef(newTileDef);
-          }
-        }
         pendingTileAction(newTileDef);
       }
 

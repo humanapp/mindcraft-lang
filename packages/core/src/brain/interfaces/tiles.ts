@@ -63,12 +63,47 @@ export enum TilePlacement {
   Inline = 1 << 4,
 }
 
-/** Display metadata for a tile (label, icon, docs, search tags). */
+/**
+ * Sentence frame of a tile: which template renders it when it heads a rule's
+ * WHEN side as a sensor. A WHEN side headed by any other kind of tile reads as
+ * a bare condition and takes no frame.
+ *
+ * - "verb" -- an action the creature takes ("When I hear ...")
+ * - "state" -- a condition it is in, rendered with the locale's copula
+ *   ("When I am hungry")
+ * - "event" -- something that happens to it ("When this page starts")
+ */
+export type TileSentenceFrame = "verb" | "state" | "event";
+
+/**
+ * Sentence-projection metadata for a tile. Every field is optional; the
+ * projection supplies a default for each, so a tile with no `language` group
+ * still reads.
+ */
+export interface ITileLanguageMetadata {
+  /**
+   * The tile's word in a projected sentence, authored in the source language
+   * and localized at display time. Defaults to the tile's label, then its name.
+   */
+  form?: string;
+  /** Sentence frame selecting the WHEN-side template of a sensor. Defaults to "verb". */
+  frame?: TileSentenceFrame;
+  /**
+   * Word completing the sentence when the tile is placed with no object
+   * argument ("see" alone reads "see anything"). Defaults to the frame's
+   * default bare word.
+   */
+  bare?: string;
+}
+
+/** Display metadata for a tile (label, icon, docs, search tags, sentence words). */
 export interface ITileMetadata {
   label: string;
   iconUrl?: string;
   docsMarkdown?: string;
   tags?: readonly string[];
+  /** Words the sentence projection reads this tile with. */
+  language?: ITileLanguageMetadata;
 }
 
 /** Optional flags configurable on tileDef constructors. */
@@ -186,6 +221,15 @@ export interface IBrainActionTileDef extends IBrainTileDef {
 /** Narrows a tile def to {@link IBrainActionTileDef} (a sensor or actuator, the only kinds carrying an `action` descriptor). */
 export function isActionTileDef(tileDef: IBrainTileDef): tileDef is IBrainActionTileDef {
   return "action" in tileDef;
+}
+
+/**
+ * Whether `tileDef` carries the {@link TilePlacement.Inline} bit. An inline tile
+ * takes no arguments and participates in Pratt expressions like a literal, so
+ * infix operators and accessors may follow it.
+ */
+export function isInlineTileDef(tileDef: IBrainTileDef): boolean {
+  return tileDef.placement !== undefined && (tileDef.placement & TilePlacement.Inline) !== 0;
 }
 
 // ----------------------------------------------------

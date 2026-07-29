@@ -25,9 +25,9 @@ import {
   type IBrainActionTileDef,
   type IBrainTileDef,
   type ITileCatalog,
+  isInlineTileDef,
   parseTileId,
   RuleSide,
-  TilePlacement,
 } from "../interfaces";
 import {
   type BrainTileAccessorDef,
@@ -234,7 +234,7 @@ class BrainParser {
         break;
       }
 
-      const isActionCall = (nextTok.kind === "sensor" && !this.isInlineTile(nextTok)) || nextTok.kind === "actuator";
+      const isActionCall = (nextTok.kind === "sensor" && !isInlineTileDef(nextTok)) || nextTok.kind === "actuator";
       const parser = isActionCall ? () => this.parseActionCall(opts) : () => this.parseExpression(opts);
       const diagCode = isActionCall
         ? ParseDiagCode.UnexpectedActionCallAfterExpression
@@ -980,7 +980,7 @@ class BrainParser {
    */
   private parseNudSensor(tok: IBrainTileDef, startPos: number, opts: ParseOpts): Expr {
     const sensorTok = tok as BrainTileSensorDef;
-    if (!this.isInlineTile(tok)) {
+    if (!isInlineTileDef(tok)) {
       // Non-inline sensor in expression position (e.g., operand of a prefix operator).
       // Back up to re-consume the sensor token and parse as a full action call.
       this.i = startPos;
@@ -1141,7 +1141,7 @@ class BrainParser {
     return (
       tok.kind === "modifier" ||
       tok.kind === "parameter" ||
-      (tok.kind === "sensor" && !this.isInlineTile(tok)) ||
+      (tok.kind === "sensor" && !isInlineTileDef(tok)) ||
       tok.kind === "actuator" ||
       (tok.kind === "controlFlow" && (tok as BrainTileControlFlowDef).cfId === CoreControlFlowId.OpenParen)
     );
@@ -1167,11 +1167,6 @@ class BrainParser {
   /** Check if we've reached the end of the token range */
   private atEnd(): boolean {
     return this.i >= this.to;
-  }
-
-  /** Check if a tile has the Inline placement flag set */
-  private isInlineTile(tok: IBrainTileDef): boolean {
-    return tok.placement !== undefined && (tok.placement & TilePlacement.Inline) !== 0;
   }
 }
 

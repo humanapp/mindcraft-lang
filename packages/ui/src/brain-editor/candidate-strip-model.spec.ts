@@ -3,8 +3,9 @@
  * suggestions flatten into, how filter text ranks the offering, how the default
  * ranker orders the offering by category priority and then by provenance, which
  * candidate a commit key places, that unknown text can never commit, that typed
- * digits mint a literal candidate, and that the presentation seam is a
- * pass-through.
+ * digits mint a literal candidate, that an unknown word and the `$` accelerator
+ * mint variable candidates of the types the position accepts, and which
+ * presentation each candidate renders in.
  */
 
 import assert from "node:assert/strict";
@@ -15,6 +16,7 @@ import {
   CoreControlFlowId,
   CoreLiteralFactoryId,
   CoreVariableFactoryId,
+  isVariableFactoryTileId,
   mkControlFlowTileId,
   mkLiteralFactoryTileId,
   mkOperatorTileId,
@@ -30,7 +32,13 @@ import {
   type TileSuggestionResult,
 } from "@mindcraft-lang/core/brain/language-service";
 import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileActuatorDef, type BrainTileLiteralDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
+import {
+  BrainTileActuatorDef,
+  type BrainTileFactoryDef,
+  type BrainTileLiteralDef,
+  BrainTileSensorDef,
+  type BrainTileVariableDef,
+} from "@mindcraft-lang/core/brain/tiles";
 import {
   bag,
   CoreHostActions,
@@ -40,6 +48,7 @@ import {
   mkActuatorTileId,
   mkCallDef,
   mkSensorTileId,
+  type TypeId,
   VOID_VALUE,
 } from "@mindcraft-lang/core/runtime";
 import type { ArmedTileTarget } from "./ArmedTargetContext";
@@ -55,12 +64,15 @@ import {
   identityCandidateRanker,
   isUnknownFilterText,
   mintNumberLiteralCandidate,
+  mintVariableCandidates,
+  parseStripFilter,
+  resolveStripOffering,
   type StripCandidate,
   tileCandidateGroup,
   toCandidateEntries,
 } from "./candidate-strip-model";
 import { kBestNextCandidateCount } from "./hooks/useCandidateStrip";
-import { manufactureLiteralTile } from "./hooks/useTileSelection";
+import { manufactureLiteralTile, manufactureVariableTile } from "./hooks/useTileSelection";
 import { buildInsertionContext } from "./insertion-context";
 import type { TileSourceLibrary } from "./tile-library-groups";
 
@@ -270,25 +282,43 @@ function tileLabel(tileDef: IBrainTileDef): string {
   return tileDef.metadata?.label ?? tileDef.tileId;
 }
 
+/** The label the strip resolves a tile by: a variable's own name, and every other tile's authored label. */
+function stripLabel(tileDef: IBrainTileDef): string {
+  return tileDef.kind === "variable" ? (tileDef as BrainTileVariableDef).varName : tileLabel(tileDef);
+}
+
+/** What an offering is built for beyond the side it is armed on. */
+interface OfferingOptions {
+  /** The type the armed position expects, which narrows the offering to tiles that produce it. */
+  expectedType?: TypeId;
+  /** Runs against the fresh brain before the oracle is queried, so its catalog can be populated. */
+  prepare?: (brain: BrainDef) => void;
+}
+
 /** The oracle's offering for an empty side of a fresh brain's first rule, with the target that arms that side. */
-function offeringForEmptySide(side: RuleSide): {
+function offeringForEmptySide(
+  side: RuleSide,
+  options: OfferingOptions = {}
+): {
   candidates: StripCandidate[];
   brain: BrainDef;
   target: ArmedTileTarget;
 } {
   const brain = BrainDef.emptyBrainDef(services);
+  options.prepare?.(brain);
   const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
   const catalogs = List.from<ITileCatalog>([services.edit.tiles, brain.catalog()]).asReadonly();
   const tileSet = side === RuleSide.When ? rule.when() : rule.do();
   const context = buildInsertionContext({
     side,
+    expectedType: options.expectedType,
     expr: tileSet.expr(),
     existingTiles: tileSet.tiles(),
     ruleDef: rule,
   });
   const suggested = suggestTiles(context, catalogs, services);
   return {
-    candidates: buildStripCandidates(suggested, tileLabel),
+    candidates: buildStripCandidates(suggested, stripLabel),
     brain,
     target: { ruleDef: rule, side, mode: "append", onTileSelected: () => true },
   };
@@ -484,8 +514,8 @@ describe("mintNumberLiteralCandidate", () => {
     assert.equal(minted.tileDef.kind, "literal");
     assert.equal((minted.tileDef as BrainTileLiteralDef).valueType, CoreTypeIds.Number);
     assert.equal((minted.tileDef as BrainTileLiteralDef).value, 42);
-    assert.equal(minted.origin.kind, "minted");
-    if (minted.origin.kind === "minted") {
+    assert.equal(minted.origin.kind, "minted-literal");
+    if (minted.origin.kind === "minted-literal") {
       assert.equal(minted.origin.value, 42);
       assert.equal(minted.origin.factoryTileDef.tileId, numberLiteralFactoryId);
     }
@@ -512,7 +542,7 @@ describe("mintNumberLiteralCandidate", () => {
   test("committing the minted candidate registers the same literal tile the manufacture path produces", () => {
     const { candidates, brain } = offeringForEmptyWhenSide();
     const minted = mintNumberLiteralCandidate(candidates, "42", (tileDef) => tileDef.tileId);
-    assert.ok(minted && minted.origin.kind === "minted");
+    assert.ok(minted && minted.origin.kind === "minted-literal");
 
     const placed = manufactureLiteralTile(minted.origin.factoryTileDef, brain.catalog(), minted.origin.value);
 
@@ -521,6 +551,276 @@ describe("mintNumberLiteralCandidate", () => {
     assert.equal(brain.catalog().get(placed.tileId), placed, "the placed literal is registered in the brain catalog");
     const again = manufactureLiteralTile(minted.origin.factoryTileDef, brain.catalog(), minted.origin.value);
     assert.equal(again, placed, "a second placement reuses the registered literal");
+  });
+});
+
+/** The types the variable factories in `candidates` produce, in offering order. */
+function acceptedVariableTypes(candidates: readonly StripCandidate[]): TypeId[] {
+  return candidates
+    .filter((c) => c.tileDef.kind === "factory" && isVariableFactoryTileId(c.tileDef.tileId))
+    .map((c) => (c.tileDef as BrainTileFactoryDef).producedDataType as TypeId);
+}
+
+/** The variable type each minted candidate would place, in offering order. */
+function mintedVariableTypes(candidates: readonly StripCandidate[]): TypeId[] {
+  return candidates.map((c) => (c.tileDef as BrainTileVariableDef).varType);
+}
+
+/** The candidates minted as new variables, in offering order. */
+function mintedVariables(candidates: readonly StripCandidate[]): StripCandidate[] {
+  return candidates.filter((c) => c.origin.kind === "minted-variable");
+}
+
+/**
+ * The oracle's offering for the empty WHEN side of a fresh brain, with a number
+ * variable per name in `names` registered through the same manufacture seam the
+ * strip mints through.
+ */
+function offeringWithNumberVariables(...names: string[]) {
+  return offeringForEmptySide(RuleSide.When, {
+    prepare: (brain) => {
+      for (const name of names) {
+        manufactureVariableTile(coreTile(numberVarFactoryId) as BrainTileFactoryDef, brain.catalog(), name);
+      }
+    },
+  });
+}
+
+describe("parseStripFilter", () => {
+  test("plain filter text declares no variable intent and filters by the whole text", () => {
+    assert.deepEqual(parseStripFilter("speedy"), { variableIntent: false, text: "speedy" });
+    assert.deepEqual(parseStripFilter("  speedy  "), { variableIntent: false, text: "speedy" });
+    assert.deepEqual(parseStripFilter(""), { variableIntent: false, text: "" });
+  });
+
+  test("a leading $ declares variable intent and filters by the remainder", () => {
+    assert.deepEqual(parseStripFilter("$speedy"), { variableIntent: true, text: "speedy" });
+    assert.deepEqual(parseStripFilter("  $ speedy "), { variableIntent: true, text: "speedy" });
+  });
+
+  test("$ alone declares variable intent with no name yet", () => {
+    assert.deepEqual(parseStripFilter("$"), { variableIntent: true, text: "" });
+  });
+});
+
+describe("mintVariableCandidates", () => {
+  test("mints one candidate per type the position accepts, each named by the typed text", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+
+    const mints = mintVariableCandidates(candidates, "speedy", stripLabel);
+
+    assert.ok(mints.length > 0, "the empty WHEN side accepts a variable");
+    assert.deepEqual(mintedVariableTypes(mints), acceptedVariableTypes(candidates));
+    for (const mint of mints) {
+      assert.equal(mint.tileDef.kind, "variable");
+      assert.equal((mint.tileDef as BrainTileVariableDef).varName, "speedy");
+      assert.equal(mint.label, "speedy");
+      assert.equal(mint.group, "variable");
+      assert.equal(mint.origin.kind, "minted-variable");
+      if (mint.origin.kind === "minted-variable") assert.equal(mint.origin.varName, "speedy");
+    }
+  });
+
+  test("the minted type is the type the armed position expects", () => {
+    const { candidates } = offeringForEmptySide(RuleSide.When, { expectedType: CoreTypeIds.Number });
+
+    const mints = mintVariableCandidates(candidates, "speedy", stripLabel);
+
+    assert.deepEqual(
+      mintedVariableTypes(mints.filter((mint) => !mint.viaConversion)),
+      [CoreTypeIds.Number],
+      "a number position mints a number variable directly"
+    );
+    assert.deepEqual(mintedVariableTypes(mints), acceptedVariableTypes(candidates), "no type beyond the accepted set");
+  });
+
+  test("mints nothing when the position accepts no variable", () => {
+    assert.deepEqual(mintVariableCandidates([candidate(notTileId, "not")], "speedy", stripLabel), []);
+  });
+
+  test("mints nothing for a name the create-variable path would reject", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+
+    assert.deepEqual(mintVariableCandidates(candidates, "", stripLabel), []);
+    assert.deepEqual(mintVariableCandidates(candidates, "   ", stripLabel), []);
+  });
+
+  test("mints nothing at a type that already holds a variable of that name", () => {
+    const { candidates } = offeringWithNumberVariables("speedy");
+
+    const mints = mintVariableCandidates(candidates, "speedy", stripLabel);
+
+    assert.ok(!mintedVariableTypes(mints).includes(CoreTypeIds.Number), "the existing number variable is the answer");
+    assert.ok(mints.length > 0, "the other accepted types still mint");
+  });
+
+  test("keys are stable across calls for the same name and position", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+
+    assert.deepEqual(
+      mintVariableCandidates(candidates, "speedy", stripLabel).map((c) => c.key),
+      mintVariableCandidates(candidates, "speedy", stripLabel).map((c) => c.key)
+    );
+  });
+
+  test("every minted key is distinct", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+
+    const keys = mintVariableCandidates(candidates, "speedy", stripLabel).map((c) => c.key);
+
+    assert.equal(new Set(keys).size, keys.length);
+  });
+});
+
+describe("resolveStripOffering", () => {
+  test("an unknown word at a variable-accepting position offers a mint and stays unknown", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+
+    const offering = resolveStripOffering(candidates, "speedy", stripLabel);
+
+    assert.ok(mintedVariables(offering.visible).length > 0, "the unknown word offers a mint");
+    assert.equal(offering.isUnknown, true, "the amber unknown state stands alongside the mint");
+    assert.ok(
+      offering.offered.some((c) => c.origin.kind === "minted-variable"),
+      "the mint is part of the offering, not only of the filtered view"
+    );
+  });
+
+  test("no commit key places a plain unknown word, mint entries present", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+
+    const offering = resolveStripOffering(candidates, "speedy", stripLabel);
+
+    assert.ok(mintedVariables(offering.visible).length > 0);
+    for (const key of ["enter", "tab", "space"] as const) {
+      assert.equal(decideCandidateCommit(offering.visible, "speedy", key), undefined);
+    }
+  });
+
+  test("$ scopes the offering to existing variables and the mint", () => {
+    const { candidates } = offeringWithNumberVariables("speedy");
+
+    const offering = resolveStripOffering(candidates, "$", stripLabel);
+
+    assert.deepEqual(
+      offering.visible.map((c) => c.tileDef.kind),
+      offering.visible.map(() => "variable"),
+      "only variables are in scope"
+    );
+    assert.deepEqual(
+      offering.visible.map((c) => c.label),
+      ["speedy"],
+      "an empty name offers the existing variables and mints nothing"
+    );
+    assert.equal(offering.isUnknown, false);
+  });
+
+  test("$ filters the existing variables by the remainder", () => {
+    const { candidates } = offeringWithNumberVariables("speedy", "heading");
+
+    const offering = resolveStripOffering(candidates, "$head", stripLabel);
+
+    assert.deepEqual(
+      offering.visible.filter((c) => c.origin.kind === "suggested").map((c) => c.label),
+      ["heading"]
+    );
+  });
+
+  test("$ with an unmatched name mints it on Enter", () => {
+    const { candidates } = offeringWithNumberVariables("speedy");
+
+    const offering = resolveStripOffering(candidates, "$turbo", stripLabel);
+    const placed = decideCandidateCommit(offering.visible, "$turbo", "enter");
+
+    assert.ok(placed, "declared variable intent commits the mint");
+    assert.equal(placed.origin.kind, "minted-variable");
+    assert.equal((placed.tileDef as BrainTileVariableDef).varName, "turbo");
+    assert.equal(offering.isUnknown, false, "a committable mint is not unknown text");
+  });
+
+  test("$ with an exactly matching name commits that variable rather than minting", () => {
+    const { candidates } = offeringWithNumberVariables("speedy");
+
+    const offering = resolveStripOffering(candidates, "$speedy", stripLabel);
+    const placed = decideCandidateCommit(offering.visible, "$speedy", "enter");
+
+    assert.ok(placed);
+    assert.equal(placed.origin.kind, "suggested");
+    assert.equal((placed.tileDef as BrainTileVariableDef).varName, "speedy");
+  });
+
+  test("$ with a name that prefixes an existing variable ranks the mint after the match", () => {
+    const { candidates } = offeringWithNumberVariables("speedy");
+
+    const offering = resolveStripOffering(candidates, "$spee", stripLabel);
+
+    const origins = offering.visible.map((c) => c.origin.kind);
+    assert.ok(origins.includes("minted-variable"), "the short name is never suppressed");
+    assert.ok(
+      origins.indexOf("suggested") < origins.indexOf("minted-variable"),
+      "the existing match is the likelier intent"
+    );
+    assert.equal(decideCandidateCommit(offering.visible, "$spee", "enter")?.origin.kind, "suggested");
+  });
+
+  test("$ with a name the create-variable path would reject is unknown", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+
+    const offering = resolveStripOffering(candidates, "$", stripLabel);
+
+    assert.deepEqual(offering.visible, [], "a fresh brain holds no variable to offer");
+    assert.equal(offering.isUnknown, true);
+  });
+
+  test("typed digits still mint a literal, ahead of the offering and never unknown", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+
+    const offering = resolveStripOffering(candidates, "42", stripLabel);
+
+    assert.equal(offering.visible[0].origin.kind, "minted-literal");
+    assert.equal((offering.visible[0].tileDef as BrainTileLiteralDef).value, 42);
+    assert.equal(offering.isUnknown, false);
+    assert.deepEqual(mintedVariables(offering.visible), [], "a complete number is not an unknown word");
+    assert.equal(decideCandidateCommit(offering.visible, "42", "enter")?.origin.kind, "minted-literal");
+  });
+
+  test("a matched word offers no mint", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+    const known = candidates[0].label;
+
+    const offering = resolveStripOffering(candidates, known, stripLabel);
+
+    assert.deepEqual(mintedVariables(offering.visible), []);
+    assert.equal(offering.isUnknown, false);
+  });
+
+  test("minted variables render in their own presentation, suggestions in the seated one", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+
+    const entries = toCandidateEntries(resolveStripOffering(candidates, "speedy", stripLabel).visible);
+
+    assert.ok(entries.length > 0);
+    for (const entry of entries) {
+      assert.equal(entry.presentation, entry.candidate.origin.kind === "minted-variable" ? "minting" : "seated");
+    }
+  });
+});
+
+describe("manufactureVariableTile", () => {
+  test("committing a minted variable registers the tile the create-variable path produces", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const minted = mintVariableCandidates(candidates, "speedy", stripLabel)[0];
+    assert.ok(minted && minted.origin.kind === "minted-variable");
+
+    const placed = manufactureVariableTile(minted.origin.factoryTileDef, brain.catalog(), minted.origin.varName);
+
+    assert.ok(placed);
+    assert.equal(placed.kind, "variable");
+    assert.equal(placed.varName, "speedy");
+    assert.equal(placed.varType, (minted.tileDef as BrainTileVariableDef).varType);
+    assert.equal(brain.catalog().get(placed.tileId), placed, "the placed variable is registered in the brain catalog");
+    const again = manufactureVariableTile(minted.origin.factoryTileDef, brain.catalog(), minted.origin.varName);
+    assert.equal(again, placed, "a second placement reuses the registered variable");
   });
 });
 

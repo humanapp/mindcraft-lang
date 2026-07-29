@@ -3,11 +3,12 @@ import {
   CoreCapabilityBits,
   type IBrainTileDef,
   isCoreLiteralFactoryTileId,
+  isVariableFactoryTileId,
   RuleSide,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import type { TileSuggestion, TileSuggestionResult } from "@mindcraft-lang/core/brain/language-service";
-import type { BrainTileFactoryDef, BrainTileOperatorDef } from "@mindcraft-lang/core/brain/tiles";
+import type { BrainTileFactoryDef, BrainTileOperatorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { CoreHostActions, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
 import type { ArmedTileTarget } from "./ArmedTargetContext";
 import { groupTilesByLibrary, type TileSourceLibrary, tileSourceNamespace } from "./tile-library-groups";
@@ -126,10 +127,21 @@ export function shouldOrderPagesFirst(
   return existingTiles[precedingIndex]?.tileId === mkActuatorTileId(CoreHostActions.SwitchPage.key);
 }
 
-/** Where a candidate's tile came from: the suggestion oracle, or minted from typed text. */
+/**
+ * Where a candidate's tile came from:
+ *
+ * - `suggested` -- the suggestion oracle offered it
+ * - `minted-literal` -- typed digits mint it, carrying the value it places
+ * - `minted-variable` -- a typed word mints it, carrying the name it places
+ *
+ * A minted candidate carries the factory that manufactures its tile, so
+ * committing it runs the same manufacture and registration path the factory
+ * tiles run.
+ */
 export type CandidateOrigin =
   | { readonly kind: "suggested" }
-  | { readonly kind: "minted"; readonly factoryTileDef: BrainTileFactoryDef; readonly value: unknown };
+  | { readonly kind: "minted-literal"; readonly factoryTileDef: BrainTileFactoryDef; readonly value: unknown }
+  | { readonly kind: "minted-variable"; readonly factoryTileDef: BrainTileFactoryDef; readonly varName: string };
 
 /** One tile offered at the armed position. */
 export interface StripCandidate {
@@ -276,18 +288,26 @@ export type CandidateCommitKey = "enter" | "tab" | "space";
  * match once `visible` comes from {@link filterStripCandidates}; Space takes an
  * exact label match, or a unique prefix match when no label matches exactly.
  * Empty filter text and text matching no candidate never commit.
+ *
+ * A minted variable is committed by a key only when the filter text declares
+ * variable intent with the `$` accelerator, so a mistyped word never becomes a
+ * variable; without it the mint is placed by tap or by highlighting its chip.
  */
 export function decideCandidateCommit(
   visible: readonly StripCandidate[],
   filter: string,
   key: CandidateCommitKey
 ): StripCandidate | undefined {
-  const trimmed = filter.trim();
-  if (trimmed.length === 0 || visible.length === 0) return undefined;
-  if (key === "enter" || key === "tab") return visible[0];
-  const exact = visible.find((candidate) => classifyLabelMatch(trimmed, candidate.label) === "exact");
+  const intent = parseStripFilter(filter);
+  if (intent.text.length === 0) return undefined;
+  const eligible = intent.variableIntent
+    ? visible
+    : visible.filter((candidate) => candidate.origin.kind !== "minted-variable");
+  if (eligible.length === 0) return undefined;
+  if (key === "enter" || key === "tab") return eligible[0];
+  const exact = eligible.find((candidate) => classifyLabelMatch(intent.text, candidate.label) === "exact");
   if (exact) return exact;
-  const prefixed = visible.filter((candidate) => classifyLabelMatch(trimmed, candidate.label) === "prefix");
+  const prefixed = eligible.filter((candidate) => classifyLabelMatch(intent.text, candidate.label) === "prefix");
   return prefixed.length === 1 ? prefixed[0] : undefined;
 }
 
@@ -333,7 +353,158 @@ export function mintNumberLiteralCandidate(
     label: labelOf(preview),
     group: "literal",
     viaConversion: false,
-    origin: { kind: "minted", factoryTileDef, value },
+    origin: { kind: "minted-literal", factoryTileDef, value },
+  };
+}
+
+/**
+ * The filter text split into the variable gesture and the text it filters by. A
+ * leading `$` declares that the word being typed names a variable; it is an
+ * input gesture only and never reaches a placed tile.
+ */
+export interface StripFilterIntent {
+  /** True when the text opened with the `$` accelerator. */
+  readonly variableIntent: boolean;
+  /** The text the offering is filtered by: the text after `$`, or the whole text. */
+  readonly text: string;
+}
+
+/** Split `filter` into its {@link StripFilterIntent}. */
+export function parseStripFilter(filter: string): StripFilterIntent {
+  const trimmed = filter.trim();
+  if (!trimmed.startsWith("$")) return { variableIntent: false, text: trimmed };
+  return { variableIntent: true, text: trimmed.slice(1).trim() };
+}
+
+/** True when `name` names a variable the create-variable path would accept. */
+function isMintableVariableName(name: string): boolean {
+  return name.trim().length > 0;
+}
+
+/** True when the candidate places an existing variable, as opposed to creating one. */
+function isExistingVariableCandidate(candidate: StripCandidate): boolean {
+  return candidate.tileDef.kind === "variable";
+}
+
+/**
+ * The variable factories among `candidates`, one per type the armed position
+ * accepts, in offering order. A type the oracle offers twice keeps its first
+ * factory, and a factory reached only by a conversion carries that on the
+ * candidate it was found on.
+ */
+function acceptedVariableFactories(candidates: readonly StripCandidate[]): StripCandidate[] {
+  const byType = new Map<string, StripCandidate>();
+  for (const candidate of candidates) {
+    const tileDef = candidate.tileDef;
+    if (tileDef.kind !== "factory" || !isVariableFactoryTileId(tileDef.tileId)) continue;
+    const producedDataType = (tileDef as BrainTileFactoryDef).producedDataType;
+    if (!producedDataType || byType.has(producedDataType)) continue;
+    byType.set(producedDataType, candidate);
+  }
+  return [...byType.values()];
+}
+
+/** True when `candidates` already offers a variable named `name` of type `varType`. */
+function offersVariable(candidates: readonly StripCandidate[], name: string, varType: string): boolean {
+  const needle = name.trim().toLowerCase();
+  return candidates.some((candidate) => {
+    if (!isExistingVariableCandidate(candidate)) return false;
+    const varTileDef = candidate.tileDef as BrainTileVariableDef;
+    return varTileDef.varType === varType && varTileDef.varName.trim().toLowerCase() === needle;
+  });
+}
+
+/**
+ * The variable candidates minted from the typed word `name`: one per type the
+ * armed position accepts, in the order the position offers those types, so the
+ * minted type is always the oracle's own. A type that already holds a variable
+ * of this name mints nothing, since that variable is the answer. Each
+ * candidate's tile is a preview def manufactured by the factory; committing it
+ * re-manufactures through the catalog so the placed tile is registered.
+ */
+export function mintVariableCandidates(
+  candidates: readonly StripCandidate[],
+  name: string,
+  labelOf: (tileDef: IBrainTileDef) => string
+): StripCandidate[] {
+  const varName = name.trim();
+  if (!isMintableVariableName(varName)) return [];
+  const minted: StripCandidate[] = [];
+  for (const factory of acceptedVariableFactories(candidates)) {
+    const factoryTileDef = factory.tileDef as BrainTileFactoryDef;
+    const producedDataType = factoryTileDef.producedDataType as string;
+    if (offersVariable(candidates, varName, producedDataType)) continue;
+    const preview = factoryTileDef.manufacture(factoryTileDef, { name: varName });
+    if (!preview) continue;
+    minted.push({
+      key: `mint:var:${producedDataType}:${varName}`,
+      tileDef: preview,
+      label: labelOf(preview),
+      group: "variable",
+      viaConversion: factory.viaConversion,
+      origin: { kind: "minted-variable", factoryTileDef, varName },
+    });
+  }
+  return minted;
+}
+
+/**
+ * `matches` with `mints` spliced in behind the exact and prefix matches that
+ * lead it, so a name that is also the start of an existing variable's name
+ * offers that variable first and the new one right after it.
+ */
+function demoteMintsBehindMatches(
+  matches: readonly StripCandidate[],
+  mints: readonly StripCandidate[],
+  name: string
+): StripCandidate[] {
+  if (mints.length === 0) return [...matches];
+  let at = 0;
+  while (at < matches.length) {
+    const quality = classifyLabelMatch(name, matches[at].label);
+    if (quality !== "exact" && quality !== "prefix") break;
+    at++;
+  }
+  return [...matches.slice(0, at), ...mints, ...matches.slice(at)];
+}
+
+/** What the strip offers for one filter text over the position's ranked candidates. */
+export interface StripOffering {
+  /** Every candidate the position offers, minted entries included, before the filter narrows it. */
+  readonly offered: readonly StripCandidate[];
+  /** The candidates the filter text leaves, best match first, with the minted entries in their ranked place. */
+  readonly visible: readonly StripCandidate[];
+  /** True when the filter text names nothing the strip can place. */
+  readonly isUnknown: boolean;
+}
+
+/**
+ * The offering `filter` leaves of the ranked `candidates`, with the candidates
+ * the typed text mints merged into it:
+ *
+ * - typed digits mint a literal, which commits like any other candidate
+ * - a typed word that matches nothing mints a variable per accepted type, which
+ *   the unknown state stands alongside because only a tap or a highlighted
+ *   chip commits it
+ * - text opening with `$` scopes the offering to the existing variables matching
+ *   the rest of the text, plus a mint of every accepted type the name is free at
+ */
+export function resolveStripOffering(
+  candidates: readonly StripCandidate[],
+  filter: string,
+  labelOf: (tileDef: IBrainTileDef) => string
+): StripOffering {
+  const intent = parseStripFilter(filter);
+  const literalMint = intent.variableIntent ? undefined : mintNumberLiteralCandidate(candidates, intent.text, labelOf);
+  const offered = literalMint ? [literalMint, ...candidates] : [...candidates];
+  const scope = intent.variableIntent ? offered.filter(isExistingVariableCandidate) : offered;
+  const matches = filterStripCandidates(scope, intent.text);
+  const mints =
+    intent.variableIntent || matches.length === 0 ? mintVariableCandidates(candidates, intent.text, labelOf) : [];
+  return {
+    offered: [...offered, ...mints],
+    visible: demoteMintsBehindMatches(matches, mints, intent.text),
+    isUnknown: !(intent.variableIntent && mints.length > 0) && isUnknownFilterText(matches, filter),
   };
 }
 
@@ -479,8 +650,13 @@ export const categoryPriorityCandidateRanker: CandidateRanker = (candidates, tar
   return ranked.map((entry) => entry.candidate);
 };
 
-/** How a candidate's chip is drawn. A candidate offered at the armed position is "seated". */
-export type CandidatePresentation = "seated";
+/**
+ * How a candidate's chip is drawn:
+ *
+ * - `seated` -- a tile the position already holds, offered as it will be placed
+ * - `minting` -- a variable the typed word creates, drawn as the new tile it makes
+ */
+export type CandidatePresentation = "seated" | "minting";
 
 /** A candidate paired with the presentation its chip renders in. */
 export interface CandidateEntry {
@@ -488,9 +664,14 @@ export interface CandidateEntry {
   readonly presentation: CandidatePresentation;
 }
 
+/** The presentation `candidate` renders in, keyed by where its tile came from. */
+function candidatePresentation(candidate: StripCandidate): CandidatePresentation {
+  return candidate.origin.kind === "minted-variable" ? "minting" : "seated";
+}
+
 /** Pair each candidate with its presentation, preserving order. */
 export function toCandidateEntries(candidates: readonly StripCandidate[]): CandidateEntry[] {
-  return candidates.map((candidate) => ({ candidate, presentation: "seated" }));
+  return candidates.map((candidate) => ({ candidate, presentation: candidatePresentation(candidate) }));
 }
 
 /** Heading of the subcategory holding the host application's own tiles. */

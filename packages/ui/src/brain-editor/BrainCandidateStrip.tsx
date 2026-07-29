@@ -1,8 +1,10 @@
 import { RuleSide } from "@mindcraft-lang/core/brain";
-import { ChevronDown, X } from "lucide-react";
+import type { BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import { ChevronDown, Plus, X } from "lucide-react";
 import { type FocusEvent, type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { staticAssetUrl } from "../asset-url";
 import { adjustColor, readableInk, saturateColor } from "../lib/color";
+import { resolveTypeDisplayName } from "./action-arg-tiles";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import {
   activeStripOption,
@@ -101,21 +103,33 @@ interface CandidateChipProps {
 
 /**
  * One candidate as a word-chip: the tile's icon and its label, with the tile's
- * library attribution and any conversion carried in the accessible name.
+ * library attribution and any conversion carried in the accessible name. A
+ * minting candidate is drawn as an outline of the variable it creates, named by
+ * the typed word and badged with the type the armed position expects.
  */
 function CandidateChip({ entry, side, optionId, isActive, onCommit, libraryName }: CandidateChipProps) {
   const editorConfig = useBrainEditorConfig();
   const { candidate } = entry;
+  const isMinting = entry.presentation === "minting";
   const visual = resolveTileVisual(editorConfig, candidate.tileDef);
   const baseColor = (side === RuleSide.When ? visual.colorDef?.when : visual.colorDef?.do) || "#475569";
   const iconUrl = visual.iconUrl || staticAssetUrl("assets/brain/icons/question_mark.svg");
+  const mintedTypeName = isMinting
+    ? resolveTypeDisplayName((candidate.tileDef as BrainTileVariableDef).varType, {
+        dataTypeNames: editorConfig.dataTypeNames,
+        getTypeName: (typeId) => editorConfig.brainServices?.runtime.types.get(typeId)?.name,
+      })
+    : undefined;
   const description = [
-    `${candidate.tileDef.kind} tile: ${candidate.label}`,
+    isMinting
+      ? `make ${candidate.label} a new ${mintedTypeName} variable`
+      : `${candidate.tileDef.kind} tile: ${candidate.label}`,
     libraryName ? `from ${libraryName}` : undefined,
     candidate.viaConversion ? "fits by converting the value" : undefined,
   ]
     .filter((part) => part !== undefined)
     .join(", ");
+  const outlineColor = adjustColor(saturateColor(baseColor, 0.5), 0.2);
 
   return (
     <button
@@ -131,11 +145,13 @@ function CandidateChip({ entry, side, optionId, isActive, onCommit, libraryName 
       }}
       onClick={() => onCommit(candidate)}
       style={{
-        background: `linear-gradient(180deg, ${adjustColor(baseColor, 0.35)}, ${baseColor})`,
-        borderColor: adjustColor(saturateColor(baseColor, 0.5), -0.35),
+        background: isMinting
+          ? "linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03))"
+          : `linear-gradient(180deg, ${adjustColor(baseColor, 0.35)}, ${baseColor})`,
+        borderColor: isMinting ? outlineColor : adjustColor(saturateColor(baseColor, 0.5), -0.35),
         borderStyle: candidate.viaConversion ? "dashed" : "solid",
         // The label runs the full height of the chip, down to the gradient's dark stop.
-        color: readableInk(baseColor),
+        color: isMinting ? "#FFFFFF" : readableInk(baseColor),
       }}
       className={`inline-flex min-h-11 max-w-full cursor-pointer items-center gap-2 rounded-full border-2 px-3 py-1.5 shadow-sm transition-[filter,transform] hover:brightness-110 active:scale-95 ${focusRingClasses} ${
         candidate.viaConversion ? "opacity-80" : ""
@@ -145,8 +161,21 @@ function CandidateChip({ entry, side, optionId, isActive, onCommit, libraryName 
       data-candidate-key={candidate.key}
       data-via-conversion={candidate.viaConversion ? "true" : undefined}
     >
-      <img src={iconUrl} alt="" aria-hidden="true" className="h-6 w-6 shrink-0 object-contain" />
+      {isMinting ? (
+        <Plus className="h-5 w-5 shrink-0" style={{ color: outlineColor }} aria-hidden="true" />
+      ) : (
+        <img src={iconUrl} alt="" aria-hidden="true" className="h-6 w-6 shrink-0 object-contain" />
+      )}
       <span className="truncate font-mono text-sm font-semibold">{candidate.label}</span>
+      {isMinting && (
+        <span
+          aria-hidden="true"
+          className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+          style={{ background: "rgba(255, 255, 255, 0.14)", color: outlineColor }}
+        >
+          {mintedTypeName}
+        </span>
+      )}
     </button>
   );
 }
@@ -167,7 +196,11 @@ export interface BrainCandidateStripProps {
  * The inline candidate strip: the tiles valid at the armed position, offered as
  * word-chips that commit on tap, with a filter box that commits the top match on
  * Enter or Tab and an exact or unique-prefix match on Space. Filter text that
- * matches no candidate is shown as unknown and cannot commit.
+ * matches no candidate is shown as unknown and cannot commit; where the position
+ * accepts a variable, that text also offers a chip per accepted type that mints
+ * the variable, placed by tap or by highlighting it. Text opening with `$` names
+ * a variable outright: the offering scopes to the variables matching the rest of
+ * the text plus the mint, which the commit keys then place.
  *
  * The filter box is an ARIA combobox over the rendered chips: the arrow keys
  * walk a highlight across them, Enter commits the highlighted chip, and Escape
@@ -599,7 +632,8 @@ export function BrainCandidateStrip({ state, side, id, onDismiss }: BrainCandida
       <p id={hintId} className="sr-only">
         Arrow down to start browsing the tiles. Left and right move along a row, up and down move between rows, and
         Enter places the highlighted tile. Arrow down on a group heading opens it, and Tab moves from the group being
-        browsed to the next heading.
+        browsed to the next heading. Start the text with a dollar sign to name a variable, which Enter then places,
+        creating it when no variable has that name.
       </p>
 
       <output id={statusId} aria-live="polite" className="sr-only">

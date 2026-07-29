@@ -26,3 +26,6 @@ export const kDefaultLocale = "en";
 
 /** Context tag under which the localizer looks up its list-joining templates. */
 export const kListContext = "list";
+
+/** Context tag under which a tile's display vocabulary (its label and sentence words) is looked up. */
+export const kTileLabelContext = "tile-label";

@@ -14,17 +14,15 @@ import {
   type CandidateSubcategory,
   categoryPriorityCandidateRanker,
   decideCandidateCommit,
-  filterStripCandidates,
   groupStripCandidates,
-  isUnknownFilterText,
-  mintNumberLiteralCandidate,
+  resolveStripOffering,
   type StripCandidate,
   shouldOrderPagesFirst,
   toCandidateEntries,
 } from "../candidate-strip-model";
 import { buildInsertionContext } from "../insertion-context";
 import { resolveTileVisual } from "../tile-visual-utils";
-import { manufactureLiteralTile } from "./useTileSelection";
+import { manufactureLiteralTile, manufactureVariableTile } from "./useTileSelection";
 
 /** How many candidates the flat best-next row offers before the accordion takes over. */
 export const kBestNextCandidateCount = 6;
@@ -65,7 +63,7 @@ export interface CandidateStripState {
   readonly sections: readonly CandidateStripSection[];
   /** The current filter text; every keystroke narrows the offering. */
   readonly filter: string;
-  /** True when the filter text matches no candidate, so it cannot commit. */
+  /** True when the filter text names nothing the strip can place. */
   readonly isUnknown: boolean;
   setFilter(next: string): void;
   /** Place `candidate` at the armed position through the target's selection callback. */
@@ -80,8 +78,10 @@ export interface CandidateStripState {
  * Query the suggestion oracle for the armed position and expose the filter and
  * commit surface the inline candidate strip renders. Committing routes through
  * the armed target's selection callback, so the placement runs the same command
- * and factory-deferral path the caller armed with. In append mode the target is
- * re-armed after each placement so composition continues at the next position.
+ * and factory-deferral path the caller armed with. A minted candidate is
+ * manufactured and registered first, so what reaches that callback is always a
+ * catalog tile. In append mode the target is re-armed after each placement so
+ * composition continues at the next position.
  */
 export function useCandidateStrip({
   ruleDef,
@@ -155,12 +155,8 @@ export function useCandidateStrip({
     [candidates, target, editorConfig.projectNamespace]
   );
 
-  const offered = useMemo(() => {
-    const minted = mintNumberLiteralCandidate(ranked, filter, labelOf);
-    return minted ? [minted, ...ranked] : ranked;
-  }, [ranked, filter, labelOf]);
-
-  const visible = useMemo(() => filterStripCandidates(offered, filter), [offered, filter]);
+  const offering = useMemo(() => resolveStripOffering(ranked, filter, labelOf), [ranked, filter, labelOf]);
+  const { offered, visible } = offering;
 
   const bestNext = useMemo(() => toCandidateEntries(visible.slice(0, kBestNextCandidateCount)), [visible]);
   const sections = useMemo(() => {
@@ -188,11 +184,19 @@ export function useCandidateStrip({
     (candidate: StripCandidate) => {
       if (!target) return;
       let tileDef = candidate.tileDef;
-      if (candidate.origin.kind === "minted") {
+      if (candidate.origin.kind === "minted-literal") {
         const registered = manufactureLiteralTile(
           candidate.origin.factoryTileDef,
           ruleDef.brain()?.catalog(),
           candidate.origin.value
+        );
+        if (!registered) return;
+        tileDef = registered;
+      } else if (candidate.origin.kind === "minted-variable") {
+        const registered = manufactureVariableTile(
+          candidate.origin.factoryTileDef,
+          ruleDef.brain()?.catalog(),
+          candidate.origin.varName
         );
         if (!registered) return;
         tileDef = registered;
@@ -231,7 +235,7 @@ export function useCandidateStrip({
     bestNext,
     sections,
     filter,
-    isUnknown: isUnknownFilterText(visible, filter),
+    isUnknown: offering.isUnknown,
     setFilter,
     commit,
     commitByKey,

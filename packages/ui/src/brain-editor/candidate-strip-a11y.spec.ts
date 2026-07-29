@@ -12,7 +12,14 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { CoreLiteralFactoryId, mkLiteralFactoryTileId, mkOperatorTileId, RuleSide } from "@mindcraft-lang/core/brain";
+import {
+  CoreLiteralFactoryId,
+  CoreVariableFactoryId,
+  mkLiteralFactoryTileId,
+  mkOperatorTileId,
+  mkVariableFactoryTileId,
+  RuleSide,
+} from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import {
@@ -40,6 +47,7 @@ import {
   enterStripOptionsAt,
   isStripFilterTypingKey,
   kBestNextBandKey,
+  mintVariableCandidates,
   moveActiveStripOption,
   moveActiveStripOption2D,
   type StripCandidate,
@@ -226,6 +234,7 @@ const pageEnteredTileId = mkSensorTileId(CoreHostActions.OnPageEntered.key);
 const switchPageTileId = mkActuatorTileId(CoreHostActions.SwitchPage.key);
 const notTileId = mkOperatorTileId(CoreOpId.Not);
 const numberLiteralFactoryId = mkLiteralFactoryTileId(CoreLiteralFactoryId.Number);
+const numberVarFactoryId = mkVariableFactoryTileId(CoreVariableFactoryId.Number);
 
 function bands(): StripOptionBand[] {
   return [
@@ -747,6 +756,21 @@ describe("BrainCandidateStrip combobox wiring", () => {
     const described = idReferences(attributeOf(combobox, "aria-describedby"));
     assert.equal(described.length, 1);
     assert.ok(idsIn(markup).includes(described[0]));
+  });
+
+  test("a minted variable chip is an option like any other, drawn in the minting presentation", () => {
+    const mints = mintVariableCandidates([candidate(numberVarFactoryId)], "speedy", () => "speedy");
+    assert.ok(mints.length > 0);
+    const entries = toCandidateEntries(mints);
+    const markup = render(stripState({ filter: "speedy", isUnknown: true, bestNext: entries }));
+
+    const options = tagsWithRole(markup, "option");
+    assert.equal(options.length, entries.length);
+    assert.equal(attributeOf(options[0], "id"), stripOptionId(kStripId, kBestNextBandKey, mints[0].key));
+    assert.equal(attributeOf(options[0], "aria-selected"), "false");
+    assert.equal(attributeOf(options[0], "data-presentation"), "minting");
+    assert.ok(attributeOf(options[0], "aria-label"), "the mint chip is announced like a candidate");
+    assert.ok(tagsWithRole(markup, "listbox").length >= 1);
   });
 
   test("a via-conversion chip renders as an option of its own group's section", () => {

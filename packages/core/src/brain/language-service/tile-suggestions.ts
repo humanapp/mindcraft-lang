@@ -27,10 +27,10 @@ import {
   type IBrainRuleDef,
   type IBrainTileDef,
   type ITileCatalog,
+  isInlineTileDef,
   mkControlFlowTileId,
   RuleSide,
   type TileId,
-  TilePlacement,
 } from "../interfaces";
 import type { BrainServices } from "../services";
 import type { BrainTileAccessorDef } from "../tiles/accessors";
@@ -1223,14 +1223,6 @@ function effectiveLhsType(
 }
 
 /**
- * Whether a tile carries the Inline placement flag. Inline tiles participate
- * in Pratt expressions, so infix operators and accessors can follow them.
- */
-function hasInlinePlacement(tileDef: IBrainTileDef): boolean {
-  return tileDef.placement !== undefined && (tileDef.placement & TilePlacement.Inline) !== 0;
-}
-
-/**
  * Whether a tile can produce a value in an expression position.
  * Excludes operators (context-dependent), control flow, modifiers,
  * and parameters (action-call only).
@@ -1869,7 +1861,7 @@ export function suggestTiles(
       // start a new expression).
       if (
         trailingValueExpr(expr) !== undefined ||
-        (expr.kind === "sensor" && !needsSlots && callDef.argSlots.size() === 0 && hasInlinePlacement(expr.tileDef))
+        (expr.kind === "sensor" && !needsSlots && callDef.argSlots.size() === 0 && isInlineTileDef(expr.tileDef))
       ) {
         const leftExpr = trailingValueExpr(expr) ?? expr;
         const leftType = operatorOverloads ? getExprOutputType(leftExpr, operatorOverloads, conversions) : undefined;
@@ -2184,7 +2176,7 @@ function suggestExpressionTiles(
       // expressions (parens are parsed via Pratt NUD, not parseActionCall).
       const insideParens = (context.unclosedParenDepth ?? 0) > 0;
       if (((valueOnly && !allowNonInlineSensors) || insideParens) && tileDef.kind === "sensor") {
-        if (!hasInlinePlacement(tileDef)) continue;
+        if (!isInlineTileDef(tileDef)) continue;
       }
 
       // In value-only mode, skip actuators (they return Void, not a value).
@@ -2631,7 +2623,7 @@ function suggestValueAbsorbingSensors(
       const tileDef = allTiles.get(ti);
 
       if (tileDef.hidden || tileDef.deprecated) continue;
-      if (tileDef.kind !== "sensor" || hasInlinePlacement(tileDef)) continue;
+      if (tileDef.kind !== "sensor" || isInlineTileDef(tileDef)) continue;
 
       if (!isPlacementValid(tileDef, context.ruleSide)) continue;
 
@@ -3056,7 +3048,7 @@ function suggestExpressionsForAnonymousSlots(
       // Skip non-inline sensors unless explicitly allowed -- action call
       // anonymous slots offer only inline sensors, while operator operand
       // positions also accept non-inline sensors.
-      if (tileDef.kind === "sensor" && !allowNonInlineSensors && !hasInlinePlacement(tileDef)) continue;
+      if (tileDef.kind === "sensor" && !allowNonInlineSensors && !isInlineTileDef(tileDef)) continue;
 
       // Check placement
       if (!isPlacementValid(tileDef, ruleSide)) continue;
