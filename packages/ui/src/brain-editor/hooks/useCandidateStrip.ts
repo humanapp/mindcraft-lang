@@ -37,6 +37,8 @@ export interface UseCandidateStripOptions {
   availableOutputKeys?: UniqueSet<string>;
   /** The page editor's update counter; re-queries the oracle when the document changes. */
   updateCounter: number;
+  /** Called after each placement the strip completes, whichever commit path made it. */
+  onCommitted?: () => void;
 }
 
 /** One accordion section of the offering: the whole group, plus the entries matching the filter. */
@@ -65,6 +67,8 @@ export interface CandidateStripState {
   readonly filter: string;
   /** True when the filter text names nothing the strip can place. */
   readonly isUnknown: boolean;
+  /** True when the word in progress resolves to one candidate, which Space commits. */
+  readonly commitsWordInProgress: boolean;
   setFilter(next: string): void;
   /** Place `candidate` at the armed position through the target's selection callback. */
   commit(candidate: StripCandidate): void;
@@ -89,6 +93,7 @@ export function useCandidateStrip({
   availableCapabilities,
   availableOutputKeys,
   updateCounter,
+  onCommitted,
 }: UseCandidateStripOptions): CandidateStripState {
   const editorConfig = useBrainEditorConfig();
   const { brainServices, tileCatalogs } = editorConfig;
@@ -211,13 +216,14 @@ export function useCandidateStrip({
       const completed = target.onTileSelected(tileDef);
       setFilter("");
       if (!completed) return;
+      onCommitted?.();
       setCommitCounter((count) => count + 1);
       // Appending continues at the next grammar position: re-arm the same
       // target so the strip re-queries the oracle and stays open. Insert and
       // replace complete with the placement.
       if (target.mode === "append") armedTarget.arm(target);
     },
-    [ruleDef, target, armedTarget]
+    [ruleDef, target, armedTarget, onCommitted]
   );
 
   const commitByKey = useCallback(
@@ -243,6 +249,7 @@ export function useCandidateStrip({
     sections,
     filter,
     isUnknown: offering.isUnknown,
+    commitsWordInProgress: decideCandidateCommit(visible, filter, "space") !== undefined,
     setFilter,
     commit,
     commitByKey,

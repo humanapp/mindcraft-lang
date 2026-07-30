@@ -1,7 +1,7 @@
 import { List, task, thread } from "@mindcraft-lang/core";
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
-import type { BrainCommandHistory, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainCommand, BrainCommandHistory, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   AddTileCommand,
   DeleteRuleCommand,
@@ -15,7 +15,7 @@ import {
   SetRuleCommentCommand,
 } from "@mindcraft-lang/core/brain/model";
 import { Plus, Save } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { glassEffect } from "../lib/glass-effect";
 import { Button } from "../ui/button";
@@ -26,8 +26,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { isAppendTargetForRule, useArmedTargetController } from "./ArmedTargetContext";
-import { BrainCandidateStrip, kCandidateDragMimeType } from "./BrainCandidateStrip";
+import { type ArmedTargetEntry, isAppendTargetForRule, useArmedTargetController } from "./ArmedTargetContext";
+import { BrainCandidateStrip, kCandidateDragMimeType, type StripComposerBinding } from "./BrainCandidateStrip";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainRuleSentence } from "./BrainRuleSentence";
 import { BrainTileEditor } from "./BrainTileEditor";
@@ -43,6 +43,7 @@ import {
   hasRuleInClipboard,
   onClipboardChanged,
 } from "./rule-clipboard";
+import { canEndSideExpression, decideComposerBackspace } from "./sentence-composer";
 import { applyBrokenTileBadges, buildNodeMap, computeTileBadges, type TileBadge } from "./tile-badges";
 
 // Pre-compute glass effects for each element type
@@ -92,6 +93,9 @@ const addButtonGlass = glassEffect({
   cornerShadow: 0,
 });
 
+/** Surface, hover, ink, and border of the rule row's round pills: the rule handle and each side's add-tile button. */
+const pillChromeClasses = "bg-slate-100 hover:bg-slate-200 text-slate-700 border-2 border-slate-300";
+
 interface BrainRuleEditorProps {
   ruleDef: BrainRuleDef;
   index: number;
@@ -100,6 +104,8 @@ interface BrainRuleEditorProps {
   lineNumber: number;
   updateCounter: number;
   commandHistory: BrainCommandHistory;
+  /** True for the page's trailing rule, whose sentence line carries the composer's entry point. */
+  isLastRule?: boolean;
 }
 
 /**
@@ -115,6 +121,7 @@ export function BrainRuleEditor({
   lineNumber,
   updateCounter,
   commandHistory,
+  isLastRule = false,
 }: BrainRuleEditorProps) {
   const { brainServices, tileCatalogs, isBrokenTile } = useBrainEditorConfig();
   const dragController = useRuleDragController();
@@ -154,13 +161,38 @@ export function BrainRuleEditor({
 
   const availableCapabilities = useRuleCapabilities(ruleDef, updateCounter);
   const availableOutputKeys = useRuleOutputKeys(ruleDef, updateCounter);
+
+  // Composition from the sentence line: the commands this rule's own composer
+  // executed, newest last, so Backspace can take back the last of them while it
+  // is still the history's newest entry.
+  const isComposing = stripTarget?.entry === "sentence";
+  const ownCommitsRef = useRef<BrainCommand[]>([]);
+  // The commits span one composition, so the WHEN->DO pivot keeps them; leaving
+  // the sentence line for any other target drops them.
+  useEffect(() => {
+    if (!isComposing) ownCommitsRef.current = [];
+  }, [isComposing]);
+  const recordComposerCommit = useCallback(() => {
+    if (!isComposing) return;
+    // The commit ran its command a moment ago: the newest entry is that command.
+    const command = commandHistory.peekUndo();
+    if (command) ownCommitsRef.current.push(command);
+  }, [isComposing, commandHistory]);
+
   const candidateStrip = useCandidateStrip({
     ruleDef,
     target: stripTarget,
     availableCapabilities,
     availableOutputKeys,
     updateCounter,
+    onCommitted: recordComposerCommit,
   });
+
+  // Composition reaches the DO side only through the typed pivot, so an armed
+  // DO side on the sentence line is the pivot the user typed. The comma stays
+  // visible until a word stands behind it, after which the sentence reads its
+  // own clause comma.
+  const isPivoted = isComposing && stripTarget?.side === RuleSide.Do;
 
   // Use the tile selection hook
   const {
@@ -358,18 +390,58 @@ export function BrainRuleEditor({
   const currentComment = ruleDef.comment();
   const showComment = isEditingComment || !!currentComment;
 
-  const handleAppendTileClick = (side: RuleSide) => () => {
-    armedTarget.arm({
-      ruleDef,
-      side,
-      mode: "append",
-      onTileSelected: (tileDef: IBrainTileDef) =>
-        handleTileSelectedWithVariable(tileDef, (tile) => {
-          const command = new AddTileCommand(ruleDef, side, tile);
-          commandHistory.executeCommand(command);
-        }),
+  const armAppendTarget = useCallback(
+    (side: RuleSide, entry: ArmedTargetEntry) => {
+      armedTarget.arm({
+        ruleDef,
+        side,
+        mode: "append",
+        entry,
+        onTileSelected: (tileDef: IBrainTileDef) =>
+          handleTileSelectedWithVariable(tileDef, (tile) => {
+            const command = new AddTileCommand(ruleDef, side, tile);
+            commandHistory.executeCommand(command);
+          }),
+      });
+    },
+    [armedTarget, ruleDef, handleTileSelectedWithVariable, commandHistory]
+  );
+
+  const handleAppendTileClick = (side: RuleSide) => () => armAppendTarget(side, "tray");
+
+  const takeBackLast = useCallback((): boolean => {
+    const ownCommits = ownCommitsRef.current;
+    const action = decideComposerBackspace({
+      filter: candidateStrip.filter,
+      ownLastCommit: ownCommits[ownCommits.length - 1],
+      newestCommand: commandHistory.peekUndo(),
+      pivoted: isPivoted,
+      doTileCount: ruleDef.do().tiles().size(),
     });
-  };
+    if (action === "unpivot") {
+      armAppendTarget(RuleSide.When, "sentence");
+      return true;
+    }
+    if (action !== "uncommit-word") return false;
+    commandHistory.undo();
+    ownCommits.pop();
+    return true;
+  }, [candidateStrip.filter, commandHistory, isPivoted, ruleDef, armAppendTarget]);
+
+  const ruleHasTiles = () => !ruleDef.when().tiles().isEmpty() || !ruleDef.do().tiles().isEmpty();
+
+  const composer: StripComposerBinding | undefined = isComposing
+    ? {
+        ruleDef,
+        updateCounter,
+        pivotComma: isPivoted && ruleDef.do().tiles().isEmpty(),
+        canEndArmedSide: () =>
+          canEndSideExpression((stripTarget?.side === RuleSide.Do ? ruleDef.do() : ruleDef.when()).tiles()),
+        isRuleEmpty: () => !ruleHasTiles(),
+        pivot: () => armAppendTarget(RuleSide.Do, "sentence"),
+        takeBackLast,
+      }
+    : undefined;
 
   const handleTilePickerCancel = () => {
     armedTarget.disarm();
@@ -392,18 +464,20 @@ export function BrainRuleEditor({
   };
 
   const indentStyle = { marginLeft: `${depth * 32}px` };
-  // A rule with no tiles projects no sentence, so the trailing empty rule keeps
-  // the compact fixed height the card had before the sentence line.
-  const hasTiles = !ruleDef.when().tiles().isEmpty() || !ruleDef.do().tiles().isEmpty();
+  const hasTiles = ruleHasTiles();
+  // The page's trailing empty rule invites composition where its sentence will grow.
+  const showComposerEntry = !stripTarget && isLastRule && !hasTiles;
+  // A card with nothing below its tile row keeps a compact fixed height.
+  const hasBodyBelowTiles = showComment || stripTarget !== null || hasTiles || showComposerEntry;
 
   return (
     <>
       {/* biome-ignore lint/a11y/useSemanticElements: changing to li requires restructuring BrainPageEditor */}
       <div
-        className={`flex flex-col p-2 sm:p-3 mb-1 rounded-xl shadow-sm hover:shadow-md transition-shadow w-fit relative${showComment || stripTarget || hasTiles ? "" : " h-30"}`}
+        className={`flex flex-col p-2 sm:p-3 mb-1 rounded-xl shadow-sm hover:shadow-md transition-shadow w-fit relative${hasBodyBelowTiles ? "" : " h-30"}`}
         style={{
           ...indentStyle,
-          background: "linear-gradient(55deg, #16143A 0%, #8B6CF3 100%)",
+          background: "linear-gradient(55deg, var(--color-brain-rule-from) 0%, var(--color-brain-rule-to) 100%)",
           ...containerGlass.containerStyle,
           opacity: isDragging ? 0.85 : undefined,
           transform: isDragging ? "scale(1.02)" : undefined,
@@ -468,7 +542,7 @@ export function BrainRuleEditor({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className={`relative rounded-full self-center h-9 w-9 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:scale-105 transition-all font-semibold text-lg border-2 border-slate-300 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+                className={`relative rounded-full self-center h-9 w-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold text-lg ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
                 style={handleGlass.containerStyle}
                 aria-label={`Rule ${lineNumber} actions${isDirty ? ", unsaved changes" : ""}`}
                 aria-haspopup="menu"
@@ -552,7 +626,7 @@ export function BrainRuleEditor({
           <div className="flex items-center">
             <button
               type="button"
-              className="relative rounded-full w-9 h-9 bg-violet-100 hover:bg-violet-200 text-violet-700 hover:scale-105 transition-all font-semibold border-2 border-violet-300 cursor-pointer flex items-center justify-center"
+              className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold cursor-pointer flex items-center justify-center`}
               style={addButtonGlass.containerStyle}
               onClick={handleAppendTileClick(RuleSide.When)}
               aria-label="Add tile to when condition"
@@ -604,7 +678,7 @@ export function BrainRuleEditor({
           <div className="flex items-center">
             <button
               type="button"
-              className="relative rounded-full w-9 h-9 bg-blue-100 hover:bg-blue-200 text-blue-700 hover:scale-105 transition-all font-semibold border-2 border-blue-300 cursor-pointer flex items-center justify-center"
+              className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold cursor-pointer flex items-center justify-center`}
               style={addButtonGlass.containerStyle}
               onClick={handleAppendTileClick(RuleSide.Do)}
               aria-label="Add tile to do action"
@@ -620,13 +694,25 @@ export function BrainRuleEditor({
             </button>
           </div>
         </div>
-        <BrainRuleSentence ruleDef={ruleDef} updateCounter={updateCounter} />
+        {/* While composing, the strip renders the sentence with its filter input inside. */}
+        {!isComposing && <BrainRuleSentence ruleDef={ruleDef} updateCounter={updateCounter} />}
+        {showComposerEntry && (
+          <button
+            type="button"
+            onClick={() => armAppendTarget(RuleSide.When, "sentence")}
+            data-sentence-composer-entry={ruleDef.id()}
+            className="relative z-10 mt-1.5 ml-11 flex min-h-8 max-w-2xl cursor-text items-center rounded-sm px-1 text-left font-serif text-sm text-white/45 italic transition-colors hover:bg-white/5 hover:text-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          >
+            Type what should happen...
+          </button>
+        )}
         {stripTarget && (
           <BrainCandidateStrip
             id={stripId}
             state={candidateStrip}
             side={stripTarget.side}
             onDismiss={handleTilePickerCancel}
+            composer={composer}
           />
         )}
         {showCreateVariableDialog && (

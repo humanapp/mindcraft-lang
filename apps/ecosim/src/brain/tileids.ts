@@ -2,8 +2,6 @@ import { APP_CAPABILITY_BIT_OFFSET, BitSet } from "@mindcraft-lang/core/app";
 
 export const TileIds = {
   Modifier: {
-    TimeMs: "modifier.time.ms",
-    TimeSecs: "modifier.time.secs",
     MovementForward: "modifier.movement.forward",
     MovementAvoid: "modifier.movement.avoid",
     MovementToward: "modifier.movement.toward",
@@ -27,7 +25,6 @@ export const TileIds = {
   Parameter: {
     AnonymousActorRef: "anon.ActorRef",
     AnonymousVector2: "anon.Vector2",
-    DelayMs: "parameter.delay.ms",
     Duration: "parameter.duration",
     Priority: "parameter.priority",
     Rate: "parameter.rate",

@@ -54,6 +54,13 @@
   --color-chart-3: oklch(24% 0.09 237);
   --color-chart-4: oklch(66% 0.17 83);
   --color-chart-5: oklch(67% 0.19 27);
+  /* Brain editor canvas: the recessed page "desk" and the rule-row cards that
+     sit on it. Rule stops read above the desk stops so a rule reads as a card. */
+  --color-brain-desk-from: #191338;
+  --color-brain-desk-to: #0e0a20;
+  --color-brain-desk-glow: rgba(139, 108, 243, 0.14);
+  --color-brain-rule-from: #16143a;
+  --color-brain-rule-to: #8b6cf3;
   --radius: 0.5rem;
   /* Corner radius of the shared button primitives. */
   --radius-button: 0.375rem;

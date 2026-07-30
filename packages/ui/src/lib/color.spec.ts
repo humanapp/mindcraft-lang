@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { contrastRatio, readableInk } from "./color";
+import { contrastRatio, readableInk, saturateColor } from "./color";
 
 /** The WCAG AA minimum contrast ratio for normal-size text. */
 const kAaMinimum = 4.5;
@@ -16,6 +16,18 @@ const kJustBelowCrossover = "#757575";
 
 /** A grey whose luminance sits just above the black/white crossover. */
 const kJustAboveCrossover = "#767676";
+
+/** Channel values of a hex color, as `[r, g, b]`. */
+function channels(hex: string): [number, number, number] {
+  const num = Number.parseInt(hex.replace("#", ""), 16);
+  return [(num >> 16) & 0xff, (num >> 8) & 0xff, num & 0xff];
+}
+
+/** Spread between a hex color's strongest and weakest channel, which falls as the color mutes. */
+function channelSpread(hex: string): number {
+  const [r, g, b] = channels(hex);
+  return Math.max(r, g, b) - Math.min(r, g, b);
+}
 
 /** Every hex color in an evenly spaced sweep of the sRGB cube, plus the greys. */
 function sweepColors(): string[] {
@@ -44,6 +56,32 @@ describe("contrastRatio", () => {
 
   test("reads uppercase and lowercase hex identically", () => {
     assert.equal(contrastRatio("#AA94EB", "#000000"), contrastRatio("#aa94eb", "#000000"));
+  });
+});
+
+describe("saturateColor", () => {
+  const kSaturated = ["#3adcfe", "#3affb3", "#aa94eb", "#e57373"];
+
+  test("a negative percent mutes the color toward grey", () => {
+    for (const color of kSaturated) {
+      assert.ok(channelSpread(saturateColor(color, -0.3)) < channelSpread(color), `${color} did not mute at -0.3`);
+    }
+  });
+
+  test("mutes fully to grey at -1", () => {
+    for (const color of kSaturated) {
+      const [r, g, b] = channels(saturateColor(color, -1));
+      assert.equal(r, g);
+      assert.equal(g, b);
+    }
+  });
+
+  test("muting keeps the dominant channel, so the hue survives", () => {
+    for (const color of kSaturated) {
+      const before = channels(color);
+      const after = channels(saturateColor(color, -0.3));
+      assert.equal(after.indexOf(Math.max(...after)), before.indexOf(Math.max(...before)));
+    }
   });
 });
 

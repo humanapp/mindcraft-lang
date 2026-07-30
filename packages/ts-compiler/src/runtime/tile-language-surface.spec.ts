@@ -335,10 +335,10 @@ export default Sensor({
 });
 `;
 
-  test("an inline sensor alone on the WHEN side reads through its frame", () => {
+  test("an inline sensor alone on the WHEN side reads with no subject, still using its form", () => {
     const { services, tiles } = compileTiles({ "level.ts": INLINE_STATE_SENSOR });
     const tile = requireTile(tiles, sensorTileId("snlevel"));
-    assert.equal(projectedText(services, [tile]), "When I am warm.");
+    assert.equal(projectedText(services, [tile]), "When warm.");
   });
 
   test("an inline sensor continued by an expression reads subjectlessly, still using its form", () => {
@@ -374,7 +374,7 @@ export default Sensor({
     assert.equal(tile.capabilities().get(CoreCapabilityBits.PresenceGated), 1);
     assert.equal(tile.metadata?.language?.form, "thirsty");
     assert.equal(tile.metadata?.language?.frame, "state");
-    assert.equal(projectedText(services, [tile]), "When I sense thirsty.", "the gate selects the sentence template");
+    assert.equal(projectedText(services, [tile]), "When I am thirsty.", "the authored frame selects the template");
   });
 });
 

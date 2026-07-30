@@ -98,6 +98,7 @@ function renderStrip(color: string | undefined, tileDef: IBrainTileDef): string 
     sections: [section(entries)],
     filter: "",
     isUnknown: false,
+    commitsWordInProgress: false,
     setFilter: () => {},
     commit: () => {},
     commitByKey: () => {},

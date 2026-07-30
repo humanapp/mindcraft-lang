@@ -239,12 +239,31 @@ function fuzzyTileMatch(filter: string, text: string): boolean {
  *
  * - "exact" -- the whole label is the filter text
  * - "prefix" -- the label starts with the filter text
- * - "substring" -- the filter text appears contiguously inside the label
+ * - "word-prefix" -- the filter text starts a later word of the label, so a
+ *   multi-word form is reachable by any word it opens with
+ * - "substring" -- the filter text appears contiguously inside the label,
+ *   starting inside a word
  * - "fuzzy" -- every character of the filter text appears in the label, in any order
  */
-type LabelMatchQuality = "exact" | "prefix" | "substring" | "fuzzy";
+type LabelMatchQuality = "exact" | "prefix" | "word-prefix" | "substring" | "fuzzy";
 
-const labelMatchRank: Record<LabelMatchQuality, number> = { exact: 0, prefix: 1, substring: 2, fuzzy: 3 };
+const labelMatchRank: Record<LabelMatchQuality, number> = {
+  exact: 0,
+  prefix: 1,
+  "word-prefix": 2,
+  substring: 3,
+  fuzzy: 4,
+};
+
+/** True when `needle` starts a word of `haystack` other than its first. */
+function startsLaterWord(needle: string, haystack: string): boolean {
+  let at = haystack.indexOf(needle);
+  while (at > 0) {
+    if (haystack[at - 1] === " ") return true;
+    at = haystack.indexOf(needle, at + 1);
+  }
+  return false;
+}
 
 /**
  * The quality with which `label` matches `filter`, or undefined when the label
@@ -257,8 +276,24 @@ function classifyLabelMatch(filter: string, label: string): LabelMatchQuality | 
   const haystack = label.trim().toLowerCase();
   if (haystack === needle) return "exact";
   if (haystack.startsWith(needle)) return "prefix";
+  if (startsLaterWord(needle, haystack)) return "word-prefix";
   if (haystack.includes(needle)) return "substring";
   return fuzzyTileMatch(needle, haystack) ? "fuzzy" : undefined;
+}
+
+/** The one candidate of `candidates` whose label matches `filter` at `quality`, or undefined when they do not number one. */
+function uniqueMatchAt(
+  candidates: readonly StripCandidate[],
+  filter: string,
+  quality: LabelMatchQuality
+): StripCandidate | undefined {
+  const matched = candidates.filter((candidate) => classifyLabelMatch(filter, candidate.label) === quality);
+  return matched.length === 1 ? matched[0] : undefined;
+}
+
+/** True when any candidate's label matches `filter` at `quality`. */
+function hasMatchAt(candidates: readonly StripCandidate[], filter: string, quality: LabelMatchQuality): boolean {
+  return candidates.some((candidate) => classifyLabelMatch(filter, candidate.label) === quality);
 }
 
 /**
@@ -286,8 +321,10 @@ export type CandidateCommitKey = "enter" | "tab" | "space";
  * The candidate a commit key places, or undefined when the key must not
  * commit. Enter and Tab take the top visible candidate, which is the best
  * match once `visible` comes from {@link filterStripCandidates}; Space takes an
- * exact label match, or a unique prefix match when no label matches exactly.
- * Empty filter text and text matching no candidate never commit.
+ * exact label match, else a unique prefix match, else -- when no label starts
+ * with the text at all -- a unique match on a later word of a label, so a word
+ * of a multi-word form commits without the words ahead of it. Empty filter text
+ * and text matching no candidate never commit.
  *
  * A minted variable is committed by a key only when the filter text declares
  * variable intent with the `$` accelerator, so a mistyped word never becomes a
@@ -307,8 +344,8 @@ export function decideCandidateCommit(
   if (key === "enter" || key === "tab") return eligible[0];
   const exact = eligible.find((candidate) => classifyLabelMatch(intent.text, candidate.label) === "exact");
   if (exact) return exact;
-  const prefixed = eligible.filter((candidate) => classifyLabelMatch(intent.text, candidate.label) === "prefix");
-  return prefixed.length === 1 ? prefixed[0] : undefined;
+  if (hasMatchAt(eligible, intent.text, "prefix")) return uniqueMatchAt(eligible, intent.text, "prefix");
+  return uniqueMatchAt(eligible, intent.text, "word-prefix");
 }
 
 /** True when the user has typed text that matches no candidate; such text can never commit. */

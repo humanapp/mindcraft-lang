@@ -860,7 +860,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
             className="overflow-hidden grow rounded-lg"
             style={{
               background:
-                "radial-gradient(130% 90% at 50% -10%, rgba(139, 108, 243, 0.14) 0%, transparent 55%), radial-gradient(circle at center, rgba(255, 255, 255, 0.035) 1px, transparent 1.3px), linear-gradient(160deg, #191338 0%, #0E0A20 100%)",
+                "radial-gradient(130% 90% at 50% -10%, var(--color-brain-desk-glow) 0%, transparent 55%), radial-gradient(circle at center, rgba(255, 255, 255, 0.035) 1px, transparent 1.3px), linear-gradient(160deg, var(--color-brain-desk-from) 0%, var(--color-brain-desk-to) 100%)",
               backgroundSize: "100% 100%, 22px 22px, 100% 100%",
               boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 4px 20px rgba(0, 0, 0, 0.45)",
             }}

@@ -1,9 +1,10 @@
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type { SentenceSegment } from "@mindcraft-lang/core/brain/language-service";
-import { flattenRuleTiles, projectRuleSentence } from "@mindcraft-lang/core/brain/language-service";
+import { flattenRuleTiles, projectRuleSentence, whenTriggerWord } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalizer } from "./BrainEditorContext";
+import { composePivotReading, composeSentenceReading } from "./sentence-composer";
 import {
   changedSentenceSegments,
   type SentenceSegmentIdentity,
@@ -34,17 +35,42 @@ interface BrainRuleSentenceProps {
   ruleDef: BrainRuleDef;
   /** The page editor's update counter; every document change re-reads the sentence. */
   updateCounter: number;
+  /**
+   * The composer's filter input, rendered at the position the sentence grows
+   * from. Present while the rule is armed from its sentence line, which is also
+   * what keeps the line rendered for a rule that projects no segments yet, and
+   * what puts the line in its composition reading.
+   */
+  composerInput?: ReactNode;
+  /**
+   * True while the composer sits on the DO side of a typed pivot, which the line
+   * reads as a comma -- preceded by the trigger word when the WHEN side it
+   * pivoted from has no words of its own.
+   */
+  pivotComma?: boolean;
 }
 
 /**
  * The rule read as a sentence, under its tile row. The sentence is derived at
  * render from the rule and the active locale -- nothing is stored and nothing
  * enters the command history -- so it re-reads itself on every edit, briefly
- * lighting the words whose tiles changed. A rule that projects no segments
- * renders nothing.
+ * lighting the words whose tiles changed. A rule that projects no segments and
+ * hosts no composer input renders nothing.
+ *
+ * While the composer's input is hosted here the line reads in composition:
+ * see {@link composeSentenceReading} for what a rule under composition shows,
+ * and {@link composePivotReading} for what a typed pivot adds to it. The settled
+ * reading returns as soon as the input leaves.
  */
-export function BrainRuleSentence({ ruleDef, updateCounter }: BrainRuleSentenceProps) {
-  const { segments, tiles } = useRuleSentence(ruleDef, updateCounter);
+export function BrainRuleSentence({ ruleDef, updateCounter, composerInput, pivotComma }: BrainRuleSentenceProps) {
+  const { segments: settled, tiles } = useRuleSentence(ruleDef, updateCounter);
+  const localizer = useLocalizer();
+  const isComposing = composerInput !== undefined;
+  const segments = useMemo(() => (isComposing ? composeSentenceReading(settled) : settled), [isComposing, settled]);
+  const pivot = useMemo(
+    () => (pivotComma ? composePivotReading(segments, whenTriggerWord(localizer)) : []),
+    [pivotComma, segments, localizer]
+  );
   const identities = useMemo(() => sentenceSegmentIdentities(segments, tiles), [segments, tiles]);
   const previousRef = useRef<SentenceSegmentIdentity[]>([]);
   const [highlighted, setHighlighted] = useState<ReadonlySet<number>>(noHighlight);
@@ -60,7 +86,7 @@ export function BrainRuleSentence({ ruleDef, updateCounter }: BrainRuleSentenceP
     return () => clearTimeout(timer);
   }, [identities]);
 
-  if (segments.length === 0) {
+  if (segments.length === 0 && !isComposing) {
     return null;
   }
 
@@ -94,6 +120,10 @@ export function BrainRuleSentence({ ruleDef, updateCounter }: BrainRuleSentenceP
           </span>
         );
       })}
+      {pivot.length > 0 && (
+        <span data-composer-pivot-comma={ruleDef.id()}>{pivot.map((segment) => segment.text).join("")}</span>
+      )}
+      {composerInput}
     </p>
   );
 }

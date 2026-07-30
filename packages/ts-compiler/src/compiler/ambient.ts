@@ -418,12 +418,12 @@ const AMBIENT_MODULE_END = `
     form?: string;
     /**
      * How the sentence introduces this word when the tile starts a rule's WHEN
-     * side. Use \`"verb"\` for something the entity does (\`form: "hear"\` reads
-     * "When I hear a bang"), \`"state"\` for something it is -- the sentence adds
-     * the "am", so \`form: "hungry"\` reads "When I am hungry" -- or \`"event"\`
-     * for something that happens to it (\`form: "my timer ends"\` reads "When my
-     * timer ends"). Defaults to \`"verb"\`. An actuator never starts a WHEN side,
-     * so setting this on one changes nothing.
+     * side. Use \`"verb"\` for an action (\`form: "hear"\` reads "When I hear a
+     * bang"), \`"state"\` for a condition -- the sentence adds the "am", so
+     * \`form: "hungry"\` reads "When I am hungry" -- or \`"event"\` for a
+     * happening (\`form: "my timer ends"\` reads "When my timer ends"). Defaults
+     * to \`"verb"\`. An actuator never starts a WHEN side, so setting this on
+     * one changes nothing.
      */
     frame?: "verb" | "state" | "event";
     /**

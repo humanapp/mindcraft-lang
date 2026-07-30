@@ -88,4 +88,11 @@
   --color-chart-5: oklch(65% 0.18 25);
   /* Game backdrop -- app-local; the admired navy behind the simulation. */
   --color-canvas: #2d3561;
+  /* Brain editor canvas: deep navy recessed below the editor frame
+     (--color-card 30%); rule cards sit between the desk and the frame. */
+  --color-brain-desk-from: oklch(15% 0.035 262);
+  --color-brain-desk-to: oklch(10% 0.028 262);
+  --color-brain-desk-glow: oklch(62% 0.15 258 / 0.08);
+  --color-brain-rule-from: oklch(24% 0.05 262);
+  --color-brain-rule-to: oklch(19% 0.045 262);
 }

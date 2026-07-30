@@ -124,6 +124,16 @@ export class BrainCommandHistory {
   }
 
   /**
+   * Get the newest command on the undo stack -- the entry {@link undo} would
+   * revert -- or undefined when the stack is empty. Reads the entry without
+   * changing the history.
+   */
+  peekUndo(): BrainCommand | undefined {
+    const size = this.undoStack.size();
+    return size > 0 ? this.undoStack.get(size - 1) : undefined;
+  }
+
+  /**
    * Get the description of the next command that would be undone.
    */
   getUndoDescription(): string | undefined {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BrainRuleEditor } from "./BrainRuleEditor";
 import { useRuleDrag } from "./hooks/useRuleDrag";
 import { RuleDragProvider } from "./RuleDragContext";
+import { decideTrailingEmptyRule } from "./trailing-empty-rule";
 
 interface BrainPageEditorProps {
   pageDef: BrainPageDef;
@@ -50,6 +51,9 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
   const [ruleCount, setRuleCount] = useState(pageDef.children().size());
   const [updateCounter, setUpdateCounter] = useState(0);
   const parseTimerRef = useRef<thread | null>(null);
+  // The trailing empty rules this editor appended, which are the only ones it
+  // ever takes back.
+  const appendedRulesRef = useRef<WeakSet<BrainRuleDef>>(new WeakSet());
   const PARSE_DEBOUNCE_SECS = 0.3;
 
   useEffect(() => {
@@ -110,23 +114,31 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
     };
   }, [pageDef]);
 
+  // The page ends with exactly one empty rule: one is appended once the last
+  // rule carries tiles, and a rule this editor appended is given back once
+  // another empty rule stands ahead of it -- which is what undoing composed
+  // words leaves behind. Each pass takes one step and re-runs on the change it
+  // makes, so the page settles.
   // biome-ignore lint/correctness/useExhaustiveDependencies: ruleCount and updateCounter are intentional trigger signals
   useEffect(() => {
     const children = pageDef.children();
-    if (children.size() === 0) {
-      // No rules exist, append one
-      pageDef.appendNewRule();
-    } else {
-      // Check if the last outermost rule is empty
-      const lastRule = children.get(children.size() - 1);
-      if (lastRule && !lastRule.isEmpty(true)) {
-        // Last rule is not empty, append a new empty one
-        pageDef.appendNewRule();
-      }
+    const isEmpty: boolean[] = [];
+    const isAppended: boolean[] = [];
+    for (let i = 0; i < children.size(); i++) {
+      const ruleDef = children.get(i) as BrainRuleDef;
+      isEmpty.push(ruleDef.isEmpty(true));
+      isAppended.push(appendedRulesRef.current.has(ruleDef));
     }
+    const action = decideTrailingEmptyRule({ isEmpty, isAppended });
+    if (action.kind === "append") appendedRulesRef.current.add(pageDef.appendNewRule());
+    else if (action.kind === "remove") pageDef.removeRuleAtIndex(action.index);
   }, [pageDef, ruleCount, updateCounter]);
 
-  const flattenedRules = flattenRules(pageDef.children().toArray() as BrainRuleDef[]);
+  const topLevelRules = pageDef.children().toArray() as BrainRuleDef[];
+  const flattenedRules = flattenRules(topLevelRules);
+  // The page keeps an empty rule at its end; that rule carries the sentence
+  // composer's entry point.
+  const lastTopLevelRule = topLevelRules.length > 0 ? topLevelRules[topLevelRules.length - 1] : undefined;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dragController = useRuleDrag({ pageDef, commandHistory, containerRef, zoom });
@@ -158,6 +170,7 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
               lineNumber={flatRule.lineNumber}
               updateCounter={updateCounter}
               commandHistory={commandHistory}
+              isLastRule={flatRule.ruleDef === lastTopLevelRule}
             />
           ))}
         </div>

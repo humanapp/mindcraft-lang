@@ -68,10 +68,10 @@ export enum TilePlacement {
  * WHEN side as a sensor. A WHEN side headed by any other kind of tile reads as
  * a bare condition and takes no frame.
  *
- * - "verb" -- an action the creature takes ("When I hear ...")
- * - "state" -- a condition it is in, rendered with the locale's copula
+ * - "verb" -- an action ("When I hear ...")
+ * - "state" -- a condition, rendered with the locale's copula
  *   ("When I am hungry")
- * - "event" -- something that happens to it ("When this page starts")
+ * - "event" -- a happening ("When this page starts")
  */
 export type TileSentenceFrame = "verb" | "state" | "event";
 

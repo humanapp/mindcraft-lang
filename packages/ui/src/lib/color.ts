@@ -74,7 +74,11 @@ export function adjustColor(hex: string, percent: number): string {
   return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
 }
 
-/** Increase a hex color's saturation by a percentage (0 to 1). */
+/**
+ * Adjust a hex color's saturation by a percentage (-1 to +1), preserving its
+ * hue and lightness. A positive percent saturates; a negative percent mutes
+ * toward grey, reaching full grey at -1.
+ */
 export function saturateColor(hex: string, percent: number): string {
   const num = Number.parseInt(hex.replace("#", ""), 16);
   const r = (num >> 16) & 0xff;

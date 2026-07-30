@@ -6,6 +6,13 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
 export type ArmedTargetMode = "append" | "insert" | "replace";
 
 /**
+ * Where the arming happened, which selects where the candidate strip's filter
+ * input renders: in the strip's own tray, or inline at the position the rule's
+ * sentence grows from.
+ */
+export type ArmedTargetEntry = "tray" | "sentence";
+
+/**
  * The current target for a tile choice: which rule and side the picker is
  * armed for, how the chosen tile is applied, and the selection callback the
  * arming component supplied.
@@ -20,6 +27,8 @@ export interface ArmedTileTarget {
   mode: ArmedTargetMode;
   /** Index of the targeted tile for insert/replace; undefined for append. */
   tileIndex?: number;
+  /** Where the arming happened; defaults to `tray` when omitted. */
+  entry?: ArmedTargetEntry;
   /** Receives the chosen tile; returns true when the selection completed and the picker should close. */
   onTileSelected: (tileDef: IBrainTileDef) => boolean;
 }

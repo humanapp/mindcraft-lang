@@ -4,8 +4,9 @@
  * ranker orders the offering by category priority and then by provenance, which
  * candidate a commit key places, that unknown text can never commit, that typed
  * digits mint a literal candidate, that an unknown word and the `$` accelerator
- * mint variable candidates of the types the position accepts, and which
- * presentation each candidate renders in.
+ * mint variable candidates of the types the position accepts, which
+ * presentation each candidate renders in, and that a word of a multi-word form
+ * commits without the words ahead of it.
  */
 
 import assert from "node:assert/strict";
@@ -19,6 +20,7 @@ import {
   isVariableFactoryTileId,
   mkControlFlowTileId,
   mkLiteralFactoryTileId,
+  mkModifierTileId,
   mkOperatorTileId,
   mkVariableFactoryTileId,
   RuleSide,
@@ -30,12 +32,14 @@ import {
   TileCompatibility,
   type TileSuggestion,
   type TileSuggestionResult,
+  tileSentenceWord,
 } from "@mindcraft-lang/core/brain/language-service";
 import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
   type BrainTileFactoryDef,
   type BrainTileLiteralDef,
+  BrainTileModifierDef,
   BrainTileSensorDef,
   type BrainTileVariableDef,
 } from "@mindcraft-lang/core/brain/tiles";
@@ -44,10 +48,13 @@ import {
   CoreHostActions,
   CoreOpId,
   CoreTypeIds,
+  choice,
   mkActionDescriptor,
   mkActuatorTileId,
   mkCallDef,
   mkSensorTileId,
+  mod,
+  optional,
   type TypeId,
   VOID_VALUE,
 } from "@mindcraft-lang/core/runtime";
@@ -233,12 +240,61 @@ function registerPlatformInlineSensor(): string {
   return tileDef.tileId;
 }
 
+/** Modifier ids of the object modifiers whose sentence words open with an article. */
+const articleModifierIds = {
+  carnivore: "strip-object-carnivore",
+  plant: "strip-object-plant",
+} as const;
+
+/** Tile id of the object modifier `modifierId` names. */
+function articleModifierTileId(modifierId: string): string {
+  return mkModifierTileId(modifierId);
+}
+
+/**
+ * Register object modifier tiles worded as the host apps' own object tiles are:
+ * the label is the bare noun a user types, and the sentence form the chip is
+ * labelled with opens with an article.
+ */
+function registerArticleModifiers(): void {
+  const specs: readonly (readonly [string, string, string])[] = [
+    [articleModifierIds.carnivore, "carnivore", "a carnivore"],
+    [articleModifierIds.plant, "plant", "a plant"],
+  ];
+  for (const [tileId, label, form] of specs) {
+    services.edit.tiles.registerTileDef(new BrainTileModifierDef(tileId, { metadata: { label, language: { form } } }));
+  }
+}
+
+/** Tile id of the sensor whose one optional slot takes an article-bearing object modifier. */
+let objectSensorTileId: string;
+
+/** Register a sensor shaped like the apps' object sensors: one optional choice of object modifiers. */
+function registerObjectSensor(): string {
+  const fnEntry = services.runtime.functions.register(
+    4915,
+    "strip-object-sensor",
+    false,
+    { exec: () => VOID_VALUE },
+    mkCallDef(bag(optional(choice(mod(articleModifierIds.carnivore), mod(articleModifierIds.plant)))))
+  );
+  const tileDef = new BrainTileSensorDef(
+    "strip-object-sensor",
+    mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Boolean),
+    { metadata: { label: "bump", language: { form: "bump" } } }
+  );
+  services.edit.tiles.registerTileDef(tileDef);
+  return tileDef.tileId;
+}
+
 before(() => {
   services = __test__createBrainServices();
   seeTileIds = registerSeeCollisionSensors();
   rankingActuatorTileIds = registerRankingActuators();
   provenanceSensorTileIds = registerProvenanceSensors();
   platformInlineSensorTileId = registerPlatformInlineSensor();
+  registerArticleModifiers();
+  objectSensorTileId = registerObjectSensor();
 });
 
 function coreTile(tileId: string): IBrainTileDef {
@@ -1143,5 +1199,72 @@ describe("toCandidateEntries", () => {
       assert.equal(entries[i].candidate, candidates[i]);
       assert.equal(entries[i].presentation, "seated");
     }
+  });
+});
+
+describe("an object word whose sentence form opens with an article", () => {
+  /**
+   * The oracle's offering at the object position after the object sensor,
+   * labelled with the word each tile's sentence reads it as -- the label the
+   * strip puts on its chips.
+   */
+  function offeringAfterObjectSensor(): StripCandidate[] {
+    const brain = BrainDef.emptyBrainDef(services);
+    const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
+    rule.when().appendTile(coreTile(objectSensorTileId));
+    const catalogs = List.from<ITileCatalog>([services.edit.tiles, brain.catalog()]).asReadonly();
+    const tileSet = rule.when();
+    const context = buildInsertionContext({
+      side: RuleSide.When,
+      expr: tileSet.expr(),
+      existingTiles: tileSet.tiles(),
+      ruleDef: rule,
+    });
+    const localizer = brain.servicesLocalizer();
+    return buildStripCandidates(suggestTiles(context, catalogs, services), (tileDef) =>
+      tileSentenceWord(tileDef, localizer)
+    );
+  }
+
+  /** The bare noun a user types for the object modifier, which is the tile's own label. */
+  function objectNoun(tileId: string): string {
+    const noun = coreTile(tileId).metadata?.label;
+    assert.ok(noun, "the object modifier carries the noun as its label");
+    return noun;
+  }
+
+  test("the position offers the object modifiers", () => {
+    const offered = offeringAfterObjectSensor().map((c) => c.tileDef.tileId);
+    assert.ok(
+      offered.includes(articleModifierTileId(articleModifierIds.plant)),
+      "the object slot offers the object modifier"
+    );
+  });
+
+  test("the chip label is the sentence form, which the typed noun does not prefix", () => {
+    const offering = offeringAfterObjectSensor();
+    const plant = offering.find((c) => c.tileDef.tileId === articleModifierTileId(articleModifierIds.plant));
+    assert.ok(plant);
+    assert.equal(plant.label.startsWith(objectNoun(articleModifierTileId(articleModifierIds.plant))), false);
+  });
+
+  test("the typed noun narrows the offering to that object word", () => {
+    const noun = objectNoun(articleModifierTileId(articleModifierIds.plant));
+    const visible = filterStripCandidates(offeringAfterObjectSensor(), noun);
+    assert.equal(visible[0]?.tileDef.tileId, articleModifierTileId(articleModifierIds.plant));
+  });
+
+  test("Space commits the object word typed without its article", () => {
+    const noun = objectNoun(articleModifierTileId(articleModifierIds.plant));
+    const visible = filterStripCandidates(offeringAfterObjectSensor(), noun);
+    assert.equal(
+      decideCandidateCommit(visible, noun, "space")?.tileDef.tileId,
+      articleModifierTileId(articleModifierIds.plant)
+    );
+  });
+
+  test("Space still refuses the article the object words share", () => {
+    const visible = filterStripCandidates(offeringAfterObjectSensor(), "a");
+    assert.equal(decideCandidateCommit(visible, "a", "space"), undefined);
   });
 });
