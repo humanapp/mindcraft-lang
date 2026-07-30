@@ -162,11 +162,12 @@ function stripState(overrides: Partial<CandidateStripState>): CandidateStripStat
     sections: [],
     filter: "",
     isUnknown: false,
-    commitsWordInProgress: false,
+    acceptsTextLiteral: false,
+    textLiteralCandidate: () => undefined,
     setFilter: () => {},
     commit: () => {},
     commitByKey: () => {},
-    commitFromKey: () => undefined,
+    candidateFromKey: () => undefined,
     ...overrides,
   };
 }

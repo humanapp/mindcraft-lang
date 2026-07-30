@@ -67,13 +67,16 @@ import {
   type CandidateProvenanceContext,
   candidateProvenanceBand,
   categoryPriorityCandidateRanker,
+  classifyTileMatch,
   decideCandidateCommit,
   filterStripCandidates,
   groupStripCandidates,
   identityCandidateRanker,
   isUnknownFilterText,
   mintNumberLiteralCandidate,
+  mintTextLiteralCandidate,
   mintVariableCandidates,
+  offersTextLiteral,
   parseStripFilter,
   resolveStripOffering,
   type StripCandidate,
@@ -335,14 +338,13 @@ function result(exact: TileSuggestion[], withConversion: TileSuggestion[]): Tile
   return { exact: List.from(exact), withConversion: List.from(withConversion) };
 }
 
-/** The tile's authored display label, falling back to its id for tiles that carry no metadata label. */
-function tileLabel(tileDef: IBrainTileDef): string {
-  return tileDef.metadata?.label ?? tileDef.tileId;
-}
-
-/** The label the strip resolves a tile by: a variable's own name, and every other tile's authored label. */
+/**
+ * The label the strip resolves a tile by, exactly as the strip itself does: the
+ * word the tile's sentence reads it as, which is a variable's own name, a
+ * literal's value, and every other tile's authored form or label.
+ */
 function stripLabel(tileDef: IBrainTileDef): string {
-  return tileDef.kind === "variable" ? (tileDef as BrainTileVariableDef).varName : tileLabel(tileDef);
+  return tileSentenceWord(tileDef, services.app.localizer);
 }
 
 /**
@@ -414,6 +416,7 @@ const notTileId = mkOperatorTileId(CoreOpId.Not);
 const negTileId = mkOperatorTileId(CoreOpId.Negate);
 const numberVarFactoryId = mkVariableFactoryTileId(CoreVariableFactoryId.Number);
 const numberLiteralFactoryId = mkLiteralFactoryTileId(CoreLiteralFactoryId.Number);
+const stringLiteralFactoryId = mkLiteralFactoryTileId(CoreLiteralFactoryId.String);
 const openParenTileId = mkControlFlowTileId(CoreControlFlowId.OpenParen);
 const booleanVarFactoryId = mkVariableFactoryTileId(CoreVariableFactoryId.Boolean);
 const stringVarFactoryId = mkVariableFactoryTileId(CoreVariableFactoryId.String);
@@ -704,6 +707,89 @@ describe("mintNumberLiteralCandidate", () => {
 
     assert.equal(mintNumberLiteralCandidate(candidates, "1.", labelOf), undefined);
     assert.equal(mintNumberLiteralCandidate(candidates, "-", labelOf), undefined);
+  });
+});
+
+describe("mintTextLiteralCandidate", () => {
+  test("the empty WHEN side accepts a text literal, and a position of bare operators does not", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+
+    assert.equal(offersTextLiteral(candidates), true);
+    assert.equal(offersTextLiteral([candidate(notTileId, "not")]), false);
+  });
+
+  test("a text literal reached only through a conversion is no text literal position", () => {
+    const converted = [conversionCandidate(stringLiteralFactoryId, "create a text tile")];
+
+    assert.equal(offersTextLiteral(converted), false);
+    assert.equal(
+      mintTextLiteralCandidate(converted, "hi", (tileDef) => tileDef.tileId),
+      undefined
+    );
+  });
+
+  test("a typed text value mints a literal carrying the value verbatim", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+
+    const minted = mintTextLiteralCandidate(candidates, "hello world. ok", sentenceLabel(brain));
+
+    assert.ok(minted && minted.origin.kind === "minted-literal");
+    assert.equal(minted.tileDef.kind, "literal");
+    assert.equal((minted.tileDef as BrainTileLiteralDef).valueType, CoreTypeIds.String);
+    assert.equal((minted.tileDef as BrainTileLiteralDef).value, "hello world. ok");
+    assert.equal(minted.origin.value, "hello world. ok");
+    assert.equal(minted.origin.displayFormat, LiteralDisplayFormats.Default);
+    assert.equal(minted.group, "literal");
+  });
+
+  test("the empty value mints its own literal", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+
+    const minted = mintTextLiteralCandidate(candidates, "", sentenceLabel(brain));
+
+    assert.ok(minted && minted.origin.kind === "minted-literal");
+    assert.equal((minted.tileDef as BrainTileLiteralDef).value, "");
+  });
+
+  test("mints nothing where the position offers no text literal factory", () => {
+    assert.equal(
+      mintTextLiteralCandidate([candidate(notTileId, "not")], "hi", (tileDef) => tileDef.tileId),
+      undefined
+    );
+  });
+
+  test("each distinct value registers its own tile, and a repeated value reuses the registered one", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+    const first = mintTextLiteralCandidate(candidates, "go left", labelOf);
+    const second = mintTextLiteralCandidate(candidates, "go right", labelOf);
+    assert.ok(first && first.origin.kind === "minted-literal");
+    assert.ok(second && second.origin.kind === "minted-literal");
+
+    const placedFirst = manufactureLiteralTile(
+      first.origin.factoryTileDef,
+      brain.catalog(),
+      first.origin.value,
+      first.origin.displayFormat
+    );
+    const placedSecond = manufactureLiteralTile(
+      second.origin.factoryTileDef,
+      brain.catalog(),
+      second.origin.value,
+      second.origin.displayFormat
+    );
+
+    assert.ok(placedFirst && placedSecond);
+    assert.notEqual(placedFirst.tileId, placedSecond.tileId, "distinct values are distinct tiles");
+    assert.equal(placedFirst.tileId, first.tileDef.tileId, "the placed tile is the one the chip previewed");
+    assert.equal(brain.catalog().get(placedFirst.tileId), placedFirst);
+    const again = manufactureLiteralTile(
+      first.origin.factoryTileDef,
+      brain.catalog(),
+      first.origin.value,
+      first.origin.displayFormat
+    );
+    assert.equal(again, placedFirst, "the same value reuses the registered literal");
   });
 });
 
@@ -1514,5 +1600,213 @@ describe("an object word whose sentence form opens with an article", () => {
   test("Space still refuses the article the object words share", () => {
     const visible = filterStripCandidates(offeringAfterObjectSensor(), "a");
     assert.equal(decideCandidateCommit(visible, "a", "space"), undefined);
+  });
+});
+
+describe("operator symbol aliases", () => {
+  /** Each symbol the composer reaches an operator by, paired with the tile it places. */
+  const aliasTable: readonly (readonly [string, string])[] = [
+    ["+", mkOperatorTileId(CoreOpId.Add)],
+    ["-", mkOperatorTileId(CoreOpId.Subtract)],
+    ["*", mkOperatorTileId(CoreOpId.Multiply)],
+    ["/", mkOperatorTileId(CoreOpId.Divide)],
+    [">", mkOperatorTileId(CoreOpId.GreaterThan)],
+    [">=", mkOperatorTileId(CoreOpId.GreaterThanOrEqualTo)],
+    ["<", mkOperatorTileId(CoreOpId.LessThan)],
+    ["<=", mkOperatorTileId(CoreOpId.LessThanOrEqualTo)],
+    ["==", mkOperatorTileId(CoreOpId.EqualTo)],
+    ["!=", mkOperatorTileId(CoreOpId.NotEqualTo)],
+    ["=", mkOperatorTileId(CoreOpId.Assign)],
+  ];
+
+  const subTileId = mkOperatorTileId(CoreOpId.Subtract);
+  const greaterThanTileId = mkOperatorTileId(CoreOpId.GreaterThan);
+  const greaterOrEqualTileId = mkOperatorTileId(CoreOpId.GreaterThanOrEqualTo);
+
+  /**
+   * The oracle's offering at the position that follows a number operand on
+   * `side`, which is where an infix operator is valid. `sentenceWords` labels the
+   * candidates with the word each tile's sentence reads it as, rather than the
+   * authored label the strip filters by.
+   */
+  function offeringAfterOperand(
+    side: RuleSide,
+    seed: "literal" | "variable",
+    sentenceWords = false
+  ): { candidates: StripCandidate[]; brain: BrainDef } {
+    const brain = BrainDef.emptyBrainDef(services);
+    const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
+    const tileSet = side === RuleSide.When ? rule.when() : rule.do();
+    const operand =
+      seed === "literal"
+        ? manufactureLiteralTile(coreTile(numberLiteralFactoryId) as BrainTileFactoryDef, brain.catalog(), 1)
+        : manufactureVariableTile(coreTile(numberVarFactoryId) as BrainTileFactoryDef, brain.catalog(), "speedy");
+    assert.ok(operand, "the operand the operator position follows is placed");
+    tileSet.appendTile(operand);
+    const catalogs = List.from<ITileCatalog>([services.edit.tiles, brain.catalog()]).asReadonly();
+    const context = buildInsertionContext({
+      side,
+      expr: tileSet.expr(),
+      existingTiles: tileSet.tiles(),
+      ruleDef: rule,
+    });
+    const suggested = suggestTiles(context, catalogs, services);
+    return { candidates: buildStripCandidates(suggested, sentenceWords ? sentenceLabel(brain) : stripLabel), brain };
+  }
+
+  /** The offering `symbol` is typed against: the assignment is a DO-side operator, every other symbol a WHEN-side one. */
+  function operatorOffering(symbol: string): StripCandidate[] {
+    return symbol === "="
+      ? offeringAfterOperand(RuleSide.Do, "variable").candidates
+      : offeringAfterOperand(RuleSide.When, "literal").candidates;
+  }
+
+  test("every symbol resolves to its operator, ranks exact, and commits on every key", () => {
+    for (const [symbol, tileId] of aliasTable) {
+      const candidates = operatorOffering(symbol);
+      assert.ok(
+        candidates.some((c) => c.tileDef.tileId === tileId),
+        `${symbol} is typed at a position offering its operator`
+      );
+
+      const offering = resolveStripOffering(candidates, symbol, stripLabel);
+
+      assert.equal(offering.visible[0]?.tileDef.tileId, tileId, symbol);
+      assert.equal(offering.isUnknown, false, symbol);
+      for (const key of ["enter", "tab", "space"] as const) {
+        assert.equal(decideCandidateCommit(offering.visible, symbol, key)?.tileDef.tileId, tileId, `${symbol} ${key}`);
+      }
+    }
+  });
+
+  test("the alias never becomes the candidate's word", () => {
+    for (const [symbol, tileId] of aliasTable) {
+      const offering = resolveStripOffering(operatorOffering(symbol), symbol, stripLabel);
+      const placed = offering.visible[0];
+
+      assert.ok(placed, symbol);
+      assert.equal(placed.tileDef.tileId, tileId, symbol);
+      assert.equal(placed.label, stripLabel(placed.tileDef), `${symbol} keeps the operator's own word`);
+      assert.notEqual(placed.label, symbol, symbol);
+    }
+  });
+
+  test("a committed alias places the operator tile, whose sentence word is its own", () => {
+    const { candidates, brain } = offeringAfterOperand(RuleSide.When, "literal", true);
+    const labelOf = sentenceLabel(brain);
+
+    const offering = resolveStripOffering(candidates, ">", labelOf);
+    const placed = decideCandidateCommit(offering.visible, ">", "space");
+
+    assert.ok(placed);
+    assert.equal(placed.tileDef.tileId, greaterThanTileId);
+    assert.equal(placed.origin.kind, "suggested");
+    assert.equal(placed.label, tileSentenceWord(coreTile(greaterThanTileId), brain.servicesLocalizer()));
+    assert.notEqual(placed.label, ">");
+  });
+
+  test("a symbol that opens a longer one surfaces both, the exact hit first", () => {
+    const offering = resolveStripOffering(operatorOffering(">"), ">", stripLabel);
+
+    assert.deepEqual(
+      offering.visible.map((c) => c.tileDef.tileId),
+      [greaterThanTileId, greaterOrEqualTileId]
+    );
+    assert.equal(decideCandidateCommit(offering.visible, ">", "space")?.tileDef.tileId, greaterThanTileId);
+  });
+
+  test("the next character narrows to the compound comparison", () => {
+    const offering = resolveStripOffering(operatorOffering(">="), ">=", stripLabel);
+
+    assert.deepEqual(
+      offering.visible.map((c) => c.tileDef.tileId),
+      [greaterOrEqualTileId]
+    );
+  });
+
+  test("text no alias opens matches no operator", () => {
+    const offering = resolveStripOffering(operatorOffering(">"), ">x", stripLabel);
+
+    assert.deepEqual(offering.visible, []);
+    assert.equal(offering.isUnknown, true);
+  });
+
+  test("a word alias climbs the same ladder a label does", () => {
+    assert.equal(classifyTileMatch("a", "plus", ["add"]), "prefix");
+    assert.equal(classifyTileMatch("ad", "plus", ["add"]), "prefix");
+    assert.equal(classifyTileMatch("add", "plus", ["add"]), "exact");
+    assert.equal(classifyTileMatch("adds", "plus", ["add"]), undefined);
+    assert.equal(classifyTileMatch("plus", "plus", ["add"]), "exact");
+    assert.equal(classifyTileMatch("zz", "plus", ["add"]), undefined);
+  });
+
+  test("digits after the symbol leave the alias behind", () => {
+    const offering = resolveStripOffering(operatorOffering("-"), "-5", stripLabel);
+
+    assert.deepEqual(offering.visible, [], "a longer filter opens no alias");
+  });
+
+  test("a typed negative number offers the literal and no operator", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+
+    const offering = resolveStripOffering(candidates, "-5", sentenceLabel(brain));
+
+    assert.equal(offering.visible[0]?.origin.kind, "minted-literal");
+    assert.equal((offering.visible[0].tileDef as BrainTileLiteralDef).value, -5);
+    assert.deepEqual(
+      offering.visible.filter((c) => c.tileDef.kind === "operator"),
+      []
+    );
+    assert.equal(decideCandidateCommit(offering.visible, "-5", "space")?.origin.kind, "minted-literal");
+  });
+
+  test("a lone minus where minus is not valid stays empty and silent", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+
+    const offering = resolveStripOffering(candidates, "-", sentenceLabel(brain));
+
+    assert.deepEqual(offering.visible, []);
+    assert.equal(offering.isUnknown, false);
+    assert.deepEqual(mintedVariables(offering.offered), []);
+    for (const key of ["enter", "tab", "space"] as const) {
+      assert.equal(decideCandidateCommit(offering.visible, "-", key), undefined, key);
+    }
+  });
+
+  test("a number in progress suppresses the mints and the amber, not ordinary matching", () => {
+    const both = [
+      candidate(subTileId, "minus"),
+      candidate(numberLiteralFactoryId, "number"),
+      candidate(numberVarFactoryId, "number variable"),
+    ];
+
+    const offering = resolveStripOffering(both, "-", stripLabel);
+
+    assert.deepEqual(
+      offering.visible.map((c) => c.tileDef.tileId),
+      [subTileId],
+      "the operator the symbol names is offered"
+    );
+    assert.equal(offering.isUnknown, false);
+    assert.deepEqual(mintedVariables(offering.offered), [], "the number in progress mints no variable");
+    assert.equal(
+      decideCandidateCommit(offering.visible, "-", "space")?.tileDef.tileId,
+      subTileId,
+      "what is visible is what commits"
+    );
+  });
+
+  test("a decimal point in progress still suppresses the mints and the amber", () => {
+    const both = [
+      candidate(subTileId, "minus"),
+      candidate(numberLiteralFactoryId, "number"),
+      candidate(numberVarFactoryId, "number variable"),
+    ];
+
+    const offering = resolveStripOffering(both, "1.", stripLabel);
+
+    assert.deepEqual(offering.visible, []);
+    assert.equal(offering.isUnknown, false);
+    assert.deepEqual(mintedVariables(offering.offered), []);
   });
 });

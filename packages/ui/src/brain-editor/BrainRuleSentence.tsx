@@ -2,7 +2,10 @@ import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type { SentenceSegment } from "@mindcraft-lang/core/brain/language-service";
 import { flattenRuleTiles, projectRuleSentence, whenTriggerWord } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
+import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "../lib/utils";
 import { useLocalizer } from "./BrainEditorContext";
 import { composePivotReading, composeSentenceReading } from "./sentence-composer";
 import {
@@ -16,10 +19,31 @@ const kSentenceHighlightMs = 900;
 
 const noHighlight: ReadonlySet<number> = new Set<number>();
 
+/** Whether `tileDef` is a literal holding a number or a text value. */
+function isValueLiteral(tileDef: IBrainTileDef): boolean {
+  if (tileDef.kind !== "literal") {
+    return false;
+  }
+  const valueType = (tileDef as BrainTileLiteralDef).valueType;
+  return valueType === CoreTypeIds.Number || valueType === CoreTypeIds.String;
+}
+
 /** The register a word renders in, or undefined for the sentence's plain reading register. */
 function sentenceRegister(tileDef: IBrainTileDef | undefined): string | undefined {
-  return tileDef?.kind === "variable" ? "variable" : undefined;
+  if (tileDef === undefined) {
+    return undefined;
+  }
+  if (tileDef.kind === "variable") {
+    return "variable";
+  }
+  return isValueLiteral(tileDef) ? "literal" : undefined;
 }
+
+/** The type styles of each sentence register, keyed by the register's name. */
+const registerClasses: Record<string, string> = {
+  variable: "font-mono text-[0.92em] text-violet-200",
+  literal: "font-semibold text-white/90",
+};
 
 /** The rule's sentence in the active locale, with the tiles its words render. */
 function useRuleSentence(ruleDef: BrainRuleDef, revision: number) {
@@ -104,7 +128,7 @@ export function BrainRuleSentence({ ruleDef, updateCounter, composerInput, pivot
         }
         const register = sentenceRegister(tiles[segment.sourceTileIndex]?.tileDef);
         const isLit = highlighted.has(index);
-        const registerClass = register === "variable" ? "font-mono text-[0.92em] text-violet-200" : "";
+        const registerClass = register === undefined ? "" : registerClasses[register];
         const litClass = isLit
           ? "rounded-sm bg-amber-200/25 text-white"
           : "rounded-sm bg-transparent transition-colors duration-700";
@@ -112,7 +136,7 @@ export function BrainRuleSentence({ ruleDef, updateCounter, composerInput, pivot
           <span
             // biome-ignore lint/suspicious/noArrayIndexKey: segments have no identity beyond their position
             key={index}
-            className={`${registerClass} ${litClass}`.trim()}
+            className={cn(registerClass, litClass)}
             data-sentence-register={register}
             data-sentence-tile-index={segment.sourceTileIndex}
           >

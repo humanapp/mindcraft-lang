@@ -15,6 +15,8 @@ import {
   categoryPriorityCandidateRanker,
   decideCandidateCommit,
   groupStripCandidates,
+  mintTextLiteralCandidate,
+  offersTextLiteral,
   resolveStripOffering,
   type StripCandidate,
   shouldOrderPagesFirst,
@@ -67,15 +69,20 @@ export interface CandidateStripState {
   readonly filter: string;
   /** True when the filter text names nothing the strip can place, as opposed to naming nothing yet. */
   readonly isUnknown: boolean;
-  /** True when the word in progress resolves to one candidate, which Space commits. */
-  readonly commitsWordInProgress: boolean;
+  /** True when the armed position accepts a text literal, so a typed quote opens one. */
+  readonly acceptsTextLiteral: boolean;
+  /**
+   * The candidate a text value of `value` places at the armed position, or
+   * undefined when the position accepts no text literal.
+   */
+  textLiteralCandidate(value: string): StripCandidate | undefined;
   setFilter(next: string): void;
   /** Place `candidate` at the armed position through the target's selection callback. */
   commit(candidate: StripCandidate): void;
   /** Place the candidate with `candidateKey`, ignoring keys absent from the offering. */
   commitByKey(candidateKey: string): void;
-  /** Place the candidate a commit key selects, and return it. Returns undefined when the key must not commit. */
-  commitFromKey(key: CandidateCommitKey): StripCandidate | undefined;
+  /** The candidate a commit key places, or undefined when the key must not commit. */
+  candidateFromKey(key: CandidateCommitKey): StripCandidate | undefined;
 }
 
 /**
@@ -235,14 +242,15 @@ export function useCandidateStrip({
     [visible, commit]
   );
 
-  const commitFromKey = useCallback(
-    (key: CandidateCommitKey) => {
-      const candidate = decideCandidateCommit(visible, filter, key);
-      if (!candidate) return undefined;
-      commit(candidate);
-      return candidate;
-    },
-    [visible, filter, commit]
+  const candidateFromKey = useCallback(
+    (key: CandidateCommitKey) => decideCandidateCommit(visible, filter, key),
+    [visible, filter]
+  );
+
+  const acceptsTextLiteral = useMemo(() => offersTextLiteral(ranked), [ranked]);
+  const textLiteralCandidate = useCallback(
+    (value: string) => mintTextLiteralCandidate(ranked, value, labelOf),
+    [ranked, labelOf]
   );
 
   return {
@@ -250,10 +258,11 @@ export function useCandidateStrip({
     sections,
     filter,
     isUnknown: offering.isUnknown,
-    commitsWordInProgress: decideCandidateCommit(visible, filter, "space") !== undefined,
+    acceptsTextLiteral,
+    textLiteralCandidate,
     setFilter,
     commit,
     commitByKey,
-    commitFromKey,
+    candidateFromKey,
   };
 }

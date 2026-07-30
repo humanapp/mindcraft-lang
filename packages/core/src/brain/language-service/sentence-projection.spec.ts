@@ -192,6 +192,13 @@ function makePage(specs: readonly RuleSpec[]): BrainPageDef {
   return page;
 }
 
+/** The reading a tile's own word segment carries: its sentence word, quoted for a text literal. */
+function projectedWord(tileDef: IBrainTileDef): string {
+  const word = tileSentenceWord(tileDef, localizer);
+  const isText = tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.String;
+  return isText ? `"${word}"` : word;
+}
+
 function word(text: string, sourceTileIndex: number): SentenceSegment {
   return { kind: "word", text, sourceTileIndex };
 }
@@ -251,8 +258,8 @@ describe("sentence projection golden segments", () => {
       []
     );
 
-    assert.deepEqual(project(rule), [glue("When I "), word("hear", 0), glue(" "), word("a bang", 1), glue(".")]);
-    assert.equal(projectedText(rule), "When I hear a bang.");
+    assert.deepEqual(project(rule), [glue("When I "), word("hear", 0), glue(" "), word('"a bang"', 1), glue(".")]);
+    assert.equal(projectedText(rule), 'When I hear "a bang".');
   });
 
   test("a state-frame sensor reads through the copula", () => {
@@ -612,7 +619,7 @@ describe("negated WHEN readings", () => {
       [walk()]
     );
 
-    assert.equal(projectedText(rule), "When I do not hear a bang, walk.");
+    assert.equal(projectedText(rule), 'When I do not hear "a bang", walk.');
   });
 
   test("a negated expression keeps its subjectless reading", () => {
@@ -732,7 +739,7 @@ describe("tile sentence words", () => {
         .map((segment) => segment.text);
       for (let i = 0; i < tiles.size(); i++) {
         const tileDef = tiles.get(i).tileDef;
-        assert.ok(words.includes(tileSentenceWord(tileDef, localizer)), tileDef.tileId);
+        assert.ok(words.includes(projectedWord(tileDef)), tileDef.tileId);
       }
     }
   });
@@ -771,6 +778,59 @@ describe("tile sentence words", () => {
       assert.equal(tileSentenceWord(tileDef, localizer), form, tileDef.tileId);
       assert.notEqual(form, tileDef.metadata?.label, tileDef.tileId);
     }
+  });
+});
+
+// -- literal readings ---------------------------------------------------------
+
+describe("literal value readings", () => {
+  const say = () => makeActuator("say", { label: "say" });
+
+  test("a text literal reads quoted inside the sentence", () => {
+    const rule = makeRule([], [say(), makeLiteral(CoreTypeIds.String, "go left")]);
+
+    assert.equal(projectedText(rule), 'Always, say "go left".');
+  });
+
+  test("a text value keeps its own punctuation inside the quotes", () => {
+    const rule = makeRule([], [say(), makeLiteral(CoreTypeIds.String, "cost: $5. ok, then")]);
+
+    assert.equal(projectedText(rule), 'Always, say "cost: $5. ok, then".');
+  });
+
+  test("an empty text value reads as an empty pair of quotes", () => {
+    const rule = makeRule([], [say(), makeLiteral(CoreTypeIds.String, "")]);
+
+    assert.equal(projectedText(rule), 'Always, say "".');
+  });
+
+  test("a number literal reads unquoted", () => {
+    const rule = makeRule([], [say(), makeLiteral(CoreTypeIds.Number, 5)]);
+
+    assert.equal(projectedText(rule), "Always, say 5.");
+  });
+
+  test("a boolean literal reads unquoted", () => {
+    const rule = makeRule([], [say(), makeLiteral(CoreTypeIds.Boolean, true, "true")]);
+
+    assert.equal(projectedText(rule), "Always, say true.");
+  });
+
+  test("the quoted value is one word segment carrying the literal's own tile index", () => {
+    const rule = makeRule([], [say(), makeLiteral(CoreTypeIds.String, "go left")]);
+
+    assert.deepEqual(project(rule), [glue("Always, "), word("say", 0), glue(" "), word('"go left"', 1), glue(".")]);
+  });
+
+  test("the word a candidate chip resolves stays the raw value", () => {
+    assert.equal(tileSentenceWord(makeLiteral(CoreTypeIds.String, "go left"), localizer), "go left");
+    assert.equal(tileSentenceWord(makeLiteral(CoreTypeIds.String, ""), localizer), "");
+  });
+
+  test("a text value inside a page paragraph reads quoted too", () => {
+    const page = makePage([{ do: [say(), makeLiteral(CoreTypeIds.String, "go left")] }]);
+
+    assert.equal(paragraphText(projectPageParagraph(page, localizer)), 'Always, say "go left".');
   });
 });
 
@@ -867,6 +927,9 @@ function testLocaleCatalog(): LocaleCatalog {
       "sentence-bare": {
         "{frame, select, verb {anything} other {}}": "{frame, select, verb {ANYTHINGZ} other {}}",
       },
+      "sentence-value": {
+        '"{value}"': "<<{value}>>",
+      },
       "sentence-glue": {
         "{a} {b}": "{a}-{b}",
         "{trigger}, {action}": "{trigger} ;; {action}",
@@ -915,6 +978,13 @@ describe("sentence projection locale parameterization", () => {
       glue("!"),
     ]);
     assert.equal(projectedText(rule, translated), "ZORP ZEE ANYTHINGZ ZAP ;; walk-Home!");
+  });
+
+  test("the quotation marks around a text value come from the catalog", () => {
+    const translated = createLocalizer(testLocaleCatalog());
+    const rule = makeRule([], [makeActuator("say", { label: "say" }), makeLiteral(CoreTypeIds.String, "go left")]);
+
+    assert.equal(projectedText(rule, translated), "ALWAZ ;; say-<<go left>>!");
   });
 
   test("the always-word and the state frame translate too", () => {
@@ -1212,7 +1282,7 @@ describe("page paragraph golden entries", () => {
         glue("I "),
         word("hear", 0),
         glue(" "),
-        word("a bang", 1),
+        word('"a bang"', 1),
         glue(", "),
         word("rest", 2)
       ),
@@ -1220,7 +1290,7 @@ describe("page paragraph golden entries", () => {
     ]);
     assert.equal(
       paragraphAsText(page),
-      "When I see anything, walk, and if I am hungry, eat, and if I hear a bang, rest."
+      'When I see anything, walk, and if I am hungry, eat, and if I hear "a bang", rest.'
     );
   });
 
@@ -1434,7 +1504,7 @@ describe("page paragraph sequences", () => {
 
     assert.equal(
       paragraphAsText(page),
-      "When I see anything, walk. When I am hungry, eat. When I hear a bang, rest. Always, walk."
+      'When I see anything, walk. When I am hungry, eat. When I hear "a bang", rest. Always, walk.'
     );
   });
 
@@ -1505,7 +1575,7 @@ describe("page paragraph spans", () => {
         }
         for (let i = 0; i < tiles.size(); i++) {
           const tileDef = tiles.get(i).tileDef;
-          assert.ok(words.includes(tileSentenceWord(tileDef, localizer)), tileDef.tileId);
+          assert.ok(words.includes(projectedWord(tileDef)), tileDef.tileId);
         }
       }
     }

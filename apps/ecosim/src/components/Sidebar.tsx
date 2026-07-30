@@ -158,148 +158,135 @@ export function Sidebar({
     [extensions, store]
   );
 
-  const handleInstallExtension = (coordinate: string) => {
-    void (async () => {
-      const result = await installEcosimExtension(
-        store.host,
-        store.activeProjectManifest?.extensions,
-        coordinate,
-        ecosimEmbeddedExtensions
-      );
-      if (!result.action.ok) {
-        toast.error(`Could not install library (${result.action.code})`);
-        return;
-      }
-      presentExtensionTransaction({
-        report: result.report,
-        flavor: "install",
-        libraryName: ecosimLibraryDisplayName(store.host.installedLibraries, coordinate),
-        toasts: installToasts,
-      });
-    })();
+  const handleInstallExtension = async (coordinate: string) => {
+    const result = await installEcosimExtension(
+      store.host,
+      store.activeProjectManifest?.extensions,
+      coordinate,
+      ecosimEmbeddedExtensions
+    );
+    if (!result.action.ok) {
+      toast.error(`Could not install library (${result.action.code})`);
+      return;
+    }
+    presentExtensionTransaction({
+      report: result.report,
+      flavor: "install",
+      libraryName: ecosimLibraryDisplayName(store.host.installedLibraries, coordinate),
+      toasts: installToasts,
+    });
   };
 
-  const handleInstallExtensionReference = (input: string) => {
-    void (async () => {
-      const result = await installEcosimReference(
-        store.host,
-        store.activeProjectManifest?.extensions,
-        ecosimEmbeddedExtensions,
-        input
-      );
-      if (!result.ok) {
-        toast.error(`Could not add library. ${result.code}: ${result.message}`);
-        return;
-      }
-      if (!result.action.ok) {
-        toast.error(`Could not add library (${result.action.code})`);
-        return;
-      }
-      const parsed = parseExtensionReference(result.reference);
-      const coordinate =
-        parsed === undefined
-          ? result.reference
-          : parsed.transport === "gh"
-            ? `${parsed.owner}/${parsed.repo}`
-            : parsed.coordinate;
-      presentExtensionTransaction({
-        report: result.report,
-        flavor: "install",
-        libraryName: ecosimLibraryDisplayName(store.host.installedLibraries, coordinate),
-        toasts: installToasts,
-      });
-    })();
+  const handleInstallExtensionReference = async (input: string) => {
+    const result = await installEcosimReference(
+      store.host,
+      store.activeProjectManifest?.extensions,
+      ecosimEmbeddedExtensions,
+      input
+    );
+    if (!result.ok) {
+      toast.error(`Could not add library. ${result.code}: ${result.message}`);
+      return;
+    }
+    if (!result.action.ok) {
+      toast.error(`Could not add library (${result.action.code})`);
+      return;
+    }
+    const parsed = parseExtensionReference(result.reference);
+    const coordinate =
+      parsed === undefined
+        ? result.reference
+        : parsed.transport === "gh"
+          ? `${parsed.owner}/${parsed.repo}`
+          : parsed.coordinate;
+    presentExtensionTransaction({
+      report: result.report,
+      flavor: "install",
+      libraryName: ecosimLibraryDisplayName(store.host.installedLibraries, coordinate),
+      toasts: installToasts,
+    });
   };
 
-  const handleUninstallExtension = (coordinate: string) => {
-    void (async () => {
-      const extensionsMap = store.activeProjectManifest?.extensions;
-      const name = ecosimLibraryDisplayName(store.host.installedLibraries, coordinate);
-      const impact = collectSimLibraryUninstallImpact(
-        store.host,
-        extensionsMap,
-        coordinate,
-        ecosimEmbeddedExtensions,
-        store.host.installedExtensionContent,
-        (key) => ARCHETYPE_LABELS[key] ?? key
-      );
-      await runGuardedLibraryUninstall({
-        impact,
-        confirmRemoval: () =>
-          new Promise<boolean>((resolve) => {
-            setPendingUninstall({ name, impact, resolve });
-          }),
-        uninstall: async () => {
-          const result = await uninstallEcosimExtension(
-            store.host,
-            extensionsMap,
-            coordinate,
-            ecosimEmbeddedExtensions,
-            store.host.installedExtensionContent
-          );
-          if (!result.action.ok) {
-            toast.error(`Could not remove library (${result.action.code})`);
-            return;
-          }
-          presentExtensionTransaction({
-            report: result.report,
-            flavor: "uninstall",
-            libraryName: name,
-            toasts: uninstallToasts,
-          });
-        },
-      });
-    })();
-  };
-
-  const handleCheckUpdates = (coordinates: readonly string[]) => {
-    void (async () => {
-      const summary = await checkSimExtensionUpdates(store.host, coordinates);
-      for (const failure of summary.failures) {
-        toast.error(
-          `Could not check ${failure.coordinate} for updates. ${failure.error.code}: ${failure.error.message}`
+  const handleUninstallExtension = async (coordinate: string) => {
+    const extensionsMap = store.activeProjectManifest?.extensions;
+    const name = ecosimLibraryDisplayName(store.host.installedLibraries, coordinate);
+    const impact = collectSimLibraryUninstallImpact(
+      store.host,
+      extensionsMap,
+      coordinate,
+      ecosimEmbeddedExtensions,
+      store.host.installedExtensionContent,
+      (key) => ARCHETYPE_LABELS[key] ?? key
+    );
+    await runGuardedLibraryUninstall({
+      impact,
+      confirmRemoval: () =>
+        new Promise<boolean>((resolve) => {
+          setPendingUninstall({ name, impact, resolve });
+        }),
+      uninstall: async () => {
+        const result = await uninstallEcosimExtension(
+          store.host,
+          extensionsMap,
+          coordinate,
+          ecosimEmbeddedExtensions,
+          store.host.installedExtensionContent
         );
-      }
-      if (summary.updates.length === 0) {
-        if (summary.failures.length === 0) {
-          toast.success("Libraries are up to date");
+        if (!result.action.ok) {
+          toast.error(`Could not remove library (${result.action.code})`);
+          return;
         }
-        return;
+        presentExtensionTransaction({
+          report: result.report,
+          flavor: "uninstall",
+          libraryName: name,
+          toasts: uninstallToasts,
+        });
+      },
+    });
+  };
+
+  const handleCheckUpdates = async (coordinates: readonly string[]) => {
+    const summary = await checkSimExtensionUpdates(store.host, coordinates);
+    for (const failure of summary.failures) {
+      toast.error(`Could not check ${failure.coordinate} for updates. ${failure.error.code}: ${failure.error.message}`);
+    }
+    if (summary.updates.length === 0) {
+      if (summary.failures.length === 0) {
+        toast.success("Libraries are up to date");
       }
-      const updates = summary.updates;
-      const description = updates
-        .map((update) => `${update.coordinate} -> ${update.latestVersion ?? update.resolvedSha?.slice(0, 12) ?? ""}`)
-        .join("\n");
-      toast.info(`${updates.length} update(s) available`, {
-        description,
-        action: {
-          label: updates.length > 1 ? "Update all" : "Update",
-          onClick: () => {
-            void (async () => {
-              presentExtensionTransaction({
-                report: await store.host.applyExtensionUpdates(updates),
-                flavor: "refresh",
-                toasts: refreshToasts,
-              });
-            })();
-          },
+      return;
+    }
+    const updates = summary.updates;
+    const description = updates
+      .map((update) => `${update.coordinate} -> ${update.latestVersion ?? update.resolvedSha?.slice(0, 12) ?? ""}`)
+      .join("\n");
+    toast.info(`${updates.length} update(s) available`, {
+      description,
+      action: {
+        label: updates.length > 1 ? "Update all" : "Update",
+        onClick: () => {
+          void (async () => {
+            presentExtensionTransaction({
+              report: await store.host.applyExtensionUpdates(updates),
+              flavor: "refresh",
+              toasts: refreshToasts,
+            });
+          })();
         },
-      });
-    })();
+      },
+    });
   };
 
-  const handleCheckAllUpdates = () => {
+  const handleCheckAllUpdates = () =>
     handleCheckUpdates(extensionEntries.filter((entry) => entry.updatable === true).map((entry) => entry.coordinate));
-  };
 
-  const handleRetryExtension = () => {
-    void (async () => {
-      presentExtensionTransaction({
-        report: await store.host.updateProjectExtensions(store.activeProjectManifest?.extensions ?? {}),
-        flavor: "refresh",
-        toasts: refreshToasts,
-      });
-    })();
+  const handleRetryExtension = async () => {
+    presentExtensionTransaction({
+      report: await store.host.updateProjectExtensions(store.activeProjectManifest?.extensions ?? {}),
+      flavor: "refresh",
+      toasts: refreshToasts,
+    });
   };
   const [bridgeEnabled, setBridgeEnabled] = useState(() => store.getUiPreferences().bridgeEnabled);
   const bridgeStatus = useSyncExternalStore(store.subscribeToBridgeStatus, store.getBridgeStatusSnapshot);

@@ -48,15 +48,15 @@ export interface ExtensionCardMenuItem {
 
 /** Callbacks a card invokes when one of its affordances is triggered. */
 export interface ExtensionCardCallbacks {
-  /** Install the add-on named by the coordinate. */
-  onInstall: (coordinate: string) => void;
-  /** Uninstall the add-on named by the coordinate. */
-  onUninstall: (coordinate: string) => void;
-  /** Check the fetched dependency named by the coordinate for an update. Absent when the host offers no update checks. */
-  onCheckUpdate?: (coordinate: string) => void;
-  /** Re-run the install transaction for the broken dependency named by the coordinate. Absent when the host offers no retry. */
-  onRetry?: (coordinate: string) => void;
-  /** Open the given GitHub repository URL. Absent when the host does not handle external navigation. */
+  /** Installs the add-on named by the coordinate. Resolves when the install completes; rejects if it fails. */
+  onInstall: (coordinate: string) => Promise<void>;
+  /** Uninstalls the add-on named by the coordinate. Resolves when the uninstall completes; rejects if it fails. */
+  onUninstall: (coordinate: string) => Promise<void>;
+  /** Checks the fetched dependency named by the coordinate for an update. Resolves when the check completes; rejects if it fails. Absent when the host offers no update checks. */
+  onCheckUpdate?: (coordinate: string) => Promise<void>;
+  /** Re-runs the install transaction for the broken dependency named by the coordinate. Resolves when the retry completes; rejects if it fails. Absent when the host offers no retry. */
+  onRetry?: (coordinate: string) => Promise<void>;
+  /** Opens the given GitHub repository URL synchronously. Absent when the host does not handle external navigation. */
   onOpenRepo?: (url: string) => void;
 }
 
@@ -251,31 +251,28 @@ export function extensionCardShowsRetry(entry: ExtensionBrowserEntry): boolean {
 /**
  * Dispatch a card affordance to the matching callback: `install`, `uninstall`,
  * `check-update`, and `retry` call their callbacks with the entry's
- * coordinate; `open-repo` calls `onOpenRepo` with the entry's `repoUrl`. An
- * absent optional callback or `repoUrl` makes the action do nothing.
+ * coordinate and resolve when that callback settles; `open-repo` calls
+ * `onOpenRepo` synchronously with the entry's `repoUrl`. An absent optional
+ * callback or `repoUrl` makes the action do nothing and resolves immediately.
  *
  * @param entry - The entry the action applies to.
  * @param action - The affordance triggered.
  * @param callbacks - The host callbacks to dispatch to.
  */
-export function runExtensionCardAction(
+export async function runExtensionCardAction(
   entry: ExtensionBrowserEntry,
   action: ExtensionCardActionKind,
   callbacks: ExtensionCardCallbacks
-): void {
+): Promise<void> {
   switch (action) {
     case "install":
-      callbacks.onInstall(entry.coordinate);
-      return;
+      return callbacks.onInstall(entry.coordinate);
     case "uninstall":
-      callbacks.onUninstall(entry.coordinate);
-      return;
+      return callbacks.onUninstall(entry.coordinate);
     case "check-update":
-      callbacks.onCheckUpdate?.(entry.coordinate);
-      return;
+      return callbacks.onCheckUpdate?.(entry.coordinate);
     case "retry":
-      callbacks.onRetry?.(entry.coordinate);
-      return;
+      return callbacks.onRetry?.(entry.coordinate);
     default:
       if (entry.repoUrl !== undefined) {
         callbacks.onOpenRepo?.(entry.repoUrl);

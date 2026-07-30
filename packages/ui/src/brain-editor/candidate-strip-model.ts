@@ -6,13 +6,21 @@ import {
   isVariableFactoryTileId,
   type LiteralDisplayFormat,
   LiteralDisplayFormats,
+  mkOperatorTileId,
   percentFormat,
   RuleSide,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import type { TileSuggestion, TileSuggestionResult } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainTileFactoryDef, BrainTileOperatorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { CoreHostActions, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
+import {
+  CoreHostActions,
+  CoreOpId,
+  CoreTypeIds,
+  mkActuatorTileId,
+  mkSensorTileId,
+  type TypeId,
+} from "@mindcraft-lang/core/runtime";
 import type { ArmedTileTarget } from "./ArmedTargetContext";
 import { groupTilesByLibrary, type TileSourceLibrary, tileSourceNamespace } from "./tile-library-groups";
 
@@ -245,19 +253,20 @@ function fuzzyTileMatch(filter: string, text: string): boolean {
 }
 
 /**
- * How well a label matches filter text, best quality first:
+ * How well one of a tile's matchable texts -- its label, or an alias it is also
+ * reachable by -- matches filter text, best quality first:
  *
- * - "exact" -- the whole label is the filter text
- * - "prefix" -- the label starts with the filter text
- * - "word-prefix" -- the filter text starts a later word of the label, so a
+ * - "exact" -- the whole text is the filter text
+ * - "prefix" -- the text starts with the filter text
+ * - "word-prefix" -- the filter text starts a later word of the text, so a
  *   multi-word form is reachable by any word it opens with
- * - "substring" -- the filter text appears contiguously inside the label,
+ * - "substring" -- the filter text appears contiguously inside the text,
  *   starting inside a word
- * - "fuzzy" -- every character of the filter text appears in the label, in any order
+ * - "fuzzy" -- every character of the filter text appears in the text, in any order
  */
-type LabelMatchQuality = "exact" | "prefix" | "word-prefix" | "substring" | "fuzzy";
+export type TileMatchQuality = "exact" | "prefix" | "word-prefix" | "substring" | "fuzzy";
 
-const labelMatchRank: Record<LabelMatchQuality, number> = {
+const tileMatchRank: Record<TileMatchQuality, number> = {
   exact: 0,
   prefix: 1,
   "word-prefix": 2,
@@ -276,14 +285,14 @@ function startsLaterWord(needle: string, haystack: string): boolean {
 }
 
 /**
- * The quality with which `label` matches `filter`, or undefined when the label
- * does not match at all. Both sides are compared trimmed and case-insensitively;
- * empty filter text matches nothing, so callers handle it before classifying.
+ * The quality with which `text` matches `filter`, or undefined when it does not
+ * match at all. Both sides are compared trimmed and case-insensitively; empty
+ * filter text matches nothing, so callers handle it before classifying.
  */
-function classifyLabelMatch(filter: string, label: string): LabelMatchQuality | undefined {
+function classifyTextMatch(filter: string, text: string): TileMatchQuality | undefined {
   const needle = filter.trim().toLowerCase();
   if (needle.length === 0) return undefined;
-  const haystack = label.trim().toLowerCase();
+  const haystack = text.trim().toLowerCase();
   if (haystack === needle) return "exact";
   if (haystack.startsWith(needle)) return "prefix";
   if (startsLaterWord(needle, haystack)) return "word-prefix";
@@ -291,34 +300,86 @@ function classifyLabelMatch(filter: string, label: string): LabelMatchQuality | 
   return fuzzyTileMatch(needle, haystack) ? "fuzzy" : undefined;
 }
 
-/** The one candidate of `candidates` whose label matches `filter` at `quality`, or undefined when they do not number one. */
-function uniqueMatchAt(
-  candidates: readonly StripCandidate[],
+/**
+ * The best quality with which `filter` matches `label` or any of `aliases`, or
+ * undefined when it matches none of them. An alias climbs the same ladder the
+ * label does, so a partly typed alias reaches its tile exactly as a partly typed
+ * label would.
+ */
+export function classifyTileMatch(
   filter: string,
-  quality: LabelMatchQuality
-): StripCandidate | undefined {
-  const matched = candidates.filter((candidate) => classifyLabelMatch(filter, candidate.label) === quality);
-  return matched.length === 1 ? matched[0] : undefined;
-}
-
-/** True when any candidate's label matches `filter` at `quality`. */
-function hasMatchAt(candidates: readonly StripCandidate[], filter: string, quality: LabelMatchQuality): boolean {
-  return candidates.some((candidate) => classifyLabelMatch(filter, candidate.label) === quality);
+  label: string,
+  aliases: readonly string[]
+): TileMatchQuality | undefined {
+  let best = classifyTextMatch(filter, label);
+  for (const alias of aliases) {
+    const quality = classifyTextMatch(filter, alias);
+    if (quality === undefined) continue;
+    if (best === undefined || tileMatchRank[quality] < tileMatchRank[best]) best = quality;
+  }
+  return best;
 }
 
 /**
- * The candidates whose labels match `filter`, best match first: exact labels,
- * then prefixes, then substrings, then fuzzy matches, with candidates of equal
- * quality left in input order. An empty filter matches everything, in input order.
+ * The notation each core operator is also reachable by while typing, keyed by
+ * tile id. A symbol is matching input only: it never reaches a chip, a placed
+ * tile, or a sentence, all of which read the operator's own word.
+ */
+const operatorSymbolAliases: ReadonlyMap<string, readonly string[]> = new Map([
+  [mkOperatorTileId(CoreOpId.Add), ["+"]],
+  [mkOperatorTileId(CoreOpId.Subtract), ["-"]],
+  [mkOperatorTileId(CoreOpId.Multiply), ["*"]],
+  [mkOperatorTileId(CoreOpId.Divide), ["/"]],
+  [mkOperatorTileId(CoreOpId.GreaterThan), [">"]],
+  [mkOperatorTileId(CoreOpId.GreaterThanOrEqualTo), [">="]],
+  [mkOperatorTileId(CoreOpId.LessThan), ["<"]],
+  [mkOperatorTileId(CoreOpId.LessThanOrEqualTo), ["<="]],
+  [mkOperatorTileId(CoreOpId.EqualTo), ["=="]],
+  [mkOperatorTileId(CoreOpId.NotEqualTo), ["!="]],
+  [mkOperatorTileId(CoreOpId.Assign), ["="]],
+]);
+
+const noTileMatchAliases: readonly string[] = [];
+
+/** The texts beyond its label that `tileDef` is reachable by while typing. */
+function tileMatchAliases(tileDef: IBrainTileDef): readonly string[] {
+  return operatorSymbolAliases.get(tileDef.tileId) ?? noTileMatchAliases;
+}
+
+/** The quality with which `candidate` matches `filter`, over its label and the aliases its tile carries. */
+function classifyCandidateMatch(filter: string, candidate: StripCandidate): TileMatchQuality | undefined {
+  return classifyTileMatch(filter, candidate.label, tileMatchAliases(candidate.tileDef));
+}
+
+/** The one candidate of `candidates` matching `filter` at `quality`, or undefined when they do not number one. */
+function uniqueMatchAt(
+  candidates: readonly StripCandidate[],
+  filter: string,
+  quality: TileMatchQuality
+): StripCandidate | undefined {
+  const matched = candidates.filter((candidate) => classifyCandidateMatch(filter, candidate) === quality);
+  return matched.length === 1 ? matched[0] : undefined;
+}
+
+/** True when any candidate matches `filter` at `quality`. */
+function hasMatchAt(candidates: readonly StripCandidate[], filter: string, quality: TileMatchQuality): boolean {
+  return candidates.some((candidate) => classifyCandidateMatch(filter, candidate) === quality);
+}
+
+/**
+ * The candidates matching `filter` on their label or on an alias their tile
+ * carries, best match first: exact texts, then prefixes, then substrings, then
+ * fuzzy matches, with candidates of equal quality left in input order. An empty
+ * filter matches everything, in input order.
  */
 export function filterStripCandidates(candidates: readonly StripCandidate[], filter: string): StripCandidate[] {
   const trimmed = filter.trim();
   if (trimmed.length === 0) return [...candidates];
   const matched: { candidate: StripCandidate; rank: number; index: number }[] = [];
   for (let i = 0; i < candidates.length; i++) {
-    const quality = classifyLabelMatch(trimmed, candidates[i].label);
+    const quality = classifyCandidateMatch(trimmed, candidates[i]);
     if (quality === undefined) continue;
-    matched.push({ candidate: candidates[i], rank: labelMatchRank[quality], index: i });
+    matched.push({ candidate: candidates[i], rank: tileMatchRank[quality], index: i });
   }
   matched.sort((a, b) => (a.rank !== b.rank ? a.rank - b.rank : a.index - b.index));
   return matched.map((entry) => entry.candidate);
@@ -352,7 +413,7 @@ export function decideCandidateCommit(
     : visible.filter((candidate) => candidate.origin.kind !== "minted-variable");
   if (eligible.length === 0) return undefined;
   if (key === "enter" || key === "tab") return eligible[0];
-  const exact = eligible.find((candidate) => classifyLabelMatch(intent.text, candidate.label) === "exact");
+  const exact = eligible.find((candidate) => classifyCandidateMatch(intent.text, candidate) === "exact");
   if (exact) return exact;
   if (hasMatchAt(eligible, intent.text, "prefix")) return uniqueMatchAt(eligible, intent.text, "prefix");
   return uniqueMatchAt(eligible, intent.text, "word-prefix");
@@ -417,15 +478,23 @@ function parseTypedNumberLiteral(filter: string): TypedNumberLiteral | undefined
   return undefined;
 }
 
-/** The core number-literal factory among `candidates`, or undefined when the armed position accepts no numeric literal. */
-function findNumberLiteralFactory(candidates: readonly StripCandidate[]): BrainTileFactoryDef | undefined {
+/** The core literal factory producing `dataType` among `candidates`, or undefined when the armed position accepts no such literal. */
+function findLiteralFactoryOfType(
+  candidates: readonly StripCandidate[],
+  dataType: TypeId
+): BrainTileFactoryDef | undefined {
   for (const candidate of candidates) {
     const tileDef = candidate.tileDef;
     if (tileDef.kind !== "factory" || !isCoreLiteralFactoryTileId(tileDef.tileId)) continue;
     const factoryTileDef = tileDef as BrainTileFactoryDef;
-    if (factoryTileDef.producedDataType === CoreTypeIds.Number) return factoryTileDef;
+    if (factoryTileDef.producedDataType === dataType) return factoryTileDef;
   }
   return undefined;
+}
+
+/** The core number-literal factory among `candidates`, or undefined when the armed position accepts no numeric literal. */
+function findNumberLiteralFactory(candidates: readonly StripCandidate[]): BrainTileFactoryDef | undefined {
+  return findLiteralFactoryOfType(candidates, CoreTypeIds.Number);
 }
 
 /**
@@ -459,9 +528,60 @@ export function mintNumberLiteralCandidate(
 }
 
 /**
+ * The core literal factory producing `dataType` that the position takes as it
+ * is, leaving out any factory it reaches only through a conversion.
+ */
+function findDirectLiteralFactoryOfType(
+  candidates: readonly StripCandidate[],
+  dataType: TypeId
+): BrainTileFactoryDef | undefined {
+  return findLiteralFactoryOfType(
+    candidates.filter((candidate) => !candidate.viaConversion),
+    dataType
+  );
+}
+
+/**
+ * True when the armed position takes a text literal as it is, so a typed quote
+ * opens one there. A position that reaches text only through a conversion takes
+ * none.
+ */
+export function offersTextLiteral(candidates: readonly StripCandidate[]): boolean {
+  return findDirectLiteralFactoryOfType(candidates, CoreTypeIds.String) !== undefined;
+}
+
+/**
+ * The literal candidate a text value open in the composer places: present when
+ * the armed position takes a text literal as it is, for any `value` including
+ * the empty one. The candidate's tile is a preview def manufactured by the
+ * factory; committing it re-manufactures through the catalog so the placed tile
+ * is registered. `labelOf` reads the preview, so the chip carries the reading
+ * the placed value's sentence gives it.
+ */
+export function mintTextLiteralCandidate(
+  candidates: readonly StripCandidate[],
+  value: string,
+  labelOf: (tileDef: IBrainTileDef) => string
+): StripCandidate | undefined {
+  const factoryTileDef = findDirectLiteralFactoryOfType(candidates, CoreTypeIds.String);
+  if (!factoryTileDef) return undefined;
+  const displayFormat = LiteralDisplayFormats.Default;
+  const preview = factoryTileDef.manufacture(factoryTileDef, { value, displayFormat });
+  if (!preview) return undefined;
+  return {
+    key: `mint:${preview.tileId}`,
+    tileDef: preview,
+    label: labelOf(preview),
+    group: "literal",
+    viaConversion: false,
+    origin: { kind: "minted-literal", factoryTileDef, value, displayFormat },
+  };
+}
+
+/**
  * True when `filter` is a number the user is partway through typing at a
- * position that accepts one, so no candidate matches it yet and none can: the
- * next keystroke completes the number.
+ * position that accepts one: the next keystroke completes the number, so the
+ * text is not yet text that names nothing.
  */
 function isNumberInProgress(candidates: readonly StripCandidate[], filter: string): boolean {
   return numberInProgressPattern.test(filter.trim()) && findNumberLiteralFactory(candidates) !== undefined;
@@ -571,7 +691,7 @@ function demoteMintsBehindMatches(
   if (mints.length === 0) return [...matches];
   let at = 0;
   while (at < matches.length) {
-    const quality = classifyLabelMatch(name, matches[at].label);
+    const quality = classifyCandidateMatch(name, matches[at]);
     if (quality !== "exact" && quality !== "prefix") break;
     at++;
   }
@@ -593,9 +713,10 @@ export interface StripOffering {
  * the typed text mints merged into it:
  *
  * - typed digits mint a literal, which commits like any other candidate
- * - a number the user is partway through typing offers nothing and is not
- *   unknown either: the text has yet to name anything, so it neither mints a
- *   variable nor reads as text no tile fits
+ * - a number the user is partway through typing mints no variable and is not
+ *   unknown either, since the text has yet to name anything; the candidates it
+ *   matches are offered as they always are, so a lone `-` reaches the minus
+ *   operator where that operator is valid
  * - a typed word that matches nothing mints a variable per accepted type, which
  *   the unknown state stands alongside because only a tap or a highlighted
  *   chip commits it
@@ -608,19 +729,20 @@ export function resolveStripOffering(
   labelOf: (tileDef: IBrainTileDef) => string
 ): StripOffering {
   const intent = parseStripFilter(filter);
-  if (!intent.variableIntent && isNumberInProgress(candidates, intent.text)) {
-    return { offered: [...candidates], visible: [], isUnknown: false };
-  }
+  const numberInProgress = !intent.variableIntent && isNumberInProgress(candidates, intent.text);
   const literalMint = intent.variableIntent ? undefined : mintNumberLiteralCandidate(candidates, intent.text, labelOf);
   const offered = literalMint ? [literalMint, ...candidates] : [...candidates];
   const scope = intent.variableIntent ? offered.filter(isExistingVariableCandidate) : offered;
   const matches = filterStripCandidates(scope, intent.text);
   const mints =
-    intent.variableIntent || matches.length === 0 ? mintVariableCandidates(candidates, intent.text, labelOf) : [];
+    !numberInProgress && (intent.variableIntent || matches.length === 0)
+      ? mintVariableCandidates(candidates, intent.text, labelOf)
+      : [];
   return {
     offered: [...offered, ...mints],
     visible: demoteMintsBehindMatches(matches, mints, intent.text),
-    isUnknown: !(intent.variableIntent && mints.length > 0) && isUnknownFilterText(matches, filter),
+    isUnknown:
+      !numberInProgress && !(intent.variableIntent && mints.length > 0) && isUnknownFilterText(matches, filter),
   };
 }
 

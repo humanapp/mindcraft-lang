@@ -1,8 +1,18 @@
 import { RuleSide } from "@mindcraft-lang/core/brain";
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainCommand, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { ChevronDown, Plus, X } from "lucide-react";
-import { type FocusEvent, type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  type FocusEvent,
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { staticAssetUrl } from "../asset-url";
 import { adjustColor, readableInk, saturateColor } from "../lib/color";
 import { resolveTypeDisplayName } from "./action-arg-tiles";
@@ -11,13 +21,8 @@ import { BrainRuleSentence } from "./BrainRuleSentence";
 import {
   activeStripOption,
   type CandidateEntry,
-  decideStripEscape,
   decideStripFocusTarget,
-  enterStripOptionsAt,
-  isStripFilterTypingKey,
   kBestNextBandKey,
-  moveActiveStripOption,
-  moveActiveStripOption2D,
   type StripCandidate,
   type StripHighlightMode,
   type StripOptionBand,
@@ -26,10 +31,19 @@ import {
   stripOptionId,
   stripSubcategoryHeadingId,
   tileCandidateGroupNames,
+  toCandidateEntries,
   visibleStripOptions,
 } from "./candidate-strip-model";
+import {
+  type ComposerInputFacts,
+  type ComposerInputState,
+  type ComposerInputToken,
+  composerHeadingToken,
+  composerTokenForKey,
+  consumesKey,
+  reduceComposerInput,
+} from "./composer-input-model";
 import type { CandidateStripSection, CandidateStripState } from "./hooks/useCandidateStrip";
-import { decideComposerComma, decideComposerPeriod } from "./sentence-composer";
 import { tileSourceNamespace } from "./tile-library-groups";
 import { resolveTileVisual } from "./tile-visual-utils";
 
@@ -52,19 +66,11 @@ const subcategoryHeadingClasses = "w-full px-0.5 text-[11px] font-semibold upper
 const browsedBandClasses =
   "rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2 focus:ring-offset-brain-desk-to";
 
-/** The row step a vertical arrow key takes, or undefined for every other key. */
-function arrowDelta(key: string): 1 | -1 | undefined {
-  if (key === "ArrowDown") return 1;
-  if (key === "ArrowUp") return -1;
-  return undefined;
-}
+/** The own-commit stack of a strip armed from the tray, which composes nothing. */
+const noOwnCommits: readonly BrainCommand[] = [];
 
-/** The sequence step a horizontal arrow key takes, or undefined for every other key. */
-function horizontalArrowDelta(key: string): 1 | -1 | undefined {
-  if (key === "ArrowRight") return 1;
-  if (key === "ArrowLeft") return -1;
-  return undefined;
-}
+/** The accordion an open text value shows: none, since only its own chip is offered. */
+const noSections: readonly CandidateStripSection[] = [];
 
 /**
  * Scroll the rule card `strip` is rendered inside back into view, moving each
@@ -91,6 +97,32 @@ function buildStripBands(
     if (isOpen(section.key)) list.push({ key: section.key, entries: section.entries });
   }
   return list;
+}
+
+/**
+ * The filter box in the place it is read from, with the quote marks an open text
+ * value reads between drawn on either side of it. The wrapper and the input's
+ * place inside it do not change with `quoteMark`, so a text value opens and
+ * closes around the same input element and leaves the line it sits in as it is.
+ *
+ * @param input the filter box itself
+ * @param quoteMark the mark drawn on both sides of the box, or undefined while
+ * no text value is open
+ * @param inSentence true when the field sits in a rule's sentence line, where it
+ * runs inline with the words; false when it sits in the strip's own tray row
+ */
+export function filterFieldWithQuotes(
+  input: ReactNode,
+  quoteMark: ReactNode | undefined,
+  inSentence: boolean
+): ReactElement {
+  return (
+    <span className={inSentence ? "ml-1 whitespace-nowrap" : "flex min-w-0 flex-1 items-center"}>
+      {quoteMark}
+      {input}
+      {quoteMark}
+    </span>
+  );
 }
 
 interface CandidateChipProps {
@@ -194,19 +226,22 @@ export interface StripComposerBinding {
   readonly ruleDef: BrainRuleDef;
   /** The page editor's update counter, so the hosted sentence re-reads on every edit. */
   readonly updateCounter: number;
-  /** True while composition sits on the DO side of a typed pivot with nothing placed there yet. */
-  readonly pivotComma: boolean;
+  /** True while composition sits on the DO side of a typed pivot. */
+  readonly pivoted: boolean;
+  /** The commands this composition placed, newest last. */
+  readonly ownCommits: readonly BrainCommand[];
   /** True when the tiles of the armed side may end as they stand. Read after each placement. */
   canEndArmedSide(): boolean;
   /** True when the rule holds no tiles on either side. */
   isRuleEmpty(): boolean;
-  /** End the WHEN side and continue composing on the DO side, placing no tile. */
-  pivot(): void;
-  /**
-   * Take back one rung of the composer's ladder: the typed pivot, else the
-   * composer's own last committed word. True when something was taken back.
-   */
-  takeBackLast(): boolean;
+  /** How many tiles the rule's DO side holds. */
+  doTileCount(): number;
+  /** The command history's newest undoable entry; undefined when the history holds none. */
+  newestCommand(): BrainCommand | undefined;
+  /** Continue composing on `side`, placing no tile. */
+  armSide(side: RuleSide): void;
+  /** Undo the composition's own last commit and drop it from {@link ownCommits}. */
+  undoOwnLastCommit(): void;
 }
 
 /** Props for {@link BrainCandidateStrip}. */
@@ -232,6 +267,13 @@ export interface BrainCandidateStripProps {
  * the variable, placed by tap or by highlighting it. Text opening with `$` names
  * a variable outright: the offering scopes to the variables matching the rest of
  * the text plus the mint, which the commit keys then place.
+ *
+ * Where the position accepts a text literal, a double quote opens a text value:
+ * the filter box holds the value between rendered quotes, the offering narrows to
+ * the one chip that places it, and the closing quote, Enter, Tab, or a tap on
+ * that chip places it. While the value is open every typed character is content,
+ * Backspace edits it and leaves the value once it is empty, and Escape abandons
+ * it.
  *
  * The filter box is an ARIA combobox over the rendered chips: the arrow keys
  * walk a highlight across them, Enter commits the highlighted chip, and Escape
@@ -273,8 +315,21 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
   const [highlightMode, setHighlightMode] = useState<StripHighlightMode>("typing");
   const [status, setStatus] = useState("");
   const [commitTick, setCommitTick] = useState(0);
+  const [openTextLiteral, setOpenTextLiteral] = useState<string | undefined>(undefined);
   const placedLabelRef = useRef<string | null>(null);
   const isFiltering = state.filter.trim().length > 0;
+
+  // A text value in progress is the whole offering: the one chip that places it.
+  const pendingTextCandidate = useMemo(
+    () => (openTextLiteral === undefined ? undefined : state.textLiteralCandidate(openTextLiteral)),
+    [openTextLiteral, state]
+  );
+  const pendingTextEntries = useMemo(
+    () => (pendingTextCandidate ? toCandidateEntries([pendingTextCandidate]) : []),
+    [pendingTextCandidate]
+  );
+  const shownBestNext = openTextLiteral === undefined ? state.bestNext : pendingTextEntries;
+  const shownSections = openTextLiteral === undefined ? state.sections : noSections;
 
   // The arming control keeps the keyboard's place: the strip takes focus while
   // it is open and hands it back when it closes. Taking focus never scrolls;
@@ -308,15 +363,15 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
   // Filtering opens every group that still has a match; otherwise one group at a time.
   const openSectionKeys = useMemo(() => {
     const keys = new Set<string>();
-    for (const section of state.sections) {
+    for (const section of shownSections) {
       if (isFiltering ? section.entries.length > 0 : openSectionKey === section.key) keys.add(section.key);
     }
     return keys;
-  }, [state.sections, isFiltering, openSectionKey]);
+  }, [shownSections, isFiltering, openSectionKey]);
 
   const bands = useMemo(
-    () => buildStripBands(state.bestNext, state.sections, (key) => openSectionKeys.has(key)),
-    [state.bestNext, state.sections, openSectionKeys]
+    () => buildStripBands(shownBestNext, shownSections, (key) => openSectionKeys.has(key)),
+    [shownBestNext, shownSections, openSectionKeys]
   );
 
   const options = useMemo(() => visibleStripOptions(stripId, bands), [stripId, bands]);
@@ -329,8 +384,11 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
     return map;
   }, [bands]);
   const matchCount = useMemo(
-    () => state.sections.reduce((total, section) => total + section.entries.length, 0),
-    [state.sections]
+    () =>
+      openTextLiteral === undefined
+        ? shownSections.reduce((total, section) => total + section.entries.length, 0)
+        : pendingTextEntries.length,
+    [openTextLiteral, shownSections, pendingTextEntries]
   );
 
   useEffect(() => {
@@ -370,42 +428,6 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
     setStatus(state.isUnknown ? "no tiles fit" : `${matchCount} ${matchCount === 1 ? "tile" : "tiles"}`);
   }, [state.filter, state.isUnknown, matchCount, commitTick]);
 
-  // A placement re-queries the offering, so the keyboard starts over in the
-  // filter box whether the strip stays open or closes behind the placement.
-  const announcePlacement = (label: string) => {
-    placedLabelRef.current = label;
-    setCommitTick((tick) => tick + 1);
-    setActiveOptionId(undefined);
-    setHighlightMode("typing");
-    inputRef.current?.focus({ preventScroll: true });
-  };
-
-  const commitCandidate = (candidate: StripCandidate) => {
-    state.commit(candidate);
-    announcePlacement(candidate.label);
-  };
-
-  const setFilterText = (next: string) => {
-    state.setFilter(next);
-    setActiveOptionId(undefined);
-    setHighlightMode("typing");
-  };
-
-  /** Place the chip the highlight rests on, if it rests on one. True when a tile was placed. */
-  const commitHighlight = (): boolean => {
-    const highlighted = activeOption ? candidatesByKey.get(activeOption.candidateKey) : undefined;
-    if (!highlighted) return false;
-    commitCandidate(highlighted);
-    return true;
-  };
-
-  const commitWithKey = (key: "enter" | "tab" | "space", event: KeyboardEvent<HTMLInputElement>) => {
-    const placed = state.commitFromKey(key);
-    if (!placed) return;
-    announcePlacement(placed.label);
-    event.preventDefault();
-  };
-
   /** Where every rendered chip sits right now, in viewport coordinates. */
   const measureOptions = (): StripOptionGeometry[] => {
     const measured: StripOptionGeometry[] = [];
@@ -418,124 +440,123 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
     return measured;
   };
 
-  // The highlight is anchored on whichever element holds the keyboard: the
-  // filter box while typing, and the band's own listbox while browsing it.
-  // True when the highlight moved.
-  const settleHighlight = (next: string | undefined, mode: StripHighlightMode): boolean => {
-    if (next === undefined) return false;
-    setActiveOptionId(next);
-    setHighlightMode(mode);
-    if (mode === "typing") inputRef.current?.focus();
-    return true;
+  const composerState = (): ComposerInputState => ({
+    armedSide: side,
+    armedEntry: composer ? "sentence" : "tray",
+    filter: state.filter,
+    activeOptionId,
+    highlightMode,
+    pivoted: composer?.pivoted ?? false,
+    textLiteral: openTextLiteral,
+    ownCommits: composer?.ownCommits ?? noOwnCommits,
+  });
+
+  // Every fact is read on demand: a token that asks nothing of the document
+  // reads nothing of it.
+  const composerFacts = (): ComposerInputFacts => ({
+    get armedSideCanEnd() {
+      return composer?.canEndArmedSide() ?? false;
+    },
+    get ruleIsEmpty() {
+      return composer?.isRuleEmpty() ?? true;
+    },
+    get doTileCount() {
+      return composer?.doTileCount() ?? 0;
+    },
+    get newestCommand() {
+      return composer?.newestCommand();
+    },
+    get topCandidate() {
+      return state.candidateFromKey("enter");
+    },
+    get spaceCandidate() {
+      return state.candidateFromKey("space");
+    },
+    get highlightedCandidate() {
+      return activeOption ? candidatesByKey.get(activeOption.candidateKey) : undefined;
+    },
+    acceptsTextLiteral: state.acceptsTextLiteral,
+    pendingTextLiteral: pendingTextCandidate,
+    options,
+    get optionGeometry() {
+      return measureOptions();
+    },
+    stripId,
+    bandsWithSection: (sectionKey: string) =>
+      buildStripBands(shownBestNext, shownSections, (key) => openSectionKeys.has(key) || key === sectionKey),
+  });
+
+  /**
+   * Interpret one input through the composer's model and carry out what it asks
+   * for, in the order it asks. True when the keystroke was consumed.
+   */
+  const dispatchInput = (token: ComposerInputToken | undefined, event?: KeyboardEvent<HTMLElement>): boolean => {
+    if (token === undefined) return false;
+    const { effects } = reduceComposerInput(composerState(), token, composerFacts());
+    for (const effect of effects) {
+      switch (effect.kind) {
+        case "consume-key":
+          event?.preventDefault();
+          break;
+        case "set-filter":
+          state.setFilter(effect.text);
+          break;
+        case "set-text-literal":
+          setOpenTextLiteral(effect.value);
+          break;
+        case "highlight":
+          setActiveOptionId(effect.optionId);
+          setHighlightMode(effect.mode);
+          break;
+        case "open-section":
+          setOpenSectionKey(effect.sectionKey);
+          break;
+        case "place-tile":
+          state.commit(effect.candidate);
+          break;
+        case "announce-placement":
+          placedLabelRef.current = effect.label;
+          setCommitTick((tick) => tick + 1);
+          break;
+        case "move-focus":
+          if (effect.target.kind === "input") {
+            inputRef.current?.focus(effect.keepScroll ? { preventScroll: true } : undefined);
+          } else {
+            document.getElementById(stripBandPanelId(stripId, effect.target.bandKey))?.focus();
+          }
+          break;
+        case "reask-after-placement":
+          dispatchInput({ kind: "placement-landed", gesture: effect.gesture });
+          break;
+        case "arm-side":
+          composer?.armSide(effect.side);
+          break;
+        case "undo-own-commit":
+          composer?.undoOwnLastCommit();
+          break;
+        case "close-strip":
+          onDismiss();
+          break;
+      }
+    }
+    return consumesKey(effects);
   };
 
-  const moveHighlightAcross = (delta: 1 | -1) =>
-    settleHighlight(moveActiveStripOption(options, activeOptionId, delta), highlightMode);
-
-  const moveHighlightDown = (delta: 1 | -1) =>
-    settleHighlight(moveActiveStripOption2D(measureOptions(), activeOptionId, delta), highlightMode);
-
-  const enterHighlightAt = (sectionKey: string, delta: 1 | -1): boolean => {
-    const sequence = buildStripBands(
-      state.bestNext,
-      state.sections,
-      (key) => openSectionKeys.has(key) || key === sectionKey
-    );
-    const entered = enterStripOptionsAt(stripId, sequence, sectionKey, delta);
-    if (entered === undefined) return false;
-    if (delta === 1) setOpenSectionKey(sectionKey);
-    return settleHighlight(entered, "browsing");
+  const commitCandidate = (candidate: StripCandidate) => {
+    dispatchInput({ kind: "candidate-tapped", candidate });
   };
 
   const handlePanelKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape") return;
-    event.preventDefault();
     event.stopPropagation();
-    if (decideStripEscape(state.filter) === "clear-filter") setFilterText("");
-    else onDismiss();
+    dispatchInput({ kind: "escape" }, event);
   };
 
+  // Escape is served here as well as on the panel, since the composer renders
+  // this input outside the panel's subtree.
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    // Escape is served here as well as on the panel, since the composer renders
-    // this input outside the panel's subtree.
-    if (event.key === "Escape") {
-      handlePanelKeyDown(event);
-      return;
-    }
     event.stopPropagation();
-    if (event.key === ",") {
-      if (!composer) return;
-      const comma = decideComposerComma({
-        armedSide: side,
-        filter: state.filter,
-        armedSideCanEnd: composer.canEndArmedSide(),
-        wordInProgressCommits: state.commitsWordInProgress,
-      });
-      if (comma === "filter-text") return;
-      event.preventDefault();
-      if (comma === "commit-then-pivot") {
-        const placed = state.commitFromKey("space");
-        if (!placed) return;
-        announcePlacement(placed.label);
-        // The word just placed decides the pivot: the side it joined may not be
-        // one the expression can end on.
-        if (!composer.canEndArmedSide()) return;
-      }
-      composer.pivot();
-      return;
-    }
-    if (event.key === ".") {
-      if (!composer) return;
-      const period = decideComposerPeriod({
-        filter: state.filter,
-        armedSideCanEnd: composer.canEndArmedSide(),
-        ruleIsEmpty: composer.isRuleEmpty(),
-        wordInProgressCommits: state.commitsWordInProgress,
-      });
-      if (period === "filter-text") return;
-      event.preventDefault();
-      if (period === "none") return;
-      if (period === "commit-then-settle") {
-        const placed = state.commitFromKey("space");
-        if (!placed) return;
-        announcePlacement(placed.label);
-        // The word just placed decides the settle: the side it joined may not be
-        // one the expression can end on.
-        if (!composer.canEndArmedSide()) return;
-      }
-      onDismiss();
-      return;
-    }
-    if (event.key === "Backspace") {
-      if (composer?.takeBackLast()) event.preventDefault();
-      return;
-    }
-    const rowDelta = arrowDelta(event.key);
-    if (rowDelta !== undefined) {
-      if (moveHighlightDown(rowDelta)) event.preventDefault();
-      return;
-    }
-    const acrossDelta = horizontalArrowDelta(event.key);
-    if (acrossDelta !== undefined) {
-      // Until a chip is highlighted the horizontal arrows belong to the caret.
-      if (activeOption && moveHighlightAcross(acrossDelta)) event.preventDefault();
-      return;
-    }
-    if (event.key === "Enter") {
-      if (commitHighlight()) {
-        event.preventDefault();
-        return;
-      }
-      commitWithKey("enter", event);
-      return;
-    }
-    if (event.key === "Tab") {
-      commitWithKey("tab", event);
-      return;
-    }
-    if (event.key === " ") {
-      commitWithKey("space", event);
-    }
+    dispatchInput(composerTokenForKey(event.key, "filter"), event);
   };
 
   /**
@@ -547,30 +568,7 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
     // Escape belongs to the panel, and Tab to the browser's own focus order.
     if (event.key === "Escape" || event.key === "Tab") return;
     event.stopPropagation();
-    const rowDelta = arrowDelta(event.key);
-    if (rowDelta !== undefined) {
-      if (moveHighlightDown(rowDelta)) event.preventDefault();
-      return;
-    }
-    const acrossDelta = horizontalArrowDelta(event.key);
-    if (acrossDelta !== undefined) {
-      if (moveHighlightAcross(acrossDelta)) event.preventDefault();
-      return;
-    }
-    if (event.key === "Enter") {
-      if (commitHighlight()) event.preventDefault();
-      return;
-    }
-    if (!isStripFilterTypingKey(event.key)) return;
-    inputRef.current?.focus();
-    // Focusing mid-keydown carries a printable character into the box on its
-    // own; Backspace has no such follow-up, so its edit is applied here.
-    if (event.key !== "Backspace") {
-      setHighlightMode("typing");
-      return;
-    }
-    event.preventDefault();
-    setFilterText(state.filter.slice(0, -1));
+    dispatchInput(composerTokenForKey(event.key, "band"), event);
   };
 
   /** Leaving a band for anything but another band ends the browse. */
@@ -620,10 +618,7 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
           disabled={!hasMatches}
           onClick={() => setOpenSectionKey(isOpen ? null : section.key)}
           onKeyDown={(event) => {
-            const delta = arrowDelta(event.key);
-            if (delta === undefined || !enterHighlightAt(section.key, delta)) return;
-            event.preventDefault();
-            event.stopPropagation();
+            if (dispatchInput(composerHeadingToken(event.key, section.key), event)) event.stopPropagation();
           }}
           aria-expanded={isOpen}
           aria-controls={panelId}
@@ -683,17 +678,17 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
       aria-controls={candidatesId}
       aria-activedescendant={focusTarget.kind === "input" ? activeOption?.optionId : undefined}
       aria-autocomplete="list"
-      value={state.filter}
-      onChange={(event) => setFilterText(event.target.value)}
+      value={openTextLiteral ?? state.filter}
+      onChange={(event) => dispatchInput({ kind: "text", text: event.target.value })}
       onKeyDown={handleKeyDown}
-      placeholder={composer ? "type the next word" : "Type or tap a tile"}
+      placeholder={openTextLiteral !== undefined ? "" : composer ? "type the next word" : "Type or tap a tile"}
       aria-label="Filter tile candidates"
       aria-invalid={state.isUnknown}
       aria-describedby={state.isUnknown ? `${unknownId} ${hintId}` : hintId}
       data-strip-filter={composer ? "sentence" : "tray"}
       className={
         composer
-          ? `ml-1 min-h-8 min-w-32 max-w-full border-b-2 bg-transparent px-1 font-serif text-sm italic outline-none field-sizing-content placeholder:text-white/45 ${
+          ? `min-h-8 min-w-32 max-w-full border-b-2 bg-transparent px-1 font-serif text-sm italic outline-none field-sizing-content placeholder:text-white/45 ${
               state.isUnknown ? "border-amber-400 text-amber-300" : "border-violet-200/80 text-white"
             }`
           : `h-10 min-w-0 flex-1 rounded-lg border-2 bg-black/40 px-3 font-mono text-sm outline-none transition-colors placeholder:font-sans placeholder:text-white/55 ${focusRingClasses} ${
@@ -703,6 +698,22 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
             }`
       }
     />
+  );
+
+  // An open text value reads as the quoted text it will place, with the input
+  // between the quotes the user typed and will type.
+  const quoteMark = (
+    <span
+      aria-hidden="true"
+      className={composer ? "font-serif text-sm text-white/70 italic" : "font-mono text-sm text-white/70"}
+    >
+      "
+    </span>
+  );
+  const filterField = filterFieldWithQuotes(
+    filterInput,
+    openTextLiteral === undefined ? undefined : quoteMark,
+    composer !== undefined
   );
 
   const panel = (
@@ -715,15 +726,12 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
       onKeyDown={handlePanelKeyDown}
     >
       <div className={`flex items-center gap-2 ${composer ? "justify-end" : ""}`}>
-        {composer ? null : filterInput}
+        {composer ? null : filterField}
         <button
           type="button"
           onClick={onDismiss}
           onKeyDown={(event) => {
-            const delta = arrowDelta(event.key);
-            if (delta === undefined || !moveHighlightDown(delta)) return;
-            event.preventDefault();
-            event.stopPropagation();
+            if (dispatchInput(composerTokenForKey(event.key, "close"), event)) event.stopPropagation();
           }}
           aria-label="Close tile candidates"
           className={`flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-white/15 text-white/70 transition-colors hover:bg-white/10 hover:text-white ${focusRingClasses}`}
@@ -736,7 +744,8 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
         Arrow down to start browsing the tiles. Left and right move along a row, up and down move between rows, and
         Enter places the highlighted tile. Arrow down on a group heading opens it, and Tab moves from the group being
         browsed to the next heading. Start the text with a dollar sign to name a variable, which Enter then places,
-        creating it when no variable has that name.
+        creating it when no variable has that name. Where a text value fits, a double quote starts one and the next
+        double quote places it, as Enter does, with everything between them taken as the text.
         {composer
           ? " Type a comma to end the when side and start typing what to do, and a period when the rule says what you want. With nothing typed, Backspace takes back the comma, and then the word you placed last."
           : ""}
@@ -753,18 +762,18 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
       )}
 
       <div id={candidatesId} className="flex flex-col gap-3">
-        {state.bestNext.length > 0 && (
+        {shownBestNext.length > 0 && (
           <div
             role="listbox"
             {...bandListboxProps(kBestNextBandKey)}
             aria-label="Best next tiles"
             className={`flex flex-wrap gap-2 ${browsedBandClasses}`}
           >
-            {renderChips(kBestNextBandKey, state.bestNext)}
+            {renderChips(kBestNextBandKey, shownBestNext)}
           </div>
         )}
 
-        {state.sections.length > 0 && <div className="flex flex-col gap-1.5">{state.sections.map(renderSection)}</div>}
+        {shownSections.length > 0 && <div className="flex flex-col gap-1.5">{shownSections.map(renderSection)}</div>}
       </div>
     </section>
   );
@@ -777,8 +786,8 @@ export function BrainCandidateStrip({ state, side, id, onDismiss, composer }: Br
       <BrainRuleSentence
         ruleDef={composer.ruleDef}
         updateCounter={composer.updateCounter}
-        composerInput={filterInput}
-        pivotComma={composer.pivotComma}
+        composerInput={filterField}
+        pivotComma={composer.pivoted && composer.doTileCount() === 0}
       />
       {panel}
     </>

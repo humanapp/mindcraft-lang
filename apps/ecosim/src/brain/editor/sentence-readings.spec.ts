@@ -232,10 +232,10 @@ describe("ecosim actuator readings", () => {
     const say = () => actuator(EcosimHostActions.Say.key);
 
     assert.equal(reading([], [say()]), "Always, say.");
-    assert.equal(reading([], [say(), text("hello")]), "Always, say hello.");
+    assert.equal(reading([], [say(), text("hello")]), 'Always, say "hello".');
     assert.equal(
       reading([], [say(), text("hello"), parameter(TileIds.Parameter.Duration), number(2)]),
-      "Always, say hello duration 2."
+      'Always, say "hello" duration 2.'
     );
   });
 

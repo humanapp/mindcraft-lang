@@ -4,8 +4,9 @@
  * the rule is armed from there, the combobox wiring the relocated input keeps,
  * the composition reading dropping the words the projection completes for
  * itself, the pivot comma rendering exactly while composition sits on the
- * DO side with nothing placed there, and the trigger word standing in for an
- * empty WHEN side at that pivot.
+ * DO side with nothing placed there, the trigger word standing in for an
+ * empty WHEN side at that pivot, and the filter field holding the input in one
+ * inline wrapper whether or not a text value is open.
  *
  * Structural assertions only: every value asserted here is a role, an id
  * reference, a marker attribute, or the containment of one element in another.
@@ -32,7 +33,7 @@ import {
   NIL_VALUE,
   optional,
 } from "@mindcraft-lang/core/runtime";
-import { createElement } from "react";
+import { createElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   type ArmedTargetController,
@@ -40,6 +41,7 @@ import {
   ArmedTargetProvider,
   type ArmedTileTarget,
 } from "./ArmedTargetContext";
+import { filterFieldWithQuotes } from "./BrainCandidateStrip";
 import { type BrainEditorConfig, BrainEditorProvider } from "./BrainEditorContext";
 import { BrainRuleEditor } from "./BrainRuleEditor";
 
@@ -258,6 +260,57 @@ describe("the filter input's position", () => {
     });
     assert.equal(countOf(markup, `data-rule-sentence="${ruleDef.id()}"`), 1);
     assert.equal(countOf(markup, "data-sentence-tile-index"), 0);
+  });
+});
+
+/** The props the filter field's wrapper carries. */
+interface FilterFieldProps {
+  readonly className: string;
+  readonly children: readonly ReactNode[];
+}
+
+/** The wrapper of the filter field built for `inSentence`, with a text value open or not. */
+function filterFields(inSentence: boolean) {
+  const input = createElement("input", { type: "text" });
+  const quoteMark = createElement("span", null, '"');
+  return {
+    input,
+    closed: filterFieldWithQuotes(input, undefined, inSentence) as ReactElement<FilterFieldProps>,
+    open: filterFieldWithQuotes(input, quoteMark, inSentence) as ReactElement<FilterFieldProps>,
+  };
+}
+
+describe("the filter field around an open text value", () => {
+  test("the sentence field keeps one wrapper across the mode", () => {
+    const { closed, open } = filterFields(true);
+    assert.equal(closed.type, open.type);
+    assert.equal(closed.props.className, open.props.className);
+  });
+
+  test("the sentence field keeps the input in the same place in that wrapper", () => {
+    const { input, closed, open } = filterFields(true);
+    const place = closed.props.children.indexOf(input);
+    assert.ok(place >= 0, "the closed field renders the input");
+    assert.equal(open.props.children.indexOf(input), place);
+  });
+
+  test("the sentence field's wrapper takes no display of its own", () => {
+    const { closed, open } = filterFields(true);
+    for (const field of [closed, open]) {
+      const tokens = field.props.className.split(" ");
+      for (const display of ["block", "flex", "inline-flex", "grid", "table"]) {
+        assert.ok(!tokens.includes(display), `the field runs inline, without ${display}`);
+      }
+    }
+  });
+
+  test("the tray field keeps one wrapper and the same place as well", () => {
+    const { input, closed, open } = filterFields(false);
+    assert.equal(closed.type, open.type);
+    assert.equal(closed.props.className, open.props.className);
+    const place = closed.props.children.indexOf(input);
+    assert.ok(place >= 0, "the closed field renders the input");
+    assert.equal(open.props.children.indexOf(input), place);
   });
 });
 

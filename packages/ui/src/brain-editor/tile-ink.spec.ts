@@ -98,11 +98,12 @@ function renderStrip(color: string | undefined, tileDef: IBrainTileDef): string 
     sections: [section(entries)],
     filter: "",
     isUnknown: false,
-    commitsWordInProgress: false,
+    acceptsTextLiteral: false,
+    textLiteralCandidate: () => undefined,
     setFilter: () => {},
     commit: () => {},
     commitByKey: () => {},
-    commitFromKey: () => undefined,
+    candidateFromKey: () => undefined,
   };
   return renderToStaticMarkup(
     createElement(

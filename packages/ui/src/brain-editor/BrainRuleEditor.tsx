@@ -43,7 +43,7 @@ import {
   hasRuleInClipboard,
   onClipboardChanged,
 } from "./rule-clipboard";
-import { canEndSideExpression, decideComposerBackspace } from "./sentence-composer";
+import { canEndSideExpression } from "./sentence-composer";
 import { applyBrokenTileBadges, buildNodeMap, computeTileBadges, type TileBadge } from "./tile-badges";
 
 // Pre-compute glass effects for each element type
@@ -409,24 +409,10 @@ export function BrainRuleEditor({
 
   const handleAppendTileClick = (side: RuleSide) => () => armAppendTarget(side, "tray");
 
-  const takeBackLast = useCallback((): boolean => {
-    const ownCommits = ownCommitsRef.current;
-    const action = decideComposerBackspace({
-      filter: candidateStrip.filter,
-      ownLastCommit: ownCommits[ownCommits.length - 1],
-      newestCommand: commandHistory.peekUndo(),
-      pivoted: isPivoted,
-      doTileCount: ruleDef.do().tiles().size(),
-    });
-    if (action === "unpivot") {
-      armAppendTarget(RuleSide.When, "sentence");
-      return true;
-    }
-    if (action !== "uncommit-word") return false;
+  const undoOwnLastCommit = useCallback((): void => {
     commandHistory.undo();
-    ownCommits.pop();
-    return true;
-  }, [candidateStrip.filter, commandHistory, isPivoted, ruleDef, armAppendTarget]);
+    ownCommitsRef.current.pop();
+  }, [commandHistory]);
 
   const ruleHasTiles = () => !ruleDef.when().tiles().isEmpty() || !ruleDef.do().tiles().isEmpty();
 
@@ -434,12 +420,15 @@ export function BrainRuleEditor({
     ? {
         ruleDef,
         updateCounter,
-        pivotComma: isPivoted && ruleDef.do().tiles().isEmpty(),
+        pivoted: isPivoted,
+        ownCommits: ownCommitsRef.current,
         canEndArmedSide: () =>
           canEndSideExpression((stripTarget?.side === RuleSide.Do ? ruleDef.do() : ruleDef.when()).tiles()),
         isRuleEmpty: () => !ruleHasTiles(),
-        pivot: () => armAppendTarget(RuleSide.Do, "sentence"),
-        takeBackLast,
+        doTileCount: () => ruleDef.do().tiles().size(),
+        newestCommand: () => commandHistory.peekUndo(),
+        armSide: (side: RuleSide) => armAppendTarget(side, "sentence"),
+        undoOwnLastCommit,
       }
     : undefined;
 

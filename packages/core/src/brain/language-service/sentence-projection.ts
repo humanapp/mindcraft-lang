@@ -5,7 +5,7 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { MathOps } from "../../platform/math";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
-import { CoreOpId } from "../../runtime";
+import { CoreOpId, CoreTypeIds } from "../../runtime";
 import {
   type IBrainPageDef,
   type IBrainRuleDef,
@@ -127,6 +127,9 @@ const kBareContext = "sentence-bare";
 /** Context tag of the connective text between words and between clauses. */
 const kGlueContext = "sentence-glue";
 
+/** Context tag of the punctuation a value's own reading carries. */
+const kValueContext = "sentence-value";
+
 /**
  * Context tag of the vocabulary that relates one rule to another: the child
  * connectives, a child's subordinate clause forms, and the glue between the
@@ -143,6 +146,7 @@ const kNegatedStateTemplate = "When I am {negation} {form} {object}";
 const kNegatedEventTemplate = "When {negation} {form} {object}";
 const kAlwaysWord = "Always";
 const kBareDefaultTemplate = "{frame, select, verb {anything} other {}}";
+const kTextValueTemplate = '"{value}"';
 const kWordGlueTemplate = "{a} {b}";
 const kClauseTemplate = "{trigger}, {action}";
 const kTerminalTemplate = "{sentence}.";
@@ -396,9 +400,9 @@ function vocabularyName(tileDef: IBrainTileDef): string {
  * name, an output's name, or the trailing segment of its tile id).
  *
  * Vocabulary localizes through the tile-label context; user content is the
- * author's own text and never localizes. {@link projectRuleSentence} reads
- * every tile through this function: call it wherever a surface has to label a
- * tile with the word its sentence uses.
+ * author's own text and never localizes. The word is the tile's raw reading: a
+ * text literal resolves to its bare value, carrying no quotation marks. Call it
+ * wherever a surface has to label a tile with the word its sentence uses.
  */
 export function tileSentenceWord(tileDef: IBrainTileDef, localizer: Localizer): string {
   const form = tileLanguage(tileDef)?.form;
@@ -442,9 +446,28 @@ function bareWord(localizer: Localizer, tileDef: IBrainTileDef): string {
 // Projection
 // ---------------------------------------------------------------------------
 
+/** Whether `tileDef` is a literal holding a text value. */
+function isTextLiteral(tileDef: IBrainTileDef): boolean {
+  return tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.String;
+}
+
+/**
+ * The text of the word segment `tileDef` contributes to a sentence: a text
+ * literal's value inside the locale's quotation marks, so the value's own
+ * punctuation cannot read as sentence structure and an empty value still reads
+ * as a pair of marks, and every other tile's {@link tileSentenceWord} unchanged.
+ */
+function sentenceWordText(localizer: Localizer, tileDef: IBrainTileDef): string {
+  const word = tileSentenceWord(tileDef, localizer);
+  if (!isTextLiteral(tileDef)) {
+    return word;
+  }
+  return localizer.tr(kTextValueTemplate, { value: word }, kValueContext);
+}
+
 function wordPhrase(localizer: Localizer, tileDef: IBrainTileDef, sourceTileIndex: number): List<SentenceSegment> {
   const phrase = new List<SentenceSegment>();
-  phrase.push(wordSegment(tileSentenceWord(tileDef, localizer), sourceTileIndex));
+  phrase.push(wordSegment(sentenceWordText(localizer, tileDef), sourceTileIndex));
   return phrase;
 }
 

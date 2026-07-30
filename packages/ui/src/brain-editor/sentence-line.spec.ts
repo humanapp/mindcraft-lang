@@ -161,9 +161,20 @@ describe("sentence line rendering", () => {
     assert.equal(countOf(renderSentence(ruleDef), 'data-sentence-register="variable"'), 1);
   });
 
-  test("a non-variable word carries no register marker", () => {
+  test("a numeric literal word carries the literal register marker", () => {
     const literal = new BrainTileLiteralDef(CoreTypeIds.Number, 3, {}, services);
     const { ruleDef } = makeBrain([literal], []);
+    assert.equal(countOf(renderSentence(ruleDef), 'data-sentence-register="literal"'), 1);
+  });
+
+  test("a text literal word carries the literal register marker too", () => {
+    const literal = new BrainTileLiteralDef(CoreTypeIds.String, "go left", {}, services);
+    const { ruleDef } = makeBrain([literal], []);
+    assert.equal(countOf(renderSentence(ruleDef), 'data-sentence-register="literal"'), 1);
+  });
+
+  test("a word sourced from neither a variable nor a value literal carries no register marker", () => {
+    const { ruleDef } = makeBrain([makeSensor("line-register", "hear")], []);
     assert.equal(countOf(renderSentence(ruleDef), "data-sentence-register="), 0);
   });
 
