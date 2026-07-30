@@ -65,7 +65,7 @@ export interface CandidateStripState {
   readonly sections: readonly CandidateStripSection[];
   /** The current filter text; every keystroke narrows the offering. */
   readonly filter: string;
-  /** True when the filter text names nothing the strip can place. */
+  /** True when the filter text names nothing the strip can place, as opposed to naming nothing yet. */
   readonly isUnknown: boolean;
   /** True when the word in progress resolves to one candidate, which Space commits. */
   readonly commitsWordInProgress: boolean;
@@ -200,7 +200,8 @@ export function useCandidateStrip({
         const registered = manufactureLiteralTile(
           candidate.origin.factoryTileDef,
           ruleDef.brain()?.catalog(),
-          candidate.origin.value
+          candidate.origin.value,
+          candidate.origin.displayFormat
         );
         if (!registered) return;
         tileDef = registered;

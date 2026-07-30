@@ -76,7 +76,9 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
     });
     const gradientStyle = {
       background: `radial-gradient(circle at center, ${lighterColor}, ${darkerColor})`,
-      borderColor: darkerSaturatedColor,
+      // An app may set --color-brain-tile-border to give every tile one border
+      // color; unset, each tile keeps a border derived from its own base color.
+      borderColor: `var(--color-brain-tile-border, ${darkerSaturatedColor})`,
       ...tileGlass.containerStyle,
     };
 

@@ -422,6 +422,16 @@ describe("the period key", () => {
     assert.equal(action, "settle");
   });
 
+  test("settles a number carrying a typed format specifier", () => {
+    const action = decideComposerPeriod({
+      filter: "0.5s",
+      armedSideCanEnd: true,
+      ruleIsEmpty: false,
+      wordInProgressCommits: true,
+    });
+    assert.equal(action, "commit-then-settle");
+  });
+
   test("leaves a word that merely opens with digits to the resolvable-word rung", () => {
     const action = decideComposerPeriod({
       filter: "1st",

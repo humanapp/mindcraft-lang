@@ -18,11 +18,13 @@ import {
   CoreLiteralFactoryId,
   CoreVariableFactoryId,
   isVariableFactoryTileId,
+  LiteralDisplayFormats,
   mkControlFlowTileId,
   mkLiteralFactoryTileId,
   mkModifierTileId,
   mkOperatorTileId,
   mkVariableFactoryTileId,
+  percentFormat,
   RuleSide,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
@@ -343,6 +345,16 @@ function stripLabel(tileDef: IBrainTileDef): string {
   return tileDef.kind === "variable" ? (tileDef as BrainTileVariableDef).varName : tileLabel(tileDef);
 }
 
+/**
+ * The word each tile's sentence reads it as, resolved against `brain`'s own
+ * localizer: the label the strip puts on its chips, and the reading a formatted
+ * literal carries.
+ */
+function sentenceLabel(brain: BrainDef): (tileDef: IBrainTileDef) => string {
+  const localizer = brain.servicesLocalizer();
+  return (tileDef) => tileSentenceWord(tileDef, localizer);
+}
+
 /** What an offering is built for beyond the side it is armed on. */
 interface OfferingOptions {
   /** The type the armed position expects, which narrows the offering to tiles that produce it. */
@@ -608,6 +620,146 @@ describe("mintNumberLiteralCandidate", () => {
     const again = manufactureLiteralTile(minted.origin.factoryTileDef, brain.catalog(), minted.origin.value);
     assert.equal(again, placed, "a second placement reuses the registered literal");
   });
+
+  test("a trailing s mints the value in the time-seconds format", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    const minted = mintNumberLiteralCandidate(candidates, "0.5s", labelOf);
+
+    assert.ok(minted && minted.origin.kind === "minted-literal");
+    assert.equal((minted.tileDef as BrainTileLiteralDef).value, 0.5);
+    assert.equal((minted.tileDef as BrainTileLiteralDef).displayFormat, LiteralDisplayFormats.TimeSeconds);
+    assert.equal(minted.origin.displayFormat, LiteralDisplayFormats.TimeSeconds);
+    assert.equal(minted.label, "0.5s", "the chip reads the formatted value, not the digits alone");
+  });
+
+  test("a trailing ms mints the value its milliseconds reading names", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    const minted = mintNumberLiteralCandidate(candidates, "500ms", labelOf);
+
+    assert.ok(minted && minted.origin.kind === "minted-literal");
+    assert.equal((minted.tileDef as BrainTileLiteralDef).value, 0.5);
+    assert.equal((minted.tileDef as BrainTileLiteralDef).displayFormat, LiteralDisplayFormats.TimeMs);
+    assert.equal(minted.label, "500ms");
+  });
+
+  test("a trailing percent sign mints the fraction its percent reading names", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    const minted = mintNumberLiteralCandidate(candidates, "50%", labelOf);
+
+    assert.ok(minted && minted.origin.kind === "minted-literal");
+    assert.equal((minted.tileDef as BrainTileLiteralDef).value, 0.5);
+    assert.equal(minted.origin.displayFormat, percentFormat(0));
+    assert.equal(minted.label, "50%");
+  });
+
+  test("the typed digits carry their own precision into the percent format", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    const minted = mintNumberLiteralCandidate(candidates, "12.5%", labelOf);
+
+    assert.ok(minted && minted.origin.kind === "minted-literal");
+    assert.equal((minted.tileDef as BrainTileLiteralDef).value, 0.125);
+    assert.equal(minted.origin.displayFormat, percentFormat(1));
+    assert.equal(minted.label, "12.5%");
+  });
+
+  test("digits with no specifier mint in the default format", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+
+    const minted = mintNumberLiteralCandidate(candidates, "42", sentenceLabel(brain));
+
+    assert.ok(minted && minted.origin.kind === "minted-literal");
+    assert.equal(minted.origin.displayFormat, LiteralDisplayFormats.Default);
+    assert.equal((minted.tileDef as BrainTileLiteralDef).displayFormat, LiteralDisplayFormats.Default);
+  });
+
+  test("mints nothing for trailing text that is not a format specifier", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    for (const typed of ["5x", "5S", "5 s", "5%%", "5m", "5sec"]) {
+      assert.equal(mintNumberLiteralCandidate(candidates, typed, labelOf), undefined, typed);
+    }
+  });
+
+  test("mints nothing for a specifier with no number in front of it", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    for (const typed of ["s", "ms", "%"]) {
+      assert.equal(mintNumberLiteralCandidate(candidates, typed, labelOf), undefined, typed);
+    }
+  });
+
+  test("mints nothing while the number is still being typed", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    assert.equal(mintNumberLiteralCandidate(candidates, "1.", labelOf), undefined);
+    assert.equal(mintNumberLiteralCandidate(candidates, "-", labelOf), undefined);
+  });
+});
+
+describe("a formatted literal the composer types", () => {
+  /**
+   * Mint the literal `typed` names and place it through the manufacture seam the
+   * strip commits through, returning the placed tile and the word its sentence
+   * reads it as.
+   */
+  function placeTypedLiteral(typed: string) {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+    const minted = mintNumberLiteralCandidate(candidates, typed, labelOf);
+    assert.ok(minted && minted.origin.kind === "minted-literal", `${typed} mints a literal`);
+    const placed = manufactureLiteralTile(
+      minted.origin.factoryTileDef,
+      brain.catalog(),
+      minted.origin.value,
+      minted.origin.displayFormat
+    );
+    assert.ok(placed);
+    return { brain, labelOf, minted, origin: minted.origin, placed };
+  }
+
+  test("the placed literal reads back as the text that minted it", () => {
+    for (const typed of ["0.5s", "500ms", "50%", "7%", "12.5%", "42"]) {
+      const { labelOf, placed } = placeTypedLiteral(typed);
+      assert.equal(labelOf(placed), typed, `${typed} round trips through its display format`);
+    }
+  });
+
+  test("a typed percent places the fraction it reads as", () => {
+    const { placed, labelOf } = placeTypedLiteral("50%");
+
+    assert.equal(placed.value, 0.5);
+    assert.equal(labelOf(placed), "50%");
+  });
+
+  test("the placed tile is the one the candidate previewed, and a second placement reuses it", () => {
+    const { brain, origin, minted, placed } = placeTypedLiteral("0.5s");
+
+    assert.equal(placed.tileId, minted.tileDef.tileId);
+    assert.equal(brain.catalog().get(placed.tileId), placed);
+    const again = manufactureLiteralTile(origin.factoryTileDef, brain.catalog(), origin.value, origin.displayFormat);
+    assert.equal(again, placed, "the same value and format reuse the registered literal");
+  });
+
+  test("the same value in another format is another tile", () => {
+    const { brain, origin, placed } = placeTypedLiteral("0.5s");
+
+    const plain = manufactureLiteralTile(origin.factoryTileDef, brain.catalog(), origin.value);
+
+    assert.ok(plain);
+    assert.notEqual(plain.tileId, placed.tileId);
+    assert.equal(plain.value, placed.value);
+  });
 });
 
 /** The types the variable factories in `candidates` produce, in offering order. */
@@ -850,6 +1002,42 @@ describe("resolveStripOffering", () => {
     assert.equal(offering.isUnknown, false);
   });
 
+  test("a typed format specifier mints its literal, ahead of the offering and never unknown", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    for (const [typed, format] of [
+      ["0.5s", LiteralDisplayFormats.TimeSeconds],
+      ["500ms", LiteralDisplayFormats.TimeMs],
+      ["50%", percentFormat(0)],
+    ] as const) {
+      const offering = resolveStripOffering(candidates, typed, labelOf);
+
+      assert.equal(offering.visible[0]?.origin.kind, "minted-literal", typed);
+      assert.equal((offering.visible[0].tileDef as BrainTileLiteralDef).displayFormat, format, typed);
+      assert.equal(offering.isUnknown, false, typed);
+      assert.deepEqual(mintedVariables(offering.visible), [], typed);
+      assert.equal(decideCandidateCommit(offering.visible, typed, "enter")?.origin.kind, "minted-literal", typed);
+      assert.equal(decideCandidateCommit(offering.visible, typed, "space")?.origin.kind, "minted-literal", typed);
+    }
+  });
+
+  test("trailing text that is not a format specifier stays unknown", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    const offering = resolveStripOffering(candidates, "5x", labelOf);
+
+    assert.equal(offering.isUnknown, true);
+    assert.deepEqual(
+      offering.visible.filter((c) => c.origin.kind === "minted-literal"),
+      []
+    );
+    for (const key of ["enter", "tab", "space"] as const) {
+      assert.equal(decideCandidateCommit(offering.visible, "5x", key)?.origin.kind, undefined);
+    }
+  });
+
   test("minted variables render in their own presentation, suggestions in the seated one", () => {
     const { candidates } = offeringForEmptyWhenSide();
 
@@ -859,6 +1047,66 @@ describe("resolveStripOffering", () => {
     for (const entry of entries) {
       assert.equal(entry.presentation, entry.candidate.origin.kind === "minted-variable" ? "minting" : "seated");
     }
+  });
+});
+
+describe("a number the composer is partway through typing", () => {
+  const inProgress = ["1.", "-2.", "-"];
+
+  test("is neither matched nor unknown, so nothing reads as amber", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    for (const typed of inProgress) {
+      const offering = resolveStripOffering(candidates, typed, labelOf);
+
+      assert.equal(offering.isUnknown, false, typed);
+      assert.deepEqual(offering.visible, [], typed);
+    }
+  });
+
+  test("offers no variable to mint", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    for (const typed of inProgress) {
+      const offering = resolveStripOffering(candidates, typed, labelOf);
+
+      assert.deepEqual(mintedVariables(offering.offered), [], typed);
+    }
+  });
+
+  test("commits nothing on any commit key", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    for (const typed of inProgress) {
+      const offering = resolveStripOffering(candidates, typed, labelOf);
+
+      for (const key of ["enter", "tab", "space"] as const) {
+        assert.equal(decideCandidateCommit(offering.visible, typed, key), undefined, `${typed} ${key}`);
+      }
+    }
+  });
+
+  test("the next digit brings the literal back", () => {
+    const { candidates, brain } = offeringForEmptyWhenSide();
+    const labelOf = sentenceLabel(brain);
+
+    const offering = resolveStripOffering(candidates, "1.5", labelOf);
+
+    assert.equal(offering.visible[0]?.origin.kind, "minted-literal");
+    assert.equal((offering.visible[0].tileDef as BrainTileLiteralDef).value, 1.5);
+    assert.equal(offering.isUnknown, false);
+  });
+
+  test("stays unknown where the position accepts no number at all", () => {
+    const withoutFactory = [candidate(notTileId, "not")];
+
+    const offering = resolveStripOffering(withoutFactory, "1.", stripLabel);
+
+    assert.equal(offering.isUnknown, true, "text that can never resolve is still unknown");
+    assert.deepEqual(offering.visible, []);
   });
 });
 

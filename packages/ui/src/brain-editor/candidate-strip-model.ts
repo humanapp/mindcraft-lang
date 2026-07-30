@@ -4,6 +4,9 @@ import {
   type IBrainTileDef,
   isCoreLiteralFactoryTileId,
   isVariableFactoryTileId,
+  type LiteralDisplayFormat,
+  LiteralDisplayFormats,
+  percentFormat,
   RuleSide,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
@@ -131,7 +134,8 @@ export function shouldOrderPagesFirst(
  * Where a candidate's tile came from:
  *
  * - `suggested` -- the suggestion oracle offered it
- * - `minted-literal` -- typed digits mint it, carrying the value it places
+ * - `minted-literal` -- typed digits mint it, carrying the value and the display
+ *   format it places
  * - `minted-variable` -- a typed word mints it, carrying the name it places
  *
  * A minted candidate carries the factory that manufactures its tile, so
@@ -140,7 +144,13 @@ export function shouldOrderPagesFirst(
  */
 export type CandidateOrigin =
   | { readonly kind: "suggested" }
-  | { readonly kind: "minted-literal"; readonly factoryTileDef: BrainTileFactoryDef; readonly value: unknown }
+  | {
+      readonly kind: "minted-literal";
+      readonly factoryTileDef: BrainTileFactoryDef;
+      readonly value: unknown;
+      /** The format the placed literal displays `value` in, which reads back as the typed text. */
+      readonly displayFormat: LiteralDisplayFormat;
+    }
   | { readonly kind: "minted-variable"; readonly factoryTileDef: BrainTileFactoryDef; readonly varName: string };
 
 /** One tile offered at the armed position. */
@@ -355,6 +365,58 @@ export function isUnknownFilterText(visible: readonly StripCandidate[], filter: 
 
 const numericLiteralPattern = /^-?(\d+(\.\d+)?|\.\d+)$/;
 
+/** Filter text that is a number the user has not finished typing: a lone minus sign, or digits ending in the decimal point. */
+const numberInProgressPattern = /^(-|-?\d+\.)$/;
+
+/** How many digits `digits` carries after its decimal point, and zero when it has none. */
+function decimalPlaces(digits: string): number {
+  const dot = digits.indexOf(".");
+  return dot === -1 ? 0 : digits.length - dot - 1;
+}
+
+/** The number `text` holds ahead of the trailing `suffix`, or undefined when it does not end that way. */
+function numberBeforeSuffix(text: string, suffix: string): string | undefined {
+  if (!text.endsWith(suffix) || text.length === suffix.length) return undefined;
+  const digits = text.slice(0, text.length - suffix.length);
+  return numericLiteralPattern.test(digits) ? digits : undefined;
+}
+
+/** A number the filter text names, together with the display format its typed suffix asks for. */
+interface TypedNumberLiteral {
+  /** The value placed, which reads back as the typed text under `displayFormat`. */
+  readonly value: number;
+  /** The format the value displays in: `Default` for bare digits. */
+  readonly displayFormat: LiteralDisplayFormat;
+}
+
+/**
+ * The number and display format `filter` names, or undefined when the text is
+ * not a complete number. A trailing specifier selects the format and the digits
+ * ahead of it are read as that format's own reading, so the value placed is the
+ * one that displays as the text typed: `s` reads seconds, `ms` reads
+ * milliseconds of a value held in seconds, and `%` reads a percentage of a
+ * fraction, carrying the precision the digits were typed with.
+ */
+function parseTypedNumberLiteral(filter: string): TypedNumberLiteral | undefined {
+  const trimmed = filter.trim();
+  if (numericLiteralPattern.test(trimmed)) {
+    return { value: Number(trimmed), displayFormat: LiteralDisplayFormats.Default };
+  }
+  const percent = numberBeforeSuffix(trimmed, "%");
+  if (percent !== undefined) {
+    return { value: Number(percent) / 100, displayFormat: percentFormat(decimalPlaces(percent)) };
+  }
+  const milliseconds = numberBeforeSuffix(trimmed, "ms");
+  if (milliseconds !== undefined) {
+    return { value: Number(milliseconds) / 1000, displayFormat: LiteralDisplayFormats.TimeMs };
+  }
+  const seconds = numberBeforeSuffix(trimmed, "s");
+  if (seconds !== undefined) {
+    return { value: Number(seconds), displayFormat: LiteralDisplayFormats.TimeSeconds };
+  }
+  return undefined;
+}
+
 /** The core number-literal factory among `candidates`, or undefined when the armed position accepts no numeric literal. */
 function findNumberLiteralFactory(candidates: readonly StripCandidate[]): BrainTileFactoryDef | undefined {
   for (const candidate of candidates) {
@@ -368,21 +430,23 @@ function findNumberLiteralFactory(candidates: readonly StripCandidate[]): BrainT
 
 /**
  * The literal candidate minted from typed digits: present when `filter` is a
- * complete number and the armed position accepts a numeric literal. The
- * candidate's tile is a preview def manufactured by the factory; committing it
- * re-manufactures through the catalog so the placed tile is registered.
+ * complete number, with or without a display-format specifier on it, and the
+ * armed position accepts a numeric literal. The candidate's tile is a preview
+ * def manufactured by the factory; committing it re-manufactures through the
+ * catalog so the placed tile is registered. `labelOf` reads the preview, so a
+ * formatted literal's chip carries the formatted reading its sentence gives it.
  */
 export function mintNumberLiteralCandidate(
   candidates: readonly StripCandidate[],
   filter: string,
   labelOf: (tileDef: IBrainTileDef) => string
 ): StripCandidate | undefined {
-  const trimmed = filter.trim();
-  if (!numericLiteralPattern.test(trimmed)) return undefined;
+  const typed = parseTypedNumberLiteral(filter);
+  if (!typed) return undefined;
   const factoryTileDef = findNumberLiteralFactory(candidates);
   if (!factoryTileDef) return undefined;
-  const value = Number(trimmed);
-  const preview = factoryTileDef.manufacture(factoryTileDef, { value });
+  const { value, displayFormat } = typed;
+  const preview = factoryTileDef.manufacture(factoryTileDef, { value, displayFormat });
   if (!preview) return undefined;
   return {
     key: `mint:${preview.tileId}`,
@@ -390,8 +454,17 @@ export function mintNumberLiteralCandidate(
     label: labelOf(preview),
     group: "literal",
     viaConversion: false,
-    origin: { kind: "minted-literal", factoryTileDef, value },
+    origin: { kind: "minted-literal", factoryTileDef, value, displayFormat },
   };
+}
+
+/**
+ * True when `filter` is a number the user is partway through typing at a
+ * position that accepts one, so no candidate matches it yet and none can: the
+ * next keystroke completes the number.
+ */
+function isNumberInProgress(candidates: readonly StripCandidate[], filter: string): boolean {
+  return numberInProgressPattern.test(filter.trim()) && findNumberLiteralFactory(candidates) !== undefined;
 }
 
 /**
@@ -511,7 +584,7 @@ export interface StripOffering {
   readonly offered: readonly StripCandidate[];
   /** The candidates the filter text leaves, best match first, with the minted entries in their ranked place. */
   readonly visible: readonly StripCandidate[];
-  /** True when the filter text names nothing the strip can place. */
+  /** True when the filter text names nothing the strip can place, as opposed to naming nothing yet. */
   readonly isUnknown: boolean;
 }
 
@@ -520,6 +593,9 @@ export interface StripOffering {
  * the typed text mints merged into it:
  *
  * - typed digits mint a literal, which commits like any other candidate
+ * - a number the user is partway through typing offers nothing and is not
+ *   unknown either: the text has yet to name anything, so it neither mints a
+ *   variable nor reads as text no tile fits
  * - a typed word that matches nothing mints a variable per accepted type, which
  *   the unknown state stands alongside because only a tap or a highlighted
  *   chip commits it
@@ -532,6 +608,9 @@ export function resolveStripOffering(
   labelOf: (tileDef: IBrainTileDef) => string
 ): StripOffering {
   const intent = parseStripFilter(filter);
+  if (!intent.variableIntent && isNumberInProgress(candidates, intent.text)) {
+    return { offered: [...candidates], visible: [], isUnknown: false };
+  }
   const literalMint = intent.variableIntent ? undefined : mintNumberLiteralCandidate(candidates, intent.text, labelOf);
   const offered = literalMint ? [literalMint, ...candidates] : [...candidates];
   const scope = intent.variableIntent ? offered.filter(isExistingVariableCandidate) : offered;
