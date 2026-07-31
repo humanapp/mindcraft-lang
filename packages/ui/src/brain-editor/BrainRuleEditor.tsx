@@ -753,6 +753,7 @@ export function BrainRuleEditor({
           composerInput={strip.composerInput}
           caretPosition={composerCaret}
           pending={strip.pending}
+          landingCount={strip.landingCount}
           pivotComma={isPivoted && ruleDef.do().tiles().size() === 0}
           placeCaret={placeSentenceCaret}
         />

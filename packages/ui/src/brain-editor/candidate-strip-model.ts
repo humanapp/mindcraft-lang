@@ -1346,22 +1346,6 @@ export function moveStripCursorBetweenRows(
   return nearest.cursor;
 }
 
-/**
- * The cursor entering the band `bandKey` at its first chip. `bands` is the
- * display sequence with `bandKey` at its own position, whether or not its chips
- * are rendered yet. Returns undefined when the band renders no chip or is
- * absent from `bands`.
- */
-export function enterStripOptionsAt(
-  stripId: string,
-  bands: readonly StripOptionBand[],
-  bandKey: string
-): StripCursor | undefined {
-  const band = bands.find((entry) => entry.key === bandKey);
-  if (band === undefined || band.entries.length === 0) return undefined;
-  return chipCursor(stripOptionId(stripId, bandKey, band.entries[0].candidate.key));
-}
-
 /** What Escape does while the strip is open. */
 export type StripEscapeAction = "clear-filter" | "dismiss";
 

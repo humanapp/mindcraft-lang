@@ -361,11 +361,6 @@ class ComposerTrace {
       highlightedCandidate: visible.find((candidate) => candidate.key === activeOption?.candidateKey),
       options: this.options(),
       cellGeometry: this.layOutGrid(),
-      stripId: kStripId,
-      bandsWithSection: (sectionKey: string) =>
-        this.bandSequence.filter(
-          (band) => band.key === kBestNextBandKey || band.key === this.openSectionKey || band.key === sectionKey
-        ),
     };
   }
 
@@ -435,6 +430,9 @@ class ComposerTrace {
       case "open-section":
         this.openSectionKey = effect.sectionKey;
         return [];
+      case "close-section":
+        if (this.openSectionKey === effect.sectionKey) this.openSectionKey = null;
+        return [];
       case "close-strip":
         this.closedAs = effect.reason;
         return [];
@@ -454,6 +452,7 @@ const consumeKey: ComposerInputEffect = { kind: "consume-key" };
 const typingFocus: ComposerInputEffect = { kind: "move-focus", target: { kind: "input" }, keepScroll: false };
 const settledFocus: ComposerInputEffect = { kind: "move-focus", target: { kind: "input" }, keepScroll: true };
 const clearHighlight: ComposerInputEffect = { kind: "highlight", cursor: undefined, mode: "typing" };
+const flashCaret: ComposerInputEffect = { kind: "flash-caret" };
 
 /** The cursor standing on the chip `optionId`. */
 function chipAt(optionId: string): StripCursor {
@@ -1574,23 +1573,97 @@ describe("browsing the offering as one grid", () => {
     return chipAt(stripOptionId(kStripId, bandKey, candidate.key));
   }
 
-  test("an arrow on a closed heading opens the section and stands the cursor on its first chip", () => {
-    const { trace, sectioned } = browsingTrace();
-    const entered = chipOf(kSectionBandKey, sectioned);
+  /** The keys of the bands whose chips the offering draws. */
+  function openBandKeys(trace: ComposerTrace): string[] {
+    return trace.openBands().map((band) => band.key);
+  }
+
+  /** Open the section `sectionKey` from the heading the cursor stands on, and step into its chips. */
+  function enterSection(trace: ComposerTrace, sectionKey: string): void {
+    trace.press({ kind: "heading-arrow", direction: "right", sectionKey });
+    trace.press({ kind: "heading-arrow", direction: "down", sectionKey });
+  }
+
+  /** Walk down from the box onto the first section's heading, which stands under the best-next row. */
+  function walkToFirstHeading(trace: ComposerTrace): void {
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+  }
+
+  /** Walk down from the box into the first section's chips, opening that section on the way. */
+  function browseFirstSection(trace: ComposerTrace): void {
+    walkToFirstHeading(trace);
+    enterSection(trace, kSectionBandKey);
+  }
+
+  test("down from a closed heading steps to the next heading, opening nothing on the way", () => {
+    const { trace } = twoSectionTrace();
+    walkToFirstHeading(trace);
+    assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
 
     assert.deepEqual(trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey }), [
-      { kind: "open-section", sectionKey: kSectionBandKey },
-      { kind: "highlight", cursor: entered, mode: "browsing" },
+      { kind: "highlight", cursor: headingAt(kSecondSectionBandKey), mode: "browsing" },
       consumeKey,
     ]);
-    assert.deepEqual(trace.state.cursor, entered);
+    assert.deepEqual(trace.state.cursor, headingAt(kSecondSectionBandKey));
+    assert.deepEqual(openBandKeys(trace), [kBestNextBandKey], "no section was opened on the way");
+  });
+
+  test("right opens the section its heading names, and down then steps into its chips", () => {
+    const { trace, sectioned } = browsingTrace();
+    walkToFirstHeading(trace);
+
+    assert.deepEqual(trace.press({ kind: "heading-arrow", direction: "right", sectionKey: kSectionBandKey }), [
+      consumeKey,
+      { kind: "open-section", sectionKey: kSectionBandKey },
+    ]);
+    assert.deepEqual(openBandKeys(trace), [kBestNextBandKey, kSectionBandKey]);
+    assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey), "opening a section moves the cursor nowhere");
+
+    assert.deepEqual(trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey }), [
+      { kind: "highlight", cursor: chipOf(kSectionBandKey, sectioned), mode: "browsing" },
+      consumeKey,
+    ]);
+    assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, sectioned));
     assert.equal(trace.state.highlightMode, "browsing");
     assert.deepEqual(trace.focusTarget(), { kind: "band", bandKey: kSectionBandKey });
   });
 
-  test("stepping down off a group's chips lands on the next group's heading, and down again enters that group", () => {
+  test("left closes the section its heading names, taking its chips out of the grid", () => {
+    const { trace } = browsingTrace();
+    walkToFirstHeading(trace);
+    trace.press({ kind: "heading-arrow", direction: "right", sectionKey: kSectionBandKey });
+
+    assert.deepEqual(trace.press({ kind: "heading-arrow", direction: "left", sectionKey: kSectionBandKey }), [
+      consumeKey,
+      { kind: "close-section", sectionKey: kSectionBandKey },
+    ]);
+    assert.deepEqual(openBandKeys(trace), [kBestNextBandKey]);
+    assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey), "closing a section moves the cursor nowhere");
+
+    assert.deepEqual(
+      trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey }),
+      [consumeKey],
+      "the closed section draws no row below its heading"
+    );
+  });
+
+  test("left on a closed heading leaves the section open elsewhere as it stands", () => {
+    const { trace } = twoSectionTrace();
+    walkToFirstHeading(trace);
+    enterSection(trace, kSectionBandKey);
+    trace.press({ kind: "arrow", direction: "down", from: "band" });
+    assert.deepEqual(trace.state.cursor, headingAt(kSecondSectionBandKey));
+
+    trace.press({ kind: "heading-arrow", direction: "left", sectionKey: kSecondSectionBandKey });
+
+    assert.deepEqual(openBandKeys(trace), [kBestNextBandKey, kSectionBandKey]);
+  });
+
+  test("stepping down off a group's chips lands on the next group's heading, which opens into its own", () => {
     const { trace, first, second } = twoSectionTrace();
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    walkToFirstHeading(trace);
+    enterSection(trace, kSectionBandKey);
     assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, first));
 
     assert.deepEqual(trace.press({ kind: "arrow", direction: "down", from: "band" }), [
@@ -1599,14 +1672,14 @@ describe("browsing the offering as one grid", () => {
     ]);
     assert.deepEqual(trace.focusTarget(), { kind: "heading", sectionKey: kSecondSectionBandKey });
 
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSecondSectionBandKey });
+    enterSection(trace, kSecondSectionBandKey);
     assert.deepEqual(trace.state.cursor, chipOf(kSecondSectionBandKey, second));
     assert.deepEqual(trace.focusTarget(), { kind: "band", bandKey: kSecondSectionBandKey });
   });
 
   test("stepping up from a section's chips lands on that section's own heading", () => {
     const { trace } = browsingTrace();
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    browseFirstSection(trace);
 
     assert.deepEqual(trace.press({ kind: "arrow", direction: "up", from: "band" }), [
       { kind: "highlight", cursor: headingAt(kSectionBandKey), mode: "browsing" },
@@ -1628,7 +1701,7 @@ describe("browsing the offering as one grid", () => {
 
   test("Enter on a browsed chip places it and hands the keyboard back to the filter box", () => {
     const { trace, sectioned } = browsingTrace();
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    browseFirstSection(trace);
 
     assert.deepEqual(
       trace.press({ kind: "enter", from: "band" }),
@@ -1639,7 +1712,7 @@ describe("browsing the offering as one grid", () => {
 
   test("a character typed while browsing a band hands the keyboard back without placing anything", () => {
     const { trace } = browsingTrace();
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    browseFirstSection(trace);
     const cursor = trace.state.cursor;
 
     assert.deepEqual(trace.press({ kind: "printable" }), [typingFocus, { kind: "highlight", cursor, mode: "typing" }]);
@@ -1717,6 +1790,7 @@ describe("browsing the offering as one grid", () => {
       consumeKey,
       clearHighlight,
       typingFocus,
+      flashCaret,
     ]);
     assert.equal(trace.state.cursor, undefined);
     assert.equal(trace.state.highlightMode, "typing");
@@ -1727,7 +1801,7 @@ describe("browsing the offering as one grid", () => {
 
   test("stepping up walks every row of the grid and leaves the offering from the first", () => {
     const { trace, best } = browsingTrace();
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    browseFirstSection(trace);
 
     trace.press({ kind: "arrow", direction: "up", from: "band" });
     assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
@@ -1742,7 +1816,7 @@ describe("browsing the offering as one grid", () => {
 
   test("the bottom row of the grid has no row below it, and the key stops there", () => {
     const { trace, sectioned } = browsingTrace();
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    browseFirstSection(trace);
 
     assert.deepEqual(trace.press({ kind: "arrow", direction: "down", from: "band" }), [consumeKey]);
     assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, sectioned));
@@ -1751,7 +1825,7 @@ describe("browsing the offering as one grid", () => {
 
   test("the last chip has none after it, and the key stops there", () => {
     const { trace, sectioned } = browsingTrace();
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    browseFirstSection(trace);
     assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, sectioned));
 
     assert.deepEqual(trace.press({ kind: "arrow", direction: "right", from: "band" }), [consumeKey]);
@@ -1791,13 +1865,13 @@ describe("browsing the offering as one grid", () => {
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
     assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
 
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    enterSection(trace, kSectionBandKey);
     assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, first));
 
     trace.press({ kind: "arrow", direction: "down", from: "band" });
     assert.deepEqual(trace.state.cursor, headingAt(kSecondSectionBandKey));
 
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSecondSectionBandKey });
+    enterSection(trace, kSecondSectionBandKey);
     assert.deepEqual(trace.state.cursor, chipOf(kSecondSectionBandKey, second));
 
     assert.deepEqual(trace.press({ kind: "arrow", direction: "down", from: "band" }), [consumeKey]);
@@ -1806,9 +1880,8 @@ describe("browsing the offering as one grid", () => {
 
   test("the walk back up leaves the offering from the first row instead of reaching the last", () => {
     const { trace, first } = twoSectionTrace();
-    trace.press({ kind: "arrow", direction: "down", from: "filter" });
-    trace.press({ kind: "arrow", direction: "down", from: "filter" });
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    walkToFirstHeading(trace);
+    enterSection(trace, kSectionBandKey);
     assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, first));
 
     trace.press({ kind: "arrow", direction: "up", from: "band" });
@@ -1843,7 +1916,7 @@ describe("browsing the offering as one grid", () => {
 
   test("the keyboard leaving the band releases the chip it was browsing", () => {
     const { trace } = browsingTrace();
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    browseFirstSection(trace);
     assert.ok(trace.state.cursor, "the cursor stands on a chip");
 
     assert.deepEqual(trace.press({ kind: "focus-lost" }), [clearHighlight]);
@@ -1867,7 +1940,7 @@ describe("browsing the offering as one grid", () => {
     const { trace, best } = browsingTrace();
     const run = trace.run();
     trace.placeCaret(run[0]);
-    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    browseFirstSection(trace);
     assert.deepEqual(trace.focusTarget(), { kind: "band", bandKey: kSectionBandKey });
 
     const stepped = trace.press({ kind: "arrow", direction: "left", from: "band" });
@@ -1919,6 +1992,74 @@ describe("browsing the offering as one grid", () => {
       consumeKey,
     ]);
     assert.deepEqual(trace.state.caret, caret);
+  });
+
+  describe("the flash marking where the keyboard came back to", () => {
+    /** True when `effects` asks for the caret's place to be flashed. */
+    function flashes(effects: readonly ComposerInputEffect[]): boolean {
+      return effects.some((effect) => effect.kind === "flash-caret");
+    }
+
+    test("leaving the offering upward flashes the caret's place, from the box and from a band", () => {
+      const { trace } = browsingTrace();
+      trace.press({ kind: "arrow", direction: "down", from: "filter" });
+      assert.ok(flashes(trace.press({ kind: "arrow", direction: "up", from: "filter" })));
+
+      const browsed = browsingTrace().trace;
+      browseFirstSection(browsed);
+      browsed.press({ kind: "arrow", direction: "up", from: "band" });
+      browsed.press({ kind: "heading-arrow", direction: "up", sectionKey: kSectionBandKey });
+      assert.ok(flashes(browsed.press({ kind: "arrow", direction: "up", from: "band" })));
+    });
+
+    test("a step that stays inside the offering flashes nothing", () => {
+      const { trace } = browsingTrace();
+      assert.ok(!flashes(trace.press({ kind: "arrow", direction: "down", from: "filter" })), "the step in");
+      assert.ok(!flashes(trace.press({ kind: "arrow", direction: "right", from: "filter" })), "the step along");
+      assert.ok(!flashes(trace.press({ kind: "arrow", direction: "down", from: "filter" })), "the step between rows");
+      assert.ok(
+        !flashes(trace.press({ kind: "heading-arrow", direction: "right", sectionKey: kSectionBandKey })),
+        "a section opened from its heading"
+      );
+      assert.ok(
+        !flashes(trace.press({ kind: "heading-arrow", direction: "left", sectionKey: kSectionBandKey })),
+        "a section closed from its heading"
+      );
+    });
+
+    test("a keystroke handing the keyboard back with an edit of its own flashes nothing", () => {
+      const { trace } = browsingTrace();
+      trace.typeWord("on");
+      browseFirstSection(trace);
+      assert.ok(!flashes(trace.press({ kind: "printable" })), "a character typed while browsing");
+      assert.ok(!flashes(trace.press({ kind: "backspace", from: "band" })), "a backspace pressed while browsing");
+    });
+
+    test("a placement made from a band flashes nothing", () => {
+      const { trace } = browsingTrace();
+      browseFirstSection(trace);
+      assert.ok(!flashes(trace.press({ kind: "enter", from: "band" })));
+    });
+
+    test("the keyboard leaving, and the strip closing, flash nothing", () => {
+      const { trace } = browsingTrace();
+      browseFirstSection(trace);
+      assert.ok(!flashes(trace.press({ kind: "focus-lost" })), "the keyboard leaving");
+      assert.ok(!flashes(trace.press({ kind: "escape" })), "the strip closing");
+    });
+
+    test("the caret's own steps along the line flash nothing", () => {
+      const { trace } = browsingTrace();
+      const steps = [
+        { label: "a step right", token: { kind: "arrow", direction: "right", from: "filter" } },
+        { label: "a step left", token: { kind: "arrow", direction: "left", from: "filter" } },
+        { label: "the run's first position", token: { kind: "home" } },
+        { label: "the run's last position", token: { kind: "end" } },
+      ] as const;
+      for (const step of steps) {
+        assert.ok(!flashes(trace.press(step.token)), step.label);
+      }
+    });
   });
 });
 
@@ -1972,13 +2113,19 @@ describe("the token vocabulary", () => {
     assert.equal(composerTokenForKey("Delete", "close"), undefined);
   });
 
-  test("an accordion heading answers only the arrows that step between rows", () => {
-    assert.deepEqual(composerHeadingToken("ArrowDown", kSectionBandKey), {
-      kind: "heading-arrow",
-      direction: "down",
-      sectionKey: kSectionBandKey,
-    });
-    assert.equal(composerHeadingToken("ArrowRight", kSectionBandKey), undefined);
+  test("an accordion heading answers every arrow, and leaves Enter to the button", () => {
+    for (const [key, direction] of [
+      ["ArrowDown", "down"],
+      ["ArrowUp", "up"],
+      ["ArrowRight", "right"],
+      ["ArrowLeft", "left"],
+    ] as const) {
+      assert.deepEqual(composerHeadingToken(key, kSectionBandKey), {
+        kind: "heading-arrow",
+        direction,
+        sectionKey: kSectionBandKey,
+      });
+    }
     assert.equal(composerHeadingToken("Enter", kSectionBandKey), undefined);
   });
 });

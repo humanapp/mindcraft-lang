@@ -26,6 +26,9 @@ import { resolveTileVisual } from "./tile-visual-utils";
 /** How long a changed word stays lit before its highlight fades, in milliseconds. */
 const kSentenceHighlightMs = 260;
 
+/** How long the caret's place stays flashed before the flash fades, in milliseconds. */
+const kCaretLandingMs = 220;
+
 /** Ink a tile whose visual names no color pair is read in. */
 const kDefaultTileHue = "#475569";
 
@@ -102,6 +105,15 @@ const sentenceCaretStandingMarkClasses =
  */
 const sentenceCaretCrossbarClasses = "absolute -left-px h-0.5 w-1 rounded-full bg-inherit";
 
+/**
+ * The bloom marking where the keyboard came back to: a soft pill of the caret's
+ * own ink standing in the boundary the caret rests in, centered on the line's
+ * text, out of the line's flow and taking no layout width. It is painted while
+ * the flash is held and paints nothing at rest.
+ */
+const sentenceCaretLandingClasses =
+  "pointer-events-none absolute top-1/2 -left-2.5 h-7 w-5 -translate-y-1/2 rounded-full bg-violet-200 blur-[2px]";
+
 /** The zero-width anchor a caret is positioned against, standing where the caret's word boundary is. */
 const sentenceCaretAnchorClasses = "relative";
 
@@ -173,6 +185,12 @@ interface BrainRuleSentenceProps {
   /** True while the composer's input holds typed text the caret's position will take. */
   pending?: boolean;
   /**
+   * How many times the keyboard has come back to the line from the composer's
+   * offering. Every new value flashes the caret's place; the count itself is
+   * read for nothing else.
+   */
+  landingCount?: number;
+  /**
    * True while the composer sits on the DO side of a typed pivot, which the line
    * reads as a comma -- preceded by the trigger word when the WHEN side it
    * pivoted from has no words of its own.
@@ -199,6 +217,10 @@ interface BrainRuleSentenceProps {
  * and {@link composePivotReading} for what a typed pivot adds to it. The settled
  * reading returns as soon as the input leaves.
  *
+ * Each return of the keyboard from the offering, counted by `landingCount`,
+ * blooms the caret's place for {@link kCaretLandingMs} and then fades it to
+ * nothing, so the line keeps no mark of the return.
+ *
  * With `placeCaret` the line is also an editing surface. A word places the caret
  * on its tile, the structure around it places the caret in the gap that closes
  * the tile it trails, and the hit target in each word boundary places the caret
@@ -212,6 +234,7 @@ export function BrainRuleSentence({
   composerInput,
   caretPosition,
   pending = false,
+  landingCount = 0,
   pivotComma,
   placeCaret,
 }: BrainRuleSentenceProps) {
@@ -232,6 +255,7 @@ export function BrainRuleSentence({
   const identities = useMemo(() => sentenceSegmentIdentities(segments, tiles), [segments, tiles]);
   const previousRef = useRef<SentenceSegmentIdentity[]>([]);
   const [highlighted, setHighlighted] = useState<ReadonlySet<number>>(noHighlight);
+  const [landed, setLanded] = useState(false);
 
   useEffect(() => {
     const changed = changedSentenceSegments(previousRef.current, identities);
@@ -244,6 +268,15 @@ export function BrainRuleSentence({
     return () => clearTimeout(timer);
   }, [identities]);
 
+  useEffect(() => {
+    if (landingCount === 0) {
+      return;
+    }
+    setLanded(true);
+    const timer = setTimeout(() => setLanded(false), kCaretLandingMs);
+    return () => clearTimeout(timer);
+  }, [landingCount]);
+
   if (segments.length === 0 && !isComposing) {
     return null;
   }
@@ -251,23 +284,29 @@ export function BrainRuleSentence({
   // The mark stands for a caret in a gap while nothing is typed.
   const showCaretMark = caretPosition?.kind === "gap" && !pending;
   const focused = caretPosition?.kind === "element" ? caretPosition : undefined;
+  const landingClass = landed
+    ? `${sentenceCaretLandingClasses} opacity-45`
+    : `${sentenceCaretLandingClasses} opacity-0 transition-opacity duration-300`;
 
   /**
    * What stands in the boundary before the segment at `index`, the end of the
-   * line being the index past the last segment: the caret's mark and the
-   * composer's input where the caret rests, otherwise the hit target opening
-   * the tile `word` reads.
+   * line being the index past the last segment: the caret's landing bloom, its
+   * mark, and the composer's input where the caret rests, otherwise the hit
+   * target opening the tile `word` reads.
    */
   const boundary = (index: number, word?: SentenceWordSegment): ReactNode => {
     if (index === inputSlot) {
       return (
         <>
-          {showCaretMark && (
+          {caretPosition !== undefined && (
             <span className={sentenceCaretAnchorClasses}>
-              <span data-caret-mark="" className={sentenceCaretStandingMarkClasses} aria-hidden="true">
-                <span className={`${sentenceCaretCrossbarClasses} top-0`} />
-                <span className={`${sentenceCaretCrossbarClasses} bottom-0`} />
-              </span>
+              <span data-caret-landing="" className={landingClass} aria-hidden="true" />
+              {showCaretMark && (
+                <span data-caret-mark="" className={sentenceCaretStandingMarkClasses} aria-hidden="true">
+                  <span className={`${sentenceCaretCrossbarClasses} top-0`} />
+                  <span className={`${sentenceCaretCrossbarClasses} bottom-0`} />
+                </span>
+              )}
             </span>
           )}
           {composerInput}

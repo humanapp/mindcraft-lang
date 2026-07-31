@@ -2,7 +2,6 @@ import { RuleSide } from "@mindcraft-lang/core/brain";
 import type { ArmedTargetEntry } from "./ArmedTargetContext";
 import {
   decideStripEscape,
-  enterStripOptionsAt,
   isStripFilterTypingKey,
   moveStripCursorAlongChips,
   moveStripCursorBetweenRows,
@@ -12,7 +11,6 @@ import {
   type StripFocusTarget,
   type StripHighlightMode,
   type StripOption,
-  type StripOptionBand,
 } from "./candidate-strip-model";
 import { type CaretPosition, caretDeletionTarget, caretOnRun, caretSideEnd, caretStep } from "./caret-run";
 import { decideComposerBackspace, decideComposerComma, decideComposerPeriod } from "./sentence-composer";
@@ -102,7 +100,7 @@ export type ComposerInputToken =
   | { readonly kind: "enter"; readonly from: "filter" | "band" }
   | { readonly kind: "backspace"; readonly from: "filter" | "band" | "heading" }
   | { readonly kind: "arrow"; readonly direction: ComposerArrowDirection; readonly from: ComposerKeySurface }
-  | { readonly kind: "heading-arrow"; readonly direction: "up" | "down"; readonly sectionKey: string }
+  | { readonly kind: "heading-arrow"; readonly direction: ComposerArrowDirection; readonly sectionKey: string }
   | { readonly kind: "focus-lost" }
   | { readonly kind: "placement-landed"; readonly gesture: ComposerGesture };
 
@@ -119,6 +117,8 @@ export type ComposerCloseReason = "settled" | "dismissed";
  *   `value` is undefined
  * - `highlight` -- the cursor stands at `cursor`, anchored per `mode`
  * - `open-section` -- the accordion section `sectionKey` opens
+ * - `close-section` -- the accordion section `sectionKey` closes, leaving any
+ *   other open section as it stands
  * - `place-tile` -- `candidate` is placed at the armed position
  * - `announce-placement` -- assistive technology hears that `label` was placed
  * - `move-focus` -- the keyboard goes to `target`
@@ -129,6 +129,8 @@ export type ComposerCloseReason = "settled" | "dismissed";
  * - `delete-tile` -- the tile at `position` leaves the rule
  * - `undo-own-commit` -- the composition's own last commit is taken back, which
  *   removes the tile that commit placed
+ * - `flash-caret` -- the caret's place is flashed, showing where the keyboard
+ *   came back to
  * - `close-strip` -- composition on the rule ends
  */
 export type ComposerInputEffect =
@@ -137,6 +139,7 @@ export type ComposerInputEffect =
   | { readonly kind: "set-text-literal"; readonly value: string | undefined }
   | { readonly kind: "highlight"; readonly cursor: StripCursor | undefined; readonly mode: StripHighlightMode }
   | { readonly kind: "open-section"; readonly sectionKey: string }
+  | { readonly kind: "close-section"; readonly sectionKey: string }
   | { readonly kind: "place-tile"; readonly candidate: StripCandidate }
   | { readonly kind: "announce-placement"; readonly label: string }
   | {
@@ -150,6 +153,7 @@ export type ComposerInputEffect =
   | { readonly kind: "move-caret"; readonly position: CaretPosition }
   | { readonly kind: "delete-tile"; readonly position: CaretPosition }
   | { readonly kind: "undo-own-commit" }
+  | { readonly kind: "flash-caret" }
   | { readonly kind: "close-strip"; readonly reason: ComposerCloseReason };
 
 /**
@@ -198,13 +202,6 @@ export interface ComposerInputFacts {
   readonly options: readonly StripOption[];
   /** Where every cell of the offering's grid sits: its chips and its group headings. */
   readonly cellGeometry: readonly StripCellGeometry[];
-  /** Identity of the strip, which the option ids are built from. */
-  readonly stripId: string;
-  /**
-   * The band sequence in display order with the section `sectionKey` at its own
-   * position, whether or not its chips are rendered yet.
-   */
-  bandsWithSection(sectionKey: string): readonly StripOptionBand[];
 }
 
 /** The state the composer moves to for one token, and what it asks its driver to do. */
@@ -251,14 +248,13 @@ export function composerTokenForKey(key: string, surface: ComposerKeySurface): C
 /**
  * The token a press of `key` on the accordion heading of `sectionKey` means, or
  * undefined when the key is the heading button's own: Enter and every key that
- * neither steps the cursor nor edits the word in progress. Only the arrows that
- * step between rows reach the cursor here; the keys that type hand the keyboard
- * back to the filter box.
+ * neither steers the offering nor edits the word in progress. All four arrows
+ * reach the offering here; the keys that type hand the keyboard back to the
+ * filter box.
  */
 export function composerHeadingToken(key: string, sectionKey: string): ComposerInputToken | undefined {
   const direction = arrowDirection(key);
-  if (direction === "up" || direction === "down") return { kind: "heading-arrow", direction, sectionKey };
-  if (direction !== undefined) return undefined;
+  if (direction !== undefined) return { kind: "heading-arrow", direction, sectionKey };
   if (key === "Backspace") return { kind: "backspace", from: "heading" };
   return isStripFilterTypingKey(key) ? { kind: "printable" } : undefined;
 }
@@ -648,8 +644,8 @@ function releaseHighlight(state: ComposerInputState): ComposerInputOutcome {
 }
 
 /**
- * Leave the offering: the cursor is released and the keyboard goes back to the
- * composer's box, where the caret stands.
+ * Leave the offering: the cursor is released, the keyboard goes back to the
+ * composer's box, where the caret stands, and the caret's place is flashed.
  */
 function leaveOffering(state: ComposerInputState): ComposerInputOutcome {
   const released = releaseHighlight(state);
@@ -659,6 +655,7 @@ function leaveOffering(state: ComposerInputState): ComposerInputOutcome {
       { kind: "consume-key" },
       ...released.effects,
       { kind: "move-focus", target: filterFocus, keepScroll: false },
+      { kind: "flash-caret" },
     ],
   };
 }
@@ -666,9 +663,9 @@ function leaveOffering(state: ComposerInputState): ComposerInputOutcome {
 /**
  * A vertical arrow's outcome: one step of the cursor between the grid's rows,
  * which nothing wraps. Stepping up off the grid's first row leaves the offering,
- * releasing the cursor and returning the keyboard to the composer's box;
- * stepping down off its last row keeps the key and stands the cursor where it
- * is.
+ * releasing the cursor, returning the keyboard to the composer's box, and
+ * flashing the caret's place; stepping down off its last row keeps the key and
+ * stands the cursor where it is.
  */
 function reduceRowArrow(
   state: ComposerInputState,
@@ -743,21 +740,20 @@ function reduceCaretJump(
 
 /**
  * An accordion heading arrow's outcome, taken from that heading whether or not
- * the cursor already stood on it: down opens the section and stands the cursor
- * on its first chip, which the row below the heading is once the section is
- * open; up is the ordinary step to the row above.
+ * the cursor already stood on it: up and down are the ordinary steps between the
+ * grid's rows, taken from the heading's own row, and right and left open and
+ * close the section the heading names.
  */
 function reduceHeadingArrow(
   state: ComposerInputState,
   facts: ComposerInputFacts,
-  direction: "up" | "down",
+  direction: ComposerArrowDirection,
   sectionKey: string
 ): ComposerInputOutcome {
-  if (direction === "up") return reduceRowArrow(state, facts, "up", { kind: "heading", sectionKey });
-  const entered = enterStripOptionsAt(facts.stripId, facts.bandsWithSection(sectionKey), sectionKey);
-  if (entered === undefined) return inert(state);
-  const moved = moveHighlight(state, entered, "browsing");
-  return { state: moved.state, effects: [{ kind: "open-section", sectionKey }, ...moved.effects] };
+  if (isRowDirection(direction)) return reduceRowArrow(state, facts, direction, { kind: "heading", sectionKey });
+  const toggled: ComposerInputEffect =
+    direction === "right" ? { kind: "open-section", sectionKey } : { kind: "close-section", sectionKey };
+  return { state, effects: [{ kind: "consume-key" }, toggled] };
 }
 
 /**
@@ -783,10 +779,11 @@ function reduceHeadingArrow(
  * `state.cursor` is the one place the offering is being steered at, over a grid
  * whose rows are the chips as they wrap and the group headings between them. Up
  * and Down step it between those rows and Left and Right along a row of chips,
- * and neither end wraps. It stands only while the keyboard is on the element it
- * is anchored on -- the filter box for a chip being narrowed toward by typing,
- * the band's listbox for a chip being browsed, the heading itself for a heading
- * -- so a `focus-lost` token releases it, and the horizontal arrows are the
+ * and neither end wraps. On a heading Right and Left open and close the section
+ * that heading names. It stands only while the keyboard is on the element it is
+ * anchored on -- the filter box for a chip being narrowed toward by typing, the
+ * band's listbox for a chip being browsed, the heading itself for a heading --
+ * so a `focus-lost` token releases it, and the horizontal arrows are the
  * caret's again.
  *
  * While `state.textLiteral` holds an open text value, every typed character

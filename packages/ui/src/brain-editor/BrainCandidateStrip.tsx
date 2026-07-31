@@ -407,6 +407,12 @@ export interface CandidateStripSurface {
   readonly composerInput: ReactNode | undefined;
   /** True while the input holds text the caret's position will take. */
   readonly pending: boolean;
+  /**
+   * How many times the keyboard has come back to the sentence from the
+   * offering. Every new value is one return, which the line flashes the caret's
+   * place for; the count itself carries no meaning.
+   */
+  readonly landingCount: number;
   /** The offering panel, or null while the offering is closed. */
   readonly panel: ReactNode;
 }
@@ -444,10 +450,12 @@ export interface CandidateStripSurface {
  * rows -- the chips as they wrap, and a group heading between one section and
  * the next. Up and down step between those rows, taking the cell nearest the
  * cursor's own center, and neither end wraps: up from the first row leaves the
- * offering for the sentence, and down from the last stands where it is. Left and
+ * offering for the sentence, flashing the caret's place there, and down from the
+ * last stands where it is. Left and
  * right step along the chips once the cursor stands on one, stopping at the last
- * chip and at the first, and belong to the caret until then. Arrow down on a closed heading opens its group and stands
- * the cursor on its first chip.
+ * chip and at the first, and belong to the caret until then. On a group heading
+ * they open and close that group instead: right opens it, left closes it, and a
+ * closed group draws no chip, so the row below its heading is the next heading.
  *
  * The cursor is anchored on whichever element holds the keyboard: the filter
  * box while typing narrows the offering, the band's own listbox while its chips
@@ -527,6 +535,7 @@ export function useCandidateStripSurface({
   const [highlightMode, setHighlightMode] = useState<StripHighlightMode>("typing");
   const [status, setStatus] = useState("");
   const [commitTick, setCommitTick] = useState(0);
+  const [landingCount, setLandingCount] = useState(0);
   const [openTextLiteral, setOpenTextLiteral] = useState<string | undefined>(undefined);
   const placedLabelRef = useRef<string | null>(null);
   const isFiltering = state.filter.trim().length > 0;
@@ -732,9 +741,6 @@ export function useCandidateStripSurface({
     get cellGeometry() {
       return measureCells();
     },
-    stripId,
-    bandsWithSection: (sectionKey: string) =>
-      buildStripBands(shownBestNext, shownSections, (key) => openSectionKeys.has(key) || key === sectionKey),
   });
 
   /**
@@ -762,6 +768,9 @@ export function useCandidateStripSurface({
         case "open-section":
           setOpenSectionKey(effect.sectionKey);
           break;
+        case "close-section":
+          setOpenSectionKey((current) => (current === effect.sectionKey ? null : current));
+          break;
         case "place-tile":
           state.commit(effect.candidate);
           break;
@@ -786,6 +795,9 @@ export function useCandidateStripSurface({
           break;
         case "undo-own-commit":
           composer?.undoOwnLastCommit();
+          break;
+        case "flash-caret":
+          setLandingCount((count) => count + 1);
           break;
         case "close-strip":
           onDismiss();
@@ -1085,11 +1097,12 @@ export function useCandidateStripSurface({
 
       <p id={hintId} className="sr-only">
         Arrow down to start browsing the tiles. Up and down move between rows, group headings included, and stop at the
-        top and the bottom; left and right move along a row of tiles. Arrow down on a group heading opens that group,
-        and Enter places the highlighted tile. Arrow up from the first row leaves the tiles and returns to the sentence.
-        Start the text with a dollar sign to name a variable, which Enter then places, creating it when no variable has
-        that name. Where a text value fits, a double quote starts one and the next double quote places it, as Enter
-        does, with everything between them taken as the text.
+        top and the bottom; left and right move along a row of tiles. On a group heading, arrow right opens that group
+        and arrow left closes it, so arrow down moves on to the next heading while a group is closed and into its tiles
+        once it is open. Enter places the highlighted tile. Arrow up from the first row leaves the tiles and returns to
+        the sentence. Start the text with a dollar sign to name a variable, which Enter then places, creating it when no
+        variable has that name. Where a text value fits, a double quote starts one and the next double quote places it,
+        as Enter does, with everything between them taken as the text.
         {composer
           ? " Type a comma to end the when side and start typing what to do, and a period when the rule says what you want. With nothing typed, Backspace takes back the comma, and then the word you placed last."
           : ""}
@@ -1124,5 +1137,5 @@ export function useCandidateStripSurface({
     </section>
   ) : null;
 
-  return { composerInput: composer ? filterField : undefined, pending: hasPendingText, panel };
+  return { composerInput: composer ? filterField : undefined, pending: hasPendingText, landingCount, panel };
 }

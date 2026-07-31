@@ -2,7 +2,8 @@
  * Pins the sentence's rendering of caret state: one mark for a caret standing in
  * a gap and none for a caret resting on a tile, the focus treatment that tile's
  * words take in the tile's own hue and the box inside the word it is painted on,
- * the mark a pending replacement adds, the tappable structure the projection
+ * the mark a pending replacement adds, the element the flash marking the
+ * keyboard's return is painted on, the tappable structure the projection
  * supplies, and the filter box contributing no chrome and no width while nothing
  * is typed.
  *
@@ -183,6 +184,43 @@ describe("the caret's mark in the line", () => {
       onTileSelected: () => true,
     };
     assert.equal(countOf(renderRuleCard(ruleDef, pageDef, target), "data-caret-mark"), 1);
+  });
+});
+
+describe("the flash the caret's place takes", () => {
+  test("the line paints it wherever a caret stands, and nowhere else", () => {
+    const { ruleDef } = ruleOf([makeSensor(services, "landing-see")], [makeActuator(services, "landing-move")]);
+    for (const position of [gap(RuleSide.When, 0), gap(RuleSide.Do, 1), element(RuleSide.When, 0)]) {
+      const markup = renderLine(ruleDef, { caretPosition: position });
+      assert.equal(countOf(markup, "data-caret-landing"), 1, `${position.kind} ${position.side}:${position.tileIndex}`);
+    }
+    assert.equal(countOf(renderLine(ruleDef, { composing: false }), "data-caret-landing"), 0);
+  });
+
+  test("it stands where the typed text does, which the caret's mark gives way to", () => {
+    const { ruleDef } = ruleOf([makeSensor(services, "landing-pending")], []);
+    const markup = renderLine(ruleDef, { caretPosition: gap(RuleSide.When, 0), pending: true });
+    assert.equal(countOf(markup, "data-caret-landing"), 1);
+    assert.equal(countOf(markup, "data-caret-mark"), 0);
+  });
+
+  test("it is painted on an element of its own, carrying neither the mark nor the focus nor a word", () => {
+    const { ruleDef } = ruleOf([makeSensor(services, "landing-layer")], []);
+    const onGap = tagWith(renderLine(ruleDef, { caretPosition: gap(RuleSide.When, 0) }), "data-caret-landing");
+    assert.ok(onGap, "the line renders the element the flash is painted on");
+    assert.ok(!onGap.includes("data-caret-mark"), "the flash is not the caret's mark");
+    const onTile = tagWith(renderLine(ruleDef, { caretPosition: element(RuleSide.When, 0) }), "data-caret-landing");
+    assert.ok(onTile, "the line renders it for a caret resting on a tile too");
+    assert.ok(!onTile.includes("data-caret-focus"), "the flash is not the focus treatment");
+    assert.ok(!onTile.includes("data-sentence-tile-index"), "and it is not a word of the sentence");
+  });
+
+  test("it takes no layout width and paints nothing at rest", () => {
+    const { ruleDef } = ruleOf([makeSensor(services, "landing-rest")], []);
+    const tag = tagWith(renderLine(ruleDef, { caretPosition: gap(RuleSide.When, 0) }), "data-caret-landing");
+    const tokens = /class="([^"]*)"/.exec(tag ?? "")?.[1].split(" ") ?? [];
+    assert.ok(tokens.includes("absolute"), "the flash stands out of the line's flow");
+    assert.ok(tokens.includes("opacity-0"), "and paints nothing until the keyboard comes back");
   });
 });
 

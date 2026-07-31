@@ -45,7 +45,6 @@ import {
   type CandidateEntry,
   decideStripEscape,
   decideStripFocusTarget,
-  enterStripOptionsAt,
   isStripFilterTypingKey,
   kBestNextBandKey,
   mintVariableCandidates,
@@ -590,49 +589,6 @@ describe("moveStripCursorBetweenRows", () => {
   });
 });
 
-describe("enterStripOptionsAt", () => {
-  const sectionBandKey = "operator+controlFlow";
-
-  test("entering a band stands the cursor on that band's first chip", () => {
-    const sequence = bands();
-    const options = visibleStripOptions(kStripId, sequence);
-    const firstInBand = options.find((option) => option.bandKey === sectionBandKey);
-    assert.ok(firstInBand);
-    assert.deepEqual(enterStripOptionsAt(kStripId, sequence, sectionBandKey), chipAt(firstInBand.optionId));
-  });
-
-  test("a band whose chips are all filtered out is entered at nothing", () => {
-    const emptied: StripOptionBand[] = [
-      { key: kBestNextBandKey, entries: toCandidateEntries([candidate(timeoutTileId)]) },
-      { key: sectionBandKey, entries: [] },
-    ];
-    assert.equal(enterStripOptionsAt(kStripId, emptied, sectionBandKey), undefined);
-  });
-
-  test("a band absent from the rendered sequence is entered at nothing", () => {
-    assert.equal(enterStripOptionsAt(kStripId, bands(), "page"), undefined);
-    assert.equal(enterStripOptionsAt(kStripId, [], kBestNextBandKey), undefined);
-  });
-
-  test("entry lands on a rendered option the arrow keys then continue from", () => {
-    const sequence = bands();
-    const options = visibleStripOptions(kStripId, sequence);
-    const entered = enterStripOptionsAt(kStripId, sequence, sectionBandKey);
-    assert.ok(entered?.kind === "chip");
-    assert.ok(activeStripOption(options, entered.optionId));
-    const index = options.findIndex((option) => option.optionId === entered.optionId);
-    assert.ok(index > 0, "the band entered stands behind another band's chips");
-    assert.deepEqual(moveStripCursorAlongChips(options, entered, -1), chipAt(options[index - 1].optionId));
-  });
-
-  test("entry is deterministic for the same offering", () => {
-    assert.deepEqual(
-      enterStripOptionsAt(kStripId, bands(), sectionBandKey),
-      enterStripOptionsAt(kStripId, bands(), sectionBandKey)
-    );
-  });
-});
-
 describe("activeStripOption", () => {
   test("resolves a rendered id and rejects one that is not rendered", () => {
     const options = visibleStripOptions(kStripId, bands());
@@ -665,12 +621,11 @@ describe("decideStripFocusTarget", () => {
     assert.deepEqual(decideStripFocusTarget(options, chipAt(options[2].optionId), "typing"), { kind: "input" });
   });
 
-  test("entering a band from its heading anchors the cursor on that band", () => {
-    const sequence = bands();
-    const options = visibleStripOptions(kStripId, sequence);
-    const entered = enterStripOptionsAt(kStripId, sequence, "operator+controlFlow");
-    assert.ok(entered);
-    assert.deepEqual(decideStripFocusTarget(options, entered, "browsing"), {
+  test("a chip of a section's own band anchors the cursor on that band", () => {
+    const options = visibleStripOptions(kStripId, bands());
+    const inSection = options.find((option) => option.bandKey === "operator+controlFlow");
+    assert.ok(inSection);
+    assert.deepEqual(decideStripFocusTarget(options, chipAt(inSection.optionId), "browsing"), {
       kind: "band",
       bandKey: "operator+controlFlow",
     });
