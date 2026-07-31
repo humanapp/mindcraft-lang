@@ -9,13 +9,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import {
-  kDialogChromeLayer,
-  kOfferingLayer,
-  kRuleChromeLayer,
-  kRuleContentLayer,
-  kRuleGlintLayer,
-} from "./editor-layers";
+import { kDialogChromeLayer, kOfferingLayer, kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 
 /** The z-index a `z-N` utility sets. Throws when the class is not of that shape. */
 function stepOf(layerClass: string): number {
@@ -26,9 +20,7 @@ function stepOf(layerClass: string): number {
 
 describe("editor layer scale", () => {
   test("steps rise from rule content to the dialog's own chrome", () => {
-    const steps = [kRuleContentLayer, kRuleGlintLayer, kRuleChromeLayer, kOfferingLayer, kDialogChromeLayer].map(
-      stepOf
-    );
+    const steps = [kRuleContentLayer, kRuleChromeLayer, kOfferingLayer, kDialogChromeLayer].map(stepOf);
     for (let i = 1; i < steps.length; i++) {
       assert.ok(steps[i] > steps[i - 1], `step ${i} is not above step ${i - 1}`);
     }

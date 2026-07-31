@@ -10,11 +10,8 @@
  * offering whatever step the offering takes.
  */
 
-/** Rule rows, sentence lines, and a tile's interior, drawn over their own card's glint. */
+/** Rule rows, sentence lines, and a tile's interior, drawn over their own card's fill and overlays. */
 export const kRuleContentLayer = "z-10";
-
-/** The glass glint laid over a rule card or over a tile. */
-export const kRuleGlintLayer = "z-20";
 
 /** A tile's corner badges, and a rule card lifted by a drag: the top of a card's own chrome. */
 export const kRuleChromeLayer = "z-30";

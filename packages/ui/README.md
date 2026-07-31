@@ -8,7 +8,7 @@ Shared React UI components for **Mindcraft** web applications. This package prov
 
 - **UI primitives** (`ui/`) -- shadcn/ui components: Button, Card, Dialog, DropdownMenu, Input, Slider
 - **Brain editor** (`brain-editor/`) -- complete visual brain editor with undo/redo, tile picker, print preview
-- **Utility library** (`lib/`) -- `cn()` class merge, color manipulation, glass effects
+- **Utility library** (`lib/`) -- `cn()` class merge, color manipulation
 
 ## Usage
 
@@ -44,7 +44,7 @@ resolve: {
 ```typescript
 import { Button, Dialog, Slider } from "@mindcraft-lang/ui";
 import { BrainEditorDialog, BrainEditorProvider } from "@mindcraft-lang/ui";
-import { cn, glassEffect } from "@mindcraft-lang/ui";
+import { cn } from "@mindcraft-lang/ui";
 ```
 
 ## Brain Editor Integration
@@ -78,7 +78,6 @@ src/
   lib/
     utils.ts                cn() -- Tailwind class merge
     color.ts                adjustColor(), saturateColor()
-    glass-effect.ts         CSS glass/glint effect generator
     index.ts                Barrel
   ui/
     button.tsx              shadcn/ui Button
@@ -94,7 +93,7 @@ src/
     BrainEditorContext.tsx   BrainEditorConfig, BrainEditorProvider, useBrainEditorConfig
     BrainEditorDialog.tsx    Full editor (pages, toolbar, undo/redo)
     BrainPageEditor.tsx      Page rules list with depth flattening
-    BrainRuleEditor.tsx      WHEN/DO rule row with glass effects
+    BrainRuleEditor.tsx      WHEN/DO rule row
     BrainTile.tsx            Individual tile button with marquee overflow
     BrainTileEditor.tsx      Tile with dropdown context menu
     BrainCandidateStrip.tsx  Inline candidate strip under the armed rule (type or tap)

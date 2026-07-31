@@ -30,7 +30,6 @@ src/
   lib/                      Utility functions
     utils.ts                cn() -- Tailwind class merge (clsx + tailwind-merge)
     color.ts                adjustColor(), saturateColor(), HSL helpers
-    glass-effect.ts         CSS glass/glint effect generator
     index.ts                Barrel
   ui/                       shadcn/ui primitives
     button.tsx, card.tsx, context-menu.tsx, dialog.tsx, dropdown-menu.tsx, input.tsx, slider.tsx
@@ -42,12 +41,12 @@ src/
     BrainEditorContext.tsx   BrainEditorConfig interface, BrainEditorProvider, useBrainEditorConfig
     BrainEditorDialog.tsx    Full editor (page nav, toolbar, undo/redo, save/load)
     BrainPageEditor.tsx      Page rules list with depth flattening
-    BrainRuleEditor.tsx      WHEN/DO rule row with glass effects
+    BrainRuleEditor.tsx      WHEN/DO rule row
     BrainTile.tsx            Individual tile button with marquee overflow
     BrainTileEditor.tsx      Placed tile: tap arms the edit point, right-click/long-press opens its menu
     BrainCandidateStrip.tsx  Candidate offering laid over the rules below the armed one, plus the filter input its sentence line hosts
     edit-point.ts            Edit-point positions around a placed tile and the arming each one takes
-    editor-layers.ts         The editor's stacking steps: rule content, glint, card chrome, offering, dialog chrome
+    editor-layers.ts         The editor's stacking steps: rule content, card chrome, offering, dialog chrome
     TileValue.tsx            Renders literal values or variable names
     CreateVariableDialog.tsx   Dialog for naming a new variable
     CreateLiteralDialog.tsx    Dialog for app-specific custom literal types
