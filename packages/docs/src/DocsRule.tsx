@@ -1,44 +1,13 @@
 import { assertUnreachable } from "@mindcraft-lang/core";
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import {
-  adjustColor,
-  cn,
-  formatValue,
-  glassEffect,
-  readableInk,
-  saturateColor,
-  staticAssetUrl,
-} from "@mindcraft-lang/ui";
+import { adjustColor, cn, formatValue, readableInk, saturateColor, staticAssetUrl } from "@mindcraft-lang/ui";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { useLayoutEffect, useState } from "react";
 import { useDocsResolveTileVisual } from "./DocsSidebarContext";
 
-const tileGlass = glassEffect({
-  highlightSize: 4,
-  shadowSize: 6,
-  highlightStrength: 0.8,
-  shadowStrength: 0.1,
-  bandOpacity: 0.15,
-  bandPeak: 32,
-  bandEnd: 100,
-  bottomReflection: 0.06,
-  // Shades the tile toward its bottom edge, the band the label sits in.
-  verticalShade: 0.18,
-});
-
-const chipGlass = glassEffect({
-  highlightStrength: 0.15,
-  shadowStrength: 0,
-  bandOpacity: 0.05,
-  cornerHighlight: 0.1,
-  cornerHighlightPos: [5, 10],
-  cornerRadius: 40,
-  cornerShadow: 0,
-});
-
 // ---------------------------------------------------------------------------
-// Single tile chip -- simplified, read-only, no glass, no interactivity
+// Single tile chip -- simplified, read-only, no interactivity
 // ---------------------------------------------------------------------------
 
 interface DocsTileChipProps {
@@ -97,7 +66,6 @@ export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
   const displayValue = value?.text;
   const isItalic = value?.italic ?? false;
 
-  const lighterColor = adjustColor(baseColor, 0.3);
   const lighterColor2 = adjustColor(baseColor, 0.4);
   const darkerColor = adjustColor(baseColor, 0);
   const darkerSaturatedColor = adjustColor(saturateColor(baseColor, 0.5), -0.4);
@@ -140,17 +108,13 @@ export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
       aria-label={label}
       title={label}
       style={{
-        borderColor: darkerSaturatedColor,
-        background: `radial-gradient(circle at center, ${lighterColor}, ${darkerColor})`,
+        // An app may set --color-brain-tile-border to give every tile one border
+        // color; unset, each tile keeps a border derived from its own base color.
+        borderColor: `var(--color-brain-tile-border, ${darkerSaturatedColor})`,
+        background: baseColor,
         ...(labelBasedWidth !== undefined ? { minWidth: labelBasedWidth } : {}),
-        ...tileGlass.containerStyle,
       }}
     >
-      <div
-        className="absolute inset-0 rounded-md pointer-events-none z-20"
-        style={tileGlass.overlayStyle}
-        aria-hidden="true"
-      />
       {isValueTile && (
         <div
           style={{
@@ -266,11 +230,11 @@ function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: Doc
   return (
     <div
       role="img"
-      className={`flex flex-col rounded-xl p-2 mb-1 shadow-sm overflow-x-auto${comment ? "" : " h-30"}`}
+      className={`flex flex-col rounded-xl border border-border p-2 mb-1 shadow-sm overflow-x-auto${comment ? "" : " h-30"}`}
       aria-label={rowLabel}
       style={{
         marginLeft: depth * 32,
-        background: "linear-gradient(55deg, #16143A 0%, #8B6CF3 100%)",
+        background: "linear-gradient(55deg, var(--color-brain-rule-from) 0%, var(--color-brain-rule-to) 100%)",
       }}
     >
       {comment && <span className="text-xs text-white/70 italic mb-1">{comment}</span>}
@@ -287,11 +251,10 @@ function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: Doc
 
         {/* WHEN chip */}
         <div
-          className="px-2 py-1 ml-2 bg-linear-to-br from-slate-800 to-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
-          style={{ writingMode: "vertical-rl", ...chipGlass.containerStyle }}
+          className="px-2 py-1 ml-2 bg-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
+          style={{ writingMode: "vertical-rl" }}
           aria-hidden="true"
         >
-          <span className="absolute inset-0 pointer-events-none" style={chipGlass.overlayStyle} />
           <span className="rotate-[-90] text-white font-semibold text-md cursor-default">
             <span className="inline-block rotate-270 mx-0">W</span>
             <span className="inline-block rotate-270 mx-0.5">H</span>
@@ -310,11 +273,10 @@ function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: Doc
 
         {/* DO chip */}
         <div
-          className="px-2 py-1 ml-3 bg-linear-to-br from-slate-800 to-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
-          style={{ writingMode: "vertical-rl", ...chipGlass.containerStyle }}
+          className="px-2 py-1 ml-3 bg-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
+          style={{ writingMode: "vertical-rl" }}
           aria-hidden="true"
         >
-          <span className="absolute inset-0 pointer-events-none" style={chipGlass.overlayStyle} />
           <span className="rotate-[-90] text-white font-semibold text-md cursor-default">
             <span className="inline-block rotate-270 mx-0">D</span>
             <span className="inline-block rotate-270 mx-0.5">O</span>

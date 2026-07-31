@@ -171,7 +171,7 @@ export function BrainTileEditor({
             aria-haspopup="menu"
             aria-describedby={tileTarget ? armedHintId : undefined}
             onClick={handleTileTap}
-            className={tileTarget ? "ring-4 ring-amber-300/90" : ""}
+            className={tileTarget ? "ring-[3px] ring-brain-armed" : ""}
           />
         </ContextMenuTrigger>
         <ContextMenuContent>

@@ -20,7 +20,6 @@ import {
 import { Plus, Save } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { glassEffect } from "../lib/glass-effect";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -44,7 +43,7 @@ import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { CreateVariableDialog } from "./CreateVariableDialog";
 import { type CaretPosition, caretEditIntent, caretOnRun, caretRun } from "./caret-run";
 import { armEditPoint, type EditPointArming, type EditPointPosition, editPointPositionOf } from "./edit-point";
-import { kRuleChromeLayer, kRuleContentLayer, kRuleGlintLayer } from "./editor-layers";
+import { kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 import { useCandidateStrip } from "./hooks/useCandidateStrip";
 import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
@@ -58,53 +57,6 @@ import {
 import { canEndSideExpression } from "./sentence-composer";
 import { kSentenceTypeClasses } from "./sentence-type";
 import { applyBrokenTileBadges, buildNodeMap, computeTileBadges, type TileBadge } from "./tile-badges";
-
-// Pre-compute glass effects for each element type
-const containerGlass = glassEffect({
-  highlightSize: 6,
-  shadowSize: 5,
-  highlightStrength: 0.3,
-  shadowStrength: 0.15,
-  bandOpacity: 0.08,
-  verticalShade: 0.05,
-  cornerHighlight: 0.1,
-  cornerHighlightPos: [5, 5],
-  cornerShadow: 0.05,
-  cornerShadowPos: [95, 95],
-  cornerRadius: 25,
-  extraInsetShadow: "inset 0 0 0 2px rgba(255, 255, 255, 0.15)",
-});
-const handleGlass = glassEffect({
-  highlightStrength: 0.5,
-  shadowStrength: 0.1,
-  bandOpacity: 0.4,
-  bandPeak: 20,
-  bandEnd: 50,
-  bottomReflection: 0.1,
-  cornerHighlight: 0.25,
-  cornerHighlightPos: [20, 15],
-  cornerShadow: 0,
-});
-const chipGlass = glassEffect({
-  highlightStrength: 0.15,
-  shadowStrength: 0,
-  bandOpacity: 0.05,
-  cornerHighlight: 0.1,
-  cornerHighlightPos: [5, 10],
-  cornerRadius: 40,
-  cornerShadow: 0,
-});
-const addButtonGlass = glassEffect({
-  highlightStrength: 0.5,
-  shadowStrength: 0.1,
-  bandOpacity: 0.4,
-  bandPeak: 20,
-  bandEnd: 50,
-  bottomReflection: 0.1,
-  cornerHighlight: 0.25,
-  cornerHighlightPos: [20, 15],
-  cornerShadow: 0,
-});
 
 /** Surface, hover, ink, and border of the rule row's round pills: the rule handle and each side's add-tile button. */
 const pillChromeClasses = "bg-slate-100 hover:bg-slate-200 text-slate-700 border-2 border-slate-300";
@@ -607,11 +559,10 @@ export function BrainRuleEditor({
     <>
       {/* biome-ignore lint/a11y/useSemanticElements: changing to li requires restructuring BrainPageEditor */}
       <div
-        className={`flex flex-col p-2 sm:p-3 mb-1 rounded-xl shadow-sm hover:shadow-md transition-shadow w-fit relative${hasBodyBelowTiles ? "" : " h-30"}${isDragging ? ` ${kRuleChromeLayer}` : ""}`}
+        className={`flex flex-col p-2 sm:p-3 mb-1 rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow w-fit relative${hasBodyBelowTiles ? "" : " h-30"}${isDragging ? ` ${kRuleChromeLayer}` : ""}`}
         style={{
           ...indentStyle,
           background: "linear-gradient(55deg, var(--color-brain-rule-from) 0%, var(--color-brain-rule-to) 100%)",
-          ...containerGlass.containerStyle,
           opacity: isDragging ? 0.85 : undefined,
           transform: isDragging ? "scale(1.02)" : undefined,
           transition: isDragging ? "none" : "transform 120ms ease, opacity 120ms ease",
@@ -622,12 +573,6 @@ export function BrainRuleEditor({
         onDragOver={handleCandidateDragOver}
         onDrop={handleCandidateDrop}
       >
-        {/* Glass glint overlay */}
-        <div
-          className={`absolute inset-0 rounded-xl pointer-events-none ${kRuleGlintLayer}`}
-          style={containerGlass.overlayStyle}
-          aria-hidden="true"
-        />
         {showComment && (
           <div className={`flex items-start gap-1.5 mb-1.5 relative ${kRuleContentLayer}`}>
             {isEditingComment ? (
@@ -675,17 +620,11 @@ export function BrainRuleEditor({
               <button
                 type="button"
                 className={`relative rounded-full self-center h-9 w-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold text-lg ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
-                style={handleGlass.containerStyle}
                 aria-label={`Rule ${lineNumber} actions${isDirty ? ", unsaved changes" : ""}`}
                 aria-haspopup="menu"
                 onPointerDown={handleHandlePointerDown}
                 onClick={handleHandleClick}
               >
-                <span
-                  className="absolute inset-0 rounded-full pointer-events-none"
-                  style={handleGlass.overlayStyle}
-                  aria-hidden="true"
-                />
                 {lineNumber}
                 {isDirty && (
                   <span
@@ -722,15 +661,11 @@ export function BrainRuleEditor({
           {/* When tiles */}{" "}
           {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}{" "}
           <div
-            className="px-2 py-1 ml-2 bg-linear-to-br from-slate-800 to-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden"
-            style={{
-              writingMode: "vertical-rl",
-              ...chipGlass.containerStyle,
-            }}
+            className="px-2 py-1 ml-2 bg-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden"
+            style={{ writingMode: "vertical-rl" }}
             role="group"
             aria-label="When condition tiles"
           >
-            <span className="absolute inset-0 pointer-events-none" style={chipGlass.overlayStyle} aria-hidden="true" />
             <span className="rotate-[-90] text-white font-semibold text-md cursor-default" aria-hidden="true">
               <span className="inline-block rotate-270 mx-0">W</span>
               <span className="inline-block rotate-270 mx-0.5">H</span>
@@ -760,32 +695,22 @@ export function BrainRuleEditor({
             <button
               type="button"
               className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold cursor-pointer flex items-center justify-center`}
-              style={addButtonGlass.containerStyle}
               onClick={handleAppendTileClick(RuleSide.When)}
               aria-label="Add tile to when condition"
               aria-expanded={offeredAppendSide === RuleSide.When}
               aria-controls={offeredAppendSide === RuleSide.When ? stripId : undefined}
             >
-              <span
-                className="absolute inset-0 rounded-full pointer-events-none"
-                style={addButtonGlass.overlayStyle}
-                aria-hidden="true"
-              />
               <Plus className={`h-4 w-4 relative ${kRuleContentLayer}`} aria-hidden="true" />
             </button>
           </div>
           {/* Do tiles */}{" "}
           {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}{" "}
           <div
-            className="px-2 py-1 ml-3 bg-linear-to-br from-slate-800 to-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden"
-            style={{
-              writingMode: "vertical-rl",
-              ...chipGlass.containerStyle,
-            }}
+            className="px-2 py-1 ml-3 bg-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden"
+            style={{ writingMode: "vertical-rl" }}
             role="group"
             aria-label="Do action tiles"
           >
-            <span className="absolute inset-0 pointer-events-none" style={chipGlass.overlayStyle} aria-hidden="true" />
             <span className="rotate-[-90] text-white font-semibold text-md cursor-default" aria-hidden="true">
               <span className="inline-block rotate-270 mx-0">D</span>
               <span className="inline-block rotate-270 mx-0.5">O</span>
@@ -813,17 +738,11 @@ export function BrainRuleEditor({
             <button
               type="button"
               className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold cursor-pointer flex items-center justify-center`}
-              style={addButtonGlass.containerStyle}
               onClick={handleAppendTileClick(RuleSide.Do)}
               aria-label="Add tile to do action"
               aria-expanded={offeredAppendSide === RuleSide.Do}
               aria-controls={offeredAppendSide === RuleSide.Do ? stripId : undefined}
             >
-              <span
-                className="absolute inset-0 rounded-full pointer-events-none"
-                style={addButtonGlass.overlayStyle}
-                aria-hidden="true"
-              />
               <Plus className={`h-4 w-4 relative ${kRuleContentLayer}`} aria-hidden="true" />
             </button>
           </div>

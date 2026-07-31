@@ -4,9 +4,8 @@ import { CircleAlert, ClockFading } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
 import { staticAssetUrl } from "../asset-url";
 import { adjustColor, readableInk, saturateColor } from "../lib/color";
-import { glassEffect } from "../lib/glass-effect";
 import { useBrainEditorConfig } from "./BrainEditorContext";
-import { kRuleChromeLayer, kRuleContentLayer, kRuleGlintLayer } from "./editor-layers";
+import { kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 import { TileValue } from "./TileValue";
 import type { TileBadge } from "./tile-badges";
 import { isProjectAuthoredActionTile } from "./tile-library-groups";
@@ -56,31 +55,17 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
       tileTypeName = dataTypeNames.get((tileDef as BrainTileFactoryDef).producedDataType);
     }
 
-    const lighterColor = adjustColor(baseColor, 0.3);
     const lighterColor2 = adjustColor(baseColor, 0.4);
     const darkerColor = adjustColor(baseColor, 0);
     const saturatedColor = saturateColor(baseColor, 0.5);
     const darkerSaturatedColor = adjustColor(saturatedColor, -0.4);
-    // The label sits over the gradient's dark stop, so its ink is chosen against that stop.
+    // The label sits on the tile fill, so its ink is chosen against that fill.
     const labelInk = readableInk(darkerColor);
-    const tileGlass = glassEffect({
-      highlightSize: 4,
-      shadowSize: 6,
-      highlightStrength: 0.8,
-      shadowStrength: 0.1,
-      bandOpacity: 0.15,
-      bandPeak: 32,
-      bandEnd: 100,
-      bottomReflection: 0.06,
-      // Shades the tile toward its bottom edge, the band the label sits in.
-      verticalShade: 0.18,
-    });
-    const gradientStyle = {
-      background: `radial-gradient(circle at center, ${lighterColor}, ${darkerColor})`,
+    const surfaceStyle = {
+      background: baseColor,
       // An app may set --color-brain-tile-border to give every tile one border
       // color; unset, each tile keeps a border derived from its own base color.
       borderColor: `var(--color-brain-tile-border, ${darkerSaturatedColor})`,
-      ...tileGlass.containerStyle,
     };
 
     // Measure the rendered text width by creating a temporary hidden span in the DOM.
@@ -150,19 +135,14 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
           onMouseLeave={() => setIsHovered(false)}
           // A caller's own style is layered over the tile's, never in place of it.
           style={{
-            ...gradientStyle,
+            ...surfaceStyle,
             ...(labelBasedWidth !== undefined ? { minWidth: labelBasedWidth } : {}),
             ...style,
           }}
-          className={`flex flex-col border-2 h-24 max-h-24 min-h-24 ${isValueTile ? "w-auto min-w-24 max-w-72 px-3 pb-2.5" : "w-24 min-w-24 max-w-48 px-1 pb-1.5"} overflow-hidden rounded-lg pt-2 text-black text-sm font-medium cursor-pointer brightness-105 hover:brightness-110 transition-[filter] self-center shadow-sm relative ${className}`}
+          className={`flex flex-col border-2 h-24 max-h-24 min-h-24 ${isValueTile ? "w-auto min-w-24 max-w-72 px-3 pb-2.5" : "w-24 min-w-24 max-w-48 px-1 pb-1.5"} overflow-hidden rounded-lg pt-2 text-black text-sm font-medium cursor-pointer self-center shadow-sm relative ${className}`}
           aria-label={`${tileDef.kind} tile: ${label}`}
           {...props}
         >
-          <div
-            className={`absolute inset-0 rounded-md pointer-events-none ${kRuleGlintLayer}`}
-            style={tileGlass.overlayStyle}
-            aria-hidden="true"
-          />
           {isValueTile && (
             <div
               style={{

@@ -240,14 +240,11 @@ function CandidateChip({ entry, side, optionId, isActive, onCommit, libraryName 
       }}
       onClick={() => onCommit(candidate)}
       style={{
-        background: isMinting
-          ? "linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03))"
-          : `linear-gradient(180deg, ${adjustColor(baseColor, 0.35)}, ${baseColor})`,
+        background: isMinting ? "rgba(255, 255, 255, 0.08)" : baseColor,
         borderColor: isMinting
           ? outlineColor
           : `var(--color-brain-tile-border, ${adjustColor(saturateColor(baseColor, 0.5), -0.4)})`,
         borderStyle: candidate.viaConversion ? "dashed" : "solid",
-        // The label runs the full height of the chip, down to the gradient's dark stop.
         color: isMinting ? "#FFFFFF" : readableInk(baseColor),
       }}
       className={`inline-flex min-h-11 max-w-full cursor-pointer items-center gap-2 rounded-full border-2 px-3 py-1.5 shadow-sm transition-[filter,transform] hover:brightness-110 active:scale-95 ${focusRingClasses} ${
