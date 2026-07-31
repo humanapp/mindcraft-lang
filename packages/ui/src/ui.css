@@ -66,6 +66,12 @@
   --radius-button: 0.375rem;
   --font-mono:
     "Roboto Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  /* Face the rule sentence is read in: an old-style serif, from system faces
+     only. Iowan Old Style and Palatino cover macOS and iOS, Palatino Linotype
+     and Book Antiqua cover Windows, the URW faces cover Linux, and Georgia is
+     the fallback everywhere else. */
+  --font-brain-sentence:
+    "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", P052, Georgia, serif;
 }
 
 /* Animations */
@@ -180,9 +186,9 @@
   width: 100%;
   margin-top: 4px;
   padding-left: 30px;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.75rem;
-  line-height: 1.4;
+  font-family: var(--font-brain-sentence);
+  font-size: 0.875rem;
+  line-height: 1.45;
   color: #334155;
 }
 

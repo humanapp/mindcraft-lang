@@ -4,11 +4,13 @@
  * token reads.
  *
  * The traces run against a scripted stand-in for the editor that applies the
- * effects a following token can read -- placements, the pivot, the own-commit
- * stack, the accordion -- and records every effect. Its offering is resolved by
- * the same predicates the strip resolves it with, so a word commits here exactly
- * where it commits in the editor. Tokens, effects, stable option ids, and tile
- * labels are asserted; no display prose is.
+ * effects a following token can read -- placements, the caret, the pivot, the
+ * own-commit stack, the accordion -- and records every effect. Its rule is a
+ * real one, so the caret run the model walks is the run that rule produces, and
+ * its offering is resolved by the same predicates the strip resolves it with, so
+ * a word commits here exactly where it commits in the editor. Tokens, effects,
+ * caret positions, stable option ids, and tile labels are asserted; no display
+ * prose is.
  */
 
 import assert from "node:assert/strict";
@@ -17,11 +19,12 @@ import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { CoreLiteralFactoryId, mkLiteralFactoryTileId, RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
-import type { BrainCommand } from "@mindcraft-lang/core/brain/model";
+import type { BrainCommand, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileActuatorDef, type BrainTileLiteralDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import { createDefaultLocalizer, type Localizer } from "@mindcraft-lang/core/localization";
 import { bag, CoreTypeIds, mkActionDescriptor, mkCallDef, NIL_VALUE } from "@mindcraft-lang/core/runtime";
 import {
+  type CandidateEntry,
   decideCandidateCommit,
   decideStripFocusTarget,
   filterStripCandidates,
@@ -30,14 +33,16 @@ import {
   mintTextLiteralCandidate,
   offersTextLiteral,
   type StripCandidate,
+  type StripCellGeometry,
+  type StripCursor,
   type StripFocusTarget,
   type StripOption,
   type StripOptionBand,
-  type StripOptionGeometry,
   stripOptionId,
   toCandidateEntries,
   visibleStripOptions,
 } from "./candidate-strip-model";
+import { type CaretEditIntent, type CaretPosition, caretEditIntent, caretRun } from "./caret-run";
 import {
   type ComposerCloseReason,
   type ComposerInputEffect,
@@ -48,6 +53,7 @@ import {
   composerTokenForKey,
   reduceComposerInput,
 } from "./composer-input-model";
+import { makeBrain } from "./test-only-rule-fixtures";
 
 let services: BrainServices;
 let localizer: Localizer;
@@ -59,10 +65,18 @@ const kStripId = "composer-trace";
 /** Band key of the accordion section the browsing traces open. */
 const kSectionBandKey = "sensor";
 
+/** Band key of the second accordion section, which the grid traces cross into. */
+const kSecondSectionBandKey = "literal";
+
 before(() => {
   services = __test__createBrainServices();
   localizer = createDefaultLocalizer();
 });
+
+/** Folds text for search the way the strip's localizer folds it. */
+function foldText(text: string): string {
+  return localizer.foldForSearch(text);
+}
 
 function makeSensorTile(sensorId: string): IBrainTileDef {
   const fnId = nextFnId;
@@ -77,6 +91,15 @@ function makeSensorTile(sensorId: string): IBrainTileDef {
   return new BrainTileSensorDef(sensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Boolean), {
     metadata: { label: sensorId },
   });
+}
+
+/** `count` tiles standing in for words a side already holds, named after that side. */
+function fillerTiles(count: number, side: string): IBrainTileDef[] {
+  const tiles: IBrainTileDef[] = [];
+  for (let index = 0; index < count; index++) {
+    tiles.push(makeSensorTile(`composer-trace-filler-${side}-${nextFnId}`));
+  }
+  return tiles;
 }
 
 function makeActuatorTile(actuatorId: string): IBrainTileDef {
@@ -142,7 +165,8 @@ interface ComposerTraceOptions {
 
 /**
  * A scripted editor the model's effects are applied to, so each token reads what
- * the ones before it did.
+ * the ones before it did. The rule behind it is a real one, so the caret run the
+ * model steps along is the run that rule produces.
  */
 class ComposerTrace {
   state: ComposerInputState;
@@ -152,12 +176,19 @@ class ComposerTrace {
   readonly log: ComposerInputEffect[] = [];
   /** Why the strip closed, or undefined while it is open. */
   closedAs: ComposerCloseReason | undefined;
+  /** Where the text cursor stands in the composer's box, which the horizontal arrows read. */
+  textCursor: { start: number; end: number } = { start: 0, end: 0 };
+  /** The rule being composed, whose tiles the placements land in. */
+  readonly ruleDef: BrainRuleDef;
   /** The command history, newest last. */
   private readonly history: BrainCommand[] = [];
-  /** The composition's own placements, newest last, with the side each landed on. */
-  private readonly placements: { command: BrainCommand; side: RuleSide }[] = [];
-  private whenTiles: number;
-  private doTiles: number;
+  /** The composition's own placements, newest last, with what each one took the place of. */
+  private readonly placements: {
+    command: BrainCommand;
+    side: RuleSide;
+    tileIndex: number;
+    replaced: IBrainTileDef | undefined;
+  }[] = [];
   private openSectionKey: string | null = null;
   /** The chip each open text value offers, keyed by the value. */
   private readonly pendingTextChips = new Map<string, StripCandidate>();
@@ -165,20 +196,52 @@ class ComposerTrace {
   private readonly bandSequence: readonly StripOptionBand[];
 
   constructor(options: ComposerTraceOptions = {}) {
+    const armedSide = options.armedSide ?? RuleSide.When;
+    const inSentence = options.inSentence !== false;
+    this.ruleDef = makeBrain(
+      services,
+      fillerTiles(options.whenTiles ?? 0, "when"),
+      fillerTiles(options.doTiles ?? 0, "do")
+    ).ruleDef;
     this.state = {
-      armedSide: options.armedSide ?? RuleSide.When,
-      armedEntry: options.inSentence === false ? "tray" : "sentence",
+      caret: inSentence ? this.sideEndGap(armedSide) : undefined,
+      armedSide,
+      armedEntry: inSentence ? "sentence" : "tray",
       filter: "",
-      activeOptionId: undefined,
+      cursor: undefined,
       highlightMode: "typing",
-      pivoted: (options.armedSide ?? RuleSide.When) === RuleSide.Do,
+      pivoted: armedSide === RuleSide.Do,
       textLiteral: undefined,
-      ownCommits: [],
     };
     this.offeringFor = options.offeringFor ?? (() => []);
     this.bandSequence = options.bandSequence ?? [];
-    this.whenTiles = options.whenTiles ?? 0;
-    this.doTiles = options.doTiles ?? 0;
+  }
+
+  /** The end gap of `side`, which is where composition on that side starts. */
+  sideEndGap(side: RuleSide): CaretPosition {
+    return { kind: "gap", side, tileIndex: this.tileCount(side) };
+  }
+
+  /** The gap of `side` before the tile at `tileIndex`. */
+  gap(side: RuleSide, tileIndex: number): CaretPosition {
+    return { kind: "gap", side, tileIndex };
+  }
+
+  /** The position resting on the tile at `tileIndex` of `side`. */
+  element(side: RuleSide, tileIndex: number): CaretPosition {
+    return { kind: "element", side, tileIndex };
+  }
+
+  /** Every caret position of the rule, in reading order. */
+  run(): readonly CaretPosition[] {
+    return caretRun(this.ruleDef);
+  }
+
+  /** The edit the caret's position intends on the side it stands on. */
+  editIntent(): CaretEditIntent {
+    const caret = this.state.caret;
+    assert.ok(caret, "the composition stands at a caret");
+    return caretEditIntent(caret, this.tileCount(caret.side));
   }
 
   /** The bands whose chips are rendered: the best-next row, plus the one open section. */
@@ -193,7 +256,7 @@ class ComposerTrace {
 
   /** Where DOM focus belongs while the highlight rests where it does. */
   focusTarget(): StripFocusTarget {
-    return decideStripFocusTarget(this.options(), this.state.activeOptionId, this.state.highlightMode);
+    return decideStripFocusTarget(this.options(), this.state.cursor, this.state.highlightMode);
   }
 
   /** Add a command the composition did not make, which becomes the history's newest entry. */
@@ -201,9 +264,33 @@ class ComposerTrace {
     this.history.push(makeCommand(description));
   }
 
+  /** How many placements of the composition's own still stand. */
+  ownCommitCount(): number {
+    return this.placements.length;
+  }
+
+  /** How many entries the command history holds. */
+  historyLength(): number {
+    return this.history.length;
+  }
+
+  /** The tiles of `side`, by the id each one was registered under. */
+  tileIds(side: RuleSide): string[] {
+    return this.ruleDef
+      .side(side)
+      .tiles()
+      .toArray()
+      .map((tileDef) => tileDef.tileId);
+  }
+
+  /** Stand the caret at `position`, as a tap on the rule's line does. */
+  placeCaret(position: CaretPosition): void {
+    this.state = { ...this.state, caret: position };
+  }
+
   /** How many tiles the rule holds on `side`. */
   tileCount(side: RuleSide): number {
-    return side === RuleSide.When ? this.whenTiles : this.doTiles;
+    return this.ruleDef.side(side).tiles().size();
   }
 
   /** Type `word` a character at a time, as the filter box reports its own content. */
@@ -215,13 +302,14 @@ class ComposerTrace {
 
   /** Feed one token through the model, apply what it asks for, and return the effects of this press. */
   press(token: ComposerInputToken): readonly ComposerInputEffect[] {
-    const outcome = reduceComposerInput(this.state, token, this.facts());
+    const before = this.state;
+    const outcome = reduceComposerInput(before, token, this.facts());
     this.state = outcome.state;
     const pressed: ComposerInputEffect[] = [];
     for (const effect of outcome.effects) {
       pressed.push(effect);
       this.log.push(effect);
-      const followed = this.apply(effect);
+      const followed = this.apply(effect, before);
       pressed.push(...followed);
     }
     return pressed;
@@ -243,23 +331,36 @@ class ComposerTrace {
     return minted;
   }
 
+  /**
+   * The element the composition's own newest placement stands at, while the
+   * command that made it is still the history's newest entry.
+   */
+  private ownNewestPlacement(): CaretPosition | undefined {
+    const own = this.placements[this.placements.length - 1];
+    if (own === undefined || this.history[this.history.length - 1] !== own.command) return undefined;
+    return { kind: "element", side: own.side, tileIndex: own.tileIndex };
+  }
+
   /** The facts of the moment, read the way the strip reads them. */
   private facts(): ComposerInputFacts {
     const offered = this.offeringFor(this.state.filter);
-    const visible = filterStripCandidates(offered, this.state.filter);
-    const activeOption = this.options().find((option) => option.optionId === this.state.activeOptionId);
+    const visible = filterStripCandidates(offered, this.state.filter, foldText);
+    const onChip = this.state.cursor?.kind === "chip" ? this.state.cursor.optionId : undefined;
+    const activeOption = this.options().find((option) => option.optionId === onChip);
     return {
+      caretRun: this.run(),
+      textCursor: this.textCursor,
       acceptsTextLiteral: offersTextLiteral(offered),
       pendingTextLiteral: this.pendingTextChip(),
       armedSideCanEnd: this.armedSideCanEnd,
-      ruleIsEmpty: this.whenTiles === 0 && this.doTiles === 0,
-      doTileCount: this.doTiles,
-      newestCommand: this.history[this.history.length - 1],
-      topCandidate: decideCandidateCommit(visible, this.state.filter, "enter"),
-      spaceCandidate: decideCandidateCommit(visible, this.state.filter, "space"),
+      ruleIsEmpty: this.tileCount(RuleSide.When) === 0 && this.tileCount(RuleSide.Do) === 0,
+      doTileCount: this.tileCount(RuleSide.Do),
+      ownNewestPlacement: this.ownNewestPlacement(),
+      topCandidate: decideCandidateCommit(visible, this.state.filter, "enter", foldText),
+      spaceCandidate: decideCandidateCommit(visible, this.state.filter, "space", foldText),
       highlightedCandidate: visible.find((candidate) => candidate.key === activeOption?.candidateKey),
       options: this.options(),
-      optionGeometry: layOutOptions(this.options()),
+      cellGeometry: this.layOutGrid(),
       stripId: kStripId,
       bandsWithSection: (sectionKey: string) =>
         this.bandSequence.filter(
@@ -268,26 +369,67 @@ class ComposerTrace {
     };
   }
 
+  /**
+   * Synthetic layout for the offering's grid: the best-next chips on one row,
+   * then each section's heading on a row of its own, followed by the chips it
+   * heads while that section is open. A heading spans the panel, so its center
+   * sits to the right of the chips beside it.
+   */
+  private layOutGrid(): StripCellGeometry[] {
+    const cells: StripCellGeometry[] = [];
+    let row = 0;
+    const addChips = (bandKey: string, entries: readonly CandidateEntry[]) => {
+      for (const [column, entry] of entries.entries()) {
+        cells.push({
+          cursor: { kind: "chip", optionId: stripOptionId(kStripId, bandKey, entry.candidate.key) },
+          left: column * 100,
+          width: 90,
+          top: row * 40,
+        });
+      }
+      row += 1;
+    };
+    for (const band of this.bandSequence) {
+      if (band.entries.length === 0) continue;
+      if (band.key === kBestNextBandKey) {
+        addChips(band.key, band.entries);
+        continue;
+      }
+      cells.push({ cursor: { kind: "heading", sectionKey: band.key }, left: 0, width: 400, top: row * 40 });
+      row += 1;
+      if (band.key === this.openSectionKey) addChips(band.key, band.entries);
+    }
+    return cells;
+  }
+
   /** Carry out one effect, returning any effects the follow-up token asked for. */
-  private apply(effect: ComposerInputEffect): readonly ComposerInputEffect[] {
+  private apply(effect: ComposerInputEffect, before: ComposerInputState): readonly ComposerInputEffect[] {
     switch (effect.kind) {
       case "place-tile": {
         const command = makeCommand(`placed:${effect.candidate.key}`);
-        const side = this.state.armedSide;
+        const caret = before.caret;
+        const side = caret?.side ?? before.armedSide;
+        const tileSet = this.ruleDef.side(side);
+        const tileIndex = caret === undefined ? tileSet.tiles().size() : caret.tileIndex;
+        const replaced = caret?.kind === "element" ? tileSet.tiles().get(tileIndex) : undefined;
+        if (replaced === undefined) tileSet.insertTileAtIndex(tileIndex, effect.candidate.tileDef);
+        else tileSet.replaceTileAtIndex(tileIndex, effect.candidate.tileDef);
         this.history.push(command);
-        this.placements.push({ command, side });
-        if (side === RuleSide.When) this.whenTiles += 1;
-        else this.doTiles += 1;
-        // The commit path records the command it executed; the model pops it.
-        this.state = { ...this.state, ownCommits: [...this.state.ownCommits, command] };
+        this.placements.push({ command, side, tileIndex, replaced });
         return [];
       }
       case "undo-own-commit": {
         const placement = this.placements.pop();
         assert.ok(placement, "nothing of the composition's own to take back");
         this.history.pop();
-        if (placement.side === RuleSide.When) this.whenTiles -= 1;
-        else this.doTiles -= 1;
+        const tileSet = this.ruleDef.side(placement.side);
+        if (placement.replaced === undefined) tileSet.removeTileAtIndex(placement.tileIndex);
+        else tileSet.replaceTileAtIndex(placement.tileIndex, placement.replaced);
+        return [];
+      }
+      case "delete-tile": {
+        this.history.push(makeCommand(`removed:${effect.position.side}:${effect.position.tileIndex}`));
+        this.ruleDef.side(effect.position.side).removeTileAtIndex(effect.position.tileIndex);
         return [];
       }
       case "open-section":
@@ -298,40 +440,45 @@ class ComposerTrace {
         return [];
       case "reask-after-placement":
         return this.press({ kind: "placement-landed", gesture: effect.gesture });
+      case "move-caret":
+        // The caret the model returned in its state is the one it asked for.
+        assert.deepEqual(this.state.caret, effect.position);
+        return [];
       default:
         return [];
     }
   }
 }
 
-/**
- * Synthetic layout for the rendered chips: each band is one row, and each chip
- * sits beside the one before it in its band.
- */
-function layOutOptions(options: readonly StripOption[]): StripOptionGeometry[] {
-  const rows: string[] = [];
-  return options.map((option) => {
-    if (!rows.includes(option.bandKey)) rows.push(option.bandKey);
-    const row = rows.indexOf(option.bandKey);
-    const column = options.filter((other) => other.bandKey === option.bandKey).indexOf(option);
-    return { optionId: option.optionId, left: column * 100, width: 90, top: row * 40 };
-  });
-}
-
 const consumeKey: ComposerInputEffect = { kind: "consume-key" };
 const typingFocus: ComposerInputEffect = { kind: "move-focus", target: { kind: "input" }, keepScroll: false };
 const settledFocus: ComposerInputEffect = { kind: "move-focus", target: { kind: "input" }, keepScroll: true };
-const clearHighlight: ComposerInputEffect = { kind: "highlight", optionId: undefined, mode: "typing" };
+const clearHighlight: ComposerInputEffect = { kind: "highlight", cursor: undefined, mode: "typing" };
 
-/** The effects every placement asks for, plus whatever gesture it was made on the way to. */
+/** The cursor standing on the chip `optionId`. */
+function chipAt(optionId: string): StripCursor {
+  return { kind: "chip", optionId };
+}
+
+/** The cursor standing on the accordion heading of `sectionKey`. */
+function headingAt(sectionKey: string): StripCursor {
+  return { kind: "heading", sectionKey };
+}
+
+/**
+ * The effects every placement asks for, with the caret coming to rest at
+ * `caret`, plus whatever gesture it was made on the way to.
+ */
 function placementEffects(
   candidate: StripCandidate,
+  caret: CaretPosition,
   ...then: readonly ComposerInputEffect[]
 ): readonly ComposerInputEffect[] {
   return [
     consumeKey,
     { kind: "place-tile", candidate },
     { kind: "announce-placement", label: candidate.label },
+    { kind: "move-caret", position: caret },
     clearHighlight,
     settledFocus,
     ...then,
@@ -356,23 +503,26 @@ describe("composing a rule from the keyboard", () => {
     const trace = new ComposerTrace({ offeringFor: () => [see, plant, jump] });
 
     trace.typeWord("see");
-    assert.deepEqual(trace.press({ kind: "space" }), placementEffects(see));
+    assert.deepEqual(trace.press({ kind: "space" }), placementEffects(see, trace.gap(RuleSide.When, 1)));
     trace.typeWord("plant");
-    assert.deepEqual(trace.press({ kind: "space" }), placementEffects(plant));
+    assert.deepEqual(trace.press({ kind: "space" }), placementEffects(plant, trace.gap(RuleSide.When, 2)));
 
-    assert.deepEqual(trace.press({ kind: "comma" }), [consumeKey, { kind: "arm-side", side: RuleSide.Do }]);
+    assert.deepEqual(trace.press({ kind: "comma" }), [
+      consumeKey,
+      { kind: "move-caret", position: trace.gap(RuleSide.Do, 0) },
+    ]);
     assert.equal(trace.state.armedSide, RuleSide.Do);
     assert.equal(trace.state.pivoted, true);
 
     trace.typeWord("jump");
-    assert.deepEqual(trace.press({ kind: "space" }), placementEffects(jump));
+    assert.deepEqual(trace.press({ kind: "space" }), placementEffects(jump, trace.gap(RuleSide.Do, 1)));
     assert.deepEqual(trace.press({ kind: "period" }), [consumeKey, { kind: "close-strip", reason: "settled" }]);
 
     assert.deepEqual(placedKeys(trace.log), [see.key, plant.key, jump.key]);
     assert.equal(trace.closedAs, "settled");
     assert.equal(trace.tileCount(RuleSide.When), 2);
     assert.equal(trace.tileCount(RuleSide.Do), 1);
-    assert.equal(trace.state.ownCommits.length, 3);
+    assert.equal(trace.ownCommitCount(), 3);
     assert.equal(trace.state.filter, "");
   });
 
@@ -385,7 +535,305 @@ describe("composing a rule from the keyboard", () => {
     assert.deepEqual(trace.press({ kind: "text", text: "se" }), typedEffects("se"));
     trace.press({ kind: "text", text: "see" });
 
-    assert.deepEqual(trace.press({ kind: "space" }), placementEffects(see));
+    assert.deepEqual(trace.press({ kind: "space" }), placementEffects(see, trace.gap(RuleSide.When, 1)));
+  });
+});
+
+/** A press of the named arrow in the composer's box. */
+const leftArrow: ComposerInputToken = { kind: "arrow", direction: "left", from: "filter" };
+const rightArrow: ComposerInputToken = { kind: "arrow", direction: "right", from: "filter" };
+
+describe("walking the caret along the run", () => {
+  test("Right reaches every position in order and clamps at the last, and Left walks back to the first", () => {
+    const trace = new ComposerTrace({ whenTiles: 2, doTiles: 1 });
+    const run = trace.run();
+    trace.placeCaret(run[0]);
+
+    for (let index = 1; index < run.length; index++) {
+      trace.press(rightArrow);
+      assert.deepEqual(trace.state.caret, run[index], `right to ${index}`);
+    }
+    assert.deepEqual(trace.press(rightArrow), [
+      consumeKey,
+      { kind: "move-caret", position: run[run.length - 1] },
+      clearHighlight,
+    ]);
+    assert.deepEqual(trace.state.caret, run[run.length - 1], "the last position clamps");
+
+    for (let index = run.length - 2; index >= 0; index--) {
+      trace.press(leftArrow);
+      assert.deepEqual(trace.state.caret, run[index], `left to ${index}`);
+    }
+    trace.press(leftArrow);
+    assert.deepEqual(trace.state.caret, run[0], "the first position clamps");
+  });
+
+  test("crossing from the last WHEN tile to the DO side takes two presses", () => {
+    const trace = new ComposerTrace({ whenTiles: 1, doTiles: 1 });
+    trace.placeCaret(trace.element(RuleSide.When, 0));
+
+    trace.press(rightArrow);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 1), "the clause the WHEN side ends");
+    trace.press(rightArrow);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.Do, 0), "and the one the DO side opens");
+  });
+
+  test("the edit intended at each position of the walk names its mode, side and tile", () => {
+    const trace = new ComposerTrace({ whenTiles: 2, doTiles: 1 });
+    const intents: CaretEditIntent[] = [];
+    trace.placeCaret(trace.run()[0]);
+    for (let index = 0; index < trace.run().length; index++) {
+      intents.push(trace.editIntent());
+      trace.press(rightArrow);
+    }
+    assert.deepEqual(intents, [
+      { mode: "insert", side: RuleSide.When, tileIndex: 0 },
+      { mode: "replace", side: RuleSide.When, tileIndex: 0 },
+      { mode: "insert", side: RuleSide.When, tileIndex: 1 },
+      { mode: "replace", side: RuleSide.When, tileIndex: 1 },
+      { mode: "append", side: RuleSide.When },
+      { mode: "insert", side: RuleSide.Do, tileIndex: 0 },
+      { mode: "replace", side: RuleSide.Do, tileIndex: 0 },
+      { mode: "append", side: RuleSide.Do },
+    ]);
+  });
+
+  test("Home takes the run's first position and End its last", () => {
+    const trace = new ComposerTrace({ whenTiles: 2, doTiles: 1 });
+    const run = trace.run();
+    trace.placeCaret(trace.element(RuleSide.When, 1));
+
+    assert.deepEqual(trace.press({ kind: "home" }), [
+      consumeKey,
+      { kind: "move-caret", position: run[0] },
+      clearHighlight,
+    ]);
+    assert.deepEqual(trace.state.caret, run[0]);
+
+    trace.placeCaret(trace.element(RuleSide.When, 1));
+    assert.deepEqual(trace.press({ kind: "end" }), [
+      consumeKey,
+      { kind: "move-caret", position: run[run.length - 1] },
+      clearHighlight,
+    ]);
+    assert.deepEqual(trace.state.caret, run[run.length - 1]);
+  });
+
+  test("moving the caret releases the chip the highlight rested on", () => {
+    const see = candidateOf(makeSensorTile("composer-trace-caret-highlight"), "see");
+    const trace = new ComposerTrace({
+      whenTiles: 1,
+      offeringFor: () => [see],
+      bandSequence: [{ key: kBestNextBandKey, entries: toCandidateEntries([see]) }],
+    });
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.ok(trace.state.cursor, "the cursor stands on a chip");
+
+    trace.press({ kind: "home" });
+    assert.equal(trace.state.cursor, undefined);
+    assert.equal(trace.state.highlightMode, "typing");
+  });
+
+  test("a caret the rule's run no longer holds is stood back on it, and the key steps from there", () => {
+    const trace = new ComposerTrace({ whenTiles: 2 });
+    trace.placeCaret(trace.gap(RuleSide.When, 2));
+    trace.ruleDef.when().removeTileAtIndex(1);
+
+    assert.deepEqual(trace.press(leftArrow), [
+      consumeKey,
+      { kind: "move-caret", position: trace.element(RuleSide.When, 0) },
+      clearHighlight,
+    ]);
+  });
+
+  test("a caret resting on a tile that has gone steps on from the gap that tile vacated", () => {
+    const trace = new ComposerTrace({ whenTiles: 1 });
+    trace.placeCaret(trace.element(RuleSide.When, 0));
+    trace.ruleDef.when().removeTileAtIndex(0);
+
+    assert.deepEqual(trace.press(rightArrow), [
+      consumeKey,
+      { kind: "move-caret", position: trace.gap(RuleSide.Do, 0) },
+      clearHighlight,
+    ]);
+  });
+
+  test("the key is the composer's even where standing the caret back leaves it nowhere to step", () => {
+    const trace = new ComposerTrace({ whenTiles: 1 });
+    trace.placeCaret(trace.element(RuleSide.When, 0));
+    trace.ruleDef.when().removeTileAtIndex(0);
+
+    assert.deepEqual(trace.press(leftArrow), [
+      consumeKey,
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+      clearHighlight,
+    ]);
+  });
+
+  test("a strip armed from the tray stands at no caret, so the keys stay with its box", () => {
+    const trace = new ComposerTrace({ inSentence: false, whenTiles: 1 });
+
+    assert.deepEqual(trace.press(leftArrow), []);
+    assert.deepEqual(trace.press(rightArrow), []);
+    assert.deepEqual(trace.press({ kind: "home" }), []);
+    assert.deepEqual(trace.press({ kind: "end" }), []);
+  });
+});
+
+describe("the caret against the text being typed", () => {
+  /** A trace holding one tile, offering one word, with `typed` standing in its box. */
+  function typedTrace(typed: string): ComposerTrace {
+    const see = candidateOf(makeSensorTile(`composer-trace-typed-${typed}-${nextFnId}`), "see");
+    const trace = new ComposerTrace({ whenTiles: 1, offeringFor: () => [see] });
+    trace.placeCaret(trace.gap(RuleSide.When, 1));
+    trace.typeWord(typed);
+    return trace;
+  }
+
+  test("with the cursor inside the text, neither arrow is the composer's", () => {
+    const trace = typedTrace("se");
+    trace.textCursor = { start: 1, end: 1 };
+
+    assert.deepEqual(trace.press(leftArrow), [], "left");
+    assert.deepEqual(trace.press(rightArrow), [], "right");
+    assert.equal(trace.state.filter, "se", "the text stands");
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 1), "and so does the caret");
+  });
+
+  test("with the text selected, neither arrow is the composer's at either end", () => {
+    const trace = typedTrace("se");
+    trace.textCursor = { start: 0, end: 2 };
+
+    assert.deepEqual(trace.press(leftArrow), [], "left");
+    assert.deepEqual(trace.press(rightArrow), [], "right");
+    assert.equal(trace.state.filter, "se");
+  });
+
+  test("the arrow that would carry the cursor further into the text is the box's own", () => {
+    const atStart = typedTrace("se");
+    atStart.textCursor = { start: 0, end: 0 };
+    assert.deepEqual(atStart.press(rightArrow), [], "right from the start of the text");
+
+    const atEnd = typedTrace("se");
+    atEnd.textCursor = { start: 2, end: 2 };
+    assert.deepEqual(atEnd.press(leftArrow), [], "left from the end of the text");
+  });
+
+  test("Left at the start of the text abandons it and steps the caret back", () => {
+    const trace = typedTrace("se");
+    trace.textCursor = { start: 0, end: 0 };
+
+    assert.deepEqual(trace.press(leftArrow), [
+      consumeKey,
+      { kind: "set-filter", text: "" },
+      { kind: "move-caret", position: trace.element(RuleSide.When, 0) },
+      clearHighlight,
+    ]);
+    assert.equal(trace.state.filter, "");
+  });
+
+  test("Right at the end of the text places it, coming to rest past the tile placed", () => {
+    const see = candidateOf(makeSensorTile("composer-trace-right-commit"), "see");
+    const trace = new ComposerTrace({ whenTiles: 1, offeringFor: () => [see] });
+    trace.placeCaret(trace.gap(RuleSide.When, 1));
+    trace.typeWord("se");
+    trace.textCursor = { start: 2, end: 2 };
+
+    assert.deepEqual(trace.press(rightArrow), placementEffects(see, trace.gap(RuleSide.When, 2)));
+    assert.equal(trace.tileCount(RuleSide.When), 2);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 2), "one advance, to the gap past the tile placed");
+    assert.equal(trace.state.filter, "");
+  });
+
+  test("Right at the end of text that names nothing to place is refused, moving and discarding nothing", () => {
+    const see = candidateOf(makeSensorTile("composer-trace-right-refuse"), "see");
+    const trace = new ComposerTrace({ whenTiles: 1, offeringFor: () => [see] });
+    trace.placeCaret(trace.gap(RuleSide.When, 1));
+    trace.typeWord("zzz");
+    trace.textCursor = { start: 3, end: 3 };
+
+    assert.deepEqual(trace.press(rightArrow), [consumeKey]);
+    assert.equal(trace.state.filter, "zzz", "the text stands");
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 1), "and so does the caret");
+    assert.deepEqual(placedKeys(trace.log), []);
+    assert.equal(trace.tileCount(RuleSide.When), 1);
+  });
+
+  test("a word typed over a tile is abandoned leaving that tile as it stands", () => {
+    const see = candidateOf(makeSensorTile("composer-trace-abandon-see"), "see");
+    const trace = new ComposerTrace({ whenTiles: 1, offeringFor: () => [see] });
+    trace.placeCaret(trace.element(RuleSide.When, 0));
+    const standing = trace.ruleDef.when().tiles().get(0);
+    trace.typeWord("see");
+    trace.textCursor = { start: 0, end: 0 };
+
+    trace.press(leftArrow);
+
+    assert.deepEqual(placedKeys(trace.log), [], "nothing was placed");
+    assert.equal(trace.ruleDef.when().tiles().get(0), standing, "the tile the word stood over is untouched");
+    assert.equal(trace.tileCount(RuleSide.When), 1);
+    assert.equal(trace.ownCommitCount(), 0);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 0));
+  });
+
+  test("Left at the start of an open text value abandons it, placing no literal", () => {
+    const factory = textFactoryCandidate();
+    const trace = new ComposerTrace({ whenTiles: 1, offeringFor: () => [factory] });
+    trace.placeCaret(trace.gap(RuleSide.When, 1));
+    trace.press({ kind: "quote" });
+    trace.typeWord("hi");
+    trace.textCursor = { start: 0, end: 0 };
+
+    assert.deepEqual(trace.press(leftArrow), [
+      consumeKey,
+      { kind: "set-text-literal", value: undefined },
+      { kind: "move-caret", position: trace.element(RuleSide.When, 0) },
+      clearHighlight,
+    ]);
+    assert.equal(trace.state.textLiteral, undefined);
+    assert.deepEqual(placedKeys(trace.log), []);
+    assert.equal(trace.tileCount(RuleSide.When), 1);
+  });
+
+  test("Right at the end of an open text value places it, exactly as its closing quote would", () => {
+    const factory = textFactoryCandidate();
+    const trace = new ComposerTrace({ whenTiles: 1, offeringFor: () => [factory] });
+    trace.placeCaret(trace.gap(RuleSide.When, 1));
+    trace.press({ kind: "quote" });
+    trace.typeWord("hi");
+    trace.textCursor = { start: 2, end: 2 };
+    const chip = trace.pendingTextChip();
+    assert.ok(chip, "the open value offers a chip to place it with");
+
+    assert.deepEqual(
+      trace.press(rightArrow),
+      placementEffects(chip, trace.gap(RuleSide.When, 2), { kind: "set-text-literal", value: undefined })
+    );
+    assert.equal(trace.state.textLiteral, undefined);
+    assert.equal(trace.tileCount(RuleSide.When), 2);
+  });
+
+  test("an empty text value is left by Left, whose cursor stands at both its ends", () => {
+    const factory = textFactoryCandidate();
+    const trace = new ComposerTrace({ whenTiles: 1, offeringFor: () => [factory] });
+    trace.placeCaret(trace.gap(RuleSide.When, 1));
+    trace.press({ kind: "quote" });
+    trace.textCursor = { start: 0, end: 0 };
+
+    trace.press(leftArrow);
+    assert.equal(trace.state.textLiteral, undefined);
+    assert.deepEqual(trace.state.caret, trace.element(RuleSide.When, 0));
+    assert.deepEqual(placedKeys(trace.log), []);
+  });
+
+  test("Home and End belong to the box while text stands in it", () => {
+    const trace = typedTrace("se");
+    trace.textCursor = { start: 1, end: 1 };
+
+    assert.deepEqual(trace.press({ kind: "home" }), []);
+    assert.deepEqual(trace.press({ kind: "end" }), []);
+    assert.equal(trace.state.filter, "se");
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 1));
   });
 });
 
@@ -409,23 +857,31 @@ describe("the backspace ladder", () => {
 
     assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [
       consumeKey,
-      { kind: "arm-side", side: RuleSide.When },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 2) },
     ]);
     assert.equal(trace.state.pivoted, false);
     assert.equal(trace.state.armedSide, RuleSide.When);
 
-    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [consumeKey, { kind: "undo-own-commit" }]);
-    assert.equal(trace.state.ownCommits.length, 1);
+    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [
+      consumeKey,
+      { kind: "undo-own-commit" },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 1) },
+    ]);
+    assert.equal(trace.ownCommitCount(), 1);
     assert.equal(trace.tileCount(RuleSide.When), 1);
 
-    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [consumeKey, { kind: "undo-own-commit" }]);
-    assert.deepEqual(trace.state.ownCommits, []);
+    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [
+      consumeKey,
+      { kind: "undo-own-commit" },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+    ]);
+    assert.equal(trace.ownCommitCount(), 0);
     assert.equal(trace.tileCount(RuleSide.When), 0);
 
     assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), []);
   });
 
-  test("a command the composition did not make becoming newest leaves backspace with nothing to do", () => {
+  test("a command the composition did not make becoming newest removes the tile instead of taking the placement back", () => {
     const see = candidateOf(makeSensorTile("composer-trace-foreign-see"), "see");
     const trace = new ComposerTrace({ offeringFor: () => [see] });
 
@@ -433,9 +889,12 @@ describe("the backspace ladder", () => {
     trace.press({ kind: "space" });
     trace.pushForeignCommand("composer-trace-foreign-edit");
 
-    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), []);
-    assert.equal(trace.state.ownCommits.length, 1);
-    assert.equal(trace.tileCount(RuleSide.When), 1);
+    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.When, 0) },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+    ]);
+    assert.equal(trace.tileCount(RuleSide.When), 0);
   });
 
   test("backspace on a band's chips edits the word in progress and hands the keyboard back", () => {
@@ -450,6 +909,268 @@ describe("the backspace ladder", () => {
       clearHighlight,
     ]);
     assert.equal(trace.state.filter, "s");
+  });
+});
+
+describe("deleting at the caret", () => {
+  /** A trace whose DO side already reads one word, with another offered to type. */
+  function reportedFlowTrace(): { trace: ComposerTrace; sad: StripCandidate; happyId: string } {
+    const sad = candidateOf(makeSensorTile("composer-trace-flow-sad"), "sad");
+    const trace = new ComposerTrace({ offeringFor: () => [sad] });
+    const happy = makeActuatorTile("composer-trace-flow-happy");
+    trace.ruleDef.do().appendTile(happy);
+    return { trace, sad, happyId: happy.tileId };
+  }
+
+  test("the caret decides what goes, not what the composition placed last", () => {
+    const { trace, sad, happyId } = reportedFlowTrace();
+    trace.placeCaret(trace.element(RuleSide.Do, 0));
+
+    trace.press(leftArrow);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.Do, 0));
+
+    trace.typeWord("sad");
+    trace.press({ kind: "space" });
+    assert.deepEqual(trace.tileIds(RuleSide.Do), [sad.tileDef.tileId, happyId]);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.Do, 1));
+
+    trace.press(rightArrow);
+    trace.press(rightArrow);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.Do, 2), "the gap past the word that was already there");
+
+    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.Do, 1) },
+      { kind: "move-caret", position: trace.gap(RuleSide.Do, 1) },
+    ]);
+    assert.deepEqual(
+      trace.tileIds(RuleSide.Do),
+      [sad.tileDef.tileId],
+      "the word behind the caret is the one that goes"
+    );
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.Do, 1));
+  });
+
+  test("Backspace on an element deletes that element", () => {
+    const trace = new ComposerTrace({ whenTiles: 2 });
+    const remaining = trace.tileIds(RuleSide.When)[1];
+    trace.placeCaret(trace.element(RuleSide.When, 0));
+
+    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.When, 0) },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+    ]);
+    assert.deepEqual(trace.tileIds(RuleSide.When), [remaining]);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 0), "the caret rests in the gap the tile vacated");
+  });
+
+  test("Backspace in a gap deletes the element before it", () => {
+    const trace = new ComposerTrace({ whenTiles: 2 });
+    const remaining = trace.tileIds(RuleSide.When)[1];
+    trace.placeCaret(trace.gap(RuleSide.When, 1));
+
+    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.When, 0) },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+    ]);
+    assert.deepEqual(trace.tileIds(RuleSide.When), [remaining]);
+  });
+
+  test("Backspace at the run's first position has nothing before it to delete", () => {
+    const trace = new ComposerTrace({ whenTiles: 1, doTiles: 1 });
+    trace.placeCaret(trace.run()[0]);
+
+    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), []);
+    assert.equal(trace.tileCount(RuleSide.When), 1);
+    assert.equal(trace.tileCount(RuleSide.Do), 1);
+  });
+
+  test("Backspace in the DO side's opening gap crosses the clause comma", () => {
+    const trace = new ComposerTrace({ whenTiles: 1, doTiles: 1 });
+    const action = trace.tileIds(RuleSide.Do)[0];
+    trace.placeCaret(trace.gap(RuleSide.Do, 0));
+
+    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.When, 0) },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+    ]);
+    assert.deepEqual(trace.tileIds(RuleSide.When), []);
+    assert.deepEqual(trace.tileIds(RuleSide.Do), [action], "the DO side is untouched");
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 0));
+  });
+
+  test("Delete in a gap deletes the element after it", () => {
+    const trace = new ComposerTrace({ whenTiles: 2 });
+    const remaining = trace.tileIds(RuleSide.When)[1];
+    trace.placeCaret(trace.gap(RuleSide.When, 0));
+
+    assert.deepEqual(trace.press({ kind: "delete-forward" }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.When, 0) },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+    ]);
+    assert.deepEqual(trace.tileIds(RuleSide.When), [remaining]);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 0));
+  });
+
+  test("Delete on an element deletes that element, as Backspace on it does", () => {
+    const trace = new ComposerTrace({ whenTiles: 2 });
+    const remaining = trace.tileIds(RuleSide.When)[0];
+    trace.placeCaret(trace.element(RuleSide.When, 1));
+
+    assert.deepEqual(trace.press({ kind: "delete-forward" }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.When, 1) },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 1) },
+    ]);
+    assert.deepEqual(trace.tileIds(RuleSide.When), [remaining]);
+  });
+
+  test("Delete at the run's last position has nothing after it to delete", () => {
+    const trace = new ComposerTrace({ whenTiles: 1, doTiles: 1 });
+    const run = trace.run();
+    trace.placeCaret(run[run.length - 1]);
+
+    assert.deepEqual(trace.press({ kind: "delete-forward" }), []);
+    assert.equal(trace.tileCount(RuleSide.When), 1);
+    assert.equal(trace.tileCount(RuleSide.Do), 1);
+  });
+
+  test("Delete in the WHEN side's end gap crosses the clause comma the other way", () => {
+    const trace = new ComposerTrace({ whenTiles: 1, doTiles: 1 });
+    const condition = trace.tileIds(RuleSide.When)[0];
+    trace.placeCaret(trace.gap(RuleSide.When, 1));
+
+    assert.deepEqual(trace.press({ kind: "delete-forward" }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.Do, 0) },
+      { kind: "move-caret", position: trace.gap(RuleSide.Do, 0) },
+    ]);
+    assert.deepEqual(trace.tileIds(RuleSide.When), [condition]);
+    assert.deepEqual(trace.tileIds(RuleSide.Do), []);
+  });
+
+  test("Delete belongs to the box while a word stands in it", () => {
+    const see = candidateOf(makeSensorTile("composer-trace-delete-typing"), "see");
+    const trace = new ComposerTrace({ whenTiles: 1, offeringFor: () => [see] });
+    trace.placeCaret(trace.gap(RuleSide.When, 0));
+    trace.typeWord("se");
+
+    assert.deepEqual(trace.press({ kind: "delete-forward" }), []);
+    assert.equal(trace.state.filter, "se");
+    assert.equal(trace.tileCount(RuleSide.When), 1);
+  });
+
+  test("a caret the run no longer holds deletes from where it stands on the run now", () => {
+    const trace = new ComposerTrace({ whenTiles: 2 });
+    const first = trace.tileIds(RuleSide.When)[0];
+    trace.placeCaret(trace.element(RuleSide.When, 1));
+    trace.ruleDef.when().removeTileAtIndex(1);
+
+    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.When, 0) },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+    ]);
+    assert.deepEqual(trace.tileIds(RuleSide.When), [], `the one tile left was ${first}`);
+  });
+
+  test("a named element goes whatever the caret is doing, and the caret rests where it stood", () => {
+    const trace = new ComposerTrace({ whenTiles: 2 });
+    const remaining = trace.tileIds(RuleSide.When)[0];
+    trace.placeCaret(trace.gap(RuleSide.When, 0));
+
+    assert.deepEqual(trace.press({ kind: "delete-element", position: trace.element(RuleSide.When, 1) }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.When, 1) },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 1) },
+    ]);
+    assert.deepEqual(trace.tileIds(RuleSide.When), [remaining]);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 1), "the caret rests in the gap the tile vacated");
+  });
+
+  test("a named element goes with a word standing in the box, which Delete leaves alone", () => {
+    const see = candidateOf(makeSensorTile("composer-trace-named-typing"), "see");
+    const trace = new ComposerTrace({ whenTiles: 1, offeringFor: () => [see] });
+    trace.placeCaret(trace.element(RuleSide.When, 0));
+    trace.typeWord("se");
+
+    assert.deepEqual(trace.press({ kind: "delete-forward" }), []);
+    assert.deepEqual(trace.press({ kind: "delete-element", position: trace.element(RuleSide.When, 0) }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.When, 0) },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+    ]);
+    assert.equal(trace.tileCount(RuleSide.When), 0);
+  });
+
+  test("a named element goes from a strip standing at no caret of its own", () => {
+    const trace = new ComposerTrace({ whenTiles: 1, inSentence: false });
+    assert.equal(trace.state.caret, undefined);
+
+    assert.deepEqual(trace.press({ kind: "delete-element", position: trace.element(RuleSide.When, 0) }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.When, 0) },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+    ]);
+    assert.equal(trace.tileCount(RuleSide.When), 0);
+  });
+
+  test("a named element the composition placed last is taken back rather than removed", () => {
+    const see = candidateOf(makeSensorTile("composer-trace-named-own"), "see");
+    const trace = new ComposerTrace({ offeringFor: () => [see] });
+    trace.typeWord("see");
+    trace.press({ kind: "space" });
+
+    assert.deepEqual(trace.press({ kind: "delete-element", position: trace.element(RuleSide.When, 0) }), [
+      consumeKey,
+      { kind: "undo-own-commit" },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+    ]);
+    assert.equal(trace.ownCommitCount(), 0);
+    assert.equal(trace.historyLength(), 0);
+    assert.equal(trace.tileCount(RuleSide.When), 0);
+  });
+
+  test("the vertical arrows delete nothing and leave the caret where it stands", () => {
+    for (const direction of ["up", "down"] as const) {
+      const trace = new ComposerTrace({ whenTiles: 2 });
+      trace.placeCaret(trace.element(RuleSide.When, 0));
+      const tiles = trace.tileIds(RuleSide.When);
+
+      trace.press({ kind: "arrow", direction, from: "filter" });
+
+      assert.deepEqual(trace.tileIds(RuleSide.When), tiles, `${direction} deletes nothing`);
+      assert.deepEqual(trace.state.caret, trace.element(RuleSide.When, 0), `${direction} moves no caret`);
+    }
+  });
+
+  test("taking back the composition's own newest placement leaves what a removal leaves, and no history behind", () => {
+    const see = candidateOf(makeSensorTile("composer-trace-own-newest"), "see");
+    const own = new ComposerTrace({ offeringFor: () => [see] });
+    own.typeWord("see");
+    own.press({ kind: "space" });
+    assert.equal(own.historyLength(), 1, "the placement is the one entry");
+
+    assert.deepEqual(own.press({ kind: "backspace", from: "filter" }), [
+      consumeKey,
+      { kind: "undo-own-commit" },
+      { kind: "move-caret", position: own.gap(RuleSide.When, 0) },
+    ]);
+    assert.equal(own.historyLength(), 0, "which the deletion takes back rather than adding a second");
+
+    const removed = new ComposerTrace({ offeringFor: () => [see] });
+    removed.typeWord("see");
+    removed.press({ kind: "space" });
+    removed.pushForeignCommand("composer-trace-own-newest-edit");
+    removed.press({ kind: "backspace", from: "filter" });
+
+    assert.deepEqual(removed.tileIds(RuleSide.When), own.tileIds(RuleSide.When), "the same document either way");
+    assert.deepEqual(removed.state.caret, own.state.caret, "and the same resting place");
+    assert.equal(removed.historyLength(), 3, "the placement, the edit between, and a removal of its own");
   });
 });
 
@@ -474,8 +1195,9 @@ describe("the comma", () => {
       trace.press({ kind: "comma" }),
       placementEffects(
         see,
+        trace.gap(RuleSide.When, 1),
         { kind: "reask-after-placement", gesture: "pivot" },
-        { kind: "arm-side", side: RuleSide.Do }
+        { kind: "move-caret", position: trace.gap(RuleSide.Do, 0) }
       )
     );
     assert.equal(trace.state.armedSide, RuleSide.Do);
@@ -490,7 +1212,7 @@ describe("the comma", () => {
 
     assert.deepEqual(
       trace.press({ kind: "comma" }),
-      placementEffects(see, { kind: "reask-after-placement", gesture: "pivot" })
+      placementEffects(see, trace.gap(RuleSide.When, 1), { kind: "reask-after-placement", gesture: "pivot" })
     );
     assert.equal(trace.state.armedSide, RuleSide.When);
     assert.equal(trace.state.pivoted, false);
@@ -510,12 +1232,23 @@ describe("the comma", () => {
 });
 
 describe("the period", () => {
-  test("refuses where the armed side cannot end", () => {
+  test("refuses where the armed side cannot end, adding nothing to the word in progress", () => {
     const trace = new ComposerTrace({ whenTiles: 1 });
     trace.armedSideCanEnd = false;
 
-    assert.deepEqual(trace.press({ kind: "period" }), []);
+    assert.deepEqual(trace.press({ kind: "period" }), [consumeKey]);
+    assert.equal(trace.state.filter, "");
     assert.equal(trace.closedAs, undefined);
+  });
+
+  test("refuses an unresolvable word in progress, leaving that word as it stands", () => {
+    const trace = new ComposerTrace({ whenTiles: 1 });
+    trace.typeWord("zzz");
+
+    assert.deepEqual(trace.press({ kind: "period" }), [consumeKey]);
+    assert.equal(trace.state.filter, "zzz");
+    assert.equal(trace.closedAs, undefined);
+    assert.deepEqual(placedKeys(trace.log), []);
   });
 
   test("is inert on a rule holding no tiles at all", () => {
@@ -715,7 +1448,7 @@ describe("a typed text value", () => {
     assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), abandonEffects);
     assert.equal(trace.state.textLiteral, undefined);
     assert.deepEqual(placedKeys(trace.log), [word.key]);
-    assert.equal(trace.state.ownCommits.length, 1);
+    assert.equal(trace.ownCommitCount(), 1);
     assert.equal(trace.tileCount(RuleSide.When), 2);
   });
 
@@ -789,14 +1522,17 @@ describe("a typed text value", () => {
     const trace = openedTextTrace("hi");
     trace.press({ kind: "quote" });
 
-    assert.deepEqual(trace.press({ kind: "comma" }), [consumeKey, { kind: "arm-side", side: RuleSide.Do }]);
+    assert.deepEqual(trace.press({ kind: "comma" }), [
+      consumeKey,
+      { kind: "move-caret", position: trace.gap(RuleSide.Do, 0) },
+    ]);
     assert.equal(trace.state.armedSide, RuleSide.Do);
     assert.deepEqual(trace.press({ kind: "period" }), [consumeKey, { kind: "close-strip", reason: "settled" }]);
     assert.equal(trace.closedAs, "settled");
   });
 });
 
-describe("browsing the accordion", () => {
+describe("browsing the offering as one grid", () => {
   /** A best-next row of two chips over a closed section holding a third. */
   function browsingTrace(): { trace: ComposerTrace; best: StripCandidate[]; sectioned: StripCandidate } {
     const first = candidateOf(makeSensorTile("composer-trace-browse-one"), "one");
@@ -812,61 +1548,377 @@ describe("browsing the accordion", () => {
     return { trace, best: [first, second], sectioned };
   }
 
-  test("an arrow on a closed heading opens the section and starts browsing its first chip", () => {
+  /** A best-next row of one chip over two closed sections, each holding one of its own. */
+  function twoSectionTrace(): {
+    trace: ComposerTrace;
+    best: StripCandidate;
+    first: StripCandidate;
+    second: StripCandidate;
+  } {
+    const best = candidateOf(makeSensorTile("composer-trace-grid-best"), "best");
+    const first = candidateOf(makeSensorTile("composer-trace-grid-first"), "first");
+    const second = candidateOf(makeSensorTile("composer-trace-grid-second"), "second");
+    const trace = new ComposerTrace({
+      offeringFor: () => [best, first, second],
+      bandSequence: [
+        { key: kBestNextBandKey, entries: toCandidateEntries([best]) },
+        { key: kSectionBandKey, entries: toCandidateEntries([first]) },
+        { key: kSecondSectionBandKey, entries: toCandidateEntries([second]) },
+      ],
+    });
+    return { trace, best, first, second };
+  }
+
+  /** The cursor standing on the chip that `candidate` renders as in the band `bandKey`. */
+  function chipOf(bandKey: string, candidate: StripCandidate): StripCursor {
+    return chipAt(stripOptionId(kStripId, bandKey, candidate.key));
+  }
+
+  test("an arrow on a closed heading opens the section and stands the cursor on its first chip", () => {
     const { trace, sectioned } = browsingTrace();
-    const entered = stripOptionId(kStripId, kSectionBandKey, sectioned.key);
+    const entered = chipOf(kSectionBandKey, sectioned);
 
     assert.deepEqual(trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey }), [
       { kind: "open-section", sectionKey: kSectionBandKey },
-      { kind: "highlight", optionId: entered, mode: "browsing" },
+      { kind: "highlight", cursor: entered, mode: "browsing" },
       consumeKey,
     ]);
-    assert.equal(trace.state.activeOptionId, entered);
+    assert.deepEqual(trace.state.cursor, entered);
     assert.equal(trace.state.highlightMode, "browsing");
-    // Focus rests on the band being browsed, so Tab reaches the next heading.
     assert.deepEqual(trace.focusTarget(), { kind: "band", bandKey: kSectionBandKey });
   });
 
-  test("an arrow between rows crosses from the open section back into the best-next row", () => {
-    const { trace, best } = browsingTrace();
+  test("stepping down off a group's chips lands on the next group's heading, and down again enters that group", () => {
+    const { trace, first, second } = twoSectionTrace();
     trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, first));
 
-    const crossed = stripOptionId(kStripId, kBestNextBandKey, best[0].key);
-    assert.deepEqual(trace.press({ kind: "arrow", direction: "up", from: "band" }), [
-      { kind: "highlight", optionId: crossed, mode: "browsing" },
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "down", from: "band" }), [
+      { kind: "highlight", cursor: headingAt(kSecondSectionBandKey), mode: "browsing" },
       consumeKey,
     ]);
-    assert.deepEqual(trace.focusTarget(), { kind: "band", bandKey: kBestNextBandKey });
+    assert.deepEqual(trace.focusTarget(), { kind: "heading", sectionKey: kSecondSectionBandKey });
+
+    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSecondSectionBandKey });
+    assert.deepEqual(trace.state.cursor, chipOf(kSecondSectionBandKey, second));
+    assert.deepEqual(trace.focusTarget(), { kind: "band", bandKey: kSecondSectionBandKey });
+  });
+
+  test("stepping up from a section's chips lands on that section's own heading", () => {
+    const { trace } = browsingTrace();
+    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "up", from: "band" }), [
+      { kind: "highlight", cursor: headingAt(kSectionBandKey), mode: "browsing" },
+      consumeKey,
+    ]);
+    assert.deepEqual(trace.focusTarget(), { kind: "heading", sectionKey: kSectionBandKey });
+  });
+
+  test("a cursor stepping onto a heading from the box takes the keyboard onto that heading", () => {
+    const { trace } = browsingTrace();
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.deepEqual(trace.focusTarget(), { kind: "input" });
+
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
+    assert.equal(trace.state.highlightMode, "browsing");
+    assert.deepEqual(trace.focusTarget(), { kind: "heading", sectionKey: kSectionBandKey });
   });
 
   test("Enter on a browsed chip places it and hands the keyboard back to the filter box", () => {
     const { trace, sectioned } = browsingTrace();
     trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
 
-    assert.deepEqual(trace.press({ kind: "enter", from: "band" }), placementEffects(sectioned));
+    assert.deepEqual(
+      trace.press({ kind: "enter", from: "band" }),
+      placementEffects(sectioned, trace.gap(RuleSide.When, 1))
+    );
     assert.deepEqual(trace.focusTarget(), { kind: "input" });
   });
 
-  test("a character typed while browsing hands the keyboard back without placing anything", () => {
+  test("a character typed while browsing a band hands the keyboard back without placing anything", () => {
     const { trace } = browsingTrace();
     trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
-    const activeOptionId = trace.state.activeOptionId;
+    const cursor = trace.state.cursor;
 
-    assert.deepEqual(trace.press({ kind: "printable" }), [
-      typingFocus,
-      { kind: "highlight", optionId: activeOptionId, mode: "typing" },
-    ]);
+    assert.deepEqual(trace.press({ kind: "printable" }), [typingFocus, { kind: "highlight", cursor, mode: "typing" }]);
     assert.deepEqual(placedKeys(trace.log), []);
     assert.deepEqual(trace.focusTarget(), { kind: "input" });
   });
 
-  test("the horizontal arrows stay with the text caret until a chip is highlighted", () => {
+  test("a character typed on a heading releases the cursor with the keyboard it was holding", () => {
+    const { trace } = browsingTrace();
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
+
+    assert.deepEqual(trace.press({ kind: "printable" }), [typingFocus, clearHighlight]);
+    assert.equal(trace.state.cursor, undefined);
+    assert.deepEqual(trace.focusTarget(), { kind: "input" });
+  });
+
+  test("Backspace on a heading edits the word in progress and hands the keyboard back", () => {
+    const { trace } = browsingTrace();
+    trace.typeWord("on");
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
+
+    assert.deepEqual(trace.press({ kind: "backspace", from: "heading" }), [
+      typingFocus,
+      consumeKey,
+      { kind: "set-filter", text: "o" },
+      clearHighlight,
+    ]);
+    assert.equal(trace.state.filter, "o");
+    assert.equal(trace.state.cursor, undefined);
+  });
+
+  test("the horizontal arrows belong to the caret until the cursor stands on a chip", () => {
     const { trace, best } = browsingTrace();
 
-    assert.deepEqual(trace.press({ kind: "arrow", direction: "right", from: "filter" }), []);
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "left", from: "filter" }), [
+      consumeKey,
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+      clearHighlight,
+    ]);
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
-    assert.equal(trace.state.activeOptionId, stripOptionId(kStripId, kBestNextBandKey, best[0].key));
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[0]));
     assert.equal(trace.state.highlightMode, "typing");
+  });
+
+  test("the vertical arrows steer the offering alone, from either surface, and never the caret", () => {
+    for (const from of ["filter", "band"] as const) {
+      for (const direction of ["down", "up"] as const) {
+        const { trace } = browsingTrace();
+        // Up steers from inside the offering, which a step down enters.
+        if (direction === "up") trace.press({ kind: "arrow", direction: "down", from: "filter" });
+        const caret = trace.state.caret;
+        const pressed = trace.press({ kind: "arrow", direction, from });
+        assert.ok(pressed.length > 0, `${direction} from ${from} steers the offering`);
+        assert.deepEqual(
+          pressed.filter((effect) => effect.kind === "move-caret"),
+          [],
+          `${direction} from ${from} moves no caret`
+        );
+        assert.deepEqual(trace.state.caret, caret, `${direction} from ${from} leaves the caret where it stands`);
+      }
+    }
+  });
+
+  test("stepping up from the top row hands the keyboard back to the box, leaving the caret where it stands", () => {
+    const { trace } = browsingTrace();
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.ok(trace.state.cursor, "the cursor stands on a chip");
+    const caret = trace.state.caret;
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "up", from: "filter" }), [
+      consumeKey,
+      clearHighlight,
+      typingFocus,
+    ]);
+    assert.equal(trace.state.cursor, undefined);
+    assert.equal(trace.state.highlightMode, "typing");
+    assert.deepEqual(trace.focusTarget(), { kind: "input" });
+    assert.deepEqual(trace.state.caret, caret);
+    assert.deepEqual(placedKeys(trace.log), []);
+  });
+
+  test("stepping up walks every row of the grid and leaves the offering from the first", () => {
+    const { trace, best } = browsingTrace();
+    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+
+    trace.press({ kind: "arrow", direction: "up", from: "band" });
+    assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
+
+    trace.press({ kind: "heading-arrow", direction: "up", sectionKey: kSectionBandKey });
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[1]));
+
+    trace.press({ kind: "arrow", direction: "up", from: "band" });
+    assert.equal(trace.state.cursor, undefined);
+    assert.deepEqual(trace.focusTarget(), { kind: "input" });
+  });
+
+  test("the bottom row of the grid has no row below it, and the key stops there", () => {
+    const { trace, sectioned } = browsingTrace();
+    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "down", from: "band" }), [consumeKey]);
+    assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, sectioned));
+    assert.deepEqual(trace.focusTarget(), { kind: "band", bandKey: kSectionBandKey });
+  });
+
+  test("the last chip has none after it, and the key stops there", () => {
+    const { trace, sectioned } = browsingTrace();
+    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, sectioned));
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "right", from: "band" }), [consumeKey]);
+    assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, sectioned));
+  });
+
+  test("the first chip has none before it, and the key stops there instead of reaching the caret", () => {
+    const { trace, best } = browsingTrace();
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[0]));
+    const caret = trace.state.caret;
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "left", from: "filter" }), [consumeKey]);
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[0]));
+    assert.deepEqual(trace.state.caret, caret, "the caret stands where it was");
+  });
+
+  test("arrowing up with the cursor nowhere reaches no cell of the offering", () => {
+    const { trace } = twoSectionTrace();
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "up", from: "filter" }), []);
+    assert.equal(trace.state.cursor, undefined);
+    assert.deepEqual(trace.focusTarget(), { kind: "input" });
+  });
+
+  test("the grid is entered at its first row again after leaving it, and walks down to a stop", () => {
+    const { trace, best, first, second } = twoSectionTrace();
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best));
+
+    trace.press({ kind: "arrow", direction: "up", from: "filter" });
+    assert.equal(trace.state.cursor, undefined, "the offering is left for the caret");
+
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best), "re-entry stands on the first row");
+
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
+
+    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, first));
+
+    trace.press({ kind: "arrow", direction: "down", from: "band" });
+    assert.deepEqual(trace.state.cursor, headingAt(kSecondSectionBandKey));
+
+    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSecondSectionBandKey });
+    assert.deepEqual(trace.state.cursor, chipOf(kSecondSectionBandKey, second));
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "down", from: "band" }), [consumeKey]);
+    assert.deepEqual(trace.state.cursor, chipOf(kSecondSectionBandKey, second), "the last row stands where it is");
+  });
+
+  test("the walk back up leaves the offering from the first row instead of reaching the last", () => {
+    const { trace, first } = twoSectionTrace();
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    assert.deepEqual(trace.state.cursor, chipOf(kSectionBandKey, first));
+
+    trace.press({ kind: "arrow", direction: "up", from: "band" });
+    assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
+
+    trace.press({ kind: "heading-arrow", direction: "up", sectionKey: kSectionBandKey });
+    assert.ok(trace.state.cursor, "the row above the heading is the best-next row");
+
+    trace.press({ kind: "arrow", direction: "up", from: "band" });
+    assert.equal(trace.state.cursor, undefined, "the first row leaves the offering");
+    assert.deepEqual(trace.focusTarget(), { kind: "input" });
+
+    assert.deepEqual(
+      trace.press({ kind: "arrow", direction: "up", from: "filter" }),
+      [],
+      "and up again reaches nothing"
+    );
+    assert.equal(trace.state.cursor, undefined);
+  });
+
+  test("the word in progress survives the trip into the offering and back", () => {
+    const { trace } = browsingTrace();
+    trace.typeWord("on");
+
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.ok(trace.state.cursor, "the cursor stands on a chip");
+    trace.press({ kind: "arrow", direction: "up", from: "filter" });
+
+    assert.equal(trace.state.filter, "on");
+    assert.equal(trace.state.cursor, undefined);
+  });
+
+  test("the keyboard leaving the band releases the chip it was browsing", () => {
+    const { trace } = browsingTrace();
+    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    assert.ok(trace.state.cursor, "the cursor stands on a chip");
+
+    assert.deepEqual(trace.press({ kind: "focus-lost" }), [clearHighlight]);
+    assert.equal(trace.state.cursor, undefined);
+    assert.equal(trace.state.highlightMode, "typing");
+    assert.deepEqual(trace.focusTarget(), { kind: "input" });
+  });
+
+  test("the keyboard leaving a heading releases the cursor standing on it", () => {
+    const { trace } = browsingTrace();
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
+
+    assert.deepEqual(trace.press({ kind: "focus-lost" }), [clearHighlight]);
+    assert.equal(trace.state.cursor, undefined);
+    assert.deepEqual(trace.focusTarget(), { kind: "input" });
+  });
+
+  test("the horizontal arrows walk the chips while the keyboard is in the band, and the caret once it has left", () => {
+    const { trace, best } = browsingTrace();
+    const run = trace.run();
+    trace.placeCaret(run[0]);
+    trace.press({ kind: "heading-arrow", direction: "down", sectionKey: kSectionBandKey });
+    assert.deepEqual(trace.focusTarget(), { kind: "band", bandKey: kSectionBandKey });
+
+    const stepped = trace.press({ kind: "arrow", direction: "left", from: "band" });
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[1]));
+    assert.deepEqual(
+      stepped.filter((effect) => effect.kind === "move-caret"),
+      [],
+      "the chips take the key, not the caret"
+    );
+    assert.deepEqual(trace.state.caret, run[0], "the caret stands where it was");
+
+    trace.press({ kind: "focus-lost" });
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "right", from: "filter" }), [
+      consumeKey,
+      { kind: "move-caret", position: run[1] },
+      clearHighlight,
+    ]);
+    assert.deepEqual(trace.state.caret, run[1], "the caret steps along the sentence");
+  });
+
+  test("the keyboard leaving with the cursor nowhere asks for nothing", () => {
+    const { trace } = browsingTrace();
+
+    assert.deepEqual(trace.press({ kind: "focus-lost" }), []);
+    assert.equal(trace.state.cursor, undefined);
+  });
+
+  test("a cursor the box itself held is released when the keyboard leaves the box", () => {
+    const { trace } = browsingTrace();
+    trace.typeWord("on");
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.ok(trace.state.cursor, "the cursor stands on a chip with the keyboard still in the box");
+
+    assert.deepEqual(trace.press({ kind: "focus-lost" }), [clearHighlight]);
+    assert.equal(trace.state.cursor, undefined);
+    assert.equal(trace.state.filter, "on", "the word in progress stands");
+    assert.deepEqual(placedKeys(trace.log), [], "and nothing was placed");
+  });
+
+  test("they walk the chips again once the cursor stands on one, leaving the caret where it stands", () => {
+    const { trace, best } = browsingTrace();
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    const caret = trace.state.caret;
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "right", from: "filter" }), [
+      { kind: "highlight", cursor: chipOf(kBestNextBandKey, best[1]), mode: "typing" },
+      typingFocus,
+      consumeKey,
+    ]);
+    assert.deepEqual(trace.state.caret, caret);
   });
 });
 
@@ -906,6 +1958,20 @@ describe("the token vocabulary", () => {
     assert.equal(composerTokenForKey(" ", "close"), undefined);
   });
 
+  test("the run's ends have their own keys on the filter surface, and none on a band", () => {
+    assert.deepEqual(composerTokenForKey("Home", "filter"), { kind: "home" });
+    assert.deepEqual(composerTokenForKey("End", "filter"), { kind: "end" });
+    assert.equal(composerTokenForKey("Home", "band"), undefined);
+    assert.equal(composerTokenForKey("End", "band"), undefined);
+    assert.equal(composerTokenForKey("Home", "close"), undefined);
+  });
+
+  test("forward delete is the filter surface's own key", () => {
+    assert.deepEqual(composerTokenForKey("Delete", "filter"), { kind: "delete-forward" });
+    assert.equal(composerTokenForKey("Delete", "band"), undefined);
+    assert.equal(composerTokenForKey("Delete", "close"), undefined);
+  });
+
   test("an accordion heading answers only the arrows that step between rows", () => {
     assert.deepEqual(composerHeadingToken("ArrowDown", kSectionBandKey), {
       kind: "heading-arrow",
@@ -914,6 +1980,43 @@ describe("the token vocabulary", () => {
     });
     assert.equal(composerHeadingToken("ArrowRight", kSectionBandKey), undefined);
     assert.equal(composerHeadingToken("Enter", kSectionBandKey), undefined);
+  });
+});
+
+describe("enter with nothing to place", () => {
+  test("settles a rule whose armed side may end", () => {
+    const trace = new ComposerTrace({ whenTiles: 1 });
+
+    assert.deepEqual(trace.press({ kind: "enter", from: "filter" }), [
+      consumeKey,
+      { kind: "close-strip", reason: "settled" },
+    ]);
+    assert.equal(trace.closedAs, "settled");
+  });
+
+  test("refuses where the armed side cannot end", () => {
+    const trace = new ComposerTrace({ whenTiles: 1 });
+    trace.armedSideCanEnd = false;
+
+    assert.deepEqual(trace.press({ kind: "enter", from: "filter" }), [consumeKey]);
+    assert.equal(trace.closedAs, undefined);
+  });
+
+  test("settles nothing on a rule holding no tiles at all", () => {
+    const trace = new ComposerTrace();
+
+    assert.deepEqual(trace.press({ kind: "enter", from: "filter" }), [consumeKey]);
+    assert.equal(trace.closedAs, undefined);
+  });
+
+  test("leaves the key alone on a band, and in a strip armed from the tray", () => {
+    const banded = new ComposerTrace({ whenTiles: 1 });
+    assert.deepEqual(banded.press({ kind: "enter", from: "band" }), []);
+    assert.equal(banded.closedAs, undefined);
+
+    const tray = new ComposerTrace({ inSentence: false, whenTiles: 1 });
+    assert.deepEqual(tray.press({ kind: "enter", from: "filter" }), []);
+    assert.equal(tray.closedAs, undefined);
   });
 });
 

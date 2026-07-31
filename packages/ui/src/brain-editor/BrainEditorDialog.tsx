@@ -56,6 +56,7 @@ import {
   hasBrainInClipboard,
   onBrainClipboardChanged,
 } from "./brain-clipboard";
+import { kDialogChromeLayer } from "./editor-layers";
 
 // Top-edge brand accent. Uses each app's signature strip tokens when defined
 // (microbit-sim's blue->green->teal), else falls back to the brand primary/ring
@@ -504,7 +505,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       {/* When the docs sidebar is open the dialog switches to non-modal so
           focus can reach the sidebar. Radix skips its overlay in non-modal
           mode, so we render a standalone backdrop to keep the dimming. */}
-      {isOpen && isDocsOpen && <div className="fixed inset-0 z-50 bg-black/80" aria-hidden="true" />}
+      {isOpen && isDocsOpen && <div className={`fixed inset-0 ${kDialogChromeLayer} bg-black/80`} aria-hidden="true" />}
       <Dialog open={isOpen} onOpenChange={onOpenChange} modal={!isDocsOpen}>
         <DialogContent
           className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[75%] sm:h-[75%] sm:p-6 sm:gap-4 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl overflow-hidden"
@@ -520,7 +521,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         >
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.75"
+            className={`pointer-events-none absolute inset-x-0 top-0 ${kDialogChromeLayer} h-0.75`}
             style={{ background: brandStripBackground }}
           />
           <DialogHeader className="border-b border-border pb-2 sm:pb-4">

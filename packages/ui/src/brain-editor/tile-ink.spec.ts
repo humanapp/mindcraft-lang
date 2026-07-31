@@ -10,11 +10,12 @@ import { before, describe, test } from "node:test";
 import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { mkOperatorTileId, RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { CoreOpId } from "@mindcraft-lang/core/runtime";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readableInk } from "../lib/color";
-import { BrainCandidateStrip } from "./BrainCandidateStrip";
+import type { ArmedTileTarget } from "./ArmedTargetContext";
 import { type BrainEditorConfig, BrainEditorProvider } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
 import {
@@ -25,6 +26,7 @@ import {
   toCandidateEntries,
 } from "./candidate-strip-model";
 import type { CandidateStripSection, CandidateStripState } from "./hooks/useCandidateStrip";
+import { StripSurface } from "./test-only-rule-fixtures";
 
 /** The default tile color the editor falls back to when no visual supplies one. */
 const kFallbackTileColor = "#475569";
@@ -91,16 +93,25 @@ function section(entries: readonly CandidateEntry[]): CandidateStripSection {
   };
 }
 
+/** An append target on a real rule's WHEN side, the shape the strip is always rendered for. */
+function whenAppendTarget(): ArmedTileTarget {
+  const brainDef = BrainDef.emptyBrainDef(services);
+  const ruleDef = brainDef.pages().get(0).children().get(0) as BrainRuleDef;
+  return { ruleDef, side: RuleSide.When, mode: "append", onTileSelected: () => true };
+}
+
 function renderStrip(color: string | undefined, tileDef: IBrainTileDef): string {
   const entries = toCandidateEntries([candidate(tileDef)]);
   const state: CandidateStripState = {
     bestNext: entries,
     sections: [section(entries)],
     filter: "",
+    offeringOpen: true,
     isUnknown: false,
     acceptsTextLiteral: false,
     textLiteralCandidate: () => undefined,
     setFilter: () => {},
+    setOfferingOpen: () => {},
     commit: () => {},
     commitByKey: () => {},
     candidateFromKey: () => undefined,
@@ -109,7 +120,7 @@ function renderStrip(color: string | undefined, tileDef: IBrainTileDef): string 
     createElement(
       BrainEditorProvider,
       { config: configWithTileColor(color) },
-      createElement(BrainCandidateStrip, { id: "strip", state, side: RuleSide.When, onDismiss: () => {} })
+      createElement(StripSurface, { id: "strip", state, target: whenAppendTarget(), onDismiss: () => {} })
     )
   );
 }

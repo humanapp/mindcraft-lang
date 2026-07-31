@@ -21,6 +21,7 @@ import {
   RuleSide,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import {
   bag,
@@ -35,7 +36,7 @@ import {
 } from "@mindcraft-lang/core/runtime";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { BrainCandidateStrip } from "./BrainCandidateStrip";
+import type { ArmedTileTarget } from "./ArmedTargetContext";
 import { type BrainEditorConfig, BrainEditorProvider } from "./BrainEditorContext";
 import {
   activeStripOption,
@@ -48,18 +49,21 @@ import {
   isStripFilterTypingKey,
   kBestNextBandKey,
   mintVariableCandidates,
-  moveActiveStripOption,
-  moveActiveStripOption2D,
+  moveStripCursorAlongChips,
+  moveStripCursorBetweenRows,
   type StripCandidate,
+  type StripCellGeometry,
+  type StripCursor,
   type StripOptionBand,
-  type StripOptionGeometry,
   stripBandPanelId,
   stripOptionId,
+  stripSectionHeadingId,
   tileCandidateGroup,
   toCandidateEntries,
   visibleStripOptions,
 } from "./candidate-strip-model";
 import type { CandidateStripSection, CandidateStripState } from "./hooks/useCandidateStrip";
+import { StripSurface } from "./test-only-rule-fixtures";
 import type { TileSourceLibrary } from "./tile-library-groups";
 
 let services: BrainServices;
@@ -161,10 +165,12 @@ function stripState(overrides: Partial<CandidateStripState>): CandidateStripStat
     bestNext: [],
     sections: [],
     filter: "",
+    offeringOpen: true,
     isUnknown: false,
     acceptsTextLiteral: false,
     textLiteralCandidate: () => undefined,
     setFilter: () => {},
+    setOfferingOpen: () => {},
     commit: () => {},
     commitByKey: () => {},
     candidateFromKey: () => undefined,
@@ -172,12 +178,19 @@ function stripState(overrides: Partial<CandidateStripState>): CandidateStripStat
   };
 }
 
+/** An append target on a real rule's WHEN side, the shape the strip is always rendered for. */
+function whenAppendTarget(): ArmedTileTarget {
+  const brainDef = BrainDef.emptyBrainDef(services);
+  const ruleDef = brainDef.pages().get(0).children().get(0) as BrainRuleDef;
+  return { ruleDef, side: RuleSide.When, mode: "append", onTileSelected: () => true };
+}
+
 function render(state: CandidateStripState): string {
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,
       { config: editorConfig },
-      createElement(BrainCandidateStrip, { id: kStripId, state, side: RuleSide.When, onDismiss: () => {} })
+      createElement(StripSurface, { id: kStripId, state, target: whenAppendTarget(), onDismiss: () => {} })
     )
   );
 }
@@ -295,63 +308,80 @@ describe("visibleStripOptions", () => {
   });
 });
 
-describe("moveActiveStripOption", () => {
+/** The cursor standing on the chip `optionId`. */
+function chipAt(optionId: string): StripCursor {
+  return { kind: "chip", optionId };
+}
+
+/** The cursor standing on the accordion heading of `sectionKey`. */
+function headingAt(sectionKey: string): StripCursor {
+  return { kind: "heading", sectionKey };
+}
+
+describe("moveStripCursorAlongChips", () => {
   test("steps forward from nothing to the first chip and back to the last", () => {
     const options = visibleStripOptions(kStripId, bands());
-    assert.equal(moveActiveStripOption(options, undefined, 1), options[0].optionId);
-    assert.equal(moveActiveStripOption(options, undefined, -1), options[options.length - 1].optionId);
+    assert.deepEqual(moveStripCursorAlongChips(options, undefined, 1), chipAt(options[0].optionId));
+    assert.deepEqual(moveStripCursorAlongChips(options, undefined, -1), chipAt(options[options.length - 1].optionId));
   });
 
   test("walks the whole sequence, crossing from the best-next row into the open band", () => {
     const options = visibleStripOptions(kStripId, bands());
-    let active = moveActiveStripOption(options, undefined, 1);
+    let active = moveStripCursorAlongChips(options, undefined, 1);
     const walked = [active];
     for (let step = 1; step < options.length; step++) {
-      active = moveActiveStripOption(options, active, 1);
+      active = moveStripCursorAlongChips(options, active, 1);
       walked.push(active);
     }
     assert.deepEqual(
       walked,
-      options.map((option) => option.optionId)
+      options.map((option) => chipAt(option.optionId))
     );
   });
 
-  test("wraps at both ends", () => {
+  test("neither end wraps", () => {
     const options = visibleStripOptions(kStripId, bands());
-    const last = options[options.length - 1].optionId;
-    assert.equal(moveActiveStripOption(options, last, 1), options[0].optionId);
-    assert.equal(moveActiveStripOption(options, options[0].optionId, -1), last);
+    const last = chipAt(options[options.length - 1].optionId);
+    assert.equal(moveStripCursorAlongChips(options, last, 1), undefined);
+    assert.equal(moveStripCursorAlongChips(options, chipAt(options[0].optionId), -1), undefined);
   });
 
-  test("an offering with no chip has nothing to highlight", () => {
-    assert.equal(moveActiveStripOption([], undefined, 1), undefined);
-    assert.equal(moveActiveStripOption([], undefined, -1), undefined);
+  test("an offering with no chip has nothing for the cursor", () => {
+    assert.equal(moveStripCursorAlongChips([], undefined, 1), undefined);
+    assert.equal(moveStripCursorAlongChips([], undefined, -1), undefined);
   });
 
-  test("a highlight on a chip that is no longer rendered restarts from the end of the sequence", () => {
+  test("a cursor on a chip that is no longer rendered restarts from the end of the sequence", () => {
     const options = visibleStripOptions(kStripId, bands());
-    assert.equal(moveActiveStripOption(options, "strip-gone-gone", 1), options[0].optionId);
+    assert.deepEqual(moveStripCursorAlongChips(options, chipAt("strip-gone-gone"), 1), chipAt(options[0].optionId));
+  });
+
+  test("a cursor on a heading, which has no horizontal extent, enters the chips at their ends", () => {
+    const options = visibleStripOptions(kStripId, bands());
+    const onHeading = headingAt("operator+controlFlow");
+    assert.deepEqual(moveStripCursorAlongChips(options, onHeading, 1), chipAt(options[0].optionId));
+    assert.deepEqual(moveStripCursorAlongChips(options, onHeading, -1), chipAt(options[options.length - 1].optionId));
   });
 
   test("the horizontal step ignores where a chip sits, walking the render sequence across wraps", () => {
     const options = visibleStripOptions(kStripId, wrappedBands());
-    let active = moveActiveStripOption(options, undefined, 1);
+    let active = moveStripCursorAlongChips(options, undefined, 1);
     const walked = [active];
     for (let step = 1; step < options.length; step++) {
-      active = moveActiveStripOption(options, active, 1);
+      active = moveStripCursorAlongChips(options, active, 1);
       walked.push(active);
     }
     assert.deepEqual(
       walked,
-      options.map((option) => option.optionId)
+      options.map((option) => chipAt(option.optionId))
     );
   });
 });
 
 /**
  * A wrapped offering with more chips than one row holds: a best-next row of
- * four chips and an open band of two, which the geometry fixture lays out as
- * three visual rows.
+ * four chips and an open section of two, which the geometry fixture lays out as
+ * three rows of chips.
  */
 function wrappedBands(): StripOptionBand[] {
   return [
@@ -364,33 +394,51 @@ function wrappedBands(): StripOptionBand[] {
         candidate(notTileId),
       ]),
     },
-    { key: "literal", entries: toCandidateEntries([candidate(numberLiteralFactoryId), candidate(timeoutTileId)]) },
+    {
+      key: kOpenSectionKey,
+      entries: toCandidateEntries([candidate(numberLiteralFactoryId), candidate(timeoutTileId)]),
+    },
   ];
 }
 
-/** Vertical distance between two wrapped rows in the geometry fixtures. */
+/** Vertical distance between two rows in the geometry fixtures. */
 const kRowPitch = 52;
 
+/** Section key of the open section the grid fixture heads its second band with. */
+const kOpenSectionKey = "literal";
+
+/** Section key of the collapsed section the grid fixture ends with, which renders no chip. */
+const kClosedSectionKey = "sensor";
+
 /**
- * The chips of {@link wrappedBands} measured as three visual rows, in the order
- * the strip renders them. Row 0 and row 1 wrap the best-next band; row 2 is the
- * open band. `rowTops` overrides each chip's top so a test can stagger a row.
+ * The whole panel measured as one grid, in reading order: two wrapped rows of
+ * best-next chips, the open section's heading and the two chips it heads, and a
+ * collapsed section's heading, which heads no rendered chip. `chipTops`
+ * overrides each chip's top so a test can stagger a row.
  */
-function wrappedGeometry(rowTops?: readonly number[]): StripOptionGeometry[] {
+function gridGeometry(chipTops?: readonly number[]): StripCellGeometry[] {
   const options = visibleStripOptions(kStripId, wrappedBands());
-  // left, width, row -- centers: row 0 at 50 and 158, row 1 at 30 and 118, row 2 at 70 and 198.
-  const boxes: readonly (readonly [number, number, number])[] = [
+  // left, width, row -- centers: row 0 at 50 and 158, row 1 at 30 and 118, row 3 at 70 and 198.
+  const chipBoxes: readonly (readonly [number, number, number])[] = [
     [0, 100, 0],
     [108, 100, 0],
     [0, 60, 1],
     [68, 100, 1],
-    [0, 140, 2],
-    [148, 100, 2],
+    [0, 140, 3],
+    [148, 100, 3],
   ];
-  return options.map((option, index) => {
-    const [left, width, row] = boxes[index];
-    return { optionId: option.optionId, left, width, top: rowTops?.[index] ?? row * kRowPitch };
+  const chips = options.map((option, index) => {
+    const [left, width, row] = chipBoxes[index];
+    return { cursor: chipAt(option.optionId), left, width, top: chipTops?.[index] ?? row * kRowPitch };
   });
+  // A heading spans the panel, so its center is the panel's own.
+  const headingCell = (sectionKey: string, row: number): StripCellGeometry => ({
+    cursor: headingAt(sectionKey),
+    left: 0,
+    width: 400,
+    top: row * kRowPitch,
+  });
+  return [...chips.slice(0, 4), headingCell(kOpenSectionKey, 2), ...chips.slice(4), headingCell(kClosedSectionKey, 4)];
 }
 
 /** The option id at `index` of the rendered sequence of {@link wrappedBands}. */
@@ -398,152 +446,189 @@ function wrappedOptionId(index: number): string {
   return visibleStripOptions(kStripId, wrappedBands())[index].optionId;
 }
 
-describe("moveActiveStripOption2D", () => {
-  test("stepping down takes the chip below, not the chip beside", () => {
-    const geometry = wrappedGeometry();
+/** The cursor standing on the chip at `index` of the rendered sequence of {@link wrappedBands}. */
+function wrappedChip(index: number): StripCursor {
+  return chipAt(wrappedOptionId(index));
+}
+
+describe("moveStripCursorBetweenRows", () => {
+  test("stepping down takes the cell below, not the chip beside", () => {
     const options = visibleStripOptions(kStripId, wrappedBands());
-    const beside = moveActiveStripOption(options, wrappedOptionId(0), 1);
-    assert.equal(beside, wrappedOptionId(1));
-    assert.equal(moveActiveStripOption2D(geometry, wrappedOptionId(0), 1), wrappedOptionId(2));
+    assert.deepEqual(moveStripCursorAlongChips(options, wrappedChip(0), 1), wrappedChip(1));
+    assert.deepEqual(moveStripCursorBetweenRows(gridGeometry(), wrappedChip(0), 1), wrappedChip(2));
   });
 
-  test("the chip below is the one whose center is nearest the current center", () => {
-    const geometry = wrappedGeometry();
-    assert.equal(moveActiveStripOption2D(geometry, wrappedOptionId(1), 1), wrappedOptionId(3));
-    assert.equal(moveActiveStripOption2D(geometry, wrappedOptionId(3), -1), wrappedOptionId(1));
+  test("the cell below is the one whose center is nearest the current center", () => {
+    const geometry = gridGeometry();
+    assert.deepEqual(moveStripCursorBetweenRows(geometry, wrappedChip(1), 1), wrappedChip(3));
+    assert.deepEqual(moveStripCursorBetweenRows(geometry, wrappedChip(3), -1), wrappedChip(1));
   });
 
   test("a row staggered within the grouping tolerance stays one row", () => {
-    const staggered = wrappedGeometry([0, 3, kRowPitch, kRowPitch + 2, 2 * kRowPitch, 2 * kRowPitch + 1]);
-    assert.equal(moveActiveStripOption2D(staggered, wrappedOptionId(0), 1), wrappedOptionId(2));
-    assert.equal(moveActiveStripOption2D(staggered, wrappedOptionId(1), 1), wrappedOptionId(3));
+    const staggered = gridGeometry([0, 3, kRowPitch, kRowPitch + 2, 3 * kRowPitch, 3 * kRowPitch + 1]);
+    assert.deepEqual(moveStripCursorBetweenRows(staggered, wrappedChip(0), 1), wrappedChip(2));
+    assert.deepEqual(moveStripCursorBetweenRows(staggered, wrappedChip(1), 1), wrappedChip(3));
   });
 
-  test("the vertical step crosses from one band into the next", () => {
-    const geometry = wrappedGeometry();
-    const options = visibleStripOptions(kStripId, wrappedBands());
-    const moved = moveActiveStripOption2D(geometry, wrappedOptionId(3), 1);
-    assert.equal(moved, wrappedOptionId(4));
-    assert.equal(activeStripOption(options, wrappedOptionId(3))?.bandKey, kBestNextBandKey);
-    assert.equal(activeStripOption(options, moved)?.bandKey, "literal");
+  test("a group heading is a row of its own, reached from the chips on either side of it", () => {
+    const geometry = gridGeometry();
+    assert.deepEqual(moveStripCursorBetweenRows(geometry, wrappedChip(3), 1), headingAt(kOpenSectionKey));
+    assert.deepEqual(moveStripCursorBetweenRows(geometry, headingAt(kOpenSectionKey), -1), wrappedChip(3));
   });
 
-  test("stepping up crosses back into the preceding band", () => {
-    const geometry = wrappedGeometry();
-    assert.equal(moveActiveStripOption2D(geometry, wrappedOptionId(4), -1), wrappedOptionId(2));
+  test("a heading with no rendered chip under it is still a row the cursor stops on", () => {
+    const geometry = gridGeometry();
+    assert.deepEqual(moveStripCursorBetweenRows(geometry, wrappedChip(4), 1), headingAt(kClosedSectionKey));
+    assert.deepEqual(moveStripCursorBetweenRows(geometry, wrappedChip(5), 1), headingAt(kClosedSectionKey));
   });
 
-  test("wraps from the bottom row to the top row and back", () => {
-    const geometry = wrappedGeometry();
-    assert.equal(moveActiveStripOption2D(geometry, wrappedOptionId(5), 1), wrappedOptionId(1));
-    assert.equal(moveActiveStripOption2D(geometry, wrappedOptionId(0), -1), wrappedOptionId(4));
+  test("stepping down walks every row of the grid and stops at the last", () => {
+    const geometry = gridGeometry();
+    const walked: (StripCursor | undefined)[] = [];
+    let at: StripCursor | undefined = wrappedChip(0);
+    for (let step = 0; step < 5; step++) {
+      at = moveStripCursorBetweenRows(geometry, at, 1);
+      walked.push(at);
+    }
+    assert.deepEqual(walked, [
+      wrappedChip(2),
+      headingAt(kOpenSectionKey),
+      wrappedChip(5),
+      headingAt(kClosedSectionKey),
+      undefined,
+    ]);
   });
 
-  test("an offering that fits on one row keeps the highlight where it is", () => {
-    const singleRow = wrappedGeometry()
-      .slice(0, 2)
-      .map((measured) => ({ ...measured, top: 0 }));
-    assert.equal(moveActiveStripOption2D(singleRow, wrappedOptionId(0), 1), wrappedOptionId(0));
-    assert.equal(moveActiveStripOption2D(singleRow, wrappedOptionId(1), -1), wrappedOptionId(1));
+  test("stepping up walks every row of the grid and leaves it at the first", () => {
+    const geometry = gridGeometry();
+    const walked: (StripCursor | undefined)[] = [];
+    let at: StripCursor | undefined = headingAt(kClosedSectionKey);
+    for (let step = 0; step < 5; step++) {
+      at = moveStripCursorBetweenRows(geometry, at, -1);
+      walked.push(at);
+    }
+    assert.deepEqual(walked, [wrappedChip(5), headingAt(kOpenSectionKey), wrappedChip(3), wrappedChip(1), undefined]);
   });
 
-  test("two equally near chips below resolve to the leading one", () => {
-    const tied: StripOptionGeometry[] = [
-      { optionId: wrappedOptionId(0), left: 50, width: 100, top: 0 },
-      { optionId: wrappedOptionId(1), left: 0, width: 100, top: kRowPitch },
-      { optionId: wrappedOptionId(2), left: 100, width: 100, top: kRowPitch },
+  test("neither end of the grid wraps", () => {
+    const geometry = gridGeometry();
+    assert.equal(moveStripCursorBetweenRows(geometry, headingAt(kClosedSectionKey), 1), undefined);
+    assert.equal(moveStripCursorBetweenRows(geometry, wrappedChip(0), -1), undefined);
+    assert.equal(moveStripCursorBetweenRows(geometry, wrappedChip(1), -1), undefined);
+  });
+
+  test("no cell and no direction ever walks back onto a cell already walked", () => {
+    const geometry = gridGeometry();
+    const cellKey = (cursor: StripCursor) =>
+      cursor.kind === "chip" ? `chip:${cursor.optionId}` : `heading:${cursor.sectionKey}`;
+    const starts: (StripCursor | undefined)[] = [
+      undefined,
+      chipAt("strip-gone-gone"),
+      headingAt("strip-gone-section"),
+      ...geometry.map((cell) => cell.cursor),
     ];
-    assert.equal(moveActiveStripOption2D(tied, wrappedOptionId(0), 1), wrappedOptionId(1));
+    for (const start of starts) {
+      for (const delta of [1, -1] as const) {
+        const walked = new Set<string>();
+        let at = moveStripCursorBetweenRows(geometry, start, delta);
+        while (at !== undefined) {
+          const key = cellKey(at);
+          assert.ok(!walked.has(key), `the walk from ${start && cellKey(start)} by ${delta} reaches ${key} once`);
+          walked.add(key);
+          at = moveStripCursorBetweenRows(geometry, at, delta);
+        }
+        assert.ok(walked.size <= geometry.length, "the walk ends within the grid's own cells");
+      }
+    }
   });
 
-  test("steps into the sequence from nothing, forward at the first chip and back at the last", () => {
-    const geometry = wrappedGeometry();
-    assert.equal(moveActiveStripOption2D(geometry, undefined, 1), wrappedOptionId(0));
-    assert.equal(moveActiveStripOption2D(geometry, undefined, -1), wrappedOptionId(5));
-    assert.equal(moveActiveStripOption2D(geometry, "strip-gone-gone", 1), wrappedOptionId(0));
+  test("a grid of one row steps nowhere in either direction", () => {
+    const singleRow = gridGeometry()
+      .slice(0, 2)
+      .map((cell) => ({ ...cell, top: 0 }));
+    assert.equal(moveStripCursorBetweenRows(singleRow, wrappedChip(0), 1), undefined);
+    assert.equal(moveStripCursorBetweenRows(singleRow, wrappedChip(1), -1), undefined);
   });
 
-  test("an offering with no chip has nothing to highlight", () => {
-    assert.equal(moveActiveStripOption2D([], undefined, 1), undefined);
-    assert.equal(moveActiveStripOption2D([], "strip-gone-gone", -1), undefined);
+  test("two equally near cells below resolve to the leading one", () => {
+    const tied: StripCellGeometry[] = [
+      { cursor: wrappedChip(0), left: 50, width: 100, top: 0 },
+      { cursor: wrappedChip(1), left: 0, width: 100, top: kRowPitch },
+      { cursor: wrappedChip(2), left: 100, width: 100, top: kRowPitch },
+    ];
+    assert.deepEqual(moveStripCursorBetweenRows(tied, wrappedChip(0), 1), wrappedChip(1));
   });
 
-  test("the same geometry moves the highlight the same way every time", () => {
-    assert.equal(
-      moveActiveStripOption2D(wrappedGeometry(), wrappedOptionId(1), 1),
-      moveActiveStripOption2D(wrappedGeometry(), wrappedOptionId(1), 1)
+  test("a cursor on no cell stands above the grid, entering it forward and stepping off it back", () => {
+    const geometry = gridGeometry();
+    assert.deepEqual(moveStripCursorBetweenRows(geometry, undefined, 1), wrappedChip(0));
+    assert.equal(moveStripCursorBetweenRows(geometry, undefined, -1), undefined);
+    assert.deepEqual(moveStripCursorBetweenRows(geometry, chipAt("strip-gone-gone"), 1), wrappedChip(0));
+    assert.equal(moveStripCursorBetweenRows(geometry, chipAt("strip-gone-gone"), -1), undefined);
+  });
+
+  test("an empty grid has nothing for the cursor", () => {
+    assert.equal(moveStripCursorBetweenRows([], undefined, 1), undefined);
+    assert.equal(moveStripCursorBetweenRows([], chipAt("strip-gone-gone"), -1), undefined);
+  });
+
+  test("the same geometry moves the cursor the same way every time", () => {
+    assert.deepEqual(
+      moveStripCursorBetweenRows(gridGeometry(), wrappedChip(1), 1),
+      moveStripCursorBetweenRows(gridGeometry(), wrappedChip(1), 1)
     );
-    assert.equal(
-      moveActiveStripOption2D(wrappedGeometry(), wrappedOptionId(4), -1),
-      moveActiveStripOption2D(wrappedGeometry(), wrappedOptionId(4), -1)
+    assert.deepEqual(
+      moveStripCursorBetweenRows(gridGeometry(), headingAt(kOpenSectionKey), -1),
+      moveStripCursorBetweenRows(gridGeometry(), headingAt(kOpenSectionKey), -1)
     );
   });
 
   test("geometry given out of render order still groups by position", () => {
-    const shuffled = [...wrappedGeometry()].reverse();
-    assert.equal(moveActiveStripOption2D(shuffled, wrappedOptionId(0), 1), wrappedOptionId(2));
-    assert.equal(moveActiveStripOption2D(shuffled, wrappedOptionId(4), -1), wrappedOptionId(2));
+    const shuffled = [...gridGeometry()].reverse();
+    assert.deepEqual(moveStripCursorBetweenRows(shuffled, wrappedChip(0), 1), wrappedChip(2));
+    assert.deepEqual(moveStripCursorBetweenRows(shuffled, wrappedChip(4), -1), headingAt(kOpenSectionKey));
   });
 });
 
 describe("enterStripOptionsAt", () => {
-  const conversionBandKey = "operator+controlFlow";
+  const sectionBandKey = "operator+controlFlow";
 
-  test("stepping forward at a band enters that band's first chip", () => {
+  test("entering a band stands the cursor on that band's first chip", () => {
     const sequence = bands();
     const options = visibleStripOptions(kStripId, sequence);
-    const firstInBand = options.find((option) => option.bandKey === conversionBandKey);
+    const firstInBand = options.find((option) => option.bandKey === sectionBandKey);
     assert.ok(firstInBand);
-    assert.equal(enterStripOptionsAt(kStripId, sequence, conversionBandKey, 1), firstInBand.optionId);
+    assert.deepEqual(enterStripOptionsAt(kStripId, sequence, sectionBandKey), chipAt(firstInBand.optionId));
   });
 
-  test("stepping forward at a band whose chips are all filtered out enters nothing", () => {
+  test("a band whose chips are all filtered out is entered at nothing", () => {
     const emptied: StripOptionBand[] = [
       { key: kBestNextBandKey, entries: toCandidateEntries([candidate(timeoutTileId)]) },
-      { key: conversionBandKey, entries: [] },
+      { key: sectionBandKey, entries: [] },
     ];
-    assert.equal(enterStripOptionsAt(kStripId, emptied, conversionBandKey, 1), undefined);
-    assert.equal(enterStripOptionsAt(kStripId, emptied, conversionBandKey, -1), undefined);
+    assert.equal(enterStripOptionsAt(kStripId, emptied, sectionBandKey), undefined);
   });
 
-  test("stepping back at a band enters the chip before it in the sequence", () => {
-    const sequence = bands();
-    const options = visibleStripOptions(kStripId, sequence);
-    const firstInBand = options.findIndex((option) => option.bandKey === conversionBandKey);
-    assert.ok(firstInBand > 0);
-    assert.equal(enterStripOptionsAt(kStripId, sequence, conversionBandKey, -1), options[firstInBand - 1].optionId);
-  });
-
-  test("stepping back at the leading band wraps to the last chip of the sequence", () => {
-    const sequence = bands();
-    const options = visibleStripOptions(kStripId, sequence);
-    assert.equal(enterStripOptionsAt(kStripId, sequence, kBestNextBandKey, -1), options[options.length - 1].optionId);
-  });
-
-  test("a band absent from the rendered sequence enters nothing", () => {
-    assert.equal(enterStripOptionsAt(kStripId, bands(), "sensor", 1), undefined);
-    assert.equal(enterStripOptionsAt(kStripId, bands(), "sensor", -1), undefined);
-    assert.equal(enterStripOptionsAt(kStripId, [], kBestNextBandKey, 1), undefined);
+  test("a band absent from the rendered sequence is entered at nothing", () => {
+    assert.equal(enterStripOptionsAt(kStripId, bands(), "page"), undefined);
+    assert.equal(enterStripOptionsAt(kStripId, [], kBestNextBandKey), undefined);
   });
 
   test("entry lands on a rendered option the arrow keys then continue from", () => {
     const sequence = bands();
     const options = visibleStripOptions(kStripId, sequence);
-    const entered = enterStripOptionsAt(kStripId, sequence, conversionBandKey, 1);
-    assert.ok(entered);
-    assert.ok(activeStripOption(options, entered));
-    const index = options.findIndex((option) => option.optionId === entered);
-    assert.equal(moveActiveStripOption(options, entered, 1), options[(index + 1) % options.length].optionId);
+    const entered = enterStripOptionsAt(kStripId, sequence, sectionBandKey);
+    assert.ok(entered?.kind === "chip");
+    assert.ok(activeStripOption(options, entered.optionId));
+    const index = options.findIndex((option) => option.optionId === entered.optionId);
+    assert.ok(index > 0, "the band entered stands behind another band's chips");
+    assert.deepEqual(moveStripCursorAlongChips(options, entered, -1), chipAt(options[index - 1].optionId));
   });
 
   test("entry is deterministic for the same offering", () => {
-    assert.equal(
-      enterStripOptionsAt(kStripId, bands(), conversionBandKey, 1),
-      enterStripOptionsAt(kStripId, bands(), conversionBandKey, 1)
-    );
-    assert.equal(
-      enterStripOptionsAt(kStripId, bands(), conversionBandKey, -1),
-      enterStripOptionsAt(kStripId, bands(), conversionBandKey, -1)
+    assert.deepEqual(
+      enterStripOptionsAt(kStripId, bands(), sectionBandKey),
+      enterStripOptionsAt(kStripId, bands(), sectionBandKey)
     );
   });
 });
@@ -573,17 +658,17 @@ describe("bandOfStripOption", () => {
 });
 
 describe("decideStripFocusTarget", () => {
-  test("typing mode anchors the highlight on the filter box wherever it rests", () => {
+  test("typing mode anchors the cursor on the filter box wherever it stands", () => {
     const options = visibleStripOptions(kStripId, bands());
     assert.deepEqual(decideStripFocusTarget(options, undefined, "typing"), { kind: "input" });
-    assert.deepEqual(decideStripFocusTarget(options, options[0].optionId, "typing"), { kind: "input" });
-    assert.deepEqual(decideStripFocusTarget(options, options[2].optionId, "typing"), { kind: "input" });
+    assert.deepEqual(decideStripFocusTarget(options, chipAt(options[0].optionId), "typing"), { kind: "input" });
+    assert.deepEqual(decideStripFocusTarget(options, chipAt(options[2].optionId), "typing"), { kind: "input" });
   });
 
-  test("entering a band from its heading anchors the highlight on that band", () => {
+  test("entering a band from its heading anchors the cursor on that band", () => {
     const sequence = bands();
     const options = visibleStripOptions(kStripId, sequence);
-    const entered = enterStripOptionsAt(kStripId, sequence, "operator+controlFlow", 1);
+    const entered = enterStripOptionsAt(kStripId, sequence, "operator+controlFlow");
     assert.ok(entered);
     assert.deepEqual(decideStripFocusTarget(options, entered, "browsing"), {
       kind: "band",
@@ -591,28 +676,33 @@ describe("decideStripFocusTarget", () => {
     });
   });
 
-  test("stepping back from a heading anchors on the band holding the preceding chip", () => {
-    const sequence = bands();
-    const options = visibleStripOptions(kStripId, sequence);
-    const entered = enterStripOptionsAt(kStripId, sequence, "operator+controlFlow", -1);
-    assert.ok(entered);
-    assert.deepEqual(decideStripFocusTarget(options, entered, "browsing"), { kind: "band", bandKey: kBestNextBandKey });
-  });
-
-  test("crossing a band boundary anchors on the band the highlight moved into", () => {
-    const options = visibleStripOptions(kStripId, wrappedBands());
-    const geometry = wrappedGeometry();
-    const before = wrappedOptionId(3);
-    const after = moveActiveStripOption2D(geometry, before, 1);
-    assert.deepEqual(decideStripFocusTarget(options, before, "browsing"), { kind: "band", bandKey: kBestNextBandKey });
-    assert.deepEqual(decideStripFocusTarget(options, after, "browsing"), { kind: "band", bandKey: "literal" });
-  });
-
-  test("a highlight the offering no longer renders falls back to the filter box", () => {
+  test("a cursor on a heading anchors on that heading, whichever mode it arrived in", () => {
     const options = visibleStripOptions(kStripId, bands());
-    assert.deepEqual(decideStripFocusTarget(options, "strip-gone-gone", "browsing"), { kind: "input" });
+    for (const mode of ["typing", "browsing"] as const) {
+      assert.deepEqual(decideStripFocusTarget(options, headingAt("operator+controlFlow"), mode), {
+        kind: "heading",
+        sectionKey: "operator+controlFlow",
+      });
+    }
+  });
+
+  test("crossing a band boundary anchors on the band the cursor moved into", () => {
+    const options = visibleStripOptions(kStripId, wrappedBands());
+    assert.deepEqual(decideStripFocusTarget(options, wrappedChip(3), "browsing"), {
+      kind: "band",
+      bandKey: kBestNextBandKey,
+    });
+    assert.deepEqual(decideStripFocusTarget(options, wrappedChip(4), "browsing"), {
+      kind: "band",
+      bandKey: kOpenSectionKey,
+    });
+  });
+
+  test("a chip the offering no longer renders falls back to the filter box", () => {
+    const options = visibleStripOptions(kStripId, bands());
+    assert.deepEqual(decideStripFocusTarget(options, chipAt("strip-gone-gone"), "browsing"), { kind: "input" });
     assert.deepEqual(decideStripFocusTarget(options, undefined, "browsing"), { kind: "input" });
-    assert.deepEqual(decideStripFocusTarget([], options[0].optionId, "browsing"), { kind: "input" });
+    assert.deepEqual(decideStripFocusTarget([], chipAt(options[0].optionId), "browsing"), { kind: "input" });
   });
 });
 
@@ -667,10 +757,10 @@ describe("BrainCandidateStrip combobox wiring", () => {
   test("the id an arrow key would highlight is the id of a rendered option", () => {
     const markup = render(offering);
     const rendered = visibleStripOptions(kStripId, [{ key: kBestNextBandKey, entries: bestNext }]);
-    const first = moveActiveStripOption(rendered, undefined, 1);
-    assert.ok(first);
+    const first = moveStripCursorAlongChips(rendered, undefined, 1);
+    assert.ok(first?.kind === "chip");
     const optionIds = tagsWithRole(markup, "option").map((tag) => attributeOf(tag, "id"));
-    assert.ok(optionIds.includes(first));
+    assert.ok(optionIds.includes(first.optionId));
   });
 
   test("every chip is an option carrying a unique id and a selection state", () => {
@@ -864,6 +954,42 @@ describe("BrainCandidateStrip provenance subcategories", () => {
 
     assert.ok(attributeOf(chip, "aria-label")?.includes(kLibrary.name));
     assert.equal(renderedText(chip).includes(kLibrary.name), false);
+  });
+});
+
+describe("BrainCandidateStrip accordion headings", () => {
+  const bestNext = toCandidateEntries([candidate(timeoutTileId), candidate(pageEnteredTileId)]);
+  const offering = stripState({ bestNext, sections: [section(bestNext)] });
+
+  test("each heading carries the id the cursor addresses it by", () => {
+    const markup = render(offering);
+    const ids = idsIn(markup);
+    for (const built of offering.sections) {
+      assert.ok(ids.includes(stripSectionHeadingId(kStripId, built.key)));
+    }
+    const headingIds = offering.sections.map((built) => stripSectionHeadingId(kStripId, built.key));
+    assert.equal(new Set(headingIds).size, headingIds.length);
+  });
+
+  test("a heading is focusable without becoming a tab stop of its own", () => {
+    const markup = render(offering);
+    for (const built of offering.sections) {
+      const heading = elementById(markup, stripSectionHeadingId(kStripId, built.key));
+      assert.equal(attributeOf(heading, "tabindex"), "-1");
+      assert.equal(attributeOf(heading, "disabled"), undefined);
+    }
+  });
+
+  test("a heading the filter leaves no chip under takes no keyboard at all", () => {
+    const empty: CandidateStripSection = { ...section(bestNext), entries: [], subcategories: [] };
+    const markup = render(stripState({ filter: "zzz", bestNext: [], sections: [empty] }));
+    const heading = elementById(markup, stripSectionHeadingId(kStripId, empty.key));
+    assert.equal(attributeOf(heading, "disabled"), "");
+  });
+
+  test("no heading presents as current before the cursor reaches it", () => {
+    const markup = render(offering);
+    assert.deepEqual(attributeValues(markup, "aria-activedescendant"), []);
   });
 });
 

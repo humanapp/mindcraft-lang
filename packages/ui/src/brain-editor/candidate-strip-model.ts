@@ -1,6 +1,7 @@
 import { assertUnreachable } from "@mindcraft-lang/core";
 import {
   CoreCapabilityBits,
+  fixedFormat,
   type IBrainTileDef,
   isCoreLiteralFactoryTileId,
   isVariableFactoryTileId,
@@ -10,9 +11,16 @@ import {
   percentFormat,
   RuleSide,
   TilePlacement,
+  timeMsFormat,
+  timeSecondsFormat,
 } from "@mindcraft-lang/core/brain";
 import type { TileSuggestion, TileSuggestionResult } from "@mindcraft-lang/core/brain/language-service";
-import type { BrainTileFactoryDef, BrainTileOperatorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import {
+  applyDisplayFormat,
+  type BrainTileFactoryDef,
+  type BrainTileOperatorDef,
+  type BrainTileVariableDef,
+} from "@mindcraft-lang/core/brain/tiles";
 import {
   CoreHostActions,
   CoreOpId,
@@ -240,12 +248,14 @@ export function groupStripCandidates(
   return sections;
 }
 
-/** Fuzzy character-bag match: every character in `filter` exists in `text` (case-insensitive, order-independent). */
-function fuzzyTileMatch(filter: string, text: string): boolean {
-  const lowerFilter = filter.toLowerCase();
-  const pool = text.toLowerCase().split("");
-  for (let fi = 0; fi < lowerFilter.length; fi++) {
-    const idx = pool.indexOf(lowerFilter[fi]);
+/**
+ * Fuzzy character-bag match over search-folded text: every character of `needle`
+ * exists in `haystack`, order-independent. Both sides arrive folded.
+ */
+function fuzzyTileMatch(needle: string, haystack: string): boolean {
+  const pool = haystack.split("");
+  for (let fi = 0; fi < needle.length; fi++) {
+    const idx = pool.indexOf(needle[fi]);
     if (idx === -1) return false;
     pool.splice(idx, 1);
   }
@@ -286,13 +296,17 @@ function startsLaterWord(needle: string, haystack: string): boolean {
 
 /**
  * The quality with which `text` matches `filter`, or undefined when it does not
- * match at all. Both sides are compared trimmed and case-insensitively; empty
- * filter text matches nothing, so callers handle it before classifying.
+ * match at all. Both sides are compared trimmed and folded through `foldText`;
+ * empty filter text matches nothing, so callers handle it before classifying.
  */
-function classifyTextMatch(filter: string, text: string): TileMatchQuality | undefined {
-  const needle = filter.trim().toLowerCase();
+function classifyTextMatch(
+  filter: string,
+  text: string,
+  foldText: (text: string) => string
+): TileMatchQuality | undefined {
+  const needle = foldText(filter.trim());
   if (needle.length === 0) return undefined;
-  const haystack = text.trim().toLowerCase();
+  const haystack = foldText(text.trim());
   if (haystack === needle) return "exact";
   if (haystack.startsWith(needle)) return "prefix";
   if (startsLaterWord(needle, haystack)) return "word-prefix";
@@ -304,16 +318,18 @@ function classifyTextMatch(filter: string, text: string): TileMatchQuality | und
  * The best quality with which `filter` matches `label` or any of `aliases`, or
  * undefined when it matches none of them. An alias climbs the same ladder the
  * label does, so a partly typed alias reaches its tile exactly as a partly typed
- * label would.
+ * label would. `foldText` normalizes the filter text and every matchable text
+ * alike, so a query typed without a candidate's diacritics still reaches it.
  */
 export function classifyTileMatch(
   filter: string,
   label: string,
-  aliases: readonly string[]
+  aliases: readonly string[],
+  foldText: (text: string) => string
 ): TileMatchQuality | undefined {
-  let best = classifyTextMatch(filter, label);
+  let best = classifyTextMatch(filter, label, foldText);
   for (const alias of aliases) {
-    const quality = classifyTextMatch(filter, alias);
+    const quality = classifyTextMatch(filter, alias, foldText);
     if (quality === undefined) continue;
     if (best === undefined || tileMatchRank[quality] < tileMatchRank[best]) best = quality;
   }
@@ -347,37 +363,52 @@ function tileMatchAliases(tileDef: IBrainTileDef): readonly string[] {
 }
 
 /** The quality with which `candidate` matches `filter`, over its label and the aliases its tile carries. */
-function classifyCandidateMatch(filter: string, candidate: StripCandidate): TileMatchQuality | undefined {
-  return classifyTileMatch(filter, candidate.label, tileMatchAliases(candidate.tileDef));
+function classifyCandidateMatch(
+  filter: string,
+  candidate: StripCandidate,
+  foldText: (text: string) => string
+): TileMatchQuality | undefined {
+  return classifyTileMatch(filter, candidate.label, tileMatchAliases(candidate.tileDef), foldText);
 }
 
 /** The one candidate of `candidates` matching `filter` at `quality`, or undefined when they do not number one. */
 function uniqueMatchAt(
   candidates: readonly StripCandidate[],
   filter: string,
-  quality: TileMatchQuality
+  quality: TileMatchQuality,
+  foldText: (text: string) => string
 ): StripCandidate | undefined {
-  const matched = candidates.filter((candidate) => classifyCandidateMatch(filter, candidate) === quality);
+  const matched = candidates.filter((candidate) => classifyCandidateMatch(filter, candidate, foldText) === quality);
   return matched.length === 1 ? matched[0] : undefined;
 }
 
 /** True when any candidate matches `filter` at `quality`. */
-function hasMatchAt(candidates: readonly StripCandidate[], filter: string, quality: TileMatchQuality): boolean {
-  return candidates.some((candidate) => classifyCandidateMatch(filter, candidate) === quality);
+function hasMatchAt(
+  candidates: readonly StripCandidate[],
+  filter: string,
+  quality: TileMatchQuality,
+  foldText: (text: string) => string
+): boolean {
+  return candidates.some((candidate) => classifyCandidateMatch(filter, candidate, foldText) === quality);
 }
 
 /**
  * The candidates matching `filter` on their label or on an alias their tile
  * carries, best match first: exact texts, then prefixes, then substrings, then
  * fuzzy matches, with candidates of equal quality left in input order. An empty
- * filter matches everything, in input order.
+ * filter matches everything, in input order. `foldText` normalizes the filter
+ * text and every candidate text alike.
  */
-export function filterStripCandidates(candidates: readonly StripCandidate[], filter: string): StripCandidate[] {
+export function filterStripCandidates(
+  candidates: readonly StripCandidate[],
+  filter: string,
+  foldText: (text: string) => string
+): StripCandidate[] {
   const trimmed = filter.trim();
   if (trimmed.length === 0) return [...candidates];
   const matched: { candidate: StripCandidate; rank: number; index: number }[] = [];
   for (let i = 0; i < candidates.length; i++) {
-    const quality = classifyCandidateMatch(trimmed, candidates[i]);
+    const quality = classifyCandidateMatch(trimmed, candidates[i], foldText);
     if (quality === undefined) continue;
     matched.push({ candidate: candidates[i], rank: tileMatchRank[quality], index: i });
   }
@@ -404,7 +435,8 @@ export type CandidateCommitKey = "enter" | "tab" | "space";
 export function decideCandidateCommit(
   visible: readonly StripCandidate[],
   filter: string,
-  key: CandidateCommitKey
+  key: CandidateCommitKey,
+  foldText: (text: string) => string
 ): StripCandidate | undefined {
   const intent = parseStripFilter(filter);
   if (intent.text.length === 0) return undefined;
@@ -413,10 +445,12 @@ export function decideCandidateCommit(
     : visible.filter((candidate) => candidate.origin.kind !== "minted-variable");
   if (eligible.length === 0) return undefined;
   if (key === "enter" || key === "tab") return eligible[0];
-  const exact = eligible.find((candidate) => classifyCandidateMatch(intent.text, candidate) === "exact");
+  const exact = eligible.find((candidate) => classifyCandidateMatch(intent.text, candidate, foldText) === "exact");
   if (exact) return exact;
-  if (hasMatchAt(eligible, intent.text, "prefix")) return uniqueMatchAt(eligible, intent.text, "prefix");
-  return uniqueMatchAt(eligible, intent.text, "word-prefix");
+  if (hasMatchAt(eligible, intent.text, "prefix", foldText)) {
+    return uniqueMatchAt(eligible, intent.text, "prefix", foldText);
+  }
+  return uniqueMatchAt(eligible, intent.text, "word-prefix", foldText);
 }
 
 /** True when the user has typed text that matches no candidate; such text can never commit. */
@@ -451,17 +485,38 @@ interface TypedNumberLiteral {
 }
 
 /**
+ * The format `value` reads back as `typed` in: `plain` when applying it to
+ * `value` already gives `typed`, else `withPrecision` when applying that gives
+ * `typed`, else `plain` for text neither format writes.
+ */
+function roundTripFormat(
+  value: number,
+  typed: string,
+  plain: LiteralDisplayFormat,
+  withPrecision: LiteralDisplayFormat
+): LiteralDisplayFormat {
+  if (applyDisplayFormat(value, plain) === typed) return plain;
+  return applyDisplayFormat(value, withPrecision) === typed ? withPrecision : plain;
+}
+
+/**
  * The number and display format `filter` names, or undefined when the text is
  * not a complete number. A trailing specifier selects the format and the digits
  * ahead of it are read as that format's own reading, so the value placed is the
  * one that displays as the text typed: `s` reads seconds, `ms` reads
  * milliseconds of a value held in seconds, and `%` reads a percentage of a
- * fraction, carrying the precision the digits were typed with.
+ * fraction. Each format carries the precision the digits were typed with
+ * whenever its plain form would round that precision away.
  */
 function parseTypedNumberLiteral(filter: string): TypedNumberLiteral | undefined {
   const trimmed = filter.trim();
   if (numericLiteralPattern.test(trimmed)) {
-    return { value: Number(trimmed), displayFormat: LiteralDisplayFormats.Default };
+    const value = Number(trimmed);
+    const places = decimalPlaces(trimmed);
+    return {
+      value,
+      displayFormat: roundTripFormat(value, trimmed, LiteralDisplayFormats.Default, fixedFormat(places)),
+    };
   }
   const percent = numberBeforeSuffix(trimmed, "%");
   if (percent !== undefined) {
@@ -469,11 +524,21 @@ function parseTypedNumberLiteral(filter: string): TypedNumberLiteral | undefined
   }
   const milliseconds = numberBeforeSuffix(trimmed, "ms");
   if (milliseconds !== undefined) {
-    return { value: Number(milliseconds) / 1000, displayFormat: LiteralDisplayFormats.TimeMs };
+    const value = Number(milliseconds) / 1000;
+    const places = decimalPlaces(milliseconds);
+    return {
+      value,
+      displayFormat: roundTripFormat(value, trimmed, LiteralDisplayFormats.TimeMs, timeMsFormat(places)),
+    };
   }
   const seconds = numberBeforeSuffix(trimmed, "s");
   if (seconds !== undefined) {
-    return { value: Number(seconds), displayFormat: LiteralDisplayFormats.TimeSeconds };
+    const value = Number(seconds);
+    const places = decimalPlaces(seconds);
+    return {
+      value,
+      displayFormat: roundTripFormat(value, trimmed, LiteralDisplayFormats.TimeSeconds, timeSecondsFormat(places)),
+    };
   }
   return undefined;
 }
@@ -578,6 +643,11 @@ export function mintTextLiteralCandidate(
   };
 }
 
+/** True when `candidates` already offers the tile `tileId`. */
+function offersTile(candidates: readonly StripCandidate[], tileId: string): boolean {
+  return candidates.some((candidate) => candidate.tileDef.tileId === tileId);
+}
+
 /**
  * True when `filter` is a number the user is partway through typing at a
  * position that accepts one: the next keystroke completes the number, so the
@@ -634,7 +704,11 @@ function acceptedVariableFactories(candidates: readonly StripCandidate[]): Strip
   return [...byType.values()];
 }
 
-/** True when `candidates` already offers a variable named `name` of type `varType`. */
+/**
+ * True when `candidates` already offers a variable named `name` of type
+ * `varType`. Names compare case-insensitively and are never search-folded, so
+ * two names differing only by a diacritic name two variables.
+ */
 function offersVariable(candidates: readonly StripCandidate[], name: string, varType: string): boolean {
   const needle = name.trim().toLowerCase();
   return candidates.some((candidate) => {
@@ -686,12 +760,13 @@ export function mintVariableCandidates(
 function demoteMintsBehindMatches(
   matches: readonly StripCandidate[],
   mints: readonly StripCandidate[],
-  name: string
+  name: string,
+  foldText: (text: string) => string
 ): StripCandidate[] {
   if (mints.length === 0) return [...matches];
   let at = 0;
   while (at < matches.length) {
-    const quality = classifyCandidateMatch(name, matches[at]);
+    const quality = classifyCandidateMatch(name, matches[at], foldText);
     if (quality !== "exact" && quality !== "prefix") break;
     at++;
   }
@@ -712,7 +787,9 @@ export interface StripOffering {
  * The offering `filter` leaves of the ranked `candidates`, with the candidates
  * the typed text mints merged into it:
  *
- * - typed digits mint a literal, which commits like any other candidate
+ * - typed digits mint a literal, which commits like any other candidate; a
+ *   literal the position already offers is that one chip, and the mint adds
+ *   nothing to it
  * - a number the user is partway through typing mints no variable and is not
  *   unknown either, since the text has yet to name anything; the candidates it
  *   matches are offered as they always are, so a lone `-` reaches the minus
@@ -722,25 +799,31 @@ export interface StripOffering {
  *   chip commits it
  * - text opening with `$` scopes the offering to the existing variables matching
  *   the rest of the text, plus a mint of every accepted type the name is free at
+ *
+ * `foldText` normalizes the typed text and every candidate text alike, so a word
+ * typed without a candidate's diacritics matches it and mints nothing of its
+ * own; `$` still mints the typed name, which stays its own variable.
  */
 export function resolveStripOffering(
   candidates: readonly StripCandidate[],
   filter: string,
-  labelOf: (tileDef: IBrainTileDef) => string
+  labelOf: (tileDef: IBrainTileDef) => string,
+  foldText: (text: string) => string
 ): StripOffering {
   const intent = parseStripFilter(filter);
   const numberInProgress = !intent.variableIntent && isNumberInProgress(candidates, intent.text);
   const literalMint = intent.variableIntent ? undefined : mintNumberLiteralCandidate(candidates, intent.text, labelOf);
-  const offered = literalMint ? [literalMint, ...candidates] : [...candidates];
+  const offered =
+    literalMint && !offersTile(candidates, literalMint.tileDef.tileId) ? [literalMint, ...candidates] : [...candidates];
   const scope = intent.variableIntent ? offered.filter(isExistingVariableCandidate) : offered;
-  const matches = filterStripCandidates(scope, intent.text);
+  const matches = filterStripCandidates(scope, intent.text, foldText);
   const mints =
     !numberInProgress && (intent.variableIntent || matches.length === 0)
       ? mintVariableCandidates(candidates, intent.text, labelOf)
       : [];
   return {
     offered: [...offered, ...mints],
-    visible: demoteMintsBehindMatches(matches, mints, intent.text),
+    visible: demoteMintsBehindMatches(matches, mints, intent.text, foldText),
     isUnknown:
       !numberInProgress && !(intent.variableIntent && mints.length > 0) && isUnknownFilterText(matches, filter),
   };
@@ -1040,6 +1123,14 @@ export function stripSubcategoryHeadingId(stripId: string, bandKey: string, subc
 }
 
 /**
+ * DOM id of the accordion heading naming the section `sectionKey`, which the
+ * cursor takes the keyboard to when it stands on that heading.
+ */
+export function stripSectionHeadingId(stripId: string, sectionKey: string): string {
+  return `${stripId}-heading-${encodeIdPart(sectionKey)}`;
+}
+
+/**
  * Every chip the strip renders, in the order the highlight walks them: the
  * best-next row first, then the chips of each open section in band order.
  */
@@ -1078,6 +1169,34 @@ export function bandOfStripOption(
 }
 
 /**
+ * Where the strip's one cursor stands over the offering's grid:
+ *
+ * - `chip` -- a candidate chip, addressed by the DOM id its band's listbox
+ *   points `aria-activedescendant` at
+ * - `heading` -- the accordion heading of a section, named by its section key,
+ *   which holds the keyboard itself
+ */
+export type StripCursor =
+  | { readonly kind: "chip"; readonly optionId: string }
+  | { readonly kind: "heading"; readonly sectionKey: string };
+
+/** The cursor standing on the chip `optionId`. */
+function chipCursor(optionId: string): StripCursor {
+  return { kind: "chip", optionId };
+}
+
+/** True when both cursors stand on the same cell of the grid. */
+function sameStripCursor(left: StripCursor, right: StripCursor): boolean {
+  if (left.kind === "chip") return right.kind === "chip" && left.optionId === right.optionId;
+  return right.kind === "heading" && left.sectionKey === right.sectionKey;
+}
+
+/** The chip `cursor` stands on, or undefined when it stands on a heading or nowhere. */
+function cursorOptionId(cursor: StripCursor | undefined): string | undefined {
+  return cursor?.kind === "chip" ? cursor.optionId : undefined;
+}
+
+/**
  * The element the active-descendant highlight is anchored on:
  *
  * - `typing` -- the filter box, which the user is typing into
@@ -1085,24 +1204,29 @@ export function bandOfStripOption(
  */
 export type StripHighlightMode = "typing" | "browsing";
 
-/** The element DOM focus belongs on while the highlight rests where it does. */
-export type StripFocusTarget = { readonly kind: "input" } | { readonly kind: "band"; readonly bandKey: string };
+/** The element DOM focus belongs on while the cursor rests where it does. */
+export type StripFocusTarget =
+  | { readonly kind: "input" }
+  | { readonly kind: "band"; readonly bandKey: string }
+  | { readonly kind: "heading"; readonly sectionKey: string };
 
 const inputFocusTarget: StripFocusTarget = { kind: "input" };
 
 /**
- * Where DOM focus belongs for a highlight on `activeOptionId` in `mode`. Typing
- * mode always keeps focus in the filter box; browsing mode follows the
- * highlight to the listbox of the band that renders it, and falls back to the
- * filter box when the offering no longer renders the highlighted chip.
+ * Where DOM focus belongs while the cursor stands at `cursor` in `mode`. A
+ * cursor on a heading puts focus on that heading. Typing mode otherwise keeps
+ * focus in the filter box; browsing mode follows the cursor to the listbox of
+ * the band rendering its chip, and falls back to the filter box when the
+ * offering no longer renders that chip.
  */
 export function decideStripFocusTarget(
   options: readonly StripOption[],
-  activeOptionId: string | undefined,
+  cursor: StripCursor | undefined,
   mode: StripHighlightMode
 ): StripFocusTarget {
+  if (cursor?.kind === "heading") return { kind: "heading", sectionKey: cursor.sectionKey };
   if (mode === "typing") return inputFocusTarget;
-  const bandKey = bandOfStripOption(options, activeOptionId);
+  const bandKey = bandOfStripOption(options, cursorOptionId(cursor));
   return bandKey === undefined ? inputFocusTarget : { kind: "band", bandKey };
 }
 
@@ -1115,122 +1239,127 @@ export function isStripFilterTypingKey(key: string): boolean {
 }
 
 /**
- * The option id the highlight moves to along the rendered sequence: `delta` 1
- * steps toward the end of the offering and -1 toward its start, both wrapping
- * around. With nothing highlighted, stepping forward takes the first chip and
- * stepping back the last. Returns undefined when no chip is rendered.
+ * The cursor's step along the rendered chip sequence: `delta` 1 steps toward
+ * the end of the offering and -1 toward its start, crossing the visual wraps the
+ * chips are drawn in. From a cursor standing on no chip -- nowhere, or on a
+ * heading -- stepping forward takes the first chip and stepping back the last.
+ * Neither end wraps: a step off the last chip or off the first returns
+ * undefined, as does a step where no chip is rendered.
  */
-export function moveActiveStripOption(
+export function moveStripCursorAlongChips(
   options: readonly StripOption[],
-  activeOptionId: string | undefined,
+  cursor: StripCursor | undefined,
   delta: 1 | -1
-): string | undefined {
+): StripCursor | undefined {
   if (options.length === 0) return undefined;
-  const current = options.findIndex((option) => option.optionId === activeOptionId);
-  if (current === -1) return delta === 1 ? options[0].optionId : options[options.length - 1].optionId;
-  const next = (current + delta + options.length) % options.length;
-  return options[next].optionId;
+  const optionId = cursorOptionId(cursor);
+  const current = options.findIndex((option) => option.optionId === optionId);
+  if (current === -1) return chipCursor(delta === 1 ? options[0].optionId : options[options.length - 1].optionId);
+  const next = current + delta;
+  return next < 0 || next >= options.length ? undefined : chipCursor(options[next].optionId);
 }
 
-/** Where one rendered chip sits, measured from the strip's rendered layout. */
-export interface StripOptionGeometry {
-  /** DOM id of the chip, as {@link StripOption.optionId} carries it. */
-  readonly optionId: string;
-  /** Left edge of the chip. */
+/** Where one cell of the offering's grid sits, measured from the strip's rendered layout. */
+export interface StripCellGeometry {
+  /** Where the cursor stands when it lands on this cell. */
+  readonly cursor: StripCursor;
+  /** Left edge of the cell. */
   readonly left: number;
-  /** Rendered width of the chip. */
+  /** Rendered width of the cell. */
   readonly width: number;
-  /** Top edge of the chip. */
+  /** Top edge of the cell. */
   readonly top: number;
 }
 
 /**
- * How far two chips' top edges may differ and still count as the same wrapped
+ * How far two cells' top edges may differ and still count as the same wrapped
  * row, in the units the geometry is measured in.
  */
 const kStripRowTolerance = 8;
 
 /**
- * The chips grouped into wrapped visual rows, topmost row first and each row
- * ordered left to right.
+ * The cells grouped into the grid's rows, topmost row first and each row
+ * ordered left to right. Chips sharing a top edge wrap into one row, and a
+ * heading holds a row of its own.
  */
-function stripVisualRows(geometry: readonly StripOptionGeometry[]): StripOptionGeometry[][] {
-  const ordered = geometry.map((box, index) => ({ box, index }));
-  ordered.sort((a, b) => (a.box.top !== b.box.top ? a.box.top - b.box.top : a.index - b.index));
-  const rows: StripOptionGeometry[][] = [];
+function stripGridRows(geometry: readonly StripCellGeometry[]): StripCellGeometry[][] {
+  const ordered = geometry.map((cell, index) => ({ cell, index }));
+  ordered.sort((a, b) => (a.cell.top !== b.cell.top ? a.cell.top - b.cell.top : a.index - b.index));
+  const rows: StripCellGeometry[][] = [];
   let rowTop = 0;
   for (const entry of ordered) {
-    if (rows.length === 0 || entry.box.top - rowTop > kStripRowTolerance) {
-      rows.push([entry.box]);
-      rowTop = entry.box.top;
+    const row = rows[rows.length - 1];
+    const joinsRow =
+      row !== undefined &&
+      entry.cell.top - rowTop <= kStripRowTolerance &&
+      entry.cell.cursor.kind === "chip" &&
+      row[0].cursor.kind === "chip";
+    if (!joinsRow) {
+      rows.push([entry.cell]);
+      rowTop = entry.cell.top;
       continue;
     }
-    rows[rows.length - 1].push(entry.box);
+    row.push(entry.cell);
   }
   for (const row of rows) row.sort((a, b) => a.left - b.left);
   return rows;
 }
 
-/** The horizontal center of a measured chip. */
-function stripOptionCenter(box: StripOptionGeometry): number {
-  return box.left + box.width / 2;
+/** The horizontal center of a measured cell. */
+function stripCellCenter(cell: StripCellGeometry): number {
+  return cell.left + cell.width / 2;
 }
 
 /**
- * The option id the highlight moves to across the strip's wrapped layout:
- * `delta` 1 steps to the visual row below and -1 to the row above, both
- * wrapping around, taking the chip in that row whose horizontal center is
- * nearest the highlighted chip's center and the leading chip of two equally
- * near ones. Rows are read from `geometry`, so the step crosses band boundaries
- * wherever the layout puts one row under another. With nothing highlighted,
- * stepping forward takes the first chip of `geometry` and stepping back the
- * last. Returns undefined when no chip is measured.
+ * The cursor's step between the grid's rows: `delta` 1 steps to the row below
+ * and -1 to the row above, taking the cell of that row whose horizontal center
+ * is nearest the cursor's own and the leading cell of two equally near ones.
+ * Rows are read from `geometry`, so the step crosses band and section
+ * boundaries wherever the layout puts one row under another, and it comes to
+ * rest on a heading as readily as on a chip. Nothing wraps: a step off either
+ * end of the grid returns undefined, as does a step in an empty grid. A cursor
+ * standing on no cell of `geometry` stands above the grid, so stepping forward
+ * takes its first cell and stepping back leaves nothing.
  */
-export function moveActiveStripOption2D(
-  geometry: readonly StripOptionGeometry[],
-  activeOptionId: string | undefined,
+export function moveStripCursorBetweenRows(
+  geometry: readonly StripCellGeometry[],
+  cursor: StripCursor | undefined,
   delta: 1 | -1
-): string | undefined {
+): StripCursor | undefined {
   if (geometry.length === 0) return undefined;
-  const active = geometry.find((box) => box.optionId === activeOptionId);
-  if (!active) return delta === 1 ? geometry[0].optionId : geometry[geometry.length - 1].optionId;
-  const rows = stripVisualRows(geometry);
-  const rowIndex = rows.findIndex((row) => row.some((box) => box.optionId === active.optionId));
-  const target = rows[(rowIndex + delta + rows.length) % rows.length];
-  const center = stripOptionCenter(active);
+  const active = cursor === undefined ? undefined : geometry.find((cell) => sameStripCursor(cell.cursor, cursor));
+  if (!active) return delta === 1 ? geometry[0].cursor : undefined;
+  const rows = stripGridRows(geometry);
+  const rowIndex = rows.findIndex((row) => row.some((cell) => sameStripCursor(cell.cursor, active.cursor)));
+  const target = rows[rowIndex + delta];
+  if (target === undefined) return undefined;
+  const center = stripCellCenter(active);
   let nearest = target[0];
-  let nearestDistance = Math.abs(stripOptionCenter(nearest) - center);
-  for (const box of target) {
-    const distance = Math.abs(stripOptionCenter(box) - center);
+  let nearestDistance = Math.abs(stripCellCenter(nearest) - center);
+  for (const cell of target) {
+    const distance = Math.abs(stripCellCenter(cell) - center);
     if (distance < nearestDistance) {
-      nearest = box;
+      nearest = cell;
       nearestDistance = distance;
     }
   }
-  return nearest.optionId;
+  return nearest.cursor;
 }
 
 /**
- * The option id the highlight enters at when an arrow key is pressed on the
- * band `bandKey`: `delta` 1 takes the band's first chip and -1 takes the chip
- * immediately before the band, wrapping to the last chip when the band leads
- * the sequence. `bands` is the display sequence with `bandKey` at its own
- * position, whether or not its chips are rendered yet. Returns undefined when
- * the band renders no chip or is absent from `bands`.
+ * The cursor entering the band `bandKey` at its first chip. `bands` is the
+ * display sequence with `bandKey` at its own position, whether or not its chips
+ * are rendered yet. Returns undefined when the band renders no chip or is
+ * absent from `bands`.
  */
 export function enterStripOptionsAt(
   stripId: string,
   bands: readonly StripOptionBand[],
-  bandKey: string,
-  delta: 1 | -1
-): string | undefined {
-  const bandIndex = bands.findIndex((band) => band.key === bandKey);
-  if (bandIndex === -1 || bands[bandIndex].entries.length === 0) return undefined;
-  const options = visibleStripOptions(stripId, bands);
-  if (delta === 1) return options.find((option) => option.bandKey === bandKey)?.optionId;
-  let precedingCount = 0;
-  for (let i = 0; i < bandIndex; i++) precedingCount += bands[i].entries.length;
-  return precedingCount === 0 ? options[options.length - 1].optionId : options[precedingCount - 1].optionId;
+  bandKey: string
+): StripCursor | undefined {
+  const band = bands.find((entry) => entry.key === bandKey);
+  if (band === undefined || band.entries.length === 0) return undefined;
+  return chipCursor(stripOptionId(stripId, bandKey, band.entries[0].candidate.key));
 }
 
 /** What Escape does while the strip is open. */

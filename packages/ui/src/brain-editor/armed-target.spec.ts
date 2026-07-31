@@ -76,3 +76,41 @@ describe("isTileTargetForTile", () => {
     assert.equal(isTileTargetForTile(appendTarget(ruleA, RuleSide.When), ruleA, RuleSide.When, 0), false);
   });
 });
+
+describe("isTileTargetForTile for an edit point", () => {
+  /** The target an edit point on `anchorTileIndex` arms when its pivot addresses `tileIndex`. */
+  function editPointTarget(
+    ruleDef: BrainRuleDef,
+    anchorTileIndex: number,
+    mode: "insert" | "replace" | "append",
+    tileIndex?: number
+  ): ArmedTileTarget {
+    return { ruleDef, side: RuleSide.When, mode, tileIndex, anchorTileIndex, onTileSelected: () => true };
+  }
+
+  test("matches the anchor tile while the pivot inserts before it", () => {
+    const { ruleA } = twoRules();
+    const target = editPointTarget(ruleA, 1, "insert", 1);
+    assert.equal(isTileTargetForTile(target, ruleA, RuleSide.When, 1), true);
+  });
+
+  test("matches the anchor tile, not the one the insert addresses, while the pivot inserts after it", () => {
+    const { ruleA } = twoRules();
+    const target = editPointTarget(ruleA, 1, "insert", 2);
+    assert.equal(isTileTargetForTile(target, ruleA, RuleSide.When, 1), true);
+    assert.equal(isTileTargetForTile(target, ruleA, RuleSide.When, 2), false);
+  });
+
+  test("still matches the anchor tile once the pivot's last position appends", () => {
+    const { ruleA } = twoRules();
+    const target = editPointTarget(ruleA, 2, "append");
+    assert.equal(isTileTargetForTile(target, ruleA, RuleSide.When, 2), true);
+  });
+
+  test("matches no tile of another rule or side", () => {
+    const { ruleA, ruleB } = twoRules();
+    const target = editPointTarget(ruleA, 0, "replace", 0);
+    assert.equal(isTileTargetForTile(target, ruleB, RuleSide.When, 0), false);
+    assert.equal(isTileTargetForTile(target, ruleA, RuleSide.Do, 0), false);
+  });
+});

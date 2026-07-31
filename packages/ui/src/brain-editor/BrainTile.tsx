@@ -6,6 +6,7 @@ import { staticAssetUrl } from "../asset-url";
 import { adjustColor, readableInk, saturateColor } from "../lib/color";
 import { glassEffect } from "../lib/glass-effect";
 import { useBrainEditorConfig } from "./BrainEditorContext";
+import { kRuleChromeLayer, kRuleContentLayer, kRuleGlintLayer } from "./editor-layers";
 import { TileValue } from "./TileValue";
 import type { TileBadge } from "./tile-badges";
 import { isProjectAuthoredActionTile } from "./tile-library-groups";
@@ -22,7 +23,7 @@ interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "
  * data-type indicator and badge. Forwards a ref to the underlying button.
  */
 export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
-  ({ tileDef, side, badge, className = "", ...props }, ref) => {
+  ({ tileDef, side, badge, className = "", style, ...props }, ref) => {
     const editorConfig = useBrainEditorConfig();
     const { dataTypeIcons, dataTypeNames, projectNamespace } = editorConfig;
     const [isOverflowing, setIsOverflowing] = useState(false);
@@ -116,7 +117,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
       <div className="relative self-center hover:scale-105 transition-transform duration-100">
         {isAsyncAction && (
           <span
-            className="group/clock absolute -top-1.5 -left-1.5 z-30 flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-slate-200 border-slate-300 text-slate-600"
+            className={`group/clock absolute -top-1.5 -left-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-slate-200 border-slate-300 text-slate-600`}
             role="img"
             aria-label="May take time to complete"
           >
@@ -128,7 +129,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
         )}
         {badge && (
           <span
-            className={`group/badge absolute -top-1.5 -right-1.5 z-30 flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto ${
+            className={`group/badge absolute -top-1.5 -right-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto ${
               badge.type === "error"
                 ? "bg-red-500 border-red-600 text-white"
                 : "bg-amber-400 border-amber-500 text-amber-900"
@@ -147,13 +148,18 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
           data-scrollable={isOverflowing}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          style={{ ...gradientStyle, ...(labelBasedWidth !== undefined ? { minWidth: labelBasedWidth } : {}) }}
+          // A caller's own style is layered over the tile's, never in place of it.
+          style={{
+            ...gradientStyle,
+            ...(labelBasedWidth !== undefined ? { minWidth: labelBasedWidth } : {}),
+            ...style,
+          }}
           className={`flex flex-col border-2 h-24 max-h-24 min-h-24 ${isValueTile ? "w-auto min-w-24 max-w-72 px-3 pb-2.5" : "w-24 min-w-24 max-w-48 px-1 pb-1.5"} overflow-hidden rounded-lg pt-2 text-black text-sm font-medium cursor-pointer brightness-105 hover:brightness-110 transition-[filter] self-center shadow-sm relative ${className}`}
           aria-label={`${tileDef.kind} tile: ${label}`}
           {...props}
         >
           <div
-            className="absolute inset-0 rounded-md pointer-events-none z-20"
+            className={`absolute inset-0 rounded-md pointer-events-none ${kRuleGlintLayer}`}
             style={tileGlass.overlayStyle}
             aria-hidden="true"
           />
@@ -191,7 +197,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
               aria-hidden="true"
             />
           )}
-          <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+          <div className={`flex-1 flex flex-col items-center justify-center relative ${kRuleContentLayer}`}>
             {isValueTile ? (
               <div className="min-h-16 flex-1 flex items-center justify-center text-lg font-semibold text-center px-2 overflow-hidden w-full">
                 <div

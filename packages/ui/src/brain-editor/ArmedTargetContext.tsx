@@ -1,6 +1,7 @@
 import type { IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import type { CaretPosition } from "./caret-run";
 
 /** How the armed target consumes the chosen tile: append to a side, insert before a tile, or replace a tile. */
 export type ArmedTargetMode = "append" | "insert" | "replace";
@@ -27,6 +28,20 @@ export interface ArmedTileTarget {
   mode: ArmedTargetMode;
   /** Index of the targeted tile for insert/replace; undefined for append. */
   tileIndex?: number;
+  /**
+   * Index of the placed tile an edit point was opened on, which its position
+   * pivot moves around. Undefined for a target armed anywhere but on a placed
+   * tile, and the only way to recover the tile once the pivot's last position
+   * has collapsed to an append.
+   */
+  anchorTileIndex?: number;
+  /**
+   * The caret this target was projected from: `side`, `mode` and `tileIndex` are
+   * what `caretEditIntent` returns for it. Carried by every target armed from
+   * the sentence, and undefined for one armed from the tray, which stands at no
+   * caret.
+   */
+  caret?: CaretPosition;
   /** Where the arming happened; defaults to `tray` when omitted. */
   entry?: ArmedTargetEntry;
   /** Receives the chosen tile; returns true when the selection completed and the picker should close. */
@@ -72,18 +87,18 @@ export function isAppendTargetForRule(target: ArmedTileTarget | null, ruleDef: B
   return target !== null && target.mode === "append" && target.ruleDef === ruleDef;
 }
 
-/** True when `target` arms the insert or replace picker for the tile at `tileIndex` on `side` of `ruleDef`. */
+/**
+ * True when `target` arms an edit point on the tile at `tileIndex` on `side` of
+ * `ruleDef`. The tile addressed is the target's `anchorTileIndex` when it has
+ * one, so an edit point matches the tile it was opened on through every
+ * position of its pivot, and otherwise its `tileIndex`.
+ */
 export function isTileTargetForTile(
   target: ArmedTileTarget | null,
   ruleDef: BrainRuleDef,
   side: RuleSide,
   tileIndex: number
 ): boolean {
-  return (
-    target !== null &&
-    (target.mode === "insert" || target.mode === "replace") &&
-    target.ruleDef === ruleDef &&
-    target.side === side &&
-    target.tileIndex === tileIndex
-  );
+  if (target === null || target.ruleDef !== ruleDef || target.side !== side) return false;
+  return (target.anchorTileIndex ?? target.tileIndex) === tileIndex;
 }

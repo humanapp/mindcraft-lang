@@ -1,19 +1,20 @@
 import { RuleSide } from "@mindcraft-lang/core/brain";
-import type { BrainCommand } from "@mindcraft-lang/core/brain/model";
 import type { ArmedTargetEntry } from "./ArmedTargetContext";
 import {
   decideStripEscape,
   enterStripOptionsAt,
   isStripFilterTypingKey,
-  moveActiveStripOption,
-  moveActiveStripOption2D,
+  moveStripCursorAlongChips,
+  moveStripCursorBetweenRows,
   type StripCandidate,
+  type StripCellGeometry,
+  type StripCursor,
   type StripFocusTarget,
   type StripHighlightMode,
   type StripOption,
   type StripOptionBand,
-  type StripOptionGeometry,
 } from "./candidate-strip-model";
+import { type CaretPosition, caretDeletionTarget, caretOnRun, caretSideEnd, caretStep } from "./caret-run";
 import { decideComposerBackspace, decideComposerComma, decideComposerPeriod } from "./sentence-composer";
 
 /**
@@ -21,14 +22,20 @@ import { decideComposerBackspace, decideComposerComma, decideComposerPeriod } fr
  * built up that no other surface owns.
  */
 export interface ComposerInputState {
+  /**
+   * Where the caret stands along the rule's run, which the position being edited
+   * is projected from. Undefined for a strip armed from the tray, which stands
+   * at no caret of the rule's own.
+   */
+  readonly caret: CaretPosition | undefined;
   /** The rule side composition is armed on. */
   readonly armedSide: RuleSide;
   /** Where the arming happened; the sentence-only gestures apply to `sentence` alone. */
   readonly armedEntry: ArmedTargetEntry;
   /** The word in progress. */
   readonly filter: string;
-  /** Option id of the chip the highlight rests on, or undefined when it rests on none. */
-  readonly activeOptionId: string | undefined;
+  /** The cell of the offering's grid the cursor stands on, or undefined when it stands on none. */
+  readonly cursor: StripCursor | undefined;
   /** Which element the highlight is anchored on. */
   readonly highlightMode: StripHighlightMode;
   /** True while composition sits on the DO side of a typed pivot. */
@@ -38,11 +45,6 @@ export interface ComposerInputState {
    * empty while it holds none, and undefined when no text value is open.
    */
   readonly textLiteral: string | undefined;
-  /**
-   * The commands this composition placed, newest last. The placement path
-   * appends the command it executed; the `undo-own-commit` effect pops it.
-   */
-  readonly ownCommits: readonly BrainCommand[];
 }
 
 /** Which way an arrow key steps. */
@@ -69,10 +71,17 @@ export type ComposerGesture = "pivot" | "settle";
  * - `quote` -- open a text value, or place the one already open
  * - `escape` -- clear the word in progress, then close
  * - `backspace` -- the composer's ladder, or an edit of the word in progress
- * - `printable` -- a character typed while a band's chips are being browsed
+ * - `delete-forward` -- delete the tile the caret stands at or in front of
+ * - `delete-element` -- delete the tile the element `position` stands at,
+ *   whatever the box is holding
+ * - `printable` -- a character typed while the offering is being browsed
  * - `candidate-tapped` -- a chip was tapped or dropped on the armed position
- * - `arrow` -- a step of the highlight
+ * - `arrow` -- a step of the cursor, or of the caret
+ * - `home`, `end` -- the run's first and last position
  * - `heading-arrow` -- an arrow pressed on an accordion heading
+ * - `focus-lost` -- the element the highlight was anchored on no longer holds
+ *   the keyboard, whether it was left, was clicked away from, or stopped being
+ *   rendered
  * - `placement-landed` -- the placement a `reask-after-placement` effect asked
  *   about has run, so the gesture behind it is decided again
  */
@@ -85,11 +94,16 @@ export type ComposerInputToken =
   | { readonly kind: "quote" }
   | { readonly kind: "escape" }
   | { readonly kind: "printable" }
+  | { readonly kind: "home" }
+  | { readonly kind: "end" }
+  | { readonly kind: "delete-forward" }
+  | { readonly kind: "delete-element"; readonly position: CaretPosition }
   | { readonly kind: "candidate-tapped"; readonly candidate: StripCandidate }
   | { readonly kind: "enter"; readonly from: "filter" | "band" }
-  | { readonly kind: "backspace"; readonly from: "filter" | "band" }
+  | { readonly kind: "backspace"; readonly from: "filter" | "band" | "heading" }
   | { readonly kind: "arrow"; readonly direction: ComposerArrowDirection; readonly from: ComposerKeySurface }
   | { readonly kind: "heading-arrow"; readonly direction: "up" | "down"; readonly sectionKey: string }
+  | { readonly kind: "focus-lost" }
   | { readonly kind: "placement-landed"; readonly gesture: ComposerGesture };
 
 /** Why the strip closes: the rule was settled with a period, or the strip was dismissed. */
@@ -103,22 +117,25 @@ export type ComposerCloseReason = "settled" | "dismissed";
  * - `set-filter` -- the word in progress becomes `text`
  * - `set-text-literal` -- the open text value becomes `value`, and closes when
  *   `value` is undefined
- * - `highlight` -- the highlight rests on `optionId`, anchored per `mode`
+ * - `highlight` -- the cursor stands at `cursor`, anchored per `mode`
  * - `open-section` -- the accordion section `sectionKey` opens
  * - `place-tile` -- `candidate` is placed at the armed position
  * - `announce-placement` -- assistive technology hears that `label` was placed
  * - `move-focus` -- the keyboard goes to `target`
  * - `reask-after-placement` -- once the placement has run, ask the model again
  *   with a `placement-landed` token
- * - `arm-side` -- composition continues on `side`, placing no tile
- * - `undo-own-commit` -- the composition's own last commit is taken back
+ * - `move-caret` -- the caret stands at `position`, which arms the edit that
+ *   position intends and asks the offering there
+ * - `delete-tile` -- the tile at `position` leaves the rule
+ * - `undo-own-commit` -- the composition's own last commit is taken back, which
+ *   removes the tile that commit placed
  * - `close-strip` -- composition on the rule ends
  */
 export type ComposerInputEffect =
   | { readonly kind: "consume-key" }
   | { readonly kind: "set-filter"; readonly text: string }
   | { readonly kind: "set-text-literal"; readonly value: string | undefined }
-  | { readonly kind: "highlight"; readonly optionId: string | undefined; readonly mode: StripHighlightMode }
+  | { readonly kind: "highlight"; readonly cursor: StripCursor | undefined; readonly mode: StripHighlightMode }
   | { readonly kind: "open-section"; readonly sectionKey: string }
   | { readonly kind: "place-tile"; readonly candidate: StripCandidate }
   | { readonly kind: "announce-placement"; readonly label: string }
@@ -130,7 +147,8 @@ export type ComposerInputEffect =
       readonly keepScroll: boolean;
     }
   | { readonly kind: "reask-after-placement"; readonly gesture: ComposerGesture }
-  | { readonly kind: "arm-side"; readonly side: RuleSide }
+  | { readonly kind: "move-caret"; readonly position: CaretPosition }
+  | { readonly kind: "delete-tile"; readonly position: CaretPosition }
   | { readonly kind: "undo-own-commit" }
   | { readonly kind: "close-strip"; readonly reason: ComposerCloseReason };
 
@@ -140,19 +158,34 @@ export type ComposerInputEffect =
  * placement carries the facts that placement produced.
  */
 export interface ComposerInputFacts {
+  /**
+   * Every caret position of the rule, in reading order. Empty for a strip armed
+   * from the tray, which stands on no rule's run.
+   */
+  readonly caretRun: readonly CaretPosition[];
+  /**
+   * Where the text cursor stands in the composer's box: the character offsets
+   * its selection runs between, equal while it selects nothing.
+   */
+  readonly textCursor: { readonly start: number; readonly end: number };
   /** True when the tiles of the armed side may end where composition stands. */
   readonly armedSideCanEnd: boolean;
   /** True when the rule holds no tiles on either side. */
   readonly ruleIsEmpty: boolean;
   /** How many tiles the rule's DO side holds. */
   readonly doTileCount: number;
-  /** The command history's newest undoable entry; undefined when the history holds none. */
-  readonly newestCommand: BrainCommand | undefined;
+  /**
+   * The element the composition's own newest placement stands at, while that
+   * placement is still the history's newest undoable entry. Undefined where the
+   * composition has placed nothing, and once anything else has changed the
+   * document.
+   */
+  readonly ownNewestPlacement: CaretPosition | undefined;
   /** The candidate Enter and Tab place, or undefined when they must not commit. */
   readonly topCandidate: StripCandidate | undefined;
   /** The candidate Space places, or undefined when it must not commit. */
   readonly spaceCandidate: StripCandidate | undefined;
-  /** The candidate the highlight rests on, or undefined when it rests on no chip. */
+  /** The candidate the cursor stands on, or undefined when it stands on no chip. */
   readonly highlightedCandidate: StripCandidate | undefined;
   /** True when the armed position accepts a text literal, so a typed quote opens one. */
   readonly acceptsTextLiteral: boolean;
@@ -161,10 +194,10 @@ export interface ComposerInputFacts {
    * open and when the armed position accepts none.
    */
   readonly pendingTextLiteral: StripCandidate | undefined;
-  /** Every rendered chip, in the order the highlight walks them. */
+  /** Every rendered chip, in the order the cursor walks them. */
   readonly options: readonly StripOption[];
-  /** Where every rendered chip sits, for the steps between wrapped rows. */
-  readonly optionGeometry: readonly StripOptionGeometry[];
+  /** Where every cell of the offering's grid sits: its chips and its group headings. */
+  readonly cellGeometry: readonly StripCellGeometry[];
   /** Identity of the strip, which the option ids are built from. */
   readonly stripId: string;
   /**
@@ -194,7 +227,7 @@ function arrowDirection(key: string): ComposerArrowDirection | undefined {
 /**
  * The token a press of `key` on `surface` means, or undefined when the key is
  * the browser's: a character the filter box types for itself, Tab out of a
- * band, and every key the close button does not steer the highlight with.
+ * band, and every key the close button does not steer the cursor with.
  */
 export function composerTokenForKey(key: string, surface: ComposerKeySurface): ComposerInputToken | undefined {
   const direction = arrowDirection(key);
@@ -204,6 +237,9 @@ export function composerTokenForKey(key: string, surface: ComposerKeySurface): C
   if (key === "Enter") return { kind: "enter", from: surface };
   if (key === "Backspace") return { kind: "backspace", from: surface };
   if (surface === "band") return isStripFilterTypingKey(key) ? { kind: "printable" } : undefined;
+  if (key === "Home") return { kind: "home" };
+  if (key === "End") return { kind: "end" };
+  if (key === "Delete") return { kind: "delete-forward" };
   if (key === ",") return { kind: "comma" };
   if (key === ".") return { kind: "period" };
   if (key === '"') return { kind: "quote" };
@@ -214,12 +250,17 @@ export function composerTokenForKey(key: string, surface: ComposerKeySurface): C
 
 /**
  * The token a press of `key` on the accordion heading of `sectionKey` means, or
- * undefined for every key that does not step the highlight into the section.
+ * undefined when the key is the heading button's own: Enter and every key that
+ * neither steps the cursor nor edits the word in progress. Only the arrows that
+ * step between rows reach the cursor here; the keys that type hand the keyboard
+ * back to the filter box.
  */
 export function composerHeadingToken(key: string, sectionKey: string): ComposerInputToken | undefined {
   const direction = arrowDirection(key);
-  if (direction !== "up" && direction !== "down") return undefined;
-  return { kind: "heading-arrow", direction, sectionKey };
+  if (direction === "up" || direction === "down") return { kind: "heading-arrow", direction, sectionKey };
+  if (direction !== undefined) return undefined;
+  if (key === "Backspace") return { kind: "backspace", from: "heading" };
+  return isStripFilterTypingKey(key) ? { kind: "printable" } : undefined;
 }
 
 /** True when `effects` asks the driver to keep the keystroke from the browser. */
@@ -233,7 +274,7 @@ function arrowStep(direction: ComposerArrowDirection): 1 | -1 {
 }
 
 /** True when the direction steps between the wrapped rows the chips are drawn in. */
-function isRowDirection(direction: ComposerArrowDirection): boolean {
+function isRowDirection(direction: ComposerArrowDirection): direction is "up" | "down" {
   return direction === "up" || direction === "down";
 }
 
@@ -242,41 +283,89 @@ function inert(state: ComposerInputState): ComposerInputOutcome {
   return { state, effects: [] };
 }
 
+/** The gap of `side` before the tile at `tileIndex`, clamped to that side's opening gap. */
+function gapAt(side: RuleSide, tileIndex: number): CaretPosition {
+  return { kind: "gap", side, tileIndex: Math.max(0, tileIndex) };
+}
+
+/** The text the composer's box holds: an open text value's content, or the word in progress. */
+function pendingText(state: ComposerInputState): string {
+  return state.textLiteral ?? state.filter;
+}
+
+/** True while the box holds an edit the caret's position will take. */
+function hasPendingEdit(state: ComposerInputState): boolean {
+  return state.textLiteral !== undefined || state.filter.length > 0;
+}
+
 /**
- * Rest the highlight on `optionId` anchored per `mode`, keeping the keyboard
- * with the filter box while typing. An undefined `optionId` leaves the composer
- * as it stands, which is what an offering with no chip in the asked-for
+ * Stand the caret at `position`: whatever the box was holding is abandoned,
+ * placing nothing and leaving the rule's tiles as they stand, and the cursor
+ * resolved against the position left behind is released.
+ */
+function moveCaret(state: ComposerInputState, position: CaretPosition): ComposerInputOutcome {
+  const abandoned: ComposerInputEffect[] = [];
+  if (state.textLiteral !== undefined) abandoned.push({ kind: "set-text-literal", value: undefined });
+  if (state.filter.length > 0) abandoned.push({ kind: "set-filter", text: "" });
+  return {
+    state: {
+      ...state,
+      caret: position,
+      filter: "",
+      textLiteral: undefined,
+      cursor: undefined,
+      highlightMode: "typing",
+    },
+    effects: [
+      { kind: "consume-key" },
+      ...abandoned,
+      { kind: "move-caret", position },
+      { kind: "highlight", cursor: undefined, mode: "typing" },
+    ],
+  };
+}
+
+/**
+ * Stand the cursor at `cursor` anchored per `mode`, keeping the keyboard with
+ * the filter box while typing. A cursor on a heading always anchors on that
+ * heading, which holds the keyboard itself. An undefined `cursor` leaves the
+ * composer as it stands, which is what a grid with no cell in the asked-for
  * direction returns.
  */
 function moveHighlight(
   state: ComposerInputState,
-  optionId: string | undefined,
+  cursor: StripCursor | undefined,
   mode: StripHighlightMode
 ): ComposerInputOutcome {
-  if (optionId === undefined) return inert(state);
-  const effects: ComposerInputEffect[] = [{ kind: "highlight", optionId, mode }];
-  if (mode === "typing") effects.push({ kind: "move-focus", target: filterFocus, keepScroll: false });
+  if (cursor === undefined) return inert(state);
+  const anchored: StripHighlightMode = cursor.kind === "heading" ? "browsing" : mode;
+  const effects: ComposerInputEffect[] = [{ kind: "highlight", cursor, mode: anchored }];
+  if (anchored === "typing") effects.push({ kind: "move-focus", target: filterFocus, keepScroll: false });
   effects.push({ kind: "consume-key" });
-  return { state: { ...state, activeOptionId: optionId, highlightMode: mode }, effects };
+  return { state: { ...state, cursor, highlightMode: anchored }, effects };
 }
 
 /**
- * Place `candidate` and start the next word: the word in progress and the
- * highlight begin again in the filter box, and `then` carries whatever gesture
- * the placement was made on the way to.
+ * Place `candidate` and start the next word: the caret comes to rest in the gap
+ * past the tile just placed, the word in progress and the highlight begin again
+ * in the filter box, and `then` carries whatever gesture the placement was made
+ * on the way to.
  */
 function placeCandidate(
   state: ComposerInputState,
   candidate: StripCandidate,
   then: readonly ComposerInputEffect[] = []
 ): ComposerInputOutcome {
+  const caret = state.caret === undefined ? undefined : gapAt(state.caret.side, state.caret.tileIndex + 1);
+  const moved: readonly ComposerInputEffect[] = caret === undefined ? [] : [{ kind: "move-caret", position: caret }];
   return {
-    state: { ...state, filter: "", activeOptionId: undefined, highlightMode: "typing" },
+    state: { ...state, caret, filter: "", cursor: undefined, highlightMode: "typing" },
     effects: [
       { kind: "consume-key" },
       { kind: "place-tile", candidate },
       { kind: "announce-placement", label: candidate.label },
-      { kind: "highlight", optionId: undefined, mode: "typing" },
+      ...moved,
+      { kind: "highlight", cursor: undefined, mode: "typing" },
       { kind: "move-focus", target: filterFocus, keepScroll: true },
       ...then,
     ],
@@ -290,8 +379,8 @@ function retypeFilter(
   leading: readonly ComposerInputEffect[]
 ): ComposerInputOutcome {
   return {
-    state: { ...state, filter: text, activeOptionId: undefined, highlightMode: "typing" },
-    effects: [...leading, { kind: "set-filter", text }, { kind: "highlight", optionId: undefined, mode: "typing" }],
+    state: { ...state, filter: text, cursor: undefined, highlightMode: "typing" },
+    effects: [...leading, { kind: "set-filter", text }, { kind: "highlight", cursor: undefined, mode: "typing" }],
   };
 }
 
@@ -302,11 +391,11 @@ function retypeTextLiteral(
   leading: readonly ComposerInputEffect[]
 ): ComposerInputOutcome {
   return {
-    state: { ...state, textLiteral: value, activeOptionId: undefined, highlightMode: "typing" },
+    state: { ...state, textLiteral: value, cursor: undefined, highlightMode: "typing" },
     effects: [
       ...leading,
       { kind: "set-text-literal", value },
-      { kind: "highlight", optionId: undefined, mode: "typing" },
+      { kind: "highlight", cursor: undefined, mode: "typing" },
     ],
   };
 }
@@ -345,12 +434,12 @@ function reduceQuote(state: ComposerInputState, facts: ComposerInputFacts): Comp
   if (state.textLiteral === undefined) {
     if (!facts.acceptsTextLiteral) return inert(state);
     return {
-      state: { ...state, filter: "", textLiteral: "", activeOptionId: undefined, highlightMode: "typing" },
+      state: { ...state, filter: "", textLiteral: "", cursor: undefined, highlightMode: "typing" },
       effects: [
         { kind: "consume-key" },
         { kind: "set-filter", text: "" },
         { kind: "set-text-literal", value: "" },
-        { kind: "highlight", optionId: undefined, mode: "typing" },
+        { kind: "highlight", cursor: undefined, mode: "typing" },
       ],
     };
   }
@@ -372,11 +461,21 @@ function isSuspendedByTextLiteral(token: ComposerInputToken): boolean {
   }
 }
 
-/** End the WHEN side and continue composing on the DO side, placing no tile. */
-function pivotToDo(state: ComposerInputState, leading: readonly ComposerInputEffect[]): ComposerInputOutcome {
+/**
+ * Continue composing on `side`, placing no tile: the caret comes to rest in that
+ * side's end gap.
+ */
+function composeOnSide(
+  state: ComposerInputState,
+  facts: ComposerInputFacts,
+  side: RuleSide,
+  leading: readonly ComposerInputEffect[]
+): ComposerInputOutcome {
+  const caret = caretSideEnd(facts.caretRun, side) ?? state.caret;
+  const moved: readonly ComposerInputEffect[] = caret === undefined ? [] : [{ kind: "move-caret", position: caret }];
   return {
-    state: { ...state, armedSide: RuleSide.Do, pivoted: true },
-    effects: [...leading, { kind: "arm-side", side: RuleSide.Do }],
+    state: { ...state, armedSide: side, pivoted: side === RuleSide.Do, caret },
+    effects: [...leading, ...moved],
   };
 }
 
@@ -390,7 +489,7 @@ function reduceComma(state: ComposerInputState, facts: ComposerInputFacts): Comp
     wordInProgressCommits: facts.spaceCandidate !== undefined,
   });
   if (action === "filter-text") return inert(state);
-  if (action === "pivot-to-do") return pivotToDo(state, [{ kind: "consume-key" }]);
+  if (action === "pivot-to-do") return composeOnSide(state, facts, RuleSide.Do, [{ kind: "consume-key" }]);
   if (facts.spaceCandidate === undefined) return { state, effects: [{ kind: "consume-key" }] };
   return placeCandidate(state, facts.spaceCandidate, [{ kind: "reask-after-placement", gesture: "pivot" }]);
 }
@@ -405,7 +504,7 @@ function reducePeriod(state: ComposerInputState, facts: ComposerInputFacts): Com
     wordInProgressCommits: facts.spaceCandidate !== undefined,
   });
   if (action === "filter-text") return inert(state);
-  if (action === "none") return { state, effects: [{ kind: "consume-key" }] };
+  if (action === "none" || action === "refuse") return { state, effects: [{ kind: "consume-key" }] };
   if (action === "settle") {
     return { state, effects: [{ kind: "consume-key" }, { kind: "close-strip", reason: "settled" }] };
   }
@@ -421,11 +520,11 @@ function reducePeriod(state: ComposerInputState, facts: ComposerInputFacts): Com
 function reduceTextLiteralBackspace(
   state: ComposerInputState,
   content: string,
-  from: "filter" | "band"
+  from: "filter" | "band" | "heading"
 ): ComposerInputOutcome {
   if (content.length === 0) return abandonTextLiteral(state, [{ kind: "consume-key" }]);
-  // A band carries no text caret, so the edit of the content is made here.
-  if (from === "band") {
+  // A cell of the grid carries no text caret, so the edit of the content is made here.
+  if (from !== "filter") {
     return retypeTextLiteral(state, content.slice(0, -1), [
       { kind: "move-focus", target: filterFocus, keepScroll: false },
       { kind: "consume-key" },
@@ -434,15 +533,47 @@ function reduceTextLiteralBackspace(
   return inert(state);
 }
 
+/**
+ * Delete the tile the caret addresses `direction`, which is the tile the caret
+ * rests on or, from a gap, the nearest tile that way along the run. The caret
+ * comes to rest in the gap that tile vacated. A caret with no tile that way, and
+ * a caret the rule's run no longer holds, leave the key alone.
+ *
+ * The tile the composition itself placed last, still standing as the newest
+ * thing done to the document, leaves by that placement being taken back rather
+ * than by a removal of its own; either way the same tile goes.
+ */
+function reduceDeleteAtCaret(
+  state: ComposerInputState,
+  facts: ComposerInputFacts,
+  direction: "left" | "right"
+): ComposerInputOutcome {
+  const caret = state.caret === undefined ? undefined : caretOnRun(facts.caretRun, state.caret);
+  if (caret === undefined) return inert(state);
+  const target = caretDeletionTarget(facts.caretRun, caret, direction);
+  if (target === undefined) return inert(state);
+  const own = facts.ownNewestPlacement;
+  const takesBackOwnCommit = own !== undefined && own.side === target.side && own.tileIndex === target.tileIndex;
+  const vacated = gapAt(target.side, target.tileIndex);
+  return {
+    state: { ...state, caret: vacated },
+    effects: [
+      { kind: "consume-key" },
+      takesBackOwnCommit ? { kind: "undo-own-commit" } : { kind: "delete-tile", position: target },
+      { kind: "move-caret", position: vacated },
+    ],
+  };
+}
+
 /** Backspace's outcome: an edit of the word in progress, or one rung of the composer's ladder. */
 function reduceBackspace(
   state: ComposerInputState,
   facts: ComposerInputFacts,
-  from: "filter" | "band"
+  from: "filter" | "band" | "heading"
 ): ComposerInputOutcome {
   if (state.textLiteral !== undefined) return reduceTextLiteralBackspace(state, state.textLiteral, from);
-  // A band carries no text caret, so the edit of the word in progress is made here.
-  if (from === "band") {
+  // A cell of the grid carries no text caret, so the edit of the word in progress is made here.
+  if (from !== "filter") {
     return retypeFilter(state, state.filter.slice(0, -1), [
       { kind: "move-focus", target: filterFocus, keepScroll: false },
       { kind: "consume-key" },
@@ -451,61 +582,182 @@ function reduceBackspace(
   if (state.armedEntry !== "sentence") return inert(state);
   const action = decideComposerBackspace({
     filter: state.filter,
-    ownLastCommit: state.ownCommits[state.ownCommits.length - 1],
-    newestCommand: facts.newestCommand,
     pivoted: state.pivoted,
     doTileCount: facts.doTileCount,
   });
+  if (action === "edit-filter") return inert(state);
   if (action === "unpivot") {
-    return {
-      state: { ...state, armedSide: RuleSide.When, pivoted: false },
-      effects: [{ kind: "consume-key" }, { kind: "arm-side", side: RuleSide.When }],
-    };
+    return composeOnSide(state, facts, RuleSide.When, [{ kind: "consume-key" }]);
   }
-  if (action === "uncommit-word") {
-    return {
-      state: { ...state, ownCommits: state.ownCommits.slice(0, -1) },
-      effects: [{ kind: "consume-key" }, { kind: "undo-own-commit" }],
-    };
-  }
-  return inert(state);
+  return reduceDeleteAtCaret(state, facts, "left");
 }
 
-/** An arrow key's outcome: a step of the highlight across the rendered chips. */
+/**
+ * Place what the box is holding, exactly as the key that commits it would: the
+ * word in progress as Space places it, and an open text value as its closing
+ * quote places it. Text that names nothing to place is refused -- the key is
+ * swallowed and that text stands as it is.
+ */
+function commitPendingText(state: ComposerInputState, facts: ComposerInputFacts): ComposerInputOutcome {
+  if (state.textLiteral !== undefined) {
+    if (facts.pendingTextLiteral === undefined) return { state, effects: [{ kind: "consume-key" }] };
+    return commitTextLiteral(state, facts.pendingTextLiteral);
+  }
+  if (facts.spaceCandidate === undefined) return { state, effects: [{ kind: "consume-key" }] };
+  return placeCandidate(state, facts.spaceCandidate);
+}
+
+/**
+ * A horizontal arrow's outcome in the composer's box: one step of the caret
+ * along the rule's run, clamped at both ends. An edit in progress takes the key
+ * while the text cursor stands inside it or holds a selection. The key that
+ * would carry that cursor off the end of the edit places it, coming to rest past
+ * the tile placed; the key that would carry it off the start abandons it and
+ * steps the caret back.
+ */
+function reduceCaretArrow(
+  state: ComposerInputState,
+  facts: ComposerInputFacts,
+  caret: CaretPosition,
+  direction: "left" | "right"
+): ComposerInputOutcome {
+  if (hasPendingEdit(state)) {
+    const { start, end } = facts.textCursor;
+    if (start !== end) return inert(state);
+    const leavesText = direction === "left" ? start === 0 : start === pendingText(state).length;
+    if (!leavesText) return inert(state);
+    if (direction === "right") return commitPendingText(state, facts);
+  }
+  // A rule changed under the caret leaves it addressing a position no run built
+  // since holds; the key steps from where that position stands on this run.
+  const standing = caretOnRun(facts.caretRun, caret);
+  if (standing === undefined) return inert(state);
+  return moveCaret(state, caretStep(facts.caretRun, standing, direction));
+}
+
+/**
+ * Release the cursor: it stands on no cell afterwards and anchors on the
+ * composer's box. The keyboard, the rule's tiles, the caret, and the word in
+ * progress are all left as they stand.
+ */
+function releaseHighlight(state: ComposerInputState): ComposerInputOutcome {
+  return {
+    state: { ...state, cursor: undefined, highlightMode: "typing" },
+    effects: [{ kind: "highlight", cursor: undefined, mode: "typing" }],
+  };
+}
+
+/**
+ * Leave the offering: the cursor is released and the keyboard goes back to the
+ * composer's box, where the caret stands.
+ */
+function leaveOffering(state: ComposerInputState): ComposerInputOutcome {
+  const released = releaseHighlight(state);
+  return {
+    state: released.state,
+    effects: [
+      { kind: "consume-key" },
+      ...released.effects,
+      { kind: "move-focus", target: filterFocus, keepScroll: false },
+    ],
+  };
+}
+
+/**
+ * A vertical arrow's outcome: one step of the cursor between the grid's rows,
+ * which nothing wraps. Stepping up off the grid's first row leaves the offering,
+ * releasing the cursor and returning the keyboard to the composer's box;
+ * stepping down off its last row keeps the key and stands the cursor where it
+ * is.
+ */
+function reduceRowArrow(
+  state: ComposerInputState,
+  facts: ComposerInputFacts,
+  direction: "up" | "down",
+  cursor: StripCursor | undefined
+): ComposerInputOutcome {
+  const stepped = moveStripCursorBetweenRows(facts.cellGeometry, cursor, arrowStep(direction));
+  if (stepped !== undefined) return moveHighlight(state, stepped, state.highlightMode);
+  if (cursor === undefined) return inert(state);
+  if (direction === "up") return leaveOffering(state);
+  return { state, effects: [{ kind: "consume-key" }] };
+}
+
+/**
+ * An arrow key's outcome: a step of the cursor across the offering's grid, or of
+ * the caret. A horizontal step off either end of the chip sequence keeps the key
+ * and stands the cursor where it is.
+ */
 function reduceArrow(
   state: ComposerInputState,
   facts: ComposerInputFacts,
   direction: ComposerArrowDirection,
   from: ComposerKeySurface
 ): ComposerInputOutcome {
-  const delta = arrowStep(direction);
-  if (isRowDirection(direction)) {
-    return moveHighlight(
-      state,
-      moveActiveStripOption2D(facts.optionGeometry, state.activeOptionId, delta),
-      state.highlightMode
-    );
-  }
-  // Until a chip is highlighted the horizontal arrows belong to the text caret,
-  // and the close button steers no sequence of its own.
+  if (isRowDirection(direction)) return reduceRowArrow(state, facts, direction, state.cursor);
+  // Until the cursor stands on a chip the horizontal arrows belong to the caret.
   if (from === "close") return inert(state);
-  if (from === "filter" && state.activeOptionId === undefined) return inert(state);
-  return moveHighlight(state, moveActiveStripOption(facts.options, state.activeOptionId, delta), state.highlightMode);
+  if (from === "filter" && state.cursor === undefined) {
+    const caret = state.caret;
+    if (caret === undefined) return inert(state);
+    return reduceCaretArrow(state, facts, caret, direction);
+  }
+  const stepped = moveStripCursorAlongChips(facts.options, state.cursor, arrowStep(direction));
+  if (stepped !== undefined) return moveHighlight(state, stepped, state.highlightMode);
+  if (state.cursor === undefined) return inert(state);
+  return { state, effects: [{ kind: "consume-key" }] };
 }
 
-/** An accordion heading arrow's outcome: the highlight steps into the section's chips. */
+/**
+ * End composition on the rule, which the period settles it on the same terms as:
+ * from any point the armed side may end at, and nowhere else. A rule holding no
+ * tiles at all has nothing to settle. The key is the composer's either way.
+ */
+function reduceSettle(state: ComposerInputState, facts: ComposerInputFacts): ComposerInputOutcome {
+  if (state.armedEntry !== "sentence") return inert(state);
+  const action = decideComposerPeriod({
+    filter: "",
+    armedSideCanEnd: facts.armedSideCanEnd,
+    ruleIsEmpty: facts.ruleIsEmpty,
+    wordInProgressCommits: false,
+  });
+  if (action !== "settle") return { state, effects: [{ kind: "consume-key" }] };
+  return { state, effects: [{ kind: "consume-key" }, { kind: "close-strip", reason: "settled" }] };
+}
+
+/**
+ * Home's and End's outcome: the caret takes the run's first or last position.
+ * An edit in progress keeps the keys, which carry the text cursor to its own
+ * ends.
+ */
+function reduceCaretJump(
+  state: ComposerInputState,
+  facts: ComposerInputFacts,
+  edge: "first" | "last"
+): ComposerInputOutcome {
+  if (state.caret === undefined || hasPendingEdit(state)) return inert(state);
+  const run = facts.caretRun;
+  if (run.length === 0) return inert(state);
+  return moveCaret(state, edge === "first" ? run[0] : run[run.length - 1]);
+}
+
+/**
+ * An accordion heading arrow's outcome, taken from that heading whether or not
+ * the cursor already stood on it: down opens the section and stands the cursor
+ * on its first chip, which the row below the heading is once the section is
+ * open; up is the ordinary step to the row above.
+ */
 function reduceHeadingArrow(
   state: ComposerInputState,
   facts: ComposerInputFacts,
   direction: "up" | "down",
   sectionKey: string
 ): ComposerInputOutcome {
-  const delta = arrowStep(direction);
-  const entered = enterStripOptionsAt(facts.stripId, facts.bandsWithSection(sectionKey), sectionKey, delta);
+  if (direction === "up") return reduceRowArrow(state, facts, "up", { kind: "heading", sectionKey });
+  const entered = enterStripOptionsAt(facts.stripId, facts.bandsWithSection(sectionKey), sectionKey);
   if (entered === undefined) return inert(state);
-  const opened: readonly ComposerInputEffect[] = delta === 1 ? [{ kind: "open-section", sectionKey }] : [];
   const moved = moveHighlight(state, entered, "browsing");
-  return { state: moved.state, effects: [...opened, ...moved.effects] };
+  return { state: moved.state, effects: [{ kind: "open-section", sectionKey }, ...moved.effects] };
 }
 
 /**
@@ -517,6 +769,25 @@ function reduceHeadingArrow(
  * The sentence-only gestures -- the comma pivot, the period settle, and the
  * ladder Backspace walks -- apply only while `state.armedEntry` is `sentence`;
  * a strip armed from the tray leaves those keys to the filter box.
+ *
+ * `state.caret` is where editing stands, and the position armed is projected
+ * from it rather than the other way about. Left and Right step it one position
+ * along `facts.caretRun`, Home and End take that run's ends, a placement leaves
+ * it in the gap past the tile placed, and the pivot takes the end of the side it
+ * moves to. Backspace deletes the tile the caret rests on or stands behind and
+ * Delete the one it stands in front of, each leaving the caret in the gap that
+ * tile vacated. A strip standing at no caret leaves all of those keys alone; a
+ * `delete-element` token names the tile that goes itself, so it reaches the same
+ * deletion from a strip standing at no caret and with text in the box.
+ *
+ * `state.cursor` is the one place the offering is being steered at, over a grid
+ * whose rows are the chips as they wrap and the group headings between them. Up
+ * and Down step it between those rows and Left and Right along a row of chips,
+ * and neither end wraps. It stands only while the keyboard is on the element it
+ * is anchored on -- the filter box for a chip being narrowed toward by typing,
+ * the band's listbox for a chip being browsed, the heading itself for a heading
+ * -- so a `focus-lost` token releases it, and the horizontal arrows are the
+ * caret's again.
  *
  * While `state.textLiteral` holds an open text value, every typed character
  * edits that value and the punctuation keys reach it as content; the keys that
@@ -547,15 +818,16 @@ export function reduceComposerInput(
       return reducePeriod(state, facts);
     case "placement-landed":
       if (!facts.armedSideCanEnd) return inert(state);
-      if (token.gesture === "pivot") return pivotToDo(state, []);
+      if (token.gesture === "pivot") return composeOnSide(state, facts, RuleSide.Do, []);
       return { state, effects: [{ kind: "close-strip", reason: "settled" }] };
     case "backspace":
       return reduceBackspace(state, facts, token.from);
     case "enter":
       if (state.textLiteral !== undefined) return commitOpenTextLiteral(state, facts);
       if (facts.highlightedCandidate !== undefined) return placeCandidate(state, facts.highlightedCandidate);
-      if (token.from === "band" || facts.topCandidate === undefined) return inert(state);
-      return placeCandidate(state, facts.topCandidate);
+      if (token.from === "band") return inert(state);
+      if (facts.topCandidate !== undefined) return placeCandidate(state, facts.topCandidate);
+      return reduceSettle(state, facts);
     case "tab":
       if (state.textLiteral !== undefined) return commitOpenTextLiteral(state, facts);
       return facts.topCandidate === undefined ? inert(state) : placeCandidate(state, facts.topCandidate);
@@ -564,17 +836,34 @@ export function reduceComposerInput(
     case "candidate-tapped":
       if (state.textLiteral !== undefined) return commitTextLiteral(state, token.candidate);
       return placeCandidate(state, token.candidate);
-    case "printable":
+    case "printable": {
+      // A heading anchors the cursor on itself, so the cursor comes away with the keyboard.
+      const kept = state.cursor?.kind === "heading" ? undefined : state.cursor;
       return {
-        state: { ...state, highlightMode: "typing" },
+        state: { ...state, cursor: kept, highlightMode: "typing" },
         effects: [
           { kind: "move-focus", target: filterFocus, keepScroll: false },
-          { kind: "highlight", optionId: state.activeOptionId, mode: "typing" },
+          { kind: "highlight", cursor: kept, mode: "typing" },
         ],
       };
+    }
     case "arrow":
       return reduceArrow(state, facts, token.direction, token.from);
+    case "home":
+      return reduceCaretJump(state, facts, "first");
+    case "end":
+      return reduceCaretJump(state, facts, "last");
+    case "delete-forward":
+      // An edit in progress keeps the key, which deletes forward in that text.
+      if (hasPendingEdit(state)) return inert(state);
+      return reduceDeleteAtCaret(state, facts, "right");
+    case "delete-element":
+      // An element addresses its own tile, whichever way the deletion is taken.
+      return reduceDeleteAtCaret({ ...state, caret: token.position }, facts, "right");
     case "heading-arrow":
       return reduceHeadingArrow(state, facts, token.direction, token.sectionKey);
+    case "focus-lost":
+      if (state.cursor === undefined && state.highlightMode === "typing") return inert(state);
+      return releaseHighlight(state);
   }
 }

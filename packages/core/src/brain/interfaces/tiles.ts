@@ -144,7 +144,9 @@ export interface BrainTileDefCreateOptions {
  * - "fixed:N" -- fixed N decimal places (e.g., "fixed:2" -> 3.10)
  * - "thousands" -- comma-separated thousands groups
  * - "time_seconds" -- rounded to 2 decimal places with "s" suffix (e.g., 1.283 -> "1.28s")
+ * - "time_seconds:N" -- N decimal places with "s" suffix (e.g., "time_seconds:3" -> 0.125 -> "0.125s")
  * - "time_ms" -- value * 1000 rounded to integer with "ms" suffix (e.g., 1 -> "1000ms")
+ * - "time_ms:N" -- value * 1000 with N decimal places and "ms" suffix (e.g., "time_ms:1" -> 0.0005 -> "0.5ms")
  */
 export type LiteralDisplayFormat = string;
 
@@ -167,6 +169,16 @@ export function fixedFormat(decimals: number): LiteralDisplayFormat {
   return `fixed:${decimals}`;
 }
 
+/** Build a "time_seconds:N" format string. */
+export function timeSecondsFormat(decimals: number): LiteralDisplayFormat {
+  return `time_seconds:${decimals}`;
+}
+
+/** Build a "time_ms:N" format string. */
+export function timeMsFormat(decimals: number): LiteralDisplayFormat {
+  return `time_ms:${decimals}`;
+}
+
 /** Parse a display format string into its kind and optional precision. */
 export function parseDisplayFormat(fmt: LiteralDisplayFormat): { kind: string; decimals?: number } {
   if (SU.startsWith(fmt, "percent:")) {
@@ -176,6 +188,14 @@ export function parseDisplayFormat(fmt: LiteralDisplayFormat): { kind: string; d
   if (SU.startsWith(fmt, "fixed:")) {
     const n = MathOps.parseFloat(SU.substring(fmt, 6));
     return { kind: "fixed", decimals: MathOps.isNaN(n) ? undefined : n };
+  }
+  if (SU.startsWith(fmt, "time_seconds:")) {
+    const n = MathOps.parseFloat(SU.substring(fmt, 13));
+    return { kind: "time_seconds", decimals: MathOps.isNaN(n) ? undefined : n };
+  }
+  if (SU.startsWith(fmt, "time_ms:")) {
+    const n = MathOps.parseFloat(SU.substring(fmt, 8));
+    return { kind: "time_ms", decimals: MathOps.isNaN(n) ? undefined : n };
   }
   if (fmt === "percent") return { kind: "percent" };
   if (fmt === "thousands") return { kind: "thousands" };

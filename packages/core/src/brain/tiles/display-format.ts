@@ -25,7 +25,9 @@ function findDot(str: string): number {
  * - "fixed:N" -- N decimal places
  * - "thousands" -- comma-separated thousands groups
  * - "time_seconds" -- rounded to 2 decimal places with "s" suffix
+ * - "time_seconds:N" -- N decimal places with "s" suffix
  * - "time_ms" -- value * 1000 rounded to integer with "ms" suffix
+ * - "time_ms:N" -- value * 1000 with N decimal places and "ms" suffix
  */
 export function applyDisplayFormat(value: number, format: LiteralDisplayFormat): string {
   if (!format || format === LiteralDisplayFormats.Default) {
@@ -52,11 +54,17 @@ export function applyDisplayFormat(value: number, format: LiteralDisplayFormat):
   }
 
   if (parsed.kind === "time_seconds") {
+    if (TypeUtils.isNumber(parsed.decimals)) {
+      return `${toFixed(value, parsed.decimals)}s`;
+    }
     const rounded = MathOps.round(value * 100) / 100;
     return `${SU.toString(rounded)}s`;
   }
 
   if (parsed.kind === "time_ms") {
+    if (TypeUtils.isNumber(parsed.decimals)) {
+      return `${toFixed(value * 1000, parsed.decimals)}ms`;
+    }
     return `${SU.toString(MathOps.round(value * 1000))}ms`;
   }
 

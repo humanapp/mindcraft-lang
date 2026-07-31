@@ -33,7 +33,7 @@ src/
     glass-effect.ts         CSS glass/glint effect generator
     index.ts                Barrel
   ui/                       shadcn/ui primitives
-    button.tsx, card.tsx, dialog.tsx, dropdown-menu.tsx, input.tsx, slider.tsx
+    button.tsx, card.tsx, context-menu.tsx, dialog.tsx, dropdown-menu.tsx, input.tsx, slider.tsx
     index.ts                Barrel
   brain-editor/             Brain editor components
     index.ts                Barrel
@@ -44,8 +44,10 @@ src/
     BrainPageEditor.tsx      Page rules list with depth flattening
     BrainRuleEditor.tsx      WHEN/DO rule row with glass effects
     BrainTile.tsx            Individual tile button with marquee overflow
-    BrainTileEditor.tsx      Tile with dropdown context menu (insert/replace/delete)
-    BrainCandidateStrip.tsx  Inline candidate strip under the armed rule (type or tap)
+    BrainTileEditor.tsx      Placed tile: tap arms the edit point, right-click/long-press opens its menu
+    BrainCandidateStrip.tsx  Candidate offering laid over the rules below the armed one, plus the filter input its sentence line hosts
+    edit-point.ts            Edit-point positions around a placed tile and the arming each one takes
+    editor-layers.ts         The editor's stacking steps: rule content, glint, card chrome, offering, dialog chrome
     TileValue.tsx            Renders literal values or variable names
     CreateVariableDialog.tsx   Dialog for naming a new variable
     CreateLiteralDialog.tsx    Dialog for app-specific custom literal types
@@ -60,7 +62,7 @@ src/
     hooks/
       useRuleCapabilities.ts   Rule capability detection
       useTileSelection.ts      Tile selection flow + factory tile handoff
-      useCandidateStrip.ts     Oracle query + filter/commit state for the strip
+      useCandidateStrip.ts     Oracle query + filter/offering/commit state for the strip
 ```
 
 The editing command classes and `BrainCommandHistory` (undo/redo) live in
@@ -110,8 +112,8 @@ The documentation sidebar, registry, markdown renderer, and standalone docs page
 
 The brain editor integrates with docs via two optional `BrainEditorConfig` fields:
 
-- `onTileHelp` -- callback invoked when a user right-clicks a tile and selects Help
-  (used by `BrainTileEditor.tsx`)
+- `onTileHelp` -- callback invoked when a user opens a placed tile's menu (right-click,
+  or long-press on touch) and selects Help (used by `BrainTileEditor.tsx`)
 - `docsIntegration` -- `{ isOpen, toggle, close }` for the docs toggle button in the
   brain editor toolbar and close-on-exit behavior (used by `BrainEditorDialog.tsx`)
 

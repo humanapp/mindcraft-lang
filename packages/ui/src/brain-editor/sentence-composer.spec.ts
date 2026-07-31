@@ -22,18 +22,14 @@ import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { CoreControlFlowId, mkControlFlowTileId, mkOperatorTileId, RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
+  flattenRuleTiles,
   projectRuleSentence,
   type SentenceSegment,
+  type SentenceTileRef,
   type SentenceWordSegment,
   whenTriggerWord,
 } from "@mindcraft-lang/core/brain/language-service";
-import {
-  AddTileCommand,
-  type BrainCommand,
-  BrainDef,
-  type BrainPageDef,
-  type BrainRuleDef,
-} from "@mindcraft-lang/core/brain/model";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileActuatorDef, BrainTileModifierDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import { createDefaultLocalizer, type Localizer } from "@mindcraft-lang/core/localization";
 import {
@@ -136,14 +132,25 @@ function tiles(...list: IBrainTileDef[]) {
   return List.from(list).asReadonly();
 }
 
-/** The settled projection of a rule holding `whenTiles` and `doTiles`. */
-function projectionOf(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrainTileDef[]): SentenceSegment[] {
+/** The settled projection of a rule holding `whenTiles` and `doTiles`, with the tiles its words render. */
+function sentenceOf(
+  whenTiles: readonly IBrainTileDef[],
+  doTiles: readonly IBrainTileDef[]
+): { segments: SentenceSegment[]; tiles: SentenceTileRef[] } {
   const brainDef = BrainDef.emptyBrainDef(services, "composer-reading");
   const pageDef = brainDef.pages().get(0) as BrainPageDef;
   const ruleDef = pageDef.children().get(0) as BrainRuleDef;
   for (const tileDef of whenTiles) ruleDef.when().appendTile(tileDef);
   for (const tileDef of doTiles) ruleDef.do().appendTile(tileDef);
-  return projectRuleSentence(ruleDef, brainDef.servicesLocalizer()).toArray();
+  return {
+    segments: projectRuleSentence(ruleDef, brainDef.servicesLocalizer()).toArray(),
+    tiles: flattenRuleTiles(ruleDef).toArray(),
+  };
+}
+
+/** The settled projection of a rule holding `whenTiles` and `doTiles`. */
+function projectionOf(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrainTileDef[]): SentenceSegment[] {
+  return sentenceOf(whenTiles, doTiles).segments;
 }
 
 /** The source-tile index of every word segment of `segments`, in order. */
@@ -151,17 +158,6 @@ function wordIndices(segments: readonly SentenceSegment[]): number[] {
   return segments
     .filter((segment): segment is SentenceWordSegment => segment.kind === "word")
     .map((segment) => segment.sourceTileIndex);
-}
-
-/**
- * A real command against a real rule, standing for one the composer's own commit
- * executed. Never executed: it serves as an identity.
- */
-function makeCommand(sensorId: string): BrainCommand {
-  const brainDef = BrainDef.emptyBrainDef(services, "composer-commit");
-  const pageDef = brainDef.pages().get(0) as BrainPageDef;
-  const ruleDef = pageDef.children().get(0) as BrainRuleDef;
-  return new AddTileCommand(ruleDef, RuleSide.When, makeSensor(sensorId));
 }
 
 before(() => {
@@ -351,17 +347,17 @@ describe("the period key", () => {
     assert.equal(action, "commit-then-settle");
   });
 
-  test("is filter text while an unresolvable word is in progress", () => {
+  test("is refused while an unresolvable word is in progress", () => {
     const action = decideComposerPeriod({
       filter: "zzz",
       armedSideCanEnd: true,
       ruleIsEmpty: false,
       wordInProgressCommits: false,
     });
-    assert.equal(action, "filter-text");
+    assert.equal(action, "refuse");
   });
 
-  test("is filter text where the side being composed may not end", () => {
+  test("is refused where the side being composed may not end", () => {
     const side = tiles(makeSensor("composer-period-hear"), coreTile(mkOperatorTileId(CoreOpId.And)));
     const action = decideComposerPeriod({
       filter: "",
@@ -369,7 +365,7 @@ describe("the period key", () => {
       ruleIsEmpty: false,
       wordInProgressCommits: false,
     });
-    assert.equal(action, "filter-text");
+    assert.equal(action, "refuse");
   });
 
   test("does nothing on a rule with nothing composed on either side", () => {
@@ -475,128 +471,27 @@ describe("the pivot reading", () => {
 
 describe("the backspace ladder", () => {
   test("edits the word in progress while there is one", () => {
-    const own = makeCommand("composer-ladder-see");
-    const action = decideComposerBackspace({
-      filter: "se",
-      ownLastCommit: own,
-      newestCommand: own,
-      pivoted: false,
-      doTileCount: 0,
-    });
+    const action = decideComposerBackspace({ filter: "se", pivoted: false, doTileCount: 0 });
     assert.equal(action, "edit-filter");
   });
 
   test("edits the word in progress before it would take back the pivot", () => {
-    const own = makeCommand("composer-ladder-hear");
-    const action = decideComposerBackspace({
-      filter: "se",
-      ownLastCommit: own,
-      newestCommand: own,
-      pivoted: true,
-      doTileCount: 0,
-    });
+    const action = decideComposerBackspace({ filter: "se", pivoted: true, doTileCount: 0 });
     assert.equal(action, "edit-filter");
   });
 
-  test("takes back the typed pivot before the composer's own last commit", () => {
-    const own = makeCommand("composer-ladder-smell");
-    const action = decideComposerBackspace({
-      filter: "",
-      ownLastCommit: own,
-      newestCommand: own,
-      pivoted: true,
-      doTileCount: 0,
-    });
+  test("takes back the typed pivot before it reaches the tiles at the caret", () => {
+    const action = decideComposerBackspace({ filter: "", pivoted: true, doTileCount: 0 });
     assert.equal(action, "unpivot");
   });
 
-  test("takes back the pivot with no commit of the composer's own to undo", () => {
-    const action = decideComposerBackspace({
-      filter: "",
-      ownLastCommit: undefined,
-      newestCommand: undefined,
-      pivoted: true,
-      doTileCount: 0,
-    });
-    assert.equal(action, "unpivot");
+  test("deletes at the caret once a word stands on the DO side of the pivot", () => {
+    const action = decideComposerBackspace({ filter: "", pivoted: true, doTileCount: 1 });
+    assert.equal(action, "delete-at-caret");
   });
 
-  test("takes back a word placed on the DO side before the pivot that opened it", () => {
-    const own = makeCommand("composer-ladder-jump");
-    const action = decideComposerBackspace({
-      filter: "",
-      ownLastCommit: own,
-      newestCommand: own,
-      pivoted: true,
-      doTileCount: 1,
-    });
-    assert.equal(action, "uncommit-word");
-  });
-
-  test("uncommits the composer's own last commit when it is the newest history entry", () => {
-    const own = makeCommand("composer-ladder-bump");
-    const action = decideComposerBackspace({
-      filter: "",
-      ownLastCommit: own,
-      newestCommand: own,
-      pivoted: false,
-      doTileCount: 0,
-    });
-    assert.equal(action, "uncommit-word");
-  });
-
-  test("does nothing when the composer has committed no word", () => {
-    const action = decideComposerBackspace({
-      filter: "",
-      ownLastCommit: undefined,
-      newestCommand: makeCommand("composer-ladder-foreign"),
-      pivoted: false,
-      doTileCount: 0,
-    });
-    assert.equal(action, "none");
-  });
-
-  test("does nothing when a command the composer did not make is the newest history entry", () => {
-    const own = makeCommand("composer-ladder-own");
-    const foreign = makeCommand("composer-ladder-other");
-    const action = decideComposerBackspace({
-      filter: "",
-      ownLastCommit: own,
-      newestCommand: foreign,
-      pivoted: false,
-      doTileCount: 0,
-    });
-    assert.equal(action, "none");
-  });
-
-  test("does nothing once the composer's own commit has been undone elsewhere", () => {
-    const action = decideComposerBackspace({
-      filter: "",
-      ownLastCommit: makeCommand("composer-ladder-undone"),
-      newestCommand: undefined,
-      pivoted: false,
-      doTileCount: 0,
-    });
-    assert.equal(action, "none");
-  });
-
-  test("uncommits successive words while the composer's own commits stay newest", () => {
-    const first = makeCommand("composer-ladder-first");
-    const second = makeCommand("composer-ladder-second");
-    const own = [first, second];
-    const backspace = (newestCommand: BrainCommand | undefined) =>
-      decideComposerBackspace({
-        filter: "",
-        ownLastCommit: own[own.length - 1],
-        newestCommand,
-        pivoted: false,
-        doTileCount: 0,
-      });
-
-    assert.equal(backspace(second), "uncommit-word");
-    own.pop();
-    assert.equal(backspace(first), "uncommit-word");
-    own.pop();
-    assert.equal(backspace(undefined), "none");
+  test("deletes at the caret with no word in progress and no pivot to take back", () => {
+    const action = decideComposerBackspace({ filter: "", pivoted: false, doTileCount: 0 });
+    assert.equal(action, "delete-at-caret");
   });
 });

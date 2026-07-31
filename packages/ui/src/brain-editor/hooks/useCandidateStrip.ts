@@ -67,6 +67,8 @@ export interface CandidateStripState {
   readonly sections: readonly CandidateStripSection[];
   /** The current filter text; every keystroke narrows the offering. */
   readonly filter: string;
+  /** True while the offering is shown; the strip's panel stands only while it is. */
+  readonly offeringOpen: boolean;
   /** True when the filter text names nothing the strip can place, as opposed to naming nothing yet. */
   readonly isUnknown: boolean;
   /** True when the armed position accepts a text literal, so a typed quote opens one. */
@@ -77,6 +79,8 @@ export interface CandidateStripState {
    */
   textLiteralCandidate(value: string): StripCandidate | undefined;
   setFilter(next: string): void;
+  /** Show or hide the offering, leaving the armed position as it stands. */
+  setOfferingOpen(open: boolean): void;
   /** Place `candidate` at the armed position through the target's selection callback. */
   commit(candidate: StripCandidate): void;
   /** Place the candidate with `candidateKey`, ignoring keys absent from the offering. */
@@ -93,6 +97,10 @@ export interface CandidateStripState {
  * manufactured and registered first, so what reaches that callback is always a
  * catalog tile. In append mode the target is re-armed after each placement so
  * composition continues at the next position.
+ *
+ * The offering's visibility is state of its own: arming a position opens it,
+ * disarming closes it, and {@link CandidateStripState.setOfferingOpen} moves it
+ * either way without touching the armed position.
  */
 export function useCandidateStrip({
   ruleDef,
@@ -107,6 +115,15 @@ export function useCandidateStrip({
   const armedTarget = useArmedTargetController();
   const [filter, setFilter] = useState("");
   const [commitCounter, setCommitCounter] = useState(0);
+  const [offeringOpen, setOfferingOpen] = useState(target !== null);
+  const [offeredFor, setOfferedFor] = useState(target);
+
+  // Arming a position opens the offering there and disarming closes it, in the
+  // same render the target changes in.
+  if (offeredFor !== target) {
+    setOfferedFor(target);
+    setOfferingOpen(target !== null);
+  }
 
   // Re-arming for a different position starts a fresh word in progress.
   // biome-ignore lint/correctness/useExhaustiveDependencies: target is an intentional trigger signal
@@ -132,6 +149,10 @@ export function useCandidateStrip({
         : tileSentenceWord(tileDef, localizer),
     [editorConfig, localizer]
   );
+
+  // Matching normalizes the typed text and every candidate text through the
+  // active locale's search fold.
+  const foldText = useCallback((text: string) => localizer.foldForSearch(text), [localizer]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter and commitCounter are intentional re-query signals
   const { candidates, pagesFirst } = useMemo(() => {
@@ -174,7 +195,10 @@ export function useCandidateStrip({
     [candidates, target, editorConfig.projectNamespace]
   );
 
-  const offering = useMemo(() => resolveStripOffering(ranked, filter, labelOf), [ranked, filter, labelOf]);
+  const offering = useMemo(
+    () => resolveStripOffering(ranked, filter, labelOf, foldText),
+    [ranked, filter, labelOf, foldText]
+  );
   const { offered, visible } = offering;
 
   const bestNext = useMemo(() => toCandidateEntries(visible.slice(0, kBestNextCandidateCount)), [visible]);
@@ -243,8 +267,8 @@ export function useCandidateStrip({
   );
 
   const candidateFromKey = useCallback(
-    (key: CandidateCommitKey) => decideCandidateCommit(visible, filter, key),
-    [visible, filter]
+    (key: CandidateCommitKey) => decideCandidateCommit(visible, filter, key, foldText),
+    [visible, filter, foldText]
   );
 
   const acceptsTextLiteral = useMemo(() => offersTextLiteral(ranked), [ranked]);
@@ -257,10 +281,12 @@ export function useCandidateStrip({
     bestNext,
     sections,
     filter,
+    offeringOpen,
     isUnknown: offering.isUnknown,
     acceptsTextLiteral,
     textLiteralCandidate,
     setFilter,
+    setOfferingOpen,
     commit,
     commitByKey,
     candidateFromKey,

@@ -5,13 +5,14 @@
  * the composition reading dropping the words the projection completes for
  * itself, the pivot comma rendering exactly while composition sits on the
  * DO side with nothing placed there, the trigger word standing in for an
- * empty WHEN side at that pivot, and the filter field holding the input in one
- * inline wrapper whether or not a text value is open.
+ * empty WHEN side at that pivot, the filter field holding the input in one
+ * inline wrapper whether or not a text value is open, and the one type the
+ * line, its hosted input, and its entry point are all set in.
  *
  * Structural assertions only: every value asserted here is a role, an id
- * reference, a marker attribute, or the containment of one element in another.
- * The entry's wording and the input's placeholder are display prose and are
- * never asserted.
+ * reference, a marker attribute, a type utility, or the containment of one
+ * element in another. The entry's wording and the input's placeholder are
+ * display prose and are never asserted.
  */
 
 import assert from "node:assert/strict";
@@ -44,6 +45,7 @@ import {
 import { filterFieldWithQuotes } from "./BrainCandidateStrip";
 import { type BrainEditorConfig, BrainEditorProvider } from "./BrainEditorContext";
 import { BrainRuleEditor } from "./BrainRuleEditor";
+import type { CaretPosition } from "./caret-run";
 
 let services: BrainServices;
 let nextFnId = 4990;
@@ -123,9 +125,36 @@ function makeBrain(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrain
   return { brainDef, pageDef, ruleDef };
 }
 
-/** The append target the given entry point arms for `ruleDef`'s `side`. */
+/** The append target the given entry point arms for `ruleDef`'s `side`, at that side's end gap. */
 function appendTarget(ruleDef: BrainRuleDef, side: RuleSide, entry: ArmedTargetEntry): ArmedTileTarget {
-  return { ruleDef, side, mode: "append", entry, onTileSelected: () => true };
+  const caret: CaretPosition = { kind: "gap", side, tileIndex: ruleDef.side(side).tiles().size() };
+  return {
+    ruleDef,
+    side,
+    mode: "append",
+    caret: entry === "sentence" ? caret : undefined,
+    entry,
+    onTileSelected: () => true,
+  };
+}
+
+/** The target a tap on the tile at `tileIndex` of `side` arms through the given entry point. */
+function tileTarget(
+  ruleDef: BrainRuleDef,
+  side: RuleSide,
+  tileIndex: number,
+  entry: ArmedTargetEntry
+): ArmedTileTarget {
+  return {
+    ruleDef,
+    side,
+    mode: "replace",
+    tileIndex,
+    anchorTileIndex: tileIndex,
+    caret: entry === "sentence" ? { kind: "element", side, tileIndex } : undefined,
+    entry,
+    onTileSelected: () => true,
+  };
 }
 
 function renderRuleCard(
@@ -252,6 +281,36 @@ describe("the filter input's position", () => {
     assert.equal(countOf(markup, "data-rule-sentence="), 1);
   });
 
+  test("a target armed at the end of the line renders the input after every word", () => {
+    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-pos-end")], [makeActuator("composer-pos-end-move")]);
+    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
+    const line = sentenceElement(markup);
+    assert.ok(line.indexOf('data-strip-filter="sentence"') > line.lastIndexOf("data-sentence-tile-index"));
+  });
+
+  test("a target armed on a tile renders the input before that tile's word", () => {
+    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-pos-at")], [makeActuator("composer-pos-at-move")]);
+    const markup = renderRuleCard(ruleDef, pageDef, { target: tileTarget(ruleDef, RuleSide.Do, 0, "sentence") });
+    const line = sentenceElement(markup);
+    const input = line.indexOf('data-strip-filter="sentence"');
+    assert.ok(input >= 0, "the input stands in the sentence");
+    assert.ok(input < line.indexOf('data-sentence-tile-index="1"'), "the input opens the armed tile's word");
+    assert.ok(input > line.indexOf('data-sentence-tile-index="0"'), "the word before it keeps its place");
+  });
+
+  test("a rule whose settled reading completes itself hosts the input at the armed word, not past it", () => {
+    const { ruleDef, pageDef } = makeBrain(
+      [makeObjectSensor("composer-pos-bump")],
+      [makeActuator("composer-pos-bump-move")]
+    );
+    const markup = renderRuleCard(ruleDef, pageDef, { target: tileTarget(ruleDef, RuleSide.Do, 0, "sentence") });
+    const line = sentenceElement(markup);
+    assert.equal(countOf(line, "data-sentence-tile-index"), 2, "the composition reading drops the completion word");
+    const input = line.indexOf('data-strip-filter="sentence"');
+    assert.ok(input >= 0, "the input stands in the sentence");
+    assert.ok(input < line.indexOf('data-sentence-tile-index="1"'), "the input opens the armed tile's word");
+  });
+
   test("an armed empty rule renders the sentence line for the input to sit in", () => {
     const { ruleDef, pageDef } = makeBrain([], []);
     const markup = renderRuleCard(ruleDef, pageDef, {
@@ -338,6 +397,46 @@ describe("the relocated input's combobox wiring", () => {
     for (const id of describedBy.split(" ")) {
       assert.equal(countOf(markup, `id="${id}"`), 1);
     }
+  });
+});
+
+/**
+ * The class tokens of `className` that set the type: the face, the size, and
+ * the measure, sorted so two elements compare regardless of the order they
+ * spell them in.
+ */
+function typeTokens(className: string): string[] {
+  return className
+    .split(" ")
+    .filter((token) => /^(font-|leading-|text-(xs|sm|base|lg|\d?xl)$)/.test(token))
+    .sort();
+}
+
+/** The type tokens of the element carrying `marker`. */
+function typeTokensOf(markup: string, marker: string): string[] {
+  const className = attributeOf(markup, marker, "class");
+  assert.ok(className, `the element at ${marker} carries a class`);
+  const tokens = typeTokens(className);
+  assert.ok(tokens.length > 0, `the element at ${marker} sets its own type`);
+  return tokens;
+}
+
+describe("the sentence's one voice", () => {
+  test("the input hosted in the line is set in the line's own type", () => {
+    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-voice-see")], []);
+    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
+    assert.deepEqual(
+      typeTokensOf(markup, 'data-strip-filter="sentence"'),
+      typeTokensOf(markup, `data-rule-sentence="${ruleDef.id()}"`)
+    );
+  });
+
+  test("the entry point standing in for the line is set in it as well", () => {
+    const { ruleDef: settled, pageDef: settledPage } = makeBrain([makeSensor("composer-voice-hear")], []);
+    const line = typeTokensOf(renderRuleCard(settled, settledPage), `data-rule-sentence="${settled.id()}"`);
+    const { ruleDef, pageDef } = makeBrain([], []);
+    const entry = renderRuleCard(ruleDef, pageDef, { isLastRule: true });
+    assert.deepEqual(typeTokensOf(entry, `data-sentence-composer-entry="${ruleDef.id()}"`), line);
   });
 });
 

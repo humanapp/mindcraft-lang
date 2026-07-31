@@ -1,7 +1,6 @@
 import type { IBrainTileDef, LiteralDisplayFormat, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainCommandHistory, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
-  InsertTileCommand,
   PasteTileBeforeCommand,
   RemoveTileCommand,
   RenameVariableCommand,
@@ -12,19 +11,18 @@ import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "../ui/context-menu";
 import { isTileTargetForTile, useArmedTargetController } from "./ArmedTargetContext";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
-import { CreateLiteralDialog } from "./CreateLiteralDialog";
-import { CreateVariableDialog } from "./CreateVariableDialog";
 import { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
-import { useTileSelection } from "./hooks/useTileSelection";
+import type { EditPointPosition } from "./edit-point";
+import { editPointPositionOf } from "./edit-point";
 import { RenameVariableDialog } from "./RenameVariableDialog";
 import type { TileBadge } from "./tile-badges";
 import {
@@ -34,6 +32,13 @@ import {
   onTileClipboardChanged,
 } from "./tile-clipboard";
 
+/** What the armed edit point on this tile is described as, by the position it sits at. */
+const editPointHints: Record<EditPointPosition, string> = {
+  before: "armed to insert a tile before it",
+  replace: "armed to be replaced",
+  after: "armed to insert a tile after it",
+};
+
 interface BrainTileEditorProps {
   tileDef: IBrainTileDef;
   tileIndex: number;
@@ -41,13 +46,28 @@ interface BrainTileEditorProps {
   ruleDef: BrainRuleDef;
   commandHistory: BrainCommandHistory;
   badge?: TileBadge;
+  /** Arms the edit point on this tile at `position`, which the candidate strip then serves. */
+  armEditPoint: (position: EditPointPosition) => void;
 }
 
-/** A {@link BrainTile} wrapped with a context menu offering insert/replace/delete and tile-specific edit actions. */
-export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHistory, badge }: BrainTileEditorProps) {
+/**
+ * A {@link BrainTile} carrying the gestures of a placed tile: a tap arms the
+ * edit point in the tile's place, and a right-click or touch long-press opens
+ * the tile menu of insert/replace/delete and the tile-specific edit actions.
+ */
+export function BrainTileEditor({
+  tileDef,
+  tileIndex,
+  side,
+  ruleDef,
+  commandHistory,
+  badge,
+  armEditPoint,
+}: BrainTileEditorProps) {
   const armedTarget = useArmedTargetController();
   const tileTarget = isTileTargetForTile(armedTarget.target, ruleDef, side, tileIndex) ? armedTarget.target : null;
   const armedHintId = useId();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
   const { onTileHelp, brainServices } = useBrainEditorConfig();
@@ -55,23 +75,6 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
   const isNumericLiteral =
     tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.Number;
   const isVariable = tileDef.kind === "variable";
-
-  const {
-    showCreateVariableDialog,
-    variableDialogTitle,
-    showCreateLiteralDialog,
-    literalDialogTitle,
-    literalType,
-    handleTileSelected: handleTileSelectedWithVariable,
-    handleVariableNameSubmit,
-    handleVariableDialogClose,
-    handleLiteralValueSubmit,
-    handleLiteralDialogClose,
-  } = useTileSelection({
-    ruleDef,
-    side,
-    onComplete: armedTarget.disarm,
-  });
 
   const [canPaste, setCanPaste] = useState(hasTileInClipboard());
 
@@ -96,32 +99,11 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
     commandHistory.executeCommand(command);
   };
 
-  const handleInsertBefore = () => {
-    armedTarget.arm({
-      ruleDef,
-      side,
-      mode: "insert",
-      tileIndex,
-      onTileSelected: (picked: IBrainTileDef) =>
-        handleTileSelectedWithVariable(picked, (tile) => {
-          const command = new InsertTileCommand(ruleDef, side, tileIndex, tile);
-          commandHistory.executeCommand(command);
-        }),
-    });
-  };
-
-  const handleReplaceTile = () => {
-    armedTarget.arm({
-      ruleDef,
-      side,
-      mode: "replace",
-      tileIndex,
-      onTileSelected: (picked: IBrainTileDef) =>
-        handleTileSelectedWithVariable(picked, (tile) => {
-          const command = new ReplaceTileCommand(ruleDef, side, tileIndex, tile);
-          commandHistory.executeCommand(command);
-        }),
-    });
+  // A long-press opens the menu and the touch still reports a click on release,
+  // which must not also arm the edit point the tap arms.
+  const handleTileTap = () => {
+    if (menuOpen) return;
+    armEditPoint("replace");
   };
 
   const handleEditFormat = () => {
@@ -180,63 +162,41 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <ContextMenu onOpenChange={setMenuOpen}>
+        <ContextMenuTrigger asChild>
           <BrainTile
             tileDef={tileDef}
             side={side}
             badge={badge}
             aria-haspopup="menu"
             aria-describedby={tileTarget ? armedHintId : undefined}
+            onClick={handleTileTap}
             className={tileTarget ? "ring-4 ring-amber-300/90" : ""}
           />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem onClick={handleInsertBefore}>Insert Before</DropdownMenuItem>
-          <DropdownMenuItem onClick={handleReplaceTile}>Replace Tile</DropdownMenuItem>
-          {isNumericLiteral && <DropdownMenuItem onClick={handleEditFormat}>Edit Format</DropdownMenuItem>}
-          {isVariable && <DropdownMenuItem onClick={handleRenameVariable}>Rename...</DropdownMenuItem>}
-          <DropdownMenuItem onClick={handleCopyTile}>Copy Tile</DropdownMenuItem>
-          <DropdownMenuItem onClick={handlePasteTileBefore} disabled={!canPaste}>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onClick={() => armEditPoint("before")}>Insert Before</ContextMenuItem>
+          <ContextMenuItem onClick={() => armEditPoint("replace")}>Replace Tile</ContextMenuItem>
+          {isNumericLiteral && <ContextMenuItem onClick={handleEditFormat}>Edit Format</ContextMenuItem>}
+          {isVariable && <ContextMenuItem onClick={handleRenameVariable}>Rename...</ContextMenuItem>}
+          <ContextMenuItem onClick={handleCopyTile}>Copy Tile</ContextMenuItem>
+          <ContextMenuItem onClick={handlePasteTileBefore} disabled={!canPaste}>
             Paste Before
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleDeleteTile}>Delete Tile</DropdownMenuItem>
+          </ContextMenuItem>
+          <ContextMenuItem onClick={handleDeleteTile}>Delete Tile</ContextMenuItem>
           {onTileHelp && (
             <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onTileHelp(tileDef)}>Help</DropdownMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => onTileHelp(tileDef)}>Help</ContextMenuItem>
             </>
           )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </ContextMenuContent>
+      </ContextMenu>
 
       {tileTarget && (
         <span id={armedHintId} className="sr-only">
-          {tileTarget.mode === "replace" ? "armed to be replaced" : "armed to insert a tile before it"}
+          {editPointHints[editPointPositionOf(tileTarget, tileIndex)]}
         </span>
-      )}
-
-      {showCreateVariableDialog && (
-        <CreateVariableDialog
-          isOpen={showCreateVariableDialog}
-          title={variableDialogTitle}
-          onOpenChange={(open) => {
-            if (!open) handleVariableDialogClose();
-          }}
-          onSubmit={handleVariableNameSubmit}
-        />
-      )}
-
-      {showCreateLiteralDialog && (
-        <CreateLiteralDialog
-          isOpen={showCreateLiteralDialog}
-          title={literalDialogTitle}
-          literalType={literalType}
-          onOpenChange={(open) => {
-            if (!open) handleLiteralDialogClose();
-          }}
-          onSubmit={handleLiteralValueSubmit}
-        />
       )}
 
       {showEditFormatDialog && isNumericLiteral && (

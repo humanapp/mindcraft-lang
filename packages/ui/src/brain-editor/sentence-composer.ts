@@ -2,7 +2,6 @@ import type { ReadonlyList } from "@mindcraft-lang/core";
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import { parseBrainTiles } from "@mindcraft-lang/core/brain/compiler";
 import type { SentenceSegment } from "@mindcraft-lang/core/brain/language-service";
-import type { BrainCommand } from "@mindcraft-lang/core/brain/model";
 
 /**
  * True when `tiles` parse as an expression that may end where they stop. An
@@ -118,12 +117,14 @@ export function decideComposerComma(facts: ComposerCommaFacts): ComposerCommaAct
  * - `commit-then-settle` -- place the word in progress, then decide the period
  *   again against the side that word joined
  * - `settle` -- end composition on the rule, placing no tile
- * - `filter-text` -- the period is ordinary filter text, which matches no
- *   candidate and so reads as unknown
+ * - `filter-text` -- the period continues the number in progress, so it is
+ *   ordinary filter text
+ * - `refuse` -- swallow the key: it settles nothing here and reaches neither the
+ *   word in progress nor the rule
  * - `none` -- nothing at all: the rule holds no tiles, so there is nothing to
  *   settle
  */
-export type ComposerPeriodAction = "commit-then-settle" | "settle" | "filter-text" | "none";
+export type ComposerPeriodAction = "commit-then-settle" | "settle" | "filter-text" | "refuse" | "none";
 
 /** What {@link decideComposerPeriod} reads to decide the period. */
 export interface ComposerPeriodFacts {
@@ -153,16 +154,16 @@ function isBareInteger(filter: string): boolean {
  * decimal point it settles like any other resolvable word. Otherwise the period
  * settles either side. A word in progress is placed first, exactly as Space
  * would place it, and the settle is then decided against the side that word
- * joined; a word that resolves to nothing places nothing and settles nothing.
- * With no word in progress the period settles wherever the armed side may end,
- * and is filter text everywhere else -- untypeable exactly as unknown text is. A
- * rule with no tiles at all has nothing to settle, so the key is inert there.
+ * joined. With no word in progress the period settles wherever the armed side
+ * may end. A period that can settle nowhere -- over a word that resolves to
+ * nothing, or on a side left mid-expression -- is refused. A rule with no tiles
+ * at all has nothing to settle, so the key is inert there.
  */
 export function decideComposerPeriod(facts: ComposerPeriodFacts): ComposerPeriodAction {
   if (isBareInteger(facts.filter)) return "filter-text";
-  if (facts.filter.length > 0) return facts.wordInProgressCommits ? "commit-then-settle" : "filter-text";
+  if (facts.filter.length > 0) return facts.wordInProgressCommits ? "commit-then-settle" : "refuse";
   if (facts.ruleIsEmpty) return "none";
-  return facts.armedSideCanEnd ? "settle" : "filter-text";
+  return facts.armedSideCanEnd ? "settle" : "refuse";
 }
 
 /**
@@ -170,20 +171,14 @@ export function decideComposerPeriod(facts: ComposerPeriodFacts): ComposerPeriod
  *
  * - `edit-filter` -- shorten the word in progress, as the key ordinarily does
  * - `unpivot` -- take back the typed pivot, returning composition to the WHEN side
- * - `uncommit-word` -- undo the composer's own last commit, retracting its tile
- * - `none` -- nothing: the history's newest entry is not the composer's own
- *   commit, so there is nothing of the composer's to take back
+ * - `delete-at-caret` -- delete the tile the caret stands at or behind
  */
-export type ComposerBackspaceAction = "edit-filter" | "unpivot" | "uncommit-word" | "none";
+export type ComposerBackspaceAction = "edit-filter" | "unpivot" | "delete-at-caret";
 
 /** What {@link decideComposerBackspace} reads to decide Backspace. */
 export interface ComposerBackspaceFacts {
   /** The word in progress in the composer's input. */
   readonly filter: string;
-  /** The command the composer's own last commit executed; undefined once it has none left to take back. */
-  readonly ownLastCommit: BrainCommand | undefined;
-  /** The command history's newest undoable entry; undefined when the history holds none. */
-  readonly newestCommand: BrainCommand | undefined;
   /** True when composition sits on the DO side of a typed pivot. */
   readonly pivoted: boolean;
   /** How many tiles the rule's DO side holds. */
@@ -191,16 +186,12 @@ export interface ComposerBackspaceFacts {
 }
 
 /**
- * Backspace's action for `facts`: one rung of the composer's ladder per press,
- * taking back whatever the composer did last. The word in progress goes first.
- * Then the typed pivot, once nothing stands on the DO side behind it. Then the
- * composer's own last commit, and only that: the key does nothing destructive
- * unless that very command is the history's newest entry, so another edit or a
- * toolbar undo takes the uncommit out of play.
+ * Backspace's action for `facts`. The word in progress goes first, then the
+ * typed pivot once nothing stands on the DO side behind it -- neither of which
+ * is a tile of the rule. Everywhere else the key deletes at the caret.
  */
 export function decideComposerBackspace(facts: ComposerBackspaceFacts): ComposerBackspaceAction {
   if (facts.filter.length > 0) return "edit-filter";
   if (facts.pivoted && facts.doTileCount === 0) return "unpivot";
-  if (facts.ownLastCommit === undefined || facts.newestCommand !== facts.ownLastCommit) return "none";
-  return "uncommit-word";
+  return "delete-at-caret";
 }
