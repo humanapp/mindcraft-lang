@@ -15,23 +15,37 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { CoreLiteralFactoryId, mkLiteralFactoryTileId, RuleSide } from "@mindcraft-lang/core/brain";
+import { List, type ReadonlyList } from "@mindcraft-lang/core";
+import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
+import {
+  CoreLiteralFactoryId,
+  CoreVariableFactoryId,
+  mkLiteralFactoryTileId,
+  mkVariableFactoryTileId,
+  RuleSide,
+} from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
+import { suggestTiles, tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainCommand, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileActuatorDef, type BrainTileLiteralDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
+import {
+  BrainTileActuatorDef,
+  type BrainTileFactoryDef,
+  type BrainTileLiteralDef,
+  BrainTileSensorDef,
+} from "@mindcraft-lang/core/brain/tiles";
 import { createDefaultLocalizer, type Localizer } from "@mindcraft-lang/core/localization";
 import { bag, CoreTypeIds, mkActionDescriptor, mkCallDef, NIL_VALUE } from "@mindcraft-lang/core/runtime";
 import {
+  buildStripCandidates,
   type CandidateEntry,
+  categoryPriorityCandidateRanker,
   decideCandidateCommit,
   decideStripFocusTarget,
-  filterStripCandidates,
   kBestNextBandKey,
   mintNumberLiteralCandidate,
   mintTextLiteralCandidate,
   offersTextLiteral,
+  resolveStripOffering,
   type StripCandidate,
   type StripCellGeometry,
   type StripCursor,
@@ -51,8 +65,10 @@ import {
   type ComposerInputToken,
   composerHeadingToken,
   composerTokenForKey,
+  consumesKey,
   reduceComposerInput,
 } from "./composer-input-model";
+import { buildInsertionContext } from "./insertion-context";
 import { makeBrain } from "./test-only-rule-fixtures";
 
 let services: BrainServices;
@@ -76,6 +92,11 @@ before(() => {
 /** Folds text for search the way the strip's localizer folds it. */
 function foldText(text: string): string {
   return localizer.foldForSearch(text);
+}
+
+/** The word a tile's chip carries, resolved as the strip resolves it. */
+function traceLabelOf(tileDef: IBrainTileDef): string {
+  return tileSentenceWord(tileDef, localizer);
 }
 
 function makeSensorTile(sensorId: string): IBrainTileDef {
@@ -154,8 +175,12 @@ interface ComposerTraceOptions {
   readonly armedSide?: RuleSide;
   /** Whether composition runs in the rule's sentence line or the strip's own tray. */
   readonly inSentence?: boolean;
-  /** The candidates offered for one filter text, before the filter narrows them. */
-  readonly offeringFor?: (filter: string) => readonly StripCandidate[];
+  /**
+   * The candidates offered for one filter text, before the filter narrows them.
+   * The trace is passed along so an offering can be read from the rule as the
+   * placements so far leave it.
+   */
+  readonly offeringFor?: (filter: string, trace: ComposerTrace) => readonly StripCandidate[];
   /** Every accordion band in display order, whether open or closed. */
   readonly bandSequence?: readonly StripOptionBand[];
   /** How many tiles each side starts with. */
@@ -192,7 +217,7 @@ class ComposerTrace {
   private openSectionKey: string | null = null;
   /** The chip each open text value offers, keyed by the value. */
   private readonly pendingTextChips = new Map<string, StripCandidate>();
-  private readonly offeringFor: (filter: string) => readonly StripCandidate[];
+  private readonly offeringFor: (filter: string, trace: ComposerTrace) => readonly StripCandidate[];
   private readonly bandSequence: readonly StripOptionBand[];
 
   constructor(options: ComposerTraceOptions = {}) {
@@ -324,7 +349,7 @@ class ComposerTrace {
     if (value === undefined) return undefined;
     const cached = this.pendingTextChips.get(value);
     if (cached) return cached;
-    const minted = mintTextLiteralCandidate(this.offeringFor(this.state.filter), value, (tileDef) =>
+    const minted = mintTextLiteralCandidate(this.offeringFor(this.state.filter, this), value, (tileDef) =>
       tileSentenceWord(tileDef, localizer)
     );
     if (minted) this.pendingTextChips.set(value, minted);
@@ -343,8 +368,8 @@ class ComposerTrace {
 
   /** The facts of the moment, read the way the strip reads them. */
   private facts(): ComposerInputFacts {
-    const offered = this.offeringFor(this.state.filter);
-    const visible = filterStripCandidates(offered, this.state.filter, foldText);
+    const offered = this.offeringFor(this.state.filter, this);
+    const { visible } = resolveStripOffering(offered, this.state.filter, traceLabelOf, foldText);
     const onChip = this.state.cursor?.kind === "chip" ? this.state.cursor.optionId : undefined;
     const activeOption = this.options().find((option) => option.optionId === onChip);
     return {
@@ -436,8 +461,8 @@ class ComposerTrace {
       case "close-strip":
         this.closedAs = effect.reason;
         return [];
-      case "reask-after-placement":
-        return this.press({ kind: "placement-landed", gesture: effect.gesture });
+      case "reask":
+        return this.press(effect.token);
       case "move-caret":
         // The caret the model returned in its state is the one it asked for.
         assert.deepEqual(this.state.caret, effect.position);
@@ -1195,7 +1220,7 @@ describe("the comma", () => {
       placementEffects(
         see,
         trace.gap(RuleSide.When, 1),
-        { kind: "reask-after-placement", gesture: "pivot" },
+        { kind: "reask", token: { kind: "placement-landed", gesture: "pivot" } },
         { kind: "move-caret", position: trace.gap(RuleSide.Do, 0) }
       )
     );
@@ -1211,7 +1236,10 @@ describe("the comma", () => {
 
     assert.deepEqual(
       trace.press({ kind: "comma" }),
-      placementEffects(see, trace.gap(RuleSide.When, 1), { kind: "reask-after-placement", gesture: "pivot" })
+      placementEffects(see, trace.gap(RuleSide.When, 1), {
+        kind: "reask",
+        token: { kind: "placement-landed", gesture: "pivot" },
+      })
     );
     assert.equal(trace.state.armedSide, RuleSide.When);
     assert.equal(trace.state.pivoted, false);
@@ -1298,8 +1326,8 @@ describe("typed numbers", () => {
     const pressed = trace.press({ kind: "period" });
     assert.equal(placedKeys(pressed).length, 1);
     assert.deepEqual(
-      pressed.filter((effect) => effect.kind === "reask-after-placement"),
-      [{ kind: "reask-after-placement", gesture: "settle" }]
+      pressed.filter((effect) => effect.kind === "reask"),
+      [{ kind: "reask", token: { kind: "placement-landed", gesture: "settle" } }]
     );
     assert.equal(trace.closedAs, "settled");
   });
@@ -2177,5 +2205,284 @@ describe("escape", () => {
 
     assert.deepEqual(trace.press({ kind: "escape" }), [consumeKey, { kind: "close-strip", reason: "dismissed" }]);
     assert.equal(trace.closedAs, "dismissed");
+  });
+});
+
+/**
+ * Formulas typed without spaces. The offering behind these traces is the real
+ * suggestion oracle over the rule as the placements so far leave it, so every
+ * word commits exactly where it commits in the editor and every refusal is a
+ * refusal the oracle made.
+ */
+describe("typing a formula", () => {
+  /** The catalogs the oracle is asked over: the core tiles, plus the brain's own. */
+  function traceCatalogs(trace: ComposerTrace): ReadonlyList<ITileCatalog> {
+    const catalogs = List.from<ITileCatalog>([services.edit.tiles]);
+    const local = trace.ruleDef.brain()?.catalog();
+    if (local) catalogs.push(local);
+    return catalogs.asReadonly();
+  }
+
+  /**
+   * The offering the suggestion oracle gives at the position `trace` stands at,
+   * ranked the way the strip ranks it.
+   */
+  function oracleOffering(trace: ComposerTrace): readonly StripCandidate[] {
+    const caret = trace.state.caret;
+    assert.ok(caret, "an oracle-backed trace stands at a caret");
+    const tileSet = caret.side === RuleSide.When ? trace.ruleDef.when() : trace.ruleDef.do();
+    const intent = caretEditIntent(caret, tileSet.tiles().size());
+    const context = buildInsertionContext({
+      side: caret.side,
+      expr: intent.mode === "insert" ? undefined : tileSet.expr(),
+      replaceTileIndex: intent.mode === "replace" ? intent.tileIndex : undefined,
+      ruleDef: trace.ruleDef,
+      existingTiles: intent.mode === "insert" ? tileSet.tiles().slice(0, intent.tileIndex ?? 0) : tileSet.tiles(),
+    });
+    const result = suggestTiles(context, traceCatalogs(trace), services);
+    return categoryPriorityCandidateRanker(buildStripCandidates(result, traceLabelOf), null);
+  }
+
+  /** Register a number variable named `name` in `trace`'s brain, as naming one does. */
+  function addNumberVariable(trace: ComposerTrace, name: string): IBrainTileDef {
+    const factoryTileDef = services.edit.tiles.get(mkVariableFactoryTileId(CoreVariableFactoryId.Number));
+    assert.ok(factoryTileDef, "core number variable factory not registered");
+    const tileDef = (factoryTileDef as BrainTileFactoryDef).manufacture(factoryTileDef as BrainTileFactoryDef, {
+      name,
+    });
+    assert.ok(tileDef, `variable ${name} manufactured`);
+    trace.ruleDef.brain()?.catalog()?.registerTileDef(tileDef);
+    return tileDef;
+  }
+
+  /** A trace whose offering is the oracle's own, holding a number variable per name in `varNames`. */
+  function formulaTrace(varNames: readonly string[] = [], armedSide: RuleSide = RuleSide.When): ComposerTrace {
+    const trace = new ComposerTrace({ armedSide, offeringFor: (_filter, self) => oracleOffering(self) });
+    for (const name of varNames) addNumberVariable(trace, name);
+    return trace;
+  }
+
+  /**
+   * Type `formula` a character at a time, each character reaching the model the
+   * way the keyboard delivers it: its own key token where it has one, and the
+   * box's content change otherwise, including where the key token declines it.
+   */
+  function typeFormula(trace: ComposerTrace, formula: string): void {
+    for (const char of formula) {
+      const token = composerTokenForKey(char, "filter");
+      if (token !== undefined && consumesKey(trace.press(token))) continue;
+      // The box holds an open text value's content when there is one, and the
+      // word in progress otherwise.
+      const box = trace.state.textLiteral ?? trace.state.filter;
+      trace.press({ kind: "text", text: box + char });
+    }
+  }
+
+  /** The word each placement of `trace` carried, in order. */
+  function placedWords(trace: ComposerTrace): string[] {
+    return trace.log.filter((effect) => effect.kind === "place-tile").map((effect) => effect.candidate.label);
+  }
+
+  /** The words `formula` places on an otherwise empty WHEN side, and the word left in progress. */
+  function typedOnWhenSide(formula: string, varNames: readonly string[] = []): { placed: string[]; pending: string } {
+    const trace = formulaTrace(varNames);
+    typeFormula(trace, formula);
+    return { placed: placedWords(trace), pending: trace.state.filter };
+  }
+
+  test("places a number, an operator, and a number with no spaces between them", () => {
+    const trace = formulaTrace();
+    typeFormula(trace, "1+3");
+
+    assert.deepEqual(placedWords(trace), ["1", "plus"]);
+    assert.equal(trace.state.filter, "3", "the last word waits for a key that commits it");
+
+    trace.press({ kind: "space" });
+    assert.deepEqual(placedWords(trace), ["1", "plus", "3"]);
+    assert.equal(trace.tileCount(RuleSide.When), 3);
+  });
+
+  test("spaces between the words stay optional, not forbidden", () => {
+    const spaced = formulaTrace();
+    typeFormula(spaced, "1 + 3 ");
+    const tight = formulaTrace();
+    typeFormula(tight, "1+3 ");
+
+    assert.deepEqual(placedWords(spaced), ["1", "plus", "3"]);
+    assert.deepEqual(placedWords(tight), placedWords(spaced));
+    assert.equal(tight.state.filter, "");
+  });
+
+  test("a two-character operator is one word", () => {
+    assert.deepEqual(typedOnWhenSide("1>=3"), { placed: ["1", "is greater than or equal to"], pending: "3" });
+    assert.deepEqual(typedOnWhenSide("1!=3"), { placed: ["1", "is not equal to"], pending: "3" });
+    assert.deepEqual(typedOnWhenSide("1<=3"), { placed: ["1", "is less than or equal to"], pending: "3" });
+  });
+
+  test("a minus past the end of an operator joins the number instead of extending it", () => {
+    assert.deepEqual(typedOnWhenSide("1>=-3"), { placed: ["1", "is greater than or equal to"], pending: "-3" });
+  });
+
+  test("a minus where only a value fits opens a negative number", () => {
+    assert.deepEqual(typedOnWhenSide("1*-3"), { placed: ["1", "multiplied by"], pending: "-3" });
+    assert.deepEqual(typedOnWhenSide("1+-3"), { placed: ["1", "plus"], pending: "-3" });
+    assert.deepEqual(typedOnWhenSide("-5"), { placed: [], pending: "-5" });
+  });
+
+  test("a minus where an operator fits subtracts", () => {
+    assert.deepEqual(typedOnWhenSide("1-3"), { placed: ["1", "minus"], pending: "3" });
+    assert.deepEqual(typedOnWhenSide("1--3"), { placed: ["1", "minus"], pending: "-3" });
+  });
+
+  test("a negative number placed by the key that commits it carries the value typed", () => {
+    const trace = formulaTrace();
+    typeFormula(trace, "1*-3 ");
+
+    const placed = trace.log.filter((effect) => effect.kind === "place-tile");
+    assert.equal(placed.length, 3);
+    const last = placed[2].candidate;
+    assert.equal(last.origin.kind, "minted-literal");
+    assert.equal(last.origin.kind === "minted-literal" ? last.origin.value : undefined, -3);
+  });
+
+  test("the decimal point stays inside the number it continues", () => {
+    assert.deepEqual(typedOnWhenSide("1.5+2"), { placed: ["1.5", "plus"], pending: "2" });
+  });
+
+  test("a name is one word however many characters it takes", () => {
+    assert.deepEqual(typedOnWhenSide("foobar"), { placed: [], pending: "foobar" });
+    assert.deepEqual(typedOnWhenSide("foo+3", ["foo"]), { placed: ["foo", "plus"], pending: "3" });
+  });
+
+  test("a number opening a name is one word, and names nothing", () => {
+    assert.deepEqual(typedOnWhenSide("2speed"), { placed: [], pending: "2speed" });
+  });
+
+  test("a named variable commits through the dollar accelerator", () => {
+    const trace = formulaTrace([], RuleSide.Do);
+    const foo = addNumberVariable(trace, "foo");
+    trace.ruleDef.do().appendTile(foo);
+    trace.placeCaret(trace.sideEndGap(RuleSide.Do));
+    typeFormula(trace, "=$bar+1");
+
+    assert.deepEqual(placedWords(trace), ["gets", "bar", "plus"]);
+    assert.equal(trace.state.filter, "1");
+  });
+
+  test("a prefix operator falls out of the same rule", () => {
+    const trace = formulaTrace(["foo"]);
+    typeFormula(trace, "!foo");
+
+    assert.deepEqual(placedWords(trace), ["not"]);
+    assert.equal(trace.state.filter, "foo");
+  });
+
+  test("the assignment symbol places the word that assigns", () => {
+    const trace = formulaTrace([], RuleSide.Do);
+    const foo = addNumberVariable(trace, "foo");
+    trace.ruleDef.do().appendTile(foo);
+    trace.placeCaret(trace.sideEndGap(RuleSide.Do));
+
+    typeFormula(trace, "=");
+    assert.deepEqual(placedWords(trace), []);
+    trace.press({ kind: "space" });
+    assert.deepEqual(placedWords(trace), ["gets"]);
+  });
+
+  test("two equals signs are one word", () => {
+    assert.deepEqual(typedOnWhenSide("1==3"), { placed: ["1", "is equal to"], pending: "3" });
+  });
+
+  test("a bracketed formula with embedded variables places every tile in order", () => {
+    const trace = formulaTrace(["foo", "energy"]);
+    typeFormula(trace, "((foo+3)*energy)");
+
+    assert.deepEqual(placedWords(trace), ["(", "(", "foo", "plus", "3", ")", "multiplied by", "energy", ")"]);
+    assert.equal(trace.state.filter, "", "the closing bracket is a word of its own and needs no key to commit it");
+    assert.equal(trace.tileCount(RuleSide.When), 9);
+  });
+
+  test("the order tiles are placed in is the order they are typed in", () => {
+    const trace = formulaTrace();
+    typeFormula(trace, "1+3*2 ");
+
+    assert.deepEqual(placedWords(trace), ["1", "plus", "3", "multiplied by", "2"]);
+  });
+
+  test("a word that places nothing refuses the character that would end it", () => {
+    const trace = formulaTrace();
+    typeFormula(trace, "zz+");
+
+    assert.deepEqual(placedWords(trace), []);
+    assert.equal(trace.state.filter, "zz", "the word stands as it was typed");
+    assert.equal(trace.tileCount(RuleSide.When), 0);
+  });
+
+  test("an operator with nothing to operate on stands unplaced", () => {
+    const trace = formulaTrace();
+    typeFormula(trace, "+");
+
+    assert.deepEqual(placedWords(trace), []);
+    assert.equal(trace.state.filter, "+");
+  });
+
+  test("a closing bracket with no group open stands unplaced", () => {
+    const trace = formulaTrace();
+    typeFormula(trace, ")");
+
+    assert.deepEqual(placedWords(trace), []);
+    assert.equal(trace.state.filter, ")");
+  });
+
+  test("an opening bracket where no group fits places the word before it and stands unplaced", () => {
+    const trace = formulaTrace(["foo"]);
+    typeFormula(trace, "foo(");
+
+    assert.deepEqual(placedWords(trace), ["foo"]);
+    assert.equal(trace.state.filter, "(");
+  });
+
+  test("a formula typed into an open text value is taken as content", () => {
+    const trace = formulaTrace();
+    trace.press({ kind: "quote" });
+    assert.equal(trace.state.textLiteral, "", "the position takes a text value");
+    typeFormula(trace, "((1+3)*2)");
+
+    assert.deepEqual(placedWords(trace), []);
+    assert.equal(trace.state.textLiteral, "((1+3)*2)");
+    assert.equal(trace.state.filter, "");
+
+    trace.press({ kind: "quote" });
+    const placed = trace.log.filter((effect) => effect.kind === "place-tile");
+    assert.equal(placed.length, 1);
+    assert.equal(
+      placed[0].candidate.origin.kind === "minted-literal" ? placed[0].candidate.origin.value : undefined,
+      "((1+3)*2)"
+    );
+  });
+
+  test("backspace walks back the commits the characters made", () => {
+    const trace = formulaTrace();
+    typeFormula(trace, "1+3 ");
+    assert.equal(trace.ownCommitCount(), 3);
+
+    for (let taken = 2; taken >= 0; taken--) {
+      trace.press({ kind: "backspace", from: "filter" });
+      assert.equal(trace.ownCommitCount(), taken, `${taken} left`);
+      assert.equal(trace.tileCount(RuleSide.When), taken);
+    }
+  });
+
+  test("an edit that is not one character added to the end places nothing", () => {
+    const pasted = formulaTrace();
+    pasted.press({ kind: "text", text: "1+3" });
+    assert.deepEqual(placedWords(pasted), []);
+    assert.equal(pasted.state.filter, "1+3");
+
+    const shortened = formulaTrace();
+    typeFormula(shortened, "12");
+    shortened.press({ kind: "text", text: "1" });
+    assert.deepEqual(placedWords(shortened), []);
+    assert.equal(shortened.state.filter, "1");
   });
 });

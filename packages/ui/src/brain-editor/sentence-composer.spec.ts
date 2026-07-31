@@ -48,6 +48,7 @@ import {
   composePivotReading,
   composeSentenceReading,
   decideComposerBackspace,
+  decideComposerCharacter,
   decideComposerComma,
   decideComposerPeriod,
 } from "./sentence-composer";
@@ -493,5 +494,86 @@ describe("the backspace ladder", () => {
   test("deletes at the caret with no word in progress and no pivot to take back", () => {
     const action = decideComposerBackspace({ filter: "", pivoted: false, doTileCount: 0 });
     assert.equal(action, "delete-at-caret");
+  });
+});
+
+describe("the character that ends a word", () => {
+  /**
+   * The action for `char` typed onto `word`, at a position that places that word
+   * when `wordCommits`.
+   */
+  function decide(word: string, char: string, wordCommits = true) {
+    return decideComposerCharacter({ char, word, wordCommits });
+  }
+
+  test("a character of the word's own class joins it", () => {
+    assert.equal(decide("", "1"), "extend");
+    assert.equal(decide("1", "2"), "extend");
+    assert.equal(decide("foo", "b"), "extend");
+    assert.equal(decide("foo", "1"), "extend");
+    assert.equal(decide("2", "s"), "extend");
+    assert.equal(decide("$fo", "o"), "extend");
+    assert.equal(decide("_a", "b"), "extend");
+  });
+
+  test("a decimal point and a format specifier stay inside the number", () => {
+    assert.equal(decide("1", "."), "extend");
+    assert.equal(decide("1.", "5"), "extend");
+    assert.equal(decide("50", "%"), "extend");
+    assert.equal(decide("1", "m"), "extend");
+  });
+
+  test("an operator symbol ends the value before it", () => {
+    for (const char of ["+", "-", "*", "/", ">", "<", "=", "!"]) {
+      assert.equal(decide("1", char), "commit-then-start", char);
+    }
+  });
+
+  test("a value character ends the operator before it", () => {
+    assert.equal(decide("+", "3"), "commit-then-start");
+    assert.equal(decide(">=", "3"), "commit-then-start");
+    assert.equal(decide("!", "f"), "commit-then-start");
+  });
+
+  test("two operator characters stay one word only while they still spell an operator", () => {
+    assert.equal(decide(">", "="), "extend");
+    assert.equal(decide("<", "="), "extend");
+    assert.equal(decide("=", "="), "extend");
+    assert.equal(decide("!", "="), "extend");
+    assert.equal(decide(">=", "-"), "commit-then-start");
+    assert.equal(decide("==", "="), "commit-then-start");
+    assert.equal(decide("+", "-"), "commit-then-start");
+    assert.equal(decide("*", "-"), "commit-then-start");
+    assert.equal(decide("-", "-"), "commit-then-start");
+  });
+
+  test("a bare minus is an operator where one places, and opens a number where none does", () => {
+    assert.equal(decide("-", "3", true), "commit-then-start");
+    assert.equal(decide("-", "3", false), "extend");
+    assert.equal(decide("-3", "0", false), "extend");
+  });
+
+  test("a bracket is a word of its own, whichever word it lands beside", () => {
+    assert.equal(decide("", "("), "place-alone");
+    assert.equal(decide("", ")"), "place-alone");
+    assert.equal(decide("3", ")"), "commit-then-start");
+    assert.equal(decide("foo", "("), "commit-then-start");
+    assert.equal(decide("+", "("), "commit-then-start");
+    assert.equal(decide("(", "("), "commit-then-start");
+    assert.equal(decide("(", "f"), "commit-then-start");
+    assert.equal(decide(")", "*"), "commit-then-start");
+  });
+
+  test("a word that places nothing here refuses the character that would end it", () => {
+    assert.equal(decide("zz", "+", false), "refuse");
+    assert.equal(decide("zz", "(", false), "refuse");
+    assert.equal(decide("!", "f", false), "refuse");
+    assert.equal(decide("(", "f", false), "refuse");
+  });
+
+  test("a word that places nothing here still takes a character of its own class", () => {
+    assert.equal(decide("zz", "z", false), "extend");
+    assert.equal(decide("", "+", false), "extend");
+    assert.equal(decide("", ")", false), "place-alone");
   });
 });

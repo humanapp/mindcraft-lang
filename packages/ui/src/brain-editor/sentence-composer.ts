@@ -2,6 +2,7 @@ import type { ReadonlyList } from "@mindcraft-lang/core";
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import { parseBrainTiles } from "@mindcraft-lang/core/brain/compiler";
 import type { SentenceSegment } from "@mindcraft-lang/core/brain/language-service";
+import { isOperatorSymbolPrefix } from "./candidate-strip-model";
 
 /**
  * True when `tiles` parse as an expression that may end where they stop. An
@@ -164,6 +165,83 @@ export function decideComposerPeriod(facts: ComposerPeriodFacts): ComposerPeriod
   if (facts.filter.length > 0) return facts.wordInProgressCommits ? "commit-then-settle" : "refuse";
   if (facts.ruleIsEmpty) return "none";
   return facts.armedSideCanEnd ? "settle" : "refuse";
+}
+
+/**
+ * What one typed character does to the word in progress:
+ *
+ * - `extend` -- the character joins the word, which is what every character of
+ *   one word does
+ * - `place-alone` -- the character is a whole word of its own and is placed at
+ *   once, which is what a grouping bracket is
+ * - `commit-then-start` -- place the word in progress, exactly as Space places
+ *   it, and start the next word with the character
+ * - `refuse` -- the word in progress places nothing here, so the character is
+ *   dropped and that word stands as it is
+ */
+export type ComposerCharAction = "extend" | "place-alone" | "commit-then-start" | "refuse";
+
+/** What {@link decideComposerCharacter} reads to decide one typed character. */
+export interface ComposerCharFacts {
+  /** The character typed onto the end of the word in progress. */
+  readonly char: string;
+  /** The word in progress, as it stands before the character. */
+  readonly word: string;
+  /** True when the word in progress resolves to one candidate, as Space asks before committing. */
+  readonly wordCommits: boolean;
+}
+
+/**
+ * The classes a character belongs to. A character of a different class than the
+ * word in progress ends that word.
+ *
+ * - `value` -- what a name, a number, or a display-format suffix is written
+ *   with: every character that is neither an operator's nor a bracket
+ * - `operator` -- a character an operator is typed with
+ * - `bracket` -- a grouping bracket, which is always a word of its own
+ */
+type ComposerCharClass = "value" | "operator" | "bracket";
+
+/** The grouping brackets, each of which is always a word of its own. */
+const kBracketChars = "()";
+
+/** The class `char` belongs to. */
+function characterClass(char: string): ComposerCharClass {
+  if (kBracketChars.includes(char)) return "bracket";
+  return isOperatorSymbolPrefix(char) ? "operator" : "value";
+}
+
+/**
+ * The class the word in progress belongs to. A word of operator characters is an
+ * operator, except for a bare minus sign naming no operator here, which opens a
+ * negative number instead.
+ */
+function wordClass(word: string, wordCommits: boolean): ComposerCharClass {
+  if (kBracketChars.includes(word)) return "bracket";
+  for (const char of word) {
+    if (characterClass(char) !== "operator") return "value";
+  }
+  if (word === "-" && !wordCommits) return "value";
+  return "operator";
+}
+
+/**
+ * What `facts.char` does to the word in progress. A character of the word's own
+ * class joins it; a character of another class ends it, placing it as Space
+ * would and starting the next word. Two operator characters stay one word only
+ * while what they spell still opens an operator, so `>=` is one word and `>=-`
+ * is two. A word that places nothing here refuses the character that would end
+ * it, leaving that word standing.
+ */
+export function decideComposerCharacter(facts: ComposerCharFacts): ComposerCharAction {
+  const charClass = characterClass(facts.char);
+  if (facts.word.length === 0) return charClass === "bracket" ? "place-alone" : "extend";
+  const openClass = wordClass(facts.word, facts.wordCommits);
+  if (openClass === charClass && charClass !== "bracket") {
+    if (charClass !== "operator") return "extend";
+    if (isOperatorSymbolPrefix(facts.word + facts.char)) return "extend";
+  }
+  return facts.wordCommits ? "commit-then-start" : "refuse";
 }
 
 /**

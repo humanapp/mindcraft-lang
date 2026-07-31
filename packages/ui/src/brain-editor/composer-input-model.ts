@@ -13,7 +13,12 @@ import {
   type StripOption,
 } from "./candidate-strip-model";
 import { type CaretPosition, caretDeletionTarget, caretOnRun, caretSideEnd, caretStep } from "./caret-run";
-import { decideComposerBackspace, decideComposerComma, decideComposerPeriod } from "./sentence-composer";
+import {
+  decideComposerBackspace,
+  decideComposerCharacter,
+  decideComposerComma,
+  decideComposerPeriod,
+} from "./sentence-composer";
 
 /**
  * The composer's input state: what the keyboard is aimed at, and what it has
@@ -63,7 +68,8 @@ export type ComposerGesture = "pivot" | "settle";
  * named surface, or the filter box's own content change -- so
  * {@link reduceComposerInput} is the only place that decides what it means.
  *
- * - `text` -- the filter box's content changed
+ * - `text` -- the filter box's content changed, which is how every character
+ *   that is not a key of its own arrives
  * - `space`, `tab`, `enter` -- the commit keys
  * - `comma`, `period` -- the pivot and the settle
  * - `quote` -- open a text value, or place the one already open
@@ -80,8 +86,8 @@ export type ComposerGesture = "pivot" | "settle";
  * - `focus-lost` -- the element the highlight was anchored on no longer holds
  *   the keyboard, whether it was left, was clicked away from, or stopped being
  *   rendered
- * - `placement-landed` -- the placement a `reask-after-placement` effect asked
- *   about has run, so the gesture behind it is decided again
+ * - `placement-landed` -- the placement a `reask` effect asked about has run, so
+ *   the gesture behind it is decided again
  */
 export type ComposerInputToken =
   | { readonly kind: "text"; readonly text: string }
@@ -122,8 +128,9 @@ export type ComposerCloseReason = "settled" | "dismissed";
  * - `place-tile` -- `candidate` is placed at the armed position
  * - `announce-placement` -- assistive technology hears that `label` was placed
  * - `move-focus` -- the keyboard goes to `target`
- * - `reask-after-placement` -- once the placement has run, ask the model again
- *   with a `placement-landed` token
+ * - `reask` -- once everything asked for above has taken effect, ask the model
+ *   again with `token`, which reads the offering and the rule as they stand
+ *   then
  * - `move-caret` -- the caret stands at `position`, which arms the edit that
  *   position intends and asks the offering there
  * - `delete-tile` -- the tile at `position` leaves the rule
@@ -149,7 +156,7 @@ export type ComposerInputEffect =
       /** True when the move must leave the scroll position where it is. */
       readonly keepScroll: boolean;
     }
-  | { readonly kind: "reask-after-placement"; readonly gesture: ComposerGesture }
+  | { readonly kind: "reask"; readonly token: ComposerInputToken }
   | { readonly kind: "move-caret"; readonly position: CaretPosition }
   | { readonly kind: "delete-tile"; readonly position: CaretPosition }
   | { readonly kind: "undo-own-commit" }
@@ -442,6 +449,53 @@ function reduceQuote(state: ComposerInputState, facts: ComposerInputFacts): Comp
   return commitOpenTextLiteral(state, facts);
 }
 
+/** The token that places the word in progress, exactly as the Space key places it. */
+const commitWordToken: ComposerInputToken = { kind: "space" };
+
+/**
+ * The one character `text` adds to the end of `word`, or undefined for every
+ * other edit of the box: a deletion, a paste, and an edit made anywhere but at
+ * the end.
+ */
+function appendedCharacter(word: string, text: string): string | undefined {
+  if (text.length !== word.length + 1 || !text.startsWith(word)) return undefined;
+  return text[text.length - 1];
+}
+
+/** Leave the word in progress standing as it is, which the box reverts to. */
+function refuseCharacter(state: ComposerInputState): ComposerInputOutcome {
+  return { state, effects: [{ kind: "set-filter", text: state.filter }] };
+}
+
+/**
+ * The box's own content change: an edit of the word in progress, or the one
+ * character that ends it. A character of another class than the word in
+ * progress places that word exactly as Space places it, and the next word
+ * starts with that character once the placement has taken effect; a bracket is a
+ * word of its own and is placed as soon as it stands alone. Every other edit --
+ * a deletion, a paste, an edit made away from the end -- is the word in progress
+ * becoming `text`.
+ */
+function reduceTypedText(state: ComposerInputState, facts: ComposerInputFacts, text: string): ComposerInputOutcome {
+  const char = appendedCharacter(state.filter, text);
+  if (char === undefined) return retypeFilter(state, text, []);
+  const spaceCandidate = facts.spaceCandidate;
+  const action = decideComposerCharacter({ char, word: state.filter, wordCommits: spaceCandidate !== undefined });
+  switch (action) {
+    case "refuse":
+      return refuseCharacter(state);
+    case "commit-then-start":
+      if (spaceCandidate === undefined) return refuseCharacter(state);
+      return placeCandidate(state, spaceCandidate, [{ kind: "reask", token: { kind: "text", text: char } }]);
+    case "place-alone": {
+      const typed = retypeFilter(state, text, []);
+      return { state: typed.state, effects: [...typed.effects, { kind: "reask", token: commitWordToken }] };
+    }
+    case "extend":
+      return retypeFilter(state, text, []);
+  }
+}
+
 /**
  * True when the open text value suspends `token`: the punctuation keys, which
  * the filter box types into the value.
@@ -487,7 +541,9 @@ function reduceComma(state: ComposerInputState, facts: ComposerInputFacts): Comp
   if (action === "filter-text") return inert(state);
   if (action === "pivot-to-do") return composeOnSide(state, facts, RuleSide.Do, [{ kind: "consume-key" }]);
   if (facts.spaceCandidate === undefined) return { state, effects: [{ kind: "consume-key" }] };
-  return placeCandidate(state, facts.spaceCandidate, [{ kind: "reask-after-placement", gesture: "pivot" }]);
+  return placeCandidate(state, facts.spaceCandidate, [
+    { kind: "reask", token: { kind: "placement-landed", gesture: "pivot" } },
+  ]);
 }
 
 /** The period's outcome: place the word in progress if there is one, then settle. */
@@ -505,7 +561,9 @@ function reducePeriod(state: ComposerInputState, facts: ComposerInputFacts): Com
     return { state, effects: [{ kind: "consume-key" }, { kind: "close-strip", reason: "settled" }] };
   }
   if (facts.spaceCandidate === undefined) return { state, effects: [{ kind: "consume-key" }] };
-  return placeCandidate(state, facts.spaceCandidate, [{ kind: "reask-after-placement", gesture: "settle" }]);
+  return placeCandidate(state, facts.spaceCandidate, [
+    { kind: "reask", token: { kind: "placement-landed", gesture: "settle" } },
+  ]);
 }
 
 /**
@@ -786,10 +844,18 @@ function reduceHeadingArrow(
  * so a `focus-lost` token releases it, and the horizontal arrows are the
  * caret's again.
  *
+ * A typed character that belongs to another word than the one in progress ends
+ * that word: the word is placed exactly as Space places it, and the character
+ * starts the next one. Operator symbols and grouping brackets are the characters
+ * this reaches, so `1+3` and `((foo+3)*energy)` are typeable without spaces;
+ * Space keeps placing a word wherever it is pressed. The order tiles are placed
+ * in is the order they are typed in, and how they group is the language's own.
+ *
  * While `state.textLiteral` holds an open text value, every typed character
- * edits that value and the punctuation keys reach it as content; the keys that
- * act are the closing quote, Enter and Tab, which place the value exactly as the
- * closing quote does, Backspace, and Escape.
+ * edits that value and the punctuation keys reach it as content; nothing is
+ * placed by a character there. The keys that act are the closing quote, Enter
+ * and Tab, which place the value exactly as the closing quote does, Backspace,
+ * and Escape.
  */
 export function reduceComposerInput(
   state: ComposerInputState,
@@ -800,7 +866,7 @@ export function reduceComposerInput(
   switch (token.kind) {
     case "text":
       if (state.textLiteral !== undefined) return retypeTextLiteral(state, token.text, []);
-      return retypeFilter(state, token.text, []);
+      return reduceTypedText(state, facts, token.text);
     case "quote":
       return reduceQuote(state, facts);
     case "escape":

@@ -538,6 +538,9 @@ export function useCandidateStripSurface({
   const [landingCount, setLandingCount] = useState(0);
   const [openTextLiteral, setOpenTextLiteral] = useState<string | undefined>(undefined);
   const placedLabelRef = useRef<string | null>(null);
+  // The token a `reask` effect asked for, waiting for the render that carries
+  // everything asked for before it.
+  const reaskRef = useRef<ComposerInputToken | undefined>(undefined);
   const isFiltering = state.filter.trim().length > 0;
   const offeringOpen = state.offeringOpen;
 
@@ -784,8 +787,8 @@ export function useCandidateStripSurface({
           else document.getElementById(cellId)?.focus();
           break;
         }
-        case "reask-after-placement":
-          dispatchInput({ kind: "placement-landed", gesture: effect.gesture });
+        case "reask":
+          reaskRef.current = effect.token;
           break;
         case "move-caret":
           rule?.placeCaret(effect.position);
@@ -806,6 +809,16 @@ export function useCandidateStripSurface({
     }
     return consumesKey(effects);
   };
+
+  // A re-ask is taken once the render carrying everything asked for before it
+  // has landed, so the token reads the document, the offering, and the word in
+  // progress as that render leaves them.
+  useEffect(() => {
+    const token = reaskRef.current;
+    if (token === undefined) return;
+    reaskRef.current = undefined;
+    dispatchInput(token);
+  });
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: offeringOpen is an intentional trigger signal
   useEffect(() => {
@@ -1101,8 +1114,10 @@ export function useCandidateStripSurface({
         and arrow left closes it, so arrow down moves on to the next heading while a group is closed and into its tiles
         once it is open. Enter places the highlighted tile. Arrow up from the first row leaves the tiles and returns to
         the sentence. Start the text with a dollar sign to name a variable, which Enter then places, creating it when no
-        variable has that name. Where a text value fits, a double quote starts one and the next double quote places it,
-        as Enter does, with everything between them taken as the text.
+        variable has that name. An operator symbol or a bracket ends the word before it and places that word, so a
+        formula such as one plus three needs no spaces in it. Where a text value fits, a double quote starts one and the
+        next double quote places it, as Enter does, with everything between them taken as the text, and nothing typed
+        into it places a tile.
         {composer
           ? " Type a comma to end the when side and start typing what to do, and a period when the rule says what you want. With nothing typed, Backspace takes back the comma, and then the word you placed last."
           : ""}

@@ -342,6 +342,7 @@ export function classifyTileMatch(
  * tile, or a sentence, all of which read the operator's own word.
  */
 const operatorSymbolAliases: ReadonlyMap<string, readonly string[]> = new Map([
+  [mkOperatorTileId(CoreOpId.Not), ["!"]],
   [mkOperatorTileId(CoreOpId.Add), ["+"]],
   [mkOperatorTileId(CoreOpId.Subtract), ["-"]],
   [mkOperatorTileId(CoreOpId.Multiply), ["*"]],
@@ -354,6 +355,21 @@ const operatorSymbolAliases: ReadonlyMap<string, readonly string[]> = new Map([
   [mkOperatorTileId(CoreOpId.NotEqualTo), ["!="]],
   [mkOperatorTileId(CoreOpId.Assign), ["="]],
 ]);
+
+/**
+ * True when `text` opens an operator's typing notation: it is one of those
+ * notations, or the start of one. Empty text opens none. A single character
+ * therefore passes exactly when some operator is typed with that character.
+ */
+export function isOperatorSymbolPrefix(text: string): boolean {
+  if (text.length === 0) return false;
+  for (const aliases of operatorSymbolAliases.values()) {
+    for (const alias of aliases) {
+      if (alias.startsWith(text)) return true;
+    }
+  }
+  return false;
+}
 
 const noTileMatchAliases: readonly string[] = [];
 

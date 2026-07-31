@@ -102,7 +102,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
       <div className="relative self-center hover:scale-105 transition-transform duration-100">
         {isAsyncAction && (
           <span
-            className={`group/clock absolute -top-1.5 -left-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-slate-200 border-slate-300 text-slate-600`}
+            className={`group/clock absolute -top-1.5 -left-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-slate-200 border-slate-600 text-slate-600`}
             role="img"
             aria-label="May take time to complete"
           >
