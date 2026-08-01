@@ -234,18 +234,31 @@ export class MoveRuleDownCommand implements BrainCommand {
   }
 }
 
+/** Where `rule` sits now, as a location {@link BrainRuleDef.moveTo} can be given back. */
+function ruleLocation(rule: BrainRuleDef): RuleLocation {
+  const state = getRuleState(rule);
+  return { parentRule: state.parentRule, pageDef: state.pageDef, index: state.index };
+}
+
 /**
- * Command to indent a rule.
+ * Command to indent a rule, making it the last child of the sibling above it.
+ * Undo returns the rule to the exact list and index it was taken from, and does
+ * nothing when the rule could not be indented.
  */
 export class IndentRuleCommand implements BrainCommand {
+  private origin?: RuleLocation;
+
   constructor(private rule: BrainRuleDef) {}
 
   execute(): void {
-    this.rule.indent();
+    const origin = ruleLocation(this.rule);
+    if (!this.rule.indent()) return;
+    this.origin = origin;
   }
 
   undo(): void {
-    this.rule.outdent();
+    if (this.origin === undefined) return;
+    this.rule.moveTo(this.origin.parentRule, this.origin.pageDef, this.origin.index);
   }
 
   getDescription(): string {
@@ -254,17 +267,24 @@ export class IndentRuleCommand implements BrainCommand {
 }
 
 /**
- * Command to outdent a rule.
+ * Command to outdent a rule, moving it out of its parent to sit just past it.
+ * Undo returns the rule to the exact list and index it was taken from, and does
+ * nothing when the rule could not be outdented.
  */
 export class OutdentRuleCommand implements BrainCommand {
+  private origin?: RuleLocation;
+
   constructor(private rule: BrainRuleDef) {}
 
   execute(): void {
-    this.rule.outdent();
+    const origin = ruleLocation(this.rule);
+    if (!this.rule.outdent()) return;
+    this.origin = origin;
   }
 
   undo(): void {
-    this.rule.indent();
+    if (this.origin === undefined) return;
+    this.rule.moveTo(this.origin.parentRule, this.origin.pageDef, this.origin.index);
   }
 
   getDescription(): string {

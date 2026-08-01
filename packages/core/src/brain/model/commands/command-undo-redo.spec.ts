@@ -264,6 +264,157 @@ describe("BrainCommandHistory", () => {
     assert.equal(state.value, 1);
   });
 
+  test("a batch runs its commands live and takes ONE undo entry", () => {
+    const state = { value: 0 };
+    const history = new BrainCommandHistory();
+    history.beginBatch("counting");
+    history.executeCommand(new CounterCommand(state));
+    assert.equal(state.value, 1, "a member applies as it joins");
+    history.executeCommand(new CounterCommand(state));
+    history.executeCommand(new CounterCommand(state));
+    assert.equal(state.value, 3);
+    assert.equal(history.canUndo(), false, "the entry is not there until the batch closes");
+    history.endBatch();
+
+    assert.equal(history.canUndo(), true);
+    history.undo();
+    assert.equal(state.value, 0, "one undo reverses every member");
+    assert.equal(history.canUndo(), false, "the batch was a single entry");
+  });
+
+  test("a batch redoes as one entry, re-applying its members in order", () => {
+    const applied: number[] = [];
+    /** Records the order its executions land in, for pinning replay order. */
+    class OrderedCommand implements BrainCommand {
+      constructor(private readonly mark: number) {}
+      execute(): void {
+        applied.push(this.mark);
+      }
+      undo(): void {
+        applied.pop();
+      }
+      getDescription(): string {
+        return "ordered";
+      }
+    }
+
+    const history = new BrainCommandHistory();
+    history.beginBatch("ordering");
+    history.executeCommand(new OrderedCommand(1));
+    history.executeCommand(new OrderedCommand(2));
+    history.executeCommand(new OrderedCommand(3));
+    history.endBatch();
+    assert.deepEqual(applied, [1, 2, 3]);
+
+    history.undo();
+    assert.deepEqual(applied, []);
+    history.redo();
+    assert.deepEqual(applied, [1, 2, 3], "redo re-applies the members in order");
+    assert.equal(history.canRedo(), false, "the batch redid as a single entry");
+  });
+
+  test("aborting a batch reverses the members already applied and leaves no entry", () => {
+    const state = { value: 0 };
+    const history = new BrainCommandHistory();
+    history.executeCommand(new CounterCommand(state));
+    assert.equal(state.value, 1);
+
+    history.beginBatch("counting");
+    history.executeCommand(new CounterCommand(state));
+    history.executeCommand(new CounterCommand(state));
+    assert.equal(state.value, 3);
+    history.abortBatch();
+
+    assert.equal(state.value, 1, "abort reverses what the batch already applied");
+    assert.equal(history.canUndo(), true, "the entry from before the batch survives");
+    history.undo();
+    assert.equal(state.value, 0);
+    assert.equal(history.canUndo(), false, "the aborted batch left no entry of its own");
+  });
+
+  test("aborting reverses the members newest first", () => {
+    const events: string[] = [];
+    /** Records which of its two ends ran, for pinning the order abort takes. */
+    class MarkingCommand implements BrainCommand {
+      constructor(private readonly mark: string) {}
+      execute(): void {
+        events.push(`do ${this.mark}`);
+      }
+      undo(): void {
+        events.push(`undo ${this.mark}`);
+      }
+      getDescription(): string {
+        return "marking";
+      }
+    }
+
+    const history = new BrainCommandHistory();
+    history.beginBatch("marking");
+    history.executeCommand(new MarkingCommand("a"));
+    history.executeCommand(new MarkingCommand("b"));
+    history.abortBatch();
+    assert.deepEqual(events, ["do a", "do b", "undo b", "undo a"]);
+  });
+
+  test("a batch that gathered nothing leaves no entry and keeps the redo stack", () => {
+    const state = { value: 0 };
+    const history = new BrainCommandHistory();
+    history.executeCommand(new CounterCommand(state));
+    history.undo();
+    assert.equal(history.canRedo(), true);
+
+    history.beginBatch("counting");
+    history.endBatch();
+    assert.equal(history.canUndo(), false, "an empty batch adds no entry");
+    assert.equal(history.canRedo(), true, "an empty batch leaves the redo stack alone");
+
+    history.beginBatch("counting");
+    history.abortBatch();
+    assert.equal(history.canUndo(), false);
+    assert.equal(history.canRedo(), true);
+  });
+
+  test("batches do not nest", () => {
+    const history = new BrainCommandHistory();
+    history.beginBatch("outer");
+    assert.throws(() => history.beginBatch("inner"));
+    assert.equal(history.isBatchOpen(), true);
+    history.endBatch();
+    assert.equal(history.isBatchOpen(), false);
+  });
+
+  test("undo and redo do nothing while a batch is open", () => {
+    const state = { value: 0 };
+    const history = new BrainCommandHistory();
+    history.executeCommand(new CounterCommand(state));
+    history.undo();
+    assert.equal(state.value, 0);
+
+    history.beginBatch("counting");
+    history.executeCommand(new CounterCommand(state));
+    history.undo();
+    assert.equal(state.value, 1, "undo must not tear the open batch");
+    history.redo();
+    assert.equal(state.value, 1, "redo must not reach past the open batch");
+    history.endBatch();
+  });
+
+  test("recordCommand joins the open batch rather than taking its own entry", () => {
+    const state = { value: 0 };
+    const history = new BrainCommandHistory();
+    history.beginBatch("counting");
+    const recorded = new CounterCommand(state);
+    history.recordCommand(recorded);
+    assert.equal(recorded.executions, 0, "recordCommand still does not execute");
+    assert.equal(history.canUndo(), false);
+    history.endBatch();
+
+    assert.equal(history.canUndo(), true);
+    history.undo();
+    assert.equal(state.value, -1);
+    assert.equal(history.canUndo(), false, "the recorded command took no entry of its own");
+  });
+
   test("onChange fires for executeCommand, recordCommand, undo, redo, and clear", () => {
     const state = { value: 0 };
     const history = new BrainCommandHistory();
@@ -480,6 +631,34 @@ describe("rule commands round-trip the document", () => {
     assert.equal(ruleB.ancestor(), undefined);
   });
 
+  test("OutdentRuleCommand restores the rule's index among children that follow it", () => {
+    const { brain, ruleA } = brainWithTwoRules();
+    const first = ruleA.appendNewRule() as BrainRuleDef;
+    first.when().appendTile(sensorTile());
+    const second = ruleA.appendNewRule() as BrainRuleDef;
+    second.do().appendTile(actuatorTile());
+
+    assertCommandRoundTrip(brain, new OutdentRuleCommand(first));
+    // The round trip ends executed, so `first` stands outside ruleA.
+    assert.equal(ruleA.children().get(0), second);
+  });
+
+  test("IndentRuleCommand restores the rule's index among the siblings that follow it", () => {
+    const { brain, page, ruleB } = brainWithTwoRules();
+    // ruleB already holds a child.
+    const held = ruleB.appendNewRule() as BrainRuleDef;
+    held.when().appendTile(sensorTile());
+    const middle = page.appendNewRule() as BrainRuleDef;
+    middle.when().appendTile(sensorTile());
+    const last = page.appendNewRule() as BrainRuleDef;
+    last.do().appendTile(actuatorTile());
+
+    assertCommandRoundTrip(brain, new IndentRuleCommand(middle));
+    assert.equal(ruleB.children().get(0), held);
+    assert.equal(ruleB.children().get(1), middle);
+    assert.equal(page.children().get(2), last);
+  });
+
   test("PasteRulesCommand inserts the produced rules above the target, re-producing on redo", () => {
     const { brain, ruleA, ruleB } = brainWithTwoRules();
     ruleA.when().appendTile(sensorTile());
@@ -523,6 +702,103 @@ describe("rule commands round-trip the document", () => {
     assert.equal(page.children().size(), 3);
     assert.equal(page.children().get(0), ruleA);
     assert.equal(page.children().get(2), ruleB);
+  });
+});
+
+describe("a batch of rule moves", () => {
+  /**
+   * A page of four rules, each carrying a distinct tile so the serialized shape
+   * tells them apart, with the third rule holding a child.
+   */
+  function brainWithFourRules(): { brain: BrainDef; page: BrainPageDef; rules: BrainRuleDef[] } {
+    const brain = newBrain();
+    const page = firstPage(brain);
+    const first = page.children().get(0) as BrainRuleDef;
+    first.do().appendTile(actuatorTile());
+    const rules = [first];
+    for (let i = 1; i < 4; i++) {
+      const rule = page.appendNewRule();
+      rule.do().appendTile(numberLiteralTile(brain, i));
+      rules.push(rule);
+    }
+    const child = rules[2].appendNewRule();
+    child.when().appendTile(sensorTile());
+    return { brain, page, rules };
+  }
+
+  test("several moves undo as one entry and redo as one", () => {
+    const { brain, rules } = brainWithFourRules();
+    const moved = rules[3];
+    const history = new BrainCommandHistory();
+    const origin = documentShape(brain);
+
+    history.beginBatch("Move rule");
+    history.executeCommand(new MoveRuleUpCommand(moved));
+    history.executeCommand(new MoveRuleUpCommand(moved));
+    history.executeCommand(new IndentRuleCommand(moved));
+    history.endBatch();
+
+    const settled = documentShape(brain);
+    assert.notDeepEqual(settled, origin, "the moves must have changed the document");
+
+    history.undo();
+    assert.deepEqual(documentShape(brain), origin, "one undo returns the rule to where it started");
+    assert.equal(history.canUndo(), false, "the whole pick-up was a single entry");
+
+    history.redo();
+    assert.deepEqual(documentShape(brain), settled, "one redo re-applies every move");
+    assert.equal(history.canRedo(), false);
+  });
+
+  test("aborting returns the document to exactly its state before the batch, with no entry", () => {
+    const { brain, rules } = brainWithFourRules();
+    const moved = rules[3];
+    const history = new BrainCommandHistory();
+    const origin = documentShape(brain);
+
+    history.beginBatch("Move rule");
+    history.executeCommand(new MoveRuleUpCommand(moved));
+    history.executeCommand(new IndentRuleCommand(moved));
+    history.executeCommand(new OutdentRuleCommand(moved));
+    history.executeCommand(new MoveRuleUpCommand(moved));
+    assert.notDeepEqual(documentShape(brain), origin, "the moves applied live");
+    history.abortBatch();
+
+    assert.deepEqual(documentShape(brain), origin, "abort reverses every applied move");
+    assert.equal(history.canUndo(), false, "a cancelled pick-up leaves no history entry");
+    assert.equal(history.canRedo(), false);
+  });
+
+  test("aborting restores a rule outdented out from among its parent's other children", () => {
+    const { brain, rules } = brainWithFourRules();
+    // Give the child of rules[2] a sibling after it.
+    const held = rules[2].children().get(0) as BrainRuleDef;
+    const following = rules[2].appendNewRule();
+    following.do().appendTile(actuatorTile());
+
+    const history = new BrainCommandHistory();
+    const origin = documentShape(brain);
+
+    history.beginBatch("Move rule");
+    history.executeCommand(new OutdentRuleCommand(held));
+    history.abortBatch();
+
+    assert.deepEqual(documentShape(brain), origin);
+    assert.equal(rules[2].children().get(0), held);
+    assert.equal(rules[2].children().get(1), following);
+  });
+
+  test("a batch that moved nothing leaves no entry", () => {
+    const { brain, rules } = brainWithFourRules();
+    const history = new BrainCommandHistory();
+    const origin = documentShape(brain);
+
+    history.beginBatch("Move rule");
+    history.endBatch();
+
+    assert.deepEqual(documentShape(brain), origin);
+    assert.equal(history.canUndo(), false);
+    assert.equal(rules.length, 4);
   });
 });
 

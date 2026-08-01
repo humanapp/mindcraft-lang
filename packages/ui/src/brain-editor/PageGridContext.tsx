@@ -28,6 +28,11 @@ export interface PageGridBinding {
   readonly ruleToCompose: number | undefined;
   /** Asks that `ruleId` be composed, or gives the request back with undefined. */
   composeRule(ruleId: number | undefined): void;
+  /**
+   * Picks `ruleId` up: the arrow keys then move that rule until it is set down
+   * or given back. Does nothing while another rule is already held.
+   */
+  grabRule(ruleId: number): void;
 }
 
 const PageGridContext = createContext<PageGridBinding | undefined>(undefined);

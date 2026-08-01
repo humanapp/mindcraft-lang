@@ -1,3 +1,4 @@
+import { Error } from "../../../platform/error";
 import { List } from "../../../platform/list";
 
 /**
@@ -22,20 +23,60 @@ export interface BrainCommand {
 }
 
 /**
+ * Several commands the history holds as one entry. Executing replays the
+ * members in the order they joined; undoing reverses them newest first.
+ */
+class BatchedCommand implements BrainCommand {
+  constructor(
+    private readonly members: List<BrainCommand>,
+    private readonly description: string
+  ) {}
+
+  execute(): void {
+    for (let i = 0; i < this.members.size(); i++) {
+      this.members.get(i).execute();
+    }
+  }
+
+  undo(): void {
+    for (let i = this.members.size() - 1; i >= 0; i--) {
+      this.members.get(i).undo();
+    }
+  }
+
+  getDescription(): string {
+    return this.description;
+  }
+}
+
+/**
  * Manages the undo/redo stack for brain editing commands.
+ *
+ * Commands normally take one entry each. While a batch opened with
+ * {@link beginBatch} stands open, every command run joins a single entry
+ * instead, and an operation made of several commands undoes and redoes as one.
  */
 export class BrainCommandHistory {
   private readonly undoStack = new List<BrainCommand>();
   private readonly redoStack = new List<BrainCommand>();
   private onChangeCallback?: () => void;
+  // The commands gathered by the open batch, or undefined while none is open.
+  private batch?: List<BrainCommand>;
+  private batchDescription = "";
 
   constructor(private maxHistorySize: number = 100) {}
 
   /**
-   * Execute a command and add it to the undo stack.
+   * Execute a command and add it to the undo stack, or to the open batch when
+   * {@link beginBatch} has one open.
    */
   executeCommand(command: BrainCommand): void {
     command.execute();
+    if (this.batch !== undefined) {
+      this.batch.push(command);
+      this.notifyChange();
+      return;
+    }
     this.undoStack.push(command);
     this.redoStack.clear(); // Clear redo stack when new command is executed
 
@@ -48,13 +89,77 @@ export class BrainCommandHistory {
   }
 
   /**
-   * Record a command in the undo history WITHOUT executing it.
+   * Open a batch: every command run until {@link endBatch} or
+   * {@link abortBatch} joins one history entry, described by `description`.
+   * Commands still execute as they are run; only the history entry waits.
+   *
+   * Throws when a batch is already open. Batches do not nest.
+   */
+  beginBatch(description: string): void {
+    if (this.batch !== undefined) {
+      throw new Error("BrainCommandHistory.beginBatch: a batch is already open");
+    }
+    this.batch = new List<BrainCommand>();
+    this.batchDescription = description;
+  }
+
+  /** True while a batch opened by {@link beginBatch} is gathering commands. */
+  isBatchOpen(): boolean {
+    return this.batch !== undefined;
+  }
+
+  /**
+   * Close the open batch, adding its commands to the undo stack as one entry.
+   * A batch that gathered no command adds no entry and leaves the redo stack
+   * alone. Does nothing when no batch is open.
+   */
+  endBatch(): void {
+    const batch = this.batch;
+    this.batch = undefined;
+    if (batch === undefined) return;
+    if (batch.size() === 0) {
+      this.notifyChange();
+      return;
+    }
+    this.undoStack.push(new BatchedCommand(batch, this.batchDescription));
+    this.redoStack.clear();
+
+    if (this.undoStack.size() > this.maxHistorySize) {
+      this.undoStack.shift();
+    }
+
+    this.notifyChange();
+  }
+
+  /**
+   * Close the open batch, undoing every command it gathered, newest first.
+   * Adds no history entry and leaves the redo stack alone. Does nothing when no
+   * batch is open.
+   */
+  abortBatch(): void {
+    const batch = this.batch;
+    this.batch = undefined;
+    if (batch === undefined) return;
+    for (let i = batch.size() - 1; i >= 0; i--) {
+      batch.get(i).undo();
+    }
+    this.notifyChange();
+  }
+
+  /**
+   * Record a command in the undo history WITHOUT executing it, or in the open
+   * batch when {@link beginBatch} has one open.
    *
    * Used when the underlying model has already reached the target state through
    * some other means (e.g. an interactive drag that mutated the model directly
    * for fluid feedback) and only the net change should be undoable.
    */
   recordCommand(command: BrainCommand): void {
+    if (this.batch !== undefined) {
+      this.batch.push(command);
+      this.notifyChange();
+      return;
+    }
     this.undoStack.push(command);
     this.redoStack.clear();
 
@@ -66,9 +171,10 @@ export class BrainCommandHistory {
   }
 
   /**
-   * Undo the most recent command.
+   * Undo the most recent command. Does nothing while a batch is open.
    */
   undo(): void {
+    if (this.batch !== undefined) return;
     const command = this.undoStack.pop();
     if (command) {
       command.undo();
@@ -78,9 +184,10 @@ export class BrainCommandHistory {
   }
 
   /**
-   * Redo the most recently undone command.
+   * Redo the most recently undone command. Does nothing while a batch is open.
    */
   redo(): void {
+    if (this.batch !== undefined) return;
     const command = this.redoStack.pop();
     if (command) {
       command.execute();

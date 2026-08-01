@@ -249,6 +249,17 @@ export class BrainRuleDef implements IBrainRuleDef {
     this.page_ = page;
   }
 
+  /**
+   * Record `page` as the one holding this rule directly and subscribe it to the
+   * rule's events. Call this from every path that puts a rule into a page's
+   * child list; until it is called the rule names no page and no brain, and
+   * every `can...` predicate reads false.
+   */
+  private attachToPage_(page: IBrainPageDef): void {
+    this.setPage(page);
+    (page as BrainPageDef).subscribeToRule_(this);
+  }
+
   brain(): IBrainDef | undefined {
     const page = this.page();
     return page?.brain();
@@ -451,6 +462,7 @@ export class BrainRuleDef implements IBrainRuleDef {
       if (parentIndex < 0) return false; // Safety check
       page.children().insert(parentIndex + 1, this);
       this.setAncestor(undefined);
+      this.attachToPage_(page);
     }
 
     this.markDirty();
@@ -533,7 +545,7 @@ export class BrainRuleDef implements IBrainRuleDef {
       if (targetIndex > size) targetIndex = size;
       pageChildren.insert(targetIndex, this);
       this.setAncestor(undefined);
-      (newPage as BrainPageDef).subscribeToRule_(this);
+      this.attachToPage_(newPage);
     }
 
     this.markDirty();

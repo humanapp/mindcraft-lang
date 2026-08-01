@@ -58,6 +58,7 @@ import { useTileSelection } from "./hooks/useTileSelection";
 import { positionOffersTile, sideOffersAppendedTile } from "./insertion-context";
 import { usePageGrid } from "./PageGridContext";
 import {
+  decidePageGridGrab,
   decidePageGridOperation,
   kPageGridCellAttribute,
   type PageGridCell,
@@ -65,8 +66,10 @@ import {
   type PageGridSubject,
   pageGridCellAfterComposing,
   pageGridCellKey,
+  type RuleMoveDirection,
 } from "./page-grid-model";
 import { useRuleDragController } from "./RuleDragContext";
+import { useRulePickup } from "./RulePickupContext";
 import {
   copyRuleToClipboard,
   deserializeAllRulesFromClipboard,
@@ -88,6 +91,13 @@ const pillChromeClasses = "bg-brain-pill hover:bg-brain-pill-hover text-brain-pi
 
 /** The properties a pill whose visibility toggles animates: its hover growth, its surface, its edge, and its ink. */
 const pillTransitionClasses = "transition-[transform,background-color,border-color,color] duration-150";
+
+/**
+ * The whole look of a round `+` button -- shape, size, chrome, hover growth and
+ * glyph centring. Every control that adds something wears it: each side's
+ * add-tile button, and the page's add-rule button.
+ */
+export const kAddButtonClasses = `relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 ${pillTransitionClasses} font-semibold cursor-pointer flex items-center justify-center`;
 
 /** The invitation the sentence line of a rule holding no tiles reads. */
 const kComposerEntryPrompt = "Type what should happen...";
@@ -111,6 +121,17 @@ function editPointCommand(
       return new ReplaceTileCommand(ruleDef, side, arming.tileIndex, tileDef);
   }
 }
+
+/**
+ * Where each direction's marker sits around the rule handle and which way it
+ * points, as a clip path over a square laid outside the handle's box.
+ */
+const ruleMoveMarkers: Record<RuleMoveDirection, React.CSSProperties> = {
+  up: { clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)", top: "-0.55rem", left: "50%", marginLeft: "-0.25rem" },
+  down: { clipPath: "polygon(0% 0%, 100% 0%, 50% 100%)", bottom: "-0.55rem", left: "50%", marginLeft: "-0.25rem" },
+  outdent: { clipPath: "polygon(0% 50%, 100% 0%, 100% 100%)", left: "-0.55rem", top: "50%", marginTop: "-0.25rem" },
+  indent: { clipPath: "polygon(0% 0%, 100% 50%, 0% 100%)", right: "-0.55rem", top: "50%", marginTop: "-0.25rem" },
+};
 
 /** One placement a rule's own composition made: the command it ran, and the element it stands at. */
 interface ComposerCommit {
@@ -150,6 +171,10 @@ export function BrainRuleEditor({
   // page's selection currently rests on.
   const pageGrid = usePageGrid();
   const ruleId = ruleDef.id();
+  // The rule the page holds picked up.
+  const rulePickup = useRulePickup();
+  const isGrabbed = rulePickup.pickup?.ruleId === ruleId;
+  const grabbedDirections = isGrabbed ? rulePickup.pickup?.directions : undefined;
   const dragController = useRuleDragController();
   const isDragging = dragController.draggingRuleId === ruleDef.id();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -690,12 +715,6 @@ export function BrainRuleEditor({
     }
   };
 
-  /** True when this rule is the empty one the page keeps standing at its end. */
-  const isTrailingEmptyRule = (): boolean => {
-    const children = pageDef.children();
-    return children.size() > 0 && children.get(children.size() - 1) === ruleDef && ruleDef.isEmpty(true);
-  };
-
   // A caret read back onto the run stands somewhere else than the target was
   // armed at; arming that target again moves the offering, and the command a
   // placement runs, to the tiles the rule holds now.
@@ -824,11 +843,22 @@ export function BrainRuleEditor({
     return { [kPageGridCellAttribute]: key, tabIndex: key === currentCellKey ? 0 : -1 };
   };
 
-  /** Keeps ArrowDown and the insertion chord on the handle from opening the handle's menu. */
+  /**
+   * A key pressed on the rule handle. Enter and a space pick the rule up, after
+   * which the arrow keys move it. Keys that would otherwise open the handle's
+   * menu are suppressed.
+   */
   const handleHandleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === "ArrowDown" || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) {
+    const withCommand = event.metaKey || event.ctrlKey;
+    if (event.key === "ArrowDown" || (withCommand && event.key === "Enter")) {
       event.preventDefault();
+      return;
     }
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    if (isGrabbed) return;
+    const grabs = decidePageGridGrab({ kind: "handle", ruleId }, { key: event.key, withCommand, placement: "on-cell" });
+    if (grabs) pageGrid?.grabRule(ruleId);
   };
 
   /**
@@ -838,17 +868,16 @@ export function BrainRuleEditor({
    * A key pressed on a control the cell holds belongs to that control.
    */
   const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (selectedCell === undefined || selectedCell.ruleId !== ruleId) return;
+    if (selectedCell === undefined || selectedCell.kind === "append-rule" || selectedCell.ruleId !== ruleId) return;
+    // A held rule reads its keys as moves; nothing operates on it until it is
+    // set down.
+    if (rulePickup.pickup !== null) return;
     const target = event.target as HTMLElement;
-    const operation = decidePageGridOperation(
-      selectedCell,
-      {
-        key: event.key,
-        withCommand: event.metaKey || event.ctrlKey,
-        placement: target.getAttribute(kPageGridCellAttribute) === currentCellKey ? "on-cell" : "inside-cell",
-      },
-      { isTrailingEmpty: isTrailingEmptyRule() }
-    );
+    const operation = decidePageGridOperation(selectedCell, {
+      key: event.key,
+      withCommand: event.metaKey || event.ctrlKey,
+      placement: target.getAttribute(kPageGridCellAttribute) === currentCellKey ? "on-cell" : "inside-cell",
+    });
     if (operation === undefined) return;
     event.preventDefault();
     performOperation(operation);
@@ -861,7 +890,7 @@ export function BrainRuleEditor({
         className={`flex flex-col p-2 sm:p-3 mb-1 rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow w-fit relative${hasBodyBelowTiles ? "" : " h-30"}${isDragging ? ` ${kRuleChromeLayer}` : ""}`}
         style={{
           ...indentStyle,
-          background: "linear-gradient(55deg, var(--color-brain-rule-from) 0%, var(--color-brain-rule-to) 100%)",
+          background: `${isGrabbed ? "linear-gradient(0deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.14)), " : ""}linear-gradient(55deg, var(--color-brain-rule-from) 0%, var(--color-brain-rule-to) 100%)`,
           opacity: isDragging ? 0.85 : undefined,
           transform: isDragging ? "scale(1.02)" : undefined,
           transition: isDragging ? "none" : "transform 120ms ease, opacity 120ms ease",
@@ -936,6 +965,14 @@ export function BrainRuleEditor({
                     aria-hidden="true"
                   />
                 )}
+                {grabbedDirections?.map((direction) => (
+                  <span
+                    key={direction}
+                    className="pointer-events-none absolute h-2 w-2 bg-brain-ink"
+                    style={ruleMoveMarkers[direction]}
+                    aria-hidden="true"
+                  />
+                ))}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
@@ -1005,7 +1042,7 @@ export function BrainRuleEditor({
           <div className="flex items-center">
             <button
               type="button"
-              className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 ${pillTransitionClasses} font-semibold cursor-pointer flex items-center justify-center${appendable.whenSide ? "" : " invisible"}`}
+              className={`${kAddButtonClasses}${appendable.whenSide ? "" : " invisible"}`}
               data-append-tile={RuleSide.When}
               onClick={handleAppendTileClick(RuleSide.When)}
               aria-label="Add tile to when condition"
@@ -1056,7 +1093,7 @@ export function BrainRuleEditor({
             <div className="flex items-center">
               <button
                 type="button"
-                className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold cursor-pointer flex items-center justify-center`}
+                className={kAddButtonClasses}
                 data-append-tile={RuleSide.Do}
                 onClick={handleAppendTileClick(RuleSide.Do)}
                 aria-label="Add tile to do action"

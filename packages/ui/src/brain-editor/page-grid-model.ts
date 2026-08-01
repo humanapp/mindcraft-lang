@@ -12,13 +12,18 @@ export const kPageGridCellAttribute = "data-page-grid-cell";
  * One place the page's selection can rest. A rule stands two rows: its
  * structural row -- the handle, the tiles of each side, and the add-tile control
  * each side offers -- and its sentence row, which holds a single cell for the
- * whole line.
+ * whole line. The page itself stands one further row, holding the control that
+ * adds a rule at the end.
  */
 export type PageGridCell =
   | { readonly kind: "handle"; readonly ruleId: number }
   | { readonly kind: "tile"; readonly ruleId: number; readonly side: RuleSide; readonly tileIndex: number }
   | { readonly kind: "append"; readonly ruleId: number; readonly side: RuleSide }
-  | { readonly kind: "sentence"; readonly ruleId: number };
+  | { readonly kind: "sentence"; readonly ruleId: number }
+  | { readonly kind: "append-rule" };
+
+/** The page's add-rule control, which stands the last row of every grid. */
+export const kAppendRuleCell: PageGridCell = { kind: "append-rule" };
 
 /**
  * What one rule contributes to the page's grid: how many tiles each side holds,
@@ -69,6 +74,47 @@ export interface PageGridKeyPress {
 type PageGridVerb = "delete" | "copy" | "cut" | "paste" | "insert-rule";
 
 /**
+ * A step a rule picked up from its handle takes: `up` and `down` reorder it
+ * among its siblings, `indent` makes it a child of the sibling above it, and
+ * `outdent` moves it out of its parent to sit just past it. Each carries the
+ * rule's children with it.
+ */
+export type RuleMoveDirection = "up" | "down" | "indent" | "outdent";
+
+/** Which of a rule's four moves the model would carry out from where it stands. */
+export interface RuleMoveCapabilities {
+  readonly canMoveUp: boolean;
+  readonly canMoveDown: boolean;
+  readonly canIndent: boolean;
+  readonly canOutdent: boolean;
+}
+
+/**
+ * The steps `capabilities` says the rule can take, in reading order: up, down,
+ * outdent, indent. A direction absent from the list is one the model would
+ * refuse, so asking for it is left alone.
+ */
+export function ruleMoveDirections(capabilities: RuleMoveCapabilities): RuleMoveDirection[] {
+  const directions: RuleMoveDirection[] = [];
+  if (capabilities.canMoveUp) directions.push("up");
+  if (capabilities.canMoveDown) directions.push("down");
+  if (capabilities.canOutdent) directions.push("outdent");
+  if (capabilities.canIndent) directions.push("indent");
+  return directions;
+}
+
+/**
+ * True when `press` picks `cell`'s rule up: Enter or a space held on a rule
+ * handle, with no clipboard modifier. A press arriving from inside the cell and
+ * a cell standing for anything but a handle both pick nothing up.
+ */
+export function decidePageGridGrab(cell: PageGridCell, press: PageGridKeyPress): boolean {
+  if (press.placement !== "on-cell" || press.withCommand) return false;
+  if (cell.kind !== "handle") return false;
+  return press.key === "Enter" || press.key === " ";
+}
+
+/**
  * What an operation acts on, which the selected cell decides: the tile a tile
  * cell stands, the rule a handle stands, and the end of the side an add-tile
  * control stands, which a paste appends to.
@@ -82,12 +128,6 @@ export type PageGridSubject =
 export interface PageGridOperation {
   readonly verb: PageGridVerb;
   readonly subject: PageGridSubject;
-}
-
-/** What the page reads about the rule the selection rests on. */
-export interface PageGridRuleFacts {
-  /** True when the rule is the empty one the page keeps standing at its end. */
-  readonly isTrailingEmpty: boolean;
 }
 
 /** What a key press asks of the page's selection. */
@@ -129,6 +169,8 @@ export function pageGridCellKey(cell: PageGridCell): string {
       return `${cell.ruleId}:append:${cell.side}`;
     case "sentence":
       return `${cell.ruleId}:sentence`;
+    case "append-rule":
+      return "append-rule";
   }
 }
 
@@ -152,6 +194,9 @@ const kRowSides = [RuleSide.When, RuleSide.Do] as const;
  * DO tiles, the DO add-tile control -- followed by its sentence row where it
  * reads one. An add-tile control the side does not offer stands no cell, and a
  * rule reading no sentence contributes a structural row only.
+ *
+ * The last row is always the page's add-rule control, so a page holding no
+ * rules still stands one cell.
  */
 export function pageGridRows(descriptors: readonly RuleCellDescriptor[]): PageGridCell[][] {
   const rows: PageGridCell[][] = [];
@@ -171,6 +216,7 @@ export function pageGridRows(descriptors: readonly RuleCellDescriptor[]): PageGr
     rows.push(structural);
     if (descriptor.hasSentence) rows.push([{ kind: "sentence", ruleId }]);
   }
+  rows.push([kAppendRuleCell]);
   return rows;
 }
 
@@ -214,14 +260,16 @@ function cursorAtPosition(
  * to its own rule's handle, and then to the grid's first cell, so the selection
  * always addresses a cell that exists. With no `cell` named, returns the
  * selection the editor opens at, which is the first rule's handle whatever that
- * rule holds. Returns undefined only for a grid holding no cells at all.
+ * rule holds, and the page's add-rule control for a page holding no rules.
+ *
+ * Pass the rows {@link pageGridRows} builds, which always hold at least the
+ * add-rule row.
  */
 export function resolvePageGridCursor(
   rows: readonly (readonly PageGridCell[])[],
   cell?: PageGridCell,
   landing?: PageGridPosition
-): PageGridCursor | undefined {
-  if (rows.length === 0) return undefined;
+): PageGridCursor {
   const wanted = cell ?? rows[0][0];
   const at = pageGridCellPosition(rows, wanted);
   if (at !== undefined) return { cell: rows[at.row][at.column], desiredColumn: at.column };
@@ -229,9 +277,11 @@ export function resolvePageGridCursor(
     const landed = cursorAtPosition(rows, landing);
     if (landed !== undefined) return landed;
   }
-  const handle: PageGridCell = { kind: "handle", ruleId: wanted.ruleId };
-  const handleAt = pageGridCellPosition(rows, handle);
-  if (handleAt !== undefined) return { cell: handle, desiredColumn: handleAt.column };
+  if (wanted.kind !== "append-rule") {
+    const handle: PageGridCell = { kind: "handle", ruleId: wanted.ruleId };
+    const handleAt = pageGridCellPosition(rows, handle);
+    if (handleAt !== undefined) return { cell: handle, desiredColumn: handleAt.column };
+  }
   return { cell: rows[0][0], desiredColumn: 0 };
 }
 
@@ -271,6 +321,61 @@ export function decidePageGridKey(
   return { kind: "move", cursor: { cell: row[column], desiredColumn: cursor.desiredColumn } };
 }
 
+/** The direction a grabbed rule takes for `key`, or undefined for every other key. */
+function grabbedRuleDirection(key: string): RuleMoveDirection | undefined {
+  switch (key) {
+    case "ArrowUp":
+      return "up";
+    case "ArrowDown":
+      return "down";
+    case "ArrowLeft":
+      return "outdent";
+    case "ArrowRight":
+      return "indent";
+    default:
+      return undefined;
+  }
+}
+
+/** What a key press does to the page, whether or not a rule is held. */
+export type PageKeyResult =
+  | { readonly kind: "inert" }
+  | { readonly kind: "select"; readonly cursor: PageGridCursor }
+  | { readonly kind: "move-rule"; readonly direction: RuleMoveDirection }
+  | { readonly kind: "drop" }
+  | { readonly kind: "cancel" };
+
+const inertPageKey: PageKeyResult = { kind: "inert" };
+
+/**
+ * What pressing `press` does to the page.
+ *
+ * While `grabbed` is true the arrows belong to the held rule: up and down
+ * reorder it among its siblings, left outdents it and right indents it, Enter
+ * sets it down and Escape gives it back to where it was picked up. The
+ * selection does not move, and no other key does anything.
+ *
+ * With no rule held the arrows move the selection, as {@link decidePageGridKey}
+ * decides.
+ */
+export function decidePageKey(
+  rows: readonly (readonly PageGridCell[])[],
+  cursor: PageGridCursor | undefined,
+  press: PageGridKeyPress,
+  grabbed: boolean
+): PageKeyResult {
+  if (!grabbed) {
+    const stepped = decidePageGridKey(rows, cursor, press.key, press.placement);
+    return stepped.kind === "move" ? { kind: "select", cursor: stepped.cursor } : inertPageKey;
+  }
+  if (press.placement !== "on-cell" || press.withCommand) return inertPageKey;
+  const direction = grabbedRuleDirection(press.key);
+  if (direction !== undefined) return { kind: "move-rule", direction };
+  if (press.key === "Enter") return { kind: "drop" };
+  if (press.key === "Escape") return { kind: "cancel" };
+  return inertPageKey;
+}
+
 /** The verb `press` asks for, or undefined for every key that asks for none. */
 function pageGridVerb(press: PageGridKeyPress): PageGridVerb | undefined {
   if (press.withCommand) {
@@ -292,7 +397,8 @@ function pageGridVerb(press: PageGridKeyPress): PageGridVerb | undefined {
 
 /**
  * What `cell` stands for, or undefined for a cell standing for nothing an
- * operation can act on, which the sentence line is.
+ * operation can act on, which the sentence line and the page's add-rule control
+ * both are.
  */
 function pageGridSubject(cell: PageGridCell): PageGridSubject | undefined {
   switch (cell.kind) {
@@ -303,17 +409,16 @@ function pageGridSubject(cell: PageGridCell): PageGridSubject | undefined {
     case "append":
       return { kind: "side-end", ruleId: cell.ruleId, side: cell.side };
     case "sentence":
+    case "append-rule":
       return undefined;
   }
 }
 
 /** True when `verb` has something to do to `subject`. */
-function verbActsOn(verb: PageGridVerb, subject: PageGridSubject, facts: PageGridRuleFacts): boolean {
+function verbActsOn(verb: PageGridVerb, subject: PageGridSubject): boolean {
   switch (verb) {
     case "delete":
     case "cut":
-      if (subject.kind === "side-end") return false;
-      return !(subject.kind === "rule" && facts.isTrailingEmpty);
     case "copy":
       return subject.kind !== "side-end";
     case "paste":
@@ -329,23 +434,20 @@ function verbActsOn(verb: PageGridVerb, subject: PageGridSubject, facts: PageGri
  *
  * The cell decides the subject: a tile cell its tile, a handle its whole rule,
  * an add-tile control the end of that side, which a paste appends to. The
- * sentence line stands for no subject, so every operation there is left alone.
+ * sentence line and the page's add-rule control stand for no subject, so every
+ * operation there is left alone.
  *
  * Delete, and the clipboard keys Cmd/Ctrl+C, +X and +V, act on the subject;
  * Cmd/Ctrl+Enter inserts a rule after the one a handle stands for. A press that
  * arrives from inside the cell belongs to the control there, as does a press
- * naming a subject the verb has nothing to do to -- copying an add-tile control,
- * or deleting the empty rule the page keeps standing at its end.
+ * naming a subject the verb has nothing to do to, which copying or deleting an
+ * add-tile control is.
  */
-export function decidePageGridOperation(
-  cell: PageGridCell,
-  press: PageGridKeyPress,
-  facts: PageGridRuleFacts
-): PageGridOperation | undefined {
+export function decidePageGridOperation(cell: PageGridCell, press: PageGridKeyPress): PageGridOperation | undefined {
   if (press.placement !== "on-cell") return undefined;
   const verb = pageGridVerb(press);
   if (verb === undefined) return undefined;
   const subject = pageGridSubject(cell);
-  if (subject === undefined || !verbActsOn(verb, subject, facts)) return undefined;
+  if (subject === undefined || !verbActsOn(verb, subject)) return undefined;
   return { verb, subject };
 }

@@ -20,13 +20,17 @@ import { caretRun, composerEntryCaret } from "./caret-run";
 import { sideOffersAppendedTile } from "./insertion-context";
 import {
   decidePageGridKey,
+  decidePageKey,
+  kAppendRuleCell,
   type PageGridCell,
   type PageGridCursor,
+  type PageGridKeyPress,
   pageGridCellAfterComposing,
   pageGridCellKey,
   pageGridRows,
   type RuleCellDescriptor,
   resolvePageGridCursor,
+  ruleMoveDirections,
 } from "./page-grid-model";
 import { makeActuator, makeSensor } from "./test-only-rule-fixtures";
 
@@ -126,14 +130,36 @@ describe("the cells a page stands", () => {
   test("a rule reading no sentence contributes one row", () => {
     const { rules } = makePage(1);
     const rows = pageGridRows([{ ...describeRule(rules[0]), hasSentence: false }]);
-    assert.equal(rows.length, 1);
+    assert.equal(rows.length, 2);
     assert.equal(rows[0][0].kind, "handle");
+    assert.deepEqual(rows[1], [kAppendRuleCell]);
   });
 
   test("every cell of the page is addressed by its own key", () => {
     const { rows } = makeMixedPage();
     const keys = rows.flat().map(pageGridCellKey);
     assert.equal(new Set(keys).size, keys.length);
+  });
+});
+
+describe("the row the page's add-rule control stands", () => {
+  test("a page holding no rules stands it alone", () => {
+    assert.deepEqual(pageGridRows([]), [[kAppendRuleCell]]);
+  });
+
+  test("a page of one rule stands it past that rule's two rows", () => {
+    const { rules } = makePage(1);
+    const rows = pageGridRows([describeRule(rules[0])]);
+    assert.equal(rows.length, 3);
+    assert.deepEqual(rows[2], [kAppendRuleCell]);
+  });
+
+  test("a page of several rules stands one of it, at the end", () => {
+    const { rules } = makePage(3);
+    const rows = pageGridRows(rules.map(describeRule));
+    assert.equal(rows.length, 7);
+    assert.deepEqual(rows[6], [kAppendRuleCell]);
+    assert.equal(rows.filter((row) => row[0].kind === "append-rule").length, 1);
   });
 });
 
@@ -183,9 +209,24 @@ describe("stepping across the page", () => {
   });
 
   test("a step off the top or the bottom of the page is refused", () => {
-    const { both, bare, rows } = makeMixedPage();
+    const { both, rows } = makeMixedPage();
     assert.equal(step(rows, cursorAt(rows, { kind: "handle", ruleId: both.id() }), "ArrowUp"), undefined);
-    assert.equal(step(rows, cursorAt(rows, { kind: "sentence", ruleId: bare.id() }), "ArrowDown"), undefined);
+    assert.equal(step(rows, cursorAt(rows, kAppendRuleCell), "ArrowDown"), undefined);
+  });
+
+  test("down from the last rule reaches the add-rule control, and up returns", () => {
+    const { bare, rows } = makeMixedPage();
+    const lastSentence = cursorAt(rows, { kind: "sentence", ruleId: bare.id() });
+    const appendRule = step(rows, lastSentence, "ArrowDown") as PageGridCursor;
+    assert.deepEqual(appendRule.cell, kAppendRuleCell);
+    assert.deepEqual(step(rows, appendRule, "ArrowUp")?.cell, lastSentence.cell);
+  });
+
+  test("the add-rule control stands its row alone, so neither side step moves", () => {
+    const { rows } = makeMixedPage();
+    const appendRule = cursorAt(rows, kAppendRuleCell);
+    assert.equal(step(rows, appendRule, "ArrowLeft"), undefined);
+    assert.equal(step(rows, appendRule, "ArrowRight"), undefined);
   });
 
   test("a key the grid does not walk by is refused", () => {
@@ -239,29 +280,36 @@ describe("what the grid leaves alone", () => {
 describe("where the selection rests", () => {
   test("the editor opens on the first rule's handle, whatever that rule holds", () => {
     const { both, rows } = makeMixedPage();
-    assert.deepEqual(resolvePageGridCursor(rows)?.cell, { kind: "handle", ruleId: both.id() });
+    assert.deepEqual(resolvePageGridCursor(rows).cell, { kind: "handle", ruleId: both.id() });
 
     const { rules } = makePage(1);
     const bareRows = pageGridRows([{ ...describeRule(rules[0]), hasSentence: false }]);
-    assert.deepEqual(resolvePageGridCursor(bareRows)?.cell, { kind: "handle", ruleId: rules[0].id() });
+    assert.deepEqual(resolvePageGridCursor(bareRows).cell, { kind: "handle", ruleId: rules[0].id() });
   });
 
   test("a cell the page has lost falls back to its own rule's handle", () => {
     const { whenOnly, rows } = makeMixedPage();
     const lost: PageGridCell = { kind: "tile", ruleId: whenOnly.id(), side: RuleSide.Do, tileIndex: 4 };
-    assert.deepEqual(resolvePageGridCursor(rows, lost)?.cell, { kind: "handle", ruleId: whenOnly.id() });
+    assert.deepEqual(resolvePageGridCursor(rows, lost).cell, { kind: "handle", ruleId: whenOnly.id() });
   });
 
   test("a rule the page has lost falls back to the first cell", () => {
     const { both, rows } = makeMixedPage();
-    assert.deepEqual(resolvePageGridCursor(rows, { kind: "sentence", ruleId: -1 })?.cell, {
+    assert.deepEqual(resolvePageGridCursor(rows, { kind: "sentence", ruleId: -1 }).cell, {
       kind: "handle",
       ruleId: both.id(),
     });
   });
 
-  test("a page holding no cells rests nowhere", () => {
-    assert.equal(resolvePageGridCursor(pageGridRows([])), undefined);
+  test("a page holding no rules rests on its add-rule control, the only cell it stands", () => {
+    const rows = pageGridRows([]);
+    assert.deepEqual(resolvePageGridCursor(rows).cell, kAppendRuleCell);
+    assert.deepEqual(rows.flat(), [kAppendRuleCell]);
+  });
+
+  test("the add-rule control the page still stands keeps the selection", () => {
+    const { rows } = makeMixedPage();
+    assert.deepEqual(resolvePageGridCursor(rows, kAppendRuleCell).cell, kAppendRuleCell);
   });
 });
 
@@ -294,5 +342,118 @@ describe("the tile row and the sentence reading one position", () => {
   test("a rule standing at no caret at all rests the selection on its sentence", () => {
     const { bare } = makeMixedPage();
     assert.deepEqual(pageGridCellAfterComposing(bare.id(), undefined), { kind: "sentence", ruleId: bare.id() });
+  });
+});
+
+describe("the steps a picked-up rule can take", () => {
+  test("each move the model would carry out reads as one direction, in reading order", () => {
+    assert.deepEqual(ruleMoveDirections({ canMoveUp: true, canMoveDown: true, canIndent: true, canOutdent: true }), [
+      "up",
+      "down",
+      "outdent",
+      "indent",
+    ]);
+  });
+
+  test("the page's first rule offers neither up nor indent, having nothing above it", () => {
+    const { rules } = makePage(3);
+    const first = rules[0];
+    assert.deepEqual(
+      ruleMoveDirections({
+        canMoveUp: first.canMoveUp(),
+        canMoveDown: first.canMoveDown(),
+        canIndent: first.canIndent(),
+        canOutdent: first.canOutdent(),
+      }),
+      ["down"]
+    );
+  });
+
+  test("the page's last rule offers no down", () => {
+    const { rules } = makePage(3);
+    const last = rules[2];
+    assert.deepEqual(
+      ruleMoveDirections({
+        canMoveUp: last.canMoveUp(),
+        canMoveDown: last.canMoveDown(),
+        canIndent: last.canIndent(),
+        canOutdent: last.canOutdent(),
+      }),
+      ["up", "indent"]
+    );
+  });
+
+  test("a rule at the outermost indent offers no outdent, and offers one once nested", () => {
+    const { rules } = makePage(3);
+    const nested = rules[2];
+    assert.equal(nested.canOutdent(), false);
+    nested.indent();
+    assert.equal(nested.canOutdent(), true);
+    assert.deepEqual(
+      ruleMoveDirections({
+        canMoveUp: nested.canMoveUp(),
+        canMoveDown: nested.canMoveDown(),
+        canIndent: nested.canIndent(),
+        canOutdent: nested.canOutdent(),
+      }),
+      ["outdent"]
+    );
+  });
+});
+
+describe("who the arrow keys belong to", () => {
+  const onCell = (key: string, withCommand = false): PageGridKeyPress => ({ key, withCommand, placement: "on-cell" });
+
+  /** The cursor resting on the second rule's handle of a three-rule page. */
+  function handleCursor() {
+    const { rules } = makePage(3);
+    const rows = pageGridRows(rules.map(describeRule));
+    return { rows, cursor: cursorAt(rows, { kind: "handle", ruleId: rules[1].id() }) };
+  }
+
+  test("with no rule held the arrows move the selection", () => {
+    const { rows, cursor } = handleCursor();
+    for (const key of ["ArrowUp", "ArrowDown", "ArrowRight"]) {
+      assert.equal(decidePageKey(rows, cursor, onCell(key), false).kind, "select");
+    }
+  });
+
+  test("with a rule held the same arrows move the rule and the selection stays put", () => {
+    const { rows, cursor } = handleCursor();
+    for (const [key, direction] of [
+      ["ArrowUp", "up"],
+      ["ArrowDown", "down"],
+      ["ArrowLeft", "outdent"],
+      ["ArrowRight", "indent"],
+    ] as const) {
+      assert.deepEqual(decidePageKey(rows, cursor, onCell(key), true), { kind: "move-rule", direction });
+    }
+  });
+
+  test("Enter sets the held rule down and Escape gives it back", () => {
+    const { rows, cursor } = handleCursor();
+    assert.deepEqual(decidePageKey(rows, cursor, onCell("Enter"), true), { kind: "drop" });
+    assert.deepEqual(decidePageKey(rows, cursor, onCell("Escape"), true), { kind: "cancel" });
+  });
+
+  test("neither key does anything with no rule held", () => {
+    const { rows, cursor } = handleCursor();
+    for (const key of ["Enter", "Escape"]) {
+      assert.equal(decidePageKey(rows, cursor, onCell(key), false).kind, "inert");
+    }
+  });
+
+  test("a held rule leaves every other key alone, the insertion chord included", () => {
+    const { rows, cursor } = handleCursor();
+    for (const press of [onCell("Delete"), onCell("c", true), onCell("Enter", true), onCell("a")]) {
+      assert.equal(decidePageKey(rows, cursor, press, true).kind, "inert");
+    }
+  });
+
+  test("a key arriving from inside a cell reaches neither the held rule nor the selection", () => {
+    const { rows, cursor } = handleCursor();
+    const inside: PageGridKeyPress = { key: "ArrowUp", withCommand: false, placement: "inside-cell" };
+    assert.equal(decidePageKey(rows, cursor, inside, true).kind, "inert");
+    assert.equal(decidePageKey(rows, cursor, inside, false).kind, "inert");
   });
 });

@@ -1,6 +1,7 @@
 import { List } from "@mindcraft-lang/core";
 import {
   AddPageCommand,
+  AddRuleCommand,
   BrainCommandHistory,
   BrainDef,
   type BrainPageDef,
@@ -57,12 +58,22 @@ import {
   onBrainClipboardChanged,
 } from "./brain-clipboard";
 import { kDialogChromeLayer } from "./editor-layers";
+import { RulePickupProvider, useRulePickupState } from "./RulePickupContext";
 
 // Top-edge brand accent. Uses each app's signature strip tokens when defined
 // (microbit-sim's blue->green->teal), else falls back to the brand primary/ring
 // so single-brand apps (apps/ecosim) still get a branded accent line.
 const brandStripBackground =
   "linear-gradient(90deg, var(--strip-blue, var(--color-primary)) 0%, var(--strip-green, var(--color-ring)) 50%, var(--strip-teal, var(--color-primary)) 100%)";
+
+/** True when no page of `brainDef` holds a rule. */
+function brainHoldsNoRule(brainDef: BrainDef): boolean {
+  const pages = brainDef.pages();
+  for (let index = 0; index < pages.size(); index++) {
+    if (pages.get(index).children().size() > 0) return false;
+  }
+  return true;
+}
 
 /** Props for {@link BrainEditorDialog}. */
 export interface BrainEditorDialogProps {
@@ -108,6 +119,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   const [commandHistory] = useState(() => new BrainCommandHistory());
   // Armed target for the tile picker, shared with the rule and tile editors.
   const armedTarget = useArmedTargetState();
+  const rulePickup = useRulePickupState();
   const disarmTileTarget = armedTarget.disarm;
   const [canUndo, setCanUndo] = useState(false);
   const [hasBrainClipboard, setHasBrainClipboard] = useState(hasBrainInClipboard);
@@ -147,6 +159,11 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setCurrentPageNumber(1);
       setTotalPageCount(newBrainDef.pages().size());
       commandHistory.clear(); // Clear history when opening dialog
+      // A brain holding no rule at all is given one to start from, through the
+      // history, so it can be taken straight back.
+      if (brainHoldsNoRule(newBrainDef)) {
+        commandHistory.executeCommand(new AddRuleCommand(newBrainDef.pages().get(0) as BrainPageDef));
+      }
     } else if (!isOpen) {
       // Clear working copy when dialog closes
       setBrainDef(undefined);
@@ -519,9 +536,11 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
             if (e.currentTarget instanceof HTMLElement) e.currentTarget.focus();
           }}
           // While a tile picker is armed, Escape belongs to the candidate strip:
-          // it clears the strip's filter text and then disarms.
+          // it clears the strip's filter text and then disarms. While a rule is
+          // picked up it belongs to that rule, and gives it back to where it was
+          // picked up from.
           onEscapeKeyDown={(e) => {
-            if (armedTarget.target) e.preventDefault();
+            if (armedTarget.target || rulePickup.pickup) e.preventDefault();
           }}
           hideClose
         >
@@ -876,13 +895,15 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
           >
             {brainDef && currentPageDef ? (
               <ArmedTargetProvider value={armedTarget}>
-                <BrainPageEditor
-                  key={`${currentPageNumber}-${pageChangeCounter}`}
-                  pageDef={currentPageDef as BrainPageDef}
-                  pageNumber={currentPageNumber}
-                  commandHistory={commandHistory}
-                  zoom={zoom}
-                />
+                <RulePickupProvider value={rulePickup}>
+                  <BrainPageEditor
+                    key={`${currentPageNumber}-${pageChangeCounter}`}
+                    pageDef={currentPageDef as BrainPageDef}
+                    pageNumber={currentPageNumber}
+                    commandHistory={commandHistory}
+                    zoom={zoom}
+                  />
+                </RulePickupProvider>
               </ArmedTargetProvider>
             ) : (
               <p className="text-brain-ink/80 p-6">No BrainDef attached to this object.</p>

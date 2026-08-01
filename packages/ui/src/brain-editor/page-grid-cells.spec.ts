@@ -81,6 +81,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, currentCel
               holdSelectionPlace: () => {},
               ruleToCompose: undefined,
               composeRule: () => {},
+              grabRule: () => {},
             },
           },
           createElement(BrainRuleEditor, {
@@ -98,7 +99,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, currentCel
   );
 }
 
-/** The keys the model names for `ruleDef`, in reading order. */
+/** The keys the model names for `ruleDef`'s own rows, in reading order. */
 function modelCellKeys(ruleDef: BrainRuleDef, hasSentence: boolean): string[] {
   const descriptor: RuleCellDescriptor = {
     ruleId: ruleDef.id(),
@@ -108,7 +109,8 @@ function modelCellKeys(ruleDef: BrainRuleDef, hasSentence: boolean): string[] {
     doAppendable: sideOffersAppendedTile({ ruleDef, side: RuleSide.Do, catalogs, services }),
     hasSentence,
   };
-  return pageGridRows([descriptor]).flat().map(pageGridCellKey);
+  // The page stands the last row, not the rule.
+  return pageGridRows([descriptor]).slice(0, -1).flat().map(pageGridCellKey);
 }
 
 /** A rule holding one tile on each side, typechecked so the oracle has an answer for both. */

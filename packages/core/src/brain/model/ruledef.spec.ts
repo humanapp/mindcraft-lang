@@ -157,6 +157,56 @@ describe("BrainRuleDef", () => {
     });
   });
 
+  describe("a rule standing in a page's child list is attached to that page", () => {
+    /**
+     * A page holding one rule with one child, where the child was created
+     * directly under its parent and so has never stood in the page's own child
+     * list.
+     */
+    function pageWithNestedChild(): { page: BrainPageDef; parent: BrainRuleDef; child: BrainRuleDef } {
+      const brain = new BrainDef(services);
+      const page = new BrainPageDef();
+      brain.addPage(page);
+      const parent = page.appendNewRule() as BrainRuleDef;
+      const child = parent.appendNewRule() as BrainRuleDef;
+      return { page, parent, child };
+    }
+
+    /**
+     * Assert that `rule` is live where the page's child list holds it: it names
+     * its page and brain, and every move it could make answers for itself.
+     */
+    function assertAttached(page: BrainPageDef, rule: BrainRuleDef): void {
+      assert.equal(page.children().indexOf(rule) >= 0, true, "the page's child list must hold the rule");
+      assert.equal(rule.page(), page, "the rule must name the page holding it");
+      assert.notEqual(rule.brain(), undefined, "the rule must reach its brain");
+      assert.equal(rule.canMoveUp(), page.children().indexOf(rule) > 0);
+      assert.equal(rule.canMoveDown(), page.children().indexOf(rule) < page.children().size() - 1);
+      assert.equal(rule.canIndent(), page.children().indexOf(rule) > 0);
+      assert.equal(rule.canOutdent(), false, "a rule at page level has nothing to outdent to");
+    }
+
+    test("outdent to page level attaches the rule", () => {
+      const { page, child } = pageWithNestedChild();
+      assert.equal(child.outdent(), true);
+      assertAttached(page, child);
+    });
+
+    test("moveTo page level attaches the rule", () => {
+      const { page, child } = pageWithNestedChild();
+      assert.equal(child.moveTo(undefined, page, 1), true);
+      assertAttached(page, child);
+    });
+
+    test("a rule outdented to page level can be indented back", () => {
+      const { page, parent, child } = pageWithNestedChild();
+      child.outdent();
+      assert.equal(child.indent(), true);
+      assert.equal(parent.children().get(0), child);
+      assert.equal(page.children().size(), 1);
+    });
+  });
+
   describe("typecheck hierarchy providers", () => {
     /** Parse diagnostic codes reported for one side of a rule by typecheck(). */
     function typecheckSideDiags(rule: BrainRuleDef, side: "when" | "do"): number[] {
