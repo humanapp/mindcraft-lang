@@ -50,7 +50,7 @@ let nextRuleId_ = 1;
 
 /** Concrete {@link IBrainRuleDef}: a single rule with `when` and `do` tile-sets and child rules. */
 export class BrainRuleDef implements IBrainRuleDef {
-  private readonly id_: number;
+  private id_: number;
   private page_?: IBrainPageDef;
   private ancestor_?: BrainRuleDef; // Next rule up in the tree, if any
   private readonly children_ = new List<BrainRuleDef>();
@@ -76,6 +76,22 @@ export class BrainRuleDef implements IBrainRuleDef {
    */
   id(): number {
     return this.id_;
+  }
+
+  /**
+   * Takes on the id `source` carries, and gives each descendant the id of the
+   * descendant standing in the same place of `source`, so a rule rebuilt from a
+   * copy of another is addressed by the ids that other was addressed by.
+   *
+   * Walks both trees in child order. A descendant `source` has no counterpart
+   * for keeps the id it was minted with, and an id `source` still carries is
+   * then held by two rules, so call this only where `source` has left the page.
+   */
+  adoptRuleIds(source: BrainRuleDef): void {
+    this.id_ = source.id_;
+    for (let i = 0; i < this.children_.size() && i < source.children_.size(); i++) {
+      this.children_.get(i).adoptRuleIds(source.children_.get(i));
+    }
   }
 
   /**

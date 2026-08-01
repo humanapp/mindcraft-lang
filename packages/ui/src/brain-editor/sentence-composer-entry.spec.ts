@@ -27,7 +27,7 @@ import {
   type BrainPageDef,
   type BrainRuleDef,
   IndentRuleCommand,
-  InsertRuleBeforeCommand,
+  InsertRuleCommand,
 } from "@mindcraft-lang/core/brain/model";
 import { BrainTileActuatorDef, BrainTileModifierDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import { createDefaultLocalizer } from "@mindcraft-lang/core/localization";
@@ -188,6 +188,7 @@ function renderRuleCard(
           pageDef,
           depth: options.depth,
           lineNumber: 1,
+          ruleCount: 1,
           updateCounter: 0,
           commandHistory: new BrainCommandHistory(),
         })
@@ -289,7 +290,7 @@ describe("the entry point across a page's rules", () => {
   test("a rule blanked in above a settled one carries it, as does the trailing rule", () => {
     const { pageDef, ruleDef: settled } = makeBrain([makeSensor("composer-page-see")], []);
     const trailing = pageDef.appendNewRule() as BrainRuleDef;
-    new BrainCommandHistory().executeCommand(new InsertRuleBeforeCommand(settled));
+    new BrainCommandHistory().executeCommand(new InsertRuleCommand(settled, "before"));
     const inserted = pageDef.children().get(0) as BrainRuleDef;
     const markup = renderPage(pageDef);
     assert.equal(countOf(markup, `data-sentence-composer-entry="${inserted.id()}"`), 1);

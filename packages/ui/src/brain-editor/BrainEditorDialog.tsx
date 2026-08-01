@@ -512,6 +512,12 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onFocusOutside={(e) => e.preventDefault()}
+          // The dialog opens holding the keyboard itself; the page grid takes it
+          // as soon as its selection has a cell to rest on.
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            if (e.currentTarget instanceof HTMLElement) e.currentTarget.focus();
+          }}
           // While a tile picker is armed, Escape belongs to the candidate strip:
           // it clears the strip's filter text and then disarms.
           onEscapeKeyDown={(e) => {

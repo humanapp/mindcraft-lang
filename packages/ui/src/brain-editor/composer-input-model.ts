@@ -75,7 +75,7 @@ export type ComposerGesture = "pivot" | "settle" | "continue";
  *
  * - `text` -- the filter box's content changed, which is how every character
  *   that is not a key of its own arrives
- * - `space`, `tab`, `enter` -- the commit keys
+ * - `space`, `enter` -- the commit keys
  * - `comma`, `period` -- the pivot and the settle
  * - `quote` -- open a text value, or place the one already open
  * - `escape` -- clear the word in progress, then close
@@ -98,7 +98,6 @@ export type ComposerGesture = "pivot" | "settle" | "continue";
 export type ComposerInputToken =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "space" }
-  | { readonly kind: "tab" }
   | { readonly kind: "comma" }
   | { readonly kind: "period" }
   | { readonly kind: "quote" }
@@ -203,7 +202,7 @@ export interface ComposerInputFacts {
    * document.
    */
   readonly ownNewestPlacement: CaretPosition | undefined;
-  /** The candidate Enter and Tab place, or undefined when they must not commit. */
+  /** The candidate Enter places, or undefined when it must not commit. */
   readonly topCandidate: StripCandidate | undefined;
   /** The candidate Space places, or undefined when it must not commit. */
   readonly spaceCandidate: StripCandidate | undefined;
@@ -241,8 +240,9 @@ function arrowDirection(key: string): ComposerArrowDirection | undefined {
 
 /**
  * The token a press of `key` on `surface` means, or undefined when the key is
- * the browser's: a character the filter box types for itself, Tab out of a
- * band, and every key the close button does not steer the cursor with.
+ * the browser's: a character the filter box types for itself, Tab, which moves
+ * the keyboard on from wherever it stands, and every key the close button does
+ * not steer the cursor with.
  */
 export function composerTokenForKey(key: string, surface: ComposerKeySurface): ComposerInputToken | undefined {
   const direction = arrowDirection(key);
@@ -259,7 +259,6 @@ export function composerTokenForKey(key: string, surface: ComposerKeySurface): C
   if (key === ".") return { kind: "period" };
   if (key === '"') return { kind: "quote" };
   if (key === " ") return { kind: "space" };
-  if (key === "Tab") return { kind: "tab" };
   return undefined;
 }
 
@@ -286,6 +285,28 @@ export function composerHeadingToken(key: string, sectionKey: string): ComposerI
 export function composerEntryCharacter(key: string, withModifier: boolean): string | undefined {
   if (withModifier || key === " " || key === "Backspace") return undefined;
   return isStripFilterTypingKey(key) ? key : undefined;
+}
+
+/** Composition entered from a rule's sentence cell, and the word it opens with. */
+export interface SentenceCellEntry {
+  /**
+   * The character the word in progress starts with, or undefined for an entry
+   * that types nothing.
+   */
+  readonly seed: string | undefined;
+}
+
+/**
+ * How a press of `key` on a rule's sentence cell enters composition, or
+ * undefined when the press enters none. Space enters with `seed` undefined; a
+ * printable character enters with that character as `seed`. `withModifier` is
+ * true while Meta, Control, or Alt is held, which enters nothing.
+ */
+export function decideSentenceCellEntry(key: string, withModifier: boolean): SentenceCellEntry | undefined {
+  if (withModifier) return undefined;
+  if (key === " ") return { seed: undefined };
+  const seed = composerEntryCharacter(key, false);
+  return seed === undefined ? undefined : { seed };
 }
 
 /** True when `effects` asks the driver to keep the keystroke from the browser. */
@@ -919,9 +940,9 @@ function reduceHeadingArrow(
  *
  * While `state.textLiteral` holds an open text value, every typed character
  * edits that value and the punctuation keys reach it as content; nothing is
- * placed by a character there. The keys that act are the closing quote, Enter
- * and Tab, which place the value exactly as the closing quote does, Backspace,
- * and Escape.
+ * placed by a character there. The keys that act are the closing quote, Enter,
+ * which places the value exactly as the closing quote does, Backspace, and
+ * Escape.
  */
 export function reduceComposerInput(
   state: ComposerInputState,
@@ -958,9 +979,6 @@ export function reduceComposerInput(
       if (token.from === "band") return inert(state);
       if (facts.topCandidate !== undefined) return placeCandidate(state, facts.topCandidate);
       return reduceSettle(state, facts);
-    case "tab":
-      if (state.textLiteral !== undefined) return commitOpenTextLiteral(state, facts);
-      return facts.topCandidate === undefined ? inert(state) : placeCandidate(state, facts.topCandidate);
     case "space":
       return facts.spaceCandidate === undefined ? inert(state) : placeCandidate(state, facts.spaceCandidate);
     case "candidate-tapped":

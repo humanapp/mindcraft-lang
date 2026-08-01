@@ -170,7 +170,7 @@ function SearchBar({ value, onChange, inputRef }: SearchBarProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Search docs..."
-          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground"
           aria-label="Search documentation"
         />
       </div>
@@ -701,6 +701,7 @@ function MobilePanel() {
 
   return (
     <div
+      id="docs-sidebar"
       role="dialog"
       aria-modal="true"
       aria-label="Documentation"

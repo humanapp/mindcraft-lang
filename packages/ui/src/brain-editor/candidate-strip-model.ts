@@ -433,11 +433,11 @@ export function filterStripCandidates(
 }
 
 /** The key the user pressed to commit the word in progress. */
-export type CandidateCommitKey = "enter" | "tab" | "space";
+export type CandidateCommitKey = "enter" | "space";
 
 /**
  * The candidate a commit key places, or undefined when the key must not
- * commit. Enter and Tab take the top visible candidate, which is the best
+ * commit. Enter takes the top visible candidate, which is the best
  * match once `visible` comes from {@link filterStripCandidates}; Space takes an
  * exact label match, else a unique prefix match, else -- when no label starts
  * with the text at all -- a unique match on a later word of a label, so a word
@@ -460,7 +460,7 @@ export function decideCandidateCommit(
     ? visible
     : visible.filter((candidate) => candidate.origin.kind !== "minted-variable");
   if (eligible.length === 0) return undefined;
-  if (key === "enter" || key === "tab") return eligible[0];
+  if (key === "enter") return eligible[0];
   const exact = eligible.find((candidate) => classifyCandidateMatch(intent.text, candidate, foldText) === "exact");
   if (exact) return exact;
   if (hasMatchAt(eligible, intent.text, "prefix", foldText)) {

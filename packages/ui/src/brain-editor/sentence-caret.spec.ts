@@ -93,6 +93,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target?: A
           index: 0,
           pageDef,
           lineNumber: 1,
+          ruleCount: 1,
           updateCounter: 0,
           commandHistory: new BrainCommandHistory(),
         })

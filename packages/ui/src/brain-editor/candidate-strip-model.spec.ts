@@ -527,9 +527,7 @@ describe("filterStripCandidates ranking", () => {
     const visible = filterStripCandidates(candidates, "see", foldText);
 
     assert.equal(visible[0]?.tileDef.tileId, seeTileIds.exact);
-    for (const key of ["enter", "tab"] as const) {
-      assert.equal(decideCandidateCommit(visible, "see", key, foldText)?.tileDef.tileId, seeTileIds.exact);
-    }
+    assert.equal(decideCandidateCommit(visible, "see", "enter", foldText)?.tileDef.tileId, seeTileIds.exact);
   });
 
   test("orders matches exact, prefix, substring, then bag, breaking ties by oracle order", () => {
@@ -563,10 +561,8 @@ describe("decideCandidateCommit", () => {
     candidate(numberVarFactoryId, "number"),
   ];
 
-  test("Enter and Tab commit the top match", () => {
-    for (const key of ["enter", "tab"] as const) {
-      assert.equal(decideCandidateCommit(visible, "n", key, foldText)?.label, "not");
-    }
+  test("Enter commits the top match", () => {
+    assert.equal(decideCandidateCommit(visible, "n", "enter", foldText)?.label, "not");
   });
 
   test("Space commits an exact label match even when longer labels share the prefix", () => {
@@ -582,14 +578,14 @@ describe("decideCandidateCommit", () => {
   });
 
   test("no key commits an empty filter", () => {
-    for (const key of ["enter", "tab", "space"] as const) {
+    for (const key of ["enter", "space"] as const) {
       assert.equal(decideCandidateCommit(visible, "", key, foldText), undefined);
       assert.equal(decideCandidateCommit(visible, "   ", key, foldText), undefined);
     }
   });
 
   test("no key commits when the text matches no candidate", () => {
-    for (const key of ["enter", "tab", "space"] as const) {
+    for (const key of ["enter", "space"] as const) {
       assert.equal(decideCandidateCommit([], "zzz", key, foldText), undefined);
     }
   });
@@ -946,7 +942,7 @@ describe("a literal the armed position already offers", () => {
     const offering = resolveStripOffering(candidates, "42", labelOf, foldText);
 
     assert.equal(offering.isUnknown, false);
-    for (const key of ["enter", "tab", "space"] as const) {
+    for (const key of ["enter", "space"] as const) {
       assert.equal(decideCandidateCommit(offering.visible, "42", key, foldText)?.tileDef.tileId, tileId, key);
     }
   });
@@ -1090,7 +1086,7 @@ describe("resolveStripOffering", () => {
     const offering = resolveStripOffering(candidates, "speedy", stripLabel, foldText);
 
     assert.ok(mintedVariables(offering.visible).length > 0);
-    for (const key of ["enter", "tab", "space"] as const) {
+    for (const key of ["enter", "space"] as const) {
       assert.equal(decideCandidateCommit(offering.visible, "speedy", key, foldText), undefined);
     }
   });
@@ -1249,7 +1245,7 @@ describe("resolveStripOffering", () => {
       offering.visible.filter((c) => c.origin.kind === "minted-literal"),
       []
     );
-    for (const key of ["enter", "tab", "space"] as const) {
+    for (const key of ["enter", "space"] as const) {
       assert.equal(decideCandidateCommit(offering.visible, "5x", key, foldText)?.origin.kind, undefined);
     }
   });
@@ -1299,7 +1295,7 @@ describe("a number the composer is partway through typing", () => {
     for (const typed of inProgress) {
       const offering = resolveStripOffering(candidates, typed, labelOf, foldText);
 
-      for (const key of ["enter", "tab", "space"] as const) {
+      for (const key of ["enter", "space"] as const) {
         assert.equal(decideCandidateCommit(offering.visible, typed, key, foldText), undefined, `${typed} ${key}`);
       }
     }
@@ -1803,7 +1799,7 @@ describe("operator symbol aliases", () => {
 
       assert.equal(offering.visible[0]?.tileDef.tileId, tileId, symbol);
       assert.equal(offering.isUnknown, false, symbol);
-      for (const key of ["enter", "tab", "space"] as const) {
+      for (const key of ["enter", "space"] as const) {
         assert.equal(
           decideCandidateCommit(offering.visible, symbol, key, foldText)?.tileDef.tileId,
           tileId,
@@ -1902,7 +1898,7 @@ describe("operator symbol aliases", () => {
     assert.deepEqual(offering.visible, []);
     assert.equal(offering.isUnknown, false);
     assert.deepEqual(mintedVariables(offering.offered), []);
-    for (const key of ["enter", "tab", "space"] as const) {
+    for (const key of ["enter", "space"] as const) {
       assert.equal(decideCandidateCommit(offering.visible, "-", key, foldText), undefined, key);
     }
   });
@@ -1986,7 +1982,7 @@ describe("search folding", () => {
     const offering = resolveStripOffering(candidates, "cafe", sentenceLabel(brain), foldText);
 
     assert.equal(offering.isUnknown, false);
-    for (const key of ["enter", "tab", "space"] as const) {
+    for (const key of ["enter", "space"] as const) {
       assert.equal(
         decideCandidateCommit(offering.visible, "cafe", key, foldText)?.tileDef.tileId,
         accentedSensorTileId

@@ -1,18 +1,25 @@
 import { List, task, thread } from "@mindcraft-lang/core";
 import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
 import type { TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
-import type { BrainCommand, BrainCommandHistory, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type {
+  BrainCommand,
+  BrainCommandHistory,
+  BrainPageDef,
+  BrainRuleDef,
+  RulePlacement,
+} from "@mindcraft-lang/core/brain/model";
 import {
   AddTileCommand,
   DeleteRuleCommand,
   IndentRuleCommand,
-  InsertRuleBeforeCommand,
+  InsertRuleCommand,
   InsertTileCommand,
   kMaxBrainRuleCommentLength,
   MoveRuleDownCommand,
   MoveRuleUpCommand,
   OutdentRuleCommand,
-  PasteRuleAboveCommand,
+  PasteRulesCommand,
+  PasteTileBeforeCommand,
   RemoveTileCommand,
   ReplaceTileCommand,
   SetRuleCommentCommand,
@@ -41,14 +48,24 @@ import { BrainRuleSentence } from "./BrainRuleSentence";
 import { BrainTileEditor } from "./BrainTileEditor";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { CreateVariableDialog } from "./CreateVariableDialog";
-import { type CaretPosition, caretEditIntent, caretOnRun, caretRun } from "./caret-run";
-import { composerEntryCharacter } from "./composer-input-model";
+import { type CaretPosition, caretEditIntent, caretOnRun, caretRun, composerEntryCaret } from "./caret-run";
+import { decideSentenceCellEntry } from "./composer-input-model";
 import { armEditPoint, type EditPointArming, type EditPointPosition, editPointPositionOf } from "./edit-point";
 import { kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 import { useCandidateStrip } from "./hooks/useCandidateStrip";
 import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
-import { sideOffersAppendedTile } from "./insertion-context";
+import { positionOffersTile, sideOffersAppendedTile } from "./insertion-context";
+import { usePageGrid } from "./PageGridContext";
+import {
+  decidePageGridOperation,
+  kPageGridCellAttribute,
+  type PageGridCell,
+  type PageGridOperation,
+  type PageGridSubject,
+  pageGridCellAfterComposing,
+  pageGridCellKey,
+} from "./page-grid-model";
 import { useRuleDragController } from "./RuleDragContext";
 import {
   copyRuleToClipboard,
@@ -59,12 +76,24 @@ import {
 import { canEndSideExpression } from "./sentence-composer";
 import { kSentenceTypeClasses } from "./sentence-type";
 import { applyBrokenTileBadges, buildNodeMap, computeTileBadges, type TileBadge } from "./tile-badges";
+import {
+  copyTileToClipboard,
+  hasTileInClipboard,
+  importTileFromClipboard,
+  peekTileInClipboard,
+} from "./tile-clipboard";
 
 /** Surface, hover, ink, and border of the rule row's round pills: the rule handle and each side's add-tile button. */
 const pillChromeClasses = "bg-brain-pill hover:bg-brain-pill-hover text-brain-pill-ink border-2 border-brain-pill-edge";
 
-/** The one caret position a rule holding no tiles has, which its entry point composes from. */
-const kEmptyRuleCaret: CaretPosition = { kind: "gap", side: RuleSide.When, tileIndex: 0 };
+/** The properties a pill whose visibility toggles animates: its hover growth, its surface, its edge, and its ink. */
+const pillTransitionClasses = "transition-[transform,background-color,border-color,color] duration-150";
+
+/** The invitation the sentence line of a rule holding no tiles reads. */
+const kComposerEntryPrompt = "Type what should happen...";
+
+/** What a paste is refused with where the copied tile does not belong at the position. */
+const kTilePasteRefusal = "That tile does not fit here";
 
 /** The command that places `tileDef` where `arming` addresses on `side` of `ruleDef`. */
 function editPointCommand(
@@ -95,6 +124,8 @@ interface BrainRuleEditorProps {
   pageDef: BrainPageDef;
   depth?: number;
   lineNumber: number;
+  /** How many rules the page reads in all, which the handle names this rule's place among. */
+  ruleCount: number;
   updateCounter: number;
   commandHistory: BrainCommandHistory;
 }
@@ -110,10 +141,15 @@ export function BrainRuleEditor({
   pageDef,
   depth = 0,
   lineNumber,
+  ruleCount,
   updateCounter,
   commandHistory,
 }: BrainRuleEditorProps) {
   const { brainServices, tileCatalogs, isBrokenTile } = useBrainEditorConfig();
+  // The cells this rule stands in the page's selection grid, and the one the
+  // page's selection currently rests on.
+  const pageGrid = usePageGrid();
+  const ruleId = ruleDef.id();
   const dragController = useRuleDragController();
   const isDragging = dragController.draggingRuleId === ruleDef.id();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -191,6 +227,19 @@ export function BrainRuleEditor({
   // of them can take that command back while it is still the history's newest
   // entry.
   const isComposing = composerCaret !== undefined;
+
+  // Where this rule was last edited, which composition opens at again: the
+  // composer's caret while composing, and otherwise the tile the page's
+  // selection rests on.
+  const selectedCell = pageGrid?.currentCell;
+  const heldCaretRef = useRef<CaretPosition | undefined>(undefined);
+  useEffect(() => {
+    if (composerCaret !== undefined) heldCaretRef.current = composerCaret;
+    else if (selectedCell?.kind === "tile" && selectedCell.ruleId === ruleId) {
+      heldCaretRef.current = { kind: "element", side: selectedCell.side, tileIndex: selectedCell.tileIndex };
+    }
+  }, [composerCaret, selectedCell, ruleId]);
+
   const ownCommitsRef = useRef<ComposerCommit[]>([]);
   // The commits span one composition, so the WHEN->DO pivot keeps them; leaving
   // the sentence line for any other target drops them.
@@ -336,7 +385,7 @@ export function BrainRuleEditor({
   };
 
   const handleInsertRuleBefore = () => {
-    const command = new InsertRuleBeforeCommand(ruleDef);
+    const command = new InsertRuleCommand(ruleDef, "before");
     commandHistory.executeCommand(command);
   };
 
@@ -356,12 +405,14 @@ export function BrainRuleEditor({
     toast.success("Rule copied");
   };
 
-  const handlePasteRuleAbove = () => {
-    const command = new PasteRuleAboveCommand(ruleDef, (destBrain) =>
+  const pasteRules = (placement: RulePlacement) => {
+    const command = new PasteRulesCommand(ruleDef, placement, (destBrain) =>
       List.from(deserializeAllRulesFromClipboard(destBrain, tileCatalogs, brainServices))
     );
     commandHistory.executeCommand(command);
   };
+
+  const handlePasteRuleAbove = () => pasteRules("before");
 
   const [isEditingComment, setIsEditingComment] = useState(false);
   const [commentValue, setCommentValue] = useState(ruleDef.comment() ?? "");
@@ -503,16 +554,146 @@ export function BrainRuleEditor({
   }, [isComposing, setStripFilter]);
 
   /**
-   * A printable key typed on the entry point composes with it: the rule is armed
-   * at its one caret position and the character starts the word in progress
-   * there. Every other key is left alone, with its default intact.
+   * Compose the rule's sentence, standing the caret where this rule was last
+   * edited and starting the word in progress with `seed`.
    */
-  const handleComposerEntryKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    const character = composerEntryCharacter(event.key, event.metaKey || event.ctrlKey || event.altKey);
-    if (character === undefined) return;
+  const enterSentence = (seed: string | undefined) => {
+    seedCharacterRef.current = seed;
+    placeSentenceCaret(composerEntryCaret(caretRun(ruleDef), heldCaretRef.current));
+  };
+
+  /**
+   * A key pressed while the selection rests on the rule's sentence composes it:
+   * Space with nothing typed, and a printable character with that character
+   * starting the word in progress. Every other key is left alone, with its
+   * default intact.
+   */
+  const handleSentenceCellKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    const entry = decideSentenceCellEntry(event.key, event.metaKey || event.ctrlKey || event.altKey);
+    if (entry === undefined) return;
     event.preventDefault();
-    seedCharacterRef.current = character;
-    placeSentenceCaret(kEmptyRuleCaret);
+    enterSentence(entry.seed);
+  };
+
+  // An insertion asks the rule it made to be composed; that rule's own card
+  // takes the request up once as it renders and gives it back.
+  const ruleToCompose = pageGrid?.ruleToCompose;
+  const composeRule = pageGrid?.composeRule;
+  const enterSentenceRef = useRef(enterSentence);
+  enterSentenceRef.current = enterSentence;
+  useEffect(() => {
+    if (ruleToCompose !== ruleId || composeRule === undefined) return;
+    composeRule(undefined);
+    enterSentenceRef.current(undefined);
+  }, [ruleToCompose, ruleId, composeRule]);
+
+  /**
+   * True when the copied tile belongs at `tileIndex` of `side`, which the
+   * suggestion oracle answers. A host supplying no services cannot be asked, so
+   * every position of such a rule stands open. False as well while the clipboard
+   * holds no tile.
+   */
+  const clipboardTileFits = (side: RuleSide, tileIndex: number): boolean => {
+    const tileDef = peekTileInClipboard();
+    if (tileDef === undefined) return false;
+    if (brainServices === undefined) return true;
+    return positionOffersTile({
+      ruleDef,
+      side,
+      tileIndex,
+      tileDef,
+      catalogs,
+      services: brainServices,
+      availableCapabilities,
+      availableOutputKeys,
+    });
+  };
+
+  /**
+   * Places the copied tile at `tileIndex` of `side`, refusing where the oracle
+   * does not offer it there and doing nothing while the clipboard holds no tile.
+   */
+  const pasteTileAt = (side: RuleSide, tileIndex: number): void => {
+    if (!hasTileInClipboard()) return;
+    if (!clipboardTileFits(side, tileIndex)) {
+      toast.error(kTilePasteRefusal);
+      return;
+    }
+    // An add-tile control the placement closes hands the selection on to the
+    // tile that takes its place.
+    pageGrid?.holdSelectionPlace();
+    commandHistory.executeCommand(
+      new PasteTileBeforeCommand(ruleDef, side, tileIndex, (destBrain) =>
+        importTileFromClipboard(destBrain, brainServices)
+      )
+    );
+  };
+
+  /** Puts `subject` on its own clipboard. */
+  const copySubject = (subject: PageGridSubject): void => {
+    if (subject.kind === "rule") {
+      copyRuleToClipboard(ruleDef);
+      toast.success("Rule copied");
+      return;
+    }
+    if (subject.kind !== "tile") return;
+    const tileDef = ruleDef.side(subject.side).tiles().get(subject.tileIndex);
+    if (!tileDef) return;
+    copyTileToClipboard(tileDef, ruleDef.brain());
+    toast.success("Tile copied");
+  };
+
+  /** Takes `subject` out of the page, holding the place its cell stood in. */
+  const removeSubject = (subject: PageGridSubject): void => {
+    if (subject.kind === "side-end") return;
+    pageGrid?.holdSelectionPlace();
+    commandHistory.executeCommand(
+      subject.kind === "rule"
+        ? new DeleteRuleCommand(ruleDef)
+        : new RemoveTileCommand(ruleDef, subject.side, subject.tileIndex)
+    );
+  };
+
+  /** Places what is on the clipboard past `subject`, or at the end of the side it names. */
+  const pasteAfterSubject = (subject: PageGridSubject): void => {
+    if (subject.kind === "rule") {
+      if (hasRuleInClipboard()) pasteRules("after");
+      return;
+    }
+    const side = subject.side;
+    pasteTileAt(side, subject.kind === "tile" ? subject.tileIndex + 1 : ruleDef.side(side).tiles().size());
+  };
+
+  /** Runs `operation` on this rule. */
+  const performOperation = (operation: PageGridOperation): void => {
+    switch (operation.verb) {
+      case "delete":
+        removeSubject(operation.subject);
+        return;
+      case "copy":
+        copySubject(operation.subject);
+        return;
+      case "cut":
+        copySubject(operation.subject);
+        removeSubject(operation.subject);
+        return;
+      case "paste":
+        pasteAfterSubject(operation.subject);
+        return;
+      case "insert-rule": {
+        const command = new InsertRuleCommand(ruleDef, "after");
+        commandHistory.executeCommand(command);
+        const inserted = command.insertedRule();
+        if (inserted !== undefined) composeRule?.(inserted.id());
+        return;
+      }
+    }
+  };
+
+  /** True when this rule is the empty one the page keeps standing at its end. */
+  const isTrailingEmptyRule = (): boolean => {
+    const children = pageDef.children();
+    return children.size() > 0 && children.get(children.size() - 1) === ruleDef && ruleDef.isEmpty(true);
   };
 
   // A caret read back onto the run stands somewhere else than the target was
@@ -565,6 +746,7 @@ export function BrainRuleEditor({
           doTileCount: () => ruleDef.do().tiles().size(),
           ownNewestPlacement,
           undoOwnLastCommit,
+          exitCellKey: () => pageGridCellKey(pageGridCellAfterComposing(ruleId, composerCaret)),
         }
       : undefined;
 
@@ -610,6 +792,68 @@ export function BrainRuleEditor({
   // A card with nothing below its tile row keeps a compact fixed height.
   const hasBodyBelowTiles = showComment || hasTiles || showComposerEntry || isComposing;
 
+  // The rule's cells are registered with the page for as long as it renders them.
+  const registerRule = pageGrid?.registerRule;
+  const currentCellKey = selectedCell === undefined ? undefined : pageGridCellKey(selectedCell);
+  const whenTileCount = ruleDef.when().tiles().size();
+  const doTileCount = ruleDef.do().tiles().size();
+  // The line stands for a rule reading a sentence, one being composed, and one
+  // inviting a sentence; a rule holding no tiles and armed from the tray shows
+  // none of the three.
+  const hasSentence = hasTiles || isComposing || showComposerEntry;
+  const cellDescriptor = useMemo(
+    () => ({
+      ruleId,
+      whenTileCount,
+      doTileCount,
+      whenAppendable: appendable.whenSide,
+      doAppendable: appendable.doSide,
+      hasSentence,
+    }),
+    [ruleId, whenTileCount, doTileCount, appendable.whenSide, appendable.doSide, hasSentence]
+  );
+  useEffect(() => registerRule?.(cellDescriptor), [registerRule, cellDescriptor]);
+
+  /** How the rule's sentence row reads, whichever of its two controls stands there. */
+  const sentenceCellName = `Rule ${lineNumber} sentence`;
+
+  /** The grid attributes `cell` renders, or undefined for a rule standing outside a page grid. */
+  const cellProps = (cell: PageGridCell) => {
+    if (pageGrid === undefined) return undefined;
+    const key = pageGridCellKey(cell);
+    return { [kPageGridCellAttribute]: key, tabIndex: key === currentCellKey ? 0 : -1 };
+  };
+
+  /** Keeps ArrowDown and the insertion chord on the handle from opening the handle's menu. */
+  const handleHandleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowDown" || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) {
+      event.preventDefault();
+    }
+  };
+
+  /**
+   * A key pressed while the page's selection rests on one of this rule's cells:
+   * Delete takes the cell's subject out, the clipboard keys copy, cut and paste
+   * it, and the insertion chord puts a new rule after this one and composes it.
+   * A key pressed on a control the cell holds belongs to that control.
+   */
+  const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (selectedCell === undefined || selectedCell.ruleId !== ruleId) return;
+    const target = event.target as HTMLElement;
+    const operation = decidePageGridOperation(
+      selectedCell,
+      {
+        key: event.key,
+        withCommand: event.metaKey || event.ctrlKey,
+        placement: target.getAttribute(kPageGridCellAttribute) === currentCellKey ? "on-cell" : "inside-cell",
+      },
+      { isTrailingEmpty: isTrailingEmptyRule() }
+    );
+    if (operation === undefined) return;
+    event.preventDefault();
+    performOperation(operation);
+  };
+
   return (
     <>
       {/* biome-ignore lint/a11y/useSemanticElements: changing to li requires restructuring BrainPageEditor */}
@@ -627,6 +871,7 @@ export function BrainRuleEditor({
         aria-label={`Rule ${lineNumber}${isDirty ? " (modified)" : ""}`}
         onDragOver={handleCandidateDragOver}
         onDrop={handleCandidateDrop}
+        onKeyDown={handleCardKeyDown}
       >
         {showComment && (
           <div className={`flex items-start gap-1.5 mb-1.5 relative ${kRuleContentLayer}`}>
@@ -676,10 +921,12 @@ export function BrainRuleEditor({
                 type="button"
                 className={`relative rounded-full self-center h-9 w-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold text-lg ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
                 data-rule-handle={ruleDef.id()}
-                aria-label={`Rule ${lineNumber} actions${isDirty ? ", unsaved changes" : ""}`}
+                aria-label={`Rule ${lineNumber} of ${ruleCount}, handle${isDirty ? ", unsaved changes" : ""}`}
                 aria-haspopup="menu"
                 onPointerDown={handleHandlePointerDown}
                 onClick={handleHandleClick}
+                onKeyDown={handleHandleKeyDown}
+                {...cellProps({ kind: "handle", ruleId })}
               >
                 {lineNumber}
                 {isDirty && (
@@ -747,6 +994,8 @@ export function BrainRuleEditor({
                 commandHistory={commandHistory}
                 badge={whenBadges.get(idx)}
                 armEditPoint={(position) => armTileEditPoint(RuleSide.When, idx, position, "tray")}
+                canPasteBefore={() => clipboardTileFits(RuleSide.When, idx)}
+                pasteBefore={() => pasteTileAt(RuleSide.When, idx)}
               />
             ))}
           {/* + Add tile button for when side. It stands mid-row, so a WHEN side
@@ -756,12 +1005,13 @@ export function BrainRuleEditor({
           <div className="flex items-center">
             <button
               type="button"
-              className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold cursor-pointer flex items-center justify-center${appendable.whenSide ? "" : " invisible"}`}
+              className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 ${pillTransitionClasses} font-semibold cursor-pointer flex items-center justify-center${appendable.whenSide ? "" : " invisible"}`}
               data-append-tile={RuleSide.When}
               onClick={handleAppendTileClick(RuleSide.When)}
               aria-label="Add tile to when condition"
               aria-expanded={offeredAppendSide === RuleSide.When}
               aria-controls={offeredAppendSide === RuleSide.When ? stripId : undefined}
+              {...(appendable.whenSide ? cellProps({ kind: "append", ruleId, side: RuleSide.When }) : { tabIndex: -1 })}
             >
               <Plus className={`h-4 w-4 relative ${kRuleContentLayer}`} aria-hidden="true" />
             </button>
@@ -797,6 +1047,8 @@ export function BrainRuleEditor({
                 commandHistory={commandHistory}
                 badge={doBadges.get(idx)}
                 armEditPoint={(position) => armTileEditPoint(RuleSide.Do, idx, position, "tray")}
+                canPasteBefore={() => clipboardTileFits(RuleSide.Do, idx)}
+                pasteBefore={() => pasteTileAt(RuleSide.Do, idx)}
               />
             ))}
           {/* + Add tile button for do side */}
@@ -810,6 +1062,7 @@ export function BrainRuleEditor({
                 aria-label="Add tile to do action"
                 aria-expanded={offeredAppendSide === RuleSide.Do}
                 aria-controls={offeredAppendSide === RuleSide.Do ? stripId : undefined}
+                {...cellProps({ kind: "append", ruleId, side: RuleSide.Do })}
               >
                 <Plus className={`h-4 w-4 relative ${kRuleContentLayer}`} aria-hidden="true" />
               </button>
@@ -825,16 +1078,20 @@ export function BrainRuleEditor({
           landingCount={strip.landingCount}
           pivotComma={isPivoted && ruleDef.do().tiles().size() === 0}
           placeCaret={placeSentenceCaret}
+          cellName={sentenceCellName}
+          onCellKeyDown={handleSentenceCellKeyDown}
         />
         {showComposerEntry && (
           <button
             type="button"
-            onClick={() => placeSentenceCaret(kEmptyRuleCaret)}
-            onKeyDown={handleComposerEntryKeyDown}
+            onClick={() => enterSentence(undefined)}
+            onKeyDown={handleSentenceCellKeyDown}
             data-sentence-composer-entry={ruleDef.id()}
+            aria-label={`${sentenceCellName}, empty. ${kComposerEntryPrompt}`}
+            {...cellProps({ kind: "sentence", ruleId })}
             className={`relative ${kRuleContentLayer} mt-1.5 ml-11 flex min-h-8 max-w-2xl cursor-text items-center rounded-sm px-1 text-left ${kSentenceTypeClasses} text-brain-ink/45 italic transition-colors hover:bg-brain-ink/5 hover:text-brain-ink/70`}
           >
-            Type what should happen...
+            {kComposerEntryPrompt}
           </button>
         )}
         {strip.panel}

@@ -53,6 +53,7 @@ import {
 import { type EditPointPosition, kEditPointPositions } from "./edit-point";
 import { kOfferingLayer } from "./editor-layers";
 import type { CandidateStripSection, CandidateStripState } from "./hooks/useCandidateStrip";
+import { kPageGridCellAttribute } from "./page-grid-model";
 import { kSentenceTypeClasses } from "./sentence-type";
 import { tileSourceNamespace } from "./tile-library-groups";
 import { kDefaultTileHue, resolveTileVisual, tileBorderColor } from "./tile-visual-utils";
@@ -155,12 +156,15 @@ function buildStripBands(
 }
 
 /**
- * True when nothing the keyboard can be tabbed to holds it: the document body,
- * or a container that only took it because the element holding it was removed.
+ * True when nothing that can hold the keyboard holds it: the document body, or
+ * a container that only took it because the element holding it was removed. A
+ * cell of the page's selection grid holds the keyboard whichever way its roving
+ * tab stop currently stands.
  */
-function keyboardIsUnheld(): boolean {
+export function keyboardIsUnheld(): boolean {
   const active = document.activeElement as HTMLElement | null;
-  return active === null || active === document.body || active.tabIndex < 0;
+  if (active === null || active === document.body) return true;
+  return !active.hasAttribute(kPageGridCellAttribute) && active.tabIndex < 0;
 }
 
 /**
@@ -321,6 +325,11 @@ export interface StripComposerBinding {
   ownNewestPlacement(): CaretPosition | undefined;
   /** Undo the composition's own last commit, removing the tile it placed. */
   undoOwnLastCommit(): void;
+  /**
+   * Key of the page-grid cell the keyboard returns to once composition on the
+   * rule ends. Called on every render of the composed rule.
+   */
+  exitCellKey(): string;
 }
 
 /**
@@ -440,7 +449,7 @@ export interface CandidateStripSurface {
 /**
  * The candidate strip: the tiles valid at the armed position, offered as
  * word-chips that commit on tap, with a filter box that commits the top match on
- * Enter or Tab and an exact or unique-prefix match on Space. Filter text that
+ * Enter and an exact or unique-prefix match on Space. Filter text that
  * matches no candidate is shown as unknown and cannot commit; where the position
  * accepts a variable, that text also offers a chip per accepted type that mints
  * the variable, placed by tap or by highlighting it. Text opening with `$` names
@@ -459,8 +468,8 @@ export interface CandidateStripSurface {
  *
  * Where the position accepts a text literal, a double quote opens a text value:
  * the filter box holds the value between rendered quotes, the offering narrows to
- * the one chip that places it, and the closing quote, Enter, Tab, or a tap on
- * that chip places it. While the value is open every typed character is content,
+ * the one chip that places it, and the closing quote, Enter, or a tap on that
+ * chip places it. While the value is open every typed character is content,
  * Backspace edits it and leaves the value once it is empty, and Escape abandons
  * it.
  *
@@ -594,11 +603,18 @@ export function useCandidateStripSurface({
     return () => cancelAnimationFrame(frame);
   }, [target]);
 
-  // The arming control takes the keyboard back when the strip closes while
-  // nothing else holds it. A keyboard some other element already holds -- the one
-  // Tab moved on to, another rule's arming control -- is left where it is. The
-  // control is read as the rule becomes armed, so re-arming the same rule leaves
-  // the one the user opened the strip from. A control the placement took away --
+  // The cell composition returns the keyboard to, as of the last render of the
+  // composed rule.
+  const exitCellKeyRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    exitCellKeyRef.current = composer?.exitCellKey();
+  });
+
+  // The keyboard comes back when the strip closes while nothing else holds it.
+  // A keyboard some other element already holds -- the one Tab moved on to,
+  // another rule's arming control -- is left where it is. A composed rule takes
+  // it to the cell its caret came to rest at; every other arming takes it to the
+  // control read as the rule became armed. A control the placement took away --
   // the add-tile button of a side nothing may follow any more -- hands the
   // keyboard to its rule's handle, which every rule stands.
   const isArmed = target !== null;
@@ -609,6 +625,15 @@ export function useCandidateStripSurface({
     const armedRuleId = target?.ruleDef.id();
     return () => {
       if (!keyboardIsUnheld()) return;
+      const exitCellKey = exitCellKeyRef.current;
+      const exitCell =
+        exitCellKey === undefined
+          ? null
+          : document.querySelector<HTMLElement>(`[${kPageGridCellAttribute}="${exitCellKey}"]`);
+      if (exitCell !== null) {
+        exitCell.focus();
+        return;
+      }
       if (armingControl?.isConnected) {
         armingControl.focus();
         return;
@@ -1175,12 +1200,13 @@ export function useCandidateStripSurface({
         Arrow down to start browsing the tiles. Up and down move between rows, group headings included, and stop at the
         top and the bottom; left and right move along a row of tiles. On a group heading, arrow right opens that group
         and arrow left closes it, so arrow down moves on to the next heading while a group is closed and into its tiles
-        once it is open. Enter places the highlighted tile. Arrow up from the first row leaves the tiles and returns to
-        the sentence, and Tab leaves them altogether, closing them. Start the text with a dollar sign to name a
-        variable, which Enter then places, creating it when no variable has that name. An operator symbol or a bracket
-        ends the word before it and places that word, so a formula such as one plus three needs no spaces in it. Where a
-        text value fits, a double quote starts one and the next double quote places it, as Enter does, with everything
-        between them taken as the text, and nothing typed into it places a tile.
+        once it is open. Enter places the highlighted tile, or the best match for what you have typed when nothing is
+        highlighted, as a space does. Arrow up from the first row leaves the tiles and returns to the sentence, and Tab
+        leaves them altogether, closing them. Start the text with a dollar sign to name a variable, which Enter then
+        places, creating it when no variable has that name. An operator symbol or a bracket ends the word before it and
+        places that word, so a formula such as one plus three needs no spaces in it. Where a text value fits, a double
+        quote starts one and the next double quote places it, as Enter does, with everything between them taken as the
+        text, and nothing typed into it places a tile.
         {composer
           ? " Type a comma to end the when side and start typing what to do, and a period when the rule says what you want. With nothing typed, Backspace takes back the comma, and then the word you placed last."
           : ""}

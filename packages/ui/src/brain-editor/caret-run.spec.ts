@@ -1,7 +1,8 @@
 /**
  * Pins the caret run: the positions a rule's two tile sets produce, the step the
- * arrow keys take along them, the edit each position intends, and the position a
- * hit on a projected segment resolves to.
+ * arrow keys take along them, the edit each position intends, the position
+ * composition opens at, and the position a hit on a projected segment resolves
+ * to.
  *
  * Rules are built through the model API and their sentences come from
  * `projectRuleSentence`. Structural assertions only: positions, modes, indices
@@ -31,6 +32,7 @@ import {
   caretSentenceSlot,
   caretSideEnd,
   caretStep,
+  composerEntryCaret,
 } from "./caret-run";
 import { armEditPoint, kEditPointPositions } from "./edit-point";
 import { composeSentenceReading } from "./sentence-composer";
@@ -296,6 +298,40 @@ describe("standing a position back on a run", () => {
 
   test("a run holding no position of the side stands nowhere", () => {
     assert.equal(caretOnRun([], element(RuleSide.When, 0)), undefined);
+  });
+});
+
+describe("where composition opens", () => {
+  test("a rule remembering nothing opens at the end of what it reads", () => {
+    const both = caretRun(ruleOf([makeSensor(services, "open-both-see")], [makeActuator(services, "open-both-move")]));
+    assert.deepEqual(composerEntryCaret(both, undefined), gap(RuleSide.Do, 1));
+
+    const whenOnly = caretRun(ruleOf([makeSensor(services, "open-when-see")], []));
+    assert.deepEqual(composerEntryCaret(whenOnly, undefined), gap(RuleSide.When, 1));
+  });
+
+  test("a rule holding no tiles opens at its one WHEN position", () => {
+    assert.deepEqual(composerEntryCaret(caretRun(ruleOf([], [])), undefined), gap(RuleSide.When, 0));
+  });
+
+  test("a rule opens again at the position it was last edited at", () => {
+    const run = caretRun(
+      ruleOf(
+        [makeSensor(services, "open-held-see"), makeSensor(services, "open-held-hear")],
+        [makeActuator(services, "open-held-move")]
+      )
+    );
+
+    assert.deepEqual(composerEntryCaret(run, gap(RuleSide.When, 1)), gap(RuleSide.When, 1));
+    assert.deepEqual(composerEntryCaret(run, element(RuleSide.When, 0)), element(RuleSide.When, 0));
+  });
+
+  test("a remembered position the rule no longer holds stands where it stood", () => {
+    const rule = ruleOf([makeSensor(services, "open-gone-see")], []);
+    const remembered = element(RuleSide.When, 0);
+    rule.when().removeTileAtIndex(0);
+
+    assert.deepEqual(composerEntryCaret(caretRun(rule), remembered), gap(RuleSide.When, 0));
   });
 });
 

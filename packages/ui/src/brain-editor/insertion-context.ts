@@ -7,6 +7,7 @@ import {
   type InsertionContext,
   parseTilesForSuggestions,
   suggestTiles,
+  type TileSuggestion,
 } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { TypeId } from "@mindcraft-lang/core/runtime";
@@ -94,4 +95,35 @@ export function sideOffersAppendedTile(inputs: AppendedTileInputs): boolean {
   });
   const result = suggestTiles(context, catalogs, services);
   return !result.exact.isEmpty() || !result.withConversion.isEmpty();
+}
+
+/** What {@link positionOffersTile} asks the suggestion oracle about. */
+export interface OfferedTileInputs extends AppendedTileInputs {
+  /** The tile asked about, which the oracle is asked to offer by id. */
+  tileDef: IBrainTileDef;
+  /** Where on the side the tile would go; the side's tile count asks about its end. */
+  tileIndex: number;
+}
+
+/**
+ * True when the suggestion oracle offers `tileDef` at `tileIndex` of the given
+ * side, whether it fits directly or through a conversion.
+ *
+ * Asked as if the tile were inserted at `tileIndex`, over the side's tiles up
+ * to that index. False means the oracle does not offer the tile there.
+ */
+export function positionOffersTile(inputs: OfferedTileInputs): boolean {
+  const { ruleDef, side, catalogs, services, availableCapabilities, availableOutputKeys, tileDef, tileIndex } = inputs;
+  const tileSet = side === RuleSide.When ? ruleDef.when() : ruleDef.do();
+  const context = buildInsertionContext({
+    side,
+    availableCapabilities,
+    availableOutputKeys,
+    ruleDef,
+    existingTiles: tileSet.tiles().slice(0, tileIndex),
+  });
+  const result = suggestTiles(context, catalogs, services);
+  const offers = (suggestions: ReadonlyList<TileSuggestion>) =>
+    suggestions.findIndex((suggestion) => suggestion.tileDef.tileId === tileDef.tileId) !== -1;
+  return offers(result.exact) || offers(result.withConversion);
 }

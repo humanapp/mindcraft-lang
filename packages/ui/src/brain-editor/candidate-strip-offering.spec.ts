@@ -48,6 +48,7 @@ import {
 import type { CaretPosition } from "./caret-run";
 import type { CandidateStripState } from "./hooks/useCandidateStrip";
 import { buildInsertionContext } from "./insertion-context";
+import { pageGridCellKey } from "./page-grid-model";
 import { makeActuator, makeBrain, makeSensor, StripSurface } from "./test-only-rule-fixtures";
 
 let services: BrainServices;
@@ -131,6 +132,7 @@ function renderCardWith(
           index: 0,
           pageDef,
           lineNumber: 1,
+          ruleCount: 1,
           updateCounter: 0,
           commandHistory: new BrainCommandHistory(),
         })
@@ -225,6 +227,7 @@ function composerBinding(ruleDef: BrainRuleDef): StripComposerBinding {
     doTileCount: () => 0,
     ownNewestPlacement: () => undefined,
     undoOwnLastCommit: () => {},
+    exitCellKey: () => pageGridCellKey({ kind: "sentence", ruleId: ruleDef.id() }),
   };
 }
 

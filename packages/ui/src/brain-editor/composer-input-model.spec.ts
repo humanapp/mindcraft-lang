@@ -67,6 +67,7 @@ import {
   composerHeadingToken,
   composerTokenForKey,
   consumesKey,
+  decideSentenceCellEntry,
   reduceComposerInput,
 } from "./composer-input-model";
 import { buildInsertionContext } from "./insertion-context";
@@ -571,6 +572,24 @@ describe("composing a rule from the keyboard", () => {
     trace.press({ kind: "text", text: "see" });
 
     assert.deepEqual(trace.press({ kind: "space" }), placementEffects(see, trace.gap(RuleSide.When, 1)));
+  });
+
+  test("Enter places the top candidate with no chip highlighted, where Space would refuse the word", () => {
+    const seek = candidateOf(makeSensorTile("composer-trace-enter-seek"), "seek");
+    const seed = candidateOf(makeSensorTile("composer-trace-enter-seed"), "seed");
+    const trace = new ComposerTrace({ offeringFor: () => [seek, seed] });
+
+    trace.typeWord("se");
+    // The prefix fits both words, so it names no one word for Space to place.
+    assert.deepEqual(trace.press({ kind: "space" }), []);
+
+    assert.deepEqual(
+      trace.press({ kind: "enter", from: "filter" }),
+      placementEffects(seek, trace.gap(RuleSide.When, 1))
+    );
+    assert.deepEqual(trace.tileIds(RuleSide.When), [seek.key]);
+    assert.equal(trace.state.cursor, undefined);
+    assert.equal(trace.state.filter, "");
   });
 });
 
@@ -1532,25 +1551,31 @@ describe("a typed text value", () => {
     assert.deepEqual(placedKeys(trace.log), []);
   });
 
-  test("Enter and Tab place the value the closing quote would", () => {
+  test("Enter places the value the closing quote would", () => {
     const typed = "left";
-    for (const token of [{ kind: "enter", from: "filter" }, { kind: "tab" }] as const) {
-      const byQuote = openedTextTrace(typed);
-      const byKey = openedTextTrace(typed);
+    const byQuote = openedTextTrace(typed);
+    const byKey = openedTextTrace(typed);
 
-      const quoted = byQuote.press({ kind: "quote" });
-      const keyed = byKey.press(token);
+    const quoted = byQuote.press({ kind: "quote" });
+    const keyed = byKey.press({ kind: "enter", from: "filter" });
 
-      assert.deepEqual(
-        keyed.map((effect) => effect.kind),
-        quoted.map((effect) => effect.kind),
-        token.kind
-      );
-      assert.deepEqual(placedKeys(keyed), placedKeys(quoted), token.kind);
-      assert.deepEqual(placedValues(keyed), [typed], token.kind);
-      assert.equal(byKey.state.textLiteral, undefined, token.kind);
-      assert.equal(byKey.tileCount(RuleSide.When), 2, token.kind);
-    }
+    assert.deepEqual(
+      keyed.map((effect) => effect.kind),
+      quoted.map((effect) => effect.kind)
+    );
+    assert.deepEqual(placedKeys(keyed), placedKeys(quoted));
+    assert.deepEqual(placedValues(keyed), [typed]);
+    assert.equal(byKey.state.textLiteral, undefined);
+    assert.equal(byKey.tileCount(RuleSide.When), 2);
+  });
+
+  test("Tab is the browser's with a value open, which places nothing", () => {
+    const trace = openedTextTrace("left");
+
+    assert.equal(composerTokenForKey("Tab", "filter"), undefined);
+    assert.equal(trace.state.textLiteral, "left");
+    assert.deepEqual(placedKeys(trace.log), []);
+    assert.equal(trace.tileCount(RuleSide.When), 1);
   });
 
   test("a value holding a dollar sign, digits, and a percent places them as text", () => {
@@ -2257,7 +2282,6 @@ describe("the token vocabulary", () => {
     assert.deepEqual(composerTokenForKey(",", "filter"), { kind: "comma" });
     assert.deepEqual(composerTokenForKey(".", "filter"), { kind: "period" });
     assert.deepEqual(composerTokenForKey(" ", "filter"), { kind: "space" });
-    assert.deepEqual(composerTokenForKey("Tab", "filter"), { kind: "tab" });
     assert.deepEqual(composerTokenForKey("Enter", "filter"), { kind: "enter", from: "filter" });
     assert.deepEqual(composerTokenForKey("Backspace", "filter"), { kind: "backspace", from: "filter" });
     assert.deepEqual(composerTokenForKey("Escape", "filter"), { kind: "escape" });
@@ -2278,8 +2302,13 @@ describe("the token vocabulary", () => {
     assert.deepEqual(composerTokenForKey(".", "band"), { kind: "printable" });
     assert.deepEqual(composerTokenForKey(" ", "band"), { kind: "printable" });
     assert.deepEqual(composerTokenForKey("Backspace", "band"), { kind: "backspace", from: "band" });
-    assert.equal(composerTokenForKey("Tab", "band"), undefined);
     assert.equal(composerTokenForKey("F2", "band"), undefined);
+  });
+
+  test("Tab belongs to the browser's focus order on every surface, so no state of the box claims it", () => {
+    for (const surface of ["filter", "band", "close"] as const) {
+      assert.equal(composerTokenForKey("Tab", surface), undefined, surface);
+    }
   });
 
   test("the close button steers only the rows of chips", () => {
@@ -2332,6 +2361,39 @@ describe("the token vocabulary", () => {
 
   test("a character held with a modifier is left to the browser", () => {
     assert.equal(composerEntryCharacter("a", true), undefined);
+  });
+});
+
+describe("entering composition from a rule's sentence cell", () => {
+  test("space enters with nothing typed", () => {
+    assert.deepEqual(decideSentenceCellEntry(" ", false), { seed: undefined });
+  });
+
+  test("a printable character enters and starts the word in progress", () => {
+    for (const key of ["l", "Z", "7", "$", '"', ","]) {
+      assert.deepEqual(decideSentenceCellEntry(key, false), { seed: key });
+    }
+  });
+
+  test("the two routes reach one composition, differing only in what stands in the box", () => {
+    const bySpace = decideSentenceCellEntry(" ", false);
+    const byTyping = decideSentenceCellEntry("l", false);
+
+    assert.ok(bySpace !== undefined && byTyping !== undefined);
+    assert.deepEqual(Object.keys(bySpace), Object.keys(byTyping));
+    assert.deepEqual({ ...byTyping, seed: undefined }, bySpace);
+  });
+
+  test("the keys that act elsewhere, and the keys that type nothing, enter nothing", () => {
+    for (const key of ["Enter", "Backspace", "Tab", "Escape", "ArrowDown", "Delete", "Shift", "F2"]) {
+      assert.equal(decideSentenceCellEntry(key, false), undefined);
+    }
+  });
+
+  test("a key held with a modifier is left to the browser", () => {
+    for (const key of [" ", "l"]) {
+      assert.equal(decideSentenceCellEntry(key, true), undefined);
+    }
   });
 });
 

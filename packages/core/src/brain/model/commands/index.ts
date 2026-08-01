@@ -7,17 +7,17 @@ export {
   ReplaceLastPageCommand,
 } from "./PageCommands";
 export { RenameBrainCommand, RenamePageCommand, RenameVariableCommand, SetRuleCommentCommand } from "./RenameCommands";
-export type { RuleLocation } from "./RuleCommands";
+export type { RuleLocation, RulePlacement } from "./RuleCommands";
 export {
   AddRuleCommand,
   DeleteRuleCommand,
   IndentRuleCommand,
-  InsertRuleBeforeCommand,
+  InsertRuleCommand,
   MoveRuleCommand,
   MoveRuleDownCommand,
   MoveRuleUpCommand,
   OutdentRuleCommand,
-  PasteRuleAboveCommand,
+  PasteRulesCommand,
 } from "./RuleCommands";
 export {
   AddTileCommand,

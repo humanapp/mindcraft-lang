@@ -81,11 +81,6 @@
   --color-border: oklch(34% 0.05 262);
   --color-input: oklch(36% 0.05 262);
   --color-ring: oklch(65% 0.14 258);
-  --color-chart-1: oklch(60% 0.15 258);
-  --color-chart-2: oklch(65% 0.14 195);
-  --color-chart-3: oklch(70% 0.15 145);
-  --color-chart-4: oklch(72% 0.16 85);
-  --color-chart-5: oklch(65% 0.18 25);
   /* Game backdrop -- app-local; the admired navy behind the simulation. */
   --color-canvas: #2d3561;
   /* Brain editor canvas: deep navy recessed below the editor frame

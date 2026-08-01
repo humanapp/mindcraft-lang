@@ -116,3 +116,8 @@ export function resolveTileVisual(config: BrainEditorConfig, tileDef: IBrainTile
     label: appResolvedLabel ?? intrinsicResolvedLabel ?? defaultTileLabel(tileDef),
   };
 }
+
+/** How a tile reads to assistive technology: the kind of tile it is, and the label it shows. */
+export function tileAccessibleName(config: BrainEditorConfig, tileDef: IBrainTileDef): string {
+  return `${tileDef.kind} tile: ${resolveTileVisual(config, tileDef).label}`;
+}

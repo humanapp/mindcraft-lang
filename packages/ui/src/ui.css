@@ -49,11 +49,6 @@
   --color-border: oklch(90% 0 0);
   --color-input: oklch(90% 0 0);
   --color-ring: oklch(9% 0 0);
-  --color-chart-1: oklch(61% 0.15 29);
-  --color-chart-2: oklch(39% 0.11 197);
-  --color-chart-3: oklch(24% 0.09 237);
-  --color-chart-4: oklch(66% 0.17 83);
-  --color-chart-5: oklch(67% 0.19 27);
   /* Brain editor canvas: the recessed page "desk" and the rule-row cards that
      sit on it. Rule stops read above the desk stops so a rule reads as a card.
      --color-brain-armed is the ring drawn around the tile the tile picker is
@@ -133,6 +128,16 @@
    surface -- opts out with an `outline-none` utility, which sits in the
    utilities layer and so wins over this rule.
    ========================================================================== */
+
+/* Property list behind the `transition-colors` utility. Tailwind's own list
+   includes outline-color; this one leaves it out, so a control carrying
+   `transition-colors` paints the focus outline below at --color-ring on the
+   first frame rather than interpolating to it from the element's own color. */
+@theme {
+  --transition-property-colors:
+    color, background-color, border-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via,
+    --tw-gradient-to;
+}
 
 @layer base {
   :focus-visible {

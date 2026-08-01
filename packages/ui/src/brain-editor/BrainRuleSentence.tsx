@@ -14,6 +14,8 @@ import { cn } from "../lib/utils";
 import { type BrainEditorConfig, useBrainEditorConfig, useLocalizer } from "./BrainEditorContext";
 import { type CaretPosition, caretPositionForSegment, caretSentenceSlot } from "./caret-run";
 import { kRuleContentLayer } from "./editor-layers";
+import { usePageGrid } from "./PageGridContext";
+import { kPageGridCellAttribute, pageGridCellKey } from "./page-grid-model";
 import { composePivotReading, composeSentenceReading } from "./sentence-composer";
 import {
   changedSentenceSegments,
@@ -30,6 +32,11 @@ const kSentenceHighlightMs = 260;
 const kCaretLandingMs = 220;
 
 const noHighlight: ReadonlySet<number> = new Set<number>();
+
+/** Keeps a mouse press from moving the keyboard off whatever currently holds it. */
+function keepKeyboard(event: React.MouseEvent<HTMLButtonElement>): void {
+  event.preventDefault();
+}
 
 /** Whether `tileDef` is a literal holding a number or a text value. */
 function isValueLiteral(tileDef: IBrainTileDef): boolean {
@@ -83,7 +90,7 @@ const sentenceCaretClasses =
 
 /** The mark a hit target paints inside its hit area, which shows itself on approach. */
 const sentenceCaretMarkClasses =
-  "h-4 w-0.5 rounded-full bg-transparent transition-colors group-hover:bg-brain-accent-ink/70 group-focus-visible:bg-brain-accent-ink/70";
+  "h-4 w-0.5 rounded-full bg-transparent transition-colors group-hover:bg-brain-accent-ink/70";
 
 /**
  * The mark the caret itself paints, standing in the boundary it rests in: the
@@ -200,6 +207,18 @@ interface BrainRuleSentenceProps {
    * reading only.
    */
   placeCaret?: (position: CaretPosition) => void;
+  /**
+   * How the line reads as the rule's sentence cell in the page's selection
+   * grid. Supply it from inside a page grid; without it, or outside one, the
+   * line stands no cell and takes no tab stop.
+   */
+  cellName?: string;
+  /**
+   * The keys pressed while the selection rests on the line itself. A key
+   * pressed in the composer's box the line hosts never reaches it. Supply it
+   * with `cellName`.
+   */
+  onCellKeyDown?: (event: React.KeyboardEvent<HTMLParagraphElement>) => void;
 }
 
 /**
@@ -234,10 +253,13 @@ export function BrainRuleSentence({
   landingCount = 0,
   pivotComma,
   placeCaret,
+  cellName,
+  onCellKeyDown,
 }: BrainRuleSentenceProps) {
   const { segments: settled, tiles } = useRuleSentence(ruleDef, updateCounter);
   const localizer = useLocalizer();
   const editorConfig = useBrainEditorConfig();
+  const pageGrid = usePageGrid();
   const isComposing = composerInput !== undefined;
   const segments = useMemo(() => (isComposing ? composeSentenceReading(settled) : settled), [isComposing, settled]);
   const pivot = useMemo(
@@ -278,6 +300,20 @@ export function BrainRuleSentence({
     return null;
   }
 
+  // The whole line is one cell of the page's selection grid, rendered as a
+  // named group holding the line's own controls.
+  const cellKey = pageGridCellKey({ kind: "sentence", ruleId: ruleDef.id() });
+  const cellProps =
+    pageGrid === undefined || cellName === undefined
+      ? undefined
+      : {
+          [kPageGridCellAttribute]: cellKey,
+          tabIndex: pageGrid.currentCell !== undefined && pageGridCellKey(pageGrid.currentCell) === cellKey ? 0 : -1,
+          role: "group",
+          "aria-label": cellName,
+          onKeyDown: onCellKeyDown,
+        };
+
   // The mark stands for a caret in a gap while nothing is typed.
   const showCaretMark = caretPosition?.kind === "gap" && !pending;
   const focused = caretPosition?.kind === "element" ? caretPosition : undefined;
@@ -316,6 +352,8 @@ export function BrainRuleSentence({
       <span className={sentenceCaretAnchorClasses}>
         <button
           type="button"
+          tabIndex={-1}
+          onMouseDown={keepKeyboard}
           data-sentence-caret={word.sourceTileIndex}
           className={sentenceCaretClasses}
           aria-label="Insert a tile here"
@@ -331,6 +369,7 @@ export function BrainRuleSentence({
     <p
       className={`relative ${kRuleContentLayer} mt-1.5 ml-11 max-w-2xl ${kSentenceTypeClasses} text-brain-ink/70`}
       data-rule-sentence={ruleDef.id()}
+      {...cellProps}
     >
       {segments.map((segment: SentenceSegment, index: number) => {
         if (segment.kind !== "word") {
@@ -343,6 +382,8 @@ export function BrainRuleSentence({
               {isStructureTappable && placeCaret ? (
                 <button
                   type="button"
+                  tabIndex={-1}
+                  onMouseDown={keepKeyboard}
                   data-sentence-structure={index}
                   className={sentenceGlueButtonClasses}
                   onClick={() => placeCaret(caretPositionForSegment(segments, tiles, index))}
@@ -390,6 +431,8 @@ export function BrainRuleSentence({
             {placeCaret && tileRef ? (
               <button
                 type="button"
+                tabIndex={-1}
+                onMouseDown={keepKeyboard}
                 {...wordProps}
                 className={cn(sentenceWordButtonClasses, wordProps.className)}
                 onClick={() => placeCaret(caretPositionForSegment(segments, tiles, index))}

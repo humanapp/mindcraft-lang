@@ -115,6 +115,26 @@ export function caretOnRun(run: readonly CaretPosition[], position: CaretPositio
 }
 
 /**
+ * Where the caret stands as composition on a rule is entered: the position
+ * `remembered` names, as `run` holds it now, and the end of what the rule reads
+ * where it remembers none -- the DO side's end gap once that side holds a tile,
+ * and the WHEN side's otherwise, so a rule holding no tiles opens at its one
+ * WHEN position.
+ *
+ * `run` is the rule's own caret run.
+ */
+export function composerEntryCaret(
+  run: readonly CaretPosition[],
+  remembered: CaretPosition | undefined
+): CaretPosition {
+  const held = remembered === undefined ? undefined : caretOnRun(run, remembered);
+  if (held !== undefined) return held;
+  const doEnd = caretSideEnd(run, RuleSide.Do);
+  if (doEnd !== undefined && doEnd.tileIndex > 0) return doEnd;
+  return caretSideEnd(run, RuleSide.When) ?? run[0];
+}
+
+/**
  * The tile a deletion at `position` takes `direction` along `run`: the tile
  * `position` rests on, whichever direction is asked for, or from a gap the
  * nearest tile that way past the gaps between it, which carries the deletion

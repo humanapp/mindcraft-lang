@@ -1,8 +1,22 @@
 import { task, type thread } from "@mindcraft-lang/core";
 import type { BrainCommandHistory, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { keyboardIsUnheld } from "./BrainCandidateStrip";
 import { BrainRuleEditor } from "./BrainRuleEditor";
 import { useRuleDrag } from "./hooks/useRuleDrag";
+import { PageGridProvider } from "./PageGridContext";
+import {
+  decidePageGridKey,
+  kPageGridCellAttribute,
+  type PageGridCell,
+  type PageGridCursor,
+  type PageGridPosition,
+  pageGridCellKey,
+  pageGridCellPosition,
+  pageGridRows,
+  type RuleCellDescriptor,
+  resolvePageGridCursor,
+} from "./page-grid-model";
 import { RuleDragProvider } from "./RuleDragContext";
 import { decideTrailingEmptyRule } from "./trailing-empty-rule";
 
@@ -44,6 +58,20 @@ function flattenRules(rules: BrainRuleDef[], depth: number = 0, startLineNumber:
   });
 
   return result;
+}
+
+/** The element standing for the cell `key`, or null while nothing in `container` does. */
+function cellElement(container: HTMLElement | null, key: string): HTMLElement | null {
+  if (container === null) return null;
+  for (const element of container.querySelectorAll<HTMLElement>(`[${kPageGridCellAttribute}]`)) {
+    if (element.getAttribute(kPageGridCellAttribute) === key) return element;
+  }
+  return null;
+}
+
+/** The cell `target` stands for or stands inside, or null for an element outside every cell. */
+function cellOf(target: EventTarget | null): HTMLElement | null {
+  return target instanceof Element ? target.closest<HTMLElement>(`[${kPageGridCellAttribute}]`) : null;
 }
 
 /** Renders the rules of a single brain page as a flattened, indented list of {@link BrainRuleEditor} rows. */
@@ -144,33 +172,175 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
     [dragController.draggingRuleId, dragController.beginDrag]
   );
 
+  // The cells each rule stands, keyed by rule id.
+  const [ruleCells, setRuleCells] = useState<ReadonlyMap<number, RuleCellDescriptor>>(() => new Map());
+  const [cursor, setCursor] = useState<PageGridCursor | undefined>(undefined);
+  // The rule waiting to be composed, which the insertion that made it names.
+  const [ruleToCompose, setRuleToCompose] = useState<number | undefined>(undefined);
+  // The place the selection is to take once the cell it rests on leaves.
+  const landingRef = useRef<PageGridPosition | undefined>(undefined);
+
+  const registerRule = useCallback((descriptor: RuleCellDescriptor) => {
+    setRuleCells((current) => new Map(current).set(descriptor.ruleId, descriptor));
+    return () => {
+      setRuleCells((current) => {
+        const next = new Map(current);
+        next.delete(descriptor.ruleId);
+        return next;
+      });
+    };
+  }, []);
+
+  const descriptors = flattenedRules
+    .map((flatRule) => ruleCells.get(flatRule.ruleDef.id()))
+    .filter((descriptor): descriptor is RuleCellDescriptor => descriptor !== undefined);
+  const rows = pageGridRows(descriptors);
+  // Every cell the page holds, in order, as one value that changes exactly when
+  // the grid does.
+  const gridSignature = rows.map((row) => row.map(pageGridCellKey).join(" ")).join("|");
+
+  const focusCell = (cell: PageGridCell): boolean => {
+    const element = cellElement(containerRef.current, pageGridCellKey(cell));
+    if (element === null) return false;
+    element.focus();
+    return true;
+  };
+
+  // The cell the selection currently rests on, and the rows it stands in.
+  const cursorRef = useRef<PageGridCursor | undefined>(undefined);
+  cursorRef.current = cursor;
+  const rowsRef = useRef<readonly (readonly PageGridCell[])[]>(rows);
+  rowsRef.current = rows;
+  const focusCellRef = useRef(focusCell);
+  focusCellRef.current = focusCell;
+  // True while the keyboard is somewhere in the rules, including inside the
+  // offering a rule has open.
+  const heldKeyboardRef = useRef(false);
+
+  // The keyboard is given back to the selected cell when the control holding it
+  // stops rendering, which drops it on the dialog's own container.
+  useEffect(() => {
+    const reclaim = (event: FocusEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target !== null && containerRef.current?.contains(target) === true) {
+        heldKeyboardRef.current = true;
+        return;
+      }
+      if (!heldKeyboardRef.current) return;
+      if (!keyboardIsUnheld()) {
+        heldKeyboardRef.current = false;
+        return;
+      }
+      const cell = cursorRef.current?.cell;
+      if (cell !== undefined) focusCellRef.current(cell);
+    };
+    document.addEventListener("focusin", reclaim);
+    return () => document.removeEventListener("focusin", reclaim);
+  }, []);
+
+  // The selection always addresses a cell the page still holds: it opens on the
+  // first rule's handle, and follows a vanished cell to a surviving one. The
+  // keyboard is only taken back where nothing else has claimed it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: gridSignature stands for the rows it is built from
+  useEffect(() => {
+    const landing = landingRef.current;
+    landingRef.current = undefined;
+    const anchored = resolvePageGridCursor(rows, cursor?.cell, landing);
+    if (anchored === undefined) {
+      if (cursor !== undefined) setCursor(undefined);
+      return;
+    }
+    if (cursor !== undefined && pageGridCellKey(anchored.cell) === pageGridCellKey(cursor.cell)) return;
+    if (cursor !== undefined && keyboardIsUnheld()) focusCell(anchored.cell);
+    setCursor(anchored);
+  }, [gridSignature, cursor]);
+
+  // True once the page has taken the keyboard onto its selection, which it does
+  // one time, as soon as the selection has a cell to rest on and nothing else
+  // holds the keyboard.
+  const hasTakenKeyboardRef = useRef(false);
+  useEffect(() => {
+    if (hasTakenKeyboardRef.current || cursor === undefined || !keyboardIsUnheld()) return;
+    hasTakenKeyboardRef.current = focusCellRef.current(cursor.cell);
+  }, [cursor]);
+
+  // The keyboard landing anywhere in a cell makes that cell the selected one,
+  // whether it landed on the cell or on a control the cell holds.
+  const handleGridFocus = (event: React.FocusEvent<HTMLDivElement>) => {
+    const element = cellOf(event.target);
+    const key = element?.getAttribute(kPageGridCellAttribute);
+    if (!key) return;
+    setCursor((current) => {
+      if (current !== undefined && pageGridCellKey(current.cell) === key) return current;
+      const landed = rows.flat().find((cell) => pageGridCellKey(cell) === key);
+      return landed === undefined ? current : resolvePageGridCursor(rows, landed);
+    });
+  };
+
+  const handleGridKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const element = cellOf(event.target);
+    if (element === null) return;
+    const result = decidePageGridKey(rows, cursor, event.key, element === event.target ? "on-cell" : "inside-cell");
+    if (result.kind !== "move" || !focusCell(result.cursor.cell)) return;
+    event.preventDefault();
+    setCursor(result.cursor);
+  };
+
+  // The place the selection stands in now, held for the cell that is about to
+  // leave the page.
+  const holdSelectionPlace = useCallback(() => {
+    landingRef.current =
+      cursorRef.current === undefined ? undefined : pageGridCellPosition(rowsRef.current, cursorRef.current.cell);
+  }, []);
+
+  const gridBinding = useMemo(
+    () => ({
+      registerRule,
+      currentCell: cursor?.cell,
+      holdSelectionPlace,
+      ruleToCompose,
+      composeRule: setRuleToCompose,
+    }),
+    [registerRule, cursor, holdSelectionPlace, ruleToCompose]
+  );
+
   return (
     <RuleDragProvider value={dragContextValue}>
-      {/* biome-ignore lint/a11y/useSemanticElements: changing to ul/li requires restructuring BrainRuleEditor */}
-      <div ref={containerRef} className="h-full overflow-auto" role="list" aria-label="Brain rules">
+      <PageGridProvider value={gridBinding}>
+        {/* biome-ignore lint/a11y/useSemanticElements: changing to ul/li requires restructuring BrainRuleEditor */}
         <div
-          className="p-3 sm:p-6"
-          style={{
-            transform: `scale(${zoom})`,
-            transformOrigin: "top left",
-            width: `${100 / zoom}%`,
-            minHeight: `${100 / zoom}%`,
-          }}
+          ref={containerRef}
+          className="h-full overflow-auto"
+          role="list"
+          aria-label="Brain rules"
+          onFocus={handleGridFocus}
+          onKeyDown={handleGridKeyDown}
         >
-          {flattenedRules.map((flatRule) => (
-            <BrainRuleEditor
-              key={flatRule.ruleDef.id()}
-              ruleDef={flatRule.ruleDef}
-              index={flatRule.index}
-              pageDef={pageDef}
-              depth={flatRule.depth}
-              lineNumber={flatRule.lineNumber}
-              updateCounter={updateCounter}
-              commandHistory={commandHistory}
-            />
-          ))}
+          <div
+            className="p-3 sm:p-6"
+            style={{
+              transform: `scale(${zoom})`,
+              transformOrigin: "top left",
+              width: `${100 / zoom}%`,
+              minHeight: `${100 / zoom}%`,
+            }}
+          >
+            {flattenedRules.map((flatRule) => (
+              <BrainRuleEditor
+                key={flatRule.ruleDef.id()}
+                ruleDef={flatRule.ruleDef}
+                index={flatRule.index}
+                pageDef={pageDef}
+                depth={flatRule.depth}
+                lineNumber={flatRule.lineNumber}
+                ruleCount={flattenedRules.length}
+                updateCounter={updateCounter}
+                commandHistory={commandHistory}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      </PageGridProvider>
     </RuleDragProvider>
   );
 }

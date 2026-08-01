@@ -728,7 +728,7 @@ App.tsx polls `scene.getScoreSnapshot()` every 250ms. Uses smart dedup: only tri
 
 ### Theme
 
-OKLch color space tokens for light/dark modes. Key tokens: background, foreground, primary, secondary, muted, accent, destructive, border, plus 5 chart colors. Font: Roboto Mono with system monospace fallbacks. Border radius: 0.5rem.
+OKLch color space tokens for light/dark modes. Key tokens: background, foreground, primary, secondary, muted, accent, destructive, border, ring. Font: Roboto Mono with system monospace fallbacks. Border radius: 0.5rem.
 
 ---
 

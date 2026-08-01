@@ -29,13 +29,13 @@ import {
   BrainRuleDef,
   DeleteRuleCommand,
   IndentRuleCommand,
-  InsertRuleBeforeCommand,
+  InsertRuleCommand,
   InsertTileCommand,
   MoveRuleCommand,
   MoveRuleDownCommand,
   MoveRuleUpCommand,
   OutdentRuleCommand,
-  PasteRuleAboveCommand,
+  PasteRulesCommand,
   PasteTileBeforeCommand,
   RemovePageCommand,
   RemoveTileCommand,
@@ -405,11 +405,24 @@ describe("rule commands round-trip the document", () => {
     assert.equal(firstPage(brain).children().size(), 2);
   });
 
-  test("InsertRuleBeforeCommand inserts at the target's index", () => {
+  test("InsertRuleCommand inserts at the target's index", () => {
     const { brain, ruleA } = brainWithTwoRules();
-    assertCommandRoundTrip(brain, new InsertRuleBeforeCommand(ruleA));
+    assertCommandRoundTrip(brain, new InsertRuleCommand(ruleA, "before"));
     assert.equal(firstPage(brain).children().size(), 3);
     assert.equal(firstPage(brain).children().get(1), ruleA);
+  });
+
+  test("InsertRuleCommand inserts past the target and past its children", () => {
+    const { brain, ruleA } = brainWithTwoRules();
+    const child = ruleA.appendNewRule();
+    child.when().appendTile(sensorTile());
+    const command = new InsertRuleCommand(ruleA, "after");
+    assertCommandRoundTrip(brain, command);
+    const page = firstPage(brain);
+    assert.equal(page.children().size(), 3);
+    assert.equal(page.children().get(0), ruleA);
+    assert.equal(page.children().get(1), command.insertedRule());
+    assert.equal(ruleA.children().get(0), child);
   });
 
   test("DeleteRuleCommand restores the rule subtree on undo", () => {
@@ -418,6 +431,28 @@ describe("rule commands round-trip the document", () => {
     child.when().appendTile(sensorTile());
     assertCommandRoundTrip(brain, new DeleteRuleCommand(ruleA));
     assert.equal(firstPage(brain).children().size(), 1);
+  });
+
+  test("DeleteRuleCommand restores the ids of the rule and its children", () => {
+    const { brain, ruleA } = brainWithTwoRules();
+    const child = ruleA.appendNewRule();
+    child.when().appendTile(sensorTile());
+    const ruleId = ruleA.id();
+    const childId = child.id();
+
+    const history = new BrainCommandHistory();
+    history.executeCommand(new DeleteRuleCommand(ruleA));
+    history.undo();
+
+    const restored = firstPage(brain).children().get(0) as BrainRuleDef;
+    assert.equal(restored.id(), ruleId);
+    assert.equal((restored.children().get(0) as BrainRuleDef).id(), childId);
+
+    history.redo();
+    history.undo();
+    const again = firstPage(brain).children().get(0) as BrainRuleDef;
+    assert.equal(again.id(), ruleId);
+    assert.equal((again.children().get(0) as BrainRuleDef).id(), childId);
   });
 
   test("MoveRuleUpCommand and MoveRuleDownCommand", () => {
@@ -445,7 +480,7 @@ describe("rule commands round-trip the document", () => {
     assert.equal(ruleB.ancestor(), undefined);
   });
 
-  test("PasteRuleAboveCommand inserts the produced rules above the target, re-producing on redo", () => {
+  test("PasteRulesCommand inserts the produced rules above the target, re-producing on redo", () => {
     const { brain, ruleA, ruleB } = brainWithTwoRules();
     ruleA.when().appendTile(sensorTile());
     ruleA.do().appendTile(numberLiteralTile(brain, 42));
@@ -454,7 +489,7 @@ describe("rule commands round-trip the document", () => {
     // fresh rule instances just like a clipboard paste does.
     const copiedRuleJson = ruleA.toJson();
     let producerCalls = 0;
-    const command = new PasteRuleAboveCommand(ruleB, (destBrain) => {
+    const command = new PasteRulesCommand(ruleB, "before", (destBrain) => {
       producerCalls++;
       const rule = new BrainRuleDef();
       rule.deserializeJson(copiedRuleJson, destBrain.deserializationCatalogs());
@@ -472,6 +507,22 @@ describe("rule commands round-trip the document", () => {
         .map((t) => t.tileId),
       [sensorTile().tileId]
     );
+  });
+
+  test("PasteRulesCommand puts the produced rules past the target", () => {
+    const { brain, ruleA, ruleB } = brainWithTwoRules();
+    const copiedRuleJson = ruleA.toJson();
+    const command = new PasteRulesCommand(ruleA, "after", (destBrain) => {
+      const rule = new BrainRuleDef();
+      rule.deserializeJson(copiedRuleJson, destBrain.deserializationCatalogs());
+      return List.from([rule]);
+    });
+
+    assertCommandRoundTrip(brain, command);
+    const page = firstPage(brain);
+    assert.equal(page.children().size(), 3);
+    assert.equal(page.children().get(0), ruleA);
+    assert.equal(page.children().get(2), ruleB);
   });
 });
 
@@ -704,9 +755,9 @@ const cloneIsolationCases: CloneIsolationCase[] = [
     makeCommand: (brain) => new AddRuleCommand(firstPage(brain)),
   },
   {
-    name: "InsertRuleBeforeCommand",
+    name: "InsertRuleCommand",
     build: buildTwoRules,
-    makeCommand: (brain) => new InsertRuleBeforeCommand(ruleAt(brain, 0)),
+    makeCommand: (brain) => new InsertRuleCommand(ruleAt(brain, 0), "before"),
   },
   {
     name: "DeleteRuleCommand",
@@ -765,11 +816,11 @@ const cloneIsolationCases: CloneIsolationCase[] = [
     makeCommand: (brain) => new OutdentRuleCommand(ruleAt(brain, 0).children().get(0) as BrainRuleDef),
   },
   {
-    name: "PasteRuleAboveCommand",
+    name: "PasteRulesCommand",
     build: buildTwoRules,
     makeCommand: (brain) => {
       const copiedRuleJson = ruleAt(brain, 0).toJson();
-      return new PasteRuleAboveCommand(ruleAt(brain, 1), (destBrain) => {
+      return new PasteRulesCommand(ruleAt(brain, 1), "before", (destBrain) => {
         const rule = new BrainRuleDef();
         rule.deserializeJson(copiedRuleJson, destBrain.deserializationCatalogs());
         return List.from([rule]);

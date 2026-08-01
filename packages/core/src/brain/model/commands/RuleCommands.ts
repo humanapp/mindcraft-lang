@@ -67,34 +67,58 @@ export class AddRuleCommand implements BrainCommand {
 }
 
 /**
- * Command to insert a new rule before an existing rule at the same indent level.
+ * Which side of the target rule an insertion or a paste lands on. `after` puts
+ * the new rules past the target and past every rule nested under it.
  */
-export class InsertRuleBeforeCommand implements BrainCommand {
-  private insertedRule?: BrainRuleDef;
+export type RulePlacement = "before" | "after";
 
-  constructor(private targetRule: BrainRuleDef) {}
+/** The index in the target's own list that `placement` puts a new rule at. */
+function placementIndex(state: RuleState, placement: RulePlacement): number {
+  return placement === "after" ? state.index + 1 : state.index;
+}
+
+/**
+ * Command to insert a new empty rule beside an existing rule, at the same
+ * indent level and on the side `placement` names.
+ */
+export class InsertRuleCommand implements BrainCommand {
+  private insertedRule_?: BrainRuleDef;
+
+  constructor(
+    private targetRule: BrainRuleDef,
+    private readonly placement: RulePlacement
+  ) {}
 
   execute(): void {
     const state = getRuleState(this.targetRule);
     const newRule = new BrainRuleDef();
+    const index = placementIndex(state, this.placement);
 
     if (state.parentRule) {
-      state.parentRule.addRuleAtIndex(state.index, newRule);
+      state.parentRule.addRuleAtIndex(index, newRule);
     } else if (state.pageDef) {
-      state.pageDef.addRuleAtIndex(state.index, newRule);
+      state.pageDef.addRuleAtIndex(index, newRule);
     }
 
-    this.insertedRule = newRule;
+    this.insertedRule_ = newRule;
   }
 
   undo(): void {
-    if (this.insertedRule) {
-      this.insertedRule.delete();
+    if (this.insertedRule_) {
+      this.insertedRule_.delete();
     }
   }
 
+  /**
+   * The rule the latest execute put into the page, or undefined before the
+   * command has run. A redo inserts a rule of its own, which this then names.
+   */
+  insertedRule(): BrainRuleDef | undefined {
+    return this.insertedRule_;
+  }
+
   getDescription(): string {
-    return "Add rule above";
+    return this.placement === "after" ? "Add rule below" : "Add rule above";
   }
 }
 
@@ -113,6 +137,7 @@ export class DeleteRuleCommand implements BrainCommand {
   execute(): void {
     this.savedState = getRuleState(this.ruleToDelete);
     this.clonedRule = this.ruleToDelete.clone();
+    this.clonedRule.adoptRuleIds(this.ruleToDelete);
     this.ruleToDelete.delete();
   }
 
@@ -248,7 +273,8 @@ export class OutdentRuleCommand implements BrainCommand {
 }
 
 /**
- * Command to paste rules above an existing rule.
+ * Command to paste rules beside an existing rule, on the side `placement`
+ * names.
  *
  * The rules are produced by `deserializeRules`, which is invoked with the
  * destination brain on every execute (including redo) so the paste reflects
@@ -256,14 +282,15 @@ export class OutdentRuleCommand implements BrainCommand {
  * any missing catalog entries (literals, variables) into the destination
  * brain as part of deserialization.
  *
- * Supports multi-rule producers: all rules are inserted sequentially above
- * the target rule, preserving their original order.
+ * Supports multi-rule producers: all rules are inserted sequentially, keeping
+ * the order they were copied in.
  */
-export class PasteRuleAboveCommand implements BrainCommand {
+export class PasteRulesCommand implements BrainCommand {
   private pastedRules: ReadonlyList<BrainRuleDef> = List.empty<BrainRuleDef>();
 
   constructor(
     private targetRule: BrainRuleDef,
+    private readonly placement: RulePlacement,
     private readonly deserializeRules: (destBrain: BrainDef) => ReadonlyList<BrainRuleDef>
   ) {}
 
@@ -275,14 +302,13 @@ export class PasteRuleAboveCommand implements BrainCommand {
     if (newRules.size() === 0) return;
 
     const state = getRuleState(this.targetRule);
+    const base = placementIndex(state, this.placement);
 
-    // Insert rules in order at the target index. Each subsequent rule goes
-    // after the previous one so they appear in the same order as copied.
     for (let i = 0; i < newRules.size(); i++) {
       if (state.parentRule) {
-        state.parentRule.addRuleAtIndex(state.index + i, newRules.get(i));
+        state.parentRule.addRuleAtIndex(base + i, newRules.get(i));
       } else if (state.pageDef) {
-        state.pageDef.addRuleAtIndex(state.index + i, newRules.get(i));
+        state.pageDef.addRuleAtIndex(base + i, newRules.get(i));
       }
     }
 
@@ -299,6 +325,7 @@ export class PasteRuleAboveCommand implements BrainCommand {
 
   getDescription(): string {
     const count = this.pastedRules.size();
-    return count <= 1 ? "Paste rule above" : `Paste ${count} rules above`;
+    const where = this.placement === "after" ? "below" : "above";
+    return count <= 1 ? `Paste rule ${where}` : `Paste ${count} rules ${where}`;
   }
 }

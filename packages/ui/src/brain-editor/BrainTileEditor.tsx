@@ -1,11 +1,6 @@
 import type { IBrainTileDef, LiteralDisplayFormat, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainCommandHistory, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import {
-  PasteTileBeforeCommand,
-  RemoveTileCommand,
-  RenameVariableCommand,
-  ReplaceTileCommand,
-} from "@mindcraft-lang/core/brain/model";
+import { RemoveTileCommand, RenameVariableCommand, ReplaceTileCommand } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef, type BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import { useEffect, useId, useState } from "react";
@@ -23,14 +18,12 @@ import { BrainTile } from "./BrainTile";
 import { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
 import type { EditPointPosition } from "./edit-point";
 import { editPointPositionOf } from "./edit-point";
+import { usePageGrid } from "./PageGridContext";
+import { kPageGridCellAttribute, pageGridCellKey } from "./page-grid-model";
 import { RenameVariableDialog } from "./RenameVariableDialog";
 import type { TileBadge } from "./tile-badges";
-import {
-  copyTileToClipboard,
-  hasTileInClipboard,
-  importTileFromClipboard,
-  onTileClipboardChanged,
-} from "./tile-clipboard";
+import { copyTileToClipboard } from "./tile-clipboard";
+import { tileAccessibleName } from "./tile-visual-utils";
 
 /** What the armed edit point on this tile is described as, by the position it sits at. */
 const editPointHints: Record<EditPointPosition, string> = {
@@ -48,6 +41,13 @@ interface BrainTileEditorProps {
   badge?: TileBadge;
   /** Arms the edit point on this tile at `position`, which the candidate strip then serves. */
   armEditPoint: (position: EditPointPosition) => void;
+  /**
+   * True when the copied tile belongs in front of this one, which the menu's
+   * paste entry stands enabled by. Read only while the menu is open.
+   */
+  canPasteBefore: () => boolean;
+  /** Places the copied tile in front of this one. */
+  pasteBefore: () => void;
 }
 
 /**
@@ -63,6 +63,8 @@ export function BrainTileEditor({
   commandHistory,
   badge,
   armEditPoint,
+  canPasteBefore,
+  pasteBefore,
 }: BrainTileEditorProps) {
   const armedTarget = useArmedTargetController();
   const tileTarget = isTileTargetForTile(armedTarget.target, ruleDef, side, tileIndex) ? armedTarget.target : null;
@@ -70,28 +72,29 @@ export function BrainTileEditor({
   const [menuOpen, setMenuOpen] = useState(false);
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
-  const { onTileHelp, brainServices } = useBrainEditorConfig();
+  const editorConfig = useBrainEditorConfig();
+  const { onTileHelp, brainServices } = editorConfig;
+
+  // The tile's place in the page's selection grid: one cell of its rule's
+  // structural row, named by where it stands among the tiles of its side.
+  const pageGrid = usePageGrid();
+  const cellKey = pageGridCellKey({ kind: "tile", ruleId: ruleDef.id(), side, tileIndex });
+  const cellName = `Tile ${tileIndex + 1} of ${ruleDef.side(side).tiles().size()}, ${tileAccessibleName(editorConfig, tileDef)}`;
+  const cellProps =
+    pageGrid === undefined
+      ? undefined
+      : {
+          [kPageGridCellAttribute]: cellKey,
+          tabIndex: pageGrid.currentCell !== undefined && pageGridCellKey(pageGrid.currentCell) === cellKey ? 0 : -1,
+        };
 
   const isNumericLiteral =
     tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.Number;
   const isVariable = tileDef.kind === "variable";
 
-  const [canPaste, setCanPaste] = useState(hasTileInClipboard());
-
-  useEffect(() => {
-    return onTileClipboardChanged(() => setCanPaste(hasTileInClipboard()));
-  }, []);
-
   const handleCopyTile = () => {
     copyTileToClipboard(tileDef, ruleDef.brain());
     toast.success("Tile copied");
-  };
-
-  const handlePasteTileBefore = () => {
-    const command = new PasteTileBeforeCommand(ruleDef, side, tileIndex, (destBrain) =>
-      importTileFromClipboard(destBrain, brainServices)
-    );
-    commandHistory.executeCommand(command);
   };
 
   const handleDeleteTile = () => {
@@ -169,9 +172,11 @@ export function BrainTileEditor({
             side={side}
             badge={badge}
             aria-haspopup="menu"
+            aria-label={cellName}
             aria-describedby={tileTarget ? armedHintId : undefined}
             onClick={handleTileTap}
             className={tileTarget ? "ring-[3px] ring-brain-armed" : ""}
+            {...cellProps}
           />
         </ContextMenuTrigger>
         <ContextMenuContent>
@@ -180,7 +185,7 @@ export function BrainTileEditor({
           {isNumericLiteral && <ContextMenuItem onClick={handleEditFormat}>Edit Format</ContextMenuItem>}
           {isVariable && <ContextMenuItem onClick={handleRenameVariable}>Rename...</ContextMenuItem>}
           <ContextMenuItem onClick={handleCopyTile}>Copy Tile</ContextMenuItem>
-          <ContextMenuItem onClick={handlePasteTileBefore} disabled={!canPaste}>
+          <ContextMenuItem onClick={pasteBefore} disabled={!menuOpen || !canPasteBefore()}>
             Paste Before
           </ContextMenuItem>
           <ContextMenuItem onClick={handleDeleteTile}>Delete Tile</ContextMenuItem>
