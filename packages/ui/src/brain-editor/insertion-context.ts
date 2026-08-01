@@ -1,11 +1,14 @@
 import type { ReadonlyBitSet, ReadonlyList, UniqueSet } from "@mindcraft-lang/core";
-import type { IBrainRuleDef, IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import type { BrainServices, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
+import { RuleSide } from "@mindcraft-lang/core/brain";
 import type { Expr } from "@mindcraft-lang/core/brain/compiler";
 import {
   countUnclosedParens,
   type InsertionContext,
   parseTilesForSuggestions,
+  suggestTiles,
 } from "@mindcraft-lang/core/brain/language-service";
+import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { TypeId } from "@mindcraft-lang/core/runtime";
 
 /**
@@ -53,4 +56,42 @@ export function buildInsertionContext(inputs: InsertionContextInputs): Insertion
     ruleDef,
     unclosedParenDepth,
   };
+}
+
+/** What {@link sideOffersAppendedTile} asks the suggestion oracle about. */
+export interface AppendedTileInputs {
+  /** The rule whose side is asked about. */
+  ruleDef: BrainRuleDef;
+  /** Which side of the rule the tile would be appended to. */
+  side: RuleSide;
+  /** The catalogs the tile would be placed from; an empty list offers nothing. */
+  catalogs: ReadonlyList<ITileCatalog>;
+  services: BrainServices;
+  availableCapabilities?: ReadonlyBitSet;
+  availableOutputKeys?: UniqueSet<string>;
+}
+
+/**
+ * True when the suggestion oracle offers at least one tile at the end of the
+ * given side, whether it fits directly or through a conversion.
+ *
+ * Asks in the append shape of {@link InsertionContextInputs}, over the side's
+ * full tile list and the expression it last parsed to. False means the oracle
+ * offered nothing: either the grammar allows nothing further, or `catalogs`
+ * holds nothing to offer. A side that does not parse is not a false: the oracle
+ * answers an unparsed side with the tiles that can open an expression.
+ */
+export function sideOffersAppendedTile(inputs: AppendedTileInputs): boolean {
+  const { ruleDef, side, catalogs, services, availableCapabilities, availableOutputKeys } = inputs;
+  const tileSet = side === RuleSide.When ? ruleDef.when() : ruleDef.do();
+  const context = buildInsertionContext({
+    side,
+    expr: tileSet.expr(),
+    availableCapabilities,
+    availableOutputKeys,
+    ruleDef,
+    existingTiles: tileSet.tiles(),
+  });
+  const result = suggestTiles(context, catalogs, services);
+  return !result.exact.isEmpty() || !result.withConversion.isEmpty();
 }

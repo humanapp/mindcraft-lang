@@ -88,7 +88,6 @@ function stripState(): CandidateStripState {
     acceptsTextLiteral: false,
     textLiteralCandidate: () => undefined,
     setFilter: () => {},
-    setOfferingOpen: () => {},
     commit: () => {},
     commitByKey: () => {},
     candidateFromKey: () => undefined,

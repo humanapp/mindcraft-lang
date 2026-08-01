@@ -1,21 +1,28 @@
 /**
- * Pins the candidate offering's visibility as a state of its own, separate from
- * the position the editor is armed at: arming a position offers the tiles that
- * fit there, a closed offering renders no panel while the armed position stands,
- * and a closed offering references no element it does not render. Pins with it
- * the sentence line's one owner -- the rule card, in both modes -- and the
- * panel's place out of that card's flow.
+ * Pins the candidate offering's visibility as a reading of the armed position:
+ * a position the oracle offers a tile at stands the panel, a position it offers
+ * nothing at stands none, and the answer agrees with the offering that position
+ * would build, for the append, insert and replace shapes alike. Pins with it
+ * that a closed offering renders no panel while the armed position stands, that
+ * it references no element it does not render, the sentence line's one owner --
+ * the rule card, in both modes -- and the panel's place out of that card's flow.
+ *
+ * A host supplying no brain services cannot ask the oracle, so its offering
+ * stands open; the probes that supply none rely on that.
  *
  * Structural assertions only: every value asserted here is a role, an id
- * reference, a state flag, or text the user typed. Labels, placeholders, and
- * announcement wording are display prose and are never asserted.
+ * reference, a state flag, a candidate count, or text the user typed. Labels,
+ * placeholders, and announcement wording are display prose and are never
+ * asserted.
  */
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { List } from "@mindcraft-lang/core";
+import type { BrainServices, ITileCatalog } from "@mindcraft-lang/core/brain";
 import { RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { suggestTiles } from "@mindcraft-lang/core/brain/language-service";
 import { BrainCommandHistory, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { CoreHostActions, mkSensorTileId } from "@mindcraft-lang/core/runtime";
 import { createElement } from "react";
@@ -30,6 +37,7 @@ import type { StripComposerBinding } from "./BrainCandidateStrip";
 import { type BrainEditorConfig, BrainEditorProvider } from "./BrainEditorContext";
 import { BrainRuleEditor } from "./BrainRuleEditor";
 import {
+  buildStripCandidates,
   type CandidateEntry,
   kBestNextBandKey,
   type StripCandidate,
@@ -39,6 +47,7 @@ import {
 } from "./candidate-strip-model";
 import type { CaretPosition } from "./caret-run";
 import type { CandidateStripState } from "./hooks/useCandidateStrip";
+import { buildInsertionContext } from "./insertion-context";
 import { makeActuator, makeBrain, makeSensor, StripSurface } from "./test-only-rule-fixtures";
 
 let services: BrainServices;
@@ -85,12 +94,35 @@ function tileTarget(
   };
 }
 
-function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target: ArmedTileTarget | null): string {
+/** The target a caret in the gap before the tile at `tileIndex` of `side` arms. */
+function insertTarget(
+  ruleDef: BrainRuleDef,
+  side: RuleSide,
+  tileIndex: number,
+  entry: ArmedTargetEntry
+): ArmedTileTarget {
+  return {
+    ruleDef,
+    side,
+    mode: "insert",
+    tileIndex,
+    caret: entry === "sentence" ? { kind: "gap", side, tileIndex } : undefined,
+    entry,
+    onTileSelected: () => true,
+  };
+}
+
+function renderCardWith(
+  config: BrainEditorConfig,
+  ruleDef: BrainRuleDef,
+  pageDef: BrainPageDef,
+  target: ArmedTileTarget | null
+): string {
   const controller: ArmedTargetController = { target, arm: () => {}, disarm: () => {} };
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,
-      { config: editorConfig },
+      { config },
       createElement(
         ArmedTargetProvider,
         { value: controller },
@@ -105,6 +137,40 @@ function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target: Ar
       )
     )
   );
+}
+
+function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target: ArmedTileTarget | null): string {
+  return renderCardWith(editorConfig, ruleDef, pageDef, target);
+}
+
+/** The card as a host that supplies the oracle renders it, so the armed position is really asked. */
+function renderAskedRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target: ArmedTileTarget | null): string {
+  return renderCardWith(
+    { ...editorConfig, brainServices: services, tileCatalogs: [services.edit.tiles] },
+    ruleDef,
+    pageDef,
+    target
+  );
+}
+
+/**
+ * How many candidates the oracle offers at the position `target` arms, asked in
+ * that target's own shape: the full tile list for an append or a replace, and
+ * the list truncated at the insertion index for an insert.
+ */
+function candidateCountAt(target: ArmedTileTarget): number {
+  const tileSet = target.side === RuleSide.When ? target.ruleDef.when() : target.ruleDef.do();
+  const tiles = tileSet.tiles();
+  const isInsert = target.mode === "insert";
+  const context = buildInsertionContext({
+    side: target.side,
+    expr: isInsert ? undefined : tileSet.expr(),
+    replaceTileIndex: target.mode === "replace" ? target.tileIndex : undefined,
+    ruleDef: target.ruleDef,
+    existingTiles: isInsert ? tiles.slice(0, target.tileIndex ?? 0) : tiles,
+  });
+  const catalogs = List.from<ITileCatalog>([services.edit.tiles]).asReadonly();
+  return buildStripCandidates(suggestTiles(context, catalogs, services), (tileDef) => tileDef.tileId).length;
 }
 
 /** The strip's DOM id in every direct render, so option ids are deterministic. */
@@ -142,7 +208,6 @@ function stripState(overrides: Partial<CandidateStripState>): CandidateStripStat
     acceptsTextLiteral: false,
     textLiteralCandidate: () => undefined,
     setFilter: () => {},
-    setOfferingOpen: () => {},
     commit: () => {},
     commitByKey: () => {},
     candidateFromKey: () => undefined,
@@ -262,6 +327,102 @@ describe("arming a position offers the tiles that fit it", () => {
     assert.equal(hasOfferingPanel(markup), false);
     assert.equal(countOf(markup, 'aria-expanded="true"'), 0);
     assert.deepEqual(danglingReferences(markup), []);
+  });
+});
+
+describe("the offering stands only where the position offers a tile", () => {
+  /** A rule whose two sides each read as complete, so each side's end offers nothing. */
+  function completeRule(name: string) {
+    const brain = makeBrain(services, [makeSensor(services, `${name}-see`)], [makeActuator(services, `${name}-move`)]);
+    brain.ruleDef.typecheck();
+    return brain;
+  }
+
+  test("a position the oracle offers nothing at never opens one", () => {
+    const { ruleDef, pageDef } = completeRule("dead-end");
+    for (const side of [RuleSide.When, RuleSide.Do]) {
+      const target = appendTarget(ruleDef, side, "sentence");
+      assert.equal(candidateCountAt(target), 0, "the position under test offers nothing");
+      assert.equal(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, target)), false);
+    }
+  });
+
+  test("reaching it from the tray opens none either", () => {
+    const { ruleDef, pageDef } = completeRule("dead-tray");
+    const markup = renderAskedRuleCard(ruleDef, pageDef, appendTarget(ruleDef, RuleSide.Do, "tray"));
+    assert.equal(hasOfferingPanel(markup), false);
+    assert.equal(countOf(markup, "data-strip-filter"), 0);
+  });
+
+  test("the caret still stands at such a position, with the box the sentence hosts", () => {
+    const { ruleDef, pageDef } = completeRule("dead-caret");
+    const markup = renderAskedRuleCard(ruleDef, pageDef, appendTarget(ruleDef, RuleSide.When, "sentence"));
+    assert.equal(countOf(markup, 'data-strip-filter="sentence"'), 1);
+    assert.equal(countOf(markup, 'role="combobox"'), 1);
+    assert.equal(hasOfferingPanel(markup), false);
+    assert.deepEqual(danglingReferences(markup), []);
+  });
+
+  test("a position that offers still opens one", () => {
+    const { ruleDef, pageDef } = completeRule("live-position");
+    for (const target of [
+      insertTarget(ruleDef, RuleSide.When, 0, "sentence"),
+      tileTarget(ruleDef, RuleSide.When, 0, "tray"),
+    ]) {
+      assert.ok(candidateCountAt(target) > 0, "the position under test offers tiles");
+      assert.ok(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, target)));
+    }
+  });
+
+  test("an interior gap answers over the tiles before it, not the whole side", () => {
+    const { ruleDef, pageDef } = makeBrain(
+      services,
+      [],
+      [makeActuator(services, "interior-move"), makeActuator(services, "interior-turn")]
+    );
+    ruleDef.typecheck();
+    const opening = insertTarget(ruleDef, RuleSide.Do, 0, "sentence");
+    const past = insertTarget(ruleDef, RuleSide.Do, 1, "sentence");
+    assert.ok(candidateCountAt(opening) > 0);
+    assert.equal(candidateCountAt(past), 0);
+    assert.ok(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, opening)));
+    assert.equal(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, past)), false);
+  });
+
+  test("a placement that completes the side closes the offering standing there", () => {
+    const { ruleDef, pageDef } = makeBrain(services, [], []);
+    const open = appendTarget(ruleDef, RuleSide.When, "sentence");
+    assert.ok(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, open)));
+    ruleDef.when().appendTile(makeSensor(services, "completing-see"));
+    ruleDef.typecheck();
+    const settled = appendTarget(ruleDef, RuleSide.When, "sentence");
+    assert.equal(candidateCountAt(settled), 0);
+    assert.equal(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, settled)), false);
+  });
+
+  test("the panel agrees with the offering that position would build", () => {
+    const { ruleDef, pageDef } = completeRule("agreement");
+    const empty = makeBrain(services, [], []);
+    const targets = [
+      appendTarget(ruleDef, RuleSide.When, "sentence"),
+      appendTarget(ruleDef, RuleSide.Do, "sentence"),
+      insertTarget(ruleDef, RuleSide.When, 0, "sentence"),
+      insertTarget(ruleDef, RuleSide.Do, 0, "sentence"),
+      tileTarget(ruleDef, RuleSide.When, 0, "tray"),
+      tileTarget(ruleDef, RuleSide.Do, 0, "tray"),
+    ];
+    for (const target of targets) {
+      assert.equal(
+        hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, target)),
+        candidateCountAt(target) > 0,
+        `${target.mode} ${target.side} ${target.tileIndex ?? "end"}`
+      );
+    }
+    const opening = appendTarget(empty.ruleDef, RuleSide.When, "sentence");
+    assert.equal(
+      hasOfferingPanel(renderAskedRuleCard(empty.ruleDef, empty.pageDef, opening)),
+      candidateCountAt(opening) > 0
+    );
   });
 });
 

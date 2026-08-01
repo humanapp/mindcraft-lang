@@ -111,7 +111,6 @@ function renderStrip(color: string | undefined, tileDef: IBrainTileDef): string 
     acceptsTextLiteral: false,
     textLiteralCandidate: () => undefined,
     setFilter: () => {},
-    setOfferingOpen: () => {},
     commit: () => {},
     commitByKey: () => {},
     candidateFromKey: () => undefined,

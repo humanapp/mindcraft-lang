@@ -1,4 +1,4 @@
-import { List, type ReadonlyBitSet, type UniqueSet } from "@mindcraft-lang/core";
+import { List, type ReadonlyBitSet, type ReadonlyList, type UniqueSet } from "@mindcraft-lang/core";
 import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
 import { suggestTiles, type TileSuggestion, tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
@@ -35,6 +35,8 @@ export interface UseCandidateStripOptions {
   ruleDef: BrainRuleDef;
   /** The armed target the offering is computed for; null offers nothing. */
   target: ArmedTileTarget | null;
+  /** The catalogs the offering is drawn from, host catalogs plus the brain's own. */
+  catalogs: ReadonlyList<ITileCatalog>;
   availableCapabilities?: ReadonlyBitSet;
   availableOutputKeys?: UniqueSet<string>;
   /** The page editor's update counter; re-queries the oracle when the document changes. */
@@ -67,7 +69,11 @@ export interface CandidateStripState {
   readonly sections: readonly CandidateStripSection[];
   /** The current filter text; every keystroke narrows the offering. */
   readonly filter: string;
-  /** True while the offering is shown; the strip's panel stands only while it is. */
+  /**
+   * True while the armed position offers at least one tile, filter text aside;
+   * the strip's panel stands only while it is. False while nothing is armed,
+   * and at a position the oracle offers nothing at.
+   */
   readonly offeringOpen: boolean;
   /** True when the filter text names nothing the strip can place, as opposed to naming nothing yet. */
   readonly isUnknown: boolean;
@@ -79,8 +85,6 @@ export interface CandidateStripState {
    */
   textLiteralCandidate(value: string): StripCandidate | undefined;
   setFilter(next: string): void;
-  /** Show or hide the offering, leaving the armed position as it stands. */
-  setOfferingOpen(open: boolean): void;
   /** Place `candidate` at the armed position through the target's selection callback. */
   commit(candidate: StripCandidate): void;
   /** Place the candidate with `candidateKey`, ignoring keys absent from the offering. */
@@ -98,45 +102,31 @@ export interface CandidateStripState {
  * catalog tile. In append mode the target is re-armed after each placement so
  * composition continues at the next position.
  *
- * The offering's visibility is state of its own: arming a position opens it,
- * disarming closes it, and {@link CandidateStripState.setOfferingOpen} moves it
- * either way without touching the armed position.
+ * {@link CandidateStripState.offeringOpen} is read off that same query rather
+ * than held: the offering stands exactly where the armed position offers a tile,
+ * so a position the oracle offers nothing at never opens one, and a placement or
+ * a move that leaves the position offering nothing closes the one standing.
  */
 export function useCandidateStrip({
   ruleDef,
   target,
+  catalogs,
   availableCapabilities,
   availableOutputKeys,
   updateCounter,
   onCommitted,
 }: UseCandidateStripOptions): CandidateStripState {
   const editorConfig = useBrainEditorConfig();
-  const { brainServices, tileCatalogs } = editorConfig;
+  const { brainServices } = editorConfig;
   const armedTarget = useArmedTargetController();
   const [filter, setFilter] = useState("");
   const [commitCounter, setCommitCounter] = useState(0);
-  const [offeringOpen, setOfferingOpen] = useState(target !== null);
-  const [offeredFor, setOfferedFor] = useState(target);
-
-  // Arming a position opens the offering there and disarming closes it, in the
-  // same render the target changes in.
-  if (offeredFor !== target) {
-    setOfferedFor(target);
-    setOfferingOpen(target !== null);
-  }
 
   // Re-arming for a different position starts a fresh word in progress.
   // biome-ignore lint/correctness/useExhaustiveDependencies: target is an intentional trigger signal
   useEffect(() => {
     setFilter("");
   }, [target]);
-
-  const catalogs = useMemo(() => {
-    const list = tileCatalogs ? List.from<ITileCatalog>(tileCatalogs) : List.empty<ITileCatalog>();
-    const localCatalog = ruleDef.brain()?.catalog();
-    if (localCatalog) list.push(localCatalog);
-    return list.asReadonly();
-  }, [ruleDef, tileCatalogs]);
 
   // A placeable tile's chip carries the word its sentence reads it with. A
   // factory manufactures the tile that gets placed, and keeps the label the
@@ -189,6 +179,11 @@ export function useCandidateStrip({
     updateCounter,
     commitCounter,
   ]);
+
+  // The offering stands exactly where the armed position offers a tile, read off
+  // the same query the chips are built from. A host that supplies no brain
+  // services cannot be asked, so its offering stands open.
+  const offeringOpen = target !== null && (brainServices === undefined || candidates.length > 0);
 
   const ranked = useMemo(
     () => categoryPriorityCandidateRanker(candidates, target, { projectNamespace: editorConfig.projectNamespace }),
@@ -286,7 +281,6 @@ export function useCandidateStrip({
     acceptsTextLiteral,
     textLiteralCandidate,
     setFilter,
-    setOfferingOpen,
     commit,
     commitByKey,
     candidateFromKey,

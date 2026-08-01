@@ -198,6 +198,8 @@ class ComposerTrace {
   state: ComposerInputState;
   /** True when the tiles of the armed side may end where composition stands. */
   armedSideCanEnd = true;
+  /** True when the caret's position offers at least one tile, filter text aside. */
+  positionOffersTile = true;
   /** Every effect the trace has asked for, in order. */
   readonly log: ComposerInputEffect[] = [];
   /** Why the strip closed, or undefined while it is open. */
@@ -379,6 +381,7 @@ class ComposerTrace {
       acceptsTextLiteral: offersTextLiteral(offered),
       pendingTextLiteral: this.pendingTextChip(),
       armedSideCanEnd: this.armedSideCanEnd,
+      positionOffersTile: this.positionOffersTile,
       ruleIsEmpty: this.tileCount(RuleSide.When) === 0 && this.tileCount(RuleSide.Do) === 0,
       doTileCount: this.tileCount(RuleSide.Do),
       ownNewestPlacement: this.ownNewestPlacement(),
@@ -490,9 +493,16 @@ function headingAt(sectionKey: string): StripCursor {
   return { kind: "heading", sectionKey };
 }
 
+/** The re-ask a placement made on the way to nothing in particular is decided by. */
+const landedReask: ComposerInputEffect = {
+  kind: "reask",
+  token: { kind: "placement-landed", gesture: "continue" },
+};
+
 /**
  * The effects every placement asks for, with the caret coming to rest at
- * `caret`, plus whatever gesture it was made on the way to.
+ * `caret`, plus whatever gesture it was made on the way to. A placement made on
+ * the way to no gesture of its own is re-asked where it landed.
  */
 function placementEffects(
   candidate: StripCandidate,
@@ -506,7 +516,7 @@ function placementEffects(
     { kind: "move-caret", position: caret },
     clearHighlight,
     settledFocus,
-    ...then,
+    ...(then.length > 0 ? then : [landedReask]),
   ];
 }
 
@@ -832,7 +842,7 @@ describe("the caret against the text being typed", () => {
 
     assert.deepEqual(
       trace.press(rightArrow),
-      placementEffects(chip, trace.gap(RuleSide.When, 2), { kind: "set-text-literal", value: undefined })
+      placementEffects(chip, trace.gap(RuleSide.When, 2), { kind: "set-text-literal", value: undefined }, landedReask)
     );
     assert.equal(trace.state.textLiteral, undefined);
     assert.equal(trace.tileCount(RuleSide.When), 2);
@@ -1256,6 +1266,114 @@ describe("the comma", () => {
     const trace = new ComposerTrace({ inSentence: false });
 
     assert.deepEqual(trace.press({ kind: "comma" }), []);
+  });
+});
+
+describe("where a placement leaves composition", () => {
+  /**
+   * A trace whose word in progress places `label`, standing at a position that
+   * offers nothing once that word has been placed.
+   */
+  function landingTrace(label: string, options: ComposerTraceOptions = {}) {
+    const candidate = candidateOf(makeSensorTile(`composer-landing-${label}`), label);
+    const trace = new ComposerTrace({ ...options, offeringFor: () => [candidate] });
+    trace.typeWord(label);
+    trace.positionOffersTile = false;
+    return { trace, candidate };
+  }
+
+  test("a word leaving the when side nothing more to offer hands over to the do side", () => {
+    const { trace, candidate } = landingTrace("see");
+
+    assert.deepEqual(
+      trace.press({ kind: "space" }),
+      placementEffects(candidate, trace.gap(RuleSide.When, 1), landedReask, {
+        kind: "move-caret",
+        position: trace.gap(RuleSide.Do, 0),
+      })
+    );
+    assert.equal(trace.state.armedSide, RuleSide.Do);
+    assert.equal(trace.state.pivoted, true);
+    assert.equal(trace.closedAs, undefined);
+  });
+
+  test("a word leaving the do side nothing more to offer ends the rule", () => {
+    const { trace, candidate } = landingTrace("jump", { armedSide: RuleSide.Do, whenTiles: 1 });
+
+    assert.deepEqual(
+      trace.press({ kind: "space" }),
+      placementEffects(candidate, trace.gap(RuleSide.Do, 1), landedReask, {
+        kind: "close-strip",
+        reason: "settled",
+      })
+    );
+    assert.equal(trace.closedAs, "settled");
+  });
+
+  test("a when side that may not end yet hands over nothing", () => {
+    const { trace, candidate } = landingTrace("hear");
+    trace.armedSideCanEnd = false;
+
+    assert.deepEqual(trace.press({ kind: "space" }), placementEffects(candidate, trace.gap(RuleSide.When, 1)));
+    assert.equal(trace.state.armedSide, RuleSide.When);
+    assert.equal(trace.closedAs, undefined);
+  });
+
+  test("a position that still offers carries composition on where it stands", () => {
+    const { trace, candidate } = landingTrace("smell");
+    trace.positionOffersTile = true;
+
+    assert.deepEqual(trace.press({ kind: "space" }), placementEffects(candidate, trace.gap(RuleSide.When, 1)));
+    assert.equal(trace.state.armedSide, RuleSide.When);
+    assert.equal(trace.closedAs, undefined);
+  });
+
+  test("a placement made from the tray carries composition nowhere", () => {
+    const { trace } = landingTrace("taste", { inSentence: false });
+
+    const pressed = trace.press({ kind: "space" });
+    assert.deepEqual(
+      pressed.filter((effect) => effect.kind === "move-caret"),
+      []
+    );
+    assert.equal(trace.state.armedSide, RuleSide.When);
+    assert.equal(trace.closedAs, undefined);
+  });
+
+  test("moving the caret onto such a position hands over nothing, and backspace there still deletes", () => {
+    const trace = new ComposerTrace({ whenTiles: 1 });
+    trace.positionOffersTile = false;
+    trace.placeCaret(trace.element(RuleSide.When, 0));
+
+    assert.deepEqual(trace.press(rightArrow), [
+      consumeKey,
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 1) },
+      clearHighlight,
+    ]);
+    assert.equal(trace.state.armedSide, RuleSide.When);
+    assert.equal(trace.state.pivoted, false);
+
+    assert.deepEqual(trace.press({ kind: "backspace", from: "filter" }), [
+      consumeKey,
+      { kind: "delete-tile", position: trace.element(RuleSide.When, 0) },
+      { kind: "move-caret", position: trace.gap(RuleSide.When, 0) },
+    ]);
+    assert.equal(trace.tileCount(RuleSide.When), 0);
+  });
+
+  test("the comma's own pivot is the only hand-over its placement makes", () => {
+    const { trace } = landingTrace("touch");
+
+    const pressed = trace.press({ kind: "comma" });
+    assert.deepEqual(
+      pressed.filter((effect) => effect.kind === "reask"),
+      [{ kind: "reask", token: { kind: "placement-landed", gesture: "pivot" } }]
+    );
+    assert.deepEqual(
+      pressed.filter((effect) => effect.kind === "move-caret" && effect.position.side === RuleSide.Do),
+      [{ kind: "move-caret", position: trace.gap(RuleSide.Do, 0) }]
+    );
+    assert.equal(trace.state.armedSide, RuleSide.Do);
   });
 });
 

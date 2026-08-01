@@ -155,6 +155,15 @@ function buildStripBands(
 }
 
 /**
+ * True when nothing the keyboard can be tabbed to holds it: the document body,
+ * or a container that only took it because the element holding it was removed.
+ */
+function keyboardIsUnheld(): boolean {
+  const active = document.activeElement as HTMLElement | null;
+  return active === null || active === document.body || active.tabIndex < 0;
+}
+
+/**
  * DOM id of the element `target` names in the strip `stripId`, or undefined for
  * the filter box, which the strip holds a ref to instead.
  */
@@ -442,6 +451,12 @@ export interface CandidateStripSurface {
  * hosts, and the offering panel, which stands while `state.offeringOpen` and is
  * null otherwise. A null `target` arms nothing and yields neither.
  *
+ * A position the armed side offers no tile at stands no panel: none opens there,
+ * and one standing closes as soon as a placement or a move of the caret leaves
+ * the position offering nothing. A position armed from the tray is disarmed with
+ * it, since the panel is all the tray stands; one armed from the sentence keeps
+ * its box and its caret, which still deletes and still takes typed text.
+ *
  * Where the position accepts a text literal, a double quote opens a text value:
  * the filter box holds the value between rendered quotes, the offering narrows to
  * the one chip that places it, and the closing quote, Enter, Tab, or a tap on
@@ -583,13 +598,22 @@ export function useCandidateStripSurface({
   // nothing else holds it. A keyboard some other element already holds -- the one
   // Tab moved on to, another rule's arming control -- is left where it is. The
   // control is read as the rule becomes armed, so re-arming the same rule leaves
-  // the one the user opened the strip from.
+  // the one the user opened the strip from. A control the placement took away --
+  // the add-tile button of a side nothing may follow any more -- hands the
+  // keyboard to its rule's handle, which every rule stands.
   const isArmed = target !== null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the armed rule is read once, as the strip becomes armed
   useEffect(() => {
     if (!isArmed) return;
     const armingControl = document.activeElement as HTMLElement | null;
+    const armedRuleId = target?.ruleDef.id();
     return () => {
-      if (armingControl?.isConnected && document.activeElement === document.body) armingControl.focus();
+      if (!keyboardIsUnheld()) return;
+      if (armingControl?.isConnected) {
+        armingControl.focus();
+        return;
+      }
+      document.querySelector<HTMLElement>(`[data-rule-handle="${armedRuleId}"]`)?.focus();
     };
   }, [isArmed]);
 
@@ -743,6 +767,7 @@ export function useCandidateStripSurface({
     get armedSideCanEnd() {
       return composer?.canEndArmedSide() ?? false;
     },
+    positionOffersTile: offeringOpen,
     get ruleIsEmpty() {
       return composer?.isRuleEmpty() ?? true;
     },
@@ -843,9 +868,14 @@ export function useCandidateStripSurface({
     dispatchInput(token);
   });
 
+  // The offering closing releases the cursor. The tray stands nothing but the
+  // offering, so a tray-armed position whose offering closed holds no element of
+  // the strip at all and the keyboard has left it, which ends the arming; a
+  // position armed from the sentence keeps the box the sentence hosts, and the
+  // caret standing at it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: offeringOpen is an intentional trigger signal
   useEffect(() => {
-    if (!offeringOpen) dispatchInput({ kind: "focus-lost", leftStrip: false });
+    if (!offeringOpen) dispatchInput({ kind: "focus-lost", leftStrip: isArmed && composer === undefined });
   }, [offeringOpen]);
 
   const commitCandidate = (candidate: StripCandidate) => {

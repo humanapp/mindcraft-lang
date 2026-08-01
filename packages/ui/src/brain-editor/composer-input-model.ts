@@ -60,8 +60,13 @@ export type ComposerArrowDirection = "up" | "down" | "left" | "right";
  */
 export type ComposerKeySurface = "filter" | "band" | "close";
 
-/** The gesture a word was placed on the way to, re-decided once the placement lands. */
-export type ComposerGesture = "pivot" | "settle";
+/**
+ * What a word was placed on the way to, re-decided once the placement lands:
+ * the comma's `pivot`, the period's `settle`, and `continue` for a placement
+ * made on the way to nothing in particular, which carries composition on from
+ * where the placement leaves it.
+ */
+export type ComposerGesture = "pivot" | "settle" | "continue";
 
 /**
  * One input the composer interprets. Every token is raw input -- a key on a
@@ -182,6 +187,11 @@ export interface ComposerInputFacts {
   readonly textCursor: { readonly start: number; readonly end: number };
   /** True when the tiles of the armed side may end where composition stands. */
   readonly armedSideCanEnd: boolean;
+  /**
+   * True when the caret's position offers at least one tile, filter text aside,
+   * which is the same reading the offering panel stands on.
+   */
+  readonly positionOffersTile: boolean;
   /** True when the rule holds no tiles on either side. */
   readonly ruleIsEmpty: boolean;
   /** How many tiles the rule's DO side holds. */
@@ -360,16 +370,23 @@ function moveHighlight(
   return { state: { ...state, cursor, highlightMode: anchored }, effects };
 }
 
+/** The re-ask a placement made on the way to nothing in particular is decided by. */
+const landedEffect: ComposerInputEffect = {
+  kind: "reask",
+  token: { kind: "placement-landed", gesture: "continue" },
+};
+
 /**
  * Place `candidate` and start the next word: the caret comes to rest in the gap
  * past the tile just placed, the word in progress and the highlight begin again
  * in the filter box, and `then` carries whatever gesture the placement was made
- * on the way to.
+ * on the way to, which defaults to re-asking where the placement leaves
+ * composition.
  */
 function placeCandidate(
   state: ComposerInputState,
   candidate: StripCandidate,
-  then: readonly ComposerInputEffect[] = []
+  then: readonly ComposerInputEffect[] = [landedEffect]
 ): ComposerInputOutcome {
   const caret = state.caret === undefined ? undefined : gapAt(state.caret.side, state.caret.tileIndex + 1);
   const moved: readonly ComposerInputEffect[] = caret === undefined ? [] : [{ kind: "move-caret", position: caret }];
@@ -427,6 +444,7 @@ function abandonTextLiteral(state: ComposerInputState, leading: readonly Compose
 function commitTextLiteral(state: ComposerInputState, candidate: StripCandidate): ComposerInputOutcome {
   return placeCandidate({ ...state, textLiteral: undefined }, candidate, [
     { kind: "set-text-literal", value: undefined },
+    landedEffect,
   ]);
 }
 
@@ -776,20 +794,46 @@ function reduceArrow(
 }
 
 /**
- * End composition on the rule, which the period settles it on the same terms as:
- * from any point the armed side may end at, and nowhere else. A rule holding no
- * tiles at all has nothing to settle. The key is the composer's either way.
+ * True when composition on the rule may end where it stands with nothing in the
+ * box, which is what the period settles on: from any point the armed side may
+ * end at, and never on a rule holding no tiles at all.
  */
-function reduceSettle(state: ComposerInputState, facts: ComposerInputFacts): ComposerInputOutcome {
-  if (state.armedEntry !== "sentence") return inert(state);
+function settlesWhereItStands(facts: ComposerInputFacts): boolean {
   const action = decideComposerPeriod({
     filter: "",
     armedSideCanEnd: facts.armedSideCanEnd,
     ruleIsEmpty: facts.ruleIsEmpty,
     wordInProgressCommits: false,
   });
-  if (action !== "settle") return { state, effects: [{ kind: "consume-key" }] };
+  return action === "settle";
+}
+
+/**
+ * End composition on the rule, which the period settles it on the same terms as:
+ * from any point the armed side may end at, and nowhere else. A rule holding no
+ * tiles at all has nothing to settle. The key is the composer's either way.
+ */
+function reduceSettle(state: ComposerInputState, facts: ComposerInputFacts): ComposerInputOutcome {
+  if (state.armedEntry !== "sentence") return inert(state);
+  if (!settlesWhereItStands(facts)) return { state, effects: [{ kind: "consume-key" }] };
   return { state, effects: [{ kind: "consume-key" }, { kind: "close-strip", reason: "settled" }] };
+}
+
+/**
+ * Where a placement leaves composition once it has landed. A position that still
+ * offers a tile carries composition on where it stands. A position on the WHEN
+ * side that offers none hands over to the DO side, exactly as the comma pivots;
+ * a position with nowhere left to hand over to ends the rule, exactly as the
+ * period settles it. A placement made from the tray leaves composition alone,
+ * having no sentence to carry it.
+ */
+function reduceLandedPlacement(state: ComposerInputState, facts: ComposerInputFacts): ComposerInputOutcome {
+  if (state.armedEntry !== "sentence" || facts.positionOffersTile) return inert(state);
+  if (state.armedSide === RuleSide.When && facts.armedSideCanEnd) {
+    return composeOnSide(state, facts, RuleSide.Do, []);
+  }
+  if (!settlesWhereItStands(facts)) return inert(state);
+  return { state, effects: [{ kind: "close-strip", reason: "settled" }] };
 }
 
 /**
@@ -835,6 +879,14 @@ function reduceHeadingArrow(
  * The sentence-only gestures -- the comma pivot, the period settle, and the
  * ladder Backspace walks -- apply only while `state.armedEntry` is `sentence`;
  * a strip armed from the tray leaves those keys to the filter box.
+ *
+ * Every placement is re-asked once it has landed, which carries composition on
+ * from where it left it. A word placed on the WHEN side that leaves that side
+ * with nothing more to offer hands over to the DO side, on the same terms and
+ * through the same move as the comma; a word that leaves nothing to offer and
+ * nowhere to hand over to ends the rule, on the same terms as the period. Moving
+ * the caret onto such a position does neither: the caret rests there, where
+ * Backspace still deletes the tile behind it.
  *
  * `state.caret` is where editing stands, and the position armed is projected
  * from it rather than the other way about. Left and Right step it one position
@@ -894,6 +946,7 @@ export function reduceComposerInput(
     case "period":
       return reducePeriod(state, facts);
     case "placement-landed":
+      if (token.gesture === "continue") return reduceLandedPlacement(state, facts);
       if (!facts.armedSideCanEnd) return inert(state);
       if (token.gesture === "pivot") return composeOnSide(state, facts, RuleSide.Do, []);
       return { state, effects: [{ kind: "close-strip", reason: "settled" }] };

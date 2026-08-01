@@ -1,5 +1,5 @@
 import { List, task, thread } from "@mindcraft-lang/core";
-import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
 import type { TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
 import type { BrainCommand, BrainCommandHistory, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
@@ -48,6 +48,7 @@ import { kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 import { useCandidateStrip } from "./hooks/useCandidateStrip";
 import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
+import { sideOffersAppendedTile } from "./insertion-context";
 import { useRuleDragController } from "./RuleDragContext";
 import {
   copyRuleToClipboard,
@@ -151,6 +152,32 @@ export function BrainRuleEditor({
   const availableCapabilities = useRuleCapabilities(ruleDef, updateCounter);
   const availableOutputKeys = useRuleOutputKeys(ruleDef, updateCounter);
 
+  // Every catalog this rule places from: the host's, plus the tiles the brain
+  // minted for itself.
+  const catalogs = useMemo(() => {
+    const list = tileCatalogs ? List.from<ITileCatalog>(tileCatalogs) : List.empty<ITileCatalog>();
+    const localCatalog = ruleDef.brain()?.catalog();
+    if (localCatalog) list.push(localCatalog);
+    return list.asReadonly();
+  }, [ruleDef, tileCatalogs]);
+
+  // Whether a tile may follow what each side already holds. A host that supplies
+  // no services cannot be asked, so both ends stand open.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter is an intentional trigger signal
+  const appendable = useMemo(() => {
+    const offers = (side: RuleSide) =>
+      brainServices === undefined ||
+      sideOffersAppendedTile({
+        ruleDef,
+        side,
+        catalogs,
+        services: brainServices,
+        availableCapabilities,
+        availableOutputKeys,
+      });
+    return { whenSide: offers(RuleSide.When), doSide: offers(RuleSide.Do) };
+  }, [ruleDef, updateCounter, catalogs, brainServices, availableCapabilities, availableOutputKeys]);
+
   // The caret this rule's composition stands at, carried by the target armed
   // from the sentence. A rule holds it exactly while it is being composed.
   const armedCaret = stripTarget?.entry === "sentence" ? stripTarget.caret : undefined;
@@ -185,6 +212,7 @@ export function BrainRuleEditor({
   const candidateStrip = useCandidateStrip({
     ruleDef,
     target: stripTarget,
+    catalogs,
     availableCapabilities,
     availableOutputKeys,
     updateCounter,
@@ -647,6 +675,7 @@ export function BrainRuleEditor({
               <button
                 type="button"
                 className={`relative rounded-full self-center h-9 w-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold text-lg ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+                data-rule-handle={ruleDef.id()}
                 aria-label={`Rule ${lineNumber} actions${isDirty ? ", unsaved changes" : ""}`}
                 aria-haspopup="menu"
                 onPointerDown={handleHandlePointerDown}
@@ -720,11 +749,15 @@ export function BrainRuleEditor({
                 armEditPoint={(position) => armTileEditPoint(RuleSide.When, idx, position, "tray")}
               />
             ))}
-          {/* + Add tile button for when side */}
+          {/* + Add tile button for when side. It stands mid-row, so a WHEN side
+              the oracle offers nothing at keeps the button's footprint and hides
+              the button in it: nothing right of it moves, and the control is
+              unclickable, unfocusable, and unannounced. */}
           <div className="flex items-center">
             <button
               type="button"
-              className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold cursor-pointer flex items-center justify-center`}
+              className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold cursor-pointer flex items-center justify-center${appendable.whenSide ? "" : " invisible"}`}
+              data-append-tile={RuleSide.When}
               onClick={handleAppendTileClick(RuleSide.When)}
               aria-label="Add tile to when condition"
               aria-expanded={offeredAppendSide === RuleSide.When}
@@ -767,18 +800,21 @@ export function BrainRuleEditor({
               />
             ))}
           {/* + Add tile button for do side */}
-          <div className="flex items-center">
-            <button
-              type="button"
-              className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold cursor-pointer flex items-center justify-center`}
-              onClick={handleAppendTileClick(RuleSide.Do)}
-              aria-label="Add tile to do action"
-              aria-expanded={offeredAppendSide === RuleSide.Do}
-              aria-controls={offeredAppendSide === RuleSide.Do ? stripId : undefined}
-            >
-              <Plus className={`h-4 w-4 relative ${kRuleContentLayer}`} aria-hidden="true" />
-            </button>
-          </div>
+          {appendable.doSide && (
+            <div className="flex items-center">
+              <button
+                type="button"
+                className={`relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold cursor-pointer flex items-center justify-center`}
+                data-append-tile={RuleSide.Do}
+                onClick={handleAppendTileClick(RuleSide.Do)}
+                aria-label="Add tile to do action"
+                aria-expanded={offeredAppendSide === RuleSide.Do}
+                aria-controls={offeredAppendSide === RuleSide.Do ? stripId : undefined}
+              >
+                <Plus className={`h-4 w-4 relative ${kRuleContentLayer}`} aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </div>
         <BrainRuleSentence
           ruleDef={ruleDef}
