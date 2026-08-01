@@ -64,6 +64,52 @@
   --color-brain-rule-from: #16143a;
   --color-brain-rule-to: #8b6cf3;
   --color-brain-armed: #eef1f5;
+  /* The editor's accent: the ring around the band the keyboard is walking, the
+     filter box's focus border, the pivot's current position, the caret's marks
+     and the composer's underline, and the sentence's variable register.
+     --color-brain-accent-ink is the accent read as a mark or as text on the
+     desk; --color-brain-on-accent is the ink read on top of an accent fill. */
+  --color-brain-accent: oklch(70.2% 0.183 293.541);
+  --color-brain-accent-ink: oklch(89.4% 0.057 293.283);
+  --color-brain-on-accent: #000;
+  /* The ink the editor's own chrome is written in on the desk: its text at
+     every step of the alpha scale, its focus rings, its hover washes, and its
+     hairline edges. --color-brain-recess is the opposite pole, filling the
+     wells a field or a capsule is sunk into. */
+  --color-brain-ink: #fff;
+  --color-brain-recess: #000;
+  /* The label an inline chip is read in where documentation prose names a tile
+     or a value type. */
+  --color-brain-inline-ink: #e2e8f0;
+  /* Semantic amber, which marks a change: the word whose tile just changed,
+     and text naming no tile that fits. It is never an accent.
+     --color-brain-amber is the mark, --color-brain-amber-ink the same meaning
+     read as text, --color-brain-amber-wash the fill a lit word takes. */
+  --color-brain-amber: oklch(82.8% 0.189 84.429);
+  --color-brain-amber-ink: oklch(87.9% 0.169 91.605);
+  --color-brain-amber-wash: oklch(92.4% 0.12 95.746);
+  /* The badge a tile carries when its reading is incomplete: a slot left with
+     no value, an operator left with no right-hand side. --color-brain-warn
+     fills the chip, --color-brain-warn-edge rims it, --color-brain-warn-ink
+     draws its glyph. */
+  --color-brain-warn: oklch(82.8% 0.189 84.429);
+  --color-brain-warn-edge: oklch(76.9% 0.188 70.08);
+  --color-brain-warn-ink: oklch(41.4% 0.112 45.904);
+  /* The badge marking an action that may take time to complete.
+     --color-brain-timed fills the chip, --color-brain-timed-ink draws both its
+     edge and its glyph. */
+  --color-brain-timed: oklch(92.9% 0.013 255.508);
+  --color-brain-timed-ink: oklch(44.6% 0.043 257.281);
+  /* The WHEN and DO capsules standing at the head of each side of a rule. */
+  --color-brain-capsule: oklch(20.8% 0.042 265.755);
+  --color-brain-capsule-edge: oklch(55.4% 0.046 257.417);
+  --color-brain-capsule-ink: #fff;
+  /* The rule row's round pills: the rule handle and each side's add-tile
+     button, and the rule number a documentation illustration carries. */
+  --color-brain-pill: oklch(96.8% 0.007 247.896);
+  --color-brain-pill-hover: oklch(92.9% 0.013 255.508);
+  --color-brain-pill-edge: oklch(86.9% 0.022 252.894);
+  --color-brain-pill-ink: oklch(37.2% 0.044 257.287);
   --radius: 0.5rem;
   /* Corner radius of the shared button primitives. */
   --radius-button: 0.375rem;

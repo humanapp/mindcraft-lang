@@ -136,9 +136,6 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
 
   const topLevelRules = pageDef.children().toArray() as BrainRuleDef[];
   const flattenedRules = flattenRules(topLevelRules);
-  // The page keeps an empty rule at its end; that rule carries the sentence
-  // composer's entry point.
-  const lastTopLevelRule = topLevelRules.length > 0 ? topLevelRules[topLevelRules.length - 1] : undefined;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dragController = useRuleDrag({ pageDef, commandHistory, containerRef, zoom });
@@ -170,7 +167,6 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
               lineNumber={flatRule.lineNumber}
               updateCounter={updateCounter}
               commandHistory={commandHistory}
-              isLastRule={flatRule.ruleDef === lastTopLevelRule}
             />
           ))}
         </div>

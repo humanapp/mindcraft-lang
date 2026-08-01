@@ -42,6 +42,11 @@ src/
 - **buildDocsRegistry**: Merges core docs (from `@mindcraft-lang/core/docs`) with optional
   app-specific entries. Apps supply `{ meta, content }` for tiles and patterns.
 - **DocsPage**: Full-page view with URL sync (`/docs/{tab}/{entryKey}`).
+- **Tile chrome**: `DocsRule.tsx` draws its own read-only tile and rule chrome, but
+  from the same source as the editor -- the `--color-brain-*` tokens, which it picks
+  up by inheritance from whichever host app renders it, and the shared derivation in
+  `@mindcraft-lang/ui/brain-editor/tile-visual-utils`. See the color token contract
+  in `ui.instructions.md`.
 
 ## Brain Editor Integration
 

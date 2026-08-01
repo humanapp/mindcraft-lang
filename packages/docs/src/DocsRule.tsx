@@ -1,7 +1,8 @@
 import { assertUnreachable } from "@mindcraft-lang/core";
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { adjustColor, cn, formatValue, readableInk, saturateColor, staticAssetUrl } from "@mindcraft-lang/ui";
+import { adjustColor, cn, formatValue, readableInk, staticAssetUrl } from "@mindcraft-lang/ui";
+import { kDefaultTileHue, tileBorderColor, tileEdgeColor } from "@mindcraft-lang/ui/brain-editor/tile-visual-utils";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { useLayoutEffect, useState } from "react";
 import { useDocsResolveTileVisual } from "./DocsSidebarContext";
@@ -59,7 +60,7 @@ export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
   const visual = resolveTileVisual(tileDef);
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
   const iconUrl = visual?.iconUrl || staticAssetUrl("assets/brain/icons/question_mark.svg");
-  const baseColor = (side === RuleSide.When ? visual?.colorDef?.when : visual?.colorDef?.do) || "#475569";
+  const baseColor = (side === RuleSide.When ? visual?.colorDef?.when : visual?.colorDef?.do) || kDefaultTileHue;
 
   const value = docsTileValue(tileDef);
   const isValueTile = value !== undefined;
@@ -68,7 +69,7 @@ export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
 
   const lighterColor2 = adjustColor(baseColor, 0.4);
   const darkerColor = adjustColor(baseColor, 0);
-  const darkerSaturatedColor = adjustColor(saturateColor(baseColor, 0.5), -0.4);
+  const darkerSaturatedColor = tileEdgeColor(baseColor);
 
   const [labelBasedWidth, setLabelBasedWidth] = useState<number | undefined>(undefined);
 
@@ -108,9 +109,7 @@ export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
       aria-label={label}
       title={label}
       style={{
-        // An app may set --color-brain-tile-border to give every tile one border
-        // color; unset, each tile keeps a border derived from its own base color.
-        borderColor: `var(--color-brain-tile-border, ${darkerSaturatedColor})`,
+        borderColor: tileBorderColor(baseColor),
         background: baseColor,
         ...(labelBasedWidth !== undefined ? { minWidth: labelBasedWidth } : {}),
       }}
@@ -189,7 +188,7 @@ export function InlineTileIcon({ tileDef, className }: InlineTileIconProps) {
   const visual = resolveTileVisual(tileDef);
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
   const iconUrl = visual?.iconUrl;
-  const baseColor = visual?.colorDef?.when || visual?.colorDef?.do || "#475569";
+  const baseColor = visual?.colorDef?.when || visual?.colorDef?.do || kDefaultTileHue;
 
   return (
     <span
@@ -197,7 +196,11 @@ export function InlineTileIcon({ tileDef, className }: InlineTileIconProps) {
         "inline-flex shrink-0 min-w-max items-center gap-0.5 align-middle px-1 py-0.5 rounded border text-xs font-mono font-normal text-nowrap",
         className
       )}
-      style={{ borderColor: baseColor, backgroundColor: adjustAlpha(baseColor, 0.15), color: "#e2e8f0" }}
+      style={{
+        borderColor: baseColor,
+        backgroundColor: adjustAlpha(baseColor, 0.15),
+        color: "var(--color-brain-inline-ink)",
+      }}
       title={label}
     >
       {iconUrl && <img src={iconUrl} alt="" className="w-3.5 h-3.5 mr-px inline-block" aria-hidden="true" />}
@@ -237,25 +240,25 @@ function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: Doc
         background: "linear-gradient(55deg, var(--color-brain-rule-from) 0%, var(--color-brain-rule-to) 100%)",
       }}
     >
-      {comment && <span className="text-xs text-white/70 italic mb-1">{comment}</span>}
+      {comment && <span className="text-xs text-brain-ink/70 italic mb-1">{comment}</span>}
       <div className="flex flex-1 gap-1">
         {/* Line number badge -- aria-hidden because the number is already in the group aria-label */}
         {lineNumber !== undefined && (
           <span
-            className="self-center shrink-0 h-9 w-9 rounded-full bg-slate-100 text-slate-700 text-lg font-semibold flex items-center justify-center border-2 border-slate-300"
+            className="self-center shrink-0 h-9 w-9 rounded-full bg-brain-pill text-brain-pill-ink text-lg font-semibold flex items-center justify-center border-2 border-brain-pill-edge"
             aria-hidden="true"
           >
             {lineNumber}
           </span>
         )}
 
-        {/* WHEN chip */}
+        {/* WHEN capsule */}
         <div
-          className="px-2 py-1 ml-2 bg-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
+          className="px-2 py-1 ml-2 bg-brain-capsule border-2 border-brain-capsule-edge rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
           style={{ writingMode: "vertical-rl" }}
           aria-hidden="true"
         >
-          <span className="rotate-[-90] text-white font-semibold text-md cursor-default">
+          <span className="rotate-[-90] text-brain-capsule-ink font-semibold text-md cursor-default">
             <span className="inline-block rotate-270 mx-0">W</span>
             <span className="inline-block rotate-270 mx-0.5">H</span>
             <span className="inline-block rotate-270 mx-0.5">E</span>
@@ -271,13 +274,13 @@ function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: Doc
           ))}
         </div>
 
-        {/* DO chip */}
+        {/* DO capsule */}
         <div
-          className="px-2 py-1 ml-3 bg-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
+          className="px-2 py-1 ml-3 bg-brain-capsule border-2 border-brain-capsule-edge rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
           style={{ writingMode: "vertical-rl" }}
           aria-hidden="true"
         >
-          <span className="rotate-[-90] text-white font-semibold text-md cursor-default">
+          <span className="rotate-[-90] text-brain-capsule-ink font-semibold text-md cursor-default">
             <span className="inline-block rotate-270 mx-0">D</span>
             <span className="inline-block rotate-270 mx-0.5">O</span>
           </span>

@@ -63,6 +63,7 @@ import {
   type ComposerInputFacts,
   type ComposerInputState,
   type ComposerInputToken,
+  composerEntryCharacter,
   composerHeadingToken,
   composerTokenForKey,
   consumesKey,
@@ -1947,7 +1948,7 @@ describe("browsing the offering as one grid", () => {
     browseFirstSection(trace);
     assert.ok(trace.state.cursor, "the cursor stands on a chip");
 
-    assert.deepEqual(trace.press({ kind: "focus-lost" }), [clearHighlight]);
+    assert.deepEqual(trace.press({ kind: "focus-lost", leftStrip: false }), [clearHighlight]);
     assert.equal(trace.state.cursor, undefined);
     assert.equal(trace.state.highlightMode, "typing");
     assert.deepEqual(trace.focusTarget(), { kind: "input" });
@@ -1959,7 +1960,7 @@ describe("browsing the offering as one grid", () => {
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
     assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
 
-    assert.deepEqual(trace.press({ kind: "focus-lost" }), [clearHighlight]);
+    assert.deepEqual(trace.press({ kind: "focus-lost", leftStrip: false }), [clearHighlight]);
     assert.equal(trace.state.cursor, undefined);
     assert.deepEqual(trace.focusTarget(), { kind: "input" });
   });
@@ -1980,7 +1981,7 @@ describe("browsing the offering as one grid", () => {
     );
     assert.deepEqual(trace.state.caret, run[0], "the caret stands where it was");
 
-    trace.press({ kind: "focus-lost" });
+    trace.press({ kind: "focus-lost", leftStrip: false });
 
     assert.deepEqual(trace.press({ kind: "arrow", direction: "right", from: "filter" }), [
       consumeKey,
@@ -1993,7 +1994,7 @@ describe("browsing the offering as one grid", () => {
   test("the keyboard leaving with the cursor nowhere asks for nothing", () => {
     const { trace } = browsingTrace();
 
-    assert.deepEqual(trace.press({ kind: "focus-lost" }), []);
+    assert.deepEqual(trace.press({ kind: "focus-lost", leftStrip: false }), []);
     assert.equal(trace.state.cursor, undefined);
   });
 
@@ -2003,7 +2004,7 @@ describe("browsing the offering as one grid", () => {
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
     assert.ok(trace.state.cursor, "the cursor stands on a chip with the keyboard still in the box");
 
-    assert.deepEqual(trace.press({ kind: "focus-lost" }), [clearHighlight]);
+    assert.deepEqual(trace.press({ kind: "focus-lost", leftStrip: false }), [clearHighlight]);
     assert.equal(trace.state.cursor, undefined);
     assert.equal(trace.state.filter, "on", "the word in progress stands");
     assert.deepEqual(placedKeys(trace.log), [], "and nothing was placed");
@@ -2072,7 +2073,7 @@ describe("browsing the offering as one grid", () => {
     test("the keyboard leaving, and the strip closing, flash nothing", () => {
       const { trace } = browsingTrace();
       browseFirstSection(trace);
-      assert.ok(!flashes(trace.press({ kind: "focus-lost" })), "the keyboard leaving");
+      assert.ok(!flashes(trace.press({ kind: "focus-lost", leftStrip: false })), "the keyboard leaving");
       assert.ok(!flashes(trace.press({ kind: "escape" })), "the strip closing");
     });
 
@@ -2087,6 +2088,48 @@ describe("browsing the offering as one grid", () => {
       for (const step of steps) {
         assert.ok(!flashes(trace.press(step.token)), step.label);
       }
+    });
+  });
+
+  describe("the keyboard leaving the strip", () => {
+    test("releases the chip it was browsing and closes the offering behind it", () => {
+      const { trace } = browsingTrace();
+      browseFirstSection(trace);
+      assert.ok(trace.state.cursor, "the cursor stands on a chip");
+
+      assert.deepEqual(trace.press({ kind: "focus-lost", leftStrip: true }), [
+        clearHighlight,
+        { kind: "close-strip", reason: "dismissed" },
+      ]);
+      assert.equal(trace.state.cursor, undefined);
+      assert.equal(trace.closedAs, "dismissed");
+    });
+
+    test("closes the offering from a place holding no cursor at all", () => {
+      const { trace } = browsingTrace();
+
+      assert.deepEqual(trace.press({ kind: "focus-lost", leftStrip: true }), [
+        { kind: "close-strip", reason: "dismissed" },
+      ]);
+      assert.equal(trace.closedAs, "dismissed");
+    });
+
+    test("leaves nothing placed and the word in progress standing", () => {
+      const { trace } = browsingTrace();
+      trace.typeWord("on");
+
+      trace.press({ kind: "focus-lost", leftStrip: true });
+      assert.equal(trace.state.filter, "on");
+      assert.deepEqual(placedKeys(trace.log), []);
+    });
+
+    test("a move within the strip releases the cursor and leaves the offering open", () => {
+      const { trace } = browsingTrace();
+      browseFirstSection(trace);
+
+      assert.deepEqual(trace.press({ kind: "focus-lost", leftStrip: false }), [clearHighlight]);
+      assert.equal(trace.closedAs, undefined);
+      assert.deepEqual(trace.focusTarget(), { kind: "input" });
     });
   });
 });
@@ -2155,6 +2198,22 @@ describe("the token vocabulary", () => {
       });
     }
     assert.equal(composerHeadingToken("Enter", kSectionBandKey), undefined);
+  });
+
+  test("a rule's entry point starts composition with the character typed on it", () => {
+    for (const key of ["a", "Z", "7", "$", '"', ","]) {
+      assert.equal(composerEntryCharacter(key, false), key);
+    }
+  });
+
+  test("the keys that activate the entry point, and the keys that type nothing, start no word", () => {
+    for (const key of [" ", "Enter", "Backspace", "Tab", "Escape", "ArrowDown", "Shift", "F2"]) {
+      assert.equal(composerEntryCharacter(key, false), undefined);
+    }
+  });
+
+  test("a character held with a modifier is left to the browser", () => {
+    assert.equal(composerEntryCharacter("a", true), undefined);
   });
 });
 

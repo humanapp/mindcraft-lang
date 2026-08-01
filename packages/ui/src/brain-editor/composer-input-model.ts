@@ -85,7 +85,8 @@ export type ComposerGesture = "pivot" | "settle";
  * - `heading-arrow` -- an arrow pressed on an accordion heading
  * - `focus-lost` -- the element the highlight was anchored on no longer holds
  *   the keyboard, whether it was left, was clicked away from, or stopped being
- *   rendered
+ *   rendered; `leftStrip` says the keyboard went outside the strip altogether,
+ *   which ends composition as well as releasing the cursor
  * - `placement-landed` -- the placement a `reask` effect asked about has run, so
  *   the gesture behind it is decided again
  */
@@ -107,7 +108,7 @@ export type ComposerInputToken =
   | { readonly kind: "backspace"; readonly from: "filter" | "band" | "heading" }
   | { readonly kind: "arrow"; readonly direction: ComposerArrowDirection; readonly from: ComposerKeySurface }
   | { readonly kind: "heading-arrow"; readonly direction: ComposerArrowDirection; readonly sectionKey: string }
-  | { readonly kind: "focus-lost" }
+  | { readonly kind: "focus-lost"; readonly leftStrip: boolean }
   | { readonly kind: "placement-landed"; readonly gesture: ComposerGesture };
 
 /** Why the strip closes: the rule was settled with a period, or the strip was dismissed. */
@@ -264,6 +265,17 @@ export function composerHeadingToken(key: string, sectionKey: string): ComposerI
   if (direction !== undefined) return { kind: "heading-arrow", direction, sectionKey };
   if (key === "Backspace") return { kind: "backspace", from: "heading" };
   return isStripFilterTypingKey(key) ? { kind: "printable" } : undefined;
+}
+
+/**
+ * The character a press of `key` starts composition with from a rule's entry
+ * point, or undefined when the press starts none: Space, Enter, Backspace, and
+ * every key that types nothing. `withModifier` is true while Meta, Control, or
+ * Alt is held, which yields undefined for every key.
+ */
+export function composerEntryCharacter(key: string, withModifier: boolean): string | undefined {
+  if (withModifier || key === " " || key === "Backspace") return undefined;
+  return isStripFilterTypingKey(key) ? key : undefined;
 }
 
 /** True when `effects` asks the driver to keep the keystroke from the browser. */
@@ -842,7 +854,9 @@ function reduceHeadingArrow(
  * anchored on -- the filter box for a chip being narrowed toward by typing, the
  * band's listbox for a chip being browsed, the heading itself for a heading --
  * so a `focus-lost` token releases it, and the horizontal arrows are the
- * caret's again.
+ * caret's again. The offering stands as long as the keyboard is somewhere in
+ * the strip: a `focus-lost` token carrying `leftStrip` closes it as a
+ * dismissal, ending composition.
  *
  * A typed character that belongs to another word than the one in progress ends
  * that word: the word is placed exactly as Space places it, and the character
@@ -925,8 +939,14 @@ export function reduceComposerInput(
       return reduceDeleteAtCaret({ ...state, caret: token.position }, facts, "right");
     case "heading-arrow":
       return reduceHeadingArrow(state, facts, token.direction, token.sectionKey);
-    case "focus-lost":
-      if (state.cursor === undefined && state.highlightMode === "typing") return inert(state);
-      return releaseHighlight(state);
+    case "focus-lost": {
+      const released =
+        state.cursor === undefined && state.highlightMode === "typing" ? inert(state) : releaseHighlight(state);
+      if (!token.leftStrip) return released;
+      return {
+        state: released.state,
+        effects: [...released.effects, { kind: "close-strip", reason: "dismissed" }],
+      };
+    }
   }
 }

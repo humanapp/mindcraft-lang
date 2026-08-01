@@ -59,7 +59,6 @@ function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target: Ar
           lineNumber: 1,
           updateCounter: 0,
           commandHistory: new BrainCommandHistory(),
-          isLastRule: true,
         })
       )
     )

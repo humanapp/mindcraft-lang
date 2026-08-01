@@ -879,7 +879,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 />
               </ArmedTargetProvider>
             ) : (
-              <p className="text-white/80 p-6">No BrainDef attached to this object.</p>
+              <p className="text-brain-ink/80 p-6">No BrainDef attached to this object.</p>
             )}
           </div>
           <DialogFooter className="pt-2 sm:pt-4 border-t border-border flex flex-row flex-wrap items-center gap-2 sm:justify-between">

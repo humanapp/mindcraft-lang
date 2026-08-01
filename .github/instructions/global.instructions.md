@@ -140,6 +140,38 @@ a test keyed to it breaks without any behavior change.
   the behavior under test.
 - Error and diagnostic assertions match stable codes, never message prose.
 
+## Report Every Issue With A Proposed Time
+
+When you notice a problem you are not fixing -- a defect adjacent to your change, a value that
+should be a token, a stale comment, a duplicated computation, a pin that encodes a bug -- say so
+in your report AND propose when it should be fixed.
+
+Every such finding gets two things:
+
+- one line saying what it is, concretely enough to act on without rediscovering it;
+- a proposed slot: "fix now", "fold into <named work>", "its own slice, after <thing>", or
+  "leave permanently, because <reason>".
+
+"Leave permanently" is a legitimate answer. Silence is not. A finding recorded without a proposed
+time reads as trivia, gets filed, and accumulates -- six such items piled up from a single report
+before anyone noticed they were unscheduled.
+
+When proposing, separate findings that can be fixed WITHOUT CHANGING BEHAVIOUR OR APPEARANCE from
+those that cannot. The first group can usually just be done; only the second needs someone's
+judgement. Saying which is which turns "these all need decisions" into a much shorter list that
+actually does.
+
+A FINDING THAT UNDERMINES YOUR OWN WORK IS NOT A FINDING, IT IS A BLOCKER. The rule above is for
+problems ADJACENT to what you are doing. If what you notice invalidates your own premise -- the
+input you were told to derive from turns out to be wrong, the thing you are measuring is not what
+it appears to be, the approach you were given cannot produce a good result -- then stop and
+resolve it, or stop and report it. DO NOT RECORD IT AND PROCEED. A decision you have predicted
+will be wrong is a decision you must not make; noting the prediction does not license it.
+
+This has already cost a full cycle: an agent asked to derive a colour from each app's palette
+discovered that the tokens it was deriving from are declared but painted by nothing, wrote that
+down as a finding, derived from them anyway, and produced a result rejected on sight.
+
 ## Broad View Before Acting
 
 Before making any change that touches more than one call site, method

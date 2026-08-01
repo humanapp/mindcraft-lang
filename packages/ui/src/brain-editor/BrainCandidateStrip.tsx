@@ -55,7 +55,7 @@ import { kOfferingLayer } from "./editor-layers";
 import type { CandidateStripSection, CandidateStripState } from "./hooks/useCandidateStrip";
 import { kSentenceTypeClasses } from "./sentence-type";
 import { tileSourceNamespace } from "./tile-library-groups";
-import { resolveTileVisual } from "./tile-visual-utils";
+import { kDefaultTileHue, resolveTileVisual, tileBorderColor } from "./tile-visual-utils";
 
 /** Drag payload format carrying a candidate key from a chip to the armed slot. */
 export const kCandidateDragMimeType = "application/x-mindcraft-candidate";
@@ -71,16 +71,19 @@ const stripPanelStyle = {
   boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.45)",
 };
 
-/** Focus ring shared by the strip's tab stops, drawn against the panel's own backdrop. */
+/**
+ * Focus ring shared by the strip's controls that mark focus with nothing else of
+ * their own, drawn against the panel's own backdrop.
+ */
 const focusRingClasses =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-brain-desk-to";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brain-ink focus-visible:ring-offset-2 focus-visible:ring-offset-brain-desk-to";
 
 /** Heading of a provenance subcategory: the accordion header's type, one step quieter. */
-const subcategoryHeadingClasses = "w-full px-0.5 text-[11px] font-semibold uppercase tracking-wider text-white/45";
+const subcategoryHeadingClasses = "w-full px-0.5 text-[11px] font-semibold uppercase tracking-wider text-brain-ink/45";
 
 /** Ring drawn around the band whose chips the keyboard is currently walking. */
 const browsedBandClasses =
-  "rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2 focus:ring-offset-brain-desk-to";
+  "rounded-lg focus:outline-none focus:ring-2 focus:ring-brain-accent focus:ring-offset-2 focus:ring-offset-brain-desk-to";
 
 /**
  * Right padding the panel's topmost row keeps, so the close button laid over the
@@ -100,7 +103,8 @@ const kPositionRowClasses = "flex h-12 shrink-0 items-center";
  * minimum, and clips what will not fit, so a longer place name moves nothing
  * standing after it.
  */
-const kPositionNameClasses = "min-w-20 flex-1 truncate text-xs font-semibold uppercase tracking-wider text-white/45";
+const kPositionNameClasses =
+  "min-w-20 flex-1 truncate text-xs font-semibold uppercase tracking-wider text-brain-ink/45";
 
 /**
  * Context tag the offering's own prose is looked up under, which reads the
@@ -116,12 +120,28 @@ const noSections: readonly CandidateStripSection[] = [];
 const noCaretRun: readonly CaretPosition[] = [];
 
 /**
+ * How a reveal moves the view: animated, or in one step for a user who has asked
+ * for reduced motion.
+ */
+function revealBehavior(): ScrollBehavior {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
+/**
  * Scroll the rule card `strip` is rendered inside back into view, moving each
  * scrollport as little as the card allows. A card taller than its scrollport
  * settles with its tile row at the scrollport's top edge.
  */
 function revealArmedRuleCard(strip: HTMLElement | null): void {
-  strip?.closest("[data-rule-id]")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  strip?.closest("[data-rule-id]")?.scrollIntoView({ block: "nearest", behavior: revealBehavior() });
+}
+
+/**
+ * Scroll the filter box into view, moving each scrollport the least distance
+ * that leaves the whole box visible. A box already fully visible moves nothing.
+ */
+function revealFilterInput(input: HTMLElement | null): void {
+  input?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: revealBehavior() });
 }
 
 /**
@@ -207,7 +227,7 @@ function CandidateChip({ entry, side, optionId, isActive, onCommit, libraryName 
   const { candidate } = entry;
   const isMinting = entry.presentation === "minting";
   const visual = resolveTileVisual(editorConfig, candidate.tileDef);
-  const baseColor = (side === RuleSide.When ? visual.colorDef?.when : visual.colorDef?.do) || "#475569";
+  const baseColor = (side === RuleSide.When ? visual.colorDef?.when : visual.colorDef?.do) || kDefaultTileHue;
   const iconUrl = visual.iconUrl || staticAssetUrl("assets/brain/icons/question_mark.svg");
   const mintedTypeName = isMinting
     ? resolveTypeDisplayName((candidate.tileDef as BrainTileVariableDef).varType, {
@@ -240,16 +260,14 @@ function CandidateChip({ entry, side, optionId, isActive, onCommit, libraryName 
       }}
       onClick={() => onCommit(candidate)}
       style={{
-        background: isMinting ? "rgba(255, 255, 255, 0.08)" : baseColor,
-        borderColor: isMinting
-          ? outlineColor
-          : `var(--color-brain-tile-border, ${adjustColor(saturateColor(baseColor, 0.5), -0.4)})`,
+        background: isMinting ? "color-mix(in srgb, var(--color-brain-ink) 8%, transparent)" : baseColor,
+        borderColor: isMinting ? outlineColor : tileBorderColor(baseColor),
         borderStyle: candidate.viaConversion ? "dashed" : "solid",
-        color: isMinting ? "#FFFFFF" : readableInk(baseColor),
+        color: isMinting ? "var(--color-brain-ink)" : readableInk(baseColor),
       }}
       className={`inline-flex min-h-11 max-w-full cursor-pointer items-center gap-2 rounded-full border-2 px-3 py-1.5 shadow-sm transition-[filter,transform] hover:brightness-110 active:scale-95 ${focusRingClasses} ${
         candidate.viaConversion ? "opacity-80" : ""
-      } ${isActive ? "ring-2 ring-white ring-offset-2 ring-offset-[#0E0A20] brightness-110" : ""}`}
+      } ${isActive ? "ring-2 ring-brain-ink ring-offset-2 ring-offset-brain-desk-to brightness-110" : ""}`}
       aria-label={description}
       data-presentation={entry.presentation}
       data-candidate-key={candidate.key}
@@ -265,7 +283,7 @@ function CandidateChip({ entry, side, optionId, isActive, onCommit, libraryName 
         <span
           aria-hidden="true"
           className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
-          style={{ background: "rgba(255, 255, 255, 0.14)", color: outlineColor }}
+          style={{ background: "color-mix(in srgb, var(--color-brain-ink) 14%, transparent)", color: outlineColor }}
         >
           {mintedTypeName}
         </span>
@@ -462,8 +480,9 @@ export interface CandidateStripSurface {
  * are browsed, and a heading itself. Typing or committing hands the keyboard
  * back to the filter box. The cursor lasts as long as the keyboard stays on the
  * element it is anchored on: the keyboard leaving the offering, and the offering
- * closing, both release it, and left and right are the caret's again. The
- * offering is one tab stop, so Tab out of it goes on past it.
+ * closing, both release it, and left and right are the caret's again. The chips
+ * are reached by the arrow keys rather than by Tab, which moves on past them;
+ * the keyboard leaving the strip altogether closes the offering behind it.
  *
  * With a {@link StripComposerBinding} the same input renders inside the rule's
  * sentence line, where the caret the binding carries is what the keyboard edits
@@ -567,7 +586,9 @@ export function useCandidateStripSurface({
     return () => cancelAnimationFrame(frame);
   }, [target]);
 
-  // The arming control keeps the keyboard's place when the strip closes. The
+  // The arming control takes the keyboard back when the strip closes while
+  // nothing else holds it. A keyboard some other element already holds -- the one
+  // Tab moved on to, another rule's arming control -- is left where it is. The
   // control is read as the rule becomes armed, so re-arming the same rule leaves
   // the one the user opened the strip from.
   const isArmed = target !== null;
@@ -575,9 +596,18 @@ export function useCandidateStripSurface({
     if (!isArmed) return;
     const armingControl = document.activeElement as HTMLElement | null;
     return () => {
-      if (armingControl?.isConnected) armingControl.focus();
+      if (armingControl?.isConnected && document.activeElement === document.body) armingControl.focus();
     };
   }, [isArmed]);
+
+  // The offering appearing brings the filter box into view, which the panel can
+  // open below the fold of. Its appearance is the whole trigger: while the
+  // offering stands open, typing, the caret moving, and the panel changing
+  // height as candidates are filtered all leave the view where the user left it.
+  useEffect(() => {
+    if (!offeringOpen) return;
+    revealFilterInput(inputRef.current);
+  }, [offeringOpen]);
 
   // Every placement lays the rule out again, after which its card is brought
   // back into view.
@@ -822,7 +852,7 @@ export function useCandidateStripSurface({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: offeringOpen is an intentional trigger signal
   useEffect(() => {
-    if (!offeringOpen) dispatchInput({ kind: "focus-lost" });
+    if (!offeringOpen) dispatchInput({ kind: "focus-lost", leftStrip: false });
   }, [offeringOpen]);
 
   const commitCandidate = (candidate: StripCandidate) => {
@@ -854,15 +884,21 @@ export function useCandidateStripSurface({
     dispatchInput(composerTokenForKey(event.key, "band"), event);
   };
 
+  /** True when `element` is one of the strip's own: the filter box, or anything the panel holds. */
+  const isStripElement = (element: HTMLElement | null): boolean =>
+    element !== null && (element === inputRef.current || containerRef.current?.contains(element) === true);
+
   /**
    * The keyboard leaving the element the cursor is anchored on, which releases
-   * the cursor. A move to another cell of the offering's grid carries the same
-   * browse on, and releases nothing.
+   * the cursor, and leaving the strip for another element of the document, which
+   * ends composition as well. A move to another cell of the offering's grid
+   * carries the same browse on, and releases nothing; a blur naming no element
+   * gaining the keyboard leaves the strip as it stands.
    */
   const handleHighlightBlur = (event: FocusEvent<HTMLElement>) => {
     const gaining = event.relatedTarget as HTMLElement | null;
     if (gaining?.hasAttribute(kStripCellAttribute)) return;
-    dispatchInput({ kind: "focus-lost" });
+    dispatchInput({ kind: "focus-lost", leftStrip: gaining !== null && !isStripElement(gaining) });
   };
 
   /** The wiring every band's listbox shares; each band adds its own accessible name. */
@@ -873,7 +909,6 @@ export function useCandidateStripSurface({
     "aria-activedescendant":
       focusTarget.kind === "band" && focusTarget.bandKey === bandKey ? activeOption?.optionId : undefined,
     onKeyDown: handleBandKeyDown,
-    onBlur: handleHighlightBlur,
   });
 
   /** The chips of one band, each addressed by the option id the highlight walks it by. */
@@ -900,7 +935,7 @@ export function useCandidateStripSurface({
     const panelId = stripBandPanelId(stripId, section.key);
     const groupName = tileCandidateGroupNames[section.group];
     return (
-      <div key={section.key} className={`rounded-lg border border-white/10 ${hasMatches ? "" : "opacity-40"}`}>
+      <div key={section.key} className={`rounded-lg border border-brain-ink/10 ${hasMatches ? "" : "opacity-40"}`}>
         <button
           type="button"
           id={stripSectionHeadingId(stripId, section.key)}
@@ -911,14 +946,13 @@ export function useCandidateStripSurface({
           onKeyDown={(event) => {
             if (dispatchInput(composerHeadingToken(event.key, section.key), event)) event.stopPropagation();
           }}
-          onBlur={handleHighlightBlur}
           aria-expanded={isOpen}
           aria-controls={panelId}
-          className={`flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-white/80 transition-colors hover:bg-white/5 disabled:cursor-default disabled:hover:bg-transparent ${focusRingClasses}`}
+          className={`flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-brain-ink/80 transition-colors hover:bg-brain-ink/5 disabled:cursor-default disabled:hover:bg-transparent ${focusRingClasses}`}
         >
           <span className="text-xs font-semibold uppercase tracking-wider">{groupName}</span>
           <span className="flex items-center gap-2">
-            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/70">
+            <span className="rounded-full bg-brain-ink/10 px-2 py-0.5 text-[11px] font-semibold text-brain-ink/70">
               {count}
             </span>
             <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? "rotate-180" : ""}`} aria-hidden="true" />
@@ -982,7 +1016,8 @@ export function useCandidateStripSurface({
       value={typedText}
       onChange={(event) => dispatchInput({ kind: "text", text: event.target.value })}
       onKeyDown={handleKeyDown}
-      onBlur={handleHighlightBlur}
+      // The sentence hosts this input outside the panel, whose own handler serves every element it holds.
+      onBlur={composer ? handleHighlightBlur : undefined}
       placeholder={composer || openTextLiteral !== undefined ? "" : "Type or tap a tile"}
       aria-label={
         composer && armedRule
@@ -997,14 +1032,16 @@ export function useCandidateStripSurface({
           ? `bg-transparent p-0 align-baseline ${kSentenceTypeClasses} outline-none ${
               hasPendingText
                 ? `max-w-full border-b-2 px-1 italic field-sizing-content ${
-                    state.isUnknown ? "border-amber-400 text-amber-300" : "border-violet-200/80 text-white"
+                    state.isUnknown
+                      ? "border-brain-amber text-brain-amber-ink"
+                      : "border-brain-accent-ink/80 text-brain-ink"
                   }`
                 : "w-0"
             }`
-          : `h-10 min-w-0 flex-1 rounded-lg border-2 bg-black/40 px-3 font-mono text-sm outline-none transition-colors placeholder:font-sans placeholder:text-white/55 ${focusRingClasses} ${
+          : `h-10 min-w-0 flex-1 rounded-lg border-2 bg-brain-recess/40 px-3 font-mono text-sm outline-none transition-colors placeholder:font-sans placeholder:text-brain-ink/55 ${
               state.isUnknown
-                ? "border-amber-400 text-amber-300 focus:border-amber-300"
-                : "border-white/15 text-white focus:border-violet-400"
+                ? "border-brain-amber/50 text-brain-amber-ink focus:border-brain-amber"
+                : "border-brain-ink/15 text-brain-ink focus:border-brain-accent"
             }`
       }
     />
@@ -1015,7 +1052,7 @@ export function useCandidateStripSurface({
   const quoteMark = (
     <span
       aria-hidden="true"
-      className={composer ? `${kSentenceTypeClasses} text-white/70 italic` : "font-mono text-sm text-white/70"}
+      className={composer ? `${kSentenceTypeClasses} text-brain-ink/70 italic` : "font-mono text-sm text-brain-ink/70"}
     >
       "
     </span>
@@ -1048,6 +1085,7 @@ export function useCandidateStripSurface({
       className={`absolute top-full left-0 ${kOfferingLayer} mt-2 flex w-[min(40rem,calc(100vw-5rem))] min-w-72 flex-col gap-3 rounded-xl p-3`}
       aria-label="Tile candidates"
       onKeyDown={handlePanelKeyDown}
+      onBlur={handleHighlightBlur}
     >
       <div data-strip-position-row="" className={`${kPositionRowClasses} ${kCornerReserveClass}`}>
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
@@ -1061,7 +1099,7 @@ export function useCandidateStripSurface({
               // The press acts without taking the keyboard from the box being typed in.
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => dispatchInput({ kind: "delete-element", position: armedTile })}
-              className={`inline-flex min-h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-rose-300/40 bg-rose-500/15 text-rose-100 transition-colors hover:border-rose-300 hover:bg-rose-500/30 hover:text-white ${focusRingClasses}`}
+              className={`inline-flex min-h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-destructive/40 bg-destructive/15 text-destructive transition-colors hover:border-destructive hover:bg-destructive/30 hover:text-destructive-foreground ${focusRingClasses}`}
             >
               <Trash2 className="h-5 w-5 shrink-0" aria-hidden="true" />
             </button>
@@ -1069,7 +1107,7 @@ export function useCandidateStripSurface({
           {editPoint && (
             <div
               data-edit-point-pivot={editPoint.position}
-              className="flex w-fit shrink-0 items-center gap-1 rounded-full border border-white/10 bg-black/30 p-1"
+              className="flex w-fit shrink-0 items-center gap-1 rounded-full border border-brain-ink/10 bg-brain-recess/30 p-1"
             >
               {kEditPointPositions.map((position) => {
                 const isCurrent = position === editPoint.position;
@@ -1081,7 +1119,9 @@ export function useCandidateStripSurface({
                     data-edit-point-position={position}
                     onClick={() => editPoint.arm(position)}
                     className={`min-h-9 cursor-pointer rounded-full px-3 text-xs font-semibold whitespace-nowrap uppercase tracking-wider transition-colors ${focusRingClasses} ${
-                      isCurrent ? "bg-violet-400/90 text-black" : "text-white/60 hover:bg-white/10 hover:text-white"
+                      isCurrent
+                        ? "bg-brain-accent/90 text-brain-on-accent"
+                        : "text-brain-ink/60 hover:bg-brain-ink/10 hover:text-brain-ink"
                     }`}
                   >
                     {editPointPivotLabels[position]}
@@ -1103,7 +1143,7 @@ export function useCandidateStripSurface({
         }}
         aria-label="Close tile candidates"
         data-strip-close=""
-        className={`absolute top-1.5 right-1.5 flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-white/15 bg-brain-desk-to text-white/70 transition-colors hover:border-white/40 hover:text-white ${focusRingClasses}`}
+        className={`absolute top-1.5 right-1.5 flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-brain-ink/15 bg-brain-desk-to text-brain-ink/70 transition-colors hover:border-brain-ink/40 hover:text-brain-ink ${focusRingClasses}`}
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
@@ -1113,11 +1153,11 @@ export function useCandidateStripSurface({
         top and the bottom; left and right move along a row of tiles. On a group heading, arrow right opens that group
         and arrow left closes it, so arrow down moves on to the next heading while a group is closed and into its tiles
         once it is open. Enter places the highlighted tile. Arrow up from the first row leaves the tiles and returns to
-        the sentence. Start the text with a dollar sign to name a variable, which Enter then places, creating it when no
-        variable has that name. An operator symbol or a bracket ends the word before it and places that word, so a
-        formula such as one plus three needs no spaces in it. Where a text value fits, a double quote starts one and the
-        next double quote places it, as Enter does, with everything between them taken as the text, and nothing typed
-        into it places a tile.
+        the sentence, and Tab leaves them altogether, closing them. Start the text with a dollar sign to name a
+        variable, which Enter then places, creating it when no variable has that name. An operator symbol or a bracket
+        ends the word before it and places that word, so a formula such as one plus three needs no spaces in it. Where a
+        text value fits, a double quote starts one and the next double quote places it, as Enter does, with everything
+        between them taken as the text, and nothing typed into it places a tile.
         {composer
           ? " Type a comma to end the when side and start typing what to do, and a period when the rule says what you want. With nothing typed, Backspace takes back the comma, and then the word you placed last."
           : ""}
@@ -1128,7 +1168,7 @@ export function useCandidateStripSurface({
       </output>
 
       {state.isUnknown && (
-        <p id={unknownId} className="text-xs font-semibold text-amber-300">
+        <p id={unknownId} className="text-xs font-semibold text-brain-amber-ink">
           No tile fits here by that name.
         </p>
       )}

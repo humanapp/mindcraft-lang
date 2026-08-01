@@ -3,13 +3,19 @@ import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang
 import { CircleAlert, ClockFading } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
 import { staticAssetUrl } from "../asset-url";
-import { adjustColor, readableInk, saturateColor } from "../lib/color";
+import { adjustColor, readableInk } from "../lib/color";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 import { TileValue } from "./TileValue";
 import type { TileBadge } from "./tile-badges";
 import { isProjectAuthoredActionTile } from "./tile-library-groups";
-import { resolveTileVisual, tileVisualCategory } from "./tile-visual-utils";
+import {
+  kDefaultTileHue,
+  resolveTileVisual,
+  tileBorderColor,
+  tileEdgeColor,
+  tileVisualCategory,
+} from "./tile-visual-utils";
 
 interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   tileDef: IBrainTileDef;
@@ -34,7 +40,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
     const iconUrl = visual.iconUrl || staticAssetUrl("assets/brain/icons/question_mark.svg");
     const baseColor =
       (side === RuleSide.When ? visual?.colorDef?.when : side === RuleSide.Do ? visual?.colorDef?.do : undefined) ||
-      "#475569";
+      kDefaultTileHue;
 
     const category = tileVisualCategory(tileDef);
     const isValueTile = category === "value";
@@ -57,15 +63,12 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
 
     const lighterColor2 = adjustColor(baseColor, 0.4);
     const darkerColor = adjustColor(baseColor, 0);
-    const saturatedColor = saturateColor(baseColor, 0.5);
-    const darkerSaturatedColor = adjustColor(saturatedColor, -0.4);
+    const darkerSaturatedColor = tileEdgeColor(baseColor);
     // The label sits on the tile fill, so its ink is chosen against that fill.
     const labelInk = readableInk(darkerColor);
     const surfaceStyle = {
       background: baseColor,
-      // An app may set --color-brain-tile-border to give every tile one border
-      // color; unset, each tile keeps a border derived from its own base color.
-      borderColor: `var(--color-brain-tile-border, ${darkerSaturatedColor})`,
+      borderColor: tileBorderColor(baseColor),
     };
 
     // Measure the rendered text width by creating a temporary hidden span in the DOM.
@@ -102,7 +105,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
       <div className="relative self-center hover:scale-105 transition-transform duration-100">
         {isAsyncAction && (
           <span
-            className={`group/clock absolute -top-1.5 -left-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-slate-200 border-slate-600 text-slate-600`}
+            className={`group/clock absolute -top-1.5 -left-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-brain-timed border-brain-timed-ink text-brain-timed-ink`}
             role="img"
             aria-label="May take time to complete"
           >
@@ -116,8 +119,8 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
           <span
             className={`group/badge absolute -top-1.5 -right-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto ${
               badge.type === "error"
-                ? "bg-red-500 border-red-600 text-white"
-                : "bg-amber-400 border-amber-500 text-amber-900"
+                ? "bg-destructive border-destructive text-destructive-foreground"
+                : "bg-brain-warn border-brain-warn-edge text-brain-warn-ink"
             }`}
             role="img"
             aria-label={badge.message}

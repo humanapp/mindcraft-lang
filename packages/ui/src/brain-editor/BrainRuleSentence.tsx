@@ -21,16 +21,13 @@ import {
   sentenceSegmentIdentities,
 } from "./sentence-reflection";
 import { kSentenceTypeClasses } from "./sentence-type";
-import { resolveTileVisual } from "./tile-visual-utils";
+import { kDefaultTileHue, resolveTileVisual } from "./tile-visual-utils";
 
 /** How long a changed word stays lit before its highlight fades, in milliseconds. */
 const kSentenceHighlightMs = 260;
 
 /** How long the caret's place stays flashed before the flash fades, in milliseconds. */
 const kCaretLandingMs = 220;
-
-/** Ink a tile whose visual names no color pair is read in. */
-const kDefaultTileHue = "#475569";
 
 const noHighlight: ReadonlySet<number> = new Set<number>();
 
@@ -56,12 +53,12 @@ function sentenceRegister(tileDef: IBrainTileDef | undefined): string | undefine
 
 /** The type styles of each sentence register, keyed by the register's name. */
 const registerClasses: Record<string, string> = {
-  variable: "font-mono text-[0.92em] text-violet-200",
-  literal: "font-semibold text-white/90",
+  variable: "font-mono text-[0.92em] text-brain-accent-ink",
+  literal: "font-semibold text-brain-ink/90",
 };
 
 /** Chrome a tappable word keeps so it reads as part of the sentence, not as a control. */
-const sentenceWordButtonClasses = `cursor-pointer rounded-sm border-0 bg-transparent p-0 text-left align-baseline ${kSentenceTypeClasses} text-inherit hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white`;
+const sentenceWordButtonClasses = `cursor-pointer rounded-sm border-0 bg-transparent p-0 text-left align-baseline ${kSentenceTypeClasses} text-inherit hover:bg-brain-ink/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brain-ink`;
 
 /**
  * Chrome the run of text inside a word keeps: the box the caret's focus
@@ -74,7 +71,7 @@ const sentenceWordFocusClasses = "rounded-sm bg-transparent transition-colors du
  * already reads, laid out as the plain span it stands in place of, with its
  * spaces held exactly as projected.
  */
-const sentenceGlueButtonClasses = `inline cursor-pointer whitespace-pre rounded-sm border-0 bg-transparent p-0 ${kSentenceTypeClasses} text-inherit hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white`;
+const sentenceGlueButtonClasses = `inline cursor-pointer whitespace-pre rounded-sm border-0 bg-transparent p-0 ${kSentenceTypeClasses} text-inherit hover:bg-brain-ink/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brain-ink`;
 
 /**
  * Chrome of the hit target standing in a word boundary: a finger-sized hit area
@@ -82,11 +79,11 @@ const sentenceGlueButtonClasses = `inline cursor-pointer whitespace-pre rounded-
  * layout width.
  */
 const sentenceCaretClasses =
-  "group absolute -top-1.5 -left-1.5 flex h-6 w-3 cursor-text items-center justify-center border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white";
+  "group absolute -top-1.5 -left-1.5 flex h-6 w-3 cursor-text items-center justify-center border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brain-ink";
 
 /** The mark a hit target paints inside its hit area, which shows itself on approach. */
 const sentenceCaretMarkClasses =
-  "h-4 w-0.5 rounded-full bg-transparent transition-colors group-hover:bg-violet-200/70 group-focus-visible:bg-violet-200/70";
+  "h-4 w-0.5 rounded-full bg-transparent transition-colors group-hover:bg-brain-accent-ink/70 group-focus-visible:bg-brain-accent-ink/70";
 
 /**
  * The mark the caret itself paints, standing in the boundary it rests in: the
@@ -96,7 +93,7 @@ const sentenceCaretMarkClasses =
  * glyphs on either side. Sets the caret's ink, which its contents inherit.
  */
 const sentenceCaretStandingMarkClasses =
-  "absolute top-1/2 -left-[3.5px] h-7 w-0.5 -translate-y-1/2 rounded-full bg-violet-200";
+  "absolute top-1/2 -left-[3.5px] h-7 w-0.5 -translate-y-1/2 rounded-full bg-brain-accent-ink";
 
 /**
  * One crossbar of the caret's I-beam, drawn in the stem's own ink and centered
@@ -112,7 +109,7 @@ const sentenceCaretCrossbarClasses = "absolute -left-px h-0.5 w-1 rounded-full b
  * the flash is held and paints nothing at rest.
  */
 const sentenceCaretLandingClasses =
-  "pointer-events-none absolute top-1/2 -left-2.5 h-7 w-5 -translate-y-1/2 rounded-full bg-violet-200 blur-[2px]";
+  "pointer-events-none absolute top-1/2 -left-2.5 h-7 w-5 -translate-y-1/2 rounded-full bg-brain-accent-ink blur-[2px]";
 
 /** The zero-width anchor a caret is positioned against, standing where the caret's word boundary is. */
 const sentenceCaretAnchorClasses = "relative";
@@ -332,7 +329,7 @@ export function BrainRuleSentence({
 
   return (
     <p
-      className={`relative ${kRuleContentLayer} mt-1.5 ml-11 max-w-2xl ${kSentenceTypeClasses} text-white/70`}
+      className={`relative ${kRuleContentLayer} mt-1.5 ml-11 max-w-2xl ${kSentenceTypeClasses} text-brain-ink/70`}
       data-rule-sentence={ruleDef.id()}
     >
       {segments.map((segment: SentenceSegment, index: number) => {
@@ -365,7 +362,7 @@ export function BrainRuleSentence({
           focused !== undefined && tileRef?.side === focused.side && tileRef.tileIndex === focused.tileIndex;
         const registerClass = register === undefined ? "" : registerClasses[register];
         const litClass = isLit
-          ? "rounded-sm bg-amber-200/25 text-white"
+          ? "rounded-sm bg-brain-amber-wash/25 text-brain-ink"
           : "rounded-sm bg-transparent transition-colors duration-300";
         const wordProps = {
           className: cn(registerClass, litClass),

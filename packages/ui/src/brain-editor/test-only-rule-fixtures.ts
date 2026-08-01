@@ -57,6 +57,22 @@ export function makeActuator(services: BrainServices, actuatorId: string): Brain
   });
 }
 
+/** An actuator tile whose action is async, so a placement of it carries the badge for work that may take time. */
+export function makeAsyncActuator(services: BrainServices, actuatorId: string): BrainTileActuatorDef {
+  const fnId = nextFnId;
+  nextFnId += 1;
+  const fnEntry = services.runtime.functions.register(
+    fnId,
+    `${actuatorId}#${fnId}`,
+    true,
+    { exec: () => NIL_VALUE },
+    mkCallDef(bag())
+  );
+  return new BrainTileActuatorDef(actuatorId, mkActionDescriptor("actuator", fnEntry), {
+    metadata: { label: actuatorId },
+  });
+}
+
 /**
  * Both pieces of the candidate strip in one element, in the order a rule card
  * places them: the input the sentence line hosts, then the offering panel. The

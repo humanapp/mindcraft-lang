@@ -1,12 +1,14 @@
 /**
  * Pins the inline candidate strip's assistive-technology contract: the pure
- * decision logic behind the active-descendant highlight and the Escape key, and
- * the combobox/listbox wiring the strip renders -- roles, expanded and controls
- * references, unique option ids, and the live status region.
+ * decision logic behind the active-descendant highlight and the Escape key, the
+ * combobox/listbox wiring the strip renders -- roles, expanded and controls
+ * references, unique option ids, and the live status region -- and the one mark
+ * each of its controls shows focus with.
  *
  * Structural assertions only: every attribute value asserted here is a role, an
- * id reference, or a state flag. Labels, placeholders, and announcement wording
- * are display prose and are never asserted.
+ * id reference, a state flag, or the class token drawing a focus mark. Labels,
+ * placeholders, and announcement wording are display prose and are never
+ * asserted.
  */
 
 import assert from "node:assert/strict";
@@ -909,6 +911,86 @@ describe("BrainCandidateStrip provenance subcategories", () => {
 
     assert.ok(attributeOf(chip, "aria-label")?.includes(kLibrary.name));
     assert.equal(renderedText(chip).includes(kLibrary.name), false);
+  });
+});
+
+describe("BrainCandidateStrip focus marks", () => {
+  const bestNext = toCandidateEntries([candidate(timeoutTileId), candidate(pageEnteredTileId)]);
+  const offering = stripState({ bestNext, sections: [section(bestNext)] });
+
+  /** The offering armed on a placed tile, which is what renders the removal control and the position pivot. */
+  function renderEditPoint(): string {
+    const brainDef = BrainDef.emptyBrainDef(services);
+    const ruleDef = brainDef.pages().get(0).children().get(0) as BrainRuleDef;
+    ruleDef.when().appendTile(coreTile(timeoutTileId));
+    const target: ArmedTileTarget = {
+      ruleDef,
+      side: RuleSide.When,
+      mode: "replace",
+      tileIndex: 0,
+      anchorTileIndex: 0,
+      onTileSelected: () => true,
+    };
+    return renderToStaticMarkup(
+      createElement(
+        BrainEditorProvider,
+        { config: editorConfig },
+        createElement(StripSurface, {
+          id: kStripId,
+          state: offering,
+          target,
+          onDismiss: () => {},
+          editPoint: { position: "replace", arm: () => {} },
+        })
+      )
+    );
+  }
+
+  /** True when the element `tag` opens draws the ring the strip's controls share. */
+  function drawsRing(tag: string): boolean {
+    return (attributeOf(tag, "class") ?? "").includes("focus-visible:ring-");
+  }
+
+  /** The opening tag of the element carrying the marker attribute `marker`. */
+  function tagWithMarker(markup: string, marker: string): string {
+    const at = markup.indexOf(marker);
+    assert.ok(at >= 0, `no element carries ${marker}`);
+    return markup.slice(markup.lastIndexOf("<", at), markup.indexOf(">", at) + 1);
+  }
+
+  test("the filter box marks focus on its own border, and draws no ring over it", () => {
+    const combobox = tagsWithRole(render(offering), "combobox")[0];
+    assert.equal(drawsRing(combobox), false);
+    assert.match(attributeOf(combobox, "class") ?? "", /focus:border-/);
+  });
+
+  test("the box keeps that one mark while its text names no tile", () => {
+    const combobox = tagsWithRole(render(stripState({ filter: "zzz", isUnknown: true })), "combobox")[0];
+    assert.equal(drawsRing(combobox), false);
+    assert.match(attributeOf(combobox, "class") ?? "", /focus:border-/);
+  });
+
+  test("the border that mark moves reads one token at two alpha steps while the text names no tile", () => {
+    const combobox = tagsWithRole(render(stripState({ filter: "zzz", isUnknown: true })), "combobox")[0];
+    const marks = attributeOf(combobox, "class") ?? "";
+    const resting = /(?:^|\s)border-([a-z-]+)\/\d+(?:\s|$)/.exec(marks);
+    const focused = /(?:^|\s)focus:border-([a-z-]+)(?:\s|$)/.exec(marks);
+    assert.ok(resting, marks);
+    assert.ok(focused, marks);
+    assert.equal(resting[1], focused[1]);
+  });
+
+  test("every control carrying no border of its own draws the shared ring", () => {
+    const markup = render(offering);
+    for (const chip of tagsWithRole(markup, "option")) assert.ok(drawsRing(chip), "a candidate chip");
+    for (const built of offering.sections) {
+      assert.ok(drawsRing(elementById(markup, stripSectionHeadingId(kStripId, built.key))), "an accordion heading");
+    }
+    assert.ok(drawsRing(tagWithMarker(markup, "data-strip-close")), "the close button");
+
+    const armed = renderEditPoint();
+    assert.ok(drawsRing(tagWithMarker(armed, "data-strip-delete")), "the removal control");
+    assert.ok(drawsRing(tagWithMarker(armed, "data-edit-point-position")), "a pivot segment");
   });
 });
 

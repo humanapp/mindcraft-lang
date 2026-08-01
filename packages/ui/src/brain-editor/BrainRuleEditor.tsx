@@ -42,6 +42,7 @@ import { BrainTileEditor } from "./BrainTileEditor";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { CreateVariableDialog } from "./CreateVariableDialog";
 import { type CaretPosition, caretEditIntent, caretOnRun, caretRun } from "./caret-run";
+import { composerEntryCharacter } from "./composer-input-model";
 import { armEditPoint, type EditPointArming, type EditPointPosition, editPointPositionOf } from "./edit-point";
 import { kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 import { useCandidateStrip } from "./hooks/useCandidateStrip";
@@ -59,7 +60,10 @@ import { kSentenceTypeClasses } from "./sentence-type";
 import { applyBrokenTileBadges, buildNodeMap, computeTileBadges, type TileBadge } from "./tile-badges";
 
 /** Surface, hover, ink, and border of the rule row's round pills: the rule handle and each side's add-tile button. */
-const pillChromeClasses = "bg-slate-100 hover:bg-slate-200 text-slate-700 border-2 border-slate-300";
+const pillChromeClasses = "bg-brain-pill hover:bg-brain-pill-hover text-brain-pill-ink border-2 border-brain-pill-edge";
+
+/** The one caret position a rule holding no tiles has, which its entry point composes from. */
+const kEmptyRuleCaret: CaretPosition = { kind: "gap", side: RuleSide.When, tileIndex: 0 };
 
 /** The command that places `tileDef` where `arming` addresses on `side` of `ruleDef`. */
 function editPointCommand(
@@ -92,8 +96,6 @@ interface BrainRuleEditorProps {
   lineNumber: number;
   updateCounter: number;
   commandHistory: BrainCommandHistory;
-  /** True for the page's trailing rule, whose sentence line carries the composer's entry point. */
-  isLastRule?: boolean;
 }
 
 /**
@@ -109,7 +111,6 @@ export function BrainRuleEditor({
   lineNumber,
   updateCounter,
   commandHistory,
-  isLastRule = false,
 }: BrainRuleEditorProps) {
   const { brainServices, tileCatalogs, isBrokenTile } = useBrainEditorConfig();
   const dragController = useRuleDragController();
@@ -461,6 +462,31 @@ export function BrainRuleEditor({
     [armedTarget, ruleDef, handleTileSelectedWithVariable, commandHistory]
   );
 
+  // The character a printable key pressed on the entry point starts the word in
+  // progress with, held until the arming that key asked for has landed and the
+  // strip has started its own fresh word.
+  const seedCharacterRef = useRef<string | undefined>(undefined);
+  const setStripFilter = candidateStrip.setFilter;
+  useEffect(() => {
+    const seed = seedCharacterRef.current;
+    if (seed === undefined || !isComposing) return;
+    seedCharacterRef.current = undefined;
+    setStripFilter(seed);
+  }, [isComposing, setStripFilter]);
+
+  /**
+   * A printable key typed on the entry point composes with it: the rule is armed
+   * at its one caret position and the character starts the word in progress
+   * there. Every other key is left alone, with its default intact.
+   */
+  const handleComposerEntryKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const character = composerEntryCharacter(event.key, event.metaKey || event.ctrlKey || event.altKey);
+    if (character === undefined) return;
+    event.preventDefault();
+    seedCharacterRef.current = character;
+    placeSentenceCaret(kEmptyRuleCaret);
+  };
+
   // A caret read back onto the run stands somewhere else than the target was
   // armed at; arming that target again moves the offering, and the command a
   // placement runs, to the tiles the rule holds now.
@@ -550,8 +576,9 @@ export function BrainRuleEditor({
 
   const indentStyle = { marginLeft: `${depth * 32}px` };
   const hasTiles = ruleHasTiles();
-  // The page's trailing empty rule invites composition where its sentence will grow.
-  const showComposerEntry = !stripTarget && isLastRule && !hasTiles;
+  // An empty rule reads no sentence of its own, so its line is the invitation to
+  // compose one, standing at the only caret position such a rule has.
+  const showComposerEntry = !stripTarget && !hasTiles;
   // A card with nothing below its tile row keeps a compact fixed height.
   const hasBodyBelowTiles = showComment || hasTiles || showComposerEntry || isComposing;
 
@@ -586,7 +613,7 @@ export function BrainRuleEditor({
                   onKeyDown={handleCommentKeyDown}
                   maxLength={kMaxBrainRuleCommentLength}
                   rows={1}
-                  className="flex-1 text-xs text-white/90 bg-white/10 border border-white/20 rounded px-2 py-1 resize-none focus:outline-none focus:border-white/40 placeholder:text-white/40"
+                  className="flex-1 text-xs text-brain-ink/90 bg-brain-ink/10 border border-brain-ink/20 rounded px-2 py-1 resize-none focus:outline-none focus:border-brain-ink/40 placeholder:text-brain-ink/40"
                   placeholder="Describe what this rule does..."
                 />
                 <Button
@@ -594,7 +621,7 @@ export function BrainRuleEditor({
                     e.preventDefault();
                     saveComment();
                   }}
-                  className="h-6 w-6 min-w-6 p-0 bg-green-500 hover:bg-green-600 text-white rounded-sm shrink-0"
+                  className="h-6 w-6 min-w-6 p-0 bg-success hover:bg-success/90 text-success-foreground rounded-sm shrink-0"
                   title="Save comment"
                   aria-label="Save comment"
                 >
@@ -604,7 +631,7 @@ export function BrainRuleEditor({
             ) : (
               <button
                 type="button"
-                className="text-xs text-white/70 italic cursor-pointer hover:text-white/90 transition-colors text-left"
+                className="text-xs text-brain-ink/70 italic cursor-pointer hover:text-brain-ink/90 transition-colors text-left"
                 onClick={handleEditComment}
                 title="Click to edit comment"
               >
@@ -628,7 +655,7 @@ export function BrainRuleEditor({
                 {lineNumber}
                 {isDirty && (
                   <span
-                    className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-amber-400 border border-white"
+                    className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-brain-amber border border-brain-ink"
                     title="Has unsaved changes"
                     aria-hidden="true"
                   />
@@ -661,12 +688,15 @@ export function BrainRuleEditor({
           {/* When tiles */}{" "}
           {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}{" "}
           <div
-            className="px-2 py-1 ml-2 bg-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden"
+            className="px-2 py-1 ml-2 bg-brain-capsule border-2 border-brain-capsule-edge rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden"
             style={{ writingMode: "vertical-rl" }}
             role="group"
             aria-label="When condition tiles"
           >
-            <span className="rotate-[-90] text-white font-semibold text-md cursor-default" aria-hidden="true">
+            <span
+              className="rotate-[-90] text-brain-capsule-ink font-semibold text-md cursor-default"
+              aria-hidden="true"
+            >
               <span className="inline-block rotate-270 mx-0">W</span>
               <span className="inline-block rotate-270 mx-0.5">H</span>
               <span className="inline-block rotate-270 mx-0.5">E</span>
@@ -706,12 +736,15 @@ export function BrainRuleEditor({
           {/* Do tiles */}{" "}
           {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}{" "}
           <div
-            className="px-2 py-1 ml-3 bg-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden"
+            className="px-2 py-1 ml-3 bg-brain-capsule border-2 border-brain-capsule-edge rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden"
             style={{ writingMode: "vertical-rl" }}
             role="group"
             aria-label="Do action tiles"
           >
-            <span className="rotate-[-90] text-white font-semibold text-md cursor-default" aria-hidden="true">
+            <span
+              className="rotate-[-90] text-brain-capsule-ink font-semibold text-md cursor-default"
+              aria-hidden="true"
+            >
               <span className="inline-block rotate-270 mx-0">D</span>
               <span className="inline-block rotate-270 mx-0.5">O</span>
             </span>
@@ -760,9 +793,10 @@ export function BrainRuleEditor({
         {showComposerEntry && (
           <button
             type="button"
-            onClick={() => placeSentenceCaret({ kind: "gap", side: RuleSide.When, tileIndex: 0 })}
+            onClick={() => placeSentenceCaret(kEmptyRuleCaret)}
+            onKeyDown={handleComposerEntryKeyDown}
             data-sentence-composer-entry={ruleDef.id()}
-            className={`relative ${kRuleContentLayer} mt-1.5 ml-11 flex min-h-8 max-w-2xl cursor-text items-center rounded-sm px-1 text-left ${kSentenceTypeClasses} text-white/45 italic transition-colors hover:bg-white/5 hover:text-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white`}
+            className={`relative ${kRuleContentLayer} mt-1.5 ml-11 flex min-h-8 max-w-2xl cursor-text items-center rounded-sm px-1 text-left ${kSentenceTypeClasses} text-brain-ink/45 italic transition-colors hover:bg-brain-ink/5 hover:text-brain-ink/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brain-ink`}
           >
             Type what should happen...
           </button>

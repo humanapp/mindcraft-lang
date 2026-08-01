@@ -96,6 +96,48 @@ Each entry defines a custom literal that the `CreateLiteralDialog` can create:
 | `fields`       | `{ name, label, placeholder }[]`                          | Input fields for the literal value                          |
 | `createTileId` | `(values: Record<string, string>) => string \| undefined` | Builds a tile ID from field values, or undefined if invalid |
 
+## Color Token Contract
+
+`src/ui.css` is the home of the shared token contract. Components reference token
+NAMES only and never a palette literal for a role the contract covers; each app
+supplies the VALUES in its own `globals.css`, which is imported after `ui.css` so
+the app values win. The `--color-brain-*` group covers the editor: `desk` and
+`rule` (the page canvas and the rule cards), `tile-border` and `armed`, `accent`
+/ `accent-ink` / `on-accent`, `ink` and `recess`, `inline-ink` (the label an
+inline chip carries in documentation prose), `amber` / `amber-ink` /
+`amber-wash`, `warn` / `warn-edge` / `warn-ink` (the badge on a tile whose
+reading is incomplete), `timed` / `timed-ink` (the badge on an action that may
+take time; the ink draws both the chip's edge and its glyph), `capsule` /
+`capsule-edge` / `capsule-ink`, and `pill` / `pill-hover` / `pill-edge` /
+`pill-ink`.
+
+Roles the whole design system already names are taken from it, not re-minted
+under `--color-brain-*`: the editor's removal control and its badge for a tile
+that does not parse read in `--color-destructive` /
+`--color-destructive-foreground`, and its save-comment control in
+`--color-success` / `--color-success-foreground`.
+
+Rules a theme must hold to:
+
+- Amber is semantic. It marks a change -- a word whose tile just changed, text
+  naming no tile that fits -- and is never used as an accent. Its three meanings
+  are separately named: `amber` marks a change, `warn` badges an incomplete
+  reading. Retuning one must not move the other.
+- The accent and the two side hues a tile is filled in must stay mutually
+  distinguishable.
+
+Alpha steps stay on the utility (`text-brain-ink/70`), not in the token, so a
+theme supplies one ink and the hierarchy of steps follows.
+
+Side hues do NOT come through CSS: they arrive per tile as `TileVisual.colorDef`
+from `BrainEditorConfig`.
+
+Tile chrome derived from a tile's own hue lives in
+`brain-editor/tile-visual-utils.ts` (`kDefaultTileHue`, `tileEdgeColor`,
+`tileBorderColor`); `packages/docs` imports it so a documentation illustration
+and a placed tile cannot drift. Custom properties inherit, so `packages/docs`
+also picks up whichever host app renders it, with no threading and no config.
+
 ## Adding UI Primitives
 
 To add a new shadcn/ui component:

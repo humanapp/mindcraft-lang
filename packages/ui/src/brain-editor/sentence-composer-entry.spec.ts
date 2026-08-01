@@ -1,6 +1,6 @@
 /**
- * Pins the sentence composer's rendered shape: the entry point on the page's
- * trailing empty rule, the filter input's move into the sentence position when
+ * Pins the sentence composer's rendered shape: the entry point on every empty
+ * rule of a page, the filter input's move into the sentence position when
  * the rule is armed from there, the combobox wiring the relocated input keeps,
  * the composition reading dropping the words the projection completes for
  * itself, the pivot comma rendering exactly while composition sits on the
@@ -21,7 +21,14 @@ import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { whenTriggerWord } from "@mindcraft-lang/core/brain/language-service";
-import { BrainCommandHistory, BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import {
+  BrainCommandHistory,
+  BrainDef,
+  type BrainPageDef,
+  type BrainRuleDef,
+  IndentRuleCommand,
+  InsertRuleBeforeCommand,
+} from "@mindcraft-lang/core/brain/model";
 import { BrainTileActuatorDef, BrainTileModifierDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import { createDefaultLocalizer } from "@mindcraft-lang/core/localization";
 import {
@@ -44,6 +51,7 @@ import {
 } from "./ArmedTargetContext";
 import { filterFieldWithQuotes } from "./BrainCandidateStrip";
 import { type BrainEditorConfig, BrainEditorProvider } from "./BrainEditorContext";
+import { BrainPageEditor } from "./BrainPageEditor";
 import { BrainRuleEditor } from "./BrainRuleEditor";
 import type { CaretPosition } from "./caret-run";
 
@@ -160,7 +168,7 @@ function tileTarget(
 function renderRuleCard(
   ruleDef: BrainRuleDef,
   pageDef: BrainPageDef,
-  options: { isLastRule?: boolean; target?: ArmedTileTarget } = {}
+  options: { depth?: number; target?: ArmedTileTarget } = {}
 ): string {
   const controller: ArmedTargetController = {
     target: options.target ?? null,
@@ -178,12 +186,23 @@ function renderRuleCard(
           ruleDef,
           index: 0,
           pageDef,
+          depth: options.depth,
           lineNumber: 1,
           updateCounter: 0,
           commandHistory: new BrainCommandHistory(),
-          isLastRule: options.isLastRule,
         })
       )
+    )
+  );
+}
+
+/** The whole page's rules as the editor lays them out. */
+function renderPage(pageDef: BrainPageDef): string {
+  return renderToStaticMarkup(
+    createElement(
+      BrainEditorProvider,
+      { config: editorConfig },
+      createElement(BrainPageEditor, { pageDef, commandHistory: new BrainCommandHistory() })
     )
   );
 }
@@ -224,26 +243,32 @@ before(() => {
 });
 
 describe("the sentence composer's entry point", () => {
-  test("the page's trailing empty rule carries it", () => {
+  test("an empty rule carries it", () => {
     const { ruleDef, pageDef } = makeBrain([], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { isLastRule: true });
+    const markup = renderRuleCard(ruleDef, pageDef);
     assert.equal(countOf(markup, `data-sentence-composer-entry="${ruleDef.id()}"`), 1);
   });
 
-  test("an empty rule that is not the trailing one does not", () => {
+  test("an empty rule carries it at every indent depth", () => {
     const { ruleDef, pageDef } = makeBrain([], []);
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef, { isLastRule: false }), "data-sentence-composer-entry"), 0);
+    for (const depth of [0, 1, 2, 3]) {
+      const markup = renderRuleCard(ruleDef, pageDef, { depth });
+      assert.equal(
+        countOf(markup, `data-sentence-composer-entry="${ruleDef.id()}"`),
+        1,
+        `an empty rule at depth ${depth} carries the entry`
+      );
+    }
   });
 
-  test("a trailing rule that already holds tiles does not", () => {
+  test("a rule that already holds tiles does not", () => {
     const { ruleDef, pageDef } = makeBrain([makeSensor("composer-entry-see")], []);
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef, { isLastRule: true }), "data-sentence-composer-entry"), 0);
+    assert.equal(countOf(renderRuleCard(ruleDef, pageDef), "data-sentence-composer-entry"), 0);
   });
 
   test("it gives way to the filter input once the rule is armed", () => {
     const { ruleDef, pageDef } = makeBrain([], []);
     const markup = renderRuleCard(ruleDef, pageDef, {
-      isLastRule: true,
       target: appendTarget(ruleDef, RuleSide.When, "sentence"),
     });
     assert.equal(countOf(markup, "data-sentence-composer-entry"), 0);
@@ -253,11 +278,32 @@ describe("the sentence composer's entry point", () => {
   test("it gives way to a target armed from a tap as well", () => {
     const { ruleDef, pageDef } = makeBrain([], []);
     const markup = renderRuleCard(ruleDef, pageDef, {
-      isLastRule: true,
       target: appendTarget(ruleDef, RuleSide.When, "tray"),
     });
     assert.equal(countOf(markup, "data-sentence-composer-entry"), 0);
     assert.equal(countOf(markup, 'data-strip-filter="tray"'), 1);
+  });
+});
+
+describe("the entry point across a page's rules", () => {
+  test("a rule blanked in above a settled one carries it, as does the trailing rule", () => {
+    const { pageDef, ruleDef: settled } = makeBrain([makeSensor("composer-page-see")], []);
+    const trailing = pageDef.appendNewRule() as BrainRuleDef;
+    new BrainCommandHistory().executeCommand(new InsertRuleBeforeCommand(settled));
+    const inserted = pageDef.children().get(0) as BrainRuleDef;
+    const markup = renderPage(pageDef);
+    assert.equal(countOf(markup, `data-sentence-composer-entry="${inserted.id()}"`), 1);
+    assert.equal(countOf(markup, `data-sentence-composer-entry="${trailing.id()}"`), 1);
+    assert.equal(countOf(markup, `data-sentence-composer-entry="${settled.id()}"`), 0);
+    assert.equal(countOf(markup, "data-sentence-composer-entry"), 2);
+  });
+
+  test("the trailing empty rule keeps it once indented under the rule above", () => {
+    const { pageDef } = makeBrain([makeSensor("composer-page-hear")], []);
+    const trailing = pageDef.appendNewRule() as BrainRuleDef;
+    new BrainCommandHistory().executeCommand(new IndentRuleCommand(trailing));
+    const markup = renderPage(pageDef);
+    assert.equal(countOf(markup, `data-sentence-composer-entry="${trailing.id()}"`), 1);
   });
 });
 
@@ -314,7 +360,6 @@ describe("the filter input's position", () => {
   test("an armed empty rule renders the sentence line for the input to sit in", () => {
     const { ruleDef, pageDef } = makeBrain([], []);
     const markup = renderRuleCard(ruleDef, pageDef, {
-      isLastRule: true,
       target: appendTarget(ruleDef, RuleSide.When, "sentence"),
     });
     assert.equal(countOf(markup, `data-rule-sentence="${ruleDef.id()}"`), 1);
@@ -435,7 +480,7 @@ describe("the sentence's one voice", () => {
     const { ruleDef: settled, pageDef: settledPage } = makeBrain([makeSensor("composer-voice-hear")], []);
     const line = typeTokensOf(renderRuleCard(settled, settledPage), `data-rule-sentence="${settled.id()}"`);
     const { ruleDef, pageDef } = makeBrain([], []);
-    const entry = renderRuleCard(ruleDef, pageDef, { isLastRule: true });
+    const entry = renderRuleCard(ruleDef, pageDef);
     assert.deepEqual(typeTokensOf(entry, `data-sentence-composer-entry="${ruleDef.id()}"`), line);
   });
 });
@@ -474,7 +519,6 @@ describe("the pivot comma", () => {
   test("renders on an empty rule pivoted from its empty WHEN side", () => {
     const { ruleDef, pageDef } = makeBrain([], []);
     const markup = renderRuleCard(ruleDef, pageDef, {
-      isLastRule: true,
       target: appendTarget(ruleDef, RuleSide.Do, "sentence"),
     });
     assert.equal(countOf(markup, commaMarker), 1);
@@ -514,7 +558,6 @@ describe("the trigger word at the pivot", () => {
   test("a pivot from an empty WHEN side reads it before the comma", () => {
     const { ruleDef, pageDef } = makeBrain([], []);
     const markup = renderRuleCard(ruleDef, pageDef, {
-      isLastRule: true,
       target: appendTarget(ruleDef, RuleSide.Do, "sentence"),
     });
     assert.equal(countOf(markup, `data-composer-pivot-comma="${ruleDef.id()}"`), 1);
@@ -531,7 +574,6 @@ describe("the trigger word at the pivot", () => {
   test("an empty rule still composing on its WHEN side reads neither it nor the comma", () => {
     const { ruleDef, pageDef } = makeBrain([], []);
     const markup = renderRuleCard(ruleDef, pageDef, {
-      isLastRule: true,
       target: appendTarget(ruleDef, RuleSide.When, "sentence"),
     });
     assert.equal(sentenceReadingText(markup), "");
@@ -547,6 +589,6 @@ describe("the trigger word at the pivot", () => {
 
   test("a settled empty rule reads nothing at all", () => {
     const { ruleDef, pageDef } = makeBrain([], []);
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef, { isLastRule: true }), trigger), 0);
+    assert.equal(countOf(renderRuleCard(ruleDef, pageDef), trigger), 0);
   });
 });

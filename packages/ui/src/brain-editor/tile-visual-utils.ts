@@ -9,8 +9,26 @@ import {
   type BrainTileVariableDef,
   getCatalogFallbackLabel,
 } from "@mindcraft-lang/core/brain/tiles";
+import { adjustColor, saturateColor } from "../lib/color";
 import type { BrainEditorConfig } from "./BrainEditorContext";
 import type { TileVisual } from "./types";
+
+/** The hue a tile is read in when its visual names no color for the side it sits on. */
+export const kDefaultTileHue = "#475569";
+
+/** The edge color a tile's own fill yields: `baseColor` saturated and darkened. */
+export function tileEdgeColor(baseColor: string): string {
+  return adjustColor(saturateColor(baseColor, 0.5), -0.4);
+}
+
+/**
+ * The border color a tile takes, as a CSS value: `--color-brain-tile-border`
+ * where an app gives every tile one border color, and the tile's own
+ * {@link tileEdgeColor} where it does not.
+ */
+export function tileBorderColor(baseColor: string): string {
+  return `var(--color-brain-tile-border, ${tileEdgeColor(baseColor)})`;
+}
 
 /**
  * How a tile chip renders, derived from its kind:

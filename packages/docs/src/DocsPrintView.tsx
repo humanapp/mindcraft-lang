@@ -1,6 +1,7 @@
 import { List } from "@mindcraft-lang/core";
 import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
 import { type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
+import { kDefaultTileHue } from "@mindcraft-lang/ui/brain-editor/tile-visual-utils";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import type { Element } from "hast";
 import type { ReactNode } from "react";
@@ -22,7 +23,7 @@ function PrintTileChip({ tileDef, side }: PrintTileChipProps) {
   const visual = resolveTileVisual(tileDef);
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
   const iconUrl = visual?.iconUrl;
-  const baseColor = (side === RuleSide.When ? visual?.colorDef?.when : visual?.colorDef?.do) || "#475569";
+  const baseColor = (side === RuleSide.When ? visual?.colorDef?.when : visual?.colorDef?.do) || kDefaultTileHue;
 
   return (
     <div className="docs-print-tile" style={{ borderColor: baseColor }}>
@@ -260,7 +261,7 @@ function PrintInlineTileIcon({ tileDef }: { tileDef: IBrainTileDef }) {
   const visual = resolveTileVisual(tileDef);
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
   const iconUrl = visual?.iconUrl;
-  const baseColor = visual?.colorDef?.when || visual?.colorDef?.do || "#475569";
+  const baseColor = visual?.colorDef?.when || visual?.colorDef?.do || kDefaultTileHue;
 
   return (
     <span className="docs-print-inline-tile" style={{ borderColor: baseColor }}>
