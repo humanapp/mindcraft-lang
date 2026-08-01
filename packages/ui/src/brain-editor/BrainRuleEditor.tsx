@@ -613,7 +613,7 @@ export function BrainRuleEditor({
                   onKeyDown={handleCommentKeyDown}
                   maxLength={kMaxBrainRuleCommentLength}
                   rows={1}
-                  className="flex-1 text-xs text-brain-ink/90 bg-brain-ink/10 border border-brain-ink/20 rounded px-2 py-1 resize-none focus:outline-none focus:border-brain-ink/40 placeholder:text-brain-ink/40"
+                  className="flex-1 text-xs text-brain-ink/90 bg-brain-ink/10 border border-brain-ink/20 rounded px-2 py-1 resize-none focus:border-brain-ink/40 placeholder:text-brain-ink/40"
                   placeholder="Describe what this rule does..."
                 />
                 <Button
@@ -796,7 +796,7 @@ export function BrainRuleEditor({
             onClick={() => placeSentenceCaret(kEmptyRuleCaret)}
             onKeyDown={handleComposerEntryKeyDown}
             data-sentence-composer-entry={ruleDef.id()}
-            className={`relative ${kRuleContentLayer} mt-1.5 ml-11 flex min-h-8 max-w-2xl cursor-text items-center rounded-sm px-1 text-left ${kSentenceTypeClasses} text-brain-ink/45 italic transition-colors hover:bg-brain-ink/5 hover:text-brain-ink/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brain-ink`}
+            className={`relative ${kRuleContentLayer} mt-1.5 ml-11 flex min-h-8 max-w-2xl cursor-text items-center rounded-sm px-1 text-left ${kSentenceTypeClasses} text-brain-ink/45 italic transition-colors hover:bg-brain-ink/5 hover:text-brain-ink/70`}
           >
             Type what should happen...
           </button>

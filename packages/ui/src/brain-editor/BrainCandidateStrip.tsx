@@ -71,13 +71,6 @@ const stripPanelStyle = {
   boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.45)",
 };
 
-/**
- * Focus ring shared by the strip's controls that mark focus with nothing else of
- * their own, drawn against the panel's own backdrop.
- */
-const focusRingClasses =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brain-ink focus-visible:ring-offset-2 focus-visible:ring-offset-brain-desk-to";
-
 /** Heading of a provenance subcategory: the accordion header's type, one step quieter. */
 const subcategoryHeadingClasses = "w-full px-0.5 text-[11px] font-semibold uppercase tracking-wider text-brain-ink/45";
 
@@ -265,7 +258,7 @@ function CandidateChip({ entry, side, optionId, isActive, onCommit, libraryName 
         borderStyle: candidate.viaConversion ? "dashed" : "solid",
         color: isMinting ? "var(--color-brain-ink)" : readableInk(baseColor),
       }}
-      className={`inline-flex min-h-11 max-w-full cursor-pointer items-center gap-2 rounded-full border-2 px-3 py-1.5 shadow-sm transition-[filter,transform] hover:brightness-110 active:scale-95 ${focusRingClasses} ${
+      className={`inline-flex min-h-11 max-w-full cursor-pointer items-center gap-2 rounded-full border-2 px-3 py-1.5 shadow-sm transition-[filter,transform] hover:brightness-110 active:scale-95 ${
         candidate.viaConversion ? "opacity-80" : ""
       } ${isActive ? "ring-2 ring-brain-ink ring-offset-2 ring-offset-brain-desk-to brightness-110" : ""}`}
       aria-label={description}
@@ -948,7 +941,7 @@ export function useCandidateStripSurface({
           }}
           aria-expanded={isOpen}
           aria-controls={panelId}
-          className={`flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-brain-ink/80 transition-colors hover:bg-brain-ink/5 disabled:cursor-default disabled:hover:bg-transparent ${focusRingClasses}`}
+          className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-brain-ink/80 transition-colors hover:bg-brain-ink/5 disabled:cursor-default disabled:hover:bg-transparent"
         >
           <span className="text-xs font-semibold uppercase tracking-wider">{groupName}</span>
           <span className="flex items-center gap-2">
@@ -1099,7 +1092,7 @@ export function useCandidateStripSurface({
               // The press acts without taking the keyboard from the box being typed in.
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => dispatchInput({ kind: "delete-element", position: armedTile })}
-              className={`inline-flex min-h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-destructive/40 bg-destructive/15 text-destructive transition-colors hover:border-destructive hover:bg-destructive/30 hover:text-destructive-foreground ${focusRingClasses}`}
+              className="inline-flex min-h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-destructive/40 bg-destructive/15 text-destructive transition-colors hover:border-destructive hover:bg-destructive/30 hover:text-destructive-foreground"
             >
               <Trash2 className="h-5 w-5 shrink-0" aria-hidden="true" />
             </button>
@@ -1118,7 +1111,7 @@ export function useCandidateStripSurface({
                     aria-pressed={isCurrent}
                     data-edit-point-position={position}
                     onClick={() => editPoint.arm(position)}
-                    className={`min-h-9 cursor-pointer rounded-full px-3 text-xs font-semibold whitespace-nowrap uppercase tracking-wider transition-colors ${focusRingClasses} ${
+                    className={`min-h-9 cursor-pointer rounded-full px-3 text-xs font-semibold whitespace-nowrap uppercase tracking-wider transition-colors ${
                       isCurrent
                         ? "bg-brain-accent/90 text-brain-on-accent"
                         : "text-brain-ink/60 hover:bg-brain-ink/10 hover:text-brain-ink"
@@ -1143,7 +1136,7 @@ export function useCandidateStripSurface({
         }}
         aria-label="Close tile candidates"
         data-strip-close=""
-        className={`absolute top-1.5 right-1.5 flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-brain-ink/15 bg-brain-desk-to text-brain-ink/70 transition-colors hover:border-brain-ink/40 hover:text-brain-ink ${focusRingClasses}`}
+        className="absolute top-1.5 right-1.5 flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-brain-ink/15 bg-brain-desk-to text-brain-ink/70 transition-colors hover:border-brain-ink/40 hover:text-brain-ink"
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>

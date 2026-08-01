@@ -73,9 +73,10 @@
   --color-brain-accent-ink: oklch(89.4% 0.057 293.283);
   --color-brain-on-accent: #000;
   /* The ink the editor's own chrome is written in on the desk: its text at
-     every step of the alpha scale, its focus rings, its hover washes, and its
-     hairline edges. --color-brain-recess is the opposite pole, filling the
-     wells a field or a capsule is sunk into. */
+     every step of the alpha scale, the ring around the tile the offering is
+     landing on, its hover washes, and its hairline edges.
+     --color-brain-recess is the opposite pole, filling the wells a field or a
+     capsule is sunk into. */
   --color-brain-ink: #fff;
   --color-brain-recess: #000;
   /* The label an inline chip is read in where documentation prose names a tile
@@ -121,6 +122,23 @@
      the fallback everywhere else. */
   --font-brain-sentence:
     "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", P052, Georgia, serif;
+}
+
+/* ==========================================================================
+   Focus
+
+   Every keyboard-focused element is outlined in the app's --color-ring, so no
+   component supplies a focus mark of its own. A control that marks focus some
+   other way -- a border it recolours, an inset ring it needs on a full-bleed
+   surface -- opts out with an `outline-none` utility, which sits in the
+   utilities layer and so wins over this rule.
+   ========================================================================== */
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
 }
 
 /* Animations */

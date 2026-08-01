@@ -551,7 +551,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                           onBlur={handlePageNameBlur}
                           onKeyDown={handlePageNameKeyDown}
                           autoFocus
-                          className="text-foreground font-semibold h-8 px-2 py-1 max-w-xs bg-background border-input focus-visible:ring-ring"
+                          className="text-foreground font-semibold h-8 px-2 py-1 max-w-xs bg-background border-input"
                         />
                         <Button
                           onMouseDown={(e) => {
@@ -610,7 +610,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                           onBlur={handleBrainNameBlur}
                           onKeyDown={handleBrainNameKeyDown}
                           autoFocus
-                          className="text-foreground font-semibold h-8 px-2 py-1 max-w-xs bg-background border-input focus-visible:ring-ring"
+                          className="text-foreground font-semibold h-8 px-2 py-1 max-w-xs bg-background border-input"
                         />
                         <Button
                           onMouseDown={(e) => {

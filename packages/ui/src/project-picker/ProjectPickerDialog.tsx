@@ -262,7 +262,7 @@ export function ProjectPickerDialog({
             <li className="list-none">
               <button
                 type="button"
-                className="flex h-full min-h-36 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 bg-card text-muted-foreground outline-none transition-colors hover:border-primary/50 hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:hover:scale-[1.02]"
+                className="flex h-full min-h-36 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 bg-card text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary sm:hover:scale-[1.02]"
                 aria-label="Create new project"
                 onClick={onCreate}
               >

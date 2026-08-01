@@ -701,7 +701,7 @@ function App() {
                   autoFocus
                   labelClassName="text-sm font-medium text-foreground"
                   inputClassName="border-input bg-background"
-                  buttonClassName="text-muted-foreground hover:text-foreground focus-visible:ring-ring"
+                  buttonClassName="text-muted-foreground hover:text-foreground"
                   resetVisibilityKey={projectCollectionState?.activeProjectCollection?.projectCollectionId}
                   onValueChange={(value) => {
                     setActiveUnlockPin(value);

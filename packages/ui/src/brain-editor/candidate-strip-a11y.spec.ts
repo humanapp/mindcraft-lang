@@ -946,9 +946,9 @@ describe("BrainCandidateStrip focus marks", () => {
     );
   }
 
-  /** True when the element `tag` opens draws the ring the strip's controls share. */
-  function drawsRing(tag: string): boolean {
-    return (attributeOf(tag, "class") ?? "").includes("focus-visible:ring-");
+  /** True when the element `tag` opens lets the app-wide focus outline paint on it. */
+  function takesFocusOutline(tag: string): boolean {
+    return !(attributeOf(tag, "class") ?? "").split(/\s+/).includes("outline-none");
   }
 
   /** The opening tag of the element carrying the marker attribute `marker`. */
@@ -958,15 +958,15 @@ describe("BrainCandidateStrip focus marks", () => {
     return markup.slice(markup.lastIndexOf("<", at), markup.indexOf(">", at) + 1);
   }
 
-  test("the filter box marks focus on its own border, and draws no ring over it", () => {
+  test("the filter box marks focus on its own border, and keeps no outline over it", () => {
     const combobox = tagsWithRole(render(offering), "combobox")[0];
-    assert.equal(drawsRing(combobox), false);
+    assert.equal(takesFocusOutline(combobox), false);
     assert.match(attributeOf(combobox, "class") ?? "", /focus:border-/);
   });
 
   test("the box keeps that one mark while its text names no tile", () => {
     const combobox = tagsWithRole(render(stripState({ filter: "zzz", isUnknown: true })), "combobox")[0];
-    assert.equal(drawsRing(combobox), false);
+    assert.equal(takesFocusOutline(combobox), false);
     assert.match(attributeOf(combobox, "class") ?? "", /focus:border-/);
   });
 
@@ -980,17 +980,18 @@ describe("BrainCandidateStrip focus marks", () => {
     assert.equal(resting[1], focused[1]);
   });
 
-  test("every control carrying no border of its own draws the shared ring", () => {
+  test("every control carrying no focus mark of its own takes the app-wide outline", () => {
     const markup = render(offering);
-    for (const chip of tagsWithRole(markup, "option")) assert.ok(drawsRing(chip), "a candidate chip");
+    for (const chip of tagsWithRole(markup, "option")) assert.ok(takesFocusOutline(chip), "a candidate chip");
     for (const built of offering.sections) {
-      assert.ok(drawsRing(elementById(markup, stripSectionHeadingId(kStripId, built.key))), "an accordion heading");
+      const heading = elementById(markup, stripSectionHeadingId(kStripId, built.key));
+      assert.ok(takesFocusOutline(heading), "an accordion heading");
     }
-    assert.ok(drawsRing(tagWithMarker(markup, "data-strip-close")), "the close button");
+    assert.ok(takesFocusOutline(tagWithMarker(markup, "data-strip-close")), "the close button");
 
     const armed = renderEditPoint();
-    assert.ok(drawsRing(tagWithMarker(armed, "data-strip-delete")), "the removal control");
-    assert.ok(drawsRing(tagWithMarker(armed, "data-edit-point-position")), "a pivot segment");
+    assert.ok(takesFocusOutline(tagWithMarker(armed, "data-strip-delete")), "the removal control");
+    assert.ok(takesFocusOutline(tagWithMarker(armed, "data-edit-point-position")), "a pivot segment");
   });
 });
 

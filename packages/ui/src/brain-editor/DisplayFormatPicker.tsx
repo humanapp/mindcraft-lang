@@ -49,7 +49,7 @@ export function DisplayFormatPicker({ value, onChange }: DisplayFormatPickerProp
         id="displayFormat"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="col-span-3 flex h-10 w-full rounded-lg border-2 border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring"
+        className="col-span-3 flex h-10 w-full rounded-lg border-2 border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:border-ring"
       >
         {FORMAT_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>

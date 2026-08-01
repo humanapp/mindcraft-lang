@@ -26,7 +26,7 @@ export function WorkspacePinInput({
   wrapperClassName = "space-y-1.5",
   labelClassName = "text-sm font-medium",
   inputClassName = "border-input bg-background",
-  buttonClassName = "text-muted-foreground hover:text-foreground focus-visible:ring-ring",
+  buttonClassName = "text-muted-foreground hover:text-foreground",
   showButtonLabel,
   hideButtonLabel,
   resetVisibilityKey,
@@ -62,7 +62,7 @@ export function WorkspacePinInput({
         <button
           type="button"
           disabled={disabled}
-          className={`absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 ${buttonClassName}`}
+          className={`absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded disabled:pointer-events-none disabled:opacity-50 ${buttonClassName}`}
           aria-label={visible ? (hideButtonLabel ?? `Hide ${label}`) : (showButtonLabel ?? `Show ${label}`)}
           onClick={() => setVisible((current) => !current)}
         >

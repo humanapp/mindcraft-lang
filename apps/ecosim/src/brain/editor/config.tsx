@@ -9,7 +9,7 @@ import { dataTypeIconMap, dataTypeNameMap } from "./data-type-icons";
 import { createVfsAwareVisualProvider } from "./visual-provider";
 
 const inputClass =
-  "col-span-3 flex h-10 w-full rounded-lg border-2 border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50";
+  "col-span-3 flex h-10 w-full rounded-lg border-2 border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50";
 
 const vector2LiteralType: CustomLiteralType = {
   typeId: EcosimTypeIds.Vector2,

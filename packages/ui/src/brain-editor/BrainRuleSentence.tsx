@@ -58,7 +58,7 @@ const registerClasses: Record<string, string> = {
 };
 
 /** Chrome a tappable word keeps so it reads as part of the sentence, not as a control. */
-const sentenceWordButtonClasses = `cursor-pointer rounded-sm border-0 bg-transparent p-0 text-left align-baseline ${kSentenceTypeClasses} text-inherit hover:bg-brain-ink/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brain-ink`;
+const sentenceWordButtonClasses = `cursor-pointer rounded-sm border-0 bg-transparent p-0 text-left align-baseline ${kSentenceTypeClasses} text-inherit hover:bg-brain-ink/10`;
 
 /**
  * Chrome the run of text inside a word keeps: the box the caret's focus
@@ -71,7 +71,7 @@ const sentenceWordFocusClasses = "rounded-sm bg-transparent transition-colors du
  * already reads, laid out as the plain span it stands in place of, with its
  * spaces held exactly as projected.
  */
-const sentenceGlueButtonClasses = `inline cursor-pointer whitespace-pre rounded-sm border-0 bg-transparent p-0 ${kSentenceTypeClasses} text-inherit hover:bg-brain-ink/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brain-ink`;
+const sentenceGlueButtonClasses = `inline cursor-pointer whitespace-pre rounded-sm border-0 bg-transparent p-0 ${kSentenceTypeClasses} text-inherit hover:bg-brain-ink/10`;
 
 /**
  * Chrome of the hit target standing in a word boundary: a finger-sized hit area
@@ -79,7 +79,7 @@ const sentenceGlueButtonClasses = `inline cursor-pointer whitespace-pre rounded-
  * layout width.
  */
 const sentenceCaretClasses =
-  "group absolute -top-1.5 -left-1.5 flex h-6 w-3 cursor-text items-center justify-center border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brain-ink";
+  "group absolute -top-1.5 -left-1.5 flex h-6 w-3 cursor-text items-center justify-center border-0 bg-transparent p-0";
 
 /** The mark a hit target paints inside its hit area, which shows itself on approach. */
 const sentenceCaretMarkClasses =
