@@ -62,11 +62,12 @@ export type ComposerKeySurface = "filter" | "band" | "close";
 
 /**
  * What a word was placed on the way to, re-decided once the placement lands:
- * the comma's `pivot`, the period's `settle`, and `continue` for a placement
- * made on the way to nothing in particular, which carries composition on from
- * where the placement leaves it.
+ * the comma's `pivot`, the period's `settle`, the insertion chord's
+ * `settle-and-insert`, and `continue` for a placement made on the way to nothing
+ * in particular, which carries composition on from where the placement leaves
+ * it.
  */
-export type ComposerGesture = "pivot" | "settle" | "continue";
+export type ComposerGesture = "pivot" | "settle" | "settle-and-insert" | "continue";
 
 /**
  * One input the composer interprets. Every token is raw input -- a key on a
@@ -77,6 +78,8 @@ export type ComposerGesture = "pivot" | "settle" | "continue";
  *   that is not a key of its own arrives
  * - `space`, `enter` -- the commit keys
  * - `comma`, `period` -- the pivot and the settle
+ * - `settle-and-insert` -- place what the box holds, settle the rule, and carry
+ *   composing on in an empty rule after it
  * - `quote` -- open a text value, or place the one already open
  * - `escape` -- clear the word in progress, then close
  * - `backspace` -- the composer's ladder, or an edit of the word in progress
@@ -100,6 +103,7 @@ export type ComposerInputToken =
   | { readonly kind: "space" }
   | { readonly kind: "comma" }
   | { readonly kind: "period" }
+  | { readonly kind: "settle-and-insert" }
   | { readonly kind: "quote" }
   | { readonly kind: "escape" }
   | { readonly kind: "printable" }
@@ -144,6 +148,8 @@ export type ComposerCloseReason = "settled" | "dismissed";
  * - `flash-caret` -- the caret's place is flashed, showing where the keyboard
  *   came back to
  * - `close-strip` -- composition on the rule ends
+ * - `insert-rule` -- an empty rule is put after the rule composed, and
+ *   composition carries on in it
  */
 export type ComposerInputEffect =
   | { readonly kind: "consume-key" }
@@ -166,7 +172,8 @@ export type ComposerInputEffect =
   | { readonly kind: "delete-tile"; readonly position: CaretPosition }
   | { readonly kind: "undo-own-commit" }
   | { readonly kind: "flash-caret" }
-  | { readonly kind: "close-strip"; readonly reason: ComposerCloseReason };
+  | { readonly kind: "close-strip"; readonly reason: ComposerCloseReason }
+  | { readonly kind: "insert-rule" };
 
 /**
  * What the composer reads about the offering and the rule around it. Every field
@@ -243,11 +250,19 @@ function arrowDirection(key: string): ComposerArrowDirection | undefined {
  * the browser's: a character the filter box types for itself, Tab, which moves
  * the keyboard on from wherever it stands, and every key the close button does
  * not steer the cursor with.
+ *
+ * `withCommand` is true while Meta or Control is held, which is the insertion
+ * chord on Enter and leaves every other key reading as it does without it.
  */
-export function composerTokenForKey(key: string, surface: ComposerKeySurface): ComposerInputToken | undefined {
+export function composerTokenForKey(
+  key: string,
+  surface: ComposerKeySurface,
+  withCommand: boolean
+): ComposerInputToken | undefined {
   const direction = arrowDirection(key);
   if (direction !== undefined) return { kind: "arrow", direction, from: surface };
   if (surface === "close") return undefined;
+  if (withCommand && key === "Enter") return { kind: "settle-and-insert" };
   if (key === "Escape") return surface === "filter" ? { kind: "escape" } : undefined;
   if (key === "Enter") return { kind: "enter", from: surface };
   if (key === "Backspace") return { kind: "backspace", from: surface };
@@ -462,11 +477,19 @@ function abandonTextLiteral(state: ComposerInputState, leading: readonly Compose
   };
 }
 
-/** Place the open text value as a literal tile, close the value, and start the next word. */
-function commitTextLiteral(state: ComposerInputState, candidate: StripCandidate): ComposerInputOutcome {
+/**
+ * Place the open text value as a literal tile, close the value, and start the
+ * next word. `then` carries whatever gesture the placement was made on the way
+ * to, which defaults to re-asking where the placement leaves composition.
+ */
+function commitTextLiteral(
+  state: ComposerInputState,
+  candidate: StripCandidate,
+  then: readonly ComposerInputEffect[] = [landedEffect]
+): ComposerInputOutcome {
   return placeCandidate({ ...state, textLiteral: undefined }, candidate, [
     { kind: "set-text-literal", value: undefined },
-    landedEffect,
+    ...then,
   ]);
 }
 
@@ -702,15 +725,21 @@ function reduceBackspace(
  * Place what the box is holding, exactly as the key that commits it would: the
  * word in progress as Space places it, and an open text value as its closing
  * quote places it. Text that names nothing to place is refused -- the key is
- * swallowed and that text stands as it is.
+ * swallowed and that text stands as it is. `then` carries whatever gesture the
+ * placement was made on the way to, which defaults to re-asking where the
+ * placement leaves composition.
  */
-function commitPendingText(state: ComposerInputState, facts: ComposerInputFacts): ComposerInputOutcome {
+function commitPendingText(
+  state: ComposerInputState,
+  facts: ComposerInputFacts,
+  then: readonly ComposerInputEffect[] = [landedEffect]
+): ComposerInputOutcome {
   if (state.textLiteral !== undefined) {
     if (facts.pendingTextLiteral === undefined) return { state, effects: [{ kind: "consume-key" }] };
-    return commitTextLiteral(state, facts.pendingTextLiteral);
+    return commitTextLiteral(state, facts.pendingTextLiteral, then);
   }
   if (facts.spaceCandidate === undefined) return { state, effects: [{ kind: "consume-key" }] };
-  return placeCandidate(state, facts.spaceCandidate);
+  return placeCandidate(state, facts.spaceCandidate, then);
 }
 
 /**
@@ -841,6 +870,33 @@ function reduceSettle(state: ComposerInputState, facts: ComposerInputFacts): Com
   return { state, effects: [{ kind: "consume-key" }, { kind: "close-strip", reason: "settled" }] };
 }
 
+/** What ending the rule on the way to an empty rule after it asks for. */
+const settleAndInsertEffects: readonly ComposerInputEffect[] = [
+  { kind: "close-strip", reason: "settled" },
+  { kind: "insert-rule" },
+];
+
+/** The re-ask a placement made on the way to the insertion is decided by. */
+const settleAndInsertReask: ComposerInputEffect = {
+  kind: "reask",
+  token: { kind: "placement-landed", gesture: "settle-and-insert" },
+};
+
+/**
+ * The insertion chord's outcome inside composition: place what the box is
+ * holding, exactly as the key that commits it would; end composition on the rule
+ * on the same terms the period settles it; and ask for an empty rule after it to
+ * carry composing on in. Text that names nothing to place, and a rule the period
+ * settles nowhere, each keep the key and leave the rule and the page as they
+ * stand. A strip armed from the tray leaves the key alone.
+ */
+function reduceSettleAndInsert(state: ComposerInputState, facts: ComposerInputFacts): ComposerInputOutcome {
+  if (state.armedEntry !== "sentence") return inert(state);
+  if (hasPendingEdit(state)) return commitPendingText(state, facts, [settleAndInsertReask]);
+  if (!settlesWhereItStands(facts)) return { state, effects: [{ kind: "consume-key" }] };
+  return { state, effects: [{ kind: "consume-key" }, ...settleAndInsertEffects] };
+}
+
 /**
  * Where a placement leaves composition once it has landed. A position that still
  * offers a tile carries composition on where it stands. A position on the WHEN
@@ -898,9 +954,10 @@ function reduceHeadingArrow(
  * moment; the outcome says where the composer stands and what its driver must
  * do, in the order it must do it.
  *
- * The sentence-only gestures -- the comma pivot, the period settle, and the
- * ladder Backspace walks -- apply only while `state.armedEntry` is `sentence`;
- * a strip armed from the tray leaves those keys to the filter box.
+ * The sentence-only gestures -- the comma pivot, the period settle, the
+ * insertion chord, and the ladder Backspace walks -- apply only while
+ * `state.armedEntry` is `sentence`; a strip armed from the tray leaves those
+ * keys to the filter box.
  *
  * Every placement is re-asked once it has landed, which carries composition on
  * from where it left it. A word placed on the WHEN side that leaves that side
@@ -967,10 +1024,13 @@ export function reduceComposerInput(
       return reduceComma(state, facts);
     case "period":
       return reducePeriod(state, facts);
+    case "settle-and-insert":
+      return reduceSettleAndInsert(state, facts);
     case "placement-landed":
       if (token.gesture === "continue") return reduceLandedPlacement(state, facts);
       if (!facts.armedSideCanEnd) return inert(state);
       if (token.gesture === "pivot") return composeOnSide(state, facts, RuleSide.Do, []);
+      if (token.gesture === "settle-and-insert") return { state, effects: [...settleAndInsertEffects] };
       return { state, effects: [{ kind: "close-strip", reason: "settled" }] };
     case "backspace":
       return reduceBackspace(state, facts, token.from);

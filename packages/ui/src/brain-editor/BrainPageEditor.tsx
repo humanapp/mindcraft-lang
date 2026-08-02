@@ -15,6 +15,7 @@ import { kRuleContentLayer } from "./editor-layers";
 import { useRuleDrag } from "./hooks/useRuleDrag";
 import { PageGridProvider } from "./PageGridContext";
 import {
+  decidePageGridOperation,
   decidePageKey,
   kAppendRuleCell,
   kPageGridCellAttribute,
@@ -383,19 +384,31 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
     setPickupAnnouncement("Cancelled");
   };
 
+  /** Puts an empty rule at the end of the page and asks for it to be composed. */
+  const appendRule = () => {
+    commandHistory.executeCommand(new AddRuleCommand(pageDef));
+    const children = pageDef.children();
+    const appended = children.get(children.size() - 1) as BrainRuleDef | undefined;
+    if (appended !== undefined) setRuleToCompose(appended.id());
+  };
+
   const handleGridKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const element = cellOf(event.target);
     if (element === null) return;
-    const result = decidePageKey(
-      rows,
-      cursor,
-      {
-        key: event.key,
-        withCommand: event.metaKey || event.ctrlKey,
-        placement: element === event.target ? "on-cell" : "inside-cell",
-      },
-      pickup !== null
-    );
+    const press = {
+      key: event.key,
+      withCommand: event.metaKey || event.ctrlKey,
+      placement: element === event.target ? "on-cell" : "inside-cell",
+    } as const;
+    // The add-rule control is the page's own cell, which no rule card serves.
+    if (element.getAttribute(kPageGridCellAttribute) === pageGridCellKey(kAppendRuleCell)) {
+      if (decidePageGridOperation(kAppendRuleCell, press)?.verb === "insert-rule") {
+        event.preventDefault();
+        appendRule();
+        return;
+      }
+    }
+    const result = decidePageKey(rows, cursor, press, pickup !== null);
     switch (result.kind) {
       case "inert":
         return;
@@ -417,14 +430,6 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
         cancelHeldRule();
         return;
     }
-  };
-
-  /** Puts an empty rule at the end of the page and asks for it to be composed. */
-  const appendRule = () => {
-    commandHistory.executeCommand(new AddRuleCommand(pageDef));
-    const children = pageDef.children();
-    const appended = children.get(children.size() - 1) as BrainRuleDef | undefined;
-    if (appended !== undefined) setRuleToCompose(appended.id());
   };
 
   const gridBinding = useMemo(

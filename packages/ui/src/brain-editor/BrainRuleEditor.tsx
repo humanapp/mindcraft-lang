@@ -698,6 +698,14 @@ export function BrainRuleEditor({
     pasteTileAt(side, subject.kind === "tile" ? subject.tileIndex + 1 : ruleDef.side(side).tiles().size());
   };
 
+  /** Puts an empty rule after this one and asks the page for it to be composed. */
+  const insertRuleAfter = (): void => {
+    const command = new InsertRuleCommand(ruleDef, "after");
+    commandHistory.executeCommand(command);
+    const inserted = command.insertedRule();
+    if (inserted !== undefined) composeRule?.(inserted.id());
+  };
+
   /** Runs `operation` on this rule. */
   const performOperation = (operation: PageGridOperation): void => {
     switch (operation.verb) {
@@ -714,13 +722,9 @@ export function BrainRuleEditor({
       case "paste":
         pasteAfterSubject(operation.subject);
         return;
-      case "insert-rule": {
-        const command = new InsertRuleCommand(ruleDef, "after");
-        commandHistory.executeCommand(command);
-        const inserted = command.insertedRule();
-        if (inserted !== undefined) composeRule?.(inserted.id());
+      case "insert-rule":
+        insertRuleAfter();
         return;
-      }
     }
   };
 
@@ -774,6 +778,7 @@ export function BrainRuleEditor({
           doTileCount: () => ruleDef.do().tiles().size(),
           ownNewestPlacement,
           undoOwnLastCommit,
+          insertRuleAfter,
           exitCellKey: () => pageGridCellKey(pageGridCellAfterComposing(ruleId, composerCaret)),
         }
       : undefined;

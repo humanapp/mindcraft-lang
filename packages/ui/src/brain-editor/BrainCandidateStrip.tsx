@@ -325,6 +325,8 @@ export interface StripComposerBinding {
   ownNewestPlacement(): CaretPosition | undefined;
   /** Undo the composition's own last commit, removing the tile it placed. */
   undoOwnLastCommit(): void;
+  /** Put an empty rule after the composed rule and carry composing on in it. */
+  insertRuleAfter(): void;
   /**
    * Key of the page-grid cell the keyboard returns to once composition on the
    * rule ends. Called on every render of the composed rule.
@@ -878,6 +880,9 @@ export function useCandidateStripSurface({
         case "close-strip":
           onDismiss();
           break;
+        case "insert-rule":
+          composer?.insertRuleAfter();
+          break;
       }
     }
     return consumesKey(effects);
@@ -917,7 +922,7 @@ export function useCandidateStripSurface({
   // this input outside the panel's subtree.
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     event.stopPropagation();
-    dispatchInput(composerTokenForKey(event.key, "filter"), event);
+    dispatchInput(composerTokenForKey(event.key, "filter", event.metaKey || event.ctrlKey), event);
   };
 
   /**
@@ -929,7 +934,7 @@ export function useCandidateStripSurface({
     // Escape belongs to the panel, and Tab to the browser's own focus order.
     if (event.key === "Escape" || event.key === "Tab") return;
     event.stopPropagation();
-    dispatchInput(composerTokenForKey(event.key, "band"), event);
+    dispatchInput(composerTokenForKey(event.key, "band", event.metaKey || event.ctrlKey), event);
   };
 
   /** True when `element` is one of the strip's own: the filter box, or anything the panel holds. */
@@ -1187,7 +1192,8 @@ export function useCandidateStripSurface({
         type="button"
         onClick={onDismiss}
         onKeyDown={(event) => {
-          if (dispatchInput(composerTokenForKey(event.key, "close"), event)) event.stopPropagation();
+          if (dispatchInput(composerTokenForKey(event.key, "close", event.metaKey || event.ctrlKey), event))
+            event.stopPropagation();
         }}
         aria-label="Close tile candidates"
         data-strip-close=""

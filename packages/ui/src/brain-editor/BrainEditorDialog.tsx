@@ -57,6 +57,7 @@ import {
   hasBrainInClipboard,
   onBrainClipboardChanged,
 } from "./brain-clipboard";
+import { hasDiscardableEdits } from "./discard-guard";
 import { kDialogChromeLayer } from "./editor-layers";
 import { RulePickupProvider, useRulePickupState } from "./RulePickupContext";
 
@@ -130,12 +131,20 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   const [pageNameValue, setPageNameValue] = useState("");
   const [zoom, setZoom] = useState(1);
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
+  const [undoDepth, setUndoDepth] = useState(0);
+  const [openingDepth, setOpeningDepth] = useState(0);
+  const [brainReplaced, setBrainReplaced] = useState(false);
+  const [isConfirmingDiscard, setIsConfirmingDiscard] = useState(false);
+  // The element holding the keyboard when the discard confirmation opened.
+  const discardReturnFocusRef = useRef<HTMLElement | null>(null);
+  const keepEditingRef = useRef<HTMLButtonElement | null>(null);
 
   // Update undo/redo state when history changes
   useEffect(() => {
     const updateUndoRedoState = () => {
       setCanUndo(commandHistory.canUndo());
       setCanRedo(commandHistory.canRedo());
+      setUndoDepth(commandHistory.undoDepth());
     };
 
     commandHistory.onChange(updateUndoRedoState);
@@ -164,10 +173,17 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       if (brainHoldsNoRule(newBrainDef)) {
         commandHistory.executeCommand(new AddRuleCommand(newBrainDef.pages().get(0) as BrainPageDef));
       }
+      // Everything on the history from here on is the user's own work.
+      setOpeningDepth(commandHistory.undoDepth());
+      setBrainReplaced(false);
+      setIsConfirmingDiscard(false);
     } else if (!isOpen) {
       // Clear working copy when dialog closes
       setBrainDef(undefined);
       commandHistory.clear();
+      setOpeningDepth(0);
+      setBrainReplaced(false);
+      setIsConfirmingDiscard(false);
     }
   }, [isOpen, srcBrainDef, commandHistory]);
 
@@ -235,6 +251,27 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       : createEditableBrain();
     onSubmit(nextBrainDef);
   }, [brainDef, onSubmit, createEditableBrain]);
+
+  const holdsDiscardableEdits = hasDiscardableEdits({ undoDepth, openingDepth, brainReplaced });
+
+  /**
+   * Close the editor without saving, first asking the user to confirm when the
+   * session holds work the close would lose.
+   */
+  const requestDiscardingClose = useCallback(() => {
+    if (!holdsDiscardableEdits) {
+      onOpenChange(false);
+      return;
+    }
+    discardReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setIsConfirmingDiscard(true);
+  }, [holdsDiscardableEdits, onOpenChange]);
+
+  const handleConfirmDiscard = useCallback(() => {
+    discardReturnFocusRef.current = null;
+    setIsConfirmingDiscard(false);
+    onOpenChange(false);
+  }, [onOpenChange]);
 
   const handleInsertPageAfterCurrentClick = () => {
     if (brainDef && totalPageCount > 0) {
@@ -394,6 +431,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setCurrentPageNumber(1);
       setTotalPageCount(loadedBrain.pages().size());
       commandHistory.clear();
+      setBrainReplaced(true);
     } catch (err) {
       // User cancelled or error occurred
       if (err instanceof Error && err.name !== "AbortError") {
@@ -417,6 +455,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     setCurrentPageNumber(1);
     setTotalPageCount(cloned.pages().size());
     commandHistory.clear();
+    setBrainReplaced(true);
   }, [getDefaultBrain, commandHistory, tileCatalogs]);
 
   const handleBrainNameClick = () => {
@@ -538,9 +577,17 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
           // While a tile picker is armed, Escape belongs to the candidate strip:
           // it clears the strip's filter text and then disarms. While a rule is
           // picked up it belongs to that rule, and gives it back to where it was
-          // picked up from.
+          // picked up from. Once nothing else claims it, it closes the editor,
+          // through the discard confirmation when the session holds user work.
           onEscapeKeyDown={(e) => {
-            if (armedTarget.target || rulePickup.pickup) e.preventDefault();
+            if (armedTarget.target || rulePickup.pickup) {
+              e.preventDefault();
+              return;
+            }
+            if (holdsDiscardableEdits) {
+              e.preventDefault();
+              requestDiscardingClose();
+            }
           }}
           hideClose
         >
@@ -923,12 +970,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
               />
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="cancel"
-                className="rounded-lg"
-                onClick={() => onOpenChange(false)}
-                title="Discard Changes"
-              >
+              <Button variant="cancel" className="rounded-lg" onClick={requestDiscardingClose} title="Discard Changes">
                 Cancel
               </Button>
               <Button
@@ -947,6 +989,43 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       {brainDef && (
         <BrainPrintDialog isOpen={isPrintDialogOpen} onOpenChange={setIsPrintDialogOpen} brainDef={brainDef} />
       )}
+      <Dialog
+        open={isConfirmingDiscard}
+        onOpenChange={(open) => {
+          if (!open) setIsConfirmingDiscard(false);
+        }}
+      >
+        <DialogContent
+          className="max-w-sm rounded-2xl"
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            keepEditingRef.current?.focus();
+          }}
+          onCloseAutoFocus={(e) => {
+            const returnTo = discardReturnFocusRef.current;
+            discardReturnFocusRef.current = null;
+            if (!returnTo || !returnTo.isConnected) return;
+            e.preventDefault();
+            returnTo.focus();
+          }}
+          hideClose
+        >
+          <DialogHeader>
+            <DialogTitle>Discard your changes?</DialogTitle>
+            <DialogDescription>
+              This brain has changes that have not been saved. Closing the editor now loses them.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="destructive" className="rounded-lg" onClick={handleConfirmDiscard}>
+              Discard changes
+            </Button>
+            <Button ref={keepEditingRef} className="rounded-lg" onClick={() => setIsConfirmingDiscard(false)}>
+              Keep editing
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

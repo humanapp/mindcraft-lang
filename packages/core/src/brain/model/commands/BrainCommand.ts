@@ -211,6 +211,16 @@ export class BrainCommandHistory {
   }
 
   /**
+   * Number of entries on the undo stack. A batch closed by {@link endBatch}
+   * counts as one entry; commands gathered by a batch still open are not
+   * counted. The count never exceeds the history's maximum size, since the
+   * oldest entry is dropped once that is reached.
+   */
+  undoDepth(): number {
+    return this.undoStack.size();
+  }
+
+  /**
    * Clear all history.
    */
   clear(): void {

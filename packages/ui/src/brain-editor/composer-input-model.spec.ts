@@ -1431,6 +1431,107 @@ describe("the period", () => {
   });
 });
 
+describe("the insertion chord inside composition", () => {
+  const chord: ComposerInputToken = { kind: "settle-and-insert" };
+  const settled: ComposerInputEffect = { kind: "close-strip", reason: "settled" };
+  const insertRule: ComposerInputEffect = { kind: "insert-rule" };
+  const chordReask: ComposerInputEffect = {
+    kind: "reask",
+    token: { kind: "placement-landed", gesture: "settle-and-insert" },
+  };
+
+  test("settles a rule whose armed side may end and asks for an empty rule after it", () => {
+    const trace = new ComposerTrace({ whenTiles: 1 });
+
+    assert.deepEqual(trace.press(chord), [consumeKey, settled, insertRule]);
+    assert.equal(trace.closedAs, "settled");
+  });
+
+  test("places the word in progress first, then settles and inserts", () => {
+    const see = candidateOf(makeSensorTile("chord-trace-see"), "see");
+    const trace = new ComposerTrace({ offeringFor: () => [see], whenTiles: 1 });
+    trace.typeWord("see");
+
+    assert.deepEqual(
+      trace.press(chord),
+      placementEffects(see, trace.gap(RuleSide.When, 2), chordReask, settled, insertRule)
+    );
+    assert.equal(trace.closedAs, "settled");
+    assert.equal(trace.tileCount(RuleSide.When), 2);
+  });
+
+  test("refuses an unresolvable word in progress, leaving that word standing and inserting nothing", () => {
+    const trace = new ComposerTrace({ whenTiles: 1 });
+    trace.typeWord("zzz");
+
+    assert.deepEqual(trace.press(chord), [consumeKey]);
+    assert.equal(trace.state.filter, "zzz");
+    assert.equal(trace.closedAs, undefined);
+    assert.deepEqual(placedKeys(trace.log), []);
+  });
+
+  test("refuses on a rule holding no tiles at all", () => {
+    const trace = new ComposerTrace();
+
+    assert.deepEqual(trace.press(chord), [consumeKey]);
+    assert.equal(trace.closedAs, undefined);
+  });
+
+  test("refuses where the armed side cannot end", () => {
+    const trace = new ComposerTrace({ whenTiles: 1 });
+    trace.armedSideCanEnd = false;
+
+    assert.deepEqual(trace.press(chord), [consumeKey]);
+    assert.equal(trace.closedAs, undefined);
+  });
+
+  test("is left alone in a strip armed from the tray", () => {
+    const trace = new ComposerTrace({ inSentence: false, whenTiles: 1 });
+
+    assert.deepEqual(trace.press(chord), []);
+    assert.equal(trace.closedAs, undefined);
+  });
+
+  test("its refusals are the period's, case for case", () => {
+    const scenarios: (readonly [string, () => ComposerTrace])[] = [
+      ["a rule holding no tiles", () => new ComposerTrace()],
+      [
+        "a side left mid-expression",
+        () => {
+          const trace = new ComposerTrace({ whenTiles: 1 });
+          trace.armedSideCanEnd = false;
+          return trace;
+        },
+      ],
+      [
+        "a word that resolves to nothing",
+        () => {
+          const trace = new ComposerTrace({ whenTiles: 1 });
+          trace.typeWord("zzz");
+          return trace;
+        },
+      ],
+      ["a side that may end", () => new ComposerTrace({ whenTiles: 1 })],
+    ];
+
+    for (const [name, build] of scenarios) {
+      const byPeriod = build();
+      byPeriod.press({ kind: "period" });
+      const byChord = build();
+      byChord.press(chord);
+
+      assert.equal(byChord.closedAs, byPeriod.closedAs, name);
+      assert.deepEqual(placedKeys(byChord.log), placedKeys(byPeriod.log), name);
+      assert.equal(byChord.state.filter, byPeriod.state.filter, name);
+      assert.equal(
+        byChord.log.some((effect) => effect.kind === "insert-rule"),
+        byPeriod.closedAs === "settled",
+        name
+      );
+    }
+  });
+});
+
 describe("typed numbers", () => {
   /** The offering at a position that accepts a number: the mint the typed text names. */
   function numberOffering(): (filter: string) => readonly StripCandidate[] {
@@ -1453,6 +1554,19 @@ describe("typed numbers", () => {
 
     assert.equal(placedKeys(pressed).length, 1);
     assert.equal(trace.closedAs, undefined);
+  });
+
+  test("a whole number is a word the insertion chord places, where the period is filter text", () => {
+    const trace = new ComposerTrace({ offeringFor: numberOffering(), whenTiles: 1 });
+    trace.press({ kind: "text", text: "1" });
+
+    const pressed = trace.press({ kind: "settle-and-insert" });
+    assert.equal(placedKeys(pressed).length, 1);
+    assert.equal(
+      pressed.some((effect) => effect.kind === "insert-rule"),
+      true
+    );
+    assert.equal(trace.closedAs, "settled");
   });
 
   test("a period on a number that already carries a decimal point commits it and settles", () => {
@@ -1572,7 +1686,7 @@ describe("a typed text value", () => {
   test("Tab is the browser's with a value open, which places nothing", () => {
     const trace = openedTextTrace("left");
 
-    assert.equal(composerTokenForKey("Tab", "filter"), undefined);
+    assert.equal(composerTokenForKey("Tab", "filter", false), undefined);
     assert.equal(trace.state.textLiteral, "left");
     assert.deepEqual(placedKeys(trace.log), []);
     assert.equal(trace.tileCount(RuleSide.When), 1);
@@ -2279,56 +2393,71 @@ describe("browsing the offering as one grid", () => {
 
 describe("the token vocabulary", () => {
   test("the filter box's structural keys map to their own tokens", () => {
-    assert.deepEqual(composerTokenForKey(",", "filter"), { kind: "comma" });
-    assert.deepEqual(composerTokenForKey(".", "filter"), { kind: "period" });
-    assert.deepEqual(composerTokenForKey(" ", "filter"), { kind: "space" });
-    assert.deepEqual(composerTokenForKey("Enter", "filter"), { kind: "enter", from: "filter" });
-    assert.deepEqual(composerTokenForKey("Backspace", "filter"), { kind: "backspace", from: "filter" });
-    assert.deepEqual(composerTokenForKey("Escape", "filter"), { kind: "escape" });
-    assert.deepEqual(composerTokenForKey("ArrowDown", "filter"), {
+    assert.deepEqual(composerTokenForKey(",", "filter", false), { kind: "comma" });
+    assert.deepEqual(composerTokenForKey(".", "filter", false), { kind: "period" });
+    assert.deepEqual(composerTokenForKey(" ", "filter", false), { kind: "space" });
+    assert.deepEqual(composerTokenForKey("Enter", "filter", false), { kind: "enter", from: "filter" });
+    assert.deepEqual(composerTokenForKey("Backspace", "filter", false), { kind: "backspace", from: "filter" });
+    assert.deepEqual(composerTokenForKey("Escape", "filter", false), { kind: "escape" });
+    assert.deepEqual(composerTokenForKey("ArrowDown", "filter", false), {
       kind: "arrow",
       direction: "down",
       from: "filter",
     });
-    assert.equal(composerTokenForKey("a", "filter"), undefined);
+    assert.equal(composerTokenForKey("a", "filter", false), undefined);
+  });
+
+  test("the command modifier turns Enter into the insertion chord and leaves every other key alone", () => {
+    for (const surface of ["filter", "band"] as const) {
+      assert.deepEqual(composerTokenForKey("Enter", surface, true), { kind: "settle-and-insert" }, surface);
+    }
+    assert.equal(composerTokenForKey("Enter", "close", true), undefined);
+    assert.deepEqual(composerTokenForKey(".", "filter", true), { kind: "period" });
+    assert.deepEqual(composerTokenForKey(" ", "filter", true), { kind: "space" });
+    assert.deepEqual(composerTokenForKey("Backspace", "filter", true), { kind: "backspace", from: "filter" });
+    assert.deepEqual(composerTokenForKey("ArrowDown", "filter", true), {
+      kind: "arrow",
+      direction: "down",
+      from: "filter",
+    });
   });
 
   test("a double quote is its own token on the filter surface", () => {
-    assert.deepEqual(composerTokenForKey('"', "filter"), { kind: "quote" });
+    assert.deepEqual(composerTokenForKey('"', "filter", false), { kind: "quote" });
   });
 
   test("a band leaves the punctuation accelerators to the filter box it hands the keyboard to", () => {
-    assert.deepEqual(composerTokenForKey(",", "band"), { kind: "printable" });
-    assert.deepEqual(composerTokenForKey(".", "band"), { kind: "printable" });
-    assert.deepEqual(composerTokenForKey(" ", "band"), { kind: "printable" });
-    assert.deepEqual(composerTokenForKey("Backspace", "band"), { kind: "backspace", from: "band" });
-    assert.equal(composerTokenForKey("F2", "band"), undefined);
+    assert.deepEqual(composerTokenForKey(",", "band", false), { kind: "printable" });
+    assert.deepEqual(composerTokenForKey(".", "band", false), { kind: "printable" });
+    assert.deepEqual(composerTokenForKey(" ", "band", false), { kind: "printable" });
+    assert.deepEqual(composerTokenForKey("Backspace", "band", false), { kind: "backspace", from: "band" });
+    assert.equal(composerTokenForKey("F2", "band", false), undefined);
   });
 
   test("Tab belongs to the browser's focus order on every surface, so no state of the box claims it", () => {
     for (const surface of ["filter", "band", "close"] as const) {
-      assert.equal(composerTokenForKey("Tab", surface), undefined, surface);
+      assert.equal(composerTokenForKey("Tab", surface, false), undefined, surface);
     }
   });
 
   test("the close button steers only the rows of chips", () => {
-    assert.deepEqual(composerTokenForKey("ArrowUp", "close"), { kind: "arrow", direction: "up", from: "close" });
-    assert.equal(composerTokenForKey("Enter", "close"), undefined);
-    assert.equal(composerTokenForKey(" ", "close"), undefined);
+    assert.deepEqual(composerTokenForKey("ArrowUp", "close", false), { kind: "arrow", direction: "up", from: "close" });
+    assert.equal(composerTokenForKey("Enter", "close", false), undefined);
+    assert.equal(composerTokenForKey(" ", "close", false), undefined);
   });
 
   test("the run's ends have their own keys on the filter surface, and none on a band", () => {
-    assert.deepEqual(composerTokenForKey("Home", "filter"), { kind: "home" });
-    assert.deepEqual(composerTokenForKey("End", "filter"), { kind: "end" });
-    assert.equal(composerTokenForKey("Home", "band"), undefined);
-    assert.equal(composerTokenForKey("End", "band"), undefined);
-    assert.equal(composerTokenForKey("Home", "close"), undefined);
+    assert.deepEqual(composerTokenForKey("Home", "filter", false), { kind: "home" });
+    assert.deepEqual(composerTokenForKey("End", "filter", false), { kind: "end" });
+    assert.equal(composerTokenForKey("Home", "band", false), undefined);
+    assert.equal(composerTokenForKey("End", "band", false), undefined);
+    assert.equal(composerTokenForKey("Home", "close", false), undefined);
   });
 
   test("forward delete is the filter surface's own key", () => {
-    assert.deepEqual(composerTokenForKey("Delete", "filter"), { kind: "delete-forward" });
-    assert.equal(composerTokenForKey("Delete", "band"), undefined);
-    assert.equal(composerTokenForKey("Delete", "close"), undefined);
+    assert.deepEqual(composerTokenForKey("Delete", "filter", false), { kind: "delete-forward" });
+    assert.equal(composerTokenForKey("Delete", "band", false), undefined);
+    assert.equal(composerTokenForKey("Delete", "close", false), undefined);
   });
 
   test("an accordion heading answers every arrow, and leaves Enter to the button", () => {
@@ -2515,7 +2644,7 @@ describe("typing a formula", () => {
    */
   function typeFormula(trace: ComposerTrace, formula: string): void {
     for (const char of formula) {
-      const token = composerTokenForKey(char, "filter");
+      const token = composerTokenForKey(char, "filter", false);
       if (token !== undefined && consumesKey(trace.press(token))) continue;
       // The box holds an open text value's content when there is one, and the
       // word in progress otherwise.

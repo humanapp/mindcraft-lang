@@ -227,6 +227,7 @@ function composerBinding(ruleDef: BrainRuleDef): StripComposerBinding {
     doTileCount: () => 0,
     ownNewestPlacement: () => undefined,
     undoOwnLastCommit: () => {},
+    insertRuleAfter: () => {},
     exitCellKey: () => pageGridCellKey({ kind: "sentence", ruleId: ruleDef.id() }),
   };
 }

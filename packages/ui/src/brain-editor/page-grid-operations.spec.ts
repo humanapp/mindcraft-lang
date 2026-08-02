@@ -117,7 +117,6 @@ describe("the subject a cell stands for", () => {
     for (const press of [onCell("Delete"), onCell("c", true), onCell("x", true), onCell("v", true)]) {
       assert.equal(asked(kAppendRuleCell, press), undefined);
     }
-    assert.equal(asked(kAppendRuleCell, onCell("Enter", true)), undefined);
   });
 });
 
@@ -152,24 +151,50 @@ describe("the clipboard keys act on the selected cell", () => {
 });
 
 describe("the insertion chord", () => {
-  test("a handle takes it and every other cell leaves it alone", () => {
-    assert.deepEqual(asked(handleCell, onCell("Enter", true)), {
-      verb: "insert-rule",
-      subject: { kind: "rule", ruleId: kRuleId },
-    });
-    for (const cell of [tileCell, appendCell, sentenceCell]) {
-      assert.equal(asked(cell, onCell("Enter", true)), undefined);
+  test("every cell of a rule inserts after that one rule", () => {
+    for (const cell of [handleCell, tileCell, appendCell, sentenceCell]) {
+      assert.deepEqual(asked(cell, onCell("Enter", true)), {
+        verb: "insert-rule",
+        at: { kind: "after-rule", ruleId: kRuleId },
+      });
     }
   });
 
+  test("the page's add-rule control inserts at the page's end", () => {
+    assert.deepEqual(asked(kAppendRuleCell, onCell("Enter", true)), {
+      verb: "insert-rule",
+      at: { kind: "page-end" },
+    });
+  });
+
+  test("the cell an insertion counts from is not the subject the other keys act on", () => {
+    // Delete reads the tile cell as its tile; the chord reads the same cell as
+    // the rule around it.
+    assert.deepEqual(asked(tileCell, onCell("Delete")), {
+      verb: "delete",
+      subject: { kind: "tile", ruleId: kRuleId, side: RuleSide.When, tileIndex: 2 },
+    });
+    assert.deepEqual(asked(tileCell, onCell("Enter", true)), {
+      verb: "insert-rule",
+      at: { kind: "after-rule", ruleId: kRuleId },
+    });
+    // The handle reads as its whole rule either way.
+    assert.deepEqual(asked(handleCell, onCell("Delete")), {
+      verb: "delete",
+      subject: { kind: "rule", ruleId: kRuleId },
+    });
+  });
+
   test("Enter without the modifier is left alone", () => {
-    assert.equal(asked(handleCell, onCell("Enter")), undefined);
+    for (const cell of [handleCell, tileCell, appendCell, sentenceCell, kAppendRuleCell]) {
+      assert.equal(asked(cell, onCell("Enter")), undefined);
+    }
   });
 });
 
 describe("what the keyboard resting inside a cell keeps", () => {
   test("every operating key belongs to the control there", () => {
-    for (const cell of [handleCell, tileCell, appendCell]) {
+    for (const cell of [handleCell, tileCell, appendCell, sentenceCell, kAppendRuleCell]) {
       for (const press of [
         insideCell("Delete"),
         insideCell("Backspace"),

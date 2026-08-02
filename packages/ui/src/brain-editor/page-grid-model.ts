@@ -124,11 +124,22 @@ export type PageGridSubject =
   | { readonly kind: "rule"; readonly ruleId: number }
   | { readonly kind: "side-end"; readonly ruleId: number; readonly side: RuleSide };
 
-/** One operation the selection asks for, and what it acts on. */
-export interface PageGridOperation {
-  readonly verb: PageGridVerb;
-  readonly subject: PageGridSubject;
-}
+/**
+ * Where a rule an insertion makes is put: straight after the rule `ruleId`
+ * names, or at the end of the page.
+ */
+export type PageGridInsertionPoint =
+  | { readonly kind: "after-rule"; readonly ruleId: number }
+  | { readonly kind: "page-end" };
+
+/**
+ * One operation the selection asks for, and what it is aimed at: the subject
+ * every verb but the insertion acts on, and the point an insertion puts its rule
+ * at.
+ */
+export type PageGridOperation =
+  | { readonly verb: Exclude<PageGridVerb, "insert-rule">; readonly subject: PageGridSubject }
+  | { readonly verb: "insert-rule"; readonly at: PageGridInsertionPoint };
 
 /** What a key press asks of the page's selection. */
 export type PageGridKeyResult = { readonly kind: "inert" } | { readonly kind: "move"; readonly cursor: PageGridCursor };
@@ -414,8 +425,20 @@ function pageGridSubject(cell: PageGridCell): PageGridSubject | undefined {
   }
 }
 
+/**
+ * The rule `cell` belongs to, or undefined for the page's add-rule control,
+ * which belongs to no rule. A tile belongs to the rule holding it and a sentence
+ * to the rule it reads for, so every cell of a rule names that one rule.
+ *
+ * Use it for an insertion's starting point only; read the subject an operation
+ * acts on from {@link pageGridSubject}.
+ */
+function pageGridOwningRule(cell: PageGridCell): number | undefined {
+  return cell.kind === "append-rule" ? undefined : cell.ruleId;
+}
+
 /** True when `verb` has something to do to `subject`. */
-function verbActsOn(verb: PageGridVerb, subject: PageGridSubject): boolean {
+function verbActsOn(verb: Exclude<PageGridVerb, "insert-rule">, subject: PageGridSubject): boolean {
   switch (verb) {
     case "delete":
     case "cut":
@@ -423,8 +446,6 @@ function verbActsOn(verb: PageGridVerb, subject: PageGridSubject): boolean {
       return subject.kind !== "side-end";
     case "paste":
       return true;
-    case "insert-rule":
-      return subject.kind === "rule";
   }
 }
 
@@ -432,21 +453,28 @@ function verbActsOn(verb: PageGridVerb, subject: PageGridSubject): boolean {
  * The operation pressing `press` on `cell` asks for, or undefined when the
  * press asks for none and the key stays the browser's.
  *
- * The cell decides the subject: a tile cell its tile, a handle its whole rule,
- * an add-tile control the end of that side, which a paste appends to. The
- * sentence line and the page's add-rule control stand for no subject, so every
- * operation there is left alone.
+ * Delete, and the clipboard keys Cmd/Ctrl+C, +X and +V, act on the subject the
+ * cell stands for: a tile cell its tile, a handle its whole rule, an add-tile
+ * control the end of that side, which a paste appends to. The sentence line and
+ * the page's add-rule control stand for no subject, so those keys are left alone
+ * there.
  *
- * Delete, and the clipboard keys Cmd/Ctrl+C, +X and +V, act on the subject;
- * Cmd/Ctrl+Enter inserts a rule after the one a handle stands for. A press that
- * arrives from inside the cell belongs to the control there, as does a press
- * naming a subject the verb has nothing to do to, which copying or deleting an
- * add-tile control is.
+ * Cmd/Ctrl+Enter inserts a rule, which every cell asks for: after the rule the
+ * cell belongs to, and at the page's end from the add-rule control, which
+ * belongs to no rule.
+ *
+ * A press that arrives from inside the cell belongs to the control there, as
+ * does a press naming a subject the verb has nothing to do to, which copying or
+ * deleting an add-tile control is.
  */
 export function decidePageGridOperation(cell: PageGridCell, press: PageGridKeyPress): PageGridOperation | undefined {
   if (press.placement !== "on-cell") return undefined;
   const verb = pageGridVerb(press);
   if (verb === undefined) return undefined;
+  if (verb === "insert-rule") {
+    const owner = pageGridOwningRule(cell);
+    return { verb, at: owner === undefined ? { kind: "page-end" } : { kind: "after-rule", ruleId: owner } };
+  }
   const subject = pageGridSubject(cell);
   if (subject === undefined || !verbActsOn(verb, subject)) return undefined;
   return { verb, subject };
