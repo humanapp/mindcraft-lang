@@ -2369,29 +2369,36 @@ describe("entering composition from a rule's sentence cell", () => {
     assert.deepEqual(decideSentenceCellEntry(" ", false), { seed: undefined });
   });
 
+  test("enter enters with nothing typed", () => {
+    assert.deepEqual(decideSentenceCellEntry("Enter", false), { seed: undefined });
+  });
+
   test("a printable character enters and starts the word in progress", () => {
     for (const key of ["l", "Z", "7", "$", '"', ","]) {
       assert.deepEqual(decideSentenceCellEntry(key, false), { seed: key });
     }
   });
 
-  test("the two routes reach one composition, differing only in what stands in the box", () => {
+  test("the three routes reach one composition, differing only in what stands in the box", () => {
     const bySpace = decideSentenceCellEntry(" ", false);
+    const byEnter = decideSentenceCellEntry("Enter", false);
     const byTyping = decideSentenceCellEntry("l", false);
 
-    assert.ok(bySpace !== undefined && byTyping !== undefined);
+    assert.ok(bySpace !== undefined && byEnter !== undefined && byTyping !== undefined);
     assert.deepEqual(Object.keys(bySpace), Object.keys(byTyping));
+    assert.deepEqual(Object.keys(byEnter), Object.keys(byTyping));
+    assert.deepEqual(byEnter, bySpace);
     assert.deepEqual({ ...byTyping, seed: undefined }, bySpace);
   });
 
   test("the keys that act elsewhere, and the keys that type nothing, enter nothing", () => {
-    for (const key of ["Enter", "Backspace", "Tab", "Escape", "ArrowDown", "Delete", "Shift", "F2"]) {
+    for (const key of ["Backspace", "Tab", "Escape", "ArrowDown", "Delete", "Shift", "F2"]) {
       assert.equal(decideSentenceCellEntry(key, false), undefined);
     }
   });
 
   test("a key held with a modifier is left to the browser", () => {
-    for (const key of [" ", "l"]) {
+    for (const key of [" ", "Enter", "l"]) {
       assert.equal(decideSentenceCellEntry(key, true), undefined);
     }
   });

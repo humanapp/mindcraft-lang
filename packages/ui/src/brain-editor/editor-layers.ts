@@ -16,6 +16,9 @@ export const kRuleContentLayer = "z-10";
 /** A tile's corner badges, and a rule card lifted by a drag: the top of a card's own chrome. */
 export const kRuleChromeLayer = "z-30";
 
+/** The directional markers a grabbed rule's handle carries, drawn over the chrome they reach across. */
+export const kGrabbedRuleMarkerLayer = "z-35";
+
 /** The candidate offering panel, drawn over every rule card and all of its chrome. */
 export const kOfferingLayer = "z-40";
 

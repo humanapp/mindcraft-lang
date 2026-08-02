@@ -20,7 +20,6 @@ import {
   kPageGridCellAttribute,
   type PageGridCell,
   type PageGridCursor,
-  type PageGridPosition,
   pageGridCellKey,
   pageGridCellPosition,
   pageGridRows,
@@ -195,8 +194,9 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
   const [cursor, setCursor] = useState<PageGridCursor | undefined>(undefined);
   // The rule waiting to be composed, which the insertion that made it names.
   const [ruleToCompose, setRuleToCompose] = useState<number | undefined>(undefined);
-  // The place the selection is to take once the cell it rests on leaves.
-  const landingRef = useRef<PageGridPosition | undefined>(undefined);
+  // The rows the selection was last settled against, which name the place its
+  // cell stood in before the page's cells changed.
+  const settledRowsRef = useRef<readonly (readonly PageGridCell[])[] | undefined>(undefined);
 
   const registerRule = useCallback((descriptor: RuleCellDescriptor) => {
     setRuleCells((current) => new Map(current).set(descriptor.ruleId, descriptor));
@@ -227,11 +227,9 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
     return true;
   };
 
-  // The cell the selection currently rests on, and the rows it stands in.
+  // The cell the selection currently rests on.
   const cursorRef = useRef<PageGridCursor | undefined>(undefined);
   cursorRef.current = cursor;
-  const rowsRef = useRef<readonly (readonly PageGridCell[])[]>(rows);
-  rowsRef.current = rows;
   const focusCellRef = useRef(focusCell);
   focusCellRef.current = focusCell;
   // True while the keyboard is somewhere in the rules, including inside the
@@ -261,14 +259,17 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
 
   // The selection always addresses a cell the page still holds: it opens on the
   // first rule's handle, or on the add-rule control for a page holding no rules,
-  // and follows a vanished cell to a surviving one. The keyboard is only taken
-  // back where nothing else has claimed it.
+  // and hands a vanished cell on to whatever now stands in the place that cell
+  // last held. The keyboard is only taken back where nothing else has claimed
+  // it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: gridSignature stands for the rows it is built from
   useEffect(() => {
     if (cursor === undefined && !gridIsWhole) return;
-    const landing = landingRef.current;
-    landingRef.current = undefined;
+    const settled = settledRowsRef.current;
+    const landing =
+      cursor === undefined || settled === undefined ? undefined : pageGridCellPosition(settled, cursor.cell);
     const anchored = resolvePageGridCursor(rows, cursor?.cell, landing);
+    settledRowsRef.current = rows;
     if (cursor !== undefined && pageGridCellKey(anchored.cell) === pageGridCellKey(cursor.cell)) return;
     if (cursor !== undefined && keyboardIsUnheld()) focusCell(anchored.cell);
     setCursor(anchored);
@@ -426,23 +427,15 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
     if (appended !== undefined) setRuleToCompose(appended.id());
   };
 
-  // The place the selection stands in now, held for the cell that is about to
-  // leave the page.
-  const holdSelectionPlace = useCallback(() => {
-    landingRef.current =
-      cursorRef.current === undefined ? undefined : pageGridCellPosition(rowsRef.current, cursorRef.current.cell);
-  }, []);
-
   const gridBinding = useMemo(
     () => ({
       registerRule,
       currentCell: cursor?.cell,
-      holdSelectionPlace,
       ruleToCompose,
       composeRule: setRuleToCompose,
       grabRule,
     }),
-    [registerRule, cursor, holdSelectionPlace, ruleToCompose, grabRule]
+    [registerRule, cursor, ruleToCompose, grabRule]
   );
 
   // A page that stops rendering gives back any rule it holds and closes its

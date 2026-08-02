@@ -78,7 +78,6 @@ function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, currentCel
             value: {
               registerRule: () => () => {},
               currentCell,
-              holdSelectionPlace: () => {},
               ruleToCompose: undefined,
               composeRule: () => {},
               grabRule: () => {},

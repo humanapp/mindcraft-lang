@@ -15,13 +15,6 @@ export interface PageGridBinding {
    */
   readonly currentCell: PageGridCell | undefined;
   /**
-   * Holds the place the selection stands in: a cell leaving the page then hands
-   * the selection to whatever stands in that same place. Make the call before
-   * running the edit that takes the cell away; the hold is given up as soon as
-   * the page's cells change.
-   */
-  holdSelectionPlace(): void;
-  /**
    * The rule an insertion asked be composed, which that rule's card takes up
    * once and then gives back. Undefined while no insertion is waiting.
    */

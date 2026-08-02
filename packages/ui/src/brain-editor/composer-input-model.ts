@@ -298,13 +298,14 @@ export interface SentenceCellEntry {
 
 /**
  * How a press of `key` on a rule's sentence cell enters composition, or
- * undefined when the press enters none. Space enters with `seed` undefined; a
- * printable character enters with that character as `seed`. `withModifier` is
- * true while Meta, Control, or Alt is held, which enters nothing.
+ * undefined when the press enters none. Space and Enter enter with `seed`
+ * undefined; a printable character enters with that character as `seed`.
+ * `withModifier` is true while Meta, Control, or Alt is held, which enters
+ * nothing.
  */
 export function decideSentenceCellEntry(key: string, withModifier: boolean): SentenceCellEntry | undefined {
   if (withModifier) return undefined;
-  if (key === " ") return { seed: undefined };
+  if (key === " " || key === "Enter") return { seed: undefined };
   const seed = composerEntryCharacter(key, false);
   return seed === undefined ? undefined : { seed };
 }

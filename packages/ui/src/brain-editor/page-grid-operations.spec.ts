@@ -289,6 +289,19 @@ describe("where the selection lands once its subject leaves", () => {
 
     assert.deepEqual(resolvePageGridCursor(after, gone, place).cell, kAppendRuleCell);
   });
+
+  test("a place stands for nothing while the cell the selection rests on is still on the page", () => {
+    const { rules } = makeThreeRulePage();
+    const before = rowsWithout(rules);
+    const kept: PageGridCell = { kind: "handle", ruleId: rules[1].id() };
+    const place = pageGridCellPosition(before, kept) as PageGridPosition;
+    const after = rowsWithout(rules, rules[0]);
+
+    // The rule above it left, so the place it held now stands another rule's
+    // cell; the selection follows the cell it rests on, not the place.
+    assert.notDeepEqual(pageGridCellPosition(after, kept), place);
+    assert.deepEqual(resolvePageGridCursor(after, kept, place).cell, kept);
+  });
 });
 
 describe("the empty rule standing last on a page", () => {

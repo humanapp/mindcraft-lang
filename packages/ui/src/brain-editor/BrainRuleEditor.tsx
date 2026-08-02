@@ -51,7 +51,7 @@ import { CreateVariableDialog } from "./CreateVariableDialog";
 import { type CaretPosition, caretEditIntent, caretOnRun, caretRun, composerEntryCaret } from "./caret-run";
 import { decideSentenceCellEntry } from "./composer-input-model";
 import { armEditPoint, type EditPointArming, type EditPointPosition, editPointPositionOf } from "./edit-point";
-import { kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
+import { kGrabbedRuleMarkerLayer, kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 import { useCandidateStrip } from "./hooks/useCandidateStrip";
 import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
@@ -76,6 +76,13 @@ import {
   hasRuleInClipboard,
   onClipboardChanged,
 } from "./rule-clipboard";
+import {
+  kRuleMoveMarkerCorners,
+  kRuleMoveMarkerShape,
+  ruleMoveMarkerOverlaySize,
+  ruleMoveMarkerOverlayViewBox,
+  ruleMoveMarkerPath,
+} from "./rule-move-marker";
 import { canEndSideExpression } from "./sentence-composer";
 import { kSentenceTypeClasses } from "./sentence-type";
 import { applyBrokenTileBadges, buildNodeMap, computeTileBadges, type TileBadge } from "./tile-badges";
@@ -122,15 +129,21 @@ function editPointCommand(
   }
 }
 
-/**
- * Where each direction's marker sits around the rule handle and which way it
- * points, as a clip path over a square laid outside the handle's box.
- */
-const ruleMoveMarkers: Record<RuleMoveDirection, React.CSSProperties> = {
-  up: { clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)", top: "-0.55rem", left: "50%", marginLeft: "-0.25rem" },
-  down: { clipPath: "polygon(0% 0%, 100% 0%, 50% 100%)", bottom: "-0.55rem", left: "50%", marginLeft: "-0.25rem" },
-  outdent: { clipPath: "polygon(0% 50%, 100% 0%, 100% 100%)", left: "-0.55rem", top: "50%", marginTop: "-0.25rem" },
-  indent: { clipPath: "polygon(0% 0%, 100% 50%, 0% 100%)", right: "-0.55rem", top: "50%", marginTop: "-0.25rem" },
+/** The up-pointing wedge a rule handle's movement marker is drawn as, in the overlay's user space. */
+const kRuleMoveMarkerPath = ruleMoveMarkerPath(kRuleMoveMarkerShape);
+
+/** The side, in pixels, of the square overlay the four wedges are drawn in. */
+const kRuleMoveMarkerOverlaySize = ruleMoveMarkerOverlaySize(kRuleMoveMarkerShape);
+
+/** The user space that overlay maps to, centred on the handle at one unit per pixel. */
+const kRuleMoveMarkerOverlayViewBox = ruleMoveMarkerOverlayViewBox(kRuleMoveMarkerShape);
+
+/** Degrees {@link kRuleMoveMarkerPath} turns about the handle's centre to point each way a rule can move. */
+const kRuleMoveMarkerRotations: Record<RuleMoveDirection, number> = {
+  up: 0,
+  indent: 90,
+  down: 180,
+  outdent: 270,
 };
 
 /** One placement a rule's own composition made: the command it ran, and the element it stands at. */
@@ -589,9 +602,9 @@ export function BrainRuleEditor({
 
   /**
    * A key pressed while the selection rests on the rule's sentence composes it:
-   * Space with nothing typed, and a printable character with that character
-   * starting the word in progress. Every other key is left alone, with its
-   * default intact.
+   * Space and Enter with nothing typed, and a printable character with that
+   * character starting the word in progress. Every other key is left alone,
+   * with its default intact.
    */
   const handleSentenceCellKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     const entry = decideSentenceCellEntry(event.key, event.metaKey || event.ctrlKey || event.altKey);
@@ -644,9 +657,6 @@ export function BrainRuleEditor({
       toast.error(kTilePasteRefusal);
       return;
     }
-    // An add-tile control the placement closes hands the selection on to the
-    // tile that takes its place.
-    pageGrid?.holdSelectionPlace();
     commandHistory.executeCommand(
       new PasteTileBeforeCommand(ruleDef, side, tileIndex, (destBrain) =>
         importTileFromClipboard(destBrain, brainServices)
@@ -668,10 +678,9 @@ export function BrainRuleEditor({
     toast.success("Tile copied");
   };
 
-  /** Takes `subject` out of the page, holding the place its cell stood in. */
+  /** Takes `subject` out of the page. */
   const removeSubject = (subject: PageGridSubject): void => {
     if (subject.kind === "side-end") return;
-    pageGrid?.holdSelectionPlace();
     commandHistory.executeCommand(
       subject.kind === "rule"
         ? new DeleteRuleCommand(ruleDef)
@@ -948,7 +957,7 @@ export function BrainRuleEditor({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className={`relative rounded-full self-center h-9 w-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold text-lg ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+                className={`relative rounded-full self-center h-9 w-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold text-lg ${isDragging ? "cursor-grabbing" : "cursor-grab"}${isGrabbed ? ` ${kGrabbedRuleMarkerLayer}` : ""}`}
                 data-rule-handle={ruleDef.id()}
                 aria-label={`Rule ${lineNumber} of ${ruleCount}, handle${isDirty ? ", unsaved changes" : ""}`}
                 aria-haspopup="menu"
@@ -965,14 +974,27 @@ export function BrainRuleEditor({
                     aria-hidden="true"
                   />
                 )}
-                {grabbedDirections?.map((direction) => (
-                  <span
-                    key={direction}
-                    className="pointer-events-none absolute h-2 w-2 bg-brain-ink"
-                    style={ruleMoveMarkers[direction]}
+                {grabbedDirections && grabbedDirections.length > 0 && (
+                  <svg
+                    className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                    style={{ width: kRuleMoveMarkerOverlaySize, height: kRuleMoveMarkerOverlaySize }}
+                    viewBox={kRuleMoveMarkerOverlayViewBox}
                     aria-hidden="true"
-                  />
-                ))}
+                  >
+                    {grabbedDirections.map((direction) => (
+                      <path
+                        key={direction}
+                        d={kRuleMoveMarkerPath}
+                        transform={`rotate(${kRuleMoveMarkerRotations[direction]} 100 100)`}
+                        className="fill-brain-pill stroke-brain-pill"
+                        strokeWidth={kRuleMoveMarkerCorners}
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                        paintOrder="stroke fill"
+                      />
+                    ))}
+                  </svg>
+                )}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
