@@ -176,6 +176,39 @@ resolve: {
 },
 ```
 
+**DO NOT ADD `resolve.dedupe: ["react", "react-dom"]`.** `@vitejs/plugin-react` already sets it, so an
+explicit copy duplicates a guarantee an existing layer provides. Verified 2026-08-02: with the line
+removed, `resolve.dedupe` still resolves to `["react","react-dom"]`, and a production build contains
+exactly one React, from the app's own `node_modules`.
+
+**NEVER PUT THIS PACKAGE IN `optimizeDeps.exclude`.** That is the real hazard, and it caused a live
+`Invalid hook call` in `apps/microbit-sim`:
+
+- The package is ALIASED TO SOURCE, so Vite never prebundles it and the exclusion buys nothing.
+- **IT IS NOT WHAT GIVES YOU HOT RELOAD.** That is the reason someone reaches for it, and it is
+  wrong: the ALIAS is what makes Vite treat these files as project source, watched and hot-reloaded
+  natively. `optimizeDeps` only governs prebundling of things resolved into `node_modules`.
+  Confirmed 2026-08-02 -- HMR on `packages/ui` works with the exclusion removed, and `apps/ecosim`
+  has run the whole project with the alias and WITHOUT the exclusion.
+- But excluding it stops Vite's dependency SCANNER walking into that source, so the Radix packages it
+  imports are missed on the first pass and discovered mid-load on the first page request.
+- Vite then runs a SECOND optimize pass and reloads. Modules served inside that window get a second
+  React instance -- `Invalid hook call`, naming whichever Radix component was late (it named
+  `<DropdownMenu>`), healed by the reload that follows.
+
+That is why the failure was cold-start-only, `--force`-only, and confined to one app: `apps/ecosim`
+excludes only `@mindcraft-lang/core` and `zod`, and never saw it.
+
+Two things worth knowing if you are diagnosing something similar:
+
+- **Matching React versions does NOT fix a genuine duplication.** Hook dispatch lives in module-scoped
+  state, so two copies of the SAME version are still two instances. Only single-instance resolution
+  helps.
+- **There is no `vite.config.*` at any package root.** Every script passes `--config vite/config.*.mjs`.
+  Running bare `npx vite` therefore uses Vite's built-in defaults -- no aliases, no plugins, and so no
+  `plugin-react` dedupe -- which reproduces this error for reasons that have nothing to do with the
+  repo's real configuration.
+
 **tsconfig.json**:
 
 ```json

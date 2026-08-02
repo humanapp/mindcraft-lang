@@ -11,8 +11,8 @@
  */
 
 // ---------------------------------------------------------------------------
-// TUNING -- the four numbers that shape the marker. Edit them here; the path and
-// the overlay box below are recomputed from them, so a save is all it takes.
+// TUNING -- the four numbers that shape the marker, meant to be edited. The path
+// and the overlay box are computed from them.
 // ---------------------------------------------------------------------------
 
 /** How far the wedge's painted point reaches past the gap, in pixels. */
@@ -28,7 +28,7 @@ export const kRuleMoveMarkerGap = 7;
 export const kRuleMoveMarkerCorners = 3;
 
 // ---------------------------------------------------------------------------
-// End of tuning. Below is the geometry the four numbers drive.
+// End of tuning.
 // ---------------------------------------------------------------------------
 
 /** Radius of the rule handle the markers stand off, in pixels. */

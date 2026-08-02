@@ -75,8 +75,12 @@ import {
 /** Surface, hover, ink, and border of the rule row's round pills: the rule handle and each side's add-tile button. */
 const pillChromeClasses = "bg-brain-pill hover:bg-brain-pill-hover text-brain-pill-ink border-2 border-brain-pill-edge";
 
-/** The properties a pill whose visibility toggles animates: its hover growth, its surface, its edge, and its ink. */
-const pillTransitionClasses = "transition-[transform,background-color,border-color,color] duration-150";
+/**
+ * The properties a round pill animates: its hover growth, its surface, its edge,
+ * its ink, and the outward step its focus outline takes. The outline's colour is
+ * not among them, so the focus mark paints at its own colour on the first frame.
+ */
+const pillTransitionClasses = "transition-[transform,background-color,border-color,color,outline-offset] duration-150";
 
 /**
  * The whole look of a round `+` button -- shape, size, chrome, hover growth and
@@ -292,7 +296,6 @@ export function BrainRuleEditor({
     handleLiteralDialogClose,
   } = useTileSelection({
     ruleDef,
-    side: stripTarget?.side ?? RuleSide.When,
     onComplete: armedTarget.disarm,
   });
 
@@ -880,7 +883,7 @@ export function BrainRuleEditor({
           {/* this button is the rule handle */}
           <button
             type="button"
-            className={`relative rounded-full self-center h-9 w-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold text-lg ${isDragging ? "cursor-grabbing" : "cursor-grab"}${isGrabbed ? ` ${kGrabbedRuleMarkerLayer}` : ""}`}
+            className={`relative rounded-full self-center h-9 w-9 ${pillChromeClasses} hover:scale-105 ${pillTransitionClasses} font-semibold text-lg ${isDragging ? "cursor-grabbing" : "cursor-grab"}${isGrabbed ? ` ${kGrabbedRuleMarkerLayer}` : ""}`}
             data-rule-handle={ruleDef.id()}
             aria-label={`Rule ${lineNumber} of ${ruleCount}, handle${isDirty ? ", unsaved changes" : ""}`}
             onPointerDown={handleHandlePointerDown}

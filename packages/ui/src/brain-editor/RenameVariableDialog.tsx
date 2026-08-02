@@ -8,6 +8,12 @@ interface RenameVariableDialogProps {
   isOpen: boolean;
   initialName: string;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Called as the dialog closes, before the keyboard is handed back to the
+   * element that held it when the dialog opened. Calling `preventDefault` on the
+   * event leaves that hand-back to the caller.
+   */
+  onCloseAutoFocus?: (event: Event) => void;
   onSubmit: (newName: string) => void;
 }
 
@@ -17,7 +23,13 @@ interface RenameVariableDialogProps {
  * landing in it counts as staying in the candidate strip the tile's menu was
  * opened from.
  */
-export function RenameVariableDialog({ isOpen, initialName, onOpenChange, onSubmit }: RenameVariableDialogProps) {
+export function RenameVariableDialog({
+  isOpen,
+  initialName,
+  onOpenChange,
+  onCloseAutoFocus,
+  onSubmit,
+}: RenameVariableDialogProps) {
   const [variableName, setVariableName] = useState(initialName);
 
   useEffect(() => {
@@ -43,6 +55,7 @@ export function RenameVariableDialog({ isOpen, initialName, onOpenChange, onSubm
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent
         className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl"
+        onCloseAutoFocus={onCloseAutoFocus}
         {...{ [kStripPopupAttribute]: "" }}
       >
         <DialogHeader className="border-b border-border pb-4">

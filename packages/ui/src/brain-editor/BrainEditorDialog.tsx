@@ -946,7 +946,6 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                   <BrainPageEditor
                     key={`${currentPageNumber}-${pageChangeCounter}`}
                     pageDef={currentPageDef as BrainPageDef}
-                    pageNumber={currentPageNumber}
                     commandHistory={commandHistory}
                     zoom={zoom}
                   />

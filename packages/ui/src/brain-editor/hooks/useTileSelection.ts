@@ -4,7 +4,6 @@ import {
   isCoreLiteralFactoryTileId,
   isVariableFactoryTileId,
   type LiteralDisplayFormat,
-  type RuleSide,
 } from "@mindcraft-lang/core/brain";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileFactoryDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
@@ -14,7 +13,6 @@ import { resolveTileVisual } from "../tile-visual-utils";
 
 interface UseTileSelectionOptions {
   ruleDef: BrainRuleDef;
-  side: RuleSide;
   onComplete?: () => void;
 }
 
@@ -112,7 +110,7 @@ export function manufactureVariableTile(
 /**
  * Hook to handle tile selection flow, including variable creation for factory tiles.
  */
-export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelectionOptions) {
+export function useTileSelection({ ruleDef, onComplete }: UseTileSelectionOptions) {
   const editorConfig = useBrainEditorConfig();
 
   const [showCreateVariableDialog, setShowCreateVariableDialog] = useState(false);

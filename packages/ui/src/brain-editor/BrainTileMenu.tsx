@@ -4,7 +4,7 @@ import { RenameVariableCommand, ReplaceTileCommand } from "@mindcraft-lang/core/
 import { BrainTileLiteralDef, type BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import { MoreHorizontal } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "../ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
@@ -12,6 +12,9 @@ import { kStripPopupAttribute } from "./BrainCandidateStrip";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
 import { RenameVariableDialog } from "./RenameVariableDialog";
+
+/** `MouseEvent.button` of the press a right-click reports. */
+const kSecondaryMouseButton = 2;
 
 /** One thing the menu offers to do to the tile it stands on. */
 interface TileMenuEntry {
@@ -42,8 +45,16 @@ interface BrainTileMenuProps {
  * holding each dialog open. A tile whose kind offers nothing and a host wiring
  * up no tile help together yield no entries, which both menu shapes read as
  * nothing to open.
+ *
+ * @param props the tile the menu acts on and where in the rule it stands
+ * @param menuTrigger the control the menu opens from, which the keyboard is
+ * handed back to as a dialog closes; a control no longer rendering leaves the
+ * keyboard wherever the dialog's own restoration put it
  */
-function useTileMenu(props: BrainTileMenuProps): { entries: TileMenuEntry[]; dialogs: ReactNode } {
+function useTileMenu(
+  props: BrainTileMenuProps,
+  menuTrigger: () => HTMLElement | null
+): { entries: TileMenuEntry[]; dialogs: ReactNode } {
   const { tileDef, side, tileIndex, ruleDef, commandHistory } = props;
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
@@ -109,6 +120,16 @@ function useTileMenu(props: BrainTileMenuProps): { entries: TileMenuEntry[]; dia
     entries.push({ key: "help", label: "Help", run: () => onTileHelp(tileDef) });
   }
 
+  // The dialog restores the keyboard to the menu item it was opened from, which
+  // stopped rendering with the menu; the trigger the menu itself opened from
+  // takes it instead.
+  const handleCloseAutoFocus = (event: Event) => {
+    const returnTo = menuTrigger();
+    if (returnTo === null || !returnTo.isConnected) return;
+    event.preventDefault();
+    returnTo.focus();
+  };
+
   const dialogs = (
     <>
       {showEditFormatDialog && isNumericLiteral && (
@@ -118,6 +139,7 @@ function useTileMenu(props: BrainTileMenuProps): { entries: TileMenuEntry[]; dia
           onOpenChange={(open) => {
             if (!open) setShowEditFormatDialog(false);
           }}
+          onCloseAutoFocus={handleCloseAutoFocus}
           onSubmit={handleEditFormatSubmit}
         />
       )}
@@ -128,6 +150,7 @@ function useTileMenu(props: BrainTileMenuProps): { entries: TileMenuEntry[]; dia
           onOpenChange={(open) => {
             if (!open) setShowRenameVariableDialog(false);
           }}
+          onCloseAutoFocus={handleCloseAutoFocus}
           onSubmit={handleRenameVariableSubmit}
         />
       )}
@@ -150,15 +173,25 @@ export function BrainTileMenu({
   onOpenChange,
   ...props
 }: BrainTileMenuProps & { children: ReactNode; onOpenChange: (open: boolean) => void }) {
-  const { entries, dialogs } = useTileMenu(props);
+  const tileRef = useRef<HTMLSpanElement>(null);
+  const { entries, dialogs } = useTileMenu(props, () => tileRef.current);
   if (entries.length === 0) return <>{children}</>;
   return (
     <>
       <ContextMenu onOpenChange={onOpenChange}>
-        <ContextMenuTrigger asChild aria-haspopup="menu">
+        <ContextMenuTrigger
+          ref={tileRef}
+          asChild
+          aria-haspopup="menu"
+          // The press that opens the menu acts without taking the keyboard from
+          // whatever holds it.
+          onMouseDown={(event) => {
+            if (event.button === kSecondaryMouseButton) event.preventDefault();
+          }}
+        >
           {children}
         </ContextMenuTrigger>
-        <ContextMenuContent>
+        <ContextMenuContent {...{ [kStripPopupAttribute]: "" }}>
           {entries.map((entry) => (
             <ContextMenuItem key={entry.key} onClick={entry.run}>
               {entry.label}
@@ -177,7 +210,8 @@ export function BrainTileMenu({
  * Renders nothing for a tile offering no entry.
  */
 export function BrainTileMenuButton(props: BrainTileMenuProps) {
-  const { entries, dialogs } = useTileMenu(props);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const { entries, dialogs } = useTileMenu(props, () => triggerRef.current);
   if (entries.length === 0) return null;
   return (
     <>
@@ -185,6 +219,7 @@ export function BrainTileMenuButton(props: BrainTileMenuProps) {
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <button
+            ref={triggerRef}
             type="button"
             data-strip-tile-menu=""
             aria-label="Tile actions"

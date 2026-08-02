@@ -7,6 +7,7 @@ import { ChevronDown, Plus, Trash2, X } from "lucide-react";
 import {
   type FocusEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactElement,
   type ReactNode,
   useCallback,
@@ -114,6 +115,13 @@ const kPositionNameClasses =
  * as the one surface they stand on.
  */
 const kOfferingPhraseContext = "tile-offering";
+
+/**
+ * What a press inside the offering panel may hand the keyboard to: the panel's
+ * own controls, the filter box it stands in its tray row, and the band listboxes
+ * the offering's cursor rests on. Everything else the panel draws is chrome.
+ */
+const kPanelKeyboardTargets = "button, input, [tabindex]";
 
 /** The accordion an open text value shows: none, since only its own chip is offered. */
 const noSections: readonly CandidateStripSection[] = [];
@@ -651,14 +659,14 @@ export function useCandidateStripSurface({
           ? null
           : document.querySelector<HTMLElement>(`[${kPageGridCellAttribute}="${exitCellKey}"]`);
       if (exitCell !== null) {
-        exitCell.focus();
+        exitCell.focus({ preventScroll: true });
         return;
       }
       if (armingControl?.isConnected) {
-        armingControl.focus();
+        armingControl.focus({ preventScroll: true });
         return;
       }
-      document.querySelector<HTMLElement>(`[data-rule-handle="${armedRuleId}"]`)?.focus();
+      document.querySelector<HTMLElement>(`[data-rule-handle="${armedRuleId}"]`)?.focus({ preventScroll: true });
     };
   }, [isArmed]);
 
@@ -930,6 +938,16 @@ export function useCandidateStripSurface({
     dispatchInput({ kind: "candidate-tapped", candidate });
   };
 
+  /**
+   * A press on the panel's chrome, which acts without taking the keyboard from
+   * whatever holds it. A press landing on one of the panel's own controls moves
+   * the keyboard as it normally would.
+   */
+  const handlePanelMouseDown = (event: MouseEvent<HTMLElement>) => {
+    const control = (event.target as HTMLElement).closest(kPanelKeyboardTargets);
+    if (control === null || !event.currentTarget.contains(control)) event.preventDefault();
+  };
+
   const handlePanelKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape") return;
     event.stopPropagation();
@@ -949,8 +967,8 @@ export function useCandidateStripSurface({
    * hands the keyboard back to the filter box with the keystroke intact.
    */
   const handleBandKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    // Escape belongs to the panel, and Tab to the browser's own focus order.
-    if (event.key === "Escape" || event.key === "Tab") return;
+    // Escape belongs to the panel.
+    if (event.key === "Escape") return;
     event.stopPropagation();
     dispatchInput(composerTokenForKey(event.key, "band", event.metaKey || event.ctrlKey), event);
   };
@@ -1162,6 +1180,7 @@ export function useCandidateStripSurface({
       style={stripPanelStyle}
       className={`absolute top-full left-0 ${kOfferingLayer} mt-2 flex w-[min(40rem,calc(100vw-5rem))] min-w-72 flex-col gap-3 rounded-xl p-3`}
       aria-label="Tile candidates"
+      onMouseDown={handlePanelMouseDown}
       onKeyDown={handlePanelKeyDown}
       onBlur={handleHighlightBlur}
     >

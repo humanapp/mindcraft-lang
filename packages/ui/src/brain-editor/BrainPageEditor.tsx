@@ -34,7 +34,6 @@ import { useRulePickup } from "./RulePickupContext";
 
 interface BrainPageEditorProps {
   pageDef: BrainPageDef;
-  pageNumber?: number;
   commandHistory: BrainCommandHistory;
   zoom?: number;
 }
@@ -77,6 +76,13 @@ function flattenRules(rules: BrainRuleDef[], depth: number = 0, startLineNumber:
  * cell into view, which a step the user asked for does.
  */
 type CellFocusScroll = "keep-scroll" | "reveal";
+
+/**
+ * `FocusOptions` plus `focusVisible`, which asks the browser to mark the newly
+ * focused element as keyboard-focused so `:focus-visible` matches it. The DOM
+ * typings this package builds against do not carry the member yet.
+ */
+type CellFocusOptions = FocusOptions & { focusVisible?: boolean };
 
 /** The element standing for the cell `key`, or null while nothing in `container` does. */
 function cellElement(container: HTMLElement | null, key: string): HTMLElement | null {
@@ -124,7 +130,7 @@ function siblingPlace(ruleDef: BrainRuleDef, pageDef: BrainPageDef): { position:
 }
 
 /** Renders the rules of a single brain page as a flattened, indented list of {@link BrainRuleEditor} rows. */
-export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 }: BrainPageEditorProps) {
+export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPageEditorProps) {
   const [updateCounter, setUpdateCounter] = useState(0);
   const parseTimerRef = useRef<thread | null>(null);
   const PARSE_DEBOUNCE_SECS = 0.3;
@@ -227,10 +233,15 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
   // the grid does.
   const gridSignature = rows.map((row) => row.map(pageGridCellKey).join(" ")).join("|");
 
+  // Every move the grid makes is the keyboard's, so each one asks for the mark a
+  // keyboard focus paints: the browser reads a bare programmatic focus as
+  // whatever modality last moved the keyboard, which leaves the cell unmarked
+  // after a press elsewhere.
   const focusCell = (cell: PageGridCell, scroll: CellFocusScroll): boolean => {
     const element = cellElement(containerRef.current, pageGridCellKey(cell));
     if (element === null) return false;
-    element.focus(scroll === "keep-scroll" ? { preventScroll: true } : undefined);
+    const options: CellFocusOptions = { preventScroll: scroll === "keep-scroll", focusVisible: true };
+    element.focus(options);
     return true;
   };
 

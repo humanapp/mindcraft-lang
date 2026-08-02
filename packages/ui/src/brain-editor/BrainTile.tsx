@@ -143,7 +143,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
             ...(labelBasedWidth !== undefined ? { minWidth: labelBasedWidth } : {}),
             ...style,
           }}
-          className={`flex flex-col border-2 h-24 max-h-24 min-h-24 ${isValueTile ? "w-auto min-w-24 max-w-72 px-3 pb-2.5" : "w-24 min-w-24 max-w-48 px-1 pb-1.5"} overflow-hidden rounded-lg pt-2 text-black text-sm font-medium cursor-pointer self-center shadow-sm relative ${className}`}
+          className={`flex flex-col border-2 h-24 max-h-24 min-h-24 ${isValueTile ? "w-auto min-w-24 max-w-72 px-3 pb-2.5" : "w-24 min-w-24 max-w-48 px-1 pb-1.5"} overflow-hidden rounded-lg pt-2 text-black text-sm font-medium cursor-pointer self-center shadow-sm relative transition-[outline-offset] duration-150 ${className}`}
           aria-label={tileAccessibleName(editorConfig, tileDef)}
           {...props}
         >
