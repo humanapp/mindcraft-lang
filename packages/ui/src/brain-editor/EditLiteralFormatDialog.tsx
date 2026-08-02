@@ -3,6 +3,7 @@ import type { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import { useState } from "react";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { kStripPopupAttribute } from "./BrainCandidateStrip";
 import { DisplayFormatPicker } from "./DisplayFormatPicker";
 
 interface EditLiteralFormatDialogProps {
@@ -12,7 +13,12 @@ interface EditLiteralFormatDialogProps {
   onSubmit: (newFormat: LiteralDisplayFormat) => void;
 }
 
-/** Dialog that edits the {@link LiteralDisplayFormat} of an existing literal tile. */
+/**
+ * Dialog that edits the {@link LiteralDisplayFormat} of an existing literal
+ * tile. Its content carries {@link kStripPopupAttribute}, so the keyboard
+ * landing in it counts as staying in the candidate strip the tile's menu was
+ * opened from.
+ */
 export function EditLiteralFormatDialog({ isOpen, literalDef, onOpenChange, onSubmit }: EditLiteralFormatDialogProps) {
   const [displayFormat, setDisplayFormat] = useState<LiteralDisplayFormat>(literalDef.displayFormat);
 
@@ -29,7 +35,10 @@ export function EditLiteralFormatDialog({ isOpen, literalDef, onOpenChange, onSu
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl">
+      <DialogContent
+        className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl"
+        {...{ [kStripPopupAttribute]: "" }}
+      >
         <DialogHeader className="border-b border-border pb-4">
           <DialogTitle className="text-foreground font-semibold">Edit Display Format</DialogTitle>
           <DialogDescription className="text-muted-foreground">

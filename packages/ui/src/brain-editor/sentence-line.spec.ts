@@ -84,15 +84,13 @@ function renderSentence(ruleDef: BrainRuleDef): string {
   );
 }
 
-function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef): string {
+function renderRuleCard(ruleDef: BrainRuleDef): string {
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,
       { config: editorConfig },
       createElement(BrainRuleEditor, {
         ruleDef,
-        index: 0,
-        pageDef,
         lineNumber: 1,
         ruleCount: 1,
         updateCounter: 0,
@@ -118,13 +116,13 @@ before(() => {
 
 describe("sentence line rendering", () => {
   test("a rule card renders exactly one sentence element", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("line-see", "see")], [makeActuator("line-move", "move")]);
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef), "data-rule-sentence="), 1);
+    const { ruleDef } = makeBrain([makeSensor("line-see", "see")], [makeActuator("line-move", "move")]);
+    assert.equal(countOf(renderRuleCard(ruleDef), "data-rule-sentence="), 1);
   });
 
   test("an empty rule renders no sentence element", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef), "data-rule-sentence="), 0);
+    const { ruleDef } = makeBrain([], []);
+    assert.equal(countOf(renderRuleCard(ruleDef), "data-rule-sentence="), 0);
     assert.equal(renderSentence(ruleDef), "");
   });
 

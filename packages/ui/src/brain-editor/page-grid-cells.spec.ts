@@ -63,7 +63,7 @@ function cellTags(markup: string): string[] {
 }
 
 /** The card rendered inside a page grid whose one tab stop rests on `currentCell`. */
-function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, currentCell?: PageGridCell): string {
+function renderRuleCard(ruleDef: BrainRuleDef, currentCell?: PageGridCell): string {
   const controller: ArmedTargetController = { target: null, arm: () => {}, disarm: () => {} };
   return renderToStaticMarkup(
     createElement(
@@ -85,8 +85,6 @@ function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, currentCel
           },
           createElement(BrainRuleEditor, {
             ruleDef,
-            index: 0,
-            pageDef,
             lineNumber: 1,
             ruleCount: 1,
             updateCounter: 0,
@@ -113,41 +111,37 @@ function modelCellKeys(ruleDef: BrainRuleDef, hasSentence: boolean): string[] {
 }
 
 /** A rule holding one tile on each side, typechecked so the oracle has an answer for both. */
-function makePopulatedRule(name: string): { ruleDef: BrainRuleDef; pageDef: BrainPageDef } {
+function makePopulatedRule(name: string): BrainRuleDef {
   const whenTiles: IBrainTileDef[] = [makeSensor(services, `${name}-see`)];
   const doTiles: IBrainTileDef[] = [makeActuator(services, `${name}-move`)];
-  const { ruleDef, pageDef } = makeBrain(services, whenTiles, doTiles);
+  const { ruleDef } = makeBrain(services, whenTiles, doTiles);
   ruleDef.typecheck();
-  return { ruleDef, pageDef };
+  return ruleDef;
 }
 
 describe("the cells a rule card renders", () => {
   test("the card stands exactly the cells the model names, in the same order", () => {
-    const { ruleDef, pageDef } = makePopulatedRule("cells-order");
-    const rendered = cellTags(renderRuleCard(ruleDef, pageDef)).map(
-      (tag) => attributeOf(tag, kPageGridCellAttribute) as string
-    );
+    const ruleDef = makePopulatedRule("cells-order");
+    const rendered = cellTags(renderRuleCard(ruleDef)).map((tag) => attributeOf(tag, kPageGridCellAttribute) as string);
     assert.deepEqual(rendered, modelCellKeys(ruleDef, true));
   });
 
   test("a rule holding no tiles stands its sentence cell on the line inviting one", () => {
-    const { ruleDef, pageDef } = makeBrain(services, [], []);
-    const rendered = cellTags(renderRuleCard(ruleDef, pageDef)).map(
-      (tag) => attributeOf(tag, kPageGridCellAttribute) as string
-    );
+    const { ruleDef } = makeBrain(services, [], []);
+    const rendered = cellTags(renderRuleCard(ruleDef)).map((tag) => attributeOf(tag, kPageGridCellAttribute) as string);
     assert.deepEqual(rendered, modelCellKeys(ruleDef, true));
     assert.ok(rendered.includes(pageGridCellKey({ kind: "sentence", ruleId: ruleDef.id() })));
   });
 
   test("no cell key is repeated", () => {
-    const { ruleDef, pageDef } = makePopulatedRule("cells-unique");
-    const keys = cellTags(renderRuleCard(ruleDef, pageDef)).map((tag) => attributeOf(tag, kPageGridCellAttribute));
+    const ruleDef = makePopulatedRule("cells-unique");
+    const keys = cellTags(renderRuleCard(ruleDef)).map((tag) => attributeOf(tag, kPageGridCellAttribute));
     assert.equal(new Set(keys).size, keys.length);
   });
 
   test("every cell carries an accessible name", () => {
-    const { ruleDef, pageDef } = makePopulatedRule("cells-named");
-    for (const tag of cellTags(renderRuleCard(ruleDef, pageDef))) {
+    const ruleDef = makePopulatedRule("cells-named");
+    for (const tag of cellTags(renderRuleCard(ruleDef))) {
       const name = attributeOf(tag, "aria-label");
       assert.ok(name !== undefined && name.length > 0, attributeOf(tag, kPageGridCellAttribute));
     }
@@ -156,11 +150,11 @@ describe("the cells a rule card renders", () => {
 
 describe("the grid's one tab stop", () => {
   test("the named cell takes it and every other cell gives it up", () => {
-    const { ruleDef, pageDef } = makePopulatedRule("stop-named");
+    const ruleDef = makePopulatedRule("stop-named");
     const named: PageGridCell = { kind: "tile", ruleId: ruleDef.id(), side: RuleSide.Do, tileIndex: 0 };
     const namedKey = pageGridCellKey(named);
     const stops = new Map(
-      cellTags(renderRuleCard(ruleDef, pageDef, named)).map((tag) => [
+      cellTags(renderRuleCard(ruleDef, named)).map((tag) => [
         attributeOf(tag, kPageGridCellAttribute) as string,
         attributeOf(tag, "tabindex"),
       ])
@@ -171,9 +165,9 @@ describe("the grid's one tab stop", () => {
   });
 
   test("no other control of the card is a tab stop", () => {
-    const { ruleDef, pageDef } = makePopulatedRule("stop-only");
+    const ruleDef = makePopulatedRule("stop-only");
     const named: PageGridCell = { kind: "handle", ruleId: ruleDef.id() };
-    for (const tag of tags(renderRuleCard(ruleDef, pageDef, named))) {
+    for (const tag of tags(renderRuleCard(ruleDef, named))) {
       if (!tag.startsWith("<button")) continue;
       const key = attributeOf(tag, kPageGridCellAttribute);
       if (key !== undefined) continue;
@@ -181,8 +175,18 @@ describe("the grid's one tab stop", () => {
     }
   });
 
+  test("the rule handle announces no menu, since it opens none", () => {
+    const ruleDef = makePopulatedRule("handle-no-menu");
+    const handleKey = pageGridCellKey({ kind: "handle", ruleId: ruleDef.id() });
+    const handle = cellTags(renderRuleCard(ruleDef)).find(
+      (tag) => attributeOf(tag, kPageGridCellAttribute) === handleKey
+    );
+    assert.ok(handle, "the card stands the handle cell");
+    assert.equal(attributeOf(handle, "aria-haspopup"), undefined);
+  });
+
   test("a card rendered outside a page grid stands no cell and reserves no tab stop", () => {
-    const { ruleDef, pageDef } = makePopulatedRule("stop-none");
+    const ruleDef = makePopulatedRule("stop-none");
     const markup = renderToStaticMarkup(
       createElement(
         BrainEditorProvider,
@@ -192,8 +196,6 @@ describe("the grid's one tab stop", () => {
           { value: { target: null, arm: () => {}, disarm: () => {} } as ArmedTargetController },
           createElement(BrainRuleEditor, {
             ruleDef,
-            index: 0,
-            pageDef,
             lineNumber: 1,
             ruleCount: 1,
             updateCounter: 0,

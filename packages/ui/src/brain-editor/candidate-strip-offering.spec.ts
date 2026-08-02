@@ -113,12 +113,7 @@ function insertTarget(
   };
 }
 
-function renderCardWith(
-  config: BrainEditorConfig,
-  ruleDef: BrainRuleDef,
-  pageDef: BrainPageDef,
-  target: ArmedTileTarget | null
-): string {
+function renderCardWith(config: BrainEditorConfig, ruleDef: BrainRuleDef, target: ArmedTileTarget | null): string {
   const controller: ArmedTargetController = { target, arm: () => {}, disarm: () => {} };
   return renderToStaticMarkup(
     createElement(
@@ -129,8 +124,6 @@ function renderCardWith(
         { value: controller },
         createElement(BrainRuleEditor, {
           ruleDef,
-          index: 0,
-          pageDef,
           lineNumber: 1,
           ruleCount: 1,
           updateCounter: 0,
@@ -141,16 +134,15 @@ function renderCardWith(
   );
 }
 
-function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target: ArmedTileTarget | null): string {
-  return renderCardWith(editorConfig, ruleDef, pageDef, target);
+function renderRuleCard(ruleDef: BrainRuleDef, target: ArmedTileTarget | null): string {
+  return renderCardWith(editorConfig, ruleDef, target);
 }
 
 /** The card as a host that supplies the oracle renders it, so the armed position is really asked. */
-function renderAskedRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target: ArmedTileTarget | null): string {
+function renderAskedRuleCard(ruleDef: BrainRuleDef, target: ArmedTileTarget | null): string {
   return renderCardWith(
     { ...editorConfig, brainServices: services, tileCatalogs: [services.edit.tiles] },
     ruleDef,
-    pageDef,
     target
   );
 }
@@ -293,8 +285,8 @@ function danglingReferences(markup: string): string[] {
 
 describe("arming a position offers the tiles that fit it", () => {
   test("a position armed from the tray renders the offering panel", () => {
-    const { ruleDef, pageDef } = makeBrain(services, [], []);
-    const markup = renderRuleCard(ruleDef, pageDef, appendTarget(ruleDef, RuleSide.When, "tray"));
+    const { ruleDef } = makeBrain(services, [], []);
+    const markup = renderRuleCard(ruleDef, appendTarget(ruleDef, RuleSide.When, "tray"));
     assert.equal(countOf(markup, 'data-strip-filter="tray"'), 1);
     assert.ok(hasOfferingPanel(markup));
     assert.equal(countOf(markup, 'aria-expanded="true"'), 1, "the arming control reports the panel it opened");
@@ -302,8 +294,8 @@ describe("arming a position offers the tiles that fit it", () => {
   });
 
   test("a position armed from the sentence renders the offering panel too", () => {
-    const { ruleDef, pageDef } = makeBrain(services, [makeSensor(services, "offering-see")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, appendTarget(ruleDef, RuleSide.When, "sentence"));
+    const { ruleDef } = makeBrain(services, [makeSensor(services, "offering-see")], []);
+    const markup = renderRuleCard(ruleDef, appendTarget(ruleDef, RuleSide.When, "sentence"));
     assert.equal(countOf(markup, 'data-strip-filter="sentence"'), 1);
     assert.ok(hasOfferingPanel(markup));
     assert.equal(countOf(markup, 'aria-expanded="true"'), 1);
@@ -311,8 +303,8 @@ describe("arming a position offers the tiles that fit it", () => {
   });
 
   test("a position armed on a placed tile offers there, with its pivot", () => {
-    const { ruleDef, pageDef } = makeBrain(services, [makeSensor(services, "offering-hear")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, tileTarget(ruleDef, RuleSide.When, 0, "tray"));
+    const { ruleDef } = makeBrain(services, [makeSensor(services, "offering-hear")], []);
+    const markup = renderRuleCard(ruleDef, tileTarget(ruleDef, RuleSide.When, 0, "tray"));
     assert.equal(countOf(markup, 'data-strip-filter="tray"'), 1);
     assert.ok(hasOfferingPanel(markup));
     assert.equal(countOf(markup, "data-edit-point-pivot"), 1);
@@ -320,12 +312,12 @@ describe("arming a position offers the tiles that fit it", () => {
   });
 
   test("a rule with no armed position renders no offering at all", () => {
-    const { ruleDef, pageDef } = makeBrain(
+    const { ruleDef } = makeBrain(
       services,
       [makeSensor(services, "offering-smell")],
       [makeActuator(services, "offering-move")]
     );
-    const markup = renderRuleCard(ruleDef, pageDef, null);
+    const markup = renderRuleCard(ruleDef, null);
     assert.equal(countOf(markup, "data-strip-filter"), 0);
     assert.equal(countOf(markup, 'role="combobox"'), 0);
     assert.equal(hasOfferingPanel(markup), false);
@@ -343,24 +335,24 @@ describe("the offering stands only where the position offers a tile", () => {
   }
 
   test("a position the oracle offers nothing at never opens one", () => {
-    const { ruleDef, pageDef } = completeRule("dead-end");
+    const { ruleDef } = completeRule("dead-end");
     for (const side of [RuleSide.When, RuleSide.Do]) {
       const target = appendTarget(ruleDef, side, "sentence");
       assert.equal(candidateCountAt(target), 0, "the position under test offers nothing");
-      assert.equal(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, target)), false);
+      assert.equal(hasOfferingPanel(renderAskedRuleCard(ruleDef, target)), false);
     }
   });
 
   test("reaching it from the tray opens none either", () => {
-    const { ruleDef, pageDef } = completeRule("dead-tray");
-    const markup = renderAskedRuleCard(ruleDef, pageDef, appendTarget(ruleDef, RuleSide.Do, "tray"));
+    const { ruleDef } = completeRule("dead-tray");
+    const markup = renderAskedRuleCard(ruleDef, appendTarget(ruleDef, RuleSide.Do, "tray"));
     assert.equal(hasOfferingPanel(markup), false);
     assert.equal(countOf(markup, "data-strip-filter"), 0);
   });
 
   test("the caret still stands at such a position, with the box the sentence hosts", () => {
-    const { ruleDef, pageDef } = completeRule("dead-caret");
-    const markup = renderAskedRuleCard(ruleDef, pageDef, appendTarget(ruleDef, RuleSide.When, "sentence"));
+    const { ruleDef } = completeRule("dead-caret");
+    const markup = renderAskedRuleCard(ruleDef, appendTarget(ruleDef, RuleSide.When, "sentence"));
     assert.equal(countOf(markup, 'data-strip-filter="sentence"'), 1);
     assert.equal(countOf(markup, 'role="combobox"'), 1);
     assert.equal(hasOfferingPanel(markup), false);
@@ -368,18 +360,18 @@ describe("the offering stands only where the position offers a tile", () => {
   });
 
   test("a position that offers still opens one", () => {
-    const { ruleDef, pageDef } = completeRule("live-position");
+    const { ruleDef } = completeRule("live-position");
     for (const target of [
       insertTarget(ruleDef, RuleSide.When, 0, "sentence"),
       tileTarget(ruleDef, RuleSide.When, 0, "tray"),
     ]) {
       assert.ok(candidateCountAt(target) > 0, "the position under test offers tiles");
-      assert.ok(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, target)));
+      assert.ok(hasOfferingPanel(renderAskedRuleCard(ruleDef, target)));
     }
   });
 
   test("an interior gap answers over the tiles before it, not the whole side", () => {
-    const { ruleDef, pageDef } = makeBrain(
+    const { ruleDef } = makeBrain(
       services,
       [],
       [makeActuator(services, "interior-move"), makeActuator(services, "interior-turn")]
@@ -389,23 +381,23 @@ describe("the offering stands only where the position offers a tile", () => {
     const past = insertTarget(ruleDef, RuleSide.Do, 1, "sentence");
     assert.ok(candidateCountAt(opening) > 0);
     assert.equal(candidateCountAt(past), 0);
-    assert.ok(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, opening)));
-    assert.equal(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, past)), false);
+    assert.ok(hasOfferingPanel(renderAskedRuleCard(ruleDef, opening)));
+    assert.equal(hasOfferingPanel(renderAskedRuleCard(ruleDef, past)), false);
   });
 
   test("a placement that completes the side closes the offering standing there", () => {
-    const { ruleDef, pageDef } = makeBrain(services, [], []);
+    const { ruleDef } = makeBrain(services, [], []);
     const open = appendTarget(ruleDef, RuleSide.When, "sentence");
-    assert.ok(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, open)));
+    assert.ok(hasOfferingPanel(renderAskedRuleCard(ruleDef, open)));
     ruleDef.when().appendTile(makeSensor(services, "completing-see"));
     ruleDef.typecheck();
     const settled = appendTarget(ruleDef, RuleSide.When, "sentence");
     assert.equal(candidateCountAt(settled), 0);
-    assert.equal(hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, settled)), false);
+    assert.equal(hasOfferingPanel(renderAskedRuleCard(ruleDef, settled)), false);
   });
 
   test("the panel agrees with the offering that position would build", () => {
-    const { ruleDef, pageDef } = completeRule("agreement");
+    const { ruleDef } = completeRule("agreement");
     const empty = makeBrain(services, [], []);
     const targets = [
       appendTarget(ruleDef, RuleSide.When, "sentence"),
@@ -417,16 +409,13 @@ describe("the offering stands only where the position offers a tile", () => {
     ];
     for (const target of targets) {
       assert.equal(
-        hasOfferingPanel(renderAskedRuleCard(ruleDef, pageDef, target)),
+        hasOfferingPanel(renderAskedRuleCard(ruleDef, target)),
         candidateCountAt(target) > 0,
         `${target.mode} ${target.side} ${target.tileIndex ?? "end"}`
       );
     }
     const opening = appendTarget(empty.ruleDef, RuleSide.When, "sentence");
-    assert.equal(
-      hasOfferingPanel(renderAskedRuleCard(empty.ruleDef, empty.pageDef, opening)),
-      candidateCountAt(opening) > 0
-    );
+    assert.equal(hasOfferingPanel(renderAskedRuleCard(empty.ruleDef, opening)), candidateCountAt(opening) > 0);
   });
 });
 
@@ -485,11 +474,11 @@ describe("the offering closed at an armed position", () => {
 
 describe("the sentence line's owner", () => {
   test("the rule card renders it whether or not the rule is being composed", () => {
-    const { ruleDef, pageDef } = makeBrain(services, [makeSensor(services, "owner-see")], []);
+    const { ruleDef } = makeBrain(services, [makeSensor(services, "owner-see")], []);
     const marker = `data-rule-sentence="${ruleDef.id()}"`;
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef, null), marker), 1, "settled");
+    assert.equal(countOf(renderRuleCard(ruleDef, null), marker), 1, "settled");
     assert.equal(
-      countOf(renderRuleCard(ruleDef, pageDef, appendTarget(ruleDef, RuleSide.When, "sentence")), marker),
+      countOf(renderRuleCard(ruleDef, appendTarget(ruleDef, RuleSide.When, "sentence")), marker),
       1,
       "composing"
     );

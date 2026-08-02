@@ -1,23 +1,13 @@
-import { List, task, thread } from "@mindcraft-lang/core";
+import { List } from "@mindcraft-lang/core";
 import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
 import type { TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
-import type {
-  BrainCommand,
-  BrainCommandHistory,
-  BrainPageDef,
-  BrainRuleDef,
-  RulePlacement,
-} from "@mindcraft-lang/core/brain/model";
+import type { BrainCommand, BrainCommandHistory, BrainRuleDef, RulePlacement } from "@mindcraft-lang/core/brain/model";
 import {
   AddTileCommand,
   DeleteRuleCommand,
-  IndentRuleCommand,
   InsertRuleCommand,
   InsertTileCommand,
   kMaxBrainRuleCommentLength,
-  MoveRuleDownCommand,
-  MoveRuleUpCommand,
-  OutdentRuleCommand,
   PasteRulesCommand,
   PasteTileBeforeCommand,
   RemoveTileCommand,
@@ -28,13 +18,6 @@ import { Plus, Save } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
 import { type ArmedTargetEntry, isAppendTargetForRule, useArmedTargetController } from "./ArmedTargetContext";
 import {
   kCandidateDragMimeType,
@@ -46,6 +29,7 @@ import {
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainRuleSentence } from "./BrainRuleSentence";
 import { BrainTileEditor } from "./BrainTileEditor";
+import { BrainTileMenuButton } from "./BrainTileMenu";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { CreateVariableDialog } from "./CreateVariableDialog";
 import { type CaretPosition, caretEditIntent, caretOnRun, caretRun, composerEntryCaret } from "./caret-run";
@@ -70,12 +54,7 @@ import {
 } from "./page-grid-model";
 import { useRuleDragController } from "./RuleDragContext";
 import { useRulePickup } from "./RulePickupContext";
-import {
-  copyRuleToClipboard,
-  deserializeAllRulesFromClipboard,
-  hasRuleInClipboard,
-  onClipboardChanged,
-} from "./rule-clipboard";
+import { copyRuleToClipboard, deserializeAllRulesFromClipboard, hasRuleInClipboard } from "./rule-clipboard";
 import {
   kRuleMoveMarkerCorners,
   kRuleMoveMarkerShape,
@@ -154,8 +133,6 @@ interface ComposerCommit {
 
 interface BrainRuleEditorProps {
   ruleDef: BrainRuleDef;
-  index: number;
-  pageDef: BrainPageDef;
   depth?: number;
   lineNumber: number;
   /** How many rules the page reads in all, which the handle names this rule's place among. */
@@ -165,14 +142,13 @@ interface BrainRuleEditorProps {
 }
 
 /**
- * Editable WHEN/DO rule row. Supports drag-to-reorder, indent/outdent,
- * tile add/insert/replace/remove via context menu, and rule-level commands
- * (paste, delete, comment).
+ * Editable WHEN/DO rule row: the rule's handle, the tiles of each side with the
+ * control that appends to it, and the sentence line the rule is composed on.
+ * The handle is dragged to reorder and picked up from the keyboard, and the
+ * page's selection keys operate on whichever of the rule's cells it rests on.
  */
 export function BrainRuleEditor({
   ruleDef,
-  index,
-  pageDef,
   depth = 0,
   lineNumber,
   ruleCount,
@@ -190,29 +166,16 @@ export function BrainRuleEditor({
   const grabbedDirections = isGrabbed ? rulePickup.pickup?.directions : undefined;
   const dragController = useRuleDragController();
   const isDragging = dragController.draggingRuleId === ruleDef.id();
-  const [menuOpen, setMenuOpen] = useState(false);
+  // A press on the handle starts drag tracking and nothing else. The controller
+  // applies a movement threshold, so a press that releases without moving is
+  // left as the plain press it was, and the keyboard lands on the handle as it
+  // would on any button, which selects it.
   const handleHandlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (event.pointerType === "mouse" && event.button !== 0) return;
-      // Begin drag tracking. The controller applies a movement threshold;
-      // a release before the threshold leaves the menu free to open via click.
-      const started = dragController.beginDrag(ruleDef, event);
-      if (started) {
-        // Suppress the radix trigger's pointer-down open behaviour so the menu
-        // only opens for non-drag clicks (handled by the click handler below).
-        event.preventDefault();
-      }
+      dragController.beginDrag(ruleDef, event);
     },
     [dragController, ruleDef]
   );
-  const handleHandleClick = useCallback(() => {
-    if (dragController.draggingRuleId !== null) return;
-    setMenuOpen((open) => !open);
-  }, [dragController]);
-  const [canMoveUp, setCanMoveUp] = useState(ruleDef.canMoveUp());
-  const [canMoveDown, setCanMoveDown] = useState(ruleDef.canMoveDown());
-  const [canIndent, setCanIndent] = useState(ruleDef.canIndent());
-  const [canOutdent, setCanOutdent] = useState(ruleDef.canOutdent());
   const armedTarget = useArmedTargetController();
   const appendTarget = isAppendTargetForRule(armedTarget.target, ruleDef) ? armedTarget.target : null;
   const stripId = useId();
@@ -335,20 +298,9 @@ export function BrainRuleEditor({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter is an intentional trigger signal
   useEffect(() => {
-    const updateCapabilities = () => {
-      setCanMoveUp(ruleDef.canMoveUp());
-      setCanMoveDown(ruleDef.canMoveDown());
-      setCanIndent(ruleDef.canIndent());
-      setCanOutdent(ruleDef.canOutdent());
-      setIsDirty(ruleDef.isDirty());
-    };
-
-    updateCapabilities();
-
-    const unsubMarkedDirty = ruleDef.events().on("rule_dirtyChanged", updateCapabilities);
-    return () => {
-      unsubMarkedDirty();
-    };
+    const readDirty = () => setIsDirty(ruleDef.isDirty());
+    readDirty();
+    return ruleDef.events().on("rule_dirtyChanged", readDirty);
   }, [ruleDef, updateCounter]);
 
   // Compute tile badges from typecheck results, then overlay broken-tile badges
@@ -402,55 +354,12 @@ export function BrainRuleEditor({
     };
   }, [ruleDef, updateBadgesForSide]);
 
-  const handleMoveUp = () => {
-    const command = new MoveRuleUpCommand(ruleDef);
-    commandHistory.executeCommand(command);
-  };
-
-  const handleMoveDown = () => {
-    const command = new MoveRuleDownCommand(ruleDef);
-    commandHistory.executeCommand(command);
-  };
-
-  const handleIndent = () => {
-    const command = new IndentRuleCommand(ruleDef);
-    commandHistory.executeCommand(command);
-  };
-
-  const handleOutdent = () => {
-    const command = new OutdentRuleCommand(ruleDef);
-    commandHistory.executeCommand(command);
-  };
-
-  const handleInsertRuleBefore = () => {
-    const command = new InsertRuleCommand(ruleDef, "before");
-    commandHistory.executeCommand(command);
-  };
-
-  const handleDeleteRule = () => {
-    const command = new DeleteRuleCommand(ruleDef);
-    commandHistory.executeCommand(command);
-  };
-
-  const [canPaste, setCanPaste] = useState(hasRuleInClipboard());
-
-  useEffect(() => {
-    return onClipboardChanged(() => setCanPaste(hasRuleInClipboard()));
-  }, []);
-
-  const handleCopyRule = () => {
-    copyRuleToClipboard(ruleDef);
-    toast.success("Rule copied");
-  };
-
   const pasteRules = (placement: RulePlacement) => {
     const command = new PasteRulesCommand(ruleDef, placement, (destBrain) =>
       List.from(deserializeAllRulesFromClipboard(destBrain, tileCatalogs, brainServices))
     );
     commandHistory.executeCommand(command);
   };
-
-  const handlePasteRuleAbove = () => pasteRules("before");
 
   const [isEditingComment, setIsEditingComment] = useState(false);
   const [commentValue, setCommentValue] = useState(ruleDef.comment() ?? "");
@@ -735,13 +644,28 @@ export function BrainRuleEditor({
     if (composerCaret !== undefined && composerCaret !== armedCaret) placeSentenceCaret(composerCaret);
   });
 
-  // The strip's position pivot, present only for a target armed on a placed tile from the tray.
+  // The strip's position pivot, present only for a target armed on a placed tile
+  // from the tray. The tile the pivot turns about is the one whose menu the row
+  // stands the control for.
   const editPointAnchor = stripTarget?.anchorTileIndex;
+  const anchorTileDef =
+    stripTarget !== null && editPointAnchor !== undefined
+      ? ruleDef.side(stripTarget.side).tiles().get(editPointAnchor)
+      : undefined;
   const editPoint: StripEditPointBinding | undefined =
     stripTarget !== null && editPointAnchor !== undefined && !isComposing
       ? {
           position: editPointPositionOf(stripTarget, editPointAnchor),
           arm: (position: EditPointPosition) => armTileEditPoint(stripTarget.side, editPointAnchor, position, "tray"),
+          menu: anchorTileDef && (
+            <BrainTileMenuButton
+              tileDef={anchorTileDef}
+              side={stripTarget.side}
+              tileIndex={editPointAnchor}
+              ruleDef={ruleDef}
+              commandHistory={commandHistory}
+            />
+          ),
         }
       : undefined;
 
@@ -859,18 +783,14 @@ export function BrainRuleEditor({
 
   /**
    * A key pressed on the rule handle. Enter and a space pick the rule up, after
-   * which the arrow keys move it. Keys that would otherwise open the handle's
-   * menu are suppressed.
+   * which the arrow keys move it; both keep their default from the handle
+   * whether or not they pick anything up, so a space never scrolls the page.
    */
   const handleHandleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    const withCommand = event.metaKey || event.ctrlKey;
-    if (event.key === "ArrowDown" || (withCommand && event.key === "Enter")) {
-      event.preventDefault();
-      return;
-    }
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     if (isGrabbed) return;
+    const withCommand = event.metaKey || event.ctrlKey;
     const grabs = decidePageGridGrab({ kind: "handle", ruleId }, { key: event.key, withCommand, placement: "on-cell" });
     if (grabs) pageGrid?.grabRule(ruleId);
   };
@@ -958,73 +878,45 @@ export function BrainRuleEditor({
         )}
         <div className="flex flex-1 gap-1">
           {/* this button is the rule handle */}
-          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={`relative rounded-full self-center h-9 w-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold text-lg ${isDragging ? "cursor-grabbing" : "cursor-grab"}${isGrabbed ? ` ${kGrabbedRuleMarkerLayer}` : ""}`}
-                data-rule-handle={ruleDef.id()}
-                aria-label={`Rule ${lineNumber} of ${ruleCount}, handle${isDirty ? ", unsaved changes" : ""}`}
-                aria-haspopup="menu"
-                onPointerDown={handleHandlePointerDown}
-                onClick={handleHandleClick}
-                onKeyDown={handleHandleKeyDown}
-                {...cellProps({ kind: "handle", ruleId })}
+          <button
+            type="button"
+            className={`relative rounded-full self-center h-9 w-9 ${pillChromeClasses} hover:scale-105 transition-all font-semibold text-lg ${isDragging ? "cursor-grabbing" : "cursor-grab"}${isGrabbed ? ` ${kGrabbedRuleMarkerLayer}` : ""}`}
+            data-rule-handle={ruleDef.id()}
+            aria-label={`Rule ${lineNumber} of ${ruleCount}, handle${isDirty ? ", unsaved changes" : ""}`}
+            onPointerDown={handleHandlePointerDown}
+            onKeyDown={handleHandleKeyDown}
+            {...cellProps({ kind: "handle", ruleId })}
+          >
+            {lineNumber}
+            {isDirty && (
+              <span
+                className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-brain-amber border border-brain-ink"
+                title="Has unsaved changes"
+                aria-hidden="true"
+              />
+            )}
+            {grabbedDirections && grabbedDirections.length > 0 && (
+              <svg
+                className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                style={{ width: kRuleMoveMarkerOverlaySize, height: kRuleMoveMarkerOverlaySize }}
+                viewBox={kRuleMoveMarkerOverlayViewBox}
+                aria-hidden="true"
               >
-                {lineNumber}
-                {isDirty && (
-                  <span
-                    className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-brain-amber border border-brain-ink"
-                    title="Has unsaved changes"
-                    aria-hidden="true"
+                {grabbedDirections.map((direction) => (
+                  <path
+                    key={direction}
+                    d={kRuleMoveMarkerPath}
+                    transform={`rotate(${kRuleMoveMarkerRotations[direction]} 100 100)`}
+                    className="fill-brain-pill stroke-brain-pill"
+                    strokeWidth={kRuleMoveMarkerCorners}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    paintOrder="stroke fill"
                   />
-                )}
-                {grabbedDirections && grabbedDirections.length > 0 && (
-                  <svg
-                    className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-                    style={{ width: kRuleMoveMarkerOverlaySize, height: kRuleMoveMarkerOverlaySize }}
-                    viewBox={kRuleMoveMarkerOverlayViewBox}
-                    aria-hidden="true"
-                  >
-                    {grabbedDirections.map((direction) => (
-                      <path
-                        key={direction}
-                        d={kRuleMoveMarkerPath}
-                        transform={`rotate(${kRuleMoveMarkerRotations[direction]} 100 100)`}
-                        className="fill-brain-pill stroke-brain-pill"
-                        strokeWidth={kRuleMoveMarkerCorners}
-                        strokeLinejoin="round"
-                        strokeLinecap="round"
-                        paintOrder="stroke fill"
-                      />
-                    ))}
-                  </svg>
-                )}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={handleMoveUp} disabled={!canMoveUp}>
-                Move Up
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleMoveDown} disabled={!canMoveDown}>
-                Move Down
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleIndent} disabled={!canIndent}>
-                Indent
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleOutdent} disabled={!canOutdent}>
-                Outdent
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleInsertRuleBefore}>Add Rule Above</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleCopyRule}>Copy Rule</DropdownMenuItem>
-              <DropdownMenuItem onClick={handlePasteRuleAbove} disabled={!canPaste}>
-                Paste Rule Above
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDeleteRule}>Delete Rule</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleEditComment}>Edit Comment</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                ))}
+              </svg>
+            )}
+          </button>
           {/* When tiles */}{" "}
           {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}{" "}
           <div
@@ -1058,8 +950,6 @@ export function BrainRuleEditor({
                 commandHistory={commandHistory}
                 badge={whenBadges.get(idx)}
                 armEditPoint={(position) => armTileEditPoint(RuleSide.When, idx, position, "tray")}
-                canPasteBefore={() => clipboardTileFits(RuleSide.When, idx)}
-                pasteBefore={() => pasteTileAt(RuleSide.When, idx)}
               />
             ))}
           {/* + Add tile button for when side. It stands mid-row, so a WHEN side
@@ -1111,8 +1001,6 @@ export function BrainRuleEditor({
                 commandHistory={commandHistory}
                 badge={doBadges.get(idx)}
                 armEditPoint={(position) => armTileEditPoint(RuleSide.Do, idx, position, "tray")}
-                canPasteBefore={() => clipboardTileFits(RuleSide.Do, idx)}
-                pasteBefore={() => pasteTileAt(RuleSide.Do, idx)}
               />
             ))}
           {/* + Add tile button for do side */}

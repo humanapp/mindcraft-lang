@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { kStripPopupAttribute } from "./BrainCandidateStrip";
 
 interface RenameVariableDialogProps {
   isOpen: boolean;
@@ -10,7 +11,12 @@ interface RenameVariableDialogProps {
   onSubmit: (newName: string) => void;
 }
 
-/** Dialog that prompts for a new name for an existing variable and submits via `onSubmit`. */
+/**
+ * Dialog that prompts for a new name for an existing variable and submits via
+ * `onSubmit`. Its content carries {@link kStripPopupAttribute}, so the keyboard
+ * landing in it counts as staying in the candidate strip the tile's menu was
+ * opened from.
+ */
 export function RenameVariableDialog({ isOpen, initialName, onOpenChange, onSubmit }: RenameVariableDialogProps) {
   const [variableName, setVariableName] = useState(initialName);
 
@@ -35,7 +41,10 @@ export function RenameVariableDialog({ isOpen, initialName, onOpenChange, onSubm
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl">
+      <DialogContent
+        className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl"
+        {...{ [kStripPopupAttribute]: "" }}
+      >
         <DialogHeader className="border-b border-border pb-4">
           <DialogTitle className="text-foreground font-semibold">Rename Variable</DialogTitle>
           <DialogDescription className="text-muted-foreground">Enter a new name for the variable.</DialogDescription>

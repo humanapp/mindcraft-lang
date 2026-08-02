@@ -73,11 +73,7 @@ function section(entries: readonly CandidateEntry[]): CandidateStripSection {
 
 /** The whole rule card for a rule holding one tile on each side. */
 function renderRuleCard(): string {
-  const { pageDef, ruleDef } = makeBrain(
-    services,
-    [makeSensor(services, "token-see")],
-    [makeActuator(services, "token-move")]
-  );
+  const { ruleDef } = makeBrain(services, [makeSensor(services, "token-see")], [makeActuator(services, "token-move")]);
   const controller: ArmedTargetController = { target: null, arm: () => {}, disarm: () => {} };
   return renderToStaticMarkup(
     createElement(
@@ -88,8 +84,6 @@ function renderRuleCard(): string {
         { value: controller },
         createElement(BrainRuleEditor, {
           ruleDef: ruleDef as BrainRuleDef,
-          index: 0,
-          pageDef: pageDef as BrainPageDef,
           lineNumber: 1,
           ruleCount: 1,
           updateCounter: 0,
@@ -177,7 +171,7 @@ function renderEditPointStrip(): string {
         state,
         target,
         onDismiss: () => {},
-        editPoint: { position: "replace", arm: () => {} },
+        editPoint: { position: "replace", arm: () => {}, menu: undefined },
       })
     )
   );

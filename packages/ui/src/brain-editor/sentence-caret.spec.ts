@@ -79,7 +79,7 @@ function renderLine(
 }
 
 /** The whole rule card, with `target` armed on it. */
-function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target?: ArmedTileTarget): string {
+function renderRuleCard(ruleDef: BrainRuleDef, target?: ArmedTileTarget): string {
   const controller: ArmedTargetController = { target: target ?? null, arm: () => {}, disarm: () => {} };
   return renderToStaticMarkup(
     createElement(
@@ -90,8 +90,6 @@ function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target?: A
         { value: controller },
         createElement(BrainRuleEditor, {
           ruleDef,
-          index: 0,
-          pageDef,
           lineNumber: 1,
           ruleCount: 1,
           updateCounter: 0,
@@ -174,7 +172,7 @@ describe("the caret's mark in the line", () => {
   });
 
   test("a rule card armed from its sentence carries one mark across the whole card", () => {
-    const { ruleDef, pageDef } = ruleOf([makeSensor(services, "mark-card-see")], []);
+    const { ruleDef } = ruleOf([makeSensor(services, "mark-card-see")], []);
     const target: ArmedTileTarget = {
       ruleDef,
       side: RuleSide.When,
@@ -184,7 +182,7 @@ describe("the caret's mark in the line", () => {
       entry: "sentence",
       onTileSelected: () => true,
     };
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef, target), "data-caret-mark"), 1);
+    assert.equal(countOf(renderRuleCard(ruleDef, target), "data-caret-mark"), 1);
   });
 });
 
@@ -282,15 +280,15 @@ describe("the tile the caret rests on", () => {
 
 describe("the structure the projection supplies", () => {
   test("the line opens on a control the caret can be placed from", () => {
-    const { ruleDef, pageDef } = ruleOf([makeSensor(services, "glue-see")], [makeActuator(services, "glue-move")]);
-    const indices = structureIndices(renderRuleCard(ruleDef, pageDef));
+    const { ruleDef } = ruleOf([makeSensor(services, "glue-see")], [makeActuator(services, "glue-move")]);
+    const indices = structureIndices(renderRuleCard(ruleDef));
     assert.ok(indices.length > 0, "the line renders tappable structure");
     assert.equal(indices[0], 0, "the structure the line opens on is the first of them");
   });
 
   test("structure holding nothing but a space is left as reading text", () => {
-    const { ruleDef, pageDef } = ruleOf([makeObjectSensor(services, "glue-bump")], []);
-    const markup = renderRuleCard(ruleDef, pageDef);
+    const { ruleDef } = ruleOf([makeObjectSensor(services, "glue-bump")], []);
+    const markup = renderRuleCard(ruleDef);
     const wordIndices = [...markup.matchAll(/data-sentence-tile-index="(\d+)"/g)];
     assert.equal(wordIndices.length, 2, "the tile reads as two words with a space between them");
     assert.deepEqual(
@@ -316,7 +314,7 @@ describe("the structure the projection supplies", () => {
 describe("the filter box at rest", () => {
   /** The class tokens of the sentence's filter box on a card armed from its sentence. */
   function sentenceInputTokens(): { tokens: string[]; tag: string } {
-    const { ruleDef, pageDef } = ruleOf([makeSensor(services, "chrome-see")], []);
+    const { ruleDef } = ruleOf([makeSensor(services, "chrome-see")], []);
     const target: ArmedTileTarget = {
       ruleDef,
       side: RuleSide.When,
@@ -326,7 +324,7 @@ describe("the filter box at rest", () => {
       entry: "sentence",
       onTileSelected: () => true,
     };
-    const tag = tagWith(renderRuleCard(ruleDef, pageDef, target), 'data-strip-filter="sentence"');
+    const tag = tagWith(renderRuleCard(ruleDef, target), 'data-strip-filter="sentence"');
     assert.ok(tag, "the card renders the filter box in its sentence");
     return { tokens: /class="([^"]*)"/.exec(tag)?.[1].split(" ") ?? [], tag };
   }
@@ -353,7 +351,7 @@ describe("the filter box at rest", () => {
   });
 
   test("the wrapper it sits in takes no margin of its own", () => {
-    const { ruleDef, pageDef } = ruleOf([makeSensor(services, "chrome-wrap")], []);
+    const { ruleDef } = ruleOf([makeSensor(services, "chrome-wrap")], []);
     const target: ArmedTileTarget = {
       ruleDef,
       side: RuleSide.When,
@@ -363,7 +361,7 @@ describe("the filter box at rest", () => {
       entry: "sentence",
       onTileSelected: () => true,
     };
-    const markup = renderRuleCard(ruleDef, pageDef, target);
+    const markup = renderRuleCard(ruleDef, target);
     const inputAt = markup.indexOf('data-strip-filter="sentence"');
     const wrapper = markup.slice(markup.lastIndexOf("<span", markup.lastIndexOf("<input", inputAt)), inputAt);
     for (const token of /class="([^"]*)"/.exec(wrapper)?.[1].split(" ") ?? []) {

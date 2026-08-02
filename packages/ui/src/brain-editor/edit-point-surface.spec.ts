@@ -1,9 +1,10 @@
 /**
  * Pins the edit point's rendered surface: the position pivot the strip shows
  * for a target armed on a placed tile from the tray and shows for no other
- * target, the pivot marking the armed position, the ring staying on the anchor
- * tile through every position, and the sentence carrying a word per tile with a
- * caret in each word boundary the composer's input does not stand in.
+ * target, the pivot marking the armed position, the control that row stands to
+ * open the anchor tile's menu, the ring staying on the anchor tile through every
+ * position, and the sentence carrying a word per tile with a caret in each word
+ * boundary the composer's input does not stand in.
  *
  * Structural assertions only: every value asserted here is a role, a state
  * flag, or a marker attribute. Pivot labels and caret names are display prose
@@ -43,24 +44,33 @@ const editorConfig: BrainEditorConfig = {
   customLiteralTypes: [],
 };
 
+/** A host wiring up tile help, which every tile's menu then offers an entry of. */
+const helpingConfig: BrainEditorConfig = { ...editorConfig, onTileHelp: () => {} };
+
+/** Marks the control the position row stands to open the anchor tile's menu. */
+const kTileMenuControl = "data-strip-tile-menu=";
+
 /** A brain whose first rule holds `whenTiles` and `doTiles`. */
 function makeBrain(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrainTileDef[]) {
   return makeRuleBrain(services, whenTiles, doTiles);
 }
 
-function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target?: ArmedTileTarget): string {
+function renderRuleCard(ruleDef: BrainRuleDef, target?: ArmedTileTarget): string {
+  return renderCardWith(editorConfig, ruleDef, target);
+}
+
+/** The card as `config` renders it, with `target` armed. */
+function renderCardWith(config: BrainEditorConfig, ruleDef: BrainRuleDef, target?: ArmedTileTarget): string {
   const controller: ArmedTargetController = { target: target ?? null, arm: () => {}, disarm: () => {} };
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,
-      { config: editorConfig },
+      { config },
       createElement(
         ArmedTargetProvider,
         { value: controller },
         createElement(BrainRuleEditor, {
           ruleDef,
-          index: 0,
-          pageDef,
           lineNumber: 1,
           ruleCount: 1,
           updateCounter: 0,
@@ -96,7 +106,7 @@ before(() => {
 
 describe("the position pivot", () => {
   test("a target armed on a placed tile shows it", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("pivot-see")], []);
+    const { ruleDef } = makeBrain([makeSensor("pivot-see")], []);
     const target: ArmedTileTarget = {
       ruleDef,
       side: RuleSide.When,
@@ -105,17 +115,17 @@ describe("the position pivot", () => {
       anchorTileIndex: 0,
       onTileSelected: () => true,
     };
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef, target), "data-edit-point-pivot="), 1);
+    assert.equal(countOf(renderRuleCard(ruleDef, target), "data-edit-point-pivot="), 1);
   });
 
   test("a target armed from the add-tile button shows none", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("pivot-hear")], []);
+    const { ruleDef } = makeBrain([makeSensor("pivot-hear")], []);
     const target: ArmedTileTarget = { ruleDef, side: RuleSide.When, mode: "append", onTileSelected: () => true };
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef, target), "data-edit-point-pivot="), 0);
+    assert.equal(countOf(renderRuleCard(ruleDef, target), "data-edit-point-pivot="), 0);
   });
 
   test("it offers all three positions, one of them checked", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("pivot-smell")], []);
+    const { ruleDef } = makeBrain([makeSensor("pivot-smell")], []);
     const target: ArmedTileTarget = {
       ruleDef,
       side: RuleSide.When,
@@ -124,13 +134,13 @@ describe("the position pivot", () => {
       anchorTileIndex: 0,
       onTileSelected: () => true,
     };
-    const tags = pivotTags(renderRuleCard(ruleDef, pageDef, target));
+    const tags = pivotTags(renderRuleCard(ruleDef, target));
     assert.equal(tags.length, 3);
     assert.equal(tags.filter((tag) => tag.includes('aria-pressed="true"')).length, 1);
   });
 
   test("an insert addressing the anchor reads as the before position", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("pivot-before-a"), makeSensor("pivot-before-b")], []);
+    const { ruleDef } = makeBrain([makeSensor("pivot-before-a"), makeSensor("pivot-before-b")], []);
     const target: ArmedTileTarget = {
       ruleDef,
       side: RuleSide.When,
@@ -140,13 +150,13 @@ describe("the position pivot", () => {
       onTileSelected: () => true,
     };
     assert.equal(
-      attributeOf(renderRuleCard(ruleDef, pageDef, target), "data-edit-point-pivot=", "data-edit-point-pivot"),
+      attributeOf(renderRuleCard(ruleDef, target), "data-edit-point-pivot=", "data-edit-point-pivot"),
       "before"
     );
   });
 
   test("an append armed on the last tile reads as the after position", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("pivot-after")], []);
+    const { ruleDef } = makeBrain([makeSensor("pivot-after")], []);
     const target: ArmedTileTarget = {
       ruleDef,
       side: RuleSide.When,
@@ -154,12 +164,44 @@ describe("the position pivot", () => {
       anchorTileIndex: 0,
       onTileSelected: () => true,
     };
-    const markup = renderRuleCard(ruleDef, pageDef, target);
+    const markup = renderRuleCard(ruleDef, target);
     assert.equal(attributeOf(markup, "data-edit-point-pivot=", "data-edit-point-pivot"), "after");
   });
 
+  test("the row stands the control opening the anchor tile's menu", () => {
+    const { ruleDef } = makeBrain([makeSensor("pivot-menu")], []);
+    const target: ArmedTileTarget = {
+      ruleDef,
+      side: RuleSide.When,
+      mode: "replace",
+      tileIndex: 0,
+      anchorTileIndex: 0,
+      onTileSelected: () => true,
+    };
+    assert.equal(countOf(renderCardWith(helpingConfig, ruleDef, target), kTileMenuControl), 1);
+  });
+
+  test("a tile whose menu offers nothing stands no such control", () => {
+    const { ruleDef } = makeBrain([makeSensor("pivot-menu-empty")], []);
+    const target: ArmedTileTarget = {
+      ruleDef,
+      side: RuleSide.When,
+      mode: "replace",
+      tileIndex: 0,
+      anchorTileIndex: 0,
+      onTileSelected: () => true,
+    };
+    assert.equal(countOf(renderRuleCard(ruleDef, target), kTileMenuControl), 0);
+  });
+
+  test("a target standing on no placed tile stands none either", () => {
+    const { ruleDef } = makeBrain([makeSensor("pivot-menu-append")], []);
+    const target: ArmedTileTarget = { ruleDef, side: RuleSide.When, mode: "append", onTileSelected: () => true };
+    assert.equal(countOf(renderCardWith(helpingConfig, ruleDef, target), kTileMenuControl), 0);
+  });
+
   test("the anchor tile carries the armed description through the position that appends", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("pivot-anchor")], []);
+    const { ruleDef } = makeBrain([makeSensor("pivot-anchor")], []);
     const target: ArmedTileTarget = {
       ruleDef,
       side: RuleSide.When,
@@ -167,7 +209,7 @@ describe("the position pivot", () => {
       anchorTileIndex: 0,
       onTileSelected: () => true,
     };
-    const markup = renderRuleCard(ruleDef, pageDef, target);
+    const markup = renderRuleCard(ruleDef, target);
     const tileTag = /<button[^>]*data-scrollable[^>]*>/.exec(markup)?.[0];
     assert.ok(tileTag, "the card renders the placed tile");
     const describedBy = /aria-describedby="([^"]+)"/.exec(tileTag)?.[1];
@@ -178,20 +220,20 @@ describe("the position pivot", () => {
 
 describe("the sentence as an editing surface", () => {
   test("a settled sentence renders a caret in each of its word boundaries", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("caret-see")], [makeActuator("caret-move")]);
-    const markup = renderRuleCard(ruleDef, pageDef);
+    const { ruleDef } = makeBrain([makeSensor("caret-see")], [makeActuator("caret-move")]);
+    const markup = renderRuleCard(ruleDef);
     assert.equal(countOf(markup, "data-sentence-caret="), 2, "one caret opens each of the two tiles' words");
   });
 
   test("each caret names the tile it inserts before", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("caret-index-see")], [makeActuator("caret-index-move")]);
-    const markup = renderRuleCard(ruleDef, pageDef);
+    const { ruleDef } = makeBrain([makeSensor("caret-index-see")], [makeActuator("caret-index-move")]);
+    const markup = renderRuleCard(ruleDef);
     const indices = [...markup.matchAll(/data-sentence-caret="(\d+)"/g)].map((match) => Number(match[1]));
     assert.deepEqual(indices, [0, 1]);
   });
 
   test("a rule under composition keeps a caret in every boundary but the armed one", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("caret-composing")], [makeActuator("caret-composing-move")]);
+    const { ruleDef } = makeBrain([makeSensor("caret-composing")], [makeActuator("caret-composing-move")]);
     const target: ArmedTileTarget = {
       ruleDef,
       side: RuleSide.Do,
@@ -202,13 +244,13 @@ describe("the sentence as an editing surface", () => {
       entry: "sentence",
       onTileSelected: () => true,
     };
-    const markup = renderRuleCard(ruleDef, pageDef, target);
+    const markup = renderRuleCard(ruleDef, target);
     const indices = [...markup.matchAll(/data-sentence-caret="(\d+)"/g)].map((match) => Number(match[1]));
     assert.deepEqual(indices, [0], "the armed tile's boundary hosts the input, and the other keeps its caret");
   });
 
   test("a rule armed at the end of its line keeps every caret", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("caret-append")], [makeActuator("caret-append-move")]);
+    const { ruleDef } = makeBrain([makeSensor("caret-append")], [makeActuator("caret-append-move")]);
     const target: ArmedTileTarget = {
       ruleDef,
       side: RuleSide.Do,
@@ -217,12 +259,12 @@ describe("the sentence as an editing surface", () => {
       entry: "sentence",
       onTileSelected: () => true,
     };
-    const markup = renderRuleCard(ruleDef, pageDef, target);
+    const markup = renderRuleCard(ruleDef, target);
     assert.equal(countOf(markup, "data-sentence-caret="), 2);
   });
 
   test("a target armed from the sentence shows no position pivot", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("caret-no-pivot")], []);
+    const { ruleDef } = makeBrain([makeSensor("caret-no-pivot")], []);
     const target: ArmedTileTarget = {
       ruleDef,
       side: RuleSide.When,
@@ -233,12 +275,12 @@ describe("the sentence as an editing surface", () => {
       entry: "sentence",
       onTileSelected: () => true,
     };
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef, target), "data-edit-point-pivot="), 0);
+    assert.equal(countOf(renderRuleCard(ruleDef, target), "data-edit-point-pivot="), 0);
   });
 
   test("a caret takes no layout width, so the settled line reads as its own text", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("caret-flow")], []);
-    const caretTag = /<button[^>]*data-sentence-caret="\d+"[^>]*>/.exec(renderRuleCard(ruleDef, pageDef))?.[0];
+    const { ruleDef } = makeBrain([makeSensor("caret-flow")], []);
+    const caretTag = /<button[^>]*data-sentence-caret="\d+"[^>]*>/.exec(renderRuleCard(ruleDef))?.[0];
     assert.ok(caretTag, "the settled line renders a caret");
     const tokens = /class="([^"]*)"/.exec(caretTag)?.[1].split(" ") ?? [];
     assert.ok(tokens.includes("absolute"), "the caret is out of the line's flow");
@@ -248,8 +290,8 @@ describe("the sentence as an editing surface", () => {
   });
 
   test("a settled word is a control, and keeps the source index it is addressed by", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("caret-word")], []);
-    const markup = renderRuleCard(ruleDef, pageDef);
+    const { ruleDef } = makeBrain([makeSensor("caret-word")], []);
+    const markup = renderRuleCard(ruleDef);
     assert.ok(countOf(markup, "data-sentence-tile-index=") >= 1, "the sentence reads a word for the tile");
     const wordTags = [...markup.matchAll(/<button[^>]*data-sentence-tile-index="\d+"[^>]*>/g)];
     assert.equal(wordTags.length, countOf(markup, "data-sentence-tile-index="));

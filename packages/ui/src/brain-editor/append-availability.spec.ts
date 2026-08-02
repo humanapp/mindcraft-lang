@@ -124,7 +124,7 @@ describe("the add-tile control the decision stands", () => {
     customLiteralTypes: [],
   };
 
-  function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef): string {
+  function renderRuleCard(ruleDef: BrainRuleDef): string {
     const controller: ArmedTargetController = { target: null, arm: () => {}, disarm: () => {} };
     return renderToStaticMarkup(
       createElement(
@@ -135,8 +135,6 @@ describe("the add-tile control the decision stands", () => {
           { value: controller },
           createElement(BrainRuleEditor, {
             ruleDef,
-            index: 0,
-            pageDef,
             lineNumber: 1,
             ruleCount: 1,
             updateCounter: 0,
@@ -160,52 +158,52 @@ describe("the add-tile control the decision stands", () => {
   }
 
   test("a side that can be continued stands its control", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
-    const markup = renderRuleCard(ruleDef, pageDef);
+    const { ruleDef } = makeBrain([], []);
+    const markup = renderRuleCard(ruleDef);
     assert.equal(appendControl(markup, RuleSide.When), "standing");
     assert.equal(appendControl(markup, RuleSide.Do), "standing");
   });
 
   test("a when side the oracle offers nothing at reserves its control's footprint", () => {
-    const { ruleDef, pageDef } = makeBrain(
+    const { ruleDef } = makeBrain(
       [makeSensor(services, "append-control-see")],
       [makeActuator(services, "append-control-move")]
     );
     ruleDef.typecheck();
-    const markup = renderRuleCard(ruleDef, pageDef);
+    const markup = renderRuleCard(ruleDef);
     assert.equal(appendControl(markup, RuleSide.When), "reserved");
   });
 
   test("a do side the oracle offers nothing at stands none", () => {
-    const { ruleDef, pageDef } = makeBrain(
+    const { ruleDef } = makeBrain(
       [makeSensor(services, "append-control-see")],
       [makeActuator(services, "append-control-move")]
     );
     ruleDef.typecheck();
-    const markup = renderRuleCard(ruleDef, pageDef);
+    const markup = renderRuleCard(ruleDef);
     assert.equal(appendControl(markup, RuleSide.Do), undefined);
   });
 
   test("one side losing its control leaves the other's standing", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor(services, "append-control-split-see")], []);
+    const { ruleDef } = makeBrain([makeSensor(services, "append-control-split-see")], []);
     ruleDef.typecheck();
-    const markup = renderRuleCard(ruleDef, pageDef);
+    const markup = renderRuleCard(ruleDef);
     assert.equal(appendControl(markup, RuleSide.When), "reserved");
     assert.equal(appendControl(markup, RuleSide.Do), "standing");
   });
 
   test("every rule stands a handle the closing offering can hand the keyboard to", () => {
-    const { ruleDef, pageDef } = makeBrain(
+    const { ruleDef } = makeBrain(
       [makeSensor(services, "append-handle-see")],
       [makeActuator(services, "append-handle-move")]
     );
     ruleDef.typecheck();
-    const markup = renderRuleCard(ruleDef, pageDef);
+    const markup = renderRuleCard(ruleDef);
     assert.ok(markup.includes(`data-rule-handle="${ruleDef.id()}"`));
   });
 
   test("a host supplying no services stands both controls", () => {
-    const { ruleDef, pageDef } = makeBrain(
+    const { ruleDef } = makeBrain(
       [makeSensor(services, "append-no-services-see")],
       [makeActuator(services, "append-no-services-move")]
     );
@@ -219,8 +217,6 @@ describe("the add-tile control the decision stands", () => {
           { value: { target: null, arm: () => {}, disarm: () => {} } as ArmedTargetController },
           createElement(BrainRuleEditor, {
             ruleDef,
-            index: 0,
-            pageDef,
             lineNumber: 1,
             ruleCount: 1,
             updateCounter: 0,

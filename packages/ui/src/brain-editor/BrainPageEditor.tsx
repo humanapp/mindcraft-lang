@@ -41,7 +41,6 @@ interface BrainPageEditorProps {
 
 type FlattenedRule = {
   ruleDef: BrainRuleDef;
-  index: number;
   depth: number;
   lineNumber: number;
 };
@@ -53,10 +52,9 @@ function flattenRules(rules: BrainRuleDef[], depth: number = 0, startLineNumber:
   const result: FlattenedRule[] = [];
   let currentLineNumber = startLineNumber;
 
-  rules.forEach((ruleDef, index) => {
+  rules.forEach((ruleDef) => {
     result.push({
       ruleDef,
-      index,
       depth,
       lineNumber: currentLineNumber,
     });
@@ -71,6 +69,14 @@ function flattenRules(rules: BrainRuleDef[], depth: number = 0, startLineNumber:
 
   return result;
 }
+
+/**
+ * Whether giving the keyboard to a cell may move the scrollports it sits in.
+ * `keep-scroll` leaves the view exactly where the user left it, which handing
+ * the keyboard back to the selection does; `reveal` lets the browser bring the
+ * cell into view, which a step the user asked for does.
+ */
+type CellFocusScroll = "keep-scroll" | "reveal";
 
 /** The element standing for the cell `key`, or null while nothing in `container` does. */
 function cellElement(container: HTMLElement | null, key: string): HTMLElement | null {
@@ -221,10 +227,10 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
   // the grid does.
   const gridSignature = rows.map((row) => row.map(pageGridCellKey).join(" ")).join("|");
 
-  const focusCell = (cell: PageGridCell): boolean => {
+  const focusCell = (cell: PageGridCell, scroll: CellFocusScroll): boolean => {
     const element = cellElement(containerRef.current, pageGridCellKey(cell));
     if (element === null) return false;
-    element.focus();
+    element.focus(scroll === "keep-scroll" ? { preventScroll: true } : undefined);
     return true;
   };
 
@@ -237,8 +243,11 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
   // offering a rule has open.
   const heldKeyboardRef = useRef(false);
 
-  // The keyboard is given back to the selected cell when the control holding it
-  // stops rendering, which drops it on the dialog's own container.
+  // The keyboard is given back to the selected cell whenever it lands outside
+  // the rules with nothing holding it: the control that held it stopped
+  // rendering, or a press landed on the page's empty ground, either of which
+  // drops it on the dialog's own container. Taking it back never moves the
+  // view, so a selection standing off the fold is not scrolled to.
   useEffect(() => {
     const reclaim = (event: FocusEvent) => {
       const target = event.target as HTMLElement | null;
@@ -252,7 +261,7 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
         return;
       }
       const cell = cursorRef.current?.cell;
-      if (cell !== undefined) focusCellRef.current(cell);
+      if (cell !== undefined) focusCellRef.current(cell, "keep-scroll");
     };
     document.addEventListener("focusin", reclaim);
     return () => document.removeEventListener("focusin", reclaim);
@@ -272,7 +281,7 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
     const anchored = resolvePageGridCursor(rows, cursor?.cell, landing);
     settledRowsRef.current = rows;
     if (cursor !== undefined && pageGridCellKey(anchored.cell) === pageGridCellKey(cursor.cell)) return;
-    if (cursor !== undefined && keyboardIsUnheld()) focusCell(anchored.cell);
+    if (cursor !== undefined && keyboardIsUnheld()) focusCell(anchored.cell, "keep-scroll");
     setCursor(anchored);
   }, [gridSignature, cursor, gridIsWhole]);
 
@@ -282,7 +291,7 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
   const hasTakenKeyboardRef = useRef(false);
   useEffect(() => {
     if (hasTakenKeyboardRef.current || cursor === undefined || !keyboardIsUnheld()) return;
-    hasTakenKeyboardRef.current = focusCellRef.current(cursor.cell);
+    hasTakenKeyboardRef.current = focusCellRef.current(cursor.cell, "keep-scroll");
   }, [cursor]);
 
   // The keyboard landing anywhere in a cell makes that cell the selected one,
@@ -413,7 +422,7 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
       case "inert":
         return;
       case "select":
-        if (!focusCell(result.cursor.cell)) return;
+        if (!focusCell(result.cursor.cell, "reveal")) return;
         event.preventDefault();
         setCursor(result.cursor);
         return;
@@ -479,8 +488,6 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
               <BrainRuleEditor
                 key={flatRule.ruleDef.id()}
                 ruleDef={flatRule.ruleDef}
-                index={flatRule.index}
-                pageDef={pageDef}
                 depth={flatRule.depth}
                 lineNumber={flatRule.lineNumber}
                 ruleCount={flattenedRules.length}

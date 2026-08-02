@@ -939,7 +939,7 @@ describe("BrainCandidateStrip focus marks", () => {
           state: offering,
           target,
           onDismiss: () => {},
-          editPoint: { position: "replace", arm: () => {} },
+          editPoint: { position: "replace", arm: () => {}, menu: undefined },
         })
       )
     );

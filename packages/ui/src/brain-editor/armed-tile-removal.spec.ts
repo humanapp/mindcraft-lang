@@ -43,7 +43,7 @@ function makeBrain(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrain
   return makeRuleBrain(services, whenTiles, doTiles);
 }
 
-function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target: ArmedTileTarget | null): string {
+function renderRuleCard(ruleDef: BrainRuleDef, target: ArmedTileTarget | null): string {
   const controller: ArmedTargetController = { target, arm: () => {}, disarm: () => {} };
   return renderToStaticMarkup(
     createElement(
@@ -54,8 +54,6 @@ function renderRuleCard(ruleDef: BrainRuleDef, pageDef: BrainPageDef, target: Ar
         { value: controller },
         createElement(BrainRuleEditor, {
           ruleDef,
-          index: 0,
-          pageDef,
           lineNumber: 1,
           ruleCount: 1,
           updateCounter: 0,
@@ -151,13 +149,13 @@ function removalTag(markup: string): string | undefined {
 
 describe("removing the tile the armed position stands on", () => {
   test("a position armed in the tile row offers the removal", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor(services, "removal-tray-see")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, tileTarget(ruleDef, RuleSide.When, 0));
+    const { ruleDef } = makeBrain([makeSensor(services, "removal-tray-see")], []);
+    const markup = renderRuleCard(ruleDef, tileTarget(ruleDef, RuleSide.When, 0));
     assert.ok(removalTag(markup), "the panel offers the removal");
   });
 
   test("no caret of a rule's sentence offers it, since no pivot stands at one", () => {
-    const { ruleDef, pageDef } = makeBrain(
+    const { ruleDef } = makeBrain(
       [makeSensor(services, "removal-word-see"), makeSensor(services, "removal-word-hear")],
       [makeActuator(services, "removal-word-move")]
     );
@@ -169,22 +167,22 @@ describe("removing the tile the armed position stands on", () => {
       endTarget(ruleDef, RuleSide.Do),
     ];
     for (const target of carets) {
-      const markup = renderRuleCard(ruleDef, pageDef, target);
+      const markup = renderRuleCard(ruleDef, target);
       assert.equal(removalTag(markup), undefined, "the caret offers no removal");
       assert.equal(countOf(markup, "data-edit-point-pivot="), 0, "and no pivot stands at it");
     }
   });
 
   test("it is a control of its own, outside the pivot's positions", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor(services, "removal-not-a-pivot")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, tileTarget(ruleDef, RuleSide.When, 0));
+    const { ruleDef } = makeBrain([makeSensor(services, "removal-not-a-pivot")], []);
+    const markup = renderRuleCard(ruleDef, tileTarget(ruleDef, RuleSide.When, 0));
     assert.equal(countOf(markup, "data-edit-point-position="), 3, "the pivot keeps its three positions");
     assert.equal(countOf(removalTag(markup) ?? "", "data-edit-point-position="), 0);
   });
 
   test("it is rendered before the position pivot", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor(services, "removal-before-pivot")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, tileTarget(ruleDef, RuleSide.When, 0));
+    const { ruleDef } = makeBrain([makeSensor(services, "removal-before-pivot")], []);
+    const markup = renderRuleCard(ruleDef, tileTarget(ruleDef, RuleSide.When, 0));
     const removal = markup.indexOf('data-strip-delete=""');
     const pivot = markup.indexOf("data-edit-point-pivot=");
     assert.ok(removal >= 0, "the panel offers the removal");
@@ -193,32 +191,32 @@ describe("removing the tile the armed position stands on", () => {
   });
 
   test("a pivot standing in a gap offers no removal", () => {
-    const { ruleDef, pageDef } = makeBrain(
+    const { ruleDef } = makeBrain(
       [makeSensor(services, "removal-gap-see"), makeSensor(services, "removal-gap-hear")],
       []
     );
-    const markup = renderRuleCard(ruleDef, pageDef, pivotBeforeTarget(ruleDef, RuleSide.When, 1));
+    const markup = renderRuleCard(ruleDef, pivotBeforeTarget(ruleDef, RuleSide.When, 1));
     assert.equal(countOf(markup, "data-edit-point-pivot="), 1, "the pivot stands there");
     assert.equal(removalTag(markup), undefined, "and the gap it stands in offers no removal");
   });
 
   test("a pivot standing at a side's end offers no removal", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor(services, "removal-end-see")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, pivotAfterLastTarget(ruleDef, RuleSide.When));
+    const { ruleDef } = makeBrain([makeSensor(services, "removal-end-see")], []);
+    const markup = renderRuleCard(ruleDef, pivotAfterLastTarget(ruleDef, RuleSide.When));
     assert.equal(countOf(markup, "data-edit-point-pivot="), 1, "the pivot stands there");
     assert.equal(removalTag(markup), undefined, "and the side's end offers no removal");
   });
 
   test("a rule holding no tiles offers no removal wherever it is armed", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
-    assert.equal(removalTag(renderRuleCard(ruleDef, pageDef, endTarget(ruleDef, RuleSide.When))), undefined);
-    assert.equal(removalTag(renderRuleCard(ruleDef, pageDef, null)), undefined, "and none while nothing is armed");
+    const { ruleDef } = makeBrain([], []);
+    assert.equal(removalTag(renderRuleCard(ruleDef, endTarget(ruleDef, RuleSide.When))), undefined);
+    assert.equal(removalTag(renderRuleCard(ruleDef, null)), undefined, "and none while nothing is armed");
   });
 
   test("the row it stands in is rendered whether or not it is", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor(services, "removal-row-see")], []);
-    const onElement = renderRuleCard(ruleDef, pageDef, tileTarget(ruleDef, RuleSide.When, 0));
-    const inGap = renderRuleCard(ruleDef, pageDef, pivotAfterLastTarget(ruleDef, RuleSide.When));
+    const { ruleDef } = makeBrain([makeSensor(services, "removal-row-see")], []);
+    const onElement = renderRuleCard(ruleDef, tileTarget(ruleDef, RuleSide.When, 0));
+    const inGap = renderRuleCard(ruleDef, pivotAfterLastTarget(ruleDef, RuleSide.When));
     assert.ok(removalTag(onElement), "a position on a tile offers the removal");
     assert.equal(removalTag(inGap), undefined, "a position in a gap offers none");
     assert.equal(countOf(onElement, "data-strip-position-row="), 1);
@@ -226,8 +224,8 @@ describe("removing the tile the armed position stands on", () => {
   });
 
   test("the control is finger-sized", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor(services, "removal-touch-size")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, tileTarget(ruleDef, RuleSide.When, 0));
+    const { ruleDef } = makeBrain([makeSensor(services, "removal-touch-size")], []);
+    const markup = renderRuleCard(ruleDef, tileTarget(ruleDef, RuleSide.When, 0));
     const tokens = /class="([^"]*)"/.exec(removalTag(markup) ?? "")?.[1].split(" ") ?? [];
     assert.ok(tokens.includes("min-h-11"), "the control keeps a touch-sized height");
   });

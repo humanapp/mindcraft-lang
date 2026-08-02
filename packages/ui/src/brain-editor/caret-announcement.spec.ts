@@ -122,7 +122,7 @@ function tileTarget(ruleDef: BrainRuleDef, tileIndex: number): ArmedTileTarget {
 }
 
 /** The pivot binding a target armed in the tile row stands the strip's position pivot on. */
-const tileRowPivot: StripEditPointBinding = { position: "replace", arm: () => {} };
+const tileRowPivot: StripEditPointBinding = { position: "replace", arm: () => {}, menu: undefined };
 
 /**
  * The offering panel rendered for `target`, with every lookup appended to

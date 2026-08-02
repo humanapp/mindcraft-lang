@@ -67,6 +67,14 @@ export const kCandidateDragMimeType = "application/x-mindcraft-candidate";
  */
 const kStripCellAttribute = "data-strip-cell";
 
+/**
+ * Attribute a popup the strip's own controls open must carry, valued empty:
+ * a menu, and a dialog such a menu opens. The keyboard moving into a marked
+ * popup counts as staying in the strip, so the offering underneath it stays
+ * open and the control the popup was opened from keeps rendering.
+ */
+export const kStripPopupAttribute = "data-strip-popup";
+
 const stripPanelStyle = {
   background: "linear-gradient(160deg, var(--color-brain-desk-from) 0%, var(--color-brain-desk-to) 100%)",
   boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.45)",
@@ -159,11 +167,14 @@ function buildStripBands(
  * True when nothing that can hold the keyboard holds it: the document body, or
  * a container that only took it because the element holding it was removed. A
  * cell of the page's selection grid holds the keyboard whichever way its roving
- * tab stop currently stands.
+ * tab stop currently stands, and so does anything inside a popup one of the
+ * strip's own controls opened, wherever the portal rendering that popup stands
+ * it in the document.
  */
 export function keyboardIsUnheld(): boolean {
   const active = document.activeElement as HTMLElement | null;
   if (active === null || active === document.body) return true;
+  if (active.closest(`[${kStripPopupAttribute}]`) !== null) return false;
   return !active.hasAttribute(kPageGridCellAttribute) && active.tabIndex < 0;
 }
 
@@ -401,6 +412,12 @@ export interface StripEditPointBinding {
   readonly position: EditPointPosition;
   /** Arm the edit point at `position`, which re-queries the offering there. */
   arm(position: EditPointPosition): void;
+  /**
+   * The control opening the menu of the tile the edit point stands on, which
+   * the position row stands at its end. A tile whose menu offers nothing
+   * supplies none.
+   */
+  readonly menu: ReactNode;
 }
 
 /** How each pivot position reads in the strip's header. */
@@ -478,8 +495,9 @@ export interface CandidateStripSurface {
  * Where the position pivot stands, the panel also offers the removal of the tile
  * the armed position stands on, which takes that tile out in one undoable step
  * and leaves editing in the gap it vacated, as deleting it from the keyboard
- * does. A position armed at a caret in the rule's sentence offers no removal,
- * and neither does one standing on no placed tile.
+ * does, and the control opening that tile's own menu. A position armed at a
+ * caret in the rule's sentence offers no removal, and neither does one standing
+ * on no placed tile.
  *
  * The filter box is an ARIA combobox over the rendered chips: the arrow keys
  * walk one cursor across the offering, Enter commits the chip it stands on, and
@@ -937,9 +955,16 @@ export function useCandidateStripSurface({
     dispatchInput(composerTokenForKey(event.key, "band", event.metaKey || event.ctrlKey), event);
   };
 
-  /** True when `element` is one of the strip's own: the filter box, or anything the panel holds. */
+  /**
+   * True when `element` is one of the strip's own: the filter box, anything the
+   * panel holds, or anything inside a popup one of the panel's controls opened,
+   * which a portal puts outside the panel's own subtree.
+   */
   const isStripElement = (element: HTMLElement | null): boolean =>
-    element !== null && (element === inputRef.current || containerRef.current?.contains(element) === true);
+    element !== null &&
+    (element === inputRef.current ||
+      containerRef.current?.contains(element) === true ||
+      element.closest(`[${kStripPopupAttribute}]`) !== null);
 
   /**
    * The keyboard leaving the element the cursor is anchored on, which releases
@@ -1183,6 +1208,7 @@ export function useCandidateStripSurface({
               })}
             </div>
           )}
+          {editPoint?.menu}
         </div>
       </div>
 

@@ -165,11 +165,7 @@ function tileTarget(
   };
 }
 
-function renderRuleCard(
-  ruleDef: BrainRuleDef,
-  pageDef: BrainPageDef,
-  options: { depth?: number; target?: ArmedTileTarget } = {}
-): string {
+function renderRuleCard(ruleDef: BrainRuleDef, options: { depth?: number; target?: ArmedTileTarget } = {}): string {
   const controller: ArmedTargetController = {
     target: options.target ?? null,
     arm: () => {},
@@ -184,8 +180,6 @@ function renderRuleCard(
         { value: controller },
         createElement(BrainRuleEditor, {
           ruleDef,
-          index: 0,
-          pageDef,
           depth: options.depth,
           lineNumber: 1,
           ruleCount: 1,
@@ -245,15 +239,15 @@ before(() => {
 
 describe("the sentence composer's entry point", () => {
   test("an empty rule carries it", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
-    const markup = renderRuleCard(ruleDef, pageDef);
+    const { ruleDef } = makeBrain([], []);
+    const markup = renderRuleCard(ruleDef);
     assert.equal(countOf(markup, `data-sentence-composer-entry="${ruleDef.id()}"`), 1);
   });
 
   test("an empty rule carries it at every indent depth", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
+    const { ruleDef } = makeBrain([], []);
     for (const depth of [0, 1, 2, 3]) {
-      const markup = renderRuleCard(ruleDef, pageDef, { depth });
+      const markup = renderRuleCard(ruleDef, { depth });
       assert.equal(
         countOf(markup, `data-sentence-composer-entry="${ruleDef.id()}"`),
         1,
@@ -263,13 +257,13 @@ describe("the sentence composer's entry point", () => {
   });
 
   test("a rule that already holds tiles does not", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-entry-see")], []);
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef), "data-sentence-composer-entry"), 0);
+    const { ruleDef } = makeBrain([makeSensor("composer-entry-see")], []);
+    assert.equal(countOf(renderRuleCard(ruleDef), "data-sentence-composer-entry"), 0);
   });
 
   test("it gives way to the filter input once the rule is armed", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
-    const markup = renderRuleCard(ruleDef, pageDef, {
+    const { ruleDef } = makeBrain([], []);
+    const markup = renderRuleCard(ruleDef, {
       target: appendTarget(ruleDef, RuleSide.When, "sentence"),
     });
     assert.equal(countOf(markup, "data-sentence-composer-entry"), 0);
@@ -277,8 +271,8 @@ describe("the sentence composer's entry point", () => {
   });
 
   test("it gives way to a target armed from a tap as well", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
-    const markup = renderRuleCard(ruleDef, pageDef, {
+    const { ruleDef } = makeBrain([], []);
+    const markup = renderRuleCard(ruleDef, {
       target: appendTarget(ruleDef, RuleSide.When, "tray"),
     });
     assert.equal(countOf(markup, "data-sentence-composer-entry"), 0);
@@ -310,34 +304,34 @@ describe("the entry point across a page's rules", () => {
 
 describe("the filter input's position", () => {
   test("a target armed from the sentence renders the input inside the sentence", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-pos-see")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
+    const { ruleDef } = makeBrain([makeSensor("composer-pos-see")], []);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
     assert.ok(sentenceElement(markup).includes('data-strip-filter="sentence"'));
   });
 
   test("a target armed from the tray leaves the input outside the sentence", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-pos-hear")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.When, "tray") });
+    const { ruleDef } = makeBrain([makeSensor("composer-pos-hear")], []);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.When, "tray") });
     assert.equal(countOf(markup, 'data-strip-filter="tray"'), 1);
     assert.ok(!sentenceElement(markup).includes("data-strip-filter"));
   });
 
   test("composing renders one sentence element, not two", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-pos-smell")], [makeActuator("composer-pos-move")]);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
+    const { ruleDef } = makeBrain([makeSensor("composer-pos-smell")], [makeActuator("composer-pos-move")]);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
     assert.equal(countOf(markup, "data-rule-sentence="), 1);
   });
 
   test("a target armed at the end of the line renders the input after every word", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-pos-end")], [makeActuator("composer-pos-end-move")]);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
+    const { ruleDef } = makeBrain([makeSensor("composer-pos-end")], [makeActuator("composer-pos-end-move")]);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
     const line = sentenceElement(markup);
     assert.ok(line.indexOf('data-strip-filter="sentence"') > line.lastIndexOf("data-sentence-tile-index"));
   });
 
   test("a target armed on a tile renders the input before that tile's word", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-pos-at")], [makeActuator("composer-pos-at-move")]);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: tileTarget(ruleDef, RuleSide.Do, 0, "sentence") });
+    const { ruleDef } = makeBrain([makeSensor("composer-pos-at")], [makeActuator("composer-pos-at-move")]);
+    const markup = renderRuleCard(ruleDef, { target: tileTarget(ruleDef, RuleSide.Do, 0, "sentence") });
     const line = sentenceElement(markup);
     const input = line.indexOf('data-strip-filter="sentence"');
     assert.ok(input >= 0, "the input stands in the sentence");
@@ -346,11 +340,8 @@ describe("the filter input's position", () => {
   });
 
   test("a rule whose settled reading completes itself hosts the input at the armed word, not past it", () => {
-    const { ruleDef, pageDef } = makeBrain(
-      [makeObjectSensor("composer-pos-bump")],
-      [makeActuator("composer-pos-bump-move")]
-    );
-    const markup = renderRuleCard(ruleDef, pageDef, { target: tileTarget(ruleDef, RuleSide.Do, 0, "sentence") });
+    const { ruleDef } = makeBrain([makeObjectSensor("composer-pos-bump")], [makeActuator("composer-pos-bump-move")]);
+    const markup = renderRuleCard(ruleDef, { target: tileTarget(ruleDef, RuleSide.Do, 0, "sentence") });
     const line = sentenceElement(markup);
     assert.equal(countOf(line, "data-sentence-tile-index"), 2, "the composition reading drops the completion word");
     const input = line.indexOf('data-strip-filter="sentence"');
@@ -359,8 +350,8 @@ describe("the filter input's position", () => {
   });
 
   test("an armed empty rule renders the sentence line for the input to sit in", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
-    const markup = renderRuleCard(ruleDef, pageDef, {
+    const { ruleDef } = makeBrain([], []);
+    const markup = renderRuleCard(ruleDef, {
       target: appendTarget(ruleDef, RuleSide.When, "sentence"),
     });
     assert.equal(countOf(markup, `data-rule-sentence="${ruleDef.id()}"`), 1);
@@ -421,23 +412,23 @@ describe("the filter field around an open text value", () => {
 
 describe("the relocated input's combobox wiring", () => {
   test("it is still the combobox over the candidate list", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-aria-see")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
+    const { ruleDef } = makeBrain([makeSensor("composer-aria-see")], []);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
     assert.equal(attributeOf(markup, 'data-strip-filter="sentence"', "role"), "combobox");
     assert.equal(attributeOf(markup, 'data-strip-filter="sentence"', "aria-autocomplete"), "list");
   });
 
   test("its controlled list is an element of the card", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-aria-hear")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
+    const { ruleDef } = makeBrain([makeSensor("composer-aria-hear")], []);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
     const controls = attributeOf(markup, 'data-strip-filter="sentence"', "aria-controls");
     assert.ok(controls, "the input names the list it controls");
     assert.equal(countOf(markup, `id="${controls}"`), 1);
   });
 
   test("its description references a rendered element", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-aria-smell")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
+    const { ruleDef } = makeBrain([makeSensor("composer-aria-smell")], []);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
     const describedBy = attributeOf(markup, 'data-strip-filter="sentence"', "aria-describedby");
     assert.ok(describedBy, "the input names its description");
     for (const id of describedBy.split(" ")) {
@@ -469,8 +460,8 @@ function typeTokensOf(markup: string, marker: string): string[] {
 
 describe("the sentence's one voice", () => {
   test("the input hosted in the line is set in the line's own type", () => {
-    const { ruleDef, pageDef } = makeBrain([makeSensor("composer-voice-see")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
+    const { ruleDef } = makeBrain([makeSensor("composer-voice-see")], []);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
     assert.deepEqual(
       typeTokensOf(markup, 'data-strip-filter="sentence"'),
       typeTokensOf(markup, `data-rule-sentence="${ruleDef.id()}"`)
@@ -478,32 +469,32 @@ describe("the sentence's one voice", () => {
   });
 
   test("the entry point standing in for the line is set in it as well", () => {
-    const { ruleDef: settled, pageDef: settledPage } = makeBrain([makeSensor("composer-voice-hear")], []);
-    const line = typeTokensOf(renderRuleCard(settled, settledPage), `data-rule-sentence="${settled.id()}"`);
-    const { ruleDef, pageDef } = makeBrain([], []);
-    const entry = renderRuleCard(ruleDef, pageDef);
+    const { ruleDef: settled } = makeBrain([makeSensor("composer-voice-hear")], []);
+    const line = typeTokensOf(renderRuleCard(settled), `data-rule-sentence="${settled.id()}"`);
+    const { ruleDef } = makeBrain([], []);
+    const entry = renderRuleCard(ruleDef);
     assert.deepEqual(typeTokensOf(entry, `data-sentence-composer-entry="${ruleDef.id()}"`), line);
   });
 });
 
 describe("the composition reading on the sentence line", () => {
   test("a settled rule reads its sensor's frame completion as a word of its own", () => {
-    const { ruleDef, pageDef } = makeBrain([makeObjectSensor("composer-reading-bump")], []);
-    const markup = renderRuleCard(ruleDef, pageDef);
+    const { ruleDef } = makeBrain([makeObjectSensor("composer-reading-bump")], []);
+    const markup = renderRuleCard(ruleDef);
     assert.equal(countOf(markup, "data-sentence-tile-index"), 2);
   });
 
   test("the same rule under composition reads only the word it holds", () => {
-    const { ruleDef, pageDef } = makeBrain([makeObjectSensor("composer-reading-bump-2")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, {
+    const { ruleDef } = makeBrain([makeObjectSensor("composer-reading-bump-2")], []);
+    const markup = renderRuleCard(ruleDef, {
       target: appendTarget(ruleDef, RuleSide.When, "sentence"),
     });
     assert.equal(countOf(markup, "data-sentence-tile-index"), 1);
   });
 
   test("a rule armed from the tray keeps its settled reading", () => {
-    const { ruleDef, pageDef } = makeBrain([makeObjectSensor("composer-reading-bump-3")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.When, "tray") });
+    const { ruleDef } = makeBrain([makeObjectSensor("composer-reading-bump-3")], []);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.When, "tray") });
     assert.equal(countOf(markup, "data-sentence-tile-index"), 2);
   });
 });
@@ -512,42 +503,39 @@ describe("the pivot comma", () => {
   const commaMarker = "data-composer-pivot-comma";
 
   test("renders while composition sits on the armed DO side", () => {
-    const { ruleDef, pageDef } = makeBrain([makeObjectSensor("composer-comma-bump")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
+    const { ruleDef } = makeBrain([makeObjectSensor("composer-comma-bump")], []);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
     assert.equal(countOf(markup, `${commaMarker}="${ruleDef.id()}"`), 1);
   });
 
   test("renders on an empty rule pivoted from its empty WHEN side", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
-    const markup = renderRuleCard(ruleDef, pageDef, {
+    const { ruleDef } = makeBrain([], []);
+    const markup = renderRuleCard(ruleDef, {
       target: appendTarget(ruleDef, RuleSide.Do, "sentence"),
     });
     assert.equal(countOf(markup, commaMarker), 1);
   });
 
   test("does not render while composition is still on the WHEN side", () => {
-    const { ruleDef, pageDef } = makeBrain([makeObjectSensor("composer-comma-bump-2")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
+    const { ruleDef } = makeBrain([makeObjectSensor("composer-comma-bump-2")], []);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
     assert.equal(countOf(markup, commaMarker), 0);
   });
 
   test("gives way to the sentence's own clause comma once a word stands behind it", () => {
-    const { ruleDef, pageDef } = makeBrain(
-      [makeObjectSensor("composer-comma-bump-3")],
-      [makeActuator("composer-comma-jump")]
-    );
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
+    const { ruleDef } = makeBrain([makeObjectSensor("composer-comma-bump-3")], [makeActuator("composer-comma-jump")]);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
     assert.equal(countOf(markup, commaMarker), 0);
   });
 
   test("does not render on a settled rule", () => {
-    const { ruleDef, pageDef } = makeBrain([makeObjectSensor("composer-comma-bump-4")], []);
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef), commaMarker), 0);
+    const { ruleDef } = makeBrain([makeObjectSensor("composer-comma-bump-4")], []);
+    assert.equal(countOf(renderRuleCard(ruleDef), commaMarker), 0);
   });
 
   test("does not render for a target armed from the tray", () => {
-    const { ruleDef, pageDef } = makeBrain([makeObjectSensor("composer-comma-bump-5")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.Do, "tray") });
+    const { ruleDef } = makeBrain([makeObjectSensor("composer-comma-bump-5")], []);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.Do, "tray") });
     assert.equal(countOf(markup, commaMarker), 0);
   });
 });
@@ -557,8 +545,8 @@ describe("the trigger word at the pivot", () => {
   const trigger = whenTriggerWord(createDefaultLocalizer());
 
   test("a pivot from an empty WHEN side reads it before the comma", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
-    const markup = renderRuleCard(ruleDef, pageDef, {
+    const { ruleDef } = makeBrain([], []);
+    const markup = renderRuleCard(ruleDef, {
       target: appendTarget(ruleDef, RuleSide.Do, "sentence"),
     });
     assert.equal(countOf(markup, `data-composer-pivot-comma="${ruleDef.id()}"`), 1);
@@ -566,30 +554,30 @@ describe("the trigger word at the pivot", () => {
   });
 
   test("a pivot from a WHEN side that reads its own words takes the comma alone", () => {
-    const { ruleDef, pageDef } = makeBrain([makeObjectSensor("composer-trigger-bump")], []);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
+    const { ruleDef } = makeBrain([makeObjectSensor("composer-trigger-bump")], []);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
     assert.equal(countOf(sentenceReadingText(markup), trigger), 0);
     assert.equal(countOf(sentenceReadingText(markup), ","), 1);
   });
 
   test("an empty rule still composing on its WHEN side reads neither it nor the comma", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
-    const markup = renderRuleCard(ruleDef, pageDef, {
+    const { ruleDef } = makeBrain([], []);
+    const markup = renderRuleCard(ruleDef, {
       target: appendTarget(ruleDef, RuleSide.When, "sentence"),
     });
     assert.equal(sentenceReadingText(markup), "");
   });
 
   test("a word placed behind the pivot leaves exactly one trigger word and one comma", () => {
-    const { ruleDef, pageDef } = makeBrain([], [makeActuator("composer-trigger-jump")]);
-    const markup = renderRuleCard(ruleDef, pageDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
+    const { ruleDef } = makeBrain([], [makeActuator("composer-trigger-jump")]);
+    const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
     const reading = sentenceReadingText(markup);
     assert.equal(countOf(reading, trigger), 1);
     assert.equal(countOf(reading, ","), 1);
   });
 
   test("a settled empty rule reads nothing at all", () => {
-    const { ruleDef, pageDef } = makeBrain([], []);
-    assert.equal(countOf(renderRuleCard(ruleDef, pageDef), trigger), 0);
+    const { ruleDef } = makeBrain([], []);
+    assert.equal(countOf(renderRuleCard(ruleDef), trigger), 0);
   });
 });
