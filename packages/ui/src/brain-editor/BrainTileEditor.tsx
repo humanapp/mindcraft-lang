@@ -9,6 +9,7 @@ import type { EditPointPosition } from "./edit-point";
 import { editPointPositionOf } from "./edit-point";
 import { usePageGrid } from "./PageGridContext";
 import { kPageGridCellAttribute, pageGridCellKey } from "./page-grid-model";
+import { pageGridSelectionProps } from "./page-grid-selection";
 import type { TileBadge } from "./tile-badges";
 import { tileAccessibleName } from "./tile-visual-utils";
 
@@ -55,12 +56,14 @@ export function BrainTileEditor({
   const pageGrid = usePageGrid();
   const cellKey = pageGridCellKey({ kind: "tile", ruleId: ruleDef.id(), side, tileIndex });
   const cellName = `Tile ${tileIndex + 1} of ${ruleDef.side(side).tiles().size()}, ${tileAccessibleName(editorConfig, tileDef)}`;
+  const isSelectedCell = pageGrid?.currentCell !== undefined && pageGridCellKey(pageGrid.currentCell) === cellKey;
   const cellProps =
     pageGrid === undefined
       ? undefined
       : {
           [kPageGridCellAttribute]: cellKey,
-          tabIndex: pageGrid.currentCell !== undefined && pageGridCellKey(pageGrid.currentCell) === cellKey ? 0 : -1,
+          tabIndex: isSelectedCell ? 0 : -1,
+          ...pageGridSelectionProps("chip", isSelectedCell),
         };
 
   // A long-press opens the menu and the touch still reports a click on release,
@@ -87,7 +90,9 @@ export function BrainTileEditor({
           aria-label={cellName}
           aria-describedby={tileTarget ? armedHintId : undefined}
           onClick={handleTileTap}
-          className={tileTarget ? "ring-[3px] ring-brain-armed" : ""}
+          // An armed tile carries its ring at the tile's edge, and stands the
+          // selection's outline outside it.
+          className={tileTarget ? "ring-[3px] ring-brain-armed outline-offset-[3px]" : ""}
           {...cellProps}
         />
       </BrainTileMenu>

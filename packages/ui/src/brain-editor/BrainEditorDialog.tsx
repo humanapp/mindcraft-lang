@@ -33,7 +33,7 @@ import {
   Undo,
   Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { staticAssetUrl } from "../asset-url";
 import { Button } from "../ui/button";
@@ -138,6 +138,15 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   // The element holding the keyboard when the discard confirmation opened.
   const discardReturnFocusRef = useRef<HTMLElement | null>(null);
   const keepEditingRef = useRef<HTMLButtonElement | null>(null);
+  // The element holding the keyboard when the editor opened, which takes it
+  // back as the editor closes. Read in a layout pass, which runs before the
+  // dialog's own focus move.
+  const openerReturnFocusRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const opener = document.activeElement;
+    openerReturnFocusRef.current = opener instanceof HTMLElement && opener !== document.body ? opener : null;
+  }, [isOpen]);
 
   // Update undo/redo state when history changes
   useEffect(() => {
@@ -564,7 +573,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       {isOpen && isDocsOpen && <div className={`fixed inset-0 ${kDialogChromeLayer} bg-black/80`} aria-hidden="true" />}
       <Dialog open={isOpen} onOpenChange={onOpenChange} modal={!isDocsOpen}>
         <DialogContent
-          className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[75%] sm:h-[75%] sm:p-6 sm:gap-4 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl overflow-hidden"
+          className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-2 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[75%] sm:h-[90%] sm:p-4 sm:gap-3 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl overflow-hidden"
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onFocusOutside={(e) => e.preventDefault()}
@@ -573,6 +582,17 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
           onOpenAutoFocus={(e) => {
             e.preventDefault();
             if (e.currentTarget instanceof HTMLElement) e.currentTarget.focus();
+          }}
+          // The keyboard goes back to whatever held it when the editor opened,
+          // without moving the view. An opener that stopped rendering, and an
+          // editor opened with the keyboard held nowhere, both leave the
+          // dialog's own restoration to stand.
+          onCloseAutoFocus={(e) => {
+            const returnTo = openerReturnFocusRef.current;
+            openerReturnFocusRef.current = null;
+            if (returnTo === null || !returnTo.isConnected) return;
+            e.preventDefault();
+            returnTo.focus({ preventScroll: true });
           }}
           // While a tile picker is armed, Escape belongs to the candidate strip:
           // it clears the strip's filter text and then disarms. While a rule is
@@ -596,15 +616,15 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
             className={`pointer-events-none absolute inset-x-0 top-0 ${kDialogChromeLayer} h-0.75`}
             style={{ background: brandStripBackground }}
           />
-          <DialogHeader className="border-b border-border pb-2 sm:pb-4">
+          <DialogHeader className="border-b border-border pb-2 sm:pb-3">
             <DialogDescription className="sr-only">
               Edit brain pages, rules, and tiles. Use the toolbar to navigate pages, undo/redo, and manage the brain.
             </DialogDescription>
             <DialogTitle>
-              <div className="flex flex-wrap justify-center items-center gap-2 sm:gap-3">
+              <div className="flex flex-wrap justify-center items-center gap-1.5 sm:gap-3">
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex bg-muted rounded-lg p-1 sm:p-1.5 border border-border"
+                  className="flex bg-muted rounded-lg p-1 border border-border"
                   role="group"
                   aria-label="Page name controls"
                 >
@@ -663,7 +683,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 <div className="hidden sm:block grow" />
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex bg-muted rounded-lg p-1 sm:p-1.5 border border-border"
+                  className="flex bg-muted rounded-lg p-1 border border-border"
                   role="group"
                   aria-label="Brain name controls"
                 >
@@ -722,7 +742,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 <div className="hidden sm:block grow" />
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex items-center gap-2 bg-muted rounded-lg p-1 sm:p-1.5 border border-border sm:mr-2"
+                  className="flex items-center gap-2 bg-muted rounded-lg p-1 border border-border sm:mr-2"
                   role="group"
                   aria-label="Undo, redo, and documentation controls"
                 >
@@ -762,7 +782,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 </div>
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex items-center gap-1 sm:gap-2 bg-muted rounded-lg p-1 sm:p-1.5 border border-border"
+                  className="flex items-center gap-1 sm:gap-2 bg-muted rounded-lg p-1 border border-border"
                   role="group"
                   aria-label="Page navigation controls"
                 >
@@ -955,7 +975,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
               <p className="text-brain-ink/80 p-6">No BrainDef attached to this object.</p>
             )}
           </div>
-          <DialogFooter className="pt-2 sm:pt-4 border-t border-border flex flex-row flex-wrap items-center gap-2 sm:justify-between">
+          <DialogFooter className="pt-2 sm:pt-3 border-t border-border flex flex-row flex-wrap items-center gap-2 sm:justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs text-muted-foreground whitespace-nowrap">{Math.round(zoom * 100)}%</span>
               <Slider

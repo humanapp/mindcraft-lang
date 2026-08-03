@@ -6,6 +6,7 @@ import { staticAssetUrl } from "../asset-url";
 import { adjustColor, readableInk } from "../lib/color";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
+import { kPageGridSelectionAttribute } from "./page-grid-selection";
 import { TileValue } from "./TileValue";
 import type { TileBadge } from "./tile-badges";
 import { isProjectAuthoredActionTile } from "./tile-library-groups";
@@ -72,6 +73,10 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
       borderColor: tileBorderColor(baseColor),
     };
 
+    // A tile the page's selection rests on stands grown, and takes no further
+    // growth from the pointer resting on it as well.
+    const isPageGridSelected = kPageGridSelectionAttribute in props;
+
     // Measure the rendered text width by creating a temporary hidden span in the DOM.
     useLayoutEffect(() => {
       const tempSpan = document.createElement("span");
@@ -103,7 +108,9 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
     }, [label, isValueTile]);
 
     return (
-      <div className="relative self-center hover:scale-105 transition-transform duration-100">
+      <div
+        className={`relative self-center transition-transform duration-100 ${isPageGridSelected ? "brain-tile-selected" : "hover:scale-105"}`}
+      >
         {isAsyncAction && (
           <span
             className={`group/clock absolute -top-1.5 -left-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-brain-timed border-brain-timed-ink text-brain-timed-ink`}

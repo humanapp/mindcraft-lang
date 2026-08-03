@@ -16,6 +16,7 @@ import { type CaretPosition, caretPositionForSegment, caretSentenceSlot } from "
 import { kRuleContentLayer } from "./editor-layers";
 import { usePageGrid } from "./PageGridContext";
 import { kPageGridCellAttribute, pageGridCellKey } from "./page-grid-model";
+import { pageGridSelectionProps } from "./page-grid-selection";
 import { composePivotReading, composeSentenceReading } from "./sentence-composer";
 import {
   changedSentenceSegments,
@@ -303,12 +304,14 @@ export function BrainRuleSentence({
   // The whole line is one cell of the page's selection grid, rendered as a
   // named group holding the line's own controls.
   const cellKey = pageGridCellKey({ kind: "sentence", ruleId: ruleDef.id() });
+  const isSelectedCell = pageGrid?.currentCell !== undefined && pageGridCellKey(pageGrid.currentCell) === cellKey;
   const cellProps =
     pageGrid === undefined || cellName === undefined
       ? undefined
       : {
           [kPageGridCellAttribute]: cellKey,
-          tabIndex: pageGrid.currentCell !== undefined && pageGridCellKey(pageGrid.currentCell) === cellKey ? 0 : -1,
+          tabIndex: isSelectedCell ? 0 : -1,
+          ...pageGridSelectionProps("line", isSelectedCell),
           role: "group",
           "aria-label": cellName,
           onKeyDown: onCellKeyDown,

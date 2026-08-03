@@ -91,9 +91,9 @@
   --color-brain-rule-from: oklch(19% 0.045 262);
   --color-brain-rule-to: oklch(19% 0.045 262);
   --color-brain-armed: oklch(92% 0.012 262);
-  /* Editor accent, on the desk and as the ink read on top of it: the blue of
-     --color-primary, at the weight each role is read on the desk. */
-  --color-brain-accent: oklch(62% 0.15 258);
+  /* Editor accent, on the desk and as the ink read on top of it: the app's
+     blue, at the weight each role is read on the desk. */
+  --color-brain-accent: oklch(76% 0.15 258);
   --color-brain-accent-ink: oklch(88% 0.065 258);
   --color-brain-on-accent: #000;
   /* Editor chrome ink on the dark desk, and the pole its wells are sunk to. */

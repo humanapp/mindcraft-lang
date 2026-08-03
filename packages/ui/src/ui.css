@@ -59,11 +59,16 @@
   --color-brain-rule-from: #16143a;
   --color-brain-rule-to: #8b6cf3;
   --color-brain-armed: #eef1f5;
-  /* The editor's accent: the ring around the band the keyboard is walking, the
-     filter box's focus border, the pivot's current position, the caret's marks
-     and the composer's underline, and the sentence's variable register.
-     --color-brain-accent-ink is the accent read as a mark or as text on the
-     desk; --color-brain-on-accent is the ink read on top of an accent fill. */
+  /* The editor's accent, worn by FILLS AND RINGS: the ring around the band the
+     keyboard is walking, the filter box's focus border, the pivot's current
+     position, and the page grid's selection -- both the selected cell's ring and
+     the ring around the grid while it holds the keyboard.
+     --color-brain-accent-ink is a SEPARATE token, the accent read as a mark or as
+     text on the desk, and it is what the caret's marks, the composer's pending-text
+     underline and the sentence's variable register actually wear. Do not attribute
+     those to --color-brain-accent: an earlier version of this comment did, and a
+     change reasoning from it nearly moved the wrong roles.
+     --color-brain-on-accent is the ink read on top of an accent fill. */
   --color-brain-accent: oklch(70.2% 0.183 293.541);
   --color-brain-accent-ink: oklch(89.4% 0.057 293.283);
   --color-brain-on-accent: #000;
@@ -144,6 +149,88 @@
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
   }
+}
+
+/* ==========================================================================
+   Brain page selection
+
+   The one cell the brain page's selection rests on carries
+   data-page-grid-selection, valued by the shape its treatment is painted in.
+   .brain-page-grid carries an edge of the same accent while the rules hold the
+   keyboard.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   TUNABLE -- how loud the page's selection reads
+
+   Every number the selection is drawn with lives in this block; edit and save
+   to retune it live. The two colours it is drawn from are not here: the accent
+   is --color-brain-accent in each app's globals.css, and the ring inside a
+   selected tile is black at the alpha below.
+   -------------------------------------------------------------------------- */
+
+:root {
+  /* Width of the accent ring around a selected tile and a selected sentence. */
+  --brain-selection-ring-width: 3px;
+  /* Width of that ring around a selected round cell: a rule handle, a `+`. */
+  --brain-selection-ring-width-circle: 4px;
+  /* The dark ring inside a selected tile's own edge, and how opaque it is.
+     The tile's fill can be any hue, so this ring, not the accent, is what
+     separates the selection from the tile. */
+  --brain-selection-inner-ring-width: 2px;
+  --brain-selection-inner-ring-alpha: 0.5;
+  /* How much accent fills a selected sentence line. */
+  --brain-selection-line-mix: 34%;
+  /* How much a selected tile, rule handle or `+` grows. The growth is painted
+     rather than laid out, so nothing around it moves. */
+  --brain-selection-scale: 1.07;
+  /* The ring the whole page wears while its rules hold the keyboard, and how
+     much accent fills it. */
+  --brain-grid-ring-width: 2px;
+  --brain-grid-ring-mix: 70%;
+}
+
+@layer components {
+  [data-page-grid-selection] {
+    outline: var(--brain-selection-ring-width) solid var(--color-brain-accent);
+    outline-offset: 0;
+  }
+
+  /* The dark ring a selected chip carries inside its own edge. */
+  [data-page-grid-selection="chip"]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 var(--brain-selection-inner-ring-width) rgb(0 0 0 / var(--brain-selection-inner-ring-alpha));
+    pointer-events: none;
+  }
+
+  [data-page-grid-selection="circle"] {
+    outline-width: var(--brain-selection-ring-width-circle);
+  }
+
+  [data-page-grid-selection="line"] {
+    outline: none;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--color-brain-accent) var(--brain-selection-line-mix), transparent);
+  }
+
+  .brain-page-grid {
+    border-radius: 10px;
+  }
+
+  .brain-page-grid:focus-within {
+    box-shadow: inset 0 0 0 var(--brain-grid-ring-width)
+      color-mix(in srgb, var(--color-brain-accent) var(--brain-grid-ring-mix), transparent);
+  }
+}
+
+/* The growth a selected cell takes. Unlayered, so it stands over the hover
+   growth utility the same cells carry and the two never compound. */
+[data-page-grid-selection="circle"],
+.brain-tile-selected {
+  scale: var(--brain-selection-scale);
 }
 
 /* Animations */

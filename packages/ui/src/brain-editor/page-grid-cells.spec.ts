@@ -5,8 +5,11 @@
  * card stands is reached by the arrow keys, so none of them is a tab stop of its
  * own.
  *
+ * Also pins which cell carries the selection's mark and the shape each cell kind
+ * names it in.
+ *
  * Structural assertions only: every value asserted here is a cell key, a tab
- * index, or the presence of a name.
+ * index, a shape name, or the presence of an accessible name.
  */
 
 import assert from "node:assert/strict";
@@ -30,6 +33,7 @@ import {
   pageGridRows,
   type RuleCellDescriptor,
 } from "./page-grid-model";
+import { kPageGridSelectionAttribute } from "./page-grid-selection";
 import { makeActuator, makeBrain, makeSensor } from "./test-only-rule-fixtures";
 
 let services: BrainServices;
@@ -96,8 +100,8 @@ function renderRuleCard(ruleDef: BrainRuleDef, currentCell?: PageGridCell): stri
   );
 }
 
-/** The keys the model names for `ruleDef`'s own rows, in reading order. */
-function modelCellKeys(ruleDef: BrainRuleDef, hasSentence: boolean): string[] {
+/** The cells the model names for `ruleDef`'s own rows, in reading order. */
+function modelCells(ruleDef: BrainRuleDef, hasSentence: boolean): PageGridCell[] {
   const descriptor: RuleCellDescriptor = {
     ruleId: ruleDef.id(),
     whenTileCount: ruleDef.when().tiles().size(),
@@ -107,7 +111,12 @@ function modelCellKeys(ruleDef: BrainRuleDef, hasSentence: boolean): string[] {
     hasSentence,
   };
   // The page stands the last row, not the rule.
-  return pageGridRows([descriptor]).slice(0, -1).flat().map(pageGridCellKey);
+  return pageGridRows([descriptor]).slice(0, -1).flat();
+}
+
+/** The keys the model names for `ruleDef`'s own rows, in reading order. */
+function modelCellKeys(ruleDef: BrainRuleDef, hasSentence: boolean): string[] {
+  return modelCells(ruleDef, hasSentence).map(pageGridCellKey);
 }
 
 /** A rule holding one tile on each side, typechecked so the oracle has an answer for both. */
@@ -185,7 +194,7 @@ describe("the grid's one tab stop", () => {
     assert.equal(attributeOf(handle, "aria-haspopup"), undefined);
   });
 
-  test("a card rendered outside a page grid stands no cell and reserves no tab stop", () => {
+  test("a card rendered outside a page grid stands no cell, no selection mark and no tab stop", () => {
     const ruleDef = makePopulatedRule("stop-none");
     const markup = renderToStaticMarkup(
       createElement(
@@ -205,5 +214,50 @@ describe("the grid's one tab stop", () => {
       )
     );
     assert.deepEqual(cellTags(markup), []);
+    assert.equal(markup.includes(kPageGridSelectionAttribute), false);
+  });
+});
+
+describe("the selection's mark", () => {
+  /** The shape each cell of `markup` names its selection in, keyed by cell key. */
+  function selectionShapes(markup: string): Map<string, string | undefined> {
+    return new Map(
+      cellTags(markup).map((tag) => [
+        attributeOf(tag, kPageGridCellAttribute) as string,
+        attributeOf(tag, kPageGridSelectionAttribute),
+      ])
+    );
+  }
+
+  test("only the cell the selection rests on carries it", () => {
+    const ruleDef = makePopulatedRule("mark-one");
+    const named: PageGridCell = { kind: "tile", ruleId: ruleDef.id(), side: RuleSide.Do, tileIndex: 0 };
+    const shapes = selectionShapes(renderRuleCard(ruleDef, named));
+    const marked = [...shapes].filter(([, shape]) => shape !== undefined).map(([key]) => key);
+    assert.deepEqual(marked, [pageGridCellKey(named)]);
+  });
+
+  test("nothing is marked while the selection rests on another rule's cell", () => {
+    const ruleDef = makePopulatedRule("mark-elsewhere");
+    const shapes = selectionShapes(renderRuleCard(ruleDef, { kind: "append-rule" }));
+    const marked = [...shapes.values()].filter((shape) => shape !== undefined);
+    assert.deepEqual(marked, []);
+  });
+
+  /** The shape each kind of cell names its selection in. */
+  const shapeOfKind: Record<PageGridCell["kind"], string> = {
+    handle: "circle",
+    tile: "chip",
+    append: "circle",
+    sentence: "line",
+    "append-rule": "circle",
+  };
+
+  test("each cell of the card names the shape its kind is painted in", () => {
+    const ruleDef = makePopulatedRule("mark-shapes");
+    for (const cell of modelCells(ruleDef, true)) {
+      const shapes = selectionShapes(renderRuleCard(ruleDef, cell));
+      assert.equal(shapes.get(pageGridCellKey(cell)), shapeOfKind[cell.kind], pageGridCellKey(cell));
+    }
   });
 });

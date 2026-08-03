@@ -9,7 +9,7 @@ import {
 } from "@mindcraft-lang/core/brain/model";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { keyboardIsUnheld } from "./BrainCandidateStrip";
+import { keyboardIsUnheld, kStripPopupAttribute } from "./BrainCandidateStrip";
 import { BrainRuleEditor, kAddButtonClasses } from "./BrainRuleEditor";
 import { kRuleContentLayer } from "./editor-layers";
 import { useRuleDrag } from "./hooks/useRuleDrag";
@@ -29,6 +29,7 @@ import {
   resolvePageGridCursor,
   ruleMoveDirections,
 } from "./page-grid-model";
+import { pageGridSelectionProps } from "./page-grid-selection";
 import { RuleDragProvider } from "./RuleDragContext";
 import { useRulePickup } from "./RulePickupContext";
 
@@ -77,13 +78,6 @@ function flattenRules(rules: BrainRuleDef[], depth: number = 0, startLineNumber:
  */
 type CellFocusScroll = "keep-scroll" | "reveal";
 
-/**
- * `FocusOptions` plus `focusVisible`, which asks the browser to mark the newly
- * focused element as keyboard-focused so `:focus-visible` matches it. The DOM
- * typings this package builds against do not carry the member yet.
- */
-type CellFocusOptions = FocusOptions & { focusVisible?: boolean };
-
 /** The element standing for the cell `key`, or null while nothing in `container` does. */
 function cellElement(container: HTMLElement | null, key: string): HTMLElement | null {
   if (container === null) return null;
@@ -96,6 +90,18 @@ function cellElement(container: HTMLElement | null, key: string): HTMLElement | 
 /** The cell `target` stands for or stands inside, or null for an element outside every cell. */
 function cellOf(target: EventTarget | null): HTMLElement | null {
   return target instanceof Element ? target.closest<HTMLElement>(`[${kPageGridCellAttribute}]`) : null;
+}
+
+/**
+ * True when the keyboard passing to `gaining` keeps it in the rules `container`
+ * holds: an element the container contains, or one inside a popup a control of
+ * the rules opened, which a portal renders outside the container's subtree. A
+ * `gaining` of null is the keyboard landing on the document body, which no
+ * element holds.
+ */
+function keyboardStaysInGrid(container: HTMLElement | null, gaining: Element | null): boolean {
+  if (gaining === null) return false;
+  return container?.contains(gaining) === true || gaining.closest(`[${kStripPopupAttribute}]`) !== null;
 }
 
 /** The command that takes `ruleDef` one step in `direction`. */
@@ -233,15 +239,11 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
   // the grid does.
   const gridSignature = rows.map((row) => row.map(pageGridCellKey).join(" ")).join("|");
 
-  // Every move the grid makes is the keyboard's, so each one asks for the mark a
-  // keyboard focus paints: the browser reads a bare programmatic focus as
-  // whatever modality last moved the keyboard, which leaves the cell unmarked
-  // after a press elsewhere.
+  /** Gives the keyboard to `cell`, or returns false while the page stands no element for it. */
   const focusCell = (cell: PageGridCell, scroll: CellFocusScroll): boolean => {
     const element = cellElement(containerRef.current, pageGridCellKey(cell));
     if (element === null) return false;
-    const options: CellFocusOptions = { preventScroll: scroll === "keep-scroll", focusVisible: true };
-    element.focus(options);
+    element.focus({ preventScroll: scroll === "keep-scroll" });
     return true;
   };
 
@@ -250,8 +252,9 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
   cursorRef.current = cursor;
   const focusCellRef = useRef(focusCell);
   focusCellRef.current = focusCell;
-  // True while the keyboard is somewhere in the rules, including inside the
-  // offering a rule has open.
+  // True while the rules hold the keyboard: it rests somewhere in them,
+  // including inside the offering a rule has open, or a press has just landed
+  // in them.
   const heldKeyboardRef = useRef(false);
 
   // The keyboard is given back to the selected cell whenever it lands outside
@@ -304,6 +307,15 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
     if (hasTakenKeyboardRef.current || cursor === undefined || !keyboardIsUnheld()) return;
     hasTakenKeyboardRef.current = focusCellRef.current(cursor.cell, "keep-scroll");
   }, [cursor]);
+
+  // A press landing anywhere in the rules is the rules taking the keyboard,
+  // whether or not what it landed on can hold it. It runs before the press moves
+  // the keyboard, so a press landing on ground no control stands on drops the
+  // keyboard on the dialog around the rules and is given straight back to the
+  // selection.
+  const handleGridPointerDown = () => {
+    heldKeyboardRef.current = true;
+  };
 
   // The keyboard landing anywhere in a cell makes that cell the selected one,
   // whether it landed on the cell or on a control the cell holds.
@@ -404,6 +416,20 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
     setPickupAnnouncement("Cancelled");
   };
 
+  // A press is never part of the grab, so any press sets the held rule down
+  // where it stands. It runs before anything the press itself does, so the
+  // batch is already closed and no command the press goes on to issue can join
+  // the entry the pick-up makes; the press is then left to do its own work.
+  const dropHeldRuleRef = useRef(dropHeldRule);
+  dropHeldRuleRef.current = dropHeldRule;
+  const isHoldingRule = pickup !== null;
+  useEffect(() => {
+    if (!isHoldingRule) return;
+    const drop = () => dropHeldRuleRef.current();
+    document.addEventListener("pointerdown", drop, true);
+    return () => document.removeEventListener("pointerdown", drop, true);
+  }, [isHoldingRule]);
+
   /** Puts an empty rule at the end of the page and asks for it to be composed. */
   const appendRule = () => {
     commandHistory.executeCommand(new AddRuleCommand(pageDef));
@@ -452,6 +478,17 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
     }
   };
 
+  // The keyboard leaving the rules for anything else the document holds sets a
+  // held rule down where it stands, closing its batch into the one history entry
+  // the whole pick-up makes. Steps within the grid, and a popup a control of the
+  // rules opens, keep the keyboard here and leave the rule held.
+  const handleGridBlur = (event: React.FocusEvent<HTMLDivElement>) => {
+    if (pickup === null || keyboardStaysInGrid(containerRef.current, event.relatedTarget)) return;
+    dropHeldRule();
+  };
+
+  const appendRuleSelected = cursor !== undefined && cursor.cell.kind === "append-rule";
+
   const gridBinding = useMemo(
     () => ({
       registerRule,
@@ -480,14 +517,16 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
         {/* biome-ignore lint/a11y/useSemanticElements: changing to ul/li requires restructuring BrainRuleEditor */}
         <div
           ref={containerRef}
-          className="h-full overflow-auto"
+          className="brain-page-grid h-full overflow-auto"
           role="list"
           aria-label="Brain rules"
+          onPointerDown={handleGridPointerDown}
           onFocus={handleGridFocus}
+          onBlur={handleGridBlur}
           onKeyDown={handleGridKeyDown}
         >
           <div
-            className="p-3 sm:p-6"
+            className="p-2 sm:p-4"
             style={{
               transform: `scale(${zoom})`,
               transformOrigin: "top left",
@@ -515,7 +554,8 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
                 onClick={appendRule}
                 aria-label="Add rule at the end of the page"
                 {...{ [kPageGridCellAttribute]: pageGridCellKey(kAppendRuleCell) }}
-                tabIndex={cursor !== undefined && cursor.cell.kind === "append-rule" ? 0 : -1}
+                {...pageGridSelectionProps("circle", appendRuleSelected)}
+                tabIndex={appendRuleSelected ? 0 : -1}
               >
                 <Plus className={`h-4 w-4 relative ${kRuleContentLayer}`} aria-hidden="true" />
               </button>

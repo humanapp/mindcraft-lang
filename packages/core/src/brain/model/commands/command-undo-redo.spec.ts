@@ -788,6 +788,27 @@ describe("a batch of rule moves", () => {
     assert.equal(rules[2].children().get(1), following);
   });
 
+  test("work done after the batch closes takes its own entry and stays out of the pick-up's", () => {
+    const { brain, rules } = brainWithFourRules();
+    const moved = rules[3];
+    const history = new BrainCommandHistory();
+    const origin = documentShape(brain);
+
+    history.beginBatch("Move rule");
+    history.executeCommand(new MoveRuleUpCommand(moved));
+    history.endBatch();
+    const afterMove = documentShape(brain);
+
+    history.executeCommand(new AddTileCommand(rules[0], RuleSide.When, sensorTile()));
+    assert.notDeepEqual(documentShape(brain), afterMove);
+
+    history.undo();
+    assert.deepEqual(documentShape(brain), afterMove, "the first undo reverses only the later work");
+    history.undo();
+    assert.deepEqual(documentShape(brain), origin, "the pick-up is still its own entry underneath");
+    assert.equal(history.canUndo(), false);
+  });
+
   test("a batch that moved nothing leaves no entry", () => {
     const { brain, rules } = brainWithFourRules();
     const history = new BrainCommandHistory();

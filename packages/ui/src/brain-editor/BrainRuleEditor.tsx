@@ -52,6 +52,7 @@ import {
   pageGridCellKey,
   type RuleMoveDirection,
 } from "./page-grid-model";
+import { type PageGridSelectionShape, pageGridSelectionProps } from "./page-grid-selection";
 import { useRuleDragController } from "./RuleDragContext";
 import { useRulePickup } from "./RulePickupContext";
 import { copyRuleToClipboard, deserializeAllRulesFromClipboard, hasRuleInClipboard } from "./rule-clipboard";
@@ -80,7 +81,7 @@ const pillChromeClasses = "bg-brain-pill hover:bg-brain-pill-hover text-brain-pi
  * its ink, and the outward step its focus outline takes. The outline's colour is
  * not among them, so the focus mark paints at its own colour on the first frame.
  */
-const pillTransitionClasses = "transition-[transform,background-color,border-color,color,outline-offset] duration-150";
+const pillTransitionClasses = "transition-[scale,background-color,border-color,color,outline-offset] duration-150";
 
 /**
  * The whole look of a round `+` button -- shape, size, chrome, hover growth and
@@ -777,12 +778,24 @@ export function BrainRuleEditor({
   /** How the rule's sentence row reads, whichever of its two controls stands there. */
   const sentenceCellName = `Rule ${lineNumber} sentence`;
 
-  /** The grid attributes `cell` renders, or undefined for a rule standing outside a page grid. */
-  const cellProps = (cell: PageGridCell) => {
+  /**
+   * The grid attributes `cell` renders, painted in `shape` where the page's
+   * selection rests on it. Undefined for a rule standing outside a page grid.
+   */
+  const cellProps = (cell: PageGridCell, shape: PageGridSelectionShape) => {
     if (pageGrid === undefined) return undefined;
     const key = pageGridCellKey(cell);
-    return { [kPageGridCellAttribute]: key, tabIndex: key === currentCellKey ? 0 : -1 };
+    const selected = key === currentCellKey;
+    return {
+      [kPageGridCellAttribute]: key,
+      tabIndex: selected ? 0 : -1,
+      ...pageGridSelectionProps(shape, selected),
+    };
   };
+
+  // True while the page's selection rests on this rule's sentence, which is
+  // filled with the accent in place of the hover wash.
+  const sentenceCellSelected = currentCellKey === pageGridCellKey({ kind: "sentence", ruleId });
 
   /**
    * A key pressed on the rule handle. Enter and a space pick the rule up, after
@@ -888,7 +901,7 @@ export function BrainRuleEditor({
             aria-label={`Rule ${lineNumber} of ${ruleCount}, handle${isDirty ? ", unsaved changes" : ""}`}
             onPointerDown={handleHandlePointerDown}
             onKeyDown={handleHandleKeyDown}
-            {...cellProps({ kind: "handle", ruleId })}
+            {...cellProps({ kind: "handle", ruleId }, "circle")}
           >
             {lineNumber}
             {isDirty && (
@@ -968,7 +981,9 @@ export function BrainRuleEditor({
               aria-label="Add tile to when condition"
               aria-expanded={offeredAppendSide === RuleSide.When}
               aria-controls={offeredAppendSide === RuleSide.When ? stripId : undefined}
-              {...(appendable.whenSide ? cellProps({ kind: "append", ruleId, side: RuleSide.When }) : { tabIndex: -1 })}
+              {...(appendable.whenSide
+                ? cellProps({ kind: "append", ruleId, side: RuleSide.When }, "circle")
+                : { tabIndex: -1 })}
             >
               <Plus className={`h-4 w-4 relative ${kRuleContentLayer}`} aria-hidden="true" />
             </button>
@@ -1017,7 +1032,7 @@ export function BrainRuleEditor({
                 aria-label="Add tile to do action"
                 aria-expanded={offeredAppendSide === RuleSide.Do}
                 aria-controls={offeredAppendSide === RuleSide.Do ? stripId : undefined}
-                {...cellProps({ kind: "append", ruleId, side: RuleSide.Do })}
+                {...cellProps({ kind: "append", ruleId, side: RuleSide.Do }, "circle")}
               >
                 <Plus className={`h-4 w-4 relative ${kRuleContentLayer}`} aria-hidden="true" />
               </button>
@@ -1043,8 +1058,8 @@ export function BrainRuleEditor({
             onKeyDown={handleSentenceCellKeyDown}
             data-sentence-composer-entry={ruleDef.id()}
             aria-label={`${sentenceCellName}, empty. ${kComposerEntryPrompt}`}
-            {...cellProps({ kind: "sentence", ruleId })}
-            className={`relative ${kRuleContentLayer} mt-1.5 ml-11 flex min-h-8 max-w-2xl cursor-text items-center rounded-sm px-1 text-left ${kSentenceTypeClasses} text-brain-ink/45 italic transition-colors hover:bg-brain-ink/5 hover:text-brain-ink/70`}
+            {...cellProps({ kind: "sentence", ruleId }, "line")}
+            className={`relative ${kRuleContentLayer} mt-1.5 ml-11 flex min-h-8 max-w-2xl cursor-text items-center rounded-sm px-1 text-left ${kSentenceTypeClasses} text-brain-ink/45 italic transition-colors hover:text-brain-ink/70${sentenceCellSelected ? "" : " hover:bg-brain-ink/5"}`}
           >
             {kComposerEntryPrompt}
           </button>
