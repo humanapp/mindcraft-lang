@@ -1,10 +1,12 @@
 import { useLayoutEffect, useRef } from "react";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
 import StartGame from "./game/main";
+import type { SceneStartup } from "./game/scenes/Playground";
 
 interface PhaserGameProps {
   store: EcosimEnvironmentStore;
-  onSceneReady?: (scene: Phaser.Scene) => void;
+  /** Called once each time the playground scene starts, with the startup outcome. */
+  onSceneReady?: (startup: SceneStartup) => void;
 }
 
 export function PhaserGame({ store, onSceneReady }: PhaserGameProps) {
@@ -15,8 +17,8 @@ export function PhaserGame({ store, onSceneReady }: PhaserGameProps) {
   useLayoutEffect(() => {
     void store;
     if (game.current === null) {
-      game.current = StartGame("game-container", store, (scene) => {
-        callbackRef.current?.(scene);
+      game.current = StartGame("game-container", store, (startup) => {
+        callbackRef.current?.(startup);
       });
     }
 

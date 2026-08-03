@@ -167,11 +167,13 @@ export function useTileSelection({ ruleDef, onComplete }: UseTileSelectionOption
     [pendingFactoryTile, pendingTileAction, onComplete]
   );
 
+  /** Abandons the variable being named, which ends the selection just as naming one does. */
   const handleVariableDialogClose = useCallback(() => {
     setShowCreateVariableDialog(false);
     setPendingFactoryTile(null);
     setPendingTileAction(null);
-  }, []);
+    onComplete?.();
+  }, [onComplete]);
 
   const handleLiteralValueSubmit = useCallback(
     (value: unknown, displayFormat?: LiteralDisplayFormat) => {
@@ -192,11 +194,13 @@ export function useTileSelection({ ruleDef, onComplete }: UseTileSelectionOption
     [pendingFactoryTile, pendingTileAction, onComplete]
   );
 
+  /** Abandons the literal being entered, which ends the selection just as entering one does. */
   const handleLiteralDialogClose = useCallback(() => {
     setShowCreateLiteralDialog(false);
     setPendingFactoryTile(null);
     setPendingTileAction(null);
-  }, []);
+    onComplete?.();
+  }, [onComplete]);
 
   const variableDialogTitle = pendingFactoryTile
     ? resolveTileVisual(editorConfig, pendingFactoryTile).label

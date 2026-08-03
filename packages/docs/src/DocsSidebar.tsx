@@ -23,6 +23,15 @@ const MIN_WIDTH_PCT = 14;
 const MAX_WIDTH_PCT = 55;
 const KEYBOARD_STEP_PCT = 1;
 
+/**
+ * Custom property the desktop panel publishes on the document root: the share
+ * of the viewport width it currently covers, written as a CSS percentage.
+ * It reads `0%` whenever the panel covers nothing a desktop layout has to
+ * avoid -- closed, unmounted, or in the mobile full-screen shape. Surfaces
+ * that must stay reachable while the panel is open inset themselves by it.
+ */
+const PANEL_INSET_VAR = "--docs-panel-inset";
+
 function clampWidth(pct: number): number {
   return Math.min(MAX_WIDTH_PCT, Math.max(MIN_WIDTH_PCT, pct));
 }
@@ -758,6 +767,16 @@ export function DocsSidebar() {
     if (isOpen) setHasBeenOpened(true);
   }, [isOpen]);
 
+  // Publishes the panel's settled footprint; the separator's pointer-move
+  // handler republishes it during a drag.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty(PANEL_INSET_VAR, !isMobile && isOpen ? `${widthPct}%` : "0%");
+    return () => {
+      root.style.removeProperty(PANEL_INSET_VAR);
+    };
+  }, [isMobile, isOpen, widthPct]);
+
   // Move focus into the sidebar when it opens so the user can immediately
   // interact via keyboard. A short delay allows the slide-in transition to
   // start before we focus (some browsers ignore focus on off-screen elements).
@@ -788,6 +807,7 @@ export function DocsSidebar() {
       // to avoid re-rendering the full subtree on every pointer event.
       asideRef.current.style.width = `${newPct}%`;
     }
+    document.documentElement.style.setProperty(PANEL_INSET_VAR, `${newPct}%`);
   }, []);
 
   const handleSeparatorPointerUp = useCallback(

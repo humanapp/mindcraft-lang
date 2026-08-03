@@ -1,10 +1,11 @@
 /**
  * Pins the edit point's rendered surface: the position pivot the strip shows
  * for a target armed on a placed tile from the tray and shows for no other
- * target, the pivot marking the armed position, the control that row stands to
- * open the anchor tile's menu, the ring staying on the anchor tile through every
- * position, and the sentence carrying a word per tile with a caret in each word
- * boundary the composer's input does not stand in.
+ * target, the pivot marking the armed position, which of the two controls that
+ * row stands for the anchor tile -- its documentation directly, or its menu --
+ * the ring staying on the anchor tile through every position, and the sentence
+ * carrying a word per tile with a caret in each word boundary the composer's
+ * input does not stand in.
  *
  * Structural assertions only: every value asserted here is a role, a state
  * flag, or a marker attribute. Pivot labels and caret names are display prose
@@ -17,6 +18,8 @@ import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainCommandHistory, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
+import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type ArmedTargetController, ArmedTargetProvider, type ArmedTileTarget } from "./ArmedTargetContext";
@@ -38,17 +41,25 @@ function makeActuator(actuatorId: string) {
   return makeActuatorTile(services, actuatorId);
 }
 
+/** A number literal tile, whose menu offers its display format alongside its documentation. */
+function makeNumericLiteral(value: number) {
+  return new BrainTileLiteralDef(CoreTypeIds.Number, value, {}, services);
+}
+
 const editorConfig: BrainEditorConfig = {
   dataTypeIcons: new Map(),
   dataTypeNames: new Map(),
   customLiteralTypes: [],
 };
 
-/** A host wiring up tile help, which every tile's menu then offers an entry of. */
-const helpingConfig: BrainEditorConfig = { ...editorConfig, onTileHelp: () => {} };
+/** A host wiring up tile documentation, which every tile's menu then offers an entry of. */
+const documentingConfig: BrainEditorConfig = { ...editorConfig, onTileDocs: () => {} };
 
 /** Marks the control the position row stands to open the anchor tile's menu. */
 const kTileMenuControl = "data-strip-tile-menu=";
+
+/** Marks the control the position row stands to open the anchor tile's documentation directly. */
+const kTileDocsControl = "data-strip-tile-docs=";
 
 /** A brain whose first rule holds `whenTiles` and `doTiles`. */
 function makeBrain(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrainTileDef[]) {
@@ -168,7 +179,7 @@ describe("the position pivot", () => {
     assert.equal(attributeOf(markup, "data-edit-point-pivot=", "data-edit-point-pivot"), "after");
   });
 
-  test("the row stands the control opening the anchor tile's menu", () => {
+  test("a tile offering only its documentation stands the control opening it, and no menu", () => {
     const { ruleDef } = makeBrain([makeSensor("pivot-menu")], []);
     const target: ArmedTileTarget = {
       ruleDef,
@@ -178,7 +189,24 @@ describe("the position pivot", () => {
       anchorTileIndex: 0,
       onTileSelected: () => true,
     };
-    assert.equal(countOf(renderCardWith(helpingConfig, ruleDef, target), kTileMenuControl), 1);
+    const markup = renderCardWith(documentingConfig, ruleDef, target);
+    assert.equal(countOf(markup, kTileDocsControl), 1);
+    assert.equal(countOf(markup, kTileMenuControl), 0);
+  });
+
+  test("a tile offering more than its documentation stands the menu instead", () => {
+    const { ruleDef } = makeBrain([makeNumericLiteral(7)], []);
+    const target: ArmedTileTarget = {
+      ruleDef,
+      side: RuleSide.When,
+      mode: "replace",
+      tileIndex: 0,
+      anchorTileIndex: 0,
+      onTileSelected: () => true,
+    };
+    const markup = renderCardWith(documentingConfig, ruleDef, target);
+    assert.equal(countOf(markup, kTileMenuControl), 1);
+    assert.equal(countOf(markup, kTileDocsControl), 0);
   });
 
   test("a tile whose menu offers nothing stands no such control", () => {
@@ -191,13 +219,17 @@ describe("the position pivot", () => {
       anchorTileIndex: 0,
       onTileSelected: () => true,
     };
-    assert.equal(countOf(renderRuleCard(ruleDef, target), kTileMenuControl), 0);
+    const markup = renderRuleCard(ruleDef, target);
+    assert.equal(countOf(markup, kTileMenuControl), 0);
+    assert.equal(countOf(markup, kTileDocsControl), 0);
   });
 
   test("a target standing on no placed tile stands none either", () => {
     const { ruleDef } = makeBrain([makeSensor("pivot-menu-append")], []);
     const target: ArmedTileTarget = { ruleDef, side: RuleSide.When, mode: "append", onTileSelected: () => true };
-    assert.equal(countOf(renderCardWith(helpingConfig, ruleDef, target), kTileMenuControl), 0);
+    const markup = renderCardWith(documentingConfig, ruleDef, target);
+    assert.equal(countOf(markup, kTileMenuControl), 0);
+    assert.equal(countOf(markup, kTileDocsControl), 0);
   });
 
   test("the anchor tile carries the armed description through the position that appends", () => {

@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { toast } from "sonner";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
+import type { BrainLoadFailure } from "@/brain/brain-load-failure";
 import type { ScoreSnapshot } from "@/brain/score";
 import { BrainDiagnosticsList, BrainErrorBadge, toggledBrainKey } from "@/components/BrainDiagnostics";
 import { CompileDiagnosticsConsole } from "@/components/CompileDiagnosticsConsole";
@@ -102,6 +103,17 @@ export interface SidebarProps {
   isPlaying: boolean;
   onTogglePlay: (playing: boolean) => void;
   onEditBrain: (archetype: Archetype) => void;
+  /**
+   * Whether an archetype's brain can be resolved yet. False until the
+   * simulation has finished starting up, and false for good once a brain load
+   * has failed; the brain edit controls stay disabled while it is false.
+   */
+  brainsReady: boolean;
+  /**
+   * Why the brains could not be loaded, when a load has failed. Undefined
+   * while they are still loading and once they are loaded.
+   */
+  brainLoadFailure?: BrainLoadFailure;
   onDesiredCountChange: (archetype: Archetype, count: number) => void;
   onToggleDebug: () => void;
   debugEnabled: boolean;
@@ -118,6 +130,8 @@ export function Sidebar({
   isPlaying,
   onTogglePlay,
   onEditBrain,
+  brainsReady,
+  brainLoadFailure,
   onDesiredCountChange,
   onToggleDebug,
   debugEnabled,
@@ -462,6 +476,23 @@ export function Sidebar({
 
         <div className="border-t border-border" />
 
+        {/* Why the Edit Brain buttons below are unavailable */}
+        {brainLoadFailure && (
+          <div
+            role="alert"
+            data-testid="brain-load-failure"
+            className="space-y-1 rounded-lg border border-destructive/40 bg-panel p-2.5"
+          >
+            <p className="text-xs font-medium text-destructive">
+              Brains failed to load, so Edit Brain is unavailable. Reload the page to try again.
+            </p>
+            <p className="font-mono text-xs break-words text-muted-foreground">
+              {brainLoadFailure.code ? `${brainLoadFailure.code}: ` : ""}
+              {brainLoadFailure.message}
+            </p>
+          </div>
+        )}
+
         {/* Per-archetype sections */}
         {ARCHETYPES_LIST.map((arch) => {
           const s = snapshot?.[arch];
@@ -576,6 +607,7 @@ export function Sidebar({
                   }}
                   variant="outline"
                   size="sm"
+                  disabled={!brainsReady}
                   className="w-full h-7 text-xs border-border"
                   aria-label={`Edit ${ARCHETYPE_LABELS[arch]} brain`}
                 >

@@ -7,9 +7,9 @@
  * canUndo()/canRedo() transition correctly. Fixtures are real BrainDef
  * documents built through the real model APIs.
  *
- * Also pins clone isolation: the editor edits a clone of the saved program and
- * drops it on discard, so every command must leave the source document
- * untouched when it runs against a clone.
+ * Also pins working-copy isolation: the editor edits a working copy of the saved
+ * program and drops it on discard, so every command must leave the source
+ * document untouched when it runs against the copy.
  */
 
 import assert from "node:assert/strict";
@@ -928,10 +928,10 @@ describe("tile commands round-trip the document", () => {
   });
 });
 
-// ---- Clone isolation -------------------------------------------------------
-// The editor edits `sourceBrain.clone()` and drops the clone on discard, so a
-// command executed against the clone must leave the source brain byte-identical
-// to its pre-clone snapshot. The snapshot extends the document shape with a
+// ---- Working-copy isolation ------------------------------------------------
+// The editor edits `sourceBrain.workingCopy()` and drops the copy on discard, so
+// a command executed against the copy must leave the source brain byte-identical
+// to its pre-copy snapshot. The snapshot extends the document shape with a
 // catalog projection, because catalog-touching commands (variable rename, page
 // add/remove) would otherwise leak through shared tile-def instances unseen.
 
@@ -967,11 +967,11 @@ function brainSnapshot(brain: BrainDef): unknown {
 }
 
 /**
- * One row of the clone-isolation table: `build` populates a fresh brain, and
- * `makeCommand` locates its targets positionally so the same row can be applied
- * to the clone.
+ * One row of the working-copy isolation table: `build` populates a fresh brain,
+ * and `makeCommand` locates its targets positionally so the same row can be
+ * applied to the copy.
  */
-interface CloneIsolationCase {
+interface WorkingCopyIsolationCase {
   name: string;
   build: (brain: BrainDef) => void;
   makeCommand: (brain: BrainDef) => BrainCommand;
@@ -989,7 +989,7 @@ function ruleAt(brain: BrainDef, index: number): BrainRuleDef {
   return firstPage(brain).children().get(index) as BrainRuleDef;
 }
 
-const cloneIsolationCases: CloneIsolationCase[] = [
+const workingCopyIsolationCases: WorkingCopyIsolationCase[] = [
   {
     name: "AddPageCommand",
     build: () => {},
@@ -1032,7 +1032,7 @@ const cloneIsolationCases: CloneIsolationCase[] = [
   {
     name: "SetRuleCommentCommand",
     build: () => {},
-    makeCommand: (brain) => new SetRuleCommentCommand(firstRule(brain), "comment on the clone"),
+    makeCommand: (brain) => new SetRuleCommentCommand(firstRule(brain), "comment on the working copy"),
   },
   {
     name: "ReplaceBrainCommand",
@@ -1164,14 +1164,14 @@ const cloneIsolationCases: CloneIsolationCase[] = [
   },
 ];
 
-describe("commands run against a clone leave the source brain untouched", () => {
-  for (const testCase of cloneIsolationCases) {
+describe("commands run against a working copy leave the source brain untouched", () => {
+  for (const testCase of workingCopyIsolationCases) {
     test(testCase.name, () => {
       const source = newBrain();
       testCase.build(source);
       const sourceSnapshot = brainSnapshot(source);
 
-      const working = source.clone();
+      const working = source.workingCopy();
       const history = new BrainCommandHistory();
       history.executeCommand(testCase.makeCommand(working));
 

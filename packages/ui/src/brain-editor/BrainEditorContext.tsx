@@ -72,8 +72,8 @@ export interface BrainEditorConfig {
   tileCatalogs?: readonly ITileCatalog[];
   /** Installed libraries of the active project; the tile picker subgroups tiles attributed to them. */
   libraries?: readonly TileSourceLibrary[];
-  /** Optional callback invoked when the user requests help for a tile (e.g. right-click -> Help). */
-  onTileHelp?: (tileDef: IBrainTileDef) => void;
+  /** Optional callback invoked when the user opens a tile's documentation from the editor. */
+  onTileDocs?: (tileDef: IBrainTileDef) => void;
   /** Optional docs sidebar integration for the brain editor dialog toolbar. */
   docsIntegration?: {
     isOpen: boolean;

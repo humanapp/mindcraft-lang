@@ -635,4 +635,29 @@ describe("brain-json", () => {
     assert.ok(cloned.id().length > 0);
     assert.notEqual(cloned.id(), original.id());
   });
+
+  test("a working copy saved back unedited keeps the brain id", () => {
+    const original = new BrainDef(services);
+    original.appendNewPage();
+
+    const working = original.workingCopy();
+    assert.equal(working.id(), original.id());
+
+    const saved = BrainDef.fromJson(working.toJson(), services);
+    assert.equal(saved.id(), original.id());
+  });
+
+  test("a working copy saved back after an edit keeps the brain id", () => {
+    const original = new BrainDef(services);
+    original.appendNewPage();
+
+    const working = original.workingCopy();
+    working.setName("Edited Brain");
+    working.appendNewPage();
+
+    const saved = BrainDef.fromJson(working.toJson(), services);
+    assert.equal(saved.id(), original.id());
+    assert.equal(saved.name(), "Edited Brain");
+    assert.equal(saved.pages().size(), original.pages().size() + 1);
+  });
 });

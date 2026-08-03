@@ -94,13 +94,13 @@ const vector2LiteralType: CustomLiteralType = {
 interface BuildBrainEditorConfigOptions {
   store: EcosimEnvironmentStore;
   archetype?: Archetype;
-  onTileHelp?: BrainEditorConfig["onTileHelp"];
+  onTileDocs?: BrainEditorConfig["onTileDocs"];
   docsIntegration?: BrainEditorConfig["docsIntegration"];
   isBrokenTile?: BrainEditorConfig["isBrokenTile"];
 }
 
 export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): BrainEditorConfig {
-  const { store, archetype, onTileHelp, docsIntegration, isBrokenTile } = options;
+  const { store, archetype, onTileDocs, docsIntegration, isBrokenTile } = options;
   const environment = store.env;
   const resolveTileVisual = createVfsAwareVisualProvider((url) => store.resolveVfsAssetUrl(url));
 
@@ -115,7 +115,7 @@ export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): 
     projectNamespace: store.activeProjectManifest?.id,
     tileCatalogs: environment.tileCatalogs(),
     libraries: store.host.installedLibraries,
-    onTileHelp,
+    onTileDocs,
     docsIntegration,
     isBrokenTile,
   };

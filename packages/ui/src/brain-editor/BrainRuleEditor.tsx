@@ -7,17 +7,14 @@ import {
   DeleteRuleCommand,
   InsertRuleCommand,
   InsertTileCommand,
-  kMaxBrainRuleCommentLength,
   PasteRulesCommand,
   PasteTileBeforeCommand,
   RemoveTileCommand,
   ReplaceTileCommand,
-  SetRuleCommentCommand,
 } from "@mindcraft-lang/core/brain/model";
-import { Plus, Save } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "../ui/button";
 import { type ArmedTargetEntry, isAppendTargetForRule, useArmedTargetController } from "./ArmedTargetContext";
 import {
   kCandidateDragMimeType,
@@ -365,67 +362,6 @@ export function BrainRuleEditor({
     commandHistory.executeCommand(command);
   };
 
-  const [isEditingComment, setIsEditingComment] = useState(false);
-  const [commentValue, setCommentValue] = useState(ruleDef.comment() ?? "");
-  const commentInputRef = useRef<HTMLTextAreaElement>(null);
-  const commentFocusedRef = useRef(false);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter is an intentional trigger signal
-  useEffect(() => {
-    if (!isEditingComment) {
-      setCommentValue(ruleDef.comment() ?? "");
-    }
-  }, [ruleDef, updateCounter, isEditingComment]);
-
-  const saveComment = useCallback(() => {
-    const trimmed = commentValue.trim();
-    const newComment = trimmed || undefined;
-    if (newComment !== ruleDef.comment()) {
-      const command = new SetRuleCommentCommand(ruleDef, newComment);
-      commandHistory.executeCommand(command);
-    }
-    setIsEditingComment(false);
-  }, [commentValue, ruleDef, commandHistory]);
-
-  const handleEditComment = () => {
-    setCommentValue(ruleDef.comment() ?? "");
-    setIsEditingComment(true);
-    commentFocusedRef.current = false;
-  };
-
-  useEffect(() => {
-    if (isEditingComment && commentInputRef.current) {
-      commentInputRef.current.focus();
-    }
-  }, [isEditingComment]);
-
-  const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    if (val.length <= kMaxBrainRuleCommentLength) {
-      setCommentValue(val);
-    }
-  };
-
-  const handleCommentFocus = () => {
-    commentFocusedRef.current = true;
-  };
-
-  const handleCommentBlur = () => {
-    if (!commentFocusedRef.current) return;
-    saveComment();
-  };
-
-  const handleCommentKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    e.stopPropagation();
-    if (e.key === "Escape") {
-      setCommentValue(ruleDef.comment() ?? "");
-      setIsEditingComment(false);
-    }
-  };
-
-  const currentComment = ruleDef.comment();
-  const showComment = isEditingComment || !!currentComment;
-
   const armAppendTarget = useCallback(
     (side: RuleSide) => {
       armedTarget.arm({
@@ -751,7 +687,7 @@ export function BrainRuleEditor({
   // compose one, standing at the only caret position such a rule has.
   const showComposerEntry = !stripTarget && !hasTiles;
   // A card with nothing below its tile row keeps a compact fixed height.
-  const hasBodyBelowTiles = showComment || hasTiles || showComposerEntry || isComposing;
+  const hasBodyBelowTiles = hasTiles || showComposerEntry || isComposing;
 
   // The rule's cells are registered with the page for as long as it renders them.
   const registerRule = pageGrid?.registerRule;
@@ -852,46 +788,6 @@ export function BrainRuleEditor({
         onDrop={handleCandidateDrop}
         onKeyDown={handleCardKeyDown}
       >
-        {showComment && (
-          <div className={`flex items-start gap-1.5 mb-1.5 relative ${kRuleContentLayer}`}>
-            {isEditingComment ? (
-              <>
-                <textarea
-                  ref={commentInputRef}
-                  value={commentValue}
-                  onChange={handleCommentChange}
-                  onFocus={handleCommentFocus}
-                  onBlur={handleCommentBlur}
-                  onKeyDown={handleCommentKeyDown}
-                  maxLength={kMaxBrainRuleCommentLength}
-                  rows={1}
-                  className="flex-1 text-xs text-brain-ink/90 bg-brain-ink/10 border border-brain-ink/20 rounded px-2 py-1 resize-none focus:border-brain-ink/40 placeholder:text-brain-ink/40"
-                  placeholder="Describe what this rule does..."
-                />
-                <Button
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    saveComment();
-                  }}
-                  className="h-6 w-6 min-w-6 p-0 bg-success hover:bg-success/90 text-success-foreground rounded-sm shrink-0"
-                  title="Save comment"
-                  aria-label="Save comment"
-                >
-                  <Save className="h-3 w-3" aria-hidden="true" />
-                </Button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="text-xs text-brain-ink/70 italic cursor-pointer hover:text-brain-ink/90 transition-colors text-left"
-                onClick={handleEditComment}
-                title="Click to edit comment"
-              >
-                {currentComment}
-              </button>
-            )}
-          </div>
-        )}
         <div className="flex flex-1 gap-1">
           {/* this button is the rule handle */}
           <button

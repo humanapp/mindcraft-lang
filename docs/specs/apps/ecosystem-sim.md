@@ -750,7 +750,7 @@ The `DocsSidebarProvider` context manages sidebar visibility, active tab, and na
 
 Two connection points:
 
-1. **Tile help (right-click)**: The brain editor config includes `onTileHelp` callback. Right-clicking a tile and selecting "Help" opens the docs sidebar to that tile's documentation page.
+1. **Tile documentation**: The brain editor config includes an `onTileDocs` callback. It is reached two ways: right-clicking a tile and selecting "Docs", and the control the offering's position row stands for the armed tile -- a direct docs button for a tile whose menu holds nothing else, or a "Docs" entry in that tile's `...` menu. Either opens the docs sidebar to that tile's documentation page.
 2. **Docs toggle in editor toolbar**: `docsIntegration: { isOpen, toggle, close }` adds a docs toggle button to the brain editor toolbar and auto-closes docs when the editor dialog closes.
 
 ### Content Format
@@ -994,7 +994,7 @@ Each phase produces a working, verifiable artifact. Phases are sequential unless
 - `DocsPage.tsx`: standalone page at `/docs` route using SharedDocsPage from @mindcraft-lang/docs
 - `main.tsx` routing: URL path check for `/docs` prefix
 - DocsSidebarProvider + DocsSidebar integration in App.tsx
-- Brain editor `onTileHelp` callback -> opens docs sidebar to tile page
+- Brain editor `onTileDocs` callback -> opens docs sidebar to tile page
 - Brain editor `docsIntegration` -> docs toggle button in editor toolbar
 - Sidebar BookOpen button -> toggles docs sidebar
 
@@ -1002,7 +1002,8 @@ Each phase produces a working, verifiable artifact. Phases are sequential unless
 
 - Navigating to `/docs` shows the standalone documentation page
 - Docs sidebar opens via BookOpen button in the simulation sidebar
-- Right-clicking a tile in the brain editor and selecting "Help" opens its documentation
+- Right-clicking a tile in the brain editor and selecting "Docs" opens its documentation
+- The armed tile's docs control in the offering's position row opens its documentation
 - Docs toggle button in brain editor toolbar shows/hides docs sidebar
 - All tile documentation pages render correctly with brain-fence code blocks and inline tile chips
 - Pattern documentation pages display correctly

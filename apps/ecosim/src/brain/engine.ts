@@ -15,7 +15,10 @@ import { type PrecomputedObstacle, queryVisibleActors, refreshObstaclesFromBodie
 export class Engine {
   private world: ECS.World<Actor>;
   private actors: { [key in Archetype]: ECS.Query<Actor> };
-  private brains!: { [key in Archetype]: BrainDef };
+  /**
+   * Per-archetype brain defs. Undefined until {@link loadBrains} resolves.
+   */
+  private brains?: { [key in Archetype]: BrainDef };
   private moverCfg: { [key in Archetype]: Partial<MoverConfig> };
 
   get clock(): Phaser.Time.Clock {
@@ -134,6 +137,11 @@ export class Engine {
     this.scene.matter.world.on("afterupdate", this.onAfterPhysicsUpdate, this);
   }
 
+  /**
+   * Load each archetype's brain from the active project, falling back to the
+   * default asset or a generated brain. Until this resolves the engine has no
+   * brains and {@link getBrainDef} returns undefined.
+   */
   async loadBrains(): Promise<void> {
     this.brains = {
       carnivore: await this.loadBrainDef("carnivore"),
@@ -308,8 +316,14 @@ export class Engine {
     }
   }
 
-  spawn(archetype: Archetype) {
-    const actor = new Actor(this, archetype, this.brains[archetype], this.moverCfg[archetype]);
+  /**
+   * Add a live actor of `archetype`, running the archetype's current brain.
+   * Returns undefined until {@link loadBrains} has resolved.
+   */
+  spawn(archetype: Archetype): Actor | undefined {
+    const brains = this.brains;
+    if (!brains) return undefined;
+    const actor = new Actor(this, archetype, brains[archetype], this.moverCfg[archetype]);
     this.world.add(actor);
     actor.actorId = this.world.id(actor)!;
     actor.sprite = this.scene.spawn(actor);
@@ -329,11 +343,20 @@ export class Engine {
     }
   }
 
-  getBrainDef(archetype: Archetype): BrainDef {
-    return this.brains[archetype];
+  /**
+   * The archetype's current brain def, or undefined while {@link loadBrains}
+   * has not resolved.
+   */
+  getBrainDef(archetype: Archetype): BrainDef | undefined {
+    return this.brains?.[archetype];
   }
 
+  /**
+   * Replace the archetype's brain def and push it onto every live actor of
+   * that archetype. Does nothing until {@link loadBrains} has resolved.
+   */
   updateBrainDef(archetype: Archetype, newBrainDef: BrainDef) {
+    if (!this.brains) return;
     this.brains[archetype] = newBrainDef;
     // Update all existing actors of this archetype with the new brain
     const actorsQuery = this.actors[archetype];

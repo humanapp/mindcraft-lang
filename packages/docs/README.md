@@ -68,13 +68,13 @@ const registry = buildDocsRegistry({
 </DocsSidebarProvider>
 ```
 
-To connect the docs sidebar to the brain editor, inject `onTileHelp` and `docsIntegration` into `BrainEditorConfig`:
+To connect the docs sidebar to the brain editor, inject `onTileDocs` and `docsIntegration` into `BrainEditorConfig`:
 
 ```tsx
 const { openDocsForTile, isOpen, toggle, close } = useDocsSidebar();
 const config: BrainEditorConfig = {
   ...baseConfig,
-  onTileHelp: openDocsForTile,
+  onTileDocs: openDocsForTile,
   docsIntegration: { isOpen, toggle, close },
 };
 ```

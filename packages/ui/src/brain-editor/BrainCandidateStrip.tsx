@@ -76,6 +76,18 @@ const kStripCellAttribute = "data-strip-cell";
  */
 export const kStripPopupAttribute = "data-strip-popup";
 
+/** Attribute marking the offering panel itself, valued empty. */
+const kStripPanelAttribute = "data-strip-panel";
+
+/**
+ * Attribute marking the filter box, valued by where it is read from: `sentence`
+ * for the box a rule's sentence line hosts, `tray` for the one the panel stands.
+ */
+const kStripFilterAttribute = "data-strip-filter";
+
+/** The elements the strip stands, as one selector. */
+const kStripElements = `[${kStripFilterAttribute}],[${kStripPanelAttribute}],[${kStripPopupAttribute}]`;
+
 const stripPanelStyle = {
   background: "linear-gradient(160deg, var(--color-brain-desk-from) 0%, var(--color-brain-desk-to) 100%)",
   boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.45)",
@@ -172,18 +184,41 @@ function buildStripBands(
 }
 
 /**
- * True when nothing that can hold the keyboard holds it: the document body, or
- * a container that only took it because the element holding it was removed. A
- * cell of the page's selection grid holds the keyboard whichever way its roving
- * tab stop currently stands, and so does anything inside a popup one of the
- * strip's own controls opened, wherever the portal rendering that popup stands
- * it in the document.
+ * The dialog container the editor's rules stand in, or null while the document
+ * holds no page grid. This element takes the keyboard whenever nothing inside
+ * the dialog holds it: as the dialog opens, and whenever the element that held
+ * it is removed with nothing left to hand the keyboard back to.
+ */
+function editorDialogRoot(): Element | null {
+  return document.querySelector(`[${kPageGridCellAttribute}]`)?.closest("[role='dialog']") ?? null;
+}
+
+/**
+ * True when the keyboard has landed nowhere: on no element at all, on the
+ * document body, or on the editor's own dialog container. Every other element
+ * is holding the keyboard, and is left holding it.
  */
 export function keyboardIsUnheld(): boolean {
-  const active = document.activeElement as HTMLElement | null;
-  if (active === null || active === document.body) return true;
-  if (active.closest(`[${kStripPopupAttribute}]`) !== null) return false;
-  return !active.hasAttribute(kPageGridCellAttribute) && active.tabIndex < 0;
+  const active = document.activeElement;
+  return active === null || active === document.body || active === editorDialogRoot();
+}
+
+/**
+ * True when `element` is one of the strip's own: its filter box, anything the
+ * offering panel holds, or anything inside a popup one of the panel's controls
+ * opened, which a portal puts outside the panel's subtree. Null is nobody's.
+ */
+export function isCandidateStripElement(element: Element | null): boolean {
+  return element !== null && element.closest(kStripElements) !== null;
+}
+
+/**
+ * True when the keyboard stands on one of the strip's own elements, which is
+ * where the strip serves its own keys. Reads the live document, so it answers
+ * for whichever strip is armed.
+ */
+export function keyboardIsInCandidateStrip(): boolean {
+  return isCandidateStripElement(document.activeElement);
 }
 
 /**
@@ -638,13 +673,20 @@ export function useCandidateStripSurface({
     exitCellKeyRef.current = composer?.exitCellKey();
   });
 
+  // The element a press has already picked out to take the keyboard, as named by
+  // the blur that closed the strip. The closing reads it and puts it back to
+  // null, so it stands for no longer than the one closing it was named for.
+  const pickedUpKeyboardRef = useRef<HTMLElement | null>(null);
+
   // The keyboard comes back when the strip closes while nothing else holds it.
   // A keyboard some other element already holds -- the one Tab moved on to,
-  // another rule's arming control -- is left where it is. A composed rule takes
-  // it to the cell its caret came to rest at; every other arming takes it to the
-  // control read as the rule became armed. A control the placement took away --
-  // the add-tile button of a side nothing may follow any more -- hands the
-  // keyboard to its rule's handle, which every rule stands.
+  // another rule's arming control -- is left where it is, and a press that has
+  // already picked a cell of the page's selection grid out takes it there. A
+  // composed rule otherwise takes it to the cell its caret came to rest at;
+  // every other arming takes it to the control read as the rule became armed. A
+  // control the placement took away -- the add-tile button of a side nothing may
+  // follow any more -- hands the keyboard to its rule's handle, which every rule
+  // stands.
   const isArmed = target !== null;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the armed rule is read once, as the strip becomes armed
   useEffect(() => {
@@ -652,7 +694,13 @@ export function useCandidateStripSurface({
     const armingControl = document.activeElement as HTMLElement | null;
     const armedRuleId = target?.ruleDef.id();
     return () => {
+      const pickedUp = pickedUpKeyboardRef.current;
+      pickedUpKeyboardRef.current = null;
       if (!keyboardIsUnheld()) return;
+      if (pickedUp?.isConnected === true) {
+        pickedUp.focus({ preventScroll: true });
+        return;
+      }
       const exitCellKey = exitCellKeyRef.current;
       const exitCell =
         exitCellKey === undefined
@@ -974,27 +1022,20 @@ export function useCandidateStripSurface({
   };
 
   /**
-   * True when `element` is one of the strip's own: the filter box, anything the
-   * panel holds, or anything inside a popup one of the panel's controls opened,
-   * which a portal puts outside the panel's own subtree.
-   */
-  const isStripElement = (element: HTMLElement | null): boolean =>
-    element !== null &&
-    (element === inputRef.current ||
-      containerRef.current?.contains(element) === true ||
-      element.closest(`[${kStripPopupAttribute}]`) !== null);
-
-  /**
    * The keyboard leaving the element the cursor is anchored on, which releases
    * the cursor, and leaving the strip for another element of the document, which
    * ends composition as well. A move to another cell of the offering's grid
    * carries the same browse on, and releases nothing; a blur naming no element
-   * gaining the keyboard leaves the strip as it stands.
+   * gaining the keyboard leaves the strip as it stands. An element of the page's
+   * selection grid named as gaining the keyboard is remembered, so the strip
+   * closing hands it there rather than to the cell composition exits on.
    */
   const handleHighlightBlur = (event: FocusEvent<HTMLElement>) => {
     const gaining = event.relatedTarget as HTMLElement | null;
     if (gaining?.hasAttribute(kStripCellAttribute)) return;
-    dispatchInput({ kind: "focus-lost", leftStrip: gaining !== null && !isStripElement(gaining) });
+    const leftStrip = gaining !== null && !isCandidateStripElement(gaining);
+    if (leftStrip && gaining.closest(`[${kPageGridCellAttribute}]`) !== null) pickedUpKeyboardRef.current = gaining;
+    dispatchInput({ kind: "focus-lost", leftStrip });
   };
 
   /** The wiring every band's listbox shares; each band adds its own accessible name. */
@@ -1122,7 +1163,7 @@ export function useCandidateStripSurface({
       }
       aria-invalid={state.isUnknown}
       aria-describedby={describedBy}
-      data-strip-filter={composer ? "sentence" : "tray"}
+      {...{ [kStripFilterAttribute]: composer ? "sentence" : "tray" }}
       className={
         composer
           ? `bg-transparent p-0 align-baseline ${kSentenceTypeClasses} outline-none ${
@@ -1177,6 +1218,7 @@ export function useCandidateStripSurface({
     <section
       ref={containerRef}
       id={stripId}
+      {...{ [kStripPanelAttribute]: "" }}
       style={stripPanelStyle}
       className={`absolute top-full left-0 ${kOfferingLayer} mt-2 flex w-[min(40rem,calc(100vw-5rem))] min-w-72 flex-col gap-3 rounded-xl p-3`}
       aria-label="Tile candidates"

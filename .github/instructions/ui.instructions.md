@@ -82,7 +82,7 @@ Host apps supply a `BrainEditorConfig` object with:
 | `customLiteralTypes`         | `CustomLiteralType[]`         | Optional app-defined literal tile types (e.g., Vector2) |
 | `getDefaultBrain`            | `() => IBrainDef`             | Optional factory for creating new empty brains          |
 
-| `onTileHelp` | `(tileDef: IBrainTileDef) => void` | Optional callback for tile Help menu item (docs integration) |
+| `onTileDocs` | `(tileDef: IBrainTileDef) => void` | Optional callback opening a tile's documentation (docs integration) |
 | `docsIntegration` | `{ isOpen, toggle, close }` | Optional docs sidebar controls for the editor toolbar |
 
 ### CustomLiteralType
@@ -114,8 +114,7 @@ take time; the ink draws both the chip's edge and its glyph), `capsule` /
 Roles the whole design system already names are taken from it, not re-minted
 under `--color-brain-*`: the editor's removal control and its badge for a tile
 that does not parse read in `--color-destructive` /
-`--color-destructive-foreground`, and its save-comment control in
-`--color-success` / `--color-success-foreground`.
+`--color-destructive-foreground`.
 
 Rules a theme must hold to:
 
@@ -138,6 +137,56 @@ Tile chrome derived from a tile's own hue lives in
 and a placed tile cannot drift. Custom properties inherit, so `packages/docs`
 also picks up whichever host app renders it, with no threading and no config.
 
+## Docs Panel Inset -- `--docs-panel-inset`
+
+`DocsSidebar` in `packages/docs` publishes a custom property on the document
+root, `--docs-panel-inset`: the share of the viewport width its open desktop
+panel covers, written as a CSS percentage. It reads `0%` whenever the panel
+covers nothing a desktop layout has to avoid -- closed, unmounted, or in its
+mobile full-screen shape.
+
+`DialogContent` (`src/ui/dialog.tsx`) consumes it. Its `left` and `max-width`
+subtract the inset, so a dialog centres itself in the width the panel leaves
+free instead of sliding underneath it. `BrainEditorDialog` repeats the same
+subtraction in its own `sm:` overrides, because it replaces both properties.
+
+Rules for this contract:
+
+- Read it with a `0%` fallback (`var(--docs-panel-inset,0%)`). Nothing declares
+  a default, so a consumer with no docs package installed must still lay out.
+- Keep it a percentage. The panel's own width is viewport-relative, so a
+  window resize reflows both sides with no listener; a pixel value would go
+  stale.
+- The panel rewrites the property on every pointer move of its resize
+  separator, alongside its inline width, so consumers track a live drag without
+  the panel re-rendering per frame. Anything reading it must therefore work
+  from CSS, not from a React render.
+- Nothing in the type system checks this. A change on either side has to be
+  matched by hand; `language-docs.instructions.md` carries the publisher's half.
+
+## Dialogs, Portals and Focus
+
+Two constraints here are not enforced by types and have each cost a bug.
+
+**A controlled Radix `Dialog` with no `DialogTrigger` drops the keyboard on `document.body`
+when it closes.** Radix composes an internal `onUnmountAutoFocus` that unconditionally
+prevents the default and focuses `context.triggerRef.current`; with no trigger rendered
+that ref is null, so focus falls to the body. Every dialog in this package is controlled
+and trigger-less, so every one inherits the trap. Pass an explicit `onCloseAutoFocus`, or
+make sure some other cleanup takes the keyboard back after the dialog unmounts.
+
+This matters more than it looks: **focus moving to the body fires `focusout` but no
+`focusin`**, so any mechanism listening for `focusin` to reclaim a stranded keyboard --
+the brain editor's included -- is blind to that landing and cannot recover from it.
+
+**Portaled content cannot be server-rendered, so it cannot be asserted in a spec.**
+`packages/ui` has no jsdom and specs render through `react-dom/server` only. Radix's
+`Portal` renders `null` until a client layout effect gives it `document.body` as a
+container, so `renderToStaticMarkup(<SomeDialog isOpen />)` returns the empty string --
+no attribute, no marker, no text inside a dialog, menu, popover or tooltip ever reaches
+server markup. Verify those surfaces in a browser; pin the module-level predicates behind
+them instead, which is what `keyboard-hold.spec.ts` does.
+
 ## Adding UI Primitives
 
 To add a new shadcn/ui component:
@@ -153,10 +202,12 @@ The documentation sidebar, registry, markdown renderer, and standalone docs page
 
 The brain editor integrates with docs via two optional `BrainEditorConfig` fields:
 
-- `onTileHelp` -- callback invoked when a user opens a placed tile's menu (right-click,
-  or long-press on touch) and selects Help (used by `BrainTileEditor.tsx`)
+- `onTileDocs` -- callback invoked when a user opens a placed tile's documentation, either
+  from the docs button the offering's position row stands or by selecting Docs in the
+  tile's menu (right-click, or long-press on touch); see `BrainTileMenu.tsx`
 - `docsIntegration` -- `{ isOpen, toggle, close }` for the docs toggle button in the
-  brain editor toolbar and close-on-exit behavior (used by `BrainEditorDialog.tsx`)
+  brain editor toolbar, for Escape closing an open panel instead of the editor, and
+  for close-on-exit behavior (used by `BrainEditorDialog.tsx`)
 
 These are wired up by the host app (see `apps/ecosim/src/App.tsx` `DocsBrainEditorProvider`).
 

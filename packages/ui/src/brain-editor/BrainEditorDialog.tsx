@@ -48,6 +48,7 @@ import {
 import { Input } from "../ui/input";
 import { Slider } from "../ui/slider";
 import { ArmedTargetProvider, useArmedTargetState } from "./ArmedTargetContext";
+import { keyboardIsInCandidateStrip } from "./BrainCandidateStrip";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainPageEditor } from "./BrainPageEditor";
 import { BrainPrintDialog } from "./BrainPrintDialog";
@@ -86,8 +87,9 @@ export interface BrainEditorDialogProps {
 
 /**
  * Modal brain editor with page navigation, toolbar (undo/redo, copy, paste,
- * print, docs toggle), and save/load. Edits are made on a clone of `srcBrainDef`;
- * `onSubmit` is invoked with the resulting brain when the user confirms.
+ * print, docs toggle), and save/load. Edits are made on a working copy of
+ * `srcBrainDef`, which carries the source brain's id; `onSubmit` is invoked with
+ * the resulting brain when the user confirms.
  */
 export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
   const { getDefaultBrain, docsIntegration, brainServices, tileCatalogs, projectNamespace } = useBrainEditorConfig();
@@ -99,7 +101,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     (sourceBrainDef?: BrainDef): BrainDef => {
       const extraCatalogs = tileCatalogs ? List.from(tileCatalogs) : undefined;
       const nextBrainDef = sourceBrainDef
-        ? sourceBrainDef.clone(extraCatalogs)
+        ? sourceBrainDef.workingCopy(extraCatalogs)
         : BrainDef.emptyBrainDef(brainServices!);
       if (nextBrainDef.pages().size() === 0) {
         nextBrainDef.appendNewPage();
@@ -109,7 +111,6 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     [brainServices, tileCatalogs]
   );
 
-  // Clone the brainDef to work on a copy
   const [brainDef, setBrainDef] = useState<BrainDef | undefined>(() => createEditableBrain(srcBrainDef));
   const [currentPageNumber, setCurrentPageNumber] = useState(brainDef ? 1 : 0);
   const [totalPageCount, setTotalPageCount] = useState(brainDef?.pages()?.size() ?? 0);
@@ -558,11 +559,11 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleUndo, handleRedo]);
 
-  // Close the docs sidebar when the brain editor closes.
+  // Close the docs sidebar when the brain editor leaves the screen, whether the
+  // host renders the dialog closed or unmounts it outright.
   useEffect(() => {
-    if (!isOpen) {
-      closeDocs?.();
-    }
+    if (!isOpen) return;
+    return () => closeDocs?.();
   }, [isOpen, closeDocs]);
 
   return (
@@ -573,7 +574,10 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       {isOpen && isDocsOpen && <div className={`fixed inset-0 ${kDialogChromeLayer} bg-black/80`} aria-hidden="true" />}
       <Dialog open={isOpen} onOpenChange={onOpenChange} modal={!isDocsOpen}>
         <DialogContent
-          className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-2 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[75%] sm:h-[90%] sm:p-4 sm:gap-3 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl overflow-hidden"
+          // The editor centres itself in the viewport width the documentation
+          // panel leaves free, read from the --docs-panel-inset custom property
+          // the panel publishes (0% when it covers nothing).
+          className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-2 gap-2 sm:left-[calc(50%_-_var(--docs-panel-inset,0%)_*_0.5)] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[min(75%,100%_-_var(--docs-panel-inset,0%)_-_2rem)] sm:h-[90%] sm:p-4 sm:gap-3 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl overflow-hidden"
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onFocusOutside={(e) => e.preventDefault()}
@@ -594,14 +598,25 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
             e.preventDefault();
             returnTo.focus({ preventScroll: true });
           }}
-          // While a tile picker is armed, Escape belongs to the candidate strip:
-          // it clears the strip's filter text and then disarms. While a rule is
-          // picked up it belongs to that rule, and gives it back to where it was
-          // picked up from. Once nothing else claims it, it closes the editor,
-          // through the discard confirmation when the session holds user work.
+          // While a tile picker is armed, Escape belongs to the candidate strip
+          // for as long as the strip holds the keyboard: it clears the strip's
+          // filter text and then disarms. Armed with the keyboard anywhere else,
+          // no part of the strip serves the press, so the arming ends here and
+          // the strip hands the keyboard on as it closes. While a rule is picked
+          // up it belongs to that rule, and the page gives it back to where it
+          // was picked up from. An open documentation panel takes it next and
+          // closes, leaving the editor open. Once nothing else claims it, it
+          // closes the editor, through the discard confirmation when the
+          // session holds user work.
           onEscapeKeyDown={(e) => {
             if (armedTarget.target || rulePickup.pickup) {
               e.preventDefault();
+              if (armedTarget.target !== null && !keyboardIsInCandidateStrip()) disarmTileTarget();
+              return;
+            }
+            if (isDocsOpen) {
+              e.preventDefault();
+              closeDocs?.();
               return;
             }
             if (holdsDiscardableEdits) {

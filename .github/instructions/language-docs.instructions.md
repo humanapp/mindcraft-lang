@@ -53,10 +53,34 @@ src/
 The docs package does not import from the brain editor context. Integration uses
 dependency inversion through `BrainEditorConfig`:
 
-- `onTileHelp` -- right-click Help on tiles (hidden when not provided)
+- `onTileDocs` -- opens a tile's documentation from the editor (hidden when not provided)
 - `docsIntegration` -- `{ isOpen, toggle, close }` for toolbar button (hidden when not provided)
 
 The host app wires these via `useDocsSidebar()` callbacks.
+
+## Panel Footprint -- `--docs-panel-inset`
+
+`DocsSidebar` publishes its footprint on the document root as the custom
+property `--docs-panel-inset`: the share of the viewport width the open desktop
+panel covers, written as a CSS percentage, and `0%` whenever it covers nothing
+a desktop layout has to avoid -- closed, unmounted, or in the mobile
+full-screen shape.
+
+Two places write it and both must stay in step:
+
+- the effect keyed on the open flag, the mobile flag, and the settled width,
+  which also removes the property when the sidebar unmounts;
+- the resize separator's pointer-move handler, which rewrites it beside the
+  inline width it applies to the `aside`, so consumers follow a live drag
+  without a React render per pointer event.
+
+Keep the value a percentage: the panel's own width is viewport-relative, so a
+window resize reflows consumers with no listener.
+
+`packages/ui`'s `DialogContent` is the consumer -- every dialog centres itself
+in the width this leaves free rather than sliding under the panel. Nothing in
+the type system checks the pairing; `ui.instructions.md` carries the consumer's
+half.
 
 ## Markdown Syntax Extensions
 

@@ -162,6 +162,7 @@ describe("engine re-instantiates living actor brains on recompile", () => {
 
     // A carnivore alive while Teleport is installed binds the Teleport action.
     const preExisting = engine.spawn("carnivore");
+    assert.ok(preExisting, "spawn yields an actor once brains are loaded");
     assert.equal(brainBindsAction(preExisting.brain, TELEPORT_KEY), true, "pre-existing actor binds teleport");
 
     // Uninstall Teleport and let the runtime rebuild invalidated brains, as the
@@ -174,6 +175,7 @@ describe("engine re-instantiates living actor brains on recompile", () => {
     // teleport brain, so its brain is born invalidated (no teleport action) and
     // tracked for retry, just as a brain whose later rebuild fails is.
     const spawnedWhileMissing = engine.spawn("carnivore");
+    assert.ok(spawnedWhileMissing, "spawn yields an actor once brains are loaded");
     assert.equal(
       brainBindsAction(spawnedWhileMissing.brain, TELEPORT_KEY),
       false,
@@ -188,6 +190,7 @@ describe("engine re-instantiates living actor brains on recompile", () => {
 
     // A fresh spawn after the re-add works (the behavior that already held).
     const spawnedAfterReadd = engine.spawn("carnivore");
+    assert.ok(spawnedAfterReadd, "spawn yields an actor once brains are loaded");
     assert.equal(brainBindsAction(spawnedAfterReadd.brain, TELEPORT_KEY), true, "a new spawn after re-add works");
 
     // Both pre-existing live actors end up on the same working brain.
@@ -219,6 +222,7 @@ describe("engine re-instantiates living actor brains on recompile", () => {
     await engine.loadBrains();
 
     const actor = engine.spawn("carnivore");
+    assert.ok(actor, "spawn yields an actor once brains are loaded");
     assert.equal(brainBindsAction(actor.brain, TELEPORT_KEY), true, "actor starts on the teleport brain");
 
     // Editing the archetype brain to an empty def pushes to the living actor.

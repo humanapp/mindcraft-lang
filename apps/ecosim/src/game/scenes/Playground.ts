@@ -4,6 +4,7 @@ import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPES, type ArchetypePhysicsConfig } from "@/brain/archetypes";
 import type { Blip } from "@/brain/blip";
 import { BLIP_RADIUS } from "@/brain/blip";
+import { type BrainLoadFailure, toBrainLoadFailure } from "@/brain/brain-load-failure";
 import { Engine } from "@/brain/engine";
 import type { ScoreSnapshot } from "@/brain/score";
 import { STORE_REGISTRY_KEY } from "@/game/main";
@@ -13,6 +14,18 @@ import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store
  * Playground reads this in `create()` to notify React without an EventBus.
  */
 export const SCENE_READY_KEY = "__onSceneReady";
+
+/** What the {@link SCENE_READY_KEY} callback receives once the scene has started. */
+export interface SceneStartup {
+  /** The running scene. Live and interactive whether or not brains loaded. */
+  scene: Playground;
+  /**
+   * Why the archetype brains could not be loaded, or undefined when they
+   * loaded. While it is set the scene spawns no actors and holds no brain to
+   * edit.
+   */
+  brainLoadFailure?: BrainLoadFailure;
+}
 
 // Collision categories for Matter.js (bitmask)
 const CATEGORY_WALL = 0x0001;
@@ -258,15 +271,18 @@ export class Playground extends Scene {
 
     // Pause update loop until async brain loading finishes
     this.scene.pause();
+    const reportStartup = (startup: SceneStartup) => {
+      this.scene.resume();
+      const onReady = this.registry.get(SCENE_READY_KEY) as ((startup: SceneStartup) => void) | undefined;
+      onReady?.(startup);
+    };
     this.engine.loadBrains().then(
       () => {
-        this.scene.resume();
-        const onReady = this.registry.get(SCENE_READY_KEY) as ((scene: Phaser.Scene) => void) | undefined;
-        onReady?.(this);
+        reportStartup({ scene: this });
       },
       (err) => {
         console.error("Failed to load brains:", err);
-        this.scene.resume();
+        reportStartup({ scene: this, brainLoadFailure: toBrainLoadFailure(err) });
       }
     );
   }
@@ -481,11 +497,19 @@ export class Playground extends Scene {
     this.matter.world.engine.timing.timeScale = speed;
   }
 
-  // Methods to access and update engine braindefs
-  getBrainDef(archetype: Archetype): BrainDef {
+  /**
+   * The archetype's current brain def, or undefined while the scene's engine
+   * is still loading brains. A scene restart puts the engine back into that
+   * state.
+   */
+  getBrainDef(archetype: Archetype): BrainDef | undefined {
     return this.engine.getBrainDef(archetype);
   }
 
+  /**
+   * Replace the archetype's brain def and push it onto every live actor of
+   * that archetype. Does nothing while the engine is still loading brains.
+   */
   updateBrainDef(archetype: Archetype, newBrainDef: BrainDef) {
     this.engine.updateBrainDef(archetype, newBrainDef);
   }

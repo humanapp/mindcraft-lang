@@ -1,7 +1,7 @@
 import { AUTO, Game, Scale } from "phaser";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
 import { Boot } from "./scenes/Boot";
-import { Playground, SCENE_READY_KEY } from "./scenes/Playground";
+import { Playground, SCENE_READY_KEY, type SceneStartup } from "./scenes/Playground";
 import { Preloader } from "./scenes/Preloader";
 
 export { SCENE_READY_KEY };
@@ -30,7 +30,7 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [Boot, Preloader, Playground],
 };
 
-const StartGame = (parent: string, store: EcosimEnvironmentStore, onSceneReady?: (scene: Phaser.Scene) => void) => {
+const StartGame = (parent: string, store: EcosimEnvironmentStore, onSceneReady?: (startup: SceneStartup) => void) => {
   const game = new Game({ ...config, parent });
   game.registry.set(STORE_REGISTRY_KEY, store);
   if (onSceneReady) {
