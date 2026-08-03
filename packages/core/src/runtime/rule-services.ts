@@ -1,6 +1,8 @@
 import { Dict } from "../platform/dict";
+import type { ReadonlyList } from "../platform/list";
+import type { PageMetadata } from "./host-bindings";
 import type { Program } from "./program";
-import type { IProgramServices, IRuleVariableServices } from "./services";
+import type { IProgramServices, IRuleFiringServices, IRuleVariableServices } from "./services";
 import { NIL_VALUE, type Value } from "./value";
 
 /**
@@ -11,15 +13,96 @@ import { NIL_VALUE, type Value } from "./value";
 export type RuleVariableStores = Dict<number, Dict<string, Value>>;
 
 /**
- * Build the {@link IProgramServices} accessor backed by the loaded program.
- * Rule resolution reads `ruleFuncIds`: it returns `funcId` for any function
- * id that is a rule entry, `undefined` otherwise (the only "no rule"
- * sentinel; numeric `0` is a valid rule funcId). Enum symbol values resolve
- * through the program's type table.
+ * Outcome of a rule's most recent WHEN evaluation, recorded by the VM at the
+ * WHEN boundary opcodes.
  */
-export function createProgramServices(program: Program): IProgramServices {
+export enum RuleFiringState {
+  /** The rule began its WHEN check and has not yet reached a gate. */
+  EVALUATING = "EVALUATING",
+  /** The rule's most recent completed WHEN evaluation passed its gate. */
+  DID_FIRE = "DID_FIRE",
+  /** The rule's most recent completed WHEN evaluation failed its gate. */
+  DID_NOT_FIRE = "DID_NOT_FIRE",
+}
+
+/**
+ * Per-rule firing records keyed by rule funcId. A rule with no entry reads as
+ * {@link RuleFiringState.DID_FIRE}: a rule with no WHEN condition emits no WHEN
+ * boundary opcodes, never writes a record, and fires unconditionally.
+ */
+export type RuleFiringStates = Dict<number, RuleFiringState>;
+
+/**
+ * Build the {@link IRuleFiringServices} accessor backed by `states`.
+ *
+ * Read semantics: `get(ruleFuncId)` returns the rule's recorded outcome, or
+ * {@link RuleFiringState.DID_FIRE} when the rule has never written one.
+ *
+ * Write semantics: `set(ruleFuncId, state)` overwrites the rule's record.
+ * `ruleFuncId === undefined` is a no-op.
+ */
+export function createRuleFiringServices(states: RuleFiringStates): IRuleFiringServices {
+  return {
+    get(ruleFuncId: number): RuleFiringState {
+      return states.get(ruleFuncId) ?? RuleFiringState.DID_FIRE;
+    },
+    set(ruleFuncId: number | undefined, state: RuleFiringState): void {
+      if (ruleFuncId === undefined) return;
+      states.set(ruleFuncId, state);
+    },
+  };
+}
+
+/**
+ * Build the {@link IProgramServices} accessor backed by the loaded program and
+ * its per-page metadata. Rule resolution reads `ruleFuncIds`: it returns
+ * `funcId` for any function id that is a rule entry, `undefined` otherwise (the
+ * only "no rule" sentinel; numeric `0` is a valid rule funcId). Enum symbol
+ * values resolve through the program's type table. Preceding-sibling resolution
+ * reads `program.ruleAncestors` for child rules and `pages`' root-rule runs for
+ * root rules.
+ *
+ * @param program - The loaded program.
+ * @param pages - Per-page metadata produced by the linker, in page order.
+ */
+export function createProgramServices(program: Program, pages: ReadonlyList<PageMetadata>): IProgramServices {
   const ruleFuncIds = program.ruleFuncIds;
+  const ancestors = program.ruleAncestors;
   const types = program.types;
+
+  /**
+   * The child rule directly above `ruleFuncId` under `parentFuncId`: the
+   * largest sibling funcId below `ruleFuncId`. Rule funcIds are assigned in a
+   * pre-order document-order walk, so a rule's whole subtree sits above it and
+   * only true siblings share `parentFuncId`.
+   */
+  function precedingChildSibling(ruleFuncId: number, parentFuncId: number): number | undefined {
+    if (ancestors === undefined) return undefined;
+    let best: number | undefined;
+    const siblings = ancestors.keys();
+    for (let i = 0; i < siblings.size(); i++) {
+      const candidate = siblings.get(i)!;
+      if (candidate >= ruleFuncId) continue;
+      if (ancestors.get(candidate) !== parentFuncId) continue;
+      if (best === undefined || candidate > best) {
+        best = candidate;
+      }
+    }
+    return best;
+  }
+
+  /** The root rule directly above `ruleFuncId` within its own page's root-rule run. */
+  function precedingRootSibling(ruleFuncId: number): number | undefined {
+    for (let p = 0; p < pages.size(); p++) {
+      const roots = pages.get(p)!.rootRuleFuncIds;
+      for (let r = 0; r < roots.size(); r++) {
+        if (roots.get(r) !== ruleFuncId) continue;
+        return r === 0 ? undefined : roots.get(r - 1);
+      }
+    }
+    return undefined;
+  }
+
   return {
     getRuleFuncIdForFunc(funcId: number): number | undefined {
       if (ruleFuncIds === undefined) return undefined;
@@ -36,6 +119,13 @@ export function createProgramServices(program: Program): IProgramServices {
         return symbol?.value;
       }
       return undefined;
+    },
+    getPrecedingSiblingRuleFuncId(ruleFuncId: number): number | undefined {
+      const parentFuncId = ancestors !== undefined ? ancestors.get(ruleFuncId) : undefined;
+      if (parentFuncId !== undefined) {
+        return precedingChildSibling(ruleFuncId, parentFuncId);
+      }
+      return precedingRootSibling(ruleFuncId);
     },
   };
 }

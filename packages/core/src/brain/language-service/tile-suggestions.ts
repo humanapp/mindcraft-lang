@@ -29,6 +29,7 @@ import {
   type ITileCatalog,
   isInlineTileDef,
   mkControlFlowTileId,
+  precedingSiblingConsumerEligible,
   RuleSide,
   type TileId,
 } from "../interfaces";
@@ -1729,6 +1730,20 @@ export function collectRuleHierarchyOutputKeys(ruleDef: IBrainRuleDef): UniqueSe
   return result;
 }
 
+/**
+ * Whether `ruleDef` has a rule above it at its own nesting level. Gates tiles
+ * declaring `CoreCapabilityBits.RequiresPrecedingSiblingRule`, which the
+ * compiler rejects in a rule with nothing above it. Returns false when no rule
+ * is supplied, so such a tile is not offered without a rule to read.
+ */
+function hasPrecedingSiblingRule(ruleDef: IBrainRuleDef | undefined): boolean {
+  if (ruleDef === undefined) return false;
+  const ancestor = ruleDef.ancestor();
+  const siblings = ancestor ? ancestor.children() : ruleDef.page()?.children();
+  if (siblings === undefined) return false;
+  return siblings.indexOf(ruleDef) > 0;
+}
+
 // ---- Main API ----
 
 /**
@@ -1844,6 +1859,7 @@ export function suggestTiles(
           types,
           operatorOverloads,
           availableWhenResult,
+          hasPrecedingSiblingRule(context.ruleDef),
           result,
           undefined,
           context.availableCapabilities,
@@ -1917,6 +1933,7 @@ export function suggestTiles(
             types,
             operatorOverloads,
             availableWhenResult,
+            hasPrecedingSiblingRule(context.ruleDef),
             result,
             undefined,
             context.availableCapabilities,
@@ -2112,6 +2129,7 @@ function suggestExpressionTiles(
   prefixOperandType?: TypeId
 ): void {
   const seen = new UniqueSet<string>();
+  const hasPrecedingSibling = hasPrecedingSiblingRule(context.ruleDef);
 
   for (let ci = 0; ci < catalogs.size(); ci++) {
     const catalog = catalogs.get(ci);
@@ -2192,6 +2210,9 @@ function suggestExpressionTiles(
 
       // A WHEN-result consumer is valid only where its required WHEN result is available.
       if (!whenResultConsumerEligible(tileDef, availableWhenResult, conversions)) continue;
+
+      // A tile reading the rule above it is valid only where there is one.
+      if (!precedingSiblingConsumerEligible(tileDef, hasPrecedingSibling)) continue;
 
       // Deduplicate across catalogs
       if (seen.has(tileDef.tileId)) continue;
@@ -2517,6 +2538,7 @@ function suggestAssignmentTargetTiles(
   result: TileSuggestionResult
 ): void {
   const seen = new UniqueSet<string>();
+  const hasPrecedingSibling = hasPrecedingSiblingRule(context.ruleDef);
 
   for (let ci = 0; ci < catalogs.size(); ci++) {
     const catalog = catalogs.get(ci);
@@ -2534,6 +2556,9 @@ function suggestAssignmentTargetTiles(
 
       // A WHEN-result consumer is valid only where its required WHEN result is available.
       if (!whenResultConsumerEligible(tileDef, availableWhenResult, conversions)) continue;
+
+      // A tile reading the rule above it is valid only where there is one.
+      if (!precedingSiblingConsumerEligible(tileDef, hasPrecedingSibling)) continue;
 
       if (seen.has(tileDef.tileId)) continue;
       seen.add(tileDef.tileId);
@@ -2615,6 +2640,7 @@ function suggestValueAbsorbingSensors(
   result: TileSuggestionResult
 ): void {
   const seen = new UniqueSet<string>();
+  const hasPrecedingSibling = hasPrecedingSiblingRule(context.ruleDef);
 
   for (let ci = 0; ci < catalogs.size(); ci++) {
     const catalog = catalogs.get(ci);
@@ -2632,6 +2658,9 @@ function suggestValueAbsorbingSensors(
 
       // A WHEN-result consumer is valid only where its required WHEN result is available.
       if (!whenResultConsumerEligible(tileDef, availableWhenResult, conversions)) continue;
+
+      // A tile reading the rule above it is valid only where there is one.
+      if (!precedingSiblingConsumerEligible(tileDef, hasPrecedingSibling)) continue;
 
       if (seen.has(tileDef.tileId)) continue;
 
@@ -2717,6 +2746,7 @@ function suggestForReplacementRole(
           conversions,
           types,
           availableWhenResult,
+          hasPrecedingSiblingRule(context.ruleDef),
           result,
           context.availableCapabilities,
           context.availableOutputKeys,
@@ -2830,6 +2860,7 @@ function suggestForReplacementRole(
         types,
         operatorOverloads,
         availableWhenResult,
+        hasPrecedingSiblingRule(context.ruleDef),
         result,
         role.excludeSlotId,
         context.availableCapabilities,
@@ -2872,6 +2903,9 @@ function suggestForReplacementRole(
  * ends exactly there, prefix operators are not offered: the parser binds an
  * operator token at that position to the preceding value expression, so a
  * prefix operator cannot start the next slot's value.
+ *
+ * `hasPrecedingSibling` states whether the edited rule has a rule above it at
+ * its own nesting level; when false, tiles that read that rule are not offered.
  */
 function suggestActionCallTiles(
   actionExpr: ActuatorExpr | SensorExpr,
@@ -2882,6 +2916,7 @@ function suggestActionCallTiles(
   types: ITypeRegistry,
   operatorOverloads: IOperatorOverloads,
   availableWhenResult: TypeId | undefined,
+  hasPrecedingSibling: boolean,
   result: TileSuggestionResult,
   excludeSlotId?: number,
   availableCapabilities?: ReadonlyBitSet,
@@ -2994,6 +3029,7 @@ function suggestActionCallTiles(
       conversions,
       types,
       availableWhenResult,
+      hasPrecedingSibling,
       result,
       availableCapabilities,
       availableOutputKeys
@@ -3018,6 +3054,9 @@ function suggestActionCallTiles(
  * When `allowNonInlineSensors` is true, non-inline sensors are included.
  * Used for operator operand positions parsed inside a Pratt expression,
  * where the parser accepts a non-inline sensor as an expression primary.
+ *
+ * `hasPrecedingSibling` states whether the edited rule has a rule above it at
+ * its own nesting level; when false, tiles that read that rule are not offered.
  */
 function suggestExpressionsForAnonymousSlots(
   expectedTypes: ReadonlyList<TypeId>,
@@ -3026,6 +3065,7 @@ function suggestExpressionsForAnonymousSlots(
   conversions: IConversionRegistry,
   types: ITypeRegistry,
   availableWhenResult: TypeId | undefined,
+  hasPrecedingSibling: boolean,
   result: TileSuggestionResult,
   availableCapabilities?: ReadonlyBitSet,
   availableOutputKeys?: UniqueSet<string>,
@@ -3058,6 +3098,9 @@ function suggestExpressionsForAnonymousSlots(
 
       // A WHEN-result consumer is valid only where its required WHEN result is available.
       if (!whenResultConsumerEligible(tileDef, availableWhenResult, conversions)) continue;
+
+      // A tile reading the rule above it is valid only where there is one.
+      if (!precedingSiblingConsumerEligible(tileDef, hasPrecedingSibling)) continue;
 
       // Deduplicate
       if (seen.has(tileDef.tileId)) continue;

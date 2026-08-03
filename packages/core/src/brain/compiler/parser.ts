@@ -27,6 +27,7 @@ import {
   type ITileCatalog,
   isInlineTileDef,
   parseTileId,
+  precedingSiblingConsumerEligible,
   RuleSide,
 } from "../interfaces";
 import {
@@ -1249,6 +1250,36 @@ export function validateTilePlacement(tiles: ReadonlyList<IBrainTileDef>, side: 
         span: { from: i, to: i + 1 },
       });
     }
+  }
+  return diags;
+}
+
+/**
+ * Validate that no tile declaring
+ * {@link CoreCapabilityBits.RequiresPrecedingSiblingRule} appears in a rule that
+ * has no rule above it at its own nesting level. Returns one
+ * {@link ParseDiagCode.NoPrecedingSiblingRule} diagnostic per offending tile,
+ * spanning the tile's index in `tiles`.
+ *
+ * @param tiles - The rule side's tile list.
+ * @param hasPrecedingSibling - Whether the enclosing rule has a rule above it
+ *   at its own nesting level.
+ */
+export function validatePrecedingSiblingConsumers(
+  tiles: ReadonlyList<IBrainTileDef>,
+  hasPrecedingSibling: boolean
+): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  if (hasPrecedingSibling) return diags;
+  for (let i = 0; i < tiles.size(); i++) {
+    const tile = tiles.get(i);
+    if (precedingSiblingConsumerEligible(tile, hasPrecedingSibling)) continue;
+    const label = tile.metadata?.label ?? tile.tileId;
+    diags.push({
+      code: ParseDiagCode.NoPrecedingSiblingRule,
+      message: `Tile "${label}" needs a rule above it at the same level`,
+      span: { from: i, to: i + 1 },
+    });
   }
   return diags;
 }

@@ -186,7 +186,8 @@ function projectedText(
   doTiles: readonly IBrainTileDef[] = []
 ): string {
   const { rule, brainDef } = makeRule(services, whenTiles, doTiles);
-  return sentenceText(projectRuleSentence(rule, brainDef.servicesLocalizer()));
+  const localizer = brainDef.servicesLocalizer();
+  return sentenceText(projectRuleSentence(rule, localizer), localizer);
 }
 
 // -- the authored group reaches the tile def ---------------------------------

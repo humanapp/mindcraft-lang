@@ -32,9 +32,16 @@ import type { BrainTileVariableDef } from "../tiles/variables";
 /** A word of a projected sentence, rendering the tile at `sourceTileIndex`. */
 export interface SentenceWordSegment {
   readonly kind: "word";
+  /** The tile's own word, exactly as authored and localized. */
   readonly text: string;
   /** Index into {@link flattenRuleTiles} of the tile this word renders. */
   readonly sourceTileIndex: number;
+  /**
+   * True on the word standing first in its sentence, and absent on every other
+   * word. A display surface renders it through the locale's sentence case (see
+   * {@link segmentDisplayText}); `text` stays the authored word either way.
+   */
+  readonly sentenceInitial?: boolean;
 }
 
 /** Connective text a sentence template supplies, owned by no tile. */
@@ -95,21 +102,40 @@ export function flattenRuleTiles(rule: IBrainRuleDef): ReadonlyList<SentenceTile
   return refs.asReadonly();
 }
 
-/** The display string of `segments`: their text, in order. */
-export function sentenceText(segments: ReadonlyList<SentenceSegment>): string {
+/**
+ * The text `segment` displays in the locale `localizer` renders: the word its
+ * sentence opens with takes that locale's sentence case, and every other
+ * segment reads as its own text.
+ *
+ * Call it on every surface that shows a projected sentence. A surface that
+ * matches, keys, or identifies a segment reads `segment.text`, which is always
+ * the tile's authored word.
+ */
+export function segmentDisplayText(segment: SentenceSegment, localizer: Localizer): string {
+  if (segment.kind === "word" && segment.sentenceInitial === true) {
+    return localizer.sentenceCase(segment.text);
+  }
+  return segment.text;
+}
+
+/** The display string of `segments` in the locale `localizer` renders, in order. */
+export function sentenceText(segments: ReadonlyList<SentenceSegment>, localizer: Localizer): string {
   let text = "";
   for (let i = 0; i < segments.size(); i++) {
-    text += segments.get(i).text;
+    text += segmentDisplayText(segments.get(i), localizer);
   }
   return text;
 }
 
-/** The display string of `entries`: each rule clause's text and each glue, in order. */
-export function paragraphText(entries: ReadonlyList<ParagraphEntry>): string {
+/**
+ * The display string of `entries` in the locale `localizer` renders: each rule
+ * clause's text and each glue, in order.
+ */
+export function paragraphText(entries: ReadonlyList<ParagraphEntry>, localizer: Localizer): string {
   let text = "";
   for (let i = 0; i < entries.size(); i++) {
     const entry = entries.get(i);
-    text += entry.kind === "rule" ? sentenceText(entry.segments) : entry.text;
+    text += entry.kind === "rule" ? sentenceText(entry.segments, localizer) : entry.text;
   }
   return text;
 }
@@ -140,6 +166,7 @@ const kConnectiveContext = "sentence-connective";
 const kVerbTemplate = "When I {form} {object}";
 const kStateTemplate = "When I am {form} {object}";
 const kEventTemplate = "When {form} {object}";
+const kAdverbTemplate = "{form} {object}";
 const kSubjectlessTemplate = "When {condition}";
 const kNegatedVerbTemplate = "When I do {negation} {form} {object}";
 const kNegatedStateTemplate = "When I am {negation} {form} {object}";
@@ -158,6 +185,7 @@ const kSentenceGlueTemplate = "{sentence} {rest}";
 const kChildVerbTemplate = "I {form} {object}";
 const kChildStateTemplate = "I am {form} {object}";
 const kChildEventTemplate = "{form} {object}";
+const kChildAdverbTemplate = "{form} {object}";
 const kChildSubjectlessTemplate = "{condition}";
 const kChildNegatedVerbTemplate = "I do {negation} {form} {object}";
 const kChildNegatedStateTemplate = "I am {negation} {form} {object}";
@@ -189,6 +217,31 @@ function wordSegment(text: string, sourceTileIndex: number): SentenceWordSegment
 
 function slot(name: string, phrase: ReadonlyList<SentenceSegment>): SentenceSlot {
   return { name, phrase };
+}
+
+/**
+ * Mark the word a finished sentence opens with, when a word opens it: the
+ * sentence's first segment, and no other. A sentence whose first segment is
+ * template text carries no marked word, that text opening the sentence in the
+ * case its locale authored it in.
+ *
+ * The mark is positional. Nothing about the tile the word renders takes part.
+ */
+function markSentenceInitial(segments: List<SentenceSegment>): List<SentenceSegment> {
+  if (segments.isEmpty()) {
+    return segments;
+  }
+  const first = segments.get(0);
+  if (first.kind !== "word") {
+    return segments;
+  }
+  segments.set(0, {
+    kind: "word",
+    text: first.text,
+    sourceTileIndex: first.sourceTileIndex,
+    sentenceInitial: true,
+  });
+  return segments;
 }
 
 function isWhitespace(ch: string): boolean {
@@ -505,6 +558,9 @@ function frameTemplate(frame: TileSentenceFrame): string {
   if (frame === "event") {
     return kEventTemplate;
   }
+  if (frame === "adverb") {
+    return kAdverbTemplate;
+  }
   return kVerbTemplate;
 }
 
@@ -523,9 +579,16 @@ function negatedFrameTemplate(frame: TileSentenceFrame): string {
  * Whether the WHEN side of `tiles` reads as a bare condition: true for a side
  * headed by any tile other than a sensor, and for a side headed by an inline
  * sensor, whose value heads a condition.
+ *
+ * An adverb-frame sensor is the exception. Alone on the side its word is the
+ * whole clause, so it takes its frame; beside other tiles it is one operand of
+ * the condition and reads as bare as any other.
  */
 function isSubjectlessWhenSide(tiles: ReadonlyList<IBrainTileDef>): boolean {
   const head = tiles.get(0);
+  if (head.kind === "sensor" && tileFrame(head) === "adverb") {
+    return tiles.size() > 1;
+  }
   return head.kind !== "sensor" || isInlineTileDef(head);
 }
 
@@ -536,15 +599,16 @@ function startsOwnExpression(tileDef: IBrainTileDef): boolean {
 
 /**
  * The sensor a NOT-headed `tiles` negates, or undefined when the negation covers
- * no whole sensor call: an expression operand, or a sensor that a further
- * operator or grouping extends.
+ * no whole sensor call: an expression operand, a sensor that a further operator
+ * or grouping extends, or an adverb-frame sensor, whose word is a whole clause
+ * and so carries no frame a negation can read inside.
  */
 function negatedSensor(tiles: ReadonlyList<IBrainTileDef>): IBrainTileDef | undefined {
   if (tiles.size() < 2 || tiles.get(0).tileId !== mkOperatorTileId(CoreOpId.Not)) {
     return undefined;
   }
   const operand = tiles.get(1);
-  if (operand.kind !== "sensor") {
+  if (operand.kind !== "sensor" || tileFrame(operand) === "adverb") {
     return undefined;
   }
   for (let i = 2; i < tiles.size(); i++) {
@@ -642,8 +706,9 @@ function projectRuleClause(localizer: Localizer, rule: IBrainRuleDef): List<Sent
  *
  * The result is the sentence's segments in order: each word carries the index
  * of the tile it renders (see {@link flattenRuleTiles}), and template-supplied
- * connective text is glue. The display string is {@link sentenceText} of the
- * result. A rule with no tiles projects no segments.
+ * connective text is glue. A word standing first in the sentence is marked
+ * `sentenceInitial`. The display string is {@link sentenceText} of the result.
+ * A rule with no tiles projects no segments.
  *
  * The projection is derived state: the same rule under the same catalogs always
  * yields the same segments. Live callers reach a localizer through
@@ -655,7 +720,7 @@ export function projectRuleSentence(rule: IBrainRuleDef, localizer: Localizer): 
   }
   const terminalSlots = new List<SentenceSlot>();
   terminalSlots.push(slot("sentence", projectRuleClause(localizer, rule)));
-  return renderPhrase(localizer, kTerminalTemplate, kGlueContext, terminalSlots).asReadonly();
+  return markSentenceInitial(renderPhrase(localizer, kTerminalTemplate, kGlueContext, terminalSlots)).asReadonly();
 }
 
 // ---------------------------------------------------------------------------
@@ -678,6 +743,24 @@ function ruleEntry(ruleId: number, segments: ReadonlyList<SentenceSegment>): Par
 
 function paragraphSlot(name: string, entries: ReadonlyList<ParagraphEntry>): ParagraphSlot {
   return { name, entries };
+}
+
+/**
+ * Mark the word the sentence `entries` opens with, when a word opens it: the
+ * first segment of the first entry, which a rule clause has to be for any word
+ * to open the sentence at all.
+ */
+function markParagraphSentenceInitial(entries: List<ParagraphEntry>): List<ParagraphEntry> {
+  if (entries.isEmpty()) {
+    return entries;
+  }
+  const first = entries.get(0);
+  if (first.kind !== "rule") {
+    return entries;
+  }
+  const marked = markSentenceInitial(List.from(first.segments.toArray()));
+  entries.set(0, ruleEntry(first.ruleId, marked.asReadonly()));
+  return entries;
 }
 
 /** Merge adjacent glue entries, drop empty ones, and collapse whitespace runs. */
@@ -766,6 +849,9 @@ function childFrameTemplate(frame: TileSentenceFrame): string {
   }
   if (frame === "event") {
     return kChildEventTemplate;
+  }
+  if (frame === "adverb") {
+    return kChildAdverbTemplate;
   }
   return kChildVerbTemplate;
 }
@@ -886,7 +972,11 @@ function collectSentences(
 
     const terminalSlots = new List<ParagraphSlot>();
     terminalSlots.push(paragraphSlot("sentence", entries.asReadonly()));
-    out.push(composeEntries(localizer, kTerminalTemplate, kGlueContext, terminalSlots.asReadonly()));
+    out.push(
+      markParagraphSentenceInitial(
+        composeEntries(localizer, kTerminalTemplate, kGlueContext, terminalSlots.asReadonly())
+      )
+    );
   }
 }
 
@@ -895,7 +985,8 @@ function collectSentences(
  *
  * The result is the paragraph's entries in order: one {@link ParagraphRuleEntry}
  * per rule that carries tiles, each holding that rule's own segments, separated
- * by {@link ParagraphGlueEntry} connectives. The display string is
+ * by {@link ParagraphGlueEntry} connectives. A word standing first in one of
+ * the paragraph's sentences is marked `sentenceInitial`. The display string is
  * {@link paragraphText} of the result.
  *
  * One sentence covers each top-level rule and all of its descendants: a child

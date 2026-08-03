@@ -1,4 +1,5 @@
 import type { PluralRuleSpec } from "./plural";
+import type { SentenceCaseSpec } from "./sentence-case";
 
 /**
  * Translations keyed by English source string. `entries` holds plain keys;
@@ -19,6 +20,11 @@ export interface LocaleCatalog extends MessageCatalog {
   /** BCP-47-style locale code, for example `fr` or the pseudo-locale `qps`. */
   readonly locale: string;
   readonly pluralRule: PluralRuleSpec;
+  /**
+   * How the locale cases the word a sentence opens with. Omitted takes
+   * {@link defaultSentenceCaseSpec}, which uppercases the leading character.
+   */
+  readonly sentenceCase?: SentenceCaseSpec;
 }
 
 /** Locale code of the implicit identity catalog. */

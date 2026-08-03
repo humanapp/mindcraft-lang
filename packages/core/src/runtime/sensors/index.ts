@@ -2,6 +2,7 @@ import type { BrainServices } from "../../brain/services";
 import { CoreHostActions } from "../abi-ids";
 import fnCurrentPage from "./current-page";
 import fnOnPageEntered from "./on-page-entered";
+import fnOtherwise from "./otherwise";
 import fnPreviousPage from "./previous-page";
 import fnRandom from "./random";
 import fnTimeout from "./timeout";
@@ -13,6 +14,7 @@ export function registerCoreSensors(services: BrainServices) {
   services.runtime.actions.register(fnTimeout.binding);
   services.runtime.actions.register(fnCurrentPage.binding);
   services.runtime.actions.register(fnPreviousPage.binding);
+  services.runtime.actions.register(fnOtherwise.binding);
 
   services.runtime.functions.register(
     CoreHostActions.Random.fnId,
@@ -48,5 +50,12 @@ export function registerCoreSensors(services: BrainServices) {
     false,
     fnPreviousPage.fn,
     fnPreviousPage.callDef
+  );
+  services.runtime.functions.register(
+    CoreHostActions.Otherwise.fnId,
+    CoreHostActions.Otherwise.key,
+    false,
+    fnOtherwise.fn,
+    fnOtherwise.callDef
   );
 }

@@ -2,6 +2,7 @@ import { List } from "../platform/list";
 import { kDefaultLocale, kListContext, type LocaleCatalog } from "./catalog";
 import { foldForSearch } from "./folding";
 import { defaultPluralRule } from "./plural";
+import { applySentenceCase, defaultSentenceCaseSpec } from "./sentence-case";
 import { type LocalizedValue, renderTemplate } from "./template";
 
 /** Conjunction a joined list reads with. */
@@ -42,6 +43,21 @@ export interface Localizer {
    * to the query and the candidate alike.
    */
   foldForSearch(s: string): string;
+
+  /**
+   * Case `text` as the word a sentence opens with in this locale.
+   *
+   * The operation only ever uppercases, and only the word's leading unit --
+   * one character by default, a locale's declared digraph where it declares
+   * one. Authored case is the source of truth everywhere else: a word that
+   * already opens with a capital comes back unchanged, and nothing after the
+   * leading unit is touched. A locale that opens a sentence in lower case
+   * returns `text` unchanged.
+   *
+   * Apply it only to the word a sentence opens with, and only for display; a
+   * surface that matches, keys, or identifies a word reads the authored text.
+   */
+  sentenceCase(text: string): string;
 }
 
 /** List-glue templates, looked up under the `list` context. */
@@ -119,6 +135,10 @@ class CatalogLocalizer implements Localizer {
 
   foldForSearch(s: string): string {
     return foldForSearch(s);
+  }
+
+  sentenceCase(text: string): string {
+    return applySentenceCase(this.catalog.sentenceCase ?? defaultSentenceCaseSpec, this.catalog.locale, text);
   }
 }
 

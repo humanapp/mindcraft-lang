@@ -7,12 +7,14 @@ import { ConversionRegistry } from "./conversions";
 import { FunctionRegistry } from "./functions";
 import { OperatorOverloads, OperatorTable } from "./operators";
 import { createF64ProfileNumerics } from "./profile-numerics";
+import { createRuleFiringServices, type RuleFiringState } from "./rule-services";
 import type {
   AppServices,
   IBrainPageServices,
   IBrainVariableServices,
   ICallsiteServices,
   IProgramServices,
+  IRuleFiringServices,
   IRuleVariableServices,
   PlatformServices,
   RuntimeLangServices,
@@ -38,6 +40,8 @@ export interface __test__PlatformServicesOptions {
   brainVars?: IBrainVariableServices;
   /** Override the rule-variable services. */
   ruleVars?: IRuleVariableServices;
+  /** Override the per-rule WHEN-evaluation outcome records. */
+  ruleFiring?: IRuleFiringServices;
   /** Override the brain-page lifecycle services. */
   brainPages?: IBrainPageServices;
   /** Override the per-callsite services (slots and host-owned state). */
@@ -136,9 +140,13 @@ export function __test__createPlatformServices(options?: __test__PlatformService
         getEnumSymbolValue(_typeId: string, _key: string): string | number | undefined {
           return undefined;
         },
+        getPrecedingSiblingRuleFuncId(_ruleFuncId: number): number | undefined {
+          return undefined;
+        },
       },
       brainVars: options?.brainVars ?? __test__defaultBrainVars(),
       ruleVars: options?.ruleVars ?? __test__defaultRuleVars(),
+      ruleFiring: options?.ruleFiring ?? createRuleFiringServices(new Dict<number, RuleFiringState>()),
       pages: options?.brainPages ?? __test__defaultBrainPages(),
       callsite: options?.callsite ?? createCallsiteStore(),
     },

@@ -6,11 +6,12 @@ Rules are the basic unit of brain logic. Each rule has two sides:
 - **DO** -- the action tiles that execute when the condition passes
 
 Rules execute in order from top to bottom on every simulation frame.
-The first rule whose condition is satisfied runs its actions.
+Every rule whose condition is satisfied runs its actions -- not just the first one.
+A rule that does not match is simply skipped for that frame, and the next rule is checked.
 
-## Rule Priority
+## Rule Order
 
-Rules near the top of the list have higher priority.
+Because the list runs top to bottom, a rule lower down acts after the ones above it.
 Indent a rule under another to create a child rule -- it only runs when its parent's condition is also true.
 
 ## Empty WHEN Side

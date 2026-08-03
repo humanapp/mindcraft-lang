@@ -81,6 +81,9 @@ export enum ParseDiagCode {
 
   /** Tile requiring a WHEN result placed where no compatible WHEN result is available */
   TileWhenResultUnavailable = 1019,
+
+  /** Tile reporting on the preceding sibling rule placed in the first rule at its level, which has none */
+  NoPrecedingSiblingRule = 1020,
 }
 
 /**

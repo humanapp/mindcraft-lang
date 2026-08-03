@@ -12,6 +12,7 @@ import { before, describe, test } from "node:test";
 import { List, type ReadonlyList, UniqueSet } from "@mindcraft-lang/core";
 import {
   type BrainServices,
+  CoreCapabilityBits,
   CoreControlFlowId,
   type IBrainTileDef,
   type ITileCatalog,
@@ -4697,5 +4698,175 @@ describe("Multi-anonymous-slot action calls", () => {
       resultContains(result, mkOperatorTileId(CoreOpId.Add)),
       "infix operators still extend the trailing value"
     );
+  });
+});
+
+describe("Preceding-sibling consumption", () => {
+  // A WHEN-side inline boolean sensor that reads the rule above it, mirroring
+  // the `otherwise` tile.
+  let siblingReaderDef: BrainTileSensorDef;
+
+  before(() => {
+    const fnEntry = services.runtime.functions.register(
+      4207,
+      "test-preceding-sibling-reader",
+      false,
+      { exec: () => TRUE_VALUE },
+      mkCallDef(bag())
+    );
+    siblingReaderDef = new BrainTileSensorDef(
+      "test-preceding-sibling-reader",
+      mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Boolean),
+      {
+        metadata: { label: "sibling reader" },
+        placement: TilePlacement.WhenSide | TilePlacement.Inline,
+        capabilities: new BitSet().set(CoreCapabilityBits.RequiresPrecedingSiblingRule),
+      }
+    );
+    services.edit.tiles.registerTileDef(siblingReaderDef);
+  });
+
+  function offered(result: TileSuggestionResult, tileId: string): boolean {
+    return (
+      listFind(result.exact, (s) => s.tileDef.tileId === tileId) !== undefined ||
+      listFind(result.withConversion, (s) => s.tileDef.tileId === tileId) !== undefined
+    );
+  }
+
+  /** A page holding `count` root rules, returned in document order. */
+  function rootRules(count: number): BrainRuleDef[] {
+    const brainDef = new BrainDef(services);
+    const pageResult = brainDef.appendNewPage();
+    assert.ok(pageResult.success);
+    const page = pageResult.value!.page;
+    while (page.children().size() < count) {
+      page.appendNewRule();
+    }
+    const rules: BrainRuleDef[] = [];
+    for (let i = 0; i < count; i++) {
+      rules.push(page.children().get(i)! as BrainRuleDef);
+    }
+    return rules;
+  }
+
+  test("is not offered in the first root rule, which has no rule above it", () => {
+    const [first] = rootRules(2);
+    const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: first }, catalogList(), services);
+    assert.ok(!offered(result, siblingReaderDef.tileId));
+  });
+
+  test("is offered in the second root rule, which has one", () => {
+    const [, second] = rootRules(2);
+    const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: second }, catalogList(), services);
+    assert.ok(offered(result, siblingReaderDef.tileId));
+  });
+
+  test("is not offered in a first child rule and is offered in the second", () => {
+    const [parent] = rootRules(1);
+    const firstChild = parent.appendNewRule();
+    const secondChild = parent.appendNewRule();
+    const firstResult = suggestTiles({ ruleSide: RuleSide.When, ruleDef: firstChild }, catalogList(), services);
+    const secondResult = suggestTiles({ ruleSide: RuleSide.When, ruleDef: secondChild }, catalogList(), services);
+    assert.ok(!offered(firstResult, siblingReaderDef.tileId), "a first child has no rule above it at its level");
+    assert.ok(offered(secondResult, siblingReaderDef.tileId), "a second child reads the child above it");
+  });
+
+  test("is not offered when the insertion point names no rule", () => {
+    const result = suggestTiles({ ruleSide: RuleSide.When }, catalogList(), services);
+    assert.ok(!offered(result, siblingReaderDef.tileId));
+  });
+
+  test("is offered as a prefix operator's operand in the second root rule", () => {
+    const [, second] = rootRules(2);
+    second.when().appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not))!);
+    const expr = parseTilesForSuggestions(second.when().tiles());
+    const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: second, expr }, catalogList(), services);
+    assert.ok(offered(result, siblingReaderDef.tileId));
+  });
+
+  test("is not offered as a prefix operator's operand in the first root rule", () => {
+    const [first] = rootRules(2);
+    first.when().appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not))!);
+    const expr = parseTilesForSuggestions(first.when().tiles());
+    const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: first, expr }, catalogList(), services);
+    assert.ok(!offered(result, siblingReaderDef.tileId));
+  });
+
+  /** A Boolean literal tile from the core catalog. */
+  function booleanLiteral(): IBrainTileDef {
+    return services.edit.tiles
+      .getAll()
+      .toArray()
+      .find((t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Boolean)!;
+  }
+
+  /**
+   * Fills `rule`'s WHEN with `[bool] [and] [bool]` and returns the insert-before
+   * context for position 2: the truncated tile list the picker reads for an
+   * insertion point is the conjunction's right-operand position.
+   */
+  function conjunctionRightOperandInsert(rule: BrainRuleDef): InsertionContext {
+    const boolLit = booleanLiteral();
+    rule.when().appendTile(boolLit);
+    rule.when().appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.And))!);
+    rule.when().appendTile(boolLit);
+    const before = List.from(rule.when().tiles().toArray().slice(0, 2));
+    return {
+      ruleSide: RuleSide.When,
+      ruleDef: rule,
+      expr: parseTilesForSuggestions(before),
+      unclosedParenDepth: countUnclosedParens(before),
+    };
+  }
+
+  test("is offered at an insert point inside a WHEN conjunction in the second root rule", () => {
+    const [, second] = rootRules(2);
+    const result = suggestTiles(conjunctionRightOperandInsert(second), catalogList(), services);
+    assert.ok(offered(result, siblingReaderDef.tileId));
+  });
+
+  test("is not offered at an insert point inside a WHEN conjunction in the first root rule", () => {
+    const [first] = rootRules(2);
+    const result = suggestTiles(conjunctionRightOperandInsert(first), catalogList(), services);
+    assert.ok(!offered(result, siblingReaderDef.tileId));
+  });
+
+  /**
+   * A WHEN-side sensor with one required anonymous Boolean slot, so appending
+   * after it lands in an anonymous argument position.
+   */
+  function anonBooleanSlotSensor(): BrainTileSensorDef {
+    const registered = services.edit.tiles.get(mkSensorTileId("test-anon-bool-slot"));
+    if (registered) return registered as BrainTileSensorDef;
+    const fnEntry = services.runtime.functions.register(
+      4208,
+      "test-anon-bool-slot",
+      false,
+      { exec: () => TRUE_VALUE },
+      mkCallDef(bag(param(CoreParameterId.AnonymousBoolean, { required: true, anonymous: true })))
+    );
+    const def = new BrainTileSensorDef(
+      "test-anon-bool-slot",
+      mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Boolean),
+      { metadata: { label: "holds" }, placement: TilePlacement.WhenSide }
+    );
+    services.edit.tiles.registerTileDef(def);
+    return def;
+  }
+
+  test("is offered in a WHEN-side anonymous Boolean slot in the second root rule", () => {
+    const [, second] = rootRules(2);
+    second.when().appendTile(anonBooleanSlotSensor());
+    const expr = parseTilesForSuggestions(second.when().tiles());
+    const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: second, expr }, catalogList(), services);
+    assert.ok(offered(result, siblingReaderDef.tileId));
+  });
+
+  test("is not offered in a WHEN-side anonymous Boolean slot in the first root rule", () => {
+    const [first] = rootRules(2);
+    first.when().appendTile(anonBooleanSlotSensor());
+    const expr = parseTilesForSuggestions(first.when().tiles());
+    const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: first, expr }, catalogList(), services);
+    assert.ok(!offered(result, siblingReaderDef.tileId));
   });
 });

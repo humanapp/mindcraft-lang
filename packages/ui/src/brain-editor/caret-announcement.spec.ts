@@ -74,6 +74,7 @@ function markerLocalizer(calls: TrCall[]): Localizer {
     list: (items, kind) => base.list(items, kind),
     compare: (a, b) => base.compare(a, b),
     foldForSearch: (text) => base.foldForSearch(text),
+    sentenceCase: (text) => base.sentenceCase(text),
   };
 }
 

@@ -142,6 +142,10 @@ export namespace StringUtils {
     return str.upper();
   }
 
+  export function toLocaleUpperCase(str: string, _locale: string): string {
+    return str.upper();
+  }
+
   export function split(str: string, separator: string, limit?: number): string[] {
     const result: string[] = [];
     if (separator.size() === 0) {

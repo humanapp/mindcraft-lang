@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
-import { type BrainServices, mkVariableTileId } from "@mindcraft-lang/core/brain";
+import { type BrainServices, CoreCapabilityBits, mkVariableTileId } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { ParseDiagCode, type TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef, BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
@@ -371,6 +371,55 @@ describe("BrainRuleDef", () => {
       assert.ok(
         codes.includes(ParseDiagCode.TileWhenResultUnavailable),
         "an orphan WHEN-result consumer must carry TileWhenResultUnavailable"
+      );
+    });
+
+    /** A WHEN-side Boolean sensor declaring the preceding-sibling requirement. */
+    function precedingSiblingProbe(fnId: number): BrainTileSensorDef {
+      const fnEntry = services.runtime.functions.register(
+        fnId,
+        `test-tc-sibling-reader-${fnId}`,
+        false,
+        { exec: () => NIL_VALUE },
+        mkCallDef(bag())
+      );
+      return new BrainTileSensorDef(
+        `test-tc-sibling-reader-${fnId}`,
+        mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Boolean),
+        {
+          metadata: { label: "tc sibling reader" },
+          capabilities: new BitSet().set(CoreCapabilityBits.RequiresPrecedingSiblingRule),
+        }
+      );
+    }
+
+    test("a tile reading the rule above it is clean while that rule is there", () => {
+      const brain = BrainDef.emptyBrainDef(services, "tc-sibling-present-brain");
+      const page = brain.pages().get(0);
+      page.children().get(0).when().appendTile(precedingSiblingProbe(4411));
+      const second = page.appendNewRule() as BrainRuleDef;
+      second.when().appendTile(precedingSiblingProbe(4412));
+
+      const codes = typecheckSideDiags(second, "when");
+      assert.ok(
+        !codes.includes(ParseDiagCode.NoPrecedingSiblingRule),
+        "a rule with a rule above it must not carry NoPrecedingSiblingRule"
+      );
+    });
+
+    test("removing the rules above re-derives the subject and diagnoses the tile", () => {
+      const brain = BrainDef.emptyBrainDef(services, "tc-sibling-removed-brain");
+      const page = brain.pages().get(0);
+      const second = page.appendNewRule() as BrainRuleDef;
+      second.when().appendTile(precedingSiblingProbe(4413));
+      assert.ok(!typecheckSideDiags(second, "when").includes(ParseDiagCode.NoPrecedingSiblingRule));
+
+      page.removeRuleAtIndex(0);
+
+      const codes = typecheckSideDiags(second, "when");
+      assert.ok(
+        codes.includes(ParseDiagCode.NoPrecedingSiblingRule),
+        "the rule left first at its level must carry NoPrecedingSiblingRule on the next typecheck"
       );
     });
   });

@@ -72,8 +72,12 @@ export enum TilePlacement {
  * - "state" -- a condition, rendered with the locale's copula
  *   ("When I am hungry")
  * - "event" -- a happening ("When this page starts")
+ * - "adverb" -- a word that is the whole trigger, rendered with neither a
+ *   subject nor a trigger word ("Otherwise, wander"). A sensor of this frame
+ *   takes it only where it stands alone on the side; beside other tiles it
+ *   reads as an ordinary operand of the condition.
  */
-export type TileSentenceFrame = "verb" | "state" | "event";
+export type TileSentenceFrame = "verb" | "state" | "event" | "adverb";
 
 /**
  * Sentence-projection metadata for a tile. Every field is optional; the
@@ -322,7 +326,28 @@ export const CoreCapabilityBits = {
    * skips only on nil); nil must be excluded from the sensor's value domain.
    */
   PresenceGated: 2,
+  /**
+   * Marks a tile whose meaning depends on the rule immediately above it at its
+   * own nesting level. Such a tile is rejected in the first rule at a level,
+   * which has no rule above it.
+   */
+  RequiresPrecedingSiblingRule: 3,
 } as const;
+
+/**
+ * Whether `tileDef` is valid with respect to the rule above it. A tile that
+ * declares {@link CoreCapabilityBits.RequiresPrecedingSiblingRule} is valid only
+ * in a rule that has a rule above it at its own nesting level. A tile that
+ * declares nothing is always valid.
+ *
+ * @param tileDef - The tile to test.
+ * @param hasPrecedingSibling - Whether the enclosing rule has a rule above it at
+ *   its own nesting level.
+ */
+export function precedingSiblingConsumerEligible(tileDef: IBrainTileDef, hasPrecedingSibling: boolean): boolean {
+  if (hasPrecedingSibling) return true;
+  return tileDef.capabilities().get(CoreCapabilityBits.RequiresPrecedingSiblingRule) === 0;
+}
 
 // ----------------------------------------------------
 // Core Tile IDs

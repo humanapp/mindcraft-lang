@@ -31,6 +31,7 @@ import {
   parseBrainTiles,
   validateCapabilityRequirements,
   validateOutputProviders,
+  validatePrecedingSiblingConsumers,
   validateTilePlacement,
   validateWhenResultConsumers,
 } from "./parser";
@@ -273,7 +274,7 @@ export class BrainCompiler {
 
     for (let ruleIdx = 0; ruleIdx < rules.size(); ruleIdx++) {
       const ruleDef = rules.get(ruleIdx);
-      this.compileRule(ruleDef, `${pageIdx}/${ruleIdx}`);
+      this.compileRule(ruleDef, `${pageIdx}/${ruleIdx}`, ruleIdx);
     }
 
     // Collect all action callsites from all compiled rules in this page
@@ -322,8 +323,13 @@ export class BrainCompiler {
 
   /**
    * Compile a single rule and its children recursively.
+   *
+   * @param ruleDef - The rule to compile.
+   * @param rulePath - The rule's `pageIndex/ruleIndex[/childIndex...]` path.
+   * @param siblingIndex - The rule's zero-based position among the rules at its
+   *   own nesting level.
    */
-  private compileRule(ruleDef: IBrainRuleDef, rulePath: string): void {
+  private compileRule(ruleDef: IBrainRuleDef, rulePath: string, siblingIndex: number): void {
     const funcId = this.ruleIndex.get(rulePath);
     if (funcId === undefined) {
       throw new Error(`BrainCompiler: No function ID assigned for rule at ${rulePath}`);
@@ -341,7 +347,7 @@ export class BrainCompiler {
     }
 
     // Compile this rule's WHEN and DO
-    const result = this.compileRuleBody(ruleDef, childFuncIds, rulePath);
+    const result = this.compileRuleBody(ruleDef, childFuncIds, rulePath, siblingIndex);
 
     // Update the function in place
     const fn = this.functions.get(funcId)!;
@@ -350,7 +356,7 @@ export class BrainCompiler {
     // Recursively compile children
     for (let childIdx = 0; childIdx < children.size(); childIdx++) {
       const childDef = children.get(childIdx);
-      this.compileRule(childDef, `${rulePath}/${childIdx}`);
+      this.compileRule(childDef, `${rulePath}/${childIdx}`, childIdx);
     }
   }
 
@@ -378,13 +384,23 @@ export class BrainCompiler {
   /**
    * Compile a rule's WHEN/DO body and emit CALL instructions for children.
    */
-  private compileRuleBody(ruleDef: IBrainRuleDef, childFuncIds: List<number>, rulePath: string): RuleCompileResult {
+  private compileRuleBody(
+    ruleDef: IBrainRuleDef,
+    childFuncIds: List<number>,
+    rulePath: string,
+    siblingIndex: number
+  ): RuleCompileResult {
     const whenTiles = ruleDef.when().tiles();
     const doTiles = ruleDef.do().tiles();
 
     // A tile whose placement excludes the side it appears on blocks the build.
     this.pushErrorDiags(validateTilePlacement(whenTiles, RuleSide.When));
     this.pushErrorDiags(validateTilePlacement(doTiles, RuleSide.Do));
+
+    // A tile reporting on the preceding sibling rule blocks the build in the
+    // first rule at its level, which has no rule above it.
+    this.pushErrorDiags(validatePrecedingSiblingConsumers(whenTiles, siblingIndex > 0));
+    this.pushErrorDiags(validatePrecedingSiblingConsumers(doTiles, siblingIndex > 0));
 
     // An output tile with no providing sensor in the rule hierarchy (this
     // rule's WHEN and DO sides plus every ancestor rule's) blocks the build.

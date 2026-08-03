@@ -31,6 +31,8 @@ export type {
 } from "./plural";
 export { defaultPluralRule, selectPluralCategory } from "./plural";
 export { pseudoLocalize } from "./pseudo-locale";
+export type { SentenceCaseSpec } from "./sentence-case";
+export { applySentenceCase, defaultSentenceCaseSpec } from "./sentence-case";
 export type {
   LocalizedValue,
   ParsedTemplate,

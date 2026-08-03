@@ -22,6 +22,7 @@ export {
   parseBrainTiles,
   validateCapabilityRequirements,
   validateOutputProviders,
+  validatePrecedingSiblingConsumers,
   validateWhenResultConsumers,
   whenResultConsumerEligible,
 } from "./parser";
@@ -64,6 +65,7 @@ import {
   parseBrainTiles,
   validateCapabilityRequirements,
   validateOutputProviders,
+  validatePrecedingSiblingConsumers,
   validateTilePlacement,
   validateWhenResultConsumers,
 } from "./parser";
@@ -119,6 +121,11 @@ function appendParseDiags(result: ParseResult, extra: ReadonlyList<ParseDiag>): 
  * typed with `operatorOverloads`). A tile declaring `consumesWhenResult(T)`
  * with no compatible WHEN result available on its side gets a
  * {@link ParseDiagCode.TileWhenResultUnavailable} diagnostic.
+ * `hasPrecedingSiblingRule` states whether the rule has a rule above it at its
+ * own nesting level; when it is `false`, a tile declaring
+ * {@link CoreCapabilityBits.RequiresPrecedingSiblingRule} gets a
+ * {@link ParseDiagCode.NoPrecedingSiblingRule} diagnostic.
+ * It defaults to `true`, which reports nothing.
  */
 export function parseRule(
   whenSrc: ReadonlyList<IBrainTileDef>,
@@ -129,7 +136,8 @@ export function parseRule(
   inheritedOutputKeys?: UniqueSet<string>,
   inheritedCapabilities?: ReadonlyBitSet,
   inheritedWhenResultType?: TypeId,
-  operatorOverloads?: IOperatorOverloads
+  operatorOverloads?: IOperatorOverloads,
+  hasPrecedingSiblingRule: boolean = true
 ): TypecheckResult {
   // Output and capability providers are visible across the whole rule (both
   // sides) and its ancestors; placement is validated per side.
@@ -157,26 +165,33 @@ export function parseRule(
       : inheritedWhenResultType;
 
   // Each side also carries the placement, output-provider,
-  // capability-requirement, and WHEN-result diagnostics for its own tiles.
+  // capability-requirement, WHEN-result, and preceding-sibling diagnostics for
+  // its own tiles.
   const whenParseResult = appendParseDiags(
     appendParseDiags(
       appendParseDiags(
-        appendParseDiags(whenParsed, validateTilePlacement(whenSrc, RuleSide.When)),
-        validateOutputProviders(whenSrc, providedOutputKeys)
+        appendParseDiags(
+          appendParseDiags(whenParsed, validateTilePlacement(whenSrc, RuleSide.When)),
+          validateOutputProviders(whenSrc, providedOutputKeys)
+        ),
+        validateCapabilityRequirements(whenSrc, availableCapabilities, catalogs)
       ),
-      validateCapabilityRequirements(whenSrc, availableCapabilities, catalogs)
+      validateWhenResultConsumers(whenSrc, whenSideWhenResult, conversions, typeRegistry)
     ),
-    validateWhenResultConsumers(whenSrc, whenSideWhenResult, conversions, typeRegistry)
+    validatePrecedingSiblingConsumers(whenSrc, hasPrecedingSiblingRule)
   );
   const doParseResult = appendParseDiags(
     appendParseDiags(
       appendParseDiags(
-        appendParseDiags(doParsed, validateTilePlacement(doSrc, RuleSide.Do)),
-        validateOutputProviders(doSrc, providedOutputKeys)
+        appendParseDiags(
+          appendParseDiags(doParsed, validateTilePlacement(doSrc, RuleSide.Do)),
+          validateOutputProviders(doSrc, providedOutputKeys)
+        ),
+        validateCapabilityRequirements(doSrc, availableCapabilities, catalogs)
       ),
-      validateCapabilityRequirements(doSrc, availableCapabilities, catalogs)
+      validateWhenResultConsumers(doSrc, doSideWhenResult, conversions, typeRegistry)
     ),
-    validateWhenResultConsumers(doSrc, doSideWhenResult, conversions, typeRegistry)
+    validatePrecedingSiblingConsumers(doSrc, hasPrecedingSiblingRule)
   );
 
   // Combine parse results

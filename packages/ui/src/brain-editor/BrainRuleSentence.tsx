@@ -5,7 +5,12 @@ import type {
   SentenceTileRef,
   SentenceWordSegment,
 } from "@mindcraft-lang/core/brain/language-service";
-import { flattenRuleTiles, projectRuleSentence, whenTriggerWord } from "@mindcraft-lang/core/brain/language-service";
+import {
+  flattenRuleTiles,
+  projectRuleSentence,
+  segmentDisplayText,
+  whenTriggerWord,
+} from "@mindcraft-lang/core/brain/language-service";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
@@ -227,7 +232,9 @@ interface BrainRuleSentenceProps {
  * render from the rule and the active locale -- nothing is stored and nothing
  * enters the command history -- so it re-reads itself on every edit, briefly
  * lighting the words whose tiles changed. A rule that projects no segments and
- * hosts no composer input renders nothing.
+ * hosts no composer input renders nothing. The word the sentence opens with
+ * reads in the locale's opening case; every other word reads exactly as its
+ * tile authors it.
  *
  * While the composer's input is hosted here the line reads in composition:
  * see {@link composeSentenceReading} for what a rule under composition shows,
@@ -375,6 +382,7 @@ export function BrainRuleSentence({
       {...cellProps}
     >
       {segments.map((segment: SentenceSegment, index: number) => {
+        const displayText = segmentDisplayText(segment, localizer);
         if (segment.kind !== "word") {
           // Only structure carrying more than space is tappable.
           const isStructureTappable = placeCaret !== undefined && segment.text.trim().length > 0;
@@ -391,10 +399,10 @@ export function BrainRuleSentence({
                   className={sentenceGlueButtonClasses}
                   onClick={() => placeCaret(caretPositionForSegment(segments, tiles, index))}
                 >
-                  {segment.text}
+                  {displayText}
                 </button>
               ) : (
-                <span>{segment.text}</span>
+                <span>{displayText}</span>
               )}
             </Fragment>
           );
@@ -424,7 +432,7 @@ export function BrainRuleSentence({
             data-caret-focus={isFocused ? segment.sourceTileIndex : undefined}
             data-caret-superseded={isFocused && pending ? segment.sourceTileIndex : undefined}
           >
-            {segment.text}
+            {displayText}
           </span>
         );
         return (
@@ -462,8 +470,13 @@ export function BrainRuleSentence({
  */
 export function BrainPrintRuleSentence({ ruleDef }: { ruleDef: BrainRuleDef }) {
   const { segments } = useRuleSentence(ruleDef, 0);
+  const localizer = useLocalizer();
   if (segments.length === 0) {
     return null;
   }
-  return <div className="brain-print-rule-sentence">{segments.map((segment) => segment.text).join("")}</div>;
+  return (
+    <div className="brain-print-rule-sentence">
+      {segments.map((segment) => segmentDisplayText(segment, localizer)).join("")}
+    </div>
+  );
 }

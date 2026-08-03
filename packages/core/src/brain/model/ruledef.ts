@@ -61,6 +61,12 @@ export class BrainRuleDef implements IBrainRuleDef {
   private readonly tileSetSubscriptions_ = new Dict<BrainTileSet, () => void>();
   private readonly childRuleSubscriptions_ = new Dict<BrainRuleDef, () => void>();
   private dirtyChangedDebounceThread_?: thread;
+  /**
+   * Whether the rule had a rule above it at its own nesting level when the
+   * stored typecheck result was produced. A structural edit that changes this
+   * without touching the rule's own tiles invalidates the stored result.
+   */
+  private typecheckedWithPrecedingSibling_?: boolean;
 
   constructor() {
     this.id_ = nextRuleId_++;
@@ -188,9 +194,17 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   typecheck(): void {
-    // Compile this rule if either side is dirty or has never been typechecked
-    // (e.g. a freshly deserialized rule).
-    if (this.when_.isDirty() || this.do_.isDirty() || !this.when_.typecheckResult() || !this.do_.typecheckResult()) {
+    // Compile this rule if either side is dirty, has never been typechecked
+    // (e.g. a freshly deserialized rule), or now stands in a different place
+    // among its siblings than the stored result was produced for.
+    const hasPrecedingSibling = this.myIndex_() > 0;
+    if (
+      this.when_.isDirty() ||
+      this.do_.isDirty() ||
+      !this.when_.typecheckResult() ||
+      !this.do_.typecheckResult() ||
+      this.typecheckedWithPrecedingSibling_ !== hasPrecedingSibling
+    ) {
       const catalogs = this.gatherCatalogs();
       const whenTiles = this.when_.tiles();
       const doTiles = this.do_.tiles();
@@ -225,10 +239,12 @@ export class BrainRuleDef implements IBrainRuleDef {
           inheritedOutputKeys,
           inheritedCapabilities,
           inheritedWhenResultType,
-          operatorOverloads
+          operatorOverloads,
+          hasPrecedingSibling
         );
         this.when_.setTypecheckResult(typecheckResult);
         this.do_.setTypecheckResult(typecheckResult);
+        this.typecheckedWithPrecedingSibling_ = hasPrecedingSibling;
       }
     }
 

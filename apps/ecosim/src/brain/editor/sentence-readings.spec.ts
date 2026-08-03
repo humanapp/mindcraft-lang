@@ -24,6 +24,7 @@ import {
   paragraphText,
   projectPageParagraph,
   projectRuleSentence,
+  segmentDisplayText,
   sentenceText,
   whenTriggerWord,
 } from "@mindcraft-lang/core/brain/language-service";
@@ -87,7 +88,7 @@ function rule(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrainTileD
 
 /** The settled sentence of a rule holding the tiles of each side. */
 function reading(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrainTileDef[] = []): string {
-  return sentenceText(projectRuleSentence(rule(whenTiles, doTiles), localizer));
+  return sentenceText(projectRuleSentence(rule(whenTiles, doTiles), localizer), localizer);
 }
 
 /** One rule of a page fixture: the tiles of each side, plus any child rules. */
@@ -124,7 +125,7 @@ function page(specs: readonly RuleSpec[]): IBrainPageDef {
 
 /** The paragraph of a page holding the rule tree `specs` describes. */
 function paragraph(specs: readonly RuleSpec[]): string {
-  return paragraphText(projectPageParagraph(page(specs), localizer));
+  return paragraphText(projectPageParagraph(page(specs), localizer), localizer);
 }
 
 /** The line a rule shows mid-composition, with the pivot comma when `pivoted`. */
@@ -136,7 +137,7 @@ function composing(
   const settled = projectRuleSentence(rule(whenTiles, doTiles), localizer).toArray();
   const composed = composeSentenceReading(settled);
   const segments = pivoted ? [...composed, ...composePivotReading(composed, whenTriggerWord(localizer))] : composed;
-  return segments.map((segment) => segment.text).join("");
+  return segments.map((segment) => segmentDisplayText(segment, localizer)).join("");
 }
 
 // -- sensors ------------------------------------------------------------------
@@ -269,6 +270,16 @@ describe("ecosim condition readings", () => {
     assert.equal(reading([see(), operator(CoreOpId.And), bump()], [move()]), "When I see and bump, move.");
     assert.equal(reading([see(), operator(CoreOpId.Or), bump()], [move()]), "When I see or bump, move.");
     assert.equal(reading([operator(CoreOpId.Not), see()], [move()]), "When I do not see anything, move.");
+  });
+
+  test("the else signal reads as the whole trigger, and mid-sentence as an operand", () => {
+    const otherwise = () => sensor(CoreHostActions.Otherwise.key);
+
+    assert.equal(reading([otherwise()], [actuator(EcosimHostActions.Move.key)]), "Otherwise, move.");
+    assert.equal(
+      reading([otherwise(), operator(CoreOpId.And), sensor(EcosimHostActions.Bump.key)]),
+      "When otherwise and bump."
+    );
   });
 
   test("a rule with no DO tiles reads as its condition alone", () => {

@@ -12,6 +12,7 @@ import type { BytecodeExecutableAction, ExecutionContext, HostActionBinding } fr
 import type { VmEvents } from "./events";
 import type { Program, ProgramStructField } from "./program";
 import { resolveProgramTypeId } from "./program";
+import { RuleFiringState } from "./rule-services";
 import type { RuntimeLangServices } from "./services";
 import type { ITypeRegistry } from "./type-defs";
 import { NativeType, type StructTypeDef, type TypeId } from "./type-defs";
@@ -1331,8 +1332,12 @@ export class VM implements IVM {
 
   // Boundaries
   private execWhenStart(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    // Semantic marker for WHEN section start - no-op
-    // The WHEN section will push exactly one value onto the stack
+    // The WHEN section will push exactly one value onto the stack; the gate at
+    // its end pops it. The rule's firing record reads EVALUATING from here until
+    // that gate writes the outcome.
+    const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, frame);
+    fiber.executionContext.services.brain.ruleFiring.set(ruleFuncId, RuleFiringState.EVALUATING);
+
     frame.pc++;
     return undefined;
   }
@@ -1346,7 +1351,13 @@ export class VM implements IVM {
     const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, frame);
     fiber.executionContext.services.brain.ruleVars.setByName(ruleFuncId, "__whenResult", whenResult);
 
-    if (!isTruthy(whenResult)) {
+    const fired = isTruthy(whenResult);
+    fiber.executionContext.services.brain.ruleFiring.set(
+      ruleFuncId,
+      fired ? RuleFiringState.DID_FIRE : RuleFiringState.DID_NOT_FIRE
+    );
+
+    if (!fired) {
       // WHEN evaluated to falsy - skip DO section and children
       const offset = ins.a ?? 0;
       frame.pc += offset; // Jump to end label
@@ -1366,7 +1377,13 @@ export class VM implements IVM {
     const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, frame);
     fiber.executionContext.services.brain.ruleVars.setByName(ruleFuncId, "__whenResult", whenResult);
 
-    if (whenResult.t === NativeType.Nil) {
+    const fired = whenResult.t !== NativeType.Nil;
+    fiber.executionContext.services.brain.ruleFiring.set(
+      ruleFuncId,
+      fired ? RuleFiringState.DID_FIRE : RuleFiringState.DID_NOT_FIRE
+    );
+
+    if (!fired) {
       // No value this think (absent) - skip DO section and children.
       const offset = ins.a ?? 0;
       frame.pc += offset; // Jump to end label
