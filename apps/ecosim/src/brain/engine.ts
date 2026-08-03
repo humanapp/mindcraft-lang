@@ -96,6 +96,13 @@ export class Engine {
   /** Active blip projectiles. */
   private blipPool!: BlipPool;
 
+  /**
+   * Matter world carrying this engine's physics-step listener. Set by
+   * {@link start} and cleared by {@link shutdown}; undefined outside that
+   * window.
+   */
+  private matterWorld?: Phaser.Physics.Matter.World;
+
   private _isShutdown = false;
   private prevPhysicsTimestamp = 0;
 
@@ -128,13 +135,19 @@ export class Engine {
     this.desiredCounts = { ...store.getDesiredCounts() };
   }
 
+  /**
+   * Build the per-run resources the engine owns -- spatial grid, debug
+   * overlay, blip pool -- and attach the physics-step listener. Call once,
+   * after construction and before {@link tick}. Pair with {@link shutdown}.
+   */
   start(): void {
     this.grid = new SpatialGrid(this.worldWidth, this.worldHeight, 150);
     refreshObstaclesFromBodies(this.obstacleBodies, this.precomputedObstacles);
     this.gridDebugGfx = this.scene.add.graphics();
     this.gridDebugGfx.setDepth(-2);
     this.blipPool = new BlipPool(this);
-    this.scene.matter.world.on("afterupdate", this.onAfterPhysicsUpdate, this);
+    this.matterWorld = this.scene.matter.world;
+    this.matterWorld.on("afterupdate", this.onAfterPhysicsUpdate, this);
   }
 
   /**
@@ -159,13 +172,23 @@ export class Engine {
     }
   }
 
+  /**
+   * Release everything the engine owns: the physics-step listener, blip
+   * sprites, each actor's graphics, timers and brain, and the ECS world.
+   * Idempotent -- later calls do nothing. Runs to completion whether the
+   * owning scene is still live or has already torn down its plugins.
+   */
   shutdown() {
     if (this._isShutdown) return;
     this._isShutdown = true;
-    this.scene.matter.world.off("afterupdate", this.onAfterPhysicsUpdate, this);
+    this.matterWorld?.off("afterupdate", this.onAfterPhysicsUpdate, this);
+    this.matterWorld = undefined;
 
     // Clean up blips
     this.blipPool.destroyAll();
+
+    this.gridDebugGfx?.destroy();
+    this.gridDebugGfx = undefined;
 
     // Clean up each actor's resources (timers, graphics, etc.)
     for (const actor of this.world.entities) {

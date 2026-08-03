@@ -12,6 +12,9 @@ import type {
   UnstableDependency,
 } from "@mindcraft-lang/app-host";
 import {
+  AppHostError,
+  AppHostErrorCode,
+  appHostError,
   applyCatalogMove,
   checkExtensionReferenceUpdate,
   collectUnstableDependencies,
@@ -84,6 +87,15 @@ import { applyCompiledUserTiles, collectTileSourceCompileErrors } from "./user-t
 
 // Project app-data keys.
 const BRAINS_APP_DATA_KEY = "brains";
+
+/**
+ * Build the `BRAIN_RECORD_UNREADABLE` error for a stored brain record that
+ * could not be read or parsed, carrying `cause`'s text as detail.
+ */
+function brainRecordUnreadable(cause: unknown): AppHostError {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return appHostError(AppHostErrorCode.BRAIN_RECORD_UNREADABLE, `Stored brains could not be read: ${detail}`);
+}
 
 /** The outcome of one load's catalog-move application. */
 export interface CatalogMovesOutcome {
@@ -213,6 +225,7 @@ export class AppEnvironmentHost {
   // -- Brain cache --
   private readonly _brainCache = new Map<string, IBrainDef>();
   private readonly _defaultBrainCache = new Map<string, IBrainDef>();
+  private _brainRecordFailure: AppHostError | undefined;
 
   // -- Brain rebuild coordination --
   private _pendingBrainRebuild = false;
@@ -519,14 +532,55 @@ export class AppEnvironmentHost {
     await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
   }
 
+  /**
+   * Read the active project's stored brain record. Returns an empty record when
+   * the project has never stored one. Throws {@link AppHostError} with code
+   * `BRAIN_RECORD_UNREADABLE` -- and no other error -- when a stored record
+   * exists but cannot be read or parsed.
+   */
   private async loadBrainRecord(): Promise<Record<string, unknown>> {
+    let raw: string | undefined;
     try {
-      const raw = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
-      if (raw) return JSON.parse(raw) as Record<string, unknown>;
+      raw = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
     } catch (err) {
-      logger.warn("Failed to load brain record:", err);
+      throw brainRecordUnreadable(err);
     }
-    return {};
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch (err) {
+      throw brainRecordUnreadable(err);
+    }
+  }
+
+  /**
+   * Read the stored brain record on a project-load path. Returns the record, or
+   * undefined when it could not be read, recording the failure on
+   * {@link AppEnvironmentHost.brainRecordFailure}. On undefined the caller must
+   * leave the stored brains untouched.
+   */
+  private async loadBrainRecordForLoad(): Promise<Record<string, unknown> | undefined> {
+    try {
+      return await this.loadBrainRecord();
+    } catch (err) {
+      if (!(err instanceof AppHostError)) {
+        throw err;
+      }
+      logger.warn("Failed to load brain record:", err);
+      this._brainRecordFailure = err;
+      return undefined;
+    }
+  }
+
+  /**
+   * The failure that stopped the active project's stored brains from loading,
+   * or undefined when they loaded. While it is set the brain cache is empty
+   * because the record could not be read, not because the project has no
+   * brains, and every brain write refuses with the same error. Cleared when the
+   * project unloads.
+   */
+  get brainRecordFailure(): AppHostError | undefined {
+    return this._brainRecordFailure;
   }
 
   /**
@@ -535,7 +589,10 @@ export class AppEnvironmentHost {
    * references against the current action bundle.
    */
   private async loadBrainsFromProject(): Promise<void> {
-    const record = await this.loadBrainRecord();
+    const record = await this.loadBrainRecordForLoad();
+    if (!record) {
+      return;
+    }
     for (const [key, json] of Object.entries(record)) {
       const def = this.deserializeBrainForKey(key, json);
       if (def) {
@@ -1157,7 +1214,10 @@ export class AppEnvironmentHost {
       }
       return namespace;
     };
-    const record = await this.loadBrainRecord();
+    const record = await this.loadBrainRecordForLoad();
+    if (!record) {
+      return false;
+    }
     const changedKeys: string[] = [];
     for (const [key, json] of Object.entries(record)) {
       const result = renameBrainNamespaces(json, rewrite);
@@ -1409,7 +1469,9 @@ export class AppEnvironmentHost {
   }
 
   private async prepareProjectTransition(): Promise<void> {
-    if (this.projectManager.activeProject) {
+    // A project whose brain record failed to load has an empty cache, and
+    // flushing it would write over brains the store still holds.
+    if (this.projectManager.activeProject && !this._brainRecordFailure) {
       await this.saveAllBrains();
     }
   }
@@ -1422,6 +1484,7 @@ export class AppEnvironmentHost {
 
   private completeProjectUnload(): void {
     this._brainCache.clear();
+    this._brainRecordFailure = undefined;
     this._pendingBrainRebuild = false;
     this.env.replaceActionBundle({ revision: "", tiles: [], actions: Dict.empty() });
     // Compiles invalidate types per project namespace, so the outgoing

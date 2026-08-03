@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   type ActiveProject,
   AppHostError,
+  AppHostErrorCode,
   createInMemoryProjectFileSystem,
   type ProjectCollection,
   type ProjectCollectionUnlockResult,
@@ -1341,6 +1342,118 @@ describe("AppEnvironmentHost brain cache reconciliation", () => {
       const repeat = await host.reconcileBrainsFromStore();
       assert.deepStrictEqual([...repeat.changed], []);
       assert.deepStrictEqual([...repeat.removed], []);
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+});
+
+describe("AppEnvironmentHost unreadable brain record", () => {
+  /**
+   * Project-manager stub backed by `appData` whose reads reject while
+   * `readState.fails` is set, standing in for a store that cannot serve the
+   * stored brains.
+   */
+  function stubProjectManagerWithFailingReads(
+    appData: Map<string, string>,
+    readState: { fails: boolean }
+  ): ProjectManager {
+    return {
+      activeProject: createActiveProject(PROJECT_ID),
+      activeProjectCollection: createProjectCollection(),
+      async init(): Promise<void> {},
+      async getProjectCollectionState(): Promise<{ access: "ready" }> {
+        return { access: "ready" };
+      },
+      async ensureDefaultProject(): Promise<void> {},
+      async saveAppData(key: string, data: string): Promise<void> {
+        appData.set(key, data);
+      },
+      async loadAppData(key: string): Promise<string | undefined> {
+        if (readState.fails) {
+          throw new Error("store unavailable");
+        }
+        return appData.get(key);
+      },
+      async deleteAppData(key: string): Promise<void> {
+        appData.delete(key);
+      },
+      dispose(): void {},
+    } as unknown as ProjectManager;
+  }
+
+  function createHost(projectManager: ProjectManager): AppEnvironmentHost {
+    return new AppEnvironmentHost({
+      projectManager,
+      modules: [coreModule()],
+      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+    });
+  }
+
+  const isUnreadable = (error: unknown): boolean =>
+    error instanceof AppHostError && error.code === AppHostErrorCode.BRAIN_RECORD_UNREADABLE;
+
+  it("an absent record loads as empty, so a caller that finds no brain seeds one", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const appData = new Map<string, string>();
+    const host = createHost(stubProjectManagerWithFailingReads(appData, { fails: false }));
+
+    try {
+      await host.initialize(PROJECT_ID);
+      assert.equal(host.brainRecordFailure, undefined);
+      assert.equal(appData.has("brains"), false, "an absent record is not written on load");
+      assert.equal(await host.loadBrainFromProject("herbivore"), undefined);
+
+      await host.saveBrainForKey("herbivore", BrainDef.emptyBrainDef(host.env.brainServices, "seeded"));
+      const stored = JSON.parse(appData.get("brains")!) as Record<string, unknown>;
+      assert.deepStrictEqual(Object.keys(stored), ["herbivore"]);
+      assert.equal(host.getCachedBrain("herbivore")?.name(), "seeded");
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("a failed read refuses the seeding write and leaves the stored record byte-identical", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const appData = new Map<string, string>();
+    const readState = { fails: false };
+    const host = createHost(stubProjectManagerWithFailingReads(appData, readState));
+
+    try {
+      await host.initialize(PROJECT_ID);
+      await host.saveBrainForKey("herbivore", BrainDef.emptyBrainDef(host.env.brainServices, "authored"));
+      const authored = appData.get("brains")!;
+
+      readState.fails = true;
+      await assert.rejects(() => host.loadBrainFromProject("herbivore"), isUnreadable);
+      await assert.rejects(
+        () => host.saveBrainForKey("herbivore", BrainDef.emptyBrainDef(host.env.brainServices, "default")),
+        isUnreadable
+      );
+      await assert.rejects(() => host.removeBrain("herbivore"), isUnreadable);
+      assert.equal(appData.get("brains"), authored, "the stored record is untouched by a failed read");
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("a project load whose record cannot be parsed reports the failure and caches no brains", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const appData = new Map<string, string>([["brains", '{"herbivore": {']]);
+    const host = createHost(stubProjectManagerWithFailingReads(appData, { fails: false }));
+
+    try {
+      await host.initialize(PROJECT_ID);
+      assert.equal(host.brainRecordFailure?.code, AppHostErrorCode.BRAIN_RECORD_UNREADABLE);
+      assert.deepStrictEqual([...host.getCachedBrainKeys()], []);
+      await assert.rejects(
+        () => host.saveBrainForKey("herbivore", BrainDef.emptyBrainDef(host.env.brainServices, "default")),
+        isUnreadable
+      );
+      assert.equal(appData.get("brains"), '{"herbivore": {', "the unparseable record is left in place");
     } finally {
       host.dispose();
       restoreLocalStorage();
