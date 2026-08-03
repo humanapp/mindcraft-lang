@@ -115,6 +115,9 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   const [currentPageNumber, setCurrentPageNumber] = useState(brainDef ? 1 : 0);
   const [totalPageCount, setTotalPageCount] = useState(brainDef?.pages()?.size() ?? 0);
   const [pageChangeCounter, setPageChangeCounter] = useState(0);
+  // True while a menu is closing on a move to another page, whose own landing
+  // takes the keyboard.
+  const landsOnNewPageRef = useRef(false);
   const currentPageDef = brainDef ? brainDef.pages().get(currentPageNumber - 1) : undefined;
 
   // Command history for undo/redo
@@ -284,6 +287,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   }, [onOpenChange]);
 
   const handleInsertPageAfterCurrentClick = () => {
+    landsOnNewPageRef.current = true;
     if (brainDef && totalPageCount > 0) {
       const currentIndex = currentPageNumber - 1;
       const command = new AddPageCommand(brainDef, currentIndex + 1);
@@ -298,6 +302,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   };
 
   const handleInsertPageBeforeCurrentClick = () => {
+    landsOnNewPageRef.current = true;
     if (brainDef && totalPageCount > 0) {
       const currentIndex = currentPageNumber - 1;
       const command = new AddPageCommand(brainDef, currentIndex);
@@ -312,6 +317,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   };
 
   const handleRemovePageClick = () => {
+    landsOnNewPageRef.current = true;
     if (brainDef && totalPageCount > 0) {
       const pageIndexToRemove = currentPageNumber - 1;
 
@@ -338,10 +344,30 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     }
   };
 
+  /**
+   * Move to page `pageNumber` from a menu, which the menu's close then leaves
+   * the keyboard alone for: the page opening takes it onto its own selection.
+   */
+  const goToPageFromMenu = (pageNumber: number) => {
+    landsOnNewPageRef.current = true;
+    setCurrentPageNumber(pageNumber);
+  };
+
   const handlePrevPageClick = () => {
     if (currentPageNumber > 1) {
       setCurrentPageNumber(currentPageNumber - 1);
     }
+  };
+
+  /**
+   * A page menu closing. A close that follows a move to another page leaves the
+   * keyboard where that page's own landing puts it; every other close hands the
+   * keyboard back to the control the menu was opened from, as Radix does.
+   */
+  const handlePageMenuCloseAutoFocus = (event: Event) => {
+    if (!landsOnNewPageRef.current) return;
+    landsOnNewPageRef.current = false;
+    event.preventDefault();
   };
 
   const handleUndo = useCallback(() => {
@@ -825,6 +851,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="center"
+                      onCloseAutoFocus={handlePageMenuCloseAutoFocus}
                       className="bg-popover border-border text-popover-foreground max-h-64 overflow-y-auto"
                     >
                       {brainDef
@@ -833,7 +860,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                         .map((page, index) => (
                           <DropdownMenuItem
                             key={`page-${page.name()}-${index}`}
-                            onClick={() => setCurrentPageNumber(index + 1)}
+                            onClick={() => goToPageFromMenu(index + 1)}
                             className={`cursor-pointer focus:bg-accent focus:text-accent-foreground ${
                               index + 1 === currentPageNumber ? "bg-accent font-semibold" : ""
                             }`}
@@ -865,7 +892,11 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                         <MoreVertical className="h-4 w-4" aria-hidden="true" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground">
+                    <DropdownMenuContent
+                      align="end"
+                      onCloseAutoFocus={handlePageMenuCloseAutoFocus}
+                      className="bg-popover border-border text-popover-foreground"
+                    >
                       <DropdownMenuItem
                         onClick={handleLoadDefault}
                         disabled={!getDefaultBrain}

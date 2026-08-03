@@ -299,12 +299,13 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
     setCursor(anchored);
   }, [gridSignature, cursor, gridIsWhole]);
 
-  // True once the page has taken the keyboard onto its selection, which it does
-  // one time, as soon as the selection has a cell to rest on and nothing else
-  // holds the keyboard.
+  // The page lands the keyboard on the cell its selection opens on -- the first
+  // rule's handle -- as soon as that selection has a cell to rest on, and one
+  // time only. The page is rendered afresh for every page the editor moves to,
+  // so the landing takes the keyboard from the control that moved here.
   const hasTakenKeyboardRef = useRef(false);
   useEffect(() => {
-    if (hasTakenKeyboardRef.current || cursor === undefined || !keyboardIsUnheld()) return;
+    if (hasTakenKeyboardRef.current || cursor === undefined) return;
     hasTakenKeyboardRef.current = focusCellRef.current(cursor.cell, "keep-scroll");
   }, [cursor]);
 

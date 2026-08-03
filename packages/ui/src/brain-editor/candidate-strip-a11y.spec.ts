@@ -764,11 +764,12 @@ describe("BrainCandidateStrip combobox wiring", () => {
 
   test("each accordion header reports its expanded state and controls its own panel", () => {
     const markup = render(offering);
-    const headers = [...markup.matchAll(/<button\s[^>]*aria-expanded="[^"]*"[^>]*>/g)].map((match) => match[0]);
-    assert.equal(headers.length, offering.sections.length);
-    for (const [index, header] of headers.entries()) {
+    for (const built of offering.sections) {
+      const headingId = stripSectionHeadingId(kStripId, built.key);
+      const header = new RegExp(`<button[^>]*\\sid="${headingId}"[^>]*>`).exec(markup)?.[0];
+      assert.ok(header, `the offering renders the header ${headingId}`);
       assert.equal(attributeOf(header, "aria-expanded"), "false");
-      assert.equal(attributeOf(header, "aria-controls"), stripBandPanelId(kStripId, offering.sections[index].key));
+      assert.equal(attributeOf(header, "aria-controls"), stripBandPanelId(kStripId, built.key));
     }
   });
 

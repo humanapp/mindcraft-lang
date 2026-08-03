@@ -8,12 +8,36 @@ import {
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileFactoryDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ArmedTargetEntry } from "../ArmedTargetContext";
 import { useBrainEditorConfig } from "../BrainEditorContext";
+import type { CaretPosition } from "../caret-run";
 import { resolveTileVisual } from "../tile-visual-utils";
 
 interface UseTileSelectionOptions {
   ruleDef: BrainRuleDef;
+  /** Called when a selection ends, which closes the picker. */
   onComplete?: () => void;
+  /**
+   * Called once a tile named in a create dialog has been placed, in place of
+   * `onComplete`. Defaults to `onComplete`.
+   */
+  onCreated?: () => void;
+}
+
+/**
+ * The caret composition carries on at once a tile a create dialog made has been
+ * placed: `placementCaret` for a placement made in a rule's sentence, and
+ * undefined for one made anywhere else, which the placement ends.
+ *
+ * `entry` is the armed target's. `placementCaret` is the gap past the tile the
+ * placement put in, read after the command ran; a placement that recorded none
+ * ends the selection.
+ */
+export function composeAfterTileCreation(
+  entry: ArmedTargetEntry | undefined,
+  placementCaret: CaretPosition | undefined
+): CaretPosition | undefined {
+  return entry === "sentence" ? placementCaret : undefined;
 }
 
 /**
@@ -108,10 +132,16 @@ export function manufactureVariableTile(
 }
 
 /**
- * Hook to handle tile selection flow, including variable creation for factory tiles.
+ * Hook to handle tile selection flow, including variable creation for factory
+ * tiles.
+ *
+ * A selection that completes outright calls `onComplete`. A factory tile defers
+ * to a create dialog: submitting it places the tile the dialog names and calls
+ * `onCreated`, and abandoning it places nothing and calls `onComplete`.
  */
-export function useTileSelection({ ruleDef, onComplete }: UseTileSelectionOptions) {
+export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSelectionOptions) {
   const editorConfig = useBrainEditorConfig();
+  const completeCreation = onCreated ?? onComplete;
 
   const [showCreateVariableDialog, setShowCreateVariableDialog] = useState(false);
   const [showCreateLiteralDialog, setShowCreateLiteralDialog] = useState(false);
@@ -162,9 +192,9 @@ export function useTileSelection({ ruleDef, onComplete }: UseTileSelectionOption
       setShowCreateVariableDialog(false);
       setPendingFactoryTile(null);
       setPendingTileAction(null);
-      onComplete?.();
+      completeCreation?.();
     },
-    [pendingFactoryTile, pendingTileAction, onComplete]
+    [pendingFactoryTile, pendingTileAction, completeCreation]
   );
 
   /** Abandons the variable being named, which ends the selection just as naming one does. */
@@ -189,9 +219,9 @@ export function useTileSelection({ ruleDef, onComplete }: UseTileSelectionOption
       setShowCreateLiteralDialog(false);
       setPendingFactoryTile(null);
       setPendingTileAction(null);
-      onComplete?.();
+      completeCreation?.();
     },
-    [pendingFactoryTile, pendingTileAction, onComplete]
+    [pendingFactoryTile, pendingTileAction, completeCreation]
   );
 
   /** Abandons the literal being entered, which ends the selection just as entering one does. */

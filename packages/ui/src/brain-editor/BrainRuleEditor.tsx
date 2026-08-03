@@ -35,7 +35,7 @@ import { armEditPoint, type EditPointArming, type EditPointPosition, editPointPo
 import { kGrabbedRuleMarkerLayer, kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 import { useCandidateStrip } from "./hooks/useCandidateStrip";
 import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
-import { useTileSelection } from "./hooks/useTileSelection";
+import { composeAfterTileCreation, useTileSelection } from "./hooks/useTileSelection";
 import { positionOffersTile, sideOffersAppendedTile } from "./insertion-context";
 import { usePageGrid } from "./PageGridContext";
 import {
@@ -280,6 +280,32 @@ export function BrainRuleEditor({
   // own clause comma.
   const isPivoted = isComposing && stripTarget?.side === RuleSide.Do;
 
+  // The caret arming, read through a ref because the creation completion below
+  // is wired into the selection flow that arming is built from.
+  const placeCaretFromRef = useRef<(position: CaretPosition, entry: ArmedTargetEntry) => void>(() => {});
+  // The gap past the tile the caret's arming last placed, recorded as that
+  // placement runs. Read once, by the completion of a creation the placement
+  // waited on.
+  const placedCaretRef = useRef<CaretPosition | undefined>(undefined);
+
+  /**
+   * A tile named in a create dialog has been placed. Composition carries on
+   * where a tile picked from the offering leaves it: the gap past the tile
+   * placed is armed, which re-queries the offering there and hands the keyboard
+   * back to the composer's box as the dialog closes. A placement made anywhere
+   * but in a rule's sentence ends the selection.
+   */
+  const handleTileCreated = useCallback(() => {
+    const placed = placedCaretRef.current;
+    placedCaretRef.current = undefined;
+    const caret = composeAfterTileCreation(armedTarget.target?.entry, placed);
+    if (caret === undefined) {
+      armedTarget.disarm();
+      return;
+    }
+    placeCaretFromRef.current(caret, "sentence");
+  }, [armedTarget]);
+
   // Use the tile selection hook
   const {
     showCreateVariableDialog,
@@ -295,6 +321,7 @@ export function BrainRuleEditor({
   } = useTileSelection({
     ruleDef,
     onComplete: armedTarget.disarm,
+    onCreated: handleTileCreated,
   });
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter is an intentional trigger signal
@@ -404,10 +431,14 @@ export function BrainRuleEditor({
     [armedTarget, ruleDef, handleTileSelectedWithVariable, commandHistory]
   );
 
-  // The caret placed from the sentence: the position names the edit, and the
-  // command that edit runs places the chosen tile.
-  const placeSentenceCaret = useCallback(
-    (position: CaretPosition) => {
+  /**
+   * Arm the caret at `position`: the position names the edit, and the command
+   * that edit runs places the chosen tile. `entry` is the surface the edit is
+   * made on, which decides where the strip stands its filter box -- inline in
+   * the rule's sentence, or in the offering's own tray row.
+   */
+  const placeCaretFrom = useCallback(
+    (position: CaretPosition, entry: ArmedTargetEntry) => {
       const side = position.side;
       const intent = caretEditIntent(position, ruleDef.side(side).tiles().size());
       const arming: EditPointArming =
@@ -418,14 +449,28 @@ export function BrainRuleEditor({
         mode: intent.mode,
         tileIndex: intent.mode === "append" ? undefined : intent.tileIndex,
         caret: position,
-        entry: "sentence",
+        entry,
         onTileSelected: (tileDef: IBrainTileDef) =>
           handleTileSelectedWithVariable(tileDef, (tile) => {
             commandHistory.executeCommand(editPointCommand(arming, ruleDef, side, tile));
+            // The tile stands where the arming addressed, except for an append,
+            // which stands it at the side's new end.
+            placedCaretRef.current = {
+              kind: "gap",
+              side,
+              tileIndex: arming.mode === "append" ? ruleDef.side(side).tiles().size() : arming.tileIndex + 1,
+            };
           }),
       });
     },
     [armedTarget, ruleDef, handleTileSelectedWithVariable, commandHistory]
+  );
+  placeCaretFromRef.current = placeCaretFrom;
+
+  // The caret placed from the sentence, which composes the rule there.
+  const placeSentenceCaret = useCallback(
+    (position: CaretPosition) => placeCaretFrom(position, "sentence"),
+    [placeCaretFrom]
   );
 
   // The character a printable key pressed on the entry point starts the word in
@@ -647,7 +692,16 @@ export function BrainRuleEditor({
         }
       : undefined;
 
-  const rule: StripRuleBinding = { placeCaret: placeSentenceCaret, deleteTile: deleteTileAt };
+  // Every edit the strip makes stays on the surface its arming began on: one
+  // made in the sentence carries on there, and one made from the tile row leaves
+  // the offering standing in its own tray.
+  const rule: StripRuleBinding | undefined =
+    stripTarget === null
+      ? undefined
+      : {
+          placeCaret: (position) => placeCaretFrom(position, stripTarget.entry ?? "tray"),
+          deleteTile: deleteTileAt,
+        };
 
   const handleTilePickerCancel = () => {
     armedTarget.disarm();

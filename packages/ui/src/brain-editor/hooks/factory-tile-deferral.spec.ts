@@ -6,6 +6,10 @@
  * pending action to the matching deferral effect -- so the command eventually
  * executed for the manufactured tile is the same AddTileCommand a direct
  * selection would execute.
+ *
+ * Pins with it where the picker stands once that manufactured tile has been
+ * placed: composing on at the caret for a placement made in a rule's sentence,
+ * and ended for one made anywhere else.
  */
 
 import assert from "node:assert/strict";
@@ -21,7 +25,8 @@ import {
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { AddTileCommand, BrainCommandHistory, BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileFactoryDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { routeTileSelection, type TileSelectionDeferralEffects } from "./useTileSelection";
+import type { CaretPosition } from "../caret-run";
+import { composeAfterTileCreation, routeTileSelection, type TileSelectionDeferralEffects } from "./useTileSelection";
 
 let services: BrainServices;
 
@@ -148,6 +153,26 @@ describe("routeTileSelection", () => {
     assert.equal(deferredRule.do().tiles().get(0), deferredVar);
     deferredHistory.undo();
     assert.equal(deferredRule.do().tiles().size(), 0, "the deferred command undoes like a direct one");
+  });
+});
+
+describe("where a placed created tile leaves the picker", () => {
+  const caret: CaretPosition = { kind: "gap", side: RuleSide.When, tileIndex: 1 };
+
+  test("a placement made in a rule's sentence carries composition on at the caret it left", () => {
+    assert.deepEqual(composeAfterTileCreation("sentence", caret), caret);
+  });
+
+  test("a placement made from the tray ends the selection", () => {
+    assert.equal(composeAfterTileCreation("tray", caret), undefined);
+  });
+
+  test("so does one made through an arming that names no entry point", () => {
+    assert.equal(composeAfterTileCreation(undefined, caret), undefined);
+  });
+
+  test("a sentence arming standing at no caret ends it too, having nowhere to carry on", () => {
+    assert.equal(composeAfterTileCreation("sentence", undefined), undefined);
   });
 });
 

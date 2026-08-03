@@ -292,6 +292,28 @@ export function composerHeadingToken(key: string, sectionKey: string): ComposerI
 }
 
 /**
+ * The token a press of `key` means in the offering's own tray row, or undefined
+ * when the press means nothing there and is left to
+ * {@link composerTokenForKey}.
+ *
+ * Delete takes out the tile at `armedElement`, which is the tile the position
+ * the offering stands at was opened on, reaching the same removal the row's own
+ * control does. It means that only while the tray's filter box stands closed:
+ * an open box is being typed in, where Delete is the text's own key.
+ *
+ * `armedElement` is undefined at a position standing on no placed tile, which
+ * has no tile to take out.
+ */
+export function composerTrayToken(
+  key: string,
+  armedElement: CaretPosition | undefined,
+  filterIsOpen: boolean
+): ComposerInputToken | undefined {
+  if (key !== "Delete" || filterIsOpen || armedElement === undefined) return undefined;
+  return { kind: "delete-element", position: armedElement };
+}
+
+/**
  * The character a press of `key` starts composition with from a rule's entry
  * point, or undefined when the press starts none: Space, Enter, Backspace, and
  * every key that types nothing. `withModifier` is true while Meta, Control, or

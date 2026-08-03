@@ -3,7 +3,7 @@ import { tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import type { Localizer } from "@mindcraft-lang/core/localization";
-import { ChevronDown, Plus, Trash2, X } from "lucide-react";
+import { ChevronDown, Plus, Search, Trash2, X } from "lucide-react";
 import {
   type FocusEvent,
   type KeyboardEvent,
@@ -48,6 +48,7 @@ import {
   type ComposerInputToken,
   composerHeadingToken,
   composerTokenForKey,
+  composerTrayToken,
   consumesKey,
   reduceComposerInput,
 } from "./composer-input-model";
@@ -91,6 +92,11 @@ const kStripElements = `[${kStripFilterAttribute}],[${kStripPanelAttribute}],[${
 const stripPanelStyle = {
   background: "linear-gradient(160deg, var(--color-brain-desk-from) 0%, var(--color-brain-desk-to) 100%)",
   boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.45)",
+};
+
+/** Surface a candidate section stands on, the same fill a rule card carries. */
+const sectionCardStyle = {
+  background: "linear-gradient(55deg, var(--color-brain-rule-from) 0%, var(--color-brain-rule-to) 100%)",
 };
 
 /** Heading of a provenance subcategory: the accordion header's type, one step quieter. */
@@ -138,7 +144,7 @@ const kPanelKeyboardTargets = "button, input, [tabindex]";
 /** The accordion an open text value shows: none, since only its own chip is offered. */
 const noSections: readonly CandidateStripSection[] = [];
 
-/** The run of a strip armed from the tray, which stands on no rule's caret run. */
+/** The run of a strip armed at nothing, which stands on no rule at all. */
 const noCaretRun: readonly CaretPosition[] = [];
 
 /**
@@ -394,7 +400,12 @@ export interface StripComposerBinding {
  * composed; a strip given none of it edits nothing.
  */
 export interface StripRuleBinding {
-  /** Move editing to `position`, which re-queries the offering there. */
+  /**
+   * Move editing to `position`, which re-queries the offering there and leaves
+   * it on the surface the arming began on: a position armed from the sentence
+   * carries on being composed there, and one armed from the tile row keeps the
+   * filter box in the offering's own tray row.
+   */
   placeCaret(position: CaretPosition): void;
   /** Remove the tile the element `position` stands at. */
   deleteTile(position: CaretPosition): void;
@@ -540,7 +551,13 @@ export interface CandidateStripSurface {
  * and leaves editing in the gap it vacated, as deleting it from the keyboard
  * does, and the control opening that tile's own menu. A position armed at a
  * caret in the rule's sentence offers no removal, and neither does one standing
- * on no placed tile.
+ * on no placed tile. Delete takes the same tile out from the keyboard, for as
+ * long as the tray's filter box stands closed.
+ *
+ * In the tray the panel opens on its chips: the filter box holds the keyboard
+ * but is not shown until the position row's search control shows it, or until
+ * something is typed into it, which shows it in narrowing the offering. The
+ * box a rule's sentence hosts is always inline at the caret and is not this.
  *
  * The filter box is an ARIA combobox over the rendered chips: the arrow keys
  * walk one cursor across the offering, Enter commits the chip it stands on, and
@@ -629,6 +646,7 @@ export function useCandidateStripSurface({
   const statusId = `${stripId}-status`;
   const unknownId = `${stripId}-unknown`;
   const hintId = `${stripId}-hint`;
+  const filterId = `${stripId}-filter`;
   const [openSectionKey, setOpenSectionKey] = useState<string | null>(null);
   const [cursor, setCursor] = useState<StripCursor | undefined>(undefined);
   const [highlightMode, setHighlightMode] = useState<StripHighlightMode>("typing");
@@ -636,6 +654,10 @@ export function useCandidateStripSurface({
   const [commitTick, setCommitTick] = useState(0);
   const [landingCount, setLandingCount] = useState(0);
   const [openTextLiteral, setOpenTextLiteral] = useState<string | undefined>(undefined);
+  // Whether the tray row stands its filter box open. The box is always
+  // rendered and always holds the keyboard, so typing narrows the offering
+  // whether or not the box is shown; this is what shows it.
+  const [trayFilterOpen, setTrayFilterOpen] = useState(false);
   const placedLabelRef = useRef<string | null>(null);
   // The token a `reask` effect asked for, waiting for the render that carries
   // everything asked for before it.
@@ -665,6 +687,19 @@ export function useCandidateStripSurface({
     const frame = requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
   }, [target]);
+
+  // Every arming opens with its filter box closed. Moving between positions
+  // within one arming leaves the box as the user left it, so a placement that
+  // arms the next position does not close a box being typed in.
+  useEffect(() => {
+    if (target === null) setTrayFilterOpen(false);
+  }, [target]);
+
+  /** Show or hide the tray's filter box, leaving the keyboard in it either way. */
+  const toggleTrayFilter = () => {
+    setTrayFilterOpen((open) => !open);
+    inputRef.current?.focus({ preventScroll: true });
+  };
 
   // The cell composition returns the keyboard to, as of the last render of the
   // composed rule.
@@ -907,11 +942,15 @@ export function useCandidateStripSurface({
         case "consume-key":
           event?.preventDefault();
           break;
+        // Text given to the box shows it, so the tray's box opens for the
+        // character that starts a word and for the quote that opens a value.
         case "set-filter":
           state.setFilter(effect.text);
+          if (effect.text.length > 0) setTrayFilterOpen(true);
           break;
         case "set-text-literal":
           setOpenTextLiteral(effect.value);
+          if (effect.value !== undefined) setTrayFilterOpen(true);
           break;
         case "highlight":
           setCursor(effect.cursor);
@@ -1003,10 +1042,13 @@ export function useCandidateStripSurface({
   };
 
   // Escape is served here as well as on the panel, since the composer renders
-  // this input outside the panel's subtree.
+  // this input outside the panel's subtree. A press the tray reads for itself --
+  // the Delete that removes the tile the position was opened on -- is taken
+  // first; every other press reads as it does anywhere in the box.
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     event.stopPropagation();
-    dispatchInput(composerTokenForKey(event.key, "filter", event.metaKey || event.ctrlKey), event);
+    const trayToken = composer === undefined ? composerTrayToken(event.key, armedTile, trayFilterOpen) : undefined;
+    dispatchInput(trayToken ?? composerTokenForKey(event.key, "filter", event.metaKey || event.ctrlKey), event);
   };
 
   /**
@@ -1072,7 +1114,11 @@ export function useCandidateStripSurface({
     const panelId = stripBandPanelId(stripId, section.key);
     const groupName = tileCandidateGroupNames[section.group];
     return (
-      <div key={section.key} className={`rounded-lg border border-brain-ink/10 ${hasMatches ? "" : "opacity-40"}`}>
+      <div
+        key={section.key}
+        style={sectionCardStyle}
+        className={`rounded-lg border border-brain-ink/10 ${hasMatches ? "" : "opacity-40"}`}
+      >
         <button
           type="button"
           id={stripSectionHeadingId(stripId, section.key)}
@@ -1136,6 +1182,9 @@ export function useCandidateStripSurface({
   // unknown-text explanation are elements the panel renders.
   const describedBy = offeringOpen ? (state.isUnknown ? `${unknownId} ${hintId}` : hintId) : undefined;
 
+  // How the filter box reads, which names the control that shows it as well.
+  const filterName = localizer.tr("Filter tile candidates", undefined, kOfferingPhraseContext);
+
   // The text standing in the box: the open text value's content, or the word in
   // progress. An open text value counts as pending even while it is empty.
   const typedText = openTextLiteral ?? state.filter;
@@ -1144,6 +1193,7 @@ export function useCandidateStripSurface({
   const filterInput = (
     <input
       ref={bindInput}
+      id={filterId}
       type="text"
       role="combobox"
       aria-expanded={offeringOpen && options.length > 0}
@@ -1156,11 +1206,7 @@ export function useCandidateStripSurface({
       // The sentence hosts this input outside the panel, whose own handler serves every element it holds.
       onBlur={composer ? handleHighlightBlur : undefined}
       placeholder={composer || openTextLiteral !== undefined ? "" : "Type or tap a tile"}
-      aria-label={
-        composer && armedRule
-          ? caretPositionName(composer.caretPosition, armedRule, localizer)
-          : localizer.tr("Filter tile candidates", undefined, kOfferingPhraseContext)
-      }
+      aria-label={composer && armedRule ? caretPositionName(composer.caretPosition, armedRule, localizer) : filterName}
       aria-invalid={state.isUnknown}
       aria-describedby={describedBy}
       {...{ [kStripFilterAttribute]: composer ? "sentence" : "tray" }}
@@ -1271,9 +1317,33 @@ export function useCandidateStripSurface({
           )}
           {editPoint?.menu}
         </div>
+        {/* Outside the row's scrollport, so the control that shows the filter
+            box stands wherever the position's own contents reach. */}
+        {composer === undefined && (
+          <button
+            type="button"
+            data-strip-search=""
+            aria-label={filterName}
+            title={filterName}
+            aria-expanded={trayFilterOpen}
+            aria-controls={filterId}
+            // The press acts without taking the keyboard from the box it shows.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={toggleTrayFilter}
+            className={`ml-2 inline-flex min-h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 transition-colors ${
+              trayFilterOpen
+                ? "border-brain-accent bg-brain-accent/20 text-brain-ink"
+                : "border-brain-ink/15 bg-brain-recess/30 text-brain-ink/70 hover:border-brain-ink/40 hover:text-brain-ink"
+            }`}
+          >
+            <Search className="h-5 w-5 shrink-0" aria-hidden="true" />
+          </button>
+        )}
       </div>
 
-      {composer ? null : <div className="flex items-center gap-2">{filterField}</div>}
+      {/* The tray's box holds the keyboard whether or not it is shown, so typing
+          narrows the offering from a closed box and shows it in doing so. */}
+      {composer ? null : <div className={trayFilterOpen ? "flex items-center gap-2" : "sr-only"}>{filterField}</div>}
 
       <button
         type="button"

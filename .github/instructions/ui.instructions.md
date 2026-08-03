@@ -101,8 +101,11 @@ Each entry defines a custom literal that the `CreateLiteralDialog` can create:
 `src/ui.css` is the home of the shared token contract. Components reference token
 NAMES only and never a palette literal for a role the contract covers; each app
 supplies the VALUES in its own `globals.css`, which is imported after `ui.css` so
-the app values win. The `--color-brain-*` group covers the editor: `desk` and
-`rule` (the page canvas and the rule cards), `tile-border` and `armed`, `accent`
+the app values win. The `--color-brain-*` group covers the editor: the page
+canvas and the rule cards, which are GRADIENT PAIRS and have no flat token --
+`desk-from` / `desk-to` / `desk-glow` and `rule-from` / `rule-to`, applied as a
+`linear-gradient` in a style prop, so `bg-brain-desk` and `bg-brain-rule` do not
+exist and resolve to nothing; `tile-border` and `armed`, `accent`
 / `accent-ink` / `on-accent`, `ink` and `recess`, `inline-ink` (the label an
 inline chip carries in documentation prose), `amber` / `amber-ink` /
 `amber-wash`, `warn` / `warn-edge` / `warn-ink` (the badge on a tile whose
