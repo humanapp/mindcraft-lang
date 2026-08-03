@@ -246,19 +246,19 @@ describe("projected sentences of user tiles", () => {
   test("a state-framed sensor reads with the copula", () => {
     const { services, tiles } = compileTiles({ "hungry.ts": STATE_SENSOR });
     const tile = requireTile(tiles, sensorTileId("snhungry"));
-    assert.equal(projectedText(services, [tile]), "When I am hungry.");
+    assert.equal(projectedText(services, [tile]), "When I am hungry,");
   });
 
   test("the same sensor without the group reads through the default frame", () => {
     const { services, tiles } = compileTiles({ "hungry.ts": UNMARKED_STATE_SENSOR });
     const tile = requireTile(tiles, sensorTileId("snhungry"));
-    assert.equal(projectedText(services, [tile]), "When I hungry.");
+    assert.equal(projectedText(services, [tile]), "When I hungry,");
   });
 
   test("an authored bare word completes an objectless sensor", () => {
     const { services, tiles } = compileTiles({ "sight.ts": FORM_BARE_SENSOR });
     const tile = requireTile(tiles, sensorTileId("snsight"));
-    assert.equal(projectedText(services, [tile]), "When I see anything.");
+    assert.equal(projectedText(services, [tile]), "When I see anything,");
   });
 
   test("an actuator's form reads in the DO clause", () => {
@@ -311,13 +311,13 @@ export default Sensor({
     const { services, tiles } = compileTiles({ "lab-form.ts": LABELED_WITH_FORM });
     const tile = requireTile(tiles, sensorTileId("snlabform"));
     assert.equal(tile.metadata?.label, "spots", "the label is untouched");
-    assert.equal(projectedText(services, [tile]), "When I see.");
+    assert.equal(projectedText(services, [tile]), "When I see,");
   });
 
   test("a group without a form reads the label through its frame", () => {
     const { services, tiles } = compileTiles({ "lab-only.ts": LABELED_WITHOUT_FORM });
     const tile = requireTile(tiles, sensorTileId("snlabonly"));
-    assert.equal(projectedText(services, [tile]), "When I am spots.");
+    assert.equal(projectedText(services, [tile]), "When I am spots,");
   });
 });
 
@@ -339,7 +339,7 @@ export default Sensor({
   test("an inline sensor alone on the WHEN side reads with no subject, still using its form", () => {
     const { services, tiles } = compileTiles({ "level.ts": INLINE_STATE_SENSOR });
     const tile = requireTile(tiles, sensorTileId("snlevel"));
-    assert.equal(projectedText(services, [tile]), "When warm.");
+    assert.equal(projectedText(services, [tile]), "When warm,");
   });
 
   test("an inline sensor continued by an expression reads subjectlessly, still using its form", () => {
@@ -375,7 +375,7 @@ export default Sensor({
     assert.equal(tile.capabilities().get(CoreCapabilityBits.PresenceGated), 1);
     assert.equal(tile.metadata?.language?.form, "thirsty");
     assert.equal(tile.metadata?.language?.frame, "state");
-    assert.equal(projectedText(services, [tile]), "When I am thirsty.", "the authored frame selects the template");
+    assert.equal(projectedText(services, [tile]), "When I am thirsty,", "the authored frame selects the template");
   });
 });
 
@@ -469,17 +469,17 @@ describe("recompiling a tile's language group", () => {
 
     project.setFiles(new Map([["hungry.ts", UNMARKED_STATE_SENSOR]]));
     applyCompile();
-    assert.equal(sentence(), "When I hungry.", "the unmarked tile reads plainly");
+    assert.equal(sentence(), "When I hungry,", "the unmarked tile reads plainly");
 
     project.updateFile("hungry.ts", STATE_SENSOR);
     applyCompile();
     assert.equal(liveTile().metadata?.language?.frame, "state", "the added group reaches the registered tile");
-    assert.equal(sentence(), "When I am hungry.", "the sentence re-reads without a reload");
+    assert.equal(sentence(), "When I am hungry,", "the sentence re-reads without a reload");
 
     project.updateFile("hungry.ts", UNMARKED_STATE_SENSOR);
     applyCompile();
     assert.equal(liveTile().metadata?.language, undefined, "removing the group clears it from the registered tile");
-    assert.equal(sentence(), "When I hungry.", "the sentence returns to the plain reading");
+    assert.equal(sentence(), "When I hungry,", "the sentence returns to the plain reading");
   });
 });
 
@@ -644,6 +644,6 @@ export default Sensor({
     const tile = requireTile(tiles, sensorTileId("snempty"));
     assert.equal(tile.metadata?.language?.form, undefined);
     assert.equal(tile.metadata?.language?.frame, undefined);
-    assert.equal(projectedText(services, [tile]), "When I hungry.");
+    assert.equal(projectedText(services, [tile]), "When I hungry,");
   });
 });

@@ -146,47 +146,47 @@ describe("ecosim sensor readings", () => {
   test("the see sensor reads its object, its kind, and its distance", () => {
     const see = () => sensor(EcosimHostActions.See.key);
 
-    assert.equal(reading([see()]), "When I see anything.");
-    assert.equal(reading([see(), modifier(TileIds.Modifier.ActorKindCarnivore)]), "When I see a carnivore.");
-    assert.equal(reading([see(), modifier(TileIds.Modifier.ActorKindHerbivore)]), "When I see a herbivore.");
-    assert.equal(reading([see(), modifier(TileIds.Modifier.ActorKindPlant)]), "When I see a plant.");
-    assert.equal(reading([see(), modifier(TileIds.Modifier.DistanceNearby)]), "When I see nearby.");
-    assert.equal(reading([see(), modifier(TileIds.Modifier.DistanceFarAway)]), "When I see far away.");
+    assert.equal(reading([see()]), "When I see anything,");
+    assert.equal(reading([see(), modifier(TileIds.Modifier.ActorKindCarnivore)]), "When I see a carnivore,");
+    assert.equal(reading([see(), modifier(TileIds.Modifier.ActorKindHerbivore)]), "When I see a herbivore,");
+    assert.equal(reading([see(), modifier(TileIds.Modifier.ActorKindPlant)]), "When I see a plant,");
+    assert.equal(reading([see(), modifier(TileIds.Modifier.DistanceNearby)]), "When I see nearby,");
+    assert.equal(reading([see(), modifier(TileIds.Modifier.DistanceFarAway)]), "When I see far away,");
     assert.equal(
       reading([see(), modifier(TileIds.Modifier.ActorKindPlant), modifier(TileIds.Modifier.DistanceNearby)]),
-      "When I see a plant nearby."
+      "When I see a plant nearby,"
     );
   });
 
   test("the bump sensor reads its object and its kind", () => {
     const bump = () => sensor(EcosimHostActions.Bump.key);
 
-    assert.equal(reading([bump()]), "When I bump anything.");
-    assert.equal(reading([bump(), modifier(TileIds.Modifier.ActorKindCarnivore)]), "When I bump a carnivore.");
-    assert.equal(reading([bump(), modifier(TileIds.Modifier.ActorKindHerbivore)]), "When I bump a herbivore.");
-    assert.equal(reading([bump(), modifier(TileIds.Modifier.ActorKindPlant)]), "When I bump a plant.");
+    assert.equal(reading([bump()]), "When I bump anything,");
+    assert.equal(reading([bump(), modifier(TileIds.Modifier.ActorKindCarnivore)]), "When I bump a carnivore,");
+    assert.equal(reading([bump(), modifier(TileIds.Modifier.ActorKindHerbivore)]), "When I bump a herbivore,");
+    assert.equal(reading([bump(), modifier(TileIds.Modifier.ActorKindPlant)]), "When I bump a plant,");
   });
 
   test("a value sensor alone reads with no subject", () => {
-    assert.equal(reading([sensor(CoreHostActions.Random.key)]), "When a random number.");
-    assert.equal(reading([sensor(CoreHostActions.CurrentPage.key)]), "When the current page.");
-    assert.equal(reading([sensor(CoreHostActions.PreviousPage.key)]), "When the previous page.");
+    assert.equal(reading([sensor(CoreHostActions.Random.key)]), "When a random number,");
+    assert.equal(reading([sensor(CoreHostActions.CurrentPage.key)]), "When the current page,");
+    assert.equal(reading([sensor(CoreHostActions.PreviousPage.key)]), "When the previous page,");
   });
 
   test("a value sensor inside a comparison reads with no subject", () => {
     assert.equal(
       reading([sensor(CoreHostActions.Random.key), operator(CoreOpId.GreaterThan), number(5)]),
-      "When a random number is greater than 5."
+      "When a random number is greater than 5,"
     );
   });
 
   test("the timeout sensor reads its bare word and its duration", () => {
-    assert.equal(reading([sensor(CoreHostActions.Timeout.key)]), "When I wait for a moment.");
-    assert.equal(reading([sensor(CoreHostActions.Timeout.key), number(3)]), "When I wait for 3.");
+    assert.equal(reading([sensor(CoreHostActions.Timeout.key)]), "When I wait for a moment,");
+    assert.equal(reading([sensor(CoreHostActions.Timeout.key), number(3)]), "When I wait for 3,");
   });
 
   test("the page-entered sensor reads as the event", () => {
-    assert.equal(reading([sensor(CoreHostActions.OnPageEntered.key)]), "When this page starts.");
+    assert.equal(reading([sensor(CoreHostActions.OnPageEntered.key)]), "When this page starts,");
   });
 });
 
@@ -258,7 +258,7 @@ describe("ecosim condition readings", () => {
   test("a comparison reads with no subject and keeps it before a DO clause", () => {
     const comparison = () => [variable("energy"), operator(CoreOpId.GreaterThan), number(80)];
 
-    assert.equal(reading(comparison()), "When energy is greater than 80.");
+    assert.equal(reading(comparison()), "When energy is greater than 80,");
     assert.equal(reading(comparison(), [actuator(EcosimHostActions.Eat.key)]), "When energy is greater than 80, eat.");
   });
 
@@ -276,16 +276,17 @@ describe("ecosim condition readings", () => {
     const otherwise = () => sensor(CoreHostActions.Otherwise.key);
 
     assert.equal(reading([otherwise()], [actuator(EcosimHostActions.Move.key)]), "Otherwise, move.");
+    assert.equal(reading([otherwise()]), "Otherwise,");
     assert.equal(
       reading([otherwise(), operator(CoreOpId.And), sensor(EcosimHostActions.Bump.key)]),
-      "When otherwise and bump."
+      "When otherwise and bump,"
     );
   });
 
   test("a rule with no DO tiles reads as its condition alone", () => {
     assert.equal(
       reading([sensor(EcosimHostActions.See.key), modifier(TileIds.Modifier.ActorKindCarnivore)]),
-      "When I see a carnivore."
+      "When I see a carnivore,"
     );
   });
 });
@@ -327,10 +328,22 @@ describe("ecosim paragraph readings", () => {
     );
   });
 
+  test("a parent with no action of its own is completed by its child's clause", () => {
+    assert.equal(
+      paragraph([
+        {
+          when: [sensor(CoreHostActions.Otherwise.key)],
+          children: [{ when: [bump()], do: [move(), modifier(TileIds.Modifier.MovementAwayFrom)] }],
+        },
+      ]),
+      "Otherwise, when I bump anything, move away from."
+    );
+  });
+
   test("a page of rules with no DO tiles reads as conditions in a row", () => {
     assert.equal(
       paragraph([{ when: [see(), plant()] }, { when: [bump()] }]),
-      "When I see a plant. When I bump anything."
+      "When I see a plant, When I bump anything,"
     );
   });
 

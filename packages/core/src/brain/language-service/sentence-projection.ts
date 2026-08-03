@@ -177,9 +177,12 @@ const kTextValueTemplate = '"{value}"';
 const kWordGlueTemplate = "{a} {b}";
 const kClauseTemplate = "{trigger}, {action}";
 const kTerminalTemplate = "{sentence}.";
+const kIncompleteTerminalTemplate = "{sentence},";
 
 const kChildConditionTemplate = "{parent}, and if {condition}";
 const kChildConsequenceTemplate = "{parent}, and {consequence}";
+const kIncompleteConditionTemplate = "{parent}, when {condition}";
+const kIncompleteConsequenceTemplate = "{parent}, {consequence}";
 const kChildClauseTemplate = "{condition}, {action}";
 const kSentenceGlueTemplate = "{sentence} {rest}";
 const kChildVerbTemplate = "I {form} {object}";
@@ -676,6 +679,22 @@ export function whenTriggerWord(localizer: Localizer): string {
 }
 
 /**
+ * Whether `rule` leaves the sentence it stands in unfinished: its DO side holds
+ * no tiles, so its clause names a trigger and no action.
+ */
+function isUnfinishedClause(rule: IBrainRuleDef): boolean {
+  return rule.do().tiles().isEmpty();
+}
+
+/**
+ * The punctuation a sentence ends on: the incomplete terminal when the clause
+ * standing last in it leaves it unfinished, and the terminal otherwise.
+ */
+function terminalTemplate(unfinished: boolean): string {
+  return unfinished ? kIncompleteTerminalTemplate : kTerminalTemplate;
+}
+
+/**
  * The clause of `rule` with no sentence-final punctuation: its trigger -- the
  * WHEN side's reading, or the always-word when that side is empty -- followed by
  * its action when its DO side has tiles.
@@ -710,6 +729,9 @@ function projectRuleClause(localizer: Localizer, rule: IBrainRuleDef): List<Sent
  * `sentenceInitial`. The display string is {@link sentenceText} of the result.
  * A rule with no tiles projects no segments.
  *
+ * A rule whose DO side holds no tiles names a trigger and no action, so its
+ * sentence ends on the incomplete terminal rather than the sentence-final one.
+ *
  * The projection is derived state: the same rule under the same catalogs always
  * yields the same segments. Live callers reach a localizer through
  * `brainDef.servicesLocalizer()`.
@@ -720,7 +742,8 @@ export function projectRuleSentence(rule: IBrainRuleDef, localizer: Localizer): 
   }
   const terminalSlots = new List<SentenceSlot>();
   terminalSlots.push(slot("sentence", projectRuleClause(localizer, rule)));
-  return markSentenceInitial(renderPhrase(localizer, kTerminalTemplate, kGlueContext, terminalSlots)).asReadonly();
+  const source = terminalTemplate(isUnfinishedClause(rule));
+  return markSentenceInitial(renderPhrase(localizer, source, kGlueContext, terminalSlots)).asReadonly();
 }
 
 // ---------------------------------------------------------------------------
@@ -920,6 +943,26 @@ function isTilelessRule(rule: IBrainRuleDef): boolean {
   return rule.when().tiles().isEmpty() && rule.do().tiles().isEmpty();
 }
 
+/** A sentence being built out of the clauses of a rule and its descendants. */
+interface SentenceBuild {
+  readonly entries: List<ParagraphEntry>;
+  /** True when the clause standing last in `entries` leaves the sentence unfinished. */
+  readonly unfinished: boolean;
+}
+
+/**
+ * The connective joining a child clause onto the sentence, chosen by whether
+ * the clause it continues left that sentence unfinished: an unfinished sentence
+ * takes the continuation its own clause completes, and a finished one takes the
+ * conjunction that adds to it.
+ */
+function childConnectiveTemplate(unfinished: boolean, childHasCondition: boolean): string {
+  if (childHasCondition) {
+    return unfinished ? kIncompleteConditionTemplate : kChildConditionTemplate;
+  }
+  return unfinished ? kIncompleteConsequenceTemplate : kChildConsequenceTemplate;
+}
+
 /**
  * Extend the sentence `head` with each rule of `children` in order, joining each
  * through the connective its own shape takes and then continuing with its own
@@ -927,9 +970,9 @@ function isTilelessRule(rule: IBrainRuleDef): boolean {
  */
 function attachChildRules(
   localizer: Localizer,
-  head: List<ParagraphEntry>,
+  head: SentenceBuild,
   children: ReadonlyList<IBrainRuleDef>
-): List<ParagraphEntry> {
+): SentenceBuild {
   let out = head;
   for (let i = 0; i < children.size(); i++) {
     const child = children.get(i);
@@ -940,16 +983,14 @@ function attachChildRules(
     const childEntries = new List<ParagraphEntry>();
     childEntries.push(ruleEntry(child.id(), projectChildClause(localizer, child).asReadonly()));
 
+    const childHasCondition = !child.when().tiles().isEmpty();
     const slots = new List<ParagraphSlot>();
-    slots.push(paragraphSlot("parent", out.asReadonly()));
-    if (child.when().tiles().isEmpty()) {
-      slots.push(paragraphSlot("consequence", childEntries.asReadonly()));
-      out = composeEntries(localizer, kChildConsequenceTemplate, kConnectiveContext, slots.asReadonly());
-    } else {
-      slots.push(paragraphSlot("condition", childEntries.asReadonly()));
-      out = composeEntries(localizer, kChildConditionTemplate, kConnectiveContext, slots.asReadonly());
-    }
-    out = attachChildRules(localizer, out, child.children());
+    slots.push(paragraphSlot("parent", out.entries.asReadonly()));
+    slots.push(paragraphSlot(childHasCondition ? "condition" : "consequence", childEntries.asReadonly()));
+    const source = childConnectiveTemplate(out.unfinished, childHasCondition);
+    const entries = composeEntries(localizer, source, kConnectiveContext, slots.asReadonly());
+
+    out = attachChildRules(localizer, { entries, unfinished: isUnfinishedClause(child) }, child.children());
   }
   return out;
 }
@@ -966,15 +1007,15 @@ function collectSentences(
       collectSentences(localizer, rule.children(), out);
       continue;
     }
-    let entries = new List<ParagraphEntry>();
+    const entries = new List<ParagraphEntry>();
     entries.push(ruleEntry(rule.id(), projectRuleClause(localizer, rule).asReadonly()));
-    entries = attachChildRules(localizer, entries, rule.children());
+    const built = attachChildRules(localizer, { entries, unfinished: isUnfinishedClause(rule) }, rule.children());
 
     const terminalSlots = new List<ParagraphSlot>();
-    terminalSlots.push(paragraphSlot("sentence", entries.asReadonly()));
+    terminalSlots.push(paragraphSlot("sentence", built.entries.asReadonly()));
     out.push(
       markParagraphSentenceInitial(
-        composeEntries(localizer, kTerminalTemplate, kGlueContext, terminalSlots.asReadonly())
+        composeEntries(localizer, terminalTemplate(built.unfinished), kGlueContext, terminalSlots.asReadonly())
       )
     );
   }
@@ -991,9 +1032,13 @@ function collectSentences(
  *
  * One sentence covers each top-level rule and all of its descendants: a child
  * rule contributes no sentence of its own but extends its parent's as a ", and
- * if <condition>, <action>" continuation, recursively for deeper nesting. A rule
- * with no tiles -- the trailing empty rule among them -- contributes nothing,
- * and its children take its place. A page with no rules projects no entries.
+ * if <condition>, <action>" continuation, recursively for deeper nesting. Where
+ * the clause it continues holds no action of its own, the child completes that
+ * clause instead of adding to it, reading as ", when <condition>, <action>". A
+ * sentence whose last clause still holds no action ends on the incomplete
+ * terminal. A rule with no tiles -- the trailing empty rule among them --
+ * contributes nothing, and its children take its place. A page with no rules
+ * projects no entries.
  *
  * The projection is derived state: the same page under the same catalogs always
  * yields the same entries, and nothing about it is persisted. Live callers reach
