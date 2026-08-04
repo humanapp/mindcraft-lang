@@ -1,6 +1,6 @@
 {
   "name": "Ecosystem Simulator",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "identity": "mindcraft-lang/trg-ecosim",
   "description": "Program the brains of carnivores, herbivores, and plants in a live 2D ecosystem with Mindcraft.",
   "targets": {
@@ -50,6 +50,7 @@
       "app/assets/brain/icons/on-page-enter.svg",
       "app/assets/brain/icons/open-paren.svg",
       "app/assets/brain/icons/or.svg",
+      "app/assets/brain/icons/otherwise.svg",
       "app/assets/brain/icons/page.svg",
       "app/assets/brain/icons/page2.svg",
       "app/assets/brain/icons/page3.svg",
@@ -75,8 +76,8 @@
       "app/assets/brain/icons/turn.svg",
       "app/assets/brain/icons/wander.svg",
       "app/assets/fonts/latinmodern-math.woff2",
-      "app/assets/main-BAYAeBKG.js",
-      "app/assets/main-CkJyMnox.css",
+      "app/assets/main-BfKOLYxm.js",
+      "app/assets/main-DISJtvuX.css",
       "app/assets/phaser-BG365Q_w.js",
       "app/favicon.png",
       "app/index.html",
@@ -86,5 +87,5 @@
       "app/sitemap.xml"
     ]
   },
-  "buildVersion": "0.1.2"
+  "buildVersion": "0.1.3"
 }
