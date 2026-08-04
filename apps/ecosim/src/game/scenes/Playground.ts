@@ -10,15 +10,24 @@ import type { ScoreSnapshot } from "@/brain/score";
 import { STORE_REGISTRY_KEY } from "@/game/main";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
 /**
- * Registry key where `StartGame` stores its scene-ready callback.
- * Playground reads this in `create()` to notify React without an EventBus.
+ * Registry key where `StartGame` stores its brain-state callback.
+ * Playground reads this to notify React without an EventBus.
  */
-export const SCENE_READY_KEY = "__onSceneReady";
+export const SCENE_BRAIN_STATE_KEY = "__onSceneBrainState";
 
-/** What the {@link SCENE_READY_KEY} callback receives once the scene has started. */
-export interface SceneStartup {
+/**
+ * What the {@link SCENE_BRAIN_STATE_KEY} callback receives each time the
+ * scene's brain availability changes.
+ */
+export interface SceneBrainState {
   /** The running scene. Live and interactive whether or not brains loaded. */
   scene: Playground;
+  /**
+   * Whether the scene can supply a brain def right now. False while a load is
+   * in flight, after a load failed, and from the moment a project switch tears
+   * the engine down until the next load resolves.
+   */
+  brainsLoaded: boolean;
   /**
    * Why the archetype brains could not be loaded, or undefined when they
    * loaded. While it is set the scene spawns no actors and holds no brain to
@@ -199,9 +208,11 @@ export class Playground extends Scene {
 
     this.unsubProjectUnloading = store.onProjectUnloading(() => {
       this.engine.shutdown();
+      this.reportBrainState();
     });
     this.unsubProjectLoaded = store.onProjectLoaded(() => {
       this.engine.shutdown();
+      this.reportBrainState();
       // Wait for the store to finish reloading project app data (obstacles,
       // desired counts) before restarting the scene. Otherwise create() may
       // run with stale cached data from the previous project.
@@ -271,20 +282,29 @@ export class Playground extends Scene {
 
     // Pause update loop until async brain loading finishes
     this.scene.pause();
-    const reportStartup = (startup: SceneStartup) => {
-      this.scene.resume();
-      const onReady = this.registry.get(SCENE_READY_KEY) as ((startup: SceneStartup) => void) | undefined;
-      onReady?.(startup);
-    };
     this.engine.loadBrains().then(
       () => {
-        reportStartup({ scene: this });
+        this.scene.resume();
+        this.reportBrainState();
       },
       (err) => {
         console.error("Failed to load brains:", err);
-        reportStartup({ scene: this, brainLoadFailure: toBrainLoadFailure(err) });
+        this.scene.resume();
+        this.reportBrainState(toBrainLoadFailure(err));
       }
     );
+  }
+
+  /**
+   * Push this scene's brain availability, read from the engine, to the
+   * {@link SCENE_BRAIN_STATE_KEY} callback. Does nothing when no callback is
+   * registered.
+   *
+   * @param brainLoadFailure Why the last load failed, when it did.
+   */
+  private reportBrainState(brainLoadFailure?: BrainLoadFailure): void {
+    const onBrainState = this.registry.get(SCENE_BRAIN_STATE_KEY) as ((state: SceneBrainState) => void) | undefined;
+    onBrainState?.({ scene: this, brainsLoaded: this.engine.hasLoadedBrains, brainLoadFailure });
   }
 
   private shutdown() {

@@ -43,11 +43,17 @@ export function presentExtensionTransaction(options: {
   }
   if (!report.committed) {
     const refusal = report.refusal;
-    toasts.failed(
-      refusal.kind === "fetch"
-        ? { code: refusal.error.code, message: refusal.error.message }
-        : { message: refusal.message }
-    );
+    switch (refusal.kind) {
+      case "fetch":
+        toasts.failed({ code: refusal.error.code, message: refusal.error.message });
+        break;
+      case "store":
+        toasts.failed({ code: refusal.code, message: refusal.message });
+        break;
+      case "cycle":
+        toasts.failed({ message: refusal.message });
+        break;
+    }
     return;
   }
   if (flavor !== "refresh") {

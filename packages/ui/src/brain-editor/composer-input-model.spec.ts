@@ -41,7 +41,10 @@ import {
   categoryPriorityCandidateRanker,
   decideCandidateCommit,
   decideStripFocusTarget,
+  highlightedStripOption,
   kBestNextBandKey,
+  leadStripCandidate,
+  leadStripCursor,
   mintNumberLiteralCandidate,
   mintTextLiteralCandidate,
   offersTextLiteral,
@@ -53,6 +56,7 @@ import {
   type StripOption,
   type StripOptionBand,
   stripOptionId,
+  tileDefersToCreateDialog,
   toCandidateEntries,
   visibleStripOptions,
 } from "./candidate-strip-model";
@@ -70,6 +74,8 @@ import {
   decideSentenceCellEntry,
   reduceComposerInput,
 } from "./composer-input-model";
+import { deriveEditorMode, type EditorMode } from "./editor-mode";
+import { kBestNextCandidateCount } from "./hooks/useCandidateStrip";
 import { buildInsertionContext } from "./insertion-context";
 import { makeBrain } from "./test-only-rule-fixtures";
 
@@ -185,6 +191,18 @@ interface ComposerTraceOptions {
   readonly offeringFor?: (filter: string, trace: ComposerTrace) => readonly StripCandidate[];
   /** Every accordion band in display order, whether open or closed. */
   readonly bandSequence?: readonly StripOptionBand[];
+  /**
+   * True when the offering's leading candidates are drawn as the best-next row
+   * ahead of `bandSequence`, rebuilt for each filter text, so the trace carries
+   * the chip the strip highlights before any arrow key moves the cursor.
+   */
+  readonly drawsBestNext?: boolean;
+  /**
+   * How many best-next chips the synthetic layout puts on one row before the
+   * rest wrap onto the next, as the rendered row wraps them. The whole row when
+   * omitted.
+   */
+  readonly bestNextPerRow?: number;
   /** How many tiles each side starts with. */
   readonly whenTiles?: number;
   readonly doTiles?: number;
@@ -219,10 +237,14 @@ class ComposerTrace {
     replaced: IBrainTileDef | undefined;
   }[] = [];
   private openSectionKey: string | null = null;
+  /** Whether the tray's filter box stands shown, which text given to it opens. */
+  private trayFilterShown = false;
   /** The chip each open text value offers, keyed by the value. */
   private readonly pendingTextChips = new Map<string, StripCandidate>();
   private readonly offeringFor: (filter: string, trace: ComposerTrace) => readonly StripCandidate[];
   private readonly bandSequence: readonly StripOptionBand[];
+  private readonly drawsBestNext: boolean;
+  private readonly bestNextPerRow: number | undefined;
 
   constructor(options: ComposerTraceOptions = {}) {
     const armedSide = options.armedSide ?? RuleSide.When;
@@ -244,6 +266,21 @@ class ComposerTrace {
     };
     this.offeringFor = options.offeringFor ?? (() => []);
     this.bandSequence = options.bandSequence ?? [];
+    this.drawsBestNext = options.drawsBestNext === true;
+    this.bestNextPerRow = options.bestNextPerRow;
+  }
+
+  /** The offering the filter text leaves, in the order the chips are drawn. */
+  private visibleCandidates(): readonly StripCandidate[] {
+    const offered = this.offeringFor(this.state.filter, this);
+    return resolveStripOffering(offered, this.state.filter, traceLabelOf, foldText).visible;
+  }
+
+  /** Every band in display order: the derived best-next row, then the fixed sequence. */
+  private bands(): readonly StripOptionBand[] {
+    if (!this.drawsBestNext) return this.bandSequence;
+    const leading = toCandidateEntries(this.visibleCandidates().slice(0, kBestNextCandidateCount));
+    return [{ key: kBestNextBandKey, entries: leading }, ...this.bandSequence];
   }
 
   /** The end gap of `side`, which is where composition on that side starts. */
@@ -275,7 +312,7 @@ class ComposerTrace {
 
   /** The bands whose chips are rendered: the best-next row, plus the one open section. */
   openBands(): readonly StripOptionBand[] {
-    return this.bandSequence.filter((band) => band.key === kBestNextBandKey || band.key === this.openSectionKey);
+    return this.bands().filter((band) => band.key === kBestNextBandKey || band.key === this.openSectionKey);
   }
 
   /** Every rendered chip, in the order the highlight walks them. */
@@ -286,6 +323,32 @@ class ComposerTrace {
   /** Where DOM focus belongs while the highlight rests where it does. */
   focusTarget(): StripFocusTarget {
     return decideStripFocusTarget(this.options(), this.state.cursor, this.state.highlightMode);
+  }
+
+  /** The chip drawn as highlighted, which is the chip Enter places. */
+  highlightedOption(): StripOption | undefined {
+    return highlightedStripOption(this.options(), this.state.cursor, this.leadCandidateKey());
+  }
+
+  /** The candidate the offering leads with, whose chip is highlighted before any arrow key. */
+  leadCandidateKey(): string | undefined {
+    return leadStripCandidate(this.visibleCandidates(), this.state.filter)?.key;
+  }
+
+  /** The cell the offering draws the highlight on while the cursor stands on none. */
+  leadCursor(): StripCursor | undefined {
+    return leadStripCursor(this.options(), this.leadCandidateKey());
+  }
+
+  /** The context this arming stands the keyboard in, derived as the strip derives it. */
+  mode(): EditorMode {
+    return deriveEditorMode({
+      arming: {
+        entry: this.state.armedEntry,
+        boxIsShown: this.state.armedEntry === "sentence" || this.trayFilterShown,
+        textLiteralIsOpen: this.state.textLiteral !== undefined,
+      },
+    });
   }
 
   /** Add a command the composition did not make, which becomes the history's newest entry. */
@@ -374,9 +437,9 @@ class ComposerTrace {
   private facts(): ComposerInputFacts {
     const offered = this.offeringFor(this.state.filter, this);
     const { visible } = resolveStripOffering(offered, this.state.filter, traceLabelOf, foldText);
-    const onChip = this.state.cursor?.kind === "chip" ? this.state.cursor.optionId : undefined;
-    const activeOption = this.options().find((option) => option.optionId === onChip);
+    const activeOption = this.highlightedOption();
     return {
+      mode: this.mode(),
       caretRun: this.run(),
       textCursor: this.textCursor,
       acceptsTextLiteral: offersTextLiteral(offered),
@@ -389,22 +452,25 @@ class ComposerTrace {
       topCandidate: decideCandidateCommit(visible, this.state.filter, "enter", foldText),
       spaceCandidate: decideCandidateCommit(visible, this.state.filter, "space", foldText),
       highlightedCandidate: visible.find((candidate) => candidate.key === activeOption?.candidateKey),
+      leadCursor: this.leadCursor(),
       options: this.options(),
       cellGeometry: this.layOutGrid(),
     };
   }
 
   /**
-   * Synthetic layout for the offering's grid: the best-next chips on one row,
-   * then each section's heading on a row of its own, followed by the chips it
-   * heads while that section is open. A heading spans the panel, so its center
-   * sits to the right of the chips beside it.
+   * Synthetic layout for the offering's grid: the best-next chips wrapped
+   * `bestNextPerRow` to a row, then each section's heading on a row of its own,
+   * followed by the chips it heads while that section is open. A heading spans
+   * the panel, so its center sits to the right of the chips beside it.
    */
   private layOutGrid(): StripCellGeometry[] {
     const cells: StripCellGeometry[] = [];
     let row = 0;
-    const addChips = (bandKey: string, entries: readonly CandidateEntry[]) => {
-      for (const [column, entry] of entries.entries()) {
+    const addChips = (bandKey: string, entries: readonly CandidateEntry[], perRow: number) => {
+      for (const [index, entry] of entries.entries()) {
+        const column = index % perRow;
+        if (index > 0 && column === 0) row += 1;
         cells.push({
           cursor: { kind: "chip", optionId: stripOptionId(kStripId, bandKey, entry.candidate.key) },
           left: column * 100,
@@ -414,15 +480,15 @@ class ComposerTrace {
       }
       row += 1;
     };
-    for (const band of this.bandSequence) {
+    for (const band of this.bands()) {
       if (band.entries.length === 0) continue;
       if (band.key === kBestNextBandKey) {
-        addChips(band.key, band.entries);
+        addChips(band.key, band.entries, this.bestNextPerRow ?? band.entries.length);
         continue;
       }
       cells.push({ cursor: { kind: "heading", sectionKey: band.key }, left: 0, width: 400, top: row * 40 });
       row += 1;
-      if (band.key === this.openSectionKey) addChips(band.key, band.entries);
+      if (band.key === this.openSectionKey) addChips(band.key, band.entries, band.entries.length);
     }
     return cells;
   }
@@ -431,6 +497,8 @@ class ComposerTrace {
   private apply(effect: ComposerInputEffect, before: ComposerInputState): readonly ComposerInputEffect[] {
     switch (effect.kind) {
       case "place-tile": {
+        // The trace stands no create dialog, so a deferring candidate places nothing.
+        if (tileDefersToCreateDialog(effect.candidate.tileDef)) return [];
         const command = makeCommand(`placed:${effect.candidate.key}`);
         const caret = before.caret;
         const side = caret?.side ?? before.armedSide;
@@ -457,6 +525,13 @@ class ComposerTrace {
         this.ruleDef.side(effect.position.side).removeTileAtIndex(effect.position.tileIndex);
         return [];
       }
+      // Text given to the box shows it, as the strip's own driver shows it.
+      case "set-filter":
+        if (effect.text.length > 0) this.trayFilterShown = true;
+        return [];
+      case "set-text-literal":
+        if (effect.value !== undefined) this.trayFilterShown = true;
+        return [];
       case "open-section":
         this.openSectionKey = effect.sectionKey;
         return [];
@@ -675,10 +750,12 @@ describe("walking the caret along the run", () => {
 
   test("moving the caret releases the chip the highlight rested on", () => {
     const see = candidateOf(makeSensorTile("composer-trace-caret-highlight"), "see");
+    const jump = candidateOf(makeActuatorTile("composer-trace-caret-highlight-jump"), "jump");
     const trace = new ComposerTrace({
       whenTiles: 1,
-      offeringFor: () => [see],
-      bandSequence: [{ key: kBestNextBandKey, entries: toCandidateEntries([see]) }],
+      offeringFor: () => [see, jump],
+      bandSequence: [{ key: kBestNextBandKey, entries: toCandidateEntries([see, jump]) }],
+      bestNextPerRow: 1,
     });
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
     assert.ok(trace.state.cursor, "the cursor stands on a chip");
@@ -724,13 +801,21 @@ describe("walking the caret along the run", () => {
     ]);
   });
 
-  test("a strip armed from the tray stands at no caret, so the keys stay with its box", () => {
+  test("a strip armed from the tray stands at no caret, so the run's own keys stay with its box", () => {
     const trace = new ComposerTrace({ inSentence: false, whenTiles: 1 });
+
+    assert.deepEqual(trace.press({ kind: "home" }), []);
+    assert.deepEqual(trace.press({ kind: "end" }), []);
+  });
+
+  test("the horizontal arrows reach no caret from the tray, and no chip where the offering stands none", () => {
+    const trace = new ComposerTrace({ inSentence: false, whenTiles: 1 });
+    assert.deepEqual(trace.options(), [], "the offering draws no chip");
 
     assert.deepEqual(trace.press(leftArrow), []);
     assert.deepEqual(trace.press(rightArrow), []);
-    assert.deepEqual(trace.press({ kind: "home" }), []);
-    assert.deepEqual(trace.press({ kind: "end" }), []);
+    assert.equal(trace.state.caret, undefined);
+    assert.equal(trace.state.cursor, undefined);
   });
 });
 
@@ -1396,6 +1481,63 @@ describe("where a placement leaves composition", () => {
   });
 });
 
+describe("a candidate that opens a create dialog", () => {
+  /**
+   * A trace standing between two tiles of the WHEN side, with the core text
+   * literal factory typed out and ready to commit.
+   */
+  function factoryTrace(): { trace: ComposerTrace; factory: StripCandidate } {
+    const factory = textFactoryCandidate();
+    const trace = new ComposerTrace({ whenTiles: 2, offeringFor: () => [factory] });
+    trace.placeCaret(trace.gap(RuleSide.When, 1));
+    trace.typeWord("text");
+    return { trace, factory };
+  }
+
+  test("asks for the dialog alone, leaving the caret and the rule as they stand", () => {
+    const { trace, factory } = factoryTrace();
+
+    assert.deepEqual(trace.press({ kind: "enter", from: "filter" }), [
+      consumeKey,
+      { kind: "place-tile", candidate: factory },
+      clearHighlight,
+    ]);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 1));
+    assert.equal(trace.tileCount(RuleSide.When), 2);
+    assert.equal(trace.state.filter, "");
+  });
+
+  test("a tap on its chip asks for the dialog on the same terms", () => {
+    const { trace, factory } = factoryTrace();
+
+    assert.deepEqual(trace.press({ kind: "candidate-tapped", candidate: factory }), [
+      consumeKey,
+      { kind: "place-tile", candidate: factory },
+      clearHighlight,
+    ]);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 1));
+    assert.equal(trace.tileCount(RuleSide.When), 2);
+  });
+
+  test("the comma commits it without pivoting, since no word has been placed to pivot behind", () => {
+    const { trace } = factoryTrace();
+
+    const pressed = trace.press({ kind: "comma" });
+
+    assert.deepEqual(
+      pressed.filter((effect) => effect.kind === "reask"),
+      []
+    );
+    assert.deepEqual(
+      pressed.filter((effect) => effect.kind === "move-caret"),
+      []
+    );
+    assert.equal(trace.state.armedSide, RuleSide.When);
+    assert.equal(trace.state.pivoted, false);
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 1));
+  });
+});
+
 describe("the period", () => {
   test("refuses where the armed side cannot end, adding nothing to the word in progress", () => {
     const trace = new ComposerTrace({ whenTiles: 1 });
@@ -1529,6 +1671,52 @@ describe("the insertion chord inside composition", () => {
         name
       );
     }
+  });
+});
+
+describe("stepping the composed rule", () => {
+  const stepDown: ComposerInputToken = { kind: "move-rule", direction: "down" };
+
+  test("asks for the step and nothing else, and composition carries on", () => {
+    const trace = new ComposerTrace({ whenTiles: 1 });
+    const before = trace.state;
+
+    assert.deepEqual(trace.press(stepDown), [consumeKey, { kind: "move-rule", direction: "down" }]);
+    assert.equal(trace.closedAs, undefined);
+    assert.deepEqual(trace.state, before);
+  });
+
+  test("leaves the word in progress, the caret and the offering's cursor where they stand", () => {
+    const see = candidateOf(makeSensorTile("move-trace-see"), "see");
+    const seed = candidateOf(makeSensorTile("move-trace-seed"), "seed");
+    const trace = new ComposerTrace({
+      offeringFor: () => [see, seed],
+      whenTiles: 1,
+      drawsBestNext: true,
+      bestNextPerRow: 1,
+    });
+    trace.typeWord("se");
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    const cursor = trace.state.cursor;
+    assert.ok(cursor !== undefined);
+
+    trace.press({ kind: "move-rule", direction: "indent" });
+
+    assert.equal(trace.state.filter, "se");
+    assert.deepEqual(trace.state.caret, trace.gap(RuleSide.When, 1));
+    assert.deepEqual(trace.state.cursor, cursor);
+    assert.equal(trace.closedAs, undefined);
+    assert.equal(trace.tileCount(RuleSide.When), 1);
+  });
+
+  test("an open text value keeps its content and stays open", () => {
+    const trace = new ComposerTrace({ offeringFor: () => [textFactoryCandidate()], whenTiles: 1 });
+    trace.press({ kind: "quote" });
+    trace.typeWord("hi");
+
+    assert.deepEqual(trace.press(stepDown), [consumeKey, { kind: "move-rule", direction: "down" }]);
+    assert.equal(trace.state.textLiteral, "hi");
+    assert.equal(trace.closedAs, undefined);
   });
 });
 
@@ -1818,7 +2006,7 @@ describe("a typed text value", () => {
 });
 
 describe("browsing the offering as one grid", () => {
-  /** A best-next row of two chips over a closed section holding a third. */
+  /** A best-next row of two chips, wrapped one to a row, over a closed section holding a third. */
   function browsingTrace(): { trace: ComposerTrace; best: StripCandidate[]; sectioned: StripCandidate } {
     const first = candidateOf(makeSensorTile("composer-trace-browse-one"), "one");
     const second = candidateOf(makeSensorTile("composer-trace-browse-two"), "two");
@@ -1829,29 +2017,35 @@ describe("browsing the offering as one grid", () => {
         { key: kBestNextBandKey, entries: toCandidateEntries([first, second]) },
         { key: kSectionBandKey, entries: toCandidateEntries([sectioned]) },
       ],
+      bestNextPerRow: 1,
     });
     return { trace, best: [first, second], sectioned };
   }
 
-  /** A best-next row of one chip over two closed sections, each holding one of its own. */
+  /**
+   * A best-next row of two chips, wrapped one to a row, over two closed
+   * sections, each holding one of its own.
+   */
   function twoSectionTrace(): {
     trace: ComposerTrace;
-    best: StripCandidate;
+    best: StripCandidate[];
     first: StripCandidate;
     second: StripCandidate;
   } {
-    const best = candidateOf(makeSensorTile("composer-trace-grid-best"), "best");
+    const lead = candidateOf(makeSensorTile("composer-trace-grid-lead"), "lead");
+    const trailing = candidateOf(makeSensorTile("composer-trace-grid-trailing"), "trailing");
     const first = candidateOf(makeSensorTile("composer-trace-grid-first"), "first");
     const second = candidateOf(makeSensorTile("composer-trace-grid-second"), "second");
     const trace = new ComposerTrace({
-      offeringFor: () => [best, first, second],
+      offeringFor: () => [lead, trailing, first, second],
       bandSequence: [
-        { key: kBestNextBandKey, entries: toCandidateEntries([best]) },
+        { key: kBestNextBandKey, entries: toCandidateEntries([lead, trailing]) },
         { key: kSectionBandKey, entries: toCandidateEntries([first]) },
         { key: kSecondSectionBandKey, entries: toCandidateEntries([second]) },
       ],
+      bestNextPerRow: 1,
     });
-    return { trace, best, first, second };
+    return { trace, best: [lead, trailing], first, second };
   }
 
   /** The cursor standing on the chip that `candidate` renders as in the band `bandKey`. */
@@ -1870,7 +2064,10 @@ describe("browsing the offering as one grid", () => {
     trace.press({ kind: "heading-arrow", direction: "down", sectionKey });
   }
 
-  /** Walk down from the box onto the first section's heading, which stands under the best-next row. */
+  /**
+   * Walk down from the box onto the first section's heading: the first step off
+   * the lead's row, the second off the best-next row under it.
+   */
   function walkToFirstHeading(trace: ComposerTrace): void {
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
@@ -2043,8 +2240,52 @@ describe("browsing the offering as one grid", () => {
       clearHighlight,
     ]);
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
-    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[0]));
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[1]));
     assert.equal(trace.state.highlightMode, "typing");
+  });
+
+  test("one vertical arrow steps the highlight off the chip the offering leads with", () => {
+    const { trace, best } = browsingTrace();
+    assert.equal(trace.state.cursor, undefined, "the offering stands the cursor on no cell");
+    assert.deepEqual(trace.leadCursor(), chipOf(kBestNextBandKey, best[0]), "and highlights the lead's chip");
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "down", from: "filter" }), [
+      { kind: "highlight", cursor: chipOf(kBestNextBandKey, best[1]), mode: "typing" },
+      typingFocus,
+      consumeKey,
+    ]);
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[1]), "one press moves the highlight");
+  });
+
+  test("the chip the offering leads with takes no cursor, so the horizontal arrows serve the caret", () => {
+    const { trace, best } = browsingTrace();
+    const run = trace.run();
+    assert.deepEqual(trace.leadCursor(), chipOf(kBestNextBandKey, best[0]), "a chip is highlighted from the start");
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "right", from: "filter" }), [
+      consumeKey,
+      { kind: "move-caret", position: run[1] },
+      clearHighlight,
+    ]);
+    assert.deepEqual(trace.state.caret, run[1]);
+    assert.equal(trace.state.cursor, undefined, "and the key stood the cursor on no cell");
+  });
+
+  test("Enter places the highlighted chip both before the first vertical arrow and after it", () => {
+    const { trace, best } = browsingTrace();
+    assert.deepEqual(
+      trace.press({ kind: "enter", from: "filter" }),
+      placementEffects(best[0], trace.gap(RuleSide.When, 1)),
+      "the lead's chip"
+    );
+
+    const stepped = browsingTrace();
+    stepped.trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.deepEqual(
+      stepped.trace.press({ kind: "enter", from: "filter" }),
+      placementEffects(stepped.best[1], stepped.trace.gap(RuleSide.When, 1)),
+      "the chip stepped to"
+    );
   });
 
   test("the vertical arrows steer the offering alone, from either surface, and never the caret", () => {
@@ -2067,9 +2308,10 @@ describe("browsing the offering as one grid", () => {
   });
 
   test("stepping up from the top row hands the keyboard back to the box, leaving the caret where it stands", () => {
-    const { trace } = browsingTrace();
+    const { trace, best } = browsingTrace();
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
-    assert.ok(trace.state.cursor, "the cursor stands on a chip");
+    trace.press({ kind: "arrow", direction: "up", from: "filter" });
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[0]), "the cursor stands on the top row");
     const caret = trace.state.caret;
 
     assert.deepEqual(trace.press({ kind: "arrow", direction: "up", from: "filter" }), [
@@ -2094,6 +2336,9 @@ describe("browsing the offering as one grid", () => {
 
     trace.press({ kind: "heading-arrow", direction: "up", sectionKey: kSectionBandKey });
     assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[1]));
+
+    trace.press({ kind: "arrow", direction: "up", from: "band" });
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[0]));
 
     trace.press({ kind: "arrow", direction: "up", from: "band" });
     assert.equal(trace.state.cursor, undefined);
@@ -2121,6 +2366,7 @@ describe("browsing the offering as one grid", () => {
   test("the first chip has none before it, and the key stops there instead of reaching the caret", () => {
     const { trace, best } = browsingTrace();
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    trace.press({ kind: "arrow", direction: "up", from: "filter" });
     assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[0]));
     const caret = trace.state.caret;
 
@@ -2129,24 +2375,27 @@ describe("browsing the offering as one grid", () => {
     assert.deepEqual(trace.state.caret, caret, "the caret stands where it was");
   });
 
-  test("arrowing up with the cursor nowhere reaches no cell of the offering", () => {
-    const { trace } = twoSectionTrace();
+  test("arrowing up from a lead standing on the grid's first row reaches no cell", () => {
+    const { trace, best } = twoSectionTrace();
+    assert.deepEqual(trace.leadCursor(), chipOf(kBestNextBandKey, best[0]), "the lead stands on the first row");
 
     assert.deepEqual(trace.press({ kind: "arrow", direction: "up", from: "filter" }), []);
     assert.equal(trace.state.cursor, undefined);
     assert.deepEqual(trace.focusTarget(), { kind: "input" });
   });
 
-  test("the grid is entered at its first row again after leaving it, and walks down to a stop", () => {
+  test("the grid is entered a row past the lead again after leaving it, and walks down to a stop", () => {
     const { trace, best, first, second } = twoSectionTrace();
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
-    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best));
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[1]));
 
+    trace.press({ kind: "arrow", direction: "up", from: "filter" });
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[0]), "the lead's own row");
     trace.press({ kind: "arrow", direction: "up", from: "filter" });
     assert.equal(trace.state.cursor, undefined, "the offering is left for the caret");
 
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
-    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best), "re-entry stands on the first row");
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[1]), "re-entry steps from the lead again");
 
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
     assert.deepEqual(trace.state.cursor, headingAt(kSectionBandKey));
@@ -2177,6 +2426,7 @@ describe("browsing the offering as one grid", () => {
     assert.ok(trace.state.cursor, "the row above the heading is the best-next row");
 
     trace.press({ kind: "arrow", direction: "up", from: "band" });
+    trace.press({ kind: "arrow", direction: "up", from: "band" });
     assert.equal(trace.state.cursor, undefined, "the first row leaves the offering");
     assert.deepEqual(trace.focusTarget(), { kind: "input" });
 
@@ -2194,6 +2444,7 @@ describe("browsing the offering as one grid", () => {
 
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
     assert.ok(trace.state.cursor, "the cursor stands on a chip");
+    trace.press({ kind: "arrow", direction: "up", from: "filter" });
     trace.press({ kind: "arrow", direction: "up", from: "filter" });
 
     assert.equal(trace.state.filter, "on");
@@ -2270,6 +2521,8 @@ describe("browsing the offering as one grid", () => {
   test("they walk the chips again once the cursor stands on one, leaving the caret where it stands", () => {
     const { trace, best } = browsingTrace();
     trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    trace.press({ kind: "arrow", direction: "up", from: "filter" });
+    assert.deepEqual(trace.state.cursor, chipOf(kBestNextBandKey, best[0]));
     const caret = trace.state.caret;
 
     assert.deepEqual(trace.press({ kind: "arrow", direction: "right", from: "filter" }), [
@@ -2289,12 +2542,14 @@ describe("browsing the offering as one grid", () => {
     test("leaving the offering upward flashes the caret's place, from the box and from a band", () => {
       const { trace } = browsingTrace();
       trace.press({ kind: "arrow", direction: "down", from: "filter" });
+      trace.press({ kind: "arrow", direction: "up", from: "filter" });
       assert.ok(flashes(trace.press({ kind: "arrow", direction: "up", from: "filter" })));
 
       const browsed = browsingTrace().trace;
       browseFirstSection(browsed);
       browsed.press({ kind: "arrow", direction: "up", from: "band" });
       browsed.press({ kind: "heading-arrow", direction: "up", sectionKey: kSectionBandKey });
+      browsed.press({ kind: "arrow", direction: "up", from: "band" });
       assert.ok(flashes(browsed.press({ kind: "arrow", direction: "up", from: "band" })));
     });
 
@@ -2391,6 +2646,133 @@ describe("browsing the offering as one grid", () => {
   });
 });
 
+describe("walking the offering's chips from the tray", () => {
+  /**
+   * A strip armed from the tray over two chips drawn on one row, the way the
+   * strip draws its best-next row.
+   */
+  function trayTrace(): { trace: ComposerTrace; chips: StripCandidate[] } {
+    const first = candidateOf(makeSensorTile(`composer-tray-walk-one-${nextFnId}`), "one");
+    const second = candidateOf(makeSensorTile(`composer-tray-walk-two-${nextFnId}`), "two");
+    const trace = new ComposerTrace({
+      inSentence: false,
+      whenTiles: 1,
+      drawsBestNext: true,
+      offeringFor: () => [first, second],
+    });
+    return { trace, chips: [first, second] };
+  }
+
+  /** The cursor standing on the chip `candidate` renders as in the best-next row. */
+  function bestChip(candidate: StripCandidate): StripCursor {
+    return chipAt(stripOptionId(kStripId, kBestNextBandKey, candidate.key));
+  }
+
+  test("the arming stands at no caret, with the highlight on the lead and the cursor nowhere", () => {
+    const { trace, chips } = trayTrace();
+
+    assert.equal(trace.mode(), "tray-armed");
+    assert.equal(trace.state.caret, undefined);
+    assert.equal(trace.state.cursor, undefined);
+    assert.deepEqual(trace.leadCursor(), bestChip(chips[0]));
+  });
+
+  test("one horizontal arrow steps the highlight off the chip the offering leads with", () => {
+    const { trace, chips } = trayTrace();
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "right", from: "filter" }), [
+      { kind: "highlight", cursor: bestChip(chips[1]), mode: "typing" },
+      typingFocus,
+      consumeKey,
+    ]);
+    assert.deepEqual(trace.state.cursor, bestChip(chips[1]), "one press moves the highlight");
+  });
+
+  test("the arrow back walks to the chip the lead stood on", () => {
+    const { trace, chips } = trayTrace();
+    trace.press({ kind: "arrow", direction: "right", from: "filter" });
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "left", from: "filter" }), [
+      { kind: "highlight", cursor: bestChip(chips[0]), mode: "typing" },
+      typingFocus,
+      consumeKey,
+    ]);
+    assert.deepEqual(trace.state.cursor, bestChip(chips[0]));
+  });
+
+  test("the lead has no chip before it, and the key reaches none", () => {
+    const { trace, chips } = trayTrace();
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "left", from: "filter" }), []);
+    assert.equal(trace.state.cursor, undefined);
+    assert.deepEqual(trace.leadCursor(), bestChip(chips[0]), "the highlight stands where it was");
+  });
+
+  test("the last chip has none after it, and the key stops there", () => {
+    const { trace, chips } = trayTrace();
+    trace.press({ kind: "arrow", direction: "right", from: "filter" });
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "right", from: "filter" }), [consumeKey]);
+    assert.deepEqual(trace.state.cursor, bestChip(chips[1]));
+  });
+
+  test("the arrows step from the lead once the tray's box stands open too", () => {
+    const { trace, chips } = trayTrace();
+    trace.typeWord("o");
+    assert.equal(trace.mode(), "tray-filtering", "text given to the box shows it");
+    assert.deepEqual(trace.leadCursor(), bestChip(chips[0]));
+
+    assert.deepEqual(trace.press({ kind: "arrow", direction: "right", from: "filter" }), [
+      { kind: "highlight", cursor: bestChip(chips[1]), mode: "typing" },
+      typingFocus,
+      consumeKey,
+    ]);
+    assert.deepEqual(trace.state.cursor, bestChip(chips[1]));
+  });
+
+  /** The effects a placement from the tray asks for, which moves no caret of its own. */
+  function trayPlacementEffects(candidate: StripCandidate): readonly ComposerInputEffect[] {
+    return [
+      consumeKey,
+      { kind: "place-tile", candidate },
+      { kind: "announce-placement", label: candidate.label },
+      clearHighlight,
+      settledFocus,
+      landedReask,
+    ];
+  }
+
+  test("Enter places the highlighted chip both before the first horizontal arrow and after it", () => {
+    const { trace, chips } = trayTrace();
+    assert.deepEqual(trace.press({ kind: "enter", from: "filter" }), trayPlacementEffects(chips[0]), "the lead's chip");
+    assert.deepEqual(trace.tileIds(RuleSide.When).slice(-1), [chips[0].key]);
+
+    const stepped = trayTrace();
+    stepped.trace.press({ kind: "arrow", direction: "right", from: "filter" });
+    assert.deepEqual(
+      stepped.trace.press({ kind: "enter", from: "filter" }),
+      trayPlacementEffects(stepped.chips[1]),
+      "the chip stepped to"
+    );
+    assert.deepEqual(stepped.trace.tileIds(RuleSide.When).slice(-1), [stepped.chips[1].key]);
+  });
+
+  test("the vertical arrows still step from the lead, onto the row below it", () => {
+    const first = candidateOf(makeSensorTile(`composer-tray-rows-one-${nextFnId}`), "one");
+    const second = candidateOf(makeSensorTile(`composer-tray-rows-two-${nextFnId}`), "two");
+    const trace = new ComposerTrace({
+      inSentence: false,
+      whenTiles: 1,
+      drawsBestNext: true,
+      bestNextPerRow: 1,
+      offeringFor: () => [first, second],
+    });
+
+    trace.press({ kind: "arrow", direction: "down", from: "filter" });
+    assert.deepEqual(trace.state.cursor, bestChip(second));
+  });
+});
+
 describe("the token vocabulary", () => {
   test("the filter box's structural keys map to their own tokens", () => {
     assert.deepEqual(composerTokenForKey(",", "filter", false), { kind: "comma" });
@@ -2415,11 +2797,28 @@ describe("the token vocabulary", () => {
     assert.deepEqual(composerTokenForKey(".", "filter", true), { kind: "period" });
     assert.deepEqual(composerTokenForKey(" ", "filter", true), { kind: "space" });
     assert.deepEqual(composerTokenForKey("Backspace", "filter", true), { kind: "backspace", from: "filter" });
-    assert.deepEqual(composerTokenForKey("ArrowDown", "filter", true), {
-      kind: "arrow",
-      direction: "down",
-      from: "filter",
-    });
+  });
+
+  test("the command modifier turns the arrows into the rule's own steps, on every surface", () => {
+    for (const surface of ["filter", "band", "close"] as const) {
+      for (const [key, direction] of [
+        ["ArrowUp", "up"],
+        ["ArrowDown", "down"],
+        ["ArrowLeft", "outdent"],
+        ["ArrowRight", "indent"],
+      ] as const) {
+        assert.deepEqual(
+          composerTokenForKey(key, surface, true),
+          { kind: "move-rule", direction },
+          `${surface} ${key}`
+        );
+      }
+      assert.deepEqual(composerTokenForKey("ArrowDown", surface, false), {
+        kind: "arrow",
+        direction: "down",
+        from: surface,
+      });
+    }
   });
 
   test("a double quote is its own token on the filter surface", () => {
@@ -2567,6 +2966,105 @@ describe("enter with nothing to place", () => {
     const tray = new ComposerTrace({ inSentence: false, whenTiles: 1 });
     assert.deepEqual(tray.press({ kind: "enter", from: "filter" }), []);
     assert.equal(tray.closedAs, undefined);
+  });
+});
+
+describe("the chip the offering leads with", () => {
+  /** The core number variable factory, as a candidate the offering carries. */
+  function variableFactoryCandidate(): StripCandidate {
+    const tileDef = services.edit.tiles.get(mkVariableFactoryTileId(CoreVariableFactoryId.Number));
+    assert.ok(tileDef, "core number variable factory not registered");
+    return candidateOf(tileDef, "number");
+  }
+
+  /** A trace drawing its offering as the best-next row, the way the strip draws it. */
+  function ledTrace(candidates: readonly StripCandidate[]): ComposerTrace {
+    return new ComposerTrace({ whenTiles: 1, drawsBestNext: true, offeringFor: () => candidates });
+  }
+
+  /** The candidate key of the chip drawn as highlighted, or undefined when none is. */
+  function highlightedKey(trace: ComposerTrace): string | undefined {
+    return trace.highlightedOption()?.candidateKey;
+  }
+
+  test("the offering's first chip is highlighted with nothing typed, and Enter places it", () => {
+    const see = candidateOf(makeSensorTile("composer-lead-see"), "see");
+    const plant = candidateOf(makeSensorTile("composer-lead-plant"), "plant");
+    const trace = ledTrace([see, plant]);
+
+    assert.equal(highlightedKey(trace), see.key);
+    assert.equal(trace.state.cursor, undefined, "the highlight rests without the cursor standing anywhere");
+
+    assert.deepEqual(
+      trace.press({ kind: "enter", from: "filter" }),
+      placementEffects(see, trace.gap(RuleSide.When, 2))
+    );
+    assert.deepEqual(trace.tileIds(RuleSide.When).slice(-1), [see.key]);
+  });
+
+  test("the highlight follows the filter to the first match as the text narrows it", () => {
+    const seek = candidateOf(makeSensorTile("composer-lead-seek"), "seek");
+    const seed = candidateOf(makeSensorTile("composer-lead-seed"), "seed");
+    const trace = ledTrace([seek, seed]);
+
+    assert.equal(highlightedKey(trace), seek.key);
+    trace.typeWord("se");
+    assert.equal(highlightedKey(trace), seek.key, "the prefix leaves both, so the first match leads");
+    trace.typeWord("seed");
+    assert.equal(highlightedKey(trace), seed.key, "the narrowed offering leads with its own first match");
+
+    assert.deepEqual(
+      trace.press({ kind: "enter", from: "filter" }),
+      placementEffects(seed, trace.gap(RuleSide.When, 2))
+    );
+  });
+
+  test("a typed word matching nothing but a minted variable highlights no chip, and Enter places none", () => {
+    const trace = ledTrace([variableFactoryCandidate()]);
+    trace.typeWord("speedy");
+
+    assert.ok(trace.options().length > 0, "the mint is offered as a chip");
+    assert.equal(highlightedKey(trace), undefined);
+
+    assert.deepEqual(trace.press({ kind: "enter", from: "filter" }), [
+      consumeKey,
+      { kind: "close-strip", reason: "settled" },
+    ]);
+    assert.equal(trace.tileCount(RuleSide.When), 1, "no variable was minted into the rule");
+  });
+
+  test("text naming a variable outright highlights the chip that mints it, which Enter places", () => {
+    const trace = ledTrace([variableFactoryCandidate()]);
+    trace.typeWord("$speedy");
+
+    const minted = trace.options()[0]?.candidateKey;
+    assert.ok(minted, "the accelerator offers the mint as a chip");
+    assert.equal(highlightedKey(trace), minted);
+
+    const placed = trace.press({ kind: "enter", from: "filter" }).filter((effect) => effect.kind === "place-tile");
+    assert.deepEqual(
+      placed.map((effect) => effect.candidate.key),
+      [minted]
+    );
+    assert.equal(trace.tileCount(RuleSide.When), 2);
+  });
+
+  test("an open text value takes Enter itself, placing the value and not the highlighted chip", () => {
+    const factory = textFactoryCandidate();
+    const trace = ledTrace([factory]);
+    trace.press({ kind: "quote" });
+    trace.press({ kind: "text", text: "hello" });
+
+    assert.equal(highlightedKey(trace), factory.key, "the offering still leads with a chip of its own");
+    const pending = trace.pendingTextChip();
+    assert.ok(pending);
+
+    const placed = trace.press({ kind: "enter", from: "filter" }).filter((effect) => effect.kind === "place-tile");
+    assert.deepEqual(
+      placed.map((effect) => effect.candidate.key),
+      [pending.key]
+    );
+    assert.equal(trace.state.textLiteral, undefined);
   });
 });
 

@@ -74,7 +74,13 @@ function section(entries: readonly CandidateEntry[]): CandidateStripSection {
 /** The whole rule card for a rule holding one tile on each side. */
 function renderRuleCard(): string {
   const { ruleDef } = makeBrain(services, [makeSensor(services, "token-see")], [makeActuator(services, "token-move")]);
-  const controller: ArmedTargetController = { target: null, arm: () => {}, disarm: () => {} };
+  const controller: ArmedTargetController = {
+    target: null,
+    arm: () => {},
+    disarm: () => {},
+    mode: null,
+    reportMode: () => {},
+  };
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,

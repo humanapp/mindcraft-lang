@@ -1,7 +1,8 @@
 /**
  * Pins the edit point's rendered surface: the position pivot the strip shows
  * for a target armed on a placed tile from the tray and shows for no other
- * target, the pivot marking the armed position, which of the two controls that
+ * target, the pivot marking the armed position, each of its segments naming
+ * itself so a glyph alone still reads, which of the two controls that
  * row stands for the anchor tile -- its documentation directly, or its menu --
  * the ring staying on the anchor tile through every position, and the sentence
  * carrying a word per tile with a caret in each word boundary the composer's
@@ -72,7 +73,13 @@ function renderRuleCard(ruleDef: BrainRuleDef, target?: ArmedTileTarget): string
 
 /** The card as `config` renders it, with `target` armed. */
 function renderCardWith(config: BrainEditorConfig, ruleDef: BrainRuleDef, target?: ArmedTileTarget): string {
-  const controller: ArmedTargetController = { target: target ?? null, arm: () => {}, disarm: () => {} };
+  const controller: ArmedTargetController = {
+    target: target ?? null,
+    arm: () => {},
+    disarm: () => {},
+    mode: null,
+    reportMode: () => {},
+  };
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,
@@ -148,6 +155,21 @@ describe("the position pivot", () => {
     const tags = pivotTags(renderRuleCard(ruleDef, target));
     assert.equal(tags.length, 3);
     assert.equal(tags.filter((tag) => tag.includes('aria-pressed="true"')).length, 1);
+  });
+
+  test("every position carries an accessible name, which the narrow row's glyph leaves as the only one", () => {
+    const { ruleDef } = makeBrain([makeSensor("pivot-named")], []);
+    const target: ArmedTileTarget = {
+      ruleDef,
+      side: RuleSide.When,
+      mode: "replace",
+      tileIndex: 0,
+      anchorTileIndex: 0,
+      onTileSelected: () => true,
+    };
+    const tags = pivotTags(renderRuleCard(ruleDef, target));
+    assert.equal(tags.length, 3);
+    assert.equal(tags.filter((tag) => /aria-label="[^"]+"/.test(tag)).length, 3);
   });
 
   test("an insert addressing the anchor reads as the before position", () => {

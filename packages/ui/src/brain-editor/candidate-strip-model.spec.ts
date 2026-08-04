@@ -72,8 +72,12 @@ import {
   decideCandidateCommit,
   filterStripCandidates,
   groupStripCandidates,
+  highlightedStripOption,
   identityCandidateRanker,
   isUnknownFilterText,
+  kBestNextBandKey,
+  leadStripCandidate,
+  leadStripCursor,
   mintNumberLiteralCandidate,
   mintTextLiteralCandidate,
   mintVariableCandidates,
@@ -81,8 +85,10 @@ import {
   parseStripFilter,
   resolveStripOffering,
   type StripCandidate,
+  stripOptionId,
   tileCandidateGroup,
   toCandidateEntries,
+  visibleStripOptions,
 } from "./candidate-strip-model";
 import { kBestNextCandidateCount } from "./hooks/useCandidateStrip";
 import { manufactureLiteralTile, manufactureVariableTile } from "./hooks/useTileSelection";
@@ -588,6 +594,113 @@ describe("decideCandidateCommit", () => {
     for (const key of ["enter", "space"] as const) {
       assert.equal(decideCandidateCommit([], "zzz", key, foldText), undefined);
     }
+  });
+});
+
+describe("leadStripCandidate", () => {
+  const visible = [
+    candidate(notTileId, "not"),
+    candidate(negTileId, "negate"),
+    candidate(numberVarFactoryId, "number"),
+  ];
+
+  test("an offering nothing narrows leads with its first candidate", () => {
+    assert.equal(leadStripCandidate(visible, "")?.label, "not");
+    assert.equal(leadStripCandidate(visible, "   ")?.label, "not");
+  });
+
+  test("the lead is the candidate Enter places once text narrows the offering", () => {
+    const narrowed = filterStripCandidates(visible, "neg", foldText);
+    assert.equal(
+      leadStripCandidate(narrowed, "neg")?.key,
+      decideCandidateCommit(narrowed, "neg", "enter", foldText)?.key
+    );
+    assert.equal(leadStripCandidate(narrowed, "neg")?.label, "negate");
+  });
+
+  test("an empty offering leads with nothing", () => {
+    assert.equal(leadStripCandidate([], ""), undefined);
+    assert.equal(leadStripCandidate([], "zzz"), undefined);
+  });
+
+  test("a minted variable leads only where the text names a variable outright", () => {
+    const { candidates } = offeringForEmptyWhenSide();
+    const mints = mintVariableCandidates(candidates, "speedy", stripLabel);
+    assert.ok(mints.length > 0);
+
+    assert.equal(
+      leadStripCandidate(mints, "speedy"),
+      undefined,
+      "a typed word that matches nothing leads with nothing"
+    );
+    assert.equal(leadStripCandidate(mints, "$speedy")?.key, mints[0].key);
+  });
+
+  test("an existing variable leads ahead of the mint sharing its name's prefix", () => {
+    const { candidates } = offeringWithNumberVariables("speedy");
+    const offering = resolveStripOffering(candidates, "$speed", stripLabel, foldText);
+
+    const lead = leadStripCandidate(offering.visible, "$speed");
+
+    assert.equal(lead?.key, offering.visible[0].key);
+    assert.equal(lead?.origin.kind, "suggested", "the variable already offered leads, not the mint behind it");
+  });
+});
+
+describe("highlightedStripOption", () => {
+  const entries = toCandidateEntries([candidate(notTileId, "not"), candidate(negTileId, "negate")]);
+  const options = visibleStripOptions("strip", [{ key: kBestNextBandKey, entries }]);
+
+  test("a cursor standing nowhere highlights the chip carrying the lead candidate", () => {
+    assert.equal(
+      highlightedStripOption(options, undefined, entries[1].candidate.key)?.optionId,
+      stripOptionId("strip", kBestNextBandKey, entries[1].candidate.key)
+    );
+  });
+
+  test("a cursor standing on a chip highlights that chip, whatever the lead candidate is", () => {
+    const second = stripOptionId("strip", kBestNextBandKey, entries[1].candidate.key);
+    assert.equal(
+      highlightedStripOption(options, { kind: "chip", optionId: second }, entries[0].candidate.key)?.optionId,
+      second
+    );
+  });
+
+  test("a cursor standing on a heading highlights no chip", () => {
+    assert.equal(
+      highlightedStripOption(options, { kind: "heading", sectionKey: "sensor" }, entries[0].candidate.key),
+      undefined
+    );
+  });
+
+  test("a lead candidate no rendered chip carries highlights nothing", () => {
+    assert.equal(highlightedStripOption(options, undefined, "absent"), undefined);
+    assert.equal(highlightedStripOption(options, undefined, undefined), undefined);
+    assert.equal(highlightedStripOption([], undefined, entries[0].candidate.key), undefined);
+  });
+});
+
+describe("leadStripCursor", () => {
+  const entries = toCandidateEntries([candidate(notTileId, "not"), candidate(negTileId, "negate")]);
+  const options = visibleStripOptions("strip", [{ key: kBestNextBandKey, entries }]);
+
+  test("the lead candidate's chip is the cell the highlight rests on", () => {
+    assert.deepEqual(leadStripCursor(options, entries[1].candidate.key), {
+      kind: "chip",
+      optionId: stripOptionId("strip", kBestNextBandKey, entries[1].candidate.key),
+    });
+  });
+
+  test("a lead candidate no rendered chip carries rests on no cell", () => {
+    assert.equal(leadStripCursor(options, "absent"), undefined);
+    assert.equal(leadStripCursor(options, undefined), undefined);
+    assert.equal(leadStripCursor([], entries[0].candidate.key), undefined);
+  });
+
+  test("the cell it names is the one the cursor stands on once it is stepped to", () => {
+    const lead = leadStripCursor(options, entries[0].candidate.key);
+    assert.ok(lead);
+    assert.deepEqual(highlightedStripOption(options, lead, undefined)?.candidateKey, entries[0].candidate.key);
   });
 });
 

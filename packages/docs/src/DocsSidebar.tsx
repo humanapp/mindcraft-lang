@@ -4,6 +4,7 @@ import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Printer, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { AcceleratorHelp, kAcceleratorHelpConceptId } from "./AcceleratorHelp";
 import { DocMarkdown } from "./DocMarkdown";
 import { DocsEntryLink } from "./DocsEntryLink";
 import { DocsPrintView } from "./DocsPrintView";
@@ -502,6 +503,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         >
           <DocMarkdown>{detailContent}</DocMarkdown>
           {navTab === "tiles" && <DocsTileArgsSection tileId={navKey} />}
+          {navTab === "concepts" && navKey === kAcceleratorHelpConceptId && <AcceleratorHelp />}
         </article>
       </>
     );

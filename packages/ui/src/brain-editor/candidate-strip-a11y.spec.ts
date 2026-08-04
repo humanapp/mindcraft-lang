@@ -705,9 +705,29 @@ describe("BrainCandidateStrip combobox wiring", () => {
     assert.equal(attributeOf(tagsWithRole(markup, "combobox")[0], "aria-expanded"), "false");
   });
 
-  test("no chip is highlighted before an arrow key moves the highlight", () => {
+  test("the offering's leading chip is highlighted before any arrow key moves the highlight", () => {
     const markup = render(offering);
+    assert.equal(
+      attributeOf(tagsWithRole(markup, "combobox")[0], "aria-activedescendant"),
+      stripOptionId(kStripId, kBestNextBandKey, bestNext[0].candidate.key)
+    );
+  });
+
+  test("an offering holding no chip a commit key may place highlights nothing", () => {
+    const mints = mintVariableCandidates([candidate(numberVarFactoryId)], "speedy", () => "speedy");
+    assert.ok(mints.length > 0);
+    const markup = render(stripState({ filter: "speedy", isUnknown: true, bestNext: toCandidateEntries(mints) }));
     assert.equal(attributeOf(tagsWithRole(markup, "combobox")[0], "aria-activedescendant"), undefined);
+  });
+
+  test("text naming a variable outright highlights the chip that mints it", () => {
+    const mints = mintVariableCandidates([candidate(numberVarFactoryId)], "speedy", () => "speedy");
+    assert.ok(mints.length > 0);
+    const markup = render(stripState({ filter: "$speedy", bestNext: toCandidateEntries(mints) }));
+    assert.equal(
+      attributeOf(tagsWithRole(markup, "combobox")[0], "aria-activedescendant"),
+      stripOptionId(kStripId, kBestNextBandKey, mints[0].key)
+    );
   });
 
   test("the id an arrow key would highlight is the id of a rendered option", () => {
@@ -719,16 +739,17 @@ describe("BrainCandidateStrip combobox wiring", () => {
     assert.ok(optionIds.includes(first.optionId));
   });
 
-  test("every chip is an option carrying a unique id and a selection state", () => {
+  test("every chip is an option carrying a unique id and a selection state, one of them selected", () => {
     const markup = render(offering);
     const options = tagsWithRole(markup, "option");
     assert.equal(options.length, bestNext.length);
     const optionIds = options.map((tag) => attributeOf(tag, "id"));
     assert.equal(new Set(optionIds).size, optionIds.length);
-    for (const tag of options) {
-      assert.equal(attributeOf(tag, "aria-selected"), "false");
-      assert.equal(attributeOf(tag, "tabindex"), "-1");
-    }
+    assert.deepEqual(
+      options.map((tag) => attributeOf(tag, "aria-selected")),
+      ["true", ...options.slice(1).map(() => "false")]
+    );
+    for (const tag of options) assert.equal(attributeOf(tag, "tabindex"), "-1");
   });
 
   test("chips sit inside a listbox", () => {
@@ -1027,7 +1048,10 @@ describe("BrainCandidateStrip accordion headings", () => {
 
   test("no heading presents as current before the cursor reaches it", () => {
     const markup = render(offering);
-    assert.deepEqual(attributeValues(markup, "aria-activedescendant"), []);
+    const headingIds = offering.sections.map((built) => stripSectionHeadingId(kStripId, built.key));
+    for (const value of attributeValues(markup, "aria-activedescendant")) {
+      assert.ok(!headingIds.includes(value), `the highlight rests on a heading: ${value}`);
+    }
   });
 });
 

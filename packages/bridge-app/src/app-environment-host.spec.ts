@@ -1349,11 +1349,11 @@ describe("AppEnvironmentHost brain cache reconciliation", () => {
   });
 });
 
-describe("AppEnvironmentHost unreadable brain record", () => {
+describe("AppEnvironmentHost unreadable stored records", () => {
   /**
    * Project-manager stub backed by `appData` whose reads reject while
    * `readState.fails` is set, standing in for a store that cannot serve the
-   * stored brains.
+   * project's stored records.
    */
   function stubProjectManagerWithFailingReads(
     appData: Map<string, string>,
@@ -1401,7 +1401,7 @@ describe("AppEnvironmentHost unreadable brain record", () => {
 
     try {
       await host.initialize(PROJECT_ID);
-      assert.equal(host.brainRecordFailure, undefined);
+      assert.equal(host.projectRecordFailure, undefined);
       assert.equal(appData.has("brains"), false, "an absent record is not written on load");
       assert.equal(await host.loadBrainFromProject("herbivore"), undefined);
 
@@ -1447,7 +1447,7 @@ describe("AppEnvironmentHost unreadable brain record", () => {
 
     try {
       await host.initialize(PROJECT_ID);
-      assert.equal(host.brainRecordFailure?.code, AppHostErrorCode.BRAIN_RECORD_UNREADABLE);
+      assert.equal(host.projectRecordFailure?.code, AppHostErrorCode.BRAIN_RECORD_UNREADABLE);
       assert.deepStrictEqual([...host.getCachedBrainKeys()], []);
       await assert.rejects(
         () => host.saveBrainForKey("herbivore", BrainDef.emptyBrainDef(host.env.brainServices, "default")),
@@ -1456,6 +1456,65 @@ describe("AppEnvironmentHost unreadable brain record", () => {
       assert.equal(appData.get("brains"), '{"herbivore": {', "the unparseable record is left in place");
     } finally {
       host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("a store that serves no record at all loads, reports the extension record, writes nothing, and recovers", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const appData = new Map<string, string>();
+    const readState = { fails: false };
+
+    // A readable store authors the project's records.
+    const authoring = createHost(stubProjectManagerWithFailingReads(appData, readState));
+    try {
+      await authoring.initialize(PROJECT_ID);
+      await authoring.saveBrainForKey("herbivore", BrainDef.emptyBrainDef(authoring.env.brainServices, "authored"));
+    } finally {
+      authoring.dispose();
+    }
+    const authored = [...appData.entries()];
+
+    readState.fails = true;
+    const failing = createHost(stubProjectManagerWithFailingReads(appData, readState));
+    try {
+      // The load completes: the app shell has a host to render against.
+      await failing.initialize(PROJECT_ID);
+      assert.equal(failing.projectRecordFailure?.code, AppHostErrorCode.EXTENSION_RECORD_UNREADABLE);
+
+      // With the installed-library closure unknown, the brains are withheld
+      // whole and every brain write refuses.
+      assert.deepStrictEqual([...failing.getCachedBrainKeys()], []);
+      await assert.rejects(
+        () => failing.saveBrainForKey("herbivore", BrainDef.emptyBrainDef(failing.env.brainServices, "default")),
+        isUnreadable
+      );
+
+      // An install transaction refuses with the read failure's stable code.
+      const report = await failing.updateProjectExtensions({ "acme/beam": "gh:acme/beam@v1.0.0" });
+      assert.equal(report.committed, false);
+      assert.ok(
+        !report.committed &&
+          report.refusal.kind === "store" &&
+          report.refusal.code === AppHostErrorCode.EXTENSION_RECORD_UNREADABLE
+      );
+
+      assert.deepStrictEqual([...appData.entries()], authored, "no record is written while the store cannot be read");
+    } finally {
+      failing.dispose();
+    }
+
+    // The next load of the same project, with the store readable again, is a
+    // normal start.
+    readState.fails = false;
+    const served = createHost(stubProjectManagerWithFailingReads(appData, readState));
+    try {
+      await served.initialize(PROJECT_ID);
+      assert.equal(served.projectRecordFailure, undefined);
+      assert.deepStrictEqual([...served.getCachedBrainKeys()], ["herbivore"]);
+      assert.equal(served.getCachedBrain("herbivore")?.name(), "authored");
+    } finally {
+      served.dispose();
       restoreLocalStorage();
     }
   });

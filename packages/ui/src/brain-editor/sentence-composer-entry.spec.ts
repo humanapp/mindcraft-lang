@@ -168,8 +168,10 @@ function tileTarget(
 function renderRuleCard(ruleDef: BrainRuleDef, options: { depth?: number; target?: ArmedTileTarget } = {}): string {
   const controller: ArmedTargetController = {
     target: options.target ?? null,
+    mode: null,
     arm: () => {},
     disarm: () => {},
+    reportMode: () => {},
   };
   return renderToStaticMarkup(
     createElement(

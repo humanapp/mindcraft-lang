@@ -182,6 +182,22 @@ This matters more than it looks: **focus moving to the body fires `focusout` but
 `focusin`**, so any mechanism listening for `focusin` to reclaim a stranded keyboard --
 the brain editor's included -- is blind to that landing and cannot recover from it.
 
+Two further facts make `onCloseAutoFocus` harder to write than it looks:
+
+- **It also fires when the `modal` prop changes.** Radix picks a different content
+  component per mode, so flipping `modal` unmounts one focus scope and mounts another
+  while the dialog stays open, and the unmounted scope runs a full close pass. The brain
+  editor flips `modal` whenever the documentation panel opens. A close pass must tell the
+  two apart before it acts; the editor marks its content with `data-brain-editor-content`
+  and reads whether a replacement is already standing. `isOpen` does NOT answer this: the
+  pass runs from a `setTimeout(0)`, and a host that stops rendering the dialog on close
+  never re-runs the effect that would have recorded the new value.
+- **Restoring to the recorded opener needs a fallback that cannot be unmounted.** Checking
+  `isConnected` and returning is what drops the keyboard on the body, because the
+  restoration Radix then runs targets a null `triggerRef`. `brain-editor/editor-return-focus.ts`
+  records the opener plus its ancestors, hands the keyboard to the nearest one still
+  connected, and falls through to the document's `main` landmark.
+
 **Portaled content cannot be server-rendered, so it cannot be asserted in a spec.**
 `packages/ui` has no jsdom and specs render through `react-dom/server` only. Radix's
 `Portal` renders `null` until a client layout effect gives it `document.body` as a

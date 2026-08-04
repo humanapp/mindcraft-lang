@@ -13,6 +13,12 @@ interface CreateLiteralDialogProps {
   title: string;
   literalType: string;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Called as the dialog closes, before the keyboard is handed back to the
+   * element that held it when the dialog opened. Calling `preventDefault` on the
+   * event leaves that hand-back to the caller.
+   */
+  onCloseAutoFocus?: (event: Event) => void;
   onSubmit: (value: unknown, displayFormat?: LiteralDisplayFormat) => void;
 }
 
@@ -23,7 +29,14 @@ interface CreateLiteralDialogProps {
  * {@link kStripPopupAttribute}, so the keyboard landing in it counts as staying
  * in the candidate strip the literal was minted from.
  */
-export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, onSubmit }: CreateLiteralDialogProps) {
+export function CreateLiteralDialog({
+  isOpen,
+  title,
+  literalType,
+  onOpenChange,
+  onCloseAutoFocus,
+  onSubmit,
+}: CreateLiteralDialogProps) {
   const { customLiteralTypes } = useBrainEditorConfig();
   const [stringValue, setStringValue] = useState("");
   const [numberValue, setNumberValue] = useState("");
@@ -155,6 +168,7 @@ export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, 
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent
         className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl"
+        onCloseAutoFocus={onCloseAutoFocus}
         {...{ [kStripPopupAttribute]: "" }}
       >
         <DialogHeader className="border-b border-border pb-4">

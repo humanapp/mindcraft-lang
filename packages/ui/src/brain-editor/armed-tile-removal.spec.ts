@@ -44,7 +44,13 @@ function makeBrain(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrain
 }
 
 function renderRuleCard(ruleDef: BrainRuleDef, target: ArmedTileTarget | null): string {
-  const controller: ArmedTargetController = { target, arm: () => {}, disarm: () => {} };
+  const controller: ArmedTargetController = {
+    target,
+    arm: () => {},
+    disarm: () => {},
+    mode: null,
+    reportMode: () => {},
+  };
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,

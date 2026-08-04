@@ -3,7 +3,17 @@ import { tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import type { Localizer } from "@mindcraft-lang/core/localization";
-import { ChevronDown, Plus, Search, Trash2, X } from "lucide-react";
+import {
+  ArrowLeftFromLine,
+  ArrowRightFromLine,
+  ChevronDown,
+  type LucideIcon,
+  Plus,
+  Replace,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   type FocusEvent,
   type KeyboardEvent,
@@ -23,10 +33,12 @@ import type { ArmedTileTarget } from "./ArmedTargetContext";
 import { resolveTypeDisplayName } from "./action-arg-tiles";
 import { useBrainEditorConfig, useLocalizer } from "./BrainEditorContext";
 import {
-  activeStripOption,
   type CandidateEntry,
   decideStripFocusTarget,
+  highlightedStripOption,
   kBestNextBandKey,
+  leadStripCandidate,
+  leadStripCursor,
   type StripCandidate,
   type StripCellGeometry,
   type StripCursor,
@@ -53,9 +65,10 @@ import {
   reduceComposerInput,
 } from "./composer-input-model";
 import { type EditPointPosition, kEditPointPositions } from "./edit-point";
-import { kOfferingLayer } from "./editor-layers";
+import { deriveEditorMode, type EditorMode } from "./editor-mode";
+import { decideHistoryShortcut } from "./history-shortcut";
 import type { CandidateStripSection, CandidateStripState } from "./hooks/useCandidateStrip";
-import { kPageGridCellAttribute } from "./page-grid-model";
+import { kPageGridCellAttribute, pageGridCellKey, type RuleMoveDirection } from "./page-grid-model";
 import { kSentenceTypeClasses } from "./sentence-type";
 import { tileSourceNamespace } from "./tile-library-groups";
 import { kDefaultTileHue, resolveTileVisual, tileBorderColor } from "./tile-visual-utils";
@@ -113,19 +126,26 @@ const browsedBandClasses =
 const kCornerReserveClass = "pr-11";
 
 /**
- * The panel's position row, fixed at the height of the tallest control it can
- * hold and kept at that height whichever controls the armed position shows.
+ * The panel's position row, at least as tall as the tallest control it can hold
+ * and kept at that height whichever controls the armed position shows.
  */
-const kPositionRowClasses = "flex h-12 shrink-0 items-center";
+const kPositionRowClasses = "flex min-h-12 shrink-0 items-center gap-x-2 gap-y-1";
 
 /**
- * The caret's place, read as the row's standing text. It takes whatever width
- * the row has left over from the controls, never narrowing past its own
- * minimum, and clips what will not fit, so a longer place name moves nothing
- * standing after it.
+ * Added to the position row while it stands the armed position's controls: below
+ * `sm` the row wraps, standing the caret's place on the line above them, and
+ * from `sm` up it holds them all on one line.
+ */
+const kPositionRowWrapClasses = "flex-wrap sm:flex-nowrap";
+
+/**
+ * The caret's place, read as the row's standing text. It asks for a whole line,
+ * which a wrapping row gives it and a row holding one line trims back to what
+ * the controls leave, never narrowing past its own minimum. It clips what will
+ * not fit, so a longer place name moves nothing standing after it.
  */
 const kPositionNameClasses =
-  "min-w-20 flex-1 truncate text-xs font-semibold uppercase tracking-wider text-brain-ink/45";
+  "min-w-20 grow basis-full truncate text-xs font-semibold uppercase tracking-wider text-brain-ink/45 sm:basis-0";
 
 /**
  * Context tag the offering's own prose is looked up under, which reads the
@@ -156,12 +176,21 @@ function revealBehavior(): ScrollBehavior {
 }
 
 /**
- * Scroll the rule card `strip` is rendered inside back into view, moving each
- * scrollport as little as the card allows. A card taller than its scrollport
- * settles with its tile row at the scrollport's top edge.
+ * Scroll the armed position back into view, moving each scrollport as little as
+ * it allows, and settle the offering panel `strip` under it. The armed position
+ * is the control the page-grid cell `cellKey` names inside the card of rule
+ * `ruleId`; a card standing no such control settles on the card instead. A
+ * `cellKey` or `ruleId` of undefined arms nothing and moves nothing, as does a
+ * `ruleId` the document no longer holds a card for.
  */
-function revealArmedRuleCard(strip: HTMLElement | null): void {
-  strip?.closest("[data-rule-id]")?.scrollIntoView({ block: "nearest", behavior: revealBehavior() });
+function revealArmedPosition(strip: HTMLElement | null, ruleId: number | undefined, cellKey: string | undefined): void {
+  if (strip === null || cellKey === undefined || ruleId === undefined) return;
+  const card = document.querySelector(`[data-rule-id="${ruleId}"]`);
+  if (card === null) return;
+  const behavior = revealBehavior();
+  strip.scrollIntoView({ block: "nearest", inline: "nearest", behavior });
+  const armed = card.querySelector(`[${kPageGridCellAttribute}="${cellKey}"]`);
+  (armed ?? card).scrollIntoView({ block: "nearest", inline: "nearest", behavior });
 }
 
 /**
@@ -387,11 +416,6 @@ export interface StripComposerBinding {
   undoOwnLastCommit(): void;
   /** Put an empty rule after the composed rule and carry composing on in it. */
   insertRuleAfter(): void;
-  /**
-   * Key of the page-grid cell the keyboard returns to once composition on the
-   * rule ends. Called on every render of the composed rule.
-   */
-  exitCellKey(): string;
 }
 
 /**
@@ -409,6 +433,20 @@ export interface StripRuleBinding {
   placeCaret(position: CaretPosition): void;
   /** Remove the tile the element `position` stands at. */
   deleteTile(position: CaretPosition): void;
+  /**
+   * Take the armed rule one step in `direction`, leaving it where it stands when
+   * the page refuses that step. The arming, the caret, and the word in progress
+   * are untouched.
+   */
+  moveRule(direction: RuleMoveDirection): void;
+  /**
+   * Key of the page-grid cell the keyboard returns to once the arming ends: the
+   * cell the caret came to rest at for a composed rule, and the cell the page's
+   * selection rests on for every other arming, which after a removal is the cell
+   * standing in the place the removed tile vacated. Called on every render of
+   * the armed rule.
+   */
+  exitCellKey(): string;
 }
 
 /**
@@ -418,6 +456,24 @@ export interface StripRuleBinding {
 function armedElement(target: ArmedTileTarget | null): CaretPosition | undefined {
   if (target === null || target.mode !== "replace" || target.tileIndex === undefined) return undefined;
   return { kind: "element", side: target.side, tileIndex: target.tileIndex };
+}
+
+/**
+ * Key of the page-grid cell standing at the position the armed `target`
+ * addresses: the tile a position resting on or before a tile stands at, and the
+ * side's add-tile control for a position past that side's last tile. Undefined
+ * while nothing is armed.
+ */
+function armedCaretCellKey(target: ArmedTileTarget | null): string | undefined {
+  const position = armedCaretPosition(target);
+  if (target === null || position === undefined) return undefined;
+  const ruleId = target.ruleDef.id();
+  const tileCount = target.ruleDef.side(position.side).tiles().size();
+  return pageGridCellKey(
+    position.tileIndex < tileCount
+      ? { kind: "tile", ruleId, side: position.side, tileIndex: position.tileIndex }
+      : { kind: "append", ruleId, side: position.side }
+  );
 }
 
 /**
@@ -474,11 +530,26 @@ export interface StripEditPointBinding {
   readonly menu: ReactNode;
 }
 
-/** How each pivot position reads in the strip's header. */
+/**
+ * How each pivot position reads: the word the strip's header stands where it
+ * fits, and the control's accessible name wherever the header shows a glyph in
+ * the word's place.
+ */
 const editPointPivotLabels: Record<EditPointPosition, string> = {
   before: "insert before",
   replace: "replace",
   after: "insert after",
+};
+
+/**
+ * The glyph each pivot position carries in the narrow header, drawn relative to
+ * the tile the edit point stands on: an arrow leaving that tile to the side the
+ * new tile lands on, and the replacement mark for taking its place.
+ */
+const editPointPivotIcons: Record<EditPointPosition, LucideIcon> = {
+  before: ArrowLeftFromLine,
+  replace: Replace,
+  after: ArrowRightFromLine,
 };
 
 /** What {@link useCandidateStripSurface} builds its surface from. */
@@ -517,6 +588,11 @@ export interface CandidateStripSurface {
   readonly landingCount: number;
   /** The offering panel, or null while the offering is closed. */
   readonly panel: ReactNode;
+  /**
+   * The context this arming stands the keyboard in. Undefined while nothing is
+   * armed, which is the page's mode to report.
+   */
+  readonly mode: EditorMode | undefined;
 }
 
 /**
@@ -556,19 +632,24 @@ export interface CandidateStripSurface {
  *
  * In the tray the panel opens on its chips: the filter box holds the keyboard
  * but is not shown until the position row's search control shows it, or until
- * something is typed into it, which shows it in narrowing the offering. The
- * box a rule's sentence hosts is always inline at the caret and is not this.
+ * something is typed into it, which shows it in narrowing the offering.
  *
  * The filter box is an ARIA combobox over the rendered chips: the arrow keys
  * walk one cursor across the offering, Enter commits the chip it stands on, and
- * Escape clears typed text before closing the strip. The offering is one grid of
+ * Escape clears typed text before closing the strip. Before any arrow key the
+ * highlight rests on the first chip a commit key may place, which is the
+ * offering's leading chip while nothing is typed and the best match once text
+ * narrows it, so what Enter places is always the chip drawn as selected. The
+ * offering is one grid of
  * rows -- the chips as they wrap, and a group heading between one section and
  * the next. Up and down step between those rows, taking the cell nearest the
  * cursor's own center, and neither end wraps: up from the first row leaves the
  * offering for the sentence, flashing the caret's place there, and down from the
  * last stands where it is. Left and
  * right step along the chips once the cursor stands on one, stopping at the last
- * chip and at the first, and belong to the caret until then. On a group heading
+ * chip and at the first. Until then they belong to the caret, save in the tray,
+ * which stands at none: there they step from the chip already highlighted, so
+ * one press moves that highlight along its row. On a group heading
  * they open and close that group instead: right opens it, left closes it, and a
  * closed group draws no chip, so the row below its heading is the next heading.
  *
@@ -594,8 +675,9 @@ export interface CandidateStripSurface {
  * nothing, the comma does nothing. A period places the word in progress the same
  * way and then ends composition on the rule, from any point the armed side may
  * end at, closing the strip and leaving the sentence to read itself; it places
- * no tile of its own, and Enter with nothing to place ends composition on those
- * same terms. Backspace with no word in progress takes back the comma, and then
+ * no tile of its own, and Enter ends composition on those same terms wherever
+ * the offering leaves no chip highlighted for it to place. Backspace with no
+ * word in progress takes back the comma, and then
  * deletes the tile the caret rests on or stands behind, as Delete deletes the
  * one it stands in front of.
  */
@@ -611,6 +693,7 @@ export function useCandidateStripSurface({
   const side = target?.side ?? RuleSide.When;
   const armedRule = target?.ruleDef;
   const armedTile = armedElement(target);
+  const armedCellKey = armedCaretCellKey(target);
   const editorConfig = useBrainEditorConfig();
   const localizer = useLocalizer();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -664,6 +747,16 @@ export function useCandidateStripSurface({
   const reaskRef = useRef<ComposerInputToken | undefined>(undefined);
   const isFiltering = state.filter.trim().length > 0;
   const offeringOpen = state.offeringOpen;
+  // The context the keyboard stands in while this strip is armed.
+  const armingMode: EditorMode = deriveEditorMode({
+    arming: {
+      entry: composer ? "sentence" : "tray",
+      boxIsShown: composer !== undefined || trayFilterOpen,
+      textLiteralIsOpen: openTextLiteral !== undefined,
+    },
+  });
+  // The mode this surface reports, undefined while nothing is armed.
+  const mode: EditorMode | undefined = target === null ? undefined : armingMode;
 
   // A text value in progress is the whole offering: the one chip that places it.
   const pendingTextCandidate = useMemo(
@@ -688,9 +781,9 @@ export function useCandidateStripSurface({
     return () => cancelAnimationFrame(frame);
   }, [target]);
 
-  // Every arming opens with its filter box closed. Moving between positions
-  // within one arming leaves the box as the user left it, so a placement that
-  // arms the next position does not close a box being typed in.
+  // The tray's filter box stands closed as each arming begins, and keeps
+  // whatever state the user left it in for as long as that arming lasts,
+  // however many positions it moves between.
   useEffect(() => {
     if (target === null) setTrayFilterOpen(false);
   }, [target]);
@@ -701,11 +794,11 @@ export function useCandidateStripSurface({
     inputRef.current?.focus({ preventScroll: true });
   };
 
-  // The cell composition returns the keyboard to, as of the last render of the
-  // composed rule.
+  // The cell the arming returns the keyboard to, as of the last render of the
+  // armed rule.
   const exitCellKeyRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    exitCellKeyRef.current = composer?.exitCellKey();
+    exitCellKeyRef.current = rule?.exitCellKey();
   });
 
   // The element a press has already picked out to take the keyboard, as named by
@@ -716,12 +809,14 @@ export function useCandidateStripSurface({
   // The keyboard comes back when the strip closes while nothing else holds it.
   // A keyboard some other element already holds -- the one Tab moved on to,
   // another rule's arming control -- is left where it is, and a press that has
-  // already picked a cell of the page's selection grid out takes it there. A
-  // composed rule otherwise takes it to the cell its caret came to rest at;
-  // every other arming takes it to the control read as the rule became armed. A
-  // control the placement took away -- the add-tile button of a side nothing may
-  // follow any more -- hands the keyboard to its rule's handle, which every rule
-  // stands.
+  // already picked a cell of the page's selection grid out takes it there. The
+  // arming otherwise takes it to its own exit cell: the cell a composed rule's
+  // caret came to rest at, and the cell the page's selection rests on for every
+  // other arming, which after a removal is the place the tile vacated. A cell
+  // the page no longer stands leaves it to the control read as the rule became
+  // armed, and a control the placement took away -- the add-tile button of a
+  // side nothing may follow any more -- hands the keyboard to its rule's handle,
+  // which every rule stands.
   const isArmed = target !== null;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the armed rule is read once, as the strip becomes armed
   useEffect(() => {
@@ -754,19 +849,19 @@ export function useCandidateStripSurface({
   }, [isArmed]);
 
   // The offering appearing brings the filter box into view, which the panel can
-  // open below the fold of. Its appearance is the whole trigger: while the
-  // offering stands open, typing, the caret moving, and the panel changing
-  // height as candidates are filtered all leave the view where the user left it.
+  // open below the fold of. Its appearance is the whole trigger: nothing the box
+  // goes on to show -- text typed into it, the caret moving, the panel changing
+  // height as candidates are filtered -- brings the box into view again.
   useEffect(() => {
     if (!offeringOpen) return;
     revealFilterInput(inputRef.current);
   }, [offeringOpen]);
 
-  // Every placement lays the rule out again, after which its card is brought
-  // back into view.
+  // Every placement lays the rule out again, after which the position now armed
+  // is brought back into view.
   // biome-ignore lint/correctness/useExhaustiveDependencies: commitTick is an intentional trigger signal
   useEffect(() => {
-    const frame = requestAnimationFrame(() => revealArmedRuleCard(containerRef.current));
+    const frame = requestAnimationFrame(() => revealArmedPosition(containerRef.current, armedRule?.id(), armedCellKey));
     return () => cancelAnimationFrame(frame);
   }, [commitTick]);
 
@@ -794,7 +889,15 @@ export function useCandidateStripSurface({
   );
 
   const options = useMemo(() => visibleStripOptions(stripId, bands), [stripId, bands]);
-  const activeOption = cursor?.kind === "chip" ? activeStripOption(options, cursor.optionId) : undefined;
+  const leadCandidateKey = useMemo(
+    () =>
+      leadStripCandidate(
+        shownBestNext.map((entry) => entry.candidate),
+        state.filter
+      )?.key,
+    [shownBestNext, state.filter]
+  );
+  const activeOption = highlightedStripOption(options, cursor, leadCandidateKey);
   const candidatesByKey = useMemo(() => {
     const map = new Map<string, StripCandidate>();
     for (const band of bands) {
@@ -810,6 +913,8 @@ export function useCandidateStripSurface({
     [openTextLiteral, shownSections, pendingTextEntries]
   );
 
+  // The chip the highlight rests on is brought into view, moving the rules list
+  // as little as it allows. A chip already fully visible moves nothing.
   useEffect(() => {
     if (!activeOption) return;
     document.getElementById(activeOption.optionId)?.scrollIntoView({ block: "nearest" });
@@ -822,7 +927,10 @@ export function useCandidateStripSurface({
 
   // Browsing keeps focus on the cell being walked, which an accordion header
   // renders only on the render after its arrow key. A band that stops rendering
-  // the highlighted chip hands the keyboard back to the filter box.
+  // the highlighted chip hands the keyboard back to the filter box. A band
+  // listbox takes the keyboard without moving the view, the chip highlighted
+  // inside it being what the step reveals; a heading, which is itself the cell
+  // being walked, is revealed as it takes the keyboard.
   useEffect(() => {
     const cellId = stripFocusTargetId(stripId, focusTarget);
     if (cellId === undefined) {
@@ -832,7 +940,7 @@ export function useCandidateStripSurface({
       return;
     }
     const cell = document.getElementById(cellId);
-    if (cell && document.activeElement !== cell) cell.focus();
+    if (cell && document.activeElement !== cell) cell.focus({ preventScroll: focusTarget.kind === "band" });
   }, [focusTarget, highlightMode, stripId]);
 
   // The filter text and the commit tick drive the announcement even when the
@@ -892,6 +1000,7 @@ export function useCandidateStripSurface({
   // Every fact is read on demand: a token that asks nothing of the document
   // reads nothing of it.
   const composerFacts = (): ComposerInputFacts => ({
+    mode: armingMode,
     get caretRun() {
       return armedRule === undefined ? noCaretRun : caretRun(armedRule);
     },
@@ -921,6 +1030,9 @@ export function useCandidateStripSurface({
     },
     get highlightedCandidate() {
       return activeOption ? candidatesByKey.get(activeOption.candidateKey) : undefined;
+    },
+    get leadCursor() {
+      return leadStripCursor(options, leadCandidateKey);
     },
     acceptsTextLiteral: state.acceptsTextLiteral,
     pendingTextLiteral: pendingTextCandidate,
@@ -996,6 +1108,9 @@ export function useCandidateStripSurface({
         case "insert-rule":
           composer?.insertRuleAfter();
           break;
+        case "move-rule":
+          rule?.moveRule(effect.direction);
+          break;
       }
     }
     return consumesKey(effects);
@@ -1046,9 +1161,14 @@ export function useCandidateStripSurface({
   // the Delete that removes the tile the position was opened on -- is taken
   // first; every other press reads as it does anywhere in the box.
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    const withCommand = event.metaKey || event.ctrlKey;
+    // A press the mode reads as a history step is left to rise; every other
+    // press is served here.
+    const press = { key: event.key, withCommand, withShift: event.shiftKey };
+    if (mode !== undefined && decideHistoryShortcut(mode, press) !== undefined) return;
     event.stopPropagation();
-    const trayToken = composer === undefined ? composerTrayToken(event.key, armedTile, trayFilterOpen) : undefined;
-    dispatchInput(trayToken ?? composerTokenForKey(event.key, "filter", event.metaKey || event.ctrlKey), event);
+    const trayToken = mode === undefined ? undefined : composerTrayToken(event.key, mode, armedTile);
+    dispatchInput(trayToken ?? composerTokenForKey(event.key, "filter", withCommand), event);
   };
 
   /**
@@ -1260,65 +1380,73 @@ export function useCandidateStripSurface({
         )
       : undefined;
 
+  // The panel fills whatever box it is rendered into, which is what stands it
+  // across the rules list and under the armed rule.
   const panel = offeringOpen ? (
     <section
       ref={containerRef}
       id={stripId}
       {...{ [kStripPanelAttribute]: "" }}
       style={stripPanelStyle}
-      className={`absolute top-full left-0 ${kOfferingLayer} mt-2 flex w-[min(40rem,calc(100vw-5rem))] min-w-72 flex-col gap-3 rounded-xl p-3`}
+      className="relative mt-2 flex flex-col gap-3 rounded-xl p-3"
       aria-label="Tile candidates"
       onMouseDown={handlePanelMouseDown}
       onKeyDown={handlePanelKeyDown}
       onBlur={handleHighlightBlur}
     >
-      <div data-strip-position-row="" className={`${kPositionRowClasses} ${kCornerReserveClass}`}>
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-          <span className={kPositionNameClasses}>{positionName}</span>
-          {editPoint && armedTile && (
-            <button
-              type="button"
-              data-strip-delete=""
-              aria-label={removalName}
-              title={removalName}
-              // The press acts without taking the keyboard from the box being typed in.
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => dispatchInput({ kind: "delete-element", position: armedTile })}
-              className="inline-flex min-h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-destructive/40 bg-destructive/15 text-destructive transition-colors hover:border-destructive hover:bg-destructive/30 hover:text-destructive-foreground"
-            >
-              <Trash2 className="h-5 w-5 shrink-0" aria-hidden="true" />
-            </button>
-          )}
-          {editPoint && (
+      <div
+        data-strip-position-row=""
+        className={`${kPositionRowClasses} ${kCornerReserveClass}${editPoint ? ` ${kPositionRowWrapClasses}` : ""}`}
+      >
+        <span className={kPositionNameClasses}>{positionName}</span>
+        {editPoint && (
+          <div className="flex min-w-0 grow basis-0 items-center gap-2 overflow-x-auto sm:grow-0 sm:basis-auto">
+            {armedTile && (
+              <button
+                type="button"
+                data-strip-delete=""
+                aria-label={removalName}
+                title={removalName}
+                // The press acts without taking the keyboard from the box being typed in.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => dispatchInput({ kind: "delete-element", position: armedTile })}
+                className="inline-flex min-h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-destructive/40 bg-destructive/15 text-destructive transition-colors hover:border-destructive hover:bg-destructive/30 hover:text-destructive-foreground"
+              >
+                <Trash2 className="h-5 w-5 shrink-0" aria-hidden="true" />
+              </button>
+            )}
             <div
               data-edit-point-pivot={editPoint.position}
               className="flex w-fit shrink-0 items-center gap-1 rounded-full border border-brain-ink/10 bg-brain-recess/30 p-1"
             >
               {kEditPointPositions.map((position) => {
                 const isCurrent = position === editPoint.position;
+                const pivotName = editPointPivotLabels[position];
+                const PivotIcon = editPointPivotIcons[position];
                 return (
                   <button
                     key={position}
                     type="button"
                     aria-pressed={isCurrent}
+                    aria-label={pivotName}
                     data-edit-point-position={position}
                     onClick={() => editPoint.arm(position)}
-                    className={`min-h-9 cursor-pointer rounded-full px-3 text-xs font-semibold whitespace-nowrap uppercase tracking-wider transition-colors ${
+                    className={`inline-flex min-h-9 min-w-9 cursor-pointer items-center justify-center rounded-full px-2 text-xs font-semibold whitespace-nowrap uppercase tracking-wider transition-colors sm:px-3 ${
                       isCurrent
                         ? "bg-brain-accent/90 text-brain-on-accent"
                         : "text-brain-ink/60 hover:bg-brain-ink/10 hover:text-brain-ink"
                     }`}
                   >
-                    {editPointPivotLabels[position]}
+                    <PivotIcon className="h-4 w-4 shrink-0 sm:hidden" aria-hidden="true" />
+                    <span className="hidden sm:inline">{pivotName}</span>
                   </button>
                 );
               })}
             </div>
-          )}
-          {editPoint?.menu}
-        </div>
-        {/* Outside the row's scrollport, so the control that shows the filter
-            box stands wherever the position's own contents reach. */}
+            {editPoint.menu}
+          </div>
+        )}
+        {/* The control that shows the tray's filter box. */}
         {composer === undefined && (
           <button
             type="button"
@@ -1330,7 +1458,7 @@ export function useCandidateStripSurface({
             // The press acts without taking the keyboard from the box it shows.
             onMouseDown={(event) => event.preventDefault()}
             onClick={toggleTrayFilter}
-            className={`ml-2 inline-flex min-h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 transition-colors ${
+            className={`inline-flex min-h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 transition-colors ${
               trayFilterOpen
                 ? "border-brain-accent bg-brain-accent/20 text-brain-ink"
                 : "border-brain-ink/15 bg-brain-recess/30 text-brain-ink/70 hover:border-brain-ink/40 hover:text-brain-ink"
@@ -1363,13 +1491,13 @@ export function useCandidateStripSurface({
         Arrow down to start browsing the tiles. Up and down move between rows, group headings included, and stop at the
         top and the bottom; left and right move along a row of tiles. On a group heading, arrow right opens that group
         and arrow left closes it, so arrow down moves on to the next heading while a group is closed and into its tiles
-        once it is open. Enter places the highlighted tile, or the best match for what you have typed when nothing is
-        highlighted, as a space does. Arrow up from the first row leaves the tiles and returns to the sentence, and Tab
-        leaves them altogether, closing them. Start the text with a dollar sign to name a variable, which Enter then
-        places, creating it when no variable has that name. An operator symbol or a bracket ends the word before it and
-        places that word, so a formula such as one plus three needs no spaces in it. Where a text value fits, a double
-        quote starts one and the next double quote places it, as Enter does, with everything between them taken as the
-        text, and nothing typed into it places a tile.
+        once it is open. The first tile is highlighted to begin with, and the highlight follows what you type. Enter
+        places the highlighted tile, as a space does. Arrow up from the first row leaves the tiles and returns to the
+        sentence, and Tab leaves them altogether, closing them. Start the text with a dollar sign to name a variable,
+        which Enter then places, creating it when no variable has that name. An operator symbol or a bracket ends the
+        word before it and places that word, so a formula such as one plus three needs no spaces in it. Where a text
+        value fits, a double quote starts one and the next double quote places it, as Enter does, with everything
+        between them taken as the text, and nothing typed into it places a tile.
         {composer
           ? " Type a comma to end the when side and start typing what to do, and a period when the rule says what you want. With nothing typed, Backspace takes back the comma, and then the word you placed last."
           : ""}
@@ -1404,5 +1532,5 @@ export function useCandidateStripSurface({
     </section>
   ) : null;
 
-  return { composerInput: composer ? filterField : undefined, pending: hasPendingText, landingCount, panel };
+  return { composerInput: composer ? filterField : undefined, pending: hasPendingText, landingCount, panel, mode };
 }

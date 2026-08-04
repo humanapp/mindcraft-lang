@@ -48,7 +48,6 @@ import {
 import type { CaretPosition } from "./caret-run";
 import type { CandidateStripState } from "./hooks/useCandidateStrip";
 import { buildInsertionContext } from "./insertion-context";
-import { pageGridCellKey } from "./page-grid-model";
 import { makeActuator, makeBrain, makeSensor, StripSurface } from "./test-only-rule-fixtures";
 
 let services: BrainServices;
@@ -114,7 +113,13 @@ function insertTarget(
 }
 
 function renderCardWith(config: BrainEditorConfig, ruleDef: BrainRuleDef, target: ArmedTileTarget | null): string {
-  const controller: ArmedTargetController = { target, arm: () => {}, disarm: () => {} };
+  const controller: ArmedTargetController = {
+    target,
+    arm: () => {},
+    disarm: () => {},
+    mode: null,
+    reportMode: () => {},
+  };
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,
@@ -220,7 +225,6 @@ function composerBinding(ruleDef: BrainRuleDef): StripComposerBinding {
     ownNewestPlacement: () => undefined,
     undoOwnLastCommit: () => {},
     insertRuleAfter: () => {},
-    exitCellKey: () => pageGridCellKey({ kind: "sentence", ruleId: ruleDef.id() }),
   };
 }
 
@@ -494,15 +498,15 @@ describe("the sentence line's owner", () => {
 });
 
 describe("the offering panel's place", () => {
-  test("it is laid over the rules below, taking no room in the card's flow", () => {
+  test("it fills the box it is rendered into, and positions what is laid over it", () => {
     const { ruleDef } = makeBrain(services, [makeSensor(services, "panel-place")], []);
     const markup = renderStrip(
       stripState({ bestNext: offeredEntries() }),
       appendTarget(ruleDef, RuleSide.When, "tray")
     );
     const tokens = /<section[^>]*class="([^"]*)"/.exec(markup)?.[1].split(" ") ?? [];
-    assert.ok(tokens.includes("absolute"), "the panel is out of flow");
-    assert.ok(!tokens.includes("relative"), "and not a box the card lays out");
+    assert.ok(tokens.includes("relative"), "the panel is the box its own controls are placed against");
+    assert.ok(!tokens.includes("absolute"), "and takes its place from whatever renders it");
   });
 
   test("the close button stands over the panel, which positions it", () => {

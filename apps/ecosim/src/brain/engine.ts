@@ -174,13 +174,15 @@ export class Engine {
 
   /**
    * Release everything the engine owns: the physics-step listener, blip
-   * sprites, each actor's graphics, timers and brain, and the ECS world.
-   * Idempotent -- later calls do nothing. Runs to completion whether the
-   * owning scene is still live or has already torn down its plugins.
+   * sprites, each actor's graphics, timers and brain, the loaded archetype
+   * brain defs, and the ECS world. Idempotent -- later calls do nothing. Runs
+   * to completion whether the owning scene is still live or has already torn
+   * down its plugins.
    */
   shutdown() {
     if (this._isShutdown) return;
     this._isShutdown = true;
+    this.brains = undefined;
     this.matterWorld?.off("afterupdate", this.onAfterPhysicsUpdate, this);
     this.matterWorld = undefined;
 
@@ -364,6 +366,16 @@ export class Engine {
       actorA.enqueueBump(actorB.actorId);
       actorB.enqueueBump(actorA.actorId);
     }
+  }
+
+  /**
+   * Whether the engine currently holds a brain for every archetype. False
+   * before {@link loadBrains} resolves, when it rejects, and again once
+   * {@link shutdown} has released the engine. While it is false
+   * {@link getBrainDef} returns undefined for every archetype.
+   */
+  get hasLoadedBrains(): boolean {
+    return this.brains !== undefined;
   }
 
   /**

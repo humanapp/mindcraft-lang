@@ -36,7 +36,13 @@ const editorConfig: BrainEditorConfig = {
 
 /** The card rendered inside a page grid holding `pickup`, or holding nothing when it is null. */
 function renderRuleCard(ruleDef: BrainRuleDef, pickup: RulePickup | null): string {
-  const controller: ArmedTargetController = { target: null, arm: () => {}, disarm: () => {} };
+  const controller: ArmedTargetController = {
+    target: null,
+    arm: () => {},
+    disarm: () => {},
+    mode: null,
+    reportMode: () => {},
+  };
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,
@@ -53,6 +59,8 @@ function renderRuleCard(ruleDef: BrainRuleDef, pickup: RulePickup | null): strin
               ruleToCompose: undefined,
               composeRule: () => {},
               grabRule: () => {},
+              moveRule: () => {},
+              offeringRail: null,
             },
           },
           createElement(

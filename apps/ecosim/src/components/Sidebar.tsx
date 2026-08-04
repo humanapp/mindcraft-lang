@@ -104,9 +104,10 @@ export interface SidebarProps {
   onTogglePlay: (playing: boolean) => void;
   onEditBrain: (archetype: Archetype) => void;
   /**
-   * Whether an archetype's brain can be resolved yet. False until the
-   * simulation has finished starting up, and false for good once a brain load
-   * has failed; the brain edit controls stay disabled while it is false.
+   * Whether an archetype's brain can be resolved right now. False until the
+   * simulation has finished starting up, after a brain load has failed, and
+   * while a project switch reloads the brains; the brain edit controls stay
+   * disabled while it is false.
    */
   brainsReady: boolean;
   /**

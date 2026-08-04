@@ -1,10 +1,10 @@
 import { AUTO, Game, Scale } from "phaser";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
 import { Boot } from "./scenes/Boot";
-import { Playground, SCENE_READY_KEY, type SceneStartup } from "./scenes/Playground";
+import { Playground, SCENE_BRAIN_STATE_KEY, type SceneBrainState } from "./scenes/Playground";
 import { Preloader } from "./scenes/Preloader";
 
-export { SCENE_READY_KEY };
+export { SCENE_BRAIN_STATE_KEY };
 
 export const STORE_REGISTRY_KEY = "__simStore";
 
@@ -30,11 +30,15 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [Boot, Preloader, Playground],
 };
 
-const StartGame = (parent: string, store: EcosimEnvironmentStore, onSceneReady?: (startup: SceneStartup) => void) => {
+const StartGame = (
+  parent: string,
+  store: EcosimEnvironmentStore,
+  onSceneBrainState?: (state: SceneBrainState) => void
+) => {
   const game = new Game({ ...config, parent });
   game.registry.set(STORE_REGISTRY_KEY, store);
-  if (onSceneReady) {
-    game.registry.set(SCENE_READY_KEY, onSceneReady);
+  if (onSceneBrainState) {
+    game.registry.set(SCENE_BRAIN_STATE_KEY, onSceneBrainState);
   }
   return game;
 };

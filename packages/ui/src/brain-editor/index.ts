@@ -25,6 +25,9 @@ export {
   ReplaceTileCommand,
 } from "@mindcraft-lang/core/brain/model";
 // Action call-spec arg entries
+export type { AcceleratorClaim, AcceleratorContribution, AcceleratorPlatform } from "./accelerators";
+// Documented accelerators, filtered to the mode the editor stands in
+export { acceleratorPlatform, acceleratorsForMode, commandKeyName, kAcceleratorContributions } from "./accelerators";
 export type { ActionArgEntry, ActionArgTileEntry, ActionArgTypeEntry, TypeDisplaySources } from "./action-arg-tiles";
 export { getActionArgEntries, resolveTypeDisplayName } from "./action-arg-tiles";
 export type { BrainEditorConfig, CustomLiteralType } from "./BrainEditorContext";
@@ -50,6 +53,9 @@ export { CreateLiteralDialog } from "./CreateLiteralDialog";
 export { CreateVariableDialog } from "./CreateVariableDialog";
 export { DisplayFormatPicker } from "./DisplayFormatPicker";
 export { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
+export type { EditorArmingFacts, EditorMode, EditorModeFacts } from "./editor-mode";
+// The one derived value naming the editor's keyboard context
+export { deriveEditorMode, kEditorModes } from "./editor-mode";
 // Hooks
 export { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 export { useTileSelection } from "./hooks/useTileSelection";

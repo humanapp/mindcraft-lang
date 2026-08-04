@@ -44,7 +44,13 @@ function makeBrain(whenTiles: readonly IBrainTileDef[]) {
 }
 
 function renderRuleCard(ruleDef: BrainRuleDef, target: ArmedTileTarget | null): string {
-  const controller: ArmedTargetController = { target, arm: () => {}, disarm: () => {} };
+  const controller: ArmedTargetController = {
+    target,
+    arm: () => {},
+    disarm: () => {},
+    mode: null,
+    reportMode: () => {},
+  };
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,
@@ -166,20 +172,26 @@ describe("the closed box serves Delete for the tray", () => {
   const element: CaretPosition = { kind: "element", side: RuleSide.When, tileIndex: 1 };
 
   test("Delete takes out the tile the position was opened on", () => {
-    assert.deepEqual(composerTrayToken("Delete", element, false), { kind: "delete-element", position: element });
+    assert.deepEqual(composerTrayToken("Delete", "tray-armed", element), { kind: "delete-element", position: element });
   });
 
   test("an open box keeps the key, which edits the text in it", () => {
-    assert.equal(composerTrayToken("Delete", element, true), undefined);
+    assert.equal(composerTrayToken("Delete", "tray-filtering", element), undefined);
+  });
+
+  test("every mode but the tray's own leaves the key alone", () => {
+    for (const mode of ["grid-selection", "rule-held", "tray-filtering", "composing", "text-literal"] as const) {
+      assert.equal(composerTrayToken("Delete", mode, element), undefined, `the tray takes Delete in ${mode}`);
+    }
   });
 
   test("a position standing on no placed tile has no tile to take out", () => {
-    assert.equal(composerTrayToken("Delete", undefined, false), undefined);
+    assert.equal(composerTrayToken("Delete", "tray-armed", undefined), undefined);
   });
 
   test("every other key is left alone", () => {
     for (const key of ["Backspace", "Enter", "d", " ", "ArrowDown", "Escape"]) {
-      assert.equal(composerTrayToken(key, element, false), undefined, `the tray takes ${JSON.stringify(key)}`);
+      assert.equal(composerTrayToken(key, "tray-armed", element), undefined, `the tray takes ${JSON.stringify(key)}`);
     }
   });
 });

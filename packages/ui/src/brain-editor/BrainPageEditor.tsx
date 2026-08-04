@@ -11,7 +11,7 @@ import { Plus } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { keyboardIsUnheld, kStripPopupAttribute } from "./BrainCandidateStrip";
 import { BrainRuleEditor, kAddButtonClasses } from "./BrainRuleEditor";
-import { kRuleContentLayer } from "./editor-layers";
+import { kOfferingLayer, kRuleContentLayer } from "./editor-layers";
 import { useRuleDrag } from "./hooks/useRuleDrag";
 import { PageGridProvider } from "./PageGridContext";
 import {
@@ -135,6 +135,21 @@ function siblingPlace(ruleDef: BrainRuleDef, pageDef: BrainPageDef): { position:
   return { position: siblings.indexOf(ruleDef) + 1, count: siblings.size() };
 }
 
+/** How the page reads out where `ruleDef` of `pageDef` came to rest after a step in `direction`. */
+function restingPlace(ruleDef: BrainRuleDef, direction: RuleMoveDirection, pageDef: BrainPageDef): string {
+  if (direction === "up" || direction === "down") {
+    const place = siblingPlace(ruleDef, pageDef);
+    return `Moved to position ${place.position} of ${place.count}`;
+  }
+  const ancestor = ruleDef.ancestor() as BrainRuleDef | undefined;
+  const verb = direction === "indent" ? "Indented" : "Outdented";
+  if (ancestor === undefined) return `${verb} to the top level`;
+  const parentLine = flattenRules(pageDef.children().toArray() as BrainRuleDef[]).find(
+    (flatRule) => flatRule.ruleDef === ancestor
+  )?.lineNumber;
+  return parentLine === undefined ? `${verb} to the top level` : `${verb} under rule ${parentLine}`;
+}
+
 /** Renders the rules of a single brain page as a flattened, indented list of {@link BrainRuleEditor} rows. */
 export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPageEditorProps) {
   const [updateCounter, setUpdateCounter] = useState(0);
@@ -202,6 +217,10 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
   const flattenedRules = flattenRules(topLevelRules);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // The rail the armed rule stands its offering in, held as state so the rule
+  // renders into it on the commit that mounts it.
+  const [offeringRail, setOfferingRail] = useState<HTMLDivElement | null>(null);
+
   const dragController = useRuleDrag({ pageDef, commandHistory, containerRef, zoom });
   const dragContextValue = useMemo(
     () => ({ draggingRuleId: dragController.draggingRuleId, beginDrag: dragController.beginDrag }),
@@ -332,10 +351,11 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
   };
 
   // The rule the page holds picked up, whose moves gather into one history
-  // entry, and the line a screen reader is told about each step it takes.
+  // entry, and the line a screen reader is told about each step a rule takes,
+  // whether it was picked up or stepped where it stands.
   const rulePickup = useRulePickup();
   const pickup = rulePickup.pickup;
-  const [pickupAnnouncement, setPickupAnnouncement] = useState("");
+  const [moveAnnouncement, setMoveAnnouncement] = useState("");
 
   const setPickup = rulePickup.setPickup;
   const flattenedRulesRef = useRef(flattenedRules);
@@ -348,21 +368,6 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
     []
   );
 
-  /** How the page reads out where `ruleDef` came to rest after a step in `direction`. */
-  const restingPlace = (ruleDef: BrainRuleDef, direction: RuleMoveDirection): string => {
-    if (direction === "up" || direction === "down") {
-      const place = siblingPlace(ruleDef, pageDef);
-      return `Moved to position ${place.position} of ${place.count}`;
-    }
-    const ancestor = ruleDef.ancestor() as BrainRuleDef | undefined;
-    const verb = direction === "indent" ? "Indented" : "Outdented";
-    if (ancestor === undefined) return `${verb} to the top level`;
-    const parentLine = flattenRules(pageDef.children().toArray() as BrainRuleDef[]).find(
-      (flatRule) => flatRule.ruleDef === ancestor
-    )?.lineNumber;
-    return parentLine === undefined ? `${verb} to the top level` : `${verb} under rule ${parentLine}`;
-  };
-
   /** Picks `ruleId` up, opening the batch its moves gather into. */
   const grabRule = useCallback(
     (ruleId: number) => {
@@ -372,41 +377,50 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
       commandHistory.beginBatch("Move rule");
       setPickup({ ruleId, directions: currentMoveDirections(ruleDef) });
       const place = siblingPlace(ruleDef, pageDef);
-      setPickupAnnouncement(`Grabbed rule, position ${place.position} of ${place.count}`);
+      setMoveAnnouncement(`Grabbed rule, position ${place.position} of ${place.count}`);
     },
     [commandHistory, ruleById, setPickup, pageDef]
   );
 
-  // How many steps the held rule has taken.
+  // How many steps a rule has taken, and the rule that took the last of them.
   const [stepCount, setStepCount] = useState(0);
+  const steppedRuleIdRef = useRef<number | undefined>(undefined);
   const heldRuleIdRef = useRef<number | undefined>(undefined);
   heldRuleIdRef.current = pickup?.ruleId;
 
   // Brings the handle of a rule that has just taken a step back into view, in
   // one step and moving nothing where the handle already stands in view.
   useLayoutEffect(() => {
-    if (stepCount === 0 || heldRuleIdRef.current === undefined) return;
-    const handle = containerRef.current?.querySelector<HTMLElement>(`[data-rule-handle="${heldRuleIdRef.current}"]`);
+    if (stepCount === 0 || steppedRuleIdRef.current === undefined) return;
+    const handle = containerRef.current?.querySelector<HTMLElement>(`[data-rule-handle="${steppedRuleIdRef.current}"]`);
     handle?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [stepCount]);
 
-  /** Takes the held rule one step in `direction`, or leaves it where it is when the model refuses that step. */
-  const moveHeldRule = (direction: RuleMoveDirection) => {
-    if (pickup === null || !pickup.directions.includes(direction)) return;
-    const ruleDef = ruleById(pickup.ruleId);
-    if (ruleDef === undefined) return;
-    commandHistory.executeCommand(ruleMoveCommand(ruleDef, direction));
-    setPickup({ ruleId: pickup.ruleId, directions: currentMoveDirections(ruleDef) });
-    setPickupAnnouncement(restingPlace(ruleDef, direction));
-    setStepCount((count) => count + 1);
-  };
+  /**
+   * Takes `ruleId` one step in `direction` and reads out where it came to rest,
+   * leaving it where it stands when the model refuses that step or the page no
+   * longer holds it. A step of the rule the page has picked up joins the batch
+   * that pick-up opened; every other step is a history entry of its own.
+   */
+  const moveRule = useCallback(
+    (ruleId: number, direction: RuleMoveDirection) => {
+      const ruleDef = ruleById(ruleId);
+      if (ruleDef === undefined || !currentMoveDirections(ruleDef).includes(direction)) return;
+      commandHistory.executeCommand(ruleMoveCommand(ruleDef, direction));
+      if (heldRuleIdRef.current === ruleId) setPickup({ ruleId, directions: currentMoveDirections(ruleDef) });
+      steppedRuleIdRef.current = ruleId;
+      setMoveAnnouncement(restingPlace(ruleDef, direction, pageDef));
+      setStepCount((count) => count + 1);
+    },
+    [commandHistory, ruleById, setPickup, pageDef]
+  );
 
   /** Sets the held rule down, closing its batch into one history entry. */
   const dropHeldRule = () => {
     if (pickup === null) return;
     commandHistory.endBatch();
     setPickup(null);
-    setPickupAnnouncement("Dropped");
+    setMoveAnnouncement("Dropped");
   };
 
   /** Gives the held rule back to where it was picked up from, leaving no history entry. */
@@ -414,7 +428,7 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
     if (pickup === null) return;
     commandHistory.abortBatch();
     setPickup(null);
-    setPickupAnnouncement("Cancelled");
+    setMoveAnnouncement("Cancelled");
   };
 
   // A press is never part of the grab, so any press sets the held rule down
@@ -455,9 +469,12 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
         return;
       }
     }
-    const result = decidePageKey(rows, cursor, press, pickup !== null);
+    const result = decidePageKey(rows, cursor, press, pickup?.ruleId);
     switch (result.kind) {
       case "inert":
+        return;
+      case "consume":
+        event.preventDefault();
         return;
       case "select":
         if (!focusCell(result.cursor.cell, "reveal")) return;
@@ -466,7 +483,7 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
         return;
       case "move-rule":
         event.preventDefault();
-        moveHeldRule(result.direction);
+        moveRule(result.ruleId, result.direction);
         return;
       case "drop":
         event.preventDefault();
@@ -497,8 +514,10 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
       ruleToCompose,
       composeRule: setRuleToCompose,
       grabRule,
+      moveRule,
+      offeringRail,
     }),
-    [registerRule, cursor, ruleToCompose, grabRule]
+    [registerRule, cursor, ruleToCompose, grabRule, moveRule, offeringRail]
   );
 
   // A page that stops rendering gives back any rule it holds and closes its
@@ -515,56 +534,71 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
   return (
     <RuleDragProvider value={dragContextValue}>
       <PageGridProvider value={gridBinding}>
-        {/* biome-ignore lint/a11y/useSemanticElements: changing to ul/li requires restructuring BrainRuleEditor */}
-        <div
-          ref={containerRef}
-          className="brain-page-grid h-full overflow-auto"
-          role="list"
-          aria-label="Brain rules"
-          onPointerDown={handleGridPointerDown}
-          onFocus={handleGridFocus}
-          onBlur={handleGridBlur}
-          onKeyDown={handleGridKeyDown}
-        >
+        {/* The frame the rules stand inside. It does not scroll, and the ring
+            it wears while the rules hold the keyboard lies on its border,
+            outside the box the scrolling rules are clipped to. */}
+        <div className="brain-page-frame h-full">
+          {/* biome-ignore lint/a11y/useSemanticElements: changing to ul/li requires restructuring BrainRuleEditor */}
           <div
-            className="p-2 sm:p-4"
-            style={{
-              transform: `scale(${zoom})`,
-              transformOrigin: "top left",
-              width: `${100 / zoom}%`,
-              minHeight: `${100 / zoom}%`,
-            }}
+            ref={containerRef}
+            className="h-full overflow-auto"
+            role="list"
+            aria-label="Brain rules"
+            onPointerDown={handleGridPointerDown}
+            onFocus={handleGridFocus}
+            onBlur={handleGridBlur}
+            onKeyDown={handleGridKeyDown}
           >
-            {flattenedRules.map((flatRule) => (
-              <BrainRuleEditor
-                key={flatRule.ruleDef.id()}
-                ruleDef={flatRule.ruleDef}
-                depth={flatRule.depth}
-                lineNumber={flatRule.lineNumber}
-                ruleCount={flattenedRules.length}
-                updateCounter={updateCounter}
-                commandHistory={commandHistory}
-              />
-            ))}
-            {/* The box carries a rule card's own border and padding, which puts
-                the control in the column a root rule's handle stands in. */}
-            <div className="w-fit border border-transparent p-2 sm:p-3">
-              <button
-                type="button"
-                className={kAddButtonClasses}
-                onClick={appendRule}
-                aria-label="Add rule at the end of the page"
-                {...{ [kPageGridCellAttribute]: pageGridCellKey(kAppendRuleCell) }}
-                {...pageGridSelectionProps("circle", appendRuleSelected)}
-                tabIndex={appendRuleSelected ? 0 : -1}
-              >
-                <Plus className={`h-4 w-4 relative ${kRuleContentLayer}`} aria-hidden="true" />
-              </button>
+            {/* The rail the armed rule's offering stands in. It takes no space
+                and lays out at the top of the scroller's content, so an
+                offering placed against it scrolls with the rules up and down;
+                sticking it to the left edge holds it against the scrollport
+                sideways, on the compositor and with no measurement of the
+                scroll. It stands outside the transform below, so what it holds
+                keeps its own size whatever the rules are zoomed to. */}
+            <div ref={setOfferingRail} className={`sticky left-0 h-0 w-full ${kOfferingLayer}`} />
+            {/* The column the rule cards lay out in. */}
+            <div
+              className="p-2 sm:p-4"
+              style={{
+                transform: `scale(${zoom})`,
+                transformOrigin: "top left",
+                width: `${100 / zoom}%`,
+                minHeight: `${100 / zoom}%`,
+              }}
+            >
+              {flattenedRules.map((flatRule) => (
+                <BrainRuleEditor
+                  key={flatRule.ruleDef.id()}
+                  ruleDef={flatRule.ruleDef}
+                  depth={flatRule.depth}
+                  lineNumber={flatRule.lineNumber}
+                  ruleCount={flattenedRules.length}
+                  updateCounter={updateCounter}
+                  commandHistory={commandHistory}
+                />
+              ))}
+              {/* The box carries a rule card's own border and padding, which
+                  puts the control in the column a root rule's handle stands
+                  in. */}
+              <div className="w-fit border border-transparent p-2 sm:p-3">
+                <button
+                  type="button"
+                  className={kAddButtonClasses}
+                  onClick={appendRule}
+                  aria-label="Add rule at the end of the page"
+                  {...{ [kPageGridCellAttribute]: pageGridCellKey(kAppendRuleCell) }}
+                  {...pageGridSelectionProps("circle", appendRuleSelected)}
+                  tabIndex={appendRuleSelected ? 0 : -1}
+                >
+                  <Plus className={`h-4 w-4 relative ${kRuleContentLayer}`} aria-hidden="true" />
+                </button>
+              </div>
             </div>
+            <output aria-live="polite" className="sr-only">
+              {moveAnnouncement}
+            </output>
           </div>
-          <output aria-live="polite" className="sr-only">
-            {pickupAnnouncement}
-          </output>
         </div>
       </PageGridProvider>
     </RuleDragProvider>

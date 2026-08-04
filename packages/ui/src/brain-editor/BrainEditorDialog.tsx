@@ -60,6 +60,15 @@ import {
 } from "./brain-clipboard";
 import { hasDiscardableEdits } from "./discard-guard";
 import { kDialogChromeLayer } from "./editor-layers";
+import { deriveEditorMode, type EditorMode } from "./editor-mode";
+import {
+  editorContentStands,
+  kEditorContentAttribute,
+  returnFocusChain,
+  returnFocusTarget,
+  takeReturnFocus,
+} from "./editor-return-focus";
+import { decideHistoryShortcut } from "./history-shortcut";
 import { RulePickupProvider, useRulePickupState } from "./RulePickupContext";
 
 // Top-edge brand accent. Uses each app's signature strip tokens when defined
@@ -126,6 +135,26 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   const armedTarget = useArmedTargetState();
   const rulePickup = useRulePickupState();
   const disarmTileTarget = armedTarget.disarm;
+
+  // The context the editor's keyboard stands in: the armed tile picker's own,
+  // as the rule card standing it reports, and the page's while nothing is
+  // armed. A closed editor stands no context at all.
+  const reportModeRef = useRef(docsIntegration?.reportMode);
+  reportModeRef.current = docsIntegration?.reportMode;
+  const isTileTargetArmed = armedTarget.target !== null;
+  const isRuleHeld = rulePickup.pickup !== null;
+  const armedMode = armedTarget.mode;
+  const editorMode: EditorMode | undefined = isTileTargetArmed
+    ? (armedMode ?? undefined)
+    : deriveEditorMode({ ruleIsHeld: isRuleHeld });
+  useEffect(() => {
+    if (!isOpen) {
+      reportModeRef.current?.(undefined);
+      return;
+    }
+    if (editorMode !== undefined) reportModeRef.current?.(editorMode);
+  }, [isOpen, editorMode]);
+  useEffect(() => () => reportModeRef.current?.(undefined), []);
   const [canUndo, setCanUndo] = useState(false);
   const [hasBrainClipboard, setHasBrainClipboard] = useState(hasBrainInClipboard);
   const [canRedo, setCanRedo] = useState(false);
@@ -142,14 +171,14 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   // The element holding the keyboard when the discard confirmation opened.
   const discardReturnFocusRef = useRef<HTMLElement | null>(null);
   const keepEditingRef = useRef<HTMLButtonElement | null>(null);
-  // The element holding the keyboard when the editor opened, which takes it
-  // back as the editor closes. Read in a layout pass, which runs before the
-  // dialog's own focus move.
-  const openerReturnFocusRef = useRef<HTMLElement | null>(null);
+  // The element holding the keyboard when the editor opened and the containers
+  // it stood in, which take it back as the editor closes. Read in a layout
+  // pass, which runs before the dialog's own focus move.
+  const openerReturnFocusRef = useRef<readonly HTMLElement[]>([]);
   useLayoutEffect(() => {
     if (!isOpen) return;
     const opener = document.activeElement;
-    openerReturnFocusRef.current = opener instanceof HTMLElement && opener !== document.body ? opener : null;
+    openerReturnFocusRef.current = returnFocusChain(opener instanceof HTMLElement ? opener : null, document);
   }, [isOpen]);
 
   // Update undo/redo state when history changes
@@ -556,29 +585,27 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     }
   };
 
-  // Keyboard shortcuts for undo/redo
+  // The history chord, wherever in the editor it is pressed. A press whose
+  // default a surface below has already prevented takes no step; every other
+  // press is decided by the mode the keyboard stands in.
+  const editorModeRef = useRef(editorMode);
+  editorModeRef.current = editorMode;
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle shortcuts when typing in an input field
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-      const modKey = isMac ? e.metaKey : e.ctrlKey;
-
-      if (modKey && e.key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        handleUndo();
-      } else if (modKey && (e.key === "Z" || (e.shiftKey && e.key === "z"))) {
-        e.preventDefault();
-        handleRedo();
-      } else if (modKey && e.key === "y") {
-        e.preventDefault();
-        handleRedo();
-      }
+      if (e.defaultPrevented) return;
+      const mode = editorModeRef.current;
+      if (mode === undefined) return;
+      const step = decideHistoryShortcut(mode, {
+        key: e.key,
+        withCommand: e.metaKey || e.ctrlKey,
+        withShift: e.shiftKey,
+      });
+      if (step === undefined) return;
+      e.preventDefault();
+      if (step === "undo") handleUndo();
+      else handleRedo();
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -600,6 +627,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       {isOpen && isDocsOpen && <div className={`fixed inset-0 ${kDialogChromeLayer} bg-black/80`} aria-hidden="true" />}
       <Dialog open={isOpen} onOpenChange={onOpenChange} modal={!isDocsOpen}>
         <DialogContent
+          {...{ [kEditorContentAttribute]: "" }}
           // The editor centres itself in the viewport width the documentation
           // panel leaves free, read from the --docs-panel-inset custom property
           // the panel publishes (0% when it covers nothing).
@@ -614,15 +642,21 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
             if (e.currentTarget instanceof HTMLElement) e.currentTarget.focus();
           }}
           // The keyboard goes back to whatever held it when the editor opened,
-          // without moving the view. An opener that stopped rendering, and an
-          // editor opened with the keyboard held nowhere, both leave the
-          // dialog's own restoration to stand.
+          // without moving the view; an opener that stopped rendering gives way
+          // to the container it stood in, and then to the page's main landmark.
+          // A content still standing means this pass belongs to the swap the
+          // documentation panel triggers, whose replacement content already
+          // holds the keyboard, not to the editor closing.
           onCloseAutoFocus={(e) => {
-            const returnTo = openerReturnFocusRef.current;
-            openerReturnFocusRef.current = null;
-            if (returnTo === null || !returnTo.isConnected) return;
+            if (editorContentStands(document)) {
+              e.preventDefault();
+              return;
+            }
+            const returnTo = returnFocusTarget(openerReturnFocusRef.current, document);
+            openerReturnFocusRef.current = [];
+            if (returnTo === null) return;
             e.preventDefault();
-            returnTo.focus({ preventScroll: true });
+            takeReturnFocus(returnTo);
           }}
           // While a tile picker is armed, Escape belongs to the candidate strip
           // for as long as the strip holds the keyboard: it clears the strip's

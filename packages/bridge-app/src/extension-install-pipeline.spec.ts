@@ -13,6 +13,7 @@ import type {
   ProjectManager,
 } from "@mindcraft-lang/app-host";
 import {
+  AppHostErrorCode,
   createInMemoryProjectFileSystem,
   createJsDelivrExtensionTransport,
   ExtensionAddInputErrorCode,
@@ -109,6 +110,8 @@ export const doubled = position * 2;
 interface ProjectWorld {
   readonly appData: Map<string, string>;
   extensions: Record<string, string>;
+  /** App-data keys whose reads reject, standing in for a store that cannot serve those records. */
+  unreadableKeys?: Set<string>;
 }
 
 function createProjectCollectionFixture(): ProjectCollection {
@@ -152,6 +155,9 @@ function createManager(world: ProjectWorld, filesystem: ProjectFileSystem): Proj
       world.appData.set(key, data);
     },
     async loadAppData(key: string): Promise<string | undefined> {
+      if (world.unreadableKeys?.has(key)) {
+        throw new Error(`app data "${key}" is unreadable`);
+      }
       return world.appData.get(key);
     },
     async deleteAppData(key: string): Promise<void> {
@@ -1854,6 +1860,137 @@ describe("catalog moves -- coordinate rename", () => {
       });
     } finally {
       host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("a rename whose brain record cannot be read writes nothing, warns, and applies on a later load", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const authored = JSON.stringify({ b1: brainWithSourceRefs() });
+    const world: ProjectWorld = {
+      appData: new Map([["brains", authored]]),
+      extensions: { [SOURCE_COORDINATE]: SOURCE_EMBEDDED_REF },
+      unreadableKeys: new Set(["brains"]),
+    };
+    const transport = createTestTransport({
+      content: {
+        [`${TARGET_COORDINATE}@${RENAME_SHA}`]: {
+          "mindcraft.json": manifestText("Cutebot Chassis"),
+          "index.ts": "export const cutebot = 1;\n",
+        },
+      },
+    });
+    const catalogMoves = { [SOURCE_COORDINATE]: [{ ref: RENAME_REF }] };
+    const failing = createHost(world, { transport, embeddedExtensions: [SOURCE_EMBEDDED], catalogMoves });
+    try {
+      // The load completes, and the unreadable record is reported on the
+      // host's stored-record failure channel.
+      await failing.initialize(PROJECT_ID);
+      assert.equal(failing.projectRecordFailure?.code, AppHostErrorCode.BRAIN_RECORD_UNREADABLE);
+
+      // The rename unit failed closed: neither the manifest entry nor the
+      // stored brains moved, so nothing partial was written.
+      assert.deepStrictEqual(Object.keys(world.extensions), [SOURCE_COORDINATE]);
+      assert.equal(world.extensions[SOURCE_COORDINATE], SOURCE_EMBEDDED_REF);
+      assert.equal(world.appData.get("brains"), authored);
+
+      // The skipped unit surfaces as a stable-coded move warning.
+      assert.ok(
+        failing.resolutionWarnings.some(
+          (warning) =>
+            warning.kind === "catalog-move-failed" && warning.code === CatalogMoveWarningCode.BRAINS_UNREADABLE
+        ),
+        "the skipped rename is reported with its stable code"
+      );
+    } finally {
+      failing.dispose();
+    }
+
+    // The next load of the same project, with the record readable again,
+    // applies the rename in full.
+    world.unreadableKeys = new Set();
+    const served = createHost(world, { transport, embeddedExtensions: [SOURCE_EMBEDDED], catalogMoves });
+    try {
+      await served.initialize(PROJECT_ID);
+      assert.equal(served.projectRecordFailure, undefined);
+      assert.deepStrictEqual(Object.keys(world.extensions), [TARGET_COORDINATE]);
+      assert.equal(world.extensions[TARGET_COORDINATE], RENAME_REF);
+      const storedBrain = (JSON.parse(world.appData.get("brains") ?? "{}") as Record<string, PersistedBrainJson>).b1;
+      assert.deepStrictEqual(storedBrain.pages[0].rules[0].when[0], {
+        k: "action",
+        area: "sensor",
+        id: "aaa111",
+        ns: TARGET_COORDINATE,
+      });
+    } finally {
+      served.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("a store that serves no record at all loads, skips the move, writes nothing, and applies on a later load", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const authoredBrains = JSON.stringify({ b1: brainWithSourceRefs() });
+    const authoredLog = JSON.stringify([{ kind: "install", at: 1, origin: SOURCE_COORDINATE, reference: "embedded" }]);
+    const world: ProjectWorld = {
+      appData: new Map([
+        ["brains", authoredBrains],
+        ["extension-install-log", authoredLog],
+      ]),
+      extensions: { [SOURCE_COORDINATE]: SOURCE_EMBEDDED_REF },
+      unreadableKeys: new Set(["brains", "installed-extensions", "extension-install-log"]),
+    };
+    const transport = createTestTransport({
+      content: {
+        [`${TARGET_COORDINATE}@${RENAME_SHA}`]: {
+          "mindcraft.json": manifestText("Cutebot Chassis"),
+          "index.ts": "export const cutebot = 1;\n",
+        },
+      },
+    });
+    const catalogMoves = { [SOURCE_COORDINATE]: [{ ref: RENAME_REF }] };
+    const failing = createHost(world, { transport, embeddedExtensions: [SOURCE_EMBEDDED], catalogMoves });
+    try {
+      // The load completes, and the first record the store could not serve is
+      // reported on the host's stored-record failure channel.
+      await failing.initialize(PROJECT_ID);
+      assert.equal(failing.projectRecordFailure?.code, AppHostErrorCode.EXTENSION_RECORD_UNREADABLE);
+
+      // The brains are withheld whole: with the installed-library closure
+      // unknown, no saved tile reference resolves.
+      assert.deepStrictEqual([...failing.getCachedBrainKeys()], []);
+
+      // Nothing was written: the manifest entry, the stored brains, and the
+      // install log are byte-identical, and no snapshot record was minted.
+      assert.deepStrictEqual(Object.keys(world.extensions), [SOURCE_COORDINATE]);
+      assert.equal(world.extensions[SOURCE_COORDINATE], SOURCE_EMBEDDED_REF);
+      assert.equal(world.appData.get("brains"), authoredBrains);
+      assert.equal(world.appData.get("extension-install-log"), authoredLog);
+      assert.equal(world.appData.has("installed-extensions"), false);
+    } finally {
+      failing.dispose();
+    }
+
+    // The next load of the same project, with the store readable again,
+    // applies the rename in full.
+    world.unreadableKeys = new Set();
+    const served = createHost(world, { transport, embeddedExtensions: [SOURCE_EMBEDDED], catalogMoves });
+    try {
+      await served.initialize(PROJECT_ID);
+      assert.equal(served.projectRecordFailure, undefined);
+      assert.deepStrictEqual(Object.keys(world.extensions), [TARGET_COORDINATE]);
+      assert.equal(world.extensions[TARGET_COORDINATE], RENAME_REF);
+      const storedBrain = (JSON.parse(world.appData.get("brains") ?? "{}") as Record<string, PersistedBrainJson>).b1;
+      assert.deepStrictEqual(storedBrain.pages[0].rules[0].when[0], {
+        k: "action",
+        area: "sensor",
+        id: "aaa111",
+        ns: TARGET_COORDINATE,
+      });
+      const log = parseExtensionInstallLog(world.appData.get("extension-install-log"));
+      assert.ok(log.length > 1, "the install log kept its authored entry and grew with the move's events");
+    } finally {
+      served.dispose();
       restoreLocalStorage();
     }
   });

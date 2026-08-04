@@ -77,6 +77,8 @@ export const CatalogMoveWarningCode = {
   VERSION_UNKNOWN: "CATALOG_MOVE_VERSION_UNKNOWN",
   /** The moved destination's content is not available; the move is not applied. */
   FETCH_FAILED: "CATALOG_MOVE_FETCH_FAILED",
+  /** The project's stored brains could not be read, so a rename cannot rewrite their namespaces; the move is not applied. */
+  BRAINS_UNREADABLE: "CATALOG_MOVE_BRAINS_UNREADABLE",
 } as const;
 
 /** Union of all {@link CatalogMoveWarningCode} values. */
@@ -543,7 +545,7 @@ export function resolveProjectExtensions(
 
   /** Record one catalog-move finding per (reference, code). */
   const pushMoveWarning = (declaredReference: string, code: CatalogMoveWarningCode, message: string): void => {
-    const key = `${declaredReference} ${code}`;
+    const key = `${declaredReference}\u0000${code}`;
     if (warnedMoves.has(key)) {
       return;
     }

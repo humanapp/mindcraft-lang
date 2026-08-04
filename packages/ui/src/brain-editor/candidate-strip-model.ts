@@ -183,6 +183,17 @@ export interface StripCandidate {
   readonly origin: CandidateOrigin;
 }
 
+/**
+ * True when choosing `tileDef` opens a create dialog: the variable factories and
+ * the core literal factories, each of which manufactures the tile the dialog
+ * names. Nothing is placed until that dialog is submitted, and abandoning it
+ * places nothing at all.
+ */
+export function tileDefersToCreateDialog(tileDef: IBrainTileDef): boolean {
+  if (tileDef.kind !== "factory") return false;
+  return isVariableFactoryTileId(tileDef.tileId) || isCoreLiteralFactoryTileId(tileDef.tileId);
+}
+
 const suggestedOrigin: CandidateOrigin = { kind: "suggested" };
 
 function toCandidate(suggestion: TileSuggestion, label: string, viaConversion: boolean): StripCandidate {
@@ -436,6 +447,30 @@ export function filterStripCandidates(
 export type CandidateCommitKey = "enter" | "space";
 
 /**
+ * The candidates of `visible` a commit key may place, in offering order. Text
+ * opening with the `$` accelerator leaves every candidate eligible; text without
+ * it leaves out the minted variables, which no key places. Empty when the
+ * offering holds no candidate a key may place.
+ */
+function commitEligibleCandidates(visible: readonly StripCandidate[], filter: string): readonly StripCandidate[] {
+  return parseStripFilter(filter).variableIntent
+    ? visible
+    : visible.filter((candidate) => candidate.origin.kind !== "minted-variable");
+}
+
+/**
+ * The candidate the strip highlights while the cursor stands on no cell: the
+ * first candidate of `visible` a commit key may place, which is the best match
+ * once `visible` comes from {@link filterStripCandidates} and the offering's
+ * leading candidate while no filter text narrows it. Undefined when no visible
+ * candidate is one a key may place, which is what a typed word matching nothing
+ * but a minted variable leaves.
+ */
+export function leadStripCandidate(visible: readonly StripCandidate[], filter: string): StripCandidate | undefined {
+  return commitEligibleCandidates(visible, filter)[0];
+}
+
+/**
  * The candidate a commit key places, or undefined when the key must not
  * commit. Enter takes the top visible candidate, which is the best
  * match once `visible` comes from {@link filterStripCandidates}; Space takes an
@@ -456,9 +491,7 @@ export function decideCandidateCommit(
 ): StripCandidate | undefined {
   const intent = parseStripFilter(filter);
   if (intent.text.length === 0) return undefined;
-  const eligible = intent.variableIntent
-    ? visible
-    : visible.filter((candidate) => candidate.origin.kind !== "minted-variable");
+  const eligible = commitEligibleCandidates(visible, filter);
   if (eligible.length === 0) return undefined;
   if (key === "enter") return eligible[0];
   const exact = eligible.find((candidate) => classifyCandidateMatch(intent.text, candidate, foldText) === "exact");
@@ -1244,6 +1277,35 @@ export function decideStripFocusTarget(
   if (mode === "typing") return inputFocusTarget;
   const bandKey = bandOfStripOption(options, cursorOptionId(cursor));
   return bandKey === undefined ? inputFocusTarget : { kind: "band", bandKey };
+}
+
+/**
+ * The chip the strip draws as highlighted: the chip `cursor` stands on, and
+ * while `cursor` stands on no cell at all the chip offering `leadCandidateKey`.
+ * Undefined while the cursor stands on a heading, and whenever no rendered chip
+ * carries the id or the candidate key asked for.
+ */
+export function highlightedStripOption(
+  options: readonly StripOption[],
+  cursor: StripCursor | undefined,
+  leadCandidateKey: string | undefined
+): StripOption | undefined {
+  if (cursor !== undefined) return cursor.kind === "chip" ? activeStripOption(options, cursor.optionId) : undefined;
+  if (leadCandidateKey === undefined) return undefined;
+  return options.find((option) => option.candidateKey === leadCandidateKey);
+}
+
+/**
+ * The cell the highlight rests on while the cursor stands on none: the chip
+ * offering `leadCandidateKey`. Undefined when no lead candidate is asked for and
+ * whenever no rendered chip offers it.
+ */
+export function leadStripCursor(
+  options: readonly StripOption[],
+  leadCandidateKey: string | undefined
+): StripCursor | undefined {
+  const option = highlightedStripOption(options, undefined, leadCandidateKey);
+  return option === undefined ? undefined : chipCursor(option.optionId);
 }
 
 /**

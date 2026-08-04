@@ -12,6 +12,7 @@ import {
   type BrainTileVariableDef,
   getCatalogFallbackLabel,
 } from "@mindcraft-lang/core/brain/tiles";
+import type { EditorMode } from "@mindcraft-lang/ui/brain-editor/editor-mode";
 import type { TileSourceLibrary } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import type { PrintTransport } from "@mindcraft-lang/ui/print/standalone-print-document";
@@ -55,6 +56,13 @@ interface DocsSidebarContextValue {
   navigateBack: () => void;
   /** Open the sidebar to a specific tile's doc page. Always opens the panel. */
   openDocsForTile: (tileDef: IBrainTileDef) => void;
+  /**
+   * The context the brain editor's keyboard stands in, or undefined while no
+   * editor stands. The keyboard help page reads it; nothing else does.
+   */
+  editorMode: EditorMode | undefined;
+  /** Records the editor's current mode. Pass as `docsIntegration.reportMode`. */
+  reportEditorMode: (mode: EditorMode | undefined) => void;
 }
 
 const DocsSidebarContext = createContext<DocsSidebarContextValue | null>(null);
@@ -213,6 +221,9 @@ export function DocsSidebarProvider({
     setNavTab(null);
   }, []);
 
+  const [editorMode, setEditorMode] = useState<EditorMode | undefined>(undefined);
+  const reportEditorMode = useCallback((mode: EditorMode | undefined) => setEditorMode(mode), []);
+
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
   const toggle = useCallback(() => setIsOpen((o) => !o), []);
@@ -238,6 +249,8 @@ export function DocsSidebarProvider({
     navigateToEntry,
     navigateBack,
     openDocsForTile,
+    editorMode,
+    reportEditorMode,
   };
 
   return <DocsSidebarContext.Provider value={value}>{children}</DocsSidebarContext.Provider>;

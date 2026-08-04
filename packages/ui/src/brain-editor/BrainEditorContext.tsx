@@ -4,6 +4,7 @@ import type { LocalizedValue, Localizer } from "@mindcraft-lang/core/localizatio
 import { createDefaultLocalizer } from "@mindcraft-lang/core/localization";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 import type { PrintTransport } from "../print/standalone-print-document";
+import type { EditorMode } from "./editor-mode";
 import type { TileSourceLibrary } from "./tile-library-groups";
 import type { TileVisual } from "./types";
 
@@ -79,6 +80,12 @@ export interface BrainEditorConfig {
     isOpen: boolean;
     toggle: () => void;
     close: () => void;
+    /**
+     * Receives the context the editor's keyboard stands in each time it
+     * changes, and `undefined` once no editor stands. Documentation that tracks
+     * the live editor reads it; hosts that show none leave it out.
+     */
+    reportMode?: (mode: EditorMode | undefined) => void;
   };
   /**
    * Sink for the printable document when the host cannot open the browser

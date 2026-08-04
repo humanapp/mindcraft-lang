@@ -159,6 +159,16 @@ describe("engine shutdown", () => {
     assert.equal(blip.sprite, null, "blip sprites are destroyed");
   });
 
+  test("releases the loaded brains", async () => {
+    const { engine } = await startedEngine();
+    assert.equal(engine.hasLoadedBrains, true, "a resolved load leaves a brain per archetype");
+
+    engine.shutdown();
+
+    assert.equal(engine.hasLoadedBrains, false);
+    assert.equal(engine.getBrainDef("carnivore"), undefined, "no brain survives to be edited");
+  });
+
   test("is idempotent", async () => {
     const { engine, scene } = await startedEngine();
 

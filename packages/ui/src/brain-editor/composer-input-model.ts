@@ -11,8 +11,11 @@ import {
   type StripFocusTarget,
   type StripHighlightMode,
   type StripOption,
+  tileDefersToCreateDialog,
 } from "./candidate-strip-model";
 import { type CaretPosition, caretDeletionTarget, caretOnRun, caretSideEnd, caretStep } from "./caret-run";
+import type { EditorMode } from "./editor-mode";
+import { type RuleMoveDirection, ruleMoveDirectionForKey } from "./page-grid-model";
 import {
   decideComposerBackspace,
   decideComposerCharacter,
@@ -89,6 +92,8 @@ export type ComposerGesture = "pivot" | "settle" | "settle-and-insert" | "contin
  * - `printable` -- a character typed while the offering is being browsed
  * - `candidate-tapped` -- a chip was tapped or dropped on the armed position
  * - `arrow` -- a step of the cursor, or of the caret
+ * - `move-rule` -- a step of the composed rule itself, which composition carries
+ *   straight on through
  * - `home`, `end` -- the run's first and last position
  * - `heading-arrow` -- an arrow pressed on an accordion heading
  * - `focus-lost` -- the element the highlight was anchored on no longer holds
@@ -115,6 +120,7 @@ export type ComposerInputToken =
   | { readonly kind: "enter"; readonly from: "filter" | "band" }
   | { readonly kind: "backspace"; readonly from: "filter" | "band" | "heading" }
   | { readonly kind: "arrow"; readonly direction: ComposerArrowDirection; readonly from: ComposerKeySurface }
+  | { readonly kind: "move-rule"; readonly direction: RuleMoveDirection }
   | { readonly kind: "heading-arrow"; readonly direction: ComposerArrowDirection; readonly sectionKey: string }
   | { readonly kind: "focus-lost"; readonly leftStrip: boolean }
   | { readonly kind: "placement-landed"; readonly gesture: ComposerGesture };
@@ -150,6 +156,8 @@ export type ComposerCloseReason = "settled" | "dismissed";
  * - `close-strip` -- composition on the rule ends
  * - `insert-rule` -- an empty rule is put after the rule composed, and
  *   composition carries on in it
+ * - `move-rule` -- the rule the strip is armed on takes one step in
+ *   `direction`, and composition on it carries on
  */
 export type ComposerInputEffect =
   | { readonly kind: "consume-key" }
@@ -173,14 +181,17 @@ export type ComposerInputEffect =
   | { readonly kind: "undo-own-commit" }
   | { readonly kind: "flash-caret" }
   | { readonly kind: "close-strip"; readonly reason: ComposerCloseReason }
-  | { readonly kind: "insert-rule" };
+  | { readonly kind: "insert-rule" }
+  | { readonly kind: "move-rule"; readonly direction: RuleMoveDirection };
 
 /**
- * What the composer reads about the offering and the rule around it. Every field
- * is read at the moment the token arrives, so a token dispatched after a
- * placement carries the facts that placement produced.
+ * What the composer reads about its arming, the offering, and the rule around
+ * it. Every field is read at the moment the token arrives, so a token dispatched
+ * after a placement carries the facts that placement produced.
  */
 export interface ComposerInputFacts {
+  /** The context the keyboard stands in, as `deriveEditorMode` reads the arming. */
+  readonly mode: EditorMode;
   /**
    * Every caret position of the rule, in reading order. Empty for a strip armed
    * from the tray, which stands on no rule's run.
@@ -215,6 +226,12 @@ export interface ComposerInputFacts {
   readonly spaceCandidate: StripCandidate | undefined;
   /** The candidate the cursor stands on, or undefined when it stands on no chip. */
   readonly highlightedCandidate: StripCandidate | undefined;
+  /**
+   * The cell the offering already draws the highlight on while the cursor stands
+   * on none: the chip of the lead candidate. Undefined when the offering draws no
+   * highlight of its own.
+   */
+  readonly leadCursor: StripCursor | undefined;
   /** True when the armed position accepts a text literal, so a typed quote opens one. */
   readonly acceptsTextLiteral: boolean;
   /**
@@ -252,13 +269,18 @@ function arrowDirection(key: string): ComposerArrowDirection | undefined {
  * not steer the cursor with.
  *
  * `withCommand` is true while Meta or Control is held, which is the insertion
- * chord on Enter and leaves every other key reading as it does without it.
+ * chord on Enter, steps the composed rule on the arrows, and leaves every other
+ * key reading as it does without it.
  */
 export function composerTokenForKey(
   key: string,
   surface: ComposerKeySurface,
   withCommand: boolean
 ): ComposerInputToken | undefined {
+  if (withCommand) {
+    const move = ruleMoveDirectionForKey(key);
+    if (move !== undefined) return { kind: "move-rule", direction: move };
+  }
   const direction = arrowDirection(key);
   if (direction !== undefined) return { kind: "arrow", direction, from: surface };
   if (surface === "close") return undefined;
@@ -293,23 +315,19 @@ export function composerHeadingToken(key: string, sectionKey: string): ComposerI
 
 /**
  * The token a press of `key` means in the offering's own tray row, or undefined
- * when the press means nothing there and is left to
- * {@link composerTokenForKey}.
+ * when the press means nothing there.
  *
- * Delete takes out the tile at `armedElement`, which is the tile the position
- * the offering stands at was opened on, reaching the same removal the row's own
- * control does. It means that only while the tray's filter box stands closed:
- * an open box is being typed in, where Delete is the text's own key.
- *
- * `armedElement` is undefined at a position standing on no placed tile, which
- * has no tile to take out.
+ * Delete yields a `delete-element` token taking out the tile at `armedElement`,
+ * which is the tile the offering's position was opened on. Every other key, a
+ * `mode` other than `tray-armed`, and an `armedElement` of undefined -- what a
+ * position standing on no placed tile carries -- each yield undefined.
  */
 export function composerTrayToken(
   key: string,
-  armedElement: CaretPosition | undefined,
-  filterIsOpen: boolean
+  mode: EditorMode,
+  armedElement: CaretPosition | undefined
 ): ComposerInputToken | undefined {
-  if (key !== "Delete" || filterIsOpen || armedElement === undefined) return undefined;
+  if (key !== "Delete" || mode !== "tray-armed" || armedElement === undefined) return undefined;
   return { kind: "delete-element", position: armedElement };
 }
 
@@ -360,6 +378,11 @@ function arrowStep(direction: ComposerArrowDirection): 1 | -1 {
 /** True when the direction steps between the wrapped rows the chips are drawn in. */
 function isRowDirection(direction: ComposerArrowDirection): direction is "up" | "down" {
   return direction === "up" || direction === "down";
+}
+
+/** True for the two modes a tray arming stands in. */
+function isTrayMode(mode: EditorMode): boolean {
+  return mode === "tray-armed" || mode === "tray-filtering";
 }
 
 /** The outcome that leaves the composer as it stands and lets the browser have the keystroke. */
@@ -441,12 +464,28 @@ const landedEffect: ComposerInputEffect = {
  * in the filter box, and `then` carries whatever gesture the placement was made
  * on the way to, which defaults to re-asking where the placement leaves
  * composition.
+ *
+ * A candidate that opens a create dialog places no tile here: the word in
+ * progress and the highlight end, and everything a placement leaves behind --
+ * the caret's move, the announcement, the keyboard's return to the box, and the
+ * gesture in `then` -- waits for the dialog. The caret stands where it stood, so
+ * a dialog abandoned leaves the rule and the caret exactly as they were.
  */
 function placeCandidate(
   state: ComposerInputState,
   candidate: StripCandidate,
   then: readonly ComposerInputEffect[] = [landedEffect]
 ): ComposerInputOutcome {
+  if (tileDefersToCreateDialog(candidate.tileDef)) {
+    return {
+      state: { ...state, filter: "", cursor: undefined, highlightMode: "typing" },
+      effects: [
+        { kind: "consume-key" },
+        { kind: "place-tile", candidate },
+        { kind: "highlight", cursor: undefined, mode: "typing" },
+      ],
+    };
+  }
   const caret = state.caret === undefined ? undefined : gapAt(state.caret.side, state.caret.tileIndex + 1);
   const moved: readonly ComposerInputEffect[] = caret === undefined ? [] : [{ kind: "move-caret", position: caret }];
   return {
@@ -823,10 +862,13 @@ function leaveOffering(state: ComposerInputState): ComposerInputOutcome {
 
 /**
  * A vertical arrow's outcome: one step of the cursor between the grid's rows,
- * which nothing wraps. Stepping up off the grid's first row leaves the offering,
- * releasing the cursor, returning the keyboard to the composer's box, and
- * flashing the caret's place; stepping down off its last row keeps the key and
- * stands the cursor where it is.
+ * which nothing wraps. A cursor standing on no cell steps from
+ * `facts.leadCursor`, the cell the offering already draws highlighted, so one
+ * press moves the highlight one row off it. Stepping up off the grid's first row
+ * leaves the offering, releasing the cursor, returning the keyboard to the
+ * composer's box, and flashing the caret's place; stepping down off its last row
+ * keeps the key and stands the cursor where it is. A step from the lead reaching
+ * no row leaves the key to the box, where the cursor stands on no cell still.
  */
 function reduceRowArrow(
   state: ComposerInputState,
@@ -834,7 +876,7 @@ function reduceRowArrow(
   direction: "up" | "down",
   cursor: StripCursor | undefined
 ): ComposerInputOutcome {
-  const stepped = moveStripCursorBetweenRows(facts.cellGeometry, cursor, arrowStep(direction));
+  const stepped = moveStripCursorBetweenRows(facts.cellGeometry, cursor ?? facts.leadCursor, arrowStep(direction));
   if (stepped !== undefined) return moveHighlight(state, stepped, state.highlightMode);
   if (cursor === undefined) return inert(state);
   if (direction === "up") return leaveOffering(state);
@@ -844,7 +886,11 @@ function reduceRowArrow(
 /**
  * An arrow key's outcome: a step of the cursor across the offering's grid, or of
  * the caret. A horizontal step off either end of the chip sequence keeps the key
- * and stands the cursor where it is.
+ * and stands the cursor where it is. In a tray mode, which stands at no caret, a
+ * horizontal step made while the cursor stands on no chip starts from
+ * `facts.leadCursor`, the chip the offering already draws highlighted, exactly
+ * as a vertical step does; a step from the lead reaching no chip leaves the key
+ * to the box, where the cursor stands on no cell still.
  */
 function reduceArrow(
   state: ComposerInputState,
@@ -853,14 +899,16 @@ function reduceArrow(
   from: ComposerKeySurface
 ): ComposerInputOutcome {
   if (isRowDirection(direction)) return reduceRowArrow(state, facts, direction, state.cursor);
-  // Until the cursor stands on a chip the horizontal arrows belong to the caret.
   if (from === "close") return inert(state);
-  if (from === "filter" && state.cursor === undefined) {
+  const steersOffering = isTrayMode(facts.mode);
+  // Where a caret stands, the horizontal arrows are its own until the cursor stands on a chip.
+  if (from === "filter" && state.cursor === undefined && !steersOffering) {
     const caret = state.caret;
     if (caret === undefined) return inert(state);
     return reduceCaretArrow(state, facts, caret, direction);
   }
-  const stepped = moveStripCursorAlongChips(facts.options, state.cursor, arrowStep(direction));
+  const cursor = state.cursor ?? (steersOffering ? facts.leadCursor : undefined);
+  const stepped = moveStripCursorAlongChips(facts.options, cursor, arrowStep(direction));
   if (stepped !== undefined) return moveHighlight(state, stepped, state.highlightMode);
   if (state.cursor === undefined) return inert(state);
   return { state, effects: [{ kind: "consume-key" }] };
@@ -989,6 +1037,16 @@ function reduceHeadingArrow(
  * the caret onto such a position does neither: the caret rests there, where
  * Backspace still deletes the tile behind it.
  *
+ * A `move-rule` token steps the rule the strip is armed on. Nothing else of the
+ * composer moves: the word in progress, the caret, the offering, and the
+ * keyboard all stand where they were, so composition carries straight on.
+ *
+ * A candidate that opens a create dialog is the one commit that lands nothing:
+ * the word in progress ends and the dialog is asked for, and the caret, the
+ * announcement, and any gesture the commit was made on the way to all wait for
+ * the tile that dialog names. A dialog abandoned therefore leaves the rule and
+ * the caret exactly as the commit found them.
+ *
  * `state.caret` is where editing stands, and the position armed is projected
  * from it rather than the other way about. Left and Right step it one position
  * along `facts.caretRun`, Home and End take that run's ends, a placement leaves
@@ -1002,14 +1060,18 @@ function reduceHeadingArrow(
  * `state.cursor` is the one place the offering is being steered at, over a grid
  * whose rows are the chips as they wrap and the group headings between them. Up
  * and Down step it between those rows and Left and Right along a row of chips,
- * and neither end wraps. On a heading Right and Left open and close the section
+ * and neither end wraps. While it stands on no cell the vertical arrows step
+ * from the chip the offering already draws highlighted, so the first press moves
+ * that highlight one row; in a tray mode, which stands at no caret, the
+ * horizontal arrows step from that same chip, so one press moves the highlight
+ * along its row. On a heading Right and Left open and close the section
  * that heading names. It stands only while the keyboard is on the element it is
  * anchored on -- the filter box for a chip being narrowed toward by typing, the
  * band's listbox for a chip being browsed, the heading itself for a heading --
  * so a `focus-lost` token releases it, and the horizontal arrows are the
- * caret's again. The offering stands as long as the keyboard is somewhere in
- * the strip: a `focus-lost` token carrying `leftStrip` closes it as a
- * dismissal, ending composition.
+ * caret's again wherever a caret stands. The offering stands as long as the
+ * keyboard is somewhere in the strip: a `focus-lost` token carrying `leftStrip`
+ * closes it as a dismissal, ending composition.
  *
  * A typed character that belongs to another word than the one in progress ends
  * that word: the word is placed exactly as Space places it, and the character
@@ -1080,6 +1142,8 @@ export function reduceComposerInput(
     }
     case "arrow":
       return reduceArrow(state, facts, token.direction, token.from);
+    case "move-rule":
+      return { state, effects: [{ kind: "consume-key" }, { kind: "move-rule", direction: token.direction }] };
     case "home":
       return reduceCaretJump(state, facts, "first");
     case "end":

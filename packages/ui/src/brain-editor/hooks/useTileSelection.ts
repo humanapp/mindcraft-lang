@@ -1,7 +1,6 @@
 import {
   type IBrainTileDef,
   type ITileCatalog,
-  isCoreLiteralFactoryTileId,
   isVariableFactoryTileId,
   type LiteralDisplayFormat,
 } from "@mindcraft-lang/core/brain";
@@ -10,6 +9,7 @@ import type { BrainTileFactoryDef, BrainTileLiteralDef, BrainTileVariableDef } f
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ArmedTargetEntry } from "../ArmedTargetContext";
 import { useBrainEditorConfig } from "../BrainEditorContext";
+import { tileDefersToCreateDialog } from "../candidate-strip-model";
 import type { CaretPosition } from "../caret-run";
 import { resolveTileVisual } from "../tile-visual-utils";
 
@@ -61,14 +61,11 @@ export function routeTileSelection(
   action: (tileDef: IBrainTileDef) => void,
   effects: TileSelectionDeferralEffects
 ): boolean {
-  if (tileDef.kind === "factory") {
-    if (isVariableFactoryTileId(tileDef.tileId)) {
-      effects.deferVariableCreation(tileDef as BrainTileFactoryDef, action);
-      return false;
-    } else if (isCoreLiteralFactoryTileId(tileDef.tileId)) {
-      effects.deferLiteralCreation(tileDef as BrainTileFactoryDef, action);
-      return false;
-    }
+  if (tileDefersToCreateDialog(tileDef)) {
+    const factoryTileDef = tileDef as BrainTileFactoryDef;
+    if (isVariableFactoryTileId(tileDef.tileId)) effects.deferVariableCreation(factoryTileDef, action);
+    else effects.deferLiteralCreation(factoryTileDef, action);
+    return false;
   }
   action(tileDef);
   return true;
@@ -137,7 +134,10 @@ export function manufactureVariableTile(
  *
  * A selection that completes outright calls `onComplete`. A factory tile defers
  * to a create dialog: submitting it places the tile the dialog names and calls
- * `onCreated`, and abandoning it places nothing and calls `onComplete`.
+ * `onCreated`, and abandoning it places nothing and calls `onComplete`. Either
+ * way the create dialog hands the keyboard back through
+ * `handleCreateDialogCloseAutoFocus`, which the dialog takes as its
+ * `onCloseAutoFocus`.
  */
 export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSelectionOptions) {
   const editorConfig = useBrainEditorConfig();
@@ -156,15 +156,21 @@ export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSele
     ruleDefRef.current = ruleDef;
   }, [ruleDef]);
 
+  // The element holding the keyboard as a create dialog opened, which takes it
+  // back as that dialog closes.
+  const creationOpenerRef = useRef<HTMLElement | null>(null);
+
   const handleTileSelected = useCallback(
     (tileDef: IBrainTileDef, action: (tileDef: IBrainTileDef) => void) => {
       const completed = routeTileSelection(tileDef, action, {
         deferVariableCreation: (factoryTileDef, pendingAction) => {
+          creationOpenerRef.current = document.activeElement as HTMLElement | null;
           setPendingFactoryTile(factoryTileDef);
           setPendingTileAction(() => pendingAction);
           setShowCreateVariableDialog(true);
         },
         deferLiteralCreation: (factoryTileDef, pendingAction) => {
+          creationOpenerRef.current = document.activeElement as HTMLElement | null;
           setPendingFactoryTile(factoryTileDef);
           setPendingTileAction(() => pendingAction);
           setShowCreateLiteralDialog(true);
@@ -232,6 +238,17 @@ export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSele
     onComplete?.();
   }, [onComplete]);
 
+  // Hands the keyboard back to the element that held it as the create dialog
+  // opened. An element no longer rendering leaves the hand-back to the dialog's
+  // own restoration.
+  const handleCreateDialogCloseAutoFocus = useCallback((event: Event) => {
+    const returnTo = creationOpenerRef.current;
+    creationOpenerRef.current = null;
+    if (returnTo === null || !returnTo.isConnected) return;
+    event.preventDefault();
+    returnTo.focus({ preventScroll: true });
+  }, []);
+
   const variableDialogTitle = pendingFactoryTile
     ? resolveTileVisual(editorConfig, pendingFactoryTile).label
     : "Create Variable";
@@ -253,5 +270,6 @@ export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSele
     handleVariableDialogClose,
     handleLiteralValueSubmit,
     handleLiteralDialogClose,
+    handleCreateDialogCloseAutoFocus,
   };
 }

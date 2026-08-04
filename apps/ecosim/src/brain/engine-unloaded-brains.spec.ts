@@ -17,7 +17,32 @@ function fakeStore(): EcosimEnvironmentStore {
   } as unknown as EcosimEnvironmentStore;
 }
 
+/** A store stand-in whose project brain lookup always rejects. */
+function failingStore(): EcosimEnvironmentStore {
+  return {
+    getDesiredCounts: () => ({ carnivore: 0, herbivore: 0, plant: 0 }),
+    loadBrainFromProject: async () => {
+      throw new Error("brain load failed");
+    },
+  } as unknown as EcosimEnvironmentStore;
+}
+
 describe("engine with brains not yet loaded", () => {
+  test("hasLoadedBrains reports no brains are available", () => {
+    const engine = new Engine(fakeScene(), [], fakeStore());
+
+    assert.equal(engine.hasLoadedBrains, false);
+  });
+
+  test("hasLoadedBrains stays false when the load rejects", async () => {
+    const engine = new Engine(fakeScene(), [], failingStore());
+
+    await assert.rejects(() => engine.loadBrains());
+
+    assert.equal(engine.hasLoadedBrains, false);
+    assert.equal(engine.getBrainDef("carnivore"), undefined);
+  });
+
   test("getBrainDef reports no brain instead of throwing", () => {
     const engine = new Engine(fakeScene(), [], fakeStore());
 

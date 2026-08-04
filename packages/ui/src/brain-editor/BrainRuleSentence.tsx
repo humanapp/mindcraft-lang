@@ -377,7 +377,7 @@ export function BrainRuleSentence({
 
   return (
     <p
-      className={`relative ${kRuleContentLayer} mt-1.5 ml-11 max-w-2xl ${kSentenceTypeClasses} text-brain-ink/70`}
+      className={`relative ${kRuleContentLayer} mt-1.5 ml-11 ${kSentenceTypeClasses} text-brain-ink/70`}
       data-rule-sentence={ruleDef.id()}
       {...cellProps}
     >

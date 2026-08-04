@@ -1,4 +1,5 @@
 import type {
+  AppHostErrorCode,
   ExtensionCatalogMoves,
   ExtensionFetchError,
   ExtensionFetchResult,
@@ -190,6 +191,14 @@ export type ExtensionInstallRefusal =
       readonly kind: "cycle";
       /** The origins on the cycle, in traversal order, with the first origin repeated at the end. */
       readonly cycle: readonly string[];
+      /** Human-readable refusal message. */
+      readonly message: string;
+    }
+  | {
+      /** The project's stored extension records could not be read, so no write may replace them. */
+      readonly kind: "store";
+      /** Stable code of the read failure. */
+      readonly code: AppHostErrorCode;
       /** Human-readable refusal message. */
       readonly message: string;
     };

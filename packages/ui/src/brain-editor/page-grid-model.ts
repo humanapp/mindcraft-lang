@@ -1,5 +1,6 @@
 import { RuleSide } from "@mindcraft-lang/core/brain";
 import type { CaretPosition } from "./caret-run";
+import { isUndoChord } from "./history-shortcut";
 
 /**
  * Attribute marking an element the page's selection rests on, valued by the
@@ -332,8 +333,12 @@ export function decidePageGridKey(
   return { kind: "move", cursor: { cell: row[column], desiredColumn: cursor.desiredColumn } };
 }
 
-/** The direction a grabbed rule takes for `key`, or undefined for every other key. */
-function grabbedRuleDirection(key: string): RuleMoveDirection | undefined {
+/**
+ * The step `key` takes a rule by: ArrowUp and ArrowDown reorder it among its
+ * siblings, ArrowLeft outdents it and ArrowRight indents it. Undefined for every
+ * other key.
+ */
+export function ruleMoveDirectionForKey(key: string): RuleMoveDirection | undefined {
   switch (key) {
     case "ArrowUp":
       return "up";
@@ -348,40 +353,61 @@ function grabbedRuleDirection(key: string): RuleMoveDirection | undefined {
   }
 }
 
-/** What a key press does to the page, whether or not a rule is held. */
+/**
+ * What a key press does to the page, whether or not a rule is held. `consume`
+ * is a press the page claims that asks nothing of it, which the browser is not
+ * left to act on.
+ */
 export type PageKeyResult =
   | { readonly kind: "inert" }
+  | { readonly kind: "consume" }
   | { readonly kind: "select"; readonly cursor: PageGridCursor }
-  | { readonly kind: "move-rule"; readonly direction: RuleMoveDirection }
+  | { readonly kind: "move-rule"; readonly ruleId: number; readonly direction: RuleMoveDirection }
   | { readonly kind: "drop" }
   | { readonly kind: "cancel" };
 
 const inertPageKey: PageKeyResult = { kind: "inert" };
+const consumedPageKey: PageKeyResult = { kind: "consume" };
 
 /**
- * What pressing `press` does to the page.
+ * What pressing `press` does to the page. `heldRuleId` names the rule the page
+ * has picked up, or is undefined while it holds none.
  *
- * While `grabbed` is true the arrows belong to the held rule: up and down
- * reorder it among its siblings, left outdents it and right indents it, Enter
- * sets it down and Escape gives it back to where it was picked up. The
- * selection does not move, and no other key does anything.
+ * The arrows step a rule wherever they are pressed with the clipboard modifier,
+ * and while a rule is held they step it with or without one: up and down reorder
+ * it among its siblings, left outdents it and right indents it. A held rule
+ * takes every such step; with none held the step goes to the rule the
+ * selection's cell belongs to. The selection does not move either way. Enter
+ * sets a held rule down, Escape and the undo chord both give it back, and no
+ * other key reaches a held rule.
  *
- * With no rule held the arrows move the selection, as {@link decidePageGridKey}
- * decides.
+ * With no rule held the plain arrows move the selection, as
+ * {@link decidePageGridKey} decides.
+ *
+ * A modified arrow pressed on the page's add-rule control, which belongs to no
+ * rule, is consumed: the horizontal pair is the browser's back and forward
+ * gestures.
  */
 export function decidePageKey(
   rows: readonly (readonly PageGridCell[])[],
   cursor: PageGridCursor | undefined,
   press: PageGridKeyPress,
-  grabbed: boolean
+  heldRuleId: number | undefined
 ): PageKeyResult {
-  if (!grabbed) {
+  if (heldRuleId === undefined) {
+    if (press.withCommand && press.placement === "on-cell") {
+      const direction = ruleMoveDirectionForKey(press.key);
+      if (direction === undefined) return inertPageKey;
+      const ruleId = cursor === undefined ? undefined : pageGridOwningRule(cursor.cell);
+      return ruleId === undefined ? consumedPageKey : { kind: "move-rule", ruleId, direction };
+    }
     const stepped = decidePageGridKey(rows, cursor, press.key, press.placement);
     return stepped.kind === "move" ? { kind: "select", cursor: stepped.cursor } : inertPageKey;
   }
-  if (press.placement !== "on-cell" || press.withCommand) return inertPageKey;
-  const direction = grabbedRuleDirection(press.key);
-  if (direction !== undefined) return { kind: "move-rule", direction };
+  if (press.placement !== "on-cell") return inertPageKey;
+  const direction = ruleMoveDirectionForKey(press.key);
+  if (direction !== undefined) return { kind: "move-rule", ruleId: heldRuleId, direction };
+  if (press.withCommand) return isUndoChord(press) ? { kind: "cancel" } : inertPageKey;
   if (press.key === "Enter") return { kind: "drop" };
   if (press.key === "Escape") return { kind: "cancel" };
   return inertPageKey;

@@ -156,7 +156,7 @@
 
    The one cell the brain page's selection rests on carries
    data-page-grid-selection, valued by the shape its treatment is painted in.
-   .brain-page-grid carries an edge of the same accent while the rules hold the
+   .brain-page-frame carries an edge of the same accent while the rules hold the
    keyboard.
    ========================================================================== */
 
@@ -216,13 +216,18 @@
     background: color-mix(in srgb, var(--color-brain-accent) var(--brain-selection-line-mix), transparent);
   }
 
-  .brain-page-grid {
+  /* The frame around the rules' scrolling box. It carries the page's rounded
+     edge, and the accent ring as a border laid out whether or not it is
+     painted, so the ring costs no reflow. The scrolling box fills the padding
+     box only, which clips the rules short of the ring. */
+  .brain-page-frame {
+    border: var(--brain-grid-ring-width) solid transparent;
     border-radius: 10px;
+    overflow: hidden;
   }
 
-  .brain-page-grid:focus-within {
-    box-shadow: inset 0 0 0 var(--brain-grid-ring-width)
-      color-mix(in srgb, var(--color-brain-accent) var(--brain-grid-ring-mix), transparent);
+  .brain-page-frame:focus-within {
+    border-color: color-mix(in srgb, var(--color-brain-accent) var(--brain-grid-ring-mix), transparent);
   }
 }
 

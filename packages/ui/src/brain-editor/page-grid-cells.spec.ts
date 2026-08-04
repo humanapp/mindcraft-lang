@@ -68,7 +68,13 @@ function cellTags(markup: string): string[] {
 
 /** The card rendered inside a page grid whose one tab stop rests on `currentCell`. */
 function renderRuleCard(ruleDef: BrainRuleDef, currentCell?: PageGridCell): string {
-  const controller: ArmedTargetController = { target: null, arm: () => {}, disarm: () => {} };
+  const controller: ArmedTargetController = {
+    target: null,
+    arm: () => {},
+    disarm: () => {},
+    mode: null,
+    reportMode: () => {},
+  };
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,
@@ -85,6 +91,8 @@ function renderRuleCard(ruleDef: BrainRuleDef, currentCell?: PageGridCell): stri
               ruleToCompose: undefined,
               composeRule: () => {},
               grabRule: () => {},
+              moveRule: () => {},
+              offeringRail: null,
             },
           },
           createElement(BrainRuleEditor, {
@@ -202,7 +210,15 @@ describe("the grid's one tab stop", () => {
         { config: { ...editorConfig, brainServices: services, tileCatalogs: [services.edit.tiles] } },
         createElement(
           ArmedTargetProvider,
-          { value: { target: null, arm: () => {}, disarm: () => {} } as ArmedTargetController },
+          {
+            value: {
+              target: null,
+              arm: () => {},
+              disarm: () => {},
+              mode: null,
+              reportMode: () => {},
+            } as ArmedTargetController,
+          },
           createElement(BrainRuleEditor, {
             ruleDef,
             lineNumber: 1,

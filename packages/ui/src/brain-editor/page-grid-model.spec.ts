@@ -345,7 +345,7 @@ describe("the tile row and the sentence reading one position", () => {
   });
 });
 
-describe("the steps a picked-up rule can take", () => {
+describe("the steps a rule can take", () => {
   test("each move the model would carry out reads as one direction, in reading order", () => {
     assert.deepEqual(ruleMoveDirections({ canMoveUp: true, canMoveDown: true, canIndent: true, canOutdent: true }), [
       "up",
@@ -404,56 +404,114 @@ describe("the steps a picked-up rule can take", () => {
 describe("who the arrow keys belong to", () => {
   const onCell = (key: string, withCommand = false): PageGridKeyPress => ({ key, withCommand, placement: "on-cell" });
 
-  /** The cursor resting on the second rule's handle of a three-rule page. */
+  /** The four arrow keys and the step each one takes a rule by. */
+  const arrowMoves = [
+    ["ArrowUp", "up"],
+    ["ArrowDown", "down"],
+    ["ArrowLeft", "outdent"],
+    ["ArrowRight", "indent"],
+  ] as const;
+
+  /** The three rules of a page, and the cursor resting on the second one's handle. */
   function handleCursor() {
     const { rules } = makePage(3);
     const rows = pageGridRows(rules.map(describeRule));
-    return { rows, cursor: cursorAt(rows, { kind: "handle", ruleId: rules[1].id() }) };
+    return { rules, rows, cursor: cursorAt(rows, { kind: "handle", ruleId: rules[1].id() }) };
   }
 
   test("with no rule held the arrows move the selection", () => {
     const { rows, cursor } = handleCursor();
     for (const key of ["ArrowUp", "ArrowDown", "ArrowRight"]) {
-      assert.equal(decidePageKey(rows, cursor, onCell(key), false).kind, "select");
+      assert.equal(decidePageKey(rows, cursor, onCell(key), undefined).kind, "select");
     }
   });
 
-  test("with a rule held the same arrows move the rule and the selection stays put", () => {
-    const { rows, cursor } = handleCursor();
-    for (const [key, direction] of [
-      ["ArrowUp", "up"],
-      ["ArrowDown", "down"],
-      ["ArrowLeft", "outdent"],
-      ["ArrowRight", "indent"],
-    ] as const) {
-      assert.deepEqual(decidePageKey(rows, cursor, onCell(key), true), { kind: "move-rule", direction });
+  test("with a rule held the same arrows move that rule and the selection stays put", () => {
+    const { rules, rows, cursor } = handleCursor();
+    const held = rules[1].id();
+    for (const [key, direction] of arrowMoves) {
+      assert.deepEqual(decidePageKey(rows, cursor, onCell(key), held), { kind: "move-rule", ruleId: held, direction });
     }
+  });
+
+  test("with no rule held the modified arrows move the rule the selection stands on", () => {
+    const { rules, rows, cursor } = handleCursor();
+    for (const [key, direction] of arrowMoves) {
+      assert.deepEqual(decidePageKey(rows, cursor, onCell(key, true), undefined), {
+        kind: "move-rule",
+        ruleId: rules[1].id(),
+        direction,
+      });
+    }
+  });
+
+  test("every cell of a rule moves that one rule", () => {
+    const { rules, rows } = handleCursor();
+    for (const cell of [
+      { kind: "sentence", ruleId: rules[2].id() },
+      { kind: "append", ruleId: rules[2].id(), side: RuleSide.When },
+    ] satisfies PageGridCell[]) {
+      assert.deepEqual(decidePageKey(rows, cursorAt(rows, cell), onCell("ArrowUp", true), undefined), {
+        kind: "move-rule",
+        ruleId: rules[2].id(),
+        direction: "up",
+      });
+    }
+  });
+
+  test("a modified arrow held over the add-rule control is consumed, moving nothing", () => {
+    const { rows } = handleCursor();
+    const appendRule = cursorAt(rows, kAppendRuleCell);
+    for (const [key] of arrowMoves) {
+      assert.deepEqual(decidePageKey(rows, appendRule, onCell(key, true), undefined), { kind: "consume" });
+    }
+  });
+
+  test("a step the rule cannot take is refused by the capabilities the move reads", () => {
+    const { rules, rows } = handleCursor();
+    const first = cursorAt(rows, { kind: "handle", ruleId: rules[0].id() });
+    assert.deepEqual(decidePageKey(rows, first, onCell("ArrowUp", true), undefined), {
+      kind: "move-rule",
+      ruleId: rules[0].id(),
+      direction: "up",
+    });
+    assert.equal(
+      ruleMoveDirections({
+        canMoveUp: rules[0].canMoveUp(),
+        canMoveDown: rules[0].canMoveDown(),
+        canIndent: rules[0].canIndent(),
+        canOutdent: rules[0].canOutdent(),
+      }).includes("up"),
+      false
+    );
   });
 
   test("Enter sets the held rule down and Escape gives it back", () => {
-    const { rows, cursor } = handleCursor();
-    assert.deepEqual(decidePageKey(rows, cursor, onCell("Enter"), true), { kind: "drop" });
-    assert.deepEqual(decidePageKey(rows, cursor, onCell("Escape"), true), { kind: "cancel" });
+    const { rules, rows, cursor } = handleCursor();
+    assert.deepEqual(decidePageKey(rows, cursor, onCell("Enter"), rules[1].id()), { kind: "drop" });
+    assert.deepEqual(decidePageKey(rows, cursor, onCell("Escape"), rules[1].id()), { kind: "cancel" });
   });
 
   test("neither key does anything with no rule held", () => {
     const { rows, cursor } = handleCursor();
     for (const key of ["Enter", "Escape"]) {
-      assert.equal(decidePageKey(rows, cursor, onCell(key), false).kind, "inert");
+      assert.equal(decidePageKey(rows, cursor, onCell(key), undefined).kind, "inert");
     }
   });
 
   test("a held rule leaves every other key alone, the insertion chord included", () => {
-    const { rows, cursor } = handleCursor();
+    const { rules, rows, cursor } = handleCursor();
     for (const press of [onCell("Delete"), onCell("c", true), onCell("Enter", true), onCell("a")]) {
-      assert.equal(decidePageKey(rows, cursor, press, true).kind, "inert");
+      assert.equal(decidePageKey(rows, cursor, press, rules[1].id()).kind, "inert");
     }
   });
 
   test("a key arriving from inside a cell reaches neither the held rule nor the selection", () => {
-    const { rows, cursor } = handleCursor();
-    const inside: PageGridKeyPress = { key: "ArrowUp", withCommand: false, placement: "inside-cell" };
-    assert.equal(decidePageKey(rows, cursor, inside, true).kind, "inert");
-    assert.equal(decidePageKey(rows, cursor, inside, false).kind, "inert");
+    const { rules, rows, cursor } = handleCursor();
+    for (const withCommand of [false, true]) {
+      const inside: PageGridKeyPress = { key: "ArrowUp", withCommand, placement: "inside-cell" };
+      assert.equal(decidePageKey(rows, cursor, inside, rules[1].id()).kind, "inert");
+      assert.equal(decidePageKey(rows, cursor, inside, undefined).kind, "inert");
+    }
   });
 });

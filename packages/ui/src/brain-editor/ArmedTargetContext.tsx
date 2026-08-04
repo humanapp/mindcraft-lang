@@ -2,6 +2,7 @@ import type { IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { CaretPosition } from "./caret-run";
+import type { EditorMode } from "./editor-mode";
 
 /** How the armed target consumes the chosen tile: append to a side, insert before a tile, or replace a tile. */
 export type ArmedTargetMode = "append" | "insert" | "replace";
@@ -52,16 +53,22 @@ export interface ArmedTileTarget {
 export interface ArmedTargetController {
   /** The currently armed target, or null when no picker target is armed. */
   target: ArmedTileTarget | null;
+  /** The context the armed tile picker holds the keyboard in, or null while nothing is armed. */
+  mode: EditorMode | null;
   /** Arm the given target, replacing any previously armed one. */
   arm(target: ArmedTileTarget): void;
   /** Clear the armed target. */
   disarm(): void;
+  /** Record the context the armed picker stands in. */
+  reportMode(mode: EditorMode): void;
 }
 
 const noopController: ArmedTargetController = {
   target: null,
+  mode: null,
   arm: () => {},
   disarm: () => {},
+  reportMode: () => {},
 };
 
 const ArmedTargetContext = createContext<ArmedTargetController>(noopController);
@@ -77,9 +84,14 @@ export function useArmedTargetController(): ArmedTargetController {
 /** Build the armed-target state owned by the editor dialog and shared via {@link ArmedTargetProvider}. */
 export function useArmedTargetState(): ArmedTargetController {
   const [target, setTarget] = useState<ArmedTileTarget | null>(null);
+  const [mode, setMode] = useState<EditorMode | null>(null);
   const arm = useCallback((next: ArmedTileTarget) => setTarget(next), []);
-  const disarm = useCallback(() => setTarget(null), []);
-  return useMemo(() => ({ target, arm, disarm }), [target, arm, disarm]);
+  const disarm = useCallback(() => {
+    setTarget(null);
+    setMode(null);
+  }, []);
+  const reportMode = useCallback((next: EditorMode) => setMode(next), []);
+  return useMemo(() => ({ target, mode, arm, disarm, reportMode }), [target, mode, arm, disarm, reportMode]);
 }
 
 /** True when `target` arms the append picker for `ruleDef`. */

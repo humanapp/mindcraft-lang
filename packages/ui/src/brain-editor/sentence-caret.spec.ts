@@ -80,7 +80,13 @@ function renderLine(
 
 /** The whole rule card, with `target` armed on it. */
 function renderRuleCard(ruleDef: BrainRuleDef, target?: ArmedTileTarget): string {
-  const controller: ArmedTargetController = { target: target ?? null, arm: () => {}, disarm: () => {} };
+  const controller: ArmedTargetController = {
+    target: target ?? null,
+    arm: () => {},
+    disarm: () => {},
+    mode: null,
+    reportMode: () => {},
+  };
   return renderToStaticMarkup(
     createElement(
       BrainEditorProvider,

@@ -13,7 +13,8 @@ import {
   ReplaceTileCommand,
 } from "@mindcraft-lang/core/brain/model";
 import { Plus } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { type ArmedTargetEntry, isAppendTargetForRule, useArmedTargetController } from "./ArmedTargetContext";
 import {
@@ -86,6 +87,9 @@ const pillTransitionClasses = "transition-[scale,background-color,border-color,c
  * add-tile button, and the page's add-rule button.
  */
 export const kAddButtonClasses = `relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 ${pillTransitionClasses} font-semibold cursor-pointer flex items-center justify-center`;
+
+/** How far one step of nesting stands a rule card in, in CSS pixels. */
+const kRuleIndentStep = 32;
 
 /** The invitation the sentence line of a rule holding no tiles reads. */
 const kComposerEntryPrompt = "Type what should happen...";
@@ -280,8 +284,7 @@ export function BrainRuleEditor({
   // own clause comma.
   const isPivoted = isComposing && stripTarget?.side === RuleSide.Do;
 
-  // The caret arming, read through a ref because the creation completion below
-  // is wired into the selection flow that arming is built from.
+  // The latest render's caret-arming call.
   const placeCaretFromRef = useRef<(position: CaretPosition, entry: ArmedTargetEntry) => void>(() => {});
   // The gap past the tile the caret's arming last placed, recorded as that
   // placement runs. Read once, by the completion of a creation the placement
@@ -318,6 +321,7 @@ export function BrainRuleEditor({
     handleVariableDialogClose,
     handleLiteralValueSubmit,
     handleLiteralDialogClose,
+    handleCreateDialogCloseAutoFocus,
   } = useTileSelection({
     ruleDef,
     onComplete: armedTarget.disarm,
@@ -688,7 +692,6 @@ export function BrainRuleEditor({
           ownNewestPlacement,
           undoOwnLastCommit,
           insertRuleAfter,
-          exitCellKey: () => pageGridCellKey(pageGridCellAfterComposing(ruleId, composerCaret)),
         }
       : undefined;
 
@@ -701,6 +704,17 @@ export function BrainRuleEditor({
       : {
           placeCaret: (position) => placeCaretFrom(position, stripTarget.entry ?? "tray"),
           deleteTile: deleteTileAt,
+          moveRule: (direction) => pageGrid?.moveRule(ruleId, direction),
+          // Composition names the cell its caret rests at. Every other arming
+          // takes the cell the page's selection rests on, which the grid moves
+          // to whatever stands in a vanished cell's place, so a tile removed
+          // from the tray leaves the keyboard where that tile stood.
+          exitCellKey: () =>
+            pageGridCellKey(
+              composerCaret !== undefined
+                ? pageGridCellAfterComposing(ruleId, composerCaret)
+                : (selectedCell ?? { kind: "handle", ruleId })
+            ),
         };
 
   const handleTilePickerCancel = () => {
@@ -719,6 +733,44 @@ export function BrainRuleEditor({
     editPoint,
   });
 
+  // Reports the context this rule's armed strip holds the keyboard in to the
+  // armed target. An unarmed strip names no mode and reports nothing.
+  const reportArmedMode = armedTarget.reportMode;
+  const stripMode = strip.mode;
+  useEffect(() => {
+    if (stripMode !== undefined) reportArmedMode(stripMode);
+  }, [stripMode, reportArmedMode]);
+
+  // This rule's card, which the offering it stands is placed against.
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const offeringRail = pageGrid?.offeringRail ?? null;
+  const offeringStands = strip.panel !== null;
+  // The box the offering stands in, placed against the rail.
+  const offeringBoxRef = useRef<HTMLDivElement | null>(null);
+  // Stands the offering box below the rail by the distance from the rail down to
+  // the bottom edge of this card. Both edges move together as the page scrolls,
+  // so this distance reads the same at every scroll offset. The distance lands
+  // on the box within the layout phase that measured it, so the offering stands
+  // at its own height for the whole of the commit that raised it -- before any
+  // effect scrolls to it or takes the keyboard into it. Does nothing until the
+  // card, the box and the rail all stand.
+  const measureOffering = useCallback(() => {
+    const card = cardRef.current;
+    const box = offeringBoxRef.current;
+    if (card === null || box === null || offeringRail === null) return;
+    box.style.top = `${card.getBoundingClientRect().bottom - offeringRail.getBoundingClientRect().top}px`;
+  }, [offeringRail]);
+  useLayoutEffect(() => {
+    if (offeringStands) measureOffering();
+  });
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!offeringStands || card === null) return;
+    const observer = new ResizeObserver(measureOffering);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [offeringStands, measureOffering]);
+
   // Dropping a candidate chip on the armed rule places it at the armed
   // position, the same placement tapping the chip performs.
   const handleCandidateDragOver = (event: React.DragEvent<HTMLDivElement>) => {
@@ -735,7 +787,7 @@ export function BrainRuleEditor({
     candidateStrip.commitByKey(candidateKey);
   };
 
-  const indentStyle = { marginLeft: `${depth * 32}px` };
+  const indentStyle = { marginLeft: `${depth * kRuleIndentStep}px` } as CSSProperties;
   const hasTiles = ruleHasTiles();
   // An empty rule reads no sentence of its own, so its line is the invitation to
   // compose one, standing at the only caret position such a rule has.
@@ -827,6 +879,7 @@ export function BrainRuleEditor({
     <>
       {/* biome-ignore lint/a11y/useSemanticElements: changing to li requires restructuring BrainPageEditor */}
       <div
+        ref={cardRef}
         className={`flex flex-col p-2 sm:p-3 mb-1 rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow w-fit relative${hasBodyBelowTiles ? "" : " h-30"}${isDragging ? ` ${kRuleChromeLayer}` : ""}`}
         style={{
           ...indentStyle,
@@ -1009,12 +1062,27 @@ export function BrainRuleEditor({
             data-sentence-composer-entry={ruleDef.id()}
             aria-label={`${sentenceCellName}, empty. ${kComposerEntryPrompt}`}
             {...cellProps({ kind: "sentence", ruleId }, "line")}
-            className={`relative ${kRuleContentLayer} mt-1.5 ml-11 flex min-h-8 max-w-2xl cursor-text items-center rounded-sm px-1 text-left ${kSentenceTypeClasses} text-brain-ink/45 italic transition-colors hover:text-brain-ink/70${sentenceCellSelected ? "" : " hover:bg-brain-ink/5"}`}
+            className={`relative ${kRuleContentLayer} mt-1.5 ml-11 flex min-h-8 cursor-text items-center rounded-sm px-1 text-left ${kSentenceTypeClasses} text-brain-ink/45 italic transition-colors hover:text-brain-ink/70${sentenceCellSelected ? "" : " hover:bg-brain-ink/5"}`}
           >
             {kComposerEntryPrompt}
           </button>
         )}
-        {strip.panel}
+        {/* The box the offering stands in: the page's rail holds it, pinned
+            sideways against the scrollport and inset to the rules list's
+            content edge, at the height this card's bottom edge stands at. It
+            stays this card's own child in the React tree, so what it raises --
+            a chip dropped on it, a key pressed in it -- reaches the card's
+            handlers. A rule standing outside a page has no rail to hand its
+            offering to, and reads it at the foot of its own card. */}
+        {offeringRail === null
+          ? strip.panel
+          : offeringStands &&
+            createPortal(
+              <div ref={offeringBoxRef} className="absolute inset-x-2 sm:inset-x-4">
+                {strip.panel}
+              </div>,
+              offeringRail
+            )}
         {showCreateVariableDialog && (
           <CreateVariableDialog
             isOpen={showCreateVariableDialog}
@@ -1022,6 +1090,7 @@ export function BrainRuleEditor({
             onOpenChange={(open) => {
               if (!open) handleVariableDialogClose();
             }}
+            onCloseAutoFocus={handleCreateDialogCloseAutoFocus}
             onSubmit={handleVariableNameSubmit}
           />
         )}
@@ -1033,6 +1102,7 @@ export function BrainRuleEditor({
             onOpenChange={(open) => {
               if (!open) handleLiteralDialogClose();
             }}
+            onCloseAutoFocus={handleCreateDialogCloseAutoFocus}
             onSubmit={handleLiteralValueSubmit}
           />
         )}

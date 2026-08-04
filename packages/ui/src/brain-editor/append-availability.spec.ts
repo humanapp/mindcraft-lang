@@ -125,7 +125,13 @@ describe("the add-tile control the decision stands", () => {
   };
 
   function renderRuleCard(ruleDef: BrainRuleDef): string {
-    const controller: ArmedTargetController = { target: null, arm: () => {}, disarm: () => {} };
+    const controller: ArmedTargetController = {
+      target: null,
+      arm: () => {},
+      disarm: () => {},
+      mode: null,
+      reportMode: () => {},
+    };
     return renderToStaticMarkup(
       createElement(
         BrainEditorProvider,
@@ -214,7 +220,15 @@ describe("the add-tile control the decision stands", () => {
         { config: editorConfig },
         createElement(
           ArmedTargetProvider,
-          { value: { target: null, arm: () => {}, disarm: () => {} } as ArmedTargetController },
+          {
+            value: {
+              target: null,
+              arm: () => {},
+              disarm: () => {},
+              mode: null,
+              reportMode: () => {},
+            } as ArmedTargetController,
+          },
           createElement(BrainRuleEditor, {
             ruleDef,
             lineNumber: 1,

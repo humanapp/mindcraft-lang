@@ -8,6 +8,12 @@ interface CreateVariableDialogProps {
   isOpen: boolean;
   title: string;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Called as the dialog closes, before the keyboard is handed back to the
+   * element that held it when the dialog opened. Calling `preventDefault` on the
+   * event leaves that hand-back to the caller.
+   */
+  onCloseAutoFocus?: (event: Event) => void;
   onSubmit: (variableName: string) => void;
 }
 
@@ -17,7 +23,13 @@ interface CreateVariableDialogProps {
  * landing in it counts as staying in the candidate strip the variable was minted
  * from.
  */
-export function CreateVariableDialog({ isOpen, title, onOpenChange, onSubmit }: CreateVariableDialogProps) {
+export function CreateVariableDialog({
+  isOpen,
+  title,
+  onOpenChange,
+  onCloseAutoFocus,
+  onSubmit,
+}: CreateVariableDialogProps) {
   const [variableName, setVariableName] = useState("");
 
   const handleSubmit = () => {
@@ -38,6 +50,7 @@ export function CreateVariableDialog({ isOpen, title, onOpenChange, onSubmit }: 
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent
         className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl"
+        onCloseAutoFocus={onCloseAutoFocus}
         {...{ [kStripPopupAttribute]: "" }}
       >
         <DialogHeader className="border-b border-border pb-4">
