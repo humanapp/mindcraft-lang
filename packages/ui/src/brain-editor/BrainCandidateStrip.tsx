@@ -632,7 +632,10 @@ export interface CandidateStripSurface {
  *
  * In the tray the panel opens on its chips: the filter box holds the keyboard
  * but is not shown until the position row's search control shows it, or until
- * something is typed into it, which shows it in narrowing the offering.
+ * something is typed into it, which shows it in narrowing the offering. A box
+ * out of sight asks for no on-screen keyboard, so arming by touch offers chips
+ * to tap with nothing laid over them, while a physical keyboard types into it
+ * either way.
  *
  * The filter box is an ARIA combobox over the rendered chips: the arrow keys
  * walk one cursor across the offering, Enter commits the chip it stands on, and
@@ -747,11 +750,15 @@ export function useCandidateStripSurface({
   const reaskRef = useRef<ComposerInputToken | undefined>(undefined);
   const isFiltering = state.filter.trim().length > 0;
   const offeringOpen = state.offeringOpen;
+  // Whether the filter box stands shown: the sentence hosts its box at the
+  // caret, and the tray shows its own once the search control or typing opens
+  // it.
+  const boxIsShown = composer !== undefined || trayFilterOpen;
   // The context the keyboard stands in while this strip is armed.
   const armingMode: EditorMode = deriveEditorMode({
     arming: {
       entry: composer ? "sentence" : "tray",
-      boxIsShown: composer !== undefined || trayFilterOpen,
+      boxIsShown,
       textLiteralIsOpen: openTextLiteral !== undefined,
     },
   });
@@ -1320,6 +1327,12 @@ export function useCandidateStripSurface({
       aria-controls={offeringOpen ? candidatesId : undefined}
       aria-activedescendant={offeringOpen && focusTarget.kind === "input" ? activeOption?.optionId : undefined}
       aria-autocomplete="list"
+      // An on-screen keyboard rises over the box only once the box is shown.
+      // A hidden box still holds the keyboard and still takes what a physical
+      // keyboard types into it, `inputmode` governing on-screen keyboards
+      // alone, so typing narrows the offering from a box out of sight without
+      // a soft keyboard covering the offering it narrows.
+      inputMode={boxIsShown ? "text" : "none"}
       value={typedText}
       onChange={(event) => dispatchInput({ kind: "text", text: event.target.value })}
       onKeyDown={handleKeyDown}

@@ -1,7 +1,8 @@
 /**
  * Pins the tray's filter box as an opt-in: a position armed from the tile row
  * opens on its chips, with the box rendered but not shown and the position row
- * standing the control that shows it. Pins with it the key the closed box
+ * standing the control that shows it. Pins with it the on-screen keyboard the
+ * box asks for, which follows whether the box is shown; the key the closed box
  * serves for the tray -- Delete, which takes out the tile the position was
  * opened on -- and that a position armed from a rule's sentence stands no such
  * control, its box being inline at the caret.
@@ -123,6 +124,16 @@ function boxWrapperClasses(markup: string): string[] {
   return wrapper[1].split(" ");
 }
 
+/**
+ * The on-screen keyboard the filter box read from `where` asks for, or undefined
+ * when it asks for none. Matched without regard to case, HTML attribute names
+ * being case-insensitive however the renderer spells them.
+ */
+function inputModeOf(markup: string, where: "tray" | "sentence"): string | undefined {
+  const tag = new RegExp(`<input[^>]*data-strip-filter="${where}"[^>]*>`).exec(markup)?.[0];
+  return tag === undefined ? undefined : /\sinputmode="([^"]*)"/i.exec(tag)?.[1];
+}
+
 describe("the tray's filter box is opt-in", () => {
   test("a position armed on a placed tile stands the control, reporting the box closed", () => {
     const { ruleDef } = makeBrain([makeSensor(services, "tray-box-tile")]);
@@ -153,6 +164,18 @@ describe("the tray's filter box is opt-in", () => {
     const markup = renderRuleCard(ruleDef, tileTarget(ruleDef, RuleSide.When, 0));
     assert.equal(countOf(markup, 'data-strip-filter="tray"'), 1);
     assert.ok(boxWrapperClasses(markup).includes("sr-only"), "and it is out of sight until it is shown");
+  });
+
+  test("a box out of sight asks for no on-screen keyboard", () => {
+    const { ruleDef } = makeBrain([makeSensor(services, "tray-box-inputmode")]);
+    const markup = renderRuleCard(ruleDef, tileTarget(ruleDef, RuleSide.When, 0));
+    assert.equal(inputModeOf(markup, "tray"), "none");
+  });
+
+  test("a box the sentence line shows asks for one", () => {
+    const { ruleDef } = makeBrain([makeSensor(services, "sentence-box-inputmode")]);
+    const markup = renderRuleCard(ruleDef, wordTarget(ruleDef, RuleSide.When, 0));
+    assert.equal(inputModeOf(markup, "sentence"), "text");
   });
 
   test("a caret of a rule's sentence stands no such control", () => {
