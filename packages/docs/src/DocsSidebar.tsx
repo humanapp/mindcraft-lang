@@ -180,7 +180,7 @@ function SearchBar({ value, onChange, inputRef }: SearchBarProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Search docs..."
-          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground"
+          className="flex-1 bg-transparent text-sm pointer-coarse:text-base text-foreground placeholder:text-muted-foreground"
           aria-label="Search documentation"
         />
       </div>

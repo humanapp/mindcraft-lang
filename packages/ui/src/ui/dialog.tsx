@@ -34,7 +34,8 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 /**
  * Centered modal container. Renders an overlay and an optional close button
- * (suppressed via `hideClose`). Centres itself in the viewport width left free
+ * (suppressed via `hideClose`; the button grows to a 44px square under a coarse
+ * pointer, keeping its glyph in place). Centres itself in the viewport width left free
  * by the documentation panel, read from the `--docs-panel-inset` custom
  * property that panel publishes; the property reads `0%` when no panel is
  * covering anything, which centres the dialog in the whole viewport.
@@ -57,7 +58,7 @@ const DialogContent = React.forwardRef<
     >
       {children}
       {!hideClose && (
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+        <DialogPrimitive.Close className="absolute right-4 top-4 inline-flex items-center justify-center rounded-sm opacity-70 transition-opacity pointer-coarse:top-0.5 pointer-coarse:right-0.5 pointer-coarse:size-11 hover:opacity-100 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>

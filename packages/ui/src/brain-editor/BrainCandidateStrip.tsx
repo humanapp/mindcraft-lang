@@ -1354,7 +1354,7 @@ export function useCandidateStripSurface({
                   }`
                 : "w-0"
             }`
-          : `h-10 min-w-0 flex-1 rounded-lg border-2 bg-brain-recess/40 px-3 font-mono text-sm outline-none transition-colors placeholder:font-sans placeholder:text-brain-ink/55 ${
+          : `h-10 min-w-0 flex-1 rounded-lg border-2 bg-brain-recess/40 px-3 font-mono text-sm pointer-coarse:text-base outline-none transition-colors placeholder:font-sans placeholder:text-brain-ink/55 ${
               state.isUnknown
                 ? "border-brain-amber/50 text-brain-amber-ink focus:border-brain-amber"
                 : "border-brain-ink/15 text-brain-ink focus:border-brain-accent"
