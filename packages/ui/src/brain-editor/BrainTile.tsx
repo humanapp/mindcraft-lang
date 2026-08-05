@@ -25,6 +25,48 @@ interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "
   badge?: TileBadge;
 }
 
+/** The font a tile's label is laid out in, which its measurement reproduces. */
+const kTileLabelFontSize = "0.875rem";
+const kTileLabelFontFamily =
+  "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
+const kTileLabelFontWeight = "600";
+
+/**
+ * Widths already measured, keyed by the document's font-loading status followed
+ * by a newline and the label. A width depends only on the label and the tile
+ * font, so a hit is exact; carrying the font-loading status in the key keeps a
+ * width measured before a webfont resolved from being served afterwards.
+ */
+const tileLabelWidths = new Map<string, number>();
+
+/**
+ * The width `label` renders at in the tile font, in CSS pixels, rounded as
+ * `offsetWidth` rounds. The first call for a label lays the text out in a hidden
+ * span appended to `document.body`, which forces a synchronous layout of the
+ * whole document; every later call for the same label and font-loading status is
+ * served from {@link tileLabelWidths} and lays nothing out.
+ */
+function measureTileLabelWidth(label: string): number {
+  const key = `${document.fonts.status}\n${label}`;
+  const cached = tileLabelWidths.get(key);
+  if (cached !== undefined) return cached;
+
+  const tempSpan = document.createElement("span");
+  tempSpan.style.visibility = "hidden";
+  tempSpan.style.position = "absolute";
+  tempSpan.style.whiteSpace = "nowrap";
+  tempSpan.style.fontSize = kTileLabelFontSize;
+  tempSpan.style.fontFamily = kTileLabelFontFamily;
+  tempSpan.style.fontWeight = kTileLabelFontWeight;
+  tempSpan.textContent = label;
+  document.body.appendChild(tempSpan);
+  const labelWidth = tempSpan.offsetWidth;
+  document.body.removeChild(tempSpan);
+
+  tileLabelWidths.set(key, labelWidth);
+  return labelWidth;
+}
+
 /**
  * Renders a single brain tile as a styled button with icon, label, and optional
  * data-type indicator and badge. Forwards a ref to the underlying button.
@@ -77,21 +119,8 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
     // growth from the pointer resting on it as well.
     const isPageGridSelected = kPageGridSelectionAttribute in props;
 
-    // Measure the rendered text width by creating a temporary hidden span in the DOM.
     useLayoutEffect(() => {
-      const tempSpan = document.createElement("span");
-      tempSpan.style.visibility = "hidden";
-      tempSpan.style.position = "absolute";
-      tempSpan.style.whiteSpace = "nowrap";
-      tempSpan.style.fontSize = "0.875rem";
-      tempSpan.style.fontFamily =
-        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
-      tempSpan.style.fontWeight = "600";
-      tempSpan.textContent = label;
-      document.body.appendChild(tempSpan);
-
-      const labelWidth = tempSpan.offsetWidth;
-      document.body.removeChild(tempSpan);
+      const labelWidth = measureTileLabelWidth(label);
 
       const defaultWidth = 96;
       const maxWidth = isValueTile ? 288 : 192;

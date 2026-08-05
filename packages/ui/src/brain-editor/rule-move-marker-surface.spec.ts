@@ -70,7 +70,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, pickup: RulePickup | null): strin
               ruleDef,
               lineNumber: 1,
               ruleCount: 1,
-              updateCounter: 0,
+              revision: "",
               commandHistory: new BrainCommandHistory(),
             })
           )

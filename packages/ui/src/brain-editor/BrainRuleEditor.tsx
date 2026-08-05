@@ -13,7 +13,17 @@ import {
   ReplaceTileCommand,
 } from "@mindcraft-lang/core/brain/model";
 import { Plus } from "lucide-react";
-import { type CSSProperties, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { type ArmedTargetEntry, isAppendTargetForRule, useArmedTargetController } from "./ArmedTargetContext";
@@ -143,22 +153,21 @@ interface BrainRuleEditorProps {
   lineNumber: number;
   /** How many rules the page reads in all, which the handle names this rule's place among. */
   ruleCount: number;
-  updateCounter: number;
+  /**
+   * Everything this rule derives its reading, its capabilities and its offering
+   * from, spelled by `ruleRevisions`. A card recomputes all three exactly when
+   * this changes.
+   */
+  revision: string;
   commandHistory: BrainCommandHistory;
 }
 
-/**
- * Editable WHEN/DO rule row: the rule's handle, the tiles of each side with the
- * control that appends to it, and the sentence line the rule is composed on.
- * The handle is dragged to reorder and picked up from the keyboard, and the
- * page's selection keys operate on whichever of the rule's cells it rests on.
- */
-export function BrainRuleEditor({
+function BrainRuleEditorCard({
   ruleDef,
   depth = 0,
   lineNumber,
   ruleCount,
-  updateCounter,
+  revision,
   commandHistory,
 }: BrainRuleEditorProps) {
   const { brainServices, tileCatalogs, isBrokenTile } = useBrainEditorConfig();
@@ -192,8 +201,8 @@ export function BrainRuleEditor({
   const [whenBadges, setWhenBadges] = useState<Map<number, TileBadge>>(new Map());
   const [doBadges, setDoBadges] = useState<Map<number, TileBadge>>(new Map());
 
-  const availableCapabilities = useRuleCapabilities(ruleDef, updateCounter);
-  const availableOutputKeys = useRuleOutputKeys(ruleDef, updateCounter);
+  const availableCapabilities = useRuleCapabilities(ruleDef, revision);
+  const availableOutputKeys = useRuleOutputKeys(ruleDef, revision);
 
   // Every catalog this rule places from: the host's, plus the tiles the brain
   // minted for itself.
@@ -206,7 +215,7 @@ export function BrainRuleEditor({
 
   // Whether a tile may follow what each side already holds. A host that supplies
   // no services cannot be asked, so both ends stand open.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter is an intentional trigger signal
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision is an intentional trigger signal
   const appendable = useMemo(() => {
     const offers = (side: RuleSide) =>
       brainServices === undefined ||
@@ -219,7 +228,7 @@ export function BrainRuleEditor({
         availableOutputKeys,
       });
     return { whenSide: offers(RuleSide.When), doSide: offers(RuleSide.Do) };
-  }, [ruleDef, updateCounter, catalogs, brainServices, availableCapabilities, availableOutputKeys]);
+  }, [ruleDef, revision, catalogs, brainServices, availableCapabilities, availableOutputKeys]);
 
   // The caret this rule's composition stands at, carried by the target armed
   // from the sentence. A rule holds it exactly while it is being composed.
@@ -271,7 +280,7 @@ export function BrainRuleEditor({
     catalogs,
     availableCapabilities,
     availableOutputKeys,
-    updateCounter,
+    revision,
     onCommitted: recordComposerCommit,
   });
 
@@ -328,12 +337,12 @@ export function BrainRuleEditor({
     onCreated: handleTileCreated,
   });
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter is an intentional trigger signal
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision is an intentional trigger signal
   useEffect(() => {
     const readDirty = () => setIsDirty(ruleDef.isDirty());
     readDirty();
     return ruleDef.events().on("rule_dirtyChanged", readDirty);
-  }, [ruleDef, updateCounter]);
+  }, [ruleDef, revision]);
 
   // Compute tile badges from typecheck results, then overlay broken-tile badges
   // (an action tile whose definition failed to compile), which take precedence
@@ -1044,7 +1053,7 @@ export function BrainRuleEditor({
         </div>
         <BrainRuleSentence
           ruleDef={ruleDef}
-          updateCounter={updateCounter}
+          revision={revision}
           composerInput={strip.composerInput}
           caretPosition={composerCaret}
           pending={strip.pending}
@@ -1110,3 +1119,17 @@ export function BrainRuleEditor({
     </>
   );
 }
+
+/**
+ * Editable WHEN/DO rule row: the rule's handle, the tiles of each side with the
+ * control that appends to it, and the sentence line the rule is composed on.
+ * The handle is dragged to reorder and picked up from the keyboard, and the
+ * page's selection keys operate on whichever of the rule's cells it rests on.
+ *
+ * The card renders again only when one of its props changes, `revision` among
+ * them, or when a context it reads publishes a new value. A page change that
+ * leaves this rule's revision alone therefore costs it nothing.
+ */
+export const BrainRuleEditor = memo(BrainRuleEditorCard);
+
+BrainRuleEditor.displayName = "BrainRuleEditor";

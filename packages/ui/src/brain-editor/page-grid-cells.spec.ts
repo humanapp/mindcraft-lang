@@ -99,7 +99,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, currentCell?: PageGridCell): stri
             ruleDef,
             lineNumber: 1,
             ruleCount: 1,
-            updateCounter: 0,
+            revision: "",
             commandHistory: new BrainCommandHistory(),
           })
         )
@@ -223,7 +223,7 @@ describe("the grid's one tab stop", () => {
             ruleDef,
             lineNumber: 1,
             ruleCount: 1,
-            updateCounter: 0,
+            revision: "",
             commandHistory: new BrainCommandHistory(),
           })
         )

@@ -1,4 +1,6 @@
+import type { ReadonlyList } from "@mindcraft-lang/core";
 import { task, type thread } from "@mindcraft-lang/core";
+import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type { BrainCommand, BrainCommandHistory, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   AddRuleCommand,
@@ -32,6 +34,7 @@ import {
 import { pageGridSelectionProps } from "./page-grid-selection";
 import { RuleDragProvider } from "./RuleDragContext";
 import { useRulePickup } from "./RulePickupContext";
+import { type RevisionRuleNode, ruleRevisions } from "./rule-revision";
 
 interface BrainPageEditorProps {
   pageDef: BrainPageDef;
@@ -68,6 +71,26 @@ function flattenRules(rules: BrainRuleDef[], depth: number = 0, startLineNumber:
   });
 
   return result;
+}
+
+/** The ids of `tiles`, in the order they stand. */
+function tileIdsOf(tiles: ReadonlyList<IBrainTileDef>): string[] {
+  const ids: string[] = [];
+  for (let i = 0; i < tiles.size(); i++) ids.push(tiles.get(i).tileId);
+  return ids;
+}
+
+/**
+ * `rules` and the trees under them read as revision nodes. Walks children in the
+ * order they stand, so {@link ruleRevisions} reads the same rules in the same
+ * order {@link flattenRules} lists them, and the two line up index for index.
+ */
+function revisionNodes(rules: BrainRuleDef[]): RevisionRuleNode[] {
+  return rules.map((ruleDef) => ({
+    whenTileIds: tileIdsOf(ruleDef.when().tiles()),
+    doTileIds: tileIdsOf(ruleDef.do().tiles()),
+    children: revisionNodes(ruleDef.children().toArray() as BrainRuleDef[]),
+  }));
 }
 
 /**
@@ -152,28 +175,19 @@ function restingPlace(ruleDef: BrainRuleDef, direction: RuleMoveDirection, pageD
 
 /** Renders the rules of a single brain page as a flattened, indented list of {@link BrainRuleEditor} rows. */
 export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPageEditorProps) {
-  const [updateCounter, setUpdateCounter] = useState(0);
+  // Bumped by every change the page can see, which re-reads the rules the page
+  // holds and the revision each of them stands at. The count itself is read for
+  // nothing; a rule recomputes from its own revision, not from this.
+  const [, rereadPage] = useState(0);
   const parseTimerRef = useRef<thread | null>(null);
   const PARSE_DEBOUNCE_SECS = 0.3;
 
-  useEffect(() => {
-    const onPageChanged = ({ what }: { what: string; ruleWhat?: unknown }) => {
-      if (what === "rule_added" || what === "rule_removed") {
-        setUpdateCounter((prev) => prev + 1);
-      }
-      // Force re-render for rule changes (moves, indents, outdents trigger rule_dirtyChanged, deletes trigger ruleDeleted)
-      if (what === "rule_dirtyChanged" || what === "rule_deleted") {
-        setUpdateCounter((prev) => prev + 1);
-      }
-    };
-
-    const unsub = pageDef.events().on("page_changed", onPageChanged);
-    return () => {
-      unsub();
-    };
-  }, [pageDef]);
-
-  // Debounced reparsing for all dirty rules
+  // Every change the page hears re-reads its rules and schedules one typecheck
+  // of the whole page. A rule typechecks against the rule above it at its own
+  // level, so a rule joining or leaving the page changes what its neighbours
+  // check to while dirtying none of them; a change that dirties nothing is
+  // still a reason to check. The check skips the rules it finds unchanged, and
+  // the delay coalesces a burst of changes into one check.
   useEffect(() => {
     const cancelParseTimer = () => {
       if (parseTimerRef.current) {
@@ -182,39 +196,28 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
       }
     };
 
-    const scheduleParsing = () => {
+    const onPageChanged = () => {
+      rereadPage((prev) => prev + 1);
       cancelParseTimer();
-
       parseTimerRef.current = task.delay(PARSE_DEBOUNCE_SECS, () => {
-        pageDef.typecheck();
         parseTimerRef.current = null;
+        pageDef.typecheck();
       });
-    };
-
-    const onPageChanged = ({ what, ruleWhat }: { what: unknown; ruleWhat?: unknown }) => {
-      if (
-        what === "rule_dirtyChanged" &&
-        ruleWhat !== null &&
-        typeof ruleWhat === "object" &&
-        "isDirty" in ruleWhat &&
-        (ruleWhat as Record<string, unknown>).isDirty
-      ) {
-        scheduleParsing();
-      }
     };
 
     const unsub = pageDef.events().on("page_changed", onPageChanged);
     return () => {
       unsub();
-      if (parseTimerRef.current) {
-        task.cancel(parseTimerRef.current);
-        parseTimerRef.current = null;
-      }
+      cancelParseTimer();
     };
   }, [pageDef]);
 
   const topLevelRules = pageDef.children().toArray() as BrainRuleDef[];
   const flattenedRules = flattenRules(topLevelRules);
+  // What each rule derives its reading, its capabilities and its offering from,
+  // listed in the order `flattenedRules` lists the rules themselves. A rule
+  // whose revision is unchanged has nothing to recompute.
+  const revisions = ruleRevisions(revisionNodes(topLevelRules));
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   // The rail the armed rule stands its offering in, held as state so the rule
@@ -567,14 +570,14 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
                 minHeight: `${100 / zoom}%`,
               }}
             >
-              {flattenedRules.map((flatRule) => (
+              {flattenedRules.map((flatRule, index) => (
                 <BrainRuleEditor
                   key={flatRule.ruleDef.id()}
                   ruleDef={flatRule.ruleDef}
                   depth={flatRule.depth}
                   lineNumber={flatRule.lineNumber}
                   ruleCount={flattenedRules.length}
-                  updateCounter={updateCounter}
+                  revision={revisions[index]}
                   commandHistory={commandHistory}
                 />
               ))}

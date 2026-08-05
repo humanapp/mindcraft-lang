@@ -65,7 +65,7 @@ describe("the sentence line's opening case", () => {
           createElement(
             BrainEditorProvider,
             { config: configFor() },
-            createElement(BrainRuleSentence, { ruleDef, updateCounter: 0 })
+            createElement(BrainRuleSentence, { ruleDef, revision: "" })
           )
         )
       ),
@@ -91,7 +91,7 @@ describe("the sentence line's opening case", () => {
         createElement(
           BrainEditorProvider,
           { config: configFor(lowercaseOpeningLocalizer) },
-          createElement(BrainRuleSentence, { ruleDef, updateCounter: 0 })
+          createElement(BrainRuleSentence, { ruleDef, revision: "" })
         )
       )
     );

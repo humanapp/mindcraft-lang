@@ -39,8 +39,8 @@ export interface UseCandidateStripOptions {
   catalogs: ReadonlyList<ITileCatalog>;
   availableCapabilities?: ReadonlyBitSet;
   availableOutputKeys?: UniqueSet<string>;
-  /** The page editor's update counter; re-queries the oracle when the document changes. */
-  updateCounter: number;
+  /** The rule's revision, from `ruleRevisions`; re-queries the oracle when it changes. */
+  revision: string;
   /** Called after each placement the strip completes, whichever commit path made it. */
   onCommitted?: () => void;
 }
@@ -113,7 +113,7 @@ export function useCandidateStrip({
   catalogs,
   availableCapabilities,
   availableOutputKeys,
-  updateCounter,
+  revision,
   onCommitted,
 }: UseCandidateStripOptions): CandidateStripState {
   const editorConfig = useBrainEditorConfig();
@@ -144,7 +144,7 @@ export function useCandidateStrip({
   // active locale's search fold.
   const foldText = useCallback((text: string) => localizer.foldForSearch(text), [localizer]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter and commitCounter are intentional re-query signals
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision and commitCounter are intentional re-query signals
   const { candidates, pagesFirst } = useMemo(() => {
     if (!target) return { candidates: [] as StripCandidate[], pagesFirst: false };
     const tileSet = target.side === RuleSide.When ? ruleDef.when() : ruleDef.do();
@@ -176,7 +176,7 @@ export function useCandidateStrip({
     catalogs,
     brainServices,
     labelOf,
-    updateCounter,
+    revision,
     commitCounter,
   ]);
 

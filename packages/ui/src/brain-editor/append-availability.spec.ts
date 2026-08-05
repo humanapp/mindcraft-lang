@@ -143,7 +143,7 @@ describe("the add-tile control the decision stands", () => {
             ruleDef,
             lineNumber: 1,
             ruleCount: 1,
-            updateCounter: 0,
+            revision: "",
             commandHistory: new BrainCommandHistory(),
           })
         )
@@ -233,7 +233,7 @@ describe("the add-tile control the decision stands", () => {
             ruleDef,
             lineNumber: 1,
             ruleCount: 1,
-            updateCounter: 0,
+            revision: "",
             commandHistory: new BrainCommandHistory(),
           })
         )

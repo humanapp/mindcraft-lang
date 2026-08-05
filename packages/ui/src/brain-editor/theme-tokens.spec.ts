@@ -92,7 +92,7 @@ function renderRuleCard(): string {
           ruleDef: ruleDef as BrainRuleDef,
           lineNumber: 1,
           ruleCount: 1,
-          updateCounter: 0,
+          revision: "",
           commandHistory: new BrainCommandHistory(),
         })
       )

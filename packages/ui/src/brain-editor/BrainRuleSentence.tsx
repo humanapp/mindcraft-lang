@@ -167,7 +167,7 @@ function caretsBeforeSegments(segments: readonly SentenceSegment[]): boolean[] {
 }
 
 /** The rule's sentence in the active locale, with the tiles its words render. */
-function useRuleSentence(ruleDef: BrainRuleDef, revision: number) {
+function useRuleSentence(ruleDef: BrainRuleDef, revision: string) {
   const localizer = useLocalizer();
   // biome-ignore lint/correctness/useExhaustiveDependencies: revision is an intentional recompute signal
   return useMemo(() => {
@@ -178,8 +178,8 @@ function useRuleSentence(ruleDef: BrainRuleDef, revision: number) {
 
 interface BrainRuleSentenceProps {
   ruleDef: BrainRuleDef;
-  /** The page editor's update counter; every document change re-reads the sentence. */
-  updateCounter: number;
+  /** The rule's revision, from `ruleRevisions`; the sentence is re-read when it changes. */
+  revision: string;
   /**
    * The composer's filter input, rendered where `caretPosition` stands. Present
    * while the rule holds the caret, which is also what keeps the line rendered
@@ -254,7 +254,7 @@ interface BrainRuleSentenceProps {
  */
 export function BrainRuleSentence({
   ruleDef,
-  updateCounter,
+  revision,
   composerInput,
   caretPosition,
   pending = false,
@@ -264,7 +264,7 @@ export function BrainRuleSentence({
   cellName,
   onCellKeyDown,
 }: BrainRuleSentenceProps) {
-  const { segments: settled, tiles } = useRuleSentence(ruleDef, updateCounter);
+  const { segments: settled, tiles } = useRuleSentence(ruleDef, revision);
   const localizer = useLocalizer();
   const editorConfig = useBrainEditorConfig();
   const pageGrid = usePageGrid();
@@ -469,7 +469,7 @@ export function BrainRuleSentence({
  * for a rule that projects no segments.
  */
 export function BrainPrintRuleSentence({ ruleDef }: { ruleDef: BrainRuleDef }) {
-  const { segments } = useRuleSentence(ruleDef, 0);
+  const { segments } = useRuleSentence(ruleDef, "");
   const localizer = useLocalizer();
   if (segments.length === 0) {
     return null;

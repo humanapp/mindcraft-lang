@@ -131,7 +131,7 @@ function renderCardWith(config: BrainEditorConfig, ruleDef: BrainRuleDef, target
           ruleDef,
           lineNumber: 1,
           ruleCount: 1,
-          updateCounter: 0,
+          revision: "",
           commandHistory: new BrainCommandHistory(),
         })
       )

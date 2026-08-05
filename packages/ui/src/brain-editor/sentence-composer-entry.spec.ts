@@ -185,7 +185,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, options: { depth?: number; target
           depth: options.depth,
           lineNumber: 1,
           ruleCount: 1,
-          updateCounter: 0,
+          revision: "",
           commandHistory: new BrainCommandHistory(),
         })
       )

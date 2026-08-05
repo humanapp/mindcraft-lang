@@ -79,7 +79,7 @@ function renderSentence(ruleDef: BrainRuleDef): string {
     createElement(
       BrainEditorProvider,
       { config: editorConfig },
-      createElement(BrainRuleSentence, { ruleDef, updateCounter: 0 })
+      createElement(BrainRuleSentence, { ruleDef, revision: "" })
     )
   );
 }
@@ -93,7 +93,7 @@ function renderRuleCard(ruleDef: BrainRuleDef): string {
         ruleDef,
         lineNumber: 1,
         ruleCount: 1,
-        updateCounter: 0,
+        revision: "",
         commandHistory: new BrainCommandHistory(),
       })
     )

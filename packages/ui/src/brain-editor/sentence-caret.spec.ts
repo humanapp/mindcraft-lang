@@ -68,7 +68,7 @@ function renderLine(
       { config: editorConfig },
       createElement(BrainRuleSentence, {
         ruleDef,
-        updateCounter: 0,
+        revision: "",
         composerInput: composing ? createElement("input", { "data-test-composer-input": "" }) : undefined,
         caretPosition: options.caretPosition,
         pending: options.pending,
@@ -98,7 +98,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, target?: ArmedTileTarget): string
           ruleDef,
           lineNumber: 1,
           ruleCount: 1,
-          updateCounter: 0,
+          revision: "",
           commandHistory: new BrainCommandHistory(),
         })
       )
@@ -310,7 +310,7 @@ describe("the structure the projection supplies", () => {
       createElement(
         BrainEditorProvider,
         { config: editorConfig },
-        createElement(BrainRuleSentence, { ruleDef, updateCounter: 0 })
+        createElement(BrainRuleSentence, { ruleDef, revision: "" })
       )
     );
     assert.equal(countOf(markup, "data-sentence-structure"), 0);
