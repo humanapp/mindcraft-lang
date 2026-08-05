@@ -1,6 +1,7 @@
 import { Error } from "../../platform/error";
 import type { ReadonlyList } from "../../platform/list";
 import type { LinkedBrainProgram } from "../../runtime";
+import type { RuleSide } from "../interfaces";
 
 /**
  * Diagnostic codes for brain compiler errors and warnings.
@@ -162,6 +163,106 @@ export type DiagCode = ParseDiagCode | TypeDiagCode | CompilationDiagCode | Link
 /** Severity classification for a diagnostic. */
 export type DiagnosticSeverity = "error" | "warning" | "info";
 
+/**
+ * Machine-readable values a diagnostic's `message` interpolates. A diagnostic
+ * populates only the fields its own message names; a message that interpolates
+ * nothing carries no params at all.
+ */
+export interface DiagParams {
+  /** Stable id of the tile the diagnostic is about. */
+  readonly tileId?: string;
+
+  /** Display label of {@link tileId}, falling back to the tile's id when it has no label. */
+  readonly tileLabel?: string;
+
+  /** `kind` discriminator of the tile the diagnostic is about, for example "sensor". */
+  readonly tileKind?: string;
+
+  /** Rule side the offending tile sits on. */
+  readonly side?: RuleSide;
+
+  /** `pageIndex/ruleIndex[/childIndex...]` path of the rule the diagnostic is about. */
+  readonly rulePath?: string;
+
+  /** Id of the operator the diagnostic is about. */
+  readonly operatorId?: string;
+
+  /** Id of the control-flow tile the diagnostic is about. */
+  readonly controlFlowId?: string;
+
+  /** Machine name of the struct field the diagnostic is about. */
+  readonly fieldName?: string;
+
+  /** Display label of {@link fieldName}, falling back to the field's name. */
+  readonly fieldLabel?: string;
+
+  /** Output identity key (see `mkOutputVarKey`) the diagnostic is about. */
+  readonly outputKey?: string;
+
+  /** Tile ids of the sensors that would satisfy the unmet requirement, in catalog order. */
+  readonly providerTileIds?: ReadonlyList<string>;
+
+  /** Type ids accepted at the reported position. */
+  readonly expectedTypeIds?: ReadonlyList<string>;
+
+  /** Type ids the reported expression actually produced. */
+  readonly actualTypeIds?: ReadonlyList<string>;
+
+  /** Path cost of the conversion that was applied. */
+  readonly conversionCost?: number;
+
+  /** Key of the action the diagnostic is about. */
+  readonly actionKey?: string;
+}
+
+/**
+ * Severity `code` carries everywhere it is reported: "error" blocks producing a
+ * program, "warning" reports degraded output that still compiles, and "info"
+ * reports a resolution the compiler made silently. Classify a rule's edit-time
+ * parse and type diagnostics with this to decide error-versus-informational
+ * without compiling and linking the whole brain; the answer matches the
+ * severity the build result carries for the same code.
+ *
+ * A code the pipeline does not classify is reported as an error.
+ */
+export function diagnosticSeverity(code: DiagCode): DiagnosticSeverity {
+  switch (code) {
+    case TypeDiagCode.DataTypeConverted:
+      return "info";
+
+    case ParseDiagCode.UnexpectedTokenAfterExpression:
+    case ParseDiagCode.ExpectedExpressionFoundEOF:
+    case ParseDiagCode.UnexpectedActionCallAfterExpression:
+    case ParseDiagCode.UnexpectedExpressionAfterExpression:
+    case ParseDiagCode.ExpectedSensorOrActuator:
+    case ParseDiagCode.ActionCallParseFailure:
+    case ParseDiagCode.UnexpectedActionCallKind:
+    case ParseDiagCode.ExpectedExpressionInSubExpr:
+    case ParseDiagCode.UnexpectedTokenKindInExpression:
+    case ParseDiagCode.UnexpectedOperatorInExpression:
+    case ParseDiagCode.ExpectedClosingParen:
+    case ParseDiagCode.UnexpectedControlFlowInExpression:
+    case ParseDiagCode.UnknownOperator:
+    case ParseDiagCode.InvalidAssignmentTarget:
+    case ParseDiagCode.ReadOnlyFieldAssignment:
+    case ParseDiagCode.ReadOnlyResultFieldAssignment:
+      return "warning";
+
+    case TypeDiagCode.NoOverloadForBinaryOp:
+    case TypeDiagCode.NoOverloadForUnaryOp:
+    case TypeDiagCode.DataTypeMismatch:
+    case TypeDiagCode.TileTypeMismatch:
+    case TypeDiagCode.TileNotFound:
+      return "warning";
+
+    case CompilationDiagCode.UncompilableExpressionDropped:
+      return "warning";
+
+    default:
+      return "error";
+  }
+}
+
 /** A diagnostic produced while compiling and linking a brain definition. */
 export interface BrainBuildDiagnostic {
   /** Stable diagnostic code. */
@@ -172,6 +273,9 @@ export interface BrainBuildDiagnostic {
 
   /** Human-readable description of the diagnostic. */
   readonly message: string;
+
+  /** Machine-readable values {@link message} interpolates; absent when it interpolates none. */
+  readonly params?: DiagParams;
 }
 
 /**

@@ -19,15 +19,18 @@ import type {
   BrainTileSensorDef,
   BrainTileVariableDef,
 } from "../tiles";
-import type { DiagCode } from "./diagnostics";
+import type { DiagCode, DiagParams } from "./diagnostics";
 
 /**
- * Parse diagnostic (error or warning) with source location.
+ * Parse diagnostic with source location. Classify its severity with
+ * `diagnosticSeverity(code)`.
  */
 export interface ParseDiag {
   code: DiagCode;
   message: string;
   span: Span;
+  /** Machine-readable values `message` interpolates; absent when it interpolates none. */
+  params?: DiagParams;
 }
 
 /**
@@ -269,11 +272,16 @@ export type TypeInfo = {
   fieldId?: number;
 };
 
-/** Type-checking diagnostic attached to a specific AST node. */
+/**
+ * Type-checking diagnostic attached to a specific AST node. Classify its
+ * severity with `diagnosticSeverity(code)`.
+ */
 export type TypeInfoDiag = {
   code: DiagCode;
   nodeId: number;
   message: string;
+  /** Machine-readable values `message` interpolates; absent when it interpolates none. */
+  params?: DiagParams;
 };
 
 /** Map from AST `nodeId` to its {@link TypeInfo}. */

@@ -1,0 +1,258 @@
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
+
+import {
+  coreModule,
+  createHostActuator,
+  createHostSensor,
+  createMindcraftEnvironment,
+  type MindcraftEnvironment,
+  type MindcraftModule,
+} from "@mindcraft-lang/core";
+import type { IBrainActionTileDef } from "@mindcraft-lang/core/brain";
+import { RuleSide } from "@mindcraft-lang/core/brain";
+import type { BrainBuildDiagnostic, DiagCode, ParseDiag, TypeInfoDiag } from "@mindcraft-lang/core/brain/compiler";
+import {
+  CompilationDiagCode,
+  diagnosticSeverity,
+  LinkDiagCode,
+  ParseDiagCode,
+  TypeDiagCode,
+} from "@mindcraft-lang/core/brain/compiler";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
+import {
+  bag,
+  CoreParameterId,
+  CoreTypeIds,
+  mkCallDef,
+  param,
+  TARGET_ACTION_ID_BASE,
+  TARGET_FUNC_ID_BASE,
+  TRUE_VALUE,
+  VOID_VALUE,
+} from "@mindcraft-lang/core/runtime";
+
+const kSensorKey = "diagspec.hungry";
+const kSensorLabel = "Hungry";
+const kActuatorKey = "diagspec.eat";
+const kActuatorLabel = "Eat";
+const kNumberActuatorKey = "diagspec.nudge";
+const kUnboundActuatorKey = "diagspec.unbound";
+
+/** The action tiles the fixture module puts into the environment's catalog. */
+interface Fixture {
+  readonly module: MindcraftModule;
+  /** Inline boolean sensor, placeable on either side. */
+  readonly sensorTile: IBrainActionTileDef;
+  /** No-argument actuator; placement is the DO side only. */
+  readonly actuatorTile: IBrainActionTileDef;
+  /** Actuator taking one anonymous number argument; placement is the DO side only. */
+  readonly numberActuatorTile: IBrainActionTileDef;
+}
+
+/** A host module carrying the sensor and actuators these tests place into rules. */
+function createFixture(): Fixture {
+  const sensor = createHostSensor({
+    key: kSensorKey,
+    actionId: TARGET_ACTION_ID_BASE,
+    fnId: TARGET_FUNC_ID_BASE,
+    callDef: mkCallDef({ type: "bag", items: [] }),
+    outputType: CoreTypeIds.Boolean,
+    inline: true,
+    metadata: { label: kSensorLabel },
+    fn: { exec: () => TRUE_VALUE },
+  });
+
+  const actuator = createHostActuator({
+    key: kActuatorKey,
+    actionId: TARGET_ACTION_ID_BASE + 1,
+    fnId: TARGET_FUNC_ID_BASE + 1,
+    callDef: mkCallDef({ type: "bag", items: [] }),
+    metadata: { label: kActuatorLabel },
+    fn: { exec: () => VOID_VALUE },
+  });
+
+  const numberActuator = createHostActuator({
+    key: kNumberActuatorKey,
+    actionId: TARGET_ACTION_ID_BASE + 2,
+    fnId: TARGET_FUNC_ID_BASE + 2,
+    callDef: mkCallDef(bag(param(CoreParameterId.AnonymousNumber, { anonymous: true }))),
+    fn: { exec: () => VOID_VALUE },
+  });
+
+  return {
+    sensorTile: sensor.tile,
+    actuatorTile: actuator.tile,
+    numberActuatorTile: numberActuator.tile,
+    module: {
+      id: "diagnostics-spec-host",
+      install(api): void {
+        api.registerHostSensor(sensor);
+        api.registerHostActuator(actuator);
+        api.registerHostActuator(numberActuator);
+      },
+    },
+  };
+}
+
+/** An environment carrying the fixture module, and an empty single-rule brain in it. */
+function newBrain(fixture: Fixture): {
+  environment: MindcraftEnvironment;
+  brainDef: BrainDef;
+  rule: BrainRuleDef;
+} {
+  const environment = createMindcraftEnvironment({ modules: [coreModule(), fixture.module] });
+  const brainDef = BrainDef.emptyBrainDef(environment.brainServices, "Diagnostics Brain");
+  const page = brainDef.pages().get(0) as BrainPageDef;
+  return { environment, brainDef, rule: page.children().get(0) as BrainRuleDef };
+}
+
+/** The rule's edit-time parse diagnostics, across both sides. */
+function parseDiags(rule: BrainRuleDef): ParseDiag[] {
+  const result = rule.when().typecheckResult();
+  assert.ok(result, "expected the rule to hold a typecheck result");
+  return result.parseResult.diags.toArray();
+}
+
+/** The rule's edit-time type-inference diagnostics. */
+function typeDiags(rule: BrainRuleDef): TypeInfoDiag[] {
+  const result = rule.when().typecheckResult();
+  assert.ok(result, "expected the rule to hold a typecheck result");
+  return result.typeInfo.diags.toArray();
+}
+
+/** The one diagnostic in `diags` carrying `code`. Fails when there is not exactly one. */
+function only<T extends { code: DiagCode }>(diags: readonly T[], code: DiagCode): T {
+  const matches = diags.filter((d) => d.code === code);
+  assert.equal(matches.length, 1, `expected exactly one diagnostic with code ${code}`);
+  return matches[0]!;
+}
+
+describe("diagnostic params", () => {
+  test("a tile placed on a side its placement excludes names the tile and the side", () => {
+    const fixture = createFixture();
+    const { environment, brainDef, rule } = newBrain(fixture);
+
+    rule.when().appendTile(fixture.actuatorTile);
+    rule.typecheck();
+
+    const diag = only(parseDiags(rule), ParseDiagCode.TilePlacementSideMismatch);
+    assert.equal(diag.params?.tileId, fixture.actuatorTile.tileId);
+    assert.equal(diag.params?.tileLabel, kActuatorLabel);
+    assert.equal(diag.params?.side, RuleSide.When);
+
+    // The build reports the same code with the same params.
+    const build = environment.linkBrain(brainDef);
+    const buildDiag = only(build.diagnostics.toArray(), ParseDiagCode.TilePlacementSideMismatch);
+    assert.equal(buildDiag.params?.tileId, fixture.actuatorTile.tileId);
+    assert.equal(buildDiag.params?.side, RuleSide.When);
+  });
+
+  test("an applied type conversion names the source type, the target type, and the cost", () => {
+    const fixture = createFixture();
+    const { environment, brainDef, rule } = newBrain(fixture);
+
+    // The actuator's anonymous slot takes a number; the sensor produces a boolean.
+    rule.do().appendTile(fixture.numberActuatorTile);
+    rule.do().appendTile(fixture.sensorTile);
+    rule.typecheck();
+
+    const diag = only(typeDiags(rule), TypeDiagCode.DataTypeConverted);
+    assert.deepEqual(diag.params?.actualTypeIds?.toArray(), [CoreTypeIds.Boolean]);
+    assert.deepEqual(diag.params?.expectedTypeIds?.toArray(), [CoreTypeIds.Number]);
+    assert.equal(diag.params?.conversionCost, 1);
+
+    // The conversion is informational, so the same brain still produces a program.
+    const build = environment.linkBrain(brainDef);
+    assert.ok(build.program, "an applied conversion must not block the build");
+  });
+
+  test("an action with no binding in the environment names the action key", () => {
+    const fixture = createFixture();
+    const { environment, brainDef, rule } = newBrain(fixture);
+
+    rule.do().appendTile(
+      new BrainTileActuatorDef(kUnboundActuatorKey, {
+        key: kUnboundActuatorKey,
+        kind: "actuator",
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        isAsync: false,
+      })
+    );
+
+    const build = environment.linkBrain(brainDef);
+    const diag = only(build.diagnostics.toArray(), LinkDiagCode.MissingActionBinding);
+    assert.equal(diag.params?.actionKey, kUnboundActuatorKey);
+    assert.equal(diag.severity, "error");
+    assert.equal(build.program, undefined);
+  });
+});
+
+describe("edit-time severity classification", () => {
+  test("a rule-level typecheck classifies its diagnostics without linking the brain", () => {
+    const fixture = createFixture();
+    const { rule } = newBrain(fixture);
+
+    rule.when().appendTile(fixture.actuatorTile);
+    rule.do().appendTile(fixture.numberActuatorTile);
+    rule.do().appendTile(fixture.sensorTile);
+    rule.typecheck();
+
+    assert.equal(diagnosticSeverity(only(parseDiags(rule), ParseDiagCode.TilePlacementSideMismatch).code), "error");
+    assert.equal(diagnosticSeverity(only(typeDiags(rule), TypeDiagCode.DataTypeConverted).code), "info");
+  });
+
+  test("every build diagnostic carries the severity the classifier assigns its code", () => {
+    const fixture = createFixture();
+    const { environment, brainDef, rule } = newBrain(fixture);
+
+    // A placement error, an unparseable second expression, and an unbound action
+    // together cover the error and warning branches of the classifier.
+    rule.when().appendTile(fixture.actuatorTile);
+    rule.when().appendTile(fixture.sensorTile);
+    rule.when().appendTile(fixture.sensorTile);
+    rule.do().appendTile(
+      new BrainTileActuatorDef(kUnboundActuatorKey, {
+        key: kUnboundActuatorKey,
+        kind: "actuator",
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        isAsync: false,
+      })
+    );
+
+    const diagnostics: BrainBuildDiagnostic[] = environment.linkBrain(brainDef).diagnostics.toArray();
+    assert.ok(diagnostics.length > 0, "expected the brain to produce diagnostics");
+    for (const diag of diagnostics) {
+      assert.equal(diag.severity, diagnosticSeverity(diag.code), `code ${diag.code} disagrees with its severity`);
+    }
+  });
+
+  test("a parse diagnostic the build does not report classifies below error", () => {
+    const fixture = createFixture();
+    const { environment, brainDef, rule } = newBrain(fixture);
+
+    rule.when().appendTile(fixture.sensorTile);
+    rule.when().appendTile(fixture.sensorTile);
+    rule.do().appendTile(fixture.actuatorTile);
+    rule.typecheck();
+
+    const diag = only(parseDiags(rule), ParseDiagCode.UnexpectedExpressionAfterExpression);
+    assert.equal(diagnosticSeverity(diag.code), "warning");
+
+    // Agreement: the build drops the expression and still produces a program.
+    const build = environment.linkBrain(brainDef);
+    assert.ok(build.program, "a recovered parse error must not block the build");
+    assert.deepEqual(
+      build.diagnostics.toArray().filter((d) => d.severity === "error"),
+      []
+    );
+
+    // The drop the build reports instead names where the expression was.
+    const dropped = only(build.diagnostics.toArray(), CompilationDiagCode.UncompilableExpressionDropped);
+    assert.equal(dropped.severity, "warning");
+    assert.equal(dropped.params?.rulePath, "0/0");
+    assert.equal(dropped.params?.side, RuleSide.When);
+    assert.equal(dropped.params?.tileId, fixture.sensorTile.tileId);
+  });
+});
