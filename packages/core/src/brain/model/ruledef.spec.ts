@@ -5,7 +5,7 @@ import { List } from "@mindcraft-lang/core";
 import { type BrainServices, CoreCapabilityBits, mkVariableTileId } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { ParseDiagCode, type TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef, BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { BrainDef, BrainPageDef, type BrainRuleDef, kMaxBrainRuleDepth } from "@mindcraft-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
   BrainTileLiteralDef,
@@ -421,6 +421,162 @@ describe("BrainRuleDef", () => {
         codes.includes(ParseDiagCode.NoPrecedingSiblingRule),
         "the rule left first at its level must carry NoPrecedingSiblingRule on the next typecheck"
       );
+    });
+  });
+
+  describe("dirty propagation", () => {
+    /**
+     * A brain holding a single chain of `length` rules, each the only child of
+     * the one above it. The returned rules run root-first, so index `i` is the
+     * rule at nesting depth `i`.
+     */
+    function ruleChain(name: string, length: number): { brain: BrainDef; rules: BrainRuleDef[] } {
+      const brain = BrainDef.emptyBrainDef(services, name);
+      const rules: BrainRuleDef[] = [];
+      let current = brain.pages().get(0).children().get(0) as BrainRuleDef;
+      rules.push(current);
+      for (let i = 1; i < length; i++) {
+        current = current.appendNewRule();
+        rules.push(current);
+      }
+      return { brain, rules };
+    }
+
+    /** Per-rule counts of `tileSet_dirtyChanged` events carrying `isDirty: true`. */
+    interface DirtyMarkCounts {
+      /** WHEN-side marks, indexed by the rule's position in the watched list. */
+      readonly when: number[];
+      /** DO-side marks, indexed by the rule's position in the watched list. */
+      readonly do: number[];
+      /** Sum of every WHEN-side and DO-side mark counted so far. */
+      total(): number;
+      /** Stop counting. */
+      stop(): void;
+    }
+
+    /** Start counting dirty marks on both sides of every rule in `rules`. */
+    function watchDirtyMarks(rules: BrainRuleDef[]): DirtyMarkCounts {
+      const whenCounts = rules.map(() => 0);
+      const doCounts = rules.map(() => 0);
+      const unsubs: Array<() => void> = [];
+      rules.forEach((rule, index) => {
+        unsubs.push(
+          rule
+            .when()
+            .events()
+            .on("tileSet_dirtyChanged", (data) => {
+              if (data.isDirty) whenCounts[index]++;
+            })
+        );
+        unsubs.push(
+          rule
+            .do()
+            .events()
+            .on("tileSet_dirtyChanged", (data) => {
+              if (data.isDirty) doCounts[index]++;
+            })
+        );
+      });
+      return {
+        when: whenCounts,
+        do: doCounts,
+        total: () => whenCounts.reduce((a, b) => a + b, 0) + doCounts.reduce((a, b) => a + b, 0),
+        stop: () => {
+          unsubs.forEach((unsub) => {
+            unsub();
+          });
+        },
+      };
+    }
+
+    /** A tile that can stand on either side of a rule. */
+    function editableTile(): BrainTileLiteralDef {
+      return new BrainTileLiteralDef(CoreTypeIds.Number, 3, {}, services);
+    }
+
+    test("markDirty marks both sides of every rule in the subtree, at every depth", () => {
+      const { rules } = ruleChain("dirty-subtree-brain", kMaxBrainRuleDepth + 1);
+      const marks = watchDirtyMarks(rules);
+
+      rules[0].markDirty();
+      marks.stop();
+
+      for (let i = 0; i < rules.length; i++) {
+        assert.ok(marks.when[i] >= 1, `the rule at depth ${i} must have its WHEN side marked dirty`);
+        assert.ok(marks.do[i] >= 1, `the rule at depth ${i} must have its DO side marked dirty`);
+      }
+      assert.equal(rules[0].isDirty(), true);
+    });
+
+    test("markDirty emits a linear number of dirty marks at maximum nesting depth", () => {
+      const { rules } = ruleChain("dirty-linear-brain", kMaxBrainRuleDepth + 1);
+      const marks = watchDirtyMarks(rules);
+
+      rules[0].markDirty();
+      marks.stop();
+
+      const total = marks.total();
+      assert.ok(
+        total >= 2 * rules.length,
+        `each of the ${rules.length} rules must have both sides marked; got ${total} marks`
+      );
+      assert.ok(
+        total <= 4 * rules.length,
+        `dirty marks must stay linear in rule count; ${rules.length} rules produced ${total} marks`
+      );
+    });
+
+    test("editing a WHEN tile marks the rule's DO side and every descendant", () => {
+      const { brain, rules } = ruleChain("when-edit-brain", 4);
+      brain.typecheck();
+      assert.equal(rules[0].isDirty(), false, "a freshly typechecked chain is clean");
+
+      const marks = watchDirtyMarks(rules);
+      rules[0].when().appendTile(editableTile());
+      marks.stop();
+
+      assert.ok(marks.do[0] >= 1, "the edited rule's DO side must be marked dirty");
+      for (let i = 1; i < rules.length; i++) {
+        assert.ok(marks.when[i] >= 1, `the descendant at depth ${i} must have its WHEN side marked dirty`);
+        assert.ok(marks.do[i] >= 1, `the descendant at depth ${i} must have its DO side marked dirty`);
+      }
+      assert.equal(rules[rules.length - 1].isDirty(), true, "the deepest descendant reports dirty");
+    });
+
+    test("editing a DO tile leaves the descendants clean", () => {
+      const { brain, rules } = ruleChain("do-edit-brain", 4);
+      brain.typecheck();
+
+      const marks = watchDirtyMarks(rules);
+      rules[0].do().appendTile(editableTile());
+      marks.stop();
+
+      assert.equal(marks.do[0], 1, "the edited DO side is marked dirty once");
+      assert.equal(marks.when[0], 0, "editing the DO side leaves the WHEN side alone");
+      for (let i = 1; i < rules.length; i++) {
+        assert.equal(marks.when[i], 0, `the descendant at depth ${i} keeps its WHEN side clean`);
+        assert.equal(marks.do[i], 0, `the descendant at depth ${i} keeps its DO side clean`);
+        assert.equal(rules[i].isDirty(), false, `the descendant at depth ${i} reports clean`);
+      }
+      assert.equal(rules[0].isDirty(), true, "the edited rule reports dirty");
+    });
+
+    test("an edit deep in the subtree still reaches the root's rule_dirtyChanged", async () => {
+      const { brain, rules } = ruleChain("dirty-event-brain", 3);
+      brain.typecheck();
+
+      const seen: boolean[] = [];
+      const unsub = rules[0].events().on("rule_dirtyChanged", ({ isDirty }) => {
+        seen.push(isDirty);
+      });
+      rules[rules.length - 1].when().appendTile(editableTile());
+      await new Promise((resolve) => {
+        setTimeout(resolve, 300);
+      });
+      unsub();
+
+      assert.ok(seen.length > 0, "the root rule must report its dirty state changing");
+      assert.equal(seen[seen.length - 1], true, "the root rule ends up dirty");
     });
   });
 

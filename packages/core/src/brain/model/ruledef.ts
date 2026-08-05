@@ -172,12 +172,14 @@ export class BrainRuleDef implements IBrainRuleDef {
     return false;
   }
 
+  /**
+   * Marks both sides of this rule, and both sides of every descendant rule, as
+   * needing recompilation. After this call `isDirty()` reads true for this rule
+   * and for the whole subtree beneath it.
+   */
   markDirty(): void {
     this.when_.markDirty();
     this.do_.markDirty();
-    this.children_.forEach((child) => {
-      child.markDirty();
-    });
   }
 
   private gatherCatalogs(): List<ITileCatalog> {
