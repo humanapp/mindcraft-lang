@@ -55,7 +55,6 @@ function renderRuleCard(ruleDef: BrainRuleDef, pickup: RulePickup | null): strin
           {
             value: {
               registerRule: () => () => {},
-              currentCell: undefined,
               ruleToCompose: undefined,
               composeRule: () => {},
               grabRule: () => {},

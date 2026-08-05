@@ -31,9 +31,10 @@ import {
   resolvePageGridCursor,
   ruleMoveDirections,
 } from "./page-grid-model";
-import { pageGridSelectionProps } from "./page-grid-selection";
+import { pageGridSelectionProps, ruleSelectionCell } from "./page-grid-selection";
 import { RuleDragProvider } from "./RuleDragContext";
 import { useRulePickup } from "./RulePickupContext";
+import { RuleSelectionProvider } from "./RuleSelectionContext";
 import { type RevisionRuleNode, ruleRevisions } from "./rule-revision";
 
 interface BrainPageEditorProps {
@@ -513,14 +514,13 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
   const gridBinding = useMemo(
     () => ({
       registerRule,
-      currentCell: cursor?.cell,
       ruleToCompose,
       composeRule: setRuleToCompose,
       grabRule,
       moveRule,
       offeringRail,
     }),
-    [registerRule, cursor, ruleToCompose, grabRule, moveRule, offeringRail]
+    [registerRule, ruleToCompose, grabRule, moveRule, offeringRail]
   );
 
   // A page that stops rendering gives back any rule it holds and closes its
@@ -571,15 +571,19 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
               }}
             >
               {flattenedRules.map((flatRule, index) => (
-                <BrainRuleEditor
+                <RuleSelectionProvider
                   key={flatRule.ruleDef.id()}
-                  ruleDef={flatRule.ruleDef}
-                  depth={flatRule.depth}
-                  lineNumber={flatRule.lineNumber}
-                  ruleCount={flattenedRules.length}
-                  revision={revisions[index]}
-                  commandHistory={commandHistory}
-                />
+                  value={ruleSelectionCell(cursor?.cell, flatRule.ruleDef.id())}
+                >
+                  <BrainRuleEditor
+                    ruleDef={flatRule.ruleDef}
+                    depth={flatRule.depth}
+                    lineNumber={flatRule.lineNumber}
+                    ruleCount={flattenedRules.length}
+                    revision={revisions[index]}
+                    commandHistory={commandHistory}
+                  />
+                </RuleSelectionProvider>
               ))}
               {/* The box carries a rule card's own border and padding, which
                   puts the control in the column a root rule's handle stands

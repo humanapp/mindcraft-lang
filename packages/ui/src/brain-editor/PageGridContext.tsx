@@ -1,7 +1,12 @@
 import { createContext, useContext } from "react";
-import type { PageGridCell, RuleCellDescriptor, RuleMoveDirection } from "./page-grid-model";
+import type { RuleCellDescriptor, RuleMoveDirection } from "./page-grid-model";
 
-/** What the page's selection grid offers the rules it is assembled from. */
+/**
+ * What the page's selection grid offers the rules it is assembled from. The cell
+ * each rule's own selection rests on is not among them: it is published per
+ * rule, by `RuleSelectionProvider`, so a move of the selection reaches the two
+ * rules it passes between and no other.
+ */
 export interface PageGridBinding {
   /**
    * Adds `descriptor` to the page's grid, replacing whatever that rule
@@ -9,11 +14,6 @@ export interface PageGridBinding {
    * make it as the rule stops rendering them.
    */
   registerRule(descriptor: RuleCellDescriptor): () => void;
-  /**
-   * The cell the selection rests on, which holds the grid's one tab stop.
-   * Undefined before any rule has registered its cells.
-   */
-  readonly currentCell: PageGridCell | undefined;
   /**
    * The rule an insertion asked be composed, which that rule's card takes up
    * once and then gives back. Undefined while no insertion is waiting.

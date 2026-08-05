@@ -10,6 +10,7 @@ import { editPointPositionOf } from "./edit-point";
 import { usePageGrid } from "./PageGridContext";
 import { kPageGridCellAttribute, pageGridCellKey } from "./page-grid-model";
 import { pageGridSelectionProps } from "./page-grid-selection";
+import { useRuleSelection } from "./RuleSelectionContext";
 import type { TileBadge } from "./tile-badges";
 import { tileAccessibleName } from "./tile-visual-utils";
 
@@ -54,9 +55,10 @@ export function BrainTileEditor({
   // The tile's place in the page's selection grid: one cell of its rule's
   // structural row, named by where it stands among the tiles of its side.
   const pageGrid = usePageGrid();
+  const selectedCell = useRuleSelection();
   const cellKey = pageGridCellKey({ kind: "tile", ruleId: ruleDef.id(), side, tileIndex });
   const cellName = `Tile ${tileIndex + 1} of ${ruleDef.side(side).tiles().size()}, ${tileAccessibleName(editorConfig, tileDef)}`;
-  const isSelectedCell = pageGrid?.currentCell !== undefined && pageGridCellKey(pageGrid.currentCell) === cellKey;
+  const isSelectedCell = selectedCell !== undefined && pageGridCellKey(selectedCell) === cellKey;
   const cellProps =
     pageGrid === undefined
       ? undefined

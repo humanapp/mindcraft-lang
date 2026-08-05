@@ -33,7 +33,8 @@ import {
   pageGridRows,
   type RuleCellDescriptor,
 } from "./page-grid-model";
-import { kPageGridSelectionAttribute } from "./page-grid-selection";
+import { kPageGridSelectionAttribute, ruleSelectionCell } from "./page-grid-selection";
+import { RuleSelectionProvider } from "./RuleSelectionContext";
 import { makeActuator, makeBrain, makeSensor } from "./test-only-rule-fixtures";
 
 let services: BrainServices;
@@ -87,7 +88,6 @@ function renderRuleCard(ruleDef: BrainRuleDef, currentCell?: PageGridCell): stri
           {
             value: {
               registerRule: () => () => {},
-              currentCell,
               ruleToCompose: undefined,
               composeRule: () => {},
               grabRule: () => {},
@@ -95,13 +95,17 @@ function renderRuleCard(ruleDef: BrainRuleDef, currentCell?: PageGridCell): stri
               offeringRail: null,
             },
           },
-          createElement(BrainRuleEditor, {
-            ruleDef,
-            lineNumber: 1,
-            ruleCount: 1,
-            revision: "",
-            commandHistory: new BrainCommandHistory(),
-          })
+          createElement(
+            RuleSelectionProvider,
+            { value: ruleSelectionCell(currentCell, ruleDef.id()) },
+            createElement(BrainRuleEditor, {
+              ruleDef,
+              lineNumber: 1,
+              ruleCount: 1,
+              revision: "",
+              commandHistory: new BrainCommandHistory(),
+            })
+          )
         )
       )
     )

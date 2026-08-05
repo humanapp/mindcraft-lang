@@ -63,6 +63,7 @@ import {
 import { type PageGridSelectionShape, pageGridSelectionProps } from "./page-grid-selection";
 import { useRuleDragController } from "./RuleDragContext";
 import { useRulePickup } from "./RulePickupContext";
+import { useRuleSelection } from "./RuleSelectionContext";
 import { copyRuleToClipboard, deserializeAllRulesFromClipboard, hasRuleInClipboard } from "./rule-clipboard";
 import {
   kRuleMoveMarkerCorners,
@@ -171,8 +172,7 @@ function BrainRuleEditorCard({
   commandHistory,
 }: BrainRuleEditorProps) {
   const { brainServices, tileCatalogs, isBrokenTile } = useBrainEditorConfig();
-  // The cells this rule stands in the page's selection grid, and the one the
-  // page's selection currently rests on.
+  // The cells this rule stands in the page's selection grid.
   const pageGrid = usePageGrid();
   const ruleId = ruleDef.id();
   // The rule the page holds picked up.
@@ -244,17 +244,20 @@ function BrainRuleEditorCard({
   // entry.
   const isComposing = composerCaret !== undefined;
 
+  // The cell of this rule the page's selection rests on, undefined while it
+  // rests on another rule's.
+  const selectedCell = useRuleSelection();
+
   // Where this rule was last edited, which composition opens at again: the
   // composer's caret while composing, and otherwise the tile the page's
   // selection rests on.
-  const selectedCell = pageGrid?.currentCell;
   const heldCaretRef = useRef<CaretPosition | undefined>(undefined);
   useEffect(() => {
     if (composerCaret !== undefined) heldCaretRef.current = composerCaret;
-    else if (selectedCell?.kind === "tile" && selectedCell.ruleId === ruleId) {
+    else if (selectedCell?.kind === "tile") {
       heldCaretRef.current = { kind: "element", side: selectedCell.side, tileIndex: selectedCell.tileIndex };
     }
-  }, [composerCaret, selectedCell, ruleId]);
+  }, [composerCaret, selectedCell]);
 
   const ownCommitsRef = useRef<ComposerCommit[]>([]);
   // The commits span one composition, so the WHEN->DO pivot keeps them; leaving
@@ -715,9 +718,10 @@ function BrainRuleEditorCard({
           deleteTile: deleteTileAt,
           moveRule: (direction) => pageGrid?.moveRule(ruleId, direction),
           // Composition names the cell its caret rests at. Every other arming
-          // takes the cell the page's selection rests on, which the grid moves
-          // to whatever stands in a vanished cell's place, so a tile removed
-          // from the tray leaves the keyboard where that tile stood.
+          // takes the cell of this rule the selection rests on, which the grid
+          // moves to whatever stands in a vanished cell's place, so a tile
+          // removed from the tray leaves the keyboard where that tile stood,
+          // and this rule's handle where the selection rests on no cell of it.
           exitCellKey: () =>
             pageGridCellKey(
               composerCaret !== undefined
@@ -869,7 +873,7 @@ function BrainRuleEditorCard({
    * A key pressed on a control the cell holds belongs to that control.
    */
   const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (selectedCell === undefined || selectedCell.kind === "append-rule" || selectedCell.ruleId !== ruleId) return;
+    if (selectedCell === undefined) return;
     // A held rule reads its keys as moves; nothing operates on it until it is
     // set down.
     if (rulePickup.pickup !== null) return;
@@ -1128,7 +1132,8 @@ function BrainRuleEditorCard({
  *
  * The card renders again only when one of its props changes, `revision` among
  * them, or when a context it reads publishes a new value. A page change that
- * leaves this rule's revision alone therefore costs it nothing.
+ * leaves this rule's revision alone therefore costs it nothing, and a move of
+ * the page's selection costs only the two rules it passes between.
  */
 export const BrainRuleEditor = memo(BrainRuleEditorCard);
 

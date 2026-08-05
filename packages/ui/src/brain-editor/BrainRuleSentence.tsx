@@ -22,6 +22,7 @@ import { kRuleContentLayer } from "./editor-layers";
 import { usePageGrid } from "./PageGridContext";
 import { kPageGridCellAttribute, pageGridCellKey } from "./page-grid-model";
 import { pageGridSelectionProps } from "./page-grid-selection";
+import { useRuleSelection } from "./RuleSelectionContext";
 import { composePivotReading, composeSentenceReading } from "./sentence-composer";
 import {
   changedSentenceSegments,
@@ -268,6 +269,7 @@ export function BrainRuleSentence({
   const localizer = useLocalizer();
   const editorConfig = useBrainEditorConfig();
   const pageGrid = usePageGrid();
+  const selectedCell = useRuleSelection();
   const isComposing = composerInput !== undefined;
   const segments = useMemo(() => (isComposing ? composeSentenceReading(settled) : settled), [isComposing, settled]);
   const pivot = useMemo(
@@ -311,7 +313,7 @@ export function BrainRuleSentence({
   // The whole line is one cell of the page's selection grid, rendered as a
   // named group holding the line's own controls.
   const cellKey = pageGridCellKey({ kind: "sentence", ruleId: ruleDef.id() });
-  const isSelectedCell = pageGrid?.currentCell !== undefined && pageGridCellKey(pageGrid.currentCell) === cellKey;
+  const isSelectedCell = selectedCell !== undefined && pageGridCellKey(selectedCell) === cellKey;
   const cellProps =
     pageGrid === undefined || cellName === undefined
       ? undefined
