@@ -14,6 +14,10 @@ import { useDocsPrint } from "./useDocsPrint";
 // URL <-> docs state mapping
 // ---------------------------------------------------------------------------
 
+/**
+ * The tabs the standalone route can land on. `keyboard` is absent: it reads the
+ * editor's current mode, and no editor stands on this route.
+ */
 const VALID_TABS = new Set<string>(["tiles", "patterns", "concepts"]);
 
 function parseDocsUrl(pathname: string): { tab: DocTab; key: string | null } {

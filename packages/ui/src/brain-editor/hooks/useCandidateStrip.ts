@@ -3,7 +3,7 @@ import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang
 import { suggestTiles, type TileSuggestion, tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { type ArmedTileTarget, useArmedTargetController } from "../ArmedTargetContext";
+import { type ArmedTileTarget, useArmedTargetActions } from "../ArmedTargetContext";
 import { useBrainEditorConfig, useLocalizer } from "../BrainEditorContext";
 import {
   arrangeCandidateSubcategories,
@@ -118,7 +118,7 @@ export function useCandidateStrip({
 }: UseCandidateStripOptions): CandidateStripState {
   const editorConfig = useBrainEditorConfig();
   const { brainServices } = editorConfig;
-  const armedTarget = useArmedTargetController();
+  const armedTarget = useArmedTargetActions();
   const [filter, setFilter] = useState("");
   const [commitCounter, setCommitCounter] = useState(0);
 

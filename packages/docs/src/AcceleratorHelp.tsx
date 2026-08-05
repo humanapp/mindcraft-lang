@@ -1,20 +1,12 @@
 import type { AcceleratorContribution, AcceleratorPlatform } from "@mindcraft-lang/ui/brain-editor/accelerators";
 import {
+  acceleratorChips,
   acceleratorPlatform,
-  acceleratorsForMode,
-  kAcceleratorContributions,
+  liveAcceleratorSection,
 } from "@mindcraft-lang/ui/brain-editor/accelerators";
 import type { EditorMode } from "@mindcraft-lang/ui/brain-editor/editor-mode";
-import { kEditorModes } from "@mindcraft-lang/ui/brain-editor/editor-mode";
 import { useEffect, useMemo, useState } from "react";
-import { DocMarkdown } from "./DocMarkdown";
 import { useDocsSidebar } from "./DocsSidebarContext";
-
-/**
- * Key of the documentation concept the keyboard help page stands as. Navigate
- * the docs panel or the docs page to this concept to open it.
- */
-export const kAcceleratorHelpConceptId = "keyboard";
 
 /** How long the page waits for the editor to settle before it swaps its live list, in milliseconds. */
 const kSettleDelayMs = 250;
@@ -44,13 +36,47 @@ function useSettledMode(mode: EditorMode | undefined, delayMs: number): EditorMo
   return settled;
 }
 
-/** The platform whose modifier names this page writes, read from the browser it renders in. */
+/** The platform whose modifier names this page draws, read from the browser it renders in. */
 function currentPlatform(): AcceleratorPlatform {
   if (typeof navigator === "undefined") return "other";
   return acceleratorPlatform(navigator.userAgent);
 }
 
-/** One contribution's markdown, rendered as a row of the list. */
+/** Every word a search matches a contribution on, on `platform`. */
+function searchableText(contribution: AcceleratorContribution, platform: AcceleratorPlatform): string[] {
+  const words = [contribution.label, contribution.note ?? ""];
+  for (const binding of contribution.bindings) {
+    words.push(...acceleratorChips(binding, platform));
+    if (binding.kind === "chord") {
+      words.push(...binding.keys, ...(binding.modifiers ?? []));
+    }
+  }
+  return words;
+}
+
+/** The contributions of `contributions` that `search` keeps. An empty search keeps them all. */
+function filterContributions(
+  contributions: readonly AcceleratorContribution[],
+  search: string,
+  platform: AcceleratorPlatform
+): readonly AcceleratorContribution[] {
+  const query = search.trim().toLowerCase();
+  if (query === "") return contributions;
+  return contributions.filter((contribution) =>
+    searchableText(contribution, platform).some((word) => word.toLowerCase().includes(query))
+  );
+}
+
+/** One key drawn as its own bordered box. */
+function KeyChip({ children }: { children: string }) {
+  return (
+    <kbd className="inline-flex items-center justify-center min-w-6 h-6 px-1.5 rounded border border-border bg-muted text-[11px] leading-none font-medium text-foreground font-sans whitespace-nowrap">
+      {children}
+    </kbd>
+  );
+}
+
+/** One contribution as a row: what it does on the left, the keys that do it on the right. */
 function AcceleratorRow({
   contribution,
   platform,
@@ -59,77 +85,69 @@ function AcceleratorRow({
   platform: AcceleratorPlatform;
 }) {
   return (
-    <li className="text-sm leading-relaxed">
-      <DocMarkdown>{contribution.markdown(platform)}</DocMarkdown>
+    <li data-accelerator-row={contribution.id} className="border-b border-border/40 last:border-b-0 py-0.5">
+      <div className="flex items-center justify-between gap-3 min-h-8">
+        <span className="text-sm text-foreground leading-snug min-w-0">{contribution.label}</span>
+        <span className="flex flex-wrap justify-end items-center gap-x-3 gap-y-1 shrink-0 max-w-[55%]">
+          {contribution.bindings.map((binding, index) => (
+            <span
+              // biome-ignore lint/suspicious/noArrayIndexKey: a binding's only identity is its position
+              key={index}
+              className="flex items-center gap-1"
+            >
+              {acceleratorChips(binding, platform).map((chip) => (
+                <KeyChip key={chip}>{chip}</KeyChip>
+              ))}
+            </span>
+          ))}
+        </span>
+      </div>
     </li>
   );
 }
 
-/** The contributions of one mode, under that mode's heading. */
-function AcceleratorSection({
-  mode,
-  contributions,
-  platform,
-}: {
-  mode: EditorMode;
-  contributions: readonly AcceleratorContribution[];
-  platform: AcceleratorPlatform;
-}) {
-  if (contributions.length === 0) return null;
-  return (
-    <section className="mb-5">
-      <h3 className="text-sm font-semibold text-foreground mb-1.5">{kModeNames[mode]}</h3>
-      <ul className="space-y-1.5 list-none pl-0">
-        {contributions.map((contribution) => (
-          <AcceleratorRow key={contribution.id} contribution={contribution} platform={platform} />
-        ))}
-      </ul>
-    </section>
-  );
+/** Props for {@link AcceleratorHelp}. */
+export interface AcceleratorHelpProps {
+  /** Narrows the list to the rows whose words contain it. Empty keeps every row. */
+  search?: string;
 }
 
 /**
- * The keyboard help page: the shortcuts live in the editor right now, followed
- * by every shortcut the editor has.
+ * The shortcuts the editor acts on right now, and only those, so nothing shown
+ * is inert where it is shown. It follows the editor while this page is open,
+ * waiting for the editor to settle before it swaps.
  *
- * The live list holds only what the editor's current mode acts on, so nothing
- * shown there is inert where it is shown. It follows the editor while this page
- * is open, waiting for the editor to settle before it swaps, and stands no live
- * list at all while no editor does.
+ * The page renders nothing while no editor stands. Its docs tab is withdrawn in
+ * that case, so the empty render is reachable only for as long as a closing
+ * editor takes to withdraw it.
  */
-export function AcceleratorHelp() {
+export function AcceleratorHelp({ search = "" }: AcceleratorHelpProps) {
   const { editorMode } = useDocsSidebar();
   const settledMode = useSettledMode(editorMode, kSettleDelayMs);
   const platform = useMemo(currentPlatform, []);
-  const live = useMemo(() => acceleratorsForMode(settledMode), [settledMode]);
+  const live = useMemo(() => liveAcceleratorSection(settledMode), [settledMode]);
+  const rows = useMemo(
+    () => (live === undefined ? undefined : filterContributions(live.contributions, search, platform)),
+    [live, search, platform]
+  );
+
+  if (live === undefined || rows === undefined) return null;
 
   return (
-    <div data-accelerator-help="" data-accelerator-mode={settledMode ?? ""}>
-      <h2 className="text-base font-semibold text-foreground mb-1">Right now</h2>
-      {settledMode === undefined ? (
-        <p className="text-sm text-muted-foreground mb-5">
-          Open a brain to see what the keys do where you are standing. Everything the editor knows is listed below.
-        </p>
-      ) : (
-        <>
-          <p className="text-xs text-muted-foreground mb-3">{kModeNames[settledMode]}</p>
-          <ul className="space-y-1.5 list-none pl-0 mb-6">
-            {live.map((contribution) => (
+    <div data-accelerator-help="" data-accelerator-mode={live.mode}>
+      <div data-accelerator-live="">
+        <h2 className="text-base font-semibold text-foreground mb-0.5">Keyboard Shortcuts</h2>
+        <p className="text-xs text-muted-foreground mb-2">{kModeNames[live.mode]}</p>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No shortcuts match your search.</p>
+        ) : (
+          <ul className="list-none pl-0 m-0">
+            {rows.map((contribution) => (
               <AcceleratorRow key={contribution.id} contribution={contribution} platform={platform} />
             ))}
           </ul>
-        </>
-      )}
-
-      <h2 className="text-base font-semibold text-foreground mb-2 pt-2 border-t border-border">Everywhere else</h2>
-      {kEditorModes.map((mode) => (
-        <AcceleratorSection
-          key={mode}
-          mode={mode}
-          contributions={acceleratorsForMode(mode, kAcceleratorContributions)}
-          platform={platform}
-        />
-      ))}
+        )}
+      </div>
     </div>
   );
 }

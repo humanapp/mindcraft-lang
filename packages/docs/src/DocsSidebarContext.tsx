@@ -19,8 +19,13 @@ import type { PrintTransport } from "@mindcraft-lang/ui/print/standalone-print-d
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import { DocsRegistry } from "./DocsRegistry";
 
-/** Identifier of the active sidebar tab. */
-export type DocTab = "tiles" | "patterns" | "concepts";
+/**
+ * Identifier of the active sidebar tab. `tiles`, `patterns` and `concepts` are
+ * collections of registry entries a reader navigates into; `keyboard` is a
+ * single reference page built from the editor's accelerator registry and holds
+ * no registry entries of its own.
+ */
+export type DocTab = "tiles" | "patterns" | "concepts" | "keyboard";
 
 interface DocsSidebarContextValue {
   isOpen: boolean;
@@ -222,7 +227,12 @@ export function DocsSidebarProvider({
   }, []);
 
   const [editorMode, setEditorMode] = useState<EditorMode | undefined>(undefined);
-  const reportEditorMode = useCallback((mode: EditorMode | undefined) => setEditorMode(mode), []);
+  const reportEditorMode = useCallback((mode: EditorMode | undefined) => {
+    setEditorMode(mode);
+    // The keyboard tab is withdrawn with the editor that stands it, so a reader
+    // left on it is moved off before it disappears from under them.
+    if (mode === undefined) setActiveTab((tab) => (tab === "keyboard" ? "tiles" : tab));
+  }, []);
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);

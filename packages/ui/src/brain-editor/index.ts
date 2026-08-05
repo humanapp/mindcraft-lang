@@ -25,9 +25,24 @@ export {
   ReplaceTileCommand,
 } from "@mindcraft-lang/core/brain/model";
 // Action call-spec arg entries
-export type { AcceleratorClaim, AcceleratorContribution, AcceleratorPlatform } from "./accelerators";
+export type {
+  AcceleratorBinding,
+  AcceleratorClaim,
+  AcceleratorContribution,
+  AcceleratorModifier,
+  AcceleratorPlatform,
+  LiveAcceleratorSection,
+} from "./accelerators";
 // Documented accelerators, filtered to the mode the editor stands in
-export { acceleratorPlatform, acceleratorsForMode, commandKeyName, kAcceleratorContributions } from "./accelerators";
+export {
+  acceleratorChips,
+  acceleratorKeyName,
+  acceleratorModifierName,
+  acceleratorPlatform,
+  acceleratorsForMode,
+  kAcceleratorContributions,
+  liveAcceleratorSection,
+} from "./accelerators";
 export type { ActionArgEntry, ActionArgTileEntry, ActionArgTypeEntry, TypeDisplaySources } from "./action-arg-tiles";
 export { getActionArgEntries, resolveTypeDisplayName } from "./action-arg-tiles";
 export type { BrainEditorConfig, CustomLiteralType } from "./BrainEditorContext";

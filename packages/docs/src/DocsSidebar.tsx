@@ -4,7 +4,7 @@ import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Printer, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AcceleratorHelp, kAcceleratorHelpConceptId } from "./AcceleratorHelp";
+import { AcceleratorHelp } from "./AcceleratorHelp";
 import { DocMarkdown } from "./DocMarkdown";
 import { DocsEntryLink } from "./DocsEntryLink";
 import { DocsPrintView } from "./DocsPrintView";
@@ -93,6 +93,7 @@ const TABS: { id: DocTab; label: string }[] = [
   { id: "tiles", label: "Tiles" },
   { id: "patterns", label: "Patterns" },
   { id: "concepts", label: "Concepts" },
+  { id: "keyboard", label: "Keyboard" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -195,9 +196,11 @@ interface TabBarProps {
 }
 
 function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarProps) {
+  const { editorMode } = useDocsSidebar();
+  const tabs = useMemo(() => TABS.filter((tab) => tab.id !== "keyboard" || editorMode !== undefined), [editorMode]);
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      const tabIds = TABS.map((t) => t.id);
+      const tabIds = tabs.map((t) => t.id);
       const currentIndex = tabIds.indexOf(activeTab);
       if (e.key === "ArrowRight") {
         e.preventDefault();
@@ -213,7 +216,7 @@ function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarPro
         setTab(tabIds[tabIds.length - 1]);
       }
     },
-    [activeTab, setTab]
+    [activeTab, setTab, tabs]
   );
 
   return (
@@ -223,7 +226,7 @@ function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarPro
       aria-label="Documentation sections"
       onKeyDown={handleKeyDown}
     >
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         return (
           <button
@@ -503,7 +506,6 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         >
           <DocMarkdown>{detailContent}</DocMarkdown>
           {navTab === "tiles" && <DocsTileArgsSection tileId={navKey} />}
-          {navTab === "concepts" && navKey === kAcceleratorHelpConceptId && <AcceleratorHelp />}
         </article>
       </>
     );
@@ -547,7 +549,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
       <TabBar activeTab={activeTab} setTab={handleSetTab} itemClassName={tabBarClassName} />
       {/* Live region: announces result counts when search query is active */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
-        {search.trim()
+        {search.trim() && activeTab !== "keyboard"
           ? activeTab === "tiles"
             ? `${filteredTiles.length} tile${filteredTiles.length === 1 ? "" : "s"} found`
             : activeTab === "patterns"
@@ -611,6 +613,8 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
             </div>
           </>
         )}
+
+        {activeTab === "keyboard" && <AcceleratorHelp search={search} />}
       </div>
     </>
   );
@@ -640,6 +644,8 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
     if (navKey && navTab) return `/docs/${navTab}/${encodeURIComponent(navKey)}`;
     return `/docs/${activeTab}`;
   }, [navKey, navTab, activeTab]);
+  /** Whether the standalone docs page stands a route to what the panel is showing. */
+  const hasDocsPage = showDocsPageLinks && activeTab !== "keyboard";
 
   return (
     <>
@@ -650,7 +656,7 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
           <span className="text-sm font-semibold tracking-tight">Docs</span>
         </div>
         <div className="flex items-center gap-1">
-          {showDocsPageLinks && (
+          {hasDocsPage && (
             <a
               href={docsPageUrl}
               target="_blank"
