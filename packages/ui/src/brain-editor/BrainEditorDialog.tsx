@@ -247,6 +247,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     const extraCatalogs = tileCatalogs ? List.from(tileCatalogs) : undefined;
     const command = new ReplaceBrainCommand(brainDef, json, extraCatalogs);
     commandHistory.executeCommand(command);
+    toast.success("Brain pasted");
   }, [brainDef, commandHistory, tileCatalogs]);
 
   useEffect(() => {
@@ -630,8 +631,12 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
           {...{ [kEditorContentAttribute]: "" }}
           // The editor centres itself in the viewport width the documentation
           // panel leaves free, read from the --docs-panel-inset custom property
-          // the panel publishes (0% when it covers nothing).
-          className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-2 gap-2 sm:left-[calc(50%_-_var(--docs-panel-inset,0%)_*_0.5)] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[min(75%,100%_-_var(--docs-panel-inset,0%)_-_2rem)] sm:h-[90%] sm:p-4 sm:gap-3 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl overflow-hidden"
+          // the panel publishes (0% when it covers nothing), and in the height
+          // the soft keyboard leaves free, read the same way from
+          // --keyboard-inset (0px with no keyboard up). Both shapes give up the
+          // covered height, so the rules and the candidate strip stay on screen
+          // alongside the keyboard.
+          className="left-0 top-0 translate-x-0 translate-y-0 h-[calc(100dvh-var(--keyboard-inset,0))] max-w-full p-2 gap-2 sm:left-[calc(50%-var(--docs-panel-inset,0%)*0.5)] sm:top-[calc(50%-var(--keyboard-inset,0)*0.5)] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[min(75%,100%-var(--docs-panel-inset,0%)-2rem)] sm:h-[calc(90%-var(--keyboard-inset,0)*0.9)] sm:p-4 sm:gap-3 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl overflow-hidden"
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onFocusOutside={(e) => e.preventDefault()}

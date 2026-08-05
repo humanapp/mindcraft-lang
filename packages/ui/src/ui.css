@@ -152,6 +152,49 @@
 }
 
 /* ==========================================================================
+   Coarse-pointer target floor
+
+   Under `@media (pointer: coarse)` every control in the app chrome measures at
+   least 44px on both axes, and every field the keyboard types into is set at
+   1rem, the size below which iOS Safari zooms the page in on focus. Nothing
+   here reads the user agent: iPadOS Safari reports a macOS one.
+
+   The size floor is stated as a minimum, never a height, so a call site's own
+   `h-*` / `w-*` keeps describing the fine-pointer geometry and the minimum
+   clamps it only where the pointer is coarse. It sits in the base layer, so a
+   call site that must stay smaller overrides it with a `pointer-coarse:min-h-*`
+   / `pointer-coarse:min-w-*` utility.
+
+   The type floor sits in the utilities layer instead, because a smaller
+   `text-*` utility would otherwise win, and it outranks every font-size
+   utility: under a coarse pointer a field reads at 1rem unless a call site
+   marks its own size important (`pointer-coarse:text-lg!`).
+
+   Two things stand outside the floor:
+
+   - The brain editor's own content, which sizes its controls itself.
+   - `role="switch"`, whose pill would square off into a blob. `src/ui/switch.tsx`
+     reaches 44px by growing its hit area instead of its box.
+   ========================================================================== */
+
+@layer base {
+  @media (pointer: coarse) {
+    :is(button, select, textarea, input, a[href]):not([role="switch"]):not([data-brain-editor-content] *) {
+      min-block-size: 44px;
+      min-inline-size: 44px;
+    }
+  }
+}
+
+@layer utilities {
+  @media (pointer: coarse) {
+    :is(input, select, textarea):not([data-brain-editor-content] *) {
+      font-size: 1rem;
+    }
+  }
+}
+
+/* ==========================================================================
    Brain page selection
 
    The one cell the brain page's selection rests on carries

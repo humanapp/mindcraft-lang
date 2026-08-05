@@ -167,6 +167,51 @@ Rules for this contract:
 - Nothing in the type system checks this. A change on either side has to be
   matched by hand; `language-docs.instructions.md` carries the publisher's half.
 
+## Soft Keyboard Inset -- `--keyboard-inset`
+
+`src/ui/keyboard-inset.ts` publishes a custom property on the document root,
+`--keyboard-inset`: the height of the layout viewport's bottom edge that the
+soft keyboard covers, written in CSS pixels. It reads `0px` whenever the whole
+layout viewport is reachable.
+
+`DialogContent` (`src/ui/dialog.tsx`) consumes it. Its `top` subtracts half the
+inset, so a dialog centres itself in the height the keyboard leaves free
+instead of sitting behind it. Every dialog that replaces `top` in its own
+`sm:` overrides has to repeat the subtraction, and every one that pins a
+height has to give up the covered height as well, or its lower half stays
+behind the keyboard. Three do: `BrainEditorDialog` (its rules and candidate
+strip), `ProjectPickerDialog` and `ExtensionBrowserDialog` (their search
+fields).
+
+Rules for this contract:
+
+- Read it with a `0px` fallback (`var(--keyboard-inset,0px)`). It is unset
+  whenever no dialog is open, and stays unset in an environment with no
+  `visualViewport`.
+- Keep it a length, not a percentage. Keyboard height has no relation to
+  viewport height, and the publisher re-writes the property on every visual
+  viewport `resize` and `scroll`, so nothing goes stale.
+- **Derive it from occlusion, never from `visualViewport.height` alone.** The
+  visual viewport also moves under pinch-zoom and under browser chrome
+  collapsing on scroll; a height-only reading drifts on both and the dialog
+  looks broken while nothing is wrong. `keyboardInsetPx` computes
+  `innerHeight - (visualViewport.height * visualViewport.scale +
+  visualViewport.offsetTop)`, clamped at zero: the scale factor puts the visual
+  height back into layout pixels so a pinch-zoom reads `0`, and the offset
+  cancels a viewport that has merely been scrolled. `keyboard-inset.spec.ts`
+  pins those cases.
+- There is no threshold. Measured on desktop Chrome, `innerHeight` and
+  `visualViewport.height` agree exactly, so the property reads `0px` and
+  desktop geometry is untouched. Add one only against a measured non-zero
+  resting delta.
+- The publisher is subscription-counted and lives inside the portaled dialog
+  content, which mounts only while a dialog is open. Nested dialogs each hold a
+  subscription; the last release detaches the listeners and removes the
+  property. Anything else that needs the inset takes its own subscription
+  rather than assuming a dialog is up.
+- Nothing in the type system checks this. A change on either side has to be
+  matched by hand.
+
 ## Dialogs, Portals and Focus
 
 Two constraints here are not enforced by types and have each cost a bug.
@@ -205,6 +250,65 @@ container, so `renderToStaticMarkup(<SomeDialog isOpen />)` returns the empty st
 no attribute, no marker, no text inside a dialog, menu, popover or tooltip ever reaches
 server markup. Verify those surfaces in a browser; pin the module-level predicates behind
 them instead, which is what `keyboard-hold.spec.ts` does.
+
+## Touch Targets
+
+Under a coarse pointer every control in the app chrome measures at least 44px on
+both axes, and every field the keyboard types into is set at 1rem -- below 16px
+iOS Safari zooms the page in when a field takes focus, and that applies to
+`<select>` exactly as it does to `<input>`.
+
+**The floor is shared, not per call site.** It lives in `src/ui.css` under
+"Coarse-pointer target floor": a base-layer rule that floors `button`, `select`,
+`textarea`, `input` and `a[href]`, plus a utilities-layer rule that sets the type
+size on the three field elements. A new control in either app is covered the day
+it is written, with nothing to remember.
+
+Rules that bind anything touching this:
+
+- **Never detect the device or the user agent.** iPadOS Safari reports a macOS
+  user agent, so a UA check misses the exact device this floor exists for.
+  `@media (pointer: coarse)` -- the `pointer-coarse:` variant in Tailwind -- is
+  the only signal.
+- **Floor with `min-h` / `min-w`, never `h` / `w`.** A minimum leaves the call
+  site's own height describing the fine-pointer geometry, and it survives
+  `tailwind-merge` when a caller overrides the size, which a matching `h-*` would
+  not.
+- **The size floor sits in the base layer**, so a call site that must stay
+  smaller overrides it with a `pointer-coarse:min-h-*` / `pointer-coarse:min-w-*`
+  utility.
+- **The type floor sits in the utilities layer**, because a `text-sm` on the
+  field would otherwise win over a base rule. It therefore outranks every
+  font-size utility: a field that wants to read larger under a coarse pointer has
+  to mark its own size important (`pointer-coarse:text-lg!`).
+- **A control whose shape would break must be exempted in `ui.css`, not worked
+  around at the call site**, and the exemption says what reaches 44px instead.
+  Two stand today: everything inside `[data-brain-editor-content]`, which sizes
+  its own controls, and `role="switch"`, whose pill would square off into a blob
+  and which grows a `::before` hit area instead.
+- **Primitives keep their own `pointer-coarse:` floors** even where the shared
+  rule would repeat them, because the shared rule stops at the brain editor's
+  edge and the editor uses `Button`, `Input` and the menu rows. Menu rows are not
+  `<button>` at all -- Radix renders `div[role="menuitem"]` -- so
+  `dropdown-menu.tsx` and `context-menu.tsx` carry the only floor those rows get.
+- **`::before` insets are measured from the padding box.** A transparent border
+  makes that box smaller than the rect you are aiming at, and the difference is
+  silent -- the `Switch` pill's 2px border left its band at 40x40 while the
+  intended target was 44x44. Subtract the border before choosing the inset.
+- **A `::before` band paints over whatever sits under it, so it needs the space
+  to be free.** The band belongs to a positioned element and its neighbours
+  usually are not positioned, so it wins the hit test against them whatever the
+  DOM order. A band is therefore only correct where the layout already leaves
+  44px clear; where controls are packed closer, the spacing has to give first.
+  `Slider` is the open case: its root box is the 8px track, since Radix
+  positions the thumb absolutely, and neither the element floor nor a band
+  reaches 44px for it today.
+
+Geometry is unassertable here: `packages/ui` has no jsdom and specs render
+through `react-dom/server`. Verify a coarse floor in a browser by replaying the
+`@media (pointer: coarse)` blocks into the live page unconditionally, which
+exercises the real cascade; measure with `getBoundingClientRect`, never a
+screenshot.
 
 ## Adding UI Primitives
 

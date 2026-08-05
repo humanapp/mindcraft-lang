@@ -108,6 +108,21 @@ const kComposerEntryPrompt = "Type what should happen...";
 /** What a paste is refused with where the copied tile does not belong at the position. */
 const kTilePasteRefusal = "That tile does not fit here";
 
+/** What each clipboard verb reports having done, by the kind of subject it acted on. */
+const kClipboardReports = {
+  copy: { rule: "Rule copied", tile: "Tile copied" },
+  cut: { rule: "Rule cut", tile: "Tile cut" },
+  paste: { rule: "Rule pasted", tile: "Tile pasted" },
+} as const;
+
+/**
+ * How `verb` reports what it did to `subject`. The end of a side reports as a
+ * tile, which is what a paste there places.
+ */
+function clipboardReport(verb: keyof typeof kClipboardReports, subject: PageGridSubject): string {
+  return kClipboardReports[verb][subject.kind === "rule" ? "rule" : "tile"];
+}
+
 /** The command that places `tileDef` where `arming` addresses on `side` of `ruleDef`. */
 function editPointCommand(
   arming: EditPointArming,
@@ -398,11 +413,19 @@ function BrainRuleEditorCard({
     };
   }, [ruleDef, updateBadgesForSide]);
 
-  const pasteRules = (placement: RulePlacement) => {
-    const command = new PasteRulesCommand(ruleDef, placement, (destBrain) =>
-      List.from(deserializeAllRulesFromClipboard(destBrain, tileCatalogs, brainServices))
-    );
+  /**
+   * Places the copied rules beside this one, on the side `placement` names, and
+   * reports whether any rule was placed.
+   */
+  const pasteRules = (placement: RulePlacement): boolean => {
+    let placedCount = 0;
+    const command = new PasteRulesCommand(ruleDef, placement, (destBrain) => {
+      const rules = List.from(deserializeAllRulesFromClipboard(destBrain, tileCatalogs, brainServices));
+      placedCount = rules.size();
+      return rules;
+    });
     commandHistory.executeCommand(command);
+    return placedCount > 0;
   };
 
   const armAppendTarget = useCallback(
@@ -560,32 +583,36 @@ function BrainRuleEditorCard({
   /**
    * Places the copied tile at `tileIndex` of `side`, refusing where the oracle
    * does not offer it there and doing nothing while the clipboard holds no tile.
+   * Reports whether a tile was placed.
    */
-  const pasteTileAt = (side: RuleSide, tileIndex: number): void => {
-    if (!hasTileInClipboard()) return;
+  const pasteTileAt = (side: RuleSide, tileIndex: number): boolean => {
+    if (!hasTileInClipboard()) return false;
     if (!clipboardTileFits(side, tileIndex)) {
       toast.error(kTilePasteRefusal);
-      return;
+      return false;
     }
+    let placed = false;
     commandHistory.executeCommand(
-      new PasteTileBeforeCommand(ruleDef, side, tileIndex, (destBrain) =>
-        importTileFromClipboard(destBrain, brainServices)
-      )
+      new PasteTileBeforeCommand(ruleDef, side, tileIndex, (destBrain) => {
+        const tileDef = importTileFromClipboard(destBrain, brainServices);
+        placed = tileDef !== undefined;
+        return tileDef;
+      })
     );
+    return placed;
   };
 
-  /** Puts `subject` on its own clipboard. */
-  const copySubject = (subject: PageGridSubject): void => {
+  /** Puts `subject` on its own clipboard, reporting whether it took anything. */
+  const copySubject = (subject: PageGridSubject): boolean => {
     if (subject.kind === "rule") {
       copyRuleToClipboard(ruleDef);
-      toast.success("Rule copied");
-      return;
+      return true;
     }
-    if (subject.kind !== "tile") return;
+    if (subject.kind !== "tile") return false;
     const tileDef = ruleDef.side(subject.side).tiles().get(subject.tileIndex);
-    if (!tileDef) return;
+    if (!tileDef) return false;
     copyTileToClipboard(tileDef, ruleDef.brain());
-    toast.success("Tile copied");
+    return true;
   };
 
   /** Takes `subject` out of the page. */
@@ -598,14 +625,16 @@ function BrainRuleEditorCard({
     );
   };
 
-  /** Places what is on the clipboard past `subject`, or at the end of the side it names. */
-  const pasteAfterSubject = (subject: PageGridSubject): void => {
+  /**
+   * Places what is on the clipboard past `subject`, or at the end of the side it
+   * names, and reports whether anything was placed.
+   */
+  const pasteAfterSubject = (subject: PageGridSubject): boolean => {
     if (subject.kind === "rule") {
-      if (hasRuleInClipboard()) pasteRules("after");
-      return;
+      return hasRuleInClipboard() && pasteRules("after");
     }
     const side = subject.side;
-    pasteTileAt(side, subject.kind === "tile" ? subject.tileIndex + 1 : ruleDef.side(side).tiles().size());
+    return pasteTileAt(side, subject.kind === "tile" ? subject.tileIndex + 1 : ruleDef.side(side).tiles().size());
   };
 
   /** Puts an empty rule after this one and asks the page for it to be composed. */
@@ -616,21 +645,25 @@ function BrainRuleEditorCard({
     if (inserted !== undefined) composeRule?.(inserted.id());
   };
 
-  /** Runs `operation` on this rule. */
+  /**
+   * Runs `operation` on this rule. Each clipboard verb announces what it did;
+   * a copy that takes nothing and a paste that places nothing announce nothing.
+   */
   const performOperation = (operation: PageGridOperation): void => {
     switch (operation.verb) {
       case "delete":
         removeSubject(operation.subject);
         return;
       case "copy":
-        copySubject(operation.subject);
+        if (copySubject(operation.subject)) toast.success(clipboardReport("copy", operation.subject));
         return;
       case "cut":
-        copySubject(operation.subject);
+        if (!copySubject(operation.subject)) return;
         removeSubject(operation.subject);
+        toast.success(clipboardReport("cut", operation.subject));
         return;
       case "paste":
-        pasteAfterSubject(operation.subject);
+        if (pasteAfterSubject(operation.subject)) toast.success(clipboardReport("paste", operation.subject));
         return;
       case "insert-rule":
         insertRuleAfter();

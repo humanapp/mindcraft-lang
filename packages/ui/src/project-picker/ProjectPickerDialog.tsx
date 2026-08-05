@@ -245,7 +245,7 @@ export function ProjectPickerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="left-0 top-0 translate-x-0 translate-y-0 flex h-dvh max-w-full flex-col gap-0 overflow-hidden p-0 rounded-none sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-170 sm:max-h-[calc(100dvh-2rem)] sm:max-w-240 sm:w-[calc(100vw-2rem)] sm:rounded-lg"
+        className="left-0 top-0 translate-x-0 translate-y-0 flex h-[calc(100dvh-var(--keyboard-inset,0))] max-w-full flex-col gap-0 overflow-hidden p-0 rounded-none sm:left-[50%] sm:top-[calc(50%-var(--keyboard-inset,0)*0.5)] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-170 sm:max-h-[calc(100dvh-var(--keyboard-inset,0)-2rem)] sm:max-w-240 sm:w-[calc(100vw-2rem)] sm:rounded-lg"
         onEscapeKeyDown={(e) => {
           if (confirmingDeleteId !== null) {
             e.preventDefault();

@@ -421,8 +421,8 @@ export function ExtensionBrowserDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          "left-0 top-0 h-dvh max-w-full translate-x-0 translate-y-0 gap-0 rounded-none p-0",
-          "sm:left-[50%] sm:top-[50%] sm:h-150 sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg"
+          "left-0 top-0 h-[calc(100dvh-var(--keyboard-inset,0))] max-w-full translate-x-0 translate-y-0 gap-0 rounded-none p-0",
+          "sm:left-[50%] sm:top-[calc(50%-var(--keyboard-inset,0)*0.5)] sm:h-150 sm:max-h-[calc(100dvh-var(--keyboard-inset,0)-2rem)] sm:w-[calc(100vw-2rem)] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg"
         )}
       >
         <DialogHeader className="flex-col space-y-0.5 border-b px-4 py-3 sm:px-6 sm:py-4">

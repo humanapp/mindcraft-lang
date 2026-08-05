@@ -80,3 +80,10 @@ These instructions apply to all Copilot features, including inline tab completio
   context. App-specific tile visuals, data type icons, and custom literal types are
   injected through the config, not imported directly.
 - Do not add app-specific types (e.g., Archetype, Actor) to this package.
+- Touch targets are floored once, for both apps, in `src/ui.css` ("Coarse-pointer
+  target floor"): 44px on both axes for controls and 1rem for fields, under
+  `@media (pointer: coarse)`. Never detect the device or the user agent -- iPadOS
+  Safari reports a macOS one. Floor with `min-h` / `min-w`, never `h` / `w`, so the
+  floor survives `tailwind-merge`. A control that would deform is exempted in
+  `ui.css` and reaches 44px another way; do not work around the floor at a call
+  site.
