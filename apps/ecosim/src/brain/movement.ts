@@ -138,7 +138,8 @@ export class Mover {
       const angle = sprite.rotation;
       const fx = Math.cos(angle) * appliedForceMag;
       const fy = Math.sin(angle) * appliedForceMag;
-      sprite.applyForce(new Phaser.Math.Vector2(fx, fy));
+      // Matter reads only `x` and `y` off the force vector.
+      sprite.applyForce({ x: fx, y: fy } as Phaser.Math.Vector2);
     }
 
     // 6) Lateral damping: decompose velocity into forward/lateral components

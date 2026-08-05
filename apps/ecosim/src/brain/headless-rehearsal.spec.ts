@@ -80,37 +80,6 @@ function randomInt(rng: () => number, min: number, max: number): number {
 
 // -- Stubs standing in for Phaser presentation ----------------------------------
 
-/**
- * The two-component vector the movement code constructs through the ambient
- * `Phaser` global before handing it to `Body.applyForce`.
- */
-class StubVector2 {
-  constructor(
-    public x: number,
-    public y: number
-  ) {}
-}
-
-/**
- * Install the single member of the ambient `Phaser` global that brain-path code
- * reads at runtime: `Phaser.Math.Vector2`. Returns a function restoring the
- * previous state.
- */
-function installPhaserGlobal(): () => void {
-  const previous = Object.getOwnPropertyDescriptor(globalThis, "Phaser");
-  Object.defineProperty(globalThis, "Phaser", {
-    configurable: true,
-    value: { Math: { Vector2: StubVector2 } },
-  });
-  return () => {
-    if (previous) {
-      Object.defineProperty(globalThis, "Phaser", previous);
-      return;
-    }
-    Reflect.deleteProperty(globalThis, "Phaser");
-  };
-}
-
 /** A drawing surface stand-in: accepts every draw call and records nothing. */
 function stubGraphics(): Phaser.GameObjects.Graphics {
   const gfx = {
@@ -735,55 +704,50 @@ function formatDispatch(totals: Map<string, number>): string {
 
 describe("headless whole-world rehearsal", () => {
   test("runs the shipped world at a fixed timestep and reproduces it from the same seed", async () => {
-    const restorePhaser = installPhaserGlobal();
-    try {
-      const first = await runRehearsal(20260805, RUN_TICKS);
-      const second = await runRehearsal(20260805, RUN_TICKS);
-      const other = await runRehearsal(20260806, RUN_TICKS);
+    const first = await runRehearsal(20260805, RUN_TICKS);
+    const second = await runRehearsal(20260805, RUN_TICKS);
+    const other = await runRehearsal(20260806, RUN_TICKS);
 
-      const initialPopulation = actorsInTraceLine(first.trace[0] ?? "");
-      const peakPopulation = first.trace.reduce((peak, line) => Math.max(peak, actorsInTraceLine(line)), 0);
-      const divergence = firstDivergence(first.trace, second.trace);
-      const verdict =
-        divergence < 0
-          ? "identical"
-          : `diverged at tick ${divergence} (${firstDifferingField(first.trace[divergence] ?? "", second.trace[divergence] ?? "")})`;
+    const initialPopulation = actorsInTraceLine(first.trace[0] ?? "");
+    const peakPopulation = first.trace.reduce((peak, line) => Math.max(peak, actorsInTraceLine(line)), 0);
+    const divergence = firstDivergence(first.trace, second.trace);
+    const verdict =
+      divergence < 0
+        ? "identical"
+        : `diverged at tick ${divergence} (${firstDifferingField(first.trace[divergence] ?? "", second.trace[divergence] ?? "")})`;
 
-      console.log(
-        [
-          "",
-          "-- headless whole-world rehearsal --",
-          `ticks:            ${RUN_TICKS} at ${STEP_MS.toFixed(4)} ms fixed step`,
-          `world:            ${WORLD_WIDTH}x${WORLD_HEIGHT}, ${first.obstacleCount} obstacles, 4 boundary walls`,
-          `entities:         ${initialPopulation} on the first step, ${peakPopulation} at peak, ${first.observations.spawns} spawned in total, ${first.finalActors} alive at end`,
-          `brains executed:  ${first.brainsExecuted} distinct brain defs (${ARCHETYPE_NAMES.join(", ")})`,
-          `thinks:           ${first.observations.thinks}`,
-          `dispatches:       ${formatDispatch(first.observations.totalDispatch)}`,
-          `say / shoot:      ${first.observations.says} chat bubbles, ${first.observations.blipsFired} blips fired`,
-          `trace hash run 1: ${first.hash}`,
-          `trace hash run 2: ${second.hash}`,
-          `trace hash alt:   ${other.hash} (different seed)`,
-          `trace verdict:    ${verdict}`,
-          "",
-        ].join("\n")
-      );
+    console.log(
+      [
+        "",
+        "-- headless whole-world rehearsal --",
+        `ticks:            ${RUN_TICKS} at ${STEP_MS.toFixed(4)} ms fixed step`,
+        `world:            ${WORLD_WIDTH}x${WORLD_HEIGHT}, ${first.obstacleCount} obstacles, 4 boundary walls`,
+        `entities:         ${initialPopulation} on the first step, ${peakPopulation} at peak, ${first.observations.spawns} spawned in total, ${first.finalActors} alive at end`,
+        `brains executed:  ${first.brainsExecuted} distinct brain defs (${ARCHETYPE_NAMES.join(", ")})`,
+        `thinks:           ${first.observations.thinks}`,
+        `dispatches:       ${formatDispatch(first.observations.totalDispatch)}`,
+        `say / shoot:      ${first.observations.says} chat bubbles, ${first.observations.blipsFired} blips fired`,
+        `trace hash run 1: ${first.hash}`,
+        `trace hash run 2: ${second.hash}`,
+        `trace hash alt:   ${other.hash} (different seed)`,
+        `trace verdict:    ${verdict}`,
+        "",
+      ].join("\n")
+    );
 
-      const expectedPopulation = ARCHETYPE_NAMES.reduce(
-        (sum, archetype) => sum + ARCHETYPES[archetype].initialSpawnCount,
-        0
-      );
-      assert.equal(peakPopulation, expectedPopulation, "the world populates to the app's default counts");
-      assert.equal(first.obstacleCount, 4, "the world carries the scene's obstacle set");
-      assert.equal(first.brainsExecuted, 3, "one distinct brain def per archetype is executing");
-      assert.ok(first.observations.thinks > 0, "brains thought during the run");
-      assert.ok(first.observations.totalDispatch.has("sensor.see"), "brains sensed each other");
-      assert.ok(first.observations.totalDispatch.has("actuator.move"), "brains acted on the world");
-      assert.equal(first.trace.length, RUN_TICKS, "one trace line per tick");
-      assert.equal(divergence, -1, verdict);
-      assert.equal(first.hash, second.hash, "identical seeds produce byte-identical traces");
-      assert.notEqual(first.hash, other.hash, "the seed drives the world the trace records");
-    } finally {
-      restorePhaser();
-    }
+    const expectedPopulation = ARCHETYPE_NAMES.reduce(
+      (sum, archetype) => sum + ARCHETYPES[archetype].initialSpawnCount,
+      0
+    );
+    assert.equal(peakPopulation, expectedPopulation, "the world populates to the app's default counts");
+    assert.equal(first.obstacleCount, 4, "the world carries the scene's obstacle set");
+    assert.equal(first.brainsExecuted, 3, "one distinct brain def per archetype is executing");
+    assert.ok(first.observations.thinks > 0, "brains thought during the run");
+    assert.ok(first.observations.totalDispatch.has("sensor.see"), "brains sensed each other");
+    assert.ok(first.observations.totalDispatch.has("actuator.move"), "brains acted on the world");
+    assert.equal(first.trace.length, RUN_TICKS, "one trace line per tick");
+    assert.equal(divergence, -1, verdict);
+    assert.equal(first.hash, second.hash, "identical seeds produce byte-identical traces");
+    assert.notEqual(first.hash, other.hash, "the seed drives the world the trace records");
   });
 });

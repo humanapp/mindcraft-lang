@@ -1356,6 +1356,7 @@ export class VM implements IVM {
       ruleFuncId,
       fired ? RuleFiringState.DID_FIRE : RuleFiringState.DID_NOT_FIRE
     );
+    this.events?.onRuleWhenGate?.({ ruleFuncId, result: whenResult, fired });
 
     if (!fired) {
       // WHEN evaluated to falsy - skip DO section and children
@@ -1382,6 +1383,7 @@ export class VM implements IVM {
       ruleFuncId,
       fired ? RuleFiringState.DID_FIRE : RuleFiringState.DID_NOT_FIRE
     );
+    this.events?.onRuleWhenGate?.({ ruleFuncId, result: whenResult, fired });
 
     if (!fired) {
       // No value this think (absent) - skip DO section and children.
