@@ -405,6 +405,35 @@ const AMBIENT_MODULE_END = `
     tags?: string[];
   }
 
+  /**
+   * The words a tile reads with in the sentence the editor shows for a rule.
+   * Every field is optional, and a tile that declares none still reads: it uses
+   * its label as its word and the default \`"verb"\` frame.
+   */
+  export interface TileLanguageConfig {
+    /**
+     * The word this tile reads as. Write the plain word -- the sentence adds
+     * the grammar around it. Defaults to the tile's \`label\`, then its \`name\`.
+     */
+    form?: string;
+    /**
+     * How the sentence introduces this word when the tile starts a rule's WHEN
+     * side. Use \`"verb"\` for an action (\`form: "hear"\` reads "When I hear a
+     * bang"), \`"state"\` for a condition -- the sentence adds the "am", so
+     * \`form: "hungry"\` reads "When I am hungry" -- or \`"event"\` for a
+     * happening (\`form: "my timer ends"\` reads "When my timer ends"). Defaults
+     * to \`"verb"\`. An actuator never starts a WHEN side, so setting this on
+     * one changes nothing.
+     */
+    frame?: "verb" | "state" | "event";
+    /**
+     * The word that finishes the sentence when this tile is placed with nothing
+     * after it: a "see" sensor with \`bare: "anything"\` reads "When I see
+     * anything". Defaults to the word the frame supplies.
+     */
+    bare?: string;
+  }
+
   export interface SensorConfig {
     /** Stable identifier for this action, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
     id?: string;
@@ -413,6 +442,8 @@ const AMBIENT_MODULE_END = `
     icon?: string;
     docs?: string;
     tags?: string[];
+    /** The words this sensor reads with in a rule's sentence. */
+    language?: TileLanguageConfig;
     /**
      * When true, this sensor reads as an inline value in a mid-rule value slot
      * and the tile picker offers it in those positions. An inline sensor takes
@@ -451,6 +482,8 @@ const AMBIENT_MODULE_END = `
     icon?: string;
     docs?: string;
     tags?: string[];
+    /** The words this actuator reads with in a rule's sentence. */
+    language?: TileLanguageConfig;
     /**
      * Declares that this actuator consumes the rule's WHEN result, named by TypeRef
      * token (preferred) or type name. The editor uses it to offer and validate the

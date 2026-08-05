@@ -65,6 +65,7 @@ const parseDiagMessages: Record<number, string> = {
   [ParseDiagCode.UnexpectedOperatorInExpression]: "Unexpected operator",
   [ParseDiagCode.ExpectedClosingParen]: "Missing closing parenthesis",
   [ParseDiagCode.UnexpectedControlFlowInExpression]: "Unexpected control flow",
+  [ParseDiagCode.NoPrecedingSiblingRule]: "Needs a rule above it",
   [ParseDiagCode.UnknownOperator]: "Unknown operator",
   [ParseDiagCode.InvalidAssignmentTarget]: "Invalid assignment target",
   [ParseDiagCode.ReadOnlyFieldAssignment]: "Cannot assign to read-only field",

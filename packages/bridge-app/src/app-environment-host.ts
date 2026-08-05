@@ -12,6 +12,9 @@ import type {
   UnstableDependency,
 } from "@mindcraft-lang/app-host";
 import {
+  AppHostError,
+  AppHostErrorCode,
+  appHostError,
   applyCatalogMove,
   checkExtensionReferenceUpdate,
   collectUnstableDependencies,
@@ -37,6 +40,7 @@ import {
   renameBrainNamespaces,
 } from "@mindcraft-lang/core/app";
 import type { PersistedBrainJson } from "@mindcraft-lang/core/brain/model";
+import type { Localizer } from "@mindcraft-lang/core/localization";
 import type { ActionKey, IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
 import type { Mount, WorkspaceCompileResult, WorkspaceDiagnosticEntry } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
@@ -83,6 +87,35 @@ import { applyCompiledUserTiles, collectTileSourceCompileErrors } from "./user-t
 
 // Project app-data keys.
 const BRAINS_APP_DATA_KEY = "brains";
+
+/**
+ * Build the `BRAIN_RECORD_UNREADABLE` error for a stored brain record that
+ * could not be read or parsed, carrying `cause`'s text as detail.
+ */
+function brainRecordUnreadable(cause: unknown): AppHostError {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return appHostError(AppHostErrorCode.BRAIN_RECORD_UNREADABLE, `Stored brains could not be read: ${detail}`);
+}
+
+/**
+ * Build the `EXTENSION_RECORD_UNREADABLE` error for a stored installed-extension
+ * record that could not be read, carrying `cause`'s text as detail.
+ */
+function extensionRecordUnreadable(cause: unknown): AppHostError {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return appHostError(
+    AppHostErrorCode.EXTENSION_RECORD_UNREADABLE,
+    `Stored installed libraries could not be read: ${detail}`
+  );
+}
+
+/** A successful read of the active project's stored brains. */
+interface StoredBrains {
+  /** The stored text the record was parsed from; undefined when the project has never stored a record. */
+  readonly raw: string | undefined;
+  /** The parsed record, keyed by the app-defined brain key; empty when `raw` is undefined. */
+  readonly record: Record<string, unknown>;
+}
 
 /** The outcome of one load's catalog-move application. */
 export interface CatalogMovesOutcome {
@@ -151,6 +184,14 @@ export interface AppEnvironmentHostOptions {
    */
   numerics?: ProfileNumerics;
 
+  /**
+   * Host-supplied display-time translation service, forwarded to
+   * {@link createMindcraftEnvironment}. When omitted, the environment falls
+   * back to the default localizer, which renders every source string as
+   * authored.
+   */
+  localizer?: Localizer;
+
   /** When set, enables the optional bridge connection to a remote peer. */
   bridgeUrl?: string;
   /** Loads a previously persisted bridge binding token. */
@@ -204,6 +245,9 @@ export class AppEnvironmentHost {
   // -- Brain cache --
   private readonly _brainCache = new Map<string, IBrainDef>();
   private readonly _defaultBrainCache = new Map<string, IBrainDef>();
+
+  // -- First stored-record read failure of the active project's load --
+  private _projectRecordFailure: AppHostError | undefined;
 
   // -- Brain rebuild coordination --
   private _pendingBrainRebuild = false;
@@ -266,6 +310,7 @@ export class AppEnvironmentHost {
       modules: [...options.modules],
       rng: options.rng,
       numerics: options.numerics,
+      localizer: options.localizer,
     });
 
     this.env.onBrainsInvalidated((event) => {
@@ -368,17 +413,38 @@ export class AppEnvironmentHost {
     );
   }
 
+  /**
+   * Read the active project's stored extension records: the installed
+   * snapshots and the install log. Both are empty when the project has stored
+   * neither. Returns undefined when the store could not serve them, recording
+   * the failure on {@link AppEnvironmentHost.projectRecordFailure}. On
+   * undefined the caller must leave the stored records untouched.
+   */
+  private async readStoredExtensionRecordsForLoad(): Promise<
+    { snapshots: InstalledExtensionSnapshots; log: readonly ExtensionInstallLogEvent[] } | undefined
+  > {
+    try {
+      const snapshots = parseInstalledExtensionSnapshots(
+        await this.projectManager.loadAppData(INSTALLED_EXTENSIONS_APP_DATA_KEY)
+      );
+      const log = parseExtensionInstallLog(await this.projectManager.loadAppData(EXTENSION_INSTALL_LOG_APP_DATA_KEY));
+      return { snapshots, log };
+    } catch (err) {
+      const failure = extensionRecordUnreadable(err);
+      logger.warn("Failed to load installed-library records:", failure);
+      this._projectRecordFailure ??= failure;
+      return undefined;
+    }
+  }
+
   private async initCompiler(): Promise<void> {
     // The installed-extensions tree regenerates from the stored snapshots;
     // loading a project never reaches the network.
-    this._installedSnapshots = parseInstalledExtensionSnapshots(
-      await this.projectManager.loadAppData(INSTALLED_EXTENSIONS_APP_DATA_KEY)
-    );
+    const stored = await this.readStoredExtensionRecordsForLoad();
+    this._installedSnapshots = stored?.snapshots ?? {};
     this._installedContent = fetchedContentFromSnapshots(this._installedSnapshots);
     this._fetchFailures = new Map();
-    for (const event of parseExtensionInstallLog(
-      await this.projectManager.loadAppData(EXTENSION_INSTALL_LOG_APP_DATA_KEY)
-    )) {
+    for (const event of stored?.log ?? []) {
       if (event.kind === "fetch-refusal") {
         this._fetchFailures.set(event.reference, { code: event.code, message: event.message });
       }
@@ -509,24 +575,92 @@ export class AppEnvironmentHost {
     await this.projectManager.saveAppData(BRAINS_APP_DATA_KEY, JSON.stringify(record));
   }
 
-  private async loadBrainRecord(): Promise<Record<string, unknown>> {
+  /**
+   * Read the active project's stored brain record together with the raw stored
+   * text it was parsed from. Both are empty -- `raw` undefined, `record` `{}` --
+   * when the project has never stored a record. Throws {@link AppHostError} with
+   * code `BRAIN_RECORD_UNREADABLE` -- and no other error -- when a stored record
+   * exists but cannot be read or parsed.
+   */
+  private async readStoredBrains(): Promise<StoredBrains> {
+    let raw: string | undefined;
     try {
-      const raw = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
-      if (raw) return JSON.parse(raw) as Record<string, unknown>;
+      raw = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
     } catch (err) {
-      logger.warn("Failed to load brain record:", err);
+      throw brainRecordUnreadable(err);
     }
-    return {};
+    if (!raw) return { raw, record: {} };
+    try {
+      return { raw, record: JSON.parse(raw) as Record<string, unknown> };
+    } catch (err) {
+      throw brainRecordUnreadable(err);
+    }
+  }
+
+  /**
+   * Read the active project's stored brain record. Returns an empty record when
+   * the project has never stored one. Throws {@link AppHostError} with code
+   * `BRAIN_RECORD_UNREADABLE` -- and no other error -- when a stored record
+   * exists but cannot be read or parsed.
+   */
+  private async loadBrainRecord(): Promise<Record<string, unknown>> {
+    return (await this.readStoredBrains()).record;
+  }
+
+  /**
+   * Read the stored brains on a project-load path. Returns the record and the
+   * raw stored text, or undefined when they could not be read, recording the
+   * failure on {@link AppEnvironmentHost.projectRecordFailure}. On undefined the
+   * caller must leave the stored brains untouched.
+   */
+  private async readStoredBrainsForLoad(): Promise<StoredBrains | undefined> {
+    try {
+      return await this.readStoredBrains();
+    } catch (err) {
+      if (!(err instanceof AppHostError)) {
+        throw err;
+      }
+      logger.warn("Failed to load brain record:", err);
+      this._projectRecordFailure ??= err;
+      return undefined;
+    }
+  }
+
+  /**
+   * The first failure that stopped one of the active project's stored records
+   * from loading, or undefined when they all loaded. Its `code` names the
+   * record: `BRAIN_RECORD_UNREADABLE` for the saved brains,
+   * `EXTENSION_RECORD_UNREADABLE` for the installed-library snapshots and the
+   * install log. While it is set the brain cache is empty because a record
+   * could not be read, not because the project has no brains, every brain
+   * write refuses, and no write replaces a record that could not be read.
+   * Cleared when the project unloads.
+   */
+  get projectRecordFailure(): AppHostError | undefined {
+    return this._projectRecordFailure;
+  }
+
+  /** True while the active project's stored extension records could not be read. */
+  private get extensionRecordUnreadable(): boolean {
+    return this._projectRecordFailure?.code === AppHostErrorCode.EXTENSION_RECORD_UNREADABLE;
   }
 
   /**
    * Deserialize the project's stored brains into the cache. Call after the
    * load's catalog moves have applied: deserialization resolves saved tile
-   * references against the current action bundle.
+   * references against the current action bundle. Caches nothing when the load
+   * already recorded a stored-record failure: the extension closure is then
+   * unknown, so no saved tile reference resolves.
    */
   private async loadBrainsFromProject(): Promise<void> {
-    const record = await this.loadBrainRecord();
-    for (const [key, json] of Object.entries(record)) {
+    if (this._projectRecordFailure) {
+      return;
+    }
+    const stored = await this.readStoredBrainsForLoad();
+    if (!stored) {
+      return;
+    }
+    for (const [key, json] of Object.entries(stored.record)) {
       const def = this.deserializeBrainForKey(key, json);
       if (def) {
         this._brainCache.set(key, def);
@@ -751,9 +885,14 @@ export class AppEnvironmentHost {
     return { files, brains };
   }
 
-  /** Append the transaction's events to the project's install log. */
+  /**
+   * Append the transaction's events to the project's install log. Appends
+   * nothing while the stored extension records are unreadable: the log's
+   * existing entries are unknown, so a write would replace them with these
+   * events alone.
+   */
   private async appendInstallLogEvents(events: readonly ExtensionInstallLogEvent[]): Promise<void> {
-    if (events.length === 0) {
+    if (events.length === 0 || this.extensionRecordUnreadable) {
       return;
     }
     const raw = await this.projectManager.loadAppData(EXTENSION_INSTALL_LOG_APP_DATA_KEY);
@@ -815,9 +954,10 @@ export class AppEnvironmentHost {
    *
    * Improved, unchanged, and worsened outcomes all commit. The transaction
    * refuses outright only on mechanics failures -- an unreachable source, a
-   * missing or unparseable manifest, a missing listed file, or a dependency
-   * cycle -- leaving the project unchanged. Every commit appends its install,
-   * remove, and resolution-warning events to the project's install log.
+   * missing or unparseable manifest, a missing listed file, a dependency
+   * cycle, or stored extension records the store could not serve -- leaving
+   * the project unchanged. Every commit appends its install, remove, and
+   * resolution-warning events to the project's install log.
    *
    * @param extensions - The active project's next extensions map, keyed by coordinate.
    * @param options.refetchReferences - References fetched fresh even when a stored snapshot matches.
@@ -826,6 +966,10 @@ export class AppEnvironmentHost {
     extensions: Readonly<Record<string, string>>,
     options?: { refetchReferences?: ReadonlySet<string> }
   ): Promise<ExtensionInstallReport> {
+    if (this.extensionRecordUnreadable) {
+      const failure = this._projectRecordFailure!;
+      return { committed: false, refusal: { kind: "store", code: failure.code, message: failure.message } };
+    }
     const previousSnapshots = this._installedSnapshots;
     const previousResolution = this.resolveExtensions();
     const baseline = this.captureProjectDiagnostics();
@@ -972,10 +1116,12 @@ export class AppEnvironmentHost {
    * A floating destination is resolved to a pin before its transaction runs;
    * the pin is what the manifest receives. Returns undefined when the host
    * declares no moves or the project is a true no-op; otherwise the
-   * transactions' reports and the load's stable-coded move warnings.
+   * transactions' reports and the load's stable-coded move warnings. Returns
+   * undefined without applying anything while the stored extension records are
+   * unreadable, so no move writes over a record the store could not serve.
    */
   async applyCatalogMoves(): Promise<CatalogMovesOutcome | undefined> {
-    if (Object.keys(this.catalogMoves).length === 0) {
+    if (Object.keys(this.catalogMoves).length === 0 || this.extensionRecordUnreadable) {
       return undefined;
     }
     const reports: ExtensionInstallReport[] = [];
@@ -1048,12 +1194,26 @@ export class AppEnvironmentHost {
         next[finalCoordinate] = finalReference;
 
         // A rename rewrites saved-brain namespaces in the same unit, restored
-        // together when the transaction refuses.
+        // together when the transaction refuses. A brain record the store
+        // cannot serve fails the unit before any write.
         let brainsBeforeRename: string | undefined;
         let brainsRewritten = false;
         if (finalCoordinate !== coordinate) {
-          brainsBeforeRename = await this.projectManager.loadAppData(BRAINS_APP_DATA_KEY);
-          brainsRewritten = await this.renameBrainNamespaces([{ from: coordinate, to: finalCoordinate }]);
+          const stored = await this.readStoredBrainsForLoad();
+          if (stored === undefined) {
+            warn(
+              reference,
+              CatalogMoveWarningCode.BRAINS_UNREADABLE,
+              `Catalog move for "${reference}" renames the coordinate to "${finalCoordinate}", and the project's ` +
+                "stored brains could not be read to rewrite their references; the move is skipped this load."
+            );
+            failedEntries.add(coordinate);
+            continue;
+          }
+          brainsBeforeRename = stored.raw;
+          brainsRewritten = await this.renameBrainNamespaces(stored.record, [
+            { from: coordinate, to: finalCoordinate },
+          ]);
         }
         const report = await this.updateProjectExtensions(next);
         reports.push(report);
@@ -1137,8 +1297,14 @@ export class AppEnvironmentHost {
    * source coordinate to its target, persisting the rewritten brains record and
    * re-deserializing the changed brains into the cache. Returns true when at
    * least one brain changed.
+   *
+   * @param record - The stored brain record to rewrite, read by the caller; mutated in place.
+   * @param renames - The coordinate renames to apply, each a source and its target.
    */
-  private async renameBrainNamespaces(renames: readonly { from: string; to: string }[]): Promise<boolean> {
+  private async renameBrainNamespaces(
+    record: Record<string, unknown>,
+    renames: readonly { from: string; to: string }[]
+  ): Promise<boolean> {
     const rewrite = (namespace: string): string => {
       for (const rename of renames) {
         if (rename.from === namespace) {
@@ -1147,7 +1313,6 @@ export class AppEnvironmentHost {
       }
       return namespace;
     };
-    const record = await this.loadBrainRecord();
     const changedKeys: string[] = [];
     for (const [key, json] of Object.entries(record)) {
       const result = renameBrainNamespaces(json, rewrite);
@@ -1399,7 +1564,9 @@ export class AppEnvironmentHost {
   }
 
   private async prepareProjectTransition(): Promise<void> {
-    if (this.projectManager.activeProject) {
+    // A project whose load hit an unreadable record has an empty brain cache,
+    // and flushing it would write over brains the store still holds.
+    if (this.projectManager.activeProject && !this._projectRecordFailure) {
       await this.saveAllBrains();
     }
   }
@@ -1412,6 +1579,7 @@ export class AppEnvironmentHost {
 
   private completeProjectUnload(): void {
     this._brainCache.clear();
+    this._projectRecordFailure = undefined;
     this._pendingBrainRebuild = false;
     this.env.replaceActionBundle({ revision: "", tiles: [], actions: Dict.empty() });
     // Compiles invalidate types per project namespace, so the outgoing

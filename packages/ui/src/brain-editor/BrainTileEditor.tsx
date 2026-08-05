@@ -1,275 +1,108 @@
-import { type IBrainTileDef, type LiteralDisplayFormat, RuleSide } from "@mindcraft-lang/core/brain";
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileLiteralDef, type BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
+import type { IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import type { BrainCommandHistory, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { useId, useState } from "react";
+import { isTileTargetForTile, useArmedTargetController } from "./ArmedTargetContext";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
-import { BrainTilePickerDialog } from "./BrainTilePickerDialog";
-import { CreateLiteralDialog } from "./CreateLiteralDialog";
-import { CreateVariableDialog } from "./CreateVariableDialog";
-import {
-  type BrainCommandHistory,
-  InsertTileCommand,
-  PasteTileBeforeCommand,
-  RemoveTileCommand,
-  RenameVariableCommand,
-  ReplaceTileCommand,
-} from "./commands";
-import { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
-import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
-import { useTileSelection } from "./hooks/useTileSelection";
-import { RenameVariableDialog } from "./RenameVariableDialog";
+import { BrainTileMenu } from "./BrainTileMenu";
+import type { EditPointPosition } from "./edit-point";
+import { editPointPositionOf } from "./edit-point";
+import { usePageGrid } from "./PageGridContext";
+import { kPageGridCellAttribute, pageGridCellKey } from "./page-grid-model";
+import { pageGridSelectionProps } from "./page-grid-selection";
+import { useRuleSelection } from "./RuleSelectionContext";
 import type { TileBadge } from "./tile-badges";
-import { copyTileToClipboard, hasTileInClipboard, onTileClipboardChanged } from "./tile-clipboard";
+import { tileAccessibleName } from "./tile-visual-utils";
+
+/** What the armed edit point on this tile is described as, by the position it sits at. */
+const editPointHints: Record<EditPointPosition, string> = {
+  before: "armed to insert a tile before it",
+  replace: "armed to be replaced",
+  after: "armed to insert a tile after it",
+};
 
 interface BrainTileEditorProps {
   tileDef: IBrainTileDef;
   tileIndex: number;
   side: RuleSide;
   ruleDef: BrainRuleDef;
-  /** The page editor's update counter; increments whenever tiles change. */
-  updateCounter: number;
   commandHistory: BrainCommandHistory;
   badge?: TileBadge;
+  /** Arms the edit point on this tile at `position`, which the candidate strip then serves. */
+  armEditPoint: (position: EditPointPosition) => void;
 }
 
-/** A {@link BrainTile} wrapped with a context menu offering insert/replace/delete and tile-specific edit actions. */
+/**
+ * A {@link BrainTile} carrying the gestures of a placed tile: a tap arms the
+ * edit point in the tile's place, and a right-click or touch long-press opens
+ * the tile's own menu of edit actions.
+ */
 export function BrainTileEditor({
   tileDef,
   tileIndex,
   side,
   ruleDef,
-  updateCounter,
   commandHistory,
   badge,
+  armEditPoint,
 }: BrainTileEditorProps) {
-  const [pickerMode, setPickerMode] = useState<"insert" | "replace" | null>(null);
-  const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
-  const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
-  const availableCapabilities = useRuleCapabilities(ruleDef, updateCounter);
-  const availableOutputKeys = useRuleOutputKeys(ruleDef, updateCounter);
-  const { onTileHelp, brainServices } = useBrainEditorConfig();
+  const armedTarget = useArmedTargetController();
+  const tileTarget = isTileTargetForTile(armedTarget.target, ruleDef, side, tileIndex) ? armedTarget.target : null;
+  const armedHintId = useId();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const editorConfig = useBrainEditorConfig();
 
-  const isNumericLiteral =
-    tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.Number;
-  const isVariable = tileDef.kind === "variable";
+  // The tile's place in the page's selection grid: one cell of its rule's
+  // structural row, named by where it stands among the tiles of its side.
+  const pageGrid = usePageGrid();
+  const selectedCell = useRuleSelection();
+  const cellKey = pageGridCellKey({ kind: "tile", ruleId: ruleDef.id(), side, tileIndex });
+  const cellName = `Tile ${tileIndex + 1} of ${ruleDef.side(side).tiles().size()}, ${tileAccessibleName(editorConfig, tileDef)}`;
+  const isSelectedCell = selectedCell !== undefined && pageGridCellKey(selectedCell) === cellKey;
+  const cellProps =
+    pageGrid === undefined
+      ? undefined
+      : {
+          [kPageGridCellAttribute]: cellKey,
+          tabIndex: isSelectedCell ? 0 : -1,
+          ...pageGridSelectionProps("chip", isSelectedCell),
+        };
 
-  const {
-    showCreateVariableDialog,
-    variableDialogTitle,
-    showCreateLiteralDialog,
-    literalDialogTitle,
-    literalType,
-    handleTileSelected: handleTileSelectedWithVariable,
-    handleVariableNameSubmit,
-    handleVariableDialogClose,
-    handleLiteralValueSubmit,
-    handleLiteralDialogClose,
-  } = useTileSelection({
-    ruleDef,
-    side,
-    onComplete: () => setPickerMode(null),
-  });
-
-  const [canPaste, setCanPaste] = useState(hasTileInClipboard());
-
-  useEffect(() => {
-    return onTileClipboardChanged(() => setCanPaste(hasTileInClipboard()));
-  }, []);
-
-  const handleCopyTile = () => {
-    copyTileToClipboard(tileDef, ruleDef.brain());
-    toast.success("Tile copied");
-  };
-
-  const handlePasteTileBefore = () => {
-    const command = new PasteTileBeforeCommand(ruleDef, side, tileIndex, brainServices);
-    commandHistory.executeCommand(command);
-  };
-
-  const handleDeleteTile = () => {
-    const command = new RemoveTileCommand(ruleDef, side, tileIndex);
-    commandHistory.executeCommand(command);
-  };
-
-  const handleInsertBefore = () => {
-    setPickerMode("insert");
-  };
-
-  const handleReplaceTile = () => {
-    setPickerMode("replace");
-  };
-
-  const handleEditFormat = () => {
-    setShowEditFormatDialog(true);
-  };
-
-  const handleRenameVariable = () => {
-    setShowRenameVariableDialog(true);
-  };
-
-  const handleRenameVariableSubmit = (newName: string) => {
-    const varTileDef = tileDef as BrainTileVariableDef;
-    const brainDef = ruleDef.brain();
-    if (!brainDef) return;
-
-    const catalog = brainDef.catalog();
-    const conflict = catalog.find((td) => {
-      if (td.kind !== "variable") return false;
-      const vd = td as BrainTileVariableDef;
-      return vd.varName === newName && vd.varType === varTileDef.varType && vd.uniqueId !== varTileDef.uniqueId;
-    });
-    if (conflict) {
-      toast.error("Variable already exists");
-      return;
-    }
-
-    const command = new RenameVariableCommand(brainDef, varTileDef, newName);
-    commandHistory.executeCommand(command);
-    setShowRenameVariableDialog(false);
-  };
-
-  const handleEditFormatSubmit = (newFormat: LiteralDisplayFormat) => {
-    const literalDef = tileDef as BrainTileLiteralDef;
-    let newTileDef: IBrainTileDef = new BrainTileLiteralDef(
-      literalDef.valueType,
-      literalDef.value,
-      {
-        valueLabel: literalDef.valueLabel,
-        displayFormat: newFormat,
-      },
-      brainServices!
-    );
-    const catalog = ruleDef.brain()?.catalog();
-    if (catalog) {
-      const existing = catalog.get(newTileDef.tileId);
-      if (existing) {
-        newTileDef = existing;
-      } else {
-        catalog.registerTileDef(newTileDef);
-      }
-    }
-    const command = new ReplaceTileCommand(ruleDef, side, tileIndex, newTileDef);
-    commandHistory.executeCommand(command);
-    setShowEditFormatDialog(false);
-  };
-
-  const handlePickerCancel = () => {
-    setPickerMode(null);
-  };
-
-  const handleTileSelected = (tileDef: IBrainTileDef) => {
-    if (!pickerMode) return true;
-
-    return handleTileSelectedWithVariable(tileDef, (tile) => {
-      if (pickerMode === "insert") {
-        const command = new InsertTileCommand(ruleDef, side, tileIndex, tile);
-        commandHistory.executeCommand(command);
-      } else if (pickerMode === "replace") {
-        const command = new ReplaceTileCommand(ruleDef, side, tileIndex, tile);
-        commandHistory.executeCommand(command);
-      }
-    });
+  // A long-press opens the menu and the touch still reports a click on release,
+  // which must not also arm the edit point the tap arms.
+  const handleTileTap = () => {
+    if (menuOpen) return;
+    armEditPoint("replace");
   };
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <BrainTile tileDef={tileDef} side={side} badge={badge} aria-haspopup="menu" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem onClick={handleInsertBefore}>Insert Before</DropdownMenuItem>
-          <DropdownMenuItem onClick={handleReplaceTile}>Replace Tile</DropdownMenuItem>
-          {isNumericLiteral && <DropdownMenuItem onClick={handleEditFormat}>Edit Format</DropdownMenuItem>}
-          {isVariable && <DropdownMenuItem onClick={handleRenameVariable}>Rename...</DropdownMenuItem>}
-          <DropdownMenuItem onClick={handleCopyTile}>Copy Tile</DropdownMenuItem>
-          <DropdownMenuItem onClick={handlePasteTileBefore} disabled={!canPaste}>
-            Paste Before
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleDeleteTile}>Delete Tile</DropdownMenuItem>
-          {onTileHelp && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onTileHelp(tileDef)}>Help</DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {pickerMode &&
-        (() => {
-          const tileSet = side === RuleSide.When ? ruleDef.when() : ruleDef.do();
-          const isInsert = pickerMode === "insert";
-          return (
-            <BrainTilePickerDialog
-              isOpen={true}
-              side={side}
-              localCatalog={ruleDef.brain()?.catalog()}
-              expr={isInsert ? undefined : tileSet.expr()}
-              replaceTileIndex={isInsert ? undefined : tileIndex}
-              existingTiles={isInsert ? tileSet.tiles().slice(0, tileIndex) : tileSet.tiles()}
-              availableCapabilities={availableCapabilities}
-              availableOutputKeys={availableOutputKeys}
-              ruleDef={ruleDef}
-              onTileSelected={handleTileSelected}
-              onCancel={handlePickerCancel}
-            />
-          );
-        })()}
-
-      {showCreateVariableDialog && (
-        <CreateVariableDialog
-          isOpen={showCreateVariableDialog}
-          title={variableDialogTitle}
-          onOpenChange={(open) => {
-            if (!open) handleVariableDialogClose();
-          }}
-          onSubmit={handleVariableNameSubmit}
+      <BrainTileMenu
+        tileDef={tileDef}
+        side={side}
+        tileIndex={tileIndex}
+        ruleDef={ruleDef}
+        commandHistory={commandHistory}
+        onOpenChange={setMenuOpen}
+      >
+        <BrainTile
+          tileDef={tileDef}
+          side={side}
+          badge={badge}
+          aria-label={cellName}
+          aria-describedby={tileTarget ? armedHintId : undefined}
+          onClick={handleTileTap}
+          // An armed tile carries its ring at the tile's edge, and stands the
+          // selection's outline outside it.
+          className={tileTarget ? "ring-[3px] ring-brain-armed outline-offset-[3px]" : ""}
+          {...cellProps}
         />
-      )}
+      </BrainTileMenu>
 
-      {showCreateLiteralDialog && (
-        <CreateLiteralDialog
-          isOpen={showCreateLiteralDialog}
-          title={literalDialogTitle}
-          literalType={literalType}
-          onOpenChange={(open) => {
-            if (!open) handleLiteralDialogClose();
-          }}
-          onSubmit={handleLiteralValueSubmit}
-        />
-      )}
-
-      {showEditFormatDialog && isNumericLiteral && (
-        <EditLiteralFormatDialog
-          isOpen={showEditFormatDialog}
-          literalDef={tileDef as BrainTileLiteralDef}
-          onOpenChange={(open) => {
-            if (!open) setShowEditFormatDialog(false);
-          }}
-          onSubmit={handleEditFormatSubmit}
-        />
-      )}
-
-      {showRenameVariableDialog && isVariable && (
-        <RenameVariableDialog
-          isOpen={showRenameVariableDialog}
-          initialName={(tileDef as BrainTileVariableDef).varName}
-          onOpenChange={(open) => {
-            if (!open) setShowRenameVariableDialog(false);
-          }}
-          onSubmit={handleRenameVariableSubmit}
-        />
+      {tileTarget && (
+        <span id={armedHintId} className="sr-only">
+          {editPointHints[editPointPositionOf(tileTarget, tileIndex)]}
+        </span>
       )}
     </>
   );

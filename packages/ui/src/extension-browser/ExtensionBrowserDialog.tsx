@@ -1,4 +1,4 @@
-import { MoreHorizontal } from "lucide-react";
+import { Loader2, MoreHorizontal } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "../lib/utils";
@@ -10,6 +10,7 @@ import {
   DEFAULT_EXTENSION_THUMBNAIL,
   type ExtensionBrowserEntry,
   type ExtensionBrowserItem,
+  type ExtensionCardActionKind,
   type ExtensionCardCallbacks,
   type ExtensionCatalogOffer,
   extensionBrowserItemCoordinate,
@@ -39,6 +40,10 @@ function ExtensionCard({
 }: { entry: ExtensionBrowserEntry } & ExtensionCardCallbacks) {
   const showInstall = extensionCardShowsInstall(entry);
   const showRetry = extensionCardShowsRetry(entry);
+  // A single in-flight action, not one flag per button: install, retry, and
+  // the kebab actions (uninstall, check-update) all share one card, so only
+  // one may run at a time and every other trigger disables while it does.
+  const [pendingAction, setPendingAction] = React.useState<ExtensionCardActionKind | null>(null);
   const callbacks: ExtensionCardCallbacks = {
     onInstall,
     onUninstall,
@@ -51,6 +56,33 @@ function ExtensionCard({
       (item.action !== "check-update" || onCheckUpdate !== undefined) &&
       (item.action !== "open-repo" || onOpenRepo !== undefined)
   );
+
+  const anyPending = pendingAction !== null;
+  const kebabPending = pendingAction === "uninstall" || pendingAction === "check-update";
+
+  const runCardAction = async (action: "install" | "retry" | "uninstall" | "check-update") => {
+    setPendingAction(action);
+    try {
+      await runExtensionCardAction(entry, action, callbacks);
+    } catch (err) {
+      console.error(`Failed to ${action} ${entry.coordinate}:`, err);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const handleInstall = () => runCardAction("install");
+  const handleRetry = () => runCardAction("retry");
+
+  const handleMenuAction = (action: (typeof menuItems)[number]["action"]) => {
+    if (action === "open-repo") {
+      runExtensionCardAction(entry, action, callbacks).catch((err: unknown) => {
+        console.error(`Failed to open-repo ${entry.coordinate}:`, err);
+      });
+      return;
+    }
+    void runCardAction(action);
+  };
 
   return (
     <li className="flex items-center gap-3 rounded-lg border bg-card p-3 text-card-foreground">
@@ -87,9 +119,12 @@ function ExtensionCard({
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => runExtensionCardAction(entry, "install", callbacks)}
+          className="w-16"
+          disabled={anyPending}
+          aria-busy={pendingAction === "install"}
+          onClick={handleInstall}
         >
-          Add
+          {pendingAction === "install" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Add"}
         </Button>
       )}
       {showRetry && onRetry !== undefined && (
@@ -97,9 +132,12 @@ function ExtensionCard({
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => runExtensionCardAction(entry, "retry", callbacks)}
+          className="w-20"
+          disabled={anyPending}
+          aria-busy={pendingAction === "retry"}
+          onClick={handleRetry}
         >
-          Retry
+          {pendingAction === "retry" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Retry"}
         </Button>
       )}
       {menuItems.length > 0 && (
@@ -111,13 +149,19 @@ function ExtensionCard({
               size="sm"
               className="h-8 w-8 p-0"
               aria-label={`${entry.name} actions`}
+              disabled={anyPending}
+              aria-busy={kebabPending}
             >
-              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+              {kebabPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {menuItems.map((item) => (
-              <DropdownMenuItem key={item.action} onClick={() => runExtensionCardAction(entry, item.action, callbacks)}>
+              <DropdownMenuItem key={item.action} onClick={() => handleMenuAction(item.action)}>
                 {item.label}
               </DropdownMenuItem>
             ))}
@@ -134,8 +178,24 @@ function ExtensionOfferCard({
   onInstallReference,
 }: {
   offer: ExtensionCatalogOffer;
-  onInstallReference?: (reference: string) => void;
+  onInstallReference?: (reference: string) => Promise<void>;
 }) {
+  const [installPending, setInstallPending] = React.useState(false);
+
+  const handleInstall = async () => {
+    if (onInstallReference === undefined) {
+      return;
+    }
+    setInstallPending(true);
+    try {
+      await onInstallReference(offer.ref);
+    } catch (err) {
+      console.error(`Failed to install ${offer.coordinate}:`, err);
+    } finally {
+      setInstallPending(false);
+    }
+  };
+
   return (
     <li className="flex items-center gap-3 rounded-lg border bg-card p-3 text-card-foreground">
       <img
@@ -151,8 +211,16 @@ function ExtensionOfferCard({
         <p className="mt-0.5 truncate text-xs text-muted-foreground">{offer.description}</p>
       </div>
       {onInstallReference !== undefined && (
-        <Button type="button" variant="outline" size="sm" onClick={() => onInstallReference(offer.ref)}>
-          Add
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-16"
+          disabled={installPending}
+          aria-busy={installPending}
+          onClick={handleInstall}
+        >
+          {installPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Add"}
         </Button>
       )}
     </li>
@@ -164,7 +232,7 @@ export interface ExtensionBrowserListProps extends ExtensionCardCallbacks {
   /** The items to render, already filtered and ordered by the caller. */
   items: readonly ExtensionBrowserItem[];
   /** Called with an offer's pinned reference when its Add affordance is triggered. */
-  onInstallReference?: (reference: string) => void;
+  onInstallReference?: (reference: string) => Promise<void>;
 }
 
 /**
@@ -208,8 +276,8 @@ export function ExtensionBrowserList({
 
 /** Props for {@link ExtensionReferenceInstallRow}. */
 export interface ExtensionReferenceInstallRowProps {
-  /** Called with the entered reference string when the Add affordance is triggered. */
-  onInstallReference: (reference: string) => void;
+  /** Called with the entered reference string when the Add affordance is triggered. The row awaits the returned promise to show install-in-progress. */
+  onInstallReference: (reference: string) => Promise<void>;
 }
 
 /**
@@ -220,14 +288,22 @@ export interface ExtensionReferenceInstallRowProps {
  */
 export function ExtensionReferenceInstallRow({ onInstallReference }: ExtensionReferenceInstallRowProps) {
   const [reference, setReference] = React.useState("");
+  const [installPending, setInstallPending] = React.useState(false);
 
-  const submit = () => {
+  const submit = async () => {
     const trimmed = reference.trim();
     if (trimmed.length === 0) {
       return;
     }
-    onInstallReference(trimmed);
     setReference("");
+    setInstallPending(true);
+    try {
+      await onInstallReference(trimmed);
+    } catch (err) {
+      console.error(`Failed to install ${trimmed}:`, err);
+    } finally {
+      setInstallPending(false);
+    }
   };
 
   return (
@@ -240,13 +316,21 @@ export function ExtensionReferenceInstallRow({ onInstallReference }: ExtensionRe
         onChange={(event) => setReference(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
-            submit();
+            void submit();
           }
         }}
         className="flex-1"
       />
-      <Button type="button" variant="outline" size="sm" disabled={reference.trim().length === 0} onClick={submit}>
-        Add
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-16"
+        disabled={installPending || reference.trim().length === 0}
+        aria-busy={installPending}
+        onClick={submit}
+      >
+        {installPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Add"}
       </Button>
     </div>
   );
@@ -264,12 +348,13 @@ export interface ExtensionBrowserDialogProps extends ExtensionCardCallbacks {
    * Install a remote extension from a reference string. The Add-from-GitHub
    * row and the catalog section appear only when present.
    */
-  onInstallReference?: (reference: string) => void;
+  onInstallReference?: (reference: string) => Promise<void>;
   /**
-   * Check every updatable dependency for updates. The Check for Updates
-   * affordance appears when present and at least two entries are updatable.
+   * Check every updatable dependency for updates. Resolves when the check
+   * completes; rejects if it fails. The affordance appears when present and
+   * at least two entries are updatable.
    */
-  onCheckAllUpdates?: () => void;
+  onCheckAllUpdates?: () => Promise<void>;
   /** Catalog offers to render as installable cards in the list. */
   catalogOffers?: readonly ExtensionCatalogOffer[];
   /**
@@ -301,6 +386,7 @@ export function ExtensionBrowserDialog({
   catalogCoordinates,
 }: ExtensionBrowserDialogProps) {
   const [filter, setFilter] = React.useState("");
+  const [checkAllUpdatesPending, setCheckAllUpdatesPending] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
@@ -317,12 +403,26 @@ export function ExtensionBrowserDialog({
   const showNoMatch = extensionBrowserShowsNoMatch(items.length, searchActive);
   const showCheckAllUpdates = extensionBrowserShowsCheckAllUpdates(entries);
 
+  const handleCheckAllUpdates = async () => {
+    if (onCheckAllUpdates === undefined) {
+      return;
+    }
+    setCheckAllUpdatesPending(true);
+    try {
+      await onCheckAllUpdates();
+    } catch (err) {
+      console.error("Failed to check for updates:", err);
+    } finally {
+      setCheckAllUpdatesPending(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          "left-0 top-0 h-dvh max-w-full translate-x-0 translate-y-0 gap-0 rounded-none p-0",
-          "sm:left-[50%] sm:top-[50%] sm:h-150 sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg"
+          "left-0 top-0 h-[calc(100dvh-var(--keyboard-inset,0))] max-w-full translate-x-0 translate-y-0 gap-0 rounded-none p-0",
+          "sm:left-[50%] sm:top-[calc(50%-var(--keyboard-inset,0)*0.5)] sm:h-150 sm:max-h-[calc(100dvh-var(--keyboard-inset,0)-2rem)] sm:w-[calc(100vw-2rem)] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg"
         )}
       >
         <DialogHeader className="flex-col space-y-0.5 border-b px-4 py-3 sm:px-6 sm:py-4">
@@ -346,8 +446,11 @@ export function ExtensionBrowserDialog({
               size="sm"
               className="self-start"
               data-testid="check-all-updates-button"
-              onClick={onCheckAllUpdates}
+              disabled={checkAllUpdatesPending}
+              aria-busy={checkAllUpdatesPending}
+              onClick={handleCheckAllUpdates}
             >
+              {checkAllUpdatesPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
               Check for Updates
             </Button>
           )}

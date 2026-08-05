@@ -16,10 +16,13 @@ behavior: automatic join code management and the `"app"` WebSocket path. Apps (e
 npm run build      # tsc --build (outputs to dist/)
 npm run typecheck  # tsc --noEmit
 npm run check      # biome check --write
+npm run check:only # biome check (no writes)
+npm test           # node:test over src/**/*.spec.ts
 ```
 
-No test files in this package. After changes, rebuild (`npm run build`) so downstream
-consumers see updated types.
+After changes, rebuild (`npm run build`) so downstream consumers see updated
+types and so the apps' dev servers serve the new `dist/`. `npm test` runs the
+specs from source, so a green suite does not prove `dist/` is current.
 
 ## Source Layout
 

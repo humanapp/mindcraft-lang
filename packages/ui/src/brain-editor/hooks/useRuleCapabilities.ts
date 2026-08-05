@@ -10,24 +10,22 @@ import { useMemo } from "react";
  * React hook that memoizes the OR'd capabilities from the rule hierarchy.
  * Returns a `ReadonlyBitSet` suitable for `InsertionContext.availableCapabilities`.
  *
- * @param updateCounter - Counter that increments whenever tiles change (the
- *   page editor's update counter). The result recomputes only when `ruleDef`
- *   or this value changes.
+ * @param revision - The rule's revision, from `ruleRevisions`. The result
+ *   recomputes only when `ruleDef` or this value changes.
  */
-export function useRuleCapabilities(ruleDef: IBrainRuleDef, updateCounter: number): ReadonlyBitSet {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter forces re-evaluation when tiles change
-  return useMemo(() => collectRuleHierarchyCapabilities(ruleDef), [ruleDef, updateCounter]);
+export function useRuleCapabilities(ruleDef: IBrainRuleDef, revision: string): ReadonlyBitSet {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision forces re-evaluation when tiles change
+  return useMemo(() => collectRuleHierarchyCapabilities(ruleDef), [ruleDef, revision]);
 }
 
 /**
  * React hook that memoizes the output identity keys provided across the rule
  * hierarchy. Returns a `UniqueSet<string>` suitable for `InsertionContext.availableOutputKeys`.
  *
- * @param updateCounter - Counter that increments whenever tiles change (the
- *   page editor's update counter). The result recomputes only when `ruleDef`
- *   or this value changes.
+ * @param revision - The rule's revision, from `ruleRevisions`. The result
+ *   recomputes only when `ruleDef` or this value changes.
  */
-export function useRuleOutputKeys(ruleDef: IBrainRuleDef, updateCounter: number): UniqueSet<string> {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: updateCounter forces re-evaluation when tiles change
-  return useMemo(() => collectRuleHierarchyOutputKeys(ruleDef), [ruleDef, updateCounter]);
+export function useRuleOutputKeys(ruleDef: IBrainRuleDef, revision: string): UniqueSet<string> {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision forces re-evaluation when tiles change
+  return useMemo(() => collectRuleHierarchyOutputKeys(ruleDef), [ruleDef, revision]);
 }

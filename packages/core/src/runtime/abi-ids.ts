@@ -187,6 +187,7 @@ export enum CoreFuncId {
   OpNotEqualToEnum = 103,
   ConvEnumToString = 104,
   ConvEnumToNumber = 105,
+  SensorOtherwise = 106,
 }
 
 /**
@@ -219,4 +220,5 @@ export const CoreHostActions = {
   Timeout: { key: "sensor.timeout", actionId: 5, fnId: CoreFuncId.SensorTimeout },
   CurrentPage: { key: "current-page", actionId: 6, fnId: CoreFuncId.SensorCurrentPage },
   PreviousPage: { key: "previous-page", actionId: 7, fnId: CoreFuncId.SensorPreviousPage },
+  Otherwise: { key: "otherwise", actionId: 8, fnId: CoreFuncId.SensorOtherwise },
 } as const satisfies Record<string, HostActionIds>;

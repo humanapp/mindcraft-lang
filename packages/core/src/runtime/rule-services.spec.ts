@@ -55,7 +55,7 @@ function ancestorMap(...pairs: readonly (readonly [number, number])[]): Dict<num
 describe("createProgramServices", () => {
   test("returns funcId for known rule entries", () => {
     const program = makeProgram({ ruleFuncIds: ruleSet(0, 3, 7) });
-    const services = createProgramServices(program);
+    const services = createProgramServices(program, List.empty());
     assert.equal(services.getRuleFuncIdForFunc(0), 0);
     assert.equal(services.getRuleFuncIdForFunc(3), 3);
     assert.equal(services.getRuleFuncIdForFunc(7), 7);
@@ -63,14 +63,14 @@ describe("createProgramServices", () => {
 
   test("returns undefined for non-rule funcIds", () => {
     const program = makeProgram({ ruleFuncIds: ruleSet(1, 2) });
-    const services = createProgramServices(program);
+    const services = createProgramServices(program, List.empty());
     assert.equal(services.getRuleFuncIdForFunc(0), undefined);
     assert.equal(services.getRuleFuncIdForFunc(99), undefined);
   });
 
   test("returns undefined for every funcId when ruleFuncIds is absent", () => {
     const program = makeProgram({});
-    const services = createProgramServices(program);
+    const services = createProgramServices(program, List.empty());
     assert.equal(services.getRuleFuncIdForFunc(0), undefined);
     assert.equal(services.getRuleFuncIdForFunc(5), undefined);
   });
@@ -93,7 +93,7 @@ describe("createProgramServices", () => {
         symbols: List.from([{ key: "Ready", value: "ready" }]),
       },
     ]);
-    const services = createProgramServices(makeProgram({ types }));
+    const services = createProgramServices(makeProgram({ types }), List.empty());
     assert.equal(services.getEnumSymbolValue("enum:</m.ts::Mode>", "Go"), 2);
     assert.equal(services.getEnumSymbolValue("enum:</m.ts::Mode>", "Stop"), 0);
     assert.equal(services.getEnumSymbolValue("enum:</m.ts::Label>", "Ready"), "ready");
@@ -102,7 +102,7 @@ describe("createProgramServices", () => {
   });
 
   test("returns undefined for enum symbol values when the program has no type table", () => {
-    const services = createProgramServices(makeProgram({}));
+    const services = createProgramServices(makeProgram({}), List.empty());
     assert.equal(services.getEnumSymbolValue("enum:</m.ts::Mode>", "Go"), undefined);
   });
 });

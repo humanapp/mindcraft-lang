@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
-import { type BrainServices, mkVariableTileId } from "@mindcraft-lang/core/brain";
+import { type BrainServices, CoreCapabilityBits, mkVariableTileId } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { ParseDiagCode, type TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef, BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
@@ -154,6 +154,56 @@ describe("BrainRuleDef", () => {
       assert.equal(b.children().get(0), childOfB);
       assert.equal(childOfB.ancestor(), b);
       assert.equal(a.ancestor(), undefined);
+    });
+  });
+
+  describe("a rule standing in a page's child list is attached to that page", () => {
+    /**
+     * A page holding one rule with one child, where the child was created
+     * directly under its parent and so has never stood in the page's own child
+     * list.
+     */
+    function pageWithNestedChild(): { page: BrainPageDef; parent: BrainRuleDef; child: BrainRuleDef } {
+      const brain = new BrainDef(services);
+      const page = new BrainPageDef();
+      brain.addPage(page);
+      const parent = page.appendNewRule() as BrainRuleDef;
+      const child = parent.appendNewRule() as BrainRuleDef;
+      return { page, parent, child };
+    }
+
+    /**
+     * Assert that `rule` is live where the page's child list holds it: it names
+     * its page and brain, and every move it could make answers for itself.
+     */
+    function assertAttached(page: BrainPageDef, rule: BrainRuleDef): void {
+      assert.equal(page.children().indexOf(rule) >= 0, true, "the page's child list must hold the rule");
+      assert.equal(rule.page(), page, "the rule must name the page holding it");
+      assert.notEqual(rule.brain(), undefined, "the rule must reach its brain");
+      assert.equal(rule.canMoveUp(), page.children().indexOf(rule) > 0);
+      assert.equal(rule.canMoveDown(), page.children().indexOf(rule) < page.children().size() - 1);
+      assert.equal(rule.canIndent(), page.children().indexOf(rule) > 0);
+      assert.equal(rule.canOutdent(), false, "a rule at page level has nothing to outdent to");
+    }
+
+    test("outdent to page level attaches the rule", () => {
+      const { page, child } = pageWithNestedChild();
+      assert.equal(child.outdent(), true);
+      assertAttached(page, child);
+    });
+
+    test("moveTo page level attaches the rule", () => {
+      const { page, child } = pageWithNestedChild();
+      assert.equal(child.moveTo(undefined, page, 1), true);
+      assertAttached(page, child);
+    });
+
+    test("a rule outdented to page level can be indented back", () => {
+      const { page, parent, child } = pageWithNestedChild();
+      child.outdent();
+      assert.equal(child.indent(), true);
+      assert.equal(parent.children().get(0), child);
+      assert.equal(page.children().size(), 1);
     });
   });
 
@@ -321,6 +371,55 @@ describe("BrainRuleDef", () => {
       assert.ok(
         codes.includes(ParseDiagCode.TileWhenResultUnavailable),
         "an orphan WHEN-result consumer must carry TileWhenResultUnavailable"
+      );
+    });
+
+    /** A WHEN-side Boolean sensor declaring the preceding-sibling requirement. */
+    function precedingSiblingProbe(fnId: number): BrainTileSensorDef {
+      const fnEntry = services.runtime.functions.register(
+        fnId,
+        `test-tc-sibling-reader-${fnId}`,
+        false,
+        { exec: () => NIL_VALUE },
+        mkCallDef(bag())
+      );
+      return new BrainTileSensorDef(
+        `test-tc-sibling-reader-${fnId}`,
+        mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Boolean),
+        {
+          metadata: { label: "tc sibling reader" },
+          capabilities: new BitSet().set(CoreCapabilityBits.RequiresPrecedingSiblingRule),
+        }
+      );
+    }
+
+    test("a tile reading the rule above it is clean while that rule is there", () => {
+      const brain = BrainDef.emptyBrainDef(services, "tc-sibling-present-brain");
+      const page = brain.pages().get(0);
+      page.children().get(0).when().appendTile(precedingSiblingProbe(4411));
+      const second = page.appendNewRule() as BrainRuleDef;
+      second.when().appendTile(precedingSiblingProbe(4412));
+
+      const codes = typecheckSideDiags(second, "when");
+      assert.ok(
+        !codes.includes(ParseDiagCode.NoPrecedingSiblingRule),
+        "a rule with a rule above it must not carry NoPrecedingSiblingRule"
+      );
+    });
+
+    test("removing the rules above re-derives the subject and diagnoses the tile", () => {
+      const brain = BrainDef.emptyBrainDef(services, "tc-sibling-removed-brain");
+      const page = brain.pages().get(0);
+      const second = page.appendNewRule() as BrainRuleDef;
+      second.when().appendTile(precedingSiblingProbe(4413));
+      assert.ok(!typecheckSideDiags(second, "when").includes(ParseDiagCode.NoPrecedingSiblingRule));
+
+      page.removeRuleAtIndex(0);
+
+      const codes = typecheckSideDiags(second, "when");
+      assert.ok(
+        codes.includes(ParseDiagCode.NoPrecedingSiblingRule),
+        "the rule left first at its level must carry NoPrecedingSiblingRule on the next typecheck"
       );
     });
   });

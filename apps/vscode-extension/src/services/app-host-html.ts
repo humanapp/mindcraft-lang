@@ -31,8 +31,9 @@ export interface AppHostHtmlOptions {
  * The policy admits the bootstrap by nonce, the app's scripts, styles,
  * fonts, and images from the webview-resource origin (`cspSource`), the
  * app's runtime-injected styles ('unsafe-inline'), its minted icon and
- * favicon URLs (`blob:`/`data:`), and its extension-install fetches
- * (`https:`).
+ * favicon URLs (`blob:`/`data:`), the umami analytics script
+ * (`https://cloud.umami.is`), and its extension-install and analytics
+ * fetches (`https:`).
  */
 export function buildAppHostHtml(options: AppHostHtmlOptions): string {
   const { appIndexHtml, appBaseUri, cspSource, nonce } = options;
@@ -41,7 +42,7 @@ export function buildAppHostHtml(options: AppHostHtmlOptions): string {
     "default-src 'none'",
     `img-src ${cspSource} blob: data:`,
     `style-src ${cspSource} 'unsafe-inline'`,
-    `script-src 'nonce-${nonce}' ${cspSource}`,
+    `script-src 'nonce-${nonce}' ${cspSource} https://cloud.umami.is`,
     `font-src ${cspSource}`,
     `connect-src ${cspSource} https:`,
   ].join("; ");

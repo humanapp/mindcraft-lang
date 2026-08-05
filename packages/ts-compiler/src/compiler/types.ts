@@ -1,4 +1,4 @@
-import type { BrainServices, DiagnosticSeverity } from "@mindcraft-lang/core/brain";
+import type { BrainServices, DiagnosticSeverity, ITileLanguageMetadata } from "@mindcraft-lang/core/brain";
 import type { ActionKind, ConstantOffsets, TypeId, UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
@@ -28,6 +28,8 @@ export interface UserAuthoredProgram extends UserActionArtifact {
   iconUrl?: string;
   docsMarkdown?: string;
   tags?: string[];
+  /** Sentence words declared by the config's `language` group, forwarded to the generated tile def's `metadata.language`. */
+  language?: ITileLanguageMetadata;
   /** When true (sensors only), the generated tile def is placement-inline; the picker offers it in value-slot positions. */
   inline?: boolean;
   /** When true (sensors only), sets the generated tile def's PresenceGated capability bit. */
@@ -66,6 +68,7 @@ export type UserTileDefinition = Pick<
   | "iconUrl"
   | "docsMarkdown"
   | "tags"
+  | "language"
   | "inline"
   | "presenceGated"
   | "revisionId"
@@ -193,6 +196,8 @@ export interface ExtractedDescriptor {
   docs?: string;
   docsSpan?: SourceSpan;
   tags?: string[];
+  /** Sentence words from the config's `language` group, or undefined when the config declares none. */
+  language?: ITileLanguageMetadata;
   /** When true, the sensor reads inline in value slots; the generated tile is placement-inline (sensors only). */
   inline?: boolean;
   /** When true, a bare WHEN of this sensor gates on value presence, via the PresenceGated capability (sensors only). */

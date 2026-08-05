@@ -41,7 +41,12 @@ export function registerCoreActuatorTileDefs(services: BrainServices) {
     const tileDef = new BrainTileActuatorDef(actuatorId, action, opts);
     tiles.registerTileDef(tileDef);
   };
-  register(fnSwitchPage.key, fnSwitchPage.descriptor);
-  register(fnRestartPage.key, fnRestartPage.descriptor, { deprecated: true });
+  register(fnSwitchPage.key, fnSwitchPage.descriptor, {
+    metadata: { label: "switch page", language: { form: "go to" } },
+  });
+  register(fnRestartPage.key, fnRestartPage.descriptor, {
+    deprecated: true,
+    metadata: { label: "restart page", language: { form: "restart this page" } },
+  });
   //register(fnYield.key);
 }

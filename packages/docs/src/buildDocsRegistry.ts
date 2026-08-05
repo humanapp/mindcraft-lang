@@ -8,8 +8,31 @@
 
 import { coreConceptDocs, coreTileDocs } from "@mindcraft-lang/core/docs";
 import { conceptContent as coreConceptContent, tileContent as coreTileContent } from "@mindcraft-lang/core/docs/en";
-import type { DocsEntries } from "./DocsRegistry";
+import { kAcceleratorHelpConceptId } from "./AcceleratorHelp";
+import type { DocsConceptEntry, DocsEntries } from "./DocsRegistry";
 import { DocsRegistry } from "./DocsRegistry";
+
+/**
+ * The keyboard help concept, built but not registered. `AcceleratorHelp` renders
+ * a live "right now" section, which is only meaningful while the editor is open
+ * and focused; a browsable docs page can be reached with the editor closed and
+ * from the standalone docs route, where that section states nothing true.
+ *
+ * Register this entry to make the page reachable again.
+ */
+const keyboardConcept: DocsConceptEntry = {
+  id: kAcceleratorHelpConceptId,
+  title: "Keyboard",
+  tags: ["keyboard", "shortcuts", "accelerators", "keys"],
+  content: [
+    "# Keyboard",
+    "",
+    "The whole editor can be driven from the keyboard. What the keys do depends on where you are:",
+    "moving between rules, holding a rule, picking a tile, or writing a rule out as a sentence.",
+    "",
+    "Leave this page open while you work and the top of it will follow you.",
+  ].join("\n"),
+};
 
 // ---------------------------------------------------------------------------
 // Shared manifest types -- apps define their manifests using these shapes.

@@ -31,6 +31,7 @@ import {
   type MindcraftEnvironment,
   mkActionTileId,
 } from "@mindcraft-lang/core/app";
+import { createDefaultLocalizer } from "@mindcraft-lang/core/localization";
 import type { DocsTileEntry } from "@mindcraft-lang/docs";
 import { isCompilerControlledPath, type Mount } from "@mindcraft-lang/ts-compiler";
 import { createEcosimModule } from "@/brain";
@@ -349,6 +350,7 @@ export class EcosimEnvironmentStore {
         defaultExtensions: ecosimDefaultExtensions,
       }),
       modules: [coreModule(), createEcosimModule()],
+      localizer: createDefaultLocalizer(),
       mounts: ecosimMounts,
       embeddedExtensions: ecosimEmbeddedExtensions,
       extensionFetchTransport: createJsDelivrExtensionTransport(),

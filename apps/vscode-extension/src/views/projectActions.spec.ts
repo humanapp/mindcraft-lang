@@ -3,17 +3,23 @@ import { describe, it } from "node:test";
 import { PROJECT_ACTIONS } from "./projectActions";
 
 describe("PROJECT_ACTIONS", () => {
-  it("launches the four desktop commands in order", () => {
+  it("launches the desktop commands in order", () => {
     assert.deepStrictEqual(
       PROJECT_ACTIONS.map((action) => action.commandId),
-      ["mindcraft.createSensor", "mindcraft.createActuator", "mindcraft.openEditor", "mindcraft.openSettings"]
+      [
+        "mindcraft.createSensor",
+        "mindcraft.createActuator",
+        "mindcraft.importProject",
+        "mindcraft.openEditor",
+        "mindcraft.openSettings",
+      ]
     );
   });
 
   it("assigns each action its codicon", () => {
     assert.deepStrictEqual(
       PROJECT_ACTIONS.map((action) => action.icon),
-      ["eye", "zap", "window", "settings-gear"]
+      ["eye", "zap", "cloud-download", "window", "settings-gear"]
     );
   });
 

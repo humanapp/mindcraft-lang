@@ -7,7 +7,13 @@ import type { BytecodeExecutableAction, ExecutionContext } from "./context";
 import type { VmEvents } from "./events";
 import type { BrainEvents, IBrainRuntime, PageMetadata } from "./host-bindings";
 import type { Program } from "./program";
-import { createProgramServices, createRuleVariableServices, type RuleVariableStores } from "./rule-services";
+import {
+  createProgramServices,
+  createRuleFiringServices,
+  createRuleVariableServices,
+  type RuleFiringStates,
+  type RuleVariableStores,
+} from "./rule-services";
 import { createRuntimeServices } from "./runtime-services";
 import type { PlatformServices } from "./services";
 import { NIL_VALUE, type Value } from "./value";
@@ -165,6 +171,9 @@ export class BrainRuntime implements IBrainRuntime {
 
     const callsiteStore = createCallsiteStore();
     const ruleVariableStores: RuleVariableStores = new Dict();
+    // One firing record per rule, keyed by rule funcId and allocated with the
+    // runtime: a rule's record lives exactly as long as this brain instance.
+    const ruleFiringStates: RuleFiringStates = new Dict();
     this.callsiteStore = callsiteStore;
     this.ruleVariableStores = ruleVariableStores;
 
@@ -182,9 +191,10 @@ export class BrainRuntime implements IBrainRuntime {
     const services: PlatformServices = {
       ...hostServices,
       brain: {
-        program: createProgramServices(program),
+        program: createProgramServices(program, pageMetadata),
         brainVars: runtimeServices.brainVars,
         ruleVars: createRuleVariableServices(program, ruleVariableStores),
+        ruleFiring: createRuleFiringServices(ruleFiringStates),
         pages: runtimeServices.brainPages,
         callsite: callsiteStore,
       },

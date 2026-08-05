@@ -4,6 +4,7 @@ import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Printer, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { AcceleratorHelp, kAcceleratorHelpConceptId } from "./AcceleratorHelp";
 import { DocMarkdown } from "./DocMarkdown";
 import { DocsEntryLink } from "./DocsEntryLink";
 import { DocsPrintView } from "./DocsPrintView";
@@ -22,6 +23,15 @@ const DEFAULT_WIDTH_PCT = 26; // ~350px on a 1350px viewport
 const MIN_WIDTH_PCT = 14;
 const MAX_WIDTH_PCT = 55;
 const KEYBOARD_STEP_PCT = 1;
+
+/**
+ * Custom property the desktop panel publishes on the document root: the share
+ * of the viewport width it currently covers, written as a CSS percentage.
+ * It reads `0%` whenever the panel covers nothing a desktop layout has to
+ * avoid -- closed, unmounted, or in the mobile full-screen shape. Surfaces
+ * that must stay reachable while the panel is open inset themselves by it.
+ */
+const PANEL_INSET_VAR = "--docs-panel-inset";
 
 function clampWidth(pct: number): number {
   return Math.min(MAX_WIDTH_PCT, Math.max(MIN_WIDTH_PCT, pct));
@@ -170,7 +180,7 @@ function SearchBar({ value, onChange, inputRef }: SearchBarProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Search docs..."
-          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+          className="flex-1 bg-transparent text-sm pointer-coarse:text-base text-foreground placeholder:text-muted-foreground"
           aria-label="Search documentation"
         />
       </div>
@@ -493,6 +503,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         >
           <DocMarkdown>{detailContent}</DocMarkdown>
           {navTab === "tiles" && <DocsTileArgsSection tileId={navKey} />}
+          {navTab === "concepts" && navKey === kAcceleratorHelpConceptId && <AcceleratorHelp />}
         </article>
       </>
     );
@@ -701,6 +712,7 @@ function MobilePanel() {
 
   return (
     <div
+      id="docs-sidebar"
       role="dialog"
       aria-modal="true"
       aria-label="Documentation"
@@ -757,6 +769,16 @@ export function DocsSidebar() {
     if (isOpen) setHasBeenOpened(true);
   }, [isOpen]);
 
+  // Publishes the panel's settled footprint; the separator's pointer-move
+  // handler republishes it during a drag.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty(PANEL_INSET_VAR, !isMobile && isOpen ? `${widthPct}%` : "0%");
+    return () => {
+      root.style.removeProperty(PANEL_INSET_VAR);
+    };
+  }, [isMobile, isOpen, widthPct]);
+
   // Move focus into the sidebar when it opens so the user can immediately
   // interact via keyboard. A short delay allows the slide-in transition to
   // start before we focus (some browsers ignore focus on off-screen elements).
@@ -787,6 +809,7 @@ export function DocsSidebar() {
       // to avoid re-rendering the full subtree on every pointer event.
       asideRef.current.style.width = `${newPct}%`;
     }
+    document.documentElement.style.setProperty(PANEL_INSET_VAR, `${newPct}%`);
   }, []);
 
   const handleSeparatorPointerUp = useCallback(

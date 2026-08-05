@@ -69,6 +69,7 @@ import {
 } from "@mindcraft-lang/core/brain/tiles";
 import {
   bag,
+  CoreHostActions,
   CoreOpId,
   CoreParameterId,
   CoreTypeIds,
@@ -76,6 +77,7 @@ import {
   type IConversionRegistry,
   mkActionDescriptor,
   mkCallDef,
+  mkSensorTileId,
   mod,
   NIL_VALUE,
   optional,
@@ -423,6 +425,16 @@ function fill(rule: IBrainRuleDef, when: IBrainTileDef[], doTiles: IBrainTileDef
   for (const t of doTiles) rule.do().appendTile(t);
 }
 
+/** Appends a rule at the end of the brain's first page, at root level. */
+function appendRootRule(brain: BrainDef): IBrainRuleDef {
+  return brain.pages().get(0).appendNewRule()!;
+}
+
+/** The core `otherwise` sensor: a WHEN-side inline tile reading the rule above it. */
+function otherwiseTile(): IBrainTileDef {
+  return services.edit.tiles.get(mkSensorTileId(CoreHostActions.Otherwise.key))!;
+}
+
 function corpus(): CorpusEntry[] {
   const t = probeTiles;
   const entries: CorpusEntry[] = [
@@ -680,6 +692,55 @@ function corpus(): CorpusEntry[] {
       build: () => {
         const { brain, rule } = newBrain("two-anon-complete");
         fill(rule, [], [t.steerActuator, t.numLit, t.numLit]);
+        return brain;
+      },
+    },
+    {
+      // Two root rules: the second has a rule above it, so a tile requiring a
+      // preceding sibling is valid on its WHEN side and invalid on the first
+      // rule's.
+      name: "root-siblings-open-when",
+      build: () => {
+        const { brain, rule } = newBrain("root-siblings-open-when");
+        fill(rule, [t.seesSensor], [t.beepActuator]);
+        fill(appendRootRule(brain), [], [t.beepActuator]);
+        return brain;
+      },
+    },
+    {
+      // A three-rule run whose middle rule's WHEN is `otherwise`: the third
+      // rule's preceding sibling is itself an `otherwise` rule.
+      name: "root-siblings-otherwise-run",
+      build: () => {
+        const { brain, rule } = newBrain("root-siblings-otherwise-run");
+        fill(rule, [t.seesSensor], [t.beepActuator]);
+        fill(appendRootRule(brain), [otherwiseTile()], [t.beepActuator]);
+        fill(appendRootRule(brain), [], [t.beepActuator]);
+        return brain;
+      },
+    },
+    {
+      // Both root rules hold a boolean conjunction on WHEN, so each operand is
+      // a composed expression position -- audited once without a preceding
+      // sibling and once with one.
+      name: "root-siblings-when-conjunction",
+      build: () => {
+        const { brain, rule } = newBrain("root-siblings-when-conjunction");
+        const and = services.edit.tiles.get(mkOperatorTileId(CoreOpId.And))!;
+        fill(rule, [t.boolLit, and, t.boolLit], [t.beepActuator]);
+        fill(appendRootRule(brain), [t.boolLit, and, t.boolLit], [t.beepActuator]);
+        return brain;
+      },
+    },
+    {
+      // Two child rules under one parent: the preceding-sibling relation is
+      // read at the children's own nesting level, not the root's.
+      name: "child-siblings-open-when",
+      build: () => {
+        const { brain, rule } = newBrain("child-siblings-open-when");
+        fill(rule, [t.seesSensor], []);
+        fill(rule.appendNewRule(), [t.seesSensor], [t.beepActuator]);
+        fill(rule.appendNewRule(), [], [t.beepActuator]);
         return brain;
       },
     },

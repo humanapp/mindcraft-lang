@@ -1,44 +1,19 @@
 // Context and types
 
-// Action call-spec arg entries
-export type { ActionArgEntry, ActionArgTileEntry, ActionArgTypeEntry, TypeDisplaySources } from "./action-arg-tiles";
-export { getActionArgEntries, resolveTypeDisplayName } from "./action-arg-tiles";
-export type { BrainEditorConfig, CustomLiteralType } from "./BrainEditorContext";
-export { BrainEditorProvider, useBrainEditorConfig } from "./BrainEditorContext";
-export type { BrainEditorDialogProps } from "./BrainEditorDialog";
-// Components
-export { BrainEditorDialog } from "./BrainEditorDialog";
-export { BrainPageEditor } from "./BrainPageEditor";
-export { BrainPrintDialog } from "./BrainPrintDialog";
-export { BrainPrintTextView } from "./BrainPrintTextView";
-export { BrainPrintView } from "./BrainPrintView";
-export { BrainRuleEditor } from "./BrainRuleEditor";
-export { BrainTile } from "./BrainTile";
-export { BrainTileEditor } from "./BrainTileEditor";
-export type { BrainTilePickerDialogProps } from "./BrainTilePickerDialog";
-export { BrainTilePickerDialog } from "./BrainTilePickerDialog";
-export {
-  copyBrainToClipboard,
-  getBrainFromClipboard,
-  hasBrainInClipboard,
-  onBrainClipboardChanged,
-} from "./brain-clipboard";
-export { CreateLiteralDialog } from "./CreateLiteralDialog";
-export { CreateVariableDialog } from "./CreateVariableDialog";
-export type { BrainCommand } from "./commands";
-// Commands
+export type { BrainCommand } from "@mindcraft-lang/core/brain/model";
+// Commands (relocated to @mindcraft-lang/core/brain/model; re-exported for API stability)
 export {
   AddPageCommand,
   AddTileCommand,
   BrainCommandHistory,
   DeleteRuleCommand,
   IndentRuleCommand,
-  InsertRuleBeforeCommand,
+  InsertRuleCommand,
   InsertTileCommand,
   MoveRuleDownCommand,
   MoveRuleUpCommand,
   OutdentRuleCommand,
-  PasteRuleAboveCommand,
+  PasteRulesCommand,
   PasteTileBeforeCommand,
   RemovePageCommand,
   RemoveTileCommand,
@@ -48,9 +23,39 @@ export {
   ReplaceBrainCommand,
   ReplaceLastPageCommand,
   ReplaceTileCommand,
-} from "./commands";
+} from "@mindcraft-lang/core/brain/model";
+// Action call-spec arg entries
+export type { AcceleratorClaim, AcceleratorContribution, AcceleratorPlatform } from "./accelerators";
+// Documented accelerators, filtered to the mode the editor stands in
+export { acceleratorPlatform, acceleratorsForMode, commandKeyName, kAcceleratorContributions } from "./accelerators";
+export type { ActionArgEntry, ActionArgTileEntry, ActionArgTypeEntry, TypeDisplaySources } from "./action-arg-tiles";
+export { getActionArgEntries, resolveTypeDisplayName } from "./action-arg-tiles";
+export type { BrainEditorConfig, CustomLiteralType } from "./BrainEditorContext";
+export { BrainEditorProvider, useBrainEditorConfig, useLocalizer, useTr } from "./BrainEditorContext";
+export type { BrainEditorDialogProps } from "./BrainEditorDialog";
+// Components
+export { BrainEditorDialog } from "./BrainEditorDialog";
+export { BrainPageEditor } from "./BrainPageEditor";
+export { BrainPrintDialog } from "./BrainPrintDialog";
+export { BrainPrintTextView } from "./BrainPrintTextView";
+export { BrainPrintView } from "./BrainPrintView";
+export { BrainRuleEditor } from "./BrainRuleEditor";
+export { BrainPrintRuleSentence, BrainRuleSentence } from "./BrainRuleSentence";
+export { BrainTile } from "./BrainTile";
+export { BrainTileEditor } from "./BrainTileEditor";
+export {
+  copyBrainToClipboard,
+  getBrainFromClipboard,
+  hasBrainInClipboard,
+  onBrainClipboardChanged,
+} from "./brain-clipboard";
+export { CreateLiteralDialog } from "./CreateLiteralDialog";
+export { CreateVariableDialog } from "./CreateVariableDialog";
 export { DisplayFormatPicker } from "./DisplayFormatPicker";
 export { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
+export type { EditorArmingFacts, EditorMode, EditorModeFacts } from "./editor-mode";
+// The one derived value naming the editor's keyboard context
+export { deriveEditorMode, kEditorModes } from "./editor-mode";
 // Hooks
 export { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 export { useTileSelection } from "./hooks/useTileSelection";
@@ -63,6 +68,9 @@ export {
   hasRuleInClipboard,
   onClipboardChanged,
 } from "./rule-clipboard";
+// Sentence projection consumption
+export type { SentenceSegmentIdentity } from "./sentence-reflection";
+export { changedSentenceSegments, sentenceSegmentIdentities } from "./sentence-reflection";
 export { TileValue } from "./TileValue";
 export type { TileBadge } from "./tile-badges";
 // Tile badges

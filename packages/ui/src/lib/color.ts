@@ -74,7 +74,11 @@ export function adjustColor(hex: string, percent: number): string {
   return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
 }
 
-/** Increase a hex color's saturation by a percentage (0 to 1). */
+/**
+ * Adjust a hex color's saturation by a percentage (-1 to +1), preserving its
+ * hue and lightness. A positive percent saturates; a negative percent mutes
+ * toward grey, reaching full grey at -1.
+ */
 export function saturateColor(hex: string, percent: number): string {
   const num = Number.parseInt(hex.replace("#", ""), 16);
   const r = (num >> 16) & 0xff;
@@ -86,4 +90,36 @@ export function saturateColor(hex: string, percent: number): string {
   const { r: newR, g: newG, b: newB } = hslToRgb(h, newS, l);
 
   return `#${((1 << 24) + (newR << 16) + (newG << 8) + newB).toString(16).slice(1)}`;
+}
+
+// -- Contrast Utilities -----------------------------------------------------
+
+/** Relative luminance of a hex color per WCAG 2.x, from 0 (black) to 1 (white). */
+function relativeLuminance(hex: string): number {
+  const num = Number.parseInt(hex.replace("#", ""), 16);
+  const toLinear = (channel: number): number => {
+    const v = channel / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * toLinear((num >> 16) & 0xff) + 0.7152 * toLinear((num >> 8) & 0xff) + 0.0722 * toLinear(num & 0xff);
+}
+
+/**
+ * Contrast ratio between two hex colors per WCAG 2.x, from 1 (identical colors)
+ * to 21 (black against white). The argument order does not affect the result.
+ */
+export function contrastRatio(a: string, b: string): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/**
+ * The text color -- black or white -- that reads better on `background`, given
+ * as a hex color. The winner always clears the WCAG AA 4.5:1 minimum for normal
+ * text: black and white cross over at 4.58:1 against the same background, so
+ * the better of the two is never below that.
+ */
+export function readableInk(background: string): "#000000" | "#ffffff" {
+  return contrastRatio("#000000", background) >= contrastRatio("#ffffff", background) ? "#000000" : "#ffffff";
 }

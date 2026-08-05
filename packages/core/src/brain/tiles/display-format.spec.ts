@@ -134,6 +134,24 @@ describe("applyDisplayFormat", () => {
     });
   });
 
+  describe("time_seconds:N", () => {
+    test("keeps more decimals than the unparameterized form rounds to", () => {
+      assert.equal(applyDisplayFormat(0.125, "time_seconds:3"), "0.125s");
+    });
+
+    test("pads a trailing zero out to N decimals", () => {
+      assert.equal(applyDisplayFormat(1.5, "time_seconds:2"), "1.50s");
+    });
+
+    test("truncates to a whole number of seconds at zero decimals", () => {
+      assert.equal(applyDisplayFormat(1.283, "time_seconds:0"), "1s");
+    });
+
+    test("handles negative values", () => {
+      assert.equal(applyDisplayFormat(-3.719, "time_seconds:3"), "-3.719s");
+    });
+  });
+
   describe("edge cases -- floating point exposure", () => {
     // Without N, `percent` passes value*100 raw to toString, which exposes
     // IEEE 754 artifacts. These tests document the current behavior.
@@ -215,6 +233,20 @@ describe("applyDisplayFormat", () => {
 
     test("handles negative values", () => {
       assert.equal(applyDisplayFormat(-2.5, "time_ms"), "-2500ms");
+    });
+  });
+
+  describe("time_ms:N", () => {
+    test("keeps the sub-millisecond digits the unparameterized form rounds away", () => {
+      assert.equal(applyDisplayFormat(0.0005, "time_ms:1"), "0.5ms");
+    });
+
+    test("pads a trailing zero out to N decimals", () => {
+      assert.equal(applyDisplayFormat(0.25, "time_ms:2"), "250.00ms");
+    });
+
+    test("handles negative values", () => {
+      assert.equal(applyDisplayFormat(-0.0025, "time_ms:1"), "-2.5ms");
     });
   });
 });

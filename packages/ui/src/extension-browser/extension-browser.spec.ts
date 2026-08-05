@@ -77,10 +77,10 @@ function renderList(entries: readonly ExtensionBrowserEntry[]): string {
   return renderToStaticMarkup(
     createElement(ExtensionBrowserList, {
       items: entries.map((item) => ({ kind: "entry" as const, entry: item })),
-      onInstall: () => {},
-      onUninstall: () => {},
-      onCheckUpdate: () => {},
-      onRetry: () => {},
+      onInstall: async () => {},
+      onUninstall: async () => {},
+      onCheckUpdate: async () => {},
+      onRetry: async () => {},
     })
   );
 }
@@ -219,10 +219,17 @@ describe("runExtensionCardAction", () => {
   test("install and uninstall fire their callbacks with the coordinate", () => {
     const installed: string[] = [];
     const uninstalled: string[] = [];
-    const callbacks = { onInstall: (c: string) => installed.push(c), onUninstall: (c: string) => uninstalled.push(c) };
+    const callbacks = {
+      onInstall: async (c: string) => {
+        installed.push(c);
+      },
+      onUninstall: async (c: string) => {
+        uninstalled.push(c);
+      },
+    };
 
-    runExtensionCardAction(availableAddon, "install", callbacks);
-    runExtensionCardAction(installedAddon, "uninstall", callbacks);
+    void runExtensionCardAction(availableAddon, "install", callbacks);
+    void runExtensionCardAction(installedAddon, "uninstall", callbacks);
 
     assert.deepEqual(installed, ["mindcraft-lang/shared-math"]);
     assert.deepEqual(uninstalled, ["mindcraft-lang/microbit-position"]);
@@ -231,8 +238,8 @@ describe("runExtensionCardAction", () => {
   test("open-repo opens the entry's repoUrl", () => {
     const opened: string[] = [];
     runExtensionCardAction(remoteDependency, "open-repo", {
-      onInstall: () => {},
-      onUninstall: () => {},
+      onInstall: async () => {},
+      onUninstall: async () => {},
       onOpenRepo: (url) => opened.push(url),
     });
     assert.deepEqual(opened, ["https://github.com/example-org/remote-ext"]);
@@ -241,8 +248,8 @@ describe("runExtensionCardAction", () => {
   test("open-repo on an entry without a repoUrl does nothing", () => {
     let called = false;
     runExtensionCardAction(entry({ coordinate: "x/y" }), "open-repo", {
-      onInstall: () => {},
-      onUninstall: () => {},
+      onInstall: async () => {},
+      onUninstall: async () => {},
       onOpenRepo: () => {
         called = true;
       },
@@ -251,27 +258,78 @@ describe("runExtensionCardAction", () => {
   });
 
   test("open-repo with an absent callback is a no-op", () => {
-    runExtensionCardAction(remoteDependency, "open-repo", { onInstall: () => {}, onUninstall: () => {} });
+    runExtensionCardAction(remoteDependency, "open-repo", { onInstall: async () => {}, onUninstall: async () => {} });
+  });
+
+  test("install awaits onInstall's promise before the returned promise settles", async () => {
+    let settled = false;
+    const installPromise = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        settled = true;
+        resolve();
+      }, 0);
+    });
+    const resultPromise = runExtensionCardAction(availableAddon, "install", {
+      onInstall: () => installPromise,
+      onUninstall: async () => {},
+    });
+
+    assert.equal(settled, false, "the promise has not settled synchronously");
+    await resultPromise;
+    assert.equal(settled, true, "awaiting the returned promise waits for the install to settle");
+  });
+
+  test("install resolves to undefined once onInstall settles", async () => {
+    const result = await runExtensionCardAction(availableAddon, "install", {
+      onInstall: async () => {},
+      onUninstall: async () => {},
+    });
+    assert.equal(result, undefined);
+  });
+
+  test("uninstall awaits onUninstall's promise before the returned promise settles", async () => {
+    let settled = false;
+    const uninstallPromise = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        settled = true;
+        resolve();
+      }, 0);
+    });
+    const resultPromise = runExtensionCardAction(installedAddon, "uninstall", {
+      onInstall: async () => {},
+      onUninstall: () => uninstallPromise,
+    });
+
+    assert.equal(settled, false, "the promise has not settled synchronously");
+    await resultPromise;
+    assert.equal(settled, true, "awaiting the returned promise waits for the uninstall to settle");
   });
 
   test("check-update and retry fire their callbacks with the coordinate, and do nothing when absent", () => {
     const checked: string[] = [];
     const retried: string[] = [];
     const callbacks = {
-      onInstall: () => {},
-      onUninstall: () => {},
-      onCheckUpdate: (c: string) => checked.push(c),
-      onRetry: (c: string) => retried.push(c),
+      onInstall: async () => {},
+      onUninstall: async () => {},
+      onCheckUpdate: async (c: string) => {
+        checked.push(c);
+      },
+      onRetry: async (c: string) => {
+        retried.push(c);
+      },
     };
 
-    runExtensionCardAction(updatableDependency, "check-update", callbacks);
-    runExtensionCardAction(brokenDependency, "retry", callbacks);
+    void runExtensionCardAction(updatableDependency, "check-update", callbacks);
+    void runExtensionCardAction(brokenDependency, "retry", callbacks);
     assert.deepEqual(checked, ["example-org/position-ext"]);
     assert.deepEqual(retried, ["example-org/ghost-ext"]);
 
     // Absent optional callbacks make the actions no-ops.
-    runExtensionCardAction(updatableDependency, "check-update", { onInstall: () => {}, onUninstall: () => {} });
-    runExtensionCardAction(brokenDependency, "retry", { onInstall: () => {}, onUninstall: () => {} });
+    void runExtensionCardAction(updatableDependency, "check-update", {
+      onInstall: async () => {},
+      onUninstall: async () => {},
+    });
+    void runExtensionCardAction(brokenDependency, "retry", { onInstall: async () => {}, onUninstall: async () => {} });
   });
 });
 
@@ -299,10 +357,31 @@ describe("ExtensionBrowserList rendering", () => {
     assert.doesNotMatch(markup, /Shared Math actions/);
   });
 
+  // The render-to-markup harness has no event loop, so clicking Add and
+  // observing the pending spinner cannot be exercised here; the awaitable
+  // contract that drives the pending state is pinned at the model level
+  // above (runExtensionCardAction returns onInstall's promise). This only
+  // pins the button's initial, not-yet-clicked state.
+  test("a not-installed add-on's Add button starts enabled and not busy", () => {
+    const markup = renderList([availableAddon]);
+    assert.doesNotMatch(markup, /disabled=""/);
+    assert.match(markup, /aria-busy="false"/);
+  });
+
   test("installed add-ons render a kebab and no inline Add", () => {
     const markup = renderList([installedAddon, updatableDependency]);
     assert.match(markup, /Position actions/);
     assert.doesNotMatch(markup, />Add</);
+  });
+
+  // Same render-harness limitation as the Add button above: only the
+  // initial, not-yet-clicked state is pinned here. The kebab trigger is the
+  // busy affordance for the menu's own async actions (uninstall,
+  // check-update), since the menu itself unmounts on click.
+  test("the kebab trigger starts enabled and not busy", () => {
+    const markup = renderList([installedAddon, updatableDependency]);
+    assert.doesNotMatch(markup, /disabled=""/);
+    assert.match(markup, /aria-busy="false"/);
   });
 
   test("a broken dependency renders its failure code and reason with a Retry affordance and no Add", () => {
@@ -311,6 +390,14 @@ describe("ExtensionBrowserList rendering", () => {
     assert.match(markup, /The source is unreachable: refused/);
     assert.match(markup, />Retry</);
     assert.doesNotMatch(markup, />Add</);
+  });
+
+  // Same render-harness limitation as the Add button above: only the
+  // initial, not-yet-clicked state is pinned here.
+  test("the Retry button starts enabled and not busy", () => {
+    const markup = renderList([brokenDependency]);
+    assert.doesNotMatch(markup, /disabled=""/);
+    assert.match(markup, /aria-busy="false"/);
   });
 
   test("an identity mismatch renders the declared identity on the card", () => {
@@ -341,26 +428,34 @@ describe("catalog offer cards in the unified list", () => {
     const markup = renderToStaticMarkup(
       createElement(ExtensionBrowserList, {
         items: offers.map((offer) => ({ kind: "offer" as const, offer })),
-        onInstall: () => {},
-        onUninstall: () => {},
-        onInstallReference: () => {},
+        onInstall: async () => {},
+        onUninstall: async () => {},
+        onInstallReference: async () => {},
       })
     );
     assert.match(markup, /Position sensing\./);
     assert.match(markup, /Teleport actuator\./);
     assert.match(markup, /v0\.1\.0/);
     assert.equal(markup.split(">Add<").length - 1, 2, "one Add affordance per offer");
+    // Same render-harness limitation as the entry-card Add button above:
+    // only the initial, not-yet-clicked state is pinned here.
+    assert.equal(markup.split('aria-busy="false"').length - 1, 2, "each offer's Add button starts not busy");
   });
 });
 
 describe("ExtensionReferenceInstallRow", () => {
   test("renders the add-from-GitHub input inviting a pasted GitHub URL", async () => {
     const { ExtensionReferenceInstallRow } = await import("./ExtensionBrowserDialog");
-    const markup = renderToStaticMarkup(createElement(ExtensionReferenceInstallRow, { onInstallReference: () => {} }));
+    const markup = renderToStaticMarkup(
+      createElement(ExtensionReferenceInstallRow, { onInstallReference: async () => {} })
+    );
     assert.match(markup, /aria-label="Add from GitHub"/);
     assert.match(markup, /Paste GitHub URL/);
     // The Add affordance starts disabled until a reference is entered.
     assert.match(markup, /disabled/);
+    // Same render-harness limitation as the entry-card Add button above:
+    // only the initial, not-yet-clicked state is pinned here.
+    assert.match(markup, /aria-busy="false"/);
   });
 });
 

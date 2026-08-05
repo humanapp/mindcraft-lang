@@ -168,19 +168,19 @@ export default Sensor({
     );
   });
 
-  test("returns no bundle when every file is blocked", () => {
+  test("returns no bundle when every tile file is present but blocked from contributing", () => {
     const result = compileProject(
       new Map([
         [
-          "broken.ts",
-          `
-import { Sensor, type Context } from "mindcraft";
+          "steer.ts",
+          `import { Actuator, param, type Context } from "mindcraft";
+import { Position } from "@lib/acme/pos";
 
-export default Sensor({
-  name: "broken",
-  onExecute(ctx: Context): number {
-    const value: string = 1;
-    return value;
+export default Actuator({
+  id: "acsteer000000001",
+  name: "steer",
+  args: [param("position", { type: Position, anonymous: true })],
+  onExecute(ctx: Context, args: { position: Position }): void {
   },
 });
 `,
@@ -189,6 +189,15 @@ export default Sensor({
     );
 
     assert.equal(buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services }), undefined);
+  });
+
+  test("returns an empty bundle when the tile files are gone and only a non-tile file fails", () => {
+    const result = compileProject(new Map([["helper.ts", 'export const value: number = "not a number";\n']]));
+
+    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
+    assert.ok(bundle, "a failing non-tile file must not withhold the bundle");
+    assert.deepEqual(bundle.tiles, [], "no tile survives a project that declares none");
+    assert.deepEqual(bundle.actions.keys().toArray(), []);
   });
 
   // Re-anchored for definition presence: a bundle-time surface failure

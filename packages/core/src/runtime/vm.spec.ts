@@ -1757,6 +1757,7 @@ describe("VM -- action calls", () => {
           program: {
             getRuleFuncIdForFunc: (funcId: number) => (funcId === 0 ? 0 : undefined),
             getEnumSymbolValue: () => undefined,
+            getPrecedingSiblingRuleFuncId: () => undefined,
           },
         }),
       })

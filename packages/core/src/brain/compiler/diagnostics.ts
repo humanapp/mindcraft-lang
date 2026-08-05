@@ -81,6 +81,9 @@ export enum ParseDiagCode {
 
   /** Tile requiring a WHEN result placed where no compatible WHEN result is available */
   TileWhenResultUnavailable = 1019,
+
+  /** Tile reporting on the preceding sibling rule placed in the first rule at its level, which has none */
+  NoPrecedingSiblingRule = 1020,
 }
 
 /**
@@ -118,6 +121,15 @@ export enum CompilationDiagCode {
 
   /** No overload found for operator during code generation */
   MissingOperatorOverload = 3001,
+
+  /**
+   * Code generation reached an expression it cannot compile and emitted nothing
+   * for it, so the enclosing rule side runs without that expression. Emitted at
+   * "warning" severity: the surrounding program still compiles, links, and runs.
+   * The message names the rule path, the rule side, and the tile the dropped
+   * expression starts at when one resolves.
+   */
+  UncompilableExpressionDropped = 3002,
 }
 
 /**

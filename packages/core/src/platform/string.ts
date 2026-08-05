@@ -128,6 +128,16 @@ export namespace StringUtils {
   export declare function toUpperCase(str: string): string;
 
   /**
+   * Converts all characters in a string to uppercase under the casing rules of
+   * a locale: a Turkish locale maps a dotless `i` to its dotted capital. On the
+   * Roblox target the invariant mapping applies for every locale.
+   * @param str The string to convert
+   * @param locale BCP-47-style locale code whose casing rules apply
+   * @returns The uppercase string
+   */
+  export declare function toLocaleUpperCase(str: string, locale: string): string;
+
+  /**
    * Splits a string into an array of substrings using the specified separator
    * @param str The string to split
    * @param separator The string to use as a separator

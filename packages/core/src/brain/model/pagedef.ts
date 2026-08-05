@@ -26,7 +26,7 @@ const kVersion = 2;
 
 /** Concrete {@link IBrainPageDef}: a named page with a list of {@link BrainRuleDef}s. */
 export class BrainPageDef implements IBrainPageDef {
-  private name_: string = "Unnamed Page"; // TODO: i18n
+  private name_: string = "Unnamed Page";
   private readonly pageId_: string;
   private brain_?: IBrainDef;
   private readonly children_ = new List<BrainRuleDef>();
@@ -50,7 +50,7 @@ export class BrainPageDef implements IBrainPageDef {
   }
 
   setName(newName: string) {
-    newName = newName || "Unnamed Page"; // TODO: i18n
+    newName = newName || "Unnamed Page";
     if (newName === this.name_) {
       return;
     }

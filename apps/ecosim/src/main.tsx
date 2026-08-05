@@ -6,11 +6,14 @@ import "./globals.css";
 
 import { LogLevel, logger } from "@mindcraft-lang/core/app";
 import { enableClipboardLogging } from "@mindcraft-lang/ui";
+import { loadAnalytics } from "./analytics";
 import { EcosimEnvironmentProvider } from "./contexts/ecosim-environment";
 import { EcosimEnvironmentStore } from "./services/ecosim-environment-store";
 
 enableClipboardLogging(true);
 logger.level = LogLevel.DEBUG;
+
+loadAnalytics();
 
 // React 19 dev mode calls performance.measure() on every render/commit and
 // never clears the entries, leaking PerformanceMeasure objects indefinitely.

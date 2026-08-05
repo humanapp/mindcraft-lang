@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { toast } from "sonner";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
+import type { BrainLoadFailure } from "./brain/brain-load-failure";
 import { buildBrainEditorConfig } from "./brain/editor/config";
 import { dataTypeIconMap, dataTypeNameMap } from "./brain/editor/data-type-icons";
 import { createVfsAwareVisualProvider } from "./brain/editor/visual-provider";
@@ -26,7 +27,7 @@ import { Sidebar } from "./components/Sidebar";
 import { WorkspacePinInput } from "./components/WorkspacePinInput";
 import { useEcosimEnvironment } from "./contexts/ecosim-environment";
 import { createDocsRegistry } from "./docs/docs-registry";
-import type { Playground } from "./game/scenes/Playground";
+import type { Playground, SceneBrainState } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { downloadTextFile } from "./utils/file-download";
 import { pickFile } from "./utils/file-upload";
@@ -59,7 +60,13 @@ function snapshotEqual(a: ScoreSnapshot, b: ScoreSnapshot): boolean {
 
 /** Wrapper that injects docs integration from the docs context into the brain editor config. */
 function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype | null; children: React.ReactNode }) {
-  const { openDocsForTile, isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs } = useDocsSidebar();
+  const {
+    openDocsForTile,
+    isOpen: isDocsOpen,
+    toggle: toggleDocs,
+    close: closeDocs,
+    reportEditorMode,
+  } = useDocsSidebar();
   const store = useEcosimEnvironment();
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
   // Rebuild the config (and thus the isBrokenTile predicate identity) after each
@@ -77,11 +84,21 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
     return buildBrainEditorConfig({
       store,
       archetype: archetype ?? undefined,
-      onTileHelp: openDocsForTile,
-      docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
+      onTileDocs: openDocsForTile,
+      docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs, reportMode: reportEditorMode },
       isBrokenTile: (tile) => store.host.getTileCompileDiagnostics(tile.action.key) !== undefined,
     });
-  }, [store, archetype, vfsRevision, compileDiagnostics, openDocsForTile, isDocsOpen, toggleDocs, closeDocs]);
+  }, [
+    store,
+    archetype,
+    vfsRevision,
+    compileDiagnostics,
+    openDocsForTile,
+    isDocsOpen,
+    toggleDocs,
+    closeDocs,
+    reportEditorMode,
+  ]);
   return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
 }
 
@@ -106,6 +123,8 @@ function App() {
   const [debugEnabled, setDebugEnabled] = useState(() => store.getUiPreferences().debugEnabled);
   const [isPlaying, setIsPlaying] = useState(true);
   const [scene, setScene] = useState<Playground | null>(null);
+  const [brainsLoaded, setBrainsLoaded] = useState(false);
+  const [brainLoadFailure, setBrainLoadFailure] = useState<BrainLoadFailure | undefined>();
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
 
@@ -122,6 +141,12 @@ function App() {
   const pickerCommitInProgressRef = useRef(false);
   const newProjectCommitInProgressRef = useRef(false);
   const pendingWorkspaceCleanupRef = useRef<string | undefined>(undefined);
+
+  /** Closes the brain editor and drops the archetype it was editing. */
+  const closeBrainEditor = useCallback(() => {
+    setIsBrainEditorOpen(false);
+    setEditingArchetype(null);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -151,6 +176,9 @@ function App() {
       const prefs = store.getUiPreferences();
       setTimeSpeed(prefs.timeScale);
       setDebugEnabled(prefs.debugEnabled);
+      // An open editor holds a working copy of the outgoing project's brain,
+      // which submitting would write into the project that just loaded.
+      closeBrainEditor();
     });
     const unsubPersistenceError = store.projectManager.onProjectPersistenceError(() => {
       toast.error("Autosave failed");
@@ -161,7 +189,7 @@ function App() {
       unsubLoaded();
       unsubPersistenceError();
     };
-  }, [store]);
+  }, [closeBrainEditor, store]);
 
   useEffect(() => {
     const projectCollectionId = pickerWorkspace?.collection.projectCollectionId;
@@ -537,13 +565,14 @@ function App() {
   useEffect(() => {
     if (activeWorkspaceLocked) {
       setScene(null);
+      setBrainsLoaded(false);
+      setBrainLoadFailure(undefined);
       setSnapshot(null);
       setIsSidebarOpen(false);
-      setIsBrainEditorOpen(false);
-      setEditingArchetype(null);
+      closeBrainEditor();
       prevSnapshotRef.current = null;
     }
-  }, [activeWorkspaceLocked]);
+  }, [activeWorkspaceLocked, closeBrainEditor]);
 
   const docRevision = useSyncExternalStore(store.subscribeToDocRevision, store.getDocRevisionSnapshot);
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
@@ -659,10 +688,10 @@ function App() {
     setIsBrainEditorOpen(false);
   };
 
-  const handleSceneReady = useCallback((readyScene: Phaser.Scene) => {
-    if (readyScene.scene.key === "Playground") {
-      setScene(readyScene as Playground);
-    }
+  const handleSceneBrainState = useCallback((state: SceneBrainState) => {
+    setScene(state.scene);
+    setBrainsLoaded(state.brainsLoaded);
+    setBrainLoadFailure(state.brainLoadFailure);
   }, []);
 
   return (
@@ -701,7 +730,7 @@ function App() {
                   autoFocus
                   labelClassName="text-sm font-medium text-foreground"
                   inputClassName="border-input bg-background"
-                  buttonClassName="text-muted-foreground hover:text-foreground focus-visible:ring-ring"
+                  buttonClassName="text-muted-foreground hover:text-foreground"
                   resetVisibilityKey={projectCollectionState?.activeProjectCollection?.projectCollectionId}
                   onValueChange={(value) => {
                     setActiveUnlockPin(value);
@@ -719,7 +748,7 @@ function App() {
               </form>
             </div>
           ) : (
-            <PhaserGame store={store} onSceneReady={handleSceneReady} />
+            <PhaserGame store={store} onSceneBrainState={handleSceneBrainState} />
           )}
           <ProjectHeader
             projectName={projectName}
@@ -760,6 +789,8 @@ function App() {
             isPlaying={isPlaying}
             onTogglePlay={handleTogglePlay}
             onEditBrain={handleEditBrain}
+            brainsReady={scene !== null && brainsLoaded}
+            brainLoadFailure={brainLoadFailure}
             onDesiredCountChange={handleDesiredCountChange}
             onToggleDebug={handleToggleDebug}
             debugEnabled={debugEnabled}

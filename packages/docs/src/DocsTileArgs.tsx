@@ -31,7 +31,11 @@ function InlineTypeIcon({
         "inline-flex shrink-0 min-w-max items-center gap-0.5 align-middle px-1 py-0.5 rounded border text-xs font-mono font-normal text-nowrap",
         className
       )}
-      style={{ borderColor: kTypeChipColor, backgroundColor: "rgba(71,85,105,0.15)", color: "#e2e8f0" }}
+      style={{
+        borderColor: kTypeChipColor,
+        backgroundColor: "rgba(71,85,105,0.15)",
+        color: "var(--color-brain-inline-ink)",
+      }}
       title={name}
     >
       {iconUrl && <img src={iconUrl} alt="" className="w-3.5 h-3.5 mr-px inline-block" aria-hidden="true" />}

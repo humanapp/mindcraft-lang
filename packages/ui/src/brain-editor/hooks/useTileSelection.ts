@@ -1,27 +1,147 @@
 import {
   type IBrainTileDef,
-  isCoreLiteralFactoryTileId,
+  type ITileCatalog,
   isVariableFactoryTileId,
   type LiteralDisplayFormat,
-  type RuleSide,
 } from "@mindcraft-lang/core/brain";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileFactoryDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ArmedTargetEntry } from "../ArmedTargetContext";
 import { useBrainEditorConfig } from "../BrainEditorContext";
+import { tileDefersToCreateDialog } from "../candidate-strip-model";
+import type { CaretPosition } from "../caret-run";
 import { resolveTileVisual } from "../tile-visual-utils";
 
 interface UseTileSelectionOptions {
   ruleDef: BrainRuleDef;
-  side: RuleSide;
+  /** Called when a selection ends, which closes the picker. */
   onComplete?: () => void;
+  /**
+   * Called once a tile named in a create dialog has been placed, in place of
+   * `onComplete`. Defaults to `onComplete`.
+   */
+  onCreated?: () => void;
 }
 
 /**
- * Hook to handle tile selection flow, including variable creation for factory tiles.
+ * The caret composition carries on at once a tile a create dialog made has been
+ * placed: `placementCaret` for a placement made in a rule's sentence, and
+ * undefined for one made anywhere else, which the placement ends.
+ *
+ * `entry` is the armed target's. `placementCaret` is the gap past the tile the
+ * placement put in, read after the command ran; a placement that recorded none
+ * ends the selection.
  */
-export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelectionOptions) {
+export function composeAfterTileCreation(
+  entry: ArmedTargetEntry | undefined,
+  placementCaret: CaretPosition | undefined
+): CaretPosition | undefined {
+  return entry === "sentence" ? placementCaret : undefined;
+}
+
+/**
+ * Effects invoked when a picked factory tile defers completion to a
+ * create-variable or create-literal dialog. Each receives the factory tile
+ * and the pending `action` to run once the tile has been manufactured.
+ */
+export interface TileSelectionDeferralEffects {
+  deferVariableCreation(factoryTileDef: BrainTileFactoryDef, action: (tileDef: IBrainTileDef) => void): void;
+  deferLiteralCreation(factoryTileDef: BrainTileFactoryDef, action: (tileDef: IBrainTileDef) => void): void;
+}
+
+/**
+ * Route a picked tile to its selection action. Variable and literal factory
+ * tiles defer: the matching effect receives the factory tile and the pending
+ * action, and false is returned so the picker stays open. Any other tile runs
+ * `action` immediately and returns true (the selection completed).
+ */
+export function routeTileSelection(
+  tileDef: IBrainTileDef,
+  action: (tileDef: IBrainTileDef) => void,
+  effects: TileSelectionDeferralEffects
+): boolean {
+  if (tileDefersToCreateDialog(tileDef)) {
+    const factoryTileDef = tileDef as BrainTileFactoryDef;
+    if (isVariableFactoryTileId(tileDef.tileId)) effects.deferVariableCreation(factoryTileDef, action);
+    else effects.deferLiteralCreation(factoryTileDef, action);
+    return false;
+  }
+  action(tileDef);
+  return true;
+}
+
+/**
+ * Manufacture the literal tile a literal factory produces for `value` and
+ * resolve it against `catalog`: an equivalent registered literal is reused,
+ * otherwise the new tile is registered. Returns undefined when the factory
+ * manufactures nothing.
+ */
+export function manufactureLiteralTile(
+  factoryTileDef: BrainTileFactoryDef,
+  catalog: ITileCatalog | undefined,
+  value: unknown,
+  displayFormat?: LiteralDisplayFormat
+): BrainTileLiteralDef | undefined {
+  const newTileDef = factoryTileDef.manufacture(factoryTileDef, { value, displayFormat }) as
+    | BrainTileLiteralDef
+    | undefined;
+  if (!newTileDef) return undefined;
+  if (!catalog) return newTileDef;
+  const existingDef = catalog.find((td) => {
+    if (td.kind !== "literal") return false;
+    const litTileDef = td as BrainTileLiteralDef;
+    return (
+      litTileDef.value === value &&
+      litTileDef.valueType === newTileDef.valueType &&
+      litTileDef.displayFormat === newTileDef.displayFormat
+    );
+  }) as BrainTileLiteralDef | undefined;
+  if (existingDef) return existingDef;
+  catalog.registerTileDef(newTileDef);
+  return newTileDef;
+}
+
+/**
+ * Manufacture the variable tile a variable factory produces for `varName` and
+ * resolve it against `catalog`: a registered variable of the same name and type
+ * is reused, otherwise the new tile is registered. Returns undefined when the
+ * name is empty or the factory manufactures nothing.
+ */
+export function manufactureVariableTile(
+  factoryTileDef: BrainTileFactoryDef,
+  catalog: ITileCatalog | undefined,
+  varName: string
+): BrainTileVariableDef | undefined {
+  const name = varName.trim();
+  if (!name) return undefined;
+  const newTileDef = factoryTileDef.manufacture(factoryTileDef, { name }) as BrainTileVariableDef | undefined;
+  if (!newTileDef) return undefined;
+  if (!catalog) return newTileDef;
+  const existingDef = catalog.find((td) => {
+    if (td.kind !== "variable") return false;
+    const varTileDef = td as BrainTileVariableDef;
+    return varTileDef.varName === name && varTileDef.varType === newTileDef.varType;
+  }) as BrainTileVariableDef | undefined;
+  if (existingDef) return existingDef;
+  catalog.registerTileDef(newTileDef);
+  return newTileDef;
+}
+
+/**
+ * Hook to handle tile selection flow, including variable creation for factory
+ * tiles.
+ *
+ * A selection that completes outright calls `onComplete`. A factory tile defers
+ * to a create dialog: submitting it places the tile the dialog names and calls
+ * `onCreated`, and abandoning it places nothing and calls `onComplete`. Either
+ * way the create dialog hands the keyboard back through
+ * `handleCreateDialogCloseAutoFocus`, which the dialog takes as its
+ * `onCloseAutoFocus`.
+ */
+export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSelectionOptions) {
   const editorConfig = useBrainEditorConfig();
+  const completeCreation = onCreated ?? onComplete;
 
   const [showCreateVariableDialog, setShowCreateVariableDialog] = useState(false);
   const [showCreateLiteralDialog, setShowCreateLiteralDialog] = useState(false);
@@ -36,72 +156,60 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
     ruleDefRef.current = ruleDef;
   }, [ruleDef]);
 
+  // The element holding the keyboard as a create dialog opened, which takes it
+  // back as that dialog closes.
+  const creationOpenerRef = useRef<HTMLElement | null>(null);
+
   const handleTileSelected = useCallback(
     (tileDef: IBrainTileDef, action: (tileDef: IBrainTileDef) => void) => {
-      if (tileDef.kind === "factory") {
-        if (isVariableFactoryTileId(tileDef.tileId)) {
-          const factoryTileDef = tileDef as BrainTileFactoryDef;
+      const completed = routeTileSelection(tileDef, action, {
+        deferVariableCreation: (factoryTileDef, pendingAction) => {
+          creationOpenerRef.current = document.activeElement as HTMLElement | null;
           setPendingFactoryTile(factoryTileDef);
-          setPendingTileAction(() => action);
+          setPendingTileAction(() => pendingAction);
           setShowCreateVariableDialog(true);
-          return false;
-        } else if (isCoreLiteralFactoryTileId(tileDef.tileId)) {
-          const factoryTileDef = tileDef as BrainTileFactoryDef;
+        },
+        deferLiteralCreation: (factoryTileDef, pendingAction) => {
+          creationOpenerRef.current = document.activeElement as HTMLElement | null;
           setPendingFactoryTile(factoryTileDef);
-          setPendingTileAction(() => action);
+          setPendingTileAction(() => pendingAction);
           setShowCreateLiteralDialog(true);
-          return false;
-        }
+        },
+      });
+      if (completed) {
+        onComplete?.();
       }
-
-      action(tileDef);
-      onComplete?.();
-      return true;
+      return completed;
     },
     [onComplete]
   );
 
   const handleVariableNameSubmit = useCallback(
     (varName: string) => {
-      varName = varName.trim();
-      if (!varName || !pendingFactoryTile || !pendingTileAction) return;
+      if (!varName.trim() || !pendingFactoryTile || !pendingTileAction) return;
 
       const catalog = ruleDefRef.current.brain()?.catalog();
 
-      let newTileDef = pendingFactoryTile.manufacture(pendingFactoryTile, {
-        name: varName,
-      }) as BrainTileVariableDef;
+      const newTileDef = manufactureVariableTile(pendingFactoryTile, catalog, varName);
       if (newTileDef) {
-        if (catalog) {
-          const existingDef = catalog.find((td) => {
-            if (td.kind !== "variable") return false;
-            const varTileDef = td as BrainTileVariableDef;
-            return (
-              td.kind === "variable" && varTileDef.varName === varName && varTileDef.varType === newTileDef.varType
-            );
-          }) as BrainTileVariableDef | undefined;
-          if (existingDef) {
-            newTileDef = existingDef;
-          } else {
-            catalog.registerTileDef(newTileDef);
-          }
-        }
         pendingTileAction(newTileDef);
       }
 
       setShowCreateVariableDialog(false);
       setPendingFactoryTile(null);
       setPendingTileAction(null);
-      onComplete?.();
+      completeCreation?.();
     },
-    [pendingFactoryTile, pendingTileAction, onComplete]
+    [pendingFactoryTile, pendingTileAction, completeCreation]
   );
 
+  /** Abandons the variable being named, which ends the selection just as naming one does. */
   const handleVariableDialogClose = useCallback(() => {
     setShowCreateVariableDialog(false);
     setPendingFactoryTile(null);
     setPendingTileAction(null);
-  }, []);
+    onComplete?.();
+  }, [onComplete]);
 
   const handleLiteralValueSubmit = useCallback(
     (value: unknown, displayFormat?: LiteralDisplayFormat) => {
@@ -109,42 +217,36 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
 
       const catalog = ruleDefRef.current.brain()?.catalog();
 
-      let newTileDef = pendingFactoryTile.manufacture(pendingFactoryTile, {
-        value,
-        displayFormat,
-      }) as BrainTileLiteralDef;
+      const newTileDef = manufactureLiteralTile(pendingFactoryTile, catalog, value, displayFormat);
       if (newTileDef) {
-        if (catalog) {
-          const existingDef = catalog.find((td) => {
-            if (td.kind !== "literal") return false;
-            const litTileDef = td as BrainTileLiteralDef;
-            return (
-              litTileDef.value === value &&
-              litTileDef.valueType === newTileDef.valueType &&
-              litTileDef.displayFormat === newTileDef.displayFormat
-            );
-          }) as BrainTileLiteralDef | undefined;
-          if (existingDef) {
-            newTileDef = existingDef;
-          } else {
-            catalog.registerTileDef(newTileDef);
-          }
-        }
         pendingTileAction(newTileDef);
       }
 
       setShowCreateLiteralDialog(false);
       setPendingFactoryTile(null);
       setPendingTileAction(null);
-      onComplete?.();
+      completeCreation?.();
     },
-    [pendingFactoryTile, pendingTileAction, onComplete]
+    [pendingFactoryTile, pendingTileAction, completeCreation]
   );
 
+  /** Abandons the literal being entered, which ends the selection just as entering one does. */
   const handleLiteralDialogClose = useCallback(() => {
     setShowCreateLiteralDialog(false);
     setPendingFactoryTile(null);
     setPendingTileAction(null);
+    onComplete?.();
+  }, [onComplete]);
+
+  // Hands the keyboard back to the element that held it as the create dialog
+  // opened. An element no longer rendering leaves the hand-back to the dialog's
+  // own restoration.
+  const handleCreateDialogCloseAutoFocus = useCallback((event: Event) => {
+    const returnTo = creationOpenerRef.current;
+    creationOpenerRef.current = null;
+    if (returnTo === null || !returnTo.isConnected) return;
+    event.preventDefault();
+    returnTo.focus({ preventScroll: true });
   }, []);
 
   const variableDialogTitle = pendingFactoryTile
@@ -168,5 +270,6 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
     handleVariableDialogClose,
     handleLiteralValueSubmit,
     handleLiteralDialogClose,
+    handleCreateDialogCloseAutoFocus,
   };
 }

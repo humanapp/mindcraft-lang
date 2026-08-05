@@ -90,6 +90,14 @@ export function hasTileInClipboard(): boolean {
 }
 
 /**
+ * The copied tile as it stands on the clipboard, or undefined while the
+ * clipboard holds none. The tile it returns is registered in no brain.
+ */
+export function peekTileInClipboard(): IBrainTileDef | undefined {
+  return tileClipboardData?.tileDef;
+}
+
+/**
  * Import the copied tile into the destination brain's catalog and return the
  * resolved tile def ready for insertion into a rule.
  *

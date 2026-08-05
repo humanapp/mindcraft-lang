@@ -1,10 +1,18 @@
 import { List } from "@mindcraft-lang/core";
 import {
+  AddPageCommand,
+  AddRuleCommand,
+  BrainCommandHistory,
   BrainDef,
   type BrainPageDef,
   brainJsonFromPlain,
   deserializePersistedBrainJson,
   encodePersistedBrainJson,
+  RemovePageCommand,
+  RenameBrainCommand,
+  RenamePageCommand,
+  ReplaceBrainCommand,
+  ReplaceLastPageCommand,
 } from "@mindcraft-lang/core/brain/model";
 import {
   BookOpen,
@@ -25,7 +33,7 @@ import {
   Undo,
   Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { staticAssetUrl } from "../asset-url";
 import { Button } from "../ui/button";
@@ -39,6 +47,8 @@ import {
 } from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
 import { Slider } from "../ui/slider";
+import { ArmedTargetProvider, useArmedTargetState } from "./ArmedTargetContext";
+import { keyboardIsInCandidateStrip } from "./BrainCandidateStrip";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainPageEditor } from "./BrainPageEditor";
 import { BrainPrintDialog } from "./BrainPrintDialog";
@@ -48,21 +58,33 @@ import {
   hasBrainInClipboard,
   onBrainClipboardChanged,
 } from "./brain-clipboard";
+import { hasDiscardableEdits } from "./discard-guard";
+import { kDialogChromeLayer } from "./editor-layers";
+import { deriveEditorMode, type EditorMode } from "./editor-mode";
 import {
-  AddPageCommand,
-  BrainCommandHistory,
-  RemovePageCommand,
-  RenameBrainCommand,
-  RenamePageCommand,
-  ReplaceBrainCommand,
-  ReplaceLastPageCommand,
-} from "./commands";
+  editorContentStands,
+  kEditorContentAttribute,
+  returnFocusChain,
+  returnFocusTarget,
+  takeReturnFocus,
+} from "./editor-return-focus";
+import { decideHistoryShortcut } from "./history-shortcut";
+import { RulePickupProvider, useRulePickupState } from "./RulePickupContext";
 
 // Top-edge brand accent. Uses each app's signature strip tokens when defined
 // (microbit-sim's blue->green->teal), else falls back to the brand primary/ring
 // so single-brand apps (apps/ecosim) still get a branded accent line.
 const brandStripBackground =
   "linear-gradient(90deg, var(--strip-blue, var(--color-primary)) 0%, var(--strip-green, var(--color-ring)) 50%, var(--strip-teal, var(--color-primary)) 100%)";
+
+/** True when no page of `brainDef` holds a rule. */
+function brainHoldsNoRule(brainDef: BrainDef): boolean {
+  const pages = brainDef.pages();
+  for (let index = 0; index < pages.size(); index++) {
+    if (pages.get(index).children().size() > 0) return false;
+  }
+  return true;
+}
 
 /** Props for {@link BrainEditorDialog}. */
 export interface BrainEditorDialogProps {
@@ -74,8 +96,9 @@ export interface BrainEditorDialogProps {
 
 /**
  * Modal brain editor with page navigation, toolbar (undo/redo, copy, paste,
- * print, docs toggle), and save/load. Edits are made on a clone of `srcBrainDef`;
- * `onSubmit` is invoked with the resulting brain when the user confirms.
+ * print, docs toggle), and save/load. Edits are made on a working copy of
+ * `srcBrainDef`, which carries the source brain's id; `onSubmit` is invoked with
+ * the resulting brain when the user confirms.
  */
 export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
   const { getDefaultBrain, docsIntegration, brainServices, tileCatalogs, projectNamespace } = useBrainEditorConfig();
@@ -87,7 +110,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     (sourceBrainDef?: BrainDef): BrainDef => {
       const extraCatalogs = tileCatalogs ? List.from(tileCatalogs) : undefined;
       const nextBrainDef = sourceBrainDef
-        ? sourceBrainDef.clone(extraCatalogs)
+        ? sourceBrainDef.workingCopy(extraCatalogs)
         : BrainDef.emptyBrainDef(brainServices!);
       if (nextBrainDef.pages().size() === 0) {
         nextBrainDef.appendNewPage();
@@ -97,15 +120,41 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     [brainServices, tileCatalogs]
   );
 
-  // Clone the brainDef to work on a copy
   const [brainDef, setBrainDef] = useState<BrainDef | undefined>(() => createEditableBrain(srcBrainDef));
   const [currentPageNumber, setCurrentPageNumber] = useState(brainDef ? 1 : 0);
   const [totalPageCount, setTotalPageCount] = useState(brainDef?.pages()?.size() ?? 0);
   const [pageChangeCounter, setPageChangeCounter] = useState(0);
+  // True while a menu is closing on a move to another page, whose own landing
+  // takes the keyboard.
+  const landsOnNewPageRef = useRef(false);
   const currentPageDef = brainDef ? brainDef.pages().get(currentPageNumber - 1) : undefined;
 
   // Command history for undo/redo
   const [commandHistory] = useState(() => new BrainCommandHistory());
+  // Armed target for the tile picker, shared with the rule and tile editors.
+  const armedTarget = useArmedTargetState();
+  const rulePickup = useRulePickupState();
+  const disarmTileTarget = armedTarget.disarm;
+
+  // The context the editor's keyboard stands in: the armed tile picker's own,
+  // as the rule card standing it reports, and the page's while nothing is
+  // armed. A closed editor stands no context at all.
+  const reportModeRef = useRef(docsIntegration?.reportMode);
+  reportModeRef.current = docsIntegration?.reportMode;
+  const isTileTargetArmed = armedTarget.target !== null;
+  const isRuleHeld = rulePickup.pickup !== null;
+  const armedMode = armedTarget.mode;
+  const editorMode: EditorMode | undefined = isTileTargetArmed
+    ? (armedMode ?? undefined)
+    : deriveEditorMode({ ruleIsHeld: isRuleHeld });
+  useEffect(() => {
+    if (!isOpen) {
+      reportModeRef.current?.(undefined);
+      return;
+    }
+    if (editorMode !== undefined) reportModeRef.current?.(editorMode);
+  }, [isOpen, editorMode]);
+  useEffect(() => () => reportModeRef.current?.(undefined), []);
   const [canUndo, setCanUndo] = useState(false);
   const [hasBrainClipboard, setHasBrainClipboard] = useState(hasBrainInClipboard);
   const [canRedo, setCanRedo] = useState(false);
@@ -115,12 +164,29 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   const [pageNameValue, setPageNameValue] = useState("");
   const [zoom, setZoom] = useState(1);
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
+  const [undoDepth, setUndoDepth] = useState(0);
+  const [openingDepth, setOpeningDepth] = useState(0);
+  const [brainReplaced, setBrainReplaced] = useState(false);
+  const [isConfirmingDiscard, setIsConfirmingDiscard] = useState(false);
+  // The element holding the keyboard when the discard confirmation opened.
+  const discardReturnFocusRef = useRef<HTMLElement | null>(null);
+  const keepEditingRef = useRef<HTMLButtonElement | null>(null);
+  // The element holding the keyboard when the editor opened and the containers
+  // it stood in, which take it back as the editor closes. Read in a layout
+  // pass, which runs before the dialog's own focus move.
+  const openerReturnFocusRef = useRef<readonly HTMLElement[]>([]);
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const opener = document.activeElement;
+    openerReturnFocusRef.current = returnFocusChain(opener instanceof HTMLElement ? opener : null, document);
+  }, [isOpen]);
 
   // Update undo/redo state when history changes
   useEffect(() => {
     const updateUndoRedoState = () => {
       setCanUndo(commandHistory.canUndo());
       setCanRedo(commandHistory.canRedo());
+      setUndoDepth(commandHistory.undoDepth());
     };
 
     commandHistory.onChange(updateUndoRedoState);
@@ -144,10 +210,22 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setCurrentPageNumber(1);
       setTotalPageCount(newBrainDef.pages().size());
       commandHistory.clear(); // Clear history when opening dialog
+      // A brain holding no rule at all is given one to start from, through the
+      // history, so it can be taken straight back.
+      if (brainHoldsNoRule(newBrainDef)) {
+        commandHistory.executeCommand(new AddRuleCommand(newBrainDef.pages().get(0) as BrainPageDef));
+      }
+      // Everything on the history from here on is the user's own work.
+      setOpeningDepth(commandHistory.undoDepth());
+      setBrainReplaced(false);
+      setIsConfirmingDiscard(false);
     } else if (!isOpen) {
       // Clear working copy when dialog closes
       setBrainDef(undefined);
       commandHistory.clear();
+      setOpeningDepth(0);
+      setBrainReplaced(false);
+      setIsConfirmingDiscard(false);
     }
   }, [isOpen, srcBrainDef, commandHistory]);
 
@@ -169,6 +247,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     const extraCatalogs = tileCatalogs ? List.from(tileCatalogs) : undefined;
     const command = new ReplaceBrainCommand(brainDef, json, extraCatalogs);
     commandHistory.executeCommand(command);
+    toast.success("Brain pasted");
   }, [brainDef, commandHistory, tileCatalogs]);
 
   useEffect(() => {
@@ -216,7 +295,29 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     onSubmit(nextBrainDef);
   }, [brainDef, onSubmit, createEditableBrain]);
 
+  const holdsDiscardableEdits = hasDiscardableEdits({ undoDepth, openingDepth, brainReplaced });
+
+  /**
+   * Close the editor without saving, first asking the user to confirm when the
+   * session holds work the close would lose.
+   */
+  const requestDiscardingClose = useCallback(() => {
+    if (!holdsDiscardableEdits) {
+      onOpenChange(false);
+      return;
+    }
+    discardReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setIsConfirmingDiscard(true);
+  }, [holdsDiscardableEdits, onOpenChange]);
+
+  const handleConfirmDiscard = useCallback(() => {
+    discardReturnFocusRef.current = null;
+    setIsConfirmingDiscard(false);
+    onOpenChange(false);
+  }, [onOpenChange]);
+
   const handleInsertPageAfterCurrentClick = () => {
+    landsOnNewPageRef.current = true;
     if (brainDef && totalPageCount > 0) {
       const currentIndex = currentPageNumber - 1;
       const command = new AddPageCommand(brainDef, currentIndex + 1);
@@ -231,6 +332,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   };
 
   const handleInsertPageBeforeCurrentClick = () => {
+    landsOnNewPageRef.current = true;
     if (brainDef && totalPageCount > 0) {
       const currentIndex = currentPageNumber - 1;
       const command = new AddPageCommand(brainDef, currentIndex);
@@ -245,6 +347,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   };
 
   const handleRemovePageClick = () => {
+    landsOnNewPageRef.current = true;
     if (brainDef && totalPageCount > 0) {
       const pageIndexToRemove = currentPageNumber - 1;
 
@@ -271,19 +374,61 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     }
   };
 
+  /**
+   * Move to page `pageNumber` from a menu, which the menu's close then leaves
+   * the keyboard alone for: the page opening takes it onto its own selection.
+   */
+  const goToPageFromMenu = (pageNumber: number) => {
+    landsOnNewPageRef.current = true;
+    setCurrentPageNumber(pageNumber);
+  };
+
   const handlePrevPageClick = () => {
     if (currentPageNumber > 1) {
       setCurrentPageNumber(currentPageNumber - 1);
     }
   };
 
+  /**
+   * A page menu closing. A close that follows a move to another page leaves the
+   * keyboard where that page's own landing puts it; every other close hands the
+   * keyboard back to the control the menu was opened from, as Radix does.
+   */
+  const handlePageMenuCloseAutoFocus = (event: Event) => {
+    if (!landsOnNewPageRef.current) return;
+    landsOnNewPageRef.current = false;
+    event.preventDefault();
+  };
+
   const handleUndo = useCallback(() => {
+    // Undo can restructure the document out from under an armed picker
+    // target, so drop the target before mutating.
+    disarmTileTarget();
     commandHistory.undo();
-  }, [commandHistory]);
+  }, [commandHistory, disarmTileTarget]);
 
   const handleRedo = useCallback(() => {
+    disarmTileTarget();
     commandHistory.redo();
-  }, [commandHistory]);
+  }, [commandHistory, disarmTileTarget]);
+
+  // The armed target carries closures from the arming components, which are
+  // remounted on a page switch or page-editor key bump. Disarm at those
+  // boundaries so a stale target never survives them.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: currentPageNumber and pageChangeCounter are intentional trigger signals
+  useEffect(() => {
+    disarmTileTarget();
+  }, [currentPageNumber, pageChangeCounter, disarmTileTarget]);
+
+  // A structural change that deletes the armed rule invalidates the target's
+  // closures; disarm when the armed rule leaves the document.
+  useEffect(() => {
+    const target = armedTarget.target;
+    if (!target) return;
+    return target.ruleDef.events().on("rule_deleted", () => {
+      disarmTileTarget();
+    });
+  }, [armedTarget.target, disarmTileTarget]);
 
   const handleSaveToFile = useCallback(async () => {
     if (!brainDef) return;
@@ -352,6 +497,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setCurrentPageNumber(1);
       setTotalPageCount(loadedBrain.pages().size());
       commandHistory.clear();
+      setBrainReplaced(true);
     } catch (err) {
       // User cancelled or error occurred
       if (err instanceof Error && err.name !== "AbortError") {
@@ -375,6 +521,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     setCurrentPageNumber(1);
     setTotalPageCount(cloned.pages().size());
     commandHistory.clear();
+    setBrainReplaced(true);
   }, [getDefaultBrain, commandHistory, tileCatalogs]);
 
   const handleBrainNameClick = () => {
@@ -439,40 +586,38 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     }
   };
 
-  // Keyboard shortcuts for undo/redo
+  // The history chord, wherever in the editor it is pressed. A press whose
+  // default a surface below has already prevented takes no step; every other
+  // press is decided by the mode the keyboard stands in.
+  const editorModeRef = useRef(editorMode);
+  editorModeRef.current = editorMode;
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle shortcuts when typing in an input field
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-      const modKey = isMac ? e.metaKey : e.ctrlKey;
-
-      if (modKey && e.key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        handleUndo();
-      } else if (modKey && (e.key === "Z" || (e.shiftKey && e.key === "z"))) {
-        e.preventDefault();
-        handleRedo();
-      } else if (modKey && e.key === "y") {
-        e.preventDefault();
-        handleRedo();
-      }
+      if (e.defaultPrevented) return;
+      const mode = editorModeRef.current;
+      if (mode === undefined) return;
+      const step = decideHistoryShortcut(mode, {
+        key: e.key,
+        withCommand: e.metaKey || e.ctrlKey,
+        withShift: e.shiftKey,
+      });
+      if (step === undefined) return;
+      e.preventDefault();
+      if (step === "undo") handleUndo();
+      else handleRedo();
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleUndo, handleRedo]);
 
-  // Close the docs sidebar when the brain editor closes.
+  // Close the docs sidebar when the brain editor leaves the screen, whether the
+  // host renders the dialog closed or unmounts it outright.
   useEffect(() => {
-    if (!isOpen) {
-      closeDocs?.();
-    }
+    if (!isOpen) return;
+    return () => closeDocs?.();
   }, [isOpen, closeDocs]);
 
   return (
@@ -480,29 +625,86 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       {/* When the docs sidebar is open the dialog switches to non-modal so
           focus can reach the sidebar. Radix skips its overlay in non-modal
           mode, so we render a standalone backdrop to keep the dimming. */}
-      {isOpen && isDocsOpen && <div className="fixed inset-0 z-50 bg-black/80" aria-hidden="true" />}
+      {isOpen && isDocsOpen && <div className={`fixed inset-0 ${kDialogChromeLayer} bg-black/80`} aria-hidden="true" />}
       <Dialog open={isOpen} onOpenChange={onOpenChange} modal={!isDocsOpen}>
         <DialogContent
-          className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[75%] sm:h-[75%] sm:p-6 sm:gap-4 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl overflow-hidden"
+          {...{ [kEditorContentAttribute]: "" }}
+          // The editor centres itself in the viewport width the documentation
+          // panel leaves free, read from the --docs-panel-inset custom property
+          // the panel publishes (0% when it covers nothing), and in the height
+          // the soft keyboard leaves free, read the same way from
+          // --keyboard-inset (0px with no keyboard up). Both shapes give up the
+          // covered height, so the rules and the candidate strip stay on screen
+          // alongside the keyboard.
+          className="left-0 top-0 translate-x-0 translate-y-0 h-[calc(100dvh-var(--keyboard-inset,0))] max-w-full p-2 gap-2 sm:left-[calc(50%-var(--docs-panel-inset,0%)*0.5)] sm:top-[calc(50%-var(--keyboard-inset,0)*0.5)] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[min(75%,100%-var(--docs-panel-inset,0%)-2rem)] sm:h-[calc(90%-var(--keyboard-inset,0)*0.9)] sm:p-4 sm:gap-3 flex flex-col bg-card border-2 border-border rounded-none sm:rounded-2xl overflow-hidden"
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onFocusOutside={(e) => e.preventDefault()}
+          // The dialog opens holding the keyboard itself; the page grid takes it
+          // as soon as its selection has a cell to rest on.
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            if (e.currentTarget instanceof HTMLElement) e.currentTarget.focus();
+          }}
+          // The keyboard goes back to whatever held it when the editor opened,
+          // without moving the view; an opener that stopped rendering gives way
+          // to the container it stood in, and then to the page's main landmark.
+          // A content still standing means this pass belongs to the swap the
+          // documentation panel triggers, whose replacement content already
+          // holds the keyboard, not to the editor closing.
+          onCloseAutoFocus={(e) => {
+            if (editorContentStands(document)) {
+              e.preventDefault();
+              return;
+            }
+            const returnTo = returnFocusTarget(openerReturnFocusRef.current, document);
+            openerReturnFocusRef.current = [];
+            if (returnTo === null) return;
+            e.preventDefault();
+            takeReturnFocus(returnTo);
+          }}
+          // While a tile picker is armed, Escape belongs to the candidate strip
+          // for as long as the strip holds the keyboard: it clears the strip's
+          // filter text and then disarms. Armed with the keyboard anywhere else,
+          // no part of the strip serves the press, so the arming ends here and
+          // the strip hands the keyboard on as it closes. While a rule is picked
+          // up it belongs to that rule, and the page gives it back to where it
+          // was picked up from. An open documentation panel takes it next and
+          // closes, leaving the editor open. Once nothing else claims it, it
+          // closes the editor, through the discard confirmation when the
+          // session holds user work.
+          onEscapeKeyDown={(e) => {
+            if (armedTarget.target || rulePickup.pickup) {
+              e.preventDefault();
+              if (armedTarget.target !== null && !keyboardIsInCandidateStrip()) disarmTileTarget();
+              return;
+            }
+            if (isDocsOpen) {
+              e.preventDefault();
+              closeDocs?.();
+              return;
+            }
+            if (holdsDiscardableEdits) {
+              e.preventDefault();
+              requestDiscardingClose();
+            }
+          }}
           hideClose
         >
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.75"
+            className={`pointer-events-none absolute inset-x-0 top-0 ${kDialogChromeLayer} h-0.75`}
             style={{ background: brandStripBackground }}
           />
-          <DialogHeader className="border-b border-border pb-2 sm:pb-4">
+          <DialogHeader className="border-b border-border pb-2 sm:pb-3">
             <DialogDescription className="sr-only">
               Edit brain pages, rules, and tiles. Use the toolbar to navigate pages, undo/redo, and manage the brain.
             </DialogDescription>
             <DialogTitle>
-              <div className="flex flex-wrap justify-center items-center gap-2 sm:gap-3">
+              <div className="flex flex-wrap justify-center items-center gap-1.5 sm:gap-3">
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex bg-muted rounded-lg p-1 sm:p-1.5 border border-border"
+                  className="flex bg-muted rounded-lg p-1 border border-border"
                   role="group"
                   aria-label="Page name controls"
                 >
@@ -521,7 +723,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                           onBlur={handlePageNameBlur}
                           onKeyDown={handlePageNameKeyDown}
                           autoFocus
-                          className="text-foreground font-semibold h-8 px-2 py-1 max-w-xs bg-background border-input focus-visible:ring-ring"
+                          className="text-foreground font-semibold h-8 px-2 py-1 max-w-xs bg-background border-input"
                         />
                         <Button
                           onMouseDown={(e) => {
@@ -561,7 +763,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 <div className="hidden sm:block grow" />
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex bg-muted rounded-lg p-1 sm:p-1.5 border border-border"
+                  className="flex bg-muted rounded-lg p-1 border border-border"
                   role="group"
                   aria-label="Brain name controls"
                 >
@@ -580,7 +782,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                           onBlur={handleBrainNameBlur}
                           onKeyDown={handleBrainNameKeyDown}
                           autoFocus
-                          className="text-foreground font-semibold h-8 px-2 py-1 max-w-xs bg-background border-input focus-visible:ring-ring"
+                          className="text-foreground font-semibold h-8 px-2 py-1 max-w-xs bg-background border-input"
                         />
                         <Button
                           onMouseDown={(e) => {
@@ -620,7 +822,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 <div className="hidden sm:block grow" />
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex items-center gap-2 bg-muted rounded-lg p-1 sm:p-1.5 border border-border sm:mr-2"
+                  className="flex items-center gap-2 bg-muted rounded-lg p-1 border border-border sm:mr-2"
                   role="group"
                   aria-label="Undo, redo, and documentation controls"
                 >
@@ -660,7 +862,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 </div>
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex items-center gap-1 sm:gap-2 bg-muted rounded-lg p-1 sm:p-1.5 border border-border"
+                  className="flex items-center gap-1 sm:gap-2 bg-muted rounded-lg p-1 border border-border"
                   role="group"
                   aria-label="Page navigation controls"
                 >
@@ -688,6 +890,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="center"
+                      onCloseAutoFocus={handlePageMenuCloseAutoFocus}
                       className="bg-popover border-border text-popover-foreground max-h-64 overflow-y-auto"
                     >
                       {brainDef
@@ -696,7 +899,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                         .map((page, index) => (
                           <DropdownMenuItem
                             key={`page-${page.name()}-${index}`}
-                            onClick={() => setCurrentPageNumber(index + 1)}
+                            onClick={() => goToPageFromMenu(index + 1)}
                             className={`cursor-pointer focus:bg-accent focus:text-accent-foreground ${
                               index + 1 === currentPageNumber ? "bg-accent font-semibold" : ""
                             }`}
@@ -728,7 +931,11 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                         <MoreVertical className="h-4 w-4" aria-hidden="true" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground">
+                    <DropdownMenuContent
+                      align="end"
+                      onCloseAutoFocus={handlePageMenuCloseAutoFocus}
+                      className="bg-popover border-border text-popover-foreground"
+                    >
                       <DropdownMenuItem
                         onClick={handleLoadDefault}
                         disabled={!getDefaultBrain}
@@ -831,7 +1038,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
             className="overflow-hidden grow rounded-lg"
             style={{
               background:
-                "radial-gradient(130% 90% at 50% -10%, rgba(139, 108, 243, 0.14) 0%, transparent 55%), radial-gradient(circle at center, rgba(255, 255, 255, 0.035) 1px, transparent 1.3px), linear-gradient(160deg, #191338 0%, #0E0A20 100%)",
+                "radial-gradient(130% 90% at 50% -10%, var(--color-brain-desk-glow) 0%, transparent 55%), radial-gradient(circle at center, rgba(255, 255, 255, 0.035) 1px, transparent 1.3px), linear-gradient(160deg, var(--color-brain-desk-from) 0%, var(--color-brain-desk-to) 100%)",
               backgroundSize: "100% 100%, 22px 22px, 100% 100%",
               boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 4px 20px rgba(0, 0, 0, 0.45)",
             }}
@@ -839,18 +1046,21 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
             aria-label="Brain page editor content"
           >
             {brainDef && currentPageDef ? (
-              <BrainPageEditor
-                key={`${currentPageNumber}-${pageChangeCounter}`}
-                pageDef={currentPageDef as BrainPageDef}
-                pageNumber={currentPageNumber}
-                commandHistory={commandHistory}
-                zoom={zoom}
-              />
+              <ArmedTargetProvider value={armedTarget}>
+                <RulePickupProvider value={rulePickup}>
+                  <BrainPageEditor
+                    key={`${currentPageNumber}-${pageChangeCounter}`}
+                    pageDef={currentPageDef as BrainPageDef}
+                    commandHistory={commandHistory}
+                    zoom={zoom}
+                  />
+                </RulePickupProvider>
+              </ArmedTargetProvider>
             ) : (
-              <p className="text-white/80 p-6">No BrainDef attached to this object.</p>
+              <p className="text-brain-ink/80 p-6">No BrainDef attached to this object.</p>
             )}
           </div>
-          <DialogFooter className="pt-2 sm:pt-4 border-t border-border flex flex-row flex-wrap items-center gap-2 sm:justify-between">
+          <DialogFooter className="pt-2 sm:pt-3 border-t border-border flex flex-row flex-wrap items-center gap-2 sm:justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs text-muted-foreground whitespace-nowrap">{Math.round(zoom * 100)}%</span>
               <Slider
@@ -864,12 +1074,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
               />
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="cancel"
-                className="rounded-lg"
-                onClick={() => onOpenChange(false)}
-                title="Discard Changes"
-              >
+              <Button variant="cancel" className="rounded-lg" onClick={requestDiscardingClose} title="Discard Changes">
                 Cancel
               </Button>
               <Button
@@ -888,6 +1093,43 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       {brainDef && (
         <BrainPrintDialog isOpen={isPrintDialogOpen} onOpenChange={setIsPrintDialogOpen} brainDef={brainDef} />
       )}
+      <Dialog
+        open={isConfirmingDiscard}
+        onOpenChange={(open) => {
+          if (!open) setIsConfirmingDiscard(false);
+        }}
+      >
+        <DialogContent
+          className="max-w-sm rounded-2xl"
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            keepEditingRef.current?.focus();
+          }}
+          onCloseAutoFocus={(e) => {
+            const returnTo = discardReturnFocusRef.current;
+            discardReturnFocusRef.current = null;
+            if (!returnTo || !returnTo.isConnected) return;
+            e.preventDefault();
+            returnTo.focus();
+          }}
+          hideClose
+        >
+          <DialogHeader>
+            <DialogTitle>Discard your changes?</DialogTitle>
+            <DialogDescription>
+              This brain has changes that have not been saved. Closing the editor now loses them.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="destructive" className="rounded-lg" onClick={handleConfirmDiscard}>
+              Discard changes
+            </Button>
+            <Button ref={keepEditingRef} className="rounded-lg" onClick={() => setIsConfirmingDiscard(false)}>
+              Keep editing
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

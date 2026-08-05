@@ -167,8 +167,8 @@ export enum DescriptorDiagCode {
   OnPageExitedMustBeFunction = 2051,
   /** a config's `consumesWhenResult` is not a type name string literal or type reference identifier */
   ConsumesWhenResultMustBeNameOrRef = 2052,
-  /** Free slot -- available for reuse. */
-  Unused2053 = 2053,
+  /** language property value is not an object literal */
+  LanguageMustBeObjectLiteral = 2053,
   /** outputs property value is not an array literal */
   OutputsMustBeArrayLiteral = 2054,
   /** an outputs array element is not an object literal */
@@ -217,6 +217,12 @@ export enum DescriptorDiagCode {
   PresenceGatedMustBeBoolean = 2076,
   /** a sensor config declares `inline: true` together with a non-empty `args` (inline sensors take no arguments) */
   InlineSensorTakesNoArgs = 2077,
+  /** a config's `language.form` is not a string literal */
+  LanguageFormMustBeStringLiteral = 2078,
+  /** a config's `language.frame` is not one of the frame name literals */
+  LanguageFrameMustBeFrameName = 2079,
+  /** a config's `language.bare` is not a string literal */
+  LanguageBareMustBeStringLiteral = 2080,
 }
 
 /**

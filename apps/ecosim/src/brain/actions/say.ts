@@ -19,6 +19,7 @@ import {
 import { EcosimHostActions } from "@/brain/abi-ids";
 import { hasArg } from "@/brain/actions/utils";
 import { getSelf } from "@/brain/execution-context-types";
+import { ICON_BASE } from "@/brain/icon-base";
 import { TileIds } from "@/brain/tileids";
 
 const AnonString = param(CoreParameterId.AnonymousString, {
@@ -62,7 +63,7 @@ export default {
   callDef,
   fn: { exec: execSay },
   isAsync: false,
-  metadata: { label: "say", iconUrl: "/assets/brain/icons/say.svg" },
+  metadata: { label: "say", iconUrl: `${ICON_BASE}/say.svg` },
 } satisfies CreateHostActuatorOptions;
 
 export const parameters: ParameterTileInput[] = [
@@ -70,6 +71,6 @@ export const parameters: ParameterTileInput[] = [
     id: TileIds.Parameter.Duration,
     dataType: CoreTypeIds.Number,
     label: "duration",
-    iconUrl: "/assets/brain/icons/duration.svg",
+    iconUrl: `${ICON_BASE}/duration.svg`,
   },
 ];

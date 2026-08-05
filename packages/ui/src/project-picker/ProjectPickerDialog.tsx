@@ -245,7 +245,7 @@ export function ProjectPickerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="left-0 top-0 translate-x-0 translate-y-0 flex h-dvh max-w-full flex-col gap-0 overflow-hidden p-0 rounded-none sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-170 sm:max-h-[calc(100dvh-2rem)] sm:max-w-240 sm:w-[calc(100vw-2rem)] sm:rounded-lg"
+        className="left-0 top-0 translate-x-0 translate-y-0 flex h-[calc(100dvh-var(--keyboard-inset,0))] max-w-full flex-col gap-0 overflow-hidden p-0 rounded-none sm:left-[50%] sm:top-[calc(50%-var(--keyboard-inset,0)*0.5)] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-170 sm:max-h-[calc(100dvh-var(--keyboard-inset,0)-2rem)] sm:max-w-240 sm:w-[calc(100vw-2rem)] sm:rounded-lg"
         onEscapeKeyDown={(e) => {
           if (confirmingDeleteId !== null) {
             e.preventDefault();
@@ -262,7 +262,7 @@ export function ProjectPickerDialog({
             <li className="list-none">
               <button
                 type="button"
-                className="flex h-full min-h-36 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 bg-card text-muted-foreground outline-none transition-colors hover:border-primary/50 hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:hover:scale-[1.02]"
+                className="flex h-full min-h-36 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 bg-card text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary sm:hover:scale-[1.02]"
                 aria-label="Create new project"
                 onClick={onCreate}
               >

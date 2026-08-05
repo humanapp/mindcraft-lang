@@ -49,16 +49,236 @@
   --color-border: oklch(90% 0 0);
   --color-input: oklch(90% 0 0);
   --color-ring: oklch(9% 0 0);
-  --color-chart-1: oklch(61% 0.15 29);
-  --color-chart-2: oklch(39% 0.11 197);
-  --color-chart-3: oklch(24% 0.09 237);
-  --color-chart-4: oklch(66% 0.17 83);
-  --color-chart-5: oklch(67% 0.19 27);
+  /* Brain editor canvas: the recessed page "desk" and the rule-row cards that
+     sit on it. Rule stops read above the desk stops so a rule reads as a card.
+     --color-brain-armed is the ring drawn around the tile the tile picker is
+     armed on; it must stay clear of every hue a tile fill can take. */
+  --color-brain-desk-from: #191338;
+  --color-brain-desk-to: #0e0a20;
+  --color-brain-desk-glow: rgba(139, 108, 243, 0.14);
+  --color-brain-rule-from: #16143a;
+  --color-brain-rule-to: #8b6cf3;
+  --color-brain-armed: #eef1f5;
+  /* The editor's accent, worn by FILLS AND RINGS: the ring around the band the
+     keyboard is walking, the filter box's focus border, the pivot's current
+     position, and the page grid's selection -- both the selected cell's ring and
+     the ring around the grid while it holds the keyboard.
+     --color-brain-accent-ink is a SEPARATE token, the accent read as a mark or as
+     text on the desk, and it is what the caret's marks, the composer's pending-text
+     underline and the sentence's variable register actually wear. Do not attribute
+     those to --color-brain-accent: an earlier version of this comment did, and a
+     change reasoning from it nearly moved the wrong roles.
+     --color-brain-on-accent is the ink read on top of an accent fill. */
+  --color-brain-accent: oklch(70.2% 0.183 293.541);
+  --color-brain-accent-ink: oklch(89.4% 0.057 293.283);
+  --color-brain-on-accent: #000;
+  /* The ink the editor's own chrome is written in on the desk: its text at
+     every step of the alpha scale, the ring around the tile the offering is
+     landing on, its hover washes, and its hairline edges.
+     --color-brain-recess is the opposite pole, filling the wells a field or a
+     capsule is sunk into. */
+  --color-brain-ink: #fff;
+  --color-brain-recess: #000;
+  /* The label an inline chip is read in where documentation prose names a tile
+     or a value type. */
+  --color-brain-inline-ink: #e2e8f0;
+  /* Semantic amber, which marks a change: the word whose tile just changed,
+     and text naming no tile that fits. It is never an accent.
+     --color-brain-amber is the mark, --color-brain-amber-ink the same meaning
+     read as text, --color-brain-amber-wash the fill a lit word takes. */
+  --color-brain-amber: oklch(82.8% 0.189 84.429);
+  --color-brain-amber-ink: oklch(87.9% 0.169 91.605);
+  --color-brain-amber-wash: oklch(92.4% 0.12 95.746);
+  /* The badge a tile carries when its reading is incomplete: a slot left with
+     no value, an operator left with no right-hand side. --color-brain-warn
+     fills the chip, --color-brain-warn-edge rims it, --color-brain-warn-ink
+     draws its glyph. */
+  --color-brain-warn: oklch(82.8% 0.189 84.429);
+  --color-brain-warn-edge: oklch(76.9% 0.188 70.08);
+  --color-brain-warn-ink: oklch(41.4% 0.112 45.904);
+  /* The badge marking an action that may take time to complete.
+     --color-brain-timed fills the chip, --color-brain-timed-ink draws both its
+     edge and its glyph. */
+  --color-brain-timed: oklch(92.9% 0.013 255.508);
+  --color-brain-timed-ink: oklch(44.6% 0.043 257.281);
+  /* The WHEN and DO capsules standing at the head of each side of a rule. */
+  --color-brain-capsule: oklch(20.8% 0.042 265.755);
+  --color-brain-capsule-edge: oklch(55.4% 0.046 257.417);
+  --color-brain-capsule-ink: #fff;
+  /* The rule row's round pills: the rule handle and each side's add-tile
+     button, and the rule number a documentation illustration carries. */
+  --color-brain-pill: oklch(96.8% 0.007 247.896);
+  --color-brain-pill-hover: oklch(92.9% 0.013 255.508);
+  --color-brain-pill-edge: oklch(86.9% 0.022 252.894);
+  --color-brain-pill-ink: oklch(37.2% 0.044 257.287);
   --radius: 0.5rem;
   /* Corner radius of the shared button primitives. */
   --radius-button: 0.375rem;
   --font-mono:
     "Roboto Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  /* Face the rule sentence is read in: an old-style serif, from system faces
+     only. Iowan Old Style and Palatino cover macOS and iOS, Palatino Linotype
+     and Book Antiqua cover Windows, the URW faces cover Linux, and Georgia is
+     the fallback everywhere else. */
+  --font-brain-sentence:
+    "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", P052, Georgia, serif;
+}
+
+/* ==========================================================================
+   Focus
+
+   Every keyboard-focused element is outlined in the app's --color-ring, so no
+   component supplies a focus mark of its own. A control that marks focus some
+   other way -- a border it recolours, an inset ring it needs on a full-bleed
+   surface -- opts out with an `outline-none` utility, which sits in the
+   utilities layer and so wins over this rule.
+   ========================================================================== */
+
+/* Property list behind the `transition-colors` utility. Tailwind's own list
+   includes outline-color; this one leaves it out, so a control carrying
+   `transition-colors` paints the focus outline below at --color-ring on the
+   first frame rather than interpolating to it from the element's own color. */
+@theme {
+  --transition-property-colors:
+    color, background-color, border-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via,
+    --tw-gradient-to;
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+/* ==========================================================================
+   Coarse-pointer target floor
+
+   Under `@media (pointer: coarse)` every control in the app chrome measures at
+   least 44px on both axes, and every field the keyboard types into is set at
+   1rem, the size below which iOS Safari zooms the page in on focus. Nothing
+   here reads the user agent: iPadOS Safari reports a macOS one.
+
+   The size floor is stated as a minimum, never a height, so a call site's own
+   `h-*` / `w-*` keeps describing the fine-pointer geometry and the minimum
+   clamps it only where the pointer is coarse. It sits in the base layer, so a
+   call site that must stay smaller overrides it with a `pointer-coarse:min-h-*`
+   / `pointer-coarse:min-w-*` utility.
+
+   The type floor sits in the utilities layer instead, because a smaller
+   `text-*` utility would otherwise win, and it outranks every font-size
+   utility: under a coarse pointer a field reads at 1rem unless a call site
+   marks its own size important (`pointer-coarse:text-lg!`).
+
+   Two things stand outside the floor:
+
+   - The brain editor's own content, which sizes its controls itself.
+   - `role="switch"`, whose pill would square off into a blob. `src/ui/switch.tsx`
+     reaches 44px by growing its hit area instead of its box.
+   ========================================================================== */
+
+@layer base {
+  @media (pointer: coarse) {
+    :is(button, select, textarea, input, a[href]):not([role="switch"]):not([data-brain-editor-content] *) {
+      min-block-size: 44px;
+      min-inline-size: 44px;
+    }
+  }
+}
+
+@layer utilities {
+  @media (pointer: coarse) {
+    :is(input, select, textarea):not([data-brain-editor-content] *) {
+      font-size: 1rem;
+    }
+  }
+}
+
+/* ==========================================================================
+   Brain page selection
+
+   The one cell the brain page's selection rests on carries
+   data-page-grid-selection, valued by the shape its treatment is painted in.
+   .brain-page-frame carries an edge of the same accent while the rules hold the
+   keyboard.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   TUNABLE -- how loud the page's selection reads
+
+   Every number the selection is drawn with lives in this block; edit and save
+   to retune it live. The two colours it is drawn from are not here: the accent
+   is --color-brain-accent in each app's globals.css, and the ring inside a
+   selected tile is black at the alpha below.
+   -------------------------------------------------------------------------- */
+
+:root {
+  /* Width of the accent ring around a selected tile and a selected sentence. */
+  --brain-selection-ring-width: 3px;
+  /* Width of that ring around a selected round cell: a rule handle, a `+`. */
+  --brain-selection-ring-width-circle: 4px;
+  /* The dark ring inside a selected tile's own edge, and how opaque it is.
+     The tile's fill can be any hue, so this ring, not the accent, is what
+     separates the selection from the tile. */
+  --brain-selection-inner-ring-width: 2px;
+  --brain-selection-inner-ring-alpha: 0.5;
+  /* How much accent fills a selected sentence line. */
+  --brain-selection-line-mix: 34%;
+  /* How much a selected tile, rule handle or `+` grows. The growth is painted
+     rather than laid out, so nothing around it moves. */
+  --brain-selection-scale: 1.07;
+  /* The ring the whole page wears while its rules hold the keyboard, and how
+     much accent fills it. */
+  --brain-grid-ring-width: 2px;
+  --brain-grid-ring-mix: 70%;
+}
+
+@layer components {
+  [data-page-grid-selection] {
+    outline: var(--brain-selection-ring-width) solid var(--color-brain-accent);
+    outline-offset: 0;
+  }
+
+  /* The dark ring a selected chip carries inside its own edge. */
+  [data-page-grid-selection="chip"]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 var(--brain-selection-inner-ring-width) rgb(0 0 0 / var(--brain-selection-inner-ring-alpha));
+    pointer-events: none;
+  }
+
+  [data-page-grid-selection="circle"] {
+    outline-width: var(--brain-selection-ring-width-circle);
+  }
+
+  [data-page-grid-selection="line"] {
+    outline: none;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--color-brain-accent) var(--brain-selection-line-mix), transparent);
+  }
+
+  /* The frame around the rules' scrolling box. It carries the page's rounded
+     edge, and the accent ring as a border laid out whether or not it is
+     painted, so the ring costs no reflow. The scrolling box fills the padding
+     box only, which clips the rules short of the ring. */
+  .brain-page-frame {
+    border: var(--brain-grid-ring-width) solid transparent;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .brain-page-frame:focus-within {
+    border-color: color-mix(in srgb, var(--color-brain-accent) var(--brain-grid-ring-mix), transparent);
+  }
+}
+
+/* The growth a selected cell takes. Unlayered, so it stands over the hover
+   growth utility the same cells carry and the two never compound. */
+[data-page-grid-selection="circle"],
+.brain-tile-selected {
+  scale: var(--brain-selection-scale);
 }
 
 /* Animations */
@@ -167,6 +387,16 @@
     system-ui,
     -apple-system,
     sans-serif;
+}
+
+.brain-print-rule-sentence {
+  width: 100%;
+  margin-top: 4px;
+  padding-left: 30px;
+  font-family: var(--font-brain-sentence);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: #334155;
 }
 
 /* -- WHEN / DO chip -- */

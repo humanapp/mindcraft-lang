@@ -734,7 +734,7 @@ export default Sensor({
     assert.ok(services.shared.conversions.get(typeId!, CoreTypeIds.Number));
     assert.ok(services.edit.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]));
 
-    project.deleteFile("helpers/mode.ts");
+    project.deletePath("helpers/mode.ts");
     project.updateFile(
       "sensors/use-mode.ts",
       `

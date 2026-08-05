@@ -22,6 +22,7 @@ import { EcosimHostActions } from "@/brain/abi-ids";
 import { hasArg } from "@/brain/actions/utils";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
+import { ICON_BASE } from "@/brain/icon-base";
 import { TargetActorCapabilityBitSet, TileIds } from "@/brain/tileids";
 
 const Carnivore = mod(TileIds.Modifier.ActorKindCarnivore);
@@ -103,12 +104,27 @@ export default {
   },
   isAsync: false,
   outputType: CoreTypeIds.Boolean,
-  metadata: { label: "bump", iconUrl: "/assets/brain/icons/bump.svg" },
+  metadata: { label: "bump", iconUrl: `${ICON_BASE}/bump.svg` },
   capabilities: TargetActorCapabilityBitSet,
 } satisfies CreateHostSensorOptions;
 
 export const modifiers: ModifierTileInput[] = [
-  { id: TileIds.Modifier.ActorKindCarnivore, label: "carnivore", iconUrl: "/assets/brain/icons/carnivore.svg" },
-  { id: TileIds.Modifier.ActorKindHerbivore, label: "herbivore", iconUrl: "/assets/brain/icons/herbivore.svg" },
-  { id: TileIds.Modifier.ActorKindPlant, label: "plant", iconUrl: "/assets/brain/icons/plant.svg" },
+  {
+    id: TileIds.Modifier.ActorKindCarnivore,
+    label: "carnivore",
+    iconUrl: `${ICON_BASE}/carnivore.svg`,
+    language: { form: "a carnivore" },
+  },
+  {
+    id: TileIds.Modifier.ActorKindHerbivore,
+    label: "herbivore",
+    iconUrl: `${ICON_BASE}/herbivore.svg`,
+    language: { form: "a herbivore" },
+  },
+  {
+    id: TileIds.Modifier.ActorKindPlant,
+    label: "plant",
+    iconUrl: `${ICON_BASE}/plant.svg`,
+    language: { form: "a plant" },
+  },
 ];

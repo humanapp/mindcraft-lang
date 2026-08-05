@@ -9,7 +9,7 @@ import { dataTypeIconMap, dataTypeNameMap } from "./data-type-icons";
 import { createVfsAwareVisualProvider } from "./visual-provider";
 
 const inputClass =
-  "col-span-3 flex h-10 w-full rounded-lg border-2 border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50";
+  "col-span-3 flex h-10 w-full rounded-lg border-2 border-input bg-background px-3 py-2 text-sm pointer-coarse:min-h-11 pointer-coarse:text-base text-foreground placeholder:text-muted-foreground focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50";
 
 const vector2LiteralType: CustomLiteralType = {
   typeId: EcosimTypeIds.Vector2,
@@ -94,13 +94,13 @@ const vector2LiteralType: CustomLiteralType = {
 interface BuildBrainEditorConfigOptions {
   store: EcosimEnvironmentStore;
   archetype?: Archetype;
-  onTileHelp?: BrainEditorConfig["onTileHelp"];
+  onTileDocs?: BrainEditorConfig["onTileDocs"];
   docsIntegration?: BrainEditorConfig["docsIntegration"];
   isBrokenTile?: BrainEditorConfig["isBrokenTile"];
 }
 
 export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): BrainEditorConfig {
-  const { store, archetype, onTileHelp, docsIntegration, isBrokenTile } = options;
+  const { store, archetype, onTileDocs, docsIntegration, isBrokenTile } = options;
   const environment = store.env;
   const resolveTileVisual = createVfsAwareVisualProvider((url) => store.resolveVfsAssetUrl(url));
 
@@ -111,10 +111,11 @@ export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): 
     customLiteralTypes: [vector2LiteralType],
     getDefaultBrain: archetype ? () => store.getDefaultBrain(archetype) : undefined,
     brainServices: environment.brainServices,
+    localizer: environment.appServices.localizer,
     projectNamespace: store.activeProjectManifest?.id,
     tileCatalogs: environment.tileCatalogs(),
     libraries: store.host.installedLibraries,
-    onTileHelp,
+    onTileDocs,
     docsIntegration,
     isBrokenTile,
   };

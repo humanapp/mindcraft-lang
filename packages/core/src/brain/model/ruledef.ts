@@ -50,7 +50,7 @@ let nextRuleId_ = 1;
 
 /** Concrete {@link IBrainRuleDef}: a single rule with `when` and `do` tile-sets and child rules. */
 export class BrainRuleDef implements IBrainRuleDef {
-  private readonly id_: number;
+  private id_: number;
   private page_?: IBrainPageDef;
   private ancestor_?: BrainRuleDef; // Next rule up in the tree, if any
   private readonly children_ = new List<BrainRuleDef>();
@@ -61,6 +61,12 @@ export class BrainRuleDef implements IBrainRuleDef {
   private readonly tileSetSubscriptions_ = new Dict<BrainTileSet, () => void>();
   private readonly childRuleSubscriptions_ = new Dict<BrainRuleDef, () => void>();
   private dirtyChangedDebounceThread_?: thread;
+  /**
+   * Whether the rule had a rule above it at its own nesting level when the
+   * stored typecheck result was produced. A structural edit that changes this
+   * without touching the rule's own tiles invalidates the stored result.
+   */
+  private typecheckedWithPrecedingSibling_?: boolean;
 
   constructor() {
     this.id_ = nextRuleId_++;
@@ -76,6 +82,22 @@ export class BrainRuleDef implements IBrainRuleDef {
    */
   id(): number {
     return this.id_;
+  }
+
+  /**
+   * Takes on the id `source` carries, and gives each descendant the id of the
+   * descendant standing in the same place of `source`, so a rule rebuilt from a
+   * copy of another is addressed by the ids that other was addressed by.
+   *
+   * Walks both trees in child order. A descendant `source` has no counterpart
+   * for keeps the id it was minted with, and an id `source` still carries is
+   * then held by two rules, so call this only where `source` has left the page.
+   */
+  adoptRuleIds(source: BrainRuleDef): void {
+    this.id_ = source.id_;
+    for (let i = 0; i < this.children_.size() && i < source.children_.size(); i++) {
+      this.children_.get(i).adoptRuleIds(source.children_.get(i));
+    }
   }
 
   /**
@@ -172,9 +194,17 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   typecheck(): void {
-    // Compile this rule if either side is dirty or has never been typechecked
-    // (e.g. a freshly deserialized rule).
-    if (this.when_.isDirty() || this.do_.isDirty() || !this.when_.typecheckResult() || !this.do_.typecheckResult()) {
+    // Compile this rule if either side is dirty, has never been typechecked
+    // (e.g. a freshly deserialized rule), or now stands in a different place
+    // among its siblings than the stored result was produced for.
+    const hasPrecedingSibling = this.myIndex_() > 0;
+    if (
+      this.when_.isDirty() ||
+      this.do_.isDirty() ||
+      !this.when_.typecheckResult() ||
+      !this.do_.typecheckResult() ||
+      this.typecheckedWithPrecedingSibling_ !== hasPrecedingSibling
+    ) {
       const catalogs = this.gatherCatalogs();
       const whenTiles = this.when_.tiles();
       const doTiles = this.do_.tiles();
@@ -209,10 +239,12 @@ export class BrainRuleDef implements IBrainRuleDef {
           inheritedOutputKeys,
           inheritedCapabilities,
           inheritedWhenResultType,
-          operatorOverloads
+          operatorOverloads,
+          hasPrecedingSibling
         );
         this.when_.setTypecheckResult(typecheckResult);
         this.do_.setTypecheckResult(typecheckResult);
+        this.typecheckedWithPrecedingSibling_ = hasPrecedingSibling;
       }
     }
 
@@ -231,6 +263,17 @@ export class BrainRuleDef implements IBrainRuleDef {
 
   setPage(page: IBrainPageDef | undefined): void {
     this.page_ = page;
+  }
+
+  /**
+   * Record `page` as the one holding this rule directly and subscribe it to the
+   * rule's events. Call this from every path that puts a rule into a page's
+   * child list; until it is called the rule names no page and no brain, and
+   * every `can...` predicate reads false.
+   */
+  private attachToPage_(page: IBrainPageDef): void {
+    this.setPage(page);
+    (page as BrainPageDef).subscribeToRule_(this);
   }
 
   brain(): IBrainDef | undefined {
@@ -435,6 +478,7 @@ export class BrainRuleDef implements IBrainRuleDef {
       if (parentIndex < 0) return false; // Safety check
       page.children().insert(parentIndex + 1, this);
       this.setAncestor(undefined);
+      this.attachToPage_(page);
     }
 
     this.markDirty();
@@ -517,7 +561,7 @@ export class BrainRuleDef implements IBrainRuleDef {
       if (targetIndex > size) targetIndex = size;
       pageChildren.insert(targetIndex, this);
       this.setAncestor(undefined);
-      (newPage as BrainPageDef).subscribeToRule_(this);
+      this.attachToPage_(newPage);
     }
 
     this.markDirty();

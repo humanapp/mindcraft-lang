@@ -17,6 +17,7 @@ import {
   mkSensorTileId,
   mkVariableFactoryTileId,
 } from "@mindcraft-lang/core/app";
+import { ICON_BASE } from "@/brain/icon-base";
 import { EcosimTypeIds } from "@/brain/type-system";
 import type { TileVisual } from "./types";
 
@@ -25,50 +26,51 @@ import type { TileVisual } from "./types";
 // biome-ignore format: uniform one-liner-per-entry style
 export const tileVisuals = new Map<string, Partial<TileVisual>>([
   // Operators
-  [mkOperatorTileId(CoreOpId.And), { label: "AND", iconUrl: "/assets/brain/icons/and.svg" }],
-  [mkOperatorTileId(CoreOpId.Or), { label: "OR", iconUrl: "/assets/brain/icons/or.svg" }],
-  [mkOperatorTileId(CoreOpId.Not), { label: "NOT", iconUrl: "/assets/brain/icons/not.svg" }],
-  [mkOperatorTileId(CoreOpId.Add), { label: "plus", iconUrl: "/assets/brain/icons/plus.svg" }],
-  [mkOperatorTileId(CoreOpId.Subtract), { label: "minus", iconUrl: "/assets/brain/icons/minus.svg" }],
-  [mkOperatorTileId(CoreOpId.Multiply), { label: "multiplied by", iconUrl: "/assets/brain/icons/multiply.svg" }],
-  [mkOperatorTileId(CoreOpId.Divide), { label: "divided by", iconUrl: "/assets/brain/icons/divide.svg" }],
-  [mkOperatorTileId(CoreOpId.Negate), { label: "negative", iconUrl: "/assets/brain/icons/negative.svg" }],
-  [mkOperatorTileId(CoreOpId.EqualTo), { label: "equal to", iconUrl: "/assets/brain/icons/equals.svg" }],
-  [mkOperatorTileId(CoreOpId.NotEqualTo), { label: "not equal to", iconUrl: "/assets/brain/icons/not_equal.svg" }],
-  [mkOperatorTileId(CoreOpId.LessThan), { label: "less than", iconUrl: "/assets/brain/icons/less_than.svg" }],
-  [mkOperatorTileId(CoreOpId.LessThanOrEqualTo), { label: "less than or equal to", iconUrl: "/assets/brain/icons/less_than_or_equal_to.svg" }],
-  [mkOperatorTileId(CoreOpId.GreaterThan), { label: "greater than", iconUrl: "/assets/brain/icons/greater_than.svg" }],
-  [mkOperatorTileId(CoreOpId.GreaterThanOrEqualTo), { label: "greater than or equal to", iconUrl: "/assets/brain/icons/greater_than_or_equal_to.svg" }],
-  [mkOperatorTileId(CoreOpId.Assign), { label: "gets", iconUrl: "/assets/brain/icons/assign.svg" }],
+  [mkOperatorTileId(CoreOpId.And), { iconUrl: `${ICON_BASE}/and.svg` }],
+  [mkOperatorTileId(CoreOpId.Or), { iconUrl: `${ICON_BASE}/or.svg` }],
+  [mkOperatorTileId(CoreOpId.Not), { iconUrl: `${ICON_BASE}/not.svg` }],
+  [mkOperatorTileId(CoreOpId.Add), { iconUrl: `${ICON_BASE}/plus.svg` }],
+  [mkOperatorTileId(CoreOpId.Subtract), { iconUrl: `${ICON_BASE}/minus.svg` }],
+  [mkOperatorTileId(CoreOpId.Multiply), { iconUrl: `${ICON_BASE}/multiply.svg` }],
+  [mkOperatorTileId(CoreOpId.Divide), { iconUrl: `${ICON_BASE}/divide.svg` }],
+  [mkOperatorTileId(CoreOpId.Negate), { iconUrl: `${ICON_BASE}/negative.svg` }],
+  [mkOperatorTileId(CoreOpId.EqualTo), { iconUrl: `${ICON_BASE}/equals.svg` }],
+  [mkOperatorTileId(CoreOpId.NotEqualTo), { iconUrl: `${ICON_BASE}/not_equal.svg` }],
+  [mkOperatorTileId(CoreOpId.LessThan), { iconUrl: `${ICON_BASE}/less_than.svg` }],
+  [mkOperatorTileId(CoreOpId.LessThanOrEqualTo), { iconUrl: `${ICON_BASE}/less_than_or_equal_to.svg` }],
+  [mkOperatorTileId(CoreOpId.GreaterThan), { iconUrl: `${ICON_BASE}/greater_than.svg` }],
+  [mkOperatorTileId(CoreOpId.GreaterThanOrEqualTo), { iconUrl: `${ICON_BASE}/greater_than_or_equal_to.svg` }],
+  [mkOperatorTileId(CoreOpId.Assign), { iconUrl: `${ICON_BASE}/assign.svg` }],
   // Control Flow
-  [mkControlFlowTileId(CoreControlFlowId.OpenParen), { label: "(", iconUrl: "/assets/brain/icons/open-paren.svg" }],
-  [mkControlFlowTileId(CoreControlFlowId.CloseParen), { label: ")", iconUrl: "/assets/brain/icons/close-paren.svg" }],
+  [mkControlFlowTileId(CoreControlFlowId.OpenParen), { iconUrl: `${ICON_BASE}/open-paren.svg` }],
+  [mkControlFlowTileId(CoreControlFlowId.CloseParen), { iconUrl: `${ICON_BASE}/close-paren.svg` }],
   // Variable Factories
-  [mkVariableFactoryTileId(CoreVariableFactoryId.Boolean), { label: "create a boolean variable", iconUrl: "/assets/brain/icons/switch.svg" }],
-  [mkVariableFactoryTileId(CoreVariableFactoryId.Number), { label: "create a number variable", iconUrl: "/assets/brain/icons/number.svg" }],
-  [mkVariableFactoryTileId(CoreVariableFactoryId.String), { label: "create a text variable", iconUrl: "/assets/brain/icons/text.svg" }],
-  [mkVariableFactoryTileId(EcosimTypeIds.Vector2), { label: "create a vector2 variable", iconUrl: "/assets/brain/icons/vector2.svg" }],
-  [mkVariableFactoryTileId(EcosimTypeIds.ActorRef), { label: "create an actor variable", iconUrl: "/assets/brain/icons/actor-mask.svg" }],
+  [mkVariableFactoryTileId(CoreVariableFactoryId.Boolean), { label: "create a boolean variable", iconUrl: `${ICON_BASE}/switch.svg` }],
+  [mkVariableFactoryTileId(CoreVariableFactoryId.Number), { label: "create a number variable", iconUrl: `${ICON_BASE}/number.svg` }],
+  [mkVariableFactoryTileId(CoreVariableFactoryId.String), { label: "create a text variable", iconUrl: `${ICON_BASE}/text.svg` }],
+  [mkVariableFactoryTileId(EcosimTypeIds.Vector2), { label: "create a vector2 variable", iconUrl: `${ICON_BASE}/vector2.svg` }],
+  [mkVariableFactoryTileId(EcosimTypeIds.ActorRef), { label: "create an actor variable", iconUrl: `${ICON_BASE}/actor-mask.svg` }],
   // Literal Factories
-  [mkLiteralFactoryTileId(CoreLiteralFactoryId.Number), { label: "create a number tile", iconUrl: "/assets/brain/icons/number.svg" }],
-  [mkLiteralFactoryTileId(CoreLiteralFactoryId.String), { label: "create a text tile", iconUrl: "/assets/brain/icons/text.svg" }],
+  [mkLiteralFactoryTileId(CoreLiteralFactoryId.Number), { iconUrl: `${ICON_BASE}/number.svg` }],
+  [mkLiteralFactoryTileId(CoreLiteralFactoryId.String), { iconUrl: `${ICON_BASE}/text.svg` }],
   // Well-known Literals
-  [mkLiteralTileId(CoreTypeIds.Boolean, "true"), { label: "true", iconUrl: "/assets/brain/icons/switch_on.svg" }],
-  [mkLiteralTileId(CoreTypeIds.Boolean, "false"), { label: "false", iconUrl: "/assets/brain/icons/switch_off.svg" }],
-  [mkLiteralTileId(CoreTypeIds.Nil, "nil"), { label: "nil", iconUrl: "/assets/brain/icons/nil.svg" }],
+  [mkLiteralTileId(CoreTypeIds.Boolean, "true"), { iconUrl: `${ICON_BASE}/switch_on.svg` }],
+  [mkLiteralTileId(CoreTypeIds.Boolean, "false"), { iconUrl: `${ICON_BASE}/switch_off.svg` }],
+  [mkLiteralTileId(CoreTypeIds.Nil, "nil"), { iconUrl: `${ICON_BASE}/nil.svg` }],
   // Modifiers
   // Parameters
   // Sensors
-  [mkSensorTileId(CoreHostActions.Random.key), { label: "random number", iconUrl: "/assets/brain/icons/random.svg" }],
-  [mkSensorTileId(CoreHostActions.OnPageEntered.key), { label: "on page entered", iconUrl: "/assets/brain/icons/on-page-enter.svg" }],
-  [mkSensorTileId(CoreHostActions.Timeout.key), { label: "timeout", iconUrl: "/assets/brain/icons/timer.svg" }],
-  [mkSensorTileId(CoreHostActions.CurrentPage.key), { label: "current page", iconUrl: "/assets/brain/icons/page.svg" }],
-  [mkSensorTileId(CoreHostActions.PreviousPage.key), { label: "previous page", iconUrl: "/assets/brain/icons/page2.svg" }],
+  [mkSensorTileId(CoreHostActions.Random.key), { iconUrl: `${ICON_BASE}/random.svg` }],
+  [mkSensorTileId(CoreHostActions.OnPageEntered.key), { iconUrl: `${ICON_BASE}/on-page-enter.svg` }],
+  [mkSensorTileId(CoreHostActions.Timeout.key), { iconUrl: `${ICON_BASE}/timer.svg` }],
+  [mkSensorTileId(CoreHostActions.CurrentPage.key), { iconUrl: `${ICON_BASE}/page.svg` }],
+  [mkSensorTileId(CoreHostActions.PreviousPage.key), { iconUrl: `${ICON_BASE}/page2.svg` }],
+  [mkSensorTileId(CoreHostActions.Otherwise.key), { iconUrl: `${ICON_BASE}/otherwise.svg` }],
   // Actuators
-  [mkActuatorTileId(CoreHostActions.SwitchPage.key), { label: "switch page", iconUrl: "/assets/brain/icons/switch_page.svg" }],
-  [mkActuatorTileId(CoreHostActions.RestartPage.key), { label: "restart page", iconUrl: "/assets/brain/icons/restart-page.svg" }],
-  [mkActuatorTileId(CoreHostActions.Yield.key), { label: "yield", iconUrl: "/assets/brain/icons/yield.svg" }],
+  [mkActuatorTileId(CoreHostActions.SwitchPage.key), { iconUrl: `${ICON_BASE}/switch_page.svg` }],
+  [mkActuatorTileId(CoreHostActions.RestartPage.key), { iconUrl: `${ICON_BASE}/restart-page.svg` }],
+  [mkActuatorTileId(CoreHostActions.Yield.key), { label: "yield", iconUrl: `${ICON_BASE}/yield.svg` }],
   // Field Accessors
-  [mkAccessorTileId(EcosimTypeIds.Vector2, "x"), { label: "x", iconUrl: "/assets/brain/icons/vector2_x.svg" }],
-  [mkAccessorTileId(EcosimTypeIds.Vector2, "y"), { label: "y", iconUrl: "/assets/brain/icons/vector2_y.svg" }],
+  [mkAccessorTileId(EcosimTypeIds.Vector2, "x"), { iconUrl: `${ICON_BASE}/vector2_x.svg` }],
+  [mkAccessorTileId(EcosimTypeIds.Vector2, "y"), { iconUrl: `${ICON_BASE}/vector2_y.svg` }],
 ]);

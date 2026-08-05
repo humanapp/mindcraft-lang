@@ -3,8 +3,9 @@ import type { BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 import { staticAssetUrl } from "../asset-url";
 import { useBrainEditorConfig } from "./BrainEditorContext";
+import { BrainPrintRuleSentence } from "./BrainRuleSentence";
 import { TileValue } from "./TileValue";
-import { resolveTileVisual, tileVisualCategory } from "./tile-visual-utils";
+import { kDefaultTileHue, resolveTileVisual, tileVisualCategory } from "./tile-visual-utils";
 
 // -- Print tile (simplified, no glass, no gradients) -------------------------
 
@@ -22,7 +23,7 @@ function PrintTile({ tileDef, side }: PrintTileProps) {
   const iconUrl = visual.iconUrl || staticAssetUrl("assets/brain/icons/question_mark.svg");
   const baseColor =
     (side === RuleSide.When ? visual?.colorDef?.when : side === RuleSide.Do ? visual?.colorDef?.do : undefined) ||
-    "#475569";
+    kDefaultTileHue;
 
   const category = tileVisualCategory(tileDef);
   const isValueTile = category === "value";
@@ -111,6 +112,9 @@ function PrintRule({ ruleDef, depth, lineNumber }: PrintRuleProps) {
         // biome-ignore lint/suspicious/noArrayIndexKey: tiles have no stable IDs in print view
         <PrintTile key={`d${idx}`} tileDef={tileDef} side={RuleSide.Do} />
       ))}
+
+      {/* The rule read as a sentence, on its own line under the tiles */}
+      <BrainPrintRuleSentence ruleDef={ruleDef} />
     </div>
   );
 }

@@ -1,4 +1,2 @@
-export { adjustColor, saturateColor } from "./color";
-export type { GlassEffect, GlassEffectOptions } from "./glass-effect";
-export { glassEffect } from "./glass-effect";
+export { adjustColor, contrastRatio, readableInk, saturateColor } from "./color";
 export { cn } from "./utils";

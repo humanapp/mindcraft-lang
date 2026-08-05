@@ -1,7 +1,10 @@
 import type { BrainServices, IBrainActionTileDef, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { createContext, type ReactNode, useContext } from "react";
+import type { LocalizedValue, Localizer } from "@mindcraft-lang/core/localization";
+import { createDefaultLocalizer } from "@mindcraft-lang/core/localization";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
 import type { PrintTransport } from "../print/standalone-print-document";
+import type { EditorMode } from "./editor-mode";
 import type { TileSourceLibrary } from "./tile-library-groups";
 import type { TileVisual } from "./types";
 
@@ -58,19 +61,31 @@ export interface BrainEditorConfig {
   getDefaultBrain?: () => BrainDef | undefined;
   /** Optional BrainServices instance for direct access to tiles, types, etc. */
   brainServices?: BrainServices;
+  /**
+   * Display-time translation service for the app's current locale. Swap it for
+   * one built on another locale's catalog and the editor re-renders in that
+   * locale. Omitted, the editor renders every source string as authored.
+   */
+  localizer?: Localizer;
   /** Namespace of the active project. Brain files save and load namespace-relative to it. */
   projectNamespace?: string;
   /** Tile catalogs from the host environment (core + user tile catalogs). */
   tileCatalogs?: readonly ITileCatalog[];
   /** Installed libraries of the active project; the tile picker subgroups tiles attributed to them. */
   libraries?: readonly TileSourceLibrary[];
-  /** Optional callback invoked when the user requests help for a tile (e.g. right-click -> Help). */
-  onTileHelp?: (tileDef: IBrainTileDef) => void;
+  /** Optional callback invoked when the user opens a tile's documentation from the editor. */
+  onTileDocs?: (tileDef: IBrainTileDef) => void;
   /** Optional docs sidebar integration for the brain editor dialog toolbar. */
   docsIntegration?: {
     isOpen: boolean;
     toggle: () => void;
     close: () => void;
+    /**
+     * Receives the context the editor's keyboard stands in each time it
+     * changes, and `undefined` once no editor stands. Documentation that tracks
+     * the live editor reads it; hosts that show none leave it out.
+     */
+    reportMode?: (mode: EditorMode | undefined) => void;
   };
   /**
    * Sink for the printable document when the host cannot open the browser
@@ -84,7 +99,7 @@ export interface BrainEditorConfig {
 const BrainEditorContext = createContext<BrainEditorConfig | null>(null);
 
 /** Provider for the brain editor configuration. Wrap any subtree that uses brain editor components. */
-export function BrainEditorProvider({ config, children }: { config: BrainEditorConfig; children: ReactNode }) {
+export function BrainEditorProvider({ config, children }: { config: BrainEditorConfig; children?: ReactNode }) {
   return <BrainEditorContext.Provider value={config}>{children}</BrainEditorContext.Provider>;
 }
 
@@ -95,4 +110,26 @@ export function useBrainEditorConfig(): BrainEditorConfig {
     throw new Error("useBrainEditorConfig must be used within a BrainEditorProvider");
   }
   return config;
+}
+
+/** The default localizer used when the host config supplies none. */
+const fallbackLocalizer = createDefaultLocalizer();
+
+/**
+ * Read the active {@link Localizer}. Falls back to the default localizer when
+ * the host config supplies none. Components re-render when the host swaps the
+ * config's localizer for another locale.
+ */
+export function useLocalizer(): Localizer {
+  return useBrainEditorConfig().localizer ?? fallbackLocalizer;
+}
+
+/**
+ * Read the active localizer's `tr`, bound to the current locale. Call it with
+ * the English source string, its named parameters, and an optional context
+ * tag.
+ */
+export function useTr(): (source: string, params?: Record<string, LocalizedValue>, context?: string) => string {
+  const localizer = useLocalizer();
+  return useMemo(() => localizer.tr.bind(localizer), [localizer]);
 }

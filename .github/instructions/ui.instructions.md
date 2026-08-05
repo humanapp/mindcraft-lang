@@ -30,21 +30,23 @@ src/
   lib/                      Utility functions
     utils.ts                cn() -- Tailwind class merge (clsx + tailwind-merge)
     color.ts                adjustColor(), saturateColor(), HSL helpers
-    glass-effect.ts         CSS glass/glint effect generator
     index.ts                Barrel
   ui/                       shadcn/ui primitives
-    button.tsx, card.tsx, dialog.tsx, dropdown-menu.tsx, input.tsx, slider.tsx
+    button.tsx, card.tsx, context-menu.tsx, dialog.tsx, dropdown-menu.tsx, input.tsx, slider.tsx
     index.ts                Barrel
   brain-editor/             Brain editor components
     index.ts                Barrel
     types.ts                TileVisual, TileColorDef
+    ArmedTargetContext.tsx   Armed tile-picker target (arm/disarm state + matching predicates)
     BrainEditorContext.tsx   BrainEditorConfig interface, BrainEditorProvider, useBrainEditorConfig
     BrainEditorDialog.tsx    Full editor (page nav, toolbar, undo/redo, save/load)
     BrainPageEditor.tsx      Page rules list with depth flattening
-    BrainRuleEditor.tsx      WHEN/DO rule row with glass effects
+    BrainRuleEditor.tsx      WHEN/DO rule row
     BrainTile.tsx            Individual tile button with marquee overflow
-    BrainTileEditor.tsx      Tile with dropdown context menu (insert/replace/delete)
-    BrainTilePickerDialog.tsx  Available tiles grouped by kind
+    BrainTileEditor.tsx      Placed tile: tap arms the edit point, right-click/long-press opens its menu
+    BrainCandidateStrip.tsx  Candidate offering laid over the rules below the armed one, plus the filter input its sentence line hosts
+    edit-point.ts            Edit-point positions around a placed tile and the arming each one takes
+    editor-layers.ts         The editor's stacking steps: rule content, card chrome, offering, dialog chrome
     TileValue.tsx            Renders literal values or variable names
     CreateVariableDialog.tsx   Dialog for naming a new variable
     CreateLiteralDialog.tsx    Dialog for app-specific custom literal types
@@ -54,16 +56,18 @@ src/
     rule-clipboard.ts        Serialize/deserialize rules for clipboard
     tile-clipboard.ts        Serialize/deserialize tiles for clipboard
     tile-badges.ts           Tile badge rendering helpers
-    commands/                Command pattern for undo/redo
-      BrainCommand.ts        BrainCommand interface + BrainCommandHistory
-      PageCommands.ts        Add/Remove/ReplaceLast page commands
-      RenameCommands.ts      Rename brain/page commands
-      RuleCommands.ts        Add/Delete/Move/Indent/Outdent rule commands
-      TileCommands.ts        Add/Insert/Replace/Remove tile commands
+    insertion-context.ts     buildInsertionContext for the armed position
+    candidate-strip-model.ts Candidate grouping, filtering, commit keys, ranker seam
     hooks/
       useRuleCapabilities.ts   Rule capability detection
       useTileSelection.ts      Tile selection flow + factory tile handoff
+      useCandidateStrip.ts     Oracle query + filter/offering/commit state for the strip
 ```
+
+The editing command classes and `BrainCommandHistory` (undo/redo) live in
+`packages/core/src/brain/model/commands/` and are imported from
+`@mindcraft-lang/core/brain/model`; this package re-exports them from its
+barrel for consuming apps.
 
 ## BrainEditorContext
 
@@ -78,7 +82,7 @@ Host apps supply a `BrainEditorConfig` object with:
 | `customLiteralTypes`         | `CustomLiteralType[]`         | Optional app-defined literal tile types (e.g., Vector2) |
 | `getDefaultBrain`            | `() => IBrainDef`             | Optional factory for creating new empty brains          |
 
-| `onTileHelp` | `(tileDef: IBrainTileDef) => void` | Optional callback for tile Help menu item (docs integration) |
+| `onTileDocs` | `(tileDef: IBrainTileDef) => void` | Optional callback opening a tile's documentation (docs integration) |
 | `docsIntegration` | `{ isOpen, toggle, close }` | Optional docs sidebar controls for the editor toolbar |
 
 ### CustomLiteralType
@@ -91,6 +95,220 @@ Each entry defines a custom literal that the `CreateLiteralDialog` can create:
 | `label`        | `string`                                                  | Display label in the dialog                                 |
 | `fields`       | `{ name, label, placeholder }[]`                          | Input fields for the literal value                          |
 | `createTileId` | `(values: Record<string, string>) => string \| undefined` | Builds a tile ID from field values, or undefined if invalid |
+
+## Color Token Contract
+
+`src/ui.css` is the home of the shared token contract. Components reference token
+NAMES only and never a palette literal for a role the contract covers; each app
+supplies the VALUES in its own `globals.css`, which is imported after `ui.css` so
+the app values win. The `--color-brain-*` group covers the editor: the page
+canvas and the rule cards, which are GRADIENT PAIRS and have no flat token --
+`desk-from` / `desk-to` / `desk-glow` and `rule-from` / `rule-to`, applied as a
+`linear-gradient` in a style prop, so `bg-brain-desk` and `bg-brain-rule` do not
+exist and resolve to nothing; `tile-border` and `armed`, `accent`
+/ `accent-ink` / `on-accent`, `ink` and `recess`, `inline-ink` (the label an
+inline chip carries in documentation prose), `amber` / `amber-ink` /
+`amber-wash`, `warn` / `warn-edge` / `warn-ink` (the badge on a tile whose
+reading is incomplete), `timed` / `timed-ink` (the badge on an action that may
+take time; the ink draws both the chip's edge and its glyph), `capsule` /
+`capsule-edge` / `capsule-ink`, and `pill` / `pill-hover` / `pill-edge` /
+`pill-ink`.
+
+Roles the whole design system already names are taken from it, not re-minted
+under `--color-brain-*`: the editor's removal control and its badge for a tile
+that does not parse read in `--color-destructive` /
+`--color-destructive-foreground`.
+
+Rules a theme must hold to:
+
+- Amber is semantic. It marks a change -- a word whose tile just changed, text
+  naming no tile that fits -- and is never used as an accent. Its three meanings
+  are separately named: `amber` marks a change, `warn` badges an incomplete
+  reading. Retuning one must not move the other.
+- The accent and the two side hues a tile is filled in must stay mutually
+  distinguishable.
+
+Alpha steps stay on the utility (`text-brain-ink/70`), not in the token, so a
+theme supplies one ink and the hierarchy of steps follows.
+
+Side hues do NOT come through CSS: they arrive per tile as `TileVisual.colorDef`
+from `BrainEditorConfig`.
+
+Tile chrome derived from a tile's own hue lives in
+`brain-editor/tile-visual-utils.ts` (`kDefaultTileHue`, `tileEdgeColor`,
+`tileBorderColor`); `packages/docs` imports it so a documentation illustration
+and a placed tile cannot drift. Custom properties inherit, so `packages/docs`
+also picks up whichever host app renders it, with no threading and no config.
+
+## Docs Panel Inset -- `--docs-panel-inset`
+
+`DocsSidebar` in `packages/docs` publishes a custom property on the document
+root, `--docs-panel-inset`: the share of the viewport width its open desktop
+panel covers, written as a CSS percentage. It reads `0%` whenever the panel
+covers nothing a desktop layout has to avoid -- closed, unmounted, or in its
+mobile full-screen shape.
+
+`DialogContent` (`src/ui/dialog.tsx`) consumes it. Its `left` and `max-width`
+subtract the inset, so a dialog centres itself in the width the panel leaves
+free instead of sliding underneath it. `BrainEditorDialog` repeats the same
+subtraction in its own `sm:` overrides, because it replaces both properties.
+
+Rules for this contract:
+
+- Read it with a `0%` fallback (`var(--docs-panel-inset,0%)`). Nothing declares
+  a default, so a consumer with no docs package installed must still lay out.
+- Keep it a percentage. The panel's own width is viewport-relative, so a
+  window resize reflows both sides with no listener; a pixel value would go
+  stale.
+- The panel rewrites the property on every pointer move of its resize
+  separator, alongside its inline width, so consumers track a live drag without
+  the panel re-rendering per frame. Anything reading it must therefore work
+  from CSS, not from a React render.
+- Nothing in the type system checks this. A change on either side has to be
+  matched by hand; `language-docs.instructions.md` carries the publisher's half.
+
+## Soft Keyboard Inset -- `--keyboard-inset`
+
+`src/ui/keyboard-inset.ts` publishes a custom property on the document root,
+`--keyboard-inset`: the height of the layout viewport's bottom edge that the
+soft keyboard covers, written in CSS pixels. It reads `0px` whenever the whole
+layout viewport is reachable.
+
+`DialogContent` (`src/ui/dialog.tsx`) consumes it. Its `top` subtracts half the
+inset, so a dialog centres itself in the height the keyboard leaves free
+instead of sitting behind it. Every dialog that replaces `top` in its own
+`sm:` overrides has to repeat the subtraction, and every one that pins a
+height has to give up the covered height as well, or its lower half stays
+behind the keyboard. Three do: `BrainEditorDialog` (its rules and candidate
+strip), `ProjectPickerDialog` and `ExtensionBrowserDialog` (their search
+fields).
+
+Rules for this contract:
+
+- Read it with a `0px` fallback (`var(--keyboard-inset,0px)`). It is unset
+  whenever no dialog is open, and stays unset in an environment with no
+  `visualViewport`.
+- Keep it a length, not a percentage. Keyboard height has no relation to
+  viewport height, and the publisher re-writes the property on every visual
+  viewport `resize` and `scroll`, so nothing goes stale.
+- **Derive it from occlusion, never from `visualViewport.height` alone.** The
+  visual viewport also moves under pinch-zoom and under browser chrome
+  collapsing on scroll; a height-only reading drifts on both and the dialog
+  looks broken while nothing is wrong. `keyboardInsetPx` computes
+  `innerHeight - (visualViewport.height * visualViewport.scale +
+  visualViewport.offsetTop)`, clamped at zero: the scale factor puts the visual
+  height back into layout pixels so a pinch-zoom reads `0`, and the offset
+  cancels a viewport that has merely been scrolled. `keyboard-inset.spec.ts`
+  pins those cases.
+- There is no threshold. Measured on desktop Chrome, `innerHeight` and
+  `visualViewport.height` agree exactly, so the property reads `0px` and
+  desktop geometry is untouched. Add one only against a measured non-zero
+  resting delta.
+- The publisher is subscription-counted and lives inside the portaled dialog
+  content, which mounts only while a dialog is open. Nested dialogs each hold a
+  subscription; the last release detaches the listeners and removes the
+  property. Anything else that needs the inset takes its own subscription
+  rather than assuming a dialog is up.
+- Nothing in the type system checks this. A change on either side has to be
+  matched by hand.
+
+## Dialogs, Portals and Focus
+
+Two constraints here are not enforced by types and have each cost a bug.
+
+**A controlled Radix `Dialog` with no `DialogTrigger` drops the keyboard on `document.body`
+when it closes.** Radix composes an internal `onUnmountAutoFocus` that unconditionally
+prevents the default and focuses `context.triggerRef.current`; with no trigger rendered
+that ref is null, so focus falls to the body. Every dialog in this package is controlled
+and trigger-less, so every one inherits the trap. Pass an explicit `onCloseAutoFocus`, or
+make sure some other cleanup takes the keyboard back after the dialog unmounts.
+
+This matters more than it looks: **focus moving to the body fires `focusout` but no
+`focusin`**, so any mechanism listening for `focusin` to reclaim a stranded keyboard --
+the brain editor's included -- is blind to that landing and cannot recover from it.
+
+Two further facts make `onCloseAutoFocus` harder to write than it looks:
+
+- **It also fires when the `modal` prop changes.** Radix picks a different content
+  component per mode, so flipping `modal` unmounts one focus scope and mounts another
+  while the dialog stays open, and the unmounted scope runs a full close pass. The brain
+  editor flips `modal` whenever the documentation panel opens. A close pass must tell the
+  two apart before it acts; the editor marks its content with `data-brain-editor-content`
+  and reads whether a replacement is already standing. `isOpen` does NOT answer this: the
+  pass runs from a `setTimeout(0)`, and a host that stops rendering the dialog on close
+  never re-runs the effect that would have recorded the new value.
+- **Restoring to the recorded opener needs a fallback that cannot be unmounted.** Checking
+  `isConnected` and returning is what drops the keyboard on the body, because the
+  restoration Radix then runs targets a null `triggerRef`. `brain-editor/editor-return-focus.ts`
+  records the opener plus its ancestors, hands the keyboard to the nearest one still
+  connected, and falls through to the document's `main` landmark.
+
+**Portaled content cannot be server-rendered, so it cannot be asserted in a spec.**
+`packages/ui` has no jsdom and specs render through `react-dom/server` only. Radix's
+`Portal` renders `null` until a client layout effect gives it `document.body` as a
+container, so `renderToStaticMarkup(<SomeDialog isOpen />)` returns the empty string --
+no attribute, no marker, no text inside a dialog, menu, popover or tooltip ever reaches
+server markup. Verify those surfaces in a browser; pin the module-level predicates behind
+them instead, which is what `keyboard-hold.spec.ts` does.
+
+## Touch Targets
+
+Under a coarse pointer every control in the app chrome measures at least 44px on
+both axes, and every field the keyboard types into is set at 1rem -- below 16px
+iOS Safari zooms the page in when a field takes focus, and that applies to
+`<select>` exactly as it does to `<input>`.
+
+**The floor is shared, not per call site.** It lives in `src/ui.css` under
+"Coarse-pointer target floor": a base-layer rule that floors `button`, `select`,
+`textarea`, `input` and `a[href]`, plus a utilities-layer rule that sets the type
+size on the three field elements. A new control in either app is covered the day
+it is written, with nothing to remember.
+
+Rules that bind anything touching this:
+
+- **Never detect the device or the user agent.** iPadOS Safari reports a macOS
+  user agent, so a UA check misses the exact device this floor exists for.
+  `@media (pointer: coarse)` -- the `pointer-coarse:` variant in Tailwind -- is
+  the only signal.
+- **Floor with `min-h` / `min-w`, never `h` / `w`.** A minimum leaves the call
+  site's own height describing the fine-pointer geometry, and it survives
+  `tailwind-merge` when a caller overrides the size, which a matching `h-*` would
+  not.
+- **The size floor sits in the base layer**, so a call site that must stay
+  smaller overrides it with a `pointer-coarse:min-h-*` / `pointer-coarse:min-w-*`
+  utility.
+- **The type floor sits in the utilities layer**, because a `text-sm` on the
+  field would otherwise win over a base rule. It therefore outranks every
+  font-size utility: a field that wants to read larger under a coarse pointer has
+  to mark its own size important (`pointer-coarse:text-lg!`).
+- **A control whose shape would break must be exempted in `ui.css`, not worked
+  around at the call site**, and the exemption says what reaches 44px instead.
+  Two stand today: everything inside `[data-brain-editor-content]`, which sizes
+  its own controls, and `role="switch"`, whose pill would square off into a blob
+  and which grows a `::before` hit area instead.
+- **Primitives keep their own `pointer-coarse:` floors** even where the shared
+  rule would repeat them, because the shared rule stops at the brain editor's
+  edge and the editor uses `Button`, `Input` and the menu rows. Menu rows are not
+  `<button>` at all -- Radix renders `div[role="menuitem"]` -- so
+  `dropdown-menu.tsx` and `context-menu.tsx` carry the only floor those rows get.
+- **`::before` insets are measured from the padding box.** A transparent border
+  makes that box smaller than the rect you are aiming at, and the difference is
+  silent -- the `Switch` pill's 2px border left its band at 40x40 while the
+  intended target was 44x44. Subtract the border before choosing the inset.
+- **A `::before` band paints over whatever sits under it, so it needs the space
+  to be free.** The band belongs to a positioned element and its neighbours
+  usually are not positioned, so it wins the hit test against them whatever the
+  DOM order. A band is therefore only correct where the layout already leaves
+  44px clear; where controls are packed closer, the spacing has to give first.
+  `Slider` is the open case: its root box is the 8px track, since Radix
+  positions the thumb absolutely, and neither the element floor nor a band
+  reaches 44px for it today.
+
+Geometry is unassertable here: `packages/ui` has no jsdom and specs render
+through `react-dom/server`. Verify a coarse floor in a browser by replaying the
+`@media (pointer: coarse)` blocks into the live page unconditionally, which
+exercises the real cascade; measure with `getBoundingClientRect`, never a
+screenshot.
 
 ## Adding UI Primitives
 
@@ -107,10 +325,12 @@ The documentation sidebar, registry, markdown renderer, and standalone docs page
 
 The brain editor integrates with docs via two optional `BrainEditorConfig` fields:
 
-- `onTileHelp` -- callback invoked when a user right-clicks a tile and selects Help
-  (used by `BrainTileEditor.tsx`)
+- `onTileDocs` -- callback invoked when a user opens a placed tile's documentation, either
+  from the docs button the offering's position row stands or by selecting Docs in the
+  tile's menu (right-click, or long-press on touch); see `BrainTileMenu.tsx`
 - `docsIntegration` -- `{ isOpen, toggle, close }` for the docs toggle button in the
-  brain editor toolbar and close-on-exit behavior (used by `BrainEditorDialog.tsx`)
+  brain editor toolbar, for Escape closing an open panel instead of the editor, and
+  for close-on-exit behavior (used by `BrainEditorDialog.tsx`)
 
 These are wired up by the host app (see `apps/ecosim/src/App.tsx` `DocsBrainEditorProvider`).
 
@@ -129,6 +349,39 @@ resolve: {
   },
 },
 ```
+
+**DO NOT ADD `resolve.dedupe: ["react", "react-dom"]`.** `@vitejs/plugin-react` already sets it, so an
+explicit copy duplicates a guarantee an existing layer provides. Verified 2026-08-02: with the line
+removed, `resolve.dedupe` still resolves to `["react","react-dom"]`, and a production build contains
+exactly one React, from the app's own `node_modules`.
+
+**NEVER PUT THIS PACKAGE IN `optimizeDeps.exclude`.** That is the real hazard, and it caused a live
+`Invalid hook call` in `apps/microbit-sim`:
+
+- The package is ALIASED TO SOURCE, so Vite never prebundles it and the exclusion buys nothing.
+- **IT IS NOT WHAT GIVES YOU HOT RELOAD.** That is the reason someone reaches for it, and it is
+  wrong: the ALIAS is what makes Vite treat these files as project source, watched and hot-reloaded
+  natively. `optimizeDeps` only governs prebundling of things resolved into `node_modules`.
+  Confirmed 2026-08-02 -- HMR on `packages/ui` works with the exclusion removed, and `apps/ecosim`
+  has run the whole project with the alias and WITHOUT the exclusion.
+- But excluding it stops Vite's dependency SCANNER walking into that source, so the Radix packages it
+  imports are missed on the first pass and discovered mid-load on the first page request.
+- Vite then runs a SECOND optimize pass and reloads. Modules served inside that window get a second
+  React instance -- `Invalid hook call`, naming whichever Radix component was late (it named
+  `<DropdownMenu>`), healed by the reload that follows.
+
+That is why the failure was cold-start-only, `--force`-only, and confined to one app: `apps/ecosim`
+excludes only `@mindcraft-lang/core` and `zod`, and never saw it.
+
+Two things worth knowing if you are diagnosing something similar:
+
+- **Matching React versions does NOT fix a genuine duplication.** Hook dispatch lives in module-scoped
+  state, so two copies of the SAME version are still two instances. Only single-instance resolution
+  helps.
+- **There is no `vite.config.*` at any package root.** Every script passes `--config vite/config.*.mjs`.
+  Running bare `npx vite` therefore uses Vite's built-in defaults -- no aliases, no plugins, and so no
+  `plugin-react` dedupe -- which reproduces this error for reasons that have nothing to do with the
+  repo's real configuration.
 
 **tsconfig.json**:
 

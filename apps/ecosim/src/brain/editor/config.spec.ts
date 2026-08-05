@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { IBrainActionTileDef } from "@mindcraft-lang/core/brain";
 import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
+import { createDefaultLocalizer } from "@mindcraft-lang/core/localization";
 import { bag, mkCallDef } from "@mindcraft-lang/core/runtime";
 import type { EcosimEnvironmentStore } from "../../services/ecosim-environment-store";
 import { buildBrainEditorConfig } from "./config";
@@ -14,7 +15,7 @@ function actionTile(key: string): IBrainActionTileDef {
 /** A store stand-in exposing only what `buildBrainEditorConfig` reads. */
 function fakeStore(getTileCompileDiagnostics: (key: string) => unknown | undefined): EcosimEnvironmentStore {
   return {
-    env: { brainServices: {}, tileCatalogs: () => [] },
+    env: { brainServices: {}, tileCatalogs: () => [], appServices: { localizer: createDefaultLocalizer() } },
     resolveVfsAssetUrl: (url: string) => url,
     activeProjectManifest: undefined,
     host: { installedLibraries: [], getTileCompileDiagnostics },

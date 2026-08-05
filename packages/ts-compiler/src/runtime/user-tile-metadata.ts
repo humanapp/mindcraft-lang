@@ -216,6 +216,7 @@ export function buildUserTileMetadata(
     iconUrl: program.iconUrl,
     docsMarkdown: program.docsMarkdown,
     tags: program.tags,
+    language: program.language,
   };
 
   const userTileCaps = new BitSet().set(CoreCapabilityBits.UserTile);

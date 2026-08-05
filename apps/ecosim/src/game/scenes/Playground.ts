@@ -4,15 +4,37 @@ import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPES, type ArchetypePhysicsConfig } from "@/brain/archetypes";
 import type { Blip } from "@/brain/blip";
 import { BLIP_RADIUS } from "@/brain/blip";
+import { type BrainLoadFailure, toBrainLoadFailure } from "@/brain/brain-load-failure";
 import { Engine } from "@/brain/engine";
 import type { ScoreSnapshot } from "@/brain/score";
 import { STORE_REGISTRY_KEY } from "@/game/main";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
 /**
- * Registry key where `StartGame` stores its scene-ready callback.
- * Playground reads this in `create()` to notify React without an EventBus.
+ * Registry key where `StartGame` stores its brain-state callback.
+ * Playground reads this to notify React without an EventBus.
  */
-export const SCENE_READY_KEY = "__onSceneReady";
+export const SCENE_BRAIN_STATE_KEY = "__onSceneBrainState";
+
+/**
+ * What the {@link SCENE_BRAIN_STATE_KEY} callback receives each time the
+ * scene's brain availability changes.
+ */
+export interface SceneBrainState {
+  /** The running scene. Live and interactive whether or not brains loaded. */
+  scene: Playground;
+  /**
+   * Whether the scene can supply a brain def right now. False while a load is
+   * in flight, after a load failed, and from the moment a project switch tears
+   * the engine down until the next load resolves.
+   */
+  brainsLoaded: boolean;
+  /**
+   * Why the archetype brains could not be loaded, or undefined when they
+   * loaded. While it is set the scene spawns no actors and holds no brain to
+   * edit.
+   */
+  brainLoadFailure?: BrainLoadFailure;
+}
 
 // Collision categories for Matter.js (bitmask)
 const CATEGORY_WALL = 0x0001;
@@ -186,9 +208,11 @@ export class Playground extends Scene {
 
     this.unsubProjectUnloading = store.onProjectUnloading(() => {
       this.engine.shutdown();
+      this.reportBrainState();
     });
     this.unsubProjectLoaded = store.onProjectLoaded(() => {
       this.engine.shutdown();
+      this.reportBrainState();
       // Wait for the store to finish reloading project app data (obstacles,
       // desired counts) before restarting the scene. Otherwise create() may
       // run with stale cached data from the previous project.
@@ -261,14 +285,26 @@ export class Playground extends Scene {
     this.engine.loadBrains().then(
       () => {
         this.scene.resume();
-        const onReady = this.registry.get(SCENE_READY_KEY) as ((scene: Phaser.Scene) => void) | undefined;
-        onReady?.(this);
+        this.reportBrainState();
       },
       (err) => {
         console.error("Failed to load brains:", err);
         this.scene.resume();
+        this.reportBrainState(toBrainLoadFailure(err));
       }
     );
+  }
+
+  /**
+   * Push this scene's brain availability, read from the engine, to the
+   * {@link SCENE_BRAIN_STATE_KEY} callback. Does nothing when no callback is
+   * registered.
+   *
+   * @param brainLoadFailure Why the last load failed, when it did.
+   */
+  private reportBrainState(brainLoadFailure?: BrainLoadFailure): void {
+    const onBrainState = this.registry.get(SCENE_BRAIN_STATE_KEY) as ((state: SceneBrainState) => void) | undefined;
+    onBrainState?.({ scene: this, brainsLoaded: this.engine.hasLoadedBrains, brainLoadFailure });
   }
 
   private shutdown() {
@@ -481,11 +517,19 @@ export class Playground extends Scene {
     this.matter.world.engine.timing.timeScale = speed;
   }
 
-  // Methods to access and update engine braindefs
-  getBrainDef(archetype: Archetype): BrainDef {
+  /**
+   * The archetype's current brain def, or undefined while the scene's engine
+   * is still loading brains. A scene restart puts the engine back into that
+   * state.
+   */
+  getBrainDef(archetype: Archetype): BrainDef | undefined {
     return this.engine.getBrainDef(archetype);
   }
 
+  /**
+   * Replace the archetype's brain def and push it onto every live actor of
+   * that archetype. Does nothing while the engine is still loading brains.
+   */
   updateBrainDef(archetype: Archetype, newBrainDef: BrainDef) {
     this.engine.updateBrainDef(archetype, newBrainDef);
   }

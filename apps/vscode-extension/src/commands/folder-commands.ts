@@ -1,4 +1,13 @@
-import { type ExtensionCatalogDocumentEntry, parseExtensionReference } from "@mindcraft-lang/app-host";
+import {
+  buildUnpackedTree,
+  DEFAULT_MAX_FILE_SIZE,
+  type ExtensionCatalogDocumentEntry,
+  isUnpackRefusal,
+  parseExtensionReference,
+  seedProjectTargets,
+} from "@mindcraft-lang/app-host";
+import type { MindcraftProjectDocumentValidationError } from "@mindcraft-lang/service-api";
+import { parseMindcraftProjectDocument } from "@mindcraft-lang/service-api";
 import * as vscode from "vscode";
 import { MINDCRAFT_JSON } from "../mindcraft-json";
 import {
@@ -14,6 +23,7 @@ import {
   resolveFolderTargetDescriptor,
   resolveTargetAppRoot,
 } from "../services/folder-target-resolver";
+import { isSafeRelativePath } from "../services/path-confinement";
 import { buildProjectSkeleton, DEV_TARGET_SETTING, readDevTargetDescriptor } from "../services/project-skeleton";
 import { ensureCachedTargetApp, listLatestTargetRelease } from "../services/target-app-cache-host";
 import {
@@ -44,6 +54,9 @@ export function registerFolderCommands(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("mindcraft.newProject", async (name?: string) => {
       await newProject(context, name);
+    }),
+    vscode.commands.registerCommand("mindcraft.importProject", async () => {
+      await importProject(context);
     }),
     vscode.commands.registerCommand("mindcraft.openEditor", async () => {
       if (revealFolderSessionEditor()) {
@@ -326,6 +339,15 @@ async function openProjectFolder(context: vscode.ExtensionContext): Promise<void
   if (!folder) {
     return;
   }
+  await hostProjectFolder(context, folder);
+}
+
+/**
+ * Resolve `folder`'s declared target to its hosted app and open the folder's
+ * editor session. Shows the target-resolution error message and opens nothing
+ * when the folder declares no hostable target or its app cannot be loaded.
+ */
+async function hostProjectFolder(context: vscode.ExtensionContext, folder: vscode.WorkspaceFolder): Promise<void> {
   const resolution = await resolveFolderTargetDescriptor(folder.uri);
   if (!resolution.ok) {
     vscode.window.showErrorMessage(targetResolutionFailureMessage(resolution));
@@ -409,6 +431,88 @@ async function newProject(context: vscode.ExtensionContext, nameArgument?: strin
   }
   await vscode.workspace.fs.writeFile(manifestUri, new TextEncoder().encode(skeleton));
   openFolderProjectSession(context, folder, appRoot);
+}
+
+/**
+ * Seed an empty workspace folder from a `.mindcraft` export and open its hosted
+ * editor: prompt for the file, pick the target workspace folder, refuse a folder
+ * that already holds a project, then unpack the document's embedded manifest to
+ * `mindcraft.json` and its contents to the folder before hosting it. Surfaces a
+ * stable error code for an unreadable, oversized, invalid, or unsafe document
+ * and writes nothing in those cases.
+ */
+async function importProject(context: vscode.ExtensionContext): Promise<void> {
+  const picked = await vscode.window.showOpenDialog({
+    canSelectMany: false,
+    filters: { "Mindcraft Project": ["mindcraft"] },
+  });
+  const fileUri = picked?.[0];
+  if (!fileUri) {
+    return;
+  }
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (folders.length === 0) {
+    vscode.window.showErrorMessage("Open the folder to import the Mindcraft project into first.");
+    return;
+  }
+  const folder = await pickFolder(folders);
+  if (!folder) {
+    return;
+  }
+  const manifestUri = vscode.Uri.joinPath(folder.uri, MINDCRAFT_JSON);
+  if (await fileExists(manifestUri)) {
+    vscode.window.showErrorMessage(`${folder.name} already contains ${MINDCRAFT_JSON}. Use Open Project Folder.`);
+    return;
+  }
+
+  let bytes: Uint8Array;
+  try {
+    bytes = await vscode.workspace.fs.readFile(fileUri);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Could not read ${fileUri.fsPath}: ${message}`);
+    return;
+  }
+  if (bytes.byteLength > DEFAULT_MAX_FILE_SIZE) {
+    vscode.window.showErrorMessage(`The project file exceeds the maximum size of ${DEFAULT_MAX_FILE_SIZE} bytes.`);
+    return;
+  }
+
+  const parsed = parseMindcraftProjectDocument(new TextDecoder().decode(bytes));
+  if (!parsed.ok) {
+    vscode.window.showErrorMessage(importDocumentFailureMessage(parsed.errors));
+    return;
+  }
+  const tree = buildUnpackedTree(parsed.document, undefined);
+  if (isUnpackRefusal(tree)) {
+    vscode.window.showErrorMessage(`${tree.code}: ${tree.message}`);
+    return;
+  }
+  const unsafe = tree.files.find((file) => !isSafeRelativePath(file.path));
+  if (unsafe !== undefined) {
+    vscode.window.showErrorMessage(`The project file names an unsafe path "${unsafe.path}"; nothing was written.`);
+    return;
+  }
+
+  for (const file of tree.files) {
+    const slash = file.path.lastIndexOf("/");
+    if (slash > 0) {
+      await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(folder.uri, file.path.slice(0, slash)));
+    }
+    await vscode.workspace.fs.writeFile(
+      vscode.Uri.joinPath(folder.uri, file.path),
+      new TextEncoder().encode(file.content)
+    );
+  }
+  const manifestText = seedProjectTargets(tree.manifestText, targetRegistryEntries());
+  await vscode.workspace.fs.writeFile(manifestUri, new TextEncoder().encode(manifestText));
+  await hostProjectFolder(context, folder);
+}
+
+/** The user-facing message naming the stable codes of a rejected project document. */
+function importDocumentFailureMessage(errors: readonly MindcraftProjectDocumentValidationError[]): string {
+  const details = errors.map((error) => `${error.code} at ${error.path}: ${error.message}`).join(" ");
+  return `The selected file is not a valid Mindcraft project document. ${details}`;
 }
 
 let testTargetPickCoordinate: string | undefined;

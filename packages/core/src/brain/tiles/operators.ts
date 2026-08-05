@@ -22,8 +22,9 @@ export class BrainTileOperatorDef extends BrainTileDefBase {
 }
 
 /**
- * Registers all core operator tile definitions with the tile catalog.
- * Sets appropriate placement restrictions for each operator tile.
+ * Registers all core operator tile definitions with the tile catalog, each with
+ * its placement restriction, the label its chip displays, and -- where the two
+ * differ -- the form it reads as in a projected sentence.
  */
 export function registerCoreOperatorTileDefs(services: BrainServices) {
   const tiles = services.edit.tiles;
@@ -32,21 +33,64 @@ export function registerCoreOperatorTileDefs(services: BrainServices) {
     tiles.registerTileDef(tileDef);
   };
 
-  registerCoreOperatorTileDef(CoreOpId.And, { placement: TilePlacement.EitherSide });
-  registerCoreOperatorTileDef(CoreOpId.Or, { placement: TilePlacement.EitherSide });
-  registerCoreOperatorTileDef(CoreOpId.Not, { placement: TilePlacement.EitherSide });
-  registerCoreOperatorTileDef(CoreOpId.Add, { placement: TilePlacement.EitherSide });
-  registerCoreOperatorTileDef(CoreOpId.Subtract, { placement: TilePlacement.EitherSide });
-  registerCoreOperatorTileDef(CoreOpId.Multiply, { placement: TilePlacement.EitherSide });
-  registerCoreOperatorTileDef(CoreOpId.Divide, { placement: TilePlacement.EitherSide });
-  registerCoreOperatorTileDef(CoreOpId.Negate, { placement: TilePlacement.EitherSide });
-  registerCoreOperatorTileDef(CoreOpId.EqualTo, { placement: TilePlacement.WhenSide });
-  registerCoreOperatorTileDef(CoreOpId.NotEqualTo, { placement: TilePlacement.WhenSide });
-  registerCoreOperatorTileDef(CoreOpId.LessThan, { placement: TilePlacement.WhenSide });
-  registerCoreOperatorTileDef(CoreOpId.LessThanOrEqualTo, { placement: TilePlacement.WhenSide });
-  registerCoreOperatorTileDef(CoreOpId.GreaterThan, { placement: TilePlacement.WhenSide });
+  registerCoreOperatorTileDef(CoreOpId.And, {
+    placement: TilePlacement.EitherSide,
+    metadata: { label: "AND", language: { form: "and" } },
+  });
+  registerCoreOperatorTileDef(CoreOpId.Or, {
+    placement: TilePlacement.EitherSide,
+    metadata: { label: "OR", language: { form: "or" } },
+  });
+  registerCoreOperatorTileDef(CoreOpId.Not, {
+    placement: TilePlacement.EitherSide,
+    metadata: { label: "NOT", language: { form: "not" } },
+  });
+  registerCoreOperatorTileDef(CoreOpId.Add, {
+    placement: TilePlacement.EitherSide,
+    metadata: { label: "plus" },
+  });
+  registerCoreOperatorTileDef(CoreOpId.Subtract, {
+    placement: TilePlacement.EitherSide,
+    metadata: { label: "minus" },
+  });
+  registerCoreOperatorTileDef(CoreOpId.Multiply, {
+    placement: TilePlacement.EitherSide,
+    metadata: { label: "multiplied by" },
+  });
+  registerCoreOperatorTileDef(CoreOpId.Divide, {
+    placement: TilePlacement.EitherSide,
+    metadata: { label: "divided by" },
+  });
+  registerCoreOperatorTileDef(CoreOpId.Negate, {
+    placement: TilePlacement.EitherSide,
+    metadata: { label: "negative" },
+  });
+  registerCoreOperatorTileDef(CoreOpId.EqualTo, {
+    placement: TilePlacement.WhenSide,
+    metadata: { label: "equal to", language: { form: "is equal to" } },
+  });
+  registerCoreOperatorTileDef(CoreOpId.NotEqualTo, {
+    placement: TilePlacement.WhenSide,
+    metadata: { label: "not equal to", language: { form: "is not equal to" } },
+  });
+  registerCoreOperatorTileDef(CoreOpId.LessThan, {
+    placement: TilePlacement.WhenSide,
+    metadata: { label: "less than", language: { form: "is less than" } },
+  });
+  registerCoreOperatorTileDef(CoreOpId.LessThanOrEqualTo, {
+    placement: TilePlacement.WhenSide,
+    metadata: { label: "less than or equal to", language: { form: "is less than or equal to" } },
+  });
+  registerCoreOperatorTileDef(CoreOpId.GreaterThan, {
+    placement: TilePlacement.WhenSide,
+    metadata: { label: "greater than", language: { form: "is greater than" } },
+  });
   registerCoreOperatorTileDef(CoreOpId.GreaterThanOrEqualTo, {
     placement: TilePlacement.WhenSide,
+    metadata: { label: "greater than or equal to", language: { form: "is greater than or equal to" } },
   });
-  registerCoreOperatorTileDef(CoreOpId.Assign, { placement: TilePlacement.DoSide });
+  registerCoreOperatorTileDef(CoreOpId.Assign, {
+    placement: TilePlacement.DoSide,
+    metadata: { label: "gets" },
+  });
 }

@@ -1,3 +1,4 @@
+import type { Localizer } from "../../localization/localizer";
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
@@ -125,7 +126,7 @@ export function brainJsonFromPlain(plain: unknown): BrainJson {
 
 /** Concrete {@link IBrainDef} implementation: in-memory brain model with mutation, serialization, and compilation. */
 export class BrainDef implements IBrainDef {
-  private name_: string = "Unnamed Brain"; // TODO: i18n
+  private name_: string = "Unnamed Brain";
   private readonly pages_ = new List<BrainPageDef>();
   private readonly emitter_ = new EventEmitter<BrainDefEvents>();
   private readonly pageSubscriptions_ = new Dict<BrainPageDef, () => void>();
@@ -164,6 +165,10 @@ export class BrainDef implements IBrainDef {
     return this.services_.edit.operatorOverloads;
   }
 
+  servicesLocalizer(): Localizer {
+    return this.services_.app.localizer;
+  }
+
   static emptyBrainDef(services: BrainServices, name?: string): BrainDef {
     const brainDef = new BrainDef(services);
     if (name) {
@@ -194,7 +199,7 @@ export class BrainDef implements IBrainDef {
   }
 
   setName(newName: string) {
-    newName = newName || "Unnamed Brain"; // TODO: i18n
+    newName = newName || "Unnamed Brain";
     if (newName === this.name_) {
       return;
     }
@@ -331,12 +336,34 @@ export class BrainDef implements IBrainDef {
     });
   }
 
+  /**
+   * A separate brain holding a copy of this brain's content, carrying a freshly
+   * minted id of its own. Use it to duplicate a brain into a second brain.
+   *
+   * @param extraCatalogs Catalogs the copy resolves tiles against; this brain's
+   * own extra catalogs when omitted.
+   */
   clone(extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
-    // A clone is a new brain: it drops the source id and mints its own.
-    const json: BrainJson = { ...this.toJson(), id: undefined };
-    const cloned = BrainDef.fromJson(json, this.services_, extraCatalogs ?? this.extraCatalogs_);
-    cloned.copyPersistedIdRefsFrom_(this);
-    return cloned;
+    return this.copyContent_(undefined, extraCatalogs);
+  }
+
+  /**
+   * A detached copy of this brain to edit, carrying this brain's id. Content
+   * changes made to it do not reach this brain, and saving it back over this
+   * brain keeps the brain's identity.
+   *
+   * @param extraCatalogs Catalogs the copy resolves tiles against; this brain's
+   * own extra catalogs when omitted.
+   */
+  workingCopy(extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
+    return this.copyContent_(this.id_, extraCatalogs);
+  }
+
+  private copyContent_(id: string | undefined, extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
+    const json: BrainJson = { ...this.toJson(), id };
+    const copy = BrainDef.fromJson(json, this.services_, extraCatalogs ?? this.extraCatalogs_);
+    copy.copyPersistedIdRefsFrom_(this);
+    return copy;
   }
 
   /**

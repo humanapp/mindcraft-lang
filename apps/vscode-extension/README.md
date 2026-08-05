@@ -65,6 +65,7 @@ For targets whose hardware is programmed by copying a firmware file to a USB dri
 | `Mindcraft: Sync Files` | Web | Re-sync workspace files with the connected app |
 | `Mindcraft: Unlock mindcraft.json for Editing` | Web | Allow direct edits to the project manifest |
 | `Mindcraft: New Project` | Desktop | Create a Mindcraft project in a workspace folder and open the editor |
+| `Mindcraft: Import Project` | Desktop | Seed an empty workspace folder from a `.mindcraft` export and open the editor |
 | `Mindcraft: Open Project Folder` | Desktop | Open the editor for an existing project folder |
 | `Mindcraft: Open Editor` | Desktop | Bring the Mindcraft editor tab to front, reopening it if closed |
 | `Mindcraft: Update Target` | Desktop | Move the project to the latest published build of its target app |

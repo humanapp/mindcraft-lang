@@ -2,8 +2,9 @@
  * Runtime allow-list firewall configuration.
  *
  * Architectural invariant: every value-import reachable from
- * `packages/core/src/runtime/` must resolve to `runtime/` or
- * `platform/`. Anything else is forbidden by default. Adding a new
+ * `packages/core/src/runtime/` must resolve to `runtime/`,
+ * `platform/`, or `localization/`. Anything else is forbidden by
+ * default. Adding a new
  * permitted dependency means editing this allow-list.
  *
  * Type-only imports (`import type`, `export type`, inline-type
@@ -26,7 +27,7 @@ module.exports = {
       severity: "error",
       comment:
         "Architectural invariant: every value-import reachable from " +
-        "packages/core/src/runtime/ must resolve to runtime/ or platform/. " +
+        "packages/core/src/runtime/ must resolve to runtime/, platform/, or localization/. " +
         "Adding a new permitted dependency means editing this allow-list.",
       from: {
         path: "^src/runtime/",
@@ -38,7 +39,7 @@ module.exports = {
       },
       to: {
         path: "^src/",
-        pathNot: "^src/(runtime|platform)/",
+        pathNot: "^src/(runtime|platform|localization)/",
         dependencyTypesNot: ["type-only"],
       },
     },

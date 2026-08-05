@@ -1,9 +1,11 @@
 import type { IBrainTileDefBuilder, ITileCatalog } from "../brain/interfaces/catalog";
+import type { Localizer } from "../localization/localizer";
 import type { IConversionRegistry } from "./conversion-defs";
 import type { IFunctionRegistry } from "./function-defs";
 import type { IBrainActionRegistry } from "./host-bindings";
 import type { IOperatorOverloads, IOperatorTable } from "./operator-defs";
 import type { ProfileNumerics } from "./profile-numerics";
+import type { RuleFiringState } from "./rule-services";
 import type { ITypeRegistry } from "./type-defs";
 import type { Value } from "./value";
 
@@ -26,6 +28,14 @@ export interface IProgramServices {
    * carries no enum entry for `typeId` or the entry has no symbol `key`.
    */
   getEnumSymbolValue(typeId: string, key: string): string | number | undefined;
+
+  /**
+   * Resolve the rule that immediately precedes `ruleFuncId` at its own nesting
+   * level: the same parent for a child rule, the same page's root-rule run for
+   * a root rule. Returns `undefined` when `ruleFuncId` is the first rule at its
+   * level, or is not a rule the loaded program declares.
+   */
+  getPrecedingSiblingRuleFuncId(ruleFuncId: number): number | undefined;
 }
 
 /**
@@ -49,6 +59,28 @@ export interface IRuleVariableServices {
   getByName(ruleFuncId: number | undefined, name: string): Value;
   setByName(ruleFuncId: number | undefined, name: string, value: Value): void;
   clearByName(ruleFuncId: number | undefined, name: string): void;
+}
+
+/**
+ * Per-rule firing records keyed by rule funcId: the outcome of each rule's most
+ * recent WHEN evaluation. The VM writes a record at the WHEN boundary opcodes --
+ * `WHEN_START` marks the rule {@link RuleFiringState.EVALUATING}, and both gates
+ * (`WHEN_END` and `WHEN_END_PRESENT`) store the outcome they computed. The
+ * records are runtime-internal: they are never VM values, never serialized, and
+ * never traced.
+ */
+export interface IRuleFiringServices {
+  /**
+   * The outcome of `ruleFuncId`'s most recent completed WHEN evaluation, or
+   * {@link RuleFiringState.DID_FIRE} when the rule has never recorded one.
+   */
+  get(ruleFuncId: number): RuleFiringState;
+
+  /**
+   * Record `state` for `ruleFuncId`. A `ruleFuncId` of `undefined` (execution
+   * is not inside a rule) is a no-op.
+   */
+  set(ruleFuncId: number | undefined, state: RuleFiringState): void;
 }
 
 /**
@@ -167,6 +199,13 @@ export interface AppServices {
    * bodies when the core components are registered.
    */
   numerics: ProfileNumerics;
+
+  /**
+   * Display-time translation service for the host's current locale. Every
+   * user-visible string core renders goes through it; nothing it produces is
+   * persisted or compiled.
+   */
+  localizer: Localizer;
 }
 
 /**
@@ -228,6 +267,9 @@ export interface BrainInstanceServices {
 
   /** Per-rule variable storage by (rule funcId, name). */
   ruleVars: IRuleVariableServices;
+
+  /** Per-rule WHEN-evaluation outcome records by rule funcId. */
+  ruleFiring: IRuleFiringServices;
 
   /** Page lifecycle operations. */
   pages: IBrainPageServices;

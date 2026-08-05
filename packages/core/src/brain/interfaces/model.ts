@@ -1,3 +1,4 @@
+import type { Localizer } from "../../localization/localizer";
 import type { List, ReadonlyList } from "../../platform/list";
 import type { IConversionRegistry } from "../../runtime/conversion-defs";
 import type { IBrain } from "../../runtime/host-bindings";
@@ -32,6 +33,8 @@ export interface IBrainDef {
   servicesConversions(): IConversionRegistry;
   servicesTypeRegistry(): ITypeRegistry;
   servicesOperatorOverloads(): IOperatorOverloads;
+  /** The display-time localizer edit-time code renders user-visible text through. */
+  servicesLocalizer(): Localizer;
   typecheck(): void;
   compile(): IBrain;
   appendNewPage(): OpResult<{ page: IBrainPageDef; index: number }>;

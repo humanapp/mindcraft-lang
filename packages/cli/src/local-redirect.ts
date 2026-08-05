@@ -185,8 +185,7 @@ export function runLocalBuild(localMain: string, args: readonly string[], baseEn
  *
  * This runs local repository code, like `npx` or a project-local `.bin`; the
  * `name === "mindcraft-cli"` check guards against accidental collision with an
- * unrelated monorepo that also has a `packages/cli`, and is not a security
- * boundary against a hostile repository.
+ * unrelated monorepo that also has a `packages/cli`.
  *
  * @returns True when a local build was re-executed (in which case
  * `process.exitCode` has been set from the child); false when the caller should

@@ -85,7 +85,7 @@ describe("buildAppHostHtml", () => {
     assert.ok(csp);
     const directives = csp[1].split("; ");
     assert.ok(directives.includes("default-src 'none'"));
-    assert.ok(directives.includes(`script-src 'nonce-${NONCE}' ${options.cspSource}`));
+    assert.ok(directives.includes(`script-src 'nonce-${NONCE}' ${options.cspSource} https://cloud.umami.is`));
     assert.ok(directives.includes(`style-src ${options.cspSource} 'unsafe-inline'`));
     assert.ok(directives.includes(`img-src ${options.cspSource} blob: data:`));
     assert.ok(directives.includes(`font-src ${options.cspSource}`));

@@ -25,9 +25,10 @@ import {
   type IBrainActionTileDef,
   type IBrainTileDef,
   type ITileCatalog,
+  isInlineTileDef,
   parseTileId,
+  precedingSiblingConsumerEligible,
   RuleSide,
-  TilePlacement,
 } from "../interfaces";
 import {
   type BrainTileAccessorDef,
@@ -234,7 +235,7 @@ class BrainParser {
         break;
       }
 
-      const isActionCall = (nextTok.kind === "sensor" && !this.isInlineTile(nextTok)) || nextTok.kind === "actuator";
+      const isActionCall = (nextTok.kind === "sensor" && !isInlineTileDef(nextTok)) || nextTok.kind === "actuator";
       const parser = isActionCall ? () => this.parseActionCall(opts) : () => this.parseExpression(opts);
       const diagCode = isActionCall
         ? ParseDiagCode.UnexpectedActionCallAfterExpression
@@ -980,7 +981,7 @@ class BrainParser {
    */
   private parseNudSensor(tok: IBrainTileDef, startPos: number, opts: ParseOpts): Expr {
     const sensorTok = tok as BrainTileSensorDef;
-    if (!this.isInlineTile(tok)) {
+    if (!isInlineTileDef(tok)) {
       // Non-inline sensor in expression position (e.g., operand of a prefix operator).
       // Back up to re-consume the sensor token and parse as a full action call.
       this.i = startPos;
@@ -1141,7 +1142,7 @@ class BrainParser {
     return (
       tok.kind === "modifier" ||
       tok.kind === "parameter" ||
-      (tok.kind === "sensor" && !this.isInlineTile(tok)) ||
+      (tok.kind === "sensor" && !isInlineTileDef(tok)) ||
       tok.kind === "actuator" ||
       (tok.kind === "controlFlow" && (tok as BrainTileControlFlowDef).cfId === CoreControlFlowId.OpenParen)
     );
@@ -1167,11 +1168,6 @@ class BrainParser {
   /** Check if we've reached the end of the token range */
   private atEnd(): boolean {
     return this.i >= this.to;
-  }
-
-  /** Check if a tile has the Inline placement flag set */
-  private isInlineTile(tok: IBrainTileDef): boolean {
-    return tok.placement !== undefined && (tok.placement & TilePlacement.Inline) !== 0;
   }
 }
 
@@ -1254,6 +1250,36 @@ export function validateTilePlacement(tiles: ReadonlyList<IBrainTileDef>, side: 
         span: { from: i, to: i + 1 },
       });
     }
+  }
+  return diags;
+}
+
+/**
+ * Validate that no tile declaring
+ * {@link CoreCapabilityBits.RequiresPrecedingSiblingRule} appears in a rule that
+ * has no rule above it at its own nesting level. Returns one
+ * {@link ParseDiagCode.NoPrecedingSiblingRule} diagnostic per offending tile,
+ * spanning the tile's index in `tiles`.
+ *
+ * @param tiles - The rule side's tile list.
+ * @param hasPrecedingSibling - Whether the enclosing rule has a rule above it
+ *   at its own nesting level.
+ */
+export function validatePrecedingSiblingConsumers(
+  tiles: ReadonlyList<IBrainTileDef>,
+  hasPrecedingSibling: boolean
+): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  if (hasPrecedingSibling) return diags;
+  for (let i = 0; i < tiles.size(); i++) {
+    const tile = tiles.get(i);
+    if (precedingSiblingConsumerEligible(tile, hasPrecedingSibling)) continue;
+    const label = tile.metadata?.label ?? tile.tileId;
+    diags.push({
+      code: ParseDiagCode.NoPrecedingSiblingRule,
+      message: `Tile "${label}" needs a rule above it at the same level`,
+      span: { from: i, to: i + 1 },
+    });
   }
   return diags;
 }

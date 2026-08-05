@@ -554,4 +554,79 @@ export default Sensor({
       "the tiles are identical to the single-root path"
     );
   });
+
+  /**
+   * A tile lives in its own folder (`<base>/<base>.ts`), so removing it names
+   * the folder, not the source file. A host change removes the named path and
+   * everything under it, and the compiler's file set must follow.
+   */
+  describe("a change naming a directory covers the files under it", () => {
+    const FOLDER = "my-actuator";
+    const SOURCE_PATH = `${FOLDER}/${FOLDER}.ts`;
+    const HELPER_PATH = `${FOLDER}/nested/helper.ts`;
+    const ACTION_ID = "acfolder00000001";
+    const ACTION_KEY = `${TEST_PROJECT_NAMESPACE}:user.actuator.${ACTION_ID}`;
+    const FOLDERED_ACTUATOR = `import { Actuator, type Context } from "mindcraft";
+import { step } from "./nested/helper";
+
+export default Actuator({
+  id: "${ACTION_ID}",
+  name: "my actuator",
+  onExecute(ctx: Context): void {
+    step();
+  },
+});
+`;
+    const HELPER = "export function step(): void {}\n";
+
+    function compilerWithFolderedTile(): ReturnType<typeof createWorkspaceCompiler> {
+      const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+      const compiler = createWorkspaceCompiler({
+        projectNamespace: TEST_PROJECT_NAMESPACE,
+        mounts: mountsFor(environment),
+        environment,
+      });
+      compiler.replaceWorkspace(
+        new Map([
+          [FOLDER, { kind: "directory" }],
+          [SOURCE_PATH, { kind: "file", content: FOLDERED_ACTUATOR, etag: "e1", isReadonly: false }],
+          [`${FOLDER}/nested`, { kind: "directory" }],
+          [HELPER_PATH, { kind: "file", content: HELPER, etag: "e2", isReadonly: false }],
+        ])
+      );
+      const seeded = compiler.compile();
+      assert.ok(seeded.bundle?.actions.get(ACTION_KEY), "the foldered actuator compiles into the bundle");
+      return compiler;
+    }
+
+    test("a delete naming the tile's folder drops the action the folder declared", () => {
+      const compiler = compilerWithFolderedTile();
+
+      compiler.applyWorkspaceChange({ action: "delete", path: FOLDER });
+
+      const after = compiler.compile();
+      assert.equal(after.bundle?.actions.get(ACTION_KEY), undefined, "the deleted folder's action leaves the bundle");
+    });
+
+    test("an rmdir naming the tile's folder drops the action the folder declared", () => {
+      const compiler = compilerWithFolderedTile();
+
+      compiler.applyWorkspaceChange({ action: "rmdir", path: FOLDER });
+
+      const after = compiler.compile();
+      assert.equal(after.bundle?.actions.get(ACTION_KEY), undefined, "the removed folder's action leaves the bundle");
+    });
+
+    test("a rename of the tile's folder carries the files under it to the new path", () => {
+      const compiler = compilerWithFolderedTile();
+
+      compiler.applyWorkspaceChange({ action: "rename", oldPath: FOLDER, newPath: "renamed" });
+
+      const after = compiler.compile();
+      const artifact = after.bundle?.actions.get(ACTION_KEY);
+      assert.ok(artifact, "the renamed folder keeps declaring its action");
+      assert.ok(after.projectResult.results.has(`renamed/${FOLDER}.ts`), "the tile source compiles at its new path");
+      assert.equal(after.projectResult.results.has(SOURCE_PATH), false, "no result is keyed at the vacated path");
+    });
+  });
 });

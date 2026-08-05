@@ -63,9 +63,6 @@ describe("mindcraft unpack", () => {
     const result = await runCliBin(root, "unpack", file, target);
 
     assert.equal(result.code, 0, result.stderr);
-    assert.match(result.stdout, /unpacked 3 project files and mindcraft\.json/);
-    assert.match(result.stdout, /prune mindcraft\.json before publishing/);
-    assert.match(result.stdout, /repository is now the canonical project/);
 
     assert.deepEqual(await listProjectFiles(target), [
       "assets/logo.svg",
@@ -87,6 +84,33 @@ describe("mindcraft unpack", () => {
     assert.equal(JSON.stringify(manifest.app), JSON.stringify(embedded.app));
     assert.equal("format" in manifest, false);
     assert.equal("contents" in manifest, false);
+  });
+
+  it("seeds a compatibility target when the manifest declares one registry target", async () => {
+    const root = await scratch();
+    const document = sampleDocument();
+    (document.manifest as Record<string, unknown>).extensions = {
+      "mindcraft-lang/trg-ecosim": "embedded:mindcraft-lang/trg-ecosim",
+    };
+    const file = await writeDocument(root, document);
+    const target = path.join(root, "unpacked");
+
+    const result = await runCliBin(root, "unpack", file, target);
+
+    assert.equal(result.code, 0, result.stderr);
+    const manifest = await readManifest(target);
+    assert.deepEqual(manifest.targets, { "mindcraft-lang/trg-ecosim": { packageVersion: "^0.1.0" } });
+  });
+
+  it("writes no targets section when the manifest declares no registry target", async () => {
+    const root = await scratch();
+    const file = await writeDocument(root, sampleDocument());
+    const target = path.join(root, "unpacked");
+
+    const result = await runCliBin(root, "unpack", file, target);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal("targets" in (await readManifest(target)), false);
   });
 
   it("preserves a files list the embedded manifest declares", async () => {

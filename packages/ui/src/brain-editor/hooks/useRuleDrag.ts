@@ -1,8 +1,6 @@
-import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { kMaxBrainRuleDepth } from "@mindcraft-lang/core/brain/model";
+import type { BrainCommandHistory, BrainPageDef, BrainRuleDef, RuleLocation } from "@mindcraft-lang/core/brain/model";
+import { kMaxBrainRuleDepth, MoveRuleCommand } from "@mindcraft-lang/core/brain/model";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BrainCommandHistory, RuleLocation } from "../commands";
-import { MoveRuleCommand } from "../commands";
 
 const DRAG_THRESHOLD_PX = 5;
 const INDENT_PX = 32;

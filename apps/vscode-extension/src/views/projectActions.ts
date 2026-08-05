@@ -12,6 +12,7 @@ export interface ProjectAction {
 export const PROJECT_ACTIONS: readonly ProjectAction[] = [
   { label: "Create new sensor", commandId: "mindcraft.createSensor", icon: "eye" },
   { label: "Create new actuator", commandId: "mindcraft.createActuator", icon: "zap" },
+  { label: "Import project", commandId: "mindcraft.importProject", icon: "cloud-download" },
   { label: "Open editor", commandId: "mindcraft.openEditor", icon: "window" },
   { label: "Open settings", commandId: "mindcraft.openSettings", icon: "settings-gear" },
 ];

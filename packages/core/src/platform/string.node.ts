@@ -99,6 +99,10 @@ export namespace StringUtils {
     return str.toUpperCase();
   }
 
+  export function toLocaleUpperCase(str: string, locale: string): string {
+    return str.toLocaleUpperCase(locale);
+  }
+
   export function split(str: string, separator: string, limit?: number): string[] {
     return str.split(separator, limit);
   }

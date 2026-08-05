@@ -9,6 +9,15 @@
       "version": "0.9.2",
       "description": "Program the BBC micro:bit (v2) with Mindcraft.",
       "alias": "microbit-v2"
+    },
+    {
+      "kind": "target",
+      "coordinate": "mindcraft-lang/trg-ecosim",
+      "ref": "gh:mindcraft-lang/trg-ecosim@b1b21908ff17e62e520694a3eae336307ee12eb1",
+      "name": "Ecosystem Simulator",
+      "version": "0.1.0",
+      "description": "Program the brains of carnivores, herbivores, and plants in a live 2D ecosystem with Mindcraft.",
+      "alias": "ecosim"
     }
   ]
 }

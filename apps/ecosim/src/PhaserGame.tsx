@@ -1,22 +1,24 @@
 import { useLayoutEffect, useRef } from "react";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
 import StartGame from "./game/main";
+import type { SceneBrainState } from "./game/scenes/Playground";
 
 interface PhaserGameProps {
   store: EcosimEnvironmentStore;
-  onSceneReady?: (scene: Phaser.Scene) => void;
+  /** Called each time the playground scene's brain availability changes. */
+  onSceneBrainState?: (state: SceneBrainState) => void;
 }
 
-export function PhaserGame({ store, onSceneReady }: PhaserGameProps) {
+export function PhaserGame({ store, onSceneBrainState }: PhaserGameProps) {
   const game = useRef<Phaser.Game | null>(null);
-  const callbackRef = useRef(onSceneReady);
-  callbackRef.current = onSceneReady;
+  const callbackRef = useRef(onSceneBrainState);
+  callbackRef.current = onSceneBrainState;
 
   useLayoutEffect(() => {
     void store;
     if (game.current === null) {
-      game.current = StartGame("game-container", store, (scene) => {
-        callbackRef.current?.(scene);
+      game.current = StartGame("game-container", store, (state) => {
+        callbackRef.current?.(state);
       });
     }
 

@@ -2,16 +2,34 @@ import { useState } from "react";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { kStripPopupAttribute } from "./BrainCandidateStrip";
 
 interface CreateVariableDialogProps {
   isOpen: boolean;
   title: string;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Called as the dialog closes, before the keyboard is handed back to the
+   * element that held it when the dialog opened. Calling `preventDefault` on the
+   * event leaves that hand-back to the caller.
+   */
+  onCloseAutoFocus?: (event: Event) => void;
   onSubmit: (variableName: string) => void;
 }
 
-/** Dialog that prompts for a new variable name and submits the trimmed value via `onSubmit`. */
-export function CreateVariableDialog({ isOpen, title, onOpenChange, onSubmit }: CreateVariableDialogProps) {
+/**
+ * Dialog that prompts for a new variable name and submits the trimmed value via
+ * `onSubmit`. Its content carries {@link kStripPopupAttribute}, so the keyboard
+ * landing in it counts as staying in the candidate strip the variable was minted
+ * from.
+ */
+export function CreateVariableDialog({
+  isOpen,
+  title,
+  onOpenChange,
+  onCloseAutoFocus,
+  onSubmit,
+}: CreateVariableDialogProps) {
   const [variableName, setVariableName] = useState("");
 
   const handleSubmit = () => {
@@ -30,7 +48,11 @@ export function CreateVariableDialog({ isOpen, title, onOpenChange, onSubmit }: 
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl">
+      <DialogContent
+        className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl"
+        onCloseAutoFocus={onCloseAutoFocus}
+        {...{ [kStripPopupAttribute]: "" }}
+      >
         <DialogHeader className="border-b border-border pb-4">
           <DialogTitle className="text-foreground font-semibold">{title}</DialogTitle>
           <DialogDescription className="text-muted-foreground">Enter a name for the new variable.</DialogDescription>

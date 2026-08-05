@@ -20,8 +20,14 @@ export function registerCoreControlFlowTileDefs(services: BrainServices) {
     const tileDef = new BrainTileControlFlowDef(cfId, opts);
     tiles.registerTileDef(tileDef);
   };
-  register(CoreControlFlowId.OpenParen, { placement: TilePlacement.EitherSide });
-  register(CoreControlFlowId.CloseParen, { placement: TilePlacement.EitherSide });
+  register(CoreControlFlowId.OpenParen, {
+    placement: TilePlacement.EitherSide,
+    metadata: { label: "(" },
+  });
+  register(CoreControlFlowId.CloseParen, {
+    placement: TilePlacement.EitherSide,
+    metadata: { label: ")" },
+  });
   //registerCoreControlFlowTileDef(CoreControlFlowId.Continue, TilePlacement.DoSide | TilePlacement.InsideLoop, false);
   //registerCoreControlFlowTileDef(CoreControlFlowId.Break, TilePlacement.DoSide | TilePlacement.InsideLoop, false);
   //registerCoreControlFlowTileDef(CoreControlFlowId.ForEach, TilePlacement.WhenSide, false);

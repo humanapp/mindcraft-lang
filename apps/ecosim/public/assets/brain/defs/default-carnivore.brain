@@ -5,7 +5,6 @@
     {
       "version": 2,
       "kind": "literal",
-      "tileId": "tile.literal->string:<string>->chomp!",
       "valueType": "string:<string>",
       "value": "chomp!",
       "valueLabel": "chomp!",
@@ -14,7 +13,6 @@
     {
       "version": 2,
       "kind": "literal",
-      "tileId": "tile.literal->number:<number>->0.5[time_seconds]",
       "valueType": "number:<number>",
       "value": 0.5,
       "valueLabel": "0.5",
@@ -23,16 +21,8 @@
     {
       "version": 2,
       "kind": "page",
-      "tileId": "tile.page->1KQvjJVmrZZ2BqOd",
       "pageId": "1KQvjJVmrZZ2BqOd",
       "label": "Hunt"
-    },
-    {
-      "version": 2,
-      "kind": "page",
-      "tileId": "tile.page->TNMW4vCK6lFCT5UL",
-      "pageId": "TNMW4vCK6lFCT5UL",
-      "label": "Unnamed Page"
     }
   ],
   "pages": [

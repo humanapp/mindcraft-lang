@@ -15,7 +15,10 @@ import { type PrecomputedObstacle, queryVisibleActors, refreshObstaclesFromBodie
 export class Engine {
   private world: ECS.World<Actor>;
   private actors: { [key in Archetype]: ECS.Query<Actor> };
-  private brains!: { [key in Archetype]: BrainDef };
+  /**
+   * Per-archetype brain defs. Undefined until {@link loadBrains} resolves.
+   */
+  private brains?: { [key in Archetype]: BrainDef };
   private moverCfg: { [key in Archetype]: Partial<MoverConfig> };
 
   get clock(): Phaser.Time.Clock {
@@ -93,6 +96,13 @@ export class Engine {
   /** Active blip projectiles. */
   private blipPool!: BlipPool;
 
+  /**
+   * Matter world carrying this engine's physics-step listener. Set by
+   * {@link start} and cleared by {@link shutdown}; undefined outside that
+   * window.
+   */
+  private matterWorld?: Phaser.Physics.Matter.World;
+
   private _isShutdown = false;
   private prevPhysicsTimestamp = 0;
 
@@ -125,15 +135,26 @@ export class Engine {
     this.desiredCounts = { ...store.getDesiredCounts() };
   }
 
+  /**
+   * Build the per-run resources the engine owns -- spatial grid, debug
+   * overlay, blip pool -- and attach the physics-step listener. Call once,
+   * after construction and before {@link tick}. Pair with {@link shutdown}.
+   */
   start(): void {
     this.grid = new SpatialGrid(this.worldWidth, this.worldHeight, 150);
     refreshObstaclesFromBodies(this.obstacleBodies, this.precomputedObstacles);
     this.gridDebugGfx = this.scene.add.graphics();
     this.gridDebugGfx.setDepth(-2);
     this.blipPool = new BlipPool(this);
-    this.scene.matter.world.on("afterupdate", this.onAfterPhysicsUpdate, this);
+    this.matterWorld = this.scene.matter.world;
+    this.matterWorld.on("afterupdate", this.onAfterPhysicsUpdate, this);
   }
 
+  /**
+   * Load each archetype's brain from the active project, falling back to the
+   * default asset or a generated brain. Until this resolves the engine has no
+   * brains and {@link getBrainDef} returns undefined.
+   */
   async loadBrains(): Promise<void> {
     this.brains = {
       carnivore: await this.loadBrainDef("carnivore"),
@@ -151,13 +172,25 @@ export class Engine {
     }
   }
 
+  /**
+   * Release everything the engine owns: the physics-step listener, blip
+   * sprites, each actor's graphics, timers and brain, the loaded archetype
+   * brain defs, and the ECS world. Idempotent -- later calls do nothing. Runs
+   * to completion whether the owning scene is still live or has already torn
+   * down its plugins.
+   */
   shutdown() {
     if (this._isShutdown) return;
     this._isShutdown = true;
-    this.scene.matter.world.off("afterupdate", this.onAfterPhysicsUpdate, this);
+    this.brains = undefined;
+    this.matterWorld?.off("afterupdate", this.onAfterPhysicsUpdate, this);
+    this.matterWorld = undefined;
 
     // Clean up blips
     this.blipPool.destroyAll();
+
+    this.gridDebugGfx?.destroy();
+    this.gridDebugGfx = undefined;
 
     // Clean up each actor's resources (timers, graphics, etc.)
     for (const actor of this.world.entities) {
@@ -308,8 +341,14 @@ export class Engine {
     }
   }
 
-  spawn(archetype: Archetype) {
-    const actor = new Actor(this, archetype, this.brains[archetype], this.moverCfg[archetype]);
+  /**
+   * Add a live actor of `archetype`, running the archetype's current brain.
+   * Returns undefined until {@link loadBrains} has resolved.
+   */
+  spawn(archetype: Archetype): Actor | undefined {
+    const brains = this.brains;
+    if (!brains) return undefined;
+    const actor = new Actor(this, archetype, brains[archetype], this.moverCfg[archetype]);
     this.world.add(actor);
     actor.actorId = this.world.id(actor)!;
     actor.sprite = this.scene.spawn(actor);
@@ -329,11 +368,30 @@ export class Engine {
     }
   }
 
-  getBrainDef(archetype: Archetype): BrainDef {
-    return this.brains[archetype];
+  /**
+   * Whether the engine currently holds a brain for every archetype. False
+   * before {@link loadBrains} resolves, when it rejects, and again once
+   * {@link shutdown} has released the engine. While it is false
+   * {@link getBrainDef} returns undefined for every archetype.
+   */
+  get hasLoadedBrains(): boolean {
+    return this.brains !== undefined;
   }
 
+  /**
+   * The archetype's current brain def, or undefined while {@link loadBrains}
+   * has not resolved.
+   */
+  getBrainDef(archetype: Archetype): BrainDef | undefined {
+    return this.brains?.[archetype];
+  }
+
+  /**
+   * Replace the archetype's brain def and push it onto every live actor of
+   * that archetype. Does nothing until {@link loadBrains} has resolved.
+   */
   updateBrainDef(archetype: Archetype, newBrainDef: BrainDef) {
+    if (!this.brains) return;
     this.brains[archetype] = newBrainDef;
     // Update all existing actors of this archetype with the new brain
     const actorsQuery = this.actors[archetype];

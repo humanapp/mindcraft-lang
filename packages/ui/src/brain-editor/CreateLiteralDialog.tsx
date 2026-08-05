@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { kStripPopupAttribute } from "./BrainCandidateStrip";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { DisplayFormatPicker } from "./DisplayFormatPicker";
 
@@ -12,15 +13,30 @@ interface CreateLiteralDialogProps {
   title: string;
   literalType: string;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Called as the dialog closes, before the keyboard is handed back to the
+   * element that held it when the dialog opened. Calling `preventDefault` on the
+   * event leaves that hand-back to the caller.
+   */
+  onCloseAutoFocus?: (event: Event) => void;
   onSubmit: (value: unknown, displayFormat?: LiteralDisplayFormat) => void;
 }
 
 /**
  * Dialog that creates a new literal tile. Renders inputs appropriate for the
  * given `literalType`: built-in string/number forms, or fields from the matching
- * `customLiteralTypes` entry in {@link BrainEditorConfig}.
+ * `customLiteralTypes` entry in {@link BrainEditorConfig}. Its content carries
+ * {@link kStripPopupAttribute}, so the keyboard landing in it counts as staying
+ * in the candidate strip the literal was minted from.
  */
-export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, onSubmit }: CreateLiteralDialogProps) {
+export function CreateLiteralDialog({
+  isOpen,
+  title,
+  literalType,
+  onOpenChange,
+  onCloseAutoFocus,
+  onSubmit,
+}: CreateLiteralDialogProps) {
   const { customLiteralTypes } = useBrainEditorConfig();
   const [stringValue, setStringValue] = useState("");
   const [numberValue, setNumberValue] = useState("");
@@ -150,7 +166,11 @@ export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, 
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl">
+      <DialogContent
+        className="sm:max-w-106.25 bg-popover border-2 border-border rounded-2xl"
+        onCloseAutoFocus={onCloseAutoFocus}
+        {...{ [kStripPopupAttribute]: "" }}
+      >
         <DialogHeader className="border-b border-border pb-4">
           <DialogTitle className="text-foreground font-semibold">{title}</DialogTitle>
           <DialogDescription className="text-muted-foreground">{getDescription()}</DialogDescription>

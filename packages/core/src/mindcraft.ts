@@ -6,6 +6,7 @@ import type {
   IBrainDef,
   IBrainTileDef,
   ITileCatalog,
+  ITileLanguageMetadata,
   ITileMetadata,
 } from "./brain/interfaces";
 import { TilePlacement } from "./brain/interfaces";
@@ -20,6 +21,7 @@ import { BrainTileModifierDef } from "./brain/tiles/modifiers";
 import { BrainTileParameterDef } from "./brain/tiles/parameters";
 import { BrainTileSensorDef } from "./brain/tiles/sensors";
 import { registerVariableFactoryTileDef } from "./brain/tiles/variables";
+import type { Localizer } from "./localization/localizer";
 import { Dict } from "./platform/dict";
 import { Error } from "./platform/error";
 import { List, type ReadonlyList } from "./platform/list";
@@ -350,6 +352,11 @@ export interface ModifierTileInput {
   readonly id: string;
   readonly label: string;
   readonly iconUrl?: string;
+  /**
+   * Words the sentence projection reads this tile with. Omit for a tile whose
+   * sentence word is its label.
+   */
+  readonly language?: ITileLanguageMetadata;
 }
 
 /** Definition of a parameter tile. */
@@ -437,6 +444,12 @@ type CreateMindcraftEnvironmentOptions = {
    * implementation when omitted.
    */
   readonly numerics?: ProfileNumerics;
+  /**
+   * Display-time translation service shared with every brain and editor
+   * surface this environment feeds. Defaults to
+   * {@link createDefaultLocalizer} when omitted.
+   */
+  readonly localizer?: Localizer;
 };
 
 function buildHostActionBinding(
@@ -832,7 +845,7 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
 
   registerModifiers(defs: readonly ModifierTileInput[]): void {
     for (const def of defs) {
-      const metadata: ITileMetadata = { label: def.label, iconUrl: def.iconUrl };
+      const metadata: ITileMetadata = { label: def.label, iconUrl: def.iconUrl, language: def.language };
       this.brainServices.edit.tiles.registerTileDef(new BrainTileModifierDef(def.id, { metadata }));
     }
   }
@@ -877,8 +890,13 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   private readonly actionResolver: BrainActionResolver;
   private readonly brainJsonMigrations_ = List.empty<BrainJsonMigration>();
 
-  constructor(modules: readonly MindcraftModule[], rng?: IRngServices, numerics?: ProfileNumerics) {
-    this.appServices = createAppServices(rng, numerics);
+  constructor(
+    modules: readonly MindcraftModule[],
+    rng?: IRngServices,
+    numerics?: ProfileNumerics,
+    localizer?: Localizer
+  ) {
+    this.appServices = createAppServices(rng, numerics, localizer);
     this.brainServices = createBrainServices(this.appServices);
     this.actionResolver = new EnvironmentActionResolver(this);
     this.installModules(modules);
@@ -1352,7 +1370,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
 
 /** Construct a {@link MindcraftEnvironment}, installing each module in `options.modules`. */
 export function createMindcraftEnvironment(options: CreateMindcraftEnvironmentOptions = {}): MindcraftEnvironment {
-  return new MindcraftEnvironmentImpl(options.modules ?? [], options.rng, options.numerics);
+  return new MindcraftEnvironmentImpl(options.modules ?? [], options.rng, options.numerics, options.localizer);
 }
 
 /** The built-in `mindcraft.core` module: registers the core types, operators, and tile components every brain needs. */

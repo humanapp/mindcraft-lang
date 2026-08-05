@@ -63,12 +63,51 @@ export enum TilePlacement {
   Inline = 1 << 4,
 }
 
-/** Display metadata for a tile (label, icon, docs, search tags). */
+/**
+ * Sentence frame of a tile: which template renders it when it heads a rule's
+ * WHEN side as a sensor. A WHEN side headed by any other kind of tile reads as
+ * a bare condition and takes no frame.
+ *
+ * - "verb" -- an action ("When I hear ...")
+ * - "state" -- a condition, rendered with the locale's copula
+ *   ("When I am hungry")
+ * - "event" -- a happening ("When this page starts")
+ * - "adverb" -- a word that is the whole trigger, rendered with neither a
+ *   subject nor a trigger word ("Otherwise, wander"). A sensor of this frame
+ *   takes it only where it stands alone on the side; beside other tiles it
+ *   reads as an ordinary operand of the condition.
+ */
+export type TileSentenceFrame = "verb" | "state" | "event" | "adverb";
+
+/**
+ * Sentence-projection metadata for a tile. Every field is optional; the
+ * projection supplies a default for each, so a tile with no `language` group
+ * still reads.
+ */
+export interface ITileLanguageMetadata {
+  /**
+   * The tile's word in a projected sentence, authored in the source language
+   * and localized at display time. Defaults to the tile's label, then its name.
+   */
+  form?: string;
+  /** Sentence frame selecting the WHEN-side template of a sensor. Defaults to "verb". */
+  frame?: TileSentenceFrame;
+  /**
+   * Word completing the sentence when the tile is placed with no object
+   * argument ("see" alone reads "see anything"). Defaults to the frame's
+   * default bare word.
+   */
+  bare?: string;
+}
+
+/** Display metadata for a tile (label, icon, docs, search tags, sentence words). */
 export interface ITileMetadata {
   label: string;
   iconUrl?: string;
   docsMarkdown?: string;
   tags?: readonly string[];
+  /** Words the sentence projection reads this tile with. */
+  language?: ITileLanguageMetadata;
 }
 
 /** Optional flags configurable on tileDef constructors. */
@@ -109,7 +148,9 @@ export interface BrainTileDefCreateOptions {
  * - "fixed:N" -- fixed N decimal places (e.g., "fixed:2" -> 3.10)
  * - "thousands" -- comma-separated thousands groups
  * - "time_seconds" -- rounded to 2 decimal places with "s" suffix (e.g., 1.283 -> "1.28s")
+ * - "time_seconds:N" -- N decimal places with "s" suffix (e.g., "time_seconds:3" -> 0.125 -> "0.125s")
  * - "time_ms" -- value * 1000 rounded to integer with "ms" suffix (e.g., 1 -> "1000ms")
+ * - "time_ms:N" -- value * 1000 with N decimal places and "ms" suffix (e.g., "time_ms:1" -> 0.0005 -> "0.5ms")
  */
 export type LiteralDisplayFormat = string;
 
@@ -132,6 +173,16 @@ export function fixedFormat(decimals: number): LiteralDisplayFormat {
   return `fixed:${decimals}`;
 }
 
+/** Build a "time_seconds:N" format string. */
+export function timeSecondsFormat(decimals: number): LiteralDisplayFormat {
+  return `time_seconds:${decimals}`;
+}
+
+/** Build a "time_ms:N" format string. */
+export function timeMsFormat(decimals: number): LiteralDisplayFormat {
+  return `time_ms:${decimals}`;
+}
+
 /** Parse a display format string into its kind and optional precision. */
 export function parseDisplayFormat(fmt: LiteralDisplayFormat): { kind: string; decimals?: number } {
   if (SU.startsWith(fmt, "percent:")) {
@@ -141,6 +192,14 @@ export function parseDisplayFormat(fmt: LiteralDisplayFormat): { kind: string; d
   if (SU.startsWith(fmt, "fixed:")) {
     const n = MathOps.parseFloat(SU.substring(fmt, 6));
     return { kind: "fixed", decimals: MathOps.isNaN(n) ? undefined : n };
+  }
+  if (SU.startsWith(fmt, "time_seconds:")) {
+    const n = MathOps.parseFloat(SU.substring(fmt, 13));
+    return { kind: "time_seconds", decimals: MathOps.isNaN(n) ? undefined : n };
+  }
+  if (SU.startsWith(fmt, "time_ms:")) {
+    const n = MathOps.parseFloat(SU.substring(fmt, 8));
+    return { kind: "time_ms", decimals: MathOps.isNaN(n) ? undefined : n };
   }
   if (fmt === "percent") return { kind: "percent" };
   if (fmt === "thousands") return { kind: "thousands" };
@@ -186,6 +245,15 @@ export interface IBrainActionTileDef extends IBrainTileDef {
 /** Narrows a tile def to {@link IBrainActionTileDef} (a sensor or actuator, the only kinds carrying an `action` descriptor). */
 export function isActionTileDef(tileDef: IBrainTileDef): tileDef is IBrainActionTileDef {
   return "action" in tileDef;
+}
+
+/**
+ * Whether `tileDef` carries the {@link TilePlacement.Inline} bit. An inline tile
+ * takes no arguments and participates in Pratt expressions like a literal, so
+ * infix operators and accessors may follow it.
+ */
+export function isInlineTileDef(tileDef: IBrainTileDef): boolean {
+  return tileDef.placement !== undefined && (tileDef.placement & TilePlacement.Inline) !== 0;
 }
 
 // ----------------------------------------------------
@@ -258,7 +326,28 @@ export const CoreCapabilityBits = {
    * skips only on nil); nil must be excluded from the sensor's value domain.
    */
   PresenceGated: 2,
+  /**
+   * Marks a tile whose meaning depends on the rule immediately above it at its
+   * own nesting level. Such a tile is rejected in the first rule at a level,
+   * which has no rule above it.
+   */
+  RequiresPrecedingSiblingRule: 3,
 } as const;
+
+/**
+ * Whether `tileDef` is valid with respect to the rule above it. A tile that
+ * declares {@link CoreCapabilityBits.RequiresPrecedingSiblingRule} is valid only
+ * in a rule that has a rule above it at its own nesting level. A tile that
+ * declares nothing is always valid.
+ *
+ * @param tileDef - The tile to test.
+ * @param hasPrecedingSibling - Whether the enclosing rule has a rule above it at
+ *   its own nesting level.
+ */
+export function precedingSiblingConsumerEligible(tileDef: IBrainTileDef, hasPrecedingSibling: boolean): boolean {
+  if (hasPrecedingSibling) return true;
+  return tileDef.capabilities().get(CoreCapabilityBits.RequiresPrecedingSiblingRule) === 0;
+}
 
 // ----------------------------------------------------
 // Core Tile IDs

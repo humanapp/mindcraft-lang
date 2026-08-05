@@ -29,7 +29,9 @@ export type WorkspaceSnapshot = ReadonlyMap<string, WorkspaceSnapshotEntry>;
 
 /**
  * Tagged-union of incremental edits accepted by
- * {@link WorkspaceCompiler.applyWorkspaceChange}.
+ * {@link WorkspaceCompiler.applyWorkspaceChange}. A `delete`, `rmdir`, or
+ * `rename` path may name a directory: it covers that path and every file
+ * under it.
  */
 export type WorkspaceChange =
   | {
@@ -234,16 +236,16 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
         this.project.updateFile(change.path, change.content);
         break;
       case "delete":
-        this.project.deleteFile(change.path);
+      case "rmdir":
+        this.project.deletePath(change.path);
         break;
       case "rename":
-        this.project.renameFile(change.oldPath, change.newPath);
+        this.project.renamePath(change.oldPath, change.newPath);
         break;
       case "import":
         this.project.setFiles(snapshotToProjectFiles(new Map(change.entries)));
         break;
       case "mkdir":
-      case "rmdir":
         break;
     }
   }

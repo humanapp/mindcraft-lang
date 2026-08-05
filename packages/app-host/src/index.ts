@@ -168,4 +168,7 @@ export {
 } from "./project-manager.js";
 export type { ProjectManifest } from "./project-manifest.js";
 export type { ProjectCollectionTabSession, ProjectStore } from "./project-store.js";
+export { registryTargetEntry, seedProjectTargets } from "./project-target-seed.js";
+export type { UnpackedTree, UnpackRefusal } from "./project-unpack.js";
+export { buildUnpackedTree, isUnpackRefusal, UnpackErrorCode } from "./project-unpack.js";
 export { isSupportedVersionRange, satisfiesRange } from "./semver-range.js";

@@ -23,6 +23,7 @@ import {
 } from "@mindcraft-lang/core/app";
 import { EcosimHostActions } from "@/brain/abi-ids";
 import { getSelf } from "@/brain/execution-context-types";
+import { ICON_BASE } from "@/brain/icon-base";
 import { TileIds } from "@/brain/tileids";
 import { EcosimTypeIds } from "@/brain/type-system";
 import { resolveTargetActor } from "./utils";
@@ -133,7 +134,7 @@ export default {
   callDef,
   fn: { onInitialized: initShoot, exec: execShoot },
   isAsync: false,
-  metadata: { label: "shoot", iconUrl: "/assets/brain/icons/shoot.svg" },
+  metadata: { label: "shoot", iconUrl: `${ICON_BASE}/shoot.svg` },
 } satisfies CreateHostActuatorOptions;
 
 export const parameters: ParameterTileInput[] = [
@@ -142,6 +143,6 @@ export const parameters: ParameterTileInput[] = [
     id: TileIds.Parameter.Rate,
     dataType: CoreTypeIds.Number,
     label: "per/sec",
-    iconUrl: "/assets/brain/icons/fps.svg",
+    iconUrl: `${ICON_BASE}/fps.svg`,
   },
 ];

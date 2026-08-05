@@ -24,6 +24,7 @@ import { EcosimHostActions } from "@/brain/abi-ids";
 import { hasArg, resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
+import { ICON_BASE } from "@/brain/icon-base";
 import { type Steering, turnAwayFrom, turnToAngle, turnToward } from "@/brain/movement";
 import { TileIds } from "@/brain/tileids";
 import { EcosimTypeIds } from "@/brain/type-system";
@@ -195,21 +196,21 @@ export default {
   callDef,
   fn: { exec: execTurn },
   isAsync: false,
-  metadata: { label: "turn", iconUrl: "/assets/brain/icons/turn.svg" },
+  metadata: { label: "turn", iconUrl: `${ICON_BASE}/turn.svg` },
 } satisfies CreateHostActuatorOptions;
 
 export const modifiers: ModifierTileInput[] = [
-  { id: TileIds.Modifier.MovementToward, label: "toward", iconUrl: "/assets/brain/icons/toward.svg" },
-  { id: TileIds.Modifier.MovementAwayFrom, label: "away from", iconUrl: "/assets/brain/icons/awayfrom.svg" },
-  { id: TileIds.Modifier.TurnAround, label: "around", iconUrl: "/assets/brain/icons/turn_around.svg" },
-  { id: TileIds.Modifier.TurnLeft, label: "left", iconUrl: "/assets/brain/icons/turn_left.svg" },
-  { id: TileIds.Modifier.TurnRight, label: "right", iconUrl: "/assets/brain/icons/turn_right.svg" },
-  { id: TileIds.Modifier.DirectionNorth, label: "north", iconUrl: "/assets/brain/icons/direction_north.svg" },
-  { id: TileIds.Modifier.DirectionSouth, label: "south", iconUrl: "/assets/brain/icons/direction_south.svg" },
-  { id: TileIds.Modifier.DirectionEast, label: "east", iconUrl: "/assets/brain/icons/direction_east.svg" },
-  { id: TileIds.Modifier.DirectionWest, label: "west", iconUrl: "/assets/brain/icons/direction_west.svg" },
-  { id: TileIds.Modifier.Quickly, label: "quickly", iconUrl: "/assets/brain/icons/quickly.svg" },
-  { id: TileIds.Modifier.Slowly, label: "slowly", iconUrl: "/assets/brain/icons/slowly.svg" },
+  { id: TileIds.Modifier.MovementToward, label: "toward", iconUrl: `${ICON_BASE}/toward.svg` },
+  { id: TileIds.Modifier.MovementAwayFrom, label: "away from", iconUrl: `${ICON_BASE}/awayfrom.svg` },
+  { id: TileIds.Modifier.TurnAround, label: "around", iconUrl: `${ICON_BASE}/turn_around.svg` },
+  { id: TileIds.Modifier.TurnLeft, label: "left", iconUrl: `${ICON_BASE}/turn_left.svg` },
+  { id: TileIds.Modifier.TurnRight, label: "right", iconUrl: `${ICON_BASE}/turn_right.svg` },
+  { id: TileIds.Modifier.DirectionNorth, label: "north", iconUrl: `${ICON_BASE}/direction_north.svg` },
+  { id: TileIds.Modifier.DirectionSouth, label: "south", iconUrl: `${ICON_BASE}/direction_south.svg` },
+  { id: TileIds.Modifier.DirectionEast, label: "east", iconUrl: `${ICON_BASE}/direction_east.svg` },
+  { id: TileIds.Modifier.DirectionWest, label: "west", iconUrl: `${ICON_BASE}/direction_west.svg` },
+  { id: TileIds.Modifier.Quickly, label: "quickly", iconUrl: `${ICON_BASE}/quickly.svg` },
+  { id: TileIds.Modifier.Slowly, label: "slowly", iconUrl: `${ICON_BASE}/slowly.svg` },
 ];
 
 export const parameters: ParameterTileInput[] = [
@@ -218,6 +219,6 @@ export const parameters: ParameterTileInput[] = [
     id: TileIds.Parameter.Priority,
     dataType: CoreTypeIds.Number,
     label: "priority",
-    iconUrl: "/assets/brain/icons/priority.svg",
+    iconUrl: `${ICON_BASE}/priority.svg`,
   },
 ];

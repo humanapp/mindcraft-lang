@@ -30,17 +30,11 @@ export interface IHttpService {
   jsonDecode<T = unknown>(json: string): T;
 }
 
-/** Host-provided translator service. Resolves message keys (or source strings) to localized text. */
-export interface ITranslatorService {
-  tr(keyOrSource: string, args?: Record<string, unknown>): string;
-}
-
 /** Bag of host services injected by the embedding application. */
 export interface IGameServices {
   players: IPlayersService;
   runService: IRunService;
   httpService: IHttpService;
-  i18n: ITranslatorService;
   logger: Logger;
 }
 

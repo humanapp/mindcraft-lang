@@ -119,7 +119,7 @@ const brainEditorConfig: BrainEditorConfig = {
 | `isAppVariableFactoryTileId` | `(id: string) => boolean`          | Yes      | Identifies app variable factory tiles         |
 | `customLiteralTypes`         | `ReadonlyArray<CustomLiteralType>` | Yes      | App-defined literal tile types (e.g. Vector2) |
 | `getDefaultBrain`            | `() => BrainDef \| undefined`      | No       | Factory for "Load Default Brain" action       |
-| `onTileHelp`                 | `(tileDef) => void`                | No       | Callback for tile right-click -> Help         |
+| `onTileDocs`                 | `(tileDef) => void`                | No       | Callback opening a tile's documentation       |
 | `docsIntegration`            | `{ isOpen, toggle, close }`        | No       | Docs sidebar controls for the editor toolbar  |
 
 ### Rendering the Editor
@@ -253,7 +253,7 @@ function DocsBrainEditorProvider({ children }: { children: React.ReactNode }) {
   const config = useMemo(
     () => ({
       ...baseBrainEditorConfig,
-      onTileHelp: openDocsForTile,
+      onTileDocs: openDocsForTile,
       docsIntegration: { isOpen, toggle, close },
     }),
     [openDocsForTile, isOpen, toggle, close]
