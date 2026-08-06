@@ -1,20 +1,20 @@
-name: Publish @mindcraft-lang/ui
+name: Publish @mindcraft-lang/assistant-bridge
 
 on:
   push:
     tags:
-      - "ui-v*"
+      - "assistant-bridge-v*"
 
 permissions:
   contents: write
 
 jobs:
   publish:
-    name: Lint, Publish & Release
+    name: Build, Lint, Test, Publish & Release
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/ui
+        working-directory: packages/assistant-bridge
 
     steps:
       - name: Checkout
@@ -26,7 +26,7 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
-      - name: "Rewrite local file: deps to version ranges"
+      - name: "Rewrite public local file: deps to version ranges"
         run: |
           node - <<'EOF'
           const fs = require('fs');
@@ -64,6 +64,12 @@ jobs:
       - name: Lint & format check
         run: npm run check:only
 
+      - name: Build
+        run: npm run build:prod
+
+      - name: Run tests
+        run: npm test
+
       - name: "Strip private local file: deps before publish"
         run: |
           node - <<'EOF'
@@ -80,7 +86,7 @@ jobs:
 
       - name: Verify package version matches tag
         run: |
-          PACKAGE_VERSION="ui-v$(node -p "require('./package.json').version")"
+          PACKAGE_VERSION="assistant-bridge-v$(node -p "require('./package.json').version")"
           if [ "$PACKAGE_VERSION" != "${{ github.ref_name }}" ]; then
             echo "Tag ${{ github.ref_name }} does not match package.json version $PACKAGE_VERSION"
             exit 1

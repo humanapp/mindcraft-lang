@@ -54,6 +54,7 @@
   },
   "dependencies": {
     "@mindcraft-lang/app-host": "file:../../packages/app-host",
+    "@mindcraft-lang/assistant-bridge": "file:../../packages/assistant-bridge",
     "@mindcraft-lang/bridge-app": "file:../../packages/bridge-app",
     "@mindcraft-lang/core": "file:../../packages/core",
     "@mindcraft-lang/docs": "file:../../packages/docs",

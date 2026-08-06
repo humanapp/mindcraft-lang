@@ -1,27 +1,20 @@
 #!/usr/bin/env node
 /**
  * Smoke-loads the headless target adapter from dist-headless/ in plain Node and
- * checks the surface a host binds to: the createTargetAdapter export, and the
- * targetId plus manifest, modules, tileDocs, subjects, and run members of the
- * adapter it returns. Exits nonzero when the build output is missing, when the
- * artifact fails to import under Node, or when any of that surface is absent.
+ * checks the adapter surface, the contract version, and the package name it
+ * reports against this app's own package.json. Exits nonzero when the build
+ * output is missing, or when the artifact does not load and publish a
+ * conforming adapter.
  * Run through `npm run build:headless`, which builds dist-headless/ first.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-/** Members a host calls on the adapter object. */
-const ADAPTER_METHODS = ["manifest", "modules", "tileDocs", "subjects", "run"];
+import { checkArtifactLoads } from "@mindcraft-lang/assistant-bridge/kit";
 
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const entryPath = join(appDir, "dist-headless", "rehearsal", "adapter.js");
-
-/** Prints `message` under this script's name and exits nonzero. */
-function fail(message) {
-  console.error(`smoke-headless-adapter: ${message}`);
-  process.exit(1);
-}
+const packageName = JSON.parse(readFileSync(join(appDir, "package.json"), "utf8")).name;
 
 if (!existsSync(entryPath)) {
   console.error(`smoke-headless-adapter: no adapter at ${entryPath}.`);
@@ -29,25 +22,10 @@ if (!existsSync(entryPath)) {
   process.exit(1);
 }
 
-let adapterModule;
-try {
-  adapterModule = await import(pathToFileURL(entryPath).href);
-} catch (error) {
-  fail(`${entryPath} does not import under Node: ${error instanceof Error ? error.stack : error}`);
+const check = await checkArtifactLoads(pathToFileURL(entryPath), { packageName });
+if (!check.ok) {
+  console.error(`smoke-headless-adapter: ${check.detail}`);
+  process.exit(1);
 }
 
-if (typeof adapterModule.createTargetAdapter !== "function") {
-  fail(`${entryPath} does not export createTargetAdapter.`);
-}
-
-const adapter = adapterModule.createTargetAdapter();
-if (typeof adapter?.targetId !== "string" || adapter.targetId === "") {
-  fail("the adapter it returns has no targetId.");
-}
-
-const missing = ADAPTER_METHODS.filter((name) => typeof adapter[name] !== "function");
-if (missing.length > 0) {
-  fail(`the "${adapter.targetId}" adapter is missing: ${missing.join(", ")}.`);
-}
-
-console.log(`smoked headless adapter: "${adapter.targetId}" loaded under Node with its full surface.`);
+console.log(`smoked headless adapter: ${packageName} loaded under Node with its full surface.`);

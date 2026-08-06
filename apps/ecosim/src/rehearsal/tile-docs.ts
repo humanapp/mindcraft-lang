@@ -1,6 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readTileDocs } from "@mindcraft-lang/assistant-bridge/kit";
 import { appTileDocs } from "@/docs/manifest";
 
 /** The app directory this module was loaded from, resolved from the module's own location. */
@@ -15,16 +15,5 @@ const TILE_DOC_DIR = join(APP_DIR, "src", "docs", "content", "en", "tiles");
  * the app does not ship is absent.
  */
 export function ecosimTileDocs(): Map<string, string> {
-  const content: Record<string, string> = {};
-  for (const file of readdirSync(TILE_DOC_DIR)) {
-    if (!file.endsWith(".md")) continue;
-    content[file.slice(0, -3)] = readFileSync(join(TILE_DOC_DIR, file), "utf8");
-  }
-
-  const docs = new Map<string, string>();
-  for (const entry of appTileDocs) {
-    const markdown = content[entry.contentKey];
-    if (markdown) docs.set(entry.tileId, markdown);
-  }
-  return docs;
+  return readTileDocs(TILE_DOC_DIR, appTileDocs);
 }

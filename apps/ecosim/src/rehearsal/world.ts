@@ -2,24 +2,11 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  coreModule,
-  createMindcraftEnvironment,
-  type ExecutionContext,
-  type IBrainDef,
-  type MindcraftEnvironment,
-  type MindcraftModule,
-  type MindcraftModuleApi,
-  type ReadonlyList,
-  type Value,
-  Vector2,
-} from "@mindcraft-lang/core/app";
+import { type IBrainDef, type MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
 import { BLIP_RADIUS, type Blip } from "@/brain/blip";
 import { Engine } from "@/brain/engine";
-import { getSelf } from "@/brain/execution-context-types";
-import { createEcosimModule } from "@/brain/index";
 import type { Playground } from "@/game/scenes/Playground";
 import { deserializeBrainFromArrayBuffer } from "@/services/brain-persistence";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
@@ -59,22 +46,6 @@ const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 /** Directory holding the brain documents the app ships for each archetype. */
 const BRAIN_ASSET_DIR = join(APP_DIR, "public", "assets", "brain", "defs");
 
-// -- Seeded randomness ----------------------------------------------------------
-
-/**
- * A seeded pseudo-random generator producing values in `[0, 1)`. The same seed
- * always yields the same sequence, so every world-construction choice a
- * rehearsal makes (obstacle layout, spawn positions, spawn facing, wander
- * target expiry) is reproducible.
- */
-export function createSeededRng(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
-
 /** Seeded stand-in for the integer range helper the scene uses when placing bodies. */
 function randomInt(rng: () => number, min: number, max: number): number {
   return Math.floor(rng() * (max - min + 1)) + min;
@@ -83,67 +54,16 @@ function randomInt(rng: () => number, min: number, max: number): number {
 // -- Observation ----------------------------------------------------------------
 
 /**
- * Hooks a caller installs to watch a rehearsal. Every hook is optional; a hook
- * that is absent is not called.
+ * Hooks a caller installs to watch the world's presentation events. Every hook is
+ * optional; a hook that is absent is not called.
  */
 export interface WorldObserver {
-  /** One host action a brain dispatched, reported before the action runs. */
-  onDispatch?(actorId: number, action: string, ruleFuncId: number | undefined): void;
   /** An actor that has just been spawned into the world and given a body. */
   onSpawn?(actor: Actor): void;
   /** A chat bubble reaching presentation, one per `say` the world renders. */
   onSay?(): void;
   /** A blip put into flight, one per `shoot` the world launches. */
   onBlipFired?(): void;
-}
-
-/** The host sensor / actuator definition shape the module API accepts. */
-type HostDefinition = Parameters<MindcraftModuleApi["registerHostSensor"]>[0];
-
-/**
- * Wrap a synchronous host action's `exec` so every dispatch reaches the
- * observer. Asynchronous actions pass through unchanged.
- */
-function traced(def: HostDefinition, observer: WorldObserver): HostDefinition {
-  if (def.descriptor.isAsync) return def;
-  const actionFn = def.actionFn as { exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value };
-  const key = def.descriptor.key;
-  const exec = actionFn.exec;
-  return {
-    ...def,
-    actionFn: {
-      ...actionFn,
-      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
-        observer.onDispatch?.(getSelf(ctx)?.actorId ?? 0, key, ctx.currentRuleFuncId);
-        return exec(ctx, args);
-      },
-    },
-  };
-}
-
-/** A module API that reports every host-action dispatch made through the definitions it registers. */
-function tracingApi(api: MindcraftModuleApi, observer: WorldObserver): MindcraftModuleApi {
-  return {
-    brainServices: api.brainServices,
-    defineType: (def) => api.defineType(def),
-    registerHostSensor: (def) => api.registerHostSensor(traced(def, observer)),
-    registerHostActuator: (def) => api.registerHostActuator(traced(def, observer)),
-    registerFunction: (def) => api.registerFunction(def),
-    registerTile: (def) => api.registerTile(def),
-    registerModifiers: (defs) => api.registerModifiers(defs),
-    registerParameters: (defs) => api.registerParameters(defs),
-    registerOperator: (def) => api.registerOperator(def),
-    registerConversion: (def) => api.registerConversion(def),
-  };
-}
-
-/** The module with every host action it installs wrapped for dispatch observation. */
-function tracingModule(inner: MindcraftModule, observer: WorldObserver): MindcraftModule {
-  return {
-    id: inner.id,
-    migrateBrainJson: inner.migrateBrainJson,
-    install: (api: MindcraftModuleApi) => inner.install(tracingApi(api, observer)),
-  };
 }
 
 // -- Stubs standing in for Phaser presentation ----------------------------------
@@ -569,19 +489,21 @@ export function liveActors(engine: Engine): Actor[] {
 
 /** How one rehearsal world is staged. */
 export interface RehearsalWorldOptions {
-  /** Seed fixing every random choice the world makes; the same seed reproduces the world exactly. */
-  readonly seed: number;
-  readonly observer: WorldObserver;
+  /** Environment the world's brains are built and run in. */
+  readonly environment: MindcraftEnvironment;
   /**
-   * Brains to run in place of the shipped defaults, built against the world's
-   * own environment. Called once, before the shipped brains are loaded.
+   * The run's seeded random stream. Every world-construction choice draws from
+   * it -- obstacle layout, spawn positions, spawn facing -- so the same stream
+   * reproduces the world exactly.
    */
-  readonly brains?: (environment: MindcraftEnvironment) => Partial<Record<Archetype, IBrainDef>>;
+  readonly next: () => number;
+  readonly observer: WorldObserver;
+  /** Brains to run in place of the shipped defaults, built against {@link environment}. */
+  readonly brains?: Partial<Record<Archetype, IBrainDef>>;
 }
 
 /** A staged, running rehearsal world. */
 export interface RehearsalWorld {
-  readonly environment: MindcraftEnvironment;
   /** Static obstacle bodies the world was built with. */
   readonly obstacleCount: number;
   /** Advance the world one fixed step of {@link STEP_MS} milliseconds. */
@@ -593,23 +515,15 @@ export interface RehearsalWorld {
 }
 
 /**
- * Stage a whole ecosim world headlessly: a seeded environment carrying the core
- * and ecosim modules with every host action traced to `options.observer`, the
- * app's shipped brains, and a Matter world stepped directly. The world is
+ * Stage a whole ecosim world headlessly: the app's shipped brains loaded into
+ * `options.environment`, and a Matter world stepped directly. The world is
  * populated by its first {@link RehearsalWorld.step}.
  */
 export async function createRehearsalWorld(options: RehearsalWorldOptions): Promise<RehearsalWorld> {
-  const { observer } = options;
-  const rng = createSeededRng(options.seed);
-  const environment = createMindcraftEnvironment({
-    modules: [tracingModule(coreModule(), observer), tracingModule(createEcosimModule(), observer)],
-    rng: { next: () => rng() },
-  });
+  const { environment, next, observer } = options;
+  const brains = { ...loadShippedBrains(environment), ...options.brains };
 
-  const overrides = options.brains?.(environment) ?? {};
-  const brains = { ...loadShippedBrains(environment), ...overrides };
-
-  const scene = new HeadlessScene(rng, observer);
+  const scene = new HeadlessScene(next, observer);
   const engine = new Engine(scene as unknown as Playground, scene.obstacleBodies, headlessStore(environment, brains));
   scene.attachEngine(engine);
   engine.start();
@@ -617,7 +531,6 @@ export async function createRehearsalWorld(options: RehearsalWorldOptions): Prom
 
   let time = 0;
   return {
-    environment,
     obstacleCount: scene.obstacleBodies.length,
     step: () => {
       scene.step(time);

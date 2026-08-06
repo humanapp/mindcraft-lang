@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
+import { createRehearsalEnvironment, createSeededRng } from "@mindcraft-lang/assistant-bridge/kit";
 import type { Actor } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
+import { getSelf } from "@/brain/execution-context-types";
+import { createEcosimModule } from "@/brain/index";
 import { createRehearsalWorld, STEP_MS, WORLD_HEIGHT, WORLD_WIDTH, type WorldObserver } from "./world";
 
 /** Number of fixed steps a rehearsal runs. */
@@ -94,7 +97,15 @@ function traceTick(tick: number, actors: readonly Actor[], obs: RunObservations)
  */
 async function runRehearsal(seed: number, ticks: number): Promise<RunResult> {
   const obs = new RunObservations();
-  const world = await createRehearsalWorld({ seed, observer: obs });
+  const next = createSeededRng(seed);
+  const environment = createRehearsalEnvironment({
+    modules: [createEcosimModule()],
+    rng: next,
+    onDispatch: (event) => {
+      obs.onDispatch(getSelf(event.ctx)?.actorId ?? 0, event.action);
+    },
+  });
+  const world = await createRehearsalWorld({ environment, next, observer: obs });
 
   const trace: string[] = [];
   for (let tick = 0; tick < ticks; tick++) {
