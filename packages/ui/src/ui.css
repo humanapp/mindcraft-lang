@@ -152,6 +152,36 @@
 }
 
 /* ==========================================================================
+   Surface insets
+
+   The share of the viewport a covering surface takes, published onto the
+   elements that lay themselves out around it by `src/ui/surface-insets.ts`.
+   `--docs-panel-inset` carries the documentation panel's width as a
+   percentage of the viewport; `--keyboard-inset` carries the height the soft
+   keyboard covers, in CSS pixels.
+
+   Publish them only onto elements that read them, never onto a shared
+   ancestor: both are registered below as NOT inheriting, so a value set on an
+   ancestor does not reach its descendants.
+
+   The initial values are the geometry a consumer lays out at while nothing is
+   published, which is the case in any app that installs no documentation
+   panel and on any page with no dialog open.
+   ========================================================================== */
+
+@property --docs-panel-inset {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+@property --keyboard-inset {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+/* ==========================================================================
    Coarse-pointer target floor
 
    Under `@media (pointer: coarse)` every control in the app chrome measures at

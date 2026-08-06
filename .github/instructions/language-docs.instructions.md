@@ -108,19 +108,42 @@ The host app wires these via `useDocsSidebar()` callbacks.
 
 ## Panel Footprint -- `--docs-panel-inset`
 
-`DocsSidebar` publishes its footprint on the document root as the custom
-property `--docs-panel-inset`: the share of the viewport width the open desktop
-panel covers, written as a CSS percentage, and `0%` whenever it covers nothing
-a desktop layout has to avoid -- closed, unmounted, or in the mobile
-full-screen shape.
+`DocsSidebar` publishes its footprint through the inset seam `packages/ui`
+owns, `publishInset(kDocsPanelInsetVar, value)` from
+`@mindcraft-lang/ui/ui/surface-insets`: the share of the viewport width the
+open desktop panel covers, written as a CSS percentage, and `0%` whenever it
+covers nothing a desktop layout has to avoid -- closed, unmounted, or in the
+mobile full-screen shape. The seam writes the value onto the elements that read
+it, and only onto those.
 
-Two places write it and both must stay in step:
+**Never write this property onto `document.documentElement`.** Custom
+properties inherit, so a write on the root invalidates style recalculation for
+every element in the document -- with the brain editor open on a large brain
+that is ~336ms per write, and the resize separator writes per pointer event.
+`DocsSidebar.spec.ts` pins that the panel names `documentElement` nowhere.
+
+Three places write it and all must stay in step:
 
 - the effect keyed on the open flag, the mobile flag, and the settled width,
-  which also removes the property when the sidebar unmounts;
-- the resize separator's pointer-move handler, which rewrites it beside the
+  which also withdraws the footprint when the sidebar unmounts;
+- the resize separator's pointer-move handler, which republishes beside the
   inline width it applies to the `aside`, so consumers follow a live drag
-  without a React render per pointer event.
+  without a React render per pointer event;
+- its drag-end handler, which writes the settled width and footprint together
+  before handing the width back to React. It leaves the inline width standing:
+  clearing it reverts the panel to the last committed width until React's
+  commit lands, which on a slow machine paints as a jump opposite to the drag.
+
+The drag-end handler runs on `pointerup`, on `pointercancel` and on
+`lostpointercapture`, and the first of the three to arrive settles the width
+while the rest find no drag recorded. A drag ends no other way, so the
+pointer-move handler carries the last resort: `separatorMoveAction` in
+`DocsSidebar.tsx` reads a move carrying no held button while a drag is recorded
+as a drag that ended out of the separator's hearing, and ends it without moving
+the panel edge. Without that reading the panel follows a bare hover -- the
+separator behaves as though grabbed, and closing and reopening the panel does
+not clear it, because the drag record is a ref on a component the desktop panel
+never unmounts. `DocsSidebar.spec.ts` pins both halves.
 
 Keep the value a percentage: the panel's own width is viewport-relative, so a
 window resize reflows consumers with no listener.

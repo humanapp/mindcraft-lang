@@ -1,9 +1,11 @@
+import { publishInset, withdrawInset } from "./surface-insets";
+
 /**
- * Custom property published on the document root while at least one dialog is
- * open: the height of the layout viewport's bottom edge that the soft keyboard
- * covers, written in CSS pixels (`0px` when nothing is covered). Surfaces that
- * must stay reachable while the keyboard is up subtract it from their own
- * geometry.
+ * Custom property published while at least one dialog is open: the height of
+ * the layout viewport's bottom edge that the soft keyboard covers, written in
+ * CSS pixels (`0px` when nothing is covered). Surfaces that must stay
+ * reachable while the keyboard is up subtract it from their own geometry, and
+ * carry it through `attachInsetSurface`.
  */
 export const kKeyboardInsetVar = "--keyboard-inset";
 
@@ -43,7 +45,7 @@ let subscriberCount = 0;
 /** Removes the listeners attached for the first subscriber, or `null` when none are attached. */
 let stopListening: (() => void) | null = null;
 
-/** Writes the current inset onto the document root. */
+/** Writes the current inset onto every attached inset surface. */
 function publishKeyboardInset(): void {
   const viewport = window.visualViewport;
   if (!viewport) return;
@@ -53,7 +55,7 @@ function publishKeyboardInset(): void {
     offsetTop: viewport.offsetTop,
     scale: viewport.scale,
   });
-  document.documentElement.style.setProperty(kKeyboardInsetVar, `${inset}px`);
+  publishInset(kKeyboardInsetVar, `${inset}px`);
 }
 
 /**
@@ -83,6 +85,6 @@ export function attachKeyboardInsetPublisher(): () => void {
     if (subscriberCount > 0) return;
     stopListening?.();
     stopListening = null;
-    document.documentElement.style.removeProperty(kKeyboardInsetVar);
+    withdrawInset(kKeyboardInsetVar);
   };
 }

@@ -29,7 +29,7 @@ export function BrainRulesRegion({ stand, children }: BrainRulesRegionProps) {
       aria-busy={stand === "loading"}
     >
       {stand === "rules" && children}
-      {stand === "loading" && <LoadingIndicator label="Opening the rules" className="text-brain-ink/80" />}
+      {stand === "loading" && <LoadingIndicator label="Loading..." className="text-brain-ink/80" />}
       {stand === "no-page" && <p className="text-brain-ink/80 p-6">No BrainDef attached to this object.</p>}
     </section>
   );

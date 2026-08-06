@@ -140,36 +140,70 @@ Tile chrome derived from a tile's own hue lives in
 and a placed tile cannot drift. Custom properties inherit, so `packages/docs`
 also picks up whichever host app renders it, with no threading and no config.
 
-## Docs Panel Inset -- `--docs-panel-inset`
+## Surface Insets -- the seam in `src/ui/surface-insets.ts`
 
-`DocsSidebar` in `packages/docs` publishes a custom property on the document
-root, `--docs-panel-inset`: the share of the viewport width its open desktop
-panel covers, written as a CSS percentage. It reads `0%` whenever the panel
-covers nothing a desktop layout has to avoid -- closed, unmounted, or in its
-mobile full-screen shape.
+A surface covering part of the viewport publishes its footprint through
+`publishInset(property, value)`; an element that lays itself out around it
+carries the footprint by calling `attachInsetSurface(element)` and reading the
+property from its own CSS with `var()`. `withdrawInset(property)` stops
+publishing and clears the property from every attached surface.
 
-`DialogContent` (`src/ui/dialog.tsx`) consumes it. Its `left` and `max-width`
-subtract the inset, so a dialog centres itself in the width the panel leaves
-free instead of sliding underneath it. `BrainEditorDialog` repeats the same
+`DialogContent` (`src/ui/dialog.tsx`) is the only attached surface today: its
+`useInsetSurfaceRef` attaches the portaled content element and passes the node
+on to whatever ref the caller forwarded.
+
+**Never publish an inset on `document.documentElement`, or on any other
+ancestor of a large subtree.** Custom properties are inherited by default, so a
+write on a shared ancestor invalidates style recalculation for every element
+below it. Measured with the brain editor open on a 57-rule brain (10,673
+elements under the dialog): a write on the root costs ~336ms, the same write on
+the dialog itself ~20ms. The drag of the docs panel's resize separator
+republishes per pointer event, which is what made that panel unusable on a
+low-end Chromebook.
+
+Two things make the scoped scheme correct:
+
+- **Each property is registered `inherits: false` in `src/ui.css`.** That is
+  what bounds the write: a non-inherited custom property cannot reach a
+  descendant's computed style, so the recalculation stops at the surface
+  element. Removing `inherits: false` silently restores the old cost.
+  `surface-insets.spec.ts` pins the registration.
+- **Attaching replays what is published.** A dialog opened while the docs panel
+  is already open, and a dialog content remounted while it stays open, both
+  take the current footprint at mount. The brain editor hits the second case on
+  every panel open: it flips `modal`, Radix swaps content components, and the
+  replacement must land already inset.
+
+Registering a property also declares the `initial-value` every consumer falls
+back to while nothing is published, which is the geometry an app with no docs
+package installed lays out at.
+
+### `--docs-panel-inset`
+
+`DocsSidebar` in `packages/docs` publishes the share of the viewport width its
+open desktop panel covers, as a CSS percentage. It publishes `0%` whenever the
+panel covers nothing a desktop layout has to avoid -- closed, unmounted, or in
+its mobile full-screen shape.
+
+`DialogContent`'s `left` and `max-width` subtract it, so a dialog centres
+itself in the width the panel leaves free. `BrainEditorDialog` repeats the same
 subtraction in its own `sm:` overrides, because it replaces both properties.
 
-Rules for this contract:
-
-- Read it with a `0%` fallback (`var(--docs-panel-inset,0%)`). Nothing declares
-  a default, so a consumer with no docs package installed must still lay out.
+- Read it with a `0%` fallback (`var(--docs-panel-inset,0%)`), matching the
+  registered initial value.
 - Keep it a percentage. The panel's own width is viewport-relative, so a
   window resize reflows both sides with no listener; a pixel value would go
   stale.
-- The panel rewrites the property on every pointer move of its resize
-  separator, alongside its inline width, so consumers track a live drag without
-  the panel re-rendering per frame. Anything reading it must therefore work
-  from CSS, not from a React render.
+- The panel republishes on every pointer move of its resize separator,
+  alongside the inline width it writes on its own `aside`, so consumers track a
+  live drag with no React render per frame. Anything reading it must therefore
+  work from CSS, not from a React render.
 - Nothing in the type system checks this. A change on either side has to be
   matched by hand; `language-docs.instructions.md` carries the publisher's half.
 
-## Soft Keyboard Inset -- `--keyboard-inset`
+### `--keyboard-inset`
 
-`src/ui/keyboard-inset.ts` publishes a custom property on the document root,
+`src/ui/keyboard-inset.ts` publishes, through the same seam,
 `--keyboard-inset`: the height of the layout viewport's bottom edge that the
 soft keyboard covers, written in CSS pixels. It reads `0px` whenever the whole
 layout viewport is reachable.
@@ -185,9 +219,9 @@ fields).
 
 Rules for this contract:
 
-- Read it with a `0px` fallback (`var(--keyboard-inset,0px)`). It is unset
-  whenever no dialog is open, and stays unset in an environment with no
-  `visualViewport`.
+- Read it with a `0px` fallback (`var(--keyboard-inset,0px)`), matching the
+  registered initial value. It is withdrawn whenever no dialog is open, and
+  never published in an environment with no `visualViewport`.
 - Keep it a length, not a percentage. Keyboard height has no relation to
   viewport height, and the publisher re-writes the property on every visual
   viewport `resize` and `scroll`, so nothing goes stale.

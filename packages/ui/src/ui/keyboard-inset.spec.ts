@@ -1,5 +1,7 @@
 /**
- * Pins the inset a dialog subtracts to stay clear of the soft keyboard.
+ * Pins the inset a dialog subtracts to stay clear of the soft keyboard, and
+ * where the publisher writes it.
+ *
  * The viewport reports its metrics for far more than a keyboard, so the cases
  * here cover the movements that must read as no occlusion at all: a pinch-zoom,
  * which shrinks the visual viewport without covering anything, and a panned
@@ -8,7 +10,8 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { keyboardInsetPx } from "./keyboard-inset";
+import { attachKeyboardInsetPublisher, keyboardInsetPx, kKeyboardInsetVar } from "./keyboard-inset";
+import { attachInsetSurface, type InsetSurface } from "./surface-insets";
 
 /** A 768px-tall layout viewport with nothing covering it and no zoom. */
 const unoccluded = { layoutHeight: 768, visualHeight: 768, offsetTop: 0, scale: 1 };
@@ -36,5 +39,69 @@ describe("keyboardInsetPx", () => {
 
   test("clamps to zero when the reachable height exceeds the layout viewport", () => {
     assert.equal(keyboardInsetPx({ ...unoccluded, visualHeight: 820 }), 0);
+  });
+});
+
+/** A surface recording the inset writes it receives. */
+function recordingSurface(): InsetSurface & { readonly written: Map<string, string> } {
+  const written = new Map<string, string>();
+  return {
+    written,
+    style: {
+      setProperty: (property, value) => void written.set(property, value),
+      removeProperty: (property) => {
+        const previous = written.get(property) ?? "";
+        written.delete(property);
+        return previous;
+      },
+    },
+  };
+}
+
+/**
+ * Runs `body` with a window reporting a keyboard covering 336px of a 768px
+ * layout viewport, and a document root that records any write reaching it.
+ */
+function withStubbedViewport(body: (documentRootWrites: string[]) => void): void {
+  const documentRootWrites: string[] = [];
+  const globals = globalThis as Record<string, unknown>;
+  const priorWindow = globals.window;
+  const priorDocument = globals.document;
+  globals.window = {
+    innerHeight: 768,
+    visualViewport: { height: 432, offsetTop: 0, scale: 1, addEventListener: () => {}, removeEventListener: () => {} },
+  };
+  globals.document = {
+    documentElement: {
+      style: {
+        setProperty: (property: string, value: string) => void documentRootWrites.push(`set ${property}=${value}`),
+        removeProperty: (property: string) => void documentRootWrites.push(`remove ${property}`),
+      },
+    },
+  };
+  try {
+    body(documentRootWrites);
+  } finally {
+    globals.window = priorWindow;
+    globals.document = priorDocument;
+  }
+}
+
+describe("the soft keyboard inset publisher", () => {
+  test("writes the inset onto attached surfaces and nothing onto the document root", () => {
+    withStubbedViewport((documentRootWrites) => {
+      const surface = recordingSurface();
+      const releaseSurface = attachInsetSurface(surface);
+
+      const releasePublisher = attachKeyboardInsetPublisher();
+      assert.equal(surface.written.get(kKeyboardInsetVar), "336px");
+      assert.deepEqual(documentRootWrites, []);
+
+      releasePublisher();
+      assert.equal(surface.written.get(kKeyboardInsetVar), undefined);
+      assert.deepEqual(documentRootWrites, []);
+
+      releaseSurface();
+    });
   });
 });
