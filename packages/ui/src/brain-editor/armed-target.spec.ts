@@ -10,7 +10,12 @@ import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { type ArmedTileTarget, isAppendTargetForRule, isTileTargetForTile } from "./ArmedTargetContext";
+import {
+  type ArmedTileTarget,
+  armedTargetForRule,
+  isAppendTargetForRule,
+  isTileTargetForTile,
+} from "./ArmedTargetContext";
 
 let services: BrainServices;
 
@@ -36,6 +41,28 @@ function tileTarget(
 ): ArmedTileTarget {
   return { ruleDef, side, mode, tileIndex, onTileSelected: () => true };
 }
+
+describe("armedTargetForRule", () => {
+  test("hands the armed rule its own target, by identity", () => {
+    const { ruleA } = twoRules();
+    const target = appendTarget(ruleA, RuleSide.When);
+    assert.equal(armedTargetForRule(target, ruleA), target);
+    assert.equal(armedTargetForRule(tileTarget(ruleA, RuleSide.Do, "replace", 0), ruleA)?.mode, "replace");
+  });
+
+  test("hands every other rule the same null, whichever rule is armed and whether any is", () => {
+    const { ruleA, ruleB } = twoRules();
+    const readings = [
+      armedTargetForRule(null, ruleB),
+      armedTargetForRule(appendTarget(ruleA, RuleSide.When), ruleB),
+      armedTargetForRule(tileTarget(ruleA, RuleSide.Do, "insert", 0), ruleB),
+      armedTargetForRule(tileTarget(ruleA, RuleSide.When, "replace", 2), ruleB),
+    ];
+    for (const reading of readings) {
+      assert.equal(reading, null);
+    }
+  });
+});
 
 describe("isAppendTargetForRule", () => {
   test("matches only the armed rule", () => {

@@ -1,6 +1,6 @@
 import type { IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import type { CaretPosition } from "./caret-run";
 import type { EditorMode } from "./editor-mode";
 
@@ -49,12 +49,12 @@ export interface ArmedTileTarget {
   onTileSelected: (tileDef: IBrainTileDef) => boolean;
 }
 
-/** Arm/disarm surface shared through {@link ArmedTargetProvider}. */
-export interface ArmedTargetController {
-  /** The currently armed target, or null when no picker target is armed. */
-  target: ArmedTileTarget | null;
-  /** The context the armed tile picker holds the keyboard in, or null while nothing is armed. */
-  mode: EditorMode | null;
+/**
+ * The three calls that change what is armed. Their identities are stable for as
+ * long as the editor stands, so a component reading only these renders again
+ * when its own props change and not when the armed target moves.
+ */
+export interface ArmedTargetActions {
   /** Arm the given target, replacing any previously armed one. */
   arm(target: ArmedTileTarget): void;
   /** Clear the armed target. */
@@ -63,22 +63,62 @@ export interface ArmedTargetController {
   reportMode(mode: EditorMode): void;
 }
 
-const noopController: ArmedTargetController = {
-  target: null,
-  mode: null,
+/** Arm/disarm surface shared through {@link ArmedTargetProvider}. */
+export interface ArmedTargetController extends ArmedTargetActions {
+  /** The currently armed target, or null when no picker target is armed. */
+  target: ArmedTileTarget | null;
+  /** The context the armed tile picker holds the keyboard in, or null while nothing is armed. */
+  mode: EditorMode | null;
+}
+
+const noopActions: ArmedTargetActions = {
   arm: () => {},
   disarm: () => {},
   reportMode: () => {},
 };
 
+const noopController: ArmedTargetController = {
+  target: null,
+  mode: null,
+  ...noopActions,
+};
+
 const ArmedTargetContext = createContext<ArmedTargetController>(noopController);
+const ArmedTargetActionsContext = createContext<ArmedTargetActions>(noopActions);
 
-/** Provider for an {@link ArmedTargetController}. Defaults to a no-op controller when omitted. */
-export const ArmedTargetProvider = ArmedTargetContext.Provider;
+/**
+ * Publishes `value` to the editor's rules, as two readings: the whole
+ * controller, which changes with every arming, and the arming actions on their
+ * own, which do not. Read whichever a component actually needs.
+ */
+export function ArmedTargetProvider({
+  value,
+  children,
+}: {
+  value: ArmedTargetController;
+  children?: ReactNode;
+}): ReactNode {
+  const { arm, disarm, reportMode } = value;
+  const actions = useMemo(() => ({ arm, disarm, reportMode }), [arm, disarm, reportMode]);
+  return (
+    <ArmedTargetActionsContext.Provider value={actions}>
+      <ArmedTargetContext.Provider value={value}>{children}</ArmedTargetContext.Provider>
+    </ArmedTargetActionsContext.Provider>
+  );
+}
 
-/** Read the current {@link ArmedTargetController} from context. */
+/**
+ * Read the current {@link ArmedTargetController} from context. Every arming
+ * renders the reader again; a reader that only arms and disarms should take
+ * {@link useArmedTargetActions} instead.
+ */
 export function useArmedTargetController(): ArmedTargetController {
   return useContext(ArmedTargetContext);
+}
+
+/** Read the arming actions from context, which no arming changes. */
+export function useArmedTargetActions(): ArmedTargetActions {
+  return useContext(ArmedTargetActionsContext);
 }
 
 /** Build the armed-target state owned by the editor dialog and shared via {@link ArmedTargetProvider}. */
@@ -92,6 +132,18 @@ export function useArmedTargetState(): ArmedTargetController {
   }, []);
   const reportMode = useCallback((next: EditorMode) => setMode(next), []);
   return useMemo(() => ({ target, mode, arm, disarm, reportMode }), [target, mode, arm, disarm, reportMode]);
+}
+
+/**
+ * The armed target `ruleDef` is the subject of, or null while the arming stands
+ * on another rule or on nothing at all.
+ *
+ * The target is returned as it was passed, so two reads taken across an arming
+ * that moves between two other rules are the same value, and a rule the arming
+ * never touches is handed the same null throughout.
+ */
+export function armedTargetForRule(target: ArmedTileTarget | null, ruleDef: BrainRuleDef): ArmedTileTarget | null {
+  return target !== null && target.ruleDef === ruleDef ? target : null;
 }
 
 /** True when `target` arms the append picker for `ruleDef`. */

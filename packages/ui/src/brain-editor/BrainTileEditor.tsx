@@ -1,7 +1,7 @@
 import type { IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainCommandHistory, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { useId, useState } from "react";
-import { isTileTargetForTile, useArmedTargetController } from "./ArmedTargetContext";
+import { type ArmedTileTarget, isTileTargetForTile } from "./ArmedTargetContext";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
 import { BrainTileMenu } from "./BrainTileMenu";
@@ -28,6 +28,11 @@ interface BrainTileEditorProps {
   ruleDef: BrainRuleDef;
   commandHistory: BrainCommandHistory;
   badge?: TileBadge;
+  /**
+   * The target armed on this tile's own rule, or null while the editor's arming
+   * stands elsewhere. The tile reads its own arming out of it.
+   */
+  stripTarget: ArmedTileTarget | null;
   /** Arms the edit point on this tile at `position`, which the candidate strip then serves. */
   armEditPoint: (position: EditPointPosition) => void;
 }
@@ -44,10 +49,10 @@ export function BrainTileEditor({
   ruleDef,
   commandHistory,
   badge,
+  stripTarget,
   armEditPoint,
 }: BrainTileEditorProps) {
-  const armedTarget = useArmedTargetController();
-  const tileTarget = isTileTargetForTile(armedTarget.target, ruleDef, side, tileIndex) ? armedTarget.target : null;
+  const tileTarget = isTileTargetForTile(stripTarget, ruleDef, side, tileIndex) ? stripTarget : null;
   const armedHintId = useId();
   const [menuOpen, setMenuOpen] = useState(false);
   const editorConfig = useBrainEditorConfig();

@@ -33,7 +33,7 @@ import {
   Undo,
   Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { staticAssetUrl } from "../asset-url";
 import { Button } from "../ui/button";
@@ -52,6 +52,7 @@ import { keyboardIsInCandidateStrip } from "./BrainCandidateStrip";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainPageEditor } from "./BrainPageEditor";
 import { BrainPrintDialog } from "./BrainPrintDialog";
+import { LatchedBrainRulesRegion } from "./BrainRulesRegion";
 import {
   copyBrainToClipboard,
   getBrainFromClipboard,
@@ -128,6 +129,14 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   // takes the keyboard.
   const landsOnNewPageRef = useRef(false);
   const currentPageDef = brainDef ? brainDef.pages().get(currentPageNumber - 1) : undefined;
+
+  // The identity of the page whose rules the editor is showing. A fresh working
+  // copy, a move to another page, and a change to the page list each stand a
+  // new one.
+  const shownPage = useMemo(
+    () => (currentPageDef === undefined ? undefined : { pageDef: currentPageDef, pageChangeCounter }),
+    [currentPageDef, pageChangeCounter]
+  );
 
   // Command history for undo/redo
   const [commandHistory] = useState(() => new BrainCommandHistory());
@@ -1033,19 +1042,8 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
               </div>
             </DialogTitle>
           </DialogHeader>
-          {/* biome-ignore lint/a11y/useSemanticElements: refactoring to section would require restructuring large JSX blocks */}
-          <div
-            className="overflow-hidden grow rounded-lg"
-            style={{
-              background:
-                "radial-gradient(130% 90% at 50% -10%, var(--color-brain-desk-glow) 0%, transparent 55%), radial-gradient(circle at center, rgba(255, 255, 255, 0.035) 1px, transparent 1.3px), linear-gradient(160deg, var(--color-brain-desk-from) 0%, var(--color-brain-desk-to) 100%)",
-              backgroundSize: "100% 100%, 22px 22px, 100% 100%",
-              boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 4px 20px rgba(0, 0, 0, 0.45)",
-            }}
-            role="region"
-            aria-label="Brain page editor content"
-          >
-            {brainDef && currentPageDef ? (
+          <LatchedBrainRulesRegion shownPage={shownPage}>
+            {currentPageDef === undefined ? null : (
               <ArmedTargetProvider value={armedTarget}>
                 <RulePickupProvider value={rulePickup}>
                   <BrainPageEditor
@@ -1056,10 +1054,8 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                   />
                 </RulePickupProvider>
               </ArmedTargetProvider>
-            ) : (
-              <p className="text-brain-ink/80 p-6">No BrainDef attached to this object.</p>
             )}
-          </div>
+          </LatchedBrainRulesRegion>
           <DialogFooter className="pt-2 sm:pt-3 border-t border-border flex flex-row flex-wrap items-center gap-2 sm:justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs text-muted-foreground whitespace-nowrap">{Math.round(zoom * 100)}%</span>

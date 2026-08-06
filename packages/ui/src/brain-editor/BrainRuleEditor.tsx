@@ -26,7 +26,14 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { type ArmedTargetEntry, isAppendTargetForRule, useArmedTargetController } from "./ArmedTargetContext";
+import {
+  type ArmedTargetEntry,
+  type ArmedTileTarget,
+  armedTargetForRule,
+  isAppendTargetForRule,
+  useArmedTargetActions,
+  useArmedTargetController,
+} from "./ArmedTargetContext";
 import {
   kCandidateDragMimeType,
   type StripComposerBinding,
@@ -178,6 +185,15 @@ interface BrainRuleEditorProps {
   commandHistory: BrainCommandHistory;
 }
 
+interface BrainRuleEditorCardProps extends BrainRuleEditorProps {
+  /**
+   * The target armed on this rule, or null while the editor's arming stands on
+   * another rule or on nothing. Every other rule is handed the same null, so an
+   * arming renders the two cards it names and no other.
+   */
+  stripTarget: ArmedTileTarget | null;
+}
+
 function BrainRuleEditorCard({
   ruleDef,
   depth = 0,
@@ -185,7 +201,8 @@ function BrainRuleEditorCard({
   ruleCount,
   revision,
   commandHistory,
-}: BrainRuleEditorProps) {
+  stripTarget,
+}: BrainRuleEditorCardProps) {
   const { brainServices, tileCatalogs, isBrokenTile } = useBrainEditorConfig();
   // The cells this rule stands in the page's selection grid.
   const pageGrid = usePageGrid();
@@ -206,12 +223,9 @@ function BrainRuleEditorCard({
     },
     [dragController, ruleDef]
   );
-  const armedTarget = useArmedTargetController();
-  const appendTarget = isAppendTargetForRule(armedTarget.target, ruleDef) ? armedTarget.target : null;
+  const armedTarget = useArmedTargetActions();
+  const appendTarget = isAppendTargetForRule(stripTarget, ruleDef) ? stripTarget : null;
   const stripId = useId();
-  // The strip serves every armed mode for this rule: the append flow armed
-  // here, and the insert/replace flows armed by the rule's tile editors.
-  const stripTarget = armedTarget.target?.ruleDef === ruleDef ? armedTarget.target : null;
   const [isDirty, setIsDirty] = useState(ruleDef.isDirty());
   const [whenBadges, setWhenBadges] = useState<Map<number, TileBadge>>(new Map());
   const [doBadges, setDoBadges] = useState<Map<number, TileBadge>>(new Map());
@@ -328,13 +342,13 @@ function BrainRuleEditorCard({
   const handleTileCreated = useCallback(() => {
     const placed = placedCaretRef.current;
     placedCaretRef.current = undefined;
-    const caret = composeAfterTileCreation(armedTarget.target?.entry, placed);
+    const caret = composeAfterTileCreation(stripTarget?.entry, placed);
     if (caret === undefined) {
       armedTarget.disarm();
       return;
     }
     placeCaretFromRef.current(caret, "sentence");
-  }, [armedTarget]);
+  }, [armedTarget, stripTarget]);
 
   // Use the tile selection hook
   const {
@@ -1014,6 +1028,7 @@ function BrainRuleEditorCard({
                 ruleDef={ruleDef}
                 commandHistory={commandHistory}
                 badge={whenBadges.get(idx)}
+                stripTarget={stripTarget}
                 armEditPoint={(position) => armTileEditPoint(RuleSide.When, idx, position, "tray")}
               />
             ))}
@@ -1067,6 +1082,7 @@ function BrainRuleEditorCard({
                 ruleDef={ruleDef}
                 commandHistory={commandHistory}
                 badge={doBadges.get(idx)}
+                stripTarget={stripTarget}
                 armEditPoint={(position) => armTileEditPoint(RuleSide.Do, idx, position, "tray")}
               />
             ))}
@@ -1157,17 +1173,28 @@ function BrainRuleEditorCard({
   );
 }
 
+const BrainRuleEditorMemoCard = memo(BrainRuleEditorCard);
+
+BrainRuleEditorMemoCard.displayName = "BrainRuleEditorCard";
+
 /**
  * Editable WHEN/DO rule row: the rule's handle, the tiles of each side with the
  * control that appends to it, and the sentence line the rule is composed on.
  * The handle is dragged to reorder and picked up from the keyboard, and the
  * page's selection keys operate on whichever of the rule's cells it rests on.
  *
- * The card renders again only when one of its props changes, `revision` among
- * them, or when a context it reads publishes a new value. A page change that
- * leaves this rule's revision alone therefore costs it nothing, and a move of
- * the page's selection costs only the two rules it passes between.
+ * Reads the editor's arming and hands the card only the part of it that names
+ * this rule, so the card renders again only when one of its props changes,
+ * `revision` and that arming among them, or when a context the card itself
+ * reads publishes a new value. A page change that leaves this rule's revision
+ * alone therefore costs it nothing, a move of the page's selection costs only
+ * the two rules it passes between, and an arming -- including every step of a
+ * caret being composed -- costs only the rule armed and the one it left.
  */
-export const BrainRuleEditor = memo(BrainRuleEditorCard);
-
-BrainRuleEditor.displayName = "BrainRuleEditor";
+export function BrainRuleEditor(props: BrainRuleEditorProps) {
+  const { target } = useArmedTargetController();
+  // The strip serves every armed mode for this rule: the append flow armed on
+  // the card, and the insert/replace flows armed by the rule's tile editors.
+  const stripTarget = armedTargetForRule(target, props.ruleDef);
+  return <BrainRuleEditorMemoCard {...props} stripTarget={stripTarget} />;
+}

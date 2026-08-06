@@ -9,6 +9,11 @@
  * Reverse: every press the decisions act on is claimed by some contribution of
  * that mode, so an accelerator nobody wrote up fails here.
  *
+ * Shown: every press a contribution claims appears in one of the chip bindings
+ * the help page draws, so a claim the reader never sees fails here too. The
+ * other direction stays open: a binding may draw a key that is live only at
+ * some moments, which the forward check cannot prove from one moment.
+ *
  * The presses run through the real decision functions over one representative
  * moment per mode: a rule holding a word on each side, an offering of two
  * chips wrapped onto two rows, and a cursor standing on no chip. Claims and
@@ -21,7 +26,12 @@ import { before, describe, test } from "node:test";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { type AcceleratorClaim, acceleratorsForMode, kAcceleratorContributions } from "./accelerators";
+import {
+  type AcceleratorBinding,
+  type AcceleratorClaim,
+  acceleratorsForMode,
+  kAcceleratorContributions,
+} from "./accelerators";
 import type { StripCandidate, StripCellGeometry, StripOption } from "./candidate-strip-model";
 import { type CaretPosition, caretRun } from "./caret-run";
 import {
@@ -270,15 +280,42 @@ function claimCovers(claim: AcceleratorClaim, press: Press): boolean {
   return claim.key === press.key && (claim.withCommand ?? false) === press.withCommand;
 }
 
+/** True when `binding` draws the press `claim` names. */
+function bindingDraws(binding: AcceleratorBinding, claim: AcceleratorClaim): boolean {
+  if (binding.kind !== "chord") return false;
+  if (claim.kind !== "key" && claim.kind !== "browser") return false;
+  const withCommand = (binding.modifiers ?? []).includes("command");
+  return binding.keys.includes(claim.key) && withCommand === (claim.withCommand ?? false);
+}
+
 describe("accelerator registry", () => {
-  test("every contribution has a unique id and at least one claim in at least one mode", () => {
+  test("every contribution has a unique id and at least one claim and binding in at least one mode", () => {
     const ids = kAcceleratorContributions.map((contribution) => contribution.id);
     assert.equal(new Set(ids).size, ids.length);
     for (const contribution of kAcceleratorContributions) {
       assert.ok(contribution.when.length > 0, `${contribution.id} stands in no mode`);
       assert.ok(contribution.claims.length > 0, `${contribution.id} claims nothing`);
+      assert.ok(contribution.bindings.length > 0, `${contribution.id} draws nothing`);
+      for (const binding of contribution.bindings) {
+        if (binding.kind === "chord") {
+          assert.ok(binding.keys.length > 0, `${contribution.id} draws a chord with no key`);
+        }
+      }
       for (const mode of contribution.when) {
         assert.ok(kEditorModes.includes(mode), `${contribution.id} names the unknown mode ${mode}`);
+      }
+    }
+  });
+
+  test("every press a contribution claims is drawn by one of its bindings", () => {
+    for (const contribution of kAcceleratorContributions) {
+      for (const claim of contribution.claims) {
+        if (claim.kind !== "key" && claim.kind !== "browser") continue;
+        const press = { key: claim.key, withCommand: claim.withCommand ?? false };
+        assert.ok(
+          contribution.bindings.some((binding) => bindingDraws(binding, claim)),
+          `${contribution.id} claims ${pressName(press)}, which none of its bindings draw`
+        );
       }
     }
   });

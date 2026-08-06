@@ -1,4 +1,5 @@
-export { AcceleratorHelp, kAcceleratorHelpConceptId } from "./AcceleratorHelp";
+export type { AcceleratorHelpProps } from "./AcceleratorHelp";
+export { AcceleratorHelp } from "./AcceleratorHelp";
 export { BrainCodeBlock } from "./BrainCodeBlock";
 export type { AppPatternDocMeta, AppTileDocMeta, BuildDocsRegistryOptions } from "./buildDocsRegistry";
 export { buildDocsRegistry } from "./buildDocsRegistry";

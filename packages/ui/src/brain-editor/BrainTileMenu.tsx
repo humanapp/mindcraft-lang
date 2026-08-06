@@ -174,6 +174,10 @@ function useTileMenu(
  *
  * A tile offering no entry is rendered with no menu on it at all, and carries
  * no `aria-haspopup`, so nothing announces or opens an empty one.
+ *
+ * The panel the entries are drawn in is built in the same render that first
+ * opens the tile's menu, and stands from then on; a tile no one has opened
+ * renders no panel.
  */
 export function BrainTileMenu({
   children,
@@ -181,11 +185,20 @@ export function BrainTileMenu({
   ...props
 }: BrainTileMenuProps & { children: ReactNode; onOpenChange: (open: boolean) => void }) {
   const tileRef = useRef<HTMLSpanElement>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isBuilt, setIsBuilt] = useState(false);
   const { entries, dialogs } = useTileMenu(props, () => tileRef.current);
   if (entries.length === 0) return <>{children}</>;
+
+  const handleOpenChange = (open: boolean) => {
+    if (open) setIsBuilt(true);
+    setIsOpen(open);
+    onOpenChange(open);
+  };
+
   return (
     <>
-      <ContextMenu onOpenChange={onOpenChange}>
+      <ContextMenu open={isOpen} onOpenChange={handleOpenChange}>
         <ContextMenuTrigger
           ref={tileRef}
           asChild
@@ -198,13 +211,15 @@ export function BrainTileMenu({
         >
           {children}
         </ContextMenuTrigger>
-        <ContextMenuContent {...{ [kStripPopupAttribute]: "" }}>
-          {entries.map((entry) => (
-            <ContextMenuItem key={entry.key} onClick={entry.run}>
-              {entry.label}
-            </ContextMenuItem>
-          ))}
-        </ContextMenuContent>
+        {isBuilt && (
+          <ContextMenuContent {...{ [kStripPopupAttribute]: "" }}>
+            {entries.map((entry) => (
+              <ContextMenuItem key={entry.key} onClick={entry.run}>
+                {entry.label}
+              </ContextMenuItem>
+            ))}
+          </ContextMenuContent>
+        )}
       </ContextMenu>
       {dialogs}
     </>

@@ -1,10 +1,11 @@
 import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import { groupTilesByLibrary, type LibraryTileGroups } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
+import { kDocsPanelInsetVar, publishInset, withdrawInset } from "@mindcraft-lang/ui/ui/surface-insets";
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Printer, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AcceleratorHelp, kAcceleratorHelpConceptId } from "./AcceleratorHelp";
+import { AcceleratorHelp } from "./AcceleratorHelp";
 import { DocMarkdown } from "./DocMarkdown";
 import { DocsEntryLink } from "./DocsEntryLink";
 import { DocsPrintView } from "./DocsPrintView";
@@ -24,17 +25,36 @@ const MIN_WIDTH_PCT = 14;
 const MAX_WIDTH_PCT = 55;
 const KEYBOARD_STEP_PCT = 1;
 
-/**
- * Custom property the desktop panel publishes on the document root: the share
- * of the viewport width it currently covers, written as a CSS percentage.
- * It reads `0%` whenever the panel covers nothing a desktop layout has to
- * avoid -- closed, unmounted, or in the mobile full-screen shape. Surfaces
- * that must stay reachable while the panel is open inset themselves by it.
- */
-const PANEL_INSET_VAR = "--docs-panel-inset";
-
 function clampWidth(pct: number): number {
   return Math.min(MAX_WIDTH_PCT, Math.max(MIN_WIDTH_PCT, pct));
+}
+
+/**
+ * The clamped panel width, as a percentage of the viewport, that puts the
+ * panel's left edge under the viewport x-coordinate `clientX`.
+ */
+export function panelWidthPctAtPointer(clientX: number, viewportWidth: number): number {
+  return clampWidth(((viewportWidth - clientX) / viewportWidth) * 100);
+}
+
+/**
+ * What the resize separator does with a pointer move: `"resize"` moves the
+ * panel edge to the pointer, `"end"` finishes the drag and leaves the edge
+ * where it stands, and `"ignore"` touches nothing.
+ */
+export type SeparatorMoveAction = "ignore" | "end" | "resize";
+
+/**
+ * The action a pointer move over the resize separator takes, given whether a
+ * drag is recorded as in progress and the `buttons` bitmask of the move.
+ *
+ * A move with no button held (`buttons` of 0) while a drag is recorded means
+ * the drag ended somewhere the separator never heard about, and yields
+ * `"end"`.
+ */
+export function separatorMoveAction(isDragging: boolean, buttons: number): SeparatorMoveAction {
+  if (!isDragging) return "ignore";
+  return buttons === 0 ? "end" : "resize";
 }
 
 function readStoredWidth(): number {
@@ -93,6 +113,7 @@ const TABS: { id: DocTab; label: string }[] = [
   { id: "tiles", label: "Tiles" },
   { id: "patterns", label: "Patterns" },
   { id: "concepts", label: "Concepts" },
+  { id: "keyboard", label: "Keyboard" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -195,9 +216,11 @@ interface TabBarProps {
 }
 
 function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarProps) {
+  const { editorMode } = useDocsSidebar();
+  const tabs = useMemo(() => TABS.filter((tab) => tab.id !== "keyboard" || editorMode !== undefined), [editorMode]);
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      const tabIds = TABS.map((t) => t.id);
+      const tabIds = tabs.map((t) => t.id);
       const currentIndex = tabIds.indexOf(activeTab);
       if (e.key === "ArrowRight") {
         e.preventDefault();
@@ -213,7 +236,7 @@ function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarPro
         setTab(tabIds[tabIds.length - 1]);
       }
     },
-    [activeTab, setTab]
+    [activeTab, setTab, tabs]
   );
 
   return (
@@ -223,7 +246,7 @@ function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarPro
       aria-label="Documentation sections"
       onKeyDown={handleKeyDown}
     >
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         return (
           <button
@@ -503,7 +526,6 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
         >
           <DocMarkdown>{detailContent}</DocMarkdown>
           {navTab === "tiles" && <DocsTileArgsSection tileId={navKey} />}
-          {navTab === "concepts" && navKey === kAcceleratorHelpConceptId && <AcceleratorHelp />}
         </article>
       </>
     );
@@ -547,7 +569,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
       <TabBar activeTab={activeTab} setTab={handleSetTab} itemClassName={tabBarClassName} />
       {/* Live region: announces result counts when search query is active */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
-        {search.trim()
+        {search.trim() && activeTab !== "keyboard"
           ? activeTab === "tiles"
             ? `${filteredTiles.length} tile${filteredTiles.length === 1 ? "" : "s"} found`
             : activeTab === "patterns"
@@ -611,6 +633,8 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
             </div>
           </>
         )}
+
+        {activeTab === "keyboard" && <AcceleratorHelp search={search} />}
       </div>
     </>
   );
@@ -640,6 +664,8 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
     if (navKey && navTab) return `/docs/${navTab}/${encodeURIComponent(navKey)}`;
     return `/docs/${activeTab}`;
   }, [navKey, navTab, activeTab]);
+  /** Whether the standalone docs page stands a route to what the panel is showing. */
+  const hasDocsPage = showDocsPageLinks && activeTab !== "keyboard";
 
   return (
     <>
@@ -650,7 +676,7 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
           <span className="text-sm font-semibold tracking-tight">Docs</span>
         </div>
         <div className="flex items-center gap-1">
-          {showDocsPageLinks && (
+          {hasDocsPage && (
             <a
               href={docsPageUrl}
               target="_blank"
@@ -759,10 +785,9 @@ export function DocsSidebar() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [widthPct, setWidthPct] = usePanelWidth();
   const [hasBeenOpened, setHasBeenOpened] = useState(isOpen);
-  // During drag we apply the width directly without React re-renders via a
-  // CSS variable on the aside element, then commit to state on pointerup.
+  // Holds the aside, whose width a drag writes inline and pointerup commits to
+  // state. The inline width stays where the drag left it.
   const asideRef = useRef<HTMLElement>(null);
-  // Track whether we are mid-drag so we can suppress the CSS transition.
   const isDragging = useRef(false);
 
   useEffect(() => {
@@ -772,10 +797,9 @@ export function DocsSidebar() {
   // Publishes the panel's settled footprint; the separator's pointer-move
   // handler republishes it during a drag.
   useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty(PANEL_INSET_VAR, !isMobile && isOpen ? `${widthPct}%` : "0%");
+    publishInset(kDocsPanelInsetVar, !isMobile && isOpen ? `${widthPct}%` : "0%");
     return () => {
-      root.style.removeProperty(PANEL_INSET_VAR);
+      withdrawInset(kDocsPanelInsetVar);
     };
   }, [isMobile, isOpen, widthPct]);
 
@@ -794,39 +818,48 @@ export function DocsSidebar() {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     isDragging.current = true;
-    if (asideRef.current) {
-      // Disable transition during drag for immediate feedback.
-      asideRef.current.style.transition = "transform 300ms ease-in-out";
+  }, []);
+
+  // Clears the drag record and gives the pointer back if the separator still
+  // holds it.
+  const endSeparatorDrag = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    isDragging.current = false;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
   }, []);
 
-  const handleSeparatorPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging.current) return;
-    const vw = window.innerWidth;
-    const newPct = clampWidth(((vw - e.clientX) / vw) * 100);
-    if (asideRef.current) {
-      // Update the width immediately via inline style without a state update
-      // to avoid re-rendering the full subtree on every pointer event.
-      asideRef.current.style.width = `${newPct}%`;
-    }
-    document.documentElement.style.setProperty(PANEL_INSET_VAR, `${newPct}%`);
-  }, []);
+  const handleSeparatorPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const action = separatorMoveAction(isDragging.current, e.buttons);
+      if (action === "ignore") return;
+      if (action === "end") {
+        endSeparatorDrag(e);
+        return;
+      }
+      const newPct = panelWidthPctAtPointer(e.clientX, window.innerWidth);
+      if (asideRef.current) {
+        asideRef.current.style.width = `${newPct}%`;
+      }
+      publishInset(kDocsPanelInsetVar, `${newPct}%`);
+    },
+    [endSeparatorDrag]
+  );
 
-  const handleSeparatorPointerUp = useCallback(
+  // Serves pointerup, pointercancel and lostpointercapture; the first of them
+  // to arrive settles the width and the rest find no drag recorded.
+  const handleSeparatorDragEnd = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!isDragging.current) return;
-      isDragging.current = false;
-      e.currentTarget.releasePointerCapture(e.pointerId);
-      const vw = window.innerWidth;
-      const newPct = clampWidth(((vw - e.clientX) / vw) * 100);
-      setWidthPct(newPct);
+      endSeparatorDrag(e);
+      const newPct = panelWidthPctAtPointer(e.clientX, window.innerWidth);
       if (asideRef.current) {
-        // Hand control back to React; the state update will sync the inline width.
-        asideRef.current.style.width = "";
-        asideRef.current.style.transition = "";
+        asideRef.current.style.width = `${newPct}%`;
       }
+      publishInset(kDocsPanelInsetVar, `${newPct}%`);
+      setWidthPct(newPct);
     },
-    [setWidthPct]
+    [endSeparatorDrag, setWidthPct]
   );
 
   // -- Resize handle keyboard control -------------------------------------
@@ -887,8 +920,9 @@ export function DocsSidebar() {
         className="absolute left-0 inset-y-0 w-3 flex items-center justify-center cursor-col-resize group z-10 focus:outline-none"
         onPointerDown={handleSeparatorPointerDown}
         onPointerMove={handleSeparatorPointerMove}
-        onPointerUp={handleSeparatorPointerUp}
-        onPointerCancel={handleSeparatorPointerUp}
+        onPointerUp={handleSeparatorDragEnd}
+        onPointerCancel={handleSeparatorDragEnd}
+        onLostPointerCapture={handleSeparatorDragEnd}
         onKeyDown={handleSeparatorKeyDown}
       >
         {/* Visual affordance: thin line + grip dots, highlighted on hover/focus */}
