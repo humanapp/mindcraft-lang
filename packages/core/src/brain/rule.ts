@@ -4,6 +4,7 @@ import type { IBrainPage, IBrainRule } from "../runtime";
 import type { Value } from "../runtime/value";
 import type { IBrainRuleDef } from "./interfaces";
 import type { BrainPage } from "./page";
+import { childRulePath } from "./rule-path";
 
 /**
  * BrainRule runtime instance.
@@ -145,7 +146,7 @@ export class BrainRule implements IBrainRule {
     // Assign to children
     for (let i = 0; i < this.rules_.size(); i++) {
       const child = this.rules_.get(i)!;
-      child.assignFuncIds(ruleIndex, `${rulePath}/${i}`);
+      child.assignFuncIds(ruleIndex, childRulePath(rulePath, i));
     }
   }
 

@@ -1,5 +1,5 @@
 import type { IBrainTileDef, ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
-import { isVariableFactoryTileId } from "@mindcraft-lang/core/brain";
+import { isVariableFactoryTileId, rootRulePath } from "@mindcraft-lang/core/brain";
 import type { BrainCommand, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   AddRuleCommand,
@@ -87,7 +87,7 @@ function resolveEdit(workspace: AuthoringWorkspace, input: SingleCommandInput): 
       resolveRule: () => {
         const rules = page.children();
         const index = rules.size() - 1;
-        return { ruleId: `${input.pageIndex}/${index}`, rule: rules.get(index) as BrainRuleDef };
+        return { ruleId: rootRulePath(input.pageIndex, index), rule: rules.get(index) as BrainRuleDef };
       },
     };
   }
@@ -229,7 +229,11 @@ function decideApplied(
   }
 
   transaction.keep();
-  return { ok: true, rule: readRule(rule, ruleId), historyDepth: workspace.history.undoDepth() };
+  return {
+    ok: true,
+    rule: readRule(rule, ruleId, workspace.environment.appServices.localizer),
+    historyDepth: workspace.history.undoDepth(),
+  };
 }
 
 /**

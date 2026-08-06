@@ -22,6 +22,7 @@ import {
   collectRuleHierarchyCapabilities,
   collectRuleHierarchyOutputKeys,
 } from "../language-service/tile-suggestions";
+import { childRulePath, rootRulePath } from "../rule-path";
 import { ConstantPool } from "./constant-pool";
 import { type BrainBuildDiagnostic, type BrainBuildResult, diagnosticSeverity } from "./diagnostics";
 import { BytecodeEmitter } from "./emitter";
@@ -224,7 +225,7 @@ export class BrainCompiler {
 
     for (let ruleIdx = 0; ruleIdx < rules.size(); ruleIdx++) {
       const ruleDef = rules.get(ruleIdx);
-      const funcId = this.assignFuncIdToRule(ruleDef, `${pageIdx}/${ruleIdx}`, undefined);
+      const funcId = this.assignFuncIdToRule(ruleDef, rootRulePath(pageIdx, ruleIdx), undefined);
       rootRuleFuncIds.push(funcId);
     }
 
@@ -259,7 +260,7 @@ export class BrainCompiler {
     const children = ruleDef.children();
     for (let childIdx = 0; childIdx < children.size(); childIdx++) {
       const childDef = children.get(childIdx);
-      this.assignFuncIdToRule(childDef, `${rulePath}/${childIdx}`, funcId);
+      this.assignFuncIdToRule(childDef, childRulePath(rulePath, childIdx), funcId);
     }
 
     return funcId;
@@ -274,7 +275,7 @@ export class BrainCompiler {
 
     for (let ruleIdx = 0; ruleIdx < rules.size(); ruleIdx++) {
       const ruleDef = rules.get(ruleIdx);
-      this.compileRule(ruleDef, `${pageIdx}/${ruleIdx}`, ruleIdx);
+      this.compileRule(ruleDef, rootRulePath(pageIdx, ruleIdx), ruleIdx);
     }
 
     // Collect all action callsites from all compiled rules in this page
@@ -339,8 +340,7 @@ export class BrainCompiler {
     const childFuncIds = List.empty<number>();
     const children = ruleDef.children();
     for (let childIdx = 0; childIdx < children.size(); childIdx++) {
-      const childPath = `${rulePath}/${childIdx}`;
-      const childFuncId = this.ruleIndex.get(childPath);
+      const childFuncId = this.ruleIndex.get(childRulePath(rulePath, childIdx));
       if (childFuncId !== undefined) {
         childFuncIds.push(childFuncId);
       }
@@ -356,7 +356,7 @@ export class BrainCompiler {
     // Recursively compile children
     for (let childIdx = 0; childIdx < children.size(); childIdx++) {
       const childDef = children.get(childIdx);
-      this.compileRule(childDef, `${rulePath}/${childIdx}`, childIdx);
+      this.compileRule(childDef, childRulePath(rulePath, childIdx), childIdx);
     }
   }
 

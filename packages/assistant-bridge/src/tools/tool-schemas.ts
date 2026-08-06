@@ -105,10 +105,12 @@ const proposeEditInputSchema = z.discriminatedUnion("op", [
 const compileInputSchema = z.object({});
 
 /**
- * One scripted percept of a `simulate` scenario. The kind is checked against
- * the target's registered kinds when the call runs, never here.
+ * One scripted percept of a `simulate` scenario: a level of `kind`, applied
+ * before think `at`, holding until a later entry of the same kind changes it.
+ * The kind is checked against the target's registered kinds when the call runs,
+ * never here. It parses to the `ScenarioInput` shape a target adapter reads.
  */
-const scenarioInputSchema = z.object({
+export const scenarioInputSchema = z.object({
   kind: z.string().min(1).describe("What to deliver, from the input kinds this target reads."),
   at: z.number().int().min(0).describe("Zero-based think this input is applied before."),
   value: z

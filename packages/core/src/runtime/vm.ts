@@ -1182,6 +1182,11 @@ export class VM implements IVM {
     this.bindExecutionContext(fiber, frame, callSiteId);
 
     const args = fiber.vstack.subview(stackSize - argc, argc);
+    this.events?.onHostActionDispatch?.({
+      descriptor: action.descriptor,
+      args,
+      ruleFuncId: fiber.executionContext.currentRuleFuncId,
+    });
     const result = action.execSync(fiber.executionContext, args);
     for (let i = 0; i < argc; i++) {
       fiber.vstack.pop();
@@ -1231,6 +1236,11 @@ export class VM implements IVM {
 
     this.bindExecutionContext(fiber, frame, callSiteId);
 
+    this.events?.onHostActionDispatch?.({
+      descriptor: action.descriptor,
+      args,
+      ruleFuncId: fiber.executionContext.currentRuleFuncId,
+    });
     try {
       action.execAsync(fiber.executionContext, args, this.makeAsyncHandle(hid));
     } catch (error) {

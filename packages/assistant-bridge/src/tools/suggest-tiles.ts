@@ -7,16 +7,17 @@ import {
   suggestTiles as coreSuggestTiles,
   countUnclosedParens,
   parseTilesForSuggestions,
+  tileSentenceWord,
 } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { tileLabel } from "./tile-label.js";
+import type { Localizer } from "@mindcraft-lang/core/localization";
 import type { ToolInput } from "./tool-schemas.js";
 import { type AuthoringWorkspace, findRule, toRuleSide } from "./workspace.js";
 
 /** One tile the legality oracle offers at an insertion point. */
 export interface SuggestedTile {
   readonly tileId: string;
-  /** Display label, the value text or variable name a manufactured tile carries, or the tile id when it has none. */
+  /** The word the tile reads by in the environment's locale. */
   readonly label: string;
 }
 
@@ -39,11 +40,11 @@ export interface SuggestionError {
   readonly named: string;
 }
 
-function toSuggestedTiles(suggestions: List<TileSuggestion>): SuggestedTile[] {
+function toSuggestedTiles(suggestions: List<TileSuggestion>, localizer: Localizer): SuggestedTile[] {
   const tiles: SuggestedTile[] = [];
   for (let i = 0; i < suggestions.size(); i++) {
     const tileDef = suggestions.get(i)!.tileDef;
-    tiles.push({ tileId: tileDef.tileId, label: tileLabel(tileDef) });
+    tiles.push({ tileId: tileDef.tileId, label: tileSentenceWord(tileDef, localizer) });
   }
   return tiles;
 }
@@ -89,11 +90,12 @@ export function suggestTiles(
     workspace.catalogs,
     workspace.environment.brainServices
   );
+  const localizer = workspace.environment.appServices.localizer;
   return {
     ruleId: input.ruleId,
     side: input.side,
     position,
-    exact: toSuggestedTiles(result.exact),
-    withConversion: toSuggestedTiles(result.withConversion),
+    exact: toSuggestedTiles(result.exact, localizer),
+    withConversion: toSuggestedTiles(result.withConversion, localizer),
   };
 }

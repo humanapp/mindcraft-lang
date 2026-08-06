@@ -3,7 +3,7 @@ import type { Dict } from "../platform/dict";
 import type { List, ReadonlyList } from "../platform/list";
 import type { EventEmitterConsumer } from "../util";
 import type { HostActionBinding } from "./context";
-import type { RuleWhenGateEvent } from "./events";
+import type { HostActionDispatchEvent, RuleWhenGateEvent } from "./events";
 import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from "./function-defs";
 import type { Program, ProgramArtifact } from "./program";
 import type { ITypeRegistry, TypeId } from "./type-defs";
@@ -174,6 +174,13 @@ export type BrainEvents = {
    * emits none that think.
    */
   rule_when_evaluated: RuleWhenGateEvent;
+  /**
+   * One host-action call, reported as the runtime hands it to the action's
+   * body. Both synchronous and asynchronous actions report, each at the moment
+   * the call is made. The payload's argument container is only valid during
+   * the notification.
+   */
+  host_action_dispatched: HostActionDispatchEvent;
   //  variable_changed: { varId: string; oldValue: Value | undefined; newValue: Value };
 };
 

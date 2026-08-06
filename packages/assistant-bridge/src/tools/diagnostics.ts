@@ -1,5 +1,6 @@
 import { RuleSide } from "@mindcraft-lang/core/brain";
 import type { DiagCode, DiagParams } from "@mindcraft-lang/core/brain/compiler";
+import type { RuleSideName } from "./tool-schemas.js";
 
 /**
  * One diagnostic param value after serialization: a scalar, or the array a
@@ -18,8 +19,14 @@ export interface ToolDiagnostic {
   readonly params?: SerializedDiagParams;
 }
 
+/**
+ * The name a diagnostic reports a rule side by: `"when"`, `"do"`, or `"either"`
+ * for a diagnostic that applies to both sides.
+ */
+export type DiagnosticRuleSideName = RuleSideName | "either";
+
 /** Core `RuleSide` bitmask rendered as the name the model reads and writes. */
-export function ruleSideName(side: RuleSide): string {
+export function ruleSideName(side: RuleSide): DiagnosticRuleSideName {
   if (side === RuleSide.When) return "when";
   if (side === RuleSide.Do) return "do";
   return "either";

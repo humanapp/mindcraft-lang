@@ -1,13 +1,16 @@
 import type {
+  AsyncHandle,
   CreateHostActuatorOptions,
   CreateHostSensorOptions,
   ExecutionContext,
   MindcraftModule,
   MindcraftModuleApi,
+  ReadonlyList,
   Value,
 } from "@mindcraft-lang/core/app";
 import {
   bag,
+  CoreParameterId,
   CoreTypeIds,
   createHostActuator,
   createHostSensor,
@@ -34,6 +37,8 @@ export const FakeTileIds = {
 export const FakeActionKeys = {
   Signal: "sensor.fake.signal",
   Emit: "actuator.fake.emit",
+  /** The asynchronous actuator. */
+  Chime: "actuator.fake.chime",
 } as const;
 
 /** The one piece of world state the fake target's sensor reads. */
@@ -44,9 +49,11 @@ export interface FakeWorldState {
 
 const Loudly = mod(FakeTileIds.Loudly);
 const Strength = param(FakeTileIds.Strength);
+const AnonNumber = param(CoreParameterId.AnonymousNumber, { anonymous: true });
 
 const signalCallDef = mkCallDef(bag());
 const emitCallDef = mkCallDef(bag(optional(Loudly), optional(Strength)));
+const chimeCallDef = mkCallDef(bag(optional(AnonNumber)));
 
 /** Report the signal the world staged for this think. */
 function execSignal(ctx: ExecutionContext): Value {
@@ -55,6 +62,11 @@ function execSignal(ctx: ExecutionContext): Value {
 
 function execEmit(): Value {
   return VOID_VALUE;
+}
+
+/** Resolve the handle at dispatch, so the issuing rule does not park on the chime. */
+function execChime(_ctx: ExecutionContext, _args: ReadonlyList<Value>, handle: AsyncHandle): void {
+  handle.resolve(VOID_VALUE);
 }
 
 const signalSensor = {
@@ -78,10 +90,21 @@ const emitActuator = {
   metadata: { label: "emit" },
 } satisfies CreateHostActuatorOptions;
 
+const chimeActuator = {
+  key: FakeActionKeys.Chime,
+  actionId: TARGET_ACTION_ID_BASE + 2,
+  fnId: TARGET_FUNC_ID_BASE + 2,
+  callDef: chimeCallDef,
+  fn: { exec: execChime },
+  isAsync: true,
+  metadata: { label: "chime" },
+} satisfies CreateHostActuatorOptions;
+
 /**
  * The module the fake target installs: one boolean sensor reading the staged
- * signal, and one actuator taking a modifier and a parameter, so a rehearsal
- * over it observes both gates and dispatch arguments.
+ * signal, one synchronous actuator taking a modifier and a named parameter, and
+ * one asynchronous actuator taking an anonymous number, so a rehearsal over it
+ * observes gates and both dispatch kinds with their arguments.
  */
 export function createFakeModule(): MindcraftModule {
   return {
@@ -89,6 +112,7 @@ export function createFakeModule(): MindcraftModule {
     install(api: MindcraftModuleApi): void {
       api.registerHostSensor(createHostSensor(signalSensor));
       api.registerHostActuator(createHostActuator(emitActuator));
+      api.registerHostActuator(createHostActuator(chimeActuator));
       api.registerModifiers([{ id: FakeTileIds.Loudly, label: "loudly" }]);
       api.registerParameters([{ id: FakeTileIds.Strength, dataType: CoreTypeIds.Number, label: "strength" }]);
     },

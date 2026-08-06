@@ -90,7 +90,6 @@ describe("a rehearsal environment", () => {
     const environment = createRehearsalEnvironment({
       modules: [createFakeModule()],
       rng: createSeededRng(1),
-      onDispatch: () => {},
     });
 
     assert.equal(roundingOf(environment), SAMPLE);
@@ -100,7 +99,6 @@ describe("a rehearsal environment", () => {
     const environment = createRehearsalEnvironment({
       modules: [createFakeModule()],
       rng: createSeededRng(1),
-      onDispatch: () => {},
       precision: "f32",
     });
 

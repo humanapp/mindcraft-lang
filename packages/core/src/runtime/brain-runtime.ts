@@ -207,6 +207,10 @@ export class BrainRuntime implements IBrainRuntime {
         emitter.emit("rule_when_evaluated", payload);
         vmEvents?.onRuleWhenGate?.(payload);
       },
+      onHostActionDispatch: (payload) => {
+        emitter.emit("host_action_dispatched", payload);
+        vmEvents?.onHostActionDispatch?.(payload);
+      },
     };
 
     // Thread the per-fiber caps into the VM config; undefined entries fall back

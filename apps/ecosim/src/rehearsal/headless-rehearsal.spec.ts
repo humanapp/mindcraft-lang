@@ -4,7 +4,6 @@ import { describe, test } from "node:test";
 import { createRehearsalEnvironment, createSeededRng } from "@mindcraft-lang/assistant-bridge/kit";
 import type { Actor } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
-import { getSelf } from "@/brain/execution-context-types";
 import { createEcosimModule } from "@/brain/index";
 import { createRehearsalWorld, STEP_MS, WORLD_HEIGHT, WORLD_WIDTH, type WorldObserver } from "./world";
 
@@ -36,8 +35,12 @@ class RunObservations implements WorldObserver {
     this.totalDispatch.set(action, (this.totalDispatch.get(action) ?? 0) + 1);
   }
 
-  onSpawn(): void {
+  /** Count the spawn and follow the new actor's brain for the actions it dispatches. */
+  onSpawn(actor: Actor): void {
     this.spawns++;
+    actor.brain.events().on("host_action_dispatched", ({ descriptor }) => {
+      this.onDispatch(actor.actorId, descriptor.key);
+    });
   }
 
   onSay(): void {
@@ -101,9 +104,6 @@ async function runRehearsal(seed: number, ticks: number): Promise<RunResult> {
   const environment = createRehearsalEnvironment({
     modules: [createEcosimModule()],
     rng: next,
-    onDispatch: (event) => {
-      obs.onDispatch(getSelf(event.ctx)?.actorId ?? 0, event.action);
-    },
   });
   const world = await createRehearsalWorld({ environment, next, observer: obs });
 

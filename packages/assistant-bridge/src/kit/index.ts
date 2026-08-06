@@ -4,7 +4,7 @@ export type {
   ConformanceReport,
 } from "./conformance.js";
 export { ConformanceCheckCode, checkAdapterConformance, checkArtifactLoads } from "./conformance.js";
-export type { DispatchEvent, RehearsalEnvironmentOptions } from "./environment.js";
+export type { RehearsalEnvironmentOptions } from "./environment.js";
 export { createRehearsalEnvironment, createSeededRng } from "./environment.js";
 export type {
   RehearsalAdapterOptions,
@@ -16,4 +16,3 @@ export type {
 export { createRehearsalAdapter, ScenarioRejection, ScenarioRejectionCode } from "./rehearsal-adapter.js";
 export type { TileDocEntry } from "./tile-docs.js";
 export { readTileDocs } from "./tile-docs.js";
-export { renderValue } from "./value-text.js";

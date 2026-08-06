@@ -1,15 +1,16 @@
 import type { ReadonlyBitSet } from "@mindcraft-lang/core";
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { isActionTileDef, TilePlacement } from "@mindcraft-lang/core/brain";
+import { tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
+import type { Localizer } from "@mindcraft-lang/core/localization";
 import type { BrainActionCallSpec } from "@mindcraft-lang/core/runtime";
-import { tileLabel } from "./tile-label.js";
 import type { ToolInput } from "./tool-schemas.js";
 import { type AuthoringWorkspace, allTiles } from "./workspace.js";
 
 /** One tile as `read_catalog` describes it. */
 export interface CatalogTile {
   readonly tileId: string;
-  /** Display label, the value text or variable name a manufactured tile carries, or the tile id when it has none. */
+  /** The word the tile reads by in the environment's locale. */
   readonly label: string;
   /** Tile kind, for example "sensor", "actuator", "modifier". */
   readonly kind: string;
@@ -95,15 +96,19 @@ function outputKeys(tile: IBrainTileDef): string[] {
   return keys;
 }
 
-/** Describe one tile for the model. */
-function describeTile(tile: IBrainTileDef, descriptions: ReadonlyMap<string, string>): CatalogTile {
+/** Describe one tile for the model, reading it by its word in `localizer`'s locale. */
+function describeTile(
+  tile: IBrainTileDef,
+  descriptions: ReadonlyMap<string, string>,
+  localizer: Localizer
+): CatalogTile {
   const description = descriptions.get(tile.tileId);
   const action = isActionTileDef(tile) ? tile.action : undefined;
   const args = action && action.callDef.argSlots.size() > 0 ? renderCallSpec(action.callDef.callSpec) : undefined;
   const consumesWhenResult = tile.consumesWhenResult();
   return {
     tileId: tile.tileId,
-    label: tileLabel(tile),
+    label: tileSentenceWord(tile, localizer),
     kind: tile.kind,
     ...(description ? { description } : {}),
     ...(action?.outputType ? { outputType: action.outputType } : {}),
@@ -133,7 +138,8 @@ function matches(tile: CatalogTile, needle: string): boolean {
  * description and the metadata the model plans from.
  */
 export function readCatalog(workspace: AuthoringWorkspace, input: ToolInput<"read_catalog">): CatalogView {
-  const described = allTiles(workspace.catalogs).map((tile) => describeTile(tile, workspace.descriptions));
+  const localizer = workspace.environment.appServices.localizer;
+  const described = allTiles(workspace.catalogs).map((tile) => describeTile(tile, workspace.descriptions, localizer));
   const needle = input.filter?.trim().toLowerCase();
   const tiles = needle ? described.filter((tile) => matches(tile, needle)) : described;
   return { tiles, total: described.length };

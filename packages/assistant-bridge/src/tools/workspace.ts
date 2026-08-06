@@ -1,7 +1,7 @@
 import type { MindcraftEnvironment, ReadonlyList } from "@mindcraft-lang/core";
 import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
 import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
-import { RuleSide } from "@mindcraft-lang/core/brain";
+import { childRulePath, RuleSide, rootRulePath } from "@mindcraft-lang/core/brain";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainCommandHistory, BrainDef } from "@mindcraft-lang/core/brain/model";
 import type { TargetAdapter } from "../target/adapter.js";
@@ -60,7 +60,7 @@ function walkRule(rule: BrainRuleDef, ruleId: string, into: LocatedRule[]): void
   into.push({ ruleId, rule });
   const children = rule.children();
   for (let i = 0; i < children.size(); i++) {
-    walkRule(children.get(i) as BrainRuleDef, `${ruleId}/${i}`, into);
+    walkRule(children.get(i) as BrainRuleDef, childRulePath(ruleId, i), into);
   }
 }
 
@@ -72,7 +72,7 @@ export function locateRules(brainDef: BrainDef): LocatedRule[] {
     const page = pages.get(p) as BrainPageDef;
     const rules = page.children();
     for (let r = 0; r < rules.size(); r++) {
-      walkRule(rules.get(r) as BrainRuleDef, `${p}/${r}`, located);
+      walkRule(rules.get(r) as BrainRuleDef, rootRulePath(p, r), located);
     }
   }
   return located;

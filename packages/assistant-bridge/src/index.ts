@@ -26,7 +26,12 @@ export {
 } from "./target/adapter.js";
 export type { CompileDiagnostic, CompileResult } from "./tools/compile.js";
 export { compileBrain } from "./tools/compile.js";
-export type { DiagParamValue, SerializedDiagParams, ToolDiagnostic } from "./tools/diagnostics.js";
+export type {
+  DiagnosticRuleSideName,
+  DiagParamValue,
+  SerializedDiagParams,
+  ToolDiagnostic,
+} from "./tools/diagnostics.js";
 export { ruleSideName, serializeDiagParams, toToolDiagnostic } from "./tools/diagnostics.js";
 export type { ToolCallError, ToolCallOutcome } from "./tools/dispatch.js";
 export { executeToolCall, isToolName, ToolCallErrorCode } from "./tools/dispatch.js";
@@ -49,7 +54,6 @@ export { simulate } from "./tools/simulate.js";
 export type { SuggestedTile, SuggestionError, SuggestionView } from "./tools/suggest-tiles.js";
 export { suggestTiles } from "./tools/suggest-tiles.js";
 export { descriptionFromMarkdown, sessionTileDescriptions } from "./tools/tile-descriptions.js";
-export { tileLabel } from "./tools/tile-label.js";
 export type {
   ProposeEditInput,
   RuleSideName,
@@ -58,7 +62,7 @@ export type {
   ToolInput,
   ToolName,
 } from "./tools/tool-schemas.js";
-export { toolDefinitions, toolInputSchemas } from "./tools/tool-schemas.js";
+export { scenarioInputSchema, toolDefinitions, toolInputSchemas } from "./tools/tool-schemas.js";
 export type { AuthoringWorkspace, LocatedRule } from "./tools/workspace.js";
 export {
   allTiles,

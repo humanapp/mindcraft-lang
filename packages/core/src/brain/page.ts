@@ -4,6 +4,7 @@ import type { IBrainPage } from "../runtime";
 import type { Brain } from "./brain";
 import type { IBrainPageDef } from "./interfaces";
 import { BrainRule } from "./rule";
+import { rootRulePath } from "./rule-path";
 
 /**
  * BrainPage runtime instance.
@@ -75,7 +76,7 @@ export class BrainPage implements IBrainPage {
   assignFuncIds(ruleIndex: Dict<string, number>, pageIndex: number): void {
     for (let i = 0; i < this.rules.size(); i++) {
       const rule = this.rules.get(i)!;
-      rule.assignFuncIds(ruleIndex, `${pageIndex}/${i}`);
+      rule.assignFuncIds(ruleIndex, rootRulePath(pageIndex, i));
     }
   }
 }

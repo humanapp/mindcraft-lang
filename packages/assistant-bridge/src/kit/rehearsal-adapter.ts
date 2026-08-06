@@ -12,9 +12,9 @@ import type {
   ThinkObservation,
 } from "../target/adapter.js";
 import { ADAPTER_CONTRACT_VERSION } from "../target/adapter.js";
-import type { DispatchEvent } from "./environment.js";
 import { createRehearsalEnvironment, createSeededRng } from "./environment.js";
-import { renderValue } from "./value-text.js";
+import type { NumberText } from "./value-text.js";
+import { createTileNamer, renderArgs, renderValue } from "./value-text.js";
 
 /** Why a rehearsal adapter refused to stage a scenario. */
 export const ScenarioRejectionCode = {
@@ -137,7 +137,10 @@ function ruleFuncIdPaths(environment: MindcraftEnvironment, brainDef: IBrainDef)
   return paths;
 }
 
-/** Collects what the participant under study did, one think at a time. */
+/**
+ * Collects what the participant under study did, one think at a time, from the
+ * event stream of its own brain.
+ */
 class SubjectRecorder {
   private readonly rulePaths = new Map<number, string>();
   private subject: RunningSubject | undefined;
@@ -146,6 +149,15 @@ class SubjectRecorder {
   private readonly thinks: ThinkObservation[] = [];
   /** `false` once the participant under study is gone, after which nothing is recorded. */
   private recording = false;
+
+  /**
+   * @param nameOf - Name a tile reads by, for the arguments a dispatch carried.
+   * @param numberText - How a number renders, at the run's own precision.
+   */
+  constructor(
+    private readonly nameOf: (tileId: string) => string,
+    private readonly numberText: NumberText
+  ) {}
 
   /** Bind the rule paths of the brain under study; call before the subject appears. */
   bindRulePaths(rulePaths: ReadonlyMap<number, string>): void {
@@ -157,28 +169,34 @@ class SubjectRecorder {
     return this.thinks;
   }
 
-  /** Start recording the participant under study and its brain's WHEN gates. */
+  /**
+   * Start recording the participant under study: its brain's WHEN gates and the
+   * host actions it dispatches. Both are rendered as the events arrive, while
+   * the values they carry are still the ones the call saw.
+   */
   observeSubject(subject: RunningSubject): void {
     if (this.subject) return;
     this.subject = subject;
     this.recording = true;
-    subject.brain.events().on("rule_when_evaluated", ({ ruleFuncId, result, fired }) => {
+    const events = subject.brain.events();
+    events.on("rule_when_evaluated", ({ ruleFuncId, result, fired }) => {
       if (!this.recording) return;
-      this.gates.push({ ruleId: this.ruleId(ruleFuncId), fired, result: renderValue(result) });
+      this.gates.push({ ruleId: this.ruleId(ruleFuncId), fired, result: renderValue(result, this.numberText) });
+    });
+    events.on("host_action_dispatched", ({ descriptor, args, ruleFuncId }) => {
+      if (!this.recording) return;
+      const ruleId = ruleFuncId === undefined ? undefined : this.ruleId(ruleFuncId);
+      this.dispatches.push({
+        action: descriptor.key,
+        args: renderArgs(descriptor.callDef.argSlots, args, this.nameOf, this.numberText),
+        ...(ruleId ? { ruleId } : {}),
+      });
     });
   }
 
   /** Stop recording; called once the participant under study has left the world. */
   release(): void {
     this.recording = false;
-  }
-
-  /** Record one host action call, keeping it only when the participant under study made it. */
-  onDispatch(event: DispatchEvent): void {
-    if (!this.recording || !this.subject?.runs(event.ctx)) return;
-    const funcId = event.ctx.currentRuleFuncId;
-    const ruleId = funcId === undefined ? undefined : this.ruleId(funcId);
-    this.dispatches.push({ action: event.action, args: event.renderArgs(), ...(ruleId ? { ruleId } : {}) });
   }
 
   /** Close the current think, keeping it only while the participant under study lives. */
@@ -221,16 +239,16 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
   }
   const inputs = scheduledInputs(driver, request.scenario.inputs ?? []);
 
-  const recorder = new SubjectRecorder();
   const next = createSeededRng(seed);
   const environment = createRehearsalEnvironment({
     modules: driver.modules(),
     rng: next,
-    onDispatch: (event) => {
-      recorder.onDispatch(event);
-    },
     precision: driver.precision?.(),
   });
+  const recorder = new SubjectRecorder(
+    createTileNamer(() => environment.tileCatalogs(), environment.appServices.localizer),
+    (value) => environment.appServices.numerics.formatNumber(value)
+  );
 
   const subjectBrain = environment.deserializeBrainJson(request.brainDef.toJson() as BrainJson);
   recorder.bindRulePaths(ruleFuncIdPaths(environment, subjectBrain));
