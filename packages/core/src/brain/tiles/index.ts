@@ -7,6 +7,7 @@ export * from "./controlflow";
 export * from "./display-format";
 export * from "./factories";
 export * from "./literals";
+export * from "./manufacture";
 export * from "./missing";
 export * from "./modifiers";
 export * from "./operators";
