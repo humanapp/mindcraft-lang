@@ -103,7 +103,7 @@ interface LoadedArtifact {
   /** `typeof` what the factory returned. */
   readonly produced: string;
   readonly contractVersion?: unknown;
-  readonly packageName?: unknown;
+  readonly targetIdentity?: unknown;
   /** The names from {@link adapterMethods} the produced object carries as functions. */
   readonly methods: readonly string[];
 }
@@ -123,7 +123,7 @@ function loadScript(artifactUrl: URL): string {
         hasFactory: true,
         produced: typeof adapter,
         contractVersion: object.contractVersion,
-        packageName: object.packageName,
+        targetIdentity: object.targetIdentity,
         methods: members.filter((name) => typeof object[name] === "function"),
       }));
     }
@@ -135,7 +135,7 @@ function standIn(loaded: LoadedArtifact): unknown {
   if (loaded.produced !== "object") return undefined;
   const object: Record<string, unknown> = {
     contractVersion: loaded.contractVersion,
-    packageName: loaded.packageName,
+    targetIdentity: loaded.targetIdentity,
   };
   for (const name of loaded.methods) object[name] = () => undefined;
   return object;

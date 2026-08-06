@@ -116,10 +116,10 @@ export interface WorldDriver {
 /** What a rehearsal adapter is built from. */
 export interface RehearsalAdapterOptions {
   /**
-   * Name of the package the artifact is built from. Inject it at build time
-   * from the package's own `package.json`.
+   * Mindcraft identity of the target the artifact is. Inject it at build time
+   * from the `identity` the target's own `mindcraft.json` declares.
    */
-  readonly packageName: string;
+  readonly targetIdentity: string;
   /** Facts about this world, stated to the model before it plans. */
   readonly manifest: TargetManifest;
   /** The documentation markdown this target ships for its own tiles, keyed by tile id. */
@@ -278,7 +278,7 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
 export function createRehearsalAdapter(options: RehearsalAdapterOptions): TargetAdapter {
   return {
     contractVersion: ADAPTER_CONTRACT_VERSION,
-    packageName: options.packageName,
+    targetIdentity: options.targetIdentity,
     manifest: () => options.manifest,
     modules: () => options.driver.modules(),
     tileDocs: () => options.tileDocs(),

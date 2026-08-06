@@ -5,8 +5,8 @@ import type { TargetAdapter, TargetManifest } from "../target/adapter.js";
 import type { FakeWorldState } from "./fake-module.js";
 import { createFakeModule } from "./fake-module.js";
 
-/** Package the fake target's adapter is published from. */
-export const FAKE_TARGET_PACKAGE = "@mindcraft-lang/assistant-bridge";
+/** Mindcraft identity the fake target's adapter reports itself as. */
+export const FAKE_TARGET_IDENTITY = "example-org/trg-fake";
 
 /** The one role a fake scenario may put under study. */
 export const FAKE_SUBJECT = "signaller";
@@ -87,7 +87,7 @@ const driver: WorldDriver = {
  */
 export function createTargetAdapter(): TargetAdapter {
   return createRehearsalAdapter({
-    packageName: FAKE_TARGET_PACKAGE,
+    targetIdentity: FAKE_TARGET_IDENTITY,
     manifest,
     tileDocs: () => new Map<string, string>(),
     driver,

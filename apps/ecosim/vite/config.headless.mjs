@@ -2,8 +2,13 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { defineConfig } from 'vite';
 
-// Package name injected into the headless artifact as TARGET_PACKAGE_NAME.
-const packageName = JSON.parse(readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8')).name;
+// Target identity injected into the headless artifact as TARGET_IDENTITY, read
+// from the identity this target's own mindcraft.json declares.
+const manifestPath = path.resolve(process.cwd(), 'target-package/mindcraft.json');
+const targetIdentity = JSON.parse(readFileSync(manifestPath, 'utf8')).identity;
+if (typeof targetIdentity !== 'string' || targetIdentity.length === 0) {
+    throw new Error(`${manifestPath} declares no identity for the headless adapter to report.`);
+}
 
 // Builds the headless target adapter: a plain-Node-importable ES module that
 // runs the world without a renderer. The built entry keeps the source file's
@@ -18,7 +23,7 @@ export default defineConfig({
         },
     },
     define: {
-        TARGET_PACKAGE_NAME: JSON.stringify(packageName),
+        TARGET_IDENTITY: JSON.stringify(targetIdentity),
     },
     ssr: {
         external: ['@mindcraft-lang/core', 'phaser', 'miniplex'],

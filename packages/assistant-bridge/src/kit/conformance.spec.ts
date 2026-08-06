@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ADAPTER_CONTRACT_VERSION } from "../target/adapter.js";
-import { createTargetAdapter, FAKE_INPUT_KIND, FAKE_SUBJECT, FAKE_TARGET_PACKAGE } from "../testing/index.js";
+import { ADAPTER_CONTRACT_VERSION, AdapterNonconformanceCode } from "../target/adapter.js";
+import { createTargetAdapter, FAKE_INPUT_KIND, FAKE_SUBJECT, FAKE_TARGET_IDENTITY } from "../testing/index.js";
 import { proposeEdit } from "../tools/propose-edit.js";
 import type { AuthoringWorkspace } from "../tools/workspace.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";
@@ -58,17 +58,17 @@ describe("the conformance suite", () => {
   });
 
   test("loads the built artifact in a fresh Node process", async () => {
-    const check = await checkArtifactLoads(artifactUrl, { packageName: FAKE_TARGET_PACKAGE });
+    const check = await checkArtifactLoads(artifactUrl, { targetIdentity: FAKE_TARGET_IDENTITY });
 
     assert.equal(check.ok, true, check.detail);
     assert.equal(check.code, ConformanceCheckCode.HeadlessPurity);
   });
 
-  test("reports an artifact built from a package the entry does not expect", async () => {
-    const check = await checkArtifactLoads(artifactUrl, { packageName: "@example/other-target" });
+  test("reports an artifact reporting a target identity the entry does not expect", async () => {
+    const check = await checkArtifactLoads(artifactUrl, { targetIdentity: "example-org/trg-other" });
 
     assert.equal(check.ok, false);
-    assert.match(check.detail, /adapter_package_mismatch/);
+    assert.match(check.detail, new RegExp(AdapterNonconformanceCode.IdentityMismatch));
   });
 });
 

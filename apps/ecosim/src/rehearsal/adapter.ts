@@ -8,8 +8,8 @@ import { createEcosimModule } from "@/brain/index";
 import { ecosimTileDocs } from "./tile-docs";
 import { createRehearsalWorld } from "./world";
 
-/** Package the adapter reports itself built from: injected at build time, empty in a source run. */
-const PACKAGE_NAME = typeof TARGET_PACKAGE_NAME === "string" ? TARGET_PACKAGE_NAME : "";
+/** Target identity the adapter reports: injected at build time, empty in a source run. */
+const IDENTITY = typeof TARGET_IDENTITY === "string" ? TARGET_IDENTITY : "";
 
 const MANIFEST: TargetManifest = {
   target: "ecosim, a top-down world of creatures",
@@ -68,7 +68,7 @@ const driver: WorldDriver = {
  */
 export function createTargetAdapter(): TargetAdapter {
   return createRehearsalAdapter({
-    packageName: PACKAGE_NAME,
+    targetIdentity: IDENTITY,
     manifest: MANIFEST,
     tileDocs: ecosimTileDocs,
     driver,

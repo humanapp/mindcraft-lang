@@ -6,7 +6,7 @@ import type { IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
  * Increment it whenever {@link TargetAdapter} or the shapes it exchanges change
  * in a way an already-built artifact cannot satisfy.
  */
-export const ADAPTER_CONTRACT_VERSION = 2;
+export const ADAPTER_CONTRACT_VERSION = 3;
 
 /** Facts about a target world that a session states to the model before it plans. */
 export interface TargetManifest {
@@ -123,8 +123,11 @@ export interface TargetAdapter {
    * other than the {@link ADAPTER_CONTRACT_VERSION} it holds.
    */
   readonly contractVersion: number;
-  /** Name of the package this artifact was built from, injected at build time. */
-  readonly packageName: string;
+  /**
+   * Mindcraft identity of the target this artifact is, as the `identity` its
+   * target's own `mindcraft.json` declares, injected at build time.
+   */
+  readonly targetIdentity: string;
   /** Facts about this world, stated to the model before it plans. */
   manifest(): TargetManifest;
   /** Mindcraft modules this target installs into an authoring environment, beyond core's own. */
@@ -159,8 +162,8 @@ export const AdapterNonconformanceCode = {
   MissingMembers: "adapter_missing_members",
   /** The artifact was built against a different {@link ADAPTER_CONTRACT_VERSION}. */
   ContractVersionMismatch: "adapter_contract_version_mismatch",
-  /** The artifact reports a package name other than the one the loader expected. */
-  PackageMismatch: "adapter_package_mismatch",
+  /** The artifact reports a target identity other than the one the loader expected. */
+  IdentityMismatch: "adapter_identity_mismatch",
 } as const;
 
 /** Why an artifact could not stand in as a target adapter. */
@@ -175,8 +178,11 @@ export interface AdapterNonconformance {
 
 /** What an artifact is checked against beyond the interface itself. */
 export interface AdapterExpectation {
-  /** Package name the artifact must report, from whatever names the artifact. */
-  readonly packageName: string;
+  /**
+   * Mindcraft identity the artifact must report: the `identity` the target's
+   * own `mindcraft.json` declares.
+   */
+  readonly targetIdentity: string;
 }
 
 /**
@@ -203,10 +209,10 @@ export function adapterNonconformance(
       detail: `adapter was built for contract ${String(adapter.contractVersion)}; this loader holds ${ADAPTER_CONTRACT_VERSION}`,
     };
   }
-  if (adapter.packageName !== expectation.packageName) {
+  if (adapter.targetIdentity !== expectation.targetIdentity) {
     return {
-      code: AdapterNonconformanceCode.PackageMismatch,
-      detail: `adapter reports package ${JSON.stringify(adapter.packageName)}; ${JSON.stringify(expectation.packageName)} was expected`,
+      code: AdapterNonconformanceCode.IdentityMismatch,
+      detail: `adapter reports target identity ${JSON.stringify(adapter.targetIdentity)}; ${JSON.stringify(expectation.targetIdentity)} was expected`,
     };
   }
   return undefined;
