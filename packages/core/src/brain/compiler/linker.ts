@@ -19,10 +19,15 @@ import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
 import type { IBrainDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../interfaces";
 import { isActionTileDef } from "../interfaces";
-import { type BrainBuildDiagnostic, type BrainBuildResult, LinkDiagCode } from "./diagnostics";
+import { type BrainBuildDiagnostic, type BrainBuildResult, diagnosticSeverity, LinkDiagCode } from "./diagnostics";
 
-function invalidArtifact(message: string): BrainBuildDiagnostic {
-  return { code: LinkDiagCode.InvalidActionArtifact, severity: "error", message };
+function invalidArtifact(actionKey: string, message: string): BrainBuildDiagnostic {
+  return {
+    code: LinkDiagCode.InvalidActionArtifact,
+    severity: diagnosticSeverity(LinkDiagCode.InvalidActionArtifact),
+    message,
+    params: { actionKey },
+  };
 }
 
 function addDescriptor(descriptors: Dict<string, ActionDescriptor>, descriptor: ActionDescriptor): void {
@@ -102,10 +107,13 @@ function validateResolvedAction(
     );
   }
   if (resolved.descriptor.kind !== descriptor.kind) {
-    return invalidArtifact(`Action '${descriptor.key}' kind does not match the registered action.`);
+    return invalidArtifact(descriptor.key, `Action '${descriptor.key}' kind does not match the registered action.`);
   }
   if (resolved.descriptor.isAsync !== descriptor.isAsync) {
-    return invalidArtifact(`Action '${descriptor.key}' async flag does not match the registered action.`);
+    return invalidArtifact(
+      descriptor.key,
+      `Action '${descriptor.key}' async flag does not match the registered action.`
+    );
   }
 
   if (resolved.binding === "host") {
@@ -124,37 +132,52 @@ function validateResolvedAction(
   const artifact = resolved.artifact;
   const metadata = resolved.metadata;
   if (metadata.key !== descriptor.key) {
-    return invalidArtifact(`Bytecode artifact key does not match action '${descriptor.key}'.`);
+    return invalidArtifact(descriptor.key, `Bytecode artifact key does not match action '${descriptor.key}'.`);
   }
   if (metadata.kind !== descriptor.kind) {
-    return invalidArtifact(`Bytecode artifact kind does not match action '${descriptor.key}'.`);
+    return invalidArtifact(descriptor.key, `Bytecode artifact kind does not match action '${descriptor.key}'.`);
   }
   if (artifact.isAsync !== descriptor.isAsync) {
-    return invalidArtifact(`Bytecode artifact async flag does not match action '${descriptor.key}'.`);
+    return invalidArtifact(descriptor.key, `Bytecode artifact async flag does not match action '${descriptor.key}'.`);
   }
   if (artifact.entryFuncId < 0 || artifact.entryFuncId >= artifact.functions.size()) {
-    return invalidArtifact(`Action '${descriptor.key}' has invalid entryFuncId ${artifact.entryFuncId}.`);
+    return invalidArtifact(
+      descriptor.key,
+      `Action '${descriptor.key}' has invalid entryFuncId ${artifact.entryFuncId}.`
+    );
   }
   if (
     artifact.activationFuncId !== undefined &&
     (artifact.activationFuncId < 0 || artifact.activationFuncId >= artifact.functions.size())
   ) {
-    return invalidArtifact(`Action '${descriptor.key}' has invalid activationFuncId ${artifact.activationFuncId}.`);
+    return invalidArtifact(
+      descriptor.key,
+      `Action '${descriptor.key}' has invalid activationFuncId ${artifact.activationFuncId}.`
+    );
   }
   if (
     artifact.initializerFuncId !== undefined &&
     (artifact.initializerFuncId < 0 || artifact.initializerFuncId >= artifact.functions.size())
   ) {
-    return invalidArtifact(`Action '${descriptor.key}' has invalid initializerFuncId ${artifact.initializerFuncId}.`);
+    return invalidArtifact(
+      descriptor.key,
+      `Action '${descriptor.key}' has invalid initializerFuncId ${artifact.initializerFuncId}.`
+    );
   }
   if (
     artifact.deactivationFuncId !== undefined &&
     (artifact.deactivationFuncId < 0 || artifact.deactivationFuncId >= artifact.functions.size())
   ) {
-    return invalidArtifact(`Action '${descriptor.key}' has invalid deactivationFuncId ${artifact.deactivationFuncId}.`);
+    return invalidArtifact(
+      descriptor.key,
+      `Action '${descriptor.key}' has invalid deactivationFuncId ${artifact.deactivationFuncId}.`
+    );
   }
   if (artifact.numStateSlots < 0) {
-    return invalidArtifact(`Action '${descriptor.key}' has invalid numStateSlots ${artifact.numStateSlots}.`);
+    return invalidArtifact(
+      descriptor.key,
+      `Action '${descriptor.key}' has invalid numStateSlots ${artifact.numStateSlots}.`
+    );
   }
   return undefined;
 }
@@ -409,8 +432,9 @@ export function linkBrainProgram(
     if (!descriptor) {
       diagnostics.push({
         code: LinkDiagCode.MissingActionDescriptor,
-        severity: "error",
+        severity: diagnosticSeverity(LinkDiagCode.MissingActionDescriptor),
         message: `Brain references action '${actionRef.key}' with no descriptor in the catalog.`,
+        params: { actionKey: actionRef.key },
       });
       continue;
     }
@@ -419,8 +443,9 @@ export function linkBrainProgram(
     if (!resolved) {
       diagnostics.push({
         code: LinkDiagCode.MissingActionBinding,
-        severity: "error",
+        severity: diagnosticSeverity(LinkDiagCode.MissingActionBinding),
         message: `Action '${descriptor.key}' could not be resolved in this environment.`,
+        params: { actionKey: descriptor.key },
       });
       continue;
     }
@@ -433,8 +458,9 @@ export function linkBrainProgram(
     if (resolved.binding !== "bytecode") {
       diagnostics.push({
         code: LinkDiagCode.MissingActionBinding,
-        severity: "error",
+        severity: diagnosticSeverity(LinkDiagCode.MissingActionBinding),
         message: `Action '${descriptor.key}' resolved to a host binding but is referenced by a bytecode action slot.`,
+        params: { actionKey: descriptor.key },
       });
       continue;
     }

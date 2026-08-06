@@ -7,6 +7,7 @@
   },
   "include": [
     "src/vite-env.d.ts",
+    "src/rehearsal/package-name.d.ts",
     "src/**/*.spec.ts",
     "src/components/BrainDiagnostics.tsx",
     "src/components/CompileDiagnosticsConsole.tsx",

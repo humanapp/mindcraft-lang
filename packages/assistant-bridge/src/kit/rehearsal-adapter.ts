@@ -1,0 +1,227 @@
+import type { ExecutionContext, IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
+import type { BrainJson } from "@mindcraft-lang/core/brain/model";
+import type { IBrain } from "@mindcraft-lang/core/runtime";
+import type {
+  DispatchObservation,
+  GateObservation,
+  SimulationRequest,
+  SimulationRun,
+  TargetAdapter,
+  TargetManifest,
+  ThinkObservation,
+} from "../target/adapter.js";
+import { ADAPTER_CONTRACT_VERSION } from "../target/adapter.js";
+import type { DispatchEvent } from "./environment.js";
+import { createRehearsalEnvironment, createSeededRng } from "./environment.js";
+import { renderValue } from "./value-text.js";
+
+/**
+ * The participant a rehearsal is watching: the brain it is running, and the
+ * test that recognizes its executions.
+ */
+export interface RunningSubject {
+  /** The running brain of the participant under study. */
+  readonly brain: IBrain;
+  /** True when `ctx` is an execution of that participant. */
+  runs(ctx: ExecutionContext): boolean;
+}
+
+/** What the kit hands a world driver to stage one rehearsal. */
+export interface WorldStaging {
+  /** The environment the world runs in, carrying core's modules and the target's. */
+  readonly environment: MindcraftEnvironment;
+  /** Population role the brain under study drives; one of the driver's own subjects. */
+  readonly subject: string;
+  /** The brain under study, already deserialized into {@link environment}. */
+  readonly subjectBrain: IBrainDef;
+  /** The run's seeded random stream; every random choice the world makes must draw from it. */
+  next(): number;
+  /**
+   * Report the participant running the brain under study. Call it once, as soon
+   * as that participant starts executing; nothing is observed before it.
+   */
+  observeSubject(subject: RunningSubject): void;
+}
+
+/** A staged world the kit's run loop advances. */
+export interface RehearsalWorld {
+  /** Advance the world one fixed think. */
+  step(): void;
+  /** True while the participant under study is still in the world. */
+  subjectPresent(): boolean;
+  /** Brain-driven participants standing right now. */
+  participants(): number;
+  /** Distinct brains that have executed in this world, the subject's included. */
+  brainsExecuted(): number;
+  /** Tear the world down; no step follows. */
+  shutdown(): void;
+}
+
+/**
+ * What a target supplies to become rehearsable: the tiles its brains are
+ * written in, the roles a scenario may put under study, and how its world is
+ * staged and stepped. Nothing here presumes entities, positions, or physics.
+ */
+export interface WorldDriver {
+  /** Mindcraft modules this target installs into a rehearsal environment, beyond core's own. */
+  modules(): readonly MindcraftModule[];
+  /** Population roles a scenario may name as its subject. */
+  subjects(): readonly string[];
+  /** Stage one world, ready for its first {@link RehearsalWorld.step}. */
+  stage(staging: WorldStaging): Promise<RehearsalWorld>;
+}
+
+/** What a rehearsal adapter is built from. */
+export interface RehearsalAdapterOptions {
+  /**
+   * Name of the package the artifact is built from. Inject it at build time
+   * from the package's own `package.json`.
+   */
+  readonly packageName: string;
+  /** Facts about this world, stated to the model before it plans. */
+  readonly manifest: TargetManifest;
+  /** The documentation markdown this target ships for its own tiles, keyed by tile id. */
+  tileDocs(): ReadonlyMap<string, string>;
+  readonly driver: WorldDriver;
+}
+
+/** Rule path per program funcId for `brainDef`, from its own link result. */
+function ruleFuncIdPaths(environment: MindcraftEnvironment, brainDef: IBrainDef): Map<number, string> {
+  const build = environment.linkBrain(brainDef);
+  const paths = new Map<number, string>();
+  build.program?.ruleIndex.forEach((funcId, rulePath) => {
+    paths.set(funcId, rulePath);
+  });
+  return paths;
+}
+
+/** Collects what the participant under study did, one think at a time. */
+class SubjectRecorder {
+  private readonly rulePaths = new Map<number, string>();
+  private subject: RunningSubject | undefined;
+  private gates: GateObservation[] = [];
+  private dispatches: DispatchObservation[] = [];
+  private readonly thinks: ThinkObservation[] = [];
+  /** `false` once the participant under study is gone, after which nothing is recorded. */
+  private recording = false;
+
+  /** Bind the rule paths of the brain under study; call before the subject appears. */
+  bindRulePaths(rulePaths: ReadonlyMap<number, string>): void {
+    for (const [funcId, path] of rulePaths) this.rulePaths.set(funcId, path);
+  }
+
+  /** One think of the participant under study per entry, in order. */
+  observations(): readonly ThinkObservation[] {
+    return this.thinks;
+  }
+
+  /** Start recording the participant under study and its brain's WHEN gates. */
+  observeSubject(subject: RunningSubject): void {
+    if (this.subject) return;
+    this.subject = subject;
+    this.recording = true;
+    subject.brain.events().on("rule_when_evaluated", ({ ruleFuncId, result, fired }) => {
+      if (!this.recording) return;
+      this.gates.push({ ruleId: this.ruleId(ruleFuncId), fired, result: renderValue(result) });
+    });
+  }
+
+  /** Stop recording; called once the participant under study has left the world. */
+  release(): void {
+    this.recording = false;
+  }
+
+  /** Record one host action call, keeping it only when the participant under study made it. */
+  onDispatch(event: DispatchEvent): void {
+    if (!this.recording || !this.subject?.runs(event.ctx)) return;
+    const funcId = event.ctx.currentRuleFuncId;
+    const ruleId = funcId === undefined ? undefined : this.ruleId(funcId);
+    this.dispatches.push({ action: event.action, args: event.renderArgs(), ...(ruleId ? { ruleId } : {}) });
+  }
+
+  /** Close the current think, keeping it only while the participant under study lives. */
+  closeThink(): void {
+    if (this.recording) {
+      this.thinks.push({ gates: this.gates, dispatches: this.dispatches });
+    }
+    this.gates = [];
+    this.dispatches = [];
+  }
+
+  private ruleId(ruleFuncId: number | undefined): string {
+    if (ruleFuncId === undefined) return "unattributed";
+    return this.rulePaths.get(ruleFuncId) ?? `funcId:${ruleFuncId}`;
+  }
+}
+
+/** Run one rehearsal end to end over `driver`. */
+async function rehearse(options: RehearsalAdapterOptions, request: SimulationRequest): Promise<SimulationRun> {
+  const { driver } = options;
+  const { subject, seed } = request.scenario;
+  if (!driver.subjects().includes(subject)) {
+    throw new Error(`unknown subject: ${subject}`);
+  }
+
+  const recorder = new SubjectRecorder();
+  const next = createSeededRng(seed);
+  const environment = createRehearsalEnvironment({
+    modules: driver.modules(),
+    rng: next,
+    onDispatch: (event) => {
+      recorder.onDispatch(event);
+    },
+  });
+
+  const subjectBrain = environment.deserializeBrainJson(request.brainDef.toJson() as BrainJson);
+  recorder.bindRulePaths(ruleFuncIdPaths(environment, subjectBrain));
+
+  const world = await driver.stage({
+    environment,
+    subject,
+    subjectBrain,
+    next,
+    observeSubject: (running) => {
+      recorder.observeSubject(running);
+    },
+  });
+
+  // A world may populate during its first step, so the starting population is
+  // the one standing after that step.
+  let initialPopulation = 0;
+  for (let think = 0; think < request.thinks; think++) {
+    world.step();
+    if (think === 0) initialPopulation = world.participants();
+    if (!world.subjectPresent()) recorder.release();
+    recorder.closeThink();
+  }
+
+  const finalPopulation = world.participants();
+  const brainsExecuted = world.brainsExecuted();
+  world.shutdown();
+
+  const observations = recorder.observations();
+  return {
+    thinks: observations.length,
+    observations,
+    world: { initialPopulation, finalPopulation, brainsExecuted },
+  };
+}
+
+/**
+ * Build a target adapter over a world driver: the kit owns the seeded
+ * environment, the brain substitution, gate and dispatch observation, the run
+ * loop, and the run packaging; the driver owns only its world.
+ *
+ * This API is provisional.
+ */
+export function createRehearsalAdapter(options: RehearsalAdapterOptions): TargetAdapter {
+  return {
+    contractVersion: ADAPTER_CONTRACT_VERSION,
+    packageName: options.packageName,
+    manifest: () => options.manifest,
+    modules: () => options.driver.modules(),
+    tileDocs: () => options.tileDocs(),
+    subjects: () => options.driver.subjects(),
+    run: (request: SimulationRequest) => rehearse(options, request),
+  };
+}

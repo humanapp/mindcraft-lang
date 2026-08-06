@@ -3570,6 +3570,139 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
   });
 });
 
+// ---- Paren groups around and inside a call ----
+
+describe("Paren groups around and inside a call", () => {
+  let pgOpenParen: IBrainTileDef;
+  let pgCloseParen: IBrainTileDef;
+  /** Two optional modifiers, so one remains available after the other is placed. */
+  let pgKind: BrainTileModifierDef;
+  let pgRange: BrainTileModifierDef;
+  /** Non-inline Boolean sensor whose modifiers are all optional. */
+  let pgSensor: BrainTileSensorDef;
+  /** Non-inline Boolean sensor with a required anonymous Number argument. */
+  let pgReqSensor: BrainTileSensorDef;
+  /** Actuator with a required anonymous Number argument and an optional named parameter. */
+  let pgDrive: BrainTileActuatorDef;
+  let pgPower: BrainTileParameterDef;
+  let pgNumLit: BrainTileLiteralDef;
+
+  before(() => {
+    pgOpenParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
+    pgCloseParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
+    pgNumLit = new BrainTileLiteralDef(CoreTypeIds.Number, 7, { metadata: { label: "7" } }, services);
+
+    pgKind = new BrainTileModifierDef("pg.kind", { metadata: { label: "pg kind" } });
+    pgRange = new BrainTileModifierDef("pg.range", { metadata: { label: "pg range" } });
+    const seeFn = services.runtime.functions.register(
+      4600,
+      "pg-see",
+      false,
+      { exec: () => TRUE_VALUE },
+      mkCallDef(bag(optional(mod("pg.kind")), optional(mod("pg.range"))))
+    );
+    pgSensor = new BrainTileSensorDef("pg-see", mkActionDescriptor("sensor", seeFn, CoreTypeIds.Boolean), {
+      metadata: { label: "pg see" },
+    });
+
+    const pgReqNum = new BrainTileParameterDef("pg.reqNum", CoreTypeIds.Number, { metadata: { label: "pg req" } });
+    const reqFn = services.runtime.functions.register(
+      4601,
+      "pg-req-see",
+      false,
+      { exec: () => TRUE_VALUE },
+      mkCallDef(seq(param("pg.reqNum", { name: "pgReq", required: true, anonymous: true })))
+    );
+    pgReqSensor = new BrainTileSensorDef("pg-req-see", mkActionDescriptor("sensor", reqFn, CoreTypeIds.Boolean), {
+      metadata: { label: "pg req see" },
+    });
+
+    pgPower = new BrainTileParameterDef("pg.power", CoreTypeIds.Number, { metadata: { label: "pg power" } });
+    const pgSpeed = new BrainTileParameterDef("pg.speed", CoreTypeIds.Number, { metadata: { label: "pg speed" } });
+    const driveFn = services.runtime.functions.register(
+      4602,
+      "pg-drive",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(
+        seq(param("pg.speed", { name: "pgSpeed", required: true, anonymous: true }), bag(optional(param("pg.power"))))
+      )
+    );
+    pgDrive = new BrainTileActuatorDef("pg-drive", mkActionDescriptor("actuator", driveFn), {
+      metadata: { label: "pg drive" },
+    });
+
+    for (const def of [pgNumLit, pgKind, pgRange, pgSensor, pgReqNum, pgReqSensor, pgPower, pgSpeed, pgDrive]) {
+      services.edit.tiles.registerTileDef(def);
+    }
+  });
+
+  /** The offering at the end of `tiles`, as the editor computes it for an append. */
+  function offeringAfter(tiles: IBrainTileDef[]): TileSuggestionResult {
+    const list = List.from(tiles);
+    return suggestTiles(
+      {
+        ruleSide: RuleSide.Either,
+        expr: parseTilesForSuggestions(list),
+        unclosedParenDepth: countUnclosedParens(list),
+      },
+      catalogList(),
+      services
+    );
+  }
+
+  function offers(result: TileSuggestionResult, tileId: string): boolean {
+    return (
+      listFind(result.exact, (s) => s.tileDef.tileId === tileId) !== undefined ||
+      listFind(result.withConversion, (s) => s.tileDef.tileId === tileId) !== undefined
+    );
+  }
+
+  test("a closed group around a call ends it: its remaining argument slots are not offered", () => {
+    const result = offeringAfter([pgOpenParen, pgSensor, pgKind, pgCloseParen]);
+
+    assert.ok(!offers(result, pgRange.tileId), "the call's remaining modifier is not valid after the group closed");
+    assert.ok(!offers(result, pgKind.tileId));
+  });
+
+  test("a closed group around a call offers what may follow a complete value", () => {
+    const result = offeringAfter([pgOpenParen, pgSensor, pgKind, pgCloseParen]);
+
+    assert.ok(offers(result, mkOperatorTileId(CoreOpId.And)), "the group is a complete Boolean value");
+  });
+
+  test("an open group around a call still offers the call's remaining argument slots", () => {
+    const result = offeringAfter([pgOpenParen, pgSensor, pgKind]);
+
+    assert.ok(offers(result, pgRange.tileId), "the call is still taking arguments inside the open group");
+  });
+
+  test("an open group around a complete call offers the closing paren", () => {
+    const result = offeringAfter([pgOpenParen, pgSensor, pgKind]);
+
+    assert.ok(offers(result, mkControlFlowTileId(CoreControlFlowId.CloseParen)));
+  });
+
+  test("an open group whose call still needs a required argument does not offer the closing paren", () => {
+    const result = offeringAfter([pgOpenParen, pgReqSensor]);
+
+    assert.ok(!offers(result, mkControlFlowTileId(CoreControlFlowId.CloseParen)));
+  });
+
+  test("a group closed inside a call's argument leaves the call taking arguments", () => {
+    const result = offeringAfter([pgDrive, pgOpenParen, pgNumLit, pgCloseParen]);
+
+    assert.ok(offers(result, pgPower.tileId), "the group closed the argument, not the call");
+  });
+
+  test("a group open inside a call's argument suppresses the call's named arguments", () => {
+    const result = offeringAfter([pgDrive, pgOpenParen, pgNumLit]);
+
+    assert.ok(!offers(result, pgPower.tileId), "the argument's group must close first");
+    assert.ok(offers(result, mkControlFlowTileId(CoreControlFlowId.CloseParen)));
+  });
+});
+
 // ---- Test 74-76: Replace repeated modifier, anon slot value ----
 
 describe("Replace repeated modifier and anonymous slot value", () => {
@@ -4868,5 +5001,62 @@ describe("Preceding-sibling consumption", () => {
     const expr = parseTilesForSuggestions(first.when().tiles());
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: first, expr }, catalogList(), services);
     assert.ok(!offered(result, siblingReaderDef.tileId));
+  });
+});
+
+describe("Conversion depth in withConversion offerings", () => {
+  /** Actuator with one required anonymous String slot, the position under test. */
+  let stringSlotActuatorDef: BrainTileActuatorDef;
+  /** Variable of a type reaching String only by chaining two registered conversions. */
+  let chainedVarDef: BrainTileVariableDef;
+  /** Variable of a type reaching String through one registered conversion. */
+  let directVarDef: BrainTileVariableDef;
+
+  before(() => {
+    const fnEntry = services.runtime.functions.register(
+      4401,
+      "test-depth-say",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag(param(CoreParameterId.AnonymousString, { required: true, anonymous: true })))
+    );
+    stringSlotActuatorDef = new BrainTileActuatorDef("test-depth-say", mkActionDescriptor("actuator", fnEntry), {
+      metadata: { label: "depth say" },
+    });
+    services.edit.tiles.registerTileDef(stringSlotActuatorDef);
+
+    // Buffer reaches String only as Buffer -> Number -> String; Number reaches
+    // it directly through core's own conversion.
+    services.shared.conversions.register({
+      id: 4402,
+      fromType: CoreTypeIds.Buffer,
+      toType: CoreTypeIds.Number,
+      cost: 1,
+      fn: { exec: () => NIL_VALUE },
+    });
+    chainedVarDef = new BrainTileVariableDef("test.depthBuf", "buf", CoreTypeIds.Buffer, "var-depth-buf");
+    directVarDef = new BrainTileVariableDef("test.depthNum", "num", CoreTypeIds.Number, "var-depth-num");
+    services.edit.tiles.registerTileDef(chainedVarDef);
+    services.edit.tiles.registerTileDef(directVarDef);
+  });
+
+  /** Tile ids offered in the actuator's anonymous String slot, on either list. */
+  function slotOffering(): string[] {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([stringSlotActuatorDef]));
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+    return [...result.exact.toArray(), ...result.withConversion.toArray()].map((s) => s.tileDef.tileId);
+  }
+
+  test("a value reaching the expected type only by chaining two conversions is not offered", () => {
+    assert.ok(
+      services.shared.conversions.findBestPath(CoreTypeIds.Buffer, CoreTypeIds.String) !== undefined,
+      "the chained path exists, so the offering is decided by depth alone"
+    );
+
+    assert.ok(!slotOffering().includes(chainedVarDef.tileId));
+  });
+
+  test("a value reaching the expected type through one conversion is offered", () => {
+    assert.ok(slotOffering().includes(directVarDef.tileId));
   });
 });

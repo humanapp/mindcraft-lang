@@ -3,6 +3,7 @@ import type { Dict } from "../platform/dict";
 import type { List, ReadonlyList } from "../platform/list";
 import type { EventEmitterConsumer } from "../util";
 import type { HostActionBinding } from "./context";
+import type { RuleWhenGateEvent } from "./events";
 import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from "./function-defs";
 import type { Program, ProgramArtifact } from "./program";
 import type { ITypeRegistry, TypeId } from "./type-defs";
@@ -166,6 +167,13 @@ export interface PageMetadata {
 export type BrainEvents = {
   page_activated: { pageIndex: number };
   page_deactivated: { pageIndex: number };
+  /**
+   * One rule's WHEN gate, reported as the gate decides. Emitted once per rule
+   * per think for every rule that reaches its gate: a rule whose WHEN section
+   * is empty emits no gate, and a rule skipped because an ancestor did not fire
+   * emits none that think.
+   */
+  rule_when_evaluated: RuleWhenGateEvent;
   //  variable_changed: { varId: string; oldValue: Value | undefined; newValue: Value };
 };
 

@@ -45,6 +45,8 @@ import {
   BrainTileModifierDef,
   BrainTileSensorDef,
   type BrainTileVariableDef,
+  manufactureLiteralTile,
+  manufactureVariableTile,
 } from "@mindcraft-lang/core/brain/tiles";
 import {
   bag,
@@ -91,7 +93,6 @@ import {
   visibleStripOptions,
 } from "./candidate-strip-model";
 import { kBestNextCandidateCount } from "./hooks/useCandidateStrip";
-import { manufactureLiteralTile, manufactureVariableTile } from "./hooks/useTileSelection";
 import { buildInsertionContext } from "./insertion-context";
 import type { TileSourceLibrary } from "./tile-library-groups";
 

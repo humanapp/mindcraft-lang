@@ -23,7 +23,7 @@ import {
   collectRuleHierarchyOutputKeys,
 } from "../language-service/tile-suggestions";
 import { ConstantPool } from "./constant-pool";
-import { type BrainBuildDiagnostic, type BrainBuildResult, TypeDiagCode } from "./diagnostics";
+import { type BrainBuildDiagnostic, type BrainBuildResult, diagnosticSeverity } from "./diagnostics";
 import { BytecodeEmitter } from "./emitter";
 import { computeExpectedTypes } from "./expected-types";
 import { computeInferredTypes } from "./inferred-types";
@@ -360,23 +360,32 @@ export class BrainCompiler {
     }
   }
 
-  /** Push each diagnostic as an error-severity build diagnostic. */
-  private pushErrorDiags(diags: ReadonlyList<ParseDiag>): void {
+  /** Push each diagnostic as a build diagnostic at its classified severity. */
+  private pushValidationDiags(diags: ReadonlyList<ParseDiag>): void {
     for (let i = 0; i < diags.size(); i++) {
       const diag = diags.get(i)!;
-      this.compileDiags.push({ code: diag.code, severity: "error", message: diag.message });
+      this.compileDiags.push({
+        code: diag.code,
+        severity: diagnosticSeverity(diag.code),
+        message: diag.message,
+        params: diag.params,
+      });
     }
   }
 
   /**
-   * Push the blocking validation errors from a side's inference diagnostics.
-   * Other inference diagnostics do not block the build here.
+   * Push the error-severity entries of a side's inference diagnostics.
    */
   private pushBlockingTypeErrors(diags: ReadonlyList<TypeInfoDiag>): void {
     for (let i = 0; i < diags.size(); i++) {
       const diag = diags.get(i)!;
-      if (diag.code === TypeDiagCode.AccessorBaseTypeMismatch) {
-        this.compileDiags.push({ code: diag.code, severity: "error", message: diag.message });
+      if (diagnosticSeverity(diag.code) === "error") {
+        this.compileDiags.push({
+          code: diag.code,
+          severity: "error",
+          message: diag.message,
+          params: diag.params,
+        });
       }
     }
   }
@@ -394,25 +403,25 @@ export class BrainCompiler {
     const doTiles = ruleDef.do().tiles();
 
     // A tile whose placement excludes the side it appears on blocks the build.
-    this.pushErrorDiags(validateTilePlacement(whenTiles, RuleSide.When));
-    this.pushErrorDiags(validateTilePlacement(doTiles, RuleSide.Do));
+    this.pushValidationDiags(validateTilePlacement(whenTiles, RuleSide.When));
+    this.pushValidationDiags(validateTilePlacement(doTiles, RuleSide.Do));
 
     // A tile reporting on the preceding sibling rule blocks the build in the
     // first rule at its level, which has no rule above it.
-    this.pushErrorDiags(validatePrecedingSiblingConsumers(whenTiles, siblingIndex > 0));
-    this.pushErrorDiags(validatePrecedingSiblingConsumers(doTiles, siblingIndex > 0));
+    this.pushValidationDiags(validatePrecedingSiblingConsumers(whenTiles, siblingIndex > 0));
+    this.pushValidationDiags(validatePrecedingSiblingConsumers(doTiles, siblingIndex > 0));
 
     // An output tile with no providing sensor in the rule hierarchy (this
     // rule's WHEN and DO sides plus every ancestor rule's) blocks the build.
     const providedOutputKeys = collectRuleHierarchyOutputKeys(ruleDef);
-    this.pushErrorDiags(validateOutputProviders(whenTiles, providedOutputKeys));
-    this.pushErrorDiags(validateOutputProviders(doTiles, providedOutputKeys));
+    this.pushValidationDiags(validateOutputProviders(whenTiles, providedOutputKeys));
+    this.pushValidationDiags(validateOutputProviders(doTiles, providedOutputKeys));
 
     // A tile whose required capabilities no tile in the rule hierarchy
     // provides blocks the build.
     const availableCapabilities = collectRuleHierarchyCapabilities(ruleDef);
-    this.pushErrorDiags(validateCapabilityRequirements(whenTiles, availableCapabilities, this.catalogs));
-    this.pushErrorDiags(validateCapabilityRequirements(doTiles, availableCapabilities, this.catalogs));
+    this.pushValidationDiags(validateCapabilityRequirements(whenTiles, availableCapabilities, this.catalogs));
+    this.pushValidationDiags(validateCapabilityRequirements(doTiles, availableCapabilities, this.catalogs));
 
     // A tile declaring `consumesWhenResult(T)` with no compatible WHEN result
     // available on its side (the enclosing rule's result for the WHEN side,
@@ -424,10 +433,12 @@ export class BrainCompiler {
       this.conversions
     );
     const doSideWhenResult = availableWhenResultType(ruleDef, RuleSide.Do, this.operatorOverloads, this.conversions);
-    this.pushErrorDiags(
+    this.pushValidationDiags(
       validateWhenResultConsumers(whenTiles, whenSideWhenResult, this.conversions, this.typeRegistry)
     );
-    this.pushErrorDiags(validateWhenResultConsumers(doTiles, doSideWhenResult, this.conversions, this.typeRegistry));
+    this.pushValidationDiags(
+      validateWhenResultConsumers(doTiles, doSideWhenResult, this.conversions, this.typeRegistry)
+    );
 
     // Parse WHEN and DO sides
     const whenParseResult = parseBrainTiles(whenTiles, -1, 0);
@@ -569,7 +580,12 @@ export class BrainCompiler {
 
     for (let i = 0; i < context.diags.size(); i++) {
       const diag = context.diags.get(i)!;
-      this.compileDiags.push({ code: diag.code, severity: diag.severity, message: diag.message });
+      this.compileDiags.push({
+        code: diag.code,
+        severity: diag.severity,
+        message: diag.message,
+        params: diag.params,
+      });
     }
   }
 }

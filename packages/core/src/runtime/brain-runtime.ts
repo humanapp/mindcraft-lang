@@ -200,10 +200,19 @@ export class BrainRuntime implements IBrainRuntime {
       },
     };
 
+    const emitter = this.emitter_;
+    const observedVmEvents: VmEvents = {
+      ...vmEvents,
+      onRuleWhenGate: (payload) => {
+        emitter.emit("rule_when_evaluated", payload);
+        vmEvents?.onRuleWhenGate?.(payload);
+      },
+    };
+
     // Thread the per-fiber caps into the VM config; undefined entries fall back
     // to the VM defaults.
     this.vm = new VM(program, services.runtime, {
-      events: vmEvents,
+      events: observedVmEvents,
       maxStackSize: schedulerConfig?.maxStackSize,
       maxLocalsSize: schedulerConfig?.maxLocalsSize,
       maxFrameDepth: schedulerConfig?.maxFrameDepth,
