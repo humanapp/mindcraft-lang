@@ -8,7 +8,8 @@ import type {
 } from "@mindcraft-lang/core/app";
 import { coreModule, createMindcraftEnvironment, NativeType } from "@mindcraft-lang/core/app";
 import type { ITileCatalog } from "@mindcraft-lang/core/brain";
-import type { BrainActionArgSlot } from "@mindcraft-lang/core/runtime";
+import type { BrainActionArgSlot, NumberPrecision } from "@mindcraft-lang/core/runtime";
+import { createProfileNumerics } from "@mindcraft-lang/core/runtime";
 import { tileLabel } from "../tools/tile-label.js";
 import { renderValue } from "./value-text.js";
 
@@ -47,6 +48,11 @@ export interface RehearsalEnvironmentOptions {
   readonly rng: () => number;
   /** Called before every synchronous host-action call any brain in the environment makes. */
   readonly onDispatch: (event: DispatchEvent) => void;
+  /**
+   * Precision every number the environment's brains compute is rounded to.
+   * Defaults to `"f64"`, the host's native double precision.
+   */
+  readonly precision?: NumberPrecision;
 }
 
 /** The host sensor / actuator definition shape the module API accepts. */
@@ -149,13 +155,18 @@ function tracingModule(
 
 /**
  * Build the environment one rehearsal runs in: core's modules plus the
- * target's, drawing randomness from `options.rng`, with every synchronous host
- * action wrapped so its calls reach `options.onDispatch`.
+ * target's, computing numbers at `options.precision`, drawing randomness from
+ * `options.rng`, with every synchronous host action wrapped so its calls reach
+ * `options.onDispatch`.
  */
 export function createRehearsalEnvironment(options: RehearsalEnvironmentOptions): MindcraftEnvironment {
   let built: MindcraftEnvironment | undefined;
   const nameOf = createTileNamer(() => built?.tileCatalogs() ?? []);
   const modules = [coreModule(), ...options.modules].map((module) => tracingModule(module, options.onDispatch, nameOf));
-  built = createMindcraftEnvironment({ modules, rng: { next: options.rng } });
+  built = createMindcraftEnvironment({
+    modules,
+    rng: { next: options.rng },
+    numerics: createProfileNumerics(options.precision ?? "f64"),
+  });
   return built;
 }

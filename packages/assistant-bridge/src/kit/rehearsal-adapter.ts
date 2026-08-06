@@ -1,6 +1,6 @@
 import type { ExecutionContext, IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
 import type { BrainJson } from "@mindcraft-lang/core/brain/model";
-import type { IBrain } from "@mindcraft-lang/core/runtime";
+import type { IBrainRuntime, NumberPrecision } from "@mindcraft-lang/core/runtime";
 import type {
   DispatchObservation,
   GateObservation,
@@ -20,8 +20,8 @@ import { renderValue } from "./value-text.js";
  * test that recognizes its executions.
  */
 export interface RunningSubject {
-  /** The running brain of the participant under study. */
-  readonly brain: IBrain;
+  /** The running brain of the participant under study; a rehearsal reads its event stream. */
+  readonly brain: Pick<IBrainRuntime, "events">;
   /** True when `ctx` is an execution of that participant. */
   runs(ctx: ExecutionContext): boolean;
 }
@@ -67,6 +67,12 @@ export interface WorldDriver {
   modules(): readonly MindcraftModule[];
   /** Population roles a scenario may name as its subject. */
   subjects(): readonly string[];
+  /**
+   * Precision the target's device computes numbers at, applied to every brain
+   * in the rehearsal environment. Omit the method for the host's native double
+   * precision.
+   */
+  precision?(): NumberPrecision;
   /** Stage one world, ready for its first {@link RehearsalWorld.step}. */
   stage(staging: WorldStaging): Promise<RehearsalWorld>;
 }
@@ -170,6 +176,7 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
     onDispatch: (event) => {
       recorder.onDispatch(event);
     },
+    precision: driver.precision?.(),
   });
 
   const subjectBrain = environment.deserializeBrainJson(request.brainDef.toJson() as BrainJson);
