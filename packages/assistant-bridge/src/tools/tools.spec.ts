@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { catalogDigest } from "../catalog/digest.js";
-import { createTargetAdapter, FAKE_SUBJECT } from "../testing/index.js";
+import { createTargetAdapter, FAKE_INPUT_KIND, FAKE_SUBJECT } from "../testing/index.js";
 import { executeToolCall } from "./dispatch.js";
 import { proposeEdit } from "./propose-edit.js";
 import { readCatalog } from "./read-catalog.js";
@@ -182,6 +182,31 @@ describe("the bridge tools over a real target", () => {
       error: "unknown_subject",
       named: "nobody",
       subjects: [FAKE_SUBJECT],
+    });
+  });
+
+  test("reports a scenario scripting input kinds the target does not read", async () => {
+    const ws = workspace();
+    authorSignalRule(ws);
+
+    const simulated = await executeToolCall(ws, "simulate", {
+      scenario: {
+        seed: 1,
+        subject: FAKE_SUBJECT,
+        inputs: [
+          { kind: "no-such-kind", at: 0, value: true },
+          { kind: "another-missing-kind", at: 2, value: 40 },
+          { kind: "no-such-kind", at: 3, value: false },
+        ],
+      },
+      thinks: 5,
+    });
+
+    assert.deepEqual(simulated.payload, {
+      ok: false,
+      error: "unknown_input_kind",
+      named: ["no-such-kind", "another-missing-kind"],
+      kinds: [FAKE_INPUT_KIND],
     });
   });
 });

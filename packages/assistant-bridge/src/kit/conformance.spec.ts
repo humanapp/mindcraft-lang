@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { ADAPTER_CONTRACT_VERSION } from "../target/adapter.js";
-import { createTargetAdapter, FAKE_SUBJECT, FAKE_TARGET_PACKAGE } from "../testing/index.js";
+import { createTargetAdapter, FAKE_INPUT_KIND, FAKE_SUBJECT, FAKE_TARGET_PACKAGE } from "../testing/index.js";
 import { proposeEdit } from "../tools/propose-edit.js";
 import type { AuthoringWorkspace } from "../tools/workspace.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";
 import { ConformanceCheckCode, checkAdapterConformance, checkArtifactLoads } from "./conformance.js";
+import { ScenarioRejection, ScenarioRejectionCode } from "./rehearsal-adapter.js";
 
 /** The built artifact the fake adapter is published from. */
 const artifactUrl = new URL("../../dist/testing/fake-adapter.js", import.meta.url);
@@ -84,7 +85,46 @@ describe("an adapter built on the kit", () => {
         brainDef: workspace.brainDef,
         scenario: { seed: 1, subject: "nobody" },
         thinks: 4,
-      })
+      }),
+      (error: unknown) => error instanceof ScenarioRejection && error.code === ScenarioRejectionCode.UnknownSubject
+    );
+  });
+
+  test("registers the input kinds its driver declares", () => {
+    assert.deepEqual(createTargetAdapter().inputKinds(), [FAKE_INPUT_KIND]);
+  });
+
+  test("delivers a scripted input to the world, holding its level until the next entry", async () => {
+    const workspace = authoredWorkspace();
+    const request = {
+      brainDef: workspace.brainDef,
+      scenario: {
+        seed: 20260805,
+        subject: FAKE_SUBJECT,
+        inputs: [
+          { kind: FAKE_INPUT_KIND, at: 0, value: true },
+          { kind: FAKE_INPUT_KIND, at: 6, value: false },
+        ],
+      },
+      thinks: 12,
+    };
+
+    const run = await workspace.adapter.run(request);
+
+    const fired = run.observations.map((think) => think.gates.some((gate) => gate.fired));
+    assert.deepEqual(fired, [true, true, true, true, true, true, false, false, false, false, false, false]);
+  });
+
+  test("refuses a scripted input of a kind its driver does not register", async () => {
+    const workspace = authoredWorkspace();
+
+    await assert.rejects(
+      workspace.adapter.run({
+        brainDef: workspace.brainDef,
+        scenario: { seed: 1, subject: FAKE_SUBJECT, inputs: [{ kind: "no-such-kind", at: 0, value: true }] },
+        thinks: 4,
+      }),
+      (error: unknown) => error instanceof ScenarioRejection && error.code === ScenarioRejectionCode.UnknownInputKind
     );
   });
 });

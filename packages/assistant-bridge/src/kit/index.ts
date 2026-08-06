@@ -13,7 +13,7 @@ export type {
   WorldDriver,
   WorldStaging,
 } from "./rehearsal-adapter.js";
-export { createRehearsalAdapter } from "./rehearsal-adapter.js";
+export { createRehearsalAdapter, ScenarioRejection, ScenarioRejectionCode } from "./rehearsal-adapter.js";
 export type { TileDocEntry } from "./tile-docs.js";
 export { readTileDocs } from "./tile-docs.js";
 export { renderValue } from "./value-text.js";

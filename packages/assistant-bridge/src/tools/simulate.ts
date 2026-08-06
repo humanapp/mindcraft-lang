@@ -27,8 +27,22 @@ export interface SimulationSubjectResult {
   readonly subjects: readonly string[];
 }
 
+/** A rehearsal that could not run because the scenario scripted an input kind the target does not read. */
+export interface SimulationInputKindResult {
+  readonly ok: false;
+  readonly error: "unknown_input_kind";
+  /** The kinds the scenario named that the target does not read, in first-seen order. */
+  readonly named: readonly string[];
+  /** The input kinds the target does read. */
+  readonly kinds: readonly string[];
+}
+
 /** Result of one `simulate` call. */
-export type SimulationResult = SimulationSummaryResult | SimulationBlockedResult | SimulationSubjectResult;
+export type SimulationResult =
+  | SimulationSummaryResult
+  | SimulationBlockedResult
+  | SimulationSubjectResult
+  | SimulationInputKindResult;
 
 /**
  * Run the current brain in a bounded rehearsal and summarize what happened.
@@ -39,6 +53,13 @@ export async function simulate(workspace: AuthoringWorkspace, input: ToolInput<"
   const subjects = workspace.adapter.subjects();
   if (!subjects.includes(input.scenario.subject)) {
     return { ok: false, error: "unknown_subject", named: input.scenario.subject, subjects };
+  }
+
+  const kinds = workspace.adapter.inputKinds();
+  const scripted = input.scenario.inputs ?? [];
+  const named = [...new Set(scripted.filter((entry) => !kinds.includes(entry.kind)).map((entry) => entry.kind))];
+  if (named.length > 0) {
+    return { ok: false, error: "unknown_input_kind", named, kinds };
   }
 
   const compiled = compileBrain(workspace);

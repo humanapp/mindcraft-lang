@@ -124,4 +124,38 @@ describe("tool input validation", () => {
   test("rejects a simulate request with no think count", () => {
     assert.equal(toolInputSchemas.simulate.safeParse({ scenario: { seed: 1, subject: "herbivore" } }).success, false);
   });
+
+  test("accepts a scenario scripting percepts of any kind, at any think, of either value shape", () => {
+    const parsed = toolInputSchemas.simulate.safeParse({
+      scenario: {
+        seed: 1,
+        subject: "device",
+        inputs: [
+          { kind: "button-a", at: 2, value: true },
+          { kind: "light-level", at: 0, value: 40 },
+        ],
+      },
+      thinks: 10,
+    });
+
+    assert.equal(parsed.success, true);
+  });
+
+  test("rejects a scripted percept missing its kind, its think, or its value", () => {
+    for (const input of [
+      { at: 0, value: true },
+      { kind: "button-a", value: true },
+      { kind: "button-a", at: 0 },
+      { kind: "", at: 0, value: true },
+      { kind: "button-a", at: -1, value: true },
+      { kind: "button-a", at: 0, value: "down" },
+    ]) {
+      const parsed = toolInputSchemas.simulate.safeParse({
+        scenario: { seed: 1, subject: "device", inputs: [input] },
+        thinks: 10,
+      });
+
+      assert.equal(parsed.success, false, JSON.stringify(input));
+    }
+  });
 });

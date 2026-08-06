@@ -11,6 +11,9 @@ export const FAKE_TARGET_PACKAGE = "@mindcraft-lang/assistant-bridge";
 /** The one role a fake scenario may put under study. */
 export const FAKE_SUBJECT = "signaller";
 
+/** The one percept kind a fake scenario may script: the signal's level. */
+export const FAKE_INPUT_KIND = "signal";
+
 const manifest: TargetManifest = {
   target: "a world with one signal and one emitter",
   thing: "their signaller",
@@ -22,13 +25,18 @@ const stepMs = 1000 / 60;
 
 /**
  * The fake world: one participant running the brain under study, and a signal
- * the seeded stream raises or lowers before every think.
+ * the seeded stream raises or lowers before every think, or that the scenario
+ * scripts.
  */
 class FakeWorld implements RehearsalWorld {
   private readonly state: FakeWorldState = { signal: false };
   private readonly brain: MindcraftBrain;
   private time = 0;
   private alive = true;
+  /** Zero-based index of the think the next {@link step} runs. */
+  private think = 0;
+  /** The scripted signal level in force, or `undefined` while the seeded stream drives it. */
+  private scripted: boolean | undefined;
 
   constructor(private readonly staging: WorldStaging) {
     this.brain = staging.environment.createBrain(staging.subjectBrain, { context: this.state });
@@ -37,9 +45,14 @@ class FakeWorld implements RehearsalWorld {
   }
 
   step(): void {
-    this.state.signal = this.staging.next() < 0.5;
+    const drawn = this.staging.next() < 0.5;
+    for (const input of this.staging.inputs) {
+      if (input.at === this.think) this.scripted = Boolean(input.value);
+    }
+    this.state.signal = this.scripted ?? drawn;
     this.brain.think(this.time);
     this.time += stepMs;
+    this.think++;
   }
 
   subjectPresent(): boolean {
@@ -64,6 +77,7 @@ class FakeWorld implements RehearsalWorld {
 const driver: WorldDriver = {
   modules: () => [createFakeModule()],
   subjects: () => [FAKE_SUBJECT],
+  inputKinds: () => [FAKE_INPUT_KIND],
   stage: (staging: WorldStaging) => Promise.resolve(new FakeWorld(staging)),
 };
 

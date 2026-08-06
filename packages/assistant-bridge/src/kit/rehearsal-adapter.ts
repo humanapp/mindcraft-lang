@@ -4,6 +4,7 @@ import type { IBrainRuntime, NumberPrecision } from "@mindcraft-lang/core/runtim
 import type {
   DispatchObservation,
   GateObservation,
+  ScenarioInput,
   SimulationRequest,
   SimulationRun,
   TargetAdapter,
@@ -14,6 +15,31 @@ import { ADAPTER_CONTRACT_VERSION } from "../target/adapter.js";
 import type { DispatchEvent } from "./environment.js";
 import { createRehearsalEnvironment, createSeededRng } from "./environment.js";
 import { renderValue } from "./value-text.js";
+
+/** Why a rehearsal adapter refused to stage a scenario. */
+export const ScenarioRejectionCode = {
+  /** The scenario named a subject the driver does not offer. */
+  UnknownSubject: "scenario_unknown_subject",
+  /** The scenario carried an input of a kind the driver does not register. */
+  UnknownInputKind: "scenario_unknown_input_kind",
+} as const;
+
+/** Why a rehearsal adapter refused to stage a scenario. */
+export type ScenarioRejectionCode = (typeof ScenarioRejectionCode)[keyof typeof ScenarioRejectionCode];
+
+/** A scenario a rehearsal adapter refused to stage, carrying the reason as a code. */
+export class ScenarioRejection extends Error {
+  constructor(
+    readonly code: ScenarioRejectionCode,
+    /** What the scenario named that the driver does not offer, in first-seen order. */
+    readonly named: readonly string[],
+    /** What the driver does offer, sorted. */
+    readonly offered: readonly string[]
+  ) {
+    super(`${code}: ${named.join(", ")}; the target offers ${offered.join(", ") || "none"}`);
+    this.name = "ScenarioRejection";
+  }
+}
 
 /**
  * The participant a rehearsal is watching: the brain it is running, and the
@@ -34,6 +60,11 @@ export interface WorldStaging {
   readonly subject: string;
   /** The brain under study, already deserialized into {@link environment}. */
   readonly subjectBrain: IBrainDef;
+  /**
+   * Percepts this run scripts, ascending by `at`; every entry names a kind the
+   * driver registered. Empty when the scenario scripts none.
+   */
+  readonly inputs: readonly ScenarioInput[];
   /** The run's seeded random stream; every random choice the world makes must draw from it. */
   next(): number;
   /**
@@ -67,6 +98,11 @@ export interface WorldDriver {
   modules(): readonly MindcraftModule[];
   /** Population roles a scenario may name as its subject. */
   subjects(): readonly string[];
+  /**
+   * Percept kinds this target reads out of a scenario. Omit the method to
+   * register none, which refuses every scripted input.
+   */
+  inputKinds?(): readonly string[];
   /**
    * Precision the target's device computes numbers at, applied to every brain
    * in the rehearsal environment. Omit the method for the host's native double
@@ -160,13 +196,30 @@ class SubjectRecorder {
   }
 }
 
+/**
+ * The scenario's inputs ordered by the think they are applied before, keeping
+ * scenario order among entries sharing one think. Throws
+ * {@link ScenarioRejection} when an entry names a kind `driver` does not
+ * register.
+ */
+function scheduledInputs(driver: WorldDriver, inputs: readonly ScenarioInput[]): readonly ScenarioInput[] {
+  const kinds = driver.inputKinds?.() ?? [];
+  const unknown = [...new Set(inputs.filter((input) => !kinds.includes(input.kind)).map((input) => input.kind))];
+  if (unknown.length > 0) {
+    throw new ScenarioRejection(ScenarioRejectionCode.UnknownInputKind, unknown, [...kinds].sort());
+  }
+  return [...inputs].sort((a, b) => a.at - b.at);
+}
+
 /** Run one rehearsal end to end over `driver`. */
 async function rehearse(options: RehearsalAdapterOptions, request: SimulationRequest): Promise<SimulationRun> {
   const { driver } = options;
   const { subject, seed } = request.scenario;
-  if (!driver.subjects().includes(subject)) {
-    throw new Error(`unknown subject: ${subject}`);
+  const subjects = driver.subjects();
+  if (!subjects.includes(subject)) {
+    throw new ScenarioRejection(ScenarioRejectionCode.UnknownSubject, [subject], [...subjects].sort());
   }
+  const inputs = scheduledInputs(driver, request.scenario.inputs ?? []);
 
   const recorder = new SubjectRecorder();
   const next = createSeededRng(seed);
@@ -186,6 +239,7 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
     environment,
     subject,
     subjectBrain,
+    inputs,
     next,
     observeSubject: (running) => {
       recorder.observeSubject(running);
@@ -229,6 +283,7 @@ export function createRehearsalAdapter(options: RehearsalAdapterOptions): Target
     modules: () => options.driver.modules(),
     tileDocs: () => options.tileDocs(),
     subjects: () => options.driver.subjects(),
+    inputKinds: () => options.driver.inputKinds?.() ?? [],
     run: (request: SimulationRequest) => rehearse(options, request),
   };
 }

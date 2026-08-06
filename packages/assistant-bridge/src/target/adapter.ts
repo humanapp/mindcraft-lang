@@ -6,7 +6,7 @@ import type { IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
  * Increment it whenever {@link TargetAdapter} or the shapes it exchanges change
  * in a way an already-built artifact cannot satisfy.
  */
-export const ADAPTER_CONTRACT_VERSION = 1;
+export const ADAPTER_CONTRACT_VERSION = 2;
 
 /** Facts about a target world that a session states to the model before it plans. */
 export interface TargetManifest {
@@ -22,6 +22,19 @@ export interface TargetManifest {
 }
 
 /**
+ * One scripted percept a scenario delivers into the staged world. The target's
+ * adapter interprets it; nothing here presumes what a kind senses.
+ */
+export interface ScenarioInput {
+  /** What is delivered, from {@link TargetAdapter.inputKinds}. */
+  readonly kind: string;
+  /** Zero-based think this input is applied before. */
+  readonly at: number;
+  /** Level `kind` is set to, holding until another entry of the same kind changes it. */
+  readonly value: number | boolean;
+}
+
+/**
  * The staged world one rehearsal runs: the core scenario shape every target
  * shares. A target extends it by registering its own input kinds; the seed and
  * the subject are always present.
@@ -31,6 +44,11 @@ export interface SimulationScenario {
   readonly seed: number;
   /** Population role the brain under study drives, from {@link TargetAdapter.subjects}. */
   readonly subject: string;
+  /**
+   * Percepts the run scripts, in any order; the run delivers each at its own
+   * `at`. Absent when the run scripts none.
+   */
+  readonly inputs?: readonly ScenarioInput[];
 }
 
 /** One rehearsal request. */
@@ -115,9 +133,12 @@ export interface TargetAdapter {
   tileDocs(): ReadonlyMap<string, string>;
   /** Population roles a scenario may name as its subject. */
   subjects(): readonly string[];
+  /** Scenario input kinds this target reads; empty when it scripts no percepts. */
+  inputKinds(): readonly string[];
   /**
    * Run one rehearsal. Throws if `scenario.subject` is not one of
-   * {@link subjects} or the brain does not build.
+   * {@link subjects}, an input names a kind outside {@link inputKinds}, or the
+   * brain does not build.
    */
   run(request: SimulationRequest): Promise<SimulationRun>;
 }
@@ -126,7 +147,7 @@ export interface TargetAdapter {
  * The adapter surface an artifact must carry: every member name a host calls on
  * a {@link TargetAdapter}.
  */
-export const adapterMethods = ["manifest", "modules", "tileDocs", "subjects", "run"] as const;
+export const adapterMethods = ["manifest", "modules", "tileDocs", "subjects", "inputKinds", "run"] as const;
 
 /** Why an artifact could not stand in as a target adapter. */
 export const AdapterNonconformanceCode = {

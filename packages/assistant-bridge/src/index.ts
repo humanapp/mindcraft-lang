@@ -8,6 +8,7 @@ export type {
   AdapterNonconformance,
   DispatchObservation,
   GateObservation,
+  ScenarioInput,
   SimulationRequest,
   SimulationRun,
   SimulationScenario,
@@ -39,6 +40,7 @@ export type { PolicyDecision, ProposalPolicyEntry, ProposalVerdict } from "./too
 export { acceptedDiagCodes, decideProposal, proposalPolicy, proposalVerdict } from "./tools/rejection-policy.js";
 export type {
   SimulationBlockedResult,
+  SimulationInputKindResult,
   SimulationResult,
   SimulationSubjectResult,
   SimulationSummaryResult,

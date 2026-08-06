@@ -104,12 +104,25 @@ const proposeEditInputSchema = z.discriminatedUnion("op", [
 /** Input of `compile`: the whole brain, with nothing to select. */
 const compileInputSchema = z.object({});
 
+/**
+ * One scripted percept of a `simulate` scenario. The kind is checked against
+ * the target's registered kinds when the call runs, never here.
+ */
+const scenarioInputSchema = z.object({
+  kind: z.string().min(1).describe("What to deliver, from the input kinds this target reads."),
+  at: z.number().int().min(0).describe("Zero-based think this input is applied before."),
+  value: z
+    .union([z.number(), z.boolean()])
+    .describe("Level the kind is set to; it holds until another entry of the same kind changes it."),
+});
+
 /** Input of `simulate`: a scenario to stage and how many thinks to run. */
 const simulateInputSchema = z.object({
   scenario: z
     .object({
       seed: z.number().int().describe("Seed for every random choice the run makes."),
       subject: z.string().describe("Population role the brain under study drives, from the scenario catalog."),
+      inputs: z.array(scenarioInputSchema).optional().describe("Percepts to script into the run; omit to script none."),
     })
     .describe("Staged world description; the run is a bounded, deterministic rehearsal."),
   thinks: z.number().int().min(1).max(5000).describe("Number of fixed-step thinks to run."),
