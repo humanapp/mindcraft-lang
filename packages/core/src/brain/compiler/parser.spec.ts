@@ -16,7 +16,13 @@ import {
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { parseRule, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
+import type { SensorExpr } from "@mindcraft-lang/core/brain/compiler";
+import {
+  parseBrainTiles,
+  parseRule,
+  TypeDiagCode,
+  whenResultConsumerEligible,
+} from "@mindcraft-lang/core/brain/compiler";
 import {
   BrainTileAccessorDef,
   BrainTileActuatorDef,
@@ -321,6 +327,32 @@ describe("Parentheses expressions", () => {
       tiles: [everySensor, openParen, opAdd, closeParen],
       shouldPass: false,
     });
+  });
+
+  test("a group marks the expression it holds with its closure state", () => {
+    const closed = parseBrainTiles(List.from<IBrainTileDef>([openParen, literal2, opAdd, literal3, closeParen]));
+    assert.equal(closed.exprs.get(0).parenGroup, "closed");
+
+    const unclosed = parseBrainTiles(List.from<IBrainTileDef>([openParen, literal2, opAdd, literal3]));
+    assert.equal(unclosed.exprs.get(0).parenGroup, "unclosed");
+
+    const ungrouped = parseBrainTiles(List.from<IBrainTileDef>([literal2, opAdd, literal3]));
+    assert.equal(ungrouped.exprs.get(0).parenGroup, undefined);
+  });
+
+  test("directly nested groups keep the innermost group's state", () => {
+    const outerOpen = parseBrainTiles(List.from<IBrainTileDef>([openParen, openParen, literal2, closeParen]));
+    assert.equal(outerOpen.exprs.get(0).parenGroup, "closed");
+  });
+
+  test("a group inside a call marks the argument, not the call", () => {
+    const parsed = parseBrainTiles(
+      List.from<IBrainTileDef>([everySensor, openParen, literal2, opAdd, literal3, closeParen])
+    );
+    const call = parsed.exprs.get(0);
+    assert.equal(call.kind, "sensor");
+    assert.equal(call.parenGroup, undefined);
+    assert.equal((call as SensorExpr).anons.get(0).expr.parenGroup, "closed");
   });
 });
 
@@ -1360,5 +1392,52 @@ describe("Continuation after a complete non-inline sensor", () => {
 
   test("[inline sensor] [f] [+] [5] - infix operator follows an inline sensor's field access", () => {
     runParseTest({ name: "inline.f+5", tiles: [inlineStructSensor, accessorF, opAdd, literal5], shouldPass: true });
+  });
+});
+
+// ---- WHEN-result consumer eligibility ----
+
+describe("WHEN-result consumer eligibility", () => {
+  // Isolated services: the conversion registered below is visible only to these tests.
+  let isolated: BrainServices;
+  let stringConsumer: BrainTileSensorDef;
+
+  before(() => {
+    isolated = __test__createBrainServices();
+    const fnEntry = isolated.runtime.functions.register(
+      4030,
+      "when-result-string-consumer",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    stringConsumer = new BrainTileSensorDef(
+      "when-result-string-consumer",
+      mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Boolean),
+      { consumesWhenResult: CoreTypeIds.String }
+    );
+    // Buffer reaches String only as Buffer -> Number -> String.
+    isolated.shared.conversions.register({
+      id: 4031,
+      fromType: CoreTypeIds.Buffer,
+      toType: CoreTypeIds.Number,
+      cost: 1,
+      fn: { exec: () => VOID_VALUE },
+    });
+  });
+
+  test("a WHEN result one conversion from the required type is eligible", () => {
+    assert.ok(whenResultConsumerEligible(stringConsumer, CoreTypeIds.Number, isolated.shared.conversions));
+  });
+
+  test("a WHEN result reaching the required type only through two conversions is not eligible", () => {
+    assert.equal(isolated.shared.conversions.get(CoreTypeIds.Buffer, CoreTypeIds.String), undefined);
+    assert.notEqual(
+      isolated.shared.conversions.findBestPath(CoreTypeIds.Buffer, CoreTypeIds.String),
+      undefined,
+      "an unbounded search reaches String through Number"
+    );
+
+    assert.ok(!whenResultConsumerEligible(stringConsumer, CoreTypeIds.Buffer, isolated.shared.conversions));
   });
 });

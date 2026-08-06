@@ -16,6 +16,7 @@ import {
   CoreOpId,
   type IConversionRegistry,
   type ITypeRegistry,
+  MAX_COERCION_PATH_LENGTH,
   type TypeId,
 } from "../../runtime";
 import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
@@ -45,7 +46,16 @@ import {
 } from "../tiles";
 import { type DiagParams, ParseDiagCode } from "./diagnostics";
 import { isLValue } from "./lvalue";
-import type { Expr, FieldAccessExpr, ParseDiag, ParseResult, SlotExpr } from "./types";
+import type { Expr, FieldAccessExpr, ParenGroupState, ParseDiag, ParseResult, SlotExpr } from "./types";
+
+/**
+ * Record on `expr` that a parenthesized group held it and how that group ended.
+ * Leaves an already-marked node alone, so directly nested groups keep the
+ * innermost group's state.
+ */
+function markParenGroup(expr: Expr, state: ParenGroupState): void {
+  if (expr.parenGroup === undefined) expr.parenGroup = state;
+}
 
 /**
  * Build the diagnostic message and params for an assignment whose target is a
@@ -1084,6 +1094,7 @@ class BrainParser {
         (closeParen as BrainTileControlFlowDef).cfId === CoreControlFlowId.CloseParen
       ) {
         this.consume();
+        markParenGroup(expr, "closed");
         return expr;
       } else {
         // Missing closing paren - report error but return the inner expression for recovery
@@ -1092,6 +1103,7 @@ class BrainParser {
           message: `Expected closing parenthesis`,
           span: { from: startPos, to: this.i },
         });
+        markParenGroup(expr, "unclosed");
         return expr;
       }
     } else {
@@ -1361,7 +1373,7 @@ export function whenResultConsumerEligible(
   if (required === undefined) return true;
   if (availableType === undefined) return false;
   if (availableType === required) return true;
-  const path = conversions.findBestPath(availableType, required);
+  const path = conversions.findBestPath(availableType, required, MAX_COERCION_PATH_LENGTH);
   return path !== undefined && path.size() > 0;
 }
 

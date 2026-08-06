@@ -22,7 +22,7 @@ import {
   parseBrainTiles,
   whenResultConsumerEligible,
 } from "../compiler/parser";
-import type { ActuatorExpr, Expr, SensorExpr, Span } from "../compiler/types";
+import type { ActuatorExpr, Expr, SensorExpr, SlotExpr, Span } from "../compiler/types";
 import {
   CoreControlFlowId,
   type IBrainRuleDef,
@@ -724,6 +724,55 @@ function hasIncompleteAnonValues(actionExpr: ActuatorExpr | SensorExpr, excludeS
 }
 
 /**
+ * Whether an unclosed parenthesized group sits anywhere inside `expr`,
+ * including a group marked on `expr` itself.
+ */
+function holdsUnclosedParenGroup(expr: Expr): boolean {
+  if (expr.parenGroup === "unclosed") return true;
+  switch (expr.kind) {
+    case "binaryOp":
+      return holdsUnclosedParenGroup(expr.left) || holdsUnclosedParenGroup(expr.right);
+    case "unaryOp":
+      return holdsUnclosedParenGroup(expr.operand);
+    case "assignment":
+      return holdsUnclosedParenGroup(expr.target) || holdsUnclosedParenGroup(expr.value);
+    case "parameter":
+      return holdsUnclosedParenGroup(expr.value);
+    case "fieldAccess":
+      return holdsUnclosedParenGroup(expr.object);
+    case "errorExpr":
+      return expr.expr !== undefined && holdsUnclosedParenGroup(expr.expr);
+    case "sensor":
+    case "actuator":
+      return hasUnclosedParenGroupInArgs(expr);
+    default:
+      return false;
+  }
+}
+
+/** Whether any slot in `slots` other than `excludeSlotId` holds an unclosed paren group. */
+function slotsHoldUnclosedParenGroup(slots: ReadonlyList<SlotExpr>, excludeSlotId?: number): boolean {
+  for (let i = 0; i < slots.size(); i++) {
+    if (slots.get(i).slotId === excludeSlotId) continue;
+    if (holdsUnclosedParenGroup(slots.get(i).expr)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether an unclosed parenthesized group is being written inside one of
+ * `actionExpr`'s arguments, so no further argument can join the call until it
+ * closes. A group marked on the call node itself encloses the whole call and
+ * does not count. Modifier slots hold no sub-expression and are skipped.
+ */
+function hasUnclosedParenGroupInArgs(actionExpr: ActuatorExpr | SensorExpr, excludeSlotId?: number): boolean {
+  return (
+    slotsHoldUnclosedParenGroup(actionExpr.anons, excludeSlotId) ||
+    slotsHoldUnclosedParenGroup(actionExpr.parameters, excludeSlotId)
+  );
+}
+
+/**
  * Checks whether any slot in the action expr contains a complete value whose
  * output type is a struct that does not match the slot's expected type.
  *
@@ -900,6 +949,14 @@ function isCompleteValueExpr(expr: Expr): expr is Expr & { span: Span } {
     default:
       return false;
   }
+}
+
+/**
+ * Whether the insertion point follows the closing paren of a group that held
+ * `expr`. Always false at a replacement point.
+ */
+function afterClosedGroup(context: InsertionContext, expr: Expr): boolean {
+  return context.replaceTileIndex === undefined && expr.parenGroup === "closed";
 }
 
 /**
@@ -1835,6 +1892,13 @@ export function suggestTiles(
 
     case "actuator":
     case "sensor": {
+      if (afterClosedGroup(context, expr)) {
+        const groupType = getExprOutputType(expr, operatorOverloads, conversions) ?? getExprOutputType(expr);
+        suggestInfixOperators(context, catalogs, conversions, result, groupType, operatorOverloads, expr);
+        suggestCloseParenIfNeeded(context, catalogs, result);
+        suggestAccessorTiles(context, catalogs, types, conversions, result, groupType);
+        break;
+      }
       const callDef = expr.tileDef.action.callDef;
       const filledSlotIds = collectFilledSlotIds(expr);
       const availableArgSlots = List.empty<BrainActionArgSlot>();
@@ -1900,12 +1964,19 @@ export function suggestTiles(
             getExprOutputType(trailingForAccessor),
           acceptedTypes
         );
+      } else if (
+        expr.parenGroup === "unclosed" &&
+        !hasParametersNeedingValues(expr) &&
+        !hasIncompleteAnonValues(expr) &&
+        !hasUnfilledRequiredArg(callDef.callSpec, callDef.argSlots, filledSlotIds, callDef.callSpec)
+      ) {
+        suggestCloseParenIfNeeded(context, catalogs, result);
       }
       break;
     }
 
     case "unaryOp": {
-      if (expr.operand.kind === "sensor" || expr.operand.kind === "actuator") {
+      if (!afterClosedGroup(context, expr) && (expr.operand.kind === "sensor" || expr.operand.kind === "actuator")) {
         // The operand is a non-inline sensor/actuator (e.g., [not] [see ...]).
         // Handle similarly to the top-level sensor/actuator case: check for
         // unfilled call spec slots and offer call spec tiles when needed.
@@ -2935,10 +3006,11 @@ function suggestActionCallTiles(
   // When a value is pending, only value expressions should be suggested -- named
   // parameter/modifier tiles are suppressed because the user must complete the
   // current parameter or anonymous value expression first.
-  // Unclosed parens also suppress named tiles -- the user is building a grouped
-  // sub-expression that must be closed before placing additional call spec args.
+  // An unclosed paren inside one of the call's own arguments also suppresses
+  // named tiles -- that grouped sub-expression must be closed before further
+  // call spec args.
   const valuePending =
-    (unclosedParenDepth ?? 0) > 0 ||
+    ((unclosedParenDepth ?? 0) > 0 && hasUnclosedParenGroupInArgs(actionExpr, excludeSlotId)) ||
     hasParametersNeedingValues(actionExpr, excludeSlotId) ||
     hasIncompleteAnonValues(actionExpr, excludeSlotId) ||
     hasStructValuePendingAccessor(actionExpr, catalogs, types, excludeSlotId);

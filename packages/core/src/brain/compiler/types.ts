@@ -60,6 +60,22 @@ export type Span = {
   to: number; // exclusive
 };
 
+/**
+ * Whether the parenthesized group holding an expression has been closed by a
+ * closing paren tile (`"closed"`) or is still open at the end of the tile list
+ * (`"unclosed"`).
+ */
+export type ParenGroupState = "closed" | "unclosed";
+
+/**
+ * The parenthesized-group marker every AST node carries: how the group holding
+ * the node ended. Absent when no group holds the node. The innermost group wins
+ * when groups nest directly around the same node.
+ */
+export type ParenGrouped = {
+  parenGroup?: ParenGroupState;
+};
+
 /** A single arg slot bound to an expression, used by sensors/actuators/parameters. */
 export type SlotExpr = {
   slotId: number;
@@ -74,7 +90,7 @@ export type BinaryOpExpr = {
   left: Expr;
   right: Expr;
   span: Span;
-};
+} & ParenGrouped;
 /** AST node for a prefix/postfix unary operator expression (e.g. `-x`). */
 export type UnaryOpExpr = {
   nodeId: number;
@@ -82,28 +98,28 @@ export type UnaryOpExpr = {
   operator: BrainTileOperatorDef;
   operand: Expr;
   span: Span;
-};
+} & ParenGrouped;
 /** AST node for a literal value tile. */
 export type LiteralExpr = {
   nodeId: number;
   kind: "literal";
   tileDef: BrainTileLiteralDef;
   span: Span;
-};
+} & ParenGrouped;
 /** AST node for a variable read tile. */
 export type VariableExpr = {
   nodeId: number;
   kind: "variable";
   tileDef: BrainTileVariableDef;
   span: Span;
-};
+} & ParenGrouped;
 /** AST node for a sensor output value-tile (an inline read of a backing rule variable). */
 export type OutputExpr = {
   nodeId: number;
   kind: "output";
   tileDef: BrainTileOutputDef;
   span: Span;
-};
+} & ParenGrouped;
 /** AST node for an assignment to a variable or struct field. */
 export type AssignmentExpr = {
   nodeId: number;
@@ -111,7 +127,7 @@ export type AssignmentExpr = {
   target: VariableExpr | FieldAccessExpr;
   value: Expr;
   span: Span;
-};
+} & ParenGrouped;
 /** AST node for a named parameter passed to a sensor/actuator. */
 export type ParameterExpr = {
   nodeId: number;
@@ -119,14 +135,14 @@ export type ParameterExpr = {
   tileDef: BrainTileParameterDef;
   value: Expr;
   span: Span;
-};
+} & ParenGrouped;
 /** AST node for a modifier (flag/option) tile. */
 export type ModifierExpr = {
   nodeId: number;
   kind: "modifier";
   tileDef: BrainTileModifierDef;
   span: Span;
-};
+} & ParenGrouped;
 /** AST node for an actuator call: anonymous args, named parameters, and modifier flags. */
 export type ActuatorExpr = {
   nodeId: number;
@@ -136,7 +152,7 @@ export type ActuatorExpr = {
   parameters: List<SlotExpr>;
   modifiers: List<SlotExpr>;
   span: Span;
-};
+} & ParenGrouped;
 /** AST node for a sensor call: anonymous args, named parameters, and modifier flags. */
 export type SensorExpr = {
   nodeId: number;
@@ -146,7 +162,7 @@ export type SensorExpr = {
   parameters: List<SlotExpr>;
   modifiers: List<SlotExpr>;
   span: Span;
-};
+} & ParenGrouped;
 /** AST node for a field access on a struct expression (e.g. `obj.field`). */
 export type FieldAccessExpr = {
   nodeId: number;
@@ -154,9 +170,9 @@ export type FieldAccessExpr = {
   object: Expr;
   accessor: BrainTileAccessorDef;
   span: Span;
-};
+} & ParenGrouped;
 /** AST node representing an intentionally empty input slot. */
-export type EmptyExpr = { nodeId: number; kind: "empty" };
+export type EmptyExpr = { nodeId: number; kind: "empty" } & ParenGrouped;
 /** AST node representing a parse error, optionally wrapping a partial expression. */
 export type ErrorExpr = {
   nodeId: number;
@@ -164,7 +180,7 @@ export type ErrorExpr = {
   expr?: Expr;
   message: string;
   span?: Span;
-};
+} & ParenGrouped;
 
 /**
  * Expression AST discriminated union representing all parseable brain tile constructs.
