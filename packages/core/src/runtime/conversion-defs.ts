@@ -51,6 +51,13 @@ export type SharedHostFnConversion = {
 /** A registered value-conversion overload: host-function, shared-host-function, or compiled-user-function backed. */
 export type Conversion = HostFnConversion | SharedHostFnConversion | BytecodeConversion;
 
+/**
+ * Longest conversion path a value may be coerced through. Pass it as the
+ * `maxDepth` of {@link IConversionRegistry.findBestPath} wherever a search
+ * decides whether a value is usable at a position.
+ */
+export const MAX_COERCION_PATH_LENGTH = 1;
+
 /** True when `conv` is a {@link BytecodeConversion}. */
 export function isBytecodeConversion(conv: Conversion): conv is BytecodeConversion {
   return (conv as BytecodeConversion).binding === "bytecode";

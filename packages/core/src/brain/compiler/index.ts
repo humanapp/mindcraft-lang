@@ -7,6 +7,8 @@ export {
   CompilationDiagCode,
   type DiagCode,
   type DiagnosticSeverity,
+  type DiagParams,
+  diagnosticSeverity,
   isBrainBuildError,
   LinkDiagCode,
   ParseDiagCode,

@@ -5,6 +5,7 @@ import {
   CoreTypeNames,
   type IConversionRegistry,
   type ITypeRegistry,
+  MAX_COERCION_PATH_LENGTH,
   NativeType,
   type StructTypeDef,
   type TypeId,
@@ -79,6 +80,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
         code: TypeDiagCode.TileNotFound,
         nodeId: slotEntry.expr.nodeId,
         message: `${context} ${slotType} slot references unknown tileId ${tileId}`,
+        params: { tileId },
       });
       return;
     }
@@ -88,6 +90,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
         code: TypeDiagCode.TileTypeMismatch,
         nodeId: slotEntry.expr.nodeId,
         message: `${context} ${slotType} slot references non-parameter tileId ${tileId}`,
+        params: { tileId, tileKind: tileDef.kind },
       });
       return;
     }
@@ -120,7 +123,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
 
       // First conversion-reachable option in declaration order.
       for (const option of options) {
-        const convPath = this.conversions.findBestPath(typeInfo.inferred, option.dataType, 1);
+        const convPath = this.conversions.findBestPath(typeInfo.inferred, option.dataType, MAX_COERCION_PATH_LENGTH);
         if (convPath && convPath.size() > 0) {
           const conversion = convPath.get(0);
           slotEntry.slotId = option.slot.slotId;
@@ -129,6 +132,11 @@ class InferredTypeVisitor implements ExprVisitor<void> {
             code: TypeDiagCode.DataTypeConverted,
             nodeId: slotEntry.expr.nodeId,
             message: `Applied conversion from ${typeInfo.inferred} to ${option.dataType} for ${context} ${slotType} slot (cost: ${conversion.cost})`,
+            params: {
+              actualTypeIds: List.from([typeInfo.inferred]),
+              expectedTypeIds: List.from([option.dataType]),
+              conversionCost: conversion.cost,
+            },
           });
           return;
         }
@@ -149,10 +157,14 @@ class InferredTypeVisitor implements ExprVisitor<void> {
         code: TypeDiagCode.DataTypeMismatch,
         nodeId: slotEntry.expr.nodeId,
         message: `${context} ${slotType} slot type mismatch: expected ${expectedTypes.join(" or ")}, got ${typeInfo.inferred}`,
+        params: {
+          expectedTypeIds: List.from(expectedTypes),
+          actualTypeIds: List.from([typeInfo.inferred]),
+        },
       });
     } else if (typeInfo.inferred !== slotTileType) {
       // Non-choice slot: try conversion before reporting mismatch
-      const convPath = this.conversions.findBestPath(typeInfo.inferred, slotTileType, 1);
+      const convPath = this.conversions.findBestPath(typeInfo.inferred, slotTileType, MAX_COERCION_PATH_LENGTH);
       if (convPath && convPath.size() > 0) {
         const conversion = convPath.get(0);
         typeInfo.conversion = conversion;
@@ -160,12 +172,21 @@ class InferredTypeVisitor implements ExprVisitor<void> {
           code: TypeDiagCode.DataTypeConverted,
           nodeId: slotEntry.expr.nodeId,
           message: `Applied conversion from ${typeInfo.inferred} to ${slotTileType} for ${context} ${slotType} slot (cost: ${conversion.cost})`,
+          params: {
+            actualTypeIds: List.from([typeInfo.inferred]),
+            expectedTypeIds: List.from([slotTileType]),
+            conversionCost: conversion.cost,
+          },
         });
       } else {
         this.diags.push({
           code: TypeDiagCode.DataTypeMismatch,
           nodeId: slotEntry.expr.nodeId,
           message: `${context} ${slotType} slot type mismatch: expected ${slotTileType}, got ${typeInfo.inferred}`,
+          params: {
+            expectedTypeIds: List.from([slotTileType]),
+            actualTypeIds: List.from([typeInfo.inferred]),
+          },
         });
       }
     }
@@ -191,7 +212,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       }
 
       // Try converting right operand to match left
-      const rightToLeftConv = this.conversions.findBestPath(rightType, leftType, 1);
+      const rightToLeftConv = this.conversions.findBestPath(rightType, leftType, MAX_COERCION_PATH_LENGTH);
       if (rightToLeftConv?.size()) {
         const conversion = rightToLeftConv.get(0);
         typeInfo.overload = expr.operator.op.get([leftType, leftType]);
@@ -203,13 +224,19 @@ class InferredTypeVisitor implements ExprVisitor<void> {
             code: TypeDiagCode.DataTypeConverted,
             nodeId: expr.right.nodeId,
             message: `Applied conversion from ${rightType} to ${leftType} for operator ${expr.operator.op.id} (cost: ${conversion.cost})`,
+            params: {
+              operatorId: expr.operator.op.id,
+              actualTypeIds: List.from([rightType]),
+              expectedTypeIds: List.from([leftType]),
+              conversionCost: conversion.cost,
+            },
           });
           return;
         }
       }
 
       // Try converting left operand to match right
-      const leftToRightConv = this.conversions.findBestPath(leftType, rightType, 1);
+      const leftToRightConv = this.conversions.findBestPath(leftType, rightType, MAX_COERCION_PATH_LENGTH);
       if (leftToRightConv?.size()) {
         const conversion = leftToRightConv.get(0);
         typeInfo.overload = expr.operator.op.get([rightType, rightType]);
@@ -221,6 +248,12 @@ class InferredTypeVisitor implements ExprVisitor<void> {
             code: TypeDiagCode.DataTypeConverted,
             nodeId: expr.left.nodeId,
             message: `Applied conversion from ${leftType} to ${rightType} for operator ${expr.operator.op.id} (cost: ${conversion.cost})`,
+            params: {
+              operatorId: expr.operator.op.id,
+              actualTypeIds: List.from([leftType]),
+              expectedTypeIds: List.from([rightType]),
+              conversionCost: conversion.cost,
+            },
           });
           return;
         }
@@ -231,6 +264,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
         code: TypeDiagCode.NoOverloadForBinaryOp,
         nodeId: expr.nodeId,
         message: `No overload found for operator ${expr.operator.op.id} with argument types [${leftType}, ${rightType}]`,
+        params: { operatorId: expr.operator.op.id, actualTypeIds: List.from([leftType, rightType]) },
       });
     }
   }
@@ -257,7 +291,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       for (const targetType of commonTypes) {
         if (targetType === operandType) continue; // Already tried
 
-        const conversionPath = this.conversions.findBestPath(operandType, targetType, 1);
+        const conversionPath = this.conversions.findBestPath(operandType, targetType, MAX_COERCION_PATH_LENGTH);
         if (conversionPath?.size()) {
           const conversion = conversionPath.get(0);
           typeInfo.overload = expr.operator.op.get([targetType]);
@@ -269,6 +303,12 @@ class InferredTypeVisitor implements ExprVisitor<void> {
               code: TypeDiagCode.DataTypeConverted,
               nodeId: expr.operand.nodeId,
               message: `Applied conversion from ${operandType} to ${targetType} for operator ${expr.operator.op.id} (cost: ${conversion.cost})`,
+              params: {
+                operatorId: expr.operator.op.id,
+                actualTypeIds: List.from([operandType]),
+                expectedTypeIds: List.from([targetType]),
+                conversionCost: conversion.cost,
+              },
             });
             return;
           }
@@ -280,6 +320,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
         code: TypeDiagCode.NoOverloadForUnaryOp,
         nodeId: expr.nodeId,
         message: `No overload found for operator ${expr.operator.op.id} with argument type [${operandType}]`,
+        params: { operatorId: expr.operator.op.id, actualTypeIds: List.from([operandType]) },
       });
     }
   }
@@ -323,7 +364,11 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       targetTypeInfo.inferred !== valueTypeInfo.inferred
     ) {
       // Try conversion before reporting mismatch
-      const convPath = this.conversions.findBestPath(valueTypeInfo.inferred, targetTypeInfo.inferred, 1);
+      const convPath = this.conversions.findBestPath(
+        valueTypeInfo.inferred,
+        targetTypeInfo.inferred,
+        MAX_COERCION_PATH_LENGTH
+      );
       if (convPath && convPath.size() > 0) {
         const conversion = convPath.get(0);
         valueTypeInfo.conversion = conversion;
@@ -332,12 +377,21 @@ class InferredTypeVisitor implements ExprVisitor<void> {
           code: TypeDiagCode.DataTypeConverted,
           nodeId: expr.value.nodeId,
           message: `Applied conversion from ${valueTypeInfo.inferred} to ${targetTypeInfo.inferred} for assignment (cost: ${conversion.cost})`,
+          params: {
+            actualTypeIds: List.from([valueTypeInfo.inferred]),
+            expectedTypeIds: List.from([targetTypeInfo.inferred]),
+            conversionCost: conversion.cost,
+          },
         });
       } else {
         this.diags.push({
           code: TypeDiagCode.DataTypeMismatch,
           nodeId: expr.nodeId,
           message: `Cannot assign value of type '${valueTypeInfo.inferred}' to variable of type '${targetTypeInfo.inferred}'`,
+          params: {
+            actualTypeIds: List.from([valueTypeInfo.inferred]),
+            expectedTypeIds: List.from([targetTypeInfo.inferred]),
+          },
         });
       }
     }
@@ -424,6 +478,12 @@ class InferredTypeVisitor implements ExprVisitor<void> {
         code: TypeDiagCode.AccessorBaseTypeMismatch,
         nodeId: expr.nodeId,
         message: `Field "${fieldLabel}" belongs to ${structTypeName} and cannot be read from a value of type ${baseTypeName}`,
+        params: {
+          fieldName: expr.accessor.fieldName,
+          fieldLabel,
+          expectedTypeIds: List.from([expr.accessor.structTypeId]),
+          actualTypeIds: List.from([objectTypeId]),
+        },
       });
       typeInfo.inferred = expr.accessor.fieldTypeId;
       return;

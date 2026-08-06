@@ -19,7 +19,14 @@ import { RuleSide } from "../interfaces";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
 import type { BrainTileParameterDef } from "../tiles";
 import type { ConstantPool } from "./constant-pool";
-import { CompilationDiagCode, type DiagCode, type DiagnosticSeverity, LinkDiagCode } from "./diagnostics";
+import {
+  CompilationDiagCode,
+  type DiagCode,
+  type DiagnosticSeverity,
+  type DiagParams,
+  diagnosticSeverity,
+  LinkDiagCode,
+} from "./diagnostics";
 import type {
   ActuatorExpr,
   AssignmentExpr,
@@ -86,6 +93,8 @@ export interface CompilationDiag {
   severity: DiagnosticSeverity;
   message: string;
   nodeId: number;
+  /** Machine-readable values `message` interpolates; absent when it interpolates none. */
+  params?: DiagParams;
 }
 
 /**
@@ -126,7 +135,7 @@ export class ExprCompiler implements ExprVisitor<void> {
     if (!typeInfo) {
       this.context.diags.push({
         code: CompilationDiagCode.MissingTypeInfo,
-        severity: "error",
+        severity: diagnosticSeverity(CompilationDiagCode.MissingTypeInfo),
         message: `Missing type information for binary operator`,
         nodeId: expr.nodeId,
       });
@@ -266,7 +275,7 @@ export class ExprCompiler implements ExprVisitor<void> {
     if (!typeInfo) {
       this.context.diags.push({
         code: CompilationDiagCode.MissingTypeInfo,
-        severity: "error",
+        severity: diagnosticSeverity(CompilationDiagCode.MissingTypeInfo),
         message: `Missing type information for unary operator`,
         nodeId: expr.nodeId,
       });
@@ -544,9 +553,10 @@ export class ExprCompiler implements ExprVisitor<void> {
     if (!resolved) {
       this.context.diags.push({
         code: LinkDiagCode.MissingActionBinding,
-        severity: "error",
+        severity: diagnosticSeverity(LinkDiagCode.MissingActionBinding),
         message: `Action '${action.key}' could not be resolved in this environment.`,
         nodeId,
+        params: { actionKey: action.key },
       });
     }
 
@@ -737,9 +747,10 @@ export class ExprCompiler implements ExprVisitor<void> {
     logger.warn(message);
     this.context.diags.push({
       code: CompilationDiagCode.UncompilableExpressionDropped,
-      severity: "warning",
+      severity: diagnosticSeverity(CompilationDiagCode.UncompilableExpressionDropped),
       message,
       nodeId,
+      params: { rulePath: this.context.rulePath, side: this.context.ruleSide, tileId },
     });
   }
 

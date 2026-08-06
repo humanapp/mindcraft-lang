@@ -16,6 +16,7 @@ import {
   CoreOpId,
   type IConversionRegistry,
   type ITypeRegistry,
+  MAX_COERCION_PATH_LENGTH,
   type TypeId,
 } from "../../runtime";
 import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
@@ -43,30 +44,48 @@ import {
   type BrainTileSensorDef,
   type BrainTileVariableDef,
 } from "../tiles";
-import { ParseDiagCode } from "./diagnostics";
+import { type DiagParams, ParseDiagCode } from "./diagnostics";
 import { isLValue } from "./lvalue";
-import type { Expr, FieldAccessExpr, ParseDiag, ParseResult, SlotExpr } from "./types";
+import type { Expr, FieldAccessExpr, ParenGroupState, ParseDiag, ParseResult, SlotExpr } from "./types";
 
 /**
- * Build the diagnostic message for an assignment whose target is a writable
- * field hanging off a read-only base. Names the specific read-only element in
- * the access chain (a read-only field, or a sensor whose result is read-only)
- * so the message describes the user's actual situation.
+ * Record on `expr` that a parenthesized group held it and how that group ended.
+ * Leaves an already-marked node alone, so directly nested groups keep the
+ * innermost group's state.
  */
-function describeReadOnlyResultAssignment(target: FieldAccessExpr): string {
+function markParenGroup(expr: Expr, state: ParenGroupState): void {
+  if (expr.parenGroup === undefined) expr.parenGroup = state;
+}
+
+/**
+ * Build the diagnostic message and params for an assignment whose target is a
+ * writable field hanging off a read-only base. Names the specific read-only
+ * element in the access chain: a read-only field, or a sensor whose result is
+ * read-only. `params` is undefined when the chain bottoms out at neither.
+ */
+function describeReadOnlyResultAssignment(target: FieldAccessExpr): {
+  message: string;
+  params?: DiagParams;
+} {
   let cur: Expr = target.object;
   while (cur.kind === "fieldAccess") {
     if (cur.accessor.readOnly) {
       const field = cur.accessor.metadata?.label ?? cur.accessor.fieldName;
-      return `Cannot assign to a field of read-only field "${field}"`;
+      return {
+        message: `Cannot assign to a field of read-only field "${field}"`,
+        params: { fieldName: cur.accessor.fieldName, fieldLabel: field },
+      };
     }
     cur = cur.object;
   }
   if (cur.kind === "sensor") {
     const sensorLabel = cur.tileDef.metadata?.label ?? cur.tileDef.sensorId;
-    return `Cannot assign to a field of "${sensorLabel}" because its result is read-only`;
+    return {
+      message: `Cannot assign to a field of "${sensorLabel}" because its result is read-only`,
+      params: { tileId: cur.tileDef.tileId, tileLabel: sensorLabel },
+    };
   }
-  return `Cannot assign to a field of a read-only value`;
+  return { message: `Cannot assign to a field of a read-only value` };
 }
 
 /**
@@ -252,6 +271,7 @@ class BrainParser {
           code: diagCode,
           message: errorMessage,
           span: { from: startPos, to: startPos + 1 },
+          params: isActionCall ? { tileId: nextTok.tileId } : undefined,
         });
         exprs.push({
           nodeId: this.nextNodeId(),
@@ -281,6 +301,7 @@ class BrainParser {
         code: ParseDiagCode.ExpectedSensorOrActuator,
         message: `Expected sensor or actuator, found '${actionTok.kind}'`,
         span: { from: startPos, to: this.i },
+        params: { tileId: actionTok.tileId, tileKind: actionTok.kind },
       });
       return {
         nodeId: this.nextNodeId(),
@@ -317,6 +338,7 @@ class BrainParser {
         code: ParseDiagCode.ActionCallParseFailure,
         message: "Failed to parse action call - required arguments missing or invalid",
         span: { from: startPos, to: this.i },
+        params: { tileId: actionTok.tileId, tileKind: actionTok.kind },
       });
     }
 
@@ -345,6 +367,7 @@ class BrainParser {
         code: ParseDiagCode.UnexpectedActionCallKind,
         message: `Unexpected action call kind '${actionTok.kind}'`,
         span: { from: startPos, to: this.i },
+        params: { tileId: actionTok.tileId, tileKind: actionTok.kind },
       });
       return {
         nodeId: this.nextNodeId(),
@@ -849,6 +872,7 @@ class BrainParser {
             code: ParseDiagCode.ReadOnlyFieldAssignment,
             message: `Cannot assign to read-only field "${fieldLabel}"`,
             span: { from: startPos, to: this.i },
+            params: { fieldName: left.accessor.fieldName, fieldLabel },
           });
           return {
             nodeId: this.nextNodeId(),
@@ -861,11 +885,13 @@ class BrainParser {
         // A writable field on a read-only base (e.g. a sensor result) is not an
         // l-value; the field has storage but the base it hangs off does not.
         if (left.kind === "fieldAccess" && !isLValue(left)) {
-          const message = describeReadOnlyResultAssignment(left);
+          const described = describeReadOnlyResultAssignment(left);
+          const message = described.message;
           this.diags.push({
             code: ParseDiagCode.ReadOnlyResultFieldAssignment,
             message,
             span: { from: startPos, to: this.i },
+            params: described.params,
           });
           return {
             nodeId: this.nextNodeId(),
@@ -932,6 +958,7 @@ class BrainParser {
       code: ParseDiagCode.UnexpectedTokenKindInExpression,
       message: `Unexpected token of kind '${tok.kind}' in expression`,
       span: { from: startPos, to: this.i },
+      params: { tileId: tok.tileId, tileKind: tok.kind },
     });
     return {
       nodeId: this.nextNodeId(),
@@ -1025,6 +1052,7 @@ class BrainParser {
         code: ParseDiagCode.UnexpectedOperatorInExpression,
         message: `Unexpected operator '${opTok.op.id}' in expression`,
         span: { from: startPos, to: this.i },
+        params: { tileId: opTok.tileId, operatorId: opTok.op.id },
       });
       return {
         nodeId: this.nextNodeId(),
@@ -1066,6 +1094,7 @@ class BrainParser {
         (closeParen as BrainTileControlFlowDef).cfId === CoreControlFlowId.CloseParen
       ) {
         this.consume();
+        markParenGroup(expr, "closed");
         return expr;
       } else {
         // Missing closing paren - report error but return the inner expression for recovery
@@ -1074,6 +1103,7 @@ class BrainParser {
           message: `Expected closing parenthesis`,
           span: { from: startPos, to: this.i },
         });
+        markParenGroup(expr, "unclosed");
         return expr;
       }
     } else {
@@ -1081,6 +1111,7 @@ class BrainParser {
         code: ParseDiagCode.UnexpectedControlFlowInExpression,
         message: `Unexpected control flow token '${cfTok.cfId}' in expression`,
         span: { from: startPos, to: this.i },
+        params: { tileId: cfTok.tileId, controlFlowId: cfTok.cfId },
       });
       return {
         nodeId: this.nextNodeId(),
@@ -1248,6 +1279,7 @@ export function validateTilePlacement(tiles: ReadonlyList<IBrainTileDef>, side: 
         code: ParseDiagCode.TilePlacementSideMismatch,
         message: `Tile "${label}" cannot be used on the ${sideName} side`,
         span: { from: i, to: i + 1 },
+        params: { tileId: tile.tileId, tileLabel: label, side },
       });
     }
   }
@@ -1279,6 +1311,7 @@ export function validatePrecedingSiblingConsumers(
       code: ParseDiagCode.NoPrecedingSiblingRule,
       message: `Tile "${label}" needs a rule above it at the same level`,
       span: { from: i, to: i + 1 },
+      params: { tileId: tile.tileId, tileLabel: label },
     });
   }
   return diags;
@@ -1319,6 +1352,7 @@ export function validateOutputProviders(
       code: ParseDiagCode.OutputTileMissingProvider,
       message: `Output tile "${label}" has no providing sensor in this rule or an enclosing rule`,
       span: { from: i, to: i + 1 },
+      params: { tileId: tile.tileId, tileLabel: label, outputKey: outputDef.outputKey },
     });
   }
   return diags;
@@ -1339,7 +1373,7 @@ export function whenResultConsumerEligible(
   if (required === undefined) return true;
   if (availableType === undefined) return false;
   if (availableType === required) return true;
-  const path = conversions.findBestPath(availableType, required);
+  const path = conversions.findBestPath(availableType, required, MAX_COERCION_PATH_LENGTH);
   return path !== undefined && path.size() > 0;
 }
 
@@ -1368,6 +1402,12 @@ export function validateWhenResultConsumers(
       code: ParseDiagCode.TileWhenResultUnavailable,
       message: `Tile "${label}" requires the WHEN to produce a ${typeName} result, but no compatible WHEN result is available here`,
       span: { from: i, to: i + 1 },
+      params: {
+        tileId: tile.tileId,
+        tileLabel: label,
+        expectedTypeIds: List.from([required]),
+        actualTypeIds: availableWhenResultType === undefined ? undefined : List.from([availableWhenResultType]),
+      },
     });
   }
   return diags;
@@ -1389,11 +1429,16 @@ export function collectProvidedCapabilities(tiles: ReadonlyList<IBrainTileDef>, 
 }
 
 /**
- * Labels of the visible sensor tiles in `catalogs` whose `capabilities()`
- * cover every bit in `neededBits`, deduplicated, in catalog order.
+ * The visible sensor tiles in `catalogs` whose `capabilities()` cover every bit
+ * in `neededBits`, deduplicated by label, in catalog order. `labels` and
+ * `tileIds` are parallel: entry `i` of each names the same tile.
  */
-function capabilityProviderLabels(neededBits: List<number>, catalogs: ReadonlyList<ITileCatalog>): List<string> {
+function capabilityProviders(
+  neededBits: List<number>,
+  catalogs: ReadonlyList<ITileCatalog>
+): { labels: List<string>; tileIds: List<string> } {
   const labels = List.empty<string>();
+  const tileIds = List.empty<string>();
   const seen = new UniqueSet<string>();
   for (let ci = 0; ci < catalogs.size(); ci++) {
     const all = catalogs.get(ci).getAll();
@@ -1414,9 +1459,10 @@ function capabilityProviderLabels(neededBits: List<number>, catalogs: ReadonlyLi
       if (seen.has(label)) continue;
       seen.add(label);
       labels.push(label);
+      tileIds.push(tile.tileId);
     }
   }
-  return labels;
+  return { labels, tileIds };
 }
 
 /**
@@ -1446,20 +1492,25 @@ export function validateCapabilityRequirements(
     }
     if (uncovered.size() === 0) continue;
     const label = tile.metadata?.label ?? tile.tileId;
-    const providers = capabilityProviderLabels(uncovered, catalogs);
+    const providers = capabilityProviders(uncovered, catalogs);
     let providerText = "";
-    for (let j = 0; j < providers.size(); j++) {
+    for (let j = 0; j < providers.labels.size(); j++) {
       if (j > 0) providerText += " or ";
-      providerText += `"${providers.get(j)}"`;
+      providerText += `"${providers.labels.get(j)}"`;
     }
     const message =
-      providers.size() > 0
+      providers.labels.size() > 0
         ? `Tile "${label}" requires a sensor like ${providerText} in this rule or an enclosing rule`
         : `Tile "${label}" requires a providing sensor in this rule or an enclosing rule`;
     diags.push({
       code: ParseDiagCode.TileRequirementsNotProvided,
       message,
       span: { from: i, to: i + 1 },
+      params: {
+        tileId: tile.tileId,
+        tileLabel: label,
+        providerTileIds: providers.tileIds.size() > 0 ? providers.tileIds.asReadonly() : undefined,
+      },
     });
   }
   return diags;
