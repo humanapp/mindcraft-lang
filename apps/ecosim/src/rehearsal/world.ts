@@ -1,8 +1,7 @@
-import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { describe, test } from "node:test";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   coreModule,
   createMindcraftEnvironment,
@@ -15,15 +14,15 @@ import {
   type Value,
   Vector2,
 } from "@mindcraft-lang/core/app";
-import type { Playground } from "../game/scenes/Playground";
-import { deserializeBrainFromArrayBuffer } from "../services/brain-persistence";
-import type { EcosimEnvironmentStore } from "../services/ecosim-environment-store";
-import type { Actor, Archetype } from "./actor";
-import { ARCHETYPE_NAMES, ARCHETYPES } from "./archetypes";
-import { BLIP_RADIUS, type Blip } from "./blip";
-import { Engine } from "./engine";
-import { getSelf } from "./execution-context-types";
-import { createEcosimModule } from "./index";
+import type { Actor, Archetype } from "@/brain/actor";
+import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
+import { BLIP_RADIUS, type Blip } from "@/brain/blip";
+import { Engine } from "@/brain/engine";
+import { getSelf } from "@/brain/execution-context-types";
+import { createEcosimModule } from "@/brain/index";
+import type { Playground } from "@/game/scenes/Playground";
+import { deserializeBrainFromArrayBuffer } from "@/services/brain-persistence";
+import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
 
 // -- Matter.js, loaded without Phaser -------------------------------------------
 
@@ -37,11 +36,11 @@ const MatterBody = requireMatter(`${MATTER_LIB}/body/Body.js`) as typeof MatterJ
 const MatterComposite = requireMatter(`${MATTER_LIB}/body/Composite.js`) as typeof MatterJS.Composite;
 
 /** Fixed simulation step in milliseconds, matching the app's 60 Hz physics substep. */
-const STEP_MS = 1000 / 60;
+export const STEP_MS = 1000 / 60;
 
 /** World extent, matching the Phaser game config the app boots with. */
-const WORLD_WIDTH = 1024;
-const WORLD_HEIGHT = 768;
+export const WORLD_WIDTH = 1024;
+export const WORLD_HEIGHT = 768;
 
 /** Thickness of the boundary walls, matching the app's `setBounds` call. */
 const WALL_THICKNESS = 32;
@@ -51,11 +50,14 @@ const CATEGORY_WALL = 0x0001;
 const CATEGORY_ACTOR = 0x0002;
 const CATEGORY_BLIP = 0x0004;
 
-/** Number of fixed steps a rehearsal runs. */
-const RUN_TICKS = 600;
-
 /** Project namespace the shipped brain documents deserialize under. */
 const PROJECT_NAMESPACE = "ecosim-rehearsal";
+
+/** The app directory this module was loaded from, resolved from the module's own location. */
+const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/** Directory holding the brain documents the app ships for each archetype. */
+const BRAIN_ASSET_DIR = join(APP_DIR, "public", "assets", "brain", "defs");
 
 // -- Seeded randomness ----------------------------------------------------------
 
@@ -65,7 +67,7 @@ const PROJECT_NAMESPACE = "ecosim-rehearsal";
  * rehearsal makes (obstacle layout, spawn positions, spawn facing, wander
  * target expiry) is reproducible.
  */
-function createSeededRng(seed: number): () => number {
+export function createSeededRng(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
     state = (state * 1664525 + 1013904223) >>> 0;
@@ -76,6 +78,72 @@ function createSeededRng(seed: number): () => number {
 /** Seeded stand-in for the integer range helper the scene uses when placing bodies. */
 function randomInt(rng: () => number, min: number, max: number): number {
   return Math.floor(rng() * (max - min + 1)) + min;
+}
+
+// -- Observation ----------------------------------------------------------------
+
+/**
+ * Hooks a caller installs to watch a rehearsal. Every hook is optional; a hook
+ * that is absent is not called.
+ */
+export interface WorldObserver {
+  /** One host action a brain dispatched, reported before the action runs. */
+  onDispatch?(actorId: number, action: string, ruleFuncId: number | undefined): void;
+  /** An actor that has just been spawned into the world and given a body. */
+  onSpawn?(actor: Actor): void;
+  /** A chat bubble reaching presentation, one per `say` the world renders. */
+  onSay?(): void;
+  /** A blip put into flight, one per `shoot` the world launches. */
+  onBlipFired?(): void;
+}
+
+/** The host sensor / actuator definition shape the module API accepts. */
+type HostDefinition = Parameters<MindcraftModuleApi["registerHostSensor"]>[0];
+
+/**
+ * Wrap a synchronous host action's `exec` so every dispatch reaches the
+ * observer. Asynchronous actions pass through unchanged.
+ */
+function traced(def: HostDefinition, observer: WorldObserver): HostDefinition {
+  if (def.descriptor.isAsync) return def;
+  const actionFn = def.actionFn as { exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value };
+  const key = def.descriptor.key;
+  const exec = actionFn.exec;
+  return {
+    ...def,
+    actionFn: {
+      ...actionFn,
+      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        observer.onDispatch?.(getSelf(ctx)?.actorId ?? 0, key, ctx.currentRuleFuncId);
+        return exec(ctx, args);
+      },
+    },
+  };
+}
+
+/** A module API that reports every host-action dispatch made through the definitions it registers. */
+function tracingApi(api: MindcraftModuleApi, observer: WorldObserver): MindcraftModuleApi {
+  return {
+    brainServices: api.brainServices,
+    defineType: (def) => api.defineType(def),
+    registerHostSensor: (def) => api.registerHostSensor(traced(def, observer)),
+    registerHostActuator: (def) => api.registerHostActuator(traced(def, observer)),
+    registerFunction: (def) => api.registerFunction(def),
+    registerTile: (def) => api.registerTile(def),
+    registerModifiers: (defs) => api.registerModifiers(defs),
+    registerParameters: (defs) => api.registerParameters(defs),
+    registerOperator: (def) => api.registerOperator(def),
+    registerConversion: (def) => api.registerConversion(def),
+  };
+}
+
+/** The module with every host action it installs wrapped for dispatch observation. */
+function tracingModule(inner: MindcraftModule, observer: WorldObserver): MindcraftModule {
+  return {
+    id: inner.id,
+    migrateBrainJson: inner.migrateBrainJson,
+    install: (api: MindcraftModuleApi) => inner.install(tracingApi(api, observer)),
+  };
 }
 
 // -- Stubs standing in for Phaser presentation ----------------------------------
@@ -179,91 +247,6 @@ class BodySprite {
   }
 }
 
-// -- Observation ----------------------------------------------------------------
-
-/** One rehearsal's accumulated observations. */
-interface RunObservations {
-  /** Per-tick, per-actor host-action dispatch counts keyed `actorId -> actionKey -> count`. */
-  tickDispatch: Map<number, Map<string, number>>;
-  /** Total host-action dispatches over the whole run, keyed by action key. */
-  totalDispatch: Map<string, number>;
-  /** Number of `think` calls the run executed. */
-  thinks: number;
-  /** Number of chat-bubble creations (the `say` actuator reaching presentation). */
-  says: number;
-  /** Number of blips activated (the `shoot` actuator reaching presentation). */
-  blipsFired: number;
-  /** Number of actors spawned into the world, initial population plus respawns. */
-  spawns: number;
-}
-
-function newObservations(): RunObservations {
-  return {
-    tickDispatch: new Map(),
-    totalDispatch: new Map(),
-    thinks: 0,
-    says: 0,
-    blipsFired: 0,
-    spawns: 0,
-  };
-}
-
-/** The host sensor / actuator definition shape the module API accepts. */
-type HostDefinition = Parameters<MindcraftModuleApi["registerHostSensor"]>[0];
-
-/**
- * Wrap a synchronous host action's `exec` so every dispatch is recorded against
- * the dispatching actor. Asynchronous actions pass through unchanged.
- */
-function traced(def: HostDefinition, obs: RunObservations): HostDefinition {
-  if (def.descriptor.isAsync) return def;
-  const actionFn = def.actionFn as { exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value };
-  const key = def.descriptor.key;
-  const exec = actionFn.exec;
-  return {
-    ...def,
-    actionFn: {
-      ...actionFn,
-      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
-        const actorId = getSelf(ctx)?.actorId ?? 0;
-        let perActor = obs.tickDispatch.get(actorId);
-        if (!perActor) {
-          perActor = new Map<string, number>();
-          obs.tickDispatch.set(actorId, perActor);
-        }
-        perActor.set(key, (perActor.get(key) ?? 0) + 1);
-        obs.totalDispatch.set(key, (obs.totalDispatch.get(key) ?? 0) + 1);
-        return exec(ctx, args);
-      },
-    },
-  };
-}
-
-/** A module API that records every host-action dispatch made through the definitions it registers. */
-function tracingApi(api: MindcraftModuleApi, obs: RunObservations): MindcraftModuleApi {
-  return {
-    brainServices: api.brainServices,
-    defineType: (def) => api.defineType(def),
-    registerHostSensor: (def) => api.registerHostSensor(traced(def, obs)),
-    registerHostActuator: (def) => api.registerHostActuator(traced(def, obs)),
-    registerFunction: (def) => api.registerFunction(def),
-    registerTile: (def) => api.registerTile(def),
-    registerModifiers: (defs) => api.registerModifiers(defs),
-    registerParameters: (defs) => api.registerParameters(defs),
-    registerOperator: (def) => api.registerOperator(def),
-    registerConversion: (def) => api.registerConversion(def),
-  };
-}
-
-/** The module with every host action it installs wrapped for dispatch observation. */
-function tracingModule(inner: MindcraftModule, obs: RunObservations): MindcraftModule {
-  return {
-    id: inner.id,
-    migrateBrainJson: inner.migrateBrainJson,
-    install: (api: MindcraftModuleApi) => inner.install(tracingApi(api, obs)),
-  };
-}
-
 // -- Headless scene -------------------------------------------------------------
 
 /** Listener registration, keyed by event name, matching the emitter surface the engine uses. */
@@ -287,7 +270,7 @@ class HeadlessScene {
   readonly add = {
     graphics: () => stubGraphics(),
     text: () => {
-      this.obs.says++;
+      this.observer.onSay?.();
       return {
         width: 40,
         height: 12,
@@ -312,7 +295,7 @@ class HeadlessScene {
 
   constructor(
     private readonly rng: () => number,
-    private readonly obs: RunObservations
+    private readonly observer: WorldObserver
   ) {
     this.matterEngine = MatterEngine.create();
     this.matterEngine.world.gravity.x = 0;
@@ -497,14 +480,14 @@ class HeadlessScene {
     }
     actor.debugGraphics = stubGraphics();
     actor.healthBarGfx = stubGraphics();
-    this.obs.spawns++;
+    this.observer.onSpawn?.(actor);
 
     return sprite as unknown as Phaser.Physics.Matter.Sprite;
   }
 
   /** Put a pooled blip into flight, creating its sensor body on first use. */
   activateBlip(blip: Blip, x: number, y: number, velX: number, velY: number): void {
-    this.obs.blipsFired++;
+    this.observer.onBlipFired?.();
     if (!blip.sprite) {
       const body = MatterBodies.circle(x, y, BLIP_RADIUS, {
         collisionFilter: {
@@ -543,11 +526,10 @@ class HeadlessScene {
 function loadShippedBrains(env: MindcraftEnvironment): Record<Archetype, IBrainDef> {
   const brains: Partial<Record<Archetype, IBrainDef>> = {};
   for (const archetype of ARCHETYPE_NAMES) {
-    const path = new URL(`../../public/assets/brain/defs/default-${archetype}.brain`, import.meta.url);
-    const file = readFileSync(path);
+    const file = readFileSync(join(BRAIN_ASSET_DIR, `default-${archetype}.brain`));
     const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer;
     const brain = deserializeBrainFromArrayBuffer(env, buffer, PROJECT_NAMESPACE);
-    assert.ok(brain, `the shipped ${archetype} brain deserializes`);
+    if (!brain) throw new Error(`the shipped ${archetype} brain did not deserialize`);
     brains[archetype] = brain;
   }
   return brains as Record<Archetype, IBrainDef>;
@@ -555,8 +537,8 @@ function loadShippedBrains(env: MindcraftEnvironment): Record<Archetype, IBrainD
 
 /**
  * The environment-store surface the engine reads: the live environment, the
- * fresh-project population targets, and the shipped brains as the per-archetype
- * defaults, with no project override.
+ * fresh-project population targets, and the per-archetype brains, with no
+ * project override.
  */
 function headlessStore(env: MindcraftEnvironment, brains: Record<Archetype, IBrainDef>): EcosimEnvironmentStore {
   return {
@@ -573,25 +555,8 @@ function headlessStore(env: MindcraftEnvironment, brains: Record<Archetype, IBra
   } as unknown as EcosimEnvironmentStore;
 }
 
-// -- Rehearsal ------------------------------------------------------------------
-
-/** What one rehearsal produced. */
-interface RunResult {
-  /** One line per tick, in order. Byte-identical lines mean identical runs. */
-  trace: string[];
-  /** Hex SHA-256 of the whole trace. */
-  hash: string;
-  observations: RunObservations;
-  /** Distinct brain defs held by the actors alive at the end of the run. */
-  brainsExecuted: number;
-  /** Actor count at the end of the run. */
-  finalActors: number;
-  /** Static obstacle bodies the world was built with. */
-  obstacleCount: number;
-}
-
 /** Every live actor, ordered by actor id. */
-function liveActors(engine: Engine): Actor[] {
+export function liveActors(engine: Engine): Actor[] {
   const actors: Actor[] = [];
   for (const archetype of ARCHETYPE_NAMES) {
     actors.push(...engine.getActorsByArchetype(archetype));
@@ -600,154 +565,65 @@ function liveActors(engine: Engine): Actor[] {
   return actors;
 }
 
-/** One tick's serialization: every actor's state plus the actions its brain dispatched. */
-function traceTick(tick: number, engine: Engine, obs: RunObservations): string {
-  const parts: string[] = [`t=${tick}`];
-  for (const actor of liveActors(engine)) {
-    const fired = obs.tickDispatch.get(actor.actorId);
-    const firedText = fired
-      ? [...fired.entries()]
-          .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-          .map(([key, count]) => `${key}:${count}`)
-          .join("+")
-      : "-";
-    parts.push(
-      [
-        actor.actorId,
-        actor.archetype,
-        actor.sprite.x.toFixed(6),
-        actor.sprite.y.toFixed(6),
-        actor.sprite.rotation.toFixed(6),
-        actor.energy.toFixed(6),
-        firedText,
-      ].join(":")
-    );
-  }
-  return parts.join("|");
+// -- Rehearsal world ------------------------------------------------------------
+
+/** How one rehearsal world is staged. */
+export interface RehearsalWorldOptions {
+  /** Seed fixing every random choice the world makes; the same seed reproduces the world exactly. */
+  readonly seed: number;
+  readonly observer: WorldObserver;
+  /**
+   * Brains to run in place of the shipped defaults, built against the world's
+   * own environment. Called once, before the shipped brains are loaded.
+   */
+  readonly brains?: (environment: MindcraftEnvironment) => Partial<Record<Archetype, IBrainDef>>;
+}
+
+/** A staged, running rehearsal world. */
+export interface RehearsalWorld {
+  readonly environment: MindcraftEnvironment;
+  /** Static obstacle bodies the world was built with. */
+  readonly obstacleCount: number;
+  /** Advance the world one fixed step of {@link STEP_MS} milliseconds. */
+  step(): void;
+  /** Every live actor, ordered by actor id. */
+  actors(): Actor[];
+  /** Tear the world down; no step may follow. */
+  shutdown(): void;
 }
 
 /**
- * Run one whole-world rehearsal: load the shipped brains, populate the world to
- * the app's default counts, and step gameplay and physics at a fixed timestep
- * for `ticks` steps, recording a trace line per tick.
+ * Stage a whole ecosim world headlessly: a seeded environment carrying the core
+ * and ecosim modules with every host action traced to `options.observer`, the
+ * app's shipped brains, and a Matter world stepped directly. The world is
+ * populated by its first {@link RehearsalWorld.step}.
  */
-async function runRehearsal(seed: number, ticks: number): Promise<RunResult> {
-  const obs = newObservations();
-  const rng = createSeededRng(seed);
-  const env = createMindcraftEnvironment({
-    modules: [tracingModule(coreModule(), obs), tracingModule(createEcosimModule(), obs)],
+export async function createRehearsalWorld(options: RehearsalWorldOptions): Promise<RehearsalWorld> {
+  const { observer } = options;
+  const rng = createSeededRng(options.seed);
+  const environment = createMindcraftEnvironment({
+    modules: [tracingModule(coreModule(), observer), tracingModule(createEcosimModule(), observer)],
     rng: { next: () => rng() },
   });
 
-  const brains = loadShippedBrains(env);
-  const scene = new HeadlessScene(rng, obs);
-  const engine = new Engine(scene as unknown as Playground, scene.obstacleBodies, headlessStore(env, brains));
+  const overrides = options.brains?.(environment) ?? {};
+  const brains = { ...loadShippedBrains(environment), ...overrides };
+
+  const scene = new HeadlessScene(rng, observer);
+  const engine = new Engine(scene as unknown as Playground, scene.obstacleBodies, headlessStore(environment, brains));
   scene.attachEngine(engine);
   engine.start();
   await engine.loadBrains();
 
-  const trace: string[] = [];
   let time = 0;
-  for (let tick = 0; tick < ticks; tick++) {
-    obs.tickDispatch.clear();
-    obs.thinks += liveActors(engine).length;
-    scene.step(time);
-    time += STEP_MS;
-    trace.push(traceTick(tick, engine, obs));
-  }
-
-  const brainsExecuted = new Set(liveActors(engine).map((actor) => actor.brainDef)).size;
-  const finalActors = liveActors(engine).length;
-  engine.shutdown();
-
   return {
-    trace,
-    hash: createHash("sha256").update(trace.join("\n")).digest("hex"),
-    observations: obs,
-    brainsExecuted,
-    finalActors,
+    environment,
     obstacleCount: scene.obstacleBodies.length,
+    step: () => {
+      scene.step(time);
+      time += STEP_MS;
+    },
+    actors: () => liveActors(engine),
+    shutdown: () => engine.shutdown(),
   };
 }
-
-/** The number of actor entries a trace line carries. */
-function actorsInTraceLine(line: string): number {
-  return line.split("|").length - 1;
-}
-
-/** The first line index at which two traces differ, or -1 when they are identical. */
-function firstDivergence(a: string[], b: string[]): number {
-  const limit = Math.min(a.length, b.length);
-  for (let i = 0; i < limit; i++) {
-    if (a[i] !== b[i]) return i;
-  }
-  return a.length === b.length ? -1 : limit;
-}
-
-/** The first field index at which two trace lines differ. */
-function firstDifferingField(a: string, b: string): string {
-  const fieldsA = a.split("|");
-  const fieldsB = b.split("|");
-  const limit = Math.min(fieldsA.length, fieldsB.length);
-  for (let i = 0; i < limit; i++) {
-    if (fieldsA[i] !== fieldsB[i]) return `field ${i}: ${fieldsA[i]} vs ${fieldsB[i]}`;
-  }
-  return `field count ${fieldsA.length} vs ${fieldsB.length}`;
-}
-
-function formatDispatch(totals: Map<string, number>): string {
-  return [...totals.entries()]
-    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([key, count]) => `${key}=${count}`)
-    .join(" ");
-}
-
-describe("headless whole-world rehearsal", () => {
-  test("runs the shipped world at a fixed timestep and reproduces it from the same seed", async () => {
-    const first = await runRehearsal(20260805, RUN_TICKS);
-    const second = await runRehearsal(20260805, RUN_TICKS);
-    const other = await runRehearsal(20260806, RUN_TICKS);
-
-    const initialPopulation = actorsInTraceLine(first.trace[0] ?? "");
-    const peakPopulation = first.trace.reduce((peak, line) => Math.max(peak, actorsInTraceLine(line)), 0);
-    const divergence = firstDivergence(first.trace, second.trace);
-    const verdict =
-      divergence < 0
-        ? "identical"
-        : `diverged at tick ${divergence} (${firstDifferingField(first.trace[divergence] ?? "", second.trace[divergence] ?? "")})`;
-
-    console.log(
-      [
-        "",
-        "-- headless whole-world rehearsal --",
-        `ticks:            ${RUN_TICKS} at ${STEP_MS.toFixed(4)} ms fixed step`,
-        `world:            ${WORLD_WIDTH}x${WORLD_HEIGHT}, ${first.obstacleCount} obstacles, 4 boundary walls`,
-        `entities:         ${initialPopulation} on the first step, ${peakPopulation} at peak, ${first.observations.spawns} spawned in total, ${first.finalActors} alive at end`,
-        `brains executed:  ${first.brainsExecuted} distinct brain defs (${ARCHETYPE_NAMES.join(", ")})`,
-        `thinks:           ${first.observations.thinks}`,
-        `dispatches:       ${formatDispatch(first.observations.totalDispatch)}`,
-        `say / shoot:      ${first.observations.says} chat bubbles, ${first.observations.blipsFired} blips fired`,
-        `trace hash run 1: ${first.hash}`,
-        `trace hash run 2: ${second.hash}`,
-        `trace hash alt:   ${other.hash} (different seed)`,
-        `trace verdict:    ${verdict}`,
-        "",
-      ].join("\n")
-    );
-
-    const expectedPopulation = ARCHETYPE_NAMES.reduce(
-      (sum, archetype) => sum + ARCHETYPES[archetype].initialSpawnCount,
-      0
-    );
-    assert.equal(peakPopulation, expectedPopulation, "the world populates to the app's default counts");
-    assert.equal(first.obstacleCount, 4, "the world carries the scene's obstacle set");
-    assert.equal(first.brainsExecuted, 3, "one distinct brain def per archetype is executing");
-    assert.ok(first.observations.thinks > 0, "brains thought during the run");
-    assert.ok(first.observations.totalDispatch.has("sensor.see"), "brains sensed each other");
-    assert.ok(first.observations.totalDispatch.has("actuator.move"), "brains acted on the world");
-    assert.equal(first.trace.length, RUN_TICKS, "one trace line per tick");
-    assert.equal(divergence, -1, verdict);
-    assert.equal(first.hash, second.hash, "identical seeds produce byte-identical traces");
-    assert.notEqual(first.hash, other.hash, "the seed drives the world the trace records");
-  });
-});
