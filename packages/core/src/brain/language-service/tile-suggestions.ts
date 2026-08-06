@@ -9,6 +9,7 @@ import {
   type IConversionRegistry,
   type IOperatorOverloads,
   type ITypeRegistry,
+  MAX_COERCION_PATH_LENGTH,
   NativeType,
   type StructTypeDef,
   type TypeId,
@@ -276,7 +277,7 @@ function classifyTypeCompatibility(
   }
 
   // Conversion match
-  const path = conversions.findBestPath(outputType, expectedType!);
+  const path = conversions.findBestPath(outputType, expectedType!, MAX_COERCION_PATH_LENGTH);
   if (path !== undefined && path.size() > 0) {
     let totalCost = 0;
     for (let i = 0; i < path.size(); i++) {
@@ -324,7 +325,7 @@ function structFieldTypeCompatibility(
       bestCost = 1;
       break; // Can't do better
     }
-    const path = conversions.findBestPath(fieldTypeId, expectedType);
+    const path = conversions.findBestPath(fieldTypeId, expectedType, MAX_COERCION_PATH_LENGTH);
     if (path !== undefined && path.size() > 0) {
       let cost = 1; // accessor step
       for (let j = 0; j < path.size(); j++) {
@@ -1317,7 +1318,7 @@ function operandConstraint(
       const otherSideType = overload.argTypes[1 - operandIndex];
       if (otherSideType === undefined) continue;
       if (otherSideType !== otherType) {
-        const path = conversions.findBestPath(otherType, otherSideType);
+        const path = conversions.findBestPath(otherType, otherSideType, MAX_COERCION_PATH_LENGTH);
         if (path === undefined || path.size() === 0) continue;
       }
     }
@@ -2567,7 +2568,7 @@ function suggestAssignmentTargetTiles(
       let typeResult = classifyExactOrFieldCompatibility(outputType, valueType, types);
       if (typeResult === undefined && outputType !== undefined && hasTypeConstraint(valueType)) {
         // The assigned value converts into the target tile's type.
-        const path = conversions.findBestPath(valueType!, outputType);
+        const path = conversions.findBestPath(valueType!, outputType, MAX_COERCION_PATH_LENGTH);
         if (path !== undefined && path.size() > 0) {
           let cost = 0;
           for (let i = 0; i < path.size(); i++) {

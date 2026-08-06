@@ -5,6 +5,7 @@ import {
   CoreTypeNames,
   type IConversionRegistry,
   type ITypeRegistry,
+  MAX_COERCION_PATH_LENGTH,
   NativeType,
   type StructTypeDef,
   type TypeId,
@@ -122,7 +123,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
 
       // First conversion-reachable option in declaration order.
       for (const option of options) {
-        const convPath = this.conversions.findBestPath(typeInfo.inferred, option.dataType, 1);
+        const convPath = this.conversions.findBestPath(typeInfo.inferred, option.dataType, MAX_COERCION_PATH_LENGTH);
         if (convPath && convPath.size() > 0) {
           const conversion = convPath.get(0);
           slotEntry.slotId = option.slot.slotId;
@@ -163,7 +164,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       });
     } else if (typeInfo.inferred !== slotTileType) {
       // Non-choice slot: try conversion before reporting mismatch
-      const convPath = this.conversions.findBestPath(typeInfo.inferred, slotTileType, 1);
+      const convPath = this.conversions.findBestPath(typeInfo.inferred, slotTileType, MAX_COERCION_PATH_LENGTH);
       if (convPath && convPath.size() > 0) {
         const conversion = convPath.get(0);
         typeInfo.conversion = conversion;
@@ -211,7 +212,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       }
 
       // Try converting right operand to match left
-      const rightToLeftConv = this.conversions.findBestPath(rightType, leftType, 1);
+      const rightToLeftConv = this.conversions.findBestPath(rightType, leftType, MAX_COERCION_PATH_LENGTH);
       if (rightToLeftConv?.size()) {
         const conversion = rightToLeftConv.get(0);
         typeInfo.overload = expr.operator.op.get([leftType, leftType]);
@@ -235,7 +236,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       }
 
       // Try converting left operand to match right
-      const leftToRightConv = this.conversions.findBestPath(leftType, rightType, 1);
+      const leftToRightConv = this.conversions.findBestPath(leftType, rightType, MAX_COERCION_PATH_LENGTH);
       if (leftToRightConv?.size()) {
         const conversion = leftToRightConv.get(0);
         typeInfo.overload = expr.operator.op.get([rightType, rightType]);
@@ -290,7 +291,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       for (const targetType of commonTypes) {
         if (targetType === operandType) continue; // Already tried
 
-        const conversionPath = this.conversions.findBestPath(operandType, targetType, 1);
+        const conversionPath = this.conversions.findBestPath(operandType, targetType, MAX_COERCION_PATH_LENGTH);
         if (conversionPath?.size()) {
           const conversion = conversionPath.get(0);
           typeInfo.overload = expr.operator.op.get([targetType]);
@@ -363,7 +364,11 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       targetTypeInfo.inferred !== valueTypeInfo.inferred
     ) {
       // Try conversion before reporting mismatch
-      const convPath = this.conversions.findBestPath(valueTypeInfo.inferred, targetTypeInfo.inferred, 1);
+      const convPath = this.conversions.findBestPath(
+        valueTypeInfo.inferred,
+        targetTypeInfo.inferred,
+        MAX_COERCION_PATH_LENGTH
+      );
       if (convPath && convPath.size() > 0) {
         const conversion = convPath.get(0);
         valueTypeInfo.conversion = conversion;

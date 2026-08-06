@@ -4870,3 +4870,60 @@ describe("Preceding-sibling consumption", () => {
     assert.ok(!offered(result, siblingReaderDef.tileId));
   });
 });
+
+describe("Conversion depth in withConversion offerings", () => {
+  /** Actuator with one required anonymous String slot, the position under test. */
+  let stringSlotActuatorDef: BrainTileActuatorDef;
+  /** Variable of a type reaching String only by chaining two registered conversions. */
+  let chainedVarDef: BrainTileVariableDef;
+  /** Variable of a type reaching String through one registered conversion. */
+  let directVarDef: BrainTileVariableDef;
+
+  before(() => {
+    const fnEntry = services.runtime.functions.register(
+      4401,
+      "test-depth-say",
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag(param(CoreParameterId.AnonymousString, { required: true, anonymous: true })))
+    );
+    stringSlotActuatorDef = new BrainTileActuatorDef("test-depth-say", mkActionDescriptor("actuator", fnEntry), {
+      metadata: { label: "depth say" },
+    });
+    services.edit.tiles.registerTileDef(stringSlotActuatorDef);
+
+    // Buffer reaches String only as Buffer -> Number -> String; Number reaches
+    // it directly through core's own conversion.
+    services.shared.conversions.register({
+      id: 4402,
+      fromType: CoreTypeIds.Buffer,
+      toType: CoreTypeIds.Number,
+      cost: 1,
+      fn: { exec: () => NIL_VALUE },
+    });
+    chainedVarDef = new BrainTileVariableDef("test.depthBuf", "buf", CoreTypeIds.Buffer, "var-depth-buf");
+    directVarDef = new BrainTileVariableDef("test.depthNum", "num", CoreTypeIds.Number, "var-depth-num");
+    services.edit.tiles.registerTileDef(chainedVarDef);
+    services.edit.tiles.registerTileDef(directVarDef);
+  });
+
+  /** Tile ids offered in the actuator's anonymous String slot, on either list. */
+  function slotOffering(): string[] {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([stringSlotActuatorDef]));
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+    return [...result.exact.toArray(), ...result.withConversion.toArray()].map((s) => s.tileDef.tileId);
+  }
+
+  test("a value reaching the expected type only by chaining two conversions is not offered", () => {
+    assert.ok(
+      services.shared.conversions.findBestPath(CoreTypeIds.Buffer, CoreTypeIds.String) !== undefined,
+      "the chained path exists, so the offering is decided by depth alone"
+    );
+
+    assert.ok(!slotOffering().includes(chainedVarDef.tileId));
+  });
+
+  test("a value reaching the expected type through one conversion is offered", () => {
+    assert.ok(slotOffering().includes(directVarDef.tileId));
+  });
+});
