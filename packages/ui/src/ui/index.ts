@@ -39,6 +39,8 @@ export {
 } from "./dropdown-menu";
 export type { InputProps } from "./input";
 export { Input } from "./input";
+export type { LoadingIndicatorProps } from "./loading-indicator";
+export { LoadingIndicator } from "./loading-indicator";
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./popover";
 export { Slider } from "./slider";
 export { Toaster } from "./sonner";
