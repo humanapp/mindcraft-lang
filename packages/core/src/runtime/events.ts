@@ -50,6 +50,26 @@ export interface HostActionDispatchEvent {
   ruleFuncId: number | undefined;
 }
 
+/** Payload emitted when a host-action call returns control to the runtime. */
+export interface HostActionReturnEvent {
+  /** Stable registry id of the action the call dispatched. */
+  actionId: number;
+  /** Call-site id the dispatch was bound to; keys the per-callsite host state. */
+  callSiteId: number;
+  /**
+   * Positional argument values the binding received, with an unsupplied slot
+   * filled by `NIL_VALUE`. Read it during the notification: a synchronous call
+   * passes a view over the live operand stack, which the runtime unwinds as
+   * soon as the notification returns.
+   */
+  args: ReadonlyList<Value>;
+  /**
+   * Value the call pushed back. `undefined` marks an asynchronous call, whose
+   * dispatch yields a pending handle and no value.
+   */
+  result: Value | undefined;
+}
+
 /** Optional passive observer hooks for VM runtime lifecycle events. */
 export interface VmEvents {
   onFiberFault?: (payload: FiberFaultEvent) => void;
@@ -69,4 +89,11 @@ export interface VmEvents {
    * starts, not when its handle settles.
    */
   onHostActionDispatch?: (payload: HostActionDispatchEvent) => void;
+  /**
+   * Called once per host-action call, at the moment the call hands control back
+   * to the runtime: after a synchronous body has produced its result, and after
+   * an asynchronous body has started and yielded its pending handle. A call
+   * whose body throws reports nothing.
+   */
+  onHostActionReturn?: (payload: HostActionReturnEvent) => void;
 }

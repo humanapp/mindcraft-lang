@@ -1,6 +1,6 @@
 export type { CatalogDigest } from "./catalog/digest.js";
 export { catalogDigest } from "./catalog/digest.js";
-export type { RuleTotals, ThinkSummary, TraceSpan, TraceSummary } from "./simulate/summarizer.js";
+export type { ExcludedRule, RuleTotals, ThinkSummary, TraceSpan, TraceSummary } from "./simulate/summarizer.js";
 export { summarizeRun } from "./simulate/summarizer.js";
 export type {
   AdapterArtifactResult,
@@ -62,8 +62,8 @@ export type {
   ToolInput,
   ToolName,
 } from "./tools/tool-schemas.js";
-export { scenarioInputSchema, toolDefinitions, toolInputSchemas } from "./tools/tool-schemas.js";
-export type { AuthoringWorkspace, LocatedRule } from "./tools/workspace.js";
+export { scenarioInputSchema, tileRunEntrySchema, toolDefinitions, toolInputSchemas } from "./tools/tool-schemas.js";
+export type { AuthoringWorkspace, AuthoringWorkspaceOptions, LocatedRule } from "./tools/workspace.js";
 export {
   allTiles,
   createAuthoringWorkspace,

@@ -17,7 +17,6 @@ import { RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { caretRun, composerEntryCaret } from "./caret-run";
-import { sideOffersAppendedTile } from "./insertion-context";
 import {
   decidePageGridKey,
   decidePageKey,
@@ -33,6 +32,7 @@ import {
   ruleMoveDirections,
 } from "./page-grid-model";
 import { makeActuator, makeSensor } from "./test-only-rule-fixtures";
+import { sideOffersAppendedTile } from "./tile-offering";
 
 let services: BrainServices;
 let catalogs: ReadonlyList<ITileCatalog>;

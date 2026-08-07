@@ -62,6 +62,8 @@ interface ResolvedEdit {
   readonly command: BrainCommand;
   /** The rule the edit affects, resolved after the command has run. */
   readonly resolveRule: () => { ruleId: string; rule: BrainRuleDef };
+  /** The diagnostics the document reported before the command ran. */
+  readonly before: readonly ToolDiagnostic[];
 }
 
 /** The command that puts `tile` at `position` on `side` of `rule`, which currently holds `tileCount` tiles. */
@@ -82,6 +84,7 @@ function resolveEdit(workspace: AuthoringWorkspace, input: SingleCommandInput): 
   if (input.op === "addRule") {
     const page = findPage(workspace.brainDef, input.pageIndex);
     if (!page) return { ok: false, error: "unknown_page", named: String(input.pageIndex) };
+    const before = buildDiagnostics(workspace, rootRulePath(input.pageIndex, page.children().size()));
     return {
       command: new AddRuleCommand(page),
       resolveRule: () => {
@@ -89,11 +92,13 @@ function resolveEdit(workspace: AuthoringWorkspace, input: SingleCommandInput): 
         const index = rules.size() - 1;
         return { ruleId: rootRulePath(input.pageIndex, index), rule: rules.get(index) as BrainRuleDef };
       },
+      before,
     };
   }
 
   const located = findRule(workspace.brainDef, input.ruleId);
   if (!located) return { ok: false, error: "unknown_rule", named: input.ruleId };
+  const before = proposalDiagnostics(workspace, located.ruleId, located.rule);
   const side = toRuleSide(input.side);
   const tileCount = located.rule.side(side).tiles().size();
   const resolveRule = () => ({ ruleId: located.ruleId, rule: located.rule });
@@ -101,7 +106,7 @@ function resolveEdit(workspace: AuthoringWorkspace, input: SingleCommandInput): 
   if (input.op === "deleteTile") {
     if (input.position >= tileCount)
       return { ok: false, error: "position_out_of_range", named: String(input.position) };
-    return { command: new RemoveTileCommand(located.rule, side, input.position), resolveRule };
+    return { command: new RemoveTileCommand(located.rule, side, input.position), resolveRule, before };
   }
 
   const tile = resolveRunEntry(workspace, input.tileId);
@@ -110,12 +115,12 @@ function resolveEdit(workspace: AuthoringWorkspace, input: SingleCommandInput): 
   if (input.op === "replaceTile") {
     if (input.position >= tileCount)
       return { ok: false, error: "position_out_of_range", named: String(input.position) };
-    return { command: new ReplaceTileCommand(located.rule, side, input.position, tile), resolveRule };
+    return { command: new ReplaceTileCommand(located.rule, side, input.position, tile), resolveRule, before };
   }
 
   const position = input.position ?? tileCount;
   if (position > tileCount) return { ok: false, error: "position_out_of_range", named: String(position) };
-  return { command: placementCommand(located.rule, side, position, tileCount, tile), resolveRule };
+  return { command: placementCommand(located.rule, side, position, tileCount, tile), resolveRule, before };
 }
 
 /** A run entry in its object form: the tile it names, plus any mint input. */
@@ -200,6 +205,52 @@ function buildDiagnostics(workspace: AuthoringWorkspace, ruleId: string): ToolDi
   return diagnostics;
 }
 
+/**
+ * Every diagnostic the document reports that bears on an edit to `ruleId`: the
+ * edited rule's own typecheck, and the whole-brain build.
+ */
+function proposalDiagnostics(workspace: AuthoringWorkspace, ruleId: string, rule: BrainRuleDef): ToolDiagnostic[] {
+  rule.typecheck();
+  return [...ruleDiagnostics(rule), ...buildDiagnostics(workspace, ruleId)];
+}
+
+/** The key a diagnostic is counted under: its code, and the rule it names. */
+function diagnosticKey(diagnostic: ToolDiagnostic): string {
+  const rulePath = diagnostic.params?.rulePath;
+  return `${diagnostic.code}@${typeof rulePath === "string" ? rulePath : ""}`;
+}
+
+/** How many diagnostics of each key `diagnostics` holds. */
+function countByKey(diagnostics: readonly ToolDiagnostic[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const diagnostic of diagnostics) {
+    const key = diagnosticKey(diagnostic);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * The rejection-relevant diagnostics an edit introduced: those whose
+ * `(code, rulePath)` key the document reports more often after the edit than
+ * before it. A diagnostic already standing in the document, in any rule and at
+ * any severity, is not one of these, so an edit that leaves the document no
+ * worse carries none. An edit that removes diagnostics without adding any
+ * carries none either.
+ */
+function newDiagnostics(before: readonly ToolDiagnostic[], after: readonly ToolDiagnostic[]): ToolDiagnostic[] {
+  const beforeCounts = countByKey(before);
+  const seen = new Map<string, number>();
+  const introduced: ToolDiagnostic[] = [];
+  for (const diagnostic of after) {
+    const key = diagnosticKey(diagnostic);
+    const index = (seen.get(key) ?? 0) + 1;
+    seen.set(key, index);
+    if (index > (beforeCounts.get(key) ?? 0)) introduced.push(diagnostic);
+  }
+  return introduced;
+}
+
 /** How an applied edit is kept or taken back once the policy has judged it. */
 interface EditTransaction {
   /** Leave the applied commands in the document and in the history. */
@@ -211,17 +262,17 @@ interface EditTransaction {
 /**
  * Judge the edit now standing in the document against the proposal policy,
  * keeping it or taking it back through `transaction`. Validation reads the end
- * state, so a sequence of commands is judged once, by what it leaves behind.
+ * state, so a sequence of commands is judged once, by what it leaves behind,
+ * and only against the diagnostics the edit introduced over `before`.
  */
 function decideApplied(
   workspace: AuthoringWorkspace,
   ruleId: string,
   rule: BrainRuleDef,
+  before: readonly ToolDiagnostic[],
   transaction: EditTransaction
 ): ProposalResult {
-  rule.typecheck();
-
-  const decision = decideProposal([...ruleDiagnostics(rule), ...buildDiagnostics(workspace, ruleId)]);
+  const decision = decideProposal(newDiagnostics(before, proposalDiagnostics(workspace, ruleId, rule)));
   if (decision.verdict === "reject") {
     transaction.takeBack();
     const rejection = decision.rejectedBy!;
@@ -253,6 +304,7 @@ function placeTileRun(workspace: AuthoringWorkspace, input: PlaceTilesInput): Pr
   const position = input.position ?? tileCount;
   if (position > tileCount) return { ok: false, error: "position_out_of_range", named: String(position) };
 
+  const diagnosticsBefore = proposalDiagnostics(workspace, located.ruleId, located.rule);
   const catalog = workspace.brainDef.catalog();
   const registeredBefore = catalogTileIds(catalog);
   const tiles: IBrainTileDef[] = [];
@@ -271,7 +323,7 @@ function placeTileRun(workspace: AuthoringWorkspace, input: PlaceTilesInput): Pr
     workspace.history.executeCommand(placementCommand(located.rule, side, position + index, count, tile));
   });
 
-  return decideApplied(workspace, located.ruleId, located.rule, {
+  return decideApplied(workspace, located.ruleId, located.rule, diagnosticsBefore, {
     keep: () => workspace.history.endBatch(),
     takeBack: () => {
       workspace.history.abortBatch();
@@ -284,20 +336,29 @@ function placeTileRun(workspace: AuthoringWorkspace, input: PlaceTilesInput): Pr
  * Run one proposed edit through the editor's own command and validation path.
  * An accepted edit stays in the document as an undoable history entry; a
  * rejected edit is undone before returning, so the document rests exactly as it
- * did before the call. `placeTiles` applies its whole run as one transaction
- * and one history entry.
+ * did before the call. A tile the edit minted is registered in the document's
+ * catalog as it resolves and is dropped again if the edit does not land.
+ * `placeTiles` applies its whole run as one transaction and one history entry.
  */
 export function proposeEdit(workspace: AuthoringWorkspace, input: ProposeEditInput): ProposalResult {
   if (input.op === "placeTiles") return placeTileRun(workspace, input);
 
+  const catalog = workspace.brainDef.catalog();
+  const registeredBefore = catalogTileIds(catalog);
   const resolved = resolveEdit(workspace, input);
-  if ("ok" in resolved) return resolved;
+  if ("ok" in resolved) {
+    dropTilesRegisteredSince(catalog, registeredBefore);
+    return resolved;
+  }
 
   workspace.history.executeCommand(resolved.command);
   const { ruleId, rule } = resolved.resolveRule();
 
-  return decideApplied(workspace, ruleId, rule, {
+  return decideApplied(workspace, ruleId, rule, resolved.before, {
     keep: () => {},
-    takeBack: () => workspace.history.undo(),
+    takeBack: () => {
+      workspace.history.undo();
+      dropTilesRegisteredSince(catalog, registeredBefore);
+    },
   });
 }

@@ -124,8 +124,10 @@ export enum CompilationDiagCode {
   MissingOperatorOverload = 3001,
 
   /**
-   * Code generation reached an expression it cannot compile and emitted nothing
-   * for it, so the enclosing rule side runs without that expression. Emitted at
+   * Code generation reached an expression it cannot compile and stood an absent
+   * value in its place, so an argument slot the expression filled arrives
+   * unsupplied and a rule side the expression was the whole of evaluates to
+   * absent -- a WHEN that does not fire, a DO that does nothing. Emitted at
    * "warning" severity: the surrounding program still compiles, links, and runs.
    * The message names the rule path, the rule side, and the tile the dropped
    * expression starts at when one resolves.

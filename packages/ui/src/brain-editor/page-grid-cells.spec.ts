@@ -24,7 +24,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { type ArmedTargetController, ArmedTargetProvider } from "./ArmedTargetContext";
 import { type BrainEditorConfig, BrainEditorProvider } from "./BrainEditorContext";
 import { BrainRuleEditor } from "./BrainRuleEditor";
-import { sideOffersAppendedTile } from "./insertion-context";
 import { PageGridProvider } from "./PageGridContext";
 import {
   kPageGridCellAttribute,
@@ -36,6 +35,7 @@ import {
 import { kPageGridSelectionAttribute, ruleSelectionCell } from "./page-grid-selection";
 import { RuleSelectionProvider } from "./RuleSelectionContext";
 import { makeActuator, makeBrain, makeSensor } from "./test-only-rule-fixtures";
+import { sideOffersAppendedTile } from "./tile-offering";
 
 let services: BrainServices;
 let catalogs: ReadonlyList<ITileCatalog>;

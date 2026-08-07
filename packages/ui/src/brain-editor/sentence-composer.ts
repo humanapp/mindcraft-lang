@@ -2,15 +2,18 @@ import type { ReadonlyList } from "@mindcraft-lang/core";
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import { parseBrainTiles } from "@mindcraft-lang/core/brain/compiler";
 import type { SentenceSegment } from "@mindcraft-lang/core/brain/language-service";
+import type { Localizer } from "@mindcraft-lang/core/localization";
 import { isOperatorSymbolPrefix } from "./candidate-strip-model";
 
 /**
  * True when `tiles` parse as an expression that may end where they stop. An
  * empty side may end; a side left mid-expression -- a trailing infix operator, a
  * prefix operator with no operand, an unclosed group -- may not.
+ *
+ * @param localizer - Locale the parse names tiles in.
  */
-export function canEndSideExpression(tiles: ReadonlyList<IBrainTileDef>): boolean {
-  return parseBrainTiles(tiles).diags.size() === 0;
+export function canEndSideExpression(tiles: ReadonlyList<IBrainTileDef>, localizer: Localizer): boolean {
+  return parseBrainTiles(tiles, localizer).diags.size() === 0;
 }
 
 /** True when `segment` is glue holding nothing but the space between two words. */

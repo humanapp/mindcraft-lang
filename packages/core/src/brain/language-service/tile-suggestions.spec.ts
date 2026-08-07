@@ -36,6 +36,7 @@ import type {
   VariableExpr,
 } from "@mindcraft-lang/core/brain/compiler";
 import {
+  buildInsertionContext,
   collectRuleHierarchyCapabilities,
   collectRuleHierarchyOutputKeys,
   countUnclosedParens,
@@ -5058,5 +5059,166 @@ describe("Conversion depth in withConversion offerings", () => {
 
   test("a value reaching the expected type through one conversion is offered", () => {
     assert.ok(slotOffering().includes(directVarDef.tileId));
+  });
+});
+
+// ---- Offers and placeability agree ----
+
+describe("a matched parenthesis offers only itself in its own place", () => {
+  const openParenId = mkControlFlowTileId(CoreControlFlowId.OpenParen);
+  const closeParenId = mkControlFlowTileId(CoreControlFlowId.CloseParen);
+
+  /** Tile ids offered in place of the tile at `index` of `tiles`, on either list. */
+  function replacementOffering(tiles: List<IBrainTileDef>, index: number): string[] {
+    const context = buildInsertionContext({
+      side: RuleSide.When,
+      expr: parseTilesForSuggestions(tiles),
+      replaceTileIndex: index,
+      existingTiles: tiles,
+    });
+    const result = suggestTiles(context, catalogList(), services);
+    return [...result.exact.toArray(), ...result.withConversion.toArray()].map((s) => s.tileDef.tileId);
+  }
+
+  /** `( 42 )`, a group both of whose parens the list balances. */
+  function balancedGroup(): List<IBrainTileDef> {
+    return List.from<IBrainTileDef>([
+      services.edit.tiles.get(openParenId)!,
+      new BrainTileLiteralDef(CoreTypeIds.Number, 42, {}, services),
+      services.edit.tiles.get(closeParenId)!,
+    ]);
+  }
+
+  test("the open paren of a balanced group offers the open paren and nothing else", () => {
+    assert.deepEqual(replacementOffering(balancedGroup(), 0), [openParenId]);
+  });
+
+  test("the close paren of a balanced group offers the close paren and nothing else", () => {
+    assert.deepEqual(replacementOffering(balancedGroup(), 2), [closeParenId]);
+  });
+
+  test("the value inside the group is unaffected and still offers value tiles", () => {
+    const offering = replacementOffering(balancedGroup(), 1);
+
+    assert.ok(offering.length > 1);
+    assert.ok(!offering.includes(closeParenId));
+  });
+
+  test("an open paren the list leaves unmatched keeps the offering its role earns", () => {
+    const unbalanced = List.from<IBrainTileDef>([
+      services.edit.tiles.get(openParenId)!,
+      new BrainTileLiteralDef(CoreTypeIds.Number, 42, {}, services),
+    ]);
+
+    assert.notDeepEqual(replacementOffering(unbalanced, 0), [openParenId]);
+  });
+});
+
+describe("a sensor standing as a binary operand keeps offering its own arguments", () => {
+  let operandSensorDef: BrainTileSensorDef;
+  let nearModDef: BrainTileModifierDef;
+  let farModDef: BrainTileModifierDef;
+
+  before(() => {
+    nearModDef = new BrainTileModifierDef("test.operandNear", { metadata: { label: "nearby" } });
+    farModDef = new BrainTileModifierDef("test.operandFar", { metadata: { label: "far away" } });
+    services.edit.tiles.registerTileDef(nearModDef);
+    services.edit.tiles.registerTileDef(farModDef);
+
+    const callDef = mkCallDef(bag(optional(choice(mod("test.operandNear"), mod("test.operandFar")))));
+    const entry = services.runtime.functions.register(
+      4211,
+      "test-operand-sensor",
+      false,
+      { exec: () => TRUE_VALUE },
+      callDef
+    );
+    operandSensorDef = new BrainTileSensorDef(
+      "test-operand-sensor",
+      mkActionDescriptor("sensor", entry, CoreTypeIds.Boolean),
+      { metadata: { label: "spot" } }
+    );
+    services.edit.tiles.registerTileDef(operandSensorDef);
+  });
+
+  /** Tile ids offered at the end of `[(] [spot] [)] [and] [spot]`, on either list. */
+  function offeringAfterOperand(): string[] {
+    const tiles = List.from<IBrainTileDef>([
+      services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!,
+      operandSensorDef,
+      services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!,
+      services.edit.tiles.get(mkOperatorTileId(CoreOpId.And))!,
+      operandSensorDef,
+    ]);
+    const context = buildInsertionContext({ side: RuleSide.When, existingTiles: tiles });
+    assert.equal(context.expr?.kind, "binaryOp", "the side parses to a binary op whose right operand is the sensor");
+    const result = suggestTiles(context, catalogList(), services);
+    return [...result.exact.toArray(), ...result.withConversion.toArray()].map((s) => s.tileDef.tileId);
+  }
+
+  test("the operand sensor's unfilled modifier slots are offered after it", () => {
+    const offering = offeringAfterOperand();
+
+    assert.ok(offering.includes(nearModDef.tileId));
+    assert.ok(offering.includes(farModDef.tileId));
+  });
+
+  test("the infix operators that extend the whole expression are offered as well", () => {
+    assert.ok(offeringAfterOperand().includes(mkOperatorTileId(CoreOpId.And)));
+  });
+});
+
+describe("a struct value is offered into a field-typed slot only when an accessor reads that field", () => {
+  let unreadStructTypeId: string;
+  let unreadVarDef: BrainTileVariableDef;
+  let readStructTypeId: string;
+  let readVarDef: BrainTileVariableDef;
+  let numberSlotActuatorDef: BrainTileActuatorDef;
+
+  before(() => {
+    const fields = List.from([{ name: "count", typeId: CoreTypeIds.Number, fieldIndex: 0 }]);
+    unreadStructTypeId = services.runtime.types.addStructType("Unread", { atomId: mkTestAtomId(), fields });
+    readStructTypeId = services.runtime.types.addStructType("Read", { atomId: mkTestAtomId(), fields });
+    unreadVarDef = new BrainTileVariableDef("test.unreadStruct", "unread", unreadStructTypeId, "var-unread");
+    readVarDef = new BrainTileVariableDef("test.readStruct", "read", readStructTypeId, "var-read");
+    services.edit.tiles.registerTileDef(unreadVarDef);
+    services.edit.tiles.registerTileDef(readVarDef);
+    services.edit.tiles.registerTileDef(
+      new BrainTileAccessorDef(readStructTypeId, "count", CoreTypeIds.Number, { metadata: { label: "count" } })
+    );
+
+    const paramDef = new BrainTileParameterDef("test.numberSlotArg", CoreTypeIds.Number, {
+      metadata: { label: "amount" },
+    });
+    services.edit.tiles.registerTileDef(paramDef);
+    const callDef = mkCallDef(bag(param("test.numberSlotArg", { required: true, anonymous: true })));
+    const entry = services.runtime.functions.register(
+      4212,
+      "test-number-slot",
+      false,
+      { exec: () => VOID_VALUE },
+      callDef
+    );
+    numberSlotActuatorDef = new BrainTileActuatorDef(
+      "test-number-slot",
+      mkActionDescriptor("actuator", entry, CoreTypeIds.Void),
+      { metadata: { label: "count out" } }
+    );
+    services.edit.tiles.registerTileDef(numberSlotActuatorDef);
+  });
+
+  /** Tile ids offered in the actuator's anonymous Number slot, on either list. */
+  function slotOffering(): string[] {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([numberSlotActuatorDef]));
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+    return [...result.exact.toArray(), ...result.withConversion.toArray()].map((s) => s.tileDef.tileId);
+  }
+
+  test("a struct no accessor tile reads is not offered, whatever fields it declares", () => {
+    assert.ok(!slotOffering().includes(unreadVarDef.tileId));
+  });
+
+  test("a struct an accessor tile reads the slot's type from is offered", () => {
+    assert.ok(slotOffering().includes(readVarDef.tileId));
   });
 });

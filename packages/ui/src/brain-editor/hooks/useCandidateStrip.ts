@@ -1,6 +1,11 @@
 import { List, type ReadonlyBitSet, type ReadonlyList, type UniqueSet } from "@mindcraft-lang/core";
 import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
-import { suggestTiles, type TileSuggestion, tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
+import {
+  buildInsertionContext,
+  suggestTiles,
+  type TileSuggestion,
+  tileSentenceWord,
+} from "@mindcraft-lang/core/brain/language-service";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { manufactureLiteralTile, manufactureVariableTile } from "@mindcraft-lang/core/brain/tiles";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -23,7 +28,6 @@ import {
   shouldOrderPagesFirst,
   toCandidateEntries,
 } from "../candidate-strip-model";
-import { buildInsertionContext } from "../insertion-context";
 import { resolveTileVisual } from "../tile-visual-utils";
 
 /** How many candidates the flat best-next row offers before the accordion takes over. */

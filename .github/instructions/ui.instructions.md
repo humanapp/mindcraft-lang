@@ -56,7 +56,7 @@ src/
     rule-clipboard.ts        Serialize/deserialize rules for clipboard
     tile-clipboard.ts        Serialize/deserialize tiles for clipboard
     tile-badges.ts           Tile badge rendering helpers
-    insertion-context.ts     buildInsertionContext for the armed position
+    tile-offering.ts         Whether the oracle offers a tile at a side's end or at a position
     candidate-strip-model.ts Candidate grouping, filtering, commit keys, ranker seam
     hooks/
       useRuleCapabilities.ts   Rule capability detection

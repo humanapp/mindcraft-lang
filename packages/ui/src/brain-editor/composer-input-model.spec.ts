@@ -25,7 +25,7 @@ import {
   RuleSide,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { suggestTiles, tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
+import { buildInsertionContext, suggestTiles, tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainCommand, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
@@ -76,7 +76,6 @@ import {
 } from "./composer-input-model";
 import { deriveEditorMode, type EditorMode } from "./editor-mode";
 import { kBestNextCandidateCount } from "./hooks/useCandidateStrip";
-import { buildInsertionContext } from "./insertion-context";
 import { makeBrain } from "./test-only-rule-fixtures";
 
 let services: BrainServices;

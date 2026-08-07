@@ -1,5 +1,7 @@
 import type { ExecutionContext, IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
+import type { BrainBuildDiagnostic } from "@mindcraft-lang/core/brain/compiler";
 import type { BrainJson } from "@mindcraft-lang/core/brain/model";
+import { brainJsonWithRulesEmptied } from "@mindcraft-lang/core/brain/model";
 import type { IBrainRuntime, NumberPrecision } from "@mindcraft-lang/core/runtime";
 import type {
   DispatchObservation,
@@ -41,6 +43,31 @@ export class ScenarioRejection extends Error {
   }
 }
 
+/** Why a rehearsal adapter could not run the brain it was given. */
+export const RehearsalRejectionCode = {
+  /** The brain does not build, so there was no program to run. */
+  BrainDoesNotBuild: "rehearsal_brain_does_not_build",
+} as const;
+
+/** Why a rehearsal adapter could not run the brain it was given. */
+export type RehearsalRejectionCode = (typeof RehearsalRejectionCode)[keyof typeof RehearsalRejectionCode];
+
+/**
+ * A brain a rehearsal adapter could not run, carrying the reason as a code and
+ * the build errors that stopped it. A rehearsal that raises this staged no
+ * world and observed nothing.
+ */
+export class RehearsalRejection extends Error {
+  constructor(
+    readonly code: RehearsalRejectionCode,
+    /** The error-severity build diagnostics, in the order the build reported them. */
+    readonly diagnostics: readonly BrainBuildDiagnostic[]
+  ) {
+    super(`${code}: ${diagnostics.map((diag) => `${diag.code}@${diag.params?.rulePath ?? "document"}`).join(", ")}`);
+    this.name = "RehearsalRejection";
+  }
+}
+
 /**
  * The participant a rehearsal is watching: the brain it is running, and the
  * test that recognizes its executions.
@@ -58,7 +85,11 @@ export interface WorldStaging {
   readonly environment: MindcraftEnvironment;
   /** Population role the brain under study drives; one of the driver's own subjects. */
   readonly subject: string;
-  /** The brain under study, already deserialized into {@link environment}. */
+  /**
+   * The brain under study, already deserialized into {@link environment}, with
+   * any rules the run leaves out already emptied in it. Copying it is safe:
+   * what the run excludes is part of the document.
+   */
   readonly subjectBrain: IBrainDef;
   /**
    * Percepts this run scripts, ascending by `at`; every entry names a kind the
@@ -127,11 +158,21 @@ export interface RehearsalAdapterOptions {
   readonly driver: WorldDriver;
 }
 
-/** Rule path per program funcId for `brainDef`, from its own link result. */
+/**
+ * Rule path per program funcId for `brainDef`. Throws {@link RehearsalRejection}
+ * when the brain does not build in `environment`.
+ */
 function ruleFuncIdPaths(environment: MindcraftEnvironment, brainDef: IBrainDef): Map<number, string> {
   const build = environment.linkBrain(brainDef);
+  if (!build.program) {
+    const errors: BrainBuildDiagnostic[] = [];
+    build.diagnostics.forEach((diag) => {
+      if (diag.severity === "error") errors.push(diag);
+    });
+    throw new RehearsalRejection(RehearsalRejectionCode.BrainDoesNotBuild, errors);
+  }
   const paths = new Map<number, string>();
-  build.program?.ruleIndex.forEach((funcId, rulePath) => {
+  build.program.ruleIndex.forEach((funcId, rulePath) => {
     paths.set(funcId, rulePath);
   });
   return paths;
@@ -250,7 +291,9 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
     (value) => environment.appServices.numerics.formatNumber(value)
   );
 
-  const subjectBrain = environment.deserializeBrainJson(request.brainDef.toJson() as BrainJson);
+  const subjectBrain = environment.deserializeBrainJson(
+    brainJsonWithRulesEmptied(request.brainDef.toJson() as BrainJson, request.excludedRules ?? [])
+  );
   recorder.bindRulePaths(ruleFuncIdPaths(environment, subjectBrain));
 
   const world = await driver.stage({

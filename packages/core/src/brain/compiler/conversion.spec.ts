@@ -121,7 +121,14 @@ function testConversion(
     const emptyTiles = List.empty<never>();
     const catalogs = List.from([services.edit.tiles]);
 
-    const result = parseRule(tiles, emptyTiles, catalogs, services.shared.conversions, services.runtime.types);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      catalogs,
+      services.shared.conversions,
+      services.runtime.types,
+      services.app.localizer
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "actuator", "Expected actuator expression");
@@ -318,7 +325,8 @@ describe("Conversion: assignment values", () => {
       List.from(tiles),
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
   }
 
@@ -444,7 +452,8 @@ describe("Conversion: unary operator operands", () => {
       List.from(tiles),
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
   }
 
@@ -575,7 +584,8 @@ describe("Conversion: choice slots", () => {
       List.from(tiles),
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
   }
 

@@ -1188,6 +1188,7 @@ export class VM implements IVM {
       ruleFuncId: fiber.executionContext.currentRuleFuncId,
     });
     const result = action.execSync(fiber.executionContext, args);
+    this.events?.onHostActionReturn?.({ actionId, callSiteId, args, result });
     for (let i = 0; i < argc; i++) {
       fiber.vstack.pop();
     }
@@ -1247,6 +1248,7 @@ export class VM implements IVM {
       this.handles.delete(hid);
       throw error;
     }
+    this.events?.onHostActionReturn?.({ actionId, callSiteId, args, result: undefined });
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
     return undefined;

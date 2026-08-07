@@ -22,7 +22,7 @@ import { List } from "@mindcraft-lang/core";
 import type { BrainServices, ITileCatalog } from "@mindcraft-lang/core/brain";
 import { RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { suggestTiles } from "@mindcraft-lang/core/brain/language-service";
+import { buildInsertionContext, suggestTiles } from "@mindcraft-lang/core/brain/language-service";
 import { BrainCommandHistory, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { CoreHostActions, mkSensorTileId } from "@mindcraft-lang/core/runtime";
 import { createElement } from "react";
@@ -47,7 +47,6 @@ import {
 } from "./candidate-strip-model";
 import type { CaretPosition } from "./caret-run";
 import type { CandidateStripState } from "./hooks/useCandidateStrip";
-import { buildInsertionContext } from "./insertion-context";
 import { makeActuator, makeBrain, makeSensor, StripSurface } from "./test-only-rule-fixtures";
 
 let services: BrainServices;

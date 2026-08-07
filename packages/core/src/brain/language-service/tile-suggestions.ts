@@ -1,3 +1,4 @@
+import { createDefaultLocalizer } from "../../localization/localizer";
 import { List, type ReadonlyList } from "../../platform/list";
 import { UniqueSet } from "../../platform/uniqueset";
 import {
@@ -144,6 +145,12 @@ export interface InsertionContext {
    */
   unclosedParenDepth?: number;
   /**
+   * The parenthesis standing at `replaceTileIndex` when a partner parenthesis
+   * in the same side balances it (see `matchedParenAt`). When set, it is the
+   * only tile suggested at that position.
+   */
+  matchedParen?: IBrainTileDef;
+  /**
    * The rule whose side is being edited. Supplies the WHEN-result type available
    * at this insertion point (see `getRuleWhenResultType`), which gates tiles that
    * declare `consumesWhenResult()`: on the DO side the rule's own WHEN result, on
@@ -255,16 +262,15 @@ function hasTypeConstraint(expectedType: TypeId | undefined): boolean {
  * Classifies a tile's type compatibility against an expected type.
  * Returns undefined if the tile is not compatible at all.
  *
- * For struct-typed tiles, also checks if any field of the struct matches
- * the expected type (directly or via conversion). This allows struct
- * variables to appear in positions needing a field type, since the user
- * can add an accessor tile to extract the matching field.
+ * A struct output is also compatible when an accessor tile in `catalogs` reads
+ * a field of that struct which reaches the expected type; such a tile is
+ * classified as Conversion, at the cost `accessorRefinementCost` reports.
  */
 function classifyTypeCompatibility(
   outputType: TypeId | undefined,
   expectedType: TypeId | undefined,
   conversions: IConversionRegistry,
-  types: ITypeRegistry
+  catalogs: ReadonlyList<ITileCatalog>
 ): { compatibility: TileCompatibility; cost: number } | undefined {
   // If no constraint or unknown output type, compatibility is unchecked
   if (!hasTypeConstraint(expectedType) || !outputType || outputType === CoreTypeIds.Unknown) {
@@ -286,12 +292,9 @@ function classifyTypeCompatibility(
     return { compatibility: TileCompatibility.Conversion, cost: totalCost };
   }
 
-  // Struct field match -- if the tile produces a struct type and any of its
-  // fields match the expected type, treat it as a conversion (the user will
-  // need to add an accessor tile to reach the desired field value).
-  const fieldResult = structFieldTypeCompatibility(outputType, expectedType!, conversions, types);
-  if (fieldResult !== undefined) {
-    return fieldResult;
+  const refinementCost = accessorRefinementCost(outputType, expectedType!, conversions, catalogs);
+  if (refinementCost !== undefined) {
+    return { compatibility: TileCompatibility.Conversion, cost: refinementCost };
   }
 
   // Not compatible
@@ -299,61 +302,55 @@ function classifyTypeCompatibility(
 }
 
 /**
- * Checks if a struct type has any field whose type matches the expected type
- * (directly or via conversion). Returns a Conversion compatibility result
- * if a matching field exists, undefined otherwise.
- *
- * The cost is 1 (for the accessor step) plus any conversion cost from the
- * field type to the expected type.
+ * The cost of refining a value of `structTypeId` into `expectedType` with one
+ * accessor tile from `catalogs`: 1 for the accessor step plus any conversion
+ * from the accessor's field type. Returns undefined when no accessor tile reads
+ * a field of that struct which reaches the expected type.
  */
-function structFieldTypeCompatibility(
+function accessorRefinementCost(
   structTypeId: TypeId,
   expectedType: TypeId,
   conversions: IConversionRegistry,
-  types: ITypeRegistry
-): { compatibility: TileCompatibility; cost: number } | undefined {
-  const typeDef = types.get(structTypeId);
-  if (!typeDef || typeDef.coreType !== NativeType.Struct) return undefined;
-
-  const fields = (typeDef as StructTypeDef).fields;
+  catalogs: ReadonlyList<ITileCatalog>
+): number | undefined {
   let bestCost: number | undefined;
 
-  for (let i = 0; i < fields.size(); i++) {
-    const fieldTypeId = fields.get(i).typeId;
-    if (fieldTypeId === expectedType) {
-      // Direct field match -- cost is 1 for the accessor step
-      bestCost = 1;
-      break; // Can't do better
-    }
-    const path = conversions.findBestPath(fieldTypeId, expectedType, MAX_COERCION_PATH_LENGTH);
-    if (path !== undefined && path.size() > 0) {
+  for (let ci = 0; ci < catalogs.size(); ci++) {
+    const allTiles = catalogs.get(ci).getAll();
+    for (let ti = 0; ti < allTiles.size(); ti++) {
+      const tileDef = allTiles.get(ti);
+      if (tileDef.hidden || tileDef.deprecated) continue;
+      if (tileDef.kind !== "accessor") continue;
+
+      const accessorDef = tileDef as BrainTileAccessorDef;
+      if (accessorDef.structTypeId !== structTypeId) continue;
+      const fieldTypeId = accessorDef.fieldTypeId;
+      if (fieldTypeId === expectedType) return 1; // Can't do better
+
+      const path = conversions.findBestPath(fieldTypeId, expectedType, MAX_COERCION_PATH_LENGTH);
+      if (path === undefined || path.size() === 0) continue;
       let cost = 1; // accessor step
       for (let j = 0; j < path.size(); j++) {
         cost += path.get(j).cost;
       }
-      if (bestCost === undefined || cost < bestCost) {
-        bestCost = cost;
-      }
+      if (bestCost === undefined || cost < bestCost) bestCost = cost;
     }
   }
 
-  if (bestCost !== undefined) {
-    return { compatibility: TileCompatibility.Conversion, cost: bestCost };
-  }
-  return undefined;
+  return bestCost;
 }
 
 /**
  * Classifies a tile's output type against an expected type without consulting
- * the conversion registry. An exact match is Exact; a struct output with a
- * field of exactly the expected type is Conversion with cost 1 (one accessor
- * step refines the value); anything else is incompatible. No constraint or an
- * unknown output type is Unchecked.
+ * the conversion registry. An exact match is Exact; a struct output an accessor
+ * tile reads a field of exactly the expected type from is Conversion with cost
+ * 1 (one accessor step refines the value); anything else is incompatible. No
+ * constraint or an unknown output type is Unchecked.
  */
 function classifyExactOrFieldCompatibility(
   outputType: TypeId | undefined,
   expectedType: TypeId | undefined,
-  types: ITypeRegistry
+  catalogs: ReadonlyList<ITileCatalog>
 ): { compatibility: TileCompatibility; cost: number } | undefined {
   if (!hasTypeConstraint(expectedType) || !outputType || outputType === CoreTypeIds.Unknown) {
     return { compatibility: TileCompatibility.Unchecked, cost: 0 };
@@ -361,19 +358,27 @@ function classifyExactOrFieldCompatibility(
   if (outputType === expectedType) {
     return { compatibility: TileCompatibility.Exact, cost: 0 };
   }
-  if (structHasExactField(outputType, expectedType!, types)) {
+  if (accessorReadsFieldType(outputType, expectedType!, catalogs)) {
     return { compatibility: TileCompatibility.Conversion, cost: 1 };
   }
   return undefined;
 }
 
-/** True when `structTypeId` is a struct type with a field of exactly `fieldType`. */
-function structHasExactField(structTypeId: TypeId, fieldType: TypeId, types: ITypeRegistry): boolean {
-  const typeDef = types.get(structTypeId);
-  if (!typeDef || typeDef.coreType !== NativeType.Struct) return false;
-  const fields = (typeDef as StructTypeDef).fields;
-  for (let i = 0; i < fields.size(); i++) {
-    if (fields.get(i).typeId === fieldType) return true;
+/** True when `catalogs` hold an accessor tile reading a field of exactly `fieldType` from `structTypeId`. */
+function accessorReadsFieldType(
+  structTypeId: TypeId,
+  fieldType: TypeId,
+  catalogs: ReadonlyList<ITileCatalog>
+): boolean {
+  for (let ci = 0; ci < catalogs.size(); ci++) {
+    const allTiles = catalogs.get(ci).getAll();
+    for (let ti = 0; ti < allTiles.size(); ti++) {
+      const tileDef = allTiles.get(ti);
+      if (tileDef.hidden || tileDef.deprecated) continue;
+      if (tileDef.kind !== "accessor") continue;
+      const accessorDef = tileDef as BrainTileAccessorDef;
+      if (accessorDef.structTypeId === structTypeId && accessorDef.fieldTypeId === fieldType) return true;
+    }
   }
   return false;
 }
@@ -769,6 +774,32 @@ function hasUnclosedParenGroupInArgs(actionExpr: ActuatorExpr | SensorExpr, excl
   return (
     slotsHoldUnclosedParenGroup(actionExpr.anons, excludeSlotId) ||
     slotsHoldUnclosedParenGroup(actionExpr.parameters, excludeSlotId)
+  );
+}
+
+/**
+ * Whether `actionExpr`'s call still takes argument tiles: an argument slot is
+ * available, a placed parameter or anonymous value is unfinished, or one of its
+ * arguments holds a parenthesized group that is still open.
+ *
+ * @param unclosedParenDepth Unmatched open parens preceding the insertion point.
+ */
+function actionCallTakesArgs(actionExpr: ActuatorExpr | SensorExpr, unclosedParenDepth: number | undefined): boolean {
+  const callDef = actionExpr.tileDef.action.callDef;
+  const availableArgSlots = List.empty<BrainActionArgSlot>();
+  collectAvailableArgSlots(
+    callDef.callSpec,
+    callDef.argSlots,
+    collectFilledSlotIds(actionExpr),
+    availableArgSlots,
+    1,
+    callDef.callSpec
+  );
+  return (
+    availableArgSlots.size() > 0 ||
+    hasParametersNeedingValues(actionExpr) ||
+    hasIncompleteAnonValues(actionExpr) ||
+    ((unclosedParenDepth ?? 0) > 0 && hasUnclosedParenGroupInArgs(actionExpr))
   );
 }
 
@@ -1856,6 +1887,17 @@ export function suggestTiles(
   const expr: Expr = context.expr ?? { nodeId: 0, kind: "empty" };
 
   // ---- Replacement mode ----
+  if (context.replaceTileIndex !== undefined && context.matchedParen !== undefined) {
+    if (isPlacementValid(context.matchedParen, context.ruleSide)) {
+      result.exact.push({
+        tileDef: context.matchedParen,
+        compatibility: TileCompatibility.Unchecked,
+        conversionCost: 0,
+      });
+    }
+    return result;
+  }
+
   if (context.replaceTileIndex !== undefined && expr.kind !== "empty") {
     // When the tile being replaced falls outside the AST span (e.g., a close
     // paren that the parser consumed transparently), fall through to append
@@ -1901,17 +1943,7 @@ export function suggestTiles(
       }
       const callDef = expr.tileDef.action.callDef;
       const filledSlotIds = collectFilledSlotIds(expr);
-      const availableArgSlots = List.empty<BrainActionArgSlot>();
-      collectAvailableArgSlots(
-        callDef.callSpec,
-        callDef.argSlots,
-        filledSlotIds,
-        availableArgSlots,
-        1,
-        callDef.callSpec
-      );
-      const needsSlots =
-        availableArgSlots.size() > 0 || hasParametersNeedingValues(expr) || hasIncompleteAnonValues(expr);
+      const needsSlots = actionCallTakesArgs(expr, context.unclosedParenDepth);
 
       if (needsSlots) {
         // Slots or parameter values still missing -- suggest call spec tiles
@@ -1983,17 +2015,7 @@ export function suggestTiles(
         const innerExpr = expr.operand as SensorExpr | ActuatorExpr;
         const callDef = innerExpr.tileDef.action.callDef;
         const filledSlotIds = collectFilledSlotIds(innerExpr);
-        const availableArgSlots = List.empty<BrainActionArgSlot>();
-        collectAvailableArgSlots(
-          callDef.callSpec,
-          callDef.argSlots,
-          filledSlotIds,
-          availableArgSlots,
-          1,
-          callDef.callSpec
-        );
-        const needsSlots =
-          availableArgSlots.size() > 0 || hasParametersNeedingValues(innerExpr) || hasIncompleteAnonValues(innerExpr);
+        const needsSlots = actionCallTakesArgs(innerExpr, context.unclosedParenDepth);
 
         if (needsSlots) {
           suggestActionCallTiles(
@@ -2080,10 +2102,31 @@ export function suggestTiles(
     case "assignment":
     case "fieldAccess":
       if (isCompleteValueExpr(expr)) {
+        const trailingExpr = trailingPrimaryExpr(expr);
+        // A sensor standing as an operand keeps its own argument list open:
+        // the parser reads the tiles that follow it as further arguments of
+        // that call, so its remaining call spec tiles belong here too.
+        if (trailingExpr.kind === "sensor" && actionCallTakesArgs(trailingExpr, context.unclosedParenDepth)) {
+          suggestActionCallTiles(
+            trailingExpr,
+            expr.span.to,
+            context.ruleSide,
+            catalogs,
+            conversions,
+            types,
+            operatorOverloads,
+            availableWhenResult,
+            hasPrecedingSiblingRule(context.ruleDef),
+            result,
+            undefined,
+            context.availableCapabilities,
+            context.availableOutputKeys,
+            context.unclosedParenDepth
+          );
+        }
         const leftType = operatorOverloads ? getExprOutputType(expr, operatorOverloads, conversions) : undefined;
         suggestInfixOperators(context, catalogs, conversions, result, leftType, operatorOverloads, expr);
         suggestCloseParenIfNeeded(context, catalogs, result);
-        const trailingExpr = trailingPrimaryExpr(expr);
         suggestAccessorTiles(
           context,
           catalogs,
@@ -2292,7 +2335,7 @@ function suggestExpressionTiles(
 
       // Determine type compatibility
       const outputType = getTileOutputType(tileDef);
-      const typeResult = classifyTypeCompatibility(outputType, context.expectedType, conversions, types);
+      const typeResult = classifyTypeCompatibility(outputType, context.expectedType, conversions, catalogs);
 
       // Not compatible at all -- skip
       if (!typeResult) continue;
@@ -2447,7 +2490,7 @@ function suggestAccessorTiles(
             accessorDef.fieldTypeId,
             acceptedFieldTypes.get(ai),
             conversions,
-            types
+            catalogs
           );
           if (compat) {
             fieldAccepted = true;
@@ -2636,7 +2679,7 @@ function suggestAssignmentTargetTiles(
       seen.add(tileDef.tileId);
 
       const outputType = getTileOutputType(tileDef);
-      let typeResult = classifyExactOrFieldCompatibility(outputType, valueType, types);
+      let typeResult = classifyExactOrFieldCompatibility(outputType, valueType, catalogs);
       if (typeResult === undefined && outputType !== undefined && hasTypeConstraint(valueType)) {
         // The assigned value converts into the target tile's type.
         const path = conversions.findBestPath(valueType!, outputType, MAX_COERCION_PATH_LENGTH);
@@ -2646,7 +2689,7 @@ function suggestAssignmentTargetTiles(
             cost += path.get(i).cost;
           }
           typeResult = { compatibility: TileCompatibility.Conversion, cost };
-        } else if (structHasExactField(valueType!, outputType, types)) {
+        } else if (accessorReadsFieldType(valueType!, outputType, catalogs)) {
           typeResult = { compatibility: TileCompatibility.Conversion, cost: 1 };
         }
       }
@@ -2688,7 +2731,7 @@ function sensorAnonymousSlotAccepts(
     if (!argTileDef || argTileDef.kind !== "parameter") continue;
     const slotType = (argTileDef as BrainTileParameterDef).dataType;
     for (let vi = 0; vi < valueTypes.size(); vi++) {
-      if (classifyTypeCompatibility(valueTypes.get(vi), slotType, conversions, types) !== undefined) return true;
+      if (classifyTypeCompatibility(valueTypes.get(vi), slotType, conversions, catalogs) !== undefined) return true;
     }
   }
   return false;
@@ -3186,7 +3229,7 @@ function suggestExpressionsForAnonymousSlots(
       let bestCost = 0;
 
       for (let ei = 0; ei < expectedTypes.size(); ei++) {
-        const typeResult = classifyTypeCompatibility(outputType, expectedTypes.get(ei), conversions, types);
+        const typeResult = classifyTypeCompatibility(outputType, expectedTypes.get(ei), conversions, catalogs);
         if (!typeResult) continue;
 
         if (typeResult.compatibility === TileCompatibility.Exact) {
@@ -3223,6 +3266,9 @@ function suggestExpressionsForAnonymousSlots(
   }
 }
 
+/** Locale the suggestion parse names tiles in. */
+const kSuggestionParseLocalizer = createDefaultLocalizer();
+
 /**
  * Parses a tile list and returns the first expression, or an EmptyExpr
  * if the list is empty. This is a convenience for building InsertionContext.expr
@@ -3230,9 +3276,14 @@ function suggestExpressionsForAnonymousSlots(
  */
 export function parseTilesForSuggestions(tiles: ReadonlyList<IBrainTileDef>): Expr {
   if (tiles.size() === 0) return { nodeId: 0, kind: "empty" };
-  const result = parseBrainTiles(tiles);
+  const result = parseBrainTiles(tiles, kSuggestionParseLocalizer);
   if (result.exprs.size() === 0) return { nodeId: 0, kind: "empty" };
   return result.exprs.get(0);
+}
+
+/** The control-flow id of `tileDef`, or undefined for a tile that is not a control-flow tile. */
+function controlFlowIdOf(tileDef: IBrainTileDef): string | undefined {
+  return tileDef.kind === "controlFlow" ? (tileDef as BrainTileControlFlowDef).cfId : undefined;
 }
 
 /**
@@ -3249,12 +3300,33 @@ export function countUnclosedParens(tiles: ReadonlyList<IBrainTileDef>, excludeI
   let depth = 0;
   for (let i = 0; i < tiles.size(); i++) {
     if (i === excludeIndex) continue;
-    const tile = tiles.get(i);
-    if (tile.kind === "controlFlow") {
-      const cfId = (tile as BrainTileControlFlowDef).cfId;
-      if (cfId === CoreControlFlowId.OpenParen) depth++;
-      else if (cfId === CoreControlFlowId.CloseParen && depth > 0) depth--;
-    }
+    const cfId = controlFlowIdOf(tiles.get(i));
+    if (cfId === CoreControlFlowId.OpenParen) depth++;
+    else if (cfId === CoreControlFlowId.CloseParen && depth > 0) depth--;
   }
   return depth;
+}
+
+/**
+ * The parenthesis tile standing at `index` of `tiles`, when a partner
+ * parenthesis in the same list balances it. Returns undefined when `index`
+ * holds no parenthesis, or holds one the list leaves unmatched.
+ */
+export function matchedParenAt(tiles: ReadonlyList<IBrainTileDef>, index: number): IBrainTileDef | undefined {
+  if (index < 0 || index >= tiles.size()) return undefined;
+  const tile = tiles.get(index);
+  const cfId = controlFlowIdOf(tile);
+  if (cfId !== CoreControlFlowId.OpenParen && cfId !== CoreControlFlowId.CloseParen) return undefined;
+
+  const step = cfId === CoreControlFlowId.OpenParen ? 1 : -1;
+  let depth = 0;
+  for (let i = index; i >= 0 && i < tiles.size(); i += step) {
+    const id = controlFlowIdOf(tiles.get(i));
+    if (id === cfId) depth++;
+    else if (id === CoreControlFlowId.OpenParen || id === CoreControlFlowId.CloseParen) {
+      depth--;
+      if (depth === 0) return tile;
+    }
+  }
+  return undefined;
 }

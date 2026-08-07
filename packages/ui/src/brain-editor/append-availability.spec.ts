@@ -22,7 +22,7 @@ import { List, type ReadonlyList } from "@mindcraft-lang/core";
 import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import { RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { suggestTiles } from "@mindcraft-lang/core/brain/language-service";
+import { buildInsertionContext, suggestTiles } from "@mindcraft-lang/core/brain/language-service";
 import { BrainCommandHistory, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -30,8 +30,8 @@ import { type ArmedTargetController, ArmedTargetProvider } from "./ArmedTargetCo
 import { type BrainEditorConfig, BrainEditorProvider } from "./BrainEditorContext";
 import { BrainRuleEditor } from "./BrainRuleEditor";
 import { buildStripCandidates } from "./candidate-strip-model";
-import { buildInsertionContext, sideOffersAppendedTile } from "./insertion-context";
 import { makeActuator, makeBrain as makeRuleBrain, makeSensor } from "./test-only-rule-fixtures";
+import { sideOffersAppendedTile } from "./tile-offering";
 
 let services: BrainServices;
 let catalogs: ReadonlyList<ITileCatalog>;

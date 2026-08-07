@@ -31,6 +31,7 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
+  buildInsertionContext,
   suggestTiles,
   TileCompatibility,
   type TileSuggestion,
@@ -93,7 +94,6 @@ import {
   visibleStripOptions,
 } from "./candidate-strip-model";
 import { kBestNextCandidateCount } from "./hooks/useCandidateStrip";
-import { buildInsertionContext } from "./insertion-context";
 import type { TileSourceLibrary } from "./tile-library-groups";
 
 let services: BrainServices;

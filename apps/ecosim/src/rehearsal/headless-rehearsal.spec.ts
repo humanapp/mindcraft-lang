@@ -5,7 +5,8 @@ import { createRehearsalEnvironment, createSeededRng } from "@mindcraft-lang/ass
 import type { Actor } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
 import { createEcosimModule } from "@/brain/index";
-import { createRehearsalWorld, STEP_MS, WORLD_HEIGHT, WORLD_WIDTH, type WorldObserver } from "./world";
+import { WORLD_HEIGHT, WORLD_WIDTH } from "@/brain/world-definition";
+import { createRehearsalWorld, STEP_MS, type WorldObserver } from "./world";
 
 /** Number of fixed steps a rehearsal runs. */
 const RUN_TICKS = 600;

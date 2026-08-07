@@ -15,6 +15,7 @@ import { createAuthoringWorkspace } from "./workspace.js";
 const tiles = {
   sensor: "tile.sensor->sensor.fake.signal",
   actuator: "tile.actuator->actuator.fake.emit",
+  asyncActuator: "tile.actuator->actuator.fake.chime",
   modifier: "tile.modifier->modifier:fake.loudly",
   parameter: "tile.parameter->parameter:fake.strength",
   numberFactory: "tile.lit.factory->number",
@@ -48,7 +49,7 @@ describe("the bridge tools over a real target", () => {
   });
 
   test("offers the target's own sensor at the start of a WHEN side", () => {
-    const offering = suggestTiles(workspace(), { ruleId: "0/0", side: "when" });
+    const offering = suggestTiles(workspace(), { mode: "insert", ruleId: "0/0", side: "when" });
 
     assert.ok("exact" in offering, JSON.stringify(offering));
     assert.ok(offering.exact.some((tile) => tile.tileId === tiles.sensor));
@@ -103,6 +104,71 @@ describe("the bridge tools over a real target", () => {
     assert.ok(labels.includes("3"), "the minted literal reads by its value");
   });
 
+  test("mints a literal as a single placeTile lands it", () => {
+    const ws = workspace();
+    const placed = proposeEdit(ws, { op: "placeTile", ruleId: "0/0", side: "do", tileId: tiles.asyncActuator });
+    assert.equal(placed.ok, true, JSON.stringify(placed));
+
+    const minted = proposeEdit(ws, {
+      op: "placeTile",
+      ruleId: "0/0",
+      side: "do",
+      tileId: { tileId: tiles.numberFactory, value: 50, displayFormat: "percent" },
+    });
+
+    assert.equal(minted.ok, true, JSON.stringify(minted));
+    assert.equal(ws.brainDef.catalog().has("tile.literal->number:<number>->50[percent]"), true);
+    assert.equal(readProject(ws).pages[0]?.rules[0]?.do.at(-1)?.tileId, "tile.literal->number:<number>->50[percent]");
+  });
+
+  test("mints a literal as a replaceTile swaps one value for another", () => {
+    const ws = workspace();
+    authorSignalRule(ws);
+    const position = (readProject(ws).pages[0]?.rules[0]?.do.length ?? 0) - 1;
+
+    const swapped = proposeEdit(ws, {
+      op: "replaceTile",
+      ruleId: "0/0",
+      side: "do",
+      position,
+      tileId: { tileId: tiles.numberFactory, value: 30 },
+    });
+
+    assert.equal(swapped.ok, true, JSON.stringify(swapped));
+    assert.equal(readProject(ws).pages[0]?.rules[0]?.do.at(-1)?.tileId, "tile.literal->number:<number>->30");
+    assert.equal(ws.brainDef.catalog().has("tile.literal->number:<number>->30"), true);
+  });
+
+  test("reports a factory named without the input it mints from, minting nothing", () => {
+    const ws = workspace();
+
+    const refused = proposeEdit(ws, { op: "placeTile", ruleId: "0/0", side: "when", tileId: tiles.numberFactory });
+
+    assert.deepEqual(refused, { ok: false, error: "invalid_mint_input", named: tiles.numberFactory });
+    assert.deepEqual(readProject(ws).pages[0]?.rules[0]?.when, []);
+  });
+
+  test("drops a tile a rejected single-tile edit minted", () => {
+    const ws = workspace();
+    const placed = proposeEdit(ws, { op: "placeTile", ruleId: "0/0", side: "when", tileId: tiles.sensor });
+    assert.equal(placed.ok, true, JSON.stringify(placed));
+
+    const rejected = proposeEdit(ws, {
+      op: "placeTile",
+      ruleId: "0/0",
+      side: "when",
+      tileId: { tileId: tiles.numberFactory, value: 12 },
+    });
+
+    assert.equal(rejected.ok, false, JSON.stringify(rejected));
+    assert.equal(
+      ws.brainDef.catalog().has("tile.literal->number:<number>->12"),
+      false,
+      "the rejected edit took its minting back"
+    );
+    assert.equal(ws.history.undoDepth(), 1, "only the accepted placement is in the history");
+  });
+
   test("carries manufactured tiles into the catalog and the digest by their labels", () => {
     const ws = workspace();
     proposeEdit(ws, {
@@ -118,6 +184,25 @@ describe("the bridge tools over a real target", () => {
     assert.equal(view.tiles.length, 1);
     assert.equal(view.tiles[0]?.label, "hunger");
     assert.ok(digest.text.includes(" | hunger | "), digest.text);
+  });
+
+  test("reads an anonymous argument out as the value type it takes, never as a tile to place", () => {
+    const view = readCatalog(workspace(), {});
+    const chime = view.tiles.find((tile) => tile.tileId === tiles.asyncActuator);
+
+    assert.ok(chime, tiles.asyncActuator);
+    assert.equal(chime.args, "any-order(optional(value:number:<number>))");
+  });
+
+  test("lists an argument tile only where some action names it as a tile to place", () => {
+    const listed = readCatalog(workspace(), {}).tiles.map((tile) => tile.tileId);
+
+    assert.ok(listed.includes(tiles.modifier), "the modifier the emit grammar names is placeable");
+    assert.ok(listed.includes(tiles.parameter), "the named parameter the emit grammar names is placeable");
+    assert.ok(
+      !listed.includes("tile.parameter->anon.number"),
+      "the anonymous slot's type carrier is no tile a document may hold"
+    );
   });
 
   test("compiles and rehearses the authored brain through name-and-JSON dispatch", async () => {
@@ -160,7 +245,7 @@ describe("the bridge tools over a real target", () => {
     const ws = workspace();
 
     const unknown = await executeToolCall(ws, "read_trace", {});
-    const invalid = await executeToolCall(ws, "suggest_tiles", { ruleId: "0/0", side: "sideways" });
+    const invalid = await executeToolCall(ws, "suggest_tiles", { mode: "insert", ruleId: "0/0", side: "sideways" });
 
     assert.equal(unknown.isError, true);
     assert.deepEqual(unknown.payload, { error: "unknown_tool", detail: "read_trace" });

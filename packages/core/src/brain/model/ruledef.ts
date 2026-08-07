@@ -213,8 +213,9 @@ export class BrainRuleDef implements IBrainRuleDef {
       const brain = this.page()?.brain();
       const conversions = brain?.servicesConversions();
       const typeRegistry = brain?.servicesTypeRegistry();
+      const localizer = brain?.servicesLocalizer();
 
-      if (conversions && typeRegistry) {
+      if (conversions && typeRegistry && localizer) {
         // Output and capability providers in ancestor rules are visible to
         // this rule's tiles, as is the nearest enclosing rule's WHEN result.
         const inheritedOutputKeys = new UniqueSet<string>();
@@ -238,6 +239,7 @@ export class BrainRuleDef implements IBrainRuleDef {
           catalogs,
           conversions,
           typeRegistry,
+          localizer,
           inheritedOutputKeys,
           inheritedCapabilities,
           inheritedWhenResultType,

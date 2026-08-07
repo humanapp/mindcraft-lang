@@ -2,11 +2,27 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type IBrainDef, type MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
+import type { IBrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
 import { BLIP_RADIUS, type Blip } from "@/brain/blip";
 import { Engine } from "@/brain/engine";
+import {
+  actorBodyOptions,
+  actorBodyRadius,
+  blipBodyOptions,
+  blipCollisionFilter,
+  boundaryWalls,
+  defaultDesiredCounts,
+  generateObstacles,
+  obstacleBodyOptions,
+  randomFacing,
+  randomSpawnPosition,
+  WORLD_GRAVITY,
+  WORLD_HEIGHT,
+  WORLD_WIDTH,
+  type WorldRandom,
+} from "@/brain/world-definition";
 import type { Playground } from "@/game/scenes/Playground";
 import { deserializeBrainFromArrayBuffer } from "@/services/brain-persistence";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
@@ -25,18 +41,6 @@ const MatterComposite = requireMatter(`${MATTER_LIB}/body/Composite.js`) as type
 /** Fixed simulation step in milliseconds, matching the app's 60 Hz physics substep. */
 export const STEP_MS = 1000 / 60;
 
-/** World extent, matching the Phaser game config the app boots with. */
-export const WORLD_WIDTH = 1024;
-export const WORLD_HEIGHT = 768;
-
-/** Thickness of the boundary walls, matching the app's `setBounds` call. */
-const WALL_THICKNESS = 32;
-
-/** Matter collision categories, matching the app's scene. */
-const CATEGORY_WALL = 0x0001;
-const CATEGORY_ACTOR = 0x0002;
-const CATEGORY_BLIP = 0x0004;
-
 /** Project namespace the shipped brain documents deserialize under. */
 const PROJECT_NAMESPACE = "ecosim-rehearsal";
 
@@ -46,9 +50,12 @@ const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 /** Directory holding the brain documents the app ships for each archetype. */
 const BRAIN_ASSET_DIR = join(APP_DIR, "public", "assets", "brain", "defs");
 
-/** Seeded stand-in for the integer range helper the scene uses when placing bodies. */
-function randomInt(rng: () => number, min: number, max: number): number {
-  return Math.floor(rng() * (max - min + 1)) + min;
+/** The world-construction draws of one run, taken from its seeded stream. */
+function seededRandom(rng: () => number): WorldRandom {
+  return {
+    int: (min: number, max: number) => Math.floor(rng() * (max - min + 1)) + min,
+    unit: rng,
+  };
 }
 
 // -- Observation ----------------------------------------------------------------
@@ -180,7 +187,7 @@ interface WorldListener {
  * Matter engine stepped directly by {@link HeadlessScene.step}. Owns the world
  * bodies (walls, obstacles, actor bodies, blip bodies), the collision wiring
  * that turns Matter pairs into engine bump / blip events, and the seeded
- * placement the scene takes from the renderer's RNG in the app.
+ * placement its world construction draws.
  */
 class HeadlessScene {
   readonly scale = { width: WORLD_WIDTH, height: WORLD_HEIGHT };
@@ -211,16 +218,18 @@ class HeadlessScene {
   };
 
   private readonly listeners = new Map<string, WorldListener[]>();
+  private readonly random: WorldRandom;
   private engine!: Engine;
 
   constructor(
-    private readonly rng: () => number,
+    rng: () => number,
     private readonly observer: WorldObserver
   ) {
+    this.random = seededRandom(rng);
     this.matterEngine = MatterEngine.create();
-    this.matterEngine.world.gravity.x = 0;
-    this.matterEngine.world.gravity.y = 0;
-    this.matterEngine.world.gravity.scale = 0.001;
+    this.matterEngine.world.gravity.x = WORLD_GRAVITY.x;
+    this.matterEngine.world.gravity.y = WORLD_GRAVITY.y;
+    this.matterEngine.world.gravity.scale = WORLD_GRAVITY.scale;
 
     this.matter = {
       world: {
@@ -266,13 +275,7 @@ class HeadlessScene {
   }
 
   private createWalls(): void {
-    const walls: Array<[number, number, number, number]> = [
-      [-WALL_THICKNESS, -WALL_THICKNESS, WALL_THICKNESS, WORLD_HEIGHT + WALL_THICKNESS * 2],
-      [WORLD_WIDTH, -WALL_THICKNESS, WALL_THICKNESS, WORLD_HEIGHT + WALL_THICKNESS * 2],
-      [0, -WALL_THICKNESS, WORLD_WIDTH, WALL_THICKNESS],
-      [0, WORLD_HEIGHT, WORLD_WIDTH, WALL_THICKNESS],
-    ];
-    for (const [x, y, width, height] of walls) {
+    for (const { x, y, width, height } of boundaryWalls()) {
       const body = MatterBodies.rectangle(x + width / 2, y + height / 2, width, height, {
         isStatic: true,
         friction: 0,
@@ -283,22 +286,8 @@ class HeadlessScene {
   }
 
   private createObstacles(): void {
-    const obstacleCount = 4;
-    const margin = 100;
-    for (let i = 0; i < obstacleCount; i++) {
-      const width = randomInt(this.rng, 30, 120);
-      const height = randomInt(this.rng, 30, 120);
-      const x = randomInt(this.rng, margin, WORLD_WIDTH - margin);
-      const y = randomInt(this.rng, margin, WORLD_HEIGHT - margin);
-      const rotation = this.rng() * Math.PI * 2;
-      const body = MatterBodies.rectangle(x, y, width, height, {
-        angle: rotation,
-        collisionFilter: {
-          category: CATEGORY_WALL,
-          mask: CATEGORY_WALL | CATEGORY_ACTOR | CATEGORY_BLIP,
-          group: 0,
-        },
-      });
+    for (const { x, y, width, height, rotation } of generateObstacles(this.random)) {
+      const body = MatterBodies.rectangle(x, y, width, height, obstacleBodyOptions(rotation));
       MatterBody.setStatic(body, true);
       MatterComposite.add(this.matterWorld, body);
       this.obstacleBodies.push(body);
@@ -349,46 +338,18 @@ class HeadlessScene {
     }
   }
 
-  /** A position inside the bounds that overlaps no obstacle, mirroring the scene's placement rule. */
-  randomPositionWithinBounds(radius: number = 20): Vector2 {
-    for (let attempt = 0; attempt < 100; attempt++) {
-      const x = randomInt(this.rng, 40, WORLD_WIDTH - 40);
-      const y = randomInt(this.rng, 40, WORLD_HEIGHT - 40);
-      let overlaps = false;
-      for (const body of this.obstacleBodies) {
-        const b = body.bounds;
-        const closestX = Math.max(b.min.x, Math.min(x, b.max.x));
-        const closestY = Math.max(b.min.y, Math.min(y, b.max.y));
-        const dx = x - closestX;
-        const dy = y - closestY;
-        if (dx * dx + dy * dy < radius * radius) {
-          overlaps = true;
-          break;
-        }
-      }
-      if (!overlaps) return new Vector2(x, y);
-    }
-    return new Vector2(randomInt(this.rng, 40, WORLD_WIDTH - 40), randomInt(this.rng, 40, WORLD_HEIGHT - 40));
+  /** A spawn position inside the world bounds that clears every obstacle by `radius` pixels. */
+  randomPositionWithinBounds(radius?: number): Vector2 {
+    return randomSpawnPosition(this.random, this.obstacleBodies, radius);
   }
 
   /** Create the physical body and presentation resources for a newly spawned actor. */
   spawn(actor: Actor): Phaser.Physics.Matter.Sprite {
     const config = ARCHETYPES[actor.archetype].physics;
     const pos = this.randomPositionWithinBounds(config.radius);
-    const body = MatterBodies.circle(pos.X, pos.Y, config.radius * config.scale, {
-      collisionFilter: {
-        category: CATEGORY_ACTOR,
-        mask: CATEGORY_WALL | CATEGORY_ACTOR | CATEGORY_BLIP,
-        group: 0,
-      },
-      mass: config.mass,
-      frictionAir: config.frictionAir,
-      restitution: config.restitution,
-      friction: config.friction,
-    });
+    const body = MatterBodies.circle(pos.X, pos.Y, actorBodyRadius(config), actorBodyOptions(config));
     MatterBody.scale(body, config.scale, config.scale);
-    MatterBody.setAngle(body, this.rng() * Math.PI * 2);
-    body.sleepThreshold = Number.POSITIVE_INFINITY;
+    MatterBody.setAngle(body, randomFacing(this.random));
     MatterComposite.add(this.matterWorld, body);
 
     const sprite = new BodySprite(body, this);
@@ -409,28 +370,17 @@ class HeadlessScene {
   activateBlip(blip: Blip, x: number, y: number, velX: number, velY: number): void {
     this.observer.onBlipFired?.();
     if (!blip.sprite) {
-      const body = MatterBodies.circle(x, y, BLIP_RADIUS, {
-        collisionFilter: {
-          category: CATEGORY_BLIP,
-          mask: CATEGORY_WALL | CATEGORY_ACTOR,
-          group: 0,
-        },
-        mass: 0.01,
-        frictionAir: 0,
-        restitution: 0,
-        friction: 0,
-        isSensor: true,
-      });
+      const body = MatterBodies.circle(x, y, BLIP_RADIUS, blipBodyOptions());
       MatterBody.setInertia(body, Number.POSITIVE_INFINITY);
-      body.sleepThreshold = Number.POSITIVE_INFINITY;
       MatterComposite.add(this.matterWorld, body);
       const sprite = new BodySprite(body, this);
       body.gameObject = sprite as unknown as Phaser.GameObjects.GameObject;
       blip.sprite = sprite as unknown as Phaser.Physics.Matter.Sprite;
     } else {
       const body = blip.sprite.body as MatterJS.BodyType;
-      body.collisionFilter.category = CATEGORY_BLIP;
-      body.collisionFilter.mask = CATEGORY_WALL | CATEGORY_ACTOR;
+      const filter = blipCollisionFilter();
+      body.collisionFilter.category = filter.category;
+      body.collisionFilter.mask = filter.mask;
       blip.sprite.setPosition(x, y);
       blip.sprite.setVisible(true);
       blip.sprite.setActive(true);
@@ -463,11 +413,7 @@ function loadShippedBrains(env: MindcraftEnvironment): Record<Archetype, IBrainD
 function headlessStore(env: MindcraftEnvironment, brains: Record<Archetype, IBrainDef>): EcosimEnvironmentStore {
   return {
     env,
-    getDesiredCounts: () => ({
-      carnivore: ARCHETYPES.carnivore.initialSpawnCount,
-      herbivore: ARCHETYPES.herbivore.initialSpawnCount,
-      plant: ARCHETYPES.plant.initialSpawnCount,
-    }),
+    getDesiredCounts: () => defaultDesiredCounts(),
     loadBrainFromProject: async () => undefined,
     getDefaultBrain: (archetype: Archetype) => brains[archetype],
     saveBrainForArchetype: async () => {},

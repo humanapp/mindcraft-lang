@@ -1,9 +1,8 @@
 /**
- * Characterization suite for buildInsertionContext, the tile picker's
- * InsertionContext builder. Pins the three picker shapes: append (expr parsed
- * from the full tile list), insert-at-index (expr parsed from the truncated
- * tile list), and replace-at-index (expr passed through, replaced tile
- * excluded from the unclosed-paren count).
+ * Characterization suite for buildInsertionContext. Pins the three insertion
+ * shapes: append (expr parsed from the full tile list), insert-at-index (expr
+ * parsed from the truncated tile list), and replace-at-index (expr passed
+ * through, replaced tile excluded from the unclosed-paren count).
  */
 
 import assert from "node:assert/strict";
@@ -12,12 +11,11 @@ import { UniqueSet } from "@mindcraft-lang/core";
 import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { CoreControlFlowId, mkControlFlowTileId, RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { parseTilesForSuggestions } from "@mindcraft-lang/core/brain/language-service";
+import { buildInsertionContext, parseTilesForSuggestions } from "@mindcraft-lang/core/brain/language-service";
 import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import { BitSet } from "@mindcraft-lang/core/util";
-import { buildInsertionContext } from "./insertion-context";
 
 let services: BrainServices;
 
@@ -33,6 +31,10 @@ function coreTile(tileId: string): IBrainTileDef {
 
 function openParenTile(): IBrainTileDef {
   return coreTile(mkControlFlowTileId(CoreControlFlowId.OpenParen));
+}
+
+function closeParenTile(): IBrainTileDef {
+  return coreTile(mkControlFlowTileId(CoreControlFlowId.CloseParen));
 }
 
 /** A rule whose WHEN side holds the given tiles, built through the real model API. */
@@ -160,5 +162,30 @@ describe("buildInsertionContext -- replace-at-index shape", () => {
 
     const replacingLiteral = buildInsertionContext({ side: RuleSide.When, replaceTileIndex: 1, existingTiles: tiles });
     assert.equal(replacingLiteral.unclosedParenDepth, 1);
+  });
+
+  test("resolves the matched parenthesis at the replaced index, and only there", () => {
+    const brain = BrainDef.emptyBrainDef(services);
+    const rule = ruleWithWhenTiles(brain, [openParenTile(), numberLiteralTile(brain, 1), closeParenTile()]);
+    const tiles = rule.when().tiles();
+
+    const index = (replaceTileIndex: number) =>
+      buildInsertionContext({ side: RuleSide.When, replaceTileIndex, existingTiles: tiles }).matchedParen;
+
+    assert.equal(index(0), openParenTile());
+    assert.equal(index(2), closeParenTile());
+    assert.equal(index(1), undefined, "the value between the parens is no parenthesis");
+  });
+
+  test("leaves the matched parenthesis unset for an unmatched paren and for the append shape", () => {
+    const brain = BrainDef.emptyBrainDef(services);
+    const rule = ruleWithWhenTiles(brain, [openParenTile(), numberLiteralTile(brain, 1)]);
+    const tiles = rule.when().tiles();
+
+    assert.equal(
+      buildInsertionContext({ side: RuleSide.When, replaceTileIndex: 0, existingTiles: tiles }).matchedParen,
+      undefined
+    );
+    assert.equal(buildInsertionContext({ side: RuleSide.When, existingTiles: tiles }).matchedParen, undefined);
   });
 });

@@ -6,7 +6,7 @@ import type { IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
  * Increment it whenever {@link TargetAdapter} or the shapes it exchanges change
  * in a way an already-built artifact cannot satisfy.
  */
-export const ADAPTER_CONTRACT_VERSION = 3;
+export const ADAPTER_CONTRACT_VERSION = 4;
 
 /** Facts about a target world that a session states to the model before it plans. */
 export interface TargetManifest {
@@ -58,6 +58,15 @@ export interface SimulationRequest {
   readonly scenario: SimulationScenario;
   /** Number of fixed-step thinks to run. */
   readonly thinks: number;
+  /**
+   * Rule paths to leave out of this run's build, each in
+   * `pageIndex/ruleIndex[/childIndex...]` form. An excluded rule and its whole
+   * subtree are absent from the program, so they report nothing and run
+   * nothing, and a brain whose every build error falls in an excluded rule
+   * still runs. Every other rule keeps the path it reports observations under.
+   * Absent when the run excludes nothing.
+   */
+  readonly excludedRules?: readonly string[];
 }
 
 /** One rule's WHEN gate on one think. */
@@ -139,9 +148,11 @@ export interface TargetAdapter {
   /** Scenario input kinds this target reads; empty when it scripts no percepts. */
   inputKinds(): readonly string[];
   /**
-   * Run one rehearsal. Throws if `scenario.subject` is not one of
-   * {@link subjects}, an input names a kind outside {@link inputKinds}, or the
-   * brain does not build.
+   * Run one rehearsal. Throws a `ScenarioRejection` if `scenario.subject` is
+   * not one of {@link subjects} or an input names a kind outside
+   * {@link inputKinds}, and a `RehearsalRejection` carrying the build's
+   * error-severity `BrainBuildDiagnostic` entries if the brain does not build
+   * once {@link SimulationRequest.excludedRules} has been applied.
    */
   run(request: SimulationRequest): Promise<SimulationRun>;
 }

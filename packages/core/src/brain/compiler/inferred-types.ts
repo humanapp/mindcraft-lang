@@ -1,3 +1,4 @@
+import type { Localizer } from "../../localization/localizer";
 import { List, type ReadonlyList } from "../../platform/list";
 import {
   type BrainActionArgSlot,
@@ -11,6 +12,7 @@ import {
   type TypeId,
 } from "../../runtime";
 import type { IBrainTileDef, ITileCatalog } from "../interfaces";
+import { tileSentenceWord } from "../language-service/sentence-projection";
 import type { BrainTileParameterDef } from "../tiles";
 import { TypeDiagCode } from "./diagnostics";
 import type {
@@ -39,7 +41,8 @@ class InferredTypeVisitor implements ExprVisitor<void> {
     private readonly catalogs: ReadonlyList<ITileCatalog>,
     private readonly env: TypeEnv,
     private readonly conversions: IConversionRegistry,
-    private readonly typeRegistry: ITypeRegistry
+    private readonly typeRegistry: ITypeRegistry,
+    private readonly localizer: Localizer
   ) {}
 
   private ensureTypeInfo(nodeId: number): TypeInfo {
@@ -471,7 +474,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
     const baseIsDeterminate =
       objectTypeId !== undefined && objectTypeId !== CoreTypeNames.Unknown && objectTypeId !== CoreTypeIds.Unknown;
     if (baseIsDeterminate && objectTypeId !== expr.accessor.structTypeId) {
-      const fieldLabel = expr.accessor.metadata?.label ?? expr.accessor.fieldName;
+      const fieldLabel = tileSentenceWord(expr.accessor, this.localizer);
       const structTypeName = this.typeRegistry.get(expr.accessor.structTypeId)?.name ?? expr.accessor.structTypeId;
       const baseTypeName = this.typeRegistry.get(objectTypeId)?.name ?? objectTypeId;
       this.diags.push({
@@ -539,6 +542,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
  * @param conversions - Conversion registry used to resolve operator/slot type conversions
  * @param typeRegistry - Type registry used to resolve a field access to the numeric field
  *   id of the accessed field on its object's concrete struct type
+ * @param localizer - Locale the diagnostics name tiles in
  * @returns A list of type diagnostics for any type errors or mismatches encountered during analysis
  */
 export function computeInferredTypes(
@@ -546,9 +550,10 @@ export function computeInferredTypes(
   catalogs: ReadonlyList<ITileCatalog>,
   env: TypeEnv,
   conversions: IConversionRegistry,
-  typeRegistry: ITypeRegistry
+  typeRegistry: ITypeRegistry,
+  localizer: Localizer
 ): List<TypeInfoDiag> {
-  const visitor = new InferredTypeVisitor(catalogs, env, conversions, typeRegistry);
+  const visitor = new InferredTypeVisitor(catalogs, env, conversions, typeRegistry, localizer);
   acceptExprVisitor(expr, visitor);
   return visitor.diags;
 }

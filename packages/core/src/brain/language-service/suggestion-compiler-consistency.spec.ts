@@ -37,7 +37,7 @@ import {
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { Expr } from "@mindcraft-lang/core/brain/compiler";
+import type { Expr, ParseDiag } from "@mindcraft-lang/core/brain/compiler";
 import {
   type BrainBuildDiagnostic,
   collectProvidedCapabilities,
@@ -979,6 +979,7 @@ function sideVerdict(
           catalogList(),
           services.shared.conversions,
           services.runtime.types,
+          services.app.localizer,
           providedKeys,
           hierarchyCaps,
           whenResult,
@@ -990,6 +991,7 @@ function sideVerdict(
           catalogList(),
           services.shared.conversions,
           services.runtime.types,
+          services.app.localizer,
           providedKeys,
           hierarchyCaps,
           whenResult,
@@ -1308,8 +1310,22 @@ function sideRootExpr(pos: Position): Expr | undefined {
   const empty = List.empty<IBrainTileDef>();
   const result =
     pos.side === RuleSide.When
-      ? parseRule(tiles, empty, catalogList(), services.shared.conversions, services.runtime.types)
-      : parseRule(empty, tiles, catalogList(), services.shared.conversions, services.runtime.types);
+      ? parseRule(
+          tiles,
+          empty,
+          catalogList(),
+          services.shared.conversions,
+          services.runtime.types,
+          services.app.localizer
+        )
+      : parseRule(
+          empty,
+          tiles,
+          catalogList(),
+          services.shared.conversions,
+          services.runtime.types,
+          services.app.localizer
+        );
   const exprs = pos.side === RuleSide.When ? result.whenParseResult.exprs : result.doParseResult.exprs;
   return exprs.size() > 0 ? exprs.get(0) : undefined;
 }
@@ -1552,6 +1568,8 @@ interface RuleBuildOutcome {
   pipelineErrorCodes: number[];
   /** Parse diagnostic codes reported by parseRule. */
   parseCodes: number[];
+  /** Parse diagnostics reported by parseRule, in report order. */
+  parseDiags: ParseDiag[];
   /** Type diagnostic codes reported by parseRule. */
   typeCodes: number[];
   /** Every diagnostic message from both surfaces. */
@@ -1570,6 +1588,7 @@ function buildRule(when: IBrainTileDef[], doTiles: IBrainTileDef[]): RuleBuildOu
     pipelineClean: result.program !== undefined,
     pipelineErrorCodes: [],
     parseCodes: [],
+    parseDiags: [],
     typeCodes: [],
     messages: [],
   };
@@ -1587,6 +1606,7 @@ function buildRule(when: IBrainTileDef[], doTiles: IBrainTileDef[]): RuleBuildOu
     catalogList(),
     services.shared.conversions,
     services.runtime.types,
+    services.app.localizer,
     undefined,
     undefined,
     undefined,
@@ -1595,6 +1615,7 @@ function buildRule(when: IBrainTileDef[], doTiles: IBrainTileDef[]): RuleBuildOu
   for (let i = 0; i < parsed.parseResult.diags.size(); i++) {
     const diag = parsed.parseResult.diags.get(i);
     outcome.parseCodes.push(diag.code as number);
+    outcome.parseDiags.push(diag);
     outcome.messages.push(diag.message);
   }
   for (let i = 0; i < parsed.typeInfo.diags.size(); i++) {
@@ -1732,9 +1753,11 @@ describe("compiler validation of accessor pairing, placement, output providers, 
       outcome.pipelineErrorCodes.includes(ParseDiagCode.TileRequirementsNotProvided),
       "pipeline rejects with TileRequirementsNotProvided"
     );
+    const gated = outcome.parseDiags.find((d) => d.code === ParseDiagCode.TileRequirementsNotProvided);
+    assert.equal(gated?.params?.tileId, probeTiles.gatedLit.tileId, "the diagnostic names the gated tile");
     assert.ok(
-      outcome.messages.some((m) => m.includes(`"gated 42"`) && m.includes(`"beacon"`)),
-      "message names the gated tile and suggests the providing sensor by label"
+      gated?.params?.providerTileIds?.toArray().includes(probeTiles.beaconSensor.tileId),
+      "the diagnostic suggests the providing sensor"
     );
   });
 

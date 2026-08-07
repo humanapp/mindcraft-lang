@@ -7,10 +7,12 @@ import {
   type MindcraftEnvironment,
   type MindcraftModule,
 } from "@mindcraft-lang/core";
+import type { IBrainDef } from "@mindcraft-lang/core/brain";
 import { type BrainServices, LinkDiagCode, RuleSide, TilePlacement } from "@mindcraft-lang/core/brain";
 import type { BrainBuildDiagnostic, BrainBuildResult } from "@mindcraft-lang/core/brain/compiler";
-import { CompilationDiagCode } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { CompilationDiagCode, ParseDiagCode } from "@mindcraft-lang/core/brain/compiler";
+import type { BrainJson, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { BrainDef, brainJsonWithRulesEmptied } from "@mindcraft-lang/core/brain/model";
 import { BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import {
   CoreTypeIds,
@@ -38,7 +40,21 @@ function getTrackedBrainCount(environment: MindcraftEnvironment): number {
   return (environment as unknown as { trackedBrains: { size(): number } }).trackedBrains.size();
 }
 
-function createHostSensorModule(moduleId: string, key: string): { module: MindcraftModule; tile: BrainTileSensorDef } {
+/** How a {@link createHostSensorModule} sensor differs from the default one. */
+interface HostSensorOptions {
+  /** Sides the tile may be placed on; defaults to either side, inline. */
+  readonly placement?: TilePlacement;
+  /** Host action id, unique within an environment; defaults to 3501. */
+  readonly actionId?: number;
+  /** Runtime function id, unique within an environment; defaults to 4501. */
+  readonly functionId?: number;
+}
+
+function createHostSensorModule(
+  moduleId: string,
+  key: string,
+  options?: HostSensorOptions
+): { module: MindcraftModule; tile: BrainTileSensorDef } {
   const sensorCallDef = mkCallDef({ type: "bag", items: [] });
   const descriptor = {
     key,
@@ -48,7 +64,7 @@ function createHostSensorModule(moduleId: string, key: string): { module: Mindcr
     outputType: CoreTypeIds.Boolean,
   };
   const tile = new BrainTileSensorDef(key, descriptor, {
-    placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    placement: options?.placement ?? TilePlacement.EitherSide | TilePlacement.Inline,
   });
 
   return {
@@ -58,9 +74,9 @@ function createHostSensorModule(moduleId: string, key: string): { module: Mindcr
       install(api): void {
         api.registerHostSensor({
           descriptor,
-          actionId: 3501,
+          actionId: options?.actionId ?? 3501,
           function: {
-            id: 4501,
+            id: options?.functionId ?? 4501,
             name: key,
             isAsync: false,
             fn: { exec: () => TRUE_VALUE },
@@ -274,5 +290,142 @@ describe("linked program serialization determinism", () => {
     const result = environment.linkBrain(def);
     assert.ok(result.program);
     assert.ok(linkedBrainProgramToJson(result.program).pages[0]!.pageId.length > 0);
+  });
+});
+
+/**
+ * A two-rule document over one environment: rule `0/0` senses on its WHEN side
+ * and builds; rule `0/1` carries a WHEN-only sensor on its DO side, which is an
+ * error-severity placement mismatch.
+ */
+function createPartlyBrokenBrain(): { environment: MindcraftEnvironment; def: BrainDef } {
+  const good = createHostSensorModule("good-sensor", "host.good");
+  const whenOnly = createHostSensorModule("when-only-sensor", "host.whenOnly", {
+    placement: TilePlacement.WhenSide | TilePlacement.Inline,
+    actionId: 3502,
+    functionId: 4502,
+  });
+  const environment = createMindcraftEnvironment({ modules: [coreModule(), good.module, whenOnly.module] });
+  const def = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "PartlyBroken");
+  const page = def.pages().get(0)!;
+  page.children().get(0)!.when().appendTile(good.tile);
+  page.appendNewRule()!.do().appendTile(whenOnly.tile);
+  return { environment, def };
+}
+
+/** Rule paths the error-severity diagnostics of `result` name, in report order. */
+function errorRulePaths(result: BrainBuildResult): (string | undefined)[] {
+  return errorDiags(result).map((diag) => diag.params?.rulePath);
+}
+
+describe("build diagnostics name the rule they came from", () => {
+  test("a placement error carries the path of the rule it sits in", () => {
+    const { environment, def } = createPartlyBrokenBrain();
+
+    const result = environment.linkBrain(def);
+
+    assert.equal(result.program, undefined);
+    assert.deepEqual(errorRulePaths(result), ["0/1"]);
+    assert.equal(errorDiags(result)[0]!.code, ParseDiagCode.TilePlacementSideMismatch);
+  });
+
+  test("a child rule's error carries the child's own path, not its parent's", () => {
+    const { environment, def } = createPartlyBrokenBrain();
+    const whenOnlyTile = def.pages().get(0)!.children().get(1)!.do().tiles().get(0);
+    (def.pages().get(0)!.children().get(0)! as BrainRuleDef).appendNewRule().do().appendTile(whenOnlyTile);
+
+    assert.deepEqual(errorRulePaths(environment.linkBrain(def)), ["0/0/0", "0/1"]);
+  });
+});
+
+/** `def` rebuilt in `environment` with `excludedRulePaths` emptied in it. */
+function withRulesEmptied(
+  environment: MindcraftEnvironment,
+  def: BrainDef,
+  excludedRulePaths: readonly string[]
+): IBrainDef {
+  return environment.deserializeBrainJson(brainJsonWithRulesEmptied(def.toJson(), excludedRulePaths));
+}
+
+describe("brainJsonWithRulesEmptied", () => {
+  test("links the rest of the document when the error-bearing rule is emptied", () => {
+    const { environment, def } = createPartlyBrokenBrain();
+
+    const result = environment.linkBrain(withRulesEmptied(environment, def, ["0/1"]));
+
+    assert.ok(result.program, "the document builds with the broken rule emptied");
+    assert.deepEqual(errorDiags(result), [], "an emptied rule reports no diagnostic");
+  });
+
+  test("keeps the function id every rule path would otherwise have had", () => {
+    const { environment, def } = createPartlyBrokenBrain();
+
+    const ruleIndex = environment.linkBrain(withRulesEmptied(environment, def, ["0/1"])).program!.ruleIndex;
+
+    assert.equal(ruleIndex.get("0/0"), 0);
+    assert.equal(ruleIndex.get("0/1"), 1);
+  });
+
+  test("runs the rules it kept and never the rule it emptied", () => {
+    const { environment, def } = createPartlyBrokenBrain();
+    const emptied = withRulesEmptied(environment, def, ["0/1"]);
+    const ruleIndex = environment.linkBrain(emptied).program!.ruleIndex;
+
+    const evaluated: number[] = [];
+    const brain = environment.createBrain(emptied);
+    brain.events().on("rule_when_evaluated", ({ ruleFuncId }) => {
+      if (ruleFuncId !== undefined) evaluated.push(ruleFuncId);
+    });
+    brain.startup();
+    brain.think(0);
+
+    assert.ok(evaluated.includes(ruleIndex.get("0/0")!), "the kept rule evaluated its WHEN gate");
+    assert.ok(!evaluated.includes(ruleIndex.get("0/1")!), "the emptied rule never reached a gate");
+  });
+
+  test("empties the whole subtree beneath an emptied rule", () => {
+    const { environment, def } = createPartlyBrokenBrain();
+    const page = def.pages().get(0)!;
+    const whenOnlyTile = page.children().get(1)!.do().tiles().get(0);
+    (page.children().get(1)! as BrainRuleDef).appendNewRule().do().appendTile(whenOnlyTile);
+
+    const result = environment.linkBrain(withRulesEmptied(environment, def, ["0/1"]));
+
+    assert.ok(result.program, "the child rule's error is emptied with its parent");
+  });
+
+  test("leaves the document it was given untouched", () => {
+    const { environment, def } = createPartlyBrokenBrain();
+
+    withRulesEmptied(environment, def, ["0/1"]);
+
+    assert.deepEqual(errorRulePaths(environment.linkBrain(def)), ["0/1"], "the original still reports its error");
+  });
+
+  test("returns the document unchanged when it empties nothing", () => {
+    const { def } = createPartlyBrokenBrain();
+    const json = def.toJson();
+
+    assert.equal(brainJsonWithRulesEmptied(json, []), json);
+  });
+
+  test("survives a serialize and deserialize round trip", () => {
+    const { environment, def } = createPartlyBrokenBrain();
+    const emptied = withRulesEmptied(environment, def, ["0/1"]);
+
+    const reopened = environment.deserializeBrainJson(emptied.toJson() as BrainJson);
+
+    assert.ok(environment.linkBrain(reopened).program, "the reopened document still builds");
+    assert.deepEqual(errorDiags(environment.linkBrain(reopened)), []);
+  });
+
+  test("still excludes after the document is cloned", () => {
+    const { environment, def } = createPartlyBrokenBrain();
+    const emptied = withRulesEmptied(environment, def, ["0/1"]) as BrainDef;
+
+    const copy = emptied.clone();
+
+    assert.ok(environment.linkBrain(copy).program, "a copy of the document carries the exclusion with it");
+    assert.notEqual(copy.id(), emptied.id(), "the copy is a different document by identity");
   });
 });

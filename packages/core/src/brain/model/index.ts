@@ -1,4 +1,5 @@
 export * from "./brain-json-codec";
+export * from "./brain-json-exclude";
 export * from "./brain-json-persisted";
 export * from "./brain-json-rename";
 export * from "./braindef";

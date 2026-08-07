@@ -169,29 +169,29 @@ before(() => {
 
 describe("where a rule side may end", () => {
   test("an empty side may end", () => {
-    assert.equal(canEndSideExpression(tiles()), true);
+    assert.equal(canEndSideExpression(tiles(), localizer), true);
   });
 
   test("a bare sensor may end", () => {
-    assert.equal(canEndSideExpression(tiles(makeSensor("composer-see"))), true);
+    assert.equal(canEndSideExpression(tiles(makeSensor("composer-see")), localizer), true);
   });
 
   test("a bare actuator on a DO side may end", () => {
-    assert.equal(canEndSideExpression(tiles(makeActuator("composer-end-jump"))), true);
+    assert.equal(canEndSideExpression(tiles(makeActuator("composer-end-jump")), localizer), true);
   });
 
   test("a trailing infix operator may not end", () => {
     const side = tiles(makeSensor("composer-hear"), coreTile(mkOperatorTileId(CoreOpId.And)));
-    assert.equal(canEndSideExpression(side), false);
+    assert.equal(canEndSideExpression(side, localizer), false);
   });
 
   test("a leading prefix operator with no operand may not end", () => {
-    assert.equal(canEndSideExpression(tiles(coreTile(mkOperatorTileId(CoreOpId.Not)))), false);
+    assert.equal(canEndSideExpression(tiles(coreTile(mkOperatorTileId(CoreOpId.Not))), localizer), false);
   });
 
   test("an unclosed group may not end", () => {
     const side = tiles(coreTile(mkControlFlowTileId(CoreControlFlowId.OpenParen)), makeSensor("composer-smell"));
-    assert.equal(canEndSideExpression(side), false);
+    assert.equal(canEndSideExpression(side, localizer), false);
   });
 });
 
@@ -311,7 +311,7 @@ describe("the period key", () => {
   test("settles the rule where the side being composed may end", () => {
     const action = decideComposerPeriod({
       filter: "",
-      armedSideCanEnd: canEndSideExpression(tiles(makeSensor("composer-period-see"))),
+      armedSideCanEnd: canEndSideExpression(tiles(makeSensor("composer-period-see")), localizer),
       ruleIsEmpty: false,
       wordInProgressCommits: false,
     });
@@ -321,7 +321,7 @@ describe("the period key", () => {
   test("settles a rule whose condition stands alone behind an empty DO side", () => {
     const action = decideComposerPeriod({
       filter: "",
-      armedSideCanEnd: canEndSideExpression(tiles()),
+      armedSideCanEnd: canEndSideExpression(tiles(), localizer),
       ruleIsEmpty: false,
       wordInProgressCommits: false,
     });
@@ -362,7 +362,7 @@ describe("the period key", () => {
     const side = tiles(makeSensor("composer-period-hear"), coreTile(mkOperatorTileId(CoreOpId.And)));
     const action = decideComposerPeriod({
       filter: "",
-      armedSideCanEnd: canEndSideExpression(side),
+      armedSideCanEnd: canEndSideExpression(side, localizer),
       ruleIsEmpty: false,
       wordInProgressCommits: false,
     });
@@ -372,7 +372,7 @@ describe("the period key", () => {
   test("does nothing on a rule with nothing composed on either side", () => {
     const action = decideComposerPeriod({
       filter: "",
-      armedSideCanEnd: canEndSideExpression(tiles()),
+      armedSideCanEnd: canEndSideExpression(tiles(), localizer),
       ruleIsEmpty: true,
       wordInProgressCommits: false,
     });

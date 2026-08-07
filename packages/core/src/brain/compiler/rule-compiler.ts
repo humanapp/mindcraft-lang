@@ -99,6 +99,11 @@ export interface CompilationDiag {
 
 /**
  * Bytecode emitter that walks an expression AST and generates VM instructions.
+ *
+ * Lowering a value-producing node leaves exactly one value on the operand
+ * stack, recovery paths included: a node the emitter cannot lower stands a NIL
+ * in its place. Modifier and empty nodes produce no value; their enclosing call
+ * lowers them without visiting.
  */
 export class ExprCompiler implements ExprVisitor<void> {
   constructor(
@@ -724,10 +729,10 @@ export class ExprCompiler implements ExprVisitor<void> {
   // Error Expression
   // ==========================================
 
+  /** Lowers an unparseable expression: reports it as a dropped expression and leaves NIL on the operand stack. */
   visitError(expr: ErrorExpr): void {
-    // No bytecode exists for an unparseable expression: report the drop so the
-    // build result names the code that did not make it into the program.
     this.reportDroppedExpr(expr.nodeId, expr.span?.from, expr.message);
+    this.pushNilPlaceholder();
   }
 
   /**
