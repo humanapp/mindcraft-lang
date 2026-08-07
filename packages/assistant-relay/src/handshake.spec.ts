@@ -67,4 +67,18 @@ describe("the relay handshake", () => {
     assert.equal(answer.code, RelayRefusalCode.ProtocolVersionMismatch);
     assert.equal(answer.protocolVersion, ASSISTANT_RELAY_PROTOCOL_VERSION);
   });
+
+  test("carries a refusal of the target the manifest asked for", async () => {
+    const loopback = createRelayLoopback();
+    loopback.service.send({
+      type: "session:refused",
+      code: RelayRefusalCode.TargetUnavailable,
+      protocolVersion: ASSISTANT_RELAY_PROTOCOL_VERSION,
+    });
+
+    const answer = await loopback.toolServer.next();
+
+    assert.equal(answer.type, "session:refused");
+    assert.equal(answer.code, RelayRefusalCode.TargetUnavailable);
+  });
 });

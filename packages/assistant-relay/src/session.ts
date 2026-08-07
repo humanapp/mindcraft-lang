@@ -58,6 +58,12 @@ export const RelayRefusalCode = {
    * session spans two versions.
    */
   ProtocolVersionMismatch: "protocol_version_mismatch",
+  /**
+   * The service does not serve the target the manifest asked for. Does not
+   * distinguish a target the service does not know from one this session may
+   * not claim.
+   */
+  TargetUnavailable: "target_unavailable",
 } as const;
 
 /** Why the service would not open a session. */
