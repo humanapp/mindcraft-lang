@@ -1,7 +1,7 @@
 import type { MindcraftBrain } from "@mindcraft-lang/core/app";
 import type { RehearsalWorld, WorldDriver, WorldStaging } from "../kit/index.js";
 import { createRehearsalAdapter } from "../kit/index.js";
-import type { TargetAdapter, TargetManifest } from "../target/adapter.js";
+import type { ScenarioInputKind, TargetAdapter, TargetManifest } from "../target/adapter.js";
 import type { FakeWorldState } from "./fake-module.js";
 import { createFakeModule } from "./fake-module.js";
 
@@ -11,8 +11,13 @@ export const FAKE_TARGET_IDENTITY = "example-org/trg-fake";
 /** The one role a fake scenario may put under study. */
 export const FAKE_SUBJECT = "signaller";
 
-/** The one percept kind a fake scenario may script: the signal's level. */
+/** Name of the one percept kind a fake scenario may script. */
 export const FAKE_INPUT_KIND = "signal";
+
+/** The one percept kind a fake scenario may script, as the driver registers it. */
+const inputKinds: readonly ScenarioInputKind[] = [
+  { name: FAKE_INPUT_KIND, description: "Whether the signal is on: true holds it on, false holds it off." },
+];
 
 const manifest: TargetManifest = {
   target: "a world with one signal and one emitter",
@@ -77,7 +82,7 @@ class FakeWorld implements RehearsalWorld {
 const driver: WorldDriver = {
   modules: () => [createFakeModule()],
   subjects: () => [FAKE_SUBJECT],
-  inputKinds: () => [FAKE_INPUT_KIND],
+  inputKinds: () => inputKinds,
   stage: (staging: WorldStaging) => Promise.resolve(new FakeWorld(staging)),
 };
 

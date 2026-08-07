@@ -6,7 +6,7 @@ import type { IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
  * Increment it whenever {@link TargetAdapter} or the shapes it exchanges change
  * in a way an already-built artifact cannot satisfy.
  */
-export const ADAPTER_CONTRACT_VERSION = 4;
+export const ADAPTER_CONTRACT_VERSION = 5;
 
 /** Facts about a target world that a session states to the model before it plans. */
 export interface TargetManifest {
@@ -19,6 +19,20 @@ export interface TargetManifest {
   readonly thing: string;
   /** What the target's body provides, one plain sentence per entry. */
   readonly provides: readonly string[];
+}
+
+/**
+ * One percept kind a target reads out of a scenario, named and explained by the
+ * target itself.
+ */
+export interface ScenarioInputKind {
+  /** Name a {@link ScenarioInput} gives as its `kind`, spelled exactly. */
+  readonly name: string;
+  /**
+   * One plain sentence stating what a level of this kind means in this world
+   * and the range it is read over.
+   */
+  readonly description: string;
 }
 
 /**
@@ -146,7 +160,7 @@ export interface TargetAdapter {
   /** Population roles a scenario may name as its subject. */
   subjects(): readonly string[];
   /** Scenario input kinds this target reads; empty when it scripts no percepts. */
-  inputKinds(): readonly string[];
+  inputKinds(): readonly ScenarioInputKind[];
   /**
    * Run one rehearsal. Throws a `ScenarioRejection` if `scenario.subject` is
    * not one of {@link subjects} or an input names a kind outside

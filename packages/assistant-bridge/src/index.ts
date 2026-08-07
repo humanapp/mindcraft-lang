@@ -9,6 +9,7 @@ export type {
   DispatchObservation,
   GateObservation,
   ScenarioInput,
+  ScenarioInputKind,
   SimulationRequest,
   SimulationRun,
   SimulationScenario,

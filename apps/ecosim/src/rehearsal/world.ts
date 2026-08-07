@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ScenarioInput } from "@mindcraft-lang/assistant-bridge";
+import type { ScenarioInput, ScenarioInputKind } from "@mindcraft-lang/assistant-bridge";
 import type { IBrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
@@ -446,13 +446,15 @@ const STAGED_ARCHETYPES: Readonly<Record<string, Archetype>> = Object.fromEntrie
   ARCHETYPE_NAMES.map((archetype) => [`${archetype}${AHEAD_SUFFIX}`, archetype])
 );
 
-/**
- * Every percept kind a scenario may script for this world, sorted: one per
- * archetype. An entry's value is the distance in world pixels at which the
- * world holds one creature of that kind directly ahead of the creature under
- * study, and zero takes the kind out of the world entirely.
- */
-export const SCENARIO_INPUT_KINDS: readonly string[] = Object.keys(STAGED_ARCHETYPES).sort();
+/** Every percept kind a scenario may script for this world, one per archetype, sorted by name. */
+export const SCENARIO_INPUT_KINDS: readonly ScenarioInputKind[] = Object.entries(STAGED_ARCHETYPES)
+  .map(([name, archetype]) => ({
+    name,
+    description:
+      `Distance in world pixels at which one ${archetype} is held directly ahead of the creature ` +
+      "under study; 0 takes it out of the world.",
+  }))
+  .sort((a, b) => (a.name < b.name ? -1 : 1));
 
 /** What a run scripts into the world it stages. */
 export interface ScriptedCauses {

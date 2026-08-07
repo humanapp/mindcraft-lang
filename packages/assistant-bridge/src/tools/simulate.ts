@@ -34,7 +34,7 @@ export interface SimulationInputKindResult {
   readonly error: "unknown_input_kind";
   /** The kinds the scenario named that the target does not read, in first-seen order. */
   readonly named: readonly string[];
-  /** The input kinds the target does read. */
+  /** Names of the input kinds the target does read. */
   readonly kinds: readonly string[];
 }
 
@@ -77,7 +77,7 @@ export async function simulate(workspace: AuthoringWorkspace, input: ToolInput<"
     return { ok: false, error: "unknown_subject", named: input.scenario.subject, subjects };
   }
 
-  const kinds = workspace.adapter.inputKinds();
+  const kinds = workspace.adapter.inputKinds().map((kind) => kind.name);
   const scripted = input.scenario.inputs ?? [];
   const named = [...new Set(scripted.filter((entry) => !kinds.includes(entry.kind)).map((entry) => entry.kind))];
   if (named.length > 0) {

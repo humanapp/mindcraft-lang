@@ -90,8 +90,14 @@ describe("an adapter built on the kit", () => {
     );
   });
 
-  test("registers the input kinds its driver declares", () => {
-    assert.deepEqual(createTargetAdapter().inputKinds(), [FAKE_INPUT_KIND]);
+  test("registers the input kinds its driver declares, each with what a level of it means", () => {
+    const kinds = createTargetAdapter().inputKinds();
+
+    assert.deepEqual(
+      kinds.map((kind) => kind.name),
+      [FAKE_INPUT_KIND]
+    );
+    for (const kind of kinds) assert.ok(kind.description.length > 0, kind.name);
   });
 
   test("delivers a scripted input to the world, holding its level until the next entry", async () => {

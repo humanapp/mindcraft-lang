@@ -7,6 +7,7 @@ import type {
   DispatchObservation,
   GateObservation,
   ScenarioInput,
+  ScenarioInputKind,
   SimulationRequest,
   SimulationRun,
   TargetAdapter,
@@ -133,7 +134,7 @@ export interface WorldDriver {
    * Percept kinds this target reads out of a scenario. Omit the method to
    * register none, which refuses every scripted input.
    */
-  inputKinds?(): readonly string[];
+  inputKinds?(): readonly ScenarioInputKind[];
   /**
    * Precision the target's device computes numbers at, applied to every brain
    * in the rehearsal environment. Omit the method for the host's native double
@@ -268,10 +269,10 @@ class SubjectRecorder {
  * register.
  */
 function scheduledInputs(driver: WorldDriver, inputs: readonly ScenarioInput[]): readonly ScenarioInput[] {
-  const kinds = driver.inputKinds?.() ?? [];
-  const unknown = [...new Set(inputs.filter((input) => !kinds.includes(input.kind)).map((input) => input.kind))];
+  const names = (driver.inputKinds?.() ?? []).map((kind) => kind.name);
+  const unknown = [...new Set(inputs.filter((input) => !names.includes(input.kind)).map((input) => input.kind))];
   if (unknown.length > 0) {
-    throw new ScenarioRejection(ScenarioRejectionCode.UnknownInputKind, unknown, [...kinds].sort());
+    throw new ScenarioRejection(ScenarioRejectionCode.UnknownInputKind, unknown, [...names].sort());
   }
   return [...inputs].sort((a, b) => a.at - b.at);
 }
