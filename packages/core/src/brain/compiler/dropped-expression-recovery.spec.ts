@@ -21,6 +21,7 @@ import {
 } from "@mindcraft-lang/core";
 import type { IBrainDef, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { mkOperatorTileId, RuleSide } from "@mindcraft-lang/core/brain";
+import { __test__appendTile } from "@mindcraft-lang/core/brain/__test__";
 import type { BrainBuildDiagnostic } from "@mindcraft-lang/core/brain/compiler";
 import { CompilationDiagCode, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
@@ -230,9 +231,9 @@ describe("a dropped expression leaves a program the VM runs", () => {
     const fixture = createFixture();
     const { environment, brainDef, rule } = newBrain(fixture);
 
-    rule.do().appendTile(fixture.steerTile);
-    rule.do().appendTile(fixture.fastTile);
-    rule.do().appendTile(fixture.amountTile);
+    __test__appendTile(rule.do(), fixture.steerTile);
+    __test__appendTile(rule.do(), fixture.fastTile);
+    __test__appendTile(rule.do(), fixture.amountTile);
 
     const outcome = buildAndRun(environment, brainDef);
 
@@ -252,8 +253,8 @@ describe("a dropped expression leaves a program the VM runs", () => {
     const { environment, brainDef, page, rule } = newBrain(fixture);
 
     // A parameter tile alone is not an expression: the whole DO side drops.
-    rule.do().appendTile(fixture.amountTile);
-    page.appendNewRule()!.do().appendTile(fixture.markTile);
+    __test__appendTile(rule.do(), fixture.amountTile);
+    __test__appendTile(page.appendNewRule()!.do(), fixture.markTile);
 
     const outcome = buildAndRun(environment, brainDef);
 
@@ -268,8 +269,8 @@ describe("a dropped expression leaves a program the VM runs", () => {
     const fixture = createFixture();
     const { environment, brainDef, rule } = newBrain(fixture);
 
-    rule.when().appendTile(fixture.amountTile);
-    rule.do().appendTile(fixture.markTile);
+    __test__appendTile(rule.when(), fixture.amountTile);
+    __test__appendTile(rule.do(), fixture.markTile);
 
     const outcome = buildAndRun(environment, brainDef);
 
@@ -286,10 +287,10 @@ describe("a dropped expression leaves a program the VM runs", () => {
     const services = environment.brainServices;
     const assign = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign))!;
 
-    rule.do().appendTile(new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services));
-    rule.do().appendTile(assign);
-    rule.do().appendTile(new BrainTileLiteralDef(CoreTypeIds.Number, 2, {}, services));
-    page.appendNewRule()!.do().appendTile(fixture.markTile);
+    __test__appendTile(rule.do(), new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services));
+    __test__appendTile(rule.do(), assign);
+    __test__appendTile(rule.do(), new BrainTileLiteralDef(CoreTypeIds.Number, 2, {}, services));
+    __test__appendTile(page.appendNewRule()!.do(), fixture.markTile);
 
     const outcome = buildAndRun(environment, brainDef);
 
@@ -302,8 +303,8 @@ describe("a dropped expression leaves a program the VM runs", () => {
     const fixture = createFixture();
     const { environment, brainDef, rule } = newBrain(fixture);
 
-    rule.do().appendTile(fixture.markTile);
-    rule.do().appendTile(fixture.markTile);
+    __test__appendTile(rule.do(), fixture.markTile);
+    __test__appendTile(rule.do(), fixture.markTile);
 
     const outcome = buildAndRun(environment, brainDef, 1);
 
@@ -318,10 +319,10 @@ describe("a dropped expression leaves a program the VM runs", () => {
     const services = environment.brainServices;
 
     // Void reaches no overload of `add` and converts to nothing.
-    rule.when().appendTile(fixture.voidSensorTile);
-    rule.when().appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add))!);
-    rule.when().appendTile(new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services));
-    rule.do().appendTile(fixture.markTile);
+    __test__appendTile(rule.when(), fixture.voidSensorTile);
+    __test__appendTile(rule.when(), services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add))!);
+    __test__appendTile(rule.when(), new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services));
+    __test__appendTile(rule.do(), fixture.markTile);
     rule.typecheck();
 
     const typeDiags = rule.when().typecheckResult()!.typeInfo.diags.toArray();
@@ -342,8 +343,8 @@ describe("a dropped expression leaves a program the VM runs", () => {
     const fixture = createFixture();
     const { environment, brainDef, rule } = newBrain(fixture);
 
-    rule.do().appendTile(fixture.steerTile);
-    rule.do().appendTile(fixture.fastTile);
+    __test__appendTile(rule.do(), fixture.steerTile);
+    __test__appendTile(rule.do(), fixture.fastTile);
 
     const outcome = buildAndRun(environment, brainDef, 1);
 

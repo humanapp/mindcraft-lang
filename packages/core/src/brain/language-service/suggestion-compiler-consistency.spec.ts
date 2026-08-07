@@ -36,7 +36,7 @@ import {
   RuleSide,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { Expr, ParseDiag } from "@mindcraft-lang/core/brain/compiler";
 import {
   type BrainBuildDiagnostic,
@@ -421,8 +421,8 @@ function newBrain(name: string): { brain: BrainDef; rule: BrainRuleDef } {
 }
 
 function fill(rule: IBrainRuleDef, when: IBrainTileDef[], doTiles: IBrainTileDef[]): void {
-  for (const t of when) rule.when().appendTile(t);
-  for (const t of doTiles) rule.do().appendTile(t);
+  for (const t of when) __test__appendTile(rule.when(), t);
+  for (const t of doTiles) __test__appendTile(rule.do(), t);
 }
 
 /** Appends a rule at the end of the brain's first page, at root level. */
@@ -1139,16 +1139,9 @@ function pipelineAccepts(pos: Position, mutated: ReadonlyList<IBrainTileDef>): b
   return accepted;
 }
 
-function setSideTiles(
-  tileSet: {
-    tiles(): ReadonlyList<IBrainTileDef>;
-    appendTile(t: IBrainTileDef): void;
-    removeTileAtIndex(i: number): void;
-  },
-  tiles: ReadonlyList<IBrainTileDef>
-): void {
+function setSideTiles(tileSet: IBrainTileSet, tiles: ReadonlyList<IBrainTileDef>): void {
   while (tileSet.tiles().size() > 0) tileSet.removeTileAtIndex(0);
-  for (let i = 0; i < tiles.size(); i++) tileSet.appendTile(tiles.get(i));
+  for (let i = 0; i < tiles.size(); i++) __test__appendTile(tileSet, tiles.get(i));
 }
 
 function copyTiles(tiles: ReadonlyList<IBrainTileDef>): List<IBrainTileDef> {

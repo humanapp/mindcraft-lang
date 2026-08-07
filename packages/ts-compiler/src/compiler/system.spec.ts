@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { type BrainServices, mkVariableTileId } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   type BrainTileActuatorDef,
@@ -135,9 +135,9 @@ export default Sensor({
     const v = mkVar("count-out");
     // Each tick: the rule reads count into the var, THEN the System think increments.
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readCount as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readCount as never);
     const brain = runBrain(brainDef, 3);
     // think1 reads 100 (init), think2 reads 101, think3 reads 102.
     assert.equal(num(brain, v.varName), 102, "init-once + think-per-tick");
@@ -172,9 +172,9 @@ export default Sensor({
 
     const v = mkVar("acc-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(accAndRead as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), accAndRead as never);
     const brain = runBrain(brainDef, 3);
     // tick1 add->3 read 3; tick2 add->6 read 6; tick3 add->9 read 9.
     assert.equal(num(brain, v.varName), 9, "method writes persist and accumulate across thinks");
@@ -207,9 +207,9 @@ export default Sensor({
 
     const v = mkVar("helpers-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readCount as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readCount as never);
     const brain = runBrain(brainDef, 3);
     // init->reset sets 10; each think: step (++ -> +1) then bump (+=4, -- -> +3) = net +4.
     // reads: think1=10, think2=14, think3=18.
@@ -257,13 +257,13 @@ export default Sensor({
     const outA = mkVar("xmod-a");
     const outB = mkVar("xmod-b");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(outA as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readA as never);
+    __test__appendTile(rule.do(), outA as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readA as never);
     const child = rule.appendNewRule();
-    child.do().appendTile(outB as never);
-    child.do().appendTile(opAssign as never);
-    child.do().appendTile(readB as never);
+    __test__appendTile(child.do(), outB as never);
+    __test__appendTile(child.do(), opAssign as never);
+    __test__appendTile(child.do(), readB as never);
 
     const brain = runBrain(brainDef, 3);
     // Structural: both importing tiles resolved to ONE registration (one store).
@@ -304,16 +304,16 @@ export default Sensor({
     const p0 = brainDef.appendNewPage();
     assert.ok(p0.success);
     const rule0 = p0.value!.page.children().get(0)!;
-    rule0.do().appendTile(v0 as never);
-    rule0.do().appendTile(opAssign as never);
-    rule0.do().appendTile(readCount as never);
+    __test__appendTile(rule0.do(), v0 as never);
+    __test__appendTile(rule0.do(), opAssign as never);
+    __test__appendTile(rule0.do(), readCount as never);
 
     const p1 = brainDef.appendNewPage();
     assert.ok(p1.success);
     const rule1 = p1.value!.page.children().get(0)!;
-    rule1.do().appendTile(v1 as never);
-    rule1.do().appendTile(opAssign as never);
-    rule1.do().appendTile(readCount as never);
+    __test__appendTile(rule1.do(), v1 as never);
+    __test__appendTile(rule1.do(), opAssign as never);
+    __test__appendTile(rule1.do(), readCount as never);
 
     const brain = brainDef.compile();
     brain.initialize();
@@ -357,13 +357,13 @@ export default Sensor({
     const sysOut = mkVar("sys-out");
 
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(counterVar as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(mkLiteral(7) as never);
+    __test__appendTile(rule.do(), counterVar as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), mkLiteral(7) as never);
     const child = rule.appendNewRule();
-    child.do().appendTile(sysOut as never);
-    child.do().appendTile(opAssign as never);
-    child.do().appendTile(readCount as never);
+    __test__appendTile(child.do(), sysOut as never);
+    __test__appendTile(child.do(), opAssign as never);
+    __test__appendTile(child.do(), readCount as never);
 
     const brain = runBrain(brainDef, 2);
     // The brain var "counter" must be untouched by the System's count; the
@@ -405,9 +405,9 @@ export default Sensor({
     {
       const v = mkVar("reach-out");
       const { brainDef, rule } = newBrain();
-      rule.do().appendTile(v as never);
-      rule.do().appendTile(opAssign as never);
-      rule.do().appendTile(readCount as never);
+      __test__appendTile(rule.do(), v as never);
+      __test__appendTile(rule.do(), opAssign as never);
+      __test__appendTile(rule.do(), readCount as never);
       const brain = runBrain(brainDef, 1);
       const systems = brain.getProgram()?.systems;
       assert.ok(systems && systems.size() === 1, "the reaching brain registers the System");
@@ -417,9 +417,9 @@ export default Sensor({
     {
       const v = mkVar("plain-out");
       const { brainDef, rule } = newBrain();
-      rule.do().appendTile(v as never);
-      rule.do().appendTile(opAssign as never);
-      rule.do().appendTile(plain as never);
+      __test__appendTile(rule.do(), v as never);
+      __test__appendTile(rule.do(), opAssign as never);
+      __test__appendTile(rule.do(), plain as never);
       const brain = runBrain(brainDef, 1);
       const systems = brain.getProgram()?.systems;
       assert.ok(systems === undefined || systems.size() === 0, "a non-reaching brain registers no System");
@@ -524,9 +524,9 @@ export default Sensor({
 
     const v = mkVar("dev-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readValue as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readValue as never);
     const brain = runBrain(brainDef, 2);
     // think sets value = bump(0) = 0 + BASE(20) + 7 = 27; tick2 reads it back.
     assert.equal(
@@ -568,9 +568,9 @@ export default Sensor({
 
     const v = mkVar("rate-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readValue as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readValue as never);
     const brain = runBrain(brainDef, 3);
     // think adds RATE(6) each tick; reads lag one tick: 0, 6, 12.
     assert.equal(num(brain, v.varName), 12, "the exported const inlines and accumulates in the System fiber");
@@ -612,9 +612,9 @@ export default Sensor({ name: "arb read b", inline: true, onExecute(ctx: Context
     {
       const v = mkVar("arb-a");
       const { brainDef, rule } = newBrain();
-      rule.do().appendTile(v as never);
-      rule.do().appendTile(opAssign as never);
-      rule.do().appendTile(readA as never);
+      __test__appendTile(rule.do(), v as never);
+      __test__appendTile(rule.do(), opAssign as never);
+      __test__appendTile(rule.do(), readA as never);
       const brain = runBrain(brainDef, 3);
       // think adds scale(1)=STEP(4) each tick; reads lag one tick: 0,4,8.
       assert.equal(num(brain, "arb-a"), 8, "brain 1 accumulates STEP each think");
@@ -626,9 +626,9 @@ export default Sensor({ name: "arb read b", inline: true, onExecute(ctx: Context
     {
       const v = mkVar("arb-b");
       const { brainDef, rule } = newBrain();
-      rule.do().appendTile(v as never);
-      rule.do().appendTile(opAssign as never);
-      rule.do().appendTile(readB as never);
+      __test__appendTile(rule.do(), v as never);
+      __test__appendTile(rule.do(), opAssign as never);
+      __test__appendTile(rule.do(), readB as never);
       const brain = runBrain(brainDef, 3);
       assert.equal(num(brain, "arb-b"), 8, "brain 2 (second importing module) reads the same climbing total");
       const systems = brain.getProgram()?.systems;
@@ -759,9 +759,9 @@ export default Sensor({
 
     const v = mkVar("colocated-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readValue as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readValue as never);
     const brain = runBrain(brainDef, 3);
     // init sets total = RATE(6); each think adds scaled() = RATE*2 = 12. Reads lag
     // one tick: think1 reads 6, think2 reads 18, think3 reads 30.
@@ -815,9 +815,9 @@ export default Sensor({ name: "read ab", inline: true, onExecute(ctx: Context): 
 
     const v = mkVar("ab-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readAB as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readAB as never);
     const brain = runBrain(brainDef, 2);
     // A.think -> A.v = fmt_a(0) = 1; B.think -> B.v = fmt_b(0) = 2; tile reads 1 + 2 = 3.
     assert.equal(num(brain, v.varName), 3, "each System's private fmt resolves to its own module's helper");
@@ -850,9 +850,9 @@ export default Sensor({ name: "dev read", inline: true, onExecute(ctx: Context):
 
     const v = mkVar("helper-const-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readValue as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readValue as never);
     const brain = runBrain(brainDef, 2);
     // think sets v = helper() = SECRET(9); tick2 reads it back.
     assert.equal(num(brain, v.varName), 9, "the private const inside the exported helper resolves in the System fiber");
@@ -879,9 +879,9 @@ export default Sensor({ name: "use compute", inline: true, onExecute(ctx: Contex
 
     const v = mkVar("compute-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readValue as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readValue as never);
     const brain = runBrain(brainDef, 1);
     assert.equal(
       num(brain, v.varName),
@@ -917,9 +917,9 @@ export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): num
 
     const v = mkVar("rate-via-helper-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readValue as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readValue as never);
     const brain = runBrain(brainDef, 2);
     // think sets v = helper() = RATE(7); tick2 reads it back.
     assert.equal(
@@ -947,9 +947,9 @@ export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): num
     );
     const v = mkVar("xmod-local-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readValue as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readValue as never);
     const brain = runBrain(brainDef, 2);
     assert.equal(num(brain, v.varName), 42, "a const imported into the System's module inlines in the System fiber");
   });
@@ -975,9 +975,9 @@ export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): num
     );
     const v = mkVar("xmod-third-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readValue as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readValue as never);
     const brain = runBrain(brainDef, 2);
     assert.equal(num(brain, v.varName), 55, "a third-module const inlines in the System fiber across module hops");
   });
@@ -997,9 +997,9 @@ export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): num
     );
     const v = mkVar("ambient-out");
     const { brainDef, rule } = newBrain();
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(readValue as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), readValue as never);
     const brain = runBrain(brainDef, 2);
     assert.equal(num(brain, v.varName), 7, "an ambient global resolves in a System body");
   });

@@ -1,4 +1,5 @@
 import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
+import { __test__appendTile } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileActuatorDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import {
@@ -103,7 +104,7 @@ export function makeBrain(
   const brainDef = BrainDef.emptyBrainDef(services);
   const pageDef = brainDef.pages().get(0) as BrainPageDef;
   const ruleDef = pageDef.children().get(0) as BrainRuleDef;
-  for (const tileDef of whenTiles) ruleDef.when().appendTile(tileDef);
-  for (const tileDef of doTiles) ruleDef.do().appendTile(tileDef);
+  for (const tileDef of whenTiles) __test__appendTile(ruleDef.when(), tileDef);
+  for (const tileDef of doTiles) __test__appendTile(ruleDef.do(), tileDef);
   return { brainDef, pageDef, ruleDef };
 }

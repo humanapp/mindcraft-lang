@@ -9,7 +9,7 @@ import {
   RuleSide,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { parseTilesForSuggestions, suggestTiles } from "@mindcraft-lang/core/brain/language-service";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
@@ -305,9 +305,9 @@ describe("inline sensor picker offering", () => {
 
     const brainDef = BrainDef.emptyBrainDef(services, "Inline Placement Brain");
     const when = brainDef.pages().get(0)!.children().get(0)!.when();
-    when.appendTile(new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services));
-    when.appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add))!);
-    when.appendTile(inlineTile);
+    __test__appendTile(when, new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services));
+    __test__appendTile(when, services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add))!);
+    __test__appendTile(when, inlineTile);
 
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
     environment.hydrateTileMetadata({ revision: bundle.revision, tiles: bundle.tiles });

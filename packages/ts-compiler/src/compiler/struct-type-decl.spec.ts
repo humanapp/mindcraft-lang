@@ -21,7 +21,7 @@ import {
   RuleSide,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { Expr } from "@mindcraft-lang/core/brain/compiler";
 import {
   type InsertionContext,
@@ -217,7 +217,7 @@ function num(brain: IBrain, name: string): number | undefined {
 
 function appendTiles(rule: BrainRuleDef, tiles: readonly IBrainTileDef[]): void {
   for (const tile of tiles) {
-    rule.do().appendTile(tile as never);
+    __test__appendTile(rule.do(), tile as never);
   }
 }
 

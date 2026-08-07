@@ -9,6 +9,7 @@ import {
   type MindcraftModule,
 } from "@mindcraft-lang/core";
 import { type BrainServices, mkOperatorTileId, TilePlacement } from "@mindcraft-lang/core/brain";
+import { __test__appendTile } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import {
@@ -239,11 +240,11 @@ describe("writableResult sensor field write (headless, native reference struct)"
     actorTile: BrainTileSensorDef
   ): void {
     const rule = brainDef.pages().get(0)!.children().get(0)!;
-    rule.when().appendTile(captured.alwaysTile!);
-    rule.do().appendTile(actorTile);
-    rule.do().appendTile(captured.healthAccessor!);
-    rule.do().appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign))!);
-    rule.do().appendTile(new BrainTileLiteralDef(CoreTypeIds.Number, 42, {}, services));
+    __test__appendTile(rule.when(), captured.alwaysTile!);
+    __test__appendTile(rule.do(), actorTile);
+    __test__appendTile(rule.do(), captured.healthAccessor!);
+    __test__appendTile(rule.do(), services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign))!);
+    __test__appendTile(rule.do(), new BrainTileLiteralDef(CoreTypeIds.Number, 42, {}, services));
   }
 
   test("green: a writableResult sensor result is mutated by a field write end to end", () => {

@@ -23,7 +23,7 @@ import {
   type SlotExpr,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type {
   ActuatorExpr,
   BinaryOpExpr,
@@ -4166,7 +4166,7 @@ describe("WHEN-result consumption", () => {
 
   test("a Buffer consumer is not offered on the WHEN side even when the rule's own WHEN produces a Buffer", () => {
     const rule = firstRule();
-    rule.when().appendTile(bufferProducerDef);
+    __test__appendTile(rule.when(), bufferProducerDef);
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: rule }, catalogList(), services);
     assert.ok(
       !offered(result, bufferConsumerDef.tileId),
@@ -4176,14 +4176,14 @@ describe("WHEN-result consumption", () => {
 
   test("a Buffer consumer is offered on the DO side of a rule whose WHEN produces a Buffer", () => {
     const rule = firstRule();
-    rule.when().appendTile(bufferProducerDef);
+    __test__appendTile(rule.when(), bufferProducerDef);
     const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
     assert.ok(offered(result, bufferConsumerDef.tileId), "the DO side reads the rule's own Buffer WHEN result");
   });
 
   test("a Buffer consumer is offered on a child rule's WHEN side when the ancestor produces a Buffer", () => {
     const parent = firstRule();
-    parent.when().appendTile(bufferProducerDef);
+    __test__appendTile(parent.when(), bufferProducerDef);
     const child = parent.appendNewRule();
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: child }, catalogList(), services);
     assert.ok(offered(result, bufferConsumerDef.tileId), "the child WHEN side reads the ancestor's Buffer result");
@@ -4191,7 +4191,7 @@ describe("WHEN-result consumption", () => {
 
   test("a Buffer consumer is offered on the DO side of an empty-WHEN child that falls through to a Buffer ancestor", () => {
     const parent = firstRule();
-    parent.when().appendTile(bufferProducerDef);
+    __test__appendTile(parent.when(), bufferProducerDef);
     const child = parent.appendNewRule();
     const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: child }, catalogList(), services);
     assert.ok(
@@ -4202,21 +4202,21 @@ describe("WHEN-result consumption", () => {
 
   test("a Number consumer is offered on the DO side under a Number WHEN", () => {
     const rule = firstRule();
-    rule.when().appendTile(numberProducerDef);
+    __test__appendTile(rule.when(), numberProducerDef);
     const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
     assert.ok(offered(result, numberConsumerDef.tileId));
   });
 
   test("a Number consumer is not offered on the DO side under a Buffer WHEN", () => {
     const rule = firstRule();
-    rule.when().appendTile(bufferProducerDef);
+    __test__appendTile(rule.when(), bufferProducerDef);
     const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
     assert.ok(!offered(result, numberConsumerDef.tileId), "Buffer does not convert to Number");
   });
 
   test("a Number consumer is offered on the DO side under a convertible (Boolean) WHEN", () => {
     const rule = firstRule();
-    rule.when().appendTile(booleanProducerDef);
+    __test__appendTile(rule.when(), booleanProducerDef);
     const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
     assert.ok(offered(result, numberConsumerDef.tileId), "Boolean converts to Number, so the consumer is valid");
   });
@@ -4244,7 +4244,7 @@ describe("WHEN-result consumption", () => {
 
   test("getRuleWhenResultType types a value-bearing WHEN sensor", () => {
     const rule = firstRule();
-    rule.when().appendTile(bufferProducerDef);
+    __test__appendTile(rule.when(), bufferProducerDef);
     assert.equal(
       getRuleWhenResultType(rule, services.edit.operatorOverloads, services.shared.conversions),
       CoreTypeIds.Buffer
@@ -4253,7 +4253,7 @@ describe("WHEN-result consumption", () => {
 
   test("getRuleWhenResultType types a boolean WHEN as Boolean", () => {
     const rule = firstRule();
-    rule.when().appendTile(booleanProducerDef);
+    __test__appendTile(rule.when(), booleanProducerDef);
     assert.equal(
       getRuleWhenResultType(rule, services.edit.operatorOverloads, services.shared.conversions),
       CoreTypeIds.Boolean
@@ -4268,7 +4268,7 @@ describe("WHEN-result consumption", () => {
 
   test("getRuleWhenResultType falls through an empty child WHEN to the ancestor's result type", () => {
     const parent = firstRule();
-    parent.when().appendTile(bufferProducerDef);
+    __test__appendTile(parent.when(), bufferProducerDef);
     const child = parent.appendNewRule();
     assert.equal(child.when().tiles().size(), 0, "child WHEN is empty");
     assert.equal(
@@ -4681,7 +4681,7 @@ describe("Rule hierarchy gate derivation", () => {
 
     const brain = BrainDef.emptyBrainDef(services, "hier-walk");
     const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
-    rule.when().appendTile(provider);
+    __test__appendTile(rule.when(), provider);
     const child = rule.appendNewRule();
 
     assert.ok(collectRuleHierarchyOutputKeys(rule).has(out.outputKey), "own WHEN side provides the key");
@@ -4704,12 +4704,13 @@ describe("Rule hierarchy gate derivation", () => {
 
     const brain = BrainDef.emptyBrainDef(services, "hier-swap");
     const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
-    rule.when().appendTile(provider);
+    __test__appendTile(rule.when(), provider);
     assert.ok(collectRuleHierarchyOutputKeys(rule).has(out.outputKey), "the provider's key is collected");
     assert.equal(collectRuleHierarchyCapabilities(rule).get(HIER_CAP_BIT), 1, "the provider's capability is collected");
 
     // Replace (not remove/append) the WHEN tile: a fresh collection reflects it.
     const replacement = new BrainTileLiteralDef(CoreTypeIds.Boolean, true, {}, services);
+    brain.catalog().registerTileDef(replacement);
     rule.when().replaceTileAtIndex(0, replacement);
     assert.ok(!collectRuleHierarchyOutputKeys(rule).has(out.outputKey), "the key disappears with its provider");
     assert.equal(
@@ -4912,7 +4913,7 @@ describe("Preceding-sibling consumption", () => {
 
   test("is offered as a prefix operator's operand in the second root rule", () => {
     const [, second] = rootRules(2);
-    second.when().appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not))!);
+    __test__appendTile(second.when(), services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not))!);
     const expr = parseTilesForSuggestions(second.when().tiles());
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: second, expr }, catalogList(), services);
     assert.ok(offered(result, siblingReaderDef.tileId));
@@ -4920,7 +4921,7 @@ describe("Preceding-sibling consumption", () => {
 
   test("is not offered as a prefix operator's operand in the first root rule", () => {
     const [first] = rootRules(2);
-    first.when().appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not))!);
+    __test__appendTile(first.when(), services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not))!);
     const expr = parseTilesForSuggestions(first.when().tiles());
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: first, expr }, catalogList(), services);
     assert.ok(!offered(result, siblingReaderDef.tileId));
@@ -4941,9 +4942,9 @@ describe("Preceding-sibling consumption", () => {
    */
   function conjunctionRightOperandInsert(rule: BrainRuleDef): InsertionContext {
     const boolLit = booleanLiteral();
-    rule.when().appendTile(boolLit);
-    rule.when().appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.And))!);
-    rule.when().appendTile(boolLit);
+    __test__appendTile(rule.when(), boolLit);
+    __test__appendTile(rule.when(), services.edit.tiles.get(mkOperatorTileId(CoreOpId.And))!);
+    __test__appendTile(rule.when(), boolLit);
     const before = List.from(rule.when().tiles().toArray().slice(0, 2));
     return {
       ruleSide: RuleSide.When,
@@ -4990,7 +4991,7 @@ describe("Preceding-sibling consumption", () => {
 
   test("is offered in a WHEN-side anonymous Boolean slot in the second root rule", () => {
     const [, second] = rootRules(2);
-    second.when().appendTile(anonBooleanSlotSensor());
+    __test__appendTile(second.when(), anonBooleanSlotSensor());
     const expr = parseTilesForSuggestions(second.when().tiles());
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: second, expr }, catalogList(), services);
     assert.ok(offered(result, siblingReaderDef.tileId));
@@ -4998,7 +4999,7 @@ describe("Preceding-sibling consumption", () => {
 
   test("is not offered in a WHEN-side anonymous Boolean slot in the first root rule", () => {
     const [first] = rootRules(2);
-    first.when().appendTile(anonBooleanSlotSensor());
+    __test__appendTile(first.when(), anonBooleanSlotSensor());
     const expr = parseTilesForSuggestions(first.when().tiles());
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: first, expr }, catalogList(), services);
     assert.ok(!offered(result, siblingReaderDef.tileId));

@@ -11,7 +11,7 @@ import { before, describe, test } from "node:test";
 
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { mkVariableTileId, TilePlacement } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileOperatorDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import {
@@ -64,9 +64,9 @@ function buildSingleSensorBrain(
   const p0 = brainDef.appendNewPage();
   assert.ok(p0.success);
   const r = p0.value!.page.children().get(0)!;
-  r.do().appendTile(v as never);
-  r.do().appendTile(opAssign as never);
-  r.do().appendTile(sensor as never);
+  __test__appendTile(r.do(), v as never);
+  __test__appendTile(r.do(), opAssign as never);
+  __test__appendTile(r.do(), sensor as never);
   const p1 = brainDef.appendNewPage();
   assert.ok(p1.success);
   return { brainDef, varName: v.varName };

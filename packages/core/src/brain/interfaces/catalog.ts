@@ -27,14 +27,28 @@ export interface IBrainTileDefBuilder {
   createOperatorTileDef(opId: string, opts: BrainTileDefCreateOptions): IBrainTileDef;
   // control-flow tiles
   createControlFlowTileDef(cfId: string, opts: BrainTileDefCreateOptions): IBrainTileDef;
-  // variable tiles
+  /**
+   * Mint the variable tile named `varName` into `catalog` and return the
+   * registered def, ready to place in a rule. An equivalent variable `catalog`
+   * already holds is reused; otherwise the new tile is registered.
+   */
   createVariableTileDef(
+    catalog: ITileCatalog,
     tileId: TileId,
     varName: string,
     varType: TypeId,
     uniqueId: string,
     opts: BrainTileDefCreateOptions
   ): IBrainTileDef;
-  // literal tiles
-  createLiteralTileDef(valueType: TypeId, value: unknown, opts: BrainTileLiteralDefOptions): IBrainTileDef;
+  /**
+   * Mint the literal tile for `value` of `valueType` into `catalog` and return
+   * the registered def, ready to place in a rule. An equivalent literal
+   * `catalog` already holds is reused; otherwise the new tile is registered.
+   */
+  createLiteralTileDef(
+    catalog: ITileCatalog,
+    valueType: TypeId,
+    value: unknown,
+    opts: BrainTileLiteralDefOptions
+  ): IBrainTileDef;
 }

@@ -6,3 +6,4 @@ export * from "./braindef";
 export * from "./commands";
 export * from "./pagedef";
 export * from "./ruledef";
+export * from "./tileset";

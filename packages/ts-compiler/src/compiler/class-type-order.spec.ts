@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { type BrainServices, type IBrainTileDef, mkVariableTileId } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileOperatorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import {
@@ -98,7 +98,7 @@ function runSensorToNumber(services: BrainServices, program: UserAuthoredProgram
   const rule = page.children().get(0)! as BrainRuleDef;
   const numVar = mkNumVar(varName);
   for (const tile of [numVar, new BrainTileOperatorDef("assign", {}, services), actionTileFor(services, program)]) {
-    rule.do().appendTile(tile as never);
+    __test__appendTile(rule.do(), tile as never);
   }
   const brain: IBrain = brainDef.compile();
   brain.initialize();

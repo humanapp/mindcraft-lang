@@ -14,7 +14,7 @@ import {
   mkVariableTileId,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
   flattenRuleTiles,
   paragraphText,
@@ -143,10 +143,10 @@ function makeRule(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrainT
   const brainDef = BrainDef.emptyBrainDef(services, "sentence-projection");
   const rule = brainDef.pages().get(0).children().get(0) as BrainRuleDef;
   for (const tileDef of whenTiles) {
-    rule.when().appendTile(tileDef);
+    __test__appendTile(rule.when(), tileDef);
   }
   for (const tileDef of doTiles) {
-    rule.do().appendTile(tileDef);
+    __test__appendTile(rule.do(), tileDef);
   }
   return rule;
 }
@@ -174,10 +174,10 @@ function appendRuleSpecs(page: BrainPageDef, specs: readonly RuleSpec[], depth: 
   for (const spec of specs) {
     const rule = page.appendNewRule();
     for (const tileDef of spec.when ?? []) {
-      rule.when().appendTile(tileDef);
+      __test__appendTile(rule.when(), tileDef);
     }
     for (const tileDef of spec.do ?? []) {
-      rule.do().appendTile(tileDef);
+      __test__appendTile(rule.do(), tileDef);
     }
     for (let i = 0; i < depth; i++) {
       assert.ok(rule.indent(), `rule indents to depth ${depth}`);

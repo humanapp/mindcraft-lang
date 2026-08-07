@@ -10,7 +10,7 @@ import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
 import { type BrainServices, mkOutputTileId, mkVariableTileId } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
   BrainDef,
   BrainJsonCodecErrorCode,
@@ -117,7 +117,7 @@ function brainWith(
   const rule = brainDef.pages().get(0)!.children().get(0)!;
   for (const tile of tiles) {
     services.edit.tiles.registerTileDef(tile);
-    rule.when().appendTile(tile);
+    __test__appendTile(rule.when(), tile);
   }
   return brainDef;
 }
