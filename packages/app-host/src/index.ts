@@ -102,6 +102,7 @@ export type {
   ProjectContentManifestError,
   ProjectContentManifestHostApp,
   ProjectContentManifestParseResult,
+  ProjectContentManifestRehearsalAdapter,
 } from "./project-content-manifest.js";
 export {
   isAbbreviatedCommitPin,
@@ -114,6 +115,7 @@ export {
   validateProjectContentManifest,
   validateProjectExtensions,
   validateProjectHostApp,
+  validateProjectRehearsalAdapter,
   validateProjectTargets,
 } from "./project-content-manifest.js";
 export type {

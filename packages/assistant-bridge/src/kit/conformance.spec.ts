@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { ADAPTER_CONTRACT_VERSION, AdapterNonconformanceCode } from "../target/adapter.js";
 import { createTargetAdapter, FAKE_INPUT_KIND, FAKE_SUBJECT, FAKE_TARGET_IDENTITY } from "../testing/index.js";
 import { proposeEdit } from "../tools/propose-edit.js";
 import type { AuthoringWorkspace } from "../tools/workspace.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";
-import { ConformanceCheckCode, checkAdapterConformance, checkArtifactLoads } from "./conformance.js";
+import {
+  ConformanceCheckCode,
+  checkAdapterConformance,
+  checkArtifactLoads,
+  checkArtifactSelfContained,
+} from "./conformance.js";
 import { ScenarioRejection, ScenarioRejectionCode } from "./rehearsal-adapter.js";
 
 /** The built artifact the fake adapter is published from. */
@@ -69,6 +75,15 @@ describe("the conformance suite", () => {
 
     assert.equal(check.ok, false);
     assert.match(check.detail, new RegExp(AdapterNonconformanceCode.IdentityMismatch));
+  });
+
+  test("refuses an artifact that only loads beside the packages it left unbundled", async () => {
+    const check = await checkArtifactSelfContained(fileURLToPath(artifactUrl), {
+      targetIdentity: FAKE_TARGET_IDENTITY,
+    });
+
+    assert.equal(check.ok, false, check.detail);
+    assert.equal(check.code, ConformanceCheckCode.SelfContainment);
   });
 });
 

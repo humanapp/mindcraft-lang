@@ -39,6 +39,9 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "mindcraft-assemble-target-package": "dist/kit/assemble-target-package.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

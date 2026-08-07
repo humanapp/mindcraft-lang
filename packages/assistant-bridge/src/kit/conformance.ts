@@ -1,9 +1,19 @@
 import { execFile } from "node:child_process";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import type { IBrainDef } from "@mindcraft-lang/core/app";
 import { summarizeRun } from "../simulate/summarizer.js";
 import type { AdapterExpectation, SimulationRun, SimulationScenario, TargetAdapter } from "../target/adapter.js";
-import { AdapterNonconformanceCode, adapterMethods, adapterNonconformance } from "../target/adapter.js";
+import {
+  AdapterNonconformanceCode,
+  adapterMethods,
+  adapterNonconformance,
+  readAdapterArtifact,
+} from "../target/adapter.js";
+import { createAuthoringWorkspace } from "../tools/workspace.js";
 
 /** Which property of a rehearsal adapter a check covers. */
 export const ConformanceCheckCode = {
@@ -15,6 +25,8 @@ export const ConformanceCheckCode = {
   GateEvents: "gate_events",
   /** The built artifact loads and publishes a conforming adapter in plain Node. */
   HeadlessPurity: "headless_purity",
+  /** The built artifact documents its tiles and rehearses away from the tree that built it. */
+  SelfContainment: "self_containment",
 } as const;
 
 /** Which property of a rehearsal adapter a check covers. */
@@ -175,4 +187,70 @@ export async function checkArtifactLoads(artifactUrl: URL, expectation: AdapterE
       ? `${nonconformance.code}: ${nonconformance.detail}`
       : `${artifactUrl.href} loaded and published a conforming adapter`,
   };
+}
+
+/** Name the self-containment check opens its throwaway document under. */
+const selfContainmentBrainName = "self-containment";
+
+/** Seed the self-containment rehearsal draws from. */
+const selfContainmentSeed = 1;
+
+/** Fixed-step thinks the self-containment rehearsal covers. */
+const selfContainmentThinks = 20;
+
+/** A failed self-containment check carrying `detail`. */
+function notSelfContained(detail: string): ConformanceCheck {
+  return { code: ConformanceCheckCode.SelfContainment, ok: false, detail };
+}
+
+/**
+ * Copy the artifact file at `artifactPath` into a fresh directory outside every
+ * build tree and exercise it there: load it in a plain Node process, read the
+ * tile documentation it resolves, and rehearse an empty brain in its world.
+ * Anything the artifact still reaches for beside its old location -- a package
+ * it did not bundle, a documentation tree, a shipped asset -- is missing at the
+ * copy, so the check fails. Only the artifact file itself is copied.
+ *
+ * @param artifactPath Absolute path of the built ES module publishing the adapter.
+ */
+export async function checkArtifactSelfContained(
+  artifactPath: string,
+  expectation: AdapterExpectation
+): Promise<ConformanceCheck> {
+  const copyRoot = await mkdtemp(join(tmpdir(), "mindcraft-artifact-"));
+  try {
+    const copied = join(copyRoot, basename(artifactPath));
+    await copyFile(artifactPath, copied);
+    const copiedUrl = pathToFileURL(copied);
+
+    const loaded = await checkArtifactLoads(copiedUrl, expectation);
+    if (!loaded.ok) return notSelfContained(loaded.detail);
+
+    const result = readAdapterArtifact(await import(copiedUrl.href), expectation);
+    if (!result.ok) return notSelfContained(`${result.nonconformance.code}: ${result.nonconformance.detail}`);
+    const { adapter } = result;
+
+    const documentedTiles = adapter.tileDocs().size;
+    if (documentedTiles === 0) return notSelfContained(`${copiedUrl.href} resolved no tile documentation`);
+
+    const subject = adapter.subjects()[0];
+    if (subject === undefined) return notSelfContained(`${copiedUrl.href} offers no subject to rehearse`);
+
+    const workspace = createAuthoringWorkspace(adapter, selfContainmentBrainName);
+    await adapter.run({
+      brainDef: workspace.brainDef,
+      scenario: { seed: selfContainmentSeed, subject },
+      thinks: selfContainmentThinks,
+    });
+
+    return {
+      code: ConformanceCheckCode.SelfContainment,
+      ok: true,
+      detail: `${basename(artifactPath)} documented ${documentedTiles} tiles and rehearsed ${subject} away from its build tree`,
+    };
+  } catch (cause) {
+    return notSelfContained(`${artifactPath}: ${cause instanceof Error ? cause.message : String(cause)}`);
+  } finally {
+    await rm(copyRoot, { recursive: true, force: true });
+  }
 }

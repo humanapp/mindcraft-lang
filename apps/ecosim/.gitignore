@@ -13,8 +13,9 @@ dist-headless
 dist-ssr
 *.local
 
-# Generated target-package bundle (manifest stays tracked)
+# Generated target-package payload (manifest stays tracked)
 target-package/app
+target-package/rehearsal
 
 # Editor directories and files
 .vscode/*

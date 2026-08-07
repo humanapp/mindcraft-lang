@@ -3,7 +3,8 @@ export type {
   ConformanceCheck,
   ConformanceReport,
 } from "./conformance.js";
-export { ConformanceCheckCode, checkAdapterConformance, checkArtifactLoads } from "./conformance.js";
+export { ConformanceCheckCode, checkAdapterConformance, checkArtifactSelfContained } from "./conformance.js";
+export { assertDependencyDistsFresh, StaleDependencyError } from "./dependency-freshness.js";
 export type { RehearsalEnvironmentOptions } from "./environment.js";
 export { createRehearsalEnvironment, createSeededRng } from "./environment.js";
 export type {
@@ -20,5 +21,5 @@ export {
   ScenarioRejection,
   ScenarioRejectionCode,
 } from "./rehearsal-adapter.js";
-export type { TileDocEntry } from "./tile-docs.js";
-export { readTileDocs } from "./tile-docs.js";
+export type { TileDocContent, TileDocEntry } from "./tile-docs.js";
+export { pairTileDocs, readTileDocContent } from "./tile-docs.js";

@@ -418,7 +418,11 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
   const publishedManifestData: ProjectContentManifest = { ...manifest, version, identity: coordinate };
   const publishedManifest = serializeProjectContentManifest(publishedManifestData);
   const files: PublishFile[] = [{ path: MINDCRAFT_JSON_PATH, content: encoder.encode(publishedManifest) }];
-  const listedPaths = [...(manifest.files ?? []), ...(manifest.hostApp?.files ?? [])];
+  const listedPaths = [
+    ...(manifest.files ?? []),
+    ...(manifest.hostApp?.files ?? []),
+    ...(manifest.rehearsalAdapter === undefined ? [] : [manifest.rehearsalAdapter.path]),
+  ];
   for (const path of listedPaths) {
     // The manifest serialized above is the published manifest; a files entry
     // naming it must not overwrite it with the source bytes.

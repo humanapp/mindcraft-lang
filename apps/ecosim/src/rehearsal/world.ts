@@ -1,9 +1,13 @@
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ScenarioInput, ScenarioInputKind } from "@mindcraft-lang/assistant-bridge";
 import type { IBrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
+import MatterBodyModule from "phaser/src/physics/matter-js/lib/body/Body.js";
+import MatterCompositeModule from "phaser/src/physics/matter-js/lib/body/Composite.js";
+import MatterEngineModule from "phaser/src/physics/matter-js/lib/core/Engine.js";
+import MatterEventsModule from "phaser/src/physics/matter-js/lib/core/Events.js";
+import MatterBodiesModule from "phaser/src/physics/matter-js/lib/factory/Bodies.js";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
 import { BLIP_RADIUS, type Blip } from "@/brain/blip";
@@ -31,14 +35,11 @@ import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store
 
 // -- Matter.js, loaded without Phaser -------------------------------------------
 
-const requireMatter = createRequire(import.meta.url);
-const MATTER_LIB = "phaser/src/physics/matter-js/lib";
-
-const MatterEngine = requireMatter(`${MATTER_LIB}/core/Engine.js`) as typeof MatterJS.Engine;
-const MatterEvents = requireMatter(`${MATTER_LIB}/core/Events.js`) as typeof MatterJS.Events;
-const MatterBodies = requireMatter(`${MATTER_LIB}/factory/Bodies.js`) as typeof MatterJS.Bodies;
-const MatterBody = requireMatter(`${MATTER_LIB}/body/Body.js`) as typeof MatterJS.Body;
-const MatterComposite = requireMatter(`${MATTER_LIB}/body/Composite.js`) as typeof MatterJS.Composite;
+const MatterEngine = MatterEngineModule as typeof MatterJS.Engine;
+const MatterEvents = MatterEventsModule as typeof MatterJS.Events;
+const MatterBodies = MatterBodiesModule as typeof MatterJS.Bodies;
+const MatterBody = MatterBodyModule as typeof MatterJS.Body;
+const MatterComposite = MatterCompositeModule as typeof MatterJS.Composite;
 
 /** Fixed simulation step in milliseconds: one frame at the world's frame rate. */
 export const STEP_MS = 1000 / WORLD_FPS;
@@ -46,11 +47,17 @@ export const STEP_MS = 1000 / WORLD_FPS;
 /** Project namespace the shipped brain documents deserialize under. */
 const PROJECT_NAMESPACE = "ecosim-rehearsal";
 
-/** The app directory this module was loaded from, resolved from the module's own location. */
-const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+/** Directory holding the brain documents the app ships for each archetype, from this module's own location. */
+const BRAIN_ASSET_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "public", "assets", "brain", "defs");
 
-/** Directory holding the brain documents the app ships for each archetype. */
-const BRAIN_ASSET_DIR = join(APP_DIR, "public", "assets", "brain", "defs");
+/** The serialized brain document the app ships for `archetype`, from the artifact or from the app tree. */
+function shippedBrainBytes(archetype: Archetype): ArrayBuffer {
+  const bytes =
+    typeof SHIPPED_BRAIN_DEFS === "object"
+      ? Buffer.from(SHIPPED_BRAIN_DEFS[archetype] ?? "", "base64")
+      : readFileSync(join(BRAIN_ASSET_DIR, `default-${archetype}.brain`));
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
 
 /** The world-construction draws of one run, taken from its seeded stream. */
 function seededRandom(rng: () => number): WorldRandom {
@@ -411,9 +418,7 @@ class HeadlessScene {
 function loadShippedBrains(env: MindcraftEnvironment): Record<Archetype, IBrainDef> {
   const brains: Partial<Record<Archetype, IBrainDef>> = {};
   for (const archetype of ARCHETYPE_NAMES) {
-    const file = readFileSync(join(BRAIN_ASSET_DIR, `default-${archetype}.brain`));
-    const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer;
-    const brain = deserializeBrainFromArrayBuffer(env, buffer, PROJECT_NAMESPACE);
+    const brain = deserializeBrainFromArrayBuffer(env, shippedBrainBytes(archetype), PROJECT_NAMESPACE);
     if (!brain) throw new Error(`the shipped ${archetype} brain did not deserialize`);
     brains[archetype] = brain;
   }
