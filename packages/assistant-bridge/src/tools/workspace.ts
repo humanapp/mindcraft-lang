@@ -28,8 +28,7 @@ export interface AuthoringWorkspace {
 export interface AuthoringWorkspaceOptions {
   /**
    * The document to open, as the brain JSON `IBrainDef.toJson` produces. The
-   * session edits this project, and `brainName` names the workspace only when
-   * this is absent.
+   * session edits this project.
    */
   readonly brainJson?: BrainJson;
 }

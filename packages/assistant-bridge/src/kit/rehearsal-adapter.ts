@@ -15,8 +15,8 @@ import type {
 } from "../target/adapter.js";
 import { ADAPTER_CONTRACT_VERSION } from "../target/adapter.js";
 import { createRehearsalEnvironment, createSeededRng } from "./environment.js";
-import type { NumberText } from "./value-text.js";
-import { createTileNamer, renderArgs, renderValue } from "./value-text.js";
+import type { NumberText, ValueLabel } from "./value-text.js";
+import { createTileNamer, createValueLabeler, renderArgs, renderValue } from "./value-text.js";
 
 /** Why a rehearsal adapter refused to stage a scenario. */
 export const ScenarioRejectionCode = {
@@ -194,10 +194,12 @@ class SubjectRecorder {
   /**
    * @param nameOf - Name a tile reads by, for the arguments a dispatch carried.
    * @param numberText - How a number renders, at the run's own precision.
+   * @param labelOf - The word a dispatched struct or list value reads by.
    */
   constructor(
     private readonly nameOf: (tileId: string) => string,
-    private readonly numberText: NumberText
+    private readonly numberText: NumberText,
+    private readonly labelOf: ValueLabel
   ) {}
 
   /** Bind the rule paths of the brain under study; call before the subject appears. */
@@ -222,14 +224,18 @@ class SubjectRecorder {
     const events = subject.brain.events();
     events.on("rule_when_evaluated", ({ ruleFuncId, result, fired }) => {
       if (!this.recording) return;
-      this.gates.push({ ruleId: this.ruleId(ruleFuncId), fired, result: renderValue(result, this.numberText) });
+      this.gates.push({
+        ruleId: this.ruleId(ruleFuncId),
+        fired,
+        result: renderValue(result, this.numberText, this.labelOf),
+      });
     });
     events.on("host_action_dispatched", ({ descriptor, args, ruleFuncId }) => {
       if (!this.recording) return;
       const ruleId = ruleFuncId === undefined ? undefined : this.ruleId(ruleFuncId);
       this.dispatches.push({
         action: descriptor.key,
-        args: renderArgs(descriptor.callDef.argSlots, args, this.nameOf, this.numberText),
+        args: renderArgs(descriptor.callDef.argSlots, args, this.nameOf, this.numberText, this.labelOf),
         ...(ruleId ? { ruleId } : {}),
       });
     });
@@ -286,9 +292,11 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
     rng: next,
     precision: driver.precision?.(),
   });
+  const numberText: NumberText = (value) => environment.appServices.numerics.formatNumber(value);
   const recorder = new SubjectRecorder(
     createTileNamer(() => environment.tileCatalogs(), environment.appServices.localizer),
-    (value) => environment.appServices.numerics.formatNumber(value)
+    numberText,
+    createValueLabeler(() => environment.tileCatalogs(), numberText)
   );
 
   const subjectBrain = environment.deserializeBrainJson(
