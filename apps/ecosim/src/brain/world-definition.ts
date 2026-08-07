@@ -186,9 +186,13 @@ export function randomSpawnPosition(
   );
 }
 
-/** The Matter circle radius of an actor body built from `physics`. */
-export function actorBodyRadius(physics: ArchetypePhysicsConfig): number {
-  return physics.radius * physics.scale;
+/**
+ * The Matter circle radius an actor body built from `physics` is created at.
+ * Apply `physics.scale` to the created body to bring it to the radius the actor
+ * is drawn at, `physics.radius * physics.scale`.
+ */
+export function actorBodyRadiusBeforeScale(physics: ArchetypePhysicsConfig): number {
+  return physics.radius;
 }
 
 /** Matter body options for an actor body built from `physics`. */

@@ -10,7 +10,7 @@ import { BLIP_RADIUS, type Blip } from "@/brain/blip";
 import { Engine } from "@/brain/engine";
 import {
   actorBodyOptions,
-  actorBodyRadius,
+  actorBodyRadiusBeforeScale,
   blipBodyOptions,
   blipCollisionFilter,
   boundaryWalls,
@@ -362,7 +362,7 @@ class HeadlessScene {
     const placed = this.placement;
     this.placement = undefined;
     const pos = placed ? { X: placed.x, Y: placed.y } : this.randomPositionWithinBounds(config.radius);
-    const body = MatterBodies.circle(pos.X, pos.Y, actorBodyRadius(config), actorBodyOptions(config));
+    const body = MatterBodies.circle(pos.X, pos.Y, actorBodyRadiusBeforeScale(config), actorBodyOptions(config));
     MatterBody.scale(body, config.scale, config.scale);
     MatterBody.setAngle(body, placed ? placed.facing : randomFacing(this.random));
     MatterComposite.add(this.matterWorld, body);

@@ -9,7 +9,7 @@ import { Engine } from "@/brain/engine";
 import type { ScoreSnapshot } from "@/brain/score";
 import {
   actorBodyOptions,
-  actorBodyRadius,
+  actorBodyRadiusBeforeScale,
   blipBodyOptions,
   blipCollisionFilter,
   CollisionCategory,
@@ -370,7 +370,7 @@ export class Playground extends Scene {
     const sprite = this.matter.add.sprite(pos.X, pos.Y, textureKey, undefined, {
       shape: {
         type: "circle",
-        radius: actorBodyRadius(config),
+        radius: actorBodyRadiusBeforeScale(config),
       },
       ...actorBodyOptions(config),
     });
