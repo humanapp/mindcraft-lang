@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
+import type { ScenarioInput } from "@mindcraft-lang/assistant-bridge";
 import { createRehearsalEnvironment, createSeededRng } from "@mindcraft-lang/assistant-bridge/kit";
-import type { Actor } from "@/brain/actor";
+import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
 import { createEcosimModule } from "@/brain/index";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "@/brain/world-definition";
@@ -10,6 +11,9 @@ import { createRehearsalWorld, STEP_MS, type WorldObserver } from "./world";
 
 /** Number of fixed steps a rehearsal runs. */
 const RUN_TICKS = 600;
+
+/** Population role a scripted run puts under study. */
+const SCRIPTED_SUBJECT: Archetype = "herbivore";
 
 /** One rehearsal's accumulated observations. */
 class RunObservations implements WorldObserver {
@@ -25,6 +29,8 @@ class RunObservations implements WorldObserver {
   blipsFired = 0;
   /** Number of actors spawned into the world, initial population plus respawns. */
   spawns = 0;
+  /** The first actor spawned in the role a scripted run puts under study. */
+  subject: Actor | undefined;
 
   onDispatch(actorId: number, action: string): void {
     let perActor = this.tickDispatch.get(actorId);
@@ -39,6 +45,7 @@ class RunObservations implements WorldObserver {
   /** Count the spawn and follow the new actor's brain for the actions it dispatches. */
   onSpawn(actor: Actor): void {
     this.spawns++;
+    if (this.subject === undefined && actor.archetype === SCRIPTED_SUBJECT) this.subject = actor;
     actor.brain.events().on("host_action_dispatched", ({ descriptor }) => {
       this.onDispatch(actor.actorId, descriptor.key);
     });
@@ -98,15 +105,22 @@ function traceTick(tick: number, actors: readonly Actor[], obs: RunObservations)
  * Run one whole-world rehearsal: stage the shipped world, populate it to the
  * app's default counts, and step gameplay and physics at a fixed timestep for
  * `ticks` steps, recording a trace line per tick.
+ *
+ * @param inputs Percepts the run scripts, each applied before the think it names.
  */
-async function runRehearsal(seed: number, ticks: number): Promise<RunResult> {
+async function runRehearsal(seed: number, ticks: number, inputs: readonly ScenarioInput[] = []): Promise<RunResult> {
   const obs = new RunObservations();
   const next = createSeededRng(seed);
   const environment = createRehearsalEnvironment({
     modules: [createEcosimModule()],
     rng: next,
   });
-  const world = await createRehearsalWorld({ environment, next, observer: obs });
+  const world = await createRehearsalWorld({
+    environment,
+    next,
+    observer: obs,
+    ...(inputs.length > 0 ? { scripted: { inputs, subject: () => obs.subject } } : {}),
+  });
 
   const trace: string[] = [];
   for (let tick = 0; tick < ticks; tick++) {
@@ -210,5 +224,24 @@ describe("headless whole-world rehearsal", () => {
     assert.equal(divergence, -1, verdict);
     assert.equal(first.hash, second.hash, "identical seeds produce byte-identical traces");
     assert.notEqual(first.hash, other.hash, "the seed drives the world the trace records");
+  });
+
+  test("stages a scripted cause without drawing from the run's own stream", async () => {
+    const staged: ScenarioInput[] = [
+      { kind: "carnivore-ahead", at: 0, value: 0 },
+      { kind: "carnivore-ahead", at: 150, value: 120 },
+    ];
+    const restated: ScenarioInput[] = [...staged, { kind: "carnivore-ahead", at: 300, value: 120 }];
+
+    const unscripted = await runRehearsal(20260805, RUN_TICKS);
+    const scripted = await runRehearsal(20260805, RUN_TICKS, staged);
+    const again = await runRehearsal(20260805, RUN_TICKS, restated);
+
+    assert.notEqual(scripted.hash, unscripted.hash, "the scripted causes reached the world");
+    assert.equal(
+      again.hash,
+      scripted.hash,
+      "re-stating a level the world already holds moved the world, so staging it drew from the stream"
+    );
   });
 });

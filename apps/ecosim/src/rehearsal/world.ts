@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ScenarioInput } from "@mindcraft-lang/assistant-bridge";
 import type { IBrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
@@ -18,6 +19,7 @@ import {
   obstacleBodyOptions,
   randomFacing,
   randomSpawnPosition,
+  WORLD_FPS,
   WORLD_GRAVITY,
   WORLD_HEIGHT,
   WORLD_WIDTH,
@@ -38,8 +40,8 @@ const MatterBodies = requireMatter(`${MATTER_LIB}/factory/Bodies.js`) as typeof 
 const MatterBody = requireMatter(`${MATTER_LIB}/body/Body.js`) as typeof MatterJS.Body;
 const MatterComposite = requireMatter(`${MATTER_LIB}/body/Composite.js`) as typeof MatterJS.Composite;
 
-/** Fixed simulation step in milliseconds, matching the app's 60 Hz physics substep. */
-export const STEP_MS = 1000 / 60;
+/** Fixed simulation step in milliseconds: one frame at the world's frame rate. */
+export const STEP_MS = 1000 / WORLD_FPS;
 
 /** Project namespace the shipped brain documents deserialize under. */
 const PROJECT_NAMESPACE = "ecosim-rehearsal";
@@ -220,6 +222,8 @@ class HeadlessScene {
   private readonly listeners = new Map<string, WorldListener[]>();
   private readonly random: WorldRandom;
   private engine!: Engine;
+  /** Where the next {@link spawn} puts its actor; unset until {@link placeNextSpawn} sets it. */
+  private placement?: { readonly x: number; readonly y: number; readonly facing: number };
 
   constructor(
     rng: () => number,
@@ -343,13 +347,24 @@ class HeadlessScene {
     return randomSpawnPosition(this.random, this.obstacleBodies, radius);
   }
 
+  /**
+   * Put the next actor this scene spawns at (`x`, `y`) turned to `facing`
+   * radians, drawing nothing for its placement. Spent by the {@link spawn} that
+   * follows; every later spawn draws its placement again.
+   */
+  placeNextSpawn(x: number, y: number, facing: number): void {
+    this.placement = { x, y, facing };
+  }
+
   /** Create the physical body and presentation resources for a newly spawned actor. */
   spawn(actor: Actor): Phaser.Physics.Matter.Sprite {
     const config = ARCHETYPES[actor.archetype].physics;
-    const pos = this.randomPositionWithinBounds(config.radius);
+    const placed = this.placement;
+    this.placement = undefined;
+    const pos = placed ? { X: placed.x, Y: placed.y } : this.randomPositionWithinBounds(config.radius);
     const body = MatterBodies.circle(pos.X, pos.Y, actorBodyRadius(config), actorBodyOptions(config));
     MatterBody.scale(body, config.scale, config.scale);
-    MatterBody.setAngle(body, randomFacing(this.random));
+    MatterBody.setAngle(body, placed ? placed.facing : randomFacing(this.random));
     MatterComposite.add(this.matterWorld, body);
 
     const sprite = new BodySprite(body, this);
@@ -421,6 +436,108 @@ function headlessStore(env: MindcraftEnvironment, brains: Record<Archetype, IBra
   } as unknown as EcosimEnvironmentStore;
 }
 
+// -- Scripted world causes ------------------------------------------------------
+
+/** Suffix the input kind of each archetype ends in. */
+const AHEAD_SUFFIX = "-ahead";
+
+/** Archetype each scenario input kind stages a creature of, keyed by kind. */
+const STAGED_ARCHETYPES: Readonly<Record<string, Archetype>> = Object.fromEntries(
+  ARCHETYPE_NAMES.map((archetype) => [`${archetype}${AHEAD_SUFFIX}`, archetype])
+);
+
+/**
+ * Every percept kind a scenario may script for this world, sorted: one per
+ * archetype. An entry's value is the distance in world pixels at which the
+ * world holds one creature of that kind directly ahead of the creature under
+ * study, and zero takes the kind out of the world entirely.
+ */
+export const SCENARIO_INPUT_KINDS: readonly string[] = Object.keys(STAGED_ARCHETYPES).sort();
+
+/** What a run scripts into the world it stages. */
+export interface ScriptedCauses {
+  /** Percepts the run scripts, each applied before the think it names. */
+  readonly inputs: readonly ScenarioInput[];
+  /** The creature under study, or undefined while it is not in the world. */
+  subject(): Actor | undefined;
+}
+
+/**
+ * The creatures a scenario's inputs put in the world. Each archetype a scenario
+ * stages is held to a single creature standing a fixed distance directly ahead
+ * of the creature under study, and the world keeps no others of that kind.
+ */
+class StagedCreatures {
+  /** Distance in world pixels each staged archetype stands at; zero for a kind taken out of the world. */
+  private readonly heldAt = new Map<Archetype, number>();
+  /** The creature the staging put in the world for each archetype it holds one of. */
+  private readonly standing = new Map<Archetype, Actor>();
+
+  constructor(
+    private readonly engine: Engine,
+    private readonly scene: HeadlessScene,
+    private readonly causes: ScriptedCauses
+  ) {}
+
+  /**
+   * Apply every input scheduled for the zero-based think `think`, in scenario
+   * order. Every entry must name one of {@link SCENARIO_INPUT_KINDS}.
+   */
+  applyScheduled(think: number): void {
+    for (const input of this.causes.inputs) {
+      if (input.at !== think) continue;
+      this.hold(STAGED_ARCHETYPES[input.kind], Number(input.value));
+    }
+  }
+
+  /**
+   * Put every held creature where the scenario holds it, spawning one for a
+   * staged kind the world has none of. Does nothing until the creature under
+   * study is in the world.
+   */
+  place(): void {
+    const subject = this.causes.subject();
+    if (!subject) return;
+    for (const [archetype, distance] of this.heldAt) {
+      if (distance <= 0) continue;
+      const facing = subject.sprite.rotation;
+      const x = subject.sprite.x + Math.cos(facing) * distance;
+      const y = subject.sprite.y + Math.sin(facing) * distance;
+      const creature = this.standingCreature(archetype, x, y, facing);
+      if (!creature) continue;
+      creature.sprite.setPosition(x, y);
+      creature.sprite.setVelocity(0, 0);
+    }
+  }
+
+  /**
+   * Take the world's population of `archetype` down to what `distance` asks:
+   * one creature held that far ahead of the creature under study, or none at
+   * all at zero. Every other creature of that kind dies where it stands, the
+   * creature under study excepted.
+   */
+  private hold(archetype: Archetype, distance: number): void {
+    this.heldAt.set(archetype, distance);
+    this.engine.setDesiredCount(archetype, distance > 0 ? 1 : 0);
+    const kept = distance > 0 ? this.standing.get(archetype) : undefined;
+    if (!kept) this.standing.delete(archetype);
+    const subject = this.causes.subject();
+    for (const actor of this.engine.getActorsByArchetype(archetype)) {
+      if (actor !== kept && actor !== subject) actor.drainEnergy(actor.energy);
+    }
+  }
+
+  /** The creature standing for `archetype`, spawned at (`x`, `y`) facing `facing` when none is. */
+  private standingCreature(archetype: Archetype, x: number, y: number, facing: number): Actor | undefined {
+    const held = this.standing.get(archetype);
+    if (held && this.engine.getActorById(held.actorId) === held) return held;
+    this.scene.placeNextSpawn(x, y, facing);
+    const spawned = this.engine.spawn(archetype);
+    if (spawned) this.standing.set(archetype, spawned);
+    return spawned;
+  }
+}
+
 /** Every live actor, ordered by actor id. */
 export function liveActors(engine: Engine): Actor[] {
   const actors: Actor[] = [];
@@ -446,6 +563,8 @@ export interface RehearsalWorldOptions {
   readonly observer: WorldObserver;
   /** Brains to run in place of the shipped defaults, built against {@link environment}. */
   readonly brains?: Partial<Record<Archetype, IBrainDef>>;
+  /** World causes the run scripts. */
+  readonly scripted?: ScriptedCauses;
 }
 
 /** A staged, running rehearsal world. */
@@ -475,12 +594,17 @@ export async function createRehearsalWorld(options: RehearsalWorldOptions): Prom
   engine.start();
   await engine.loadBrains();
 
+  const staged = options.scripted ? new StagedCreatures(engine, scene, options.scripted) : undefined;
   let time = 0;
+  let think = 0;
   return {
     obstacleCount: scene.obstacleBodies.length,
     step: () => {
+      staged?.applyScheduled(think);
+      staged?.place();
       scene.step(time);
       time += STEP_MS;
+      think++;
     },
     actors: () => liveActors(engine),
     shutdown: () => engine.shutdown(),

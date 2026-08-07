@@ -8,6 +8,9 @@ export const WORLD_WIDTH = 1024;
 /** Height of the world in pixels. */
 export const WORLD_HEIGHT = 768;
 
+/** Frames per second the world advances at. */
+export const WORLD_FPS = 60;
+
 /** Thickness in pixels of each of the four walls that enclose the world. */
 export const WALL_THICKNESS = 32;
 
