@@ -1,10 +1,11 @@
 /**
  * Agreement between a warning-severity build diagnostic and the program the
- * build emits. `CompilationDiagCode.UncompilableExpressionDropped` and the
- * warning-severity type diagnostics each report a recovery, and the build still
- * produces a program; these tests pin that the program the VM receives honours
- * that claim -- it runs without faulting and the rules the recovery did not
- * touch still act.
+ * build emits. The warning-severity parse diagnostics,
+ * `CompilationDiagCode.UncompilableExpressionDropped`, and the warning-severity
+ * type diagnostics each report a recovery, and the build still produces a
+ * program; these tests pin that the program the VM receives honours that claim
+ * -- it runs without faulting and the rules the recovery did not touch still
+ * act.
  */
 
 import assert from "node:assert/strict";
@@ -20,10 +21,10 @@ import {
   type MindcraftModule,
 } from "@mindcraft-lang/core";
 import type { IBrainDef, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { mkOperatorTileId, RuleSide } from "@mindcraft-lang/core/brain";
+import { CoreControlFlowId, mkControlFlowTileId, mkOperatorTileId, RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__appendTile } from "@mindcraft-lang/core/brain/__test__";
-import type { BrainBuildDiagnostic } from "@mindcraft-lang/core/brain/compiler";
-import { CompilationDiagCode, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
+import type { BrainBuildDiagnostic, DiagCode } from "@mindcraft-lang/core/brain/compiler";
+import { CompilationDiagCode, ParseDiagCode, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef, BrainTileModifierDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
@@ -210,6 +211,11 @@ function droppedDiags(outcome: RunOutcome): BrainBuildDiagnostic[] {
   return outcome.diagnostics.filter((d) => d.code === CompilationDiagCode.UncompilableExpressionDropped);
 }
 
+/** Diagnostics of `outcome` carrying `code`. */
+function diagsWithCode(outcome: RunOutcome, code: DiagCode): BrainBuildDiagnostic[] {
+  return outcome.diagnostics.filter((d) => d.code === code);
+}
+
 /** Error-severity diagnostics of `outcome`. */
 function errorDiags(outcome: RunOutcome): BrainBuildDiagnostic[] {
   return outcome.diagnostics.filter((d) => d.severity === "error");
@@ -351,5 +357,84 @@ describe("a dropped expression leaves a program the VM runs", () => {
     assertRecovered(outcome);
     assert.deepEqual(droppedDiags(outcome), []);
     assert.equal(fixture.steerCalls.length, 1);
+  });
+});
+
+/**
+ * Asserts `outcome` recovered and reports `code`, with every instance of it
+ * naming `rulePath` at "warning" severity.
+ */
+function assertReportedAt(outcome: RunOutcome, code: DiagCode, rulePath: string): void {
+  assertRecovered(outcome);
+  const reported = diagsWithCode(outcome, code);
+  assert.ok(reported.length > 0, `the build must report code ${code}`);
+  for (const diag of reported) {
+    assert.equal(diag.severity, "warning");
+    assert.equal(diag.params?.rulePath, rulePath);
+  }
+}
+
+describe("a recovered parse shape reaches the build result under its own code", () => {
+  test("a sub-expression with no operand names the parse code, not only the drop", () => {
+    const fixture = createFixture();
+    const { environment, brainDef, page, rule } = newBrain(fixture);
+    const services = environment.brainServices;
+
+    // `1 +` with nothing to its right: the operand is a sub-expression the parser cannot read.
+    __test__appendTile(rule.when(), new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services));
+    __test__appendTile(rule.when(), services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add))!);
+    __test__appendTile(page.appendNewRule()!.do(), fixture.markTile);
+
+    const outcome = buildAndRun(environment, brainDef, 1);
+
+    assertReportedAt(outcome, ParseDiagCode.ExpectedExpressionInSubExpr, "0/0");
+    assert.ok(fixture.markCalls() > 0, "the sibling rule still acts");
+  });
+
+  test("a tile stranded after the side's expression names the parse code, not only the drop", () => {
+    const fixture = createFixture();
+    const { environment, brainDef, rule } = newBrain(fixture);
+    const services = environment.brainServices;
+
+    __test__appendTile(rule.do(), fixture.markTile);
+    __test__appendTile(rule.do(), new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services));
+
+    const outcome = buildAndRun(environment, brainDef, 1);
+
+    assertReportedAt(outcome, ParseDiagCode.UnexpectedExpressionAfterExpression, "0/0");
+    assert.equal(fixture.markCalls(), 1, "only the surviving first expression ran");
+  });
+
+  test("an unclosed group names the parse code, and drops nothing", () => {
+    const fixture = createFixture();
+    const { environment, brainDef, rule } = newBrain(fixture);
+    const services = environment.brainServices;
+
+    __test__appendTile(rule.when(), services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!);
+    __test__appendTile(rule.when(), new BrainTileLiteralDef(CoreTypeIds.Boolean, true, {}, services));
+    __test__appendTile(rule.do(), fixture.markTile);
+
+    const outcome = buildAndRun(environment, brainDef, 1);
+
+    assertReportedAt(outcome, ParseDiagCode.ExpectedClosingParen, "0/0");
+    assert.deepEqual(droppedDiags(outcome), [], "the group's contents still compile");
+    assert.ok(fixture.markCalls() > 0, "the rule the group gates still acts");
+  });
+
+  test("an invalid assignment target names the parse code, not only the drop", () => {
+    const fixture = createFixture();
+    const { environment, brainDef, page, rule } = newBrain(fixture);
+    const services = environment.brainServices;
+
+    __test__appendTile(rule.do(), new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services));
+    __test__appendTile(rule.do(), services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign))!);
+    __test__appendTile(rule.do(), new BrainTileLiteralDef(CoreTypeIds.Number, 2, {}, services));
+    __test__appendTile(page.appendNewRule()!.do(), fixture.markTile);
+
+    const outcome = buildAndRun(environment, brainDef, 1);
+
+    assertReportedAt(outcome, ParseDiagCode.InvalidAssignmentTarget, "0/0");
+    assert.equal(droppedDiags(outcome).length, 1, "the drop it caused is reported alongside it");
+    assert.ok(fixture.markCalls() > 0, "the sibling rule still acts");
   });
 });

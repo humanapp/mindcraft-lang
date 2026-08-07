@@ -372,7 +372,7 @@ export class BrainCompiler {
    * Push each diagnostic as a build diagnostic at its classified severity,
    * attributed to the rule at `rulePath`.
    */
-  private pushValidationDiags(diags: ReadonlyList<ParseDiag>, rulePath: string): void {
+  private pushParseDiags(diags: ReadonlyList<ParseDiag>, rulePath: string): void {
     for (let i = 0; i < diags.size(); i++) {
       const diag = diags.get(i)!;
       this.compileDiags.push({
@@ -415,28 +415,28 @@ export class BrainCompiler {
     const doTiles = ruleDef.do().tiles();
 
     // A tile whose placement excludes the side it appears on blocks the build.
-    this.pushValidationDiags(validateTilePlacement(whenTiles, RuleSide.When, this.localizer), rulePath);
-    this.pushValidationDiags(validateTilePlacement(doTiles, RuleSide.Do, this.localizer), rulePath);
+    this.pushParseDiags(validateTilePlacement(whenTiles, RuleSide.When, this.localizer), rulePath);
+    this.pushParseDiags(validateTilePlacement(doTiles, RuleSide.Do, this.localizer), rulePath);
 
     // A tile reporting on the preceding sibling rule blocks the build in the
     // first rule at its level, which has no rule above it.
-    this.pushValidationDiags(validatePrecedingSiblingConsumers(whenTiles, siblingIndex > 0, this.localizer), rulePath);
-    this.pushValidationDiags(validatePrecedingSiblingConsumers(doTiles, siblingIndex > 0, this.localizer), rulePath);
+    this.pushParseDiags(validatePrecedingSiblingConsumers(whenTiles, siblingIndex > 0, this.localizer), rulePath);
+    this.pushParseDiags(validatePrecedingSiblingConsumers(doTiles, siblingIndex > 0, this.localizer), rulePath);
 
     // An output tile with no providing sensor in the rule hierarchy (this
     // rule's WHEN and DO sides plus every ancestor rule's) blocks the build.
     const providedOutputKeys = collectRuleHierarchyOutputKeys(ruleDef);
-    this.pushValidationDiags(validateOutputProviders(whenTiles, providedOutputKeys, this.localizer), rulePath);
-    this.pushValidationDiags(validateOutputProviders(doTiles, providedOutputKeys, this.localizer), rulePath);
+    this.pushParseDiags(validateOutputProviders(whenTiles, providedOutputKeys, this.localizer), rulePath);
+    this.pushParseDiags(validateOutputProviders(doTiles, providedOutputKeys, this.localizer), rulePath);
 
     // A tile whose required capabilities no tile in the rule hierarchy
     // provides blocks the build.
     const availableCapabilities = collectRuleHierarchyCapabilities(ruleDef);
-    this.pushValidationDiags(
+    this.pushParseDiags(
       validateCapabilityRequirements(whenTiles, availableCapabilities, this.catalogs, this.localizer),
       rulePath
     );
-    this.pushValidationDiags(
+    this.pushParseDiags(
       validateCapabilityRequirements(doTiles, availableCapabilities, this.catalogs, this.localizer),
       rulePath
     );
@@ -451,18 +451,20 @@ export class BrainCompiler {
       this.conversions
     );
     const doSideWhenResult = availableWhenResultType(ruleDef, RuleSide.Do, this.operatorOverloads, this.conversions);
-    this.pushValidationDiags(
+    this.pushParseDiags(
       validateWhenResultConsumers(whenTiles, whenSideWhenResult, this.conversions, this.typeRegistry, this.localizer),
       rulePath
     );
-    this.pushValidationDiags(
+    this.pushParseDiags(
       validateWhenResultConsumers(doTiles, doSideWhenResult, this.conversions, this.typeRegistry, this.localizer),
       rulePath
     );
 
-    // Parse WHEN and DO sides
+    // A rule's parse diagnostics precede the compilation diagnostics its tiles yield.
     const whenParseResult = parseBrainTiles(whenTiles, this.localizer, -1, 0);
     const doParseResult = parseBrainTiles(doTiles, this.localizer, -1, 0, whenParseResult.nextNodeId);
+    this.pushParseDiags(whenParseResult.diags, rulePath);
+    this.pushParseDiags(doParseResult.diags, rulePath);
 
     // Type checking
     const typeEnv: TypeEnv = new Dict<number, TypeInfo>();

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { RuleSide } from "@mindcraft-lang/core/brain";
-import { ParseDiagCode } from "@mindcraft-lang/core/brain/compiler";
+import { CompilationDiagCode, ParseDiagCode } from "@mindcraft-lang/core/brain/compiler";
 import type { BrainJson } from "@mindcraft-lang/core/brain/model";
 import { AddRuleCommand, AddTileCommand } from "@mindcraft-lang/core/brain/model";
 import { RehearsalRejection, RehearsalRejectionCode } from "../kit/index.js";
@@ -101,6 +101,19 @@ describe("a session opened on a work-in-progress document", () => {
       assert.equal(error.ruleId, wipRule.broken);
     }
   });
+
+  test("names the parse code behind a standing drop as well as the drop", () => {
+    const diagnostics = documentDiagnostics(wipWorkspace());
+
+    assert.ok(
+      diagnostics.includes(`${ParseDiagCode.UnexpectedActionCallAfterExpression}@${wipRule.warned}`),
+      JSON.stringify(diagnostics)
+    );
+    assert.ok(
+      diagnostics.includes(`${CompilationDiagCode.UncompilableExpressionDropped}@${wipRule.warned}`),
+      JSON.stringify(diagnostics)
+    );
+  });
 });
 
 describe("propose_edit judges an edit by what it introduced", () => {
@@ -116,6 +129,35 @@ describe("propose_edit judges an edit by what it introduced", () => {
 
     assert.equal(edit.ok, true, JSON.stringify(edit));
     assert.equal(documentErrors(workspace).length, 2, "the pre-existing errors are untouched");
+  });
+
+  test("accepts an edit that leaves a rule's standing parse warning exactly as it found it", () => {
+    const workspace = wipWorkspace();
+    const diagnosticsBefore = documentDiagnostics(workspace);
+
+    const edit = proposeEdit(workspace, {
+      op: "placeTile",
+      ruleId: wipRule.warned,
+      side: "do",
+      tileId: tiles.actuator,
+    });
+
+    assert.equal(edit.ok, true, JSON.stringify(edit));
+    assert.deepEqual(documentDiagnostics(workspace), diagnosticsBefore, "the standing warning neither grew nor shrank");
+  });
+
+  test("rejects an edit that raises a standing warning's count, naming the parse code over the drop", () => {
+    const workspace = wipWorkspace();
+
+    const rejected = proposeEdit(workspace, {
+      op: "placeTile",
+      ruleId: wipRule.warned,
+      side: "when",
+      tileId: tiles.sensor,
+    });
+
+    assert.equal(rejected.ok, false);
+    assert.equal((rejected as { code: number }).code, ParseDiagCode.UnexpectedActionCallAfterExpression);
   });
 
   test("accepts an edit to a clean rule while the broken rule reports two errors", () => {

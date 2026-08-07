@@ -228,7 +228,7 @@ describe("edit-time severity classification", () => {
     }
   });
 
-  test("a parse diagnostic the build does not report classifies below error", () => {
+  test("a recovered parse diagnostic reaches the build ahead of the drop it caused", () => {
     const fixture = createFixture();
     const { environment, brainDef, rule } = newBrain(fixture);
 
@@ -240,19 +240,24 @@ describe("edit-time severity classification", () => {
     const diag = only(parseDiags(rule), ParseDiagCode.UnexpectedExpressionAfterExpression);
     assert.equal(diagnosticSeverity(diag.code), "warning");
 
-    // Agreement: the build drops the expression and still produces a program.
+    // Agreement: the build recovers the same way and still produces a program.
     const build = environment.linkBrain(brainDef);
     assert.ok(build.program, "a recovered parse error must not block the build");
+    const buildDiags = build.diagnostics.toArray();
     assert.deepEqual(
-      build.diagnostics.toArray().filter((d) => d.severity === "error"),
+      buildDiags.filter((d) => d.severity === "error"),
       []
     );
 
-    // The drop the build reports instead names where the expression was.
-    const dropped = only(build.diagnostics.toArray(), CompilationDiagCode.UncompilableExpressionDropped);
+    const parsed = only(buildDiags, ParseDiagCode.UnexpectedExpressionAfterExpression);
+    assert.equal(parsed.severity, "warning");
+    assert.equal(parsed.params?.rulePath, "0/0");
+
+    const dropped = only(buildDiags, CompilationDiagCode.UncompilableExpressionDropped);
     assert.equal(dropped.severity, "warning");
     assert.equal(dropped.params?.rulePath, "0/0");
     assert.equal(dropped.params?.side, RuleSide.When);
     assert.equal(dropped.params?.tileId, fixture.sensorTile.tileId);
+    assert.ok(buildDiags.indexOf(parsed) < buildDiags.indexOf(dropped), "the cause is reported before the consequence");
   });
 });
