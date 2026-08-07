@@ -1,31 +1,30 @@
 {
-  "name": "@mindcraft-lang/assistant-bridge",
+  "name": "@mindcraft-lang/assistant-relay",
   "version": "0.1.0",
-  "description": "Assistant bridge: the open tool contract, catalog digest, trace summarizer, target adapter interface, and the rehearsal adapter kit",
+  "description": "Assistant relay protocol: the session handshake, turn events, and tool-call wire the hosted Assistant's split loop speaks",
   "license": "MIT",
   "type": "module",
   "author": "humanapp",
   "repository": {
     "type": "git",
     "url": "https://github.com/humanapp/mindcraft-lang.git",
-    "directory": "packages/assistant-bridge"
+    "directory": "packages/assistant-relay"
   },
   "bugs": {
     "url": "https://github.com/humanapp/mindcraft-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/assistant-bridge#readme",
+  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/assistant-relay#readme",
   "keywords": [
     "mindcraft",
     "assistant",
+    "protocol",
+    "schemas",
     "tile-based",
     "visual-programming",
     "typescript",
     "education",
     "stem",
-    "coding",
-    "creative-coding",
-    "kodu",
-    "project-spark"
+    "coding"
   ],
   "files": [
     "dist",
@@ -44,14 +43,6 @@
       "types": "./dist/index.d.ts",
       "browser": "./dist/index.js",
       "import": "./dist/index.js"
-    },
-    "./kit": {
-      "types": "./dist/kit/index.d.ts",
-      "import": "./dist/kit/index.js"
-    },
-    "./relay": {
-      "types": "./dist/relay/index.d.ts",
-      "import": "./dist/relay/index.js"
     },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
@@ -77,8 +68,6 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@mindcraft-lang/assistant-relay": "file:../assistant-relay",
-    "@mindcraft-lang/core": "file:../core",
     "zod": "^4.3.6"
   },
   "devDependencies": {

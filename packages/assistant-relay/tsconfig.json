@@ -3,7 +3,6 @@
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "bundler",
-    "types": ["node"],
     "composite": true,
     "declaration": true,
     "declarationMap": true,
@@ -20,6 +19,5 @@
     "preserveSymlinks": true
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "**/*.spec.ts"],
-  "references": [{ "path": "../assistant-relay/tsconfig.json" }, { "path": "../core/tsconfig.esm.json" }]
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
 }

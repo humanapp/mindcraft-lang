@@ -6,6 +6,18 @@ export interface CatalogDigest {
   readonly text: string;
   /** Tiles the text carries a line for. */
   readonly tileCount: number;
+  /** Fingerprint of {@link text} as eight lowercase hex digits. Equal hashes mean equal text. */
+  readonly hash: string;
+}
+
+/** Fingerprint `text` as eight lowercase hex digits, the same in every runtime. */
+function fingerprint(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 /** Collapse a description to one line of digest text. */
@@ -38,5 +50,6 @@ export function catalogDigest(tiles: readonly CatalogTile[]): CatalogDigest {
     .filter((tile) => !tile.hidden)
     .slice()
     .sort((a, b) => (a.tileId < b.tileId ? -1 : a.tileId > b.tileId ? 1 : 0));
-  return { text: listed.map(digestLine).join("\n"), tileCount: listed.length };
+  const text = listed.map(digestLine).join("\n");
+  return { text, tileCount: listed.length, hash: fingerprint(text) };
 }

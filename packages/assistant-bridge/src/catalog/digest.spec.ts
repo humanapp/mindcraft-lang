@@ -39,6 +39,16 @@ describe("catalog digest", () => {
     assert.notEqual(first.text, other.text);
   });
 
+  test("fingerprints the same text alike and different text apart", () => {
+    const first = catalogDigest([tile({ tileId: "a" })]);
+    const same = catalogDigest([tile({ tileId: "a" })]);
+    const other = catalogDigest([tile({ tileId: "a", description: "senses light" })]);
+
+    assert.match(first.hash, /^[0-9a-f]{8}$/);
+    assert.equal(first.hash, same.hash);
+    assert.notEqual(first.hash, other.hash);
+  });
+
   test("omits tiles the editor hides from its pickers", () => {
     const digest = catalogDigest([tile({ tileId: "a" }), tile({ tileId: "b", hidden: true })]);
 
