@@ -5,11 +5,18 @@
   "private": true,
   "author": "humanapp",
   "license": "MIT",
+  "mindcraftBuild": {
+    "needs": [
+      "rbx"
+    ]
+  },
   "scripts": {
-    "prebuild": "npm --prefix ../../packages/core run build:rbx",
+    "build:deps": "node ../../scripts/build-packages.js .",
+    "prebuild": "npm run build:deps",
     "build": "rbxtsc --type game",
+    "prewatch": "npm run build:deps",
     "watch": "rbxtsc --type game -w",
-    "pretest": "npm --prefix ../../packages/core run build:node",
+    "pretest": "npm run build:deps",
     "test": "tsx --tsconfig test/tsconfig.json --test test/abi-parity.spec.ts",
     "pretest:luau": "npm run build",
     "test:luau": "lune run test-luau/run.luau",

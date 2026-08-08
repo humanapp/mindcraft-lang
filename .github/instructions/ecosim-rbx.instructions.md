@@ -260,13 +260,20 @@ fails to deserialize falls back to `createArchetypeFallbackBrain`.
 ## Build & Verify
 
 ```
-npm run build       # prebuilds packages/core rbx target, then rbxtsc --type game
-npm run watch       # incremental compile, run alongside `rojo serve`
-npm test            # prebuilds packages/core node target, then the ABI parity test
+npm run build:deps  # builds the local package dependencies, rbx variant included
+npm run build       # build:deps, then rbxtsc --type game
+npm run watch       # build:deps, then incremental compile alongside `rojo serve`
+npm test            # build:deps, then the ABI parity test
 npm run test:luau   # rebuilds, then runs the Luau harness on Lune
 npm run check       # Biome (lint + format), autofix, over ./src and ./test
 npm run check:only  # Biome, read-only -- must print only the summary line
 ```
+
+`build:deps` runs `scripts/build-packages.js`, which walks this app's `file:`
+dependencies and builds each in dependency order. This app declares
+`mindcraftBuild.needs: ["rbx"]`, so the driver also runs the `rbx` variant of
+every dependency that declares one -- `packages/core`'s `build:rbx`. Consumers
+that do not name the variant never build it.
 
 `rbxtsc` type-checks as it compiles, so `npm run build` is the typecheck. Plain
 `tsc --noEmit` is not usable: roblox-ts supplies its own lib and transforms.

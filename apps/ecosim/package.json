@@ -28,9 +28,9 @@
     "game-maker"
   ],
   "scripts": {
-    "predev": "npm run build --prefix ../../packages/core",
+    "predev": "npm run build:deps",
     "dev": "vite --config vite/config.dev.mjs --force",
-    "prebuild": "npm run install:packages --prefix ../.. && npm run build:deps && tsc --build tsconfig.refs.json",
+    "prebuild": "npm run install:packages --prefix ../.. && npm run build:deps",
     "build": "vite build --config vite/config.prod.mjs",
     "postbuild": "npm run build:headless",
     "build:headless": "vite build --config vite/config.headless.mjs",

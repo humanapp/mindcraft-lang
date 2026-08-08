@@ -32,6 +32,23 @@ const PLATFORM_MODULES = [
 const PRIMITIVES_MODULES = ["fourcc"];
 
 /**
+ * Directory beside the package manifest holding each build target's platform
+ * emit, preserved so the substitution can be applied again on a later run.
+ */
+const PLATFORM_EMIT_DIR = ".platform-emit";
+
+/**
+ * Directory holding the preserved platform emit for one build target's output
+ * subdirectory.
+ * @param {string} target - Build target, named for its `dist` subdirectory ("node", "esm", "rbx")
+ * @param {string} subdir - Output subdirectory the modules sit in ("platform", "primitives")
+ * @returns {string} Absolute path of the directory
+ */
+function platformEmitDir(target, subdir) {
+  return path.join(__dirname, "..", PLATFORM_EMIT_DIR, target, subdir);
+}
+
+/**
  * Generate file mappings for a given platform suffix and file extensions.
  * @param {string[]} modules - Array of module names
  * @param {string} platformSuffix - Platform suffix (e.g., "node", "rbx")
@@ -51,37 +68,49 @@ function generateMappings(modules, platformSuffix, extensions) {
 }
 
 /**
- * Copy platform-specific files to generic files, applying optional transformations.
- * @param {string} dir - Directory containing the files
- * @param {Object} mappings - File mapping object
+ * Write each platform-specific build output over the generic module it
+ * implements, applying an optional transformation, and preserve the platform
+ * output under `storeDir`.
+ *
+ * A run takes the compiler's freshly emitted platform file whenever one is
+ * present in `dir`, refreshing the store, and reads the store otherwise. The
+ * platform file is removed from `dir` either way, leaving only generic names in
+ * the build output. Running twice produces the same bytes as running once.
+ * Exits non-zero naming any module whose platform output is in neither place.
+ *
+ * @param {string} dir - Directory containing the build output
+ * @param {string} storeDir - Directory the platform output is preserved in
+ * @param {Object} mappings - Mapping of platform-specific file names to generic file names
  * @param {Function} [transformer] - Optional function to transform file content before writing
  */
-function copyPlatformFiles(dir, mappings, transformer) {
+function copyPlatformFiles(dir, storeDir, mappings, transformer) {
   const missing = [];
 
   for (const [platformFile, genericFile] of Object.entries(mappings)) {
-    const platformPath = path.join(dir, platformFile);
+    const emittedPath = path.join(dir, platformFile);
+    const storedPath = path.join(storeDir, platformFile);
     const genericPath = path.join(dir, genericFile);
 
-    if (fs.existsSync(platformPath)) {
-      console.log(chalk.cyan(`Copying ${platformFile} to ${genericFile}`));
-
-      let content = fs.readFileSync(platformPath, "utf8");
-
-      // Apply transformation if provided
-      if (transformer) {
-        content = transformer(content, platformFile);
-      }
-
-      fs.writeFileSync(genericPath, content);
-
-      console.log(chalk.gray(`Deleting ${platformFile}`));
-      fs.unlinkSync(platformPath);
-    } else if (!fs.existsSync(genericPath)) {
-      // Platform file missing and generic output also absent -- true error.
-      missing.push(platformFile);
+    if (fs.existsSync(emittedPath)) {
+      fs.mkdirSync(storeDir, { recursive: true });
+      fs.copyFileSync(emittedPath, storedPath);
+      fs.unlinkSync(emittedPath);
     }
-    // else: platform file already processed by a prior incremental build run.
+
+    if (!fs.existsSync(storedPath)) {
+      missing.push(platformFile);
+      continue;
+    }
+
+    console.log(chalk.cyan(`Substituting ${platformFile} for ${genericFile}`));
+
+    let content = fs.readFileSync(storedPath, "utf8");
+
+    if (transformer) {
+      content = transformer(content, platformFile);
+    }
+
+    fs.writeFileSync(genericPath, content);
   }
 
   if (missing.length > 0) {
@@ -90,7 +119,7 @@ function copyPlatformFiles(dir, mappings, transformer) {
       console.error(chalk.red(`  - ${f}`));
     }
     console.error(chalk.red("This usually means the compiler did not generate all expected output."));
-    console.error(chalk.red("Try: rm -rf dist/ && npm run build"));
+    console.error(chalk.red("Try: npm run clean && npm run build"));
     process.exit(1);
   }
 }
@@ -100,4 +129,5 @@ module.exports = {
   PRIMITIVES_MODULES,
   generateMappings,
   copyPlatformFiles,
+  platformEmitDir,
 };

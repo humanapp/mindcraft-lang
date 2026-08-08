@@ -52,10 +52,17 @@
       "import": "./dist/testing/index.js"
     }
   },
+  "mindcraftBuild": {
+    "script": "build:prod",
+    "outputs": [
+      "dist"
+    ],
+    "postProcessed": false
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:prod": "tsc --build tsconfig.prod.json",
-    "clean": "tsc --build tsconfig.json --clean",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo tsconfig.prod.tsbuildinfo",
     "lint:only": "biome lint ./src",
     "check:only": "biome check ./src",
     "format:only": "biome format ./src",

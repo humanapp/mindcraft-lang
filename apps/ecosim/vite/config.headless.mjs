@@ -1,19 +1,14 @@
 import { readdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { defineConfig } from 'vite';
-import { assertDependencyDistsFresh, readTileDocContent } from '@mindcraft-lang/assistant-bridge/kit';
+import { assertDependencyDistsFresh, readTargetIdentity, readTileDocContent } from '@mindcraft-lang/assistant-bridge/kit';
 
 const appDir = process.cwd();
 
 assertDependencyDistsFresh(appDir);
 
-// Target identity injected into the headless artifact as TARGET_IDENTITY, read
-// from the identity this target's own mindcraft.json declares.
-const manifestPath = path.resolve(appDir, 'target-package/mindcraft.json');
-const targetIdentity = JSON.parse(readFileSync(manifestPath, 'utf8')).identity;
-if (typeof targetIdentity !== 'string' || targetIdentity.length === 0) {
-    throw new Error(`${manifestPath} declares no identity for the headless adapter to report.`);
-}
+// Target identity injected into the headless artifact as TARGET_IDENTITY.
+const targetIdentity = readTargetIdentity(appDir);
 
 // The app's own assets, injected so the artifact carries them and resolves
 // nothing from the tree that built it: the tile documentation, and the brain

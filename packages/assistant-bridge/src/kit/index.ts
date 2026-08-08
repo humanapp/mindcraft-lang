@@ -21,5 +21,6 @@ export {
   ScenarioRejection,
   ScenarioRejectionCode,
 } from "./rehearsal-adapter.js";
+export { readTargetIdentity, targetManifestPath } from "./target-manifest.js";
 export type { TileDocContent, TileDocEntry } from "./tile-docs.js";
 export { pairTileDocs, readTileDocContent } from "./tile-docs.js";

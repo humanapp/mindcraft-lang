@@ -60,9 +60,12 @@ plant off its anchor makes it visibly spring back.
 npm run build
 ```
 
-`prebuild` runs `build:rbx` in `packages/core` first, so the Luau target of the
-core package is always current. The compiler writes Luau into `out/` and copies
-the roblox-ts runtime into `include/`. Neither directory is tracked.
+`prebuild` runs `npm run build:deps`, which builds this app's `file:`
+dependencies in dependency order. This app's `mindcraftBuild.needs` names the
+`rbx` variant, so the driver also builds the Luau target of every dependency
+that declares one -- here, `packages/core`. The compiler writes Luau into
+`out/` and copies the roblox-ts runtime into `include/`. Neither directory is
+tracked.
 
 For an incremental compile that watches for source changes:
 

@@ -2,7 +2,13 @@
 
 const path = require("path");
 const chalk = require("chalk");
-const { PLATFORM_MODULES, PRIMITIVES_MODULES, generateMappings, copyPlatformFiles } = require("./build-utils");
+const {
+  PLATFORM_MODULES,
+  PRIMITIVES_MODULES,
+  generateMappings,
+  copyPlatformFiles,
+  platformEmitDir,
+} = require("./build-utils");
 
 const distDir = path.join(__dirname, "..", "dist", "node");
 
@@ -21,10 +27,10 @@ function nodeTransformer(content, filename) {
 
 // Copy primitives files
 const primitivesDir = path.join(distDir, "primitives");
-copyPlatformFiles(primitivesDir, primitivesMappings, nodeTransformer);
+copyPlatformFiles(primitivesDir, platformEmitDir("node", "primitives"), primitivesMappings, nodeTransformer);
 
 // Copy platform files
 const platformDir = path.join(distDir, "platform");
-copyPlatformFiles(platformDir, platformMappings, nodeTransformer);
+copyPlatformFiles(platformDir, platformEmitDir("node", "platform"), platformMappings, nodeTransformer);
 
 console.log(chalk.green("Platform file copying complete."));

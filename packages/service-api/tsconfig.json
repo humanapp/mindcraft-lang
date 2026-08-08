@@ -17,6 +17,5 @@
     "preserveSymlinks": true
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "**/*.spec.ts"],
-  "references": [{ "path": "../core/tsconfig.esm.json" }]
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
 }

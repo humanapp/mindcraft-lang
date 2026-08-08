@@ -18,8 +18,5 @@
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "**/*.spec.ts", "src/test-support"],
-  "references": [
-    { "path": "../core/tsconfig.esm.json" },
-    { "path": "../service-api/tsconfig.json" }
-  ]
+  "references": [{ "path": "../service-api/tsconfig.json" }]
 }

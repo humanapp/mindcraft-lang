@@ -3,10 +3,17 @@ import { join, relative, resolve } from "node:path";
 
 /** Why a dependency package's build output cannot stand in for its sources. */
 export const DistFreshnessCode = {
-  /** The package builds a `dist` and none is present. */
+  /** The package builds an output group and none of that group is present. */
   DistMissing: "dist_missing",
-  /** A source file of the package is newer than everything in its `dist`. */
+  /** A source file of the package is newer than everything in one of its output groups. */
   DistStale: "dist_stale",
+  /**
+   * The step that writes a platform-specific implementation over the shared
+   * module it implements did not complete: an output group still holds output
+   * named for a platform-specific source, or a shared module was left as the
+   * empty module a compiler emits for a declaration-only source.
+   */
+  DistHalfBuilt: "dist_half_built",
 } as const;
 
 /** Why a dependency package's build output cannot stand in for its sources. */
@@ -27,24 +34,43 @@ export interface StaleDependency {
  * A build refused because one or more dependency packages would have been
  * bundled from a `dist` that does not reflect their sources. Carries one
  * {@link StaleDependency} per offending package; each names the command that
- * rebuilds it.
+ * rebuilds it. The message lists every offending package and ends with the
+ * remedy.
  */
 export class StaleDependencyError extends Error {
   constructor(readonly stale: readonly StaleDependency[]) {
     super(
       `${stale.length} dependency package(s) would be bundled from a stale dist:\n${stale
         .map((entry) => `  ${entry.code} (${entry.packageName}): ${entry.detail}\n    rebuild: ${entry.rebuild}`)
-        .join("\n")}`
+        .join("\n")}\nRebuild the packages named above, then run this build again.`
     );
     this.name = "StaleDependencyError";
   }
+}
+
+/** One thing a package builds: the script that builds it and what it leaves behind. */
+interface BuildStep {
+  /** npm script that produces the step's outputs. */
+  readonly script: string;
+  /** Paths, relative to the package, the script must leave behind. */
+  readonly outputs: readonly string[];
+}
+
+/** How a package declares what it builds, in its manifest's `mindcraftBuild` field. */
+interface BuildDeclaration extends Partial<BuildStep> {
+  /** Output groups built only when a package in the graph names them in {@link needs}. */
+  readonly variants?: Readonly<Record<string, BuildStep>>;
+  /** Variant names this package consumes from the packages it depends on. */
+  readonly needs?: readonly string[];
 }
 
 /** The shape read out of a package manifest. */
 interface PackageManifest {
   readonly name?: string;
   readonly dependencies?: Readonly<Record<string, string>>;
+  readonly devDependencies?: Readonly<Record<string, string>>;
   readonly scripts?: Readonly<Record<string, string>>;
+  readonly mindcraftBuild?: BuildDeclaration;
 }
 
 /** Prefix of a dependency specifier naming a package by its location on disk. */
@@ -52,6 +78,12 @@ const localSpecifier = "file:";
 
 /** Suffix of a source file that no package emits build output for. */
 const specSuffix = ".spec.ts";
+
+/** Suffix of a source file holding declarations only. */
+const declarationSuffix = ".d.ts";
+
+/** Suffix of a source file a compiler emits build output for. */
+const sourceSuffix = ".ts";
 
 /** Directory a package keeps its sources in. */
 const sourceDirName = "src";
@@ -72,9 +104,10 @@ function readManifest(packageDir: string): PackageManifest {
 }
 
 /**
- * Every package directory reachable from `packageDir` through `file:` runtime
- * dependencies, transitively, excluding `packageDir` itself. These are the
- * packages whose build output an artifact built here can carry.
+ * Every package directory reachable from `packageDir` through `file:`
+ * dependencies, runtime and dev alike, transitively, excluding `packageDir`
+ * itself. These are the packages whose build output a build started here
+ * consumes.
  */
 function localDependencyDirs(packageDir: string): string[] {
   const found: string[] = [];
@@ -86,7 +119,8 @@ function localDependencyDirs(packageDir: string): string[] {
     visited.add(resolved);
     if (!isRoot) found.push(resolved);
 
-    for (const [, specifier] of Object.entries(readManifest(resolved).dependencies ?? {})) {
+    const manifest = readManifest(resolved);
+    for (const specifier of Object.values({ ...manifest.dependencies, ...manifest.devDependencies })) {
       if (!specifier.startsWith(localSpecifier)) continue;
       const dependencyDir = resolve(resolved, specifier.slice(localSpecifier.length));
       if (existsSync(join(dependencyDir, "package.json"))) walk(dependencyDir, false);
@@ -137,6 +171,125 @@ function newestBuildRecord(packageDir: string): { path: string; mtimeMs: number 
   return newest;
 }
 
+/**
+ * Stems of the platform-specific implementations under `directory` and below,
+ * each in the `<module>.<platform>` form its file name carries. A source file is
+ * one when a `<module>.ts` sits beside it declaring the module both build
+ * targets share.
+ */
+function platformImplementationStems(directory: string): string[] {
+  const entries = readdirSync(directory, { withFileTypes: true });
+  const siblings = new Set(entries.filter((entry) => entry.isFile()).map((entry) => entry.name));
+  const stems: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      stems.push(...platformImplementationStems(join(directory, entry.name)));
+      continue;
+    }
+    const { name } = entry;
+    if (!entry.isFile() || !name.endsWith(sourceSuffix)) continue;
+    if (name.endsWith(specSuffix) || name.endsWith(declarationSuffix)) continue;
+    const stem = name.slice(0, -sourceSuffix.length);
+    const platformStart = stem.lastIndexOf(".");
+    if (platformStart <= 0) continue;
+    if (siblings.has(`${stem.slice(0, platformStart)}${sourceSuffix}`)) stems.push(stem);
+  }
+
+  return stems;
+}
+
+/** Every file under `directory` and below, keyed by file name, valued by full path. */
+function outputsByName(directory: string): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      for (const [name, paths] of outputsByName(path)) found.set(name, [...(found.get(name) ?? []), ...paths]);
+    } else if (entry.isFile()) {
+      found.set(entry.name, [...(found.get(entry.name) ?? []), path]);
+    }
+  }
+  return found;
+}
+
+/** Statements a compiler emits to mark a module whose source defines nothing. */
+const emptyModuleMarkers = [
+  '"use strict";',
+  'Object.defineProperty(exports, "__esModule", { value: true });',
+  "export {};",
+];
+
+/** `text` with every whitespace run removed. */
+function withoutWhitespace(text: string): string {
+  return text.replace(/\s+/g, "");
+}
+
+/**
+ * Whether `source` defines nothing once its comments, whitespace, and module
+ * markers are removed.
+ *
+ * @param source Contents of an emitted JavaScript module.
+ */
+function definesNothing(source: string): boolean {
+  let rest = withoutWhitespace(source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, ""));
+  for (const marker of emptyModuleMarkers) rest = rest.split(withoutWhitespace(marker)).join("");
+  return rest.length === 0;
+}
+
+/** A Luau module that returns no value, once comments and whitespace are removed. */
+const emptyLuauModule = "returnnil";
+
+/**
+ * A Luau module holding one empty container table, once comments and whitespace
+ * are removed. A namespace whose every member is declared elsewhere compiles to
+ * this.
+ */
+const emptyLuauContainer = /^local(\w+)={}dolocal_container=\1endreturn{\1=\1,?}$/;
+
+/**
+ * Whether `source` defines nothing once its comments and whitespace are
+ * removed.
+ *
+ * @param source Contents of an emitted Luau module.
+ */
+function definesNothingLuau(source: string): boolean {
+  const rest = withoutWhitespace(source.replace(/--\[\[[\s\S]*?\]\]/g, "").replace(/--[^\n]*/g, ""));
+  return rest === emptyLuauModule || emptyLuauContainer.test(rest);
+}
+
+/** Extensions of build output a shared module's implementation is judged in, and how. */
+const stubDetectors: ReadonlyArray<{ suffix: string; definesNothing: (source: string) => boolean }> = [
+  { suffix: ".js", definesNothing },
+  { suffix: ".luau", definesNothing: definesNothingLuau },
+];
+
+/**
+ * Build output named for a shared module in `stems` that defines nothing, as
+ * paths relative to `dependencyDir`, sorted. These are the modules whose
+ * platform-specific implementation was never written over them.
+ *
+ * @param dependencyDir Absolute path of the package the output belongs to.
+ * @param emitted Build output of the package, keyed by file name.
+ * @param stems Platform-specific implementation stems, each `<module>.<platform>`.
+ */
+function unsubstitutedOutputs(
+  dependencyDir: string,
+  emitted: Map<string, string[]>,
+  stems: readonly string[]
+): string[] {
+  const sharedModules = new Set(stems.map((stem) => stem.slice(0, stem.lastIndexOf("."))));
+  const found: string[] = [];
+  for (const module of sharedModules) {
+    for (const detector of stubDetectors) {
+      for (const path of emitted.get(`${module}${detector.suffix}`) ?? []) {
+        if (detector.definesNothing(readFileSync(path, "utf8"))) found.push(relative(dependencyDir, path));
+      }
+    }
+  }
+  return found.sort();
+}
+
 /** The npm script that rebuilds `manifest`, or `undefined` when it declares none. */
 function buildScript(manifest: PackageManifest): string | undefined {
   const scripts = manifest.scripts ?? {};
@@ -145,29 +298,99 @@ function buildScript(manifest: PackageManifest): string | undefined {
   return undefined;
 }
 
-/** Whether `dependencyDir`'s `dist` reflects its sources, as a finding or `undefined`. */
-function staleness(packageDir: string, dependencyDir: string): StaleDependency | undefined {
-  const manifest = readManifest(dependencyDir);
-  const script = buildScript(manifest);
-  const sourceDir = join(dependencyDir, sourceDirName);
-  if (script === undefined || !existsSync(sourceDir)) return undefined;
+/** The variants declared by `manifest`, keyed by name. */
+function declaredVariants(manifest: PackageManifest): Readonly<Record<string, BuildStep>> {
+  return manifest.mindcraftBuild?.variants ?? {};
+}
 
-  const packageName = manifest.name ?? relative(packageDir, dependencyDir);
-  const rebuild = `npm run ${script} --prefix ${relative(packageDir, dependencyDir)}`;
-  const newestSource = newestFile(sourceDir, (path) => !path.endsWith(specSuffix));
-  if (newestSource === undefined) return undefined;
+/**
+ * The output groups a build of `manifest` produces for a graph that needs
+ * `needed`: its default group, then each variant it declares that `needed`
+ * names. A package that declares nothing builds its build script into `dist`.
+ * Empty when the package builds nothing.
+ */
+function buildSteps(manifest: PackageManifest, needed: ReadonlySet<string>): BuildStep[] {
+  const declaration = manifest.mindcraftBuild;
+  const script = declaration?.script ?? buildScript(manifest);
+  if (script === undefined) return [];
+  const steps: BuildStep[] = [{ script, outputs: declaration?.outputs ?? [distDirName] }];
+  for (const [name, variant] of Object.entries(declaredVariants(manifest))) {
+    if (needed.has(name)) steps.push(variant);
+  }
+  return steps;
+}
 
-  const distDir = join(dependencyDir, distDirName);
-  const built = existsSync(distDir) ? newestFile(distDir, () => true) : undefined;
+/** Every build output under the existing directories among `dirs`, keyed by file name. */
+function outputsUnder(dirs: readonly string[]): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    for (const [name, paths] of outputsByName(dir)) found.set(name, [...(found.get(name) ?? []), ...paths]);
+  }
+  return found;
+}
+
+/** Everything one dependency is judged against, shared by every output group of it. */
+interface Subject {
+  readonly packageDir: string;
+  readonly dependencyDir: string;
+  readonly packageName: string;
+  /** Newest source file of the dependency, the moment its output must be no older than. */
+  readonly newestSource: { path: string; mtimeMs: number };
+  /** Platform-specific implementation stems of the dependency, each `<module>.<platform>`. */
+  readonly stems: readonly string[];
+  /**
+   * Newest incremental-build record beside the dependency's manifest, counted as
+   * a build of every group. Absent for a dependency that builds more than one
+   * output group.
+   */
+  readonly buildRecord: { path: string; mtimeMs: number } | undefined;
+}
+
+/** Whether one output group of `subject` reflects its sources, as a finding or `undefined`. */
+function stepStaleness(subject: Subject, step: BuildStep): StaleDependency | undefined {
+  const { packageDir, dependencyDir, packageName, newestSource, stems } = subject;
+  const rebuild = `npm run ${step.script} --prefix ${relative(packageDir, dependencyDir)}`;
+  const outputDirs = step.outputs.map((output) => join(dependencyDir, output));
+
+  const built = outputDirs
+    .filter((dir) => existsSync(dir))
+    .map((dir) => newestFile(dir, () => true))
+    .reduce<{ path: string; mtimeMs: number } | undefined>(later, undefined);
   if (built === undefined) {
     return {
       code: DistFreshnessCode.DistMissing,
       packageName,
       rebuild,
-      detail: `${relative(packageDir, distDir)} holds no build output`,
+      detail: `${step.outputs.map((output) => relative(packageDir, join(dependencyDir, output))).join(", ")} holds no build output`,
     };
   }
-  const lastBuilt = later(built, newestBuildRecord(dependencyDir));
+
+  const emitted = outputsUnder(outputDirs);
+  const leftBehind = stems.filter((stem) => [...emitted.keys()].some((name) => name.startsWith(`${stem}.`))).sort();
+  if (leftBehind.length > 0) {
+    return {
+      code: DistFreshnessCode.DistHalfBuilt,
+      packageName,
+      rebuild,
+      detail:
+        `${relative(packageDir, dependencyDir)} still holds output named ${leftBehind.join(", ")}, ` +
+        `which a complete build renames over the module it implements`,
+    };
+  }
+  const unsubstituted = unsubstitutedOutputs(dependencyDir, emitted, stems);
+  if (unsubstituted.length > 0) {
+    return {
+      code: DistFreshnessCode.DistHalfBuilt,
+      packageName,
+      rebuild,
+      detail:
+        `${relative(packageDir, dependencyDir)} emitted ${unsubstituted.join(", ")} defining nothing, ` +
+        `and a complete build writes a platform-specific implementation over each`,
+    };
+  }
+
+  const lastBuilt = later(built, subject.buildRecord);
   if (lastBuilt === undefined || newestSource.mtimeMs <= lastBuilt.mtimeMs) return undefined;
   return {
     code: DistFreshnessCode.DistStale,
@@ -179,21 +402,72 @@ function staleness(packageDir: string, dependencyDir: string): StaleDependency |
   };
 }
 
+/** Whether `dependencyDir`'s build output reflects its sources, as a finding or `undefined`. */
+function staleness(
+  packageDir: string,
+  dependencyDir: string,
+  needed: ReadonlySet<string>
+): StaleDependency | undefined {
+  const manifest = readManifest(dependencyDir);
+  const sourceDir = join(dependencyDir, sourceDirName);
+  const steps = buildSteps(manifest, needed);
+  if (steps.length === 0 || !existsSync(sourceDir)) return undefined;
+
+  const newestSource = newestFile(sourceDir, (path) => !path.endsWith(specSuffix));
+  if (newestSource === undefined) return undefined;
+
+  const singleGroup = Object.keys(declaredVariants(manifest)).length === 0;
+  const subject: Subject = {
+    packageDir,
+    dependencyDir,
+    packageName: manifest.name ?? relative(packageDir, dependencyDir),
+    newestSource,
+    stems: platformImplementationStems(sourceDir),
+    buildRecord: singleGroup ? newestBuildRecord(dependencyDir) : undefined,
+  };
+
+  for (const step of steps) {
+    const finding = stepStaleness(subject, step);
+    if (finding) return finding;
+  }
+  return undefined;
+}
+
 /**
- * Every `file:` runtime dependency of the package at `packageDir`, transitively,
- * whose `dist` does not reflect its `src`: either no build output at all, or a
- * source file edited after the package was last built. A package was last built
- * at the newest of its build output and its incremental-build records, so a
- * build that re-emits nothing still counts. Source files ending in `.spec.ts`
- * are not build inputs and are not compared. A dependency that declares no build
- * script or keeps no `src` directory is not checked.
+ * The variant names the package at `packageDir` and the packages it reaches
+ * name in `mindcraftBuild.needs`. These are the output groups a build started
+ * here consumes on top of every dependency's default group.
+ */
+function neededVariants(packageDir: string): Set<string> {
+  const names = new Set<string>();
+  for (const dir of [packageDir, ...localDependencyDirs(packageDir)]) {
+    for (const name of readManifest(dir).mindcraftBuild?.needs ?? []) names.add(name);
+  }
+  return names;
+}
+
+/**
+ * Every `file:` dependency of the package at `packageDir`, runtime and dev
+ * alike, transitively, whose build output does not reflect its `src`: no output
+ * at all, output left under a platform-specific source's name, a shared
+ * platform module emitted as a script defining nothing, or a source file edited
+ * after the package was last built. Each dependency is judged over the output
+ * groups a build started at `packageDir` consumes -- its default group, plus
+ * every variant named in the `mindcraftBuild.needs` of `packageDir` or anything
+ * it reaches -- so a group nothing in this graph consumes is not compared. A
+ * package that builds one group was last built at the newest of that output and
+ * its incremental-build records, so a build that re-emits nothing still counts.
+ * Source files ending in `.spec.ts` are not build inputs and are not compared. A
+ * dependency that declares no build script or keeps no `src` directory is not
+ * checked.
  *
  * @param packageDir Absolute path of the package whose bundle is about to be built.
  */
 export function staleDependencyDists(packageDir: string): StaleDependency[] {
+  const needed = neededVariants(packageDir);
   const stale: StaleDependency[] = [];
   for (const dependencyDir of localDependencyDirs(packageDir)) {
-    const finding = staleness(packageDir, dependencyDir);
+    const finding = staleness(packageDir, dependencyDir, needed);
     if (finding) stale.push(finding);
   }
   return stale.sort((a, b) => (a.packageName < b.packageName ? -1 : 1));

@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, write
 import { dirname, join } from "node:path";
 import { checkArtifactSelfContained } from "./conformance.js";
 import { assertDependencyDistsFresh, StaleDependencyError } from "./dependency-freshness.js";
+import { readTargetIdentity, targetManifestPath } from "./target-manifest.js";
 
 /**
  * Build output of the target app, copied into the package as the host-served
@@ -21,9 +22,6 @@ const adapterPath = "rehearsal/adapter.js";
 
 /** Directory of the app holding the ready-to-publish package. */
 const packageDirName = "target-package";
-
-/** File the package's manifest is read from and written back to. */
-const manifestFileName = "mindcraft.json";
 
 /** What the assembled manifest declares about the app bundle it carries. */
 interface HostAppDeclaration {
@@ -68,7 +66,7 @@ function listFiles(dir: string, prefix = ""): string[] {
 
 const appDir = process.cwd();
 const packageDir = join(appDir, packageDirName);
-const manifestPath = join(packageDir, manifestFileName);
+const manifestPath = targetManifestPath(appDir);
 const distDir = join(appDir, hostAppSource);
 const artifactPath = join(appDir, adapterSource);
 const bundleDir = join(packageDir, hostAppPath);
@@ -78,17 +76,20 @@ try {
   assertDependencyDistsFresh(appDir);
 } catch (cause) {
   if (!(cause instanceof StaleDependencyError)) throw cause;
-  fail(cause.message, "Rebuild the packages named above, then package again.");
+  fail(cause.message);
 }
 
 if (!existsSync(manifestPath)) {
   fail(`no target manifest at ${manifestPath}.`);
 }
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as TargetManifestDocument;
-const { identity, version } = manifest;
-if (typeof identity !== "string" || identity.length === 0) {
-  fail(`${manifestPath} declares no identity.`);
+let identity: string;
+try {
+  identity = readTargetIdentity(appDir);
+} catch (cause) {
+  fail(cause instanceof Error ? cause.message : String(cause));
 }
+const { version } = manifest;
 if (typeof version !== "string" || version.length === 0) {
   fail(`${manifestPath} declares no version.`);
 }

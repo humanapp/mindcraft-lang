@@ -18,8 +18,5 @@
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "**/*.spec.ts"],
-  "references": [
-    { "path": "../bridge-protocol/tsconfig.json" },
-    { "path": "../core/tsconfig.esm.json" }
-  ]
+  "references": [{ "path": "../bridge-protocol/tsconfig.json" }]
 }
