@@ -171,7 +171,11 @@ for local variables/literals. Fence meta tokens: `noframe`, `do`.
 
 ## Doc Content Sources
 
-- **Core docs**: Built into `packages/core/src/docs/_generated/en.ts` by `scripts/build-docs.js`
+- **Core docs**: `packages/core/scripts/build-docs.js` reads the markdown under
+  `packages/core/src/docs/content/{locale}/` and writes one module per locale straight into
+  core's build output, at `dist/{node,esm}/docs/_generated/{locale}.js`, reached as
+  `@mindcraft-lang/core/docs/{locale}`. Nothing under core's `src/` imports it, so a docs
+  edit needs only `npm run build:docs` -- no compiler pass.
 - **App docs**: Loaded at build time via Vite `import.meta.glob` with `?raw`, passed to `buildDocsRegistry()`
 - **Manifests**: Map tile IDs to content keys, tags, and categories
 

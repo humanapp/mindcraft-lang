@@ -2,7 +2,7 @@
 // Core documentation public API.
 //
 // - Manifest (metadata): always available, no locale dependency
-// - Content (markdown strings): imported per locale from _generated/
+// - Content (markdown strings): imported per locale from "./docs/{locale}"
 //
 // Typical usage:
 //   import { coreTileDocs, coreConceptDocs } from "@mindcraft-lang/core/docs";

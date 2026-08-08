@@ -2,4 +2,3 @@ node_modules
 dist
 .platform-emit
 *.tsbuildinfo
-src/docs/_generated
