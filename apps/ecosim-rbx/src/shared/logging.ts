@@ -1,5 +1,4 @@
-import type { Logger } from "@mindcraft-lang/core";
-import { logger } from "@mindcraft-lang/core/app";
+import { type Logger, logger } from "@mindcraft-lang/core/app";
 
 /** Log category prefix shared by every server and client subsystem in this app. */
 export const APP_LOG_CATEGORY = "ecosim-rbx";

@@ -14,7 +14,7 @@
     "skipLibCheck": true,
     "noLib": true,
     "moduleDetection": "force",
-    "typeRoots": ["./node_modules/@rbxts", "./node_modules/@marsraptor"],
+    "typeRoots": ["./node_modules/@rbxts"],
     "preserveSymlinks": true
   },
   "include": ["src"],

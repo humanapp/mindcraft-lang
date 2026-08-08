@@ -16,6 +16,7 @@ import {
 } from "@mindcraft-lang/core/app";
 import { createEcosimModule as createWebEcosimModule } from "@/brain/index";
 import { EcosimFuncId, EcosimHostActions, EcosimTypeAtomId } from "../src/server/brain/abi-ids";
+import { ECOSIM_RBX_NAMESPACE } from "../src/server/brain/engine-constants";
 import { createEcosimModule as createRbxEcosimModule } from "../src/server/brain/index";
 import { assertSnapshotMapsEqual, assertSnapshotsEqual, RBX_SIDE, WEB_SIDE } from "./abi-compare";
 import {
@@ -34,9 +35,6 @@ const ECOSIM_APP_ROOT = path.resolve(__dirname, "../../ecosim");
 
 /** Project namespace the ecosim webapp loads a project's brain assets under. */
 const WEB_PROJECT_NAMESPACE = "ecosim";
-
-/** Project namespace `Engine.loadBrains` passes on the Roblox side. */
-const RBX_PROJECT_NAMESPACE = "ecosim-rbx";
 
 const ARCHETYPES = ["carnivore", "herbivore", "plant"] as const;
 
@@ -275,7 +273,7 @@ describe("the shipped brain assets load in both hosts", () => {
   for (const archetype of ARCHETYPES) {
     it(`default-${archetype} deserializes identically`, () => {
       const web = brainShape(loadBrain(webEnv, archetype, WEB_PROJECT_NAMESPACE));
-      const rbx = brainShape(loadBrain(rbxEnv, archetype, RBX_PROJECT_NAMESPACE));
+      const rbx = brainShape(loadBrain(rbxEnv, archetype, ECOSIM_RBX_NAMESPACE));
       assertSnapshotsEqual(web, rbx, `brain[default-${archetype}]`);
     });
   }

@@ -6,7 +6,9 @@
   "scripts": {
     "install": "npm run install:packages && npm run install:apps",
     "install:packages": "npm --prefix packages install",
-    "install:apps": "npm --prefix apps install"
+    "install:apps": "npm --prefix apps install",
+    "check": "biome check --write ./scripts",
+    "check:only": "biome check ./scripts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.15",

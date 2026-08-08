@@ -2,13 +2,16 @@
 applyTo: "apps/ecosim/**"
 ---
 
-<!-- Last reviewed: 2026-03-12 -->
+<!-- Last reviewed: 2026-08-08 -->
 
 # Sim App -- Rules & Patterns
 
 The sim app (`apps/ecosim/`) is a **Vite + React + Phaser 3** web application. It renders an
 ecosystem simulation where actors (carnivores, herbivores, plants) are each driven by a
 user-editable brain program from `packages/core`.
+
+`apps/ecosim-rbx` mirrors this app's brain module for Roblox; when an ABI value here changes,
+see `ecosim-rbx.instructions.md` for the mirroring rules.
 
 ## Tech Stack
 
@@ -21,39 +24,63 @@ Vite, React 19, Phaser 3 (Matter.js physics), Tailwind CSS v4, miniplex (ECS),
 - `@mindcraft-lang/ui` -> `../../packages/ui/src` (source-only, no build step)
 - `@mindcraft-lang/docs` -> `../../packages/docs/src` (source-only, no build step)
 
+`@mindcraft-lang/core` is not aliased: it resolves through the `file:` dependency to the
+package's built output, so core changes require a rebuild.
+
 ## Build & Scripts
 
 ```
-npm run dev     # Vite dev server
-npm run build   # Builds core (prebuild), then Vite production build
-npm run check   # Biome check (lint + format)
+npm run dev         # build:deps, then Vite dev server
+npm run build       # install:packages + build:deps (prebuild), then Vite production build
+npm run build:deps  # builds the file: package dependencies in dependency order
+npm run check       # Biome check (lint + format), autofix
+npm run check:only  # Biome, read-only -- must print only the summary line
+npm run typecheck   # tsc --noEmit over the app and its sibling tsconfigs
+npm test            # build:headless, then tsx --test over src/**/*.spec.ts
 ```
 
-Changes to `packages/core` require rebuilding it (the sim's `prebuild` handles this).
+`build:deps` runs `scripts/build-packages.js`, which walks this app's `file:` dependencies and
+builds each in dependency order. Changes to `packages/core` require rebuilding it; the `predev`
+and `prebuild` scripts handle that.
 
 ## Adding New Sensors/Actuators
 
-1. Create host function in `brain/fns/sensors/<name>.ts` or `brain/fns/actuators/<name>.ts`
-   - Define `callDef` using `mkCallDef()`, implement exec with `getSelf(ctx)`, export `ActionDef`
-2. Register in `brain/fns/sensors/index.ts` or `brain/fns/actuators/index.ts`
-3. Register tile in `brain/tiles/sensors.ts` or `brain/tiles/actuators.ts`
-4. Add tile ID constants to `brain/tileids.ts`
-5. Add modifier/parameter tile IDs + registration if needed
+1. Add the action's stable ids to `brain/abi-ids.ts`: a member of `EcosimFuncId` and a record in
+   `EcosimHostActions`. Ids are permanent -- append at the next free value, never renumber.
+2. Create `brain/actions/<name>.ts`. It default-exports the action definition and named-exports
+   its tile inputs:
+   - Build `callDef` with `mkCallDef()` and resolve slot ids with `getSlotId()` at module scope.
+   - Implement `exec` (and `onInitialized` when the call site needs state), reaching the actor
+     through `getSelf(ctx)`.
+   - `export default { ...EcosimHostActions.<Name>, callDef, fn, isAsync, metadata, ... }
+     satisfies CreateHostSensorOptions` (or `CreateHostActuatorOptions`). Sensors also declare
+     `outputType` and, when they feed the DO side, a `capabilities` bitset from
+     `brain/tileids.ts`.
+   - `export const modifiers: ModifierTileInput[]` and `export const parameters:
+     ParameterTileInput[]` for the tiles the call spec references.
+3. Add the tile id strings to `TileIds` in `brain/tileids.ts`.
+4. Register in `brain/index.ts` `createEcosimModule`, keeping the existing order: types, engine
+   context, brain context, `registerHostSensor` calls, `registerHostActuator` calls,
+   `registerModifiers`, `registerParameters`, then `registerTiles`. Add the new action's
+   `modifiers` / `parameters` arrays to the spread lists.
+5. Mirror the change in `apps/ecosim-rbx` in the same slice and re-run its parity test.
 
 ### Modifier vs Parameter Tiles
 
-- **Modifiers** are boolean flags. Use `mod()` from `call-spec.ts`.
-- **Parameters** accept a typed value. Use `param()` from `call-spec.ts`.
+- **Modifiers** are boolean flags. Use `mod()` from `@mindcraft-lang/core/app`.
+- **Parameters** accept a typed value. Use `param()` from `@mindcraft-lang/core/app`.
 - Do not mix them up -- the wrong helper causes slot lookup failures at startup.
 
 ### Call Spec Example
 
 ```typescript
-import { mkCallDef, getSlotId, bag, choice, mod, param } from "@mindcraft-lang/core/brain";
+import { bag, choice, getSlotId, mkCallDef, mod, optional, param } from "@mindcraft-lang/core/app";
+import { TileIds } from "@/brain/tileids";
 
 const Forward = mod(TileIds.Modifier.MovementForward);
+const Toward = mod(TileIds.Modifier.MovementToward);
 const Priority = param(TileIds.Parameter.Priority);
-const callDef = mkCallDef(bag(choice(Forward, Toward), Priority));
+const callDef = mkCallDef(bag(optional(choice(Forward, Toward)), optional(Priority)));
 const kForwardSlotId = getSlotId(callDef, Forward);
 ```
 
@@ -62,14 +89,25 @@ const kForwardSlotId = getSlotId(callDef, Forward);
 ```typescript
 const self = getSelf(ctx); // from brain/execution-context-types.ts
 const other = getActor(ctx, otherActorId);
+const target = getTargetActor(ctx);
 ```
 
 ## Key Architecture Notes
 
-- Initialization: `bootstrap.ts` calls `registerCoreBrainComponents()` then `registerBrainComponents()` (sim-specific)
-- Brain editor config: `brain-editor-config.tsx` builds `BrainEditorConfig`, wrapped in `BrainEditorProvider` in `App.tsx`
-- Brain persistence: `localStorage` with base64-encoded binary (see `services/brain-persistence.ts`)
-- Phaser bridge: `PhaserGame.tsx` fires `onSceneReady` callback; `App.tsx` calls scene methods directly
-- Physics: Matter.js, zero gravity, top-down 2D; actors use `Mover` class for steering
-- Tile icons: SVGs in `public/assets/brain/icons/`
-- All brain edits go through the Command Pattern with undo/redo
+- Brain module: `brain/index.ts` exports `createEcosimModule()`, the single `MindcraftModule`
+  holding this app's types, contexts, host actions, and tiles (module id `"mindcraft.ecosim"`)
+- Environment: `services/ecosim-environment-store.ts` builds it with
+  `createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] })` and owns the
+  `AppEnvironmentHost` from `@mindcraft-lang/bridge-app`
+- Brain editor config: `brain/editor/config.tsx` `buildBrainEditorConfig()` returns the
+  `BrainEditorConfig`, wrapped in `BrainEditorProvider` in `App.tsx`
+- Brain persistence: brains live in the project document, managed by the `ProjectManager` from
+  `@mindcraft-lang/app-host` over an IndexedDB store; `localStorage` holds only app settings and
+  UI preferences
+- Phaser bridge: `PhaserGame.tsx` calls `StartGame()` from `game/main.ts`, passing the store
+  through the Phaser registry and reporting scene brain state through a callback
+- Physics: Matter.js, zero gravity, top-down 2D; actors use `Mover` from `brain/movement.ts`
+  for steering
+- Tile icons: SVGs in `public/assets/brain/icons/`, addressed through `ICON_BASE` from
+  `brain/icon-base.ts`
+- All brain edits go through the Command Pattern with undo/redo (`BrainCommandHistory` in core)

@@ -60,8 +60,7 @@ function waitForWorkflow(tag, repoDir) {
     runQuiet("which gh", repoDir);
   } catch {
     console.error(
-      "Error: GitHub CLI (gh) is required to wait for CI workflows.\n"
-        + "Install it with: brew install gh"
+      "Error: GitHub CLI (gh) is required to wait for CI workflows.\n" + "Install it with: brew install gh"
     );
     process.exit(1);
   }
@@ -71,10 +70,7 @@ function waitForWorkflow(tag, repoDir) {
   let runId;
   for (let attempt = 0; attempt < 30; attempt++) {
     try {
-      runId = runQuiet(
-        `gh run list --branch "${tag}" --limit 1 --json databaseId --jq ".[0].databaseId"`,
-        repoDir
-      );
+      runId = runQuiet(`gh run list --branch "${tag}" --limit 1 --json databaseId --jq ".[0].databaseId"`, repoDir);
       if (runId && runId !== "null") break;
     } catch {
       // ignore

@@ -1,5 +1,7 @@
 {
   "scripts": {
-    "install": "node scripts/install.js"
+    "install": "node scripts/install.js",
+    "check": "biome check ./scripts --write",
+    "check:only": "biome check ./scripts"
   }
 }

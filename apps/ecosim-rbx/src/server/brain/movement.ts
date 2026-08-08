@@ -347,10 +347,9 @@ export function steerAwayFrom(
  * away when close, fading to no effect at distance). Non-exclusive, so it
  * blends with approach behaviors to create orbiting.
  *
- * Strength follows an inverse-power curve: nearly zero at the outer radius,
- * ramping aggressively as the actor gets closer.  Inside the inner radius,
- * avoidance is at maximum and a reverse-thrust component is added so the
- * actor actively pushes away instead of just turning.
+ * Strength ramps linearly with proximity: zero at the outer radius, maximum
+ * at the inner radius. Inside the inner radius a reverse-thrust component is
+ * added so the actor actively pushes away instead of just turning.
  *
  * @param selfActor - The moving actor.
  * @param targetPos - Position to avoid, in simulation pixels.
@@ -375,9 +374,7 @@ export function steerAvoid(
     return { turn: 0, forward: 0, weight: 0, label: "steerAvoid" };
   }
 
-  // Inverse-power strength curve:  linear t in [0,1] is raised to a power
-  // so that strength stays low at distance and ramps sharply when close.
-  // At outerRadius t=0, at innerRadius (and below) t=1.
+  // Proximity in [0,1]: 0 at outerRadius, 1 at innerRadius and below.
   const linearT = clamp((outerRadius - dist) / (outerRadius - innerRadius), 0, 1);
 
   const angleToTarget = math.atan2(dy, dx);

@@ -13,7 +13,6 @@ local Host = require("../stubs/host")
 
 local Suite = {}
 
-local NAMESPACE = "ecosim-rbx"
 local FRAME_MS = 1000 / 60
 
 --- Energy a single eat bite transfers, from actions/eat.ts.
@@ -101,6 +100,7 @@ function Suite.run(world, expect)
 	local vision = world.server("brain", "vision")
 	local Actor = world.server("brain", "actor").Actor
 	local ARCHETYPES = world.server("brain", "archetypes").ARCHETYPES
+	local NAMESPACE = world.server("brain", "engine-constants").ECOSIM_RBX_NAMESPACE
 
 	-- Record every diagnostic the host or the actions emit. Actions catch their
 	-- own errors and log them, so a Luau-only fault inside an action body is

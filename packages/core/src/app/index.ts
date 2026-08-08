@@ -175,6 +175,7 @@ export type { BrainTileKind, IBrainTileDef, ITileMetadata } from "../brain/inter
 export { Dict } from "../platform/dict";
 export type { ReadonlyList } from "../platform/list";
 export { List } from "../platform/list";
+export type { Logger } from "../platform/logger";
 export { LogLevel, logger } from "../platform/logger";
 export { TypeUtils } from "../platform/types";
 export { Vector2 } from "../platform/vector2";

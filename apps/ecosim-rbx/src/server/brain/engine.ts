@@ -8,7 +8,7 @@ import { MS_PER_SIM_STEP, pixelsToStuds, SIM_WORLD_HEIGHT, SIM_WORLD_WIDTH, simT
 import { Actor, type Archetype } from "./actor";
 import { ARCHETYPE_NAMES, ARCHETYPES, createArchetypeFallbackBrain } from "./archetypes";
 import { BLIP_DAMAGE, BLIP_RADIUS, BLIP_SPEED, type Blip, BlipPool } from "./blip";
-import { MAX_SPAWNS_PER_TICK } from "./engine-constants";
+import { ECOSIM_RBX_NAMESPACE, MAX_SPAWNS_PER_TICK } from "./engine-constants";
 import type { MoverConfig } from "./movement";
 import {
   type Obstacle,
@@ -17,13 +17,6 @@ import {
   queryVisibleActors,
   type SightResult,
 } from "./vision";
-
-/**
- * Namespace persisted brain JSON is qualified with when this app loads it.
- * Brains authored in the ecosim webapp carry unqualified refs, which the
- * loading project's namespace resolves.
- */
-export const ECOSIM_RBX_NAMESPACE = "ecosim-rbx";
 
 /** Height (studs) blips fly at above the arena floor. */
 const BLIP_HEIGHT_STUDS = 1;
