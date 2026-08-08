@@ -1,3 +1,4 @@
+import type { DiagCode } from "@mindcraft-lang/core/brain/compiler";
 import type { DispatchObservation, SimulationRun, ThinkObservation } from "../target/adapter.js";
 
 /** Spans a summary keeps before it stops and reports itself truncated. */
@@ -33,6 +34,14 @@ export interface RuleTotals {
   readonly whenResults: readonly string[];
 }
 
+/** One rule the run was staged without, and why. */
+export interface ExcludedRule {
+  /** `pageIndex/ruleIndex[/childIndex...]` path of the rule left out. */
+  readonly rulePath: string;
+  /** Stable codes of the build errors the rule carries, in report order. */
+  readonly codes: readonly DiagCode[];
+}
+
 /** The bounded account of one rehearsal that `simulate` returns. */
 export interface TraceSummary {
   /** Thinks the run executed. */
@@ -46,6 +55,12 @@ export interface TraceSummary {
   /** `true` when {@link spans} was cut at the span budget and does not cover the whole run. */
   readonly spansTruncated: boolean;
   readonly world: SimulationRun["world"];
+  /**
+   * Rules the run was staged without, sorted by path. Every claim the account
+   * makes holds only of the document with these rules disabled. Absent when the
+   * run covered the whole document.
+   */
+  readonly excludedRules?: readonly ExcludedRule[];
 }
 
 /** Distinct WHEN results recorded per rule. */
@@ -147,9 +162,11 @@ function dispatchTotals(observations: readonly ThinkObservation[]): string[] {
 
 /**
  * Reduce one rehearsal to the bounded account `simulate` returns: per-rule
- * totals, dispatch totals, and run-length compressed per-think detail.
+ * totals, dispatch totals, and run-length compressed per-think detail. Pass
+ * `excludedRules` when the run was staged without some of the document's rules,
+ * so the account states what its claims are scoped to.
  */
-export function summarizeRun(run: SimulationRun): TraceSummary {
+export function summarizeRun(run: SimulationRun, excludedRules?: readonly ExcludedRule[]): TraceSummary {
   const { spans, truncated } = compress(run.observations);
   return {
     thinks: run.thinks,
@@ -158,5 +175,6 @@ export function summarizeRun(run: SimulationRun): TraceSummary {
     spans,
     spansTruncated: truncated,
     world: run.world,
+    ...(excludedRules && excludedRules.length > 0 ? { excludedRules } : {}),
   };
 }

@@ -41,7 +41,7 @@ import {
   type StripRuleBinding,
   useCandidateStripSurface,
 } from "./BrainCandidateStrip";
-import { useBrainEditorConfig } from "./BrainEditorContext";
+import { useBrainEditorConfig, useLocalizer } from "./BrainEditorContext";
 import { BrainRuleSentence } from "./BrainRuleSentence";
 import { BrainTileEditor } from "./BrainTileEditor";
 import { BrainTileMenuButton } from "./BrainTileMenu";
@@ -54,7 +54,6 @@ import { kGrabbedRuleMarkerLayer, kRuleChromeLayer, kRuleContentLayer } from "./
 import { useCandidateStrip } from "./hooks/useCandidateStrip";
 import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { composeAfterTileCreation, useTileSelection } from "./hooks/useTileSelection";
-import { positionOffersTile, sideOffersAppendedTile } from "./insertion-context";
 import { usePageGrid } from "./PageGridContext";
 import {
   decidePageGridGrab,
@@ -88,6 +87,7 @@ import {
   importTileFromClipboard,
   peekTileInClipboard,
 } from "./tile-clipboard";
+import { positionOffersTile, sideOffersAppendedTile } from "./tile-offering";
 
 /** Surface, hover, ink, and border of the rule row's round pills: the rule handle and each side's add-tile button. */
 const pillChromeClasses = "bg-brain-pill hover:bg-brain-pill-hover text-brain-pill-ink border-2 border-brain-pill-edge";
@@ -204,6 +204,7 @@ function BrainRuleEditorCard({
   stripTarget,
 }: BrainRuleEditorCardProps) {
   const { brainServices, tileCatalogs, isBrokenTile } = useBrainEditorConfig();
+  const localizer = useLocalizer();
   // The cells this rule stands in the page's selection grid.
   const pageGrid = usePageGrid();
   const ruleId = ruleDef.id();
@@ -745,7 +746,7 @@ function BrainRuleEditorCard({
           caretPosition: composerCaret,
           pivoted: isPivoted,
           canEndArmedSide: () =>
-            canEndSideExpression((stripTarget.side === RuleSide.Do ? ruleDef.do() : ruleDef.when()).tiles()),
+            canEndSideExpression((stripTarget.side === RuleSide.Do ? ruleDef.do() : ruleDef.when()).tiles(), localizer),
           isRuleEmpty: () => !ruleHasTiles(),
           doTileCount: () => ruleDef.do().tiles().size(),
           ownNewestPlacement,

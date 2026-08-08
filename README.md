@@ -28,6 +28,10 @@ Mindcraft draws inspiration from other tile-based programming systems past and p
 | [@mindcraft-lang/ui](packages/ui/) | Shared React UI -- shadcn/ui primitives + brain editor components |
 | [@mindcraft-lang/docs](packages/docs/) | Shared documentation subsystem -- renders as in-app sidebar or full-screen SPA |
 | [@mindcraft-lang/ts-compiler](packages/ts-compiler/) | TypeScript-to-Mindcraft bytecode compiler |
+| [@mindcraft-lang/assistant-bridge](packages/assistant-bridge/) | Assistant bridge -- the open tool contract, catalog digest, trace summarizer, target adapter interface, and rehearsal adapter kit |
+| [@mindcraft-lang/assistant-relay](packages/assistant-relay/) | Assistant relay protocol -- the session handshake, turn events, and tool-call wire an assistant service speaks with a client |
+| [@mindcraft-lang/service-api](packages/service-api/) | Request/response schemas, shared enums, error shapes, and serialization formats for backend service APIs |
+| [@mindcraft-lang/cli](packages/cli/) | Command-line tools for Mindcraft projects |
 | [@mindcraft-lang/bridge-protocol](packages/bridge-protocol/) | VS Code bridge network protocol types and schemas |
 | [@mindcraft-lang/bridge-client](packages/bridge-client/) | Client SDK for the VS Code bridge |
 | [@mindcraft-lang/bridge-app](packages/bridge-app/) | Opinionated layer atop bridge-client for the VS Code bridge |

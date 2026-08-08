@@ -5,6 +5,7 @@
  * combined with a grammar-based parser for sensor/actuator call specifications.
  */
 
+import type { Localizer } from "../../localization/localizer";
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
@@ -31,6 +32,7 @@ import {
   precedingSiblingConsumerEligible,
   RuleSide,
 } from "../interfaces";
+import { tileSentenceWord } from "../language-service/sentence-projection";
 import {
   type BrainTileAccessorDef,
   type BrainTileActuatorDef,
@@ -63,14 +65,17 @@ function markParenGroup(expr: Expr, state: ParenGroupState): void {
  * element in the access chain: a read-only field, or a sensor whose result is
  * read-only. `params` is undefined when the chain bottoms out at neither.
  */
-function describeReadOnlyResultAssignment(target: FieldAccessExpr): {
+function describeReadOnlyResultAssignment(
+  target: FieldAccessExpr,
+  localizer: Localizer
+): {
   message: string;
   params?: DiagParams;
 } {
   let cur: Expr = target.object;
   while (cur.kind === "fieldAccess") {
     if (cur.accessor.readOnly) {
-      const field = cur.accessor.metadata?.label ?? cur.accessor.fieldName;
+      const field = tileSentenceWord(cur.accessor, localizer);
       return {
         message: `Cannot assign to a field of read-only field "${field}"`,
         params: { fieldName: cur.accessor.fieldName, fieldLabel: field },
@@ -79,7 +84,7 @@ function describeReadOnlyResultAssignment(target: FieldAccessExpr): {
     cur = cur.object;
   }
   if (cur.kind === "sensor") {
-    const sensorLabel = cur.tileDef.metadata?.label ?? cur.tileDef.sensorId;
+    const sensorLabel = tileSentenceWord(cur.tileDef, localizer);
     return {
       message: `Cannot assign to a field of "${sensorLabel}" because its result is read-only`,
       params: { tileId: cur.tileDef.tileId, tileLabel: sensorLabel },
@@ -146,6 +151,7 @@ class BrainParser {
 
   constructor(
     private readonly src: ReadonlyList<IBrainTileDef>,
+    private readonly localizer: Localizer,
     to: number = -1,
     from: number = 0,
     startNodeId: number = 0
@@ -867,7 +873,7 @@ class BrainParser {
           };
         }
         if (left.kind === "fieldAccess" && left.accessor.readOnly) {
-          const fieldLabel = left.accessor.metadata?.label ?? left.accessor.fieldName;
+          const fieldLabel = tileSentenceWord(left.accessor, this.localizer);
           this.diags.push({
             code: ParseDiagCode.ReadOnlyFieldAssignment,
             message: `Cannot assign to read-only field "${fieldLabel}"`,
@@ -885,7 +891,7 @@ class BrainParser {
         // A writable field on a read-only base (e.g. a sensor result) is not an
         // l-value; the field has storage but the base it hangs off does not.
         if (left.kind === "fieldAccess" && !isLValue(left)) {
-          const described = describeReadOnlyResultAssignment(left);
+          const described = describeReadOnlyResultAssignment(left, this.localizer);
           const message = described.message;
           this.diags.push({
             code: ParseDiagCode.ReadOnlyResultFieldAssignment,
@@ -1247,17 +1253,19 @@ function specContainsRepeat(spec: BrainActionCallSpec): boolean {
  * Parse a slice of brain tiles into an {@link ParseResult}.
  *
  * @param src - The full source list of tiles.
+ * @param localizer - Locale the diagnostics name tiles in.
  * @param to - Exclusive end index (`-1` means end of `src`).
  * @param from - Inclusive start index.
  * @param startNodeId - First node id to assign during parsing; the result's `nextNodeId` continues from here.
  */
 export function parseBrainTiles(
   src: ReadonlyList<IBrainTileDef>,
+  localizer: Localizer,
   to: number = -1,
   from: number = 0,
   startNodeId: number = 0
 ): ParseResult {
-  const parser = new BrainParser(src, to, from, startNodeId);
+  const parser = new BrainParser(src, localizer, to, from, startNodeId);
   return parser.parse();
 }
 
@@ -1265,15 +1273,20 @@ export function parseBrainTiles(
  * Validate that every tile in a rule side's tile list is allowed on that side
  * by its placement flags. A tile with no placement flags is allowed on either
  * side. Returns one {@link ParseDiagCode.TilePlacementSideMismatch} diagnostic
- * per offending tile, spanning the tile's index in `tiles`.
+ * per offending tile, spanning the tile's index in `tiles`, naming the tile by
+ * its {@link tileSentenceWord} in `localizer`'s locale.
  */
-export function validateTilePlacement(tiles: ReadonlyList<IBrainTileDef>, side: RuleSide): List<ParseDiag> {
+export function validateTilePlacement(
+  tiles: ReadonlyList<IBrainTileDef>,
+  side: RuleSide,
+  localizer: Localizer
+): List<ParseDiag> {
   const diags = List.empty<ParseDiag>();
   for (let i = 0; i < tiles.size(); i++) {
     const tile = tiles.get(i);
     const placement = tile.placement;
     if (placement !== undefined && (placement & side) === 0) {
-      const label = tile.metadata?.label ?? tile.tileId;
+      const label = tileSentenceWord(tile, localizer);
       const sideName = side === RuleSide.When ? "WHEN" : "DO";
       diags.push({
         code: ParseDiagCode.TilePlacementSideMismatch,
@@ -1291,22 +1304,25 @@ export function validateTilePlacement(tiles: ReadonlyList<IBrainTileDef>, side: 
  * {@link CoreCapabilityBits.RequiresPrecedingSiblingRule} appears in a rule that
  * has no rule above it at its own nesting level. Returns one
  * {@link ParseDiagCode.NoPrecedingSiblingRule} diagnostic per offending tile,
- * spanning the tile's index in `tiles`.
+ * spanning the tile's index in `tiles`, naming the tile by its
+ * {@link tileSentenceWord} in `localizer`'s locale.
  *
  * @param tiles - The rule side's tile list.
  * @param hasPrecedingSibling - Whether the enclosing rule has a rule above it
  *   at its own nesting level.
+ * @param localizer - Locale the diagnostics name tiles in.
  */
 export function validatePrecedingSiblingConsumers(
   tiles: ReadonlyList<IBrainTileDef>,
-  hasPrecedingSibling: boolean
+  hasPrecedingSibling: boolean,
+  localizer: Localizer
 ): List<ParseDiag> {
   const diags = List.empty<ParseDiag>();
   if (hasPrecedingSibling) return diags;
   for (let i = 0; i < tiles.size(); i++) {
     const tile = tiles.get(i);
     if (precedingSiblingConsumerEligible(tile, hasPrecedingSibling)) continue;
-    const label = tile.metadata?.label ?? tile.tileId;
+    const label = tileSentenceWord(tile, localizer);
     diags.push({
       code: ParseDiagCode.NoPrecedingSiblingRule,
       message: `Tile "${label}" needs a rule above it at the same level`,
@@ -1335,11 +1351,13 @@ export function collectProvidedOutputKeys(tiles: ReadonlyList<IBrainTileDef>, ke
  * providing tile: its `outputKey` must be a member of `providedKeys` (the keys
  * provided across the rule's WHEN and DO sides and its ancestor rules). Returns
  * one {@link ParseDiagCode.OutputTileMissingProvider} diagnostic per offending
- * tile, spanning the tile's index in `tiles`.
+ * tile, spanning the tile's index in `tiles`, naming the tile by its
+ * {@link tileSentenceWord} in `localizer`'s locale.
  */
 export function validateOutputProviders(
   tiles: ReadonlyList<IBrainTileDef>,
-  providedKeys: UniqueSet<string>
+  providedKeys: UniqueSet<string>,
+  localizer: Localizer
 ): List<ParseDiag> {
   const diags = List.empty<ParseDiag>();
   for (let i = 0; i < tiles.size(); i++) {
@@ -1347,7 +1365,7 @@ export function validateOutputProviders(
     if (tile.kind !== "output") continue;
     const outputDef = tile as BrainTileOutputDef;
     if (providedKeys.has(outputDef.outputKey)) continue;
-    const label = tile.metadata?.label ?? outputDef.outputName;
+    const label = tileSentenceWord(tile, localizer);
     diags.push({
       code: ParseDiagCode.OutputTileMissingProvider,
       message: `Output tile "${label}" has no providing sensor in this rule or an enclosing rule`,
@@ -1382,21 +1400,23 @@ export function whenResultConsumerEligible(
  * `consumesWhenResult(T)` has a compatible WHEN result available:
  * `availableWhenResultType` must be present and be `T` exactly or convert to
  * `T`. Returns one {@link ParseDiagCode.TileWhenResultUnavailable} diagnostic
- * per offending tile, spanning the tile's index in `tiles`. The message names
- * the required type by its registered name when `typeRegistry` knows it.
+ * per offending tile, spanning the tile's index in `tiles`, naming the tile by
+ * its {@link tileSentenceWord} in `localizer`'s locale. The message names the
+ * required type by its registered name when `typeRegistry` knows it.
  */
 export function validateWhenResultConsumers(
   tiles: ReadonlyList<IBrainTileDef>,
   availableWhenResultType: TypeId | undefined,
   conversions: IConversionRegistry,
-  typeRegistry: ITypeRegistry
+  typeRegistry: ITypeRegistry,
+  localizer: Localizer
 ): List<ParseDiag> {
   const diags = List.empty<ParseDiag>();
   for (let i = 0; i < tiles.size(); i++) {
     const tile = tiles.get(i);
     if (whenResultConsumerEligible(tile, availableWhenResultType, conversions)) continue;
     const required = tile.consumesWhenResult()!;
-    const label = tile.metadata?.label ?? tile.tileId;
+    const label = tileSentenceWord(tile, localizer);
     const typeName = typeRegistry.get(required)?.name ?? required;
     diags.push({
       code: ParseDiagCode.TileWhenResultUnavailable,
@@ -1430,12 +1450,14 @@ export function collectProvidedCapabilities(tiles: ReadonlyList<IBrainTileDef>, 
 
 /**
  * The visible sensor tiles in `catalogs` whose `capabilities()` cover every bit
- * in `neededBits`, deduplicated by label, in catalog order. `labels` and
+ * in `neededBits`, deduplicated by label, in catalog order. Each label is the
+ * tile's {@link tileSentenceWord} in `localizer`'s locale. `labels` and
  * `tileIds` are parallel: entry `i` of each names the same tile.
  */
 function capabilityProviders(
   neededBits: List<number>,
-  catalogs: ReadonlyList<ITileCatalog>
+  catalogs: ReadonlyList<ITileCatalog>,
+  localizer: Localizer
 ): { labels: List<string>; tileIds: List<string> } {
   const labels = List.empty<string>();
   const tileIds = List.empty<string>();
@@ -1455,7 +1477,7 @@ function capabilityProviders(
         }
       }
       if (!coversAll) continue;
-      const label = tile.metadata?.label ?? tile.tileId;
+      const label = tileSentenceWord(tile, localizer);
       if (seen.has(label)) continue;
       seen.add(label);
       labels.push(label);
@@ -1470,13 +1492,16 @@ function capabilityProviders(
  * bits covered by `availableCapabilities` (the OR'd `capabilities()` of every
  * tile in the rule's WHEN and DO sides and its ancestor rules). Returns one
  * {@link ParseDiagCode.TileRequirementsNotProvided} diagnostic per offending
- * tile, spanning the tile's index in `tiles`. The message suggests providing
- * sensors by label when `catalogs` contains sensors covering the missing bits.
+ * tile, spanning the tile's index in `tiles`, naming the tile by its
+ * {@link tileSentenceWord} in `localizer`'s locale. The message suggests
+ * providing sensors by the same reading when `catalogs` contains sensors
+ * covering the missing bits.
  */
 export function validateCapabilityRequirements(
   tiles: ReadonlyList<IBrainTileDef>,
   availableCapabilities: ReadonlyBitSet,
-  catalogs: ReadonlyList<ITileCatalog>
+  catalogs: ReadonlyList<ITileCatalog>,
+  localizer: Localizer
 ): List<ParseDiag> {
   const diags = List.empty<ParseDiag>();
   for (let i = 0; i < tiles.size(); i++) {
@@ -1491,8 +1516,8 @@ export function validateCapabilityRequirements(
       }
     }
     if (uncovered.size() === 0) continue;
-    const label = tile.metadata?.label ?? tile.tileId;
-    const providers = capabilityProviders(uncovered, catalogs);
+    const label = tileSentenceWord(tile, localizer);
+    const providers = capabilityProviders(uncovered, catalogs, localizer);
     let providerText = "";
     for (let j = 0; j < providers.labels.size(); j++) {
       if (j > 0) providerText += " or ";

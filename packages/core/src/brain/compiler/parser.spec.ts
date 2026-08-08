@@ -162,7 +162,8 @@ function runParseTest(tc: TestCase): void {
       emptyTiles,
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
     const hasDiags = result.parseResult.diags.size() > 0;
 
@@ -330,24 +331,34 @@ describe("Parentheses expressions", () => {
   });
 
   test("a group marks the expression it holds with its closure state", () => {
-    const closed = parseBrainTiles(List.from<IBrainTileDef>([openParen, literal2, opAdd, literal3, closeParen]));
+    const closed = parseBrainTiles(
+      List.from<IBrainTileDef>([openParen, literal2, opAdd, literal3, closeParen]),
+      services.app.localizer
+    );
     assert.equal(closed.exprs.get(0).parenGroup, "closed");
 
-    const unclosed = parseBrainTiles(List.from<IBrainTileDef>([openParen, literal2, opAdd, literal3]));
+    const unclosed = parseBrainTiles(
+      List.from<IBrainTileDef>([openParen, literal2, opAdd, literal3]),
+      services.app.localizer
+    );
     assert.equal(unclosed.exprs.get(0).parenGroup, "unclosed");
 
-    const ungrouped = parseBrainTiles(List.from<IBrainTileDef>([literal2, opAdd, literal3]));
+    const ungrouped = parseBrainTiles(List.from<IBrainTileDef>([literal2, opAdd, literal3]), services.app.localizer);
     assert.equal(ungrouped.exprs.get(0).parenGroup, undefined);
   });
 
   test("directly nested groups keep the innermost group's state", () => {
-    const outerOpen = parseBrainTiles(List.from<IBrainTileDef>([openParen, openParen, literal2, closeParen]));
+    const outerOpen = parseBrainTiles(
+      List.from<IBrainTileDef>([openParen, openParen, literal2, closeParen]),
+      services.app.localizer
+    );
     assert.equal(outerOpen.exprs.get(0).parenGroup, "closed");
   });
 
   test("a group inside a call marks the argument, not the call", () => {
     const parsed = parseBrainTiles(
-      List.from<IBrainTileDef>([everySensor, openParen, literal2, opAdd, literal3, closeParen])
+      List.from<IBrainTileDef>([everySensor, openParen, literal2, opAdd, literal3, closeParen]),
+      services.app.localizer
     );
     const call = parsed.exprs.get(0);
     assert.equal(call.kind, "sensor");
@@ -851,7 +862,8 @@ describe("Field access AST shape", () => {
       emptyTiles,
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
     const expr = result.parseResult.exprs.get(0);
 
@@ -870,7 +882,8 @@ describe("Field access AST shape", () => {
       emptyTiles,
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
     const expr = result.parseResult.exprs.get(0);
 
@@ -889,7 +902,8 @@ describe("Field access AST shape", () => {
       emptyTiles,
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
     const expr = result.parseResult.exprs.get(0);
 
@@ -908,7 +922,8 @@ describe("Field access AST shape", () => {
       emptyTiles,
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
     const expr = result.parseResult.exprs.get(0);
 
@@ -967,7 +982,8 @@ describe("Assignment target l-value (read-only sensor result)", () => {
       List.empty<IBrainTileDef>(),
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     ).parseResult;
   }
 
@@ -1046,7 +1062,8 @@ describe("Bag repeat interleaving", () => {
       tiles,
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
     const expr = result.parseResult.exprs.get(0);
 
@@ -1081,7 +1098,8 @@ describe("Bag repeat interleaving", () => {
       tiles,
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
@@ -1111,7 +1129,8 @@ describe("Bag repeat interleaving", () => {
       tiles,
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
@@ -1148,7 +1167,8 @@ describe("anonymous choice type discrimination", () => {
       tiles,
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
@@ -1194,7 +1214,8 @@ describe("anonymous choice type discrimination", () => {
       tiles,
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
@@ -1285,7 +1306,8 @@ describe("Field id resolution from object type", () => {
         List.empty<IBrainTileDef>(),
         List.from([services.edit.tiles]),
         services.shared.conversions,
-        services.runtime.types
+        services.runtime.types,
+        services.app.localizer
       );
       const expr = result.parseResult.exprs.get(0);
       assert.equal(expr.kind, "fieldAccess");
@@ -1303,7 +1325,8 @@ describe("Field id resolution from object type", () => {
       List.empty<IBrainTileDef>(),
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
     assert.deepEqual(typeDiagCodes(result), []);
     const outer = result.parseResult.exprs.get(0);
@@ -1329,7 +1352,8 @@ describe("Field id resolution from object type", () => {
       List.empty<IBrainTileDef>(),
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
     assert.deepEqual(typeDiagCodes(result), []);
     const expr = result.parseResult.exprs.get(0);

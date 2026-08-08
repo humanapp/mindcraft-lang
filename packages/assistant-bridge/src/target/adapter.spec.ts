@@ -9,21 +9,21 @@ import {
   readAdapterArtifact,
 } from "./adapter.js";
 
-/** Package the fixture artifact claims to be built from. */
-const expected = { packageName: "@example/fixture" };
+/** Target identity the fixture artifact claims. */
+const expected = { targetIdentity: "example-org/trg-fixture" };
 
 /** A conforming adapter stand-in, with `overrides` applied. */
 function adapter(overrides: Partial<TargetAdapter> = {}): unknown {
   const base: Record<string, unknown> = {
     contractVersion: ADAPTER_CONTRACT_VERSION,
-    packageName: expected.packageName,
+    targetIdentity: expected.targetIdentity,
   };
   for (const name of adapterMethods) base[name] = () => undefined;
   return { ...base, ...overrides };
 }
 
 describe("adapter conformance", () => {
-  test("accepts an artifact matching the interface, the contract, and the expected package", () => {
+  test("accepts an artifact matching the interface, the contract, and the expected target identity", () => {
     const nonconformance = adapterNonconformance(expected, adapter());
 
     assert.equal(nonconformance, undefined);
@@ -34,7 +34,7 @@ describe("adapter conformance", () => {
       [undefined, AdapterNonconformanceCode.NotAnObject],
       [adapter({ run: undefined }), AdapterNonconformanceCode.MissingMembers],
       [adapter({ contractVersion: ADAPTER_CONTRACT_VERSION + 1 }), AdapterNonconformanceCode.ContractVersionMismatch],
-      [adapter({ packageName: "@example/other" }), AdapterNonconformanceCode.PackageMismatch],
+      [adapter({ targetIdentity: "example-org/trg-other" }), AdapterNonconformanceCode.IdentityMismatch],
     ];
 
     for (const [candidate, code] of cases) {

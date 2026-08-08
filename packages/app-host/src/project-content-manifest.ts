@@ -154,6 +154,19 @@ export interface ProjectContentManifestHostApp {
 }
 
 /**
+ * A project's headless rehearsal adapter: the built ES module a harness imports
+ * to author and rehearse against the target without running its app.
+ */
+export interface ProjectContentManifestRehearsalAdapter {
+  /**
+   * Content-relative path of the built module exporting `createTargetAdapter`.
+   * The module is self-contained: importing it needs nothing else the package
+   * carries.
+   */
+  readonly path: string;
+}
+
+/**
  * A project's content manifest: the portable identity data carried in
  * `mindcraft.json` alongside host-specific fields.
  */
@@ -213,6 +226,12 @@ export interface ProjectContentManifest {
    */
   readonly hostApp?: ProjectContentManifestHostApp;
   /**
+   * The project's headless rehearsal adapter. Present only when the project
+   * ships one; a package without one omits it. Its `path` publishes with the
+   * project's content.
+   */
+  readonly rehearsalAdapter?: ProjectContentManifestRehearsalAdapter;
+  /**
    * Root-level fields of the source document outside the manifest schema
    * (for example application-specific content), keyed by property name and
    * carried verbatim: a parse followed by a serialize preserves them. Present
@@ -233,6 +252,7 @@ const MANIFEST_SCHEMA_FIELDS: ReadonlySet<string> = new Set([
   "ambient",
   "targets",
   "hostApp",
+  "rehearsalAdapter",
 ]);
 
 /** Stable identifiers for content manifest validation errors. */
@@ -247,6 +267,7 @@ export const ProjectContentManifestErrorCode = {
   INVALID_TARGETS: "PROJECT_MANIFEST_INVALID_TARGETS",
   INVALID_HOST_APP: "PROJECT_MANIFEST_INVALID_HOST_APP",
   HOST_APP_FILES_OVERLAP: "PROJECT_MANIFEST_HOST_APP_FILES_OVERLAP",
+  INVALID_REHEARSAL_ADAPTER: "PROJECT_MANIFEST_INVALID_REHEARSAL_ADAPTER",
   INVALID_EXTENSIONS: "PROJECT_MANIFEST_INVALID_EXTENSIONS",
   INVALID_EXTENSION_COORDINATE: "PROJECT_MANIFEST_INVALID_EXTENSION_COORDINATE",
   DUPLICATE_EXTENSION_COORDINATE: "PROJECT_MANIFEST_DUPLICATE_EXTENSION_COORDINATE",
@@ -415,6 +436,52 @@ export function validateProjectHostApp(
 }
 
 /**
+ * Validate a rehearsal adapter declaration: an object carrying a non-empty
+ * string `path` that stays within the project root. Returns the normalized
+ * declaration with no errors when well-formed, or one error per rejected field.
+ */
+export function validateProjectRehearsalAdapter(
+  value: unknown
+):
+  | { readonly rehearsalAdapter: ProjectContentManifestRehearsalAdapter; readonly errors: readonly [] }
+  | { readonly rehearsalAdapter?: undefined; readonly errors: readonly ProjectContentManifestError[] } {
+  if (!isRecord(value)) {
+    return {
+      errors: [
+        {
+          code: ProjectContentManifestErrorCode.INVALID_REHEARSAL_ADAPTER,
+          path: "$.rehearsalAdapter",
+          message: "$.rehearsalAdapter must be an object when present.",
+        },
+      ],
+    };
+  }
+  if (typeof value.path !== "string" || value.path.length === 0) {
+    return {
+      errors: [
+        {
+          code: ProjectContentManifestErrorCode.INVALID_REHEARSAL_ADAPTER,
+          path: "$.rehearsalAdapter.path",
+          message: "$.rehearsalAdapter.path must be a non-empty string.",
+        },
+      ],
+    };
+  }
+  if (pathEscapesProjectRoot(value.path)) {
+    return {
+      errors: [
+        {
+          code: ProjectContentManifestErrorCode.FILE_ESCAPES_ROOT,
+          path: "$.rehearsalAdapter.path",
+          message: `$.rehearsalAdapter.path must stay within the project root; "${value.path}" escapes it.`,
+        },
+      ],
+    };
+  }
+  return { rehearsalAdapter: { path: value.path }, errors: [] };
+}
+
+/**
  * Parse and validate a project content manifest from JSON text. String
  * `description` and `thumbnailUrl` fields are carried through; fields outside
  * the manifest schema are carried through verbatim as `extras`.
@@ -554,6 +621,16 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
     }
   }
 
+  let rehearsalAdapter: ProjectContentManifestRehearsalAdapter | undefined;
+  if (value.rehearsalAdapter !== undefined) {
+    const adapterResult = validateProjectRehearsalAdapter(value.rehearsalAdapter);
+    if (adapterResult.errors.length > 0) {
+      errors.push(...adapterResult.errors);
+    } else {
+      rehearsalAdapter = adapterResult.rehearsalAdapter;
+    }
+  }
+
   if (files !== undefined && hostApp !== undefined) {
     const topLevelFiles = new Set(files);
     for (const path of hostApp.files) {
@@ -609,6 +686,7 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
       ...(ambient !== undefined ? { ambient } : {}),
       ...(targets !== undefined ? { targets } : {}),
       ...(hostApp !== undefined ? { hostApp } : {}),
+      ...(rehearsalAdapter !== undefined ? { rehearsalAdapter } : {}),
       ...(extras !== undefined ? { extras } : {}),
     },
     errors: [],
@@ -634,6 +712,7 @@ export function projectContentManifestToJson(manifest: ProjectContentManifest): 
       ? { targets: manifest.targets }
       : {}),
     ...(manifest.hostApp !== undefined ? { hostApp: manifest.hostApp } : {}),
+    ...(manifest.rehearsalAdapter !== undefined ? { rehearsalAdapter: manifest.rehearsalAdapter } : {}),
     ...(manifest.extras !== undefined ? manifest.extras : {}),
   };
 }

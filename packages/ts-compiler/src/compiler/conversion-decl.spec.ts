@@ -19,7 +19,7 @@ import {
   RuleSide,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { Expr } from "@mindcraft-lang/core/brain/compiler";
 import {
   type InsertionContext,
@@ -207,10 +207,10 @@ function appendDecodeAssignment(
 ): BrainTileVariableDef {
   const v = mkVar(services, varName);
   const opAssign = new BrainTileOperatorDef("assign", {}, services);
-  rule.do().appendTile(v as never);
-  rule.do().appendTile(opAssign as never);
-  rule.do().appendTile(widenToEitherSide(decoderTile) as never);
-  rule.do().appendTile(mkNumberLiteral(services, literal) as never);
+  __test__appendTile(rule.do(), v as never);
+  __test__appendTile(rule.do(), opAssign as never);
+  __test__appendTile(rule.do(), widenToEitherSide(decoderTile) as never);
+  __test__appendTile(rule.do(), mkNumberLiteral(services, literal) as never);
   return v;
 }
 
@@ -461,9 +461,9 @@ export default Conversion({
     const { brainDef, rule } = newBrain(services);
     const v = mkVar(services, "plain-number");
     const opAssign = new BrainTileOperatorDef("assign", {}, services);
-    rule.do().appendTile(v as never);
-    rule.do().appendTile(opAssign as never);
-    rule.do().appendTile(sevenTile as never);
+    __test__appendTile(rule.do(), v as never);
+    __test__appendTile(rule.do(), opAssign as never);
+    __test__appendTile(rule.do(), sevenTile as never);
 
     const brain = runBrain(brainDef, 1);
     assert.equal(num(brain, v.varName), 7);

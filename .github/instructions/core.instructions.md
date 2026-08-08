@@ -38,16 +38,6 @@ Tests use `node:test` and `node:assert/strict` (Node.js built-ins, zero package 
 
 The test runner is `tsx --test` (tsx is a devDependency). A `pretest` script runs `npm run build:node` before tests execute, because spec files use package imports (`@mindcraft-lang/core/brain`, etc.) that resolve to the built `dist/node/` output. This is required because platform modules (e.g., `platform/list.ts`) use ambient declarations with `.node.ts` implementations that only resolve after the build step copies them into place.
 
-Current test files:
-
-- `src/brain/compiler/conversion.spec.ts` -- implicit type conversion tests
-- `src/brain/compiler/parser.spec.ts` -- brain tile parser tests
-- `src/brain/language-service/tile-suggestions.spec.ts` -- tile suggestion language service tests
-- `src/brain/model/brain-json.spec.ts` -- brain JSON serialization round-trip tests
-- `src/brain/runtime/brain.spec.ts` -- brain execution tests
-- `src/brain/runtime/vm.spec.ts` -- bytecode VM tests
-- `src/platform/stream.spec.ts` -- binary stream tests
-
 When adding new tests, follow this pattern:
 
 - Use `describe`/`test`/`before` from `node:test` and `assert` from `node:assert/strict`

@@ -1,13 +1,16 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readTileDocs } from "@mindcraft-lang/assistant-bridge/kit";
+import type { TileDocContent } from "@mindcraft-lang/assistant-bridge/kit";
+import { pairTileDocs, readTileDocContent } from "@mindcraft-lang/assistant-bridge/kit";
 import { appTileDocs } from "@/docs/manifest";
 
-/** The app directory this module was loaded from, resolved from the module's own location. */
-const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+/** Directory holding the app's English tile documentation, relative to this module's own location. */
+const TILE_DOC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "content", "en", "tiles");
 
-/** Directory holding the app's English tile documentation. */
-const TILE_DOC_DIR = join(APP_DIR, "src", "docs", "content", "en", "tiles");
+/** The documentation content the artifact carries, or the app tree's own in a source run. */
+function tileDocContent(): TileDocContent {
+  return typeof TILE_DOC_CONTENT === "object" ? TILE_DOC_CONTENT : readTileDocContent(TILE_DOC_DIR);
+}
 
 /**
  * The English documentation the app ships for each of its own tiles, as raw
@@ -15,5 +18,5 @@ const TILE_DOC_DIR = join(APP_DIR, "src", "docs", "content", "en", "tiles");
  * the app does not ship is absent.
  */
 export function ecosimTileDocs(): Map<string, string> {
-  return readTileDocs(TILE_DOC_DIR, appTileDocs);
+  return pairTileDocs(tileDocContent(), appTileDocs);
 }

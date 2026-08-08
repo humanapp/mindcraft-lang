@@ -1,54 +1,70 @@
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type IBrainDef, type MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
+import type { ScenarioInput, ScenarioInputKind } from "@mindcraft-lang/assistant-bridge";
+import type { IBrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
+import MatterBodyModule from "phaser/src/physics/matter-js/lib/body/Body.js";
+import MatterCompositeModule from "phaser/src/physics/matter-js/lib/body/Composite.js";
+import MatterEngineModule from "phaser/src/physics/matter-js/lib/core/Engine.js";
+import MatterEventsModule from "phaser/src/physics/matter-js/lib/core/Events.js";
+import MatterBodiesModule from "phaser/src/physics/matter-js/lib/factory/Bodies.js";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
 import { BLIP_RADIUS, type Blip } from "@/brain/blip";
 import { Engine } from "@/brain/engine";
+import {
+  actorBodyOptions,
+  actorBodyRadiusBeforeScale,
+  blipBodyOptions,
+  blipCollisionFilter,
+  boundaryWalls,
+  defaultDesiredCounts,
+  generateObstacles,
+  obstacleBodyOptions,
+  randomFacing,
+  randomSpawnPosition,
+  WORLD_FPS,
+  WORLD_GRAVITY,
+  WORLD_HEIGHT,
+  WORLD_WIDTH,
+  type WorldRandom,
+} from "@/brain/world-definition";
 import type { Playground } from "@/game/scenes/Playground";
 import { deserializeBrainFromArrayBuffer } from "@/services/brain-persistence";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
 
 // -- Matter.js, loaded without Phaser -------------------------------------------
 
-const requireMatter = createRequire(import.meta.url);
-const MATTER_LIB = "phaser/src/physics/matter-js/lib";
+const MatterEngine = MatterEngineModule as typeof MatterJS.Engine;
+const MatterEvents = MatterEventsModule as typeof MatterJS.Events;
+const MatterBodies = MatterBodiesModule as typeof MatterJS.Bodies;
+const MatterBody = MatterBodyModule as typeof MatterJS.Body;
+const MatterComposite = MatterCompositeModule as typeof MatterJS.Composite;
 
-const MatterEngine = requireMatter(`${MATTER_LIB}/core/Engine.js`) as typeof MatterJS.Engine;
-const MatterEvents = requireMatter(`${MATTER_LIB}/core/Events.js`) as typeof MatterJS.Events;
-const MatterBodies = requireMatter(`${MATTER_LIB}/factory/Bodies.js`) as typeof MatterJS.Bodies;
-const MatterBody = requireMatter(`${MATTER_LIB}/body/Body.js`) as typeof MatterJS.Body;
-const MatterComposite = requireMatter(`${MATTER_LIB}/body/Composite.js`) as typeof MatterJS.Composite;
-
-/** Fixed simulation step in milliseconds, matching the app's 60 Hz physics substep. */
-export const STEP_MS = 1000 / 60;
-
-/** World extent, matching the Phaser game config the app boots with. */
-export const WORLD_WIDTH = 1024;
-export const WORLD_HEIGHT = 768;
-
-/** Thickness of the boundary walls, matching the app's `setBounds` call. */
-const WALL_THICKNESS = 32;
-
-/** Matter collision categories, matching the app's scene. */
-const CATEGORY_WALL = 0x0001;
-const CATEGORY_ACTOR = 0x0002;
-const CATEGORY_BLIP = 0x0004;
+/** Fixed simulation step in milliseconds: one frame at the world's frame rate. */
+export const STEP_MS = 1000 / WORLD_FPS;
 
 /** Project namespace the shipped brain documents deserialize under. */
 const PROJECT_NAMESPACE = "ecosim-rehearsal";
 
-/** The app directory this module was loaded from, resolved from the module's own location. */
-const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+/** Directory holding the brain documents the app ships for each archetype, from this module's own location. */
+const BRAIN_ASSET_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "public", "assets", "brain", "defs");
 
-/** Directory holding the brain documents the app ships for each archetype. */
-const BRAIN_ASSET_DIR = join(APP_DIR, "public", "assets", "brain", "defs");
+/** The serialized brain document the app ships for `archetype`, from the artifact or from the app tree. */
+function shippedBrainBytes(archetype: Archetype): ArrayBuffer {
+  const bytes =
+    typeof SHIPPED_BRAIN_DEFS === "object"
+      ? Buffer.from(SHIPPED_BRAIN_DEFS[archetype] ?? "", "base64")
+      : readFileSync(join(BRAIN_ASSET_DIR, `default-${archetype}.brain`));
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
 
-/** Seeded stand-in for the integer range helper the scene uses when placing bodies. */
-function randomInt(rng: () => number, min: number, max: number): number {
-  return Math.floor(rng() * (max - min + 1)) + min;
+/** The world-construction draws of one run, taken from its seeded stream. */
+function seededRandom(rng: () => number): WorldRandom {
+  return {
+    int: (min: number, max: number) => Math.floor(rng() * (max - min + 1)) + min,
+    unit: rng,
+  };
 }
 
 // -- Observation ----------------------------------------------------------------
@@ -180,7 +196,7 @@ interface WorldListener {
  * Matter engine stepped directly by {@link HeadlessScene.step}. Owns the world
  * bodies (walls, obstacles, actor bodies, blip bodies), the collision wiring
  * that turns Matter pairs into engine bump / blip events, and the seeded
- * placement the scene takes from the renderer's RNG in the app.
+ * placement its world construction draws.
  */
 class HeadlessScene {
   readonly scale = { width: WORLD_WIDTH, height: WORLD_HEIGHT };
@@ -211,16 +227,20 @@ class HeadlessScene {
   };
 
   private readonly listeners = new Map<string, WorldListener[]>();
+  private readonly random: WorldRandom;
   private engine!: Engine;
+  /** Where the next {@link spawn} puts its actor; unset until {@link placeNextSpawn} sets it. */
+  private placement?: { readonly x: number; readonly y: number; readonly facing: number };
 
   constructor(
-    private readonly rng: () => number,
+    rng: () => number,
     private readonly observer: WorldObserver
   ) {
+    this.random = seededRandom(rng);
     this.matterEngine = MatterEngine.create();
-    this.matterEngine.world.gravity.x = 0;
-    this.matterEngine.world.gravity.y = 0;
-    this.matterEngine.world.gravity.scale = 0.001;
+    this.matterEngine.world.gravity.x = WORLD_GRAVITY.x;
+    this.matterEngine.world.gravity.y = WORLD_GRAVITY.y;
+    this.matterEngine.world.gravity.scale = WORLD_GRAVITY.scale;
 
     this.matter = {
       world: {
@@ -266,13 +286,7 @@ class HeadlessScene {
   }
 
   private createWalls(): void {
-    const walls: Array<[number, number, number, number]> = [
-      [-WALL_THICKNESS, -WALL_THICKNESS, WALL_THICKNESS, WORLD_HEIGHT + WALL_THICKNESS * 2],
-      [WORLD_WIDTH, -WALL_THICKNESS, WALL_THICKNESS, WORLD_HEIGHT + WALL_THICKNESS * 2],
-      [0, -WALL_THICKNESS, WORLD_WIDTH, WALL_THICKNESS],
-      [0, WORLD_HEIGHT, WORLD_WIDTH, WALL_THICKNESS],
-    ];
-    for (const [x, y, width, height] of walls) {
+    for (const { x, y, width, height } of boundaryWalls()) {
       const body = MatterBodies.rectangle(x + width / 2, y + height / 2, width, height, {
         isStatic: true,
         friction: 0,
@@ -283,22 +297,8 @@ class HeadlessScene {
   }
 
   private createObstacles(): void {
-    const obstacleCount = 4;
-    const margin = 100;
-    for (let i = 0; i < obstacleCount; i++) {
-      const width = randomInt(this.rng, 30, 120);
-      const height = randomInt(this.rng, 30, 120);
-      const x = randomInt(this.rng, margin, WORLD_WIDTH - margin);
-      const y = randomInt(this.rng, margin, WORLD_HEIGHT - margin);
-      const rotation = this.rng() * Math.PI * 2;
-      const body = MatterBodies.rectangle(x, y, width, height, {
-        angle: rotation,
-        collisionFilter: {
-          category: CATEGORY_WALL,
-          mask: CATEGORY_WALL | CATEGORY_ACTOR | CATEGORY_BLIP,
-          group: 0,
-        },
-      });
+    for (const { x, y, width, height, rotation } of generateObstacles(this.random)) {
+      const body = MatterBodies.rectangle(x, y, width, height, obstacleBodyOptions(rotation));
       MatterBody.setStatic(body, true);
       MatterComposite.add(this.matterWorld, body);
       this.obstacleBodies.push(body);
@@ -349,46 +349,29 @@ class HeadlessScene {
     }
   }
 
-  /** A position inside the bounds that overlaps no obstacle, mirroring the scene's placement rule. */
-  randomPositionWithinBounds(radius: number = 20): Vector2 {
-    for (let attempt = 0; attempt < 100; attempt++) {
-      const x = randomInt(this.rng, 40, WORLD_WIDTH - 40);
-      const y = randomInt(this.rng, 40, WORLD_HEIGHT - 40);
-      let overlaps = false;
-      for (const body of this.obstacleBodies) {
-        const b = body.bounds;
-        const closestX = Math.max(b.min.x, Math.min(x, b.max.x));
-        const closestY = Math.max(b.min.y, Math.min(y, b.max.y));
-        const dx = x - closestX;
-        const dy = y - closestY;
-        if (dx * dx + dy * dy < radius * radius) {
-          overlaps = true;
-          break;
-        }
-      }
-      if (!overlaps) return new Vector2(x, y);
-    }
-    return new Vector2(randomInt(this.rng, 40, WORLD_WIDTH - 40), randomInt(this.rng, 40, WORLD_HEIGHT - 40));
+  /** A spawn position inside the world bounds that clears every obstacle by `radius` pixels. */
+  randomPositionWithinBounds(radius?: number): Vector2 {
+    return randomSpawnPosition(this.random, this.obstacleBodies, radius);
+  }
+
+  /**
+   * Put the next actor this scene spawns at (`x`, `y`) turned to `facing`
+   * radians, drawing nothing for its placement. Spent by the {@link spawn} that
+   * follows; every later spawn draws its placement again.
+   */
+  placeNextSpawn(x: number, y: number, facing: number): void {
+    this.placement = { x, y, facing };
   }
 
   /** Create the physical body and presentation resources for a newly spawned actor. */
   spawn(actor: Actor): Phaser.Physics.Matter.Sprite {
     const config = ARCHETYPES[actor.archetype].physics;
-    const pos = this.randomPositionWithinBounds(config.radius);
-    const body = MatterBodies.circle(pos.X, pos.Y, config.radius * config.scale, {
-      collisionFilter: {
-        category: CATEGORY_ACTOR,
-        mask: CATEGORY_WALL | CATEGORY_ACTOR | CATEGORY_BLIP,
-        group: 0,
-      },
-      mass: config.mass,
-      frictionAir: config.frictionAir,
-      restitution: config.restitution,
-      friction: config.friction,
-    });
+    const placed = this.placement;
+    this.placement = undefined;
+    const pos = placed ? { X: placed.x, Y: placed.y } : this.randomPositionWithinBounds(config.radius);
+    const body = MatterBodies.circle(pos.X, pos.Y, actorBodyRadiusBeforeScale(config), actorBodyOptions(config));
     MatterBody.scale(body, config.scale, config.scale);
-    MatterBody.setAngle(body, this.rng() * Math.PI * 2);
-    body.sleepThreshold = Number.POSITIVE_INFINITY;
+    MatterBody.setAngle(body, placed ? placed.facing : randomFacing(this.random));
     MatterComposite.add(this.matterWorld, body);
 
     const sprite = new BodySprite(body, this);
@@ -409,28 +392,17 @@ class HeadlessScene {
   activateBlip(blip: Blip, x: number, y: number, velX: number, velY: number): void {
     this.observer.onBlipFired?.();
     if (!blip.sprite) {
-      const body = MatterBodies.circle(x, y, BLIP_RADIUS, {
-        collisionFilter: {
-          category: CATEGORY_BLIP,
-          mask: CATEGORY_WALL | CATEGORY_ACTOR,
-          group: 0,
-        },
-        mass: 0.01,
-        frictionAir: 0,
-        restitution: 0,
-        friction: 0,
-        isSensor: true,
-      });
+      const body = MatterBodies.circle(x, y, BLIP_RADIUS, blipBodyOptions());
       MatterBody.setInertia(body, Number.POSITIVE_INFINITY);
-      body.sleepThreshold = Number.POSITIVE_INFINITY;
       MatterComposite.add(this.matterWorld, body);
       const sprite = new BodySprite(body, this);
       body.gameObject = sprite as unknown as Phaser.GameObjects.GameObject;
       blip.sprite = sprite as unknown as Phaser.Physics.Matter.Sprite;
     } else {
       const body = blip.sprite.body as MatterJS.BodyType;
-      body.collisionFilter.category = CATEGORY_BLIP;
-      body.collisionFilter.mask = CATEGORY_WALL | CATEGORY_ACTOR;
+      const filter = blipCollisionFilter();
+      body.collisionFilter.category = filter.category;
+      body.collisionFilter.mask = filter.mask;
       blip.sprite.setPosition(x, y);
       blip.sprite.setVisible(true);
       blip.sprite.setActive(true);
@@ -446,9 +418,7 @@ class HeadlessScene {
 function loadShippedBrains(env: MindcraftEnvironment): Record<Archetype, IBrainDef> {
   const brains: Partial<Record<Archetype, IBrainDef>> = {};
   for (const archetype of ARCHETYPE_NAMES) {
-    const file = readFileSync(join(BRAIN_ASSET_DIR, `default-${archetype}.brain`));
-    const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer;
-    const brain = deserializeBrainFromArrayBuffer(env, buffer, PROJECT_NAMESPACE);
+    const brain = deserializeBrainFromArrayBuffer(env, shippedBrainBytes(archetype), PROJECT_NAMESPACE);
     if (!brain) throw new Error(`the shipped ${archetype} brain did not deserialize`);
     brains[archetype] = brain;
   }
@@ -463,16 +433,116 @@ function loadShippedBrains(env: MindcraftEnvironment): Record<Archetype, IBrainD
 function headlessStore(env: MindcraftEnvironment, brains: Record<Archetype, IBrainDef>): EcosimEnvironmentStore {
   return {
     env,
-    getDesiredCounts: () => ({
-      carnivore: ARCHETYPES.carnivore.initialSpawnCount,
-      herbivore: ARCHETYPES.herbivore.initialSpawnCount,
-      plant: ARCHETYPES.plant.initialSpawnCount,
-    }),
+    getDesiredCounts: () => defaultDesiredCounts(),
     loadBrainFromProject: async () => undefined,
     getDefaultBrain: (archetype: Archetype) => brains[archetype],
     saveBrainForArchetype: async () => {},
     flushPendingBrainRebuilds: () => {},
   } as unknown as EcosimEnvironmentStore;
+}
+
+// -- Scripted world causes ------------------------------------------------------
+
+/** Suffix the input kind of each archetype ends in. */
+const AHEAD_SUFFIX = "-ahead";
+
+/** Archetype each scenario input kind stages a creature of, keyed by kind. */
+const STAGED_ARCHETYPES: Readonly<Record<string, Archetype>> = Object.fromEntries(
+  ARCHETYPE_NAMES.map((archetype) => [`${archetype}${AHEAD_SUFFIX}`, archetype])
+);
+
+/** Every percept kind a scenario may script for this world, one per archetype, sorted by name. */
+export const SCENARIO_INPUT_KINDS: readonly ScenarioInputKind[] = Object.entries(STAGED_ARCHETYPES)
+  .map(([name, archetype]) => ({
+    name,
+    description:
+      `Distance in world pixels at which one ${archetype} is held directly ahead of the creature ` +
+      "under study; 0 takes it out of the world.",
+  }))
+  .sort((a, b) => (a.name < b.name ? -1 : 1));
+
+/** What a run scripts into the world it stages. */
+export interface ScriptedCauses {
+  /** Percepts the run scripts, each applied before the think it names. */
+  readonly inputs: readonly ScenarioInput[];
+  /** The creature under study, or undefined while it is not in the world. */
+  subject(): Actor | undefined;
+}
+
+/**
+ * The creatures a scenario's inputs put in the world. Each archetype a scenario
+ * stages is held to a single creature standing a fixed distance directly ahead
+ * of the creature under study, and the world keeps no others of that kind.
+ */
+class StagedCreatures {
+  /** Distance in world pixels each staged archetype stands at; zero for a kind taken out of the world. */
+  private readonly heldAt = new Map<Archetype, number>();
+  /** The creature the staging put in the world for each archetype it holds one of. */
+  private readonly standing = new Map<Archetype, Actor>();
+
+  constructor(
+    private readonly engine: Engine,
+    private readonly scene: HeadlessScene,
+    private readonly causes: ScriptedCauses
+  ) {}
+
+  /**
+   * Apply every input scheduled for the zero-based think `think`, in scenario
+   * order. Every entry must name one of {@link SCENARIO_INPUT_KINDS}.
+   */
+  applyScheduled(think: number): void {
+    for (const input of this.causes.inputs) {
+      if (input.at !== think) continue;
+      this.hold(STAGED_ARCHETYPES[input.kind], Number(input.value));
+    }
+  }
+
+  /**
+   * Put every held creature where the scenario holds it, spawning one for a
+   * staged kind the world has none of. Does nothing until the creature under
+   * study is in the world.
+   */
+  place(): void {
+    const subject = this.causes.subject();
+    if (!subject) return;
+    for (const [archetype, distance] of this.heldAt) {
+      if (distance <= 0) continue;
+      const facing = subject.sprite.rotation;
+      const x = subject.sprite.x + Math.cos(facing) * distance;
+      const y = subject.sprite.y + Math.sin(facing) * distance;
+      const creature = this.standingCreature(archetype, x, y, facing);
+      if (!creature) continue;
+      creature.sprite.setPosition(x, y);
+      creature.sprite.setVelocity(0, 0);
+    }
+  }
+
+  /**
+   * Take the world's population of `archetype` down to what `distance` asks:
+   * one creature held that far ahead of the creature under study, or none at
+   * all at zero. Every other creature of that kind dies where it stands, the
+   * creature under study excepted.
+   */
+  private hold(archetype: Archetype, distance: number): void {
+    this.heldAt.set(archetype, distance);
+    this.engine.setDesiredCount(archetype, distance > 0 ? 1 : 0);
+    const kept = distance > 0 ? this.standing.get(archetype) : undefined;
+    if (!kept) this.standing.delete(archetype);
+    const subject = this.causes.subject();
+    for (const actor of this.engine.getActorsByArchetype(archetype)) {
+      if (actor !== kept && actor !== subject) actor.drainEnergy(actor.energy);
+    }
+  }
+
+  /** The creature standing for `archetype`, spawned at (`x`, `y`) facing `facing` when none is. */
+  private standingCreature(archetype: Archetype, x: number, y: number, facing: number): Actor | undefined {
+    const held = this.standing.get(archetype);
+    if (held && this.engine.getActorById(held.actorId) === held) return held;
+    this.scene.placeNextSpawn(x, y, facing);
+    const spawned = this.engine.spawn(archetype);
+    if (spawned) this.standing.set(archetype, spawned);
+    return spawned;
+  }
 }
 
 /** Every live actor, ordered by actor id. */
@@ -500,6 +570,8 @@ export interface RehearsalWorldOptions {
   readonly observer: WorldObserver;
   /** Brains to run in place of the shipped defaults, built against {@link environment}. */
   readonly brains?: Partial<Record<Archetype, IBrainDef>>;
+  /** World causes the run scripts. */
+  readonly scripted?: ScriptedCauses;
 }
 
 /** A staged, running rehearsal world. */
@@ -529,12 +601,17 @@ export async function createRehearsalWorld(options: RehearsalWorldOptions): Prom
   engine.start();
   await engine.loadBrains();
 
+  const staged = options.scripted ? new StagedCreatures(engine, scene, options.scripted) : undefined;
   let time = 0;
+  let think = 0;
   return {
     obstacleCount: scene.obstacleBodies.length,
     step: () => {
+      staged?.applyScheduled(think);
+      staged?.place();
       scene.step(time);
       time += STEP_MS;
+      think++;
     },
     actors: () => liveActors(engine),
     shutdown: () => engine.shutdown(),

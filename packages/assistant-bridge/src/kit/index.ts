@@ -3,8 +3,9 @@ export type {
   ConformanceCheck,
   ConformanceReport,
 } from "./conformance.js";
-export { ConformanceCheckCode, checkAdapterConformance, checkArtifactLoads } from "./conformance.js";
-export type { DispatchEvent, RehearsalEnvironmentOptions } from "./environment.js";
+export { ConformanceCheckCode, checkAdapterConformance, checkArtifactSelfContained } from "./conformance.js";
+export { assertDependencyDistsFresh, StaleDependencyError } from "./dependency-freshness.js";
+export type { RehearsalEnvironmentOptions } from "./environment.js";
 export { createRehearsalEnvironment, createSeededRng } from "./environment.js";
 export type {
   RehearsalAdapterOptions,
@@ -13,7 +14,13 @@ export type {
   WorldDriver,
   WorldStaging,
 } from "./rehearsal-adapter.js";
-export { createRehearsalAdapter } from "./rehearsal-adapter.js";
-export type { TileDocEntry } from "./tile-docs.js";
-export { readTileDocs } from "./tile-docs.js";
-export { renderValue } from "./value-text.js";
+export {
+  createRehearsalAdapter,
+  RehearsalRejection,
+  RehearsalRejectionCode,
+  ScenarioRejection,
+  ScenarioRejectionCode,
+} from "./rehearsal-adapter.js";
+export { readTargetIdentity, targetManifestPath } from "./target-manifest.js";
+export type { TileDocContent, TileDocEntry } from "./tile-docs.js";
+export { pairTileDocs, readTileDocContent } from "./tile-docs.js";

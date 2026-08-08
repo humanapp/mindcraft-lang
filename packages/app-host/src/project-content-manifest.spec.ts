@@ -335,6 +335,40 @@ describe("parseProjectContentManifest", () => {
     });
     assert.strictEqual(result.ok, true);
   });
+
+  it("carries a rehearsal adapter through and omits it when absent", () => {
+    const result = parseProjectContentManifest(
+      JSON.stringify({ name: "P", version: "0.1.0", rehearsalAdapter: { path: "rehearsal/adapter.js" } })
+    );
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest.rehearsalAdapter, { path: "rehearsal/adapter.js" });
+    }
+    const absent = parseProjectContentManifest(JSON.stringify({ name: "P", version: "0.1.0" }));
+    assert.strictEqual(absent.ok, true);
+    if (absent.ok) {
+      assert.strictEqual("rehearsalAdapter" in absent.manifest, false);
+    }
+  });
+
+  it("rejects a malformed rehearsalAdapter with INVALID_REHEARSAL_ADAPTER", () => {
+    const cases: unknown[] = ["not-an-object", {}, { path: "" }, { path: 7 }];
+    for (const rehearsalAdapter of cases) {
+      const result = validateProjectContentManifest({ name: "P", version: "0.1.0", rehearsalAdapter });
+      assert.strictEqual(result.ok, false, `Expected rejection for ${JSON.stringify(rehearsalAdapter)}`);
+      assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.INVALID_REHEARSAL_ADAPTER]);
+    }
+  });
+
+  it("rejects a rehearsalAdapter path that escapes the project root", () => {
+    const result = validateProjectContentManifest({
+      name: "P",
+      version: "0.1.0",
+      rehearsalAdapter: { path: "../adapter.js" },
+    });
+    assert.strictEqual(result.ok, false);
+    assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.FILE_ESCAPES_ROOT]);
+  });
 });
 
 describe("validateProjectContentManifest", () => {
@@ -621,6 +655,22 @@ describe("serializeProjectContentManifest", () => {
     }
     const withoutHostApp = serializeProjectContentManifest({ name: "P", version: "0.1.0", extensions: {} });
     assert.strictEqual(withoutHostApp.includes("hostApp"), false);
+  });
+
+  it("round-trips a rehearsal adapter and omits it when absent", () => {
+    const manifest: ProjectContentManifest = {
+      name: "P",
+      version: "0.1.0",
+      extensions: {},
+      rehearsalAdapter: { path: "rehearsal/adapter.js" },
+    };
+    const result = parseProjectContentManifest(serializeProjectContentManifest(manifest));
+    assert.strictEqual(result.ok, true);
+    if (result.ok) {
+      assert.deepStrictEqual(result.manifest, manifest);
+    }
+    const without = serializeProjectContentManifest({ name: "P", version: "0.1.0", extensions: {} });
+    assert.strictEqual(without.includes("rehearsalAdapter"), false);
   });
 
   it("round-trips extras byte-faithfully after the schema fields", () => {

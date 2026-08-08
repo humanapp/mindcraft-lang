@@ -20,6 +20,18 @@ import { BrainTileMissingDef } from "../tiles/missing";
 /** Maximum number of tiles in a single rule's WHEN or DO tile set. Never reduce this value. */
 export const kMaxTileSetSize = 20; // never reduce this value!
 
+/** Stable error codes thrown when a tile set is given a tile the document cannot carry. */
+export const UnregisteredTileErrorCode = {
+  /**
+   * A document-scoped tile def -- one whose only persisted home is the owning
+   * brain's catalog -- was placed in a rule without being registered there.
+   */
+  NotInDocumentCatalog: "UNREGISTERED_TILE_NOT_IN_DOCUMENT_CATALOG",
+} as const;
+
+/** Union of all {@link UnregisteredTileErrorCode} values. */
+export type UnregisteredTileErrorCode = (typeof UnregisteredTileErrorCode)[keyof typeof UnregisteredTileErrorCode];
+
 function createMissingTileFallback(tileId: string): BrainTileMissingDef {
   logger.warn(`BrainTileSet.deserializeJson: tileId '${tileId}' not found -- inserting missing-tile placeholder`);
   const parsed = parseTileId(tileId);
@@ -146,12 +158,29 @@ export class BrainTileSet implements IBrainTileSet {
     this.emitter_.emit("tileSet_dirtyChanged", { side: this.side_, isDirty: false });
   }
 
+  /**
+   * Rejects `tileDef` when its `persist` flag makes the owning brain's catalog
+   * its only persisted home and that catalog does not hold it. Throws
+   * {@link UnregisteredTileErrorCode.NotInDocumentCatalog}; register the tile in
+   * the brain's catalog before placing it.
+   */
+  private requireDocumentCatalogEntry_(tileDef: IBrainTileDef): void {
+    if (!tileDef.persist) return;
+    const brain = this.rule_?.page()?.brain();
+    if (!brain || brain.catalog().has(tileDef.tileId)) return;
+    throw new Error(
+      `${UnregisteredTileErrorCode.NotInDocumentCatalog}: tile '${tileDef.tileId}' is not registered in the brain's catalog`
+    );
+  }
+
   appendTile(tileDef: IBrainTileDef): void {
+    this.requireDocumentCatalogEntry_(tileDef);
     this.tiles_.push(tileDef);
     this.markDirty();
   }
 
   insertTileAtIndex(index: number, tileDef: IBrainTileDef): void {
+    this.requireDocumentCatalogEntry_(tileDef);
     this.tiles_.insert(index, tileDef);
     this.markDirty();
   }
@@ -160,6 +189,7 @@ export class BrainTileSet implements IBrainTileSet {
     if (index < 0 || index >= this.tiles_.size()) {
       return false;
     }
+    this.requireDocumentCatalogEntry_(tileDef);
     this.tiles_.set(index, tileDef);
     this.markDirty();
     return true;

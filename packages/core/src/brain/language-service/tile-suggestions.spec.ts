@@ -23,7 +23,7 @@ import {
   type SlotExpr,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type {
   ActuatorExpr,
   BinaryOpExpr,
@@ -36,6 +36,7 @@ import type {
   VariableExpr,
 } from "@mindcraft-lang/core/brain/compiler";
 import {
+  buildInsertionContext,
   collectRuleHierarchyCapabilities,
   collectRuleHierarchyOutputKeys,
   countUnclosedParens,
@@ -4165,7 +4166,7 @@ describe("WHEN-result consumption", () => {
 
   test("a Buffer consumer is not offered on the WHEN side even when the rule's own WHEN produces a Buffer", () => {
     const rule = firstRule();
-    rule.when().appendTile(bufferProducerDef);
+    __test__appendTile(rule.when(), bufferProducerDef);
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: rule }, catalogList(), services);
     assert.ok(
       !offered(result, bufferConsumerDef.tileId),
@@ -4175,14 +4176,14 @@ describe("WHEN-result consumption", () => {
 
   test("a Buffer consumer is offered on the DO side of a rule whose WHEN produces a Buffer", () => {
     const rule = firstRule();
-    rule.when().appendTile(bufferProducerDef);
+    __test__appendTile(rule.when(), bufferProducerDef);
     const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
     assert.ok(offered(result, bufferConsumerDef.tileId), "the DO side reads the rule's own Buffer WHEN result");
   });
 
   test("a Buffer consumer is offered on a child rule's WHEN side when the ancestor produces a Buffer", () => {
     const parent = firstRule();
-    parent.when().appendTile(bufferProducerDef);
+    __test__appendTile(parent.when(), bufferProducerDef);
     const child = parent.appendNewRule();
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: child }, catalogList(), services);
     assert.ok(offered(result, bufferConsumerDef.tileId), "the child WHEN side reads the ancestor's Buffer result");
@@ -4190,7 +4191,7 @@ describe("WHEN-result consumption", () => {
 
   test("a Buffer consumer is offered on the DO side of an empty-WHEN child that falls through to a Buffer ancestor", () => {
     const parent = firstRule();
-    parent.when().appendTile(bufferProducerDef);
+    __test__appendTile(parent.when(), bufferProducerDef);
     const child = parent.appendNewRule();
     const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: child }, catalogList(), services);
     assert.ok(
@@ -4201,21 +4202,21 @@ describe("WHEN-result consumption", () => {
 
   test("a Number consumer is offered on the DO side under a Number WHEN", () => {
     const rule = firstRule();
-    rule.when().appendTile(numberProducerDef);
+    __test__appendTile(rule.when(), numberProducerDef);
     const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
     assert.ok(offered(result, numberConsumerDef.tileId));
   });
 
   test("a Number consumer is not offered on the DO side under a Buffer WHEN", () => {
     const rule = firstRule();
-    rule.when().appendTile(bufferProducerDef);
+    __test__appendTile(rule.when(), bufferProducerDef);
     const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
     assert.ok(!offered(result, numberConsumerDef.tileId), "Buffer does not convert to Number");
   });
 
   test("a Number consumer is offered on the DO side under a convertible (Boolean) WHEN", () => {
     const rule = firstRule();
-    rule.when().appendTile(booleanProducerDef);
+    __test__appendTile(rule.when(), booleanProducerDef);
     const result = suggestTiles({ ruleSide: RuleSide.Do, ruleDef: rule }, catalogList(), services);
     assert.ok(offered(result, numberConsumerDef.tileId), "Boolean converts to Number, so the consumer is valid");
   });
@@ -4243,7 +4244,7 @@ describe("WHEN-result consumption", () => {
 
   test("getRuleWhenResultType types a value-bearing WHEN sensor", () => {
     const rule = firstRule();
-    rule.when().appendTile(bufferProducerDef);
+    __test__appendTile(rule.when(), bufferProducerDef);
     assert.equal(
       getRuleWhenResultType(rule, services.edit.operatorOverloads, services.shared.conversions),
       CoreTypeIds.Buffer
@@ -4252,7 +4253,7 @@ describe("WHEN-result consumption", () => {
 
   test("getRuleWhenResultType types a boolean WHEN as Boolean", () => {
     const rule = firstRule();
-    rule.when().appendTile(booleanProducerDef);
+    __test__appendTile(rule.when(), booleanProducerDef);
     assert.equal(
       getRuleWhenResultType(rule, services.edit.operatorOverloads, services.shared.conversions),
       CoreTypeIds.Boolean
@@ -4267,7 +4268,7 @@ describe("WHEN-result consumption", () => {
 
   test("getRuleWhenResultType falls through an empty child WHEN to the ancestor's result type", () => {
     const parent = firstRule();
-    parent.when().appendTile(bufferProducerDef);
+    __test__appendTile(parent.when(), bufferProducerDef);
     const child = parent.appendNewRule();
     assert.equal(child.when().tiles().size(), 0, "child WHEN is empty");
     assert.equal(
@@ -4680,7 +4681,7 @@ describe("Rule hierarchy gate derivation", () => {
 
     const brain = BrainDef.emptyBrainDef(services, "hier-walk");
     const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
-    rule.when().appendTile(provider);
+    __test__appendTile(rule.when(), provider);
     const child = rule.appendNewRule();
 
     assert.ok(collectRuleHierarchyOutputKeys(rule).has(out.outputKey), "own WHEN side provides the key");
@@ -4703,12 +4704,13 @@ describe("Rule hierarchy gate derivation", () => {
 
     const brain = BrainDef.emptyBrainDef(services, "hier-swap");
     const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
-    rule.when().appendTile(provider);
+    __test__appendTile(rule.when(), provider);
     assert.ok(collectRuleHierarchyOutputKeys(rule).has(out.outputKey), "the provider's key is collected");
     assert.equal(collectRuleHierarchyCapabilities(rule).get(HIER_CAP_BIT), 1, "the provider's capability is collected");
 
     // Replace (not remove/append) the WHEN tile: a fresh collection reflects it.
     const replacement = new BrainTileLiteralDef(CoreTypeIds.Boolean, true, {}, services);
+    brain.catalog().registerTileDef(replacement);
     rule.when().replaceTileAtIndex(0, replacement);
     assert.ok(!collectRuleHierarchyOutputKeys(rule).has(out.outputKey), "the key disappears with its provider");
     assert.equal(
@@ -4911,7 +4913,7 @@ describe("Preceding-sibling consumption", () => {
 
   test("is offered as a prefix operator's operand in the second root rule", () => {
     const [, second] = rootRules(2);
-    second.when().appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not))!);
+    __test__appendTile(second.when(), services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not))!);
     const expr = parseTilesForSuggestions(second.when().tiles());
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: second, expr }, catalogList(), services);
     assert.ok(offered(result, siblingReaderDef.tileId));
@@ -4919,7 +4921,7 @@ describe("Preceding-sibling consumption", () => {
 
   test("is not offered as a prefix operator's operand in the first root rule", () => {
     const [first] = rootRules(2);
-    first.when().appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not))!);
+    __test__appendTile(first.when(), services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not))!);
     const expr = parseTilesForSuggestions(first.when().tiles());
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: first, expr }, catalogList(), services);
     assert.ok(!offered(result, siblingReaderDef.tileId));
@@ -4940,9 +4942,9 @@ describe("Preceding-sibling consumption", () => {
    */
   function conjunctionRightOperandInsert(rule: BrainRuleDef): InsertionContext {
     const boolLit = booleanLiteral();
-    rule.when().appendTile(boolLit);
-    rule.when().appendTile(services.edit.tiles.get(mkOperatorTileId(CoreOpId.And))!);
-    rule.when().appendTile(boolLit);
+    __test__appendTile(rule.when(), boolLit);
+    __test__appendTile(rule.when(), services.edit.tiles.get(mkOperatorTileId(CoreOpId.And))!);
+    __test__appendTile(rule.when(), boolLit);
     const before = List.from(rule.when().tiles().toArray().slice(0, 2));
     return {
       ruleSide: RuleSide.When,
@@ -4989,7 +4991,7 @@ describe("Preceding-sibling consumption", () => {
 
   test("is offered in a WHEN-side anonymous Boolean slot in the second root rule", () => {
     const [, second] = rootRules(2);
-    second.when().appendTile(anonBooleanSlotSensor());
+    __test__appendTile(second.when(), anonBooleanSlotSensor());
     const expr = parseTilesForSuggestions(second.when().tiles());
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: second, expr }, catalogList(), services);
     assert.ok(offered(result, siblingReaderDef.tileId));
@@ -4997,7 +4999,7 @@ describe("Preceding-sibling consumption", () => {
 
   test("is not offered in a WHEN-side anonymous Boolean slot in the first root rule", () => {
     const [first] = rootRules(2);
-    first.when().appendTile(anonBooleanSlotSensor());
+    __test__appendTile(first.when(), anonBooleanSlotSensor());
     const expr = parseTilesForSuggestions(first.when().tiles());
     const result = suggestTiles({ ruleSide: RuleSide.When, ruleDef: first, expr }, catalogList(), services);
     assert.ok(!offered(result, siblingReaderDef.tileId));
@@ -5058,5 +5060,166 @@ describe("Conversion depth in withConversion offerings", () => {
 
   test("a value reaching the expected type through one conversion is offered", () => {
     assert.ok(slotOffering().includes(directVarDef.tileId));
+  });
+});
+
+// ---- Offers and placeability agree ----
+
+describe("a matched parenthesis offers only itself in its own place", () => {
+  const openParenId = mkControlFlowTileId(CoreControlFlowId.OpenParen);
+  const closeParenId = mkControlFlowTileId(CoreControlFlowId.CloseParen);
+
+  /** Tile ids offered in place of the tile at `index` of `tiles`, on either list. */
+  function replacementOffering(tiles: List<IBrainTileDef>, index: number): string[] {
+    const context = buildInsertionContext({
+      side: RuleSide.When,
+      expr: parseTilesForSuggestions(tiles),
+      replaceTileIndex: index,
+      existingTiles: tiles,
+    });
+    const result = suggestTiles(context, catalogList(), services);
+    return [...result.exact.toArray(), ...result.withConversion.toArray()].map((s) => s.tileDef.tileId);
+  }
+
+  /** `( 42 )`, a group both of whose parens the list balances. */
+  function balancedGroup(): List<IBrainTileDef> {
+    return List.from<IBrainTileDef>([
+      services.edit.tiles.get(openParenId)!,
+      new BrainTileLiteralDef(CoreTypeIds.Number, 42, {}, services),
+      services.edit.tiles.get(closeParenId)!,
+    ]);
+  }
+
+  test("the open paren of a balanced group offers the open paren and nothing else", () => {
+    assert.deepEqual(replacementOffering(balancedGroup(), 0), [openParenId]);
+  });
+
+  test("the close paren of a balanced group offers the close paren and nothing else", () => {
+    assert.deepEqual(replacementOffering(balancedGroup(), 2), [closeParenId]);
+  });
+
+  test("the value inside the group is unaffected and still offers value tiles", () => {
+    const offering = replacementOffering(balancedGroup(), 1);
+
+    assert.ok(offering.length > 1);
+    assert.ok(!offering.includes(closeParenId));
+  });
+
+  test("an open paren the list leaves unmatched keeps the offering its role earns", () => {
+    const unbalanced = List.from<IBrainTileDef>([
+      services.edit.tiles.get(openParenId)!,
+      new BrainTileLiteralDef(CoreTypeIds.Number, 42, {}, services),
+    ]);
+
+    assert.notDeepEqual(replacementOffering(unbalanced, 0), [openParenId]);
+  });
+});
+
+describe("a sensor standing as a binary operand keeps offering its own arguments", () => {
+  let operandSensorDef: BrainTileSensorDef;
+  let nearModDef: BrainTileModifierDef;
+  let farModDef: BrainTileModifierDef;
+
+  before(() => {
+    nearModDef = new BrainTileModifierDef("test.operandNear", { metadata: { label: "nearby" } });
+    farModDef = new BrainTileModifierDef("test.operandFar", { metadata: { label: "far away" } });
+    services.edit.tiles.registerTileDef(nearModDef);
+    services.edit.tiles.registerTileDef(farModDef);
+
+    const callDef = mkCallDef(bag(optional(choice(mod("test.operandNear"), mod("test.operandFar")))));
+    const entry = services.runtime.functions.register(
+      4211,
+      "test-operand-sensor",
+      false,
+      { exec: () => TRUE_VALUE },
+      callDef
+    );
+    operandSensorDef = new BrainTileSensorDef(
+      "test-operand-sensor",
+      mkActionDescriptor("sensor", entry, CoreTypeIds.Boolean),
+      { metadata: { label: "spot" } }
+    );
+    services.edit.tiles.registerTileDef(operandSensorDef);
+  });
+
+  /** Tile ids offered at the end of `[(] [spot] [)] [and] [spot]`, on either list. */
+  function offeringAfterOperand(): string[] {
+    const tiles = List.from<IBrainTileDef>([
+      services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!,
+      operandSensorDef,
+      services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!,
+      services.edit.tiles.get(mkOperatorTileId(CoreOpId.And))!,
+      operandSensorDef,
+    ]);
+    const context = buildInsertionContext({ side: RuleSide.When, existingTiles: tiles });
+    assert.equal(context.expr?.kind, "binaryOp", "the side parses to a binary op whose right operand is the sensor");
+    const result = suggestTiles(context, catalogList(), services);
+    return [...result.exact.toArray(), ...result.withConversion.toArray()].map((s) => s.tileDef.tileId);
+  }
+
+  test("the operand sensor's unfilled modifier slots are offered after it", () => {
+    const offering = offeringAfterOperand();
+
+    assert.ok(offering.includes(nearModDef.tileId));
+    assert.ok(offering.includes(farModDef.tileId));
+  });
+
+  test("the infix operators that extend the whole expression are offered as well", () => {
+    assert.ok(offeringAfterOperand().includes(mkOperatorTileId(CoreOpId.And)));
+  });
+});
+
+describe("a struct value is offered into a field-typed slot only when an accessor reads that field", () => {
+  let unreadStructTypeId: string;
+  let unreadVarDef: BrainTileVariableDef;
+  let readStructTypeId: string;
+  let readVarDef: BrainTileVariableDef;
+  let numberSlotActuatorDef: BrainTileActuatorDef;
+
+  before(() => {
+    const fields = List.from([{ name: "count", typeId: CoreTypeIds.Number, fieldIndex: 0 }]);
+    unreadStructTypeId = services.runtime.types.addStructType("Unread", { atomId: mkTestAtomId(), fields });
+    readStructTypeId = services.runtime.types.addStructType("Read", { atomId: mkTestAtomId(), fields });
+    unreadVarDef = new BrainTileVariableDef("test.unreadStruct", "unread", unreadStructTypeId, "var-unread");
+    readVarDef = new BrainTileVariableDef("test.readStruct", "read", readStructTypeId, "var-read");
+    services.edit.tiles.registerTileDef(unreadVarDef);
+    services.edit.tiles.registerTileDef(readVarDef);
+    services.edit.tiles.registerTileDef(
+      new BrainTileAccessorDef(readStructTypeId, "count", CoreTypeIds.Number, { metadata: { label: "count" } })
+    );
+
+    const paramDef = new BrainTileParameterDef("test.numberSlotArg", CoreTypeIds.Number, {
+      metadata: { label: "amount" },
+    });
+    services.edit.tiles.registerTileDef(paramDef);
+    const callDef = mkCallDef(bag(param("test.numberSlotArg", { required: true, anonymous: true })));
+    const entry = services.runtime.functions.register(
+      4212,
+      "test-number-slot",
+      false,
+      { exec: () => VOID_VALUE },
+      callDef
+    );
+    numberSlotActuatorDef = new BrainTileActuatorDef(
+      "test-number-slot",
+      mkActionDescriptor("actuator", entry, CoreTypeIds.Void),
+      { metadata: { label: "count out" } }
+    );
+    services.edit.tiles.registerTileDef(numberSlotActuatorDef);
+  });
+
+  /** Tile ids offered in the actuator's anonymous Number slot, on either list. */
+  function slotOffering(): string[] {
+    const expr = parseTilesForSuggestions(List.from<IBrainTileDef>([numberSlotActuatorDef]));
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
+    return [...result.exact.toArray(), ...result.withConversion.toArray()].map((s) => s.tileDef.tileId);
+  }
+
+  test("a struct no accessor tile reads is not offered, whatever fields it declares", () => {
+    assert.ok(!slotOffering().includes(unreadVarDef.tileId));
+  });
+
+  test("a struct an accessor tile reads the slot's type from is offered", () => {
+    assert.ok(slotOffering().includes(readVarDef.tileId));
   });
 });

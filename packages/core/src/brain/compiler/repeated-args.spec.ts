@@ -11,7 +11,7 @@ import { before, describe, test } from "node:test";
 
 import { List, type ReadonlyList } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
@@ -77,9 +77,9 @@ function runActuatorAndReadSlot0(
   const pageResult = brainDef.appendNewPage();
   assert.ok(pageResult.success);
   const rule = pageResult.value!.page.children().get(0)!;
-  rule.do().appendTile(actuator as never);
+  __test__appendTile(rule.do(), actuator as never);
   for (const tile of slotTiles) {
-    rule.do().appendTile(tile as never);
+    __test__appendTile(rule.do(), tile as never);
   }
 
   const brain = brainDef.compile();

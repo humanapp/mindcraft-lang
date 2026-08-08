@@ -15,7 +15,7 @@ import { before, describe, test } from "node:test";
 import { createHostActuator, createHostSensor, Dict, List, type ReadonlyList } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { CoreCapabilityBits, type IBrainTileDef, type ITileCatalog, TilePlacement } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileBrain, ParseDiagCode, runBrainLinkPipeline } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
@@ -207,8 +207,8 @@ function newBrain(): { brainDef: BrainDef; page: BrainPageDef } {
 
 /** Fills `rule`'s WHEN and DO sides from tile lists. */
 function fillRule(rule: BrainRuleDef, whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrainTileDef[]): void {
-  for (const tile of whenTiles) rule.when().appendTile(tile);
-  for (const tile of doTiles) rule.do().appendTile(tile);
+  for (const tile of whenTiles) __test__appendTile(rule.when(), tile);
+  for (const tile of doTiles) __test__appendTile(rule.do(), tile);
 }
 
 /** Compiles and runs `brainDef` for `ticks` thinks at a 16 ms cadence. */

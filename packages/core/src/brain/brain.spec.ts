@@ -27,7 +27,7 @@ import {
   mkVariableTileId,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
@@ -117,10 +117,10 @@ function buildBrain(whenTiles: readonly unknown[], doTiles: readonly unknown[]):
   const rule = page.children().get(0)!;
 
   for (const tile of whenTiles) {
-    rule.when().appendTile(tile as never);
+    __test__appendTile(rule.when(), tile as never);
   }
   for (const tile of doTiles) {
-    rule.do().appendTile(tile as never);
+    __test__appendTile(rule.do(), tile as never);
   }
 
   return brainDef;
@@ -824,14 +824,14 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const p2 = p2Result.value!.page;
 
     const r1 = p1.children().get(0)!;
-    r1.do().appendTile(actuator as never);
-    r1.do().appendTile(mkLiteral(11) as never);
-    r1.do().appendTile(mkStringLiteral(brainVarP1) as never);
+    __test__appendTile(r1.do(), actuator as never);
+    __test__appendTile(r1.do(), mkLiteral(11) as never);
+    __test__appendTile(r1.do(), mkStringLiteral(brainVarP1) as never);
 
     const r2 = p2.children().get(0)!;
-    r2.do().appendTile(actuator as never);
-    r2.do().appendTile(mkLiteral(22) as never);
-    r2.do().appendTile(mkStringLiteral(brainVarP2) as never);
+    __test__appendTile(r2.do(), actuator as never);
+    __test__appendTile(r2.do(), mkLiteral(22) as never);
+    __test__appendTile(r2.do(), mkStringLiteral(brainVarP2) as never);
 
     const brain = brainDef.compile();
     brain.initialize();
@@ -894,9 +894,9 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     const pageResult = brainDef.appendNewPage();
     assert.ok(pageResult.success);
     const parentRule = pageResult.value!.page.children().get(0)! as BrainRuleDef;
-    parentRule.when().appendTile(sensor as never);
+    __test__appendTile(parentRule.when(), sensor as never);
     const childRule = parentRule.appendNewRule();
-    childRule.do().appendTile(actuator as never);
+    __test__appendTile(childRule.do(), actuator as never);
 
     const brain = runBrain(brainDef, 1);
 
@@ -918,17 +918,17 @@ describe("Brain behavioral -- multi-page", () => {
     const p0Result = brainDef.appendNewPage();
     assert.ok(p0Result.success);
     const rule0 = p0Result.value!.page.children().get(0)!;
-    rule0.do().appendTile(v as never);
-    rule0.do().appendTile(opAssign as never);
-    rule0.do().appendTile(mkLiteral(1) as never);
+    __test__appendTile(rule0.do(), v as never);
+    __test__appendTile(rule0.do(), opAssign as never);
+    __test__appendTile(rule0.do(), mkLiteral(1) as never);
 
     // Page 1
     const p1Result = brainDef.appendNewPage();
     assert.ok(p1Result.success);
     const rule1 = p1Result.value!.page.children().get(0)!;
-    rule1.do().appendTile(v as never);
-    rule1.do().appendTile(opAssign as never);
-    rule1.do().appendTile(mkLiteral(2) as never);
+    __test__appendTile(rule1.do(), v as never);
+    __test__appendTile(rule1.do(), opAssign as never);
+    __test__appendTile(rule1.do(), mkLiteral(2) as never);
 
     const brain = brainDef.compile();
     brain.initialize();
@@ -976,15 +976,15 @@ describe("Brain behavioral -- multi-page", () => {
     assert.ok(p0.success);
     const parent = p0.value!.page.children().get(0)! as BrainRuleDef;
     const child = parent.appendNewRule();
-    child.do().appendTile(parkTile as never);
+    __test__appendTile(child.do(), parkTile as never);
 
     // Page 1: a rule that assigns the page marker.
     const p1 = brainDef.appendNewPage();
     assert.ok(p1.success);
     const rule1 = p1.value!.page.children().get(0)!;
-    rule1.do().appendTile(pageMark as never);
-    rule1.do().appendTile(opAssign as never);
-    rule1.do().appendTile(mkLiteral(2) as never);
+    __test__appendTile(rule1.do(), pageMark as never);
+    __test__appendTile(rule1.do(), opAssign as never);
+    __test__appendTile(rule1.do(), mkLiteral(2) as never);
 
     const brain = brainDef.compile();
     brain.initialize();
@@ -1078,9 +1078,9 @@ describe("Brain behavioral -- page sensors", () => {
     const p1Result = brainDef.appendNewPage();
     assert.ok(p1Result.success);
     const rule1 = p1Result.value!.page.children().get(0)!;
-    rule1.do().appendTile(v as never);
-    rule1.do().appendTile(opAssign as never);
-    rule1.do().appendTile(ppSensor as never);
+    __test__appendTile(rule1.do(), v as never);
+    __test__appendTile(rule1.do(), opAssign as never);
+    __test__appendTile(rule1.do(), ppSensor as never);
 
     const brain = brainDef.compile();
     brain.initialize();
@@ -1121,17 +1121,17 @@ describe("Brain behavioral -- page sensors", () => {
     const p0Result = brainDef.appendNewPage();
     assert.ok(p0Result.success);
     const rule0 = p0Result.value!.page.children().get(0)!;
-    rule0.do().appendTile(v as never);
-    rule0.do().appendTile(opAssign as never);
-    rule0.do().appendTile(ppSensor as never);
+    __test__appendTile(rule0.do(), v as never);
+    __test__appendTile(rule0.do(), opAssign as never);
+    __test__appendTile(rule0.do(), ppSensor as never);
 
     // Page 1: assign previous-page to var
     const p1Result = brainDef.appendNewPage();
     assert.ok(p1Result.success);
     const rule1 = p1Result.value!.page.children().get(0)!;
-    rule1.do().appendTile(v as never);
-    rule1.do().appendTile(opAssign as never);
-    rule1.do().appendTile(ppSensor as never);
+    __test__appendTile(rule1.do(), v as never);
+    __test__appendTile(rule1.do(), opAssign as never);
+    __test__appendTile(rule1.do(), ppSensor as never);
 
     const brain = brainDef.compile();
     brain.initialize();
@@ -1363,8 +1363,8 @@ describe("Brain behavioral -- action state", () => {
     const p0Result = brainDef.appendNewPage();
     assert.ok(p0Result.success);
     const rule0 = p0Result.value!.page.children().get(0)!;
-    rule0.when().appendTile(sensor as never);
-    rule0.do().appendTile(actuator as never);
+    __test__appendTile(rule0.when(), sensor as never);
+    __test__appendTile(rule0.do(), actuator as never);
 
     // Page 1: empty (just needs to exist as a different page)
     const p1Result = brainDef.appendNewPage();
@@ -1462,9 +1462,9 @@ function buildBytecodeActionBrain(
   const p0 = brainDef.appendNewPage();
   assert.ok(p0.success);
   const rule = p0.value!.page.children().get(0)!;
-  rule.do().appendTile(v as never);
-  rule.do().appendTile(opAssign as never);
-  rule.do().appendTile(sensor as never);
+  __test__appendTile(rule.do(), v as never);
+  __test__appendTile(rule.do(), opAssign as never);
+  __test__appendTile(rule.do(), sensor as never);
 
   if (twoPages) {
     const p1 = brainDef.appendNewPage();
@@ -1721,9 +1721,9 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     const p0 = brainDef.appendNewPage();
     assert.ok(p0.success);
     const r = p0.value!.page.children().get(0)!;
-    r.do().appendTile(v as never);
-    r.do().appendTile(opAssign as never);
-    r.do().appendTile(sensor as never);
+    __test__appendTile(r.do(), v as never);
+    __test__appendTile(r.do(), opAssign as never);
+    __test__appendTile(r.do(), sensor as never);
     const p1 = brainDef.appendNewPage();
     assert.ok(p1.success);
 
@@ -1773,9 +1773,9 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     const p0 = brainDef.appendNewPage();
     assert.ok(p0.success);
     const r = p0.value!.page.children().get(0)!;
-    r.do().appendTile(v as never);
-    r.do().appendTile(opAssign as never);
-    r.do().appendTile(sensor as never);
+    __test__appendTile(r.do(), v as never);
+    __test__appendTile(r.do(), opAssign as never);
+    __test__appendTile(r.do(), sensor as never);
     const p1 = brainDef.appendNewPage();
     assert.ok(p1.success);
 
@@ -1820,9 +1820,9 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     const p0 = brainDef.appendNewPage();
     assert.ok(p0.success);
     const r = p0.value!.page.children().get(0)!;
-    r.do().appendTile(v as never);
-    r.do().appendTile(opAssign as never);
-    r.do().appendTile(sensor as never);
+    __test__appendTile(r.do(), v as never);
+    __test__appendTile(r.do(), opAssign as never);
+    __test__appendTile(r.do(), sensor as never);
     const p1 = brainDef.appendNewPage();
     assert.ok(p1.success);
 
@@ -1870,9 +1870,9 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     const p0 = brainDef.appendNewPage();
     assert.ok(p0.success);
     const r = p0.value!.page.children().get(0)!;
-    r.do().appendTile(v as never);
-    r.do().appendTile(opAssign as never);
-    r.do().appendTile(sensor as never);
+    __test__appendTile(r.do(), v as never);
+    __test__appendTile(r.do(), opAssign as never);
+    __test__appendTile(r.do(), sensor as never);
 
     const brain = brainDef.compile();
     brain.initialize();
@@ -1915,9 +1915,9 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     const p0 = brainDef.appendNewPage();
     assert.ok(p0.success);
     const r = p0.value!.page.children().get(0)!;
-    r.do().appendTile(v as never);
-    r.do().appendTile(opAssign as never);
-    r.do().appendTile(sensor as never);
+    __test__appendTile(r.do(), v as never);
+    __test__appendTile(r.do(), opAssign as never);
+    __test__appendTile(r.do(), sensor as never);
     const p1 = brainDef.appendNewPage();
     assert.ok(p1.success);
 
@@ -1960,9 +1960,9 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     const p0 = brainDef.appendNewPage();
     assert.ok(p0.success);
     const r = p0.value!.page.children().get(0)!;
-    r.do().appendTile(v as never);
-    r.do().appendTile(opAssign as never);
-    r.do().appendTile(sensor as never);
+    __test__appendTile(r.do(), v as never);
+    __test__appendTile(r.do(), opAssign as never);
+    __test__appendTile(r.do(), sensor as never);
 
     const brain = brainDef.compile();
     brain.initialize();
@@ -2056,11 +2056,11 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     const p0 = brainDef.appendNewPage();
     assert.ok(p0.success);
     const r0 = p0.value!.page.children().get(0)!;
-    r0.do().appendTile(v as never);
-    r0.do().appendTile(opAssign as never);
-    r0.do().appendTile(btSensor as never);
+    __test__appendTile(r0.do(), v as never);
+    __test__appendTile(r0.do(), opAssign as never);
+    __test__appendTile(r0.do(), btSensor as never);
     const r1 = p0.value!.page.appendNewRule() as BrainRuleDef;
-    r1.do().appendTile(hostSensor as never);
+    __test__appendTile(r1.do(), hostSensor as never);
     const p1 = brainDef.appendNewPage();
     assert.ok(p1.success);
 
@@ -2127,9 +2127,9 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     const p0 = brainDef.appendNewPage();
     assert.ok(p0.success);
     const r = p0.value!.page.children().get(0)!;
-    r.do().appendTile(v as never);
-    r.do().appendTile(opAssign as never);
-    r.do().appendTile(sensor as never);
+    __test__appendTile(r.do(), v as never);
+    __test__appendTile(r.do(), opAssign as never);
+    __test__appendTile(r.do(), sensor as never);
 
     const brain = brainDef.compile();
     brain.initialize();
@@ -2224,11 +2224,11 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     const p0 = brainDef.appendNewPage();
     assert.ok(p0.success);
     const r0 = p0.value!.page.children().get(0)!;
-    r0.do().appendTile(v as never);
-    r0.do().appendTile(opAssign as never);
-    r0.do().appendTile(btSensor as never);
+    __test__appendTile(r0.do(), v as never);
+    __test__appendTile(r0.do(), opAssign as never);
+    __test__appendTile(r0.do(), btSensor as never);
     const r1 = p0.value!.page.appendNewRule() as BrainRuleDef;
-    r1.do().appendTile(hostSensor as never);
+    __test__appendTile(r1.do(), hostSensor as never);
     const p1 = brainDef.appendNewPage();
     assert.ok(p1.success);
 

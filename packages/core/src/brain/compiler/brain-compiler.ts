@@ -1,3 +1,4 @@
+import type { Localizer } from "../../localization/localizer";
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
@@ -22,8 +23,9 @@ import {
   collectRuleHierarchyCapabilities,
   collectRuleHierarchyOutputKeys,
 } from "../language-service/tile-suggestions";
+import { childRulePath, rootRulePath } from "../rule-path";
 import { ConstantPool } from "./constant-pool";
-import { type BrainBuildDiagnostic, type BrainBuildResult, diagnosticSeverity } from "./diagnostics";
+import { type BrainBuildDiagnostic, type BrainBuildResult, type DiagParams, diagnosticSeverity } from "./diagnostics";
 import { BytecodeEmitter } from "./emitter";
 import { computeExpectedTypes } from "./expected-types";
 import { computeInferredTypes } from "./inferred-types";
@@ -60,6 +62,11 @@ function replaceAllSlashes(str: string): string {
  */
 function isBarePresenceGatedSensor(expr: Expr): boolean {
   return expr.kind === "sensor" && expr.tileDef.capabilities().get(CoreCapabilityBits.PresenceGated) === 1;
+}
+
+/** `params` carrying `rulePath`, the rule the diagnostic was reported in. */
+function withRulePath(params: DiagParams | undefined, rulePath: string): DiagParams {
+  return params ? { ...params, rulePath } : { rulePath };
 }
 
 /**
@@ -118,6 +125,8 @@ export class BrainCompiler {
   private actionResolver: BrainActionResolver;
   /** Type registry used during inference to resolve struct field ids from object types */
   private typeRegistry: ITypeRegistry;
+  /** Locale the build's diagnostics name tiles in */
+  private localizer: Localizer;
   /** Operator overload table of the brain under compilation, used to type WHEN expressions. */
   private operatorOverloads?: IOperatorOverloads;
   /** Global variable name pool for LOAD_VAR_SLOT/STORE_VAR_SLOT instructions */
@@ -137,7 +146,8 @@ export class BrainCompiler {
     catalogs: ReadonlyList<ITileCatalog>,
     conversions: IConversionRegistry,
     actionResolver: BrainActionResolver,
-    typeRegistry: ITypeRegistry
+    typeRegistry: ITypeRegistry,
+    localizer: Localizer
   ) {
     this.constantPool = new ConstantPool(typeRegistry);
     this.functions = List.empty();
@@ -150,6 +160,7 @@ export class BrainCompiler {
     this.conversions = conversions;
     this.actionResolver = actionResolver;
     this.typeRegistry = typeRegistry;
+    this.localizer = localizer;
     this.variableNames = List.empty();
     this.variableIndices = Dict.empty();
     this.actionRefs = List.empty();
@@ -224,7 +235,7 @@ export class BrainCompiler {
 
     for (let ruleIdx = 0; ruleIdx < rules.size(); ruleIdx++) {
       const ruleDef = rules.get(ruleIdx);
-      const funcId = this.assignFuncIdToRule(ruleDef, `${pageIdx}/${ruleIdx}`, undefined);
+      const funcId = this.assignFuncIdToRule(ruleDef, rootRulePath(pageIdx, ruleIdx), undefined);
       rootRuleFuncIds.push(funcId);
     }
 
@@ -259,7 +270,7 @@ export class BrainCompiler {
     const children = ruleDef.children();
     for (let childIdx = 0; childIdx < children.size(); childIdx++) {
       const childDef = children.get(childIdx);
-      this.assignFuncIdToRule(childDef, `${rulePath}/${childIdx}`, funcId);
+      this.assignFuncIdToRule(childDef, childRulePath(rulePath, childIdx), funcId);
     }
 
     return funcId;
@@ -274,7 +285,7 @@ export class BrainCompiler {
 
     for (let ruleIdx = 0; ruleIdx < rules.size(); ruleIdx++) {
       const ruleDef = rules.get(ruleIdx);
-      this.compileRule(ruleDef, `${pageIdx}/${ruleIdx}`, ruleIdx);
+      this.compileRule(ruleDef, rootRulePath(pageIdx, ruleIdx), ruleIdx);
     }
 
     // Collect all action callsites from all compiled rules in this page
@@ -335,48 +346,49 @@ export class BrainCompiler {
       throw new Error(`BrainCompiler: No function ID assigned for rule at ${rulePath}`);
     }
 
+    const children = ruleDef.children();
+
     // Collect child function IDs
     const childFuncIds = List.empty<number>();
-    const children = ruleDef.children();
     for (let childIdx = 0; childIdx < children.size(); childIdx++) {
-      const childPath = `${rulePath}/${childIdx}`;
-      const childFuncId = this.ruleIndex.get(childPath);
+      const childFuncId = this.ruleIndex.get(childRulePath(rulePath, childIdx));
       if (childFuncId !== undefined) {
         childFuncIds.push(childFuncId);
       }
     }
 
     // Compile this rule's WHEN and DO
-    const result = this.compileRuleBody(ruleDef, childFuncIds, rulePath, siblingIndex);
-
-    // Update the function in place
     const fn = this.functions.get(funcId)!;
-    fn.code = result.code;
+    fn.code = this.compileRuleBody(ruleDef, childFuncIds, rulePath, siblingIndex).code;
 
     // Recursively compile children
     for (let childIdx = 0; childIdx < children.size(); childIdx++) {
       const childDef = children.get(childIdx);
-      this.compileRule(childDef, `${rulePath}/${childIdx}`, childIdx);
+      this.compileRule(childDef, childRulePath(rulePath, childIdx), childIdx);
     }
   }
 
-  /** Push each diagnostic as a build diagnostic at its classified severity. */
-  private pushValidationDiags(diags: ReadonlyList<ParseDiag>): void {
+  /**
+   * Push each diagnostic as a build diagnostic at its classified severity,
+   * attributed to the rule at `rulePath`.
+   */
+  private pushParseDiags(diags: ReadonlyList<ParseDiag>, rulePath: string): void {
     for (let i = 0; i < diags.size(); i++) {
       const diag = diags.get(i)!;
       this.compileDiags.push({
         code: diag.code,
         severity: diagnosticSeverity(diag.code),
         message: diag.message,
-        params: diag.params,
+        params: withRulePath(diag.params, rulePath),
       });
     }
   }
 
   /**
-   * Push the error-severity entries of a side's inference diagnostics.
+   * Push the error-severity entries of a side's inference diagnostics,
+   * attributed to the rule at `rulePath`.
    */
-  private pushBlockingTypeErrors(diags: ReadonlyList<TypeInfoDiag>): void {
+  private pushBlockingTypeErrors(diags: ReadonlyList<TypeInfoDiag>, rulePath: string): void {
     for (let i = 0; i < diags.size(); i++) {
       const diag = diags.get(i)!;
       if (diagnosticSeverity(diag.code) === "error") {
@@ -384,7 +396,7 @@ export class BrainCompiler {
           code: diag.code,
           severity: "error",
           message: diag.message,
-          params: diag.params,
+          params: withRulePath(diag.params, rulePath),
         });
       }
     }
@@ -403,25 +415,31 @@ export class BrainCompiler {
     const doTiles = ruleDef.do().tiles();
 
     // A tile whose placement excludes the side it appears on blocks the build.
-    this.pushValidationDiags(validateTilePlacement(whenTiles, RuleSide.When));
-    this.pushValidationDiags(validateTilePlacement(doTiles, RuleSide.Do));
+    this.pushParseDiags(validateTilePlacement(whenTiles, RuleSide.When, this.localizer), rulePath);
+    this.pushParseDiags(validateTilePlacement(doTiles, RuleSide.Do, this.localizer), rulePath);
 
     // A tile reporting on the preceding sibling rule blocks the build in the
     // first rule at its level, which has no rule above it.
-    this.pushValidationDiags(validatePrecedingSiblingConsumers(whenTiles, siblingIndex > 0));
-    this.pushValidationDiags(validatePrecedingSiblingConsumers(doTiles, siblingIndex > 0));
+    this.pushParseDiags(validatePrecedingSiblingConsumers(whenTiles, siblingIndex > 0, this.localizer), rulePath);
+    this.pushParseDiags(validatePrecedingSiblingConsumers(doTiles, siblingIndex > 0, this.localizer), rulePath);
 
     // An output tile with no providing sensor in the rule hierarchy (this
     // rule's WHEN and DO sides plus every ancestor rule's) blocks the build.
     const providedOutputKeys = collectRuleHierarchyOutputKeys(ruleDef);
-    this.pushValidationDiags(validateOutputProviders(whenTiles, providedOutputKeys));
-    this.pushValidationDiags(validateOutputProviders(doTiles, providedOutputKeys));
+    this.pushParseDiags(validateOutputProviders(whenTiles, providedOutputKeys, this.localizer), rulePath);
+    this.pushParseDiags(validateOutputProviders(doTiles, providedOutputKeys, this.localizer), rulePath);
 
     // A tile whose required capabilities no tile in the rule hierarchy
     // provides blocks the build.
     const availableCapabilities = collectRuleHierarchyCapabilities(ruleDef);
-    this.pushValidationDiags(validateCapabilityRequirements(whenTiles, availableCapabilities, this.catalogs));
-    this.pushValidationDiags(validateCapabilityRequirements(doTiles, availableCapabilities, this.catalogs));
+    this.pushParseDiags(
+      validateCapabilityRequirements(whenTiles, availableCapabilities, this.catalogs, this.localizer),
+      rulePath
+    );
+    this.pushParseDiags(
+      validateCapabilityRequirements(doTiles, availableCapabilities, this.catalogs, this.localizer),
+      rulePath
+    );
 
     // A tile declaring `consumesWhenResult(T)` with no compatible WHEN result
     // available on its side (the enclosing rule's result for the WHEN side,
@@ -433,16 +451,20 @@ export class BrainCompiler {
       this.conversions
     );
     const doSideWhenResult = availableWhenResultType(ruleDef, RuleSide.Do, this.operatorOverloads, this.conversions);
-    this.pushValidationDiags(
-      validateWhenResultConsumers(whenTiles, whenSideWhenResult, this.conversions, this.typeRegistry)
+    this.pushParseDiags(
+      validateWhenResultConsumers(whenTiles, whenSideWhenResult, this.conversions, this.typeRegistry, this.localizer),
+      rulePath
     );
-    this.pushValidationDiags(
-      validateWhenResultConsumers(doTiles, doSideWhenResult, this.conversions, this.typeRegistry)
+    this.pushParseDiags(
+      validateWhenResultConsumers(doTiles, doSideWhenResult, this.conversions, this.typeRegistry, this.localizer),
+      rulePath
     );
 
-    // Parse WHEN and DO sides
-    const whenParseResult = parseBrainTiles(whenTiles, -1, 0);
-    const doParseResult = parseBrainTiles(doTiles, -1, 0, whenParseResult.nextNodeId);
+    // A rule's parse diagnostics precede the compilation diagnostics its tiles yield.
+    const whenParseResult = parseBrainTiles(whenTiles, this.localizer, -1, 0);
+    const doParseResult = parseBrainTiles(doTiles, this.localizer, -1, 0, whenParseResult.nextNodeId);
+    this.pushParseDiags(whenParseResult.diags, rulePath);
+    this.pushParseDiags(doParseResult.diags, rulePath);
 
     // Type checking
     const typeEnv: TypeEnv = new Dict<number, TypeInfo>();
@@ -456,12 +478,28 @@ export class BrainCompiler {
 
     for (let i = 0; i < whenParseResult.exprs.size(); i++) {
       this.pushBlockingTypeErrors(
-        computeInferredTypes(whenParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions, this.typeRegistry)
+        computeInferredTypes(
+          whenParseResult.exprs.get(i),
+          this.catalogs,
+          typeEnv,
+          this.conversions,
+          this.typeRegistry,
+          this.localizer
+        ),
+        rulePath
       );
     }
     for (let i = 0; i < doParseResult.exprs.size(); i++) {
       this.pushBlockingTypeErrors(
-        computeInferredTypes(doParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions, this.typeRegistry)
+        computeInferredTypes(
+          doParseResult.exprs.get(i),
+          this.catalogs,
+          typeEnv,
+          this.conversions,
+          this.typeRegistry,
+          this.localizer
+        ),
+        rulePath
       );
     }
 
@@ -584,7 +622,7 @@ export class BrainCompiler {
         code: diag.code,
         severity: diag.severity,
         message: diag.message,
-        params: diag.params,
+        params: withRulePath(diag.params, rulePath),
       });
     }
   }
@@ -610,7 +648,7 @@ export function compileBrain(
   actionResolver: BrainActionResolver,
   typeRegistry: ITypeRegistry
 ): BrainBuildResult<UnlinkedBrainProgram> {
-  const compiler = new BrainCompiler(catalogs, conversions, actionResolver, typeRegistry);
+  const compiler = new BrainCompiler(catalogs, conversions, actionResolver, typeRegistry, brainDef.servicesLocalizer());
   const program = compiler.compile(brainDef);
   return { program, diagnostics: compiler.diagnostics() };
 }

@@ -1,4 +1,5 @@
-import type { TraceSummary } from "../simulate/summarizer.js";
+import type { DiagCode } from "@mindcraft-lang/core/brain/compiler";
+import type { ExcludedRule, TraceSummary } from "../simulate/summarizer.js";
 import { summarizeRun } from "../simulate/summarizer.js";
 import type { CompileDiagnostic } from "./compile.js";
 import { compileBrain } from "./compile.js";
@@ -27,13 +28,48 @@ export interface SimulationSubjectResult {
   readonly subjects: readonly string[];
 }
 
+/** A rehearsal that could not run because the scenario scripted an input kind the target does not read. */
+export interface SimulationInputKindResult {
+  readonly ok: false;
+  readonly error: "unknown_input_kind";
+  /** The kinds the scenario named that the target does not read, in first-seen order. */
+  readonly named: readonly string[];
+  /** Names of the input kinds the target does read. */
+  readonly kinds: readonly string[];
+}
+
 /** Result of one `simulate` call. */
-export type SimulationResult = SimulationSummaryResult | SimulationBlockedResult | SimulationSubjectResult;
+export type SimulationResult =
+  | SimulationSummaryResult
+  | SimulationBlockedResult
+  | SimulationSubjectResult
+  | SimulationInputKindResult;
+
+/**
+ * The rules a rehearsal would have to be staged without for the document to
+ * build, each with the codes it carries, sorted by path. Empty when the build
+ * has no error-severity diagnostic; `undefined` when some build error names no
+ * rule, which no exclusion can work around.
+ */
+export function rulesToExclude(diagnostics: readonly CompileDiagnostic[]): ExcludedRule[] | undefined {
+  const codesByRule = new Map<string, DiagCode[]>();
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.severity !== "error") continue;
+    if (diagnostic.ruleId === undefined) return undefined;
+    const codes = codesByRule.get(diagnostic.ruleId);
+    if (codes) codes.push(diagnostic.code);
+    else codesByRule.set(diagnostic.ruleId, [diagnostic.code]);
+  }
+  return [...codesByRule.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([rulePath, codes]) => ({ rulePath, codes }));
+}
 
 /**
  * Run the current brain in a bounded rehearsal and summarize what happened.
- * Compiles first: a brain that does not build is reported with its diagnostics
- * and no run is staged.
+ * Compiles first. A brain whose build errors all fall in rules that can be
+ * named is rehearsed without those rules, and the account states them; a build
+ * error naming no rule blocks the run and is reported with its diagnostics.
  */
 export async function simulate(workspace: AuthoringWorkspace, input: ToolInput<"simulate">): Promise<SimulationResult> {
   const subjects = workspace.adapter.subjects();
@@ -41,8 +77,16 @@ export async function simulate(workspace: AuthoringWorkspace, input: ToolInput<"
     return { ok: false, error: "unknown_subject", named: input.scenario.subject, subjects };
   }
 
+  const kinds = workspace.adapter.inputKinds().map((kind) => kind.name);
+  const scripted = input.scenario.inputs ?? [];
+  const named = [...new Set(scripted.filter((entry) => !kinds.includes(entry.kind)).map((entry) => entry.kind))];
+  if (named.length > 0) {
+    return { ok: false, error: "unknown_input_kind", named, kinds };
+  }
+
   const compiled = compileBrain(workspace);
-  if (!compiled.ok) {
+  const excludedRules = compiled.ok ? [] : rulesToExclude(compiled.diagnostics);
+  if (!excludedRules) {
     return { ok: false, error: "does_not_compile", diagnostics: compiled.diagnostics };
   }
 
@@ -50,6 +94,7 @@ export async function simulate(workspace: AuthoringWorkspace, input: ToolInput<"
     brainDef: workspace.brainDef,
     scenario: input.scenario,
     thinks: input.thinks,
+    ...(excludedRules.length > 0 ? { excludedRules: excludedRules.map((rule) => rule.rulePath) } : {}),
   });
-  return { ok: true, summary: summarizeRun(run) };
+  return { ok: true, summary: summarizeRun(run, excludedRules) };
 }

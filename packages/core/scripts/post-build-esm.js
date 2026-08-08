@@ -3,7 +3,13 @@
 const fs = require("fs");
 const path = require("path");
 const chalk = require("chalk");
-const { PLATFORM_MODULES, PRIMITIVES_MODULES, generateMappings, copyPlatformFiles } = require("./build-utils");
+const {
+  PLATFORM_MODULES,
+  PRIMITIVES_MODULES,
+  generateMappings,
+  copyPlatformFiles,
+  platformEmitDir,
+} = require("./build-utils");
 
 const distDir = path.join(__dirname, "..", "dist", "esm");
 
@@ -76,11 +82,11 @@ function esmTransformer(content, filename) {
 
 // Copy primitives files with transformation
 const primitivesDir = path.join(distDir, "primitives");
-copyPlatformFiles(primitivesDir, primitivesMappings, esmTransformer);
+copyPlatformFiles(primitivesDir, platformEmitDir("esm", "primitives"), primitivesMappings, esmTransformer);
 
 // Copy platform files with transformation
 const platformDir = path.join(distDir, "platform");
-copyPlatformFiles(platformDir, platformMappings, esmTransformer);
+copyPlatformFiles(platformDir, platformEmitDir("esm", "platform"), platformMappings, esmTransformer);
 
 // Fix ES module imports across the entire dist directory
 console.log(`${chalk.blue("Fixing ES module imports...")}`);

@@ -1,4 +1,5 @@
 import { AUTO, Game, Scale } from "phaser";
+import { WORLD_FPS, WORLD_GRAVITY, WORLD_HEIGHT, WORLD_WIDTH } from "@/brain/world-definition";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
 import { Boot } from "./scenes/Boot";
 import { Playground, SCENE_BRAIN_STATE_KEY, type SceneBrainState } from "./scenes/Playground";
@@ -12,10 +13,11 @@ export const STORE_REGISTRY_KEY = "__simStore";
 //  https://docs.phaser.io/api-documentation/typedef/types-core#gameconfig
 const config: Phaser.Types.Core.GameConfig = {
   type: AUTO,
-  width: 1024,
-  height: 768,
+  width: WORLD_WIDTH,
+  height: WORLD_HEIGHT,
   parent: "game-container",
   backgroundColor: "#2d3561",
+  fps: { target: WORLD_FPS },
   scale: {
     mode: Scale.FIT,
     autoCenter: Scale.CENTER_BOTH,
@@ -23,7 +25,7 @@ const config: Phaser.Types.Core.GameConfig = {
   physics: {
     default: "matter",
     matter: {
-      gravity: { x: 0, y: 0 },
+      gravity: WORLD_GRAVITY,
       debug: false,
     },
   },

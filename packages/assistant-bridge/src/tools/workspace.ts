@@ -1,8 +1,8 @@
 import type { MindcraftEnvironment, ReadonlyList } from "@mindcraft-lang/core";
 import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
 import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { childRulePath, RuleSide, rootRulePath } from "@mindcraft-lang/core/brain";
+import type { BrainJson, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainCommandHistory, BrainDef } from "@mindcraft-lang/core/brain/model";
 import type { TargetAdapter } from "../target/adapter.js";
 import { sessionTileDescriptions } from "./tile-descriptions.js";
@@ -24,15 +24,31 @@ export interface AuthoringWorkspace {
   readonly adapter: TargetAdapter;
 }
 
+/** What a session workspace opens with, when it does not open empty. */
+export interface AuthoringWorkspaceOptions {
+  /**
+   * The document to open, as the brain JSON `IBrainDef.toJson` produces. The
+   * session edits this project.
+   */
+  readonly brainJson?: BrainJson;
+}
+
 /**
  * Build a session workspace over a fresh environment carrying core's modules
- * and the target's, with an empty brain document named `brainName`, the
- * environment's catalogs, and the descriptions core and the target document
- * their tiles with.
+ * and the target's, with the environment's catalogs and the descriptions core
+ * and the target document their tiles with. The document is
+ * `options.brainJson` when one is given, and an empty brain named `brainName`
+ * otherwise.
  */
-export function createAuthoringWorkspace(adapter: TargetAdapter, brainName: string): AuthoringWorkspace {
+export function createAuthoringWorkspace(
+  adapter: TargetAdapter,
+  brainName: string,
+  options?: AuthoringWorkspaceOptions
+): AuthoringWorkspace {
   const environment = createMindcraftEnvironment({ modules: [coreModule(), ...adapter.modules()] });
-  const brainDef = BrainDef.emptyBrainDef(environment.brainServices, brainName);
+  const brainDef = options?.brainJson
+    ? (environment.deserializeBrainJson(options.brainJson) as BrainDef)
+    : BrainDef.emptyBrainDef(environment.brainServices, brainName);
   return {
     environment,
     brainDef,
@@ -60,7 +76,7 @@ function walkRule(rule: BrainRuleDef, ruleId: string, into: LocatedRule[]): void
   into.push({ ruleId, rule });
   const children = rule.children();
   for (let i = 0; i < children.size(); i++) {
-    walkRule(children.get(i) as BrainRuleDef, `${ruleId}/${i}`, into);
+    walkRule(children.get(i) as BrainRuleDef, childRulePath(ruleId, i), into);
   }
 }
 
@@ -72,7 +88,7 @@ export function locateRules(brainDef: BrainDef): LocatedRule[] {
     const page = pages.get(p) as BrainPageDef;
     const rules = page.children();
     for (let r = 0; r < rules.size(); r++) {
-      walkRule(rules.get(r) as BrainRuleDef, `${p}/${r}`, located);
+      walkRule(rules.get(r) as BrainRuleDef, rootRulePath(p, r), located);
     }
   }
   return located;

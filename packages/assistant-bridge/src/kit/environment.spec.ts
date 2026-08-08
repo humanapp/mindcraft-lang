@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import type { IBrainRuntime, NumberPrecision } from "@mindcraft-lang/core/runtime";
 import { createFakeModule } from "../testing/fake-module.js";
-import { FAKE_SUBJECT, FAKE_TARGET_PACKAGE } from "../testing/index.js";
+import { FAKE_SUBJECT, FAKE_TARGET_IDENTITY } from "../testing/index.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";
 import { createRehearsalEnvironment, createSeededRng } from "./environment.js";
 import type { RehearsalWorld, WorldDriver, WorldStaging } from "./rehearsal-adapter.js";
@@ -76,7 +76,7 @@ function recordingDriver(precision?: NumberPrecision): {
 /** Rehearse an empty brain over `driver` for one think. */
 async function rehearseOver(driver: WorldDriver): Promise<void> {
   const adapter = createRehearsalAdapter({
-    packageName: FAKE_TARGET_PACKAGE,
+    targetIdentity: FAKE_TARGET_IDENTITY,
     manifest: { target: "a world", thing: "their signaller", provides: [] },
     tileDocs: () => new Map<string, string>(),
     driver,
@@ -90,7 +90,6 @@ describe("a rehearsal environment", () => {
     const environment = createRehearsalEnvironment({
       modules: [createFakeModule()],
       rng: createSeededRng(1),
-      onDispatch: () => {},
     });
 
     assert.equal(roundingOf(environment), SAMPLE);
@@ -100,7 +99,6 @@ describe("a rehearsal environment", () => {
     const environment = createRehearsalEnvironment({
       modules: [createFakeModule()],
       rng: createSeededRng(1),
-      onDispatch: () => {},
       precision: "f32",
     });
 

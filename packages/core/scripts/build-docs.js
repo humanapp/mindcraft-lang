@@ -90,7 +90,8 @@ for (const locale of locales) {
 
   const moduleSource = generateLocaleModule(tilesMap, conceptsMap);
   const outFile = path.join(OUT_DIR, `${locale}.ts`);
-  fs.writeFileSync(outFile, moduleSource, "utf-8");
+  const current = fs.existsSync(outFile) ? fs.readFileSync(outFile, "utf-8") : undefined;
+  if (current !== moduleSource) fs.writeFileSync(outFile, moduleSource, "utf-8");
 
   console.log(`docs: generated ${locale}.ts (${tileCount} tiles, ${conceptCount} concepts)`);
 }

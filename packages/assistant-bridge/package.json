@@ -39,6 +39,9 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "mindcraft-assemble-target-package": "dist/kit/assemble-target-package.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -49,15 +52,26 @@
       "types": "./dist/kit/index.d.ts",
       "import": "./dist/kit/index.js"
     },
+    "./relay": {
+      "types": "./dist/relay/index.d.ts",
+      "import": "./dist/relay/index.js"
+    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
     }
   },
+  "mindcraftBuild": {
+    "script": "build:prod",
+    "outputs": [
+      "dist"
+    ],
+    "postProcessed": false
+  },
   "scripts": {
     "build": "tsc --build",
     "build:prod": "tsc --build tsconfig.prod.json",
-    "clean": "tsc --build --clean",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo tsconfig.prod.tsbuildinfo",
     "watch": "tsc --build --watch",
     "lint:only": "biome lint ./src",
     "check:only": "biome check ./src",
@@ -73,6 +87,7 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
+    "@mindcraft-lang/assistant-relay": "file:../assistant-relay",
     "@mindcraft-lang/core": "file:../core",
     "zod": "^4.3.6"
   },

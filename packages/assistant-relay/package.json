@@ -1,0 +1,86 @@
+{
+  "name": "@mindcraft-lang/assistant-relay",
+  "version": "0.1.0",
+  "description": "Assistant relay protocol: the session handshake, turn events, and tool-call wire the hosted Assistant's split loop speaks",
+  "license": "MIT",
+  "type": "module",
+  "author": "humanapp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "directory": "packages/assistant-relay"
+  },
+  "bugs": {
+    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+  },
+  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/assistant-relay#readme",
+  "keywords": [
+    "mindcraft",
+    "assistant",
+    "protocol",
+    "schemas",
+    "tile-based",
+    "visual-programming",
+    "typescript",
+    "education",
+    "stem",
+    "coding"
+  ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/index.js",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "mindcraftBuild": {
+    "script": "build:prod",
+    "outputs": [
+      "dist"
+    ],
+    "postProcessed": false
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "build:prod": "tsc --build tsconfig.prod.json",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo tsconfig.prod.tsbuildinfo",
+    "watch": "tsc --build --watch",
+    "lint:only": "biome lint ./src",
+    "check:only": "biome check ./src",
+    "format:only": "biome format ./src",
+    "lint": "biome lint ./src --write",
+    "check": "biome check ./src --write",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json",
+    "format": "biome format ./src --write",
+    "pretest": "npm run build:prod",
+    "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')",
+    "release:patch": "node ../../scripts/release.js patch",
+    "release:minor": "node ../../scripts/release.js minor",
+    "release:major": "node ../../scripts/release.js major"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.15",
+    "@types/node": "^25.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3"
+  }
+}

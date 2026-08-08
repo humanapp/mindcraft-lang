@@ -9,19 +9,32 @@ export interface TileDocEntry {
 }
 
 /**
- * Read a target's tile documentation as raw markdown keyed by tile id, pairing
- * each entry with `<contentKey>.md` under `directory`. An entry naming a file
- * the directory does not hold is absent from the result.
+ * A target's tile documentation as raw markdown keyed by content key: the base
+ * name, without its `.md` extension, of the file that carries it.
+ */
+export type TileDocContent = Readonly<Record<string, string>>;
+
+/**
+ * Read every `.md` file in `directory` as raw markdown keyed by content key.
+ * Throws when `directory` cannot be read.
  *
  * @param directory Absolute path of the directory holding the markdown files.
  */
-export function readTileDocs(directory: string, entries: readonly TileDocEntry[]): Map<string, string> {
+export function readTileDocContent(directory: string): TileDocContent {
   const content: Record<string, string> = {};
   for (const file of readdirSync(directory)) {
     if (!file.endsWith(".md")) continue;
     content[file.slice(0, -3)] = readFileSync(join(directory, file), "utf8");
   }
+  return content;
+}
 
+/**
+ * Pair documentation content with the entries that name it, keyed by tile id.
+ * An entry naming a content key `content` does not carry is absent from the
+ * result.
+ */
+export function pairTileDocs(content: TileDocContent, entries: readonly TileDocEntry[]): Map<string, string> {
   const docs = new Map<string, string>();
   for (const entry of entries) {
     const markdown = content[entry.contentKey];

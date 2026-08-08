@@ -24,14 +24,16 @@ import {
   mkVariableFactoryTileId,
   RuleSide,
 } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { suggestTiles, tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { buildInsertionContext, suggestTiles, tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainCommand, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
   type BrainTileFactoryDef,
   type BrainTileLiteralDef,
   BrainTileSensorDef,
+  manufactureLiteralTile,
+  manufactureVariableTile,
 } from "@mindcraft-lang/core/brain/tiles";
 import { createDefaultLocalizer, type Localizer } from "@mindcraft-lang/core/localization";
 import { bag, CoreTypeIds, mkActionDescriptor, mkCallDef, NIL_VALUE } from "@mindcraft-lang/core/runtime";
@@ -76,7 +78,6 @@ import {
 } from "./composer-input-model";
 import { deriveEditorMode, type EditorMode } from "./editor-mode";
 import { kBestNextCandidateCount } from "./hooks/useCandidateStrip";
-import { buildInsertionContext } from "./insertion-context";
 import { makeBrain } from "./test-only-rule-fixtures";
 
 let services: BrainServices;
@@ -170,6 +171,22 @@ function textFactoryCandidate(): StripCandidate {
   const tileDef = services.edit.tiles.get(mkLiteralFactoryTileId(CoreLiteralFactoryId.String));
   assert.ok(tileDef, "core text literal factory not registered");
   return candidateOf(tileDef, "text");
+}
+
+/**
+ * The tile `candidate` puts in the rule: a minted candidate manufactured into
+ * `catalog` and returned registered, any other candidate's own tile def.
+ * Returns undefined when the mint produces nothing.
+ */
+function placedTileDef(candidate: StripCandidate, catalog: ITileCatalog | undefined): IBrainTileDef | undefined {
+  const origin = candidate.origin;
+  if (origin.kind === "minted-literal") {
+    return manufactureLiteralTile(origin.factoryTileDef, catalog, origin.value, origin.displayFormat);
+  }
+  if (origin.kind === "minted-variable") {
+    return manufactureVariableTile(origin.factoryTileDef, catalog, origin.varName);
+  }
+  return candidate.tileDef;
 }
 
 /** A command standing in for one the editor executed, identified by `description`. */
@@ -499,14 +516,16 @@ class ComposerTrace {
       case "place-tile": {
         // The trace stands no create dialog, so a deferring candidate places nothing.
         if (tileDefersToCreateDialog(effect.candidate.tileDef)) return [];
+        const tileDef = placedTileDef(effect.candidate, this.ruleDef.brain()?.catalog());
+        if (!tileDef) return [];
         const command = makeCommand(`placed:${effect.candidate.key}`);
         const caret = before.caret;
         const side = caret?.side ?? before.armedSide;
         const tileSet = this.ruleDef.side(side);
         const tileIndex = caret === undefined ? tileSet.tiles().size() : caret.tileIndex;
         const replaced = caret?.kind === "element" ? tileSet.tiles().get(tileIndex) : undefined;
-        if (replaced === undefined) tileSet.insertTileAtIndex(tileIndex, effect.candidate.tileDef);
-        else tileSet.replaceTileAtIndex(tileIndex, effect.candidate.tileDef);
+        if (replaced === undefined) tileSet.insertTileAtIndex(tileIndex, tileDef);
+        else tileSet.replaceTileAtIndex(tileIndex, tileDef);
         this.history.push(command);
         this.placements.push({ command, side, tileIndex, replaced });
         return [];
@@ -1057,7 +1076,7 @@ describe("deleting at the caret", () => {
     const sad = candidateOf(makeSensorTile("composer-trace-flow-sad"), "sad");
     const trace = new ComposerTrace({ offeringFor: () => [sad] });
     const happy = makeActuatorTile("composer-trace-flow-happy");
-    trace.ruleDef.do().appendTile(happy);
+    __test__appendTile(trace.ruleDef.do(), happy);
     return { trace, sad, happyId: happy.tileId };
   }
 
@@ -3234,7 +3253,7 @@ describe("typing a formula", () => {
   test("a named variable commits through the dollar accelerator", () => {
     const trace = formulaTrace([], RuleSide.Do);
     const foo = addNumberVariable(trace, "foo");
-    trace.ruleDef.do().appendTile(foo);
+    __test__appendTile(trace.ruleDef.do(), foo);
     trace.placeCaret(trace.sideEndGap(RuleSide.Do));
     typeFormula(trace, "=$bar+1");
 
@@ -3253,7 +3272,7 @@ describe("typing a formula", () => {
   test("the assignment symbol places the word that assigns", () => {
     const trace = formulaTrace([], RuleSide.Do);
     const foo = addNumberVariable(trace, "foo");
-    trace.ruleDef.do().appendTile(foo);
+    __test__appendTile(trace.ruleDef.do(), foo);
     trace.placeCaret(trace.sideEndGap(RuleSide.Do));
 
     typeFormula(trace, "=");

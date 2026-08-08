@@ -38,6 +38,7 @@ import { createEcosimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { Obstacle } from "@/brain/vision";
+import { defaultDesiredCounts } from "@/brain/world-definition";
 import { name as simName } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
 import { ecosimDefaultExtensions, ecosimEmbeddedExtensions } from "./ecosim-embedded-extensions";
@@ -165,14 +166,6 @@ function persistUiPreferences(projectId: string, prefs: UiPreferences): void {
   } catch {
     // storage full or unavailable
   }
-}
-
-function defaultDesiredCounts(): Record<Archetype, number> {
-  return {
-    carnivore: ARCHETYPES.carnivore.initialSpawnCount,
-    herbivore: ARCHETYPES.herbivore.initialSpawnCount,
-    plant: ARCHETYPES.plant.initialSpawnCount,
-  };
 }
 
 function parseObstacles(value: unknown): Obstacle[] | undefined {

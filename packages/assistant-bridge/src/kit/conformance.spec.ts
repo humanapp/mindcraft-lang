@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ADAPTER_CONTRACT_VERSION } from "../target/adapter.js";
-import { createTargetAdapter, FAKE_SUBJECT, FAKE_TARGET_PACKAGE } from "../testing/index.js";
+import { fileURLToPath } from "node:url";
+import { ADAPTER_CONTRACT_VERSION, AdapterNonconformanceCode } from "../target/adapter.js";
+import { createTargetAdapter, FAKE_INPUT_KIND, FAKE_SUBJECT, FAKE_TARGET_IDENTITY } from "../testing/index.js";
 import { proposeEdit } from "../tools/propose-edit.js";
 import type { AuthoringWorkspace } from "../tools/workspace.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";
-import { ConformanceCheckCode, checkAdapterConformance, checkArtifactLoads } from "./conformance.js";
+import {
+  ConformanceCheckCode,
+  checkAdapterConformance,
+  checkArtifactLoads,
+  checkArtifactSelfContained,
+} from "./conformance.js";
+import { ScenarioRejection, ScenarioRejectionCode } from "./rehearsal-adapter.js";
 
 /** The built artifact the fake adapter is published from. */
 const artifactUrl = new URL("../../dist/testing/fake-adapter.js", import.meta.url);
@@ -57,17 +64,26 @@ describe("the conformance suite", () => {
   });
 
   test("loads the built artifact in a fresh Node process", async () => {
-    const check = await checkArtifactLoads(artifactUrl, { packageName: FAKE_TARGET_PACKAGE });
+    const check = await checkArtifactLoads(artifactUrl, { targetIdentity: FAKE_TARGET_IDENTITY });
 
     assert.equal(check.ok, true, check.detail);
     assert.equal(check.code, ConformanceCheckCode.HeadlessPurity);
   });
 
-  test("reports an artifact built from a package the entry does not expect", async () => {
-    const check = await checkArtifactLoads(artifactUrl, { packageName: "@example/other-target" });
+  test("reports an artifact reporting a target identity the entry does not expect", async () => {
+    const check = await checkArtifactLoads(artifactUrl, { targetIdentity: "example-org/trg-other" });
 
     assert.equal(check.ok, false);
-    assert.match(check.detail, /adapter_package_mismatch/);
+    assert.match(check.detail, new RegExp(AdapterNonconformanceCode.IdentityMismatch));
+  });
+
+  test("refuses an artifact that only loads beside the packages it left unbundled", async () => {
+    const check = await checkArtifactSelfContained(fileURLToPath(artifactUrl), {
+      targetIdentity: FAKE_TARGET_IDENTITY,
+    });
+
+    assert.equal(check.ok, false, check.detail);
+    assert.equal(check.code, ConformanceCheckCode.SelfContainment);
   });
 });
 
@@ -84,7 +100,52 @@ describe("an adapter built on the kit", () => {
         brainDef: workspace.brainDef,
         scenario: { seed: 1, subject: "nobody" },
         thinks: 4,
-      })
+      }),
+      (error: unknown) => error instanceof ScenarioRejection && error.code === ScenarioRejectionCode.UnknownSubject
+    );
+  });
+
+  test("registers the input kinds its driver declares, each with what a level of it means", () => {
+    const kinds = createTargetAdapter().inputKinds();
+
+    assert.deepEqual(
+      kinds.map((kind) => kind.name),
+      [FAKE_INPUT_KIND]
+    );
+    for (const kind of kinds) assert.ok(kind.description.length > 0, kind.name);
+  });
+
+  test("delivers a scripted input to the world, holding its level until the next entry", async () => {
+    const workspace = authoredWorkspace();
+    const request = {
+      brainDef: workspace.brainDef,
+      scenario: {
+        seed: 20260805,
+        subject: FAKE_SUBJECT,
+        inputs: [
+          { kind: FAKE_INPUT_KIND, at: 0, value: true },
+          { kind: FAKE_INPUT_KIND, at: 6, value: false },
+        ],
+      },
+      thinks: 12,
+    };
+
+    const run = await workspace.adapter.run(request);
+
+    const fired = run.observations.map((think) => think.gates.some((gate) => gate.fired));
+    assert.deepEqual(fired, [true, true, true, true, true, true, false, false, false, false, false, false]);
+  });
+
+  test("refuses a scripted input of a kind its driver does not register", async () => {
+    const workspace = authoredWorkspace();
+
+    await assert.rejects(
+      workspace.adapter.run({
+        brainDef: workspace.brainDef,
+        scenario: { seed: 1, subject: FAKE_SUBJECT, inputs: [{ kind: "no-such-kind", at: 0, value: true }] },
+        thinks: 4,
+      }),
+      (error: unknown) => error instanceof ScenarioRejection && error.code === ScenarioRejectionCode.UnknownInputKind
     );
   });
 });

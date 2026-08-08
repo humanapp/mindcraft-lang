@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { type BrainServices, type IBrainTileDef, mkVariableTileId } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileOperatorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { CoreTypeIds, extractNumberValue, type IBrain, NativeType, type Value } from "@mindcraft-lang/core/runtime";
@@ -99,7 +99,7 @@ function runSensorThinks(
   const rule = page.children().get(0)! as BrainRuleDef;
   const numVar = mkNumVar(varName);
   for (const t of [numVar, new BrainTileOperatorDef("assign", {}, services), tile]) {
-    rule.do().appendTile(t as never);
+    __test__appendTile(rule.do(), t as never);
   }
   const brain: IBrain = brainDef.compile();
   brain.initialize();

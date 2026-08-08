@@ -49,6 +49,7 @@ export type {
 } from "./types";
 export { acceptExprVisitor } from "./types";
 
+import type { Localizer } from "../../localization/localizer";
 import { Dict } from "../../platform/dict";
 import { List, type ReadonlyList } from "../../platform/list";
 import { UniqueSet } from "../../platform/uniqueset";
@@ -128,6 +129,7 @@ function appendParseDiags(result: ParseResult, extra: ReadonlyList<ParseDiag>): 
  * {@link CoreCapabilityBits.RequiresPrecedingSiblingRule} gets a
  * {@link ParseDiagCode.NoPrecedingSiblingRule} diagnostic.
  * It defaults to `true`, which reports nothing.
+ * `localizer` is the locale every diagnostic names a tile in.
  */
 export function parseRule(
   whenSrc: ReadonlyList<IBrainTileDef>,
@@ -135,6 +137,7 @@ export function parseRule(
   catalogs: ReadonlyList<ITileCatalog>,
   conversions: IConversionRegistry,
   typeRegistry: ITypeRegistry,
+  localizer: Localizer,
   inheritedOutputKeys?: UniqueSet<string>,
   inheritedCapabilities?: ReadonlyBitSet,
   inheritedWhenResultType?: TypeId,
@@ -154,8 +157,8 @@ export function parseRule(
   availableCapabilities = collectProvidedCapabilities(whenSrc, availableCapabilities);
   availableCapabilities = collectProvidedCapabilities(doSrc, availableCapabilities);
 
-  const whenParsed = parseBrainTiles(whenSrc);
-  const doParsed = parseBrainTiles(doSrc, -1, 0, whenParsed.nextNodeId);
+  const whenParsed = parseBrainTiles(whenSrc, localizer);
+  const doParsed = parseBrainTiles(doSrc, localizer, -1, 0, whenParsed.nextNodeId);
 
   // The WHEN result available per side: WHEN-side tiles read the enclosing
   // rule's result; DO-side tiles read this rule's own (its WHEN expression's
@@ -173,27 +176,27 @@ export function parseRule(
     appendParseDiags(
       appendParseDiags(
         appendParseDiags(
-          appendParseDiags(whenParsed, validateTilePlacement(whenSrc, RuleSide.When)),
-          validateOutputProviders(whenSrc, providedOutputKeys)
+          appendParseDiags(whenParsed, validateTilePlacement(whenSrc, RuleSide.When, localizer)),
+          validateOutputProviders(whenSrc, providedOutputKeys, localizer)
         ),
-        validateCapabilityRequirements(whenSrc, availableCapabilities, catalogs)
+        validateCapabilityRequirements(whenSrc, availableCapabilities, catalogs, localizer)
       ),
-      validateWhenResultConsumers(whenSrc, whenSideWhenResult, conversions, typeRegistry)
+      validateWhenResultConsumers(whenSrc, whenSideWhenResult, conversions, typeRegistry, localizer)
     ),
-    validatePrecedingSiblingConsumers(whenSrc, hasPrecedingSiblingRule)
+    validatePrecedingSiblingConsumers(whenSrc, hasPrecedingSiblingRule, localizer)
   );
   const doParseResult = appendParseDiags(
     appendParseDiags(
       appendParseDiags(
         appendParseDiags(
-          appendParseDiags(doParsed, validateTilePlacement(doSrc, RuleSide.Do)),
-          validateOutputProviders(doSrc, providedOutputKeys)
+          appendParseDiags(doParsed, validateTilePlacement(doSrc, RuleSide.Do, localizer)),
+          validateOutputProviders(doSrc, providedOutputKeys, localizer)
         ),
-        validateCapabilityRequirements(doSrc, availableCapabilities, catalogs)
+        validateCapabilityRequirements(doSrc, availableCapabilities, catalogs, localizer)
       ),
-      validateWhenResultConsumers(doSrc, doSideWhenResult, conversions, typeRegistry)
+      validateWhenResultConsumers(doSrc, doSideWhenResult, conversions, typeRegistry, localizer)
     ),
-    validatePrecedingSiblingConsumers(doSrc, hasPrecedingSiblingRule)
+    validatePrecedingSiblingConsumers(doSrc, hasPrecedingSiblingRule, localizer)
   );
 
   // Combine parse results
@@ -219,14 +222,14 @@ export function parseRule(
   const typeDiags = List.empty<TypeInfoDiag>();
   for (let i = 0; i < whenParseResult.exprs.size(); i++) {
     const expr = whenParseResult.exprs.get(i);
-    const diags = computeInferredTypes(expr, catalogs, typeEnv, conversions, typeRegistry);
+    const diags = computeInferredTypes(expr, catalogs, typeEnv, conversions, typeRegistry, localizer);
     for (let j = 0; j < diags.size(); j++) {
       typeDiags.push(diags.get(j));
     }
   }
   for (let i = 0; i < doParseResult.exprs.size(); i++) {
     const expr = doParseResult.exprs.get(i);
-    const diags = computeInferredTypes(expr, catalogs, typeEnv, conversions, typeRegistry);
+    const diags = computeInferredTypes(expr, catalogs, typeEnv, conversions, typeRegistry, localizer);
     for (let j = 0; j < diags.size(); j++) {
       typeDiags.push(diags.get(j));
     }

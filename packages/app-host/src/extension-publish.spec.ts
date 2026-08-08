@@ -676,6 +676,45 @@ describe("publishExtensionVersion for a target (hostApp)", () => {
     assert.equal(applied.length, 0);
   });
 
+  it("ships the rehearsal adapter the manifest declares", async () => {
+    const { backend, applied } = memoryBackend();
+    const source = memorySource({
+      "mindcraft.json": manifestText({
+        name: "Microbit V2",
+        version: "0.9.1",
+        hostApp: { path: "app", files: ["app/index.html"] },
+        rehearsalAdapter: { path: "rehearsal/adapter.js" },
+      }),
+      "app/index.html": "<!doctype html>",
+      "rehearsal/adapter.js": "export function createTargetAdapter() {}",
+    });
+
+    const result = await publishExtensionVersion({ coordinate: COORDINATE, source, backend });
+
+    assert.equal(result.ok, true);
+    assert.ok(
+      applied[0].files.some((file) => file.path === "rehearsal/adapter.js"),
+      "the published tree carries the adapter artifact"
+    );
+  });
+
+  it("refuses a target whose declared rehearsal adapter is not in the project", async () => {
+    const source = memorySource({
+      "mindcraft.json": manifestText({
+        name: "Microbit V2",
+        version: "0.9.1",
+        hostApp: { path: "app", files: ["app/index.html"] },
+        rehearsalAdapter: { path: "rehearsal/adapter.js" },
+      }),
+      "app/index.html": "<!doctype html>",
+    });
+
+    const result = await publishExtensionVersion({ coordinate: COORDINATE, source, backend: memoryBackend().backend });
+
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.error.code, ExtensionPublishErrorCode.LISTED_FILE_MISSING);
+  });
+
   it("ships a target that carries no build-version stamp", async () => {
     const source = memorySource({
       "mindcraft.json": manifestText({

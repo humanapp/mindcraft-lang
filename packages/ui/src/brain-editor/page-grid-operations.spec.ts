@@ -24,7 +24,6 @@ import {
   type BrainRuleDef,
 } from "@mindcraft-lang/core/brain/model";
 import { CoreHostActions, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
-import { positionOffersTile, sideOffersAppendedTile } from "./insertion-context";
 import {
   decidePageGridGrab,
   decidePageGridOperation,
@@ -39,6 +38,7 @@ import {
   resolvePageGridCursor,
 } from "./page-grid-model";
 import { makeBrain } from "./test-only-rule-fixtures";
+import { positionOffersTile, sideOffersAppendedTile } from "./tile-offering";
 
 let services: BrainServices;
 let catalogs: ReadonlyList<ITileCatalog>;

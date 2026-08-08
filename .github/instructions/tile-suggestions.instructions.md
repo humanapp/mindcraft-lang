@@ -15,11 +15,13 @@ function-level details; this file captures rules and key behaviors.
 - **Tests**: `cd packages/core && npm test` (tile suggestion tests in `tile-suggestions.spec.ts`)
 - **Import path**: `@mindcraft-lang/core/brain/language-service`
 - **Main entry point**: `suggestTiles(context, catalogs)`
+- **Context builder**: `buildInsertionContext(inputs)` in `insertion-context.ts` -- assembles the
+  `InsertionContext` for all three shapes (append, insert-at-index, replace-at-index)
 - **Parser helper**: `parseTilesForSuggestions(tiles)` -- returns `EmptyExpr` for empty lists
 
 ## Core Types
 
-- **`InsertionContext`**: `{ ruleSide, expectedType?, expr?, replaceTileIndex? }`
+- **`InsertionContext`**: `{ ruleSide, expectedType?, expr?, replaceTileIndex?, matchedParen? }`
 - **`TileSuggestionResult`**: `{ exact, withConversion }` -- both `List<TileSuggestion>`
 - **`TileSuggestion`**: `{ tileDef, compatibility, conversionCost }`
 - **`TileCompatibility`**: `Exact (0)` / `Conversion (1)` / `Unchecked (2)`
@@ -46,11 +48,14 @@ accessorPosition) and suggests accordingly.
 8. Accessor type uses `trailingPrimaryExpr` (rightmost leaf), not the overall expression type
 9. Non-inline sensors are excluded from sub-expression positions except as prefix operator operands (`allowNonInlineSensors` flag)
 10. Incomplete binary ops infer RHS type from operator overloads via `incompleteExprExpectedType`
-11. Struct field matching is a type compatibility fallback -- struct-typed tiles go to `withConversion` when a field matches the expected type
+11. Accessor refinement is a type compatibility fallback -- struct-typed tiles go to `withConversion` when an accessor tile in the catalogs reads a field of that struct reaching the expected type
 12. Replacement mode excludes the replaced slot from filled-slot computation
 13. Precedence-aware operator suggestions: after `[a] [>] [b]`, higher-precedence operators like `*` check against the right operand type via `effectiveLhsType`
 14. Operator-derived type overrides slot type for incomplete anon values (exact match on operand type, not conversion via outer slot type)
 15. Insert-before uses truncated tile context: `tiles.slice(0, N)` for inserting at position N
+16. A sensor standing as a binary operand still gets its remaining call spec tiles -- the parser reads tiles after it as further arguments of that call
+17. A parenthesis the side balances (`matchedParenAt`, carried on `InsertionContext.matchedParen`) is the only tile suggested at its own replacement position
+18. A call whose argument holds an unclosed paren group still takes call spec tiles (`actionCallTakesArgs`)
 
 ## Call Spec Grammar Enforcement
 

@@ -6,7 +6,7 @@ import type { IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
  * Increment it whenever {@link TargetAdapter} or the shapes it exchanges change
  * in a way an already-built artifact cannot satisfy.
  */
-export const ADAPTER_CONTRACT_VERSION = 1;
+export const ADAPTER_CONTRACT_VERSION = 5;
 
 /** Facts about a target world that a session states to the model before it plans. */
 export interface TargetManifest {
@@ -22,6 +22,33 @@ export interface TargetManifest {
 }
 
 /**
+ * One percept kind a target reads out of a scenario, named and explained by the
+ * target itself.
+ */
+export interface ScenarioInputKind {
+  /** Name a {@link ScenarioInput} gives as its `kind`, spelled exactly. */
+  readonly name: string;
+  /**
+   * One plain sentence stating what a level of this kind means in this world
+   * and the range it is read over.
+   */
+  readonly description: string;
+}
+
+/**
+ * One scripted percept a scenario delivers into the staged world. The target's
+ * adapter interprets it; nothing here presumes what a kind senses.
+ */
+export interface ScenarioInput {
+  /** What is delivered, from {@link TargetAdapter.inputKinds}. */
+  readonly kind: string;
+  /** Zero-based think this input is applied before. */
+  readonly at: number;
+  /** Level `kind` is set to, holding until another entry of the same kind changes it. */
+  readonly value: number | boolean;
+}
+
+/**
  * The staged world one rehearsal runs: the core scenario shape every target
  * shares. A target extends it by registering its own input kinds; the seed and
  * the subject are always present.
@@ -31,6 +58,11 @@ export interface SimulationScenario {
   readonly seed: number;
   /** Population role the brain under study drives, from {@link TargetAdapter.subjects}. */
   readonly subject: string;
+  /**
+   * Percepts the run scripts, in any order; the run delivers each at its own
+   * `at`. Absent when the run scripts none.
+   */
+  readonly inputs?: readonly ScenarioInput[];
 }
 
 /** One rehearsal request. */
@@ -40,6 +72,15 @@ export interface SimulationRequest {
   readonly scenario: SimulationScenario;
   /** Number of fixed-step thinks to run. */
   readonly thinks: number;
+  /**
+   * Rule paths to leave out of this run's build, each in
+   * `pageIndex/ruleIndex[/childIndex...]` form. An excluded rule and its whole
+   * subtree are absent from the program, so they report nothing and run
+   * nothing, and a brain whose every build error falls in an excluded rule
+   * still runs. Every other rule keeps the path it reports observations under.
+   * Absent when the run excludes nothing.
+   */
+  readonly excludedRules?: readonly string[];
 }
 
 /** One rule's WHEN gate on one think. */
@@ -105,8 +146,11 @@ export interface TargetAdapter {
    * other than the {@link ADAPTER_CONTRACT_VERSION} it holds.
    */
   readonly contractVersion: number;
-  /** Name of the package this artifact was built from, injected at build time. */
-  readonly packageName: string;
+  /**
+   * Mindcraft identity of the target this artifact is, as the `identity` its
+   * target's own `mindcraft.json` declares, injected at build time.
+   */
+  readonly targetIdentity: string;
   /** Facts about this world, stated to the model before it plans. */
   manifest(): TargetManifest;
   /** Mindcraft modules this target installs into an authoring environment, beyond core's own. */
@@ -115,9 +159,14 @@ export interface TargetAdapter {
   tileDocs(): ReadonlyMap<string, string>;
   /** Population roles a scenario may name as its subject. */
   subjects(): readonly string[];
+  /** Scenario input kinds this target reads; empty when it scripts no percepts. */
+  inputKinds(): readonly ScenarioInputKind[];
   /**
-   * Run one rehearsal. Throws if `scenario.subject` is not one of
-   * {@link subjects} or the brain does not build.
+   * Run one rehearsal. Throws a `ScenarioRejection` if `scenario.subject` is
+   * not one of {@link subjects} or an input names a kind outside
+   * {@link inputKinds}, and a `RehearsalRejection` carrying the build's
+   * error-severity `BrainBuildDiagnostic` entries if the brain does not build
+   * once {@link SimulationRequest.excludedRules} has been applied.
    */
   run(request: SimulationRequest): Promise<SimulationRun>;
 }
@@ -126,7 +175,7 @@ export interface TargetAdapter {
  * The adapter surface an artifact must carry: every member name a host calls on
  * a {@link TargetAdapter}.
  */
-export const adapterMethods = ["manifest", "modules", "tileDocs", "subjects", "run"] as const;
+export const adapterMethods = ["manifest", "modules", "tileDocs", "subjects", "inputKinds", "run"] as const;
 
 /** Why an artifact could not stand in as a target adapter. */
 export const AdapterNonconformanceCode = {
@@ -138,8 +187,8 @@ export const AdapterNonconformanceCode = {
   MissingMembers: "adapter_missing_members",
   /** The artifact was built against a different {@link ADAPTER_CONTRACT_VERSION}. */
   ContractVersionMismatch: "adapter_contract_version_mismatch",
-  /** The artifact reports a package name other than the one the loader expected. */
-  PackageMismatch: "adapter_package_mismatch",
+  /** The artifact reports a target identity other than the one the loader expected. */
+  IdentityMismatch: "adapter_identity_mismatch",
 } as const;
 
 /** Why an artifact could not stand in as a target adapter. */
@@ -154,8 +203,11 @@ export interface AdapterNonconformance {
 
 /** What an artifact is checked against beyond the interface itself. */
 export interface AdapterExpectation {
-  /** Package name the artifact must report, from whatever names the artifact. */
-  readonly packageName: string;
+  /**
+   * Mindcraft identity the artifact must report: the `identity` the target's
+   * own `mindcraft.json` declares.
+   */
+  readonly targetIdentity: string;
 }
 
 /**
@@ -182,10 +234,10 @@ export function adapterNonconformance(
       detail: `adapter was built for contract ${String(adapter.contractVersion)}; this loader holds ${ADAPTER_CONTRACT_VERSION}`,
     };
   }
-  if (adapter.packageName !== expectation.packageName) {
+  if (adapter.targetIdentity !== expectation.targetIdentity) {
     return {
-      code: AdapterNonconformanceCode.PackageMismatch,
-      detail: `adapter reports package ${JSON.stringify(adapter.packageName)}; ${JSON.stringify(expectation.packageName)} was expected`,
+      code: AdapterNonconformanceCode.IdentityMismatch,
+      detail: `adapter reports target identity ${JSON.stringify(adapter.targetIdentity)}; ${JSON.stringify(expectation.targetIdentity)} was expected`,
     };
   }
   return undefined;

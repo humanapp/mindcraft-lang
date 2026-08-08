@@ -10,7 +10,7 @@ import { describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core";
 import type { BrainServices, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import { CoreCapabilityBits, mkOperatorTileId } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { projectRuleSentence, sentenceText, tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
 import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
@@ -171,10 +171,10 @@ function makeRule(
   const brainDef = BrainDef.emptyBrainDef(services, "tile-language-surface");
   const rule = brainDef.pages().get(0).children().get(0) as BrainRuleDef;
   for (const tileDef of whenTiles) {
-    rule.when().appendTile(tileDef);
+    __test__appendTile(rule.when(), tileDef);
   }
   for (const tileDef of doTiles) {
-    rule.do().appendTile(tileDef);
+    __test__appendTile(rule.do(), tileDef);
   }
   return { rule, brainDef };
 }

@@ -80,6 +80,29 @@ describe("tool input validation", () => {
     assert.equal(parsed.success, true);
   });
 
+  test("accepts a factory tile and its mint input wherever a single tile is named", () => {
+    for (const input of [
+      { op: "placeTile", ruleId: "0/0", side: "do", tileId: { tileId: "tile.lit.factory->number", value: 30 } },
+      {
+        op: "replaceTile",
+        ruleId: "0/0",
+        side: "do",
+        position: 1,
+        tileId: { tileId: "tile.lit.factory->number", value: 30, displayFormat: "percent" },
+      },
+      {
+        op: "placeTile",
+        ruleId: "0/0",
+        side: "when",
+        tileId: { tileId: "tile.var.factory->number", name: "speed" },
+      },
+    ]) {
+      const parsed = toolInputSchemas.propose_edit.safeParse(input);
+
+      assert.equal(parsed.success, true, JSON.stringify(input));
+    }
+  });
+
   test("rejects a run entry that names no tile", () => {
     const parsed = toolInputSchemas.propose_edit.safeParse({
       op: "placeTiles",
@@ -113,15 +136,101 @@ describe("tool input validation", () => {
     );
   });
 
+  test("describes a property that means something different under each operation once per operation", () => {
+    const proposeEdit = toolDefinitions.find((tool) => tool.name === "propose_edit");
+    const properties = (proposeEdit?.inputSchema as { properties?: Record<string, { description?: string }> })
+      .properties;
+    const position = properties?.position?.description ?? "";
+
+    for (const op of ["placeTile", "placeTiles", "replaceTile", "deleteTile"]) {
+      assert.ok(position.includes(`${op}:`), `position says what it means under ${op}: ${position}`);
+    }
+  });
+
+  test("describes a property the branches word identically once", () => {
+    const suggest = toolDefinitions.find((tool) => tool.name === "suggest_tiles");
+    const properties = (suggest?.inputSchema as { properties?: Record<string, { description?: string }> }).properties;
+
+    assert.equal(properties?.ruleId?.description?.includes("insert:"), false);
+    assert.ok((properties?.position?.description ?? "").includes("replace:"), "position differs by mode and says so");
+  });
+
   test("rejects an unknown operation", () => {
     assert.equal(toolInputSchemas.propose_edit.safeParse({ op: "rewriteEverything" }).success, false);
   });
 
   test("rejects an unknown rule side", () => {
-    assert.equal(toolInputSchemas.suggest_tiles.safeParse({ ruleId: "0/0", side: "sideways" }).success, false);
+    assert.equal(
+      toolInputSchemas.suggest_tiles.safeParse({ mode: "insert", ruleId: "0/0", side: "sideways" }).success,
+      false
+    );
+  });
+
+  test("accepts a suggestion request in either mode and refuses one naming neither", () => {
+    assert.equal(
+      toolInputSchemas.suggest_tiles.safeParse({ mode: "insert", ruleId: "0/0", side: "when" }).success,
+      true
+    );
+    assert.equal(
+      toolInputSchemas.suggest_tiles.safeParse({ mode: "replace", ruleId: "0/0", side: "when", position: 1 }).success,
+      true
+    );
+    assert.equal(toolInputSchemas.suggest_tiles.safeParse({ ruleId: "0/0", side: "when" }).success, false);
+  });
+
+  test("requires the replaced position, which insert mode may leave to the end of the side", () => {
+    assert.equal(
+      toolInputSchemas.suggest_tiles.safeParse({ mode: "replace", ruleId: "0/0", side: "when" }).success,
+      false
+    );
+  });
+
+  test("names both suggestion modes and the arguments each takes in the discriminator description", () => {
+    const suggest = toolDefinitions.find((tool) => tool.name === "suggest_tiles");
+    const properties = (suggest?.inputSchema as { properties?: Record<string, { enum?: string[] }> }).properties;
+
+    assert.deepEqual(properties?.mode?.enum, ["insert", "replace"]);
+    assert.ok(
+      (properties?.mode as { description?: string })?.description?.includes("replace takes ruleId, side, position"),
+      "the enum description names each mode's own arguments"
+    );
   });
 
   test("rejects a simulate request with no think count", () => {
     assert.equal(toolInputSchemas.simulate.safeParse({ scenario: { seed: 1, subject: "herbivore" } }).success, false);
+  });
+
+  test("accepts a scenario scripting percepts of any kind, at any think, of either value shape", () => {
+    const parsed = toolInputSchemas.simulate.safeParse({
+      scenario: {
+        seed: 1,
+        subject: "device",
+        inputs: [
+          { kind: "button-a", at: 2, value: true },
+          { kind: "light-level", at: 0, value: 40 },
+        ],
+      },
+      thinks: 10,
+    });
+
+    assert.equal(parsed.success, true);
+  });
+
+  test("rejects a scripted percept missing its kind, its think, or its value", () => {
+    for (const input of [
+      { at: 0, value: true },
+      { kind: "button-a", value: true },
+      { kind: "button-a", at: 0 },
+      { kind: "", at: 0, value: true },
+      { kind: "button-a", at: -1, value: true },
+      { kind: "button-a", at: 0, value: "down" },
+    ]) {
+      const parsed = toolInputSchemas.simulate.safeParse({
+        scenario: { seed: 1, subject: "device", inputs: [input] },
+        thinks: 10,
+      });
+
+      assert.equal(parsed.success, false, JSON.stringify(input));
+    }
   });
 });

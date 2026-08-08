@@ -15,10 +15,17 @@
   "bin": {
     "mindcraft": "dist/main.js"
   },
+  "mindcraftBuild": {
+    "script": "build:prod",
+    "outputs": [
+      "dist"
+    ],
+    "postProcessed": false
+  },
   "scripts": {
     "build": "tsc --build",
     "build:prod": "tsc --build tsconfig.prod.json",
-    "clean": "tsc --build --clean",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo tsconfig.prod.tsbuildinfo",
     "watch": "tsc --build --watch",
     "lint:only": "biome lint ./src",
     "check:only": "biome check ./src",

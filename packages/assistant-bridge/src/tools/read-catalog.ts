@@ -1,15 +1,17 @@
 import type { ReadonlyBitSet } from "@mindcraft-lang/core";
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { isActionTileDef, TilePlacement } from "@mindcraft-lang/core/brain";
-import type { BrainActionCallSpec } from "@mindcraft-lang/core/runtime";
-import { tileLabel } from "./tile-label.js";
+import { tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
+import type { BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
+import type { Localizer } from "@mindcraft-lang/core/localization";
+import type { BrainActionCallArgSpec, BrainActionCallSpec } from "@mindcraft-lang/core/runtime";
 import type { ToolInput } from "./tool-schemas.js";
 import { type AuthoringWorkspace, allTiles } from "./workspace.js";
 
 /** One tile as `read_catalog` describes it. */
 export interface CatalogTile {
   readonly tileId: string;
-  /** Display label, the value text or variable name a manufactured tile carries, or the tile id when it has none. */
+  /** The word the tile reads by in the environment's locale. */
   readonly label: string;
   /** Tile kind, for example "sensor", "actuator", "modifier". */
   readonly kind: string;
@@ -67,24 +69,74 @@ function placementNames(tile: IBrainTileDef): string[] {
   return names;
 }
 
-/** Render one call-spec node as a compact grammar string. */
-function renderCallSpec(spec: BrainActionCallSpec): string {
+/**
+ * Render one call-spec node as a compact grammar string. A named argument reads
+ * as the tile id to place, suffixed with `!` when required; an anonymous
+ * argument takes no tile of its own and reads as `value:<typeId>`, the type of
+ * the value expression that fills it.
+ *
+ * @param slotType The value type an anonymous slot keyed by a parameter tile id takes.
+ */
+function renderCallSpec(spec: BrainActionCallSpec, slotType: (tileId: string) => string | undefined): string {
+  const render = (item: BrainActionCallSpec) => renderCallSpec(item, slotType);
+  switch (spec.type) {
+    case "arg": {
+      const named = spec.anonymous ? `value:${slotType(spec.tileId) ?? "unknown"}` : spec.tileId;
+      return spec.required ? `${named}!` : named;
+    }
+    case "seq":
+      return `seq(${spec.items.map(render).join(", ")})`;
+    case "bag":
+      return `any-order(${spec.items.map(render).join(", ")})`;
+    case "choice":
+      return `one-of(${spec.options.map(render).join(" | ")})`;
+    case "optional":
+      return `optional(${render(spec.item)})`;
+    case "repeat":
+      return `repeat(${render(spec.item)}, ${spec.min ?? 0}..${spec.max ?? "many"})`;
+    case "conditional":
+      return `if-matched(${spec.condition}, ${render(spec.then)}${spec.else ? `, ${render(spec.else)}` : ""})`;
+  }
+}
+
+/** Walk every arg node of `spec`, whether or not it is anonymous. */
+function forEachArgSpec(spec: BrainActionCallSpec, visit: (arg: BrainActionCallArgSpec) => void): void {
   switch (spec.type) {
     case "arg":
-      return spec.required ? `${spec.tileId}!` : spec.tileId;
+      visit(spec);
+      return;
     case "seq":
-      return `seq(${spec.items.map(renderCallSpec).join(", ")})`;
     case "bag":
-      return `any-order(${spec.items.map(renderCallSpec).join(", ")})`;
+      for (const item of spec.items) forEachArgSpec(item, visit);
+      return;
     case "choice":
-      return `one-of(${spec.options.map(renderCallSpec).join(" | ")})`;
+      for (const option of spec.options) forEachArgSpec(option, visit);
+      return;
     case "optional":
-      return `optional(${renderCallSpec(spec.item)})`;
     case "repeat":
-      return `repeat(${renderCallSpec(spec.item)}, ${spec.min ?? 0}..${spec.max ?? "many"})`;
+      forEachArgSpec(spec.item, visit);
+      return;
     case "conditional":
-      return `if-matched(${spec.condition}, ${renderCallSpec(spec.then)}${spec.else ? `, ${renderCallSpec(spec.else)}` : ""})`;
+      forEachArgSpec(spec.then, visit);
+      if (spec.else) forEachArgSpec(spec.else, visit);
+      return;
   }
+}
+
+/**
+ * Tile ids some action's argument grammar names as a tile to place. An
+ * anonymous argument names its parameter tile only to key the slot's value
+ * type; that tile id is not a member.
+ */
+function placeableArgTileIds(tiles: readonly IBrainTileDef[]): Set<string> {
+  const placeable = new Set<string>();
+  for (const tile of tiles) {
+    if (!isActionTileDef(tile)) continue;
+    forEachArgSpec(tile.action.callDef.callSpec, (arg) => {
+      if (arg.anonymous !== true) placeable.add(arg.tileId);
+    });
+  }
+  return placeable;
 }
 
 /** Output identity keys `tile` provides. */
@@ -95,15 +147,24 @@ function outputKeys(tile: IBrainTileDef): string[] {
   return keys;
 }
 
-/** Describe one tile for the model. */
-function describeTile(tile: IBrainTileDef, descriptions: ReadonlyMap<string, string>): CatalogTile {
+/**
+ * Describe one tile for the model, reading it by its word in `localizer`'s
+ * locale and its argument grammar through `slotType`.
+ */
+function describeTile(
+  tile: IBrainTileDef,
+  descriptions: ReadonlyMap<string, string>,
+  localizer: Localizer,
+  slotType: (tileId: string) => string | undefined
+): CatalogTile {
   const description = descriptions.get(tile.tileId);
   const action = isActionTileDef(tile) ? tile.action : undefined;
-  const args = action && action.callDef.argSlots.size() > 0 ? renderCallSpec(action.callDef.callSpec) : undefined;
+  const args =
+    action && action.callDef.argSlots.size() > 0 ? renderCallSpec(action.callDef.callSpec, slotType) : undefined;
   const consumesWhenResult = tile.consumesWhenResult();
   return {
     tileId: tile.tileId,
-    label: tileLabel(tile),
+    label: tileSentenceWord(tile, localizer),
     kind: tile.kind,
     ...(description ? { description } : {}),
     ...(action?.outputType ? { outputType: action.outputType } : {}),
@@ -129,11 +190,24 @@ function matches(tile: CatalogTile, needle: string): boolean {
 }
 
 /**
- * List every tile available in the environment, each with the author's
- * description and the metadata the model plans from.
+ * List every tile a document may hold, each with the author's description and
+ * the metadata the model plans from. Argument tiles no action names as a tile
+ * to place are left out: an anonymous slot's parameter tile carries only that
+ * slot's value type, which the argument grammar reads out as `value:<typeId>`.
  */
 export function readCatalog(workspace: AuthoringWorkspace, input: ToolInput<"read_catalog">): CatalogView {
-  const described = allTiles(workspace.catalogs).map((tile) => describeTile(tile, workspace.descriptions));
+  const localizer = workspace.environment.appServices.localizer;
+  const environmentTiles = allTiles(workspace.catalogs);
+  const byId = new Map(environmentTiles.map((tile) => [tile.tileId, tile]));
+  const namedAsTile = placeableArgTileIds(environmentTiles);
+  const slotType = (tileId: string) => {
+    const tile = byId.get(tileId);
+    return tile && tile.kind === "parameter" ? (tile as BrainTileParameterDef).dataType : undefined;
+  };
+  const placeable = environmentTiles.filter(
+    (tile) => (tile.kind !== "parameter" && tile.kind !== "modifier") || namedAsTile.has(tile.tileId)
+  );
+  const described = placeable.map((tile) => describeTile(tile, workspace.descriptions, localizer, slotType));
   const needle = input.filter?.trim().toLowerCase();
   const tiles = needle ? described.filter((tile) => matches(tile, needle)) : described;
   return { tiles, total: described.length };

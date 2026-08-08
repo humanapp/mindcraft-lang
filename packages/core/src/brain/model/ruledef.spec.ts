@@ -3,7 +3,7 @@ import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
 import { type BrainServices, CoreCapabilityBits, mkVariableTileId } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { ParseDiagCode, type TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef, BrainPageDef, type BrainRuleDef, kMaxBrainRuleDepth } from "@mindcraft-lang/core/brain/model";
 import {
@@ -35,8 +35,8 @@ describe("BrainRuleDef", () => {
     const literalTile = new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services);
     brain.catalog().registerTileDef(literalTile);
 
-    rule.when().appendTile(globalTile);
-    rule.do().appendTile(literalTile);
+    __test__appendTile(rule.when(), globalTile);
+    __test__appendTile(rule.do(), literalTile);
 
     const cloned = rule.clone();
 
@@ -241,9 +241,9 @@ describe("BrainRuleDef", () => {
 
       const brain = BrainDef.emptyBrainDef(services, "tc-provider-brain");
       const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
-      rule.when().appendTile(provider);
+      __test__appendTile(rule.when(), provider);
       const child = rule.appendNewRule();
-      child.do().appendTile(out);
+      __test__appendTile(child.do(), out);
 
       const codes = typecheckSideDiags(child, "do");
       assert.ok(
@@ -256,7 +256,7 @@ describe("BrainRuleDef", () => {
       const out = new BrainTileOutputDef(CoreTypeIds.Number, "tcOrphan", { metadata: { label: "tc orphan" } });
       const brain = BrainDef.emptyBrainDef(services, "tc-orphan-brain");
       const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
-      rule.do().appendTile(out);
+      __test__appendTile(rule.do(), out);
 
       const codes = typecheckSideDiags(rule, "do");
       assert.ok(
@@ -288,9 +288,9 @@ describe("BrainRuleDef", () => {
 
       const brain = BrainDef.emptyBrainDef(services, "tc-cap-provider-brain");
       const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
-      rule.when().appendTile(provider);
+      __test__appendTile(rule.when(), provider);
       const child = rule.appendNewRule();
-      child.do().appendTile(gated);
+      __test__appendTile(child.do(), gated);
 
       const codes = typecheckSideDiags(child, "do");
       assert.ok(
@@ -308,7 +308,7 @@ describe("BrainRuleDef", () => {
       );
       const brain = BrainDef.emptyBrainDef(services, "tc-cap-orphan-brain");
       const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
-      rule.do().appendTile(gated);
+      __test__appendTile(rule.do(), gated);
 
       const codes = typecheckSideDiags(rule, "do");
       assert.ok(
@@ -350,9 +350,9 @@ describe("BrainRuleDef", () => {
       const { producer, consumer } = whenResultProbePair(4403);
       const brain = BrainDef.emptyBrainDef(services, "tc-when-result-brain");
       const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
-      rule.when().appendTile(producer);
+      __test__appendTile(rule.when(), producer);
       const child = rule.appendNewRule();
-      child.do().appendTile(consumer);
+      __test__appendTile(child.do(), consumer);
 
       const codes = typecheckSideDiags(child, "do");
       assert.ok(
@@ -365,7 +365,7 @@ describe("BrainRuleDef", () => {
       const { consumer } = whenResultProbePair(4405);
       const brain = BrainDef.emptyBrainDef(services, "tc-when-orphan-brain");
       const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
-      rule.do().appendTile(consumer);
+      __test__appendTile(rule.do(), consumer);
 
       const codes = typecheckSideDiags(rule, "do");
       assert.ok(
@@ -396,9 +396,9 @@ describe("BrainRuleDef", () => {
     test("a tile reading the rule above it is clean while that rule is there", () => {
       const brain = BrainDef.emptyBrainDef(services, "tc-sibling-present-brain");
       const page = brain.pages().get(0);
-      page.children().get(0).when().appendTile(precedingSiblingProbe(4411));
+      __test__appendTile(page.children().get(0).when(), precedingSiblingProbe(4411));
       const second = page.appendNewRule() as BrainRuleDef;
-      second.when().appendTile(precedingSiblingProbe(4412));
+      __test__appendTile(second.when(), precedingSiblingProbe(4412));
 
       const codes = typecheckSideDiags(second, "when");
       assert.ok(
@@ -411,7 +411,7 @@ describe("BrainRuleDef", () => {
       const brain = BrainDef.emptyBrainDef(services, "tc-sibling-removed-brain");
       const page = brain.pages().get(0);
       const second = page.appendNewRule() as BrainRuleDef;
-      second.when().appendTile(precedingSiblingProbe(4413));
+      __test__appendTile(second.when(), precedingSiblingProbe(4413));
       assert.ok(!typecheckSideDiags(second, "when").includes(ParseDiagCode.NoPrecedingSiblingRule));
 
       page.removeRuleAtIndex(0);
@@ -532,7 +532,7 @@ describe("BrainRuleDef", () => {
       assert.equal(rules[0].isDirty(), false, "a freshly typechecked chain is clean");
 
       const marks = watchDirtyMarks(rules);
-      rules[0].when().appendTile(editableTile());
+      __test__appendTile(rules[0].when(), editableTile());
       marks.stop();
 
       assert.ok(marks.do[0] >= 1, "the edited rule's DO side must be marked dirty");
@@ -548,7 +548,7 @@ describe("BrainRuleDef", () => {
       brain.typecheck();
 
       const marks = watchDirtyMarks(rules);
-      rules[0].do().appendTile(editableTile());
+      __test__appendTile(rules[0].do(), editableTile());
       marks.stop();
 
       assert.equal(marks.do[0], 1, "the edited DO side is marked dirty once");
@@ -569,7 +569,7 @@ describe("BrainRuleDef", () => {
       const unsub = rules[0].events().on("rule_dirtyChanged", ({ isDirty }) => {
         seen.push(isDirty);
       });
-      rules[rules.length - 1].when().appendTile(editableTile());
+      __test__appendTile(rules[rules.length - 1].when(), editableTile());
       await new Promise((resolve) => {
         setTimeout(resolve, 300);
       });
@@ -597,7 +597,7 @@ describe("BrainRuleDef", () => {
       const rule = brain.pages().get(0).children().get(0) as BrainRuleDef;
       const literal = new BrainTileLiteralDef(CoreTypeIds.Number, 7, {}, services);
       brain.catalog().registerTileDef(literal);
-      rule.do().appendTile(literal);
+      __test__appendTile(rule.do(), literal);
 
       rule.typecheck();
 
@@ -626,7 +626,7 @@ describe("BrainRuleDef", () => {
 
       const liveBrain = BrainDef.emptyBrainDef(services, "tc-roundtrip-when-brain");
       const liveRule = liveBrain.pages().get(0).children().get(0) as BrainRuleDef;
-      liveRule.do().appendTile(consumer);
+      __test__appendTile(liveRule.do(), consumer);
       liveRule.typecheck();
 
       const liveCodes = storedDoDiagCodes(liveRule);
@@ -655,8 +655,8 @@ describe("BrainRuleDef", () => {
       const assignTile = services.edit.tiles.get("tile.op->assign");
       assert.ok(assignTile, "the assign operator tile must exist");
 
-      liveRule.do().appendTile(varTile);
-      liveRule.do().appendTile(assignTile);
+      __test__appendTile(liveRule.do(), varTile);
+      __test__appendTile(liveRule.do(), assignTile);
       liveRule.typecheck();
 
       const liveCodes = storedDoDiagCodes(liveRule);

@@ -5,6 +5,7 @@ import type {
   BrainTileLiteralDefOptions,
   IBrainTileDef,
   IBrainTileDefBuilder,
+  ITileCatalog,
   TileId,
 } from "../interfaces";
 import type { BrainServices } from "../services";
@@ -40,17 +41,31 @@ export class BrainTileDefBuilder implements IBrainTileDefBuilder {
 
   // Variable Tiles
   createVariableTileDef(
+    catalog: ITileCatalog,
     tileId: TileId,
     varName: string,
     varType: TypeId,
     uniqueId: string,
     opts: BrainTileDefCreateOptions = {}
   ): IBrainTileDef {
-    return new BrainTileVariableDef(tileId, varName, varType, uniqueId, opts);
+    return this.register_(catalog, new BrainTileVariableDef(tileId, varName, varType, uniqueId, opts));
   }
 
   // Literal Tiles
-  createLiteralTileDef(valueType: TypeId, value: unknown, opts: BrainTileLiteralDefOptions = {}): IBrainTileDef {
-    return new BrainTileLiteralDef(valueType, value, opts, this.requireServices());
+  createLiteralTileDef(
+    catalog: ITileCatalog,
+    valueType: TypeId,
+    value: unknown,
+    opts: BrainTileLiteralDefOptions = {}
+  ): IBrainTileDef {
+    return this.register_(catalog, new BrainTileLiteralDef(valueType, value, opts, this.requireServices()));
+  }
+
+  /** The def `catalog` already holds under `tileDef`'s id, registering `tileDef` under it when it holds none. */
+  private register_(catalog: ITileCatalog, tileDef: IBrainTileDef): IBrainTileDef {
+    const existing = catalog.get(tileDef.tileId);
+    if (existing) return existing;
+    catalog.registerTileDef(tileDef);
+    return tileDef;
   }
 }

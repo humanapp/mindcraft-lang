@@ -6,10 +6,10 @@ import { ARCHETYPE_NAMES } from "@/brain/archetypes";
 import { getSelf } from "@/brain/execution-context-types";
 import { createEcosimModule } from "@/brain/index";
 import { ecosimTileDocs } from "./tile-docs";
-import { createRehearsalWorld } from "./world";
+import { createRehearsalWorld, SCENARIO_INPUT_KINDS } from "./world";
 
-/** Package the adapter reports itself built from: injected at build time, empty in a source run. */
-const PACKAGE_NAME = typeof TARGET_PACKAGE_NAME === "string" ? TARGET_PACKAGE_NAME : "";
+/** Target identity the adapter reports: injected at build time, empty in a source run. */
+const IDENTITY = typeof TARGET_IDENTITY === "string" ? TARGET_IDENTITY : "";
 
 const MANIFEST: TargetManifest = {
   target: "ecosim, a top-down world of creatures",
@@ -23,23 +23,24 @@ const MANIFEST: TargetManifest = {
 
 /** Stage one ecosim world with the brain under study driving the subject archetype. */
 async function stage(staging: WorldStaging): Promise<RehearsalWorld> {
-  const subject = staging.subject as Archetype;
-  /** Actor id of the creature under study; unset until its first spawn. */
-  let subjectActorId: number | undefined;
+  const role = staging.subject as Archetype;
+  /** The creature under study; unset until its first spawn. */
+  let underStudy: Actor | undefined;
 
   const world = await createRehearsalWorld({
     environment: staging.environment,
     next: staging.next,
-    brains: { [subject]: staging.subjectBrain },
+    brains: { [role]: staging.subjectBrain },
+    scripted: { inputs: staging.inputs, subject: () => underStudy },
     observer: {
       // The first actor spawned in the subject role is the creature under
       // study; later ones run their brains unobserved.
       onSpawn: (actor: Actor) => {
-        if (actor.archetype !== subject || subjectActorId !== undefined) return;
-        subjectActorId = actor.actorId;
+        if (actor.archetype !== role || underStudy !== undefined) return;
+        underStudy = actor;
         staging.observeSubject({
           brain: actor.brain,
-          runs: (ctx) => getSelf(ctx)?.actorId === subjectActorId,
+          runs: (ctx) => getSelf(ctx) === underStudy,
         });
       },
     },
@@ -47,7 +48,7 @@ async function stage(staging: WorldStaging): Promise<RehearsalWorld> {
 
   return {
     step: () => world.step(),
-    subjectPresent: () => world.actors().some((actor) => actor.actorId === subjectActorId),
+    subjectPresent: () => world.actors().some((actor) => actor === underStudy),
     participants: () => world.actors().length,
     brainsExecuted: () => new Set(world.actors().map((actor) => actor.brainDef)).size,
     shutdown: () => world.shutdown(),
@@ -58,6 +59,7 @@ async function stage(staging: WorldStaging): Promise<RehearsalWorld> {
 const driver: WorldDriver = {
   modules: () => [createEcosimModule()],
   subjects: () => [...ARCHETYPE_NAMES],
+  inputKinds: () => SCENARIO_INPUT_KINDS,
   stage,
 };
 
@@ -68,7 +70,7 @@ const driver: WorldDriver = {
  */
 export function createTargetAdapter(): TargetAdapter {
   return createRehearsalAdapter({
-    packageName: PACKAGE_NAME,
+    targetIdentity: IDENTITY,
     manifest: MANIFEST,
     tileDocs: ecosimTileDocs,
     driver,

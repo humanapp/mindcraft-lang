@@ -2,7 +2,13 @@
 
 const path = require("path");
 const chalk = require("chalk");
-const { PLATFORM_MODULES, PRIMITIVES_MODULES, generateMappings, copyPlatformFiles } = require("./build-utils");
+const {
+  PLATFORM_MODULES,
+  PRIMITIVES_MODULES,
+  generateMappings,
+  copyPlatformFiles,
+  platformEmitDir,
+} = require("./build-utils");
 
 const distDir = path.join(__dirname, "..", "dist", "rbx");
 
@@ -21,10 +27,10 @@ function rbxTransformer(content, filename) {
 
 // Copy primitives files
 const primitivesDir = path.join(distDir, "primitives");
-copyPlatformFiles(primitivesDir, primitivesMappings, rbxTransformer);
+copyPlatformFiles(primitivesDir, platformEmitDir("rbx", "primitives"), primitivesMappings, rbxTransformer);
 
 // Copy platform files
 const platformDir = path.join(distDir, "platform");
-copyPlatformFiles(platformDir, platformMappings, rbxTransformer);
+copyPlatformFiles(platformDir, platformEmitDir("rbx", "platform"), platformMappings, rbxTransformer);
 
 console.log(chalk.green("Roblox platform file copying complete."));

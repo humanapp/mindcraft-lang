@@ -16,6 +16,7 @@ export * as languageService from "./language-service";
 export * as model from "./model";
 export * from "./page";
 export * from "./rule";
+export * from "./rule-path";
 export { BrainServices } from "./services";
 export * from "./services-factory";
 export * as tiles from "./tiles";

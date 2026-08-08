@@ -8,7 +8,7 @@ import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
 import { type BrainServices, type IBrainTileDef, mkOperatorTileId } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { parseRule, runBrainLinkPipeline, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import {
@@ -121,7 +121,14 @@ function testConversion(
     const emptyTiles = List.empty<never>();
     const catalogs = List.from([services.edit.tiles]);
 
-    const result = parseRule(tiles, emptyTiles, catalogs, services.shared.conversions, services.runtime.types);
+    const result = parseRule(
+      tiles,
+      emptyTiles,
+      catalogs,
+      services.shared.conversions,
+      services.runtime.types,
+      services.app.localizer
+    );
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "actuator", "Expected actuator expression");
@@ -318,7 +325,8 @@ describe("Conversion: assignment values", () => {
       List.from(tiles),
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
   }
 
@@ -371,25 +379,25 @@ describe("Conversion: assignment values", () => {
 
     // Rule 1: [conv_n] [=] [true] -- variable store.
     const rule1 = page.children().get(0)!;
-    rule1.do().appendTile(numVar);
-    rule1.do().appendTile(assignTile());
-    rule1.do().appendTile(boolLit);
+    __test__appendTile(rule1.do(), numVar);
+    __test__appendTile(rule1.do(), assignTile());
+    __test__appendTile(rule1.do(), boolLit);
 
     // Rule 2: [conv_vec] [x] [=] [true] -- id-based field store (concrete struct).
     const rule2 = page.appendNewRule()!;
-    rule2.do().appendTile(vecVar);
-    rule2.do().appendTile(accX);
-    rule2.do().appendTile(assignTile());
-    rule2.do().appendTile(boolLit);
+    __test__appendTile(rule2.do(), vecVar);
+    __test__appendTile(rule2.do(), accX);
+    __test__appendTile(rule2.do(), assignTile());
+    __test__appendTile(rule2.do(), boolLit);
 
     // Rule 3: [conv_p] [x] [=] [true] -- name-keyed field store (the base's
     // struct type is not in the registry, so no field id resolves and the
     // emitter takes the SET_FIELD fallback).
     const rule3 = page.appendNewRule()!;
-    rule3.do().appendTile(phantomVar);
-    rule3.do().appendTile(phantomAccX);
-    rule3.do().appendTile(assignTile());
-    rule3.do().appendTile(boolLit);
+    __test__appendTile(rule3.do(), phantomVar);
+    __test__appendTile(rule3.do(), phantomAccX);
+    __test__appendTile(rule3.do(), assignTile());
+    __test__appendTile(rule3.do(), boolLit);
 
     const result = runBrainLinkPipeline(
       brainDef,
@@ -444,7 +452,8 @@ describe("Conversion: unary operator operands", () => {
       List.from(tiles),
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
   }
 
@@ -575,7 +584,8 @@ describe("Conversion: choice slots", () => {
       List.from(tiles),
       List.from([services.edit.tiles]),
       services.shared.conversions,
-      services.runtime.types
+      services.runtime.types,
+      services.app.localizer
     );
   }
 
@@ -656,8 +666,8 @@ describe("Conversion: choice slots", () => {
     });
     const brainDef = BrainDef.emptyBrainDef(services, "choice conversion brain");
     const rule = brainDef.pages().get(0)!.children().get(0)!;
-    rule.do().appendTile(numFirstTile);
-    rule.do().appendTile(chBoolLit);
+    __test__appendTile(rule.do(), numFirstTile);
+    __test__appendTile(rule.do(), chBoolLit);
 
     const result = runBrainLinkPipeline(
       brainDef,

@@ -1,15 +1,23 @@
 import type { MindcraftBrain } from "@mindcraft-lang/core/app";
 import type { RehearsalWorld, WorldDriver, WorldStaging } from "../kit/index.js";
 import { createRehearsalAdapter } from "../kit/index.js";
-import type { TargetAdapter, TargetManifest } from "../target/adapter.js";
+import type { ScenarioInputKind, TargetAdapter, TargetManifest } from "../target/adapter.js";
 import type { FakeWorldState } from "./fake-module.js";
 import { createFakeModule } from "./fake-module.js";
 
-/** Package the fake target's adapter is published from. */
-export const FAKE_TARGET_PACKAGE = "@mindcraft-lang/assistant-bridge";
+/** Mindcraft identity the fake target's adapter reports itself as. */
+export const FAKE_TARGET_IDENTITY = "example-org/trg-fake";
 
 /** The one role a fake scenario may put under study. */
 export const FAKE_SUBJECT = "signaller";
+
+/** Name of the one percept kind a fake scenario may script. */
+export const FAKE_INPUT_KIND = "signal";
+
+/** The one percept kind a fake scenario may script, as the driver registers it. */
+const inputKinds: readonly ScenarioInputKind[] = [
+  { name: FAKE_INPUT_KIND, description: "Whether the signal is on: true holds it on, false holds it off." },
+];
 
 const manifest: TargetManifest = {
   target: "a world with one signal and one emitter",
@@ -22,13 +30,18 @@ const stepMs = 1000 / 60;
 
 /**
  * The fake world: one participant running the brain under study, and a signal
- * the seeded stream raises or lowers before every think.
+ * the seeded stream raises or lowers before every think, or that the scenario
+ * scripts.
  */
 class FakeWorld implements RehearsalWorld {
   private readonly state: FakeWorldState = { signal: false };
   private readonly brain: MindcraftBrain;
   private time = 0;
   private alive = true;
+  /** Zero-based index of the think the next {@link step} runs. */
+  private think = 0;
+  /** The scripted signal level in force, or `undefined` while the seeded stream drives it. */
+  private scripted: boolean | undefined;
 
   constructor(private readonly staging: WorldStaging) {
     this.brain = staging.environment.createBrain(staging.subjectBrain, { context: this.state });
@@ -37,9 +50,14 @@ class FakeWorld implements RehearsalWorld {
   }
 
   step(): void {
-    this.state.signal = this.staging.next() < 0.5;
+    const drawn = this.staging.next() < 0.5;
+    for (const input of this.staging.inputs) {
+      if (input.at === this.think) this.scripted = Boolean(input.value);
+    }
+    this.state.signal = this.scripted ?? drawn;
     this.brain.think(this.time);
     this.time += stepMs;
+    this.think++;
   }
 
   subjectPresent(): boolean {
@@ -64,6 +82,7 @@ class FakeWorld implements RehearsalWorld {
 const driver: WorldDriver = {
   modules: () => [createFakeModule()],
   subjects: () => [FAKE_SUBJECT],
+  inputKinds: () => inputKinds,
   stage: (staging: WorldStaging) => Promise.resolve(new FakeWorld(staging)),
 };
 
@@ -73,7 +92,7 @@ const driver: WorldDriver = {
  */
 export function createTargetAdapter(): TargetAdapter {
   return createRehearsalAdapter({
-    packageName: FAKE_TARGET_PACKAGE,
+    targetIdentity: FAKE_TARGET_IDENTITY,
     manifest,
     tileDocs: () => new Map<string, string>(),
     driver,

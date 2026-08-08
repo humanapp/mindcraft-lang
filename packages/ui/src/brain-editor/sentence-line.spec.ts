@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { mkVariableTileId, RuleSide } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainCommandHistory, BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
@@ -69,8 +69,8 @@ function makeBrain(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrain
   const brainDef = BrainDef.emptyBrainDef(services, "sentence-line");
   const pageDef = brainDef.pages().get(0) as BrainPageDef;
   const ruleDef = pageDef.children().get(0) as BrainRuleDef;
-  for (const tileDef of whenTiles) ruleDef.when().appendTile(tileDef);
-  for (const tileDef of doTiles) ruleDef.do().appendTile(tileDef);
+  for (const tileDef of whenTiles) __test__appendTile(ruleDef.when(), tileDef);
+  for (const tileDef of doTiles) __test__appendTile(ruleDef.do(), tileDef);
   return { brainDef, pageDef, ruleDef };
 }
 

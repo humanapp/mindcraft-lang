@@ -1,4 +1,4 @@
-import { type BrainDef, Vector2 } from "@mindcraft-lang/core/app";
+import type { BrainDef, Vector2 } from "@mindcraft-lang/core/app";
 import { Scene } from "phaser";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPES, type ArchetypePhysicsConfig } from "@/brain/archetypes";
@@ -7,6 +7,22 @@ import { BLIP_RADIUS } from "@/brain/blip";
 import { type BrainLoadFailure, toBrainLoadFailure } from "@/brain/brain-load-failure";
 import { Engine } from "@/brain/engine";
 import type { ScoreSnapshot } from "@/brain/score";
+import {
+  actorBodyOptions,
+  actorBodyRadiusBeforeScale,
+  blipBodyOptions,
+  blipCollisionFilter,
+  CollisionCategory,
+  generateObstacles,
+  type ObstaclePlacement,
+  obstacleBodyOptions,
+  randomFacing,
+  randomSpawnPosition,
+  WALL_THICKNESS,
+  WORLD_HEIGHT,
+  WORLD_WIDTH,
+  type WorldRandom,
+} from "@/brain/world-definition";
 import { STORE_REGISTRY_KEY } from "@/game/main";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
 /**
@@ -36,10 +52,11 @@ export interface SceneBrainState {
   brainLoadFailure?: BrainLoadFailure;
 }
 
-// Collision categories for Matter.js (bitmask)
-const CATEGORY_WALL = 0x0001;
-const CATEGORY_ACTOR = 0x0002;
-const CATEGORY_BLIP = 0x0004;
+/** The scene's world-construction draws, taken from the renderer's unseeded RNG. */
+const sceneRandom: WorldRandom = {
+  int: (min: number, max: number) => Phaser.Math.Between(min, max),
+  unit: () => Phaser.Math.FloatBetween(0, 1),
+};
 
 type ObstacleBody = MatterJS.BodyType & { _obstacleSize: { width: number; height: number } };
 
@@ -61,7 +78,7 @@ export class Playground extends Scene {
     this.obstacleBodies = [];
 
     // Set physics world bounds (creates boundary walls)
-    this.matter.world.setBounds(0, 0, this.scale.width, this.scale.height, 32, true, true, true, true);
+    this.matter.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT, WALL_THICKNESS, true, true, true, true);
 
     // Create Actor textures
     const createActorTexture = (archetype: Archetype, config: ArchetypePhysicsConfig) => {
@@ -102,11 +119,9 @@ export class Playground extends Scene {
     const brownColor = 0x6c757d;
 
     const persisted = store.getObstacles();
-    // For brand-new projects, generate random obstacles AND assign each a
-    // random rotation. For persisted projects, honor the saved rotation
-    // (or 0 if the field is missing from older saves) so reloading
-    // doesn't shuffle obstacles around.
-    const obstacleData: Array<{ x: number; y: number; width: number; height: number; rotation: number }> =
+    // A persisted obstacle's rotation is its saved angle in radians, 0 when
+    // the record carries none.
+    const obstacleData: ObstaclePlacement[] =
       persisted && persisted.length > 0
         ? persisted.map((o) => ({
             x: o.x,
@@ -115,20 +130,13 @@ export class Playground extends Scene {
             height: o.height,
             rotation: o.rotation ?? 0,
           }))
-        : this.generateRandomObstacles().map((o) => ({
-            ...o,
-            rotation: Phaser.Math.FloatBetween(0, Math.PI * 2),
-          }));
+        : generateObstacles(sceneRandom);
 
     for (const { x, y, width, height, rotation } of obstacleData) {
       const rect = this.add.rectangle(x, y, width, height, brownColor, 0.8);
       const obstacleGO = this.matter.add.gameObject(rect, {
         shape: { type: "rectangle", width, height },
-        angle: rotation,
-        collisionFilter: {
-          category: CATEGORY_WALL,
-          mask: CATEGORY_WALL | CATEGORY_ACTOR | CATEGORY_BLIP,
-        },
+        ...obstacleBodyOptions(rotation),
       }) as Phaser.GameObjects.Rectangle & { body: MatterJS.BodyType };
 
       // Construct dynamic so Matter computes a real mass/inertia from
@@ -163,8 +171,8 @@ export class Playground extends Scene {
       damping: 0.1,
       angularStiffness: 0,
       collisionFilter: {
-        category: 0x0001,
-        mask: CATEGORY_WALL | CATEGORY_ACTOR,
+        category: CollisionCategory.Wall,
+        mask: CollisionCategory.Wall | CollisionCategory.Actor,
         group: 0,
       },
     } as Phaser.Types.Physics.Matter.MatterConstraintConfig);
@@ -348,56 +356,9 @@ export class Playground extends Scene {
     );
   }
 
-  private generateRandomObstacles(): Array<{ x: number; y: number; width: number; height: number }> {
-    const obstacleCount = 4;
-    const minWidth = 30;
-    const maxWidth = 120;
-    const minHeight = 30;
-    const maxHeight = 120;
-    const margin = 100; // Keep obstacles away from edges
-
-    const obstacles: Array<{ x: number; y: number; width: number; height: number }> = [];
-    for (let i = 0; i < obstacleCount; i++) {
-      const width = Phaser.Math.Between(minWidth, maxWidth);
-      const height = Phaser.Math.Between(minHeight, maxHeight);
-      const x = Phaser.Math.Between(margin, this.scale.width - margin);
-      const y = Phaser.Math.Between(margin, this.scale.height - margin);
-      obstacles.push({ x, y, width, height });
-    }
-    return obstacles;
-  }
-
-  public randomPositionWithinBounds(radius: number = 20): Vector2 {
-    const maxAttempts = 100;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const x = Phaser.Math.Between(40, this.scale.width - 40);
-      const y = Phaser.Math.Between(40, this.scale.height - 40);
-
-      // Check if position overlaps with any obstacle. Read live world
-      // AABBs from each Matter body so we don't spawn into an obstacle
-      // that has been dragged to a new location.
-      let overlaps = false;
-      for (const body of this.obstacleBodies) {
-        const b = body.bounds;
-        const closestX = Math.max(b.min.x, Math.min(x, b.max.x));
-        const closestY = Math.max(b.min.y, Math.min(y, b.max.y));
-        const distanceX = x - closestX;
-        const distanceY = y - closestY;
-        const distanceSquared = distanceX * distanceX + distanceY * distanceY;
-
-        if (distanceSquared < radius * radius) {
-          overlaps = true;
-          break;
-        }
-      }
-
-      if (!overlaps) {
-        return new Vector2(x, y);
-      }
-    }
-
-    // Fallback: return a position anyway after max attempts
-    return new Vector2(Phaser.Math.Between(40, this.scale.width - 40), Phaser.Math.Between(40, this.scale.height - 40));
+  /** A spawn position inside the world bounds that clears every obstacle by `radius` pixels. */
+  public randomPositionWithinBounds(radius?: number): Vector2 {
+    return randomSpawnPosition(sceneRandom, this.obstacleBodies, radius);
   }
 
   public spawn(actor: Actor): Phaser.Physics.Matter.Sprite {
@@ -409,25 +370,15 @@ export class Playground extends Scene {
     const sprite = this.matter.add.sprite(pos.X, pos.Y, textureKey, undefined, {
       shape: {
         type: "circle",
-        radius: config.radius * config.scale,
+        radius: actorBodyRadiusBeforeScale(config),
       },
-      collisionFilter: {
-        category: CATEGORY_ACTOR,
-        mask: CATEGORY_WALL | CATEGORY_ACTOR | CATEGORY_BLIP,
-      },
-      mass: config.mass,
-      frictionAir: config.frictionAir,
-      restitution: config.restitution,
-      friction: config.friction,
+      ...actorBodyOptions(config),
     });
 
     sprite.setScale(config.scale);
 
     // Set initial random facing direction
-    sprite.setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
-
-    const body = sprite.body as MatterJS.BodyType;
-    body.sleepThreshold = Number.POSITIVE_INFINITY;
+    sprite.setRotation(randomFacing(sceneRandom));
 
     // Configure spring anchor if archetype uses it
     if (actor.plantComp) {
@@ -462,30 +413,20 @@ export class Playground extends Scene {
       // First activation -- create the sprite once; it will be reused.
       const sprite = this.matter.add.sprite(x, y, "tex_blip", undefined, {
         shape: { type: "circle", radius: BLIP_RADIUS },
-        collisionFilter: {
-          category: CATEGORY_BLIP,
-          mask: CATEGORY_WALL | CATEGORY_ACTOR,
-        },
-        mass: 0.01,
-        frictionAir: 0,
-        restitution: 0,
-        friction: 0,
-        isSensor: true,
+        ...blipBodyOptions(),
       });
 
       sprite.setScale(1);
       sprite.setFixedRotation();
-
-      const body = sprite.body as MatterJS.BodyType;
-      body.sleepThreshold = Number.POSITIVE_INFINITY;
 
       sprite.setDataEnabled();
       blip.sprite = sprite;
     } else {
       // Reuse existing sprite -- reposition and re-enable
       const body = blip.sprite.body as MatterJS.BodyType;
-      body.collisionFilter.category = CATEGORY_BLIP;
-      body.collisionFilter.mask = CATEGORY_WALL | CATEGORY_ACTOR;
+      const filter = blipCollisionFilter();
+      body.collisionFilter.category = filter.category;
+      body.collisionFilter.mask = filter.mask;
       blip.sprite.setPosition(x, y);
       blip.sprite.setVisible(true);
       blip.sprite.setActive(true);
