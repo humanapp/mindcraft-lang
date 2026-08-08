@@ -37,6 +37,7 @@ Mindcraft draws inspiration from other tile-based programming systems past and p
 | App | Description |
 |-----|-------------|
 | [Ecosystem Sim](apps/ecosim/) | Demo: carnivores, herbivores, and plants driven by user-editable Mindcraft brains |
+| [Ecosystem Sim for Roblox](apps/ecosim-rbx/) | Roblox projection of the Ecosystem Sim, built on the core library's Luau target |
 | [VS Code Extension](apps/vscode-extension/) | Author Mindcraft sensors and actuators in TypeScript using VS Code Web ([Marketplace](https://marketplace.visualstudio.com/items?itemName=mindcraft-lang.mindcraft-lang-vscode-extension)) |
 | [VS Code Bridge](apps/vscode-bridge/) | Bridge server that relays between the VS Code extension and Mindcraft apps |
 
