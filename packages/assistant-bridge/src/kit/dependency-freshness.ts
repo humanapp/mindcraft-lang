@@ -34,8 +34,7 @@ export interface StaleDependency {
  * A build refused because one or more dependency packages would have been
  * bundled from a `dist` that does not reflect their sources. Carries one
  * {@link StaleDependency} per offending package; each names the command that
- * rebuilds it. The message lists every offending package and ends with the
- * remedy.
+ * rebuilds it.
  */
 export class StaleDependencyError extends Error {
   constructor(readonly stale: readonly StaleDependency[]) {
@@ -87,6 +86,15 @@ const sourceSuffix = ".ts";
 
 /** Directory a package keeps its sources in. */
 const sourceDirName = "src";
+
+/** Directory a package keeps the scripts its build runs in. */
+const scriptDirName = "scripts";
+
+/** Prefix of a compiler configuration a package carries beside its manifest. */
+const compilerConfigPrefix = "tsconfig";
+
+/** Suffix of a compiler configuration a package carries beside its manifest. */
+const compilerConfigSuffix = ".json";
 
 /** Directory a package emits its build output to. */
 const distDirName = "dist";
@@ -158,6 +166,32 @@ function later(
   if (a === undefined) return b;
   if (b === undefined) return a;
   return a.mtimeMs > b.mtimeMs ? a : b;
+}
+
+/** The newest compiler configuration beside the manifest in `packageDir`. */
+function newestCompilerConfig(packageDir: string): { path: string; mtimeMs: number } | undefined {
+  let newest: { path: string; mtimeMs: number } | undefined;
+  for (const entry of readdirSync(packageDir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    if (!entry.name.startsWith(compilerConfigPrefix) || !entry.name.endsWith(compilerConfigSuffix)) continue;
+    const path = join(packageDir, entry.name);
+    newest = later(newest, { path, mtimeMs: statSync(path).mtimeMs });
+  }
+  return newest;
+}
+
+/**
+ * The newest build input of the package at `packageDir`, the moment its output
+ * must be no older than. A build input is any of: a source file under `src`
+ * that is not a spec, a `tsconfig*.json` beside the manifest, or a file under
+ * the `scripts` directory the package keeps its build scripts in.
+ */
+function newestBuildInput(packageDir: string): { path: string; mtimeMs: number } | undefined {
+  const sourceDir = join(packageDir, sourceDirName);
+  const scriptDir = join(packageDir, scriptDirName);
+  const sources = existsSync(sourceDir) ? newestFile(sourceDir, (path) => !path.endsWith(specSuffix)) : undefined;
+  const scripts = existsSync(scriptDir) ? newestFile(scriptDir, () => true) : undefined;
+  return later(later(sources, scripts), newestCompilerConfig(packageDir));
 }
 
 /** The newest incremental-build record beside `packageDir`'s manifest, if it keeps one. */
@@ -335,8 +369,8 @@ interface Subject {
   readonly packageDir: string;
   readonly dependencyDir: string;
   readonly packageName: string;
-  /** Newest source file of the dependency, the moment its output must be no older than. */
-  readonly newestSource: { path: string; mtimeMs: number };
+  /** Newest build input of the dependency, the moment its output must be no older than. */
+  readonly newestInput: { path: string; mtimeMs: number };
   /** Platform-specific implementation stems of the dependency, each `<module>.<platform>`. */
   readonly stems: readonly string[];
   /**
@@ -349,7 +383,7 @@ interface Subject {
 
 /** Whether one output group of `subject` reflects its sources, as a finding or `undefined`. */
 function stepStaleness(subject: Subject, step: BuildStep): StaleDependency | undefined {
-  const { packageDir, dependencyDir, packageName, newestSource, stems } = subject;
+  const { packageDir, dependencyDir, packageName, newestInput, stems } = subject;
   const rebuild = `npm run ${step.script} --prefix ${relative(packageDir, dependencyDir)}`;
   const outputDirs = step.outputs.map((output) => join(dependencyDir, output));
 
@@ -391,13 +425,13 @@ function stepStaleness(subject: Subject, step: BuildStep): StaleDependency | und
   }
 
   const lastBuilt = later(built, subject.buildRecord);
-  if (lastBuilt === undefined || newestSource.mtimeMs <= lastBuilt.mtimeMs) return undefined;
+  if (lastBuilt === undefined || newestInput.mtimeMs <= lastBuilt.mtimeMs) return undefined;
   return {
     code: DistFreshnessCode.DistStale,
     packageName,
     rebuild,
     detail:
-      `${relative(dependencyDir, newestSource.path)} was edited after the package was last built ` +
+      `${relative(dependencyDir, newestInput.path)} was edited after the package was last built ` +
       `(${relative(dependencyDir, lastBuilt.path)})`,
   };
 }
@@ -413,15 +447,15 @@ function staleness(
   const steps = buildSteps(manifest, needed);
   if (steps.length === 0 || !existsSync(sourceDir)) return undefined;
 
-  const newestSource = newestFile(sourceDir, (path) => !path.endsWith(specSuffix));
-  if (newestSource === undefined) return undefined;
+  const newestInput = newestBuildInput(dependencyDir);
+  if (newestInput === undefined) return undefined;
 
   const singleGroup = Object.keys(declaredVariants(manifest)).length === 0;
   const subject: Subject = {
     packageDir,
     dependencyDir,
     packageName: manifest.name ?? relative(packageDir, dependencyDir),
-    newestSource,
+    newestInput,
     stems: platformImplementationStems(sourceDir),
     buildRecord: singleGroup ? newestBuildRecord(dependencyDir) : undefined,
   };
@@ -448,18 +482,19 @@ function neededVariants(packageDir: string): Set<string> {
 
 /**
  * Every `file:` dependency of the package at `packageDir`, runtime and dev
- * alike, transitively, whose build output does not reflect its `src`: no output
- * at all, output left under a platform-specific source's name, a shared
- * platform module emitted as a script defining nothing, or a source file edited
- * after the package was last built. Each dependency is judged over the output
- * groups a build started at `packageDir` consumes -- its default group, plus
- * every variant named in the `mindcraftBuild.needs` of `packageDir` or anything
- * it reaches -- so a group nothing in this graph consumes is not compared. A
- * package that builds one group was last built at the newest of that output and
- * its incremental-build records, so a build that re-emits nothing still counts.
- * Source files ending in `.spec.ts` are not build inputs and are not compared. A
- * dependency that declares no build script or keeps no `src` directory is not
- * checked.
+ * alike, transitively, whose build output does not reflect its build inputs: no
+ * output at all, output left under a platform-specific source's name, a shared
+ * platform module emitted as a script defining nothing, or a build input edited
+ * after the package was last built. A build input is any of: a file under `src`
+ * that does not end in `.spec.ts`, a `tsconfig*.json` beside the manifest, or a
+ * file under the package's `scripts` directory. Each
+ * dependency is judged over the output groups a build started at `packageDir`
+ * consumes -- its default group, plus every variant named in the
+ * `mindcraftBuild.needs` of `packageDir` or anything it reaches -- so a group
+ * nothing in this graph consumes is not compared. A package that builds one
+ * group was last built at the newest of that output and its incremental-build
+ * records, so a build that re-emits nothing still counts. A dependency that
+ * declares no build script or keeps no `src` directory is not checked.
  *
  * @param packageDir Absolute path of the package whose bundle is about to be built.
  */

@@ -37,11 +37,19 @@
 //
 // Before building anything the driver checks that every package in the graph is
 // installed as it declares: each `file:` dependency linked into node_modules,
-// and every command that dependency declares linked into node_modules/.bin.
+// and every command that dependency declares linked into node_modules/.bin. A
+// command whose file the dependency has not built yet cannot be linked while it
+// is absent, so that one gap waits for the build and the driver links it after.
+//
+// A package whose build output already reflects its sources is skipped, as
+// judged by the dependency-freshness oracle the platform ships. A package is
+// built anyway when anything it depends on was built in the same run, and every
+// package is built when the oracle cannot be loaded.
 
 const { execSync } = require("node:child_process");
 const { readdirSync, readFileSync, existsSync, statSync } = require("node:fs");
 const { join, resolve, relative } = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 /** package.json field a local package declares its build interface in. */
 const buildField = "mindcraftBuild";
@@ -146,30 +154,32 @@ function localDependencies(dir) {
   return found;
 }
 
-/** Names of the commands the package manifest `pkg` declares. */
+/** The commands the package manifest `pkg` declares, each with the file it runs. */
 function declaredCommands(pkg) {
-  if (typeof pkg.bin === "string") return [pkg.name.split("/").pop()];
-  return Object.keys(pkg.bin ?? {});
+  if (typeof pkg.bin === "string") return [[pkg.name.split("/").pop(), pkg.bin]];
+  return Object.entries(pkg.bin ?? {});
 }
 
 /**
  * Every way the installed state of the package at `dir` differs from what it
  * declares: a `file:` dependency with no link in `node_modules`, or a command
- * such a dependency declares with no link in `node_modules/.bin`.
+ * such a dependency declares with no link in `node_modules/.bin`. A gap is
+ * `pending` when the file the command runs is not there to link yet, which a
+ * build of that dependency produces.
  */
 function installGaps(dir) {
   const gaps = [];
   for (const dependency of localDependencies(dir)) {
     if (!existsSync(join(dir, modulesDirName, dependency.name))) {
-      gaps.push(`${dependency.name} is not linked into ${modulesDirName}`);
+      gaps.push({ detail: `${dependency.name} is not linked into ${modulesDirName}`, pending: false });
       continue;
     }
-    for (const command of declaredCommands(readPackage(dependency.dir))) {
-      if (!existsSync(join(dir, modulesDirName, binDirName, command))) {
-        gaps.push(
-          `${dependency.name} declares the "${command}" command, which is not linked into ${modulesDirName}/${binDirName}`
-        );
-      }
+    for (const [command, file] of declaredCommands(readPackage(dependency.dir))) {
+      if (existsSync(join(dir, modulesDirName, binDirName, command))) continue;
+      gaps.push({
+        detail: `${dependency.name} declares the "${command}" command, which is not linked into ${modulesDirName}/${binDirName}`,
+        pending: !existsSync(join(dependency.dir, file)),
+      });
     }
   }
   return gaps;
@@ -177,17 +187,25 @@ function installGaps(dir) {
 
 /**
  * Throws when any package in `dirs` is missing a link its manifest implies,
- * naming each package, each gap, and the command that installs it.
+ * naming each package, each gap, and the command that installs it. When
+ * `allowPending` is true a package whose only gaps are commands no build has
+ * produced yet is returned instead of reported; call again with `allowPending`
+ * false once those builds have run.
  */
-function assertInstalled(dirs) {
+function assertInstalled(dirs, allowPending) {
   const failures = [];
+  const pending = [];
   for (const dir of dirs) {
     const gaps = installGaps(dir);
     if (gaps.length === 0) continue;
+    if (allowPending && gaps.every((gap) => gap.pending)) {
+      pending.push(dir);
+      continue;
+    }
     const name = readPackage(dir).name ?? dir;
     const where = relative(process.cwd(), dir) || ".";
     failures.push(
-      `${name}:\n${gaps.map((gap) => `    ${gap}`).join("\n")}\n    install: npm install --force --prefix ${where}`
+      `${name}:\n${gaps.map((gap) => `    ${gap.detail}`).join("\n")}\n    install: npm install --force --prefix ${where}`
     );
   }
   if (failures.length > 0) {
@@ -195,6 +213,19 @@ function assertInstalled(dirs) {
       `${failures.length} package(s) are not installed as their package.json declares:\n  ${failures.join("\n  ")}`
     );
   }
+  return pending;
+}
+
+/**
+ * Link the commands this run built into each package in `dirs` that declares a
+ * dependency on them. Throws when a gap remains afterwards.
+ */
+function linkBuiltCommands(dirs) {
+  for (const dir of dirs) {
+    console.log(`\n> Linking the commands built in this run into ${readPackage(dir).name ?? dir}...`);
+    execSync("npm rebuild", { stdio: "inherit", cwd: dir });
+  }
+  assertInstalled(dirs, false);
 }
 
 /**
@@ -252,7 +283,28 @@ function stepsFor(declaration, needed) {
   return steps;
 }
 
-function main(argv) {
+/** Build output of the platform package holding the dependency-freshness oracle. */
+const oracleModule = join(__dirname, "..", "packages", "assistant-bridge", "dist", "kit", "dependency-freshness.js");
+
+/**
+ * Names of the packages a build started at `dir` would consume from a `dist`
+ * that does not reflect their sources, or `undefined` when the oracle cannot be
+ * loaded.
+ */
+async function staleNames(dir) {
+  if (!existsSync(oracleModule)) return undefined;
+  try {
+    const { staleDependencyDists } = await import(pathToFileURL(oracleModule).href);
+    return new Set(staleDependencyDists(dir).map((finding) => finding.packageName));
+  } catch (error) {
+    console.log(
+      `Freshness oracle unavailable, building every package: ${error instanceof Error ? error.message : error}`
+    );
+    return undefined;
+  }
+}
+
+async function main(argv) {
   const orderOnly = argv[0] === "--order";
   const dirs = (orderOnly ? argv.slice(1) : argv).map((dir) => resolve(process.cwd(), dir));
   if (dirs.length === 0 || (!orderOnly && dirs.length > 1)) {
@@ -267,7 +319,7 @@ function main(argv) {
     return 0;
   }
 
-  assertInstalled([...order, ...dirs]);
+  const pending = assertInstalled([...order, ...dirs], true);
 
   const needed = neededVariants([...order, ...dirs]);
   const buildable = order.map((dir) => [dir, readDeclaration(dir)]).filter(([, declaration]) => declaration);
@@ -289,7 +341,16 @@ function main(argv) {
   for (const [, declaration] of buildable) console.log(`  ${declaration.name}`);
   if (needed.length > 0) console.log(`Variants requested: ${needed.join(", ")}`);
 
+  const stale = await staleNames(dirs[0]);
+  const built = new Set();
+
   for (const [dir, declaration] of buildable) {
+    const afterADependency = localDependencies(dir).some((dependency) => built.has(resolve(dependency.dir)));
+    if (stale !== undefined && !stale.has(declaration.name) && !afterADependency) {
+      console.log(`\n> Skipping ${declaration.name}, its output reflects its sources.`);
+      continue;
+    }
+    built.add(resolve(dir));
     for (const step of stepsFor(declaration, needed)) {
       console.log(`\n> Building ${declaration.name} (npm run ${step.script})...`);
       execSync(`npm run ${step.script}`, { stdio: "inherit", cwd: dir });
@@ -297,13 +358,17 @@ function main(argv) {
     }
   }
 
+  if (pending.length > 0) linkBuiltCommands(pending);
+
   console.log("\nAll packages built successfully.");
   return 0;
 }
 
-try {
-  process.exitCode = main(process.argv.slice(2));
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-}
+main(process.argv.slice(2))
+  .then((code) => {
+    process.exitCode = code;
+  })
+  .catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });

@@ -1,7 +1,7 @@
 {
   "scripts": {
     "install": "for dir in */; do (cd \"$dir\" && npm install) || exit 1; done",
-    "build": "order=$(node ../scripts/build-packages.js --order */) && for dir in $order; do (cd \"$dir\" && npm run check --if-present && npm run build --if-present && npm test --if-present) || exit 1; done",
+    "build": "if [ -n \"$CI\" ]; then check=check:only; else check=check; fi; order=$(node ../scripts/build-packages.js --order */) && for dir in $order; do (cd \"$dir\" && npm run \"$check\" --if-present && npm run build --if-present && npm test --if-present) || exit 1; done",
     "release:all:patch": "node ../scripts/release-all.js patch",
     "release:all:minor": "node ../scripts/release-all.js minor",
     "release:all:major": "node ../scripts/release-all.js major"

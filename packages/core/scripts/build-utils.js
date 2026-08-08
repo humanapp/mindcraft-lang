@@ -75,8 +75,13 @@ function generateMappings(modules, platformSuffix, extensions) {
  * A run takes the compiler's freshly emitted platform file whenever one is
  * present in `dir`, refreshing the store, and reads the store otherwise. The
  * platform file is removed from `dir` either way, leaving only generic names in
- * the build output. Running twice produces the same bytes as running once.
- * Exits non-zero naming any module whose platform output is in neither place.
+ * the build output. A generic file is written only when the substitution
+ * changes its bytes, so a run that substitutes nothing new leaves the build
+ * output untouched. Exits non-zero naming any module whose platform output is
+ * in neither place.
+ *
+ * A declaration file's `sourceMappingURL` is retargeted to the map name the
+ * substitution leaves beside it.
  *
  * @param {string} dir - Directory containing the build output
  * @param {string} storeDir - Directory the platform output is preserved in
@@ -102,14 +107,20 @@ function copyPlatformFiles(dir, storeDir, mappings, transformer) {
       continue;
     }
 
-    console.log(chalk.cyan(`Substituting ${platformFile} for ${genericFile}`));
-
     let content = fs.readFileSync(storedPath, "utf8");
 
     if (transformer) {
       content = transformer(content, platformFile);
     }
 
+    content = content.replace(`//# sourceMappingURL=${platformFile}.map`, `//# sourceMappingURL=${genericFile}.map`);
+
+    const current = fs.existsSync(genericPath) ? fs.readFileSync(genericPath, "utf8") : undefined;
+    if (current === content) {
+      continue;
+    }
+
+    console.log(chalk.cyan(`Substituting ${platformFile} for ${genericFile}`));
     fs.writeFileSync(genericPath, content);
   }
 

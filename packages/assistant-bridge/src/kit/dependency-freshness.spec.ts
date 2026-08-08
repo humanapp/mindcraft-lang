@@ -36,10 +36,12 @@ async function writeAt(path: string, content: string, seconds: number): Promise<
 /** Body every fixture source file and build output carries. */
 const moduleBody = "export const value = 1;\n";
 
-/** Write the manifest `manifest` as the package at `dir`, creating the directory. */
-async function writePackage(dir: string, manifest: unknown): Promise<void> {
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, "package.json"), JSON.stringify(manifest), "utf8");
+/**
+ * Write the manifest `manifest` as the package at `dir`, creating the
+ * directory, and stamp it at `seconds`.
+ */
+async function writePackage(dir: string, manifest: unknown, seconds = beforeBuild): Promise<void> {
+  await writeAt(join(dir, "package.json"), JSON.stringify(manifest), seconds);
 }
 
 /** What one dependency package of a fixture tree holds. */
@@ -59,6 +61,12 @@ interface DependencyShape {
   readonly emptyOutputs?: Readonly<Record<string, string>>;
   /** Time an incremental-build record beside the package manifest was last written. */
   readonly buildRecord?: number;
+  /** Time the package's manifest was last written. */
+  readonly manifest?: number;
+  /** Time a compiler configuration beside the package manifest was last written. */
+  readonly compilerConfig?: number;
+  /** Time a file under the package's build-script directory was last written. */
+  readonly buildScript?: number;
   /** Whether the root package declares the dependency as a dev dependency. */
   readonly dev?: boolean;
 }
@@ -75,10 +83,14 @@ async function tree(shape: DependencyShape): Promise<string> {
 
   const link = { "example/dependency": "file:../dependency" };
   await writePackage(app, { name: "app", ...(shape.dev ? { devDependencies: link } : { dependencies: link }) });
-  await writePackage(dependency, { name: "example/dependency", scripts: shape.scripts ?? {} });
+  await writePackage(dependency, { name: "example/dependency", scripts: shape.scripts ?? {} }, shape.manifest);
   for (const [path, seconds] of Object.entries(shape.sources ?? { "index.ts": beforeBuild })) {
     await writeAt(join(dependency, "src", path), moduleBody, seconds);
   }
+  if (shape.compilerConfig !== undefined)
+    await writeAt(join(dependency, "tsconfig.prod.json"), "{}\n", shape.compilerConfig);
+  if (shape.buildScript !== undefined)
+    await writeAt(join(dependency, "scripts", "post-build.js"), moduleBody, shape.buildScript);
   if (shape.built !== false) await writeAt(join(dependency, "dist", "index.js"), moduleBody, buildTime);
   for (const path of shape.outputs ?? []) await writeAt(join(dependency, "dist", path), moduleBody, buildTime);
   for (const [path, body] of Object.entries(shape.emptyOutputs ?? {}))
@@ -318,6 +330,42 @@ describe("checking the build output of a package's local dependencies", () => {
     const app = await tree({
       scripts: { "build:prod": "tsc" },
       sources: { "index.ts": beforeBuild, "index.spec.ts": afterBuild },
+    });
+
+    assert.deepEqual(staleDependencyDists(app), []);
+  });
+
+  test("passes a dependency whose manifest alone is newer than its build output", async () => {
+    const app = await tree({ scripts: { "build:prod": "tsc" }, manifest: afterBuild });
+
+    assert.deepEqual(staleDependencyDists(app), []);
+  });
+
+  test("reports a dependency whose compiler configuration is newer than its build output", async () => {
+    const app = await tree({ scripts: { "build:prod": "tsc" }, compilerConfig: afterBuild });
+
+    const [stale, ...rest] = staleDependencyDists(app);
+
+    assert.deepEqual(rest, []);
+    assert.equal(stale?.code, DistFreshnessCode.DistStale);
+    assert.match(stale?.detail ?? "", /tsconfig\.prod\.json/);
+  });
+
+  test("reports a dependency whose build script is newer than its build output", async () => {
+    const app = await tree({ scripts: { "build:prod": "tsc" }, buildScript: afterBuild });
+
+    const [stale, ...rest] = staleDependencyDists(app);
+
+    assert.deepEqual(rest, []);
+    assert.equal(stale?.code, DistFreshnessCode.DistStale);
+    assert.match(stale?.detail ?? "", /scripts[\\/]post-build\.js/);
+  });
+
+  test("passes a dependency whose compiler configuration and build scripts predate its output", async () => {
+    const app = await tree({
+      scripts: { "build:prod": "tsc" },
+      compilerConfig: beforeBuild,
+      buildScript: beforeBuild,
     });
 
     assert.deepEqual(staleDependencyDists(app), []);

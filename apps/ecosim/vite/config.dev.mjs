@@ -1,24 +1,17 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { defineConfig } from "vite";
 import { uiPlugin } from "../../../packages/ui/src/vite-plugin.ts";
 import { embeddedExtensions } from "./embedded-extensions.mjs";
 
 const appRoot = path.resolve(__dirname, ".."); // adjust if needed
 const assetsRoot = path.resolve(appRoot, "assets") + path.sep;
 
-const allowPkg =
-  path.resolve(appRoot, "node_modules/@mindcraft-lang/core/dist/esm") + path.sep;
-
 // https://vitejs.dev/config/
 export default defineConfig({
   base: "/",
   appType: "spa",
-  plugins: [
-    react(),
-    uiPlugin(),
-    embeddedExtensions(),
-  ],
+  plugins: [react(), uiPlugin(), embeddedExtensions()],
   resolve: {
     alias: {
       "@": path.resolve(process.cwd(), "./src"),
@@ -36,34 +29,26 @@ export default defineConfig({
   },
   server: {
     fs: {
-      allow: [
-        path.resolve(process.cwd(), "../..")
-      ],
+      allow: [path.resolve(process.cwd(), "../..")],
     },
     watch: {
       ignored: (p) => {
         const ap = path.resolve(p);
 
-        // 1) explicitly allow this package (must come first)
-        if (ap.startsWith(allowPkg)) {
-          return false;
-        }
-
-        // 2) ignore root-level assets
+        // Ignore root-level assets.
         if (ap.startsWith(assetsRoot)) {
           return true;
         }
 
-        // 3) ignore all other node_modules
+        // Ignore node_modules.
         if (ap.includes(`${path.sep}node_modules${path.sep}`)) {
           return true;
         }
 
-        // 4) watch everything else
+        // Watch everything else.
         return false;
       },
     },
     port: 8080,
   },
 });
-
