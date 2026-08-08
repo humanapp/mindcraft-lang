@@ -135,10 +135,12 @@ export class BitSet implements ReadonlyBitSet, BitSetData {
       this.data.push(0);
     }
 
+    // Shift counts must be reduced mod 32 explicitly: JS shift operators wrap
+    // the count, but Luau's bit32 returns 0 for counts of 32 or more.
     if (value === undefined || value) {
-      this.data.set(wordIndex, this.data.get(wordIndex) | (1 << ndx));
+      this.data.set(wordIndex, this.data.get(wordIndex) | (1 << (ndx & 31)));
     } else {
-      this.data.set(wordIndex, this.data.get(wordIndex) & ~(1 << ndx));
+      this.data.set(wordIndex, this.data.get(wordIndex) & ~(1 << (ndx & 31)));
     }
     return this;
   }
@@ -150,7 +152,7 @@ export class BitSet implements ReadonlyBitSet, BitSetData {
     if (n >= this.data.size()) {
       return this._ & 1;
     }
-    return (this.data.get(n) >>> ndx) & 1;
+    return (this.data.get(n) >>> (ndx & 31)) & 1;
   }
 
   not(): BitSet {

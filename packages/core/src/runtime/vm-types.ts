@@ -527,7 +527,7 @@ export interface IFiberScheduler extends Scheduler {
    * Add an existing fiber to the scheduler
    * @param fiber - Fiber to add
    */
-  addFiber(fiber: Fiber): void;
+  addFiber: (fiber: Fiber) => void;
 
   /**
    * Spawn a fire-and-forget child-rule fiber for `funcId`, tagged with its root
@@ -536,7 +536,7 @@ export interface IFiberScheduler extends Scheduler {
    * @param subtreeRootFuncId - Funcid of the root rule whose subtree it belongs to
    * @param executionContext - Execution context for the child fiber
    */
-  spawnChildRule(funcId: number, subtreeRootFuncId: number, executionContext: ExecutionContext): void;
+  spawnChildRule: (funcId: number, subtreeRootFuncId: number, executionContext: ExecutionContext) => void;
 
   /**
    * Remove a fiber from the scheduler

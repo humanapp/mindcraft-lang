@@ -1,0 +1,16 @@
+node_modules
+
+# roblox-ts compiler output
+/out
+/include
+*.tsbuildinfo
+
+# Rojo
+sourcemap.json
+*.rbxl
+*.rbxlx
+*.rbxlx.lock
+
+# Hand-written Luau, not compiler output. The root .gitignore excludes
+# *.luau for the emitted trees.
+!test-luau/**/*.luau
