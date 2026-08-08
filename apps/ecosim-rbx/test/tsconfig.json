@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@mindcraft-lang/core/app": ["../../../packages/core/dist/node/app/index"],
+      "@mindcraft-lang/ui/asset-url": ["./stubs/asset-url.ts"],
+      "@/*": ["../../ecosim/src/*"]
+    }
+  },
+  "include": ["**/*.ts"]
+}

@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "name": "Herbivore Brain",
+  "catalog": [
+    {
+      "version": 2,
+      "kind": "literal",
+      "valueType": "string:<string>",
+      "value": "nom!",
+      "valueLabel": "nom!",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "valueType": "number:<number>",
+      "value": 0.75,
+      "valueLabel": "0.75",
+      "displayFormat": "percent"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "valueType": "number:<number>",
+      "value": 0.5,
+      "valueLabel": "0.5",
+      "displayFormat": "time_seconds"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "valueType": "string:<string>",
+      "value": "yikes!",
+      "valueLabel": "yikes!",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "pageId": "0ETTuuSOeiZ93G7y",
+      "label": "Forage & Survive"
+    }
+  ],
+  "pages": [
+    {
+      "version": 2,
+      "pageId": "0ETTuuSOeiZ93G7y",
+      "name": "Forage & Survive",
+      "rules": [
+        {
+          "version": 1,
+          "when": [
+            "tile.sensor->sensor.bump",
+            "tile.modifier->modifier.actor_kind.plant"
+          ],
+          "do": [
+            "tile.actuator->actuator.eat"
+          ],
+          "children": [
+            {
+              "version": 1,
+              "when": [],
+              "do": [
+                "tile.actuator->actuator.say",
+                "tile.literal->string:<string>->nom!",
+                "tile.parameter->parameter.duration",
+                "tile.literal->number:<number>->0.5[time_seconds]"
+              ],
+              "children": [],
+              "comment": "...say \"nom!\" briefly"
+            }
+          ],
+          "comment": "When I bump a plant, take a bite. Also run child rules"
+        },
+        {
+          "version": 1,
+          "when": [
+            "tile.sensor->sensor.bump",
+            "tile.modifier->modifier.actor_kind.carnivore"
+          ],
+          "do": [
+            "tile.actuator->actuator.move",
+            "tile.modifier->modifier.movement.awayfrom",
+            "tile.modifier->modifier.quickly",
+            "tile.modifier->modifier.quickly",
+            "tile.modifier->modifier.quickly"
+          ],
+          "children": [
+            {
+              "version": 1,
+              "when": [],
+              "do": [
+                "tile.actuator->actuator.say",
+                "tile.literal->string:<string>->yikes!",
+                "tile.parameter->parameter.duration",
+                "tile.literal->number:<number>->0.5[time_seconds]"
+              ],
+              "children": [],
+              "comment": "...and say \"yikes!\""
+            }
+          ],
+          "comment": "If a carnivore bumps me, flee!"
+        },
+        {
+          "version": 1,
+          "when": [
+            "tile.literal->struct:<ActorRef>->me",
+            "tile.accessor->struct:<ActorRef>->energy pct",
+            "tile.op->lt",
+            "tile.literal->number:<number>->0.75[percent]"
+          ],
+          "do": [],
+          "children": [
+            {
+              "version": 1,
+              "when": [
+                "tile.sensor->sensor.see",
+                "tile.modifier->modifier.actor_kind.plant"
+              ],
+              "do": [
+                "tile.actuator->actuator.move",
+                "tile.modifier->modifier.movement.toward"
+              ],
+              "children": [
+                {
+                  "version": 1,
+                  "when": [],
+                  "do": [
+                    "tile.actuator->switch-page",
+                    "tile.sensor->current-page"
+                  ],
+                  "children": [],
+                  "comment": "if i saw a plant, then I'm moving toward it, so don't run any more rules."
+                }
+              ],
+              "comment": "if i see a plant, move toward it"
+            }
+          ],
+          "comment": "if my energy is below 75%, run the child rules"
+        },
+        {
+          "version": 1,
+          "when": [],
+          "do": [
+            "tile.actuator->actuator.move",
+            "tile.modifier->modifier.movement.wander",
+            "tile.modifier->modifier.slowly",
+            "tile.modifier->modifier.slowly",
+            "tile.modifier->modifier.slowly"
+          ],
+          "children": [],
+          "comment": "Default behavior: wander around the map very slowly"
+        },
+        {
+          "version": 1,
+          "when": [],
+          "do": [],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

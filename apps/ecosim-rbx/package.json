@@ -1,0 +1,36 @@
+{
+  "name": "ecosim-rbx",
+  "description": "Roblox projection of the Ecosystem Simulation App for Mindcraft",
+  "version": "0.1.0",
+  "private": true,
+  "author": "humanapp",
+  "license": "MIT",
+  "scripts": {
+    "prebuild": "npm --prefix ../../packages/core run build:rbx",
+    "build": "rbxtsc --type game",
+    "watch": "rbxtsc --type game -w",
+    "pretest": "npm --prefix ../../packages/core run build:node",
+    "test": "tsx --tsconfig test/tsconfig.json --test test/abi-parity.spec.ts",
+    "pretest:luau": "npm run build",
+    "test:luau": "lune run test-luau/run.luau",
+    "clean": "rm -rf out include",
+    "lint:only": "biome lint ./src ./test",
+    "check:only": "biome check ./src ./test",
+    "format:only": "biome format ./src ./test",
+    "lint": "biome lint ./src ./test --write",
+    "check": "biome check ./src ./test --write",
+    "format": "biome format ./src ./test --write"
+  },
+  "dependencies": {
+    "@mindcraft-lang/core": "file:../../packages/core",
+    "@rbxts/services": "^1.6.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.15",
+    "@rbxts/compiler-types": "^3.0.0-types.0",
+    "@rbxts/types": "^1.0.896",
+    "roblox-ts": "^3.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "=5.5.3"
+  }
+}

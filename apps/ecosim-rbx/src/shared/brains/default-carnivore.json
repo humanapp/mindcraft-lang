@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "name": "Carnivore Brain",
+  "catalog": [
+    {
+      "version": 2,
+      "kind": "literal",
+      "valueType": "string:<string>",
+      "value": "chomp!",
+      "valueLabel": "chomp!",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "valueType": "number:<number>",
+      "value": 0.5,
+      "valueLabel": "0.5",
+      "displayFormat": "time_seconds"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "pageId": "1KQvjJVmrZZ2BqOd",
+      "label": "Hunt"
+    }
+  ],
+  "pages": [
+    {
+      "version": 2,
+      "pageId": "1KQvjJVmrZZ2BqOd",
+      "name": "Hunt",
+      "rules": [
+        {
+          "version": 1,
+          "when": [
+            "tile.sensor->sensor.bump",
+            "tile.modifier->modifier.actor_kind.herbivore"
+          ],
+          "do": [
+            "tile.actuator->actuator.eat"
+          ],
+          "children": [
+            {
+              "version": 1,
+              "when": [],
+              "do": [
+                "tile.actuator->actuator.say",
+                "tile.literal->string:<string>->chomp!",
+                "tile.parameter->parameter.duration",
+                "tile.literal->number:<number>->0.5[time_seconds]"
+              ],
+              "children": [],
+              "comment": "Say \"chomp!\" briefly"
+            }
+          ],
+          "comment": "When I bump a herbivore, eat it. Also run child rules"
+        },
+        {
+          "version": 1,
+          "when": [
+            "tile.sensor->sensor.see",
+            "tile.modifier->modifier.actor_kind.herbivore"
+          ],
+          "do": [
+            "tile.actuator->actuator.move",
+            "tile.modifier->modifier.movement.toward",
+            "tile.modifier->modifier.quickly"
+          ],
+          "children": [
+            {
+              "version": 1,
+              "when": [],
+              "do": [
+                "tile.actuator->switch-page",
+                "tile.sensor->current-page"
+              ],
+              "children": [],
+              "comment": "...and stop executing rules. restart at the top of the page in the next frame"
+            }
+          ],
+          "comment": "When I see a herbivore, move toward it"
+        },
+        {
+          "version": 1,
+          "when": [],
+          "do": [
+            "tile.actuator->actuator.move",
+            "tile.modifier->modifier.movement.wander"
+          ],
+          "children": [],
+          "comment": "Default behavior: wander around the map"
+        },
+        {
+          "version": 1,
+          "when": [],
+          "do": [],
+          "children": []
+        }
+      ]
+    }
+  ]
+}
