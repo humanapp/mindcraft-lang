@@ -6,7 +6,7 @@ import { StringUtils as SU } from "../../platform/string";
 import type { IBrain, IConversionRegistry, IOperatorOverloads, ITypeRegistry } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util/event-emitter";
 import { type OpResult, opFailure, opSuccess } from "../../util/op-result";
-import { Brain } from "..";
+import { Brain } from "../brain";
 import {
   type BrainDefEvents,
   getPageIdFromTileId,
