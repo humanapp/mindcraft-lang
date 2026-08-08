@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "name": "Plant Brain",
+  "catalog": [
+    {
+      "version": 2,
+      "kind": "literal",
+      "valueType": "number:<number>",
+      "value": 0.5,
+      "valueLabel": "0.5",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "pageId": "dZZHT33qjL1pDuLw",
+      "label": "Protect"
+    }
+  ],
+  "pages": [
+    {
+      "version": 2,
+      "pageId": "dZZHT33qjL1pDuLw",
+      "name": "Protect",
+      "rules": [
+        {
+          "version": 1,
+          "when": [
+            "tile.sensor->sensor.see",
+            "tile.modifier->modifier.actor_kind.carnivore"
+          ],
+          "do": [
+            "tile.actuator->actuator.shoot",
+            "tile.parameter->parameter.rate",
+            "tile.literal->number:<number>->0.5"
+          ],
+          "children": [],
+          "comment": "Shoot carnivores. We don't like them!"
+        },
+        {
+          "version": 1,
+          "when": [],
+          "do": [],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

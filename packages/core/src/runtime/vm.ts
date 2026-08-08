@@ -2422,10 +2422,10 @@ export class FiberScheduler implements IFiberScheduler {
     return fiberId;
   }
 
-  addFiber(fiber: Fiber): void {
+  addFiber = (fiber: Fiber): void => {
     this.registerFiber(fiber);
     this.enqueueRunnable(fiber.id);
-  }
+  };
 
   /**
    * Records a newly constructed fiber in the fiber table, enforcing the
@@ -2499,13 +2499,13 @@ export class FiberScheduler implements IFiberScheduler {
    * to), and holds it in the same-think spawn drain. The child runs later in the
    * current `tick()`, after its parent's slice, as a synchronous cascade.
    */
-  spawnChildRule(funcId: number, subtreeRootFuncId: number, executionContext: ExecutionContext): void {
+  spawnChildRule = (funcId: number, subtreeRootFuncId: number, executionContext: ExecutionContext): void => {
     const fiberId = this.nextFiberId++;
     const fiber = this.vm.spawnFiber(fiberId, funcId, List.empty(), executionContext);
     fiber.rootRuleFuncId = subtreeRootFuncId;
     this.registerFiber(fiber);
     this.pendingSpawns.push(fiberId);
-  }
+  };
 
   hasLiveDescendantOfRoot(rootRuleFuncId: number): boolean {
     for (const [, fiber] of this.fibers.entries().toArray()) {

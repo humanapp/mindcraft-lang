@@ -1,6 +1,7 @@
 {
   "folders": [
-    { "path": "." }
+    { "path": "." },
+    { "name": "ecosim-rbx", "path": "apps/ecosim-rbx" }
   ],
   "settings": {
     "biome.enabled": true,

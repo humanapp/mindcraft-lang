@@ -24,6 +24,7 @@ export namespace TypeUtils {
   export function isArray(value: unknown): value is unknown[] {
     // This doesn't work in Roblox-TS (no instanceof)
     //return typeIs(value, "table") && value instanceof Array;
-    return typeIs(value, "table") && (value as never)["size"] !== undefined && (value as never)["push"] !== undefined;
+    const candidate = value as { size?: unknown; push?: unknown };
+    return typeIs(value, "table") && candidate.size !== undefined && candidate.push !== undefined;
   }
 }
