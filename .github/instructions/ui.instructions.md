@@ -40,13 +40,15 @@ src/
     ArmedTargetContext.tsx   Armed tile-picker target (arm/disarm state + matching predicates)
     BrainEditorContext.tsx   BrainEditorConfig interface, BrainEditorProvider, useBrainEditorConfig
     BrainEditorDialog.tsx    Full editor (page nav, toolbar, undo/redo, save/load)
+    BrainEditorSidePanel.tsx The side region beside the rules, holding what the host put in it
+    side-panel.ts            The side region's id, its lazy content latch, and the classes it lays out with
     BrainPageEditor.tsx      Page rules list with depth flattening
     BrainRuleEditor.tsx      WHEN/DO rule row
     BrainTile.tsx            Individual tile button with marquee overflow
     BrainTileEditor.tsx      Placed tile: tap arms the edit point, right-click/long-press opens its menu
     BrainCandidateStrip.tsx  Candidate offering laid over the rules below the armed one, plus the filter input its sentence line hosts
     edit-point.ts            Edit-point positions around a placed tile and the arming each one takes
-    editor-layers.ts         The editor's stacking steps: rule content, card chrome, offering, dialog chrome
+    editor-layers.ts         The editor's stacking steps: rule content, card chrome, offering, side panel, dialog chrome
     TileValue.tsx            Renders literal values or variable names
     CreateVariableDialog.tsx   Dialog for naming a new variable
     CreateLiteralDialog.tsx    Dialog for app-specific custom literal types
@@ -84,6 +86,7 @@ Host apps supply a `BrainEditorConfig` object with:
 
 | `onTileDocs` | `(tileDef: IBrainTileDef) => void` | Optional callback opening a tile's documentation (docs integration) |
 | `docsIntegration` | `{ isOpen, toggle, close }` | Optional docs sidebar controls for the editor toolbar |
+| `sidePanel` | `{ isOpen, toggle, content }` | Optional side region laid out beside the rules, holding host-supplied content |
 
 ### CustomLiteralType
 

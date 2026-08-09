@@ -5,7 +5,7 @@
 }
 ```
 
-# On Page Entered
+# This Page Starts
 
 Fires once when the brain first enters the current page.
 

@@ -24,6 +24,8 @@
     /* Path mapping */
     "paths": {
       "@/*": ["./src/*"],
+      "@mindcraft-lang/assistant-panel": ["../../packages/assistant-panel/src/index.ts"],
+      "@mindcraft-lang/assistant-panel/*": ["../../packages/assistant-panel/src/*"],
       "@mindcraft-lang/docs": ["../../packages/docs/src/index.ts"],
       "@mindcraft-lang/docs/*": ["../../packages/docs/src/*"],
       "@mindcraft-lang/ui": ["../../packages/ui/src/index.ts"],

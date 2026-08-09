@@ -16,6 +16,9 @@ owns where the conversation is shown.
 - **Per-brain conversations** -- one `ConversationRecord` per brain, the record
   format `@mindcraft-lang/assistant-relay` defines; a turn keeps filling the
   brain it was sent for whatever the host makes active afterwards
+- **Conversation surface** (`AssistantSurface`) -- the persona header, the
+  conversation body and the intent box, for the app to mount wherever it shows
+  the conversation
 
 An app that does not import this package has no assistant in its tree at all.
 
@@ -71,6 +74,7 @@ const { status, record, send, stop, setActiveBrain } = useAssistant();
 src/
   index.ts                          Barrel export
   AssistantProvider.tsx             AssistantProvider, useAssistant, AssistantContextValue
+  AssistantSurface.tsx              AssistantSurface: persona header, conversation body, intent box
   conversation/
     store.ts                        Per-brain records, active brain, and the update reducers
   session/

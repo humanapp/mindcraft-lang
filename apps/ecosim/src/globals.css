@@ -2,6 +2,7 @@
 @import "../../../packages/ui/src/ui.css";
 @source "../../../packages/ui/src";
 @source "../../../packages/docs/src";
+@source "../../../packages/assistant-panel/src";
 
 @layer base {
   body {

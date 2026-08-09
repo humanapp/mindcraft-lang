@@ -19,7 +19,7 @@ The actor moves forward and occasionally turns to explore the environment.
 
 - The first rule has an empty WHEN side so it fires every frame, keeping the
   actor moving.
-- The timeout rule periodically changes direction to avoid movine in a straight
+- The timer rule periodically changes direction to avoid movine in a straight
   line forever.
 - These rules should be the lowest priority -- place them at the bottom of the
   rule list so any detection or reaction rules take precedence.

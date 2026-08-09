@@ -2,7 +2,7 @@
 { "tile": "${tileId}" }
 ```
 
-# Switch Page
+# Go to Page
 
 Switches brain execution to a different page.
 

@@ -23,5 +23,8 @@ export const kGrabbedRuleMarkerLayer = "z-35";
 /** The rail the candidate offering stands in, drawn over every rule card and all of its chrome. */
 export const kOfferingLayer = "z-40";
 
+/** The region a host's side panel stands in, a sibling of the rule list drawn over it. */
+export const kSidePanelLayer = "z-45";
+
 /** The editor dialog's own chrome: its standalone backdrop and its top-edge accent. */
 export const kDialogChromeLayer = "z-50";

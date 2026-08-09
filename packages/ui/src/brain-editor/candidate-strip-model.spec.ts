@@ -324,6 +324,40 @@ function registerObjectSensor(): string {
   return tileDef.tileId;
 }
 
+/** Which side of the noun a label-alias rank probe carries it on. */
+type LabelAliasRankProbe = "aliasOnly" | "sentenceWord";
+
+let labelAliasRankTileIds: Record<LabelAliasRankProbe, string>;
+
+/**
+ * Register a pair of sensors sharing one noun: `aliasOnly` carries it as a
+ * later word of its picker label while its sentence reads a different word,
+ * and `sentenceWord` reads the noun itself. `aliasOnly` registers first, so the
+ * oracle offers it ahead of the tile the noun has to lead with.
+ */
+function registerLabelAliasRankSensors(): Record<LabelAliasRankProbe, string> {
+  const specs: readonly (readonly [LabelAliasRankProbe, string, string, string | undefined, number])[] = [
+    ["aliasOnly", "strip-alias-later-word", "clear the beacon", "reset", 4917],
+    ["sentenceWord", "strip-alias-sentence-word", "beacon", undefined, 4918],
+  ];
+  const tileIds = {} as Record<LabelAliasRankProbe, string>;
+  for (const [probe, sensorId, label, form, fnId] of specs) {
+    const fnEntry = services.runtime.functions.register(
+      fnId,
+      sensorId,
+      false,
+      { exec: () => VOID_VALUE },
+      mkCallDef(bag())
+    );
+    const tileDef = new BrainTileSensorDef(sensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Boolean), {
+      metadata: form === undefined ? { label } : { label, language: { form } },
+    });
+    services.edit.tiles.registerTileDef(tileDef);
+    tileIds[probe] = tileDef.tileId;
+  }
+  return tileIds;
+}
+
 before(() => {
   services = __test__createBrainServices();
   seeTileIds = registerSeeCollisionSensors();
@@ -333,6 +367,7 @@ before(() => {
   registerArticleModifiers();
   objectSensorTileId = registerObjectSensor();
   accentedSensorTileId = registerAccentedSensor();
+  labelAliasRankTileIds = registerLabelAliasRankSensors();
 });
 
 /** Folds text for search the way the strip's localizer folds it. */
@@ -2052,6 +2087,90 @@ describe("operator symbol aliases", () => {
     assert.deepEqual(offering.visible, []);
     assert.equal(offering.isUnknown, false);
     assert.deepEqual(mintedVariables(offering.offered), []);
+  });
+});
+
+describe("a tile the picker labels differently from its sentence word", () => {
+  /** The oracle's offering at the empty DO side of a fresh brain's first rule. */
+  function doSideOffering(): StripCandidate[] {
+    return offeringForEmptySide(RuleSide.Do).candidates;
+  }
+
+  /**
+   * The picker label `tileId` carries, asserted to differ from the word its
+   * sentence reads it with, so every assertion below is about a drifted tile.
+   */
+  function driftedLabel(tileId: string): string {
+    const tileDef = coreTile(tileId);
+    const label = tileDef.metadata?.label;
+    assert.ok(label, "the tile carries a picker label");
+    assert.notEqual(label, stripLabel(tileDef), "the tile's picker label drifts from its sentence word");
+    return label;
+  }
+
+  test("the tile leads the offering its own whole label narrows", () => {
+    const label = driftedLabel(switchPageTileId);
+
+    const visible = filterStripCandidates(doSideOffering(), label, foldText);
+
+    assert.equal(visible[0]?.tileDef.tileId, switchPageTileId);
+  });
+
+  test("a later word of the label reaches the tile", () => {
+    const label = driftedLabel(switchPageTileId);
+    const words = label.split(" ");
+    assert.ok(words.length > 1, "the label carries a later word to type");
+
+    const visible = filterStripCandidates(doSideOffering(), words[words.length - 1], foldText);
+
+    assert.ok(visible.some((c) => c.tileDef.tileId === switchPageTileId));
+  });
+
+  test("the word its sentence reads it with still leads the offering", () => {
+    const word = stripLabel(coreTile(switchPageTileId));
+
+    const visible = filterStripCandidates(doSideOffering(), word, foldText);
+
+    assert.equal(visible[0]?.tileDef.tileId, switchPageTileId);
+  });
+
+  test("the label never becomes the chip's word", () => {
+    const label = driftedLabel(switchPageTileId);
+
+    const placed = filterStripCandidates(doSideOffering(), label, foldText)[0];
+
+    assert.ok(placed);
+    assert.equal(placed.label, stripLabel(placed.tileDef));
+    assert.notEqual(placed.label, label);
+  });
+
+  test("both keys commit the tile the label reached, carrying its own word", () => {
+    const label = driftedLabel(switchPageTileId);
+    const visible = filterStripCandidates(doSideOffering(), label, foldText);
+
+    for (const key of ["enter", "space"] as const) {
+      const placed = decideCandidateCommit(visible, label, key, foldText);
+      assert.equal(placed?.tileDef.tileId, switchPageTileId, key);
+      assert.equal(placed?.label, stripLabel(coreTile(switchPageTileId)), key);
+    }
+  });
+
+  test("a label alias climbs the ladder without jumping it", () => {
+    const noun = stripLabel(coreTile(labelAliasRankTileIds.sentenceWord));
+    const { candidates } = offeringForEmptyWhenSide();
+    const offered = candidates.map((c) => c.tileDef.tileId);
+    assert.ok(
+      offered.indexOf(labelAliasRankTileIds.aliasOnly) < offered.indexOf(labelAliasRankTileIds.sentenceWord),
+      "the oracle offers the alias-only tile first, so the ranking has to move it"
+    );
+
+    const visible = filterStripCandidates(candidates, noun, foldText).map((c) => c.tileDef.tileId);
+
+    assert.ok(visible.includes(labelAliasRankTileIds.aliasOnly), "the alias reaches its tile");
+    assert.ok(
+      visible.indexOf(labelAliasRankTileIds.sentenceWord) < visible.indexOf(labelAliasRankTileIds.aliasOnly),
+      "the tile whose own word is the typed noun leads the one reached through a label alias"
+    );
   });
 });
 

@@ -384,18 +384,34 @@ export function isOperatorSymbolPrefix(text: string): boolean {
 
 const noTileMatchAliases: readonly string[] = [];
 
-/** The texts beyond its label that `tileDef` is reachable by while typing. */
+/**
+ * The texts beyond its label that `tileDef` is reachable by while typing: an
+ * operator's typing notation, and the tile's own `metadata.label` -- the name
+ * the picker and the documentation title it by, which a tile reading its
+ * sentence with a different word would otherwise not be findable under. Like
+ * every alias it is matching input only and never reaches a chip, a placed
+ * tile, or a sentence.
+ */
 function tileMatchAliases(tileDef: IBrainTileDef): readonly string[] {
-  return operatorSymbolAliases.get(tileDef.tileId) ?? noTileMatchAliases;
+  const symbols = operatorSymbolAliases.get(tileDef.tileId);
+  const label = tileDef.metadata?.label;
+  if (label === undefined || label === "") return symbols ?? noTileMatchAliases;
+  return symbols === undefined ? [label] : [...symbols, label];
 }
 
-/** The quality with which `candidate` matches `filter`, over its label and the aliases its tile carries. */
+/**
+ * The quality with which `candidate` matches `filter`, over its label and the
+ * aliases its tile carries. An alias repeating the label the chip already
+ * matches on is dropped, so a tile whose chip reads its own `metadata.label` is
+ * matched once.
+ */
 function classifyCandidateMatch(
   filter: string,
   candidate: StripCandidate,
   foldText: (text: string) => string
 ): TileMatchQuality | undefined {
-  return classifyTileMatch(filter, candidate.label, tileMatchAliases(candidate.tileDef), foldText);
+  const aliases = tileMatchAliases(candidate.tileDef).filter((alias) => alias !== candidate.label);
+  return classifyTileMatch(filter, candidate.label, aliases, foldText);
 }
 
 /** The one candidate of `candidates` matching `filter` at `quality`, or undefined when they do not number one. */

@@ -88,6 +88,19 @@ export interface BrainEditorConfig {
     reportMode?: (mode: EditorMode | undefined) => void;
   };
   /**
+   * Optional region the editor lays out beside its rules, holding content the
+   * host supplies. The host owns whether it stands open; the editor's toolbar
+   * stands the control that toggles it.
+   */
+  sidePanel?: {
+    /** Whether the region stands open. */
+    isOpen: boolean;
+    /** Opens the region when it is closed, and closes it when it is open. */
+    toggle: () => void;
+    /** What the region holds. It is put in on the region's first open. */
+    content: ReactNode;
+  };
+  /**
    * Sink for the printable document when the host cannot open the browser
    * print dialog. When set, the print action serializes the print view into a
    * self-contained HTML document and hands it to this transport; when absent,

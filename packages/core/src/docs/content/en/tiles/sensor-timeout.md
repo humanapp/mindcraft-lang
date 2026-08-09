@@ -5,7 +5,7 @@
 }
 ```
 
-# Timeout
+# Timer
 
 Fires at the specified time interval.
 

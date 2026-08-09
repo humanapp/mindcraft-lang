@@ -42,7 +42,7 @@ export function registerCoreActuatorTileDefs(services: BrainServices) {
     tiles.registerTileDef(tileDef);
   };
   register(fnSwitchPage.key, fnSwitchPage.descriptor, {
-    metadata: { label: "switch page", language: { form: "go to" } },
+    metadata: { label: "go to page", language: { form: "go to" } },
   });
   register(fnRestartPage.key, fnRestartPage.descriptor, {
     deprecated: true,

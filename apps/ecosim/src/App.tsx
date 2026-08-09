@@ -1,5 +1,6 @@
 import type { ProjectCollection, ProjectCollectionState, ProjectManifest } from "@mindcraft-lang/app-host";
 import { AppHostError } from "@mindcraft-lang/app-host";
+import { AssistantSurface } from "@mindcraft-lang/assistant-panel";
 import type { BrainDef } from "@mindcraft-lang/core/app";
 import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
@@ -58,7 +59,10 @@ function snapshotEqual(a: ScoreSnapshot, b: ScoreSnapshot): boolean {
   );
 }
 
-/** Wrapper that injects docs integration from the docs context into the brain editor config. */
+/**
+ * Wrapper that injects docs integration from the docs context, and the
+ * assistant's conversation surface, into the brain editor config.
+ */
 function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype | null; children: React.ReactNode }) {
   const {
     openDocsForTile,
@@ -68,6 +72,8 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
     reportEditorMode,
   } = useDocsSidebar();
   const store = useEcosimEnvironment();
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const toggleAssistant = useCallback(() => setIsAssistantOpen((open) => !open), []);
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
   // Rebuild the config (and thus the isBrokenTile predicate identity) after each
   // workspace compile so broken-tile badges appear/disappear as tiles change
@@ -86,6 +92,7 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
       archetype: archetype ?? undefined,
       onTileDocs: openDocsForTile,
       docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs, reportMode: reportEditorMode },
+      sidePanel: { isOpen: isAssistantOpen, toggle: toggleAssistant, content: <AssistantSurface /> },
       isBrokenTile: (tile) => store.host.getTileCompileDiagnostics(tile.action.key) !== undefined,
     });
   }, [
@@ -98,6 +105,8 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
     toggleDocs,
     closeDocs,
     reportEditorMode,
+    isAssistantOpen,
+    toggleAssistant,
   ]);
   return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
 }

@@ -25,6 +25,7 @@ export default defineConfig({
     dedupe: ["sonner"],
     alias: {
       "@": path.resolve(process.cwd(), "./src"),
+      "@mindcraft-lang/assistant-panel": path.resolve(process.cwd(), "../../packages/assistant-panel/src"),
       "@mindcraft-lang/docs": path.resolve(process.cwd(), "../../packages/docs/src"),
       "@mindcraft-lang/ui": path.resolve(process.cwd(), "../../packages/ui/src"),
       "@mindcraft-lang/app-host": path.resolve(process.cwd(), "../../packages/app-host/src"),

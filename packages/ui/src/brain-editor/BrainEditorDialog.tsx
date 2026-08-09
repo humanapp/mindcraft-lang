@@ -24,6 +24,7 @@ import {
   Download,
   Minus,
   MoreVertical,
+  PanelLeft,
   Pencil,
   Plus,
   Printer,
@@ -50,6 +51,7 @@ import { Slider } from "../ui/slider";
 import { ArmedTargetProvider, useArmedTargetState } from "./ArmedTargetContext";
 import { keyboardIsInCandidateStrip } from "./BrainCandidateStrip";
 import { useBrainEditorConfig } from "./BrainEditorContext";
+import { BrainEditorSidePanel } from "./BrainEditorSidePanel";
 import { BrainPageEditor } from "./BrainPageEditor";
 import { BrainPrintDialog } from "./BrainPrintDialog";
 import { LatchedBrainRulesRegion } from "./BrainRulesRegion";
@@ -71,6 +73,7 @@ import {
 } from "./editor-return-focus";
 import { decideHistoryShortcut } from "./history-shortcut";
 import { RulePickupProvider, useRulePickupState } from "./RulePickupContext";
+import { kSidePanelRegionId } from "./side-panel";
 
 // Top-edge brand accent. Uses each app's signature strip tokens when defined
 // (microbit-sim's blue->green->teal), else falls back to the brand primary/ring
@@ -102,10 +105,13 @@ export interface BrainEditorDialogProps {
  * the resulting brain when the user confirms.
  */
 export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
-  const { getDefaultBrain, docsIntegration, brainServices, tileCatalogs, projectNamespace } = useBrainEditorConfig();
+  const { getDefaultBrain, docsIntegration, sidePanel, brainServices, tileCatalogs, projectNamespace } =
+    useBrainEditorConfig();
   const isDocsOpen = docsIntegration?.isOpen ?? false;
   const toggleDocs = docsIntegration?.toggle;
   const closeDocs = docsIntegration?.close;
+  const isSidePanelOpen = sidePanel?.isOpen ?? false;
+  const toggleSidePanel = sidePanel?.toggle;
 
   const createEditableBrain = useCallback(
     (sourceBrainDef?: BrainDef): BrainDef => {
@@ -305,6 +311,23 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   }, [brainDef, onSubmit, createEditableBrain]);
 
   const holdsDiscardableEdits = hasDiscardableEdits({ undoDepth, openingDepth, brainReplaced });
+
+  const rulesRegion = (
+    <LatchedBrainRulesRegion shownPage={shownPage}>
+      {currentPageDef === undefined ? null : (
+        <ArmedTargetProvider value={armedTarget}>
+          <RulePickupProvider value={rulePickup}>
+            <BrainPageEditor
+              key={`${currentPageNumber}-${pageChangeCounter}`}
+              pageDef={currentPageDef as BrainPageDef}
+              commandHistory={commandHistory}
+              zoom={zoom}
+            />
+          </RulePickupProvider>
+        </ArmedTargetProvider>
+      )}
+    </LatchedBrainRulesRegion>
+  );
 
   /**
    * Close the editor without saving, first asking the user to confirm when the
@@ -833,8 +856,23 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 <div
                   className="flex items-center gap-2 bg-muted rounded-lg p-1 border border-border sm:mr-2"
                   role="group"
-                  aria-label="Undo, redo, and documentation controls"
+                  aria-label="Undo, redo, and panel controls"
                 >
+                  {toggleSidePanel && (
+                    <>
+                      <Button
+                        className="hidden lg:flex h-8 w-8 px-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md"
+                        onClick={toggleSidePanel}
+                        title="Side panel"
+                        aria-label="Toggle side panel"
+                        aria-expanded={isSidePanelOpen}
+                        aria-controls={kSidePanelRegionId}
+                      >
+                        <PanelLeft className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                      <span className="hidden lg:block w-px h-5 bg-border" aria-hidden="true" />
+                    </>
+                  )}
                   <Button
                     className="h-8 w-8 px-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md disabled:opacity-50"
                     onClick={handleUndo}
@@ -1042,20 +1080,14 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
               </div>
             </DialogTitle>
           </DialogHeader>
-          <LatchedBrainRulesRegion shownPage={shownPage}>
-            {currentPageDef === undefined ? null : (
-              <ArmedTargetProvider value={armedTarget}>
-                <RulePickupProvider value={rulePickup}>
-                  <BrainPageEditor
-                    key={`${currentPageNumber}-${pageChangeCounter}`}
-                    pageDef={currentPageDef as BrainPageDef}
-                    commandHistory={commandHistory}
-                    zoom={zoom}
-                  />
-                </RulePickupProvider>
-              </ArmedTargetProvider>
-            )}
-          </LatchedBrainRulesRegion>
+          {sidePanel ? (
+            <div className="flex grow min-h-0 gap-2 sm:gap-3">
+              <BrainEditorSidePanel isOpen={isSidePanelOpen} content={sidePanel.content} />
+              {rulesRegion}
+            </div>
+          ) : (
+            rulesRegion
+          )}
           <DialogFooter className="pt-2 sm:pt-3 border-t border-border flex flex-row flex-wrap items-center gap-2 sm:justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs text-muted-foreground whitespace-nowrap">{Math.round(zoom * 100)}%</span>

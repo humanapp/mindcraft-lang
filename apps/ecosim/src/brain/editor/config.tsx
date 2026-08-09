@@ -96,11 +96,12 @@ interface BuildBrainEditorConfigOptions {
   archetype?: Archetype;
   onTileDocs?: BrainEditorConfig["onTileDocs"];
   docsIntegration?: BrainEditorConfig["docsIntegration"];
+  sidePanel?: BrainEditorConfig["sidePanel"];
   isBrokenTile?: BrainEditorConfig["isBrokenTile"];
 }
 
 export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): BrainEditorConfig {
-  const { store, archetype, onTileDocs, docsIntegration, isBrokenTile } = options;
+  const { store, archetype, onTileDocs, docsIntegration, sidePanel, isBrokenTile } = options;
   const environment = store.env;
   const resolveTileVisual = createVfsAwareVisualProvider((url) => store.resolveVfsAssetUrl(url));
 
@@ -117,6 +118,7 @@ export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): 
     libraries: store.host.installedLibraries,
     onTileDocs,
     docsIntegration,
+    sidePanel,
     isBrokenTile,
   };
 }

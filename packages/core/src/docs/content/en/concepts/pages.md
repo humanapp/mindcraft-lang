@@ -18,7 +18,7 @@ The `tile:tile.sensor->previous-page` sensor returns the `Page ID` of the page t
 active before the most recent page switch. If no switch has occurred, it returns the
 current page. Use it to navigate back to the page you came from.
 
-## On Page Entered
+## This Page Starts
 
 The `tile:tile.sensor->on-page-entered` sensor fires once on the first frame after
 entering a page. Use it to run setup logic when arriving on a new page.

@@ -15,6 +15,7 @@ import {
   kOfferingLayer,
   kRuleChromeLayer,
   kRuleContentLayer,
+  kSidePanelLayer,
 } from "./editor-layers";
 
 /** The z-index a `z-N` utility sets. Throws when the class is not of that shape. */
@@ -31,6 +32,7 @@ describe("editor layer scale", () => {
       kRuleChromeLayer,
       kGrabbedRuleMarkerLayer,
       kOfferingLayer,
+      kSidePanelLayer,
       kDialogChromeLayer,
     ].map(stepOf);
     for (let i = 1; i < steps.length; i++) {

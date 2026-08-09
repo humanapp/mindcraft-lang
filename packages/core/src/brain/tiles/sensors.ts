@@ -89,10 +89,10 @@ export function registerCoreSensorTileDefs(services: BrainServices) {
     metadata: { label: "random number", language: { form: "a random number" } },
   });
   register(fnOnPageEntered.key, fnOnPageEntered.descriptor, {
-    metadata: { label: "on page entered", language: { form: "this page starts", frame: "event" } },
+    metadata: { label: "this page starts", language: { form: "this page starts", frame: "event" } },
   });
   register(fnTimeout.key, fnTimeout.descriptor, {
-    metadata: { label: "timeout", language: { form: "wait for", bare: "a moment" } },
+    metadata: { label: "timer", language: { form: "wait for", bare: "a moment" } },
   });
   const pageSensorCaps = new BitSet().set(CoreCapabilityBits.PageSensor);
   register(fnCurrentPage.key, fnCurrentPage.descriptor, {
