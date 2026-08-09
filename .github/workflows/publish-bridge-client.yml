@@ -27,36 +27,8 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: "Rewrite public local file: deps to version ranges"
-        run: |
-          node - <<'EOF'
-          const fs = require('fs');
-          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-          for (const [name, val] of Object.entries(pkg.dependencies || {})) {
-            if (val.startsWith('file:')) {
-              const localPath = val.slice(5);
-              const sibling = JSON.parse(fs.readFileSync(`${localPath}/package.json`, 'utf8'));
-              if (!sibling.private) {
-                pkg.dependencies[name] = `^${sibling.version}`;
-                // Remove the file:-based lockfile entries so npm re-resolves from registry
-                delete lock.packages[localPath];
-                delete lock.packages[`node_modules/${name}`];
-              }
-            }
-          }
-          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
-          EOF
-          n=0
-          until npm install --package-lock-only; do
-            n=$((n + 1))
-            if [ "$n" -ge 5 ]; then
-              echo "npm install --package-lock-only failed after $n attempts" >&2
-              exit 1
-            fi
-            echo "Attempt $n failed (a just-published dependency version may not be resolvable yet); retrying in $((n * 15))s..." >&2
-            sleep $((n * 15))
-          done
+        working-directory: .
+        run: node scripts/rewrite-local-deps.js packages/bridge-client
 
       - name: Install dependencies
         run: npm ci
@@ -71,18 +43,8 @@ jobs:
         run: npm test
 
       - name: "Strip private local file: deps before publish"
-        run: |
-          node - <<'EOF'
-          const fs = require('fs');
-          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          for (const [name, val] of Object.entries(pkg.dependencies || {})) {
-            if (val.startsWith('file:')) {
-              const sibling = JSON.parse(fs.readFileSync(`${val.slice(5)}/package.json`, 'utf8'));
-              if (sibling.private) delete pkg.dependencies[name];
-            }
-          }
-          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          EOF
+        working-directory: .
+        run: node scripts/strip-private-local-deps.js packages/bridge-client
 
       - name: Verify package version matches tag
         run: |

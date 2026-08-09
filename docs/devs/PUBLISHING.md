@@ -7,24 +7,30 @@ This document describes how to publish `@mindcraft-lang/*` packages to npm.
 Packages have internal `file:` dependencies that form a directed graph:
 
 ```
-core              (no local deps)
+assistant-relay   (no local deps)
 bridge-protocol   (no local deps)
-bridge-client  -> core, bridge-protocol
-bridge-app     -> bridge-client, bridge-protocol, core, ts-compiler
-ts-compiler    -> core
-ui             -> core
-docs           -> core, ui
+core              (no local deps)
+assistant-bridge  -> assistant-relay, core
+bridge-client     -> bridge-protocol, core
+service-api       -> core
+ts-compiler       -> core
+ui                -> core
+app-host          -> core, service-api
+docs              -> core, ui
+bridge-app        -> app-host, bridge-client, bridge-protocol, core, ts-compiler
+mindcraft-cli     -> app-host, service-api
 ```
 
 Private apps (not published to npm):
 
 ```
-sim               -> core, docs, ts-compiler, bridge-app, ui
+ecosim            -> app-host, assistant-bridge, bridge-app, core, docs, ts-compiler, ui
+ecosim-rbx        -> core
 vscode-bridge     -> bridge-protocol
-vscode-extension  -> bridge-client, bridge-protocol
+vscode-extension  -> app-host, bridge-app, bridge-client, bridge-protocol, service-api
 ```
 
-The release script handles dependency ordering automatically -- see "Running a Release"
+The release scripts handle dependency ordering automatically -- see "Running a Release"
 below.
 
 ## How Publishing Works
@@ -61,9 +67,14 @@ This ensures `npm install` on a fresh clone always creates the correct local sym
 regardless of whether a `package-lock.json` is present. See the note in
 `packages/package.json` for the install order.
 
-`file:` references are never committed to npm. Each publish workflow rewrites them to
-proper version ranges (e.g. `^0.1.10`) in the CI runner before calling `npm publish`. The
-source files on disk are never modified.
+`file:` references are never committed to npm. Each publish workflow runs
+`scripts/rewrite-local-deps.js` on the CI runner, which rewrites every `file:`
+specifier naming a public sibling -- in `dependencies` and in `devDependencies` -- to a
+version range (e.g. `^0.1.10`) and re-resolves the lockfile against the registry. Later,
+after the build and tests, `scripts/strip-private-local-deps.js` removes the `file:`
+dependencies naming a private sibling, so the private package is available while the
+package is built and absent from what is published. Both run on the runner only; the
+source files in the repository are never modified.
 
 ## Running a Release
 
@@ -78,22 +89,52 @@ This will release `core`, then `bridge-protocol`, then `bridge-client` -- each b
 `patch`, each waiting for CI before proceeding. For a leaf package like `core` with no
 local deps, only `core` itself is released.
 
+### Releasing Everything That Changed
+
+`scripts/release-all.js` releases the packages a release needs to include, rather than
+all of them. From `packages/`:
+
+```sh
+npm run release:all:patch   # or release:all:minor / release:all:major
+```
+
+Membership is derived from the repository:
+
+- a package with no release tag has never been published, and is included;
+- a package whose directory differs between its latest release tag and HEAD is included;
+- a package is included when a dependency it declares is going to a version the caret
+  range published for it does not admit. A bump that range does admit needs no release
+  of the dependent, because npm resolves it at install time. Note that on a `0.x`
+  version a caret range is pinned to the minor component, so a `minor` bump of a `0.x`
+  dependency does cascade to its dependents.
+
+The bump level applies to every member and is the one part of a release that is chosen
+rather than derived.
+
+Add `--dry-run` to print the derived set, the reason for each member and the release
+order, and exit without changing anything:
+
+```sh
+npm run release:all:patch -- --dry-run
+```
+
 ### Bundled Apps
 
 Bundled apps are `"private": true` and deployed from their build output, not published to
 npm. Their tags trigger deploy workflows instead of publish workflows.
 
-#### sim
+#### ecosim
 
-`sim` uses `--skip-deps` so upstream packages are not published as a side effect:
+`ecosim` uses `--skip-deps` so upstream packages are not published as a side effect:
 
 ```sh
 cd apps/ecosim
 npm run release:patch
 ```
 
-This bumps `sim`'s version, commits, tags (`sim-v<version>`), and pushes. The tag triggers
-the `deploy-sim` GitHub Actions workflow which builds and deploys to S3/CloudFront.
+This bumps `ecosim`'s version, commits, tags (`ecosim-v<version>`), and pushes. The tag
+triggers the `deploy-ecosim` GitHub Actions workflow which builds and deploys to
+S3/CloudFront.
 
 #### vscode-bridge
 
@@ -130,10 +171,12 @@ to the VS Code Marketplace via `vsce`.
 ### Failure Recovery
 
 If a CI workflow fails mid-chain, the script stops. The packages that already succeeded
-are published on npm with their new versions. Fix the issue and re-run. The already-
-published packages will be detected as having no pending changes (their tags already exist)
--- but currently the script will bump them again. To avoid a no-op bump, release the
-remaining packages individually.
+are published on npm with their new versions. Fix the issue and re-run.
+
+`release-all.js` resumes correctly: the packages that already released match their new
+tags, so the next run leaves them out and picks up where it stopped. `release.js`
+releases the chain it is given and will bump an already-released package again; release
+the remaining packages individually to avoid a no-op bump.
 
 ## Versioning Policy
 

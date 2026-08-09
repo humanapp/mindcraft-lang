@@ -11,8 +11,8 @@
 //
 // Flags:
 //   --skip-deps  Skip releasing upstream dependencies. Only bump, tag, and
-//                push the current package. Useful for bundled apps like sim
-//                whose dependencies do not need to be published to npm.
+//                push the current package. Useful for a bundled app whose
+//                dependencies do not need to be published to npm.
 //
 // Per-package steps:
 //   1. Runs the package's pre-release checks (build, lint)

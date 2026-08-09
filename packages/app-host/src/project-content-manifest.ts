@@ -392,8 +392,9 @@ export function validateProjectTargets(value: unknown): readonly ProjectContentM
 
 /**
  * Validate a hostable app bundle declaration: an object carrying a non-empty
- * string `path` and a `files` array of string paths. Returns the normalized
- * bundle with no errors when well-formed, or one error per rejected field.
+ * string `path` and a `files` array of string paths, each staying within the
+ * project root. Returns the normalized bundle with no errors when well-formed,
+ * or one error per rejected field.
  */
 export function validateProjectHostApp(
   value: unknown
@@ -418,6 +419,12 @@ export function validateProjectHostApp(
       path: "$.hostApp.path",
       message: "$.hostApp.path must be a non-empty string.",
     });
+  } else if (pathEscapesProjectRoot(value.path)) {
+    errors.push({
+      code: ProjectContentManifestErrorCode.FILE_ESCAPES_ROOT,
+      path: "$.hostApp.path",
+      message: `$.hostApp.path must stay within the project root; "${value.path}" escapes it.`,
+    });
   }
   if (!Array.isArray(value.files) || value.files.some((entry) => typeof entry !== "string")) {
     errors.push({
@@ -425,6 +432,15 @@ export function validateProjectHostApp(
       path: "$.hostApp.files",
       message: "$.hostApp.files must be an array of string paths.",
     });
+  } else {
+    const escaping = (value.files as readonly string[]).filter(pathEscapesProjectRoot);
+    if (escaping.length > 0) {
+      errors.push({
+        code: ProjectContentManifestErrorCode.FILE_ESCAPES_ROOT,
+        path: "$.hostApp.files",
+        message: `$.hostApp.files entries must stay within the project root; these escape it: ${escaping.join(", ")}.`,
+      });
+    }
   }
   if (errors.length > 0) {
     return { errors };
@@ -757,7 +773,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
  * `..` only to re-descend, such as `a/../b`) does not escape. The check is
  * purely lexical and never touches the filesystem.
  *
- * @param entry - A content-relative path from a manifest `files` or `ambient` list.
+ * @param entry - A content-relative path declared by a manifest.
  */
 function pathEscapesProjectRoot(entry: string): boolean {
   if (entry.startsWith("/")) {

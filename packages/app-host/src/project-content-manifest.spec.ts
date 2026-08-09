@@ -315,6 +315,39 @@ describe("parseProjectContentManifest", () => {
     }
   });
 
+  it("rejects a hostApp path that escapes the project root", () => {
+    for (const path of ["../app", "/app", "app/../../up"]) {
+      const result = validateProjectContentManifest({
+        name: "P",
+        version: "0.1.0",
+        hostApp: { path, files: ["app/index.html"] },
+      });
+      assert.strictEqual(result.ok, false, `Expected rejection for hostApp.path ${JSON.stringify(path)}`);
+      assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.FILE_ESCAPES_ROOT]);
+    }
+  });
+
+  it("rejects a hostApp files entry that escapes the project root", () => {
+    for (const files of [["../outside.html"], ["/absolute.html"], ["app/index.html", "a/../../leak.js"]]) {
+      const result = validateProjectContentManifest({
+        name: "P",
+        version: "0.1.0",
+        hostApp: { path: "app", files },
+      });
+      assert.strictEqual(result.ok, false, `Expected rejection for hostApp.files ${JSON.stringify(files)}`);
+      assert.deepStrictEqual(errorCodes(result), [ProjectContentManifestErrorCode.FILE_ESCAPES_ROOT]);
+    }
+  });
+
+  it("accepts a hostApp whose path and files stay within the project root", () => {
+    const result = validateProjectContentManifest({
+      name: "P",
+      version: "0.1.0",
+      hostApp: { path: "app", files: ["app/index.html", "app/nested/../main.js"] },
+    });
+    assert.strictEqual(result.ok, true);
+  });
+
   it("rejects a path shared by files and hostApp.files with HOST_APP_FILES_OVERLAP", () => {
     const result = validateProjectContentManifest({
       name: "P",
