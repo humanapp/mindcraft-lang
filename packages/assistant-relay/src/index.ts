@@ -1,4 +1,17 @@
 export type {
+  ConversationAssistantEntry,
+  ConversationEntry,
+  ConversationRecord,
+  ConversationToolCall,
+  ConversationTurnEnding,
+  ConversationUserEntry,
+} from "./conversation.js";
+export {
+  CONVERSATION_RECORD_VERSION,
+  ConversationTurnFailureCode,
+  conversationRecordSchema,
+} from "./conversation.js";
+export type {
   RelayDownstreamMessage,
   RelayNarrationDelta,
   RelayStop,
