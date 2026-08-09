@@ -31,6 +31,9 @@ jobs:
       - name: Install every package and app
         run: npm install
 
+      - name: Repository scripts
+        run: npm run check:only && npm test
+
       # The runner sets CI, which makes each loop run a package's check:only.
       - name: Packages
         run: npm run build --prefix packages

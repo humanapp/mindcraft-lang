@@ -45,7 +45,7 @@ export function resolveTargetPosition(
   // 2. Rule's targetPos variable
   const targetPosVar = getRuleVariable<StructValue>(ctx, "targetPos");
   if (targetPosVar && targetPosVar.typeId === EcosimTypeIds.Vector2) {
-    const pos = extractVector2(targetPosVar);
+    const pos = extractVector2(ctx, targetPosVar);
     if (pos) return pos;
   }
 

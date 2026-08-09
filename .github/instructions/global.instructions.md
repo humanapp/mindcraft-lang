@@ -87,6 +87,15 @@ Common substitutions:
 Be direct and matter-of-fact. Lead with solutions and information, and skip
 agreement or reinforcement filler that only validates the user's statement.
 
+Write high-signal: lead with the artifact or decision, then the reasoning that
+supports it. Show shapes -- file names, config snippets, tables, numbered
+lists -- instead of describing them in prose, and give each item enough
+rationale to be judged without a follow-up question: a sentence or two, not a
+bare fragment and not a paragraph. Structure reports for scanning, but write
+complete sentences within the structure. Both failure modes are real: a page of
+prose the reader must parse for the meaningful bits, and fragments so terse the
+reader has to ask what they mean.
+
 ## Generated Files -- Do Not Read
 
 Never read `packages/ts-compiler/src/compiler/lib-dts.generated.ts` when

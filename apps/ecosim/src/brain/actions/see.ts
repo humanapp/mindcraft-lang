@@ -177,7 +177,7 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
     }
 
     // Set as remembered actor
-    state.rememberedPos = mkVector2Value(targetPos);
+    state.rememberedPos = mkVector2Value(ctx, targetPos);
     state.rememberedActorId = mkNumberValue(seenActor.actorId);
     state.memoryExpiration = now + ctx.services.app.rng.next() * 2000 + 500; // Remember for 0.5-2.5s of sim time
     setCallSiteState(ctx, state);
@@ -192,7 +192,10 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
     setRuleVariable(
       ctx,
       "targetPositions",
-      mkListValue("", List.from(seenActors.map((actor) => mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y)))))
+      mkListValue(
+        "",
+        List.from(seenActors.map((actor) => mkVector2Value(ctx, new Vector2(actor.sprite.x, actor.sprite.y))))
+      )
     );
     setRuleVariable(ctx, "targetActor", state.rememberedActorId!);
     setRuleVariable(ctx, "targetPos", state.rememberedPos!);

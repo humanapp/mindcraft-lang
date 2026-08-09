@@ -139,7 +139,7 @@ function resolveAwayFromTarget(ctx: ExecutionContext, args: ReadonlyList<Value>)
     const sx = self?.sprite.x ?? 0;
     const sy = self?.sprite.y ?? 0;
     const targetPositionsList = extractListValue(targetPositionsVar) as List<StructValue>;
-    const allPositions = targetPositionsList.map((posVal) => extractVector2(posVal)!);
+    const allPositions = targetPositionsList.map((posVal) => extractVector2(ctx, posVal)!);
 
     // Pick the 2 nearest positions (list may be unsorted)
     let best1Idx = -1;
@@ -187,12 +187,12 @@ function computeWanderSteering(ctx: ExecutionContext, self: Actor, weight: numbe
   let state = getCallSiteState<MoveState>(ctx);
   if (!state || state.wanderTargetExpiresAt < now) {
     state = {
-      wanderTargetPos: mkVector2Value(self.randomPosition()),
+      wanderTargetPos: mkVector2Value(ctx, self.randomPosition()),
       wanderTargetExpiresAt: now + ctx.services.app.rng.next() * 5000 + 2000, // 2-7 seconds
     } satisfies MoveState;
     setCallSiteState(ctx, state);
   }
-  const targetPos = extractVector2(state.wanderTargetPos)!;
+  const targetPos = extractVector2(ctx, state.wanderTargetPos)!;
   return steerToward(self, targetPos, weight, speedMultiplier);
 }
 

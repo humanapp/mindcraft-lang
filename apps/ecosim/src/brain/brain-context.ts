@@ -62,14 +62,14 @@ export function registerBrainContext(api: MindcraftModuleApi) {
       exec: (ctx: ExecutionContext): Value => {
         const targetPosVar = getRuleVariable<StructValue>(ctx, "targetPos");
         if (targetPosVar && targetPosVar.typeId === EcosimTypeIds.Vector2) {
-          const pos = extractVector2(targetPosVar);
-          if (pos) return mkVector2Value(pos);
+          const pos = extractVector2(ctx, targetPosVar);
+          if (pos) return mkVector2Value(ctx, pos);
         }
 
         const targetActorVar = getRuleVariable<NumberValue>(ctx, "targetActor");
         const targetId = targetActorVar?.v;
         const target = targetId !== undefined ? getActor(ctx, targetId) : undefined;
-        if (target) return mkVector2Value(new Vector2(target.sprite.x, target.sprite.y));
+        if (target) return mkVector2Value(ctx, new Vector2(target.sprite.x, target.sprite.y));
 
         return NIL_VALUE;
       },

@@ -1,0 +1,44 @@
+{
+  "solution": "tsconfig.json",
+  "projects": [
+    {
+      "project": "tsconfig.app.json",
+      "include": ["src/**/*.ts", "src/**/*.tsx"],
+      "exclude": ["src/**/*.spec.ts", "src/rehearsal/**"]
+    },
+    {
+      "project": "src/rehearsal/tsconfig.json",
+      "include": ["src/rehearsal/**/*.ts", "src/vite-env.d.ts"],
+      "exclude": ["src/rehearsal/**/*.spec.ts"]
+    },
+    {
+      "project": "tsconfig.spec.json",
+      "include": [
+        "src/**/*.spec.ts",
+        "src/vite-env.d.ts",
+        "src/rehearsal/build-defines.d.ts",
+        "src/rehearsal/phaser-matter.d.ts",
+        "src/components/BrainDiagnostics.tsx",
+        "src/components/CompileDiagnosticsConsole.tsx",
+        "src/components/ConsoleOutputList.tsx",
+        "src/components/UninstallImpactMessage.tsx"
+      ]
+    },
+    {
+      "project": "scripts/tsconfig.json",
+      "include": ["scripts/*.ts", "src/vite-env.d.ts"]
+    },
+    {
+      "project": "lib/tsconfig.json",
+      "include": ["lib/*.ts"]
+    },
+    {
+      "project": "lib/tsconfig.ambient.json",
+      "include": ["lib/mindcraft.ecosim.d.ts"]
+    },
+    {
+      "project": "extensions/tsconfig.json",
+      "include": ["extensions/**/*.ts", "lib/mindcraft.ecosim.d.ts"]
+    }
+  ]
+}
