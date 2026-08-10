@@ -59,7 +59,7 @@ class BatchedCommand implements BrainCommand {
 export class BrainCommandHistory {
   private readonly undoStack = new List<BrainCommand>();
   private readonly redoStack = new List<BrainCommand>();
-  private onChangeCallback?: () => void;
+  private readonly listeners = new List<() => void>();
   // The commands gathered by the open batch, or undefined while none is open.
   private batch?: List<BrainCommand>;
   private batchDescription = "";
@@ -230,14 +230,27 @@ export class BrainCommandHistory {
   }
 
   /**
-   * Register a callback to be notified when the history changes.
+   * Register `callback` to be notified when the history changes. Several
+   * callbacks may be registered at once, and each change notifies them in the
+   * order they registered. Call the returned function to stop notifying this
+   * callback; it leaves every other registration standing, and calling it twice
+   * does nothing further.
    */
-  onChange(callback: () => void): void {
-    this.onChangeCallback = callback;
+  onChange(callback: () => void): () => void {
+    this.listeners.push(callback);
+    let registered = true;
+    return () => {
+      if (!registered) return;
+      registered = false;
+      const at = this.listeners.indexOf(callback);
+      if (at >= 0) this.listeners.remove(at);
+    };
   }
 
   private notifyChange(): void {
-    this.onChangeCallback?.();
+    for (let i = 0; i < this.listeners.size(); i++) {
+      this.listeners.get(i)();
+    }
   }
 
   /**

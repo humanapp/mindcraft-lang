@@ -11,6 +11,7 @@ import { recordFor } from "../conversation/store";
 import type { AssistantChannel } from "./channel";
 import type { AssistantMachineOptions, AssistantMachineState } from "./machine";
 import { AssistantMachine, AssistantStatus } from "./machine";
+import { sessionStatus } from "./sessions";
 import type { ScriptedCall, ScriptedService } from "./test-only-scripted-service";
 import { runScriptedService } from "./test-only-scripted-service";
 
@@ -53,7 +54,7 @@ interface Harness {
   connects(): number;
   /** How many of the channels it was given are closed. */
   closed(): number;
-  /** Resolves once the scripted service has played out its script. */
+  /** Resolves once every session's scripted service has played out its script. */
   readonly served: Promise<void>;
 }
 
@@ -66,11 +67,15 @@ interface HarnessOptions {
   readonly unreachable?: boolean;
 }
 
-/** Stand a machine over a loopback the scripted `script` answers. */
-function harness(script: ScriptedService, options: HarnessOptions = {}): Harness {
-  const loopback: RelayLoopback = createRelayLoopback();
+/**
+ * Stand a machine whose sessions are answered by scripted services: one per
+ * session opened, taken from `script` by the order the sessions were opened in
+ * when it varies by session.
+ */
+function harness(script: ScriptedService | ((at: number) => ScriptedService), options: HarnessOptions = {}): Harness {
   const workspaces = new Map<string, AuthoringWorkspace>();
   const closes: AssistantChannel[] = [];
+  const services: Promise<void>[] = [];
   let connects = 0;
 
   const workspace = (brainId: string): AuthoringWorkspace => {
@@ -85,6 +90,8 @@ function harness(script: ScriptedService, options: HarnessOptions = {}): Harness
   const connect = (): Promise<AssistantChannel> => {
     connects++;
     if (options.unreachable) return Promise.reject(new Error("no route to the service"));
+    const loopback: RelayLoopback = createRelayLoopback();
+    services.push(runScriptedService(loopback, typeof script === "function" ? script(services.length) : script));
     const channel: AssistantChannel = {
       send: (message) => loopback.toolServer.send(message),
       next: () => loopback.toolServer.next(),
@@ -105,7 +112,9 @@ function harness(script: ScriptedService, options: HarnessOptions = {}): Harness
     }),
     connects: () => connects,
     closed: () => closes.length,
-    served: runScriptedService(loopback, script),
+    get served(): Promise<void> {
+      return Promise.all(services).then(() => undefined);
+    },
   };
 }
 
@@ -124,9 +133,22 @@ function until(machine: AssistantMachine, predicate: (state: AssistantMachineSta
   });
 }
 
-/** Resolve once `machine` has no turn running. */
+/** Resolve once `machine` has no turn running on the active brain. */
 function settled(machine: AssistantMachine): Promise<void> {
   return until(machine, (state) => state.status === AssistantStatus.Ready || state.status === AssistantStatus.Failed);
+}
+
+/** Resolve once `machine` has no turn running on `brainId`. */
+function settledFor(machine: AssistantMachine, brainId: string): Promise<void> {
+  return until(machine, (state) => {
+    const status = sessionStatus(state.sessions, brainId);
+    return status === AssistantStatus.Ready || status === AssistantStatus.Failed;
+  });
+}
+
+/** Resolve once everything already scheduled has run. */
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 /** The conversation `machine` holds for `brainId`. */
@@ -154,7 +176,7 @@ describe("opening the session", () => {
     await stand.served;
   });
 
-  test("passes through connecting and turn-active on the way back to ready", async () => {
+  test("passes through connecting on the way to ready when the session is opened first", async () => {
     const stand = harness(oneQuietTurn);
     const seen: string[] = [stand.machine.getState().status];
     stand.machine.subscribe(() => {
@@ -163,15 +185,29 @@ describe("opening the session", () => {
     });
     stand.machine.setActiveBrain("brain-a");
 
+    stand.machine.openSession("brain-a");
+    await settled(stand.machine);
     stand.machine.send("make it hide");
     await settled(stand.machine);
 
     assert.deepEqual(seen, [
       AssistantStatus.Idle,
       AssistantStatus.Connecting,
+      AssistantStatus.Ready,
       AssistantStatus.TurnActive,
       AssistantStatus.Ready,
     ]);
+    await stand.served;
+  });
+
+  test("stands turn-active from the send that opens the session for it", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+
+    assert.equal(stand.machine.getState().status, AssistantStatus.TurnActive);
+    await settled(stand.machine);
     await stand.served;
   });
 
@@ -254,6 +290,100 @@ describe("opening the session", () => {
   });
 });
 
+describe("a session per brain", () => {
+  test("opens a brain's session with no send", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.openSession("brain-a");
+    assert.equal(stand.machine.getState().status, AssistantStatus.Connecting);
+    await settled(stand.machine);
+
+    assert.equal(stand.machine.getState().status, AssistantStatus.Ready);
+    assert.equal(stand.connects(), 1);
+    assert.deepEqual(conversation(stand.machine, "brain-a").entries, []);
+  });
+
+  test("opens one session however often it is asked for the same brain", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.openSession("brain-a");
+    stand.machine.openSession("brain-a");
+    await settled(stand.machine);
+    stand.machine.openSession("brain-a");
+
+    assert.equal(stand.connects(), 1);
+  });
+
+  test("reuses the session it holds when the brain's container closes and opens again", async () => {
+    const stand = harness({ turns: [oneQuietTurn.turns![0]!, oneQuietTurn.turns![0]!] });
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.openSession("brain-a");
+    stand.machine.send("first");
+    await settled(stand.machine);
+
+    // The container is gone and comes back on the same brain; nothing tears the
+    // session down in between.
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.openSession("brain-a");
+    stand.machine.send("second");
+    await settled(stand.machine);
+
+    assert.equal(stand.connects(), 1);
+    assert.equal(stand.closed(), 0);
+    assert.equal(conversation(stand.machine, "brain-a").entries.length, 4);
+    await stand.served;
+  });
+
+  test("stands two brains' sessions at once, each filling only its own record", async () => {
+    const stand = harness(oneQuietTurn);
+
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.send("make it hide");
+    await settledFor(stand.machine, "brain-a");
+    stand.machine.setActiveBrain("brain-b");
+    stand.machine.send("make it seek");
+    await settledFor(stand.machine, "brain-b");
+
+    const { sessions } = stand.machine.getState();
+    assert.equal(stand.connects(), 2);
+    assert.equal(sessionStatus(sessions, "brain-a"), AssistantStatus.Ready);
+    assert.equal(sessionStatus(sessions, "brain-b"), AssistantStatus.Ready);
+    assert.deepEqual(conversation(stand.machine, "brain-a").entries[0], { kind: "user", text: "make it hide" });
+    assert.deepEqual(conversation(stand.machine, "brain-b").entries[0], { kind: "user", text: "make it seek" });
+    assert.equal(conversation(stand.machine, "brain-a").entries.length, 2);
+    assert.equal(conversation(stand.machine, "brain-b").entries.length, 2);
+    await stand.served;
+  });
+
+  test("closes every session it opened when it is stood down", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.openSession("brain-a");
+    stand.machine.openSession("brain-b");
+    await settledFor(stand.machine, "brain-a");
+    await settledFor(stand.machine, "brain-b");
+
+    stand.machine.close();
+
+    assert.equal(stand.closed(), 2);
+    assert.equal(stand.machine.getState().status, AssistantStatus.Idle);
+  });
+
+  test("closes a session that arrives after it was stood down, and holds none", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.openSession("brain-a");
+    stand.machine.close();
+    await flush();
+
+    assert.equal(stand.closed(), 1);
+    assert.equal(stand.machine.getState().status, AssistantStatus.Idle);
+  });
+});
+
 describe("serving a turn's tool calls", () => {
   test("serves the session catalog read and an authoring batch, and records both verbatim", async () => {
     const stand = harness({
@@ -322,12 +452,8 @@ describe("serving a turn's tool calls", () => {
   });
 
   test("fails the turn whose batch could not be served, and stays on the session", async () => {
-    const stand = harness(
-      { turns: [{ steps: [{ kind: "toolCalls", calls: [firstTurnCalls.catalog] }] }] },
-      {
-        workspaceless: ["brain-a"],
-      }
-    );
+    const batchTurn = { steps: [{ kind: "toolCalls", calls: [firstTurnCalls.catalog] }] } as const;
+    const stand = harness({ turns: [batchTurn, batchTurn] }, { workspaceless: ["brain-a"] });
     stand.machine.setActiveBrain("brain-a");
 
     stand.machine.send("make it hide");
@@ -340,6 +466,13 @@ describe("serving a turn's tool calls", () => {
       toolCalls: [],
       ending: { kind: "failure", code: ConversationTurnFailureCode.ToolServingFailed },
     });
+
+    // The session the failed turn ran on is still the one the next turn takes.
+    stand.machine.send("try again");
+    await settled(stand.machine);
+
+    assert.equal(stand.connects(), 1);
+    assert.equal(stand.closed(), 0);
   });
 });
 
@@ -350,6 +483,23 @@ describe("ending a turn", () => {
 
     stand.machine.send("make it hide");
     await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.stop();
+    await settled(stand.machine);
+    await stand.served;
+
+    assert.deepEqual(conversation(stand.machine, "brain-a").entries[1], {
+      kind: "assistant",
+      narration: "",
+      toolCalls: [],
+      ending: { kind: "end", code: "stopped" },
+    });
+  });
+
+  test("stops a turn that was asked before its session had opened", async () => {
+    const stand = harness({ turns: [{ steps: [{ kind: "awaitStop" }] }] });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
     stand.machine.stop();
     await settled(stand.machine);
     await stand.served;
@@ -401,7 +551,9 @@ describe("ending a turn", () => {
 describe("conversations of more than one brain", () => {
   test("keeps each brain's interleaved turns in its own record", async () => {
     const turn = (text: string) => ({ steps: [{ kind: "narration" as const, text }] });
-    const stand = harness({ turns: [turn("for a"), turn("for b"), turn("for a again")] });
+    // One script per session, in the order the two brains open theirs.
+    const scripts: ScriptedService[] = [{ turns: [turn("for a"), turn("for a again")] }, { turns: [turn("for b")] }];
+    const stand = harness((at) => scripts[at]!);
 
     stand.machine.setActiveBrain("brain-a");
     stand.machine.send("first for a");
@@ -454,10 +606,9 @@ describe("conversations of more than one brain", () => {
 
     stand.machine.setActiveBrain("brain-a");
     stand.machine.send("make it hide");
-    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
     stand.machine.setActiveBrain("brain-b");
     moved();
-    await settled(stand.machine);
+    await settledFor(stand.machine, "brain-a");
     await stand.served;
 
     assert.equal(stand.machine.getState().store.activeBrainId, "brain-b");

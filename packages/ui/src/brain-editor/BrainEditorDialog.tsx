@@ -62,6 +62,7 @@ import {
   onBrainClipboardChanged,
 } from "./brain-clipboard";
 import { hasDiscardableEdits } from "./discard-guard";
+import { EditedBrainProvider } from "./EditedBrainContext";
 import { kDialogChromeLayer } from "./editor-layers";
 import { deriveEditorMode, type EditorMode } from "./editor-mode";
 import {
@@ -204,8 +205,9 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setUndoDepth(commandHistory.undoDepth());
     };
 
-    commandHistory.onChange(updateUndoRedoState);
+    const stopListening = commandHistory.onChange(updateUndoRedoState);
     updateUndoRedoState();
+    return stopListening;
   }, [commandHistory]);
 
   // Read through a ref so the working copy resets only when the dialog opens
@@ -311,6 +313,13 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   }, [brainDef, onSubmit, createEditableBrain]);
 
   const holdsDiscardableEdits = hasDiscardableEdits({ undoDepth, openingDepth, brainReplaced });
+
+  // What the side region's tenant edits: the working copy standing right now
+  // and the history the editor's own undo runs through.
+  const editedBrain = useMemo(
+    () => (brainDef === undefined ? undefined : { brainDef, history: commandHistory }),
+    [brainDef, commandHistory]
+  );
 
   const rulesRegion = (
     <LatchedBrainRulesRegion shownPage={shownPage}>
@@ -1082,7 +1091,9 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
           </DialogHeader>
           {sidePanel ? (
             <div className="flex grow min-h-0 gap-2 sm:gap-3">
-              <BrainEditorSidePanel isOpen={isSidePanelOpen} content={sidePanel.content} />
+              <EditedBrainProvider value={editedBrain}>
+                <BrainEditorSidePanel isOpen={isSidePanelOpen} content={sidePanel.content} />
+              </EditedBrainProvider>
               {rulesRegion}
             </div>
           ) : (

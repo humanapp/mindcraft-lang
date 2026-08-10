@@ -73,6 +73,15 @@ describe("the assistant provider", () => {
     assert.equal(rendered.connects(), 1);
   });
 
+  test("opens a brain's session with nothing sent", () => {
+    const rendered = render();
+
+    rendered.value.openSession("brain-a");
+
+    assert.equal(rendered.connects(), 1);
+    assert.equal(rendered.value.record, undefined);
+  });
+
   test("refuses to be read outside a provider", () => {
     function Loose() {
       useAssistant();

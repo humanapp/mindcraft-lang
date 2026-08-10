@@ -15,6 +15,8 @@ export interface AssistantContextValue {
   readonly stop: () => void;
   /** Show a brain's conversation, opening an empty one when the brain has none. */
   readonly setActiveBrain: (brainId: string) => void;
+  /** Open a brain's session now, so its first send finds one standing. */
+  readonly openSession: (brainId: string) => void;
 }
 
 const AssistantContext = createContext<AssistantContextValue | null>(null);
@@ -25,8 +27,9 @@ export interface AssistantProviderProps extends AssistantMachineOptions {
 }
 
 /**
- * Stands one assistant session over the tree it wraps. The session is opened on
- * the first send and closed when the provider unmounts.
+ * Stands the assistant over the tree it wraps. A brain's session is opened by
+ * {@link AssistantContextValue.openSession} or by its first send, and every
+ * session is closed when the provider unmounts.
  */
 export function AssistantProvider({ children, connect, manifest, workspace, mediate }: AssistantProviderProps) {
   const [machine] = useState(
@@ -44,6 +47,7 @@ export function AssistantProvider({ children, connect, manifest, workspace, medi
       send: (text: string) => machine.send(text),
       stop: () => machine.stop(),
       setActiveBrain: (brainId: string) => machine.setActiveBrain(brainId),
+      openSession: (brainId: string) => machine.openSession(brainId),
     }),
     [machine, state]
   );

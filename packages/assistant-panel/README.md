@@ -7,12 +7,13 @@ owns where the conversation is shown.
 
 ## What's Included
 
-- **Provider** (`AssistantProvider`, `useAssistant`) -- stands one assistant
-  session over the tree it wraps and exposes the active brain's conversation,
-  the session status, `send`, `stop` and `setActiveBrain`
+- **Provider** (`AssistantProvider`, `useAssistant`) -- stands the assistant
+  over the tree it wraps and exposes the active brain's conversation, its
+  session status, `send`, `stop`, `setActiveBrain` and `openSession`
 - **Session machine** (`AssistantStatus`, `AssistantChannel`,
-  `AssistantConnect`) -- lazy connect on the first send, one turn at a time,
-  tool calls served through `@mindcraft-lang/assistant-bridge`
+  `AssistantConnect`) -- one session per brain, opened when the brain's panel
+  opens or on its first send, one turn at a time per brain, tool calls served
+  through `@mindcraft-lang/assistant-bridge`
 - **Per-brain conversations** -- one `ConversationRecord` per brain, the record
   format `@mindcraft-lang/assistant-relay` defines; a turn keeps filling the
   brain it was sent for whatever the host makes active afterwards
@@ -54,18 +55,18 @@ resolve: {
 
 Wrap the app mount in `AssistantProvider`, supplying the channel factory, the
 tool manifest the handshake declares, and the workspace a brain's tool calls run
-against. Nothing connects until the first `send`.
+against. Nothing connects until a brain's session is opened or its first `send`.
 
 ```tsx
 import { AssistantProvider, useAssistant } from "@mindcraft-lang/assistant-panel";
 
-<AssistantProvider connect={openSession} manifest={manifest} workspace={workspaceFor}>
+<AssistantProvider connect={openChannel} manifest={manifest} workspace={workspaceFor}>
   <App />
 </AssistantProvider>;
 ```
 
 ```tsx
-const { status, record, send, stop, setActiveBrain } = useAssistant();
+const { status, record, send, stop, setActiveBrain, openSession } = useAssistant();
 ```
 
 ## Package Layout
@@ -79,7 +80,8 @@ src/
     store.ts                        Per-brain records, active brain, and the update reducers
   session/
     channel.ts                      AssistantChannel, AssistantConnect
-    machine.ts                      AssistantMachine, AssistantStatus
+    machine.ts                      AssistantMachine
+    sessions.ts                     AssistantStatus and each brain's session status
 ```
 
 ## Dependencies

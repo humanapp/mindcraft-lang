@@ -433,6 +433,54 @@ describe("BrainCommandHistory", () => {
     history.clear();
     assert.equal(notifications, 5);
   });
+
+  test("notifies every registered callback, in registration order", () => {
+    const history = new BrainCommandHistory();
+    const notified: string[] = [];
+    history.onChange(() => {
+      notified.push("first");
+    });
+    history.onChange(() => {
+      notified.push("second");
+    });
+
+    history.executeCommand(new CounterCommand({ value: 0 }));
+
+    assert.deepEqual(notified, ["first", "second"]);
+  });
+
+  test("unregisters only the callback whose registration was released", () => {
+    const history = new BrainCommandHistory();
+    const notified: string[] = [];
+    const releaseFirst = history.onChange(() => {
+      notified.push("first");
+    });
+    history.onChange(() => {
+      notified.push("second");
+    });
+
+    releaseFirst();
+    history.executeCommand(new CounterCommand({ value: 0 }));
+
+    assert.deepEqual(notified, ["second"]);
+  });
+
+  test("releasing a registration twice unregisters nothing further", () => {
+    const history = new BrainCommandHistory();
+    const notified: string[] = [];
+    const releaseFirst = history.onChange(() => {
+      notified.push("first");
+    });
+    history.onChange(() => {
+      notified.push("second");
+    });
+
+    releaseFirst();
+    releaseFirst();
+    history.executeCommand(new CounterCommand({ value: 0 }));
+
+    assert.deepEqual(notified, ["second"]);
+  });
 });
 
 // ---- Page commands ---------------------------------------------------------

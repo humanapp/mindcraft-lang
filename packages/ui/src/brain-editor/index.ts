@@ -67,6 +67,9 @@ export {
 export { CreateLiteralDialog } from "./CreateLiteralDialog";
 export { CreateVariableDialog } from "./CreateVariableDialog";
 export { DisplayFormatPicker } from "./DisplayFormatPicker";
+// What the side region's tenant edits: the standing working copy and its history
+export type { EditedBrain } from "./EditedBrainContext";
+export { EditedBrainProvider, useEditedBrain } from "./EditedBrainContext";
 export { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
 export type { EditorArmingFacts, EditorMode, EditorModeFacts } from "./editor-mode";
 // The one derived value naming the editor's keyboard context
