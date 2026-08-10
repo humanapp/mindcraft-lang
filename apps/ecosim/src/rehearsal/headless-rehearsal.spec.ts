@@ -7,10 +7,14 @@ import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
 import { createEcosimModule } from "@/brain/index";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "@/brain/world-definition";
+import { sourceRehearsalContent } from "./source-content";
 import { createRehearsalWorld, STEP_MS, type WorldObserver } from "./world";
 
 /** Number of fixed steps a rehearsal runs. */
 const RUN_TICKS = 600;
+
+/** The app's own assets, read from the tree these specs run in. */
+const CONTENT = sourceRehearsalContent();
 
 /** Population role a scripted run puts under study. */
 const SCRIPTED_SUBJECT: Archetype = "herbivore";
@@ -119,6 +123,7 @@ async function runRehearsal(seed: number, ticks: number, inputs: readonly Scenar
     environment,
     next,
     observer: obs,
+    shippedBrains: CONTENT.shippedBrains,
     ...(inputs.length > 0 ? { scripted: { inputs, subject: () => obs.subject } } : {}),
   });
 

@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { ScenarioInput, ScenarioInputKind } from "@mindcraft-lang/assistant-bridge";
 import type { IBrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
 import MatterBodyModule from "phaser/src/physics/matter-js/lib/body/Body.js";
@@ -32,6 +29,8 @@ import {
 import type { Playground } from "@/game/scenes/Playground";
 import { deserializeBrainFromArrayBuffer } from "@/services/brain-persistence";
 import type { EcosimEnvironmentStore } from "@/services/ecosim-environment-store";
+import type { ShippedBrainDefs } from "./content";
+import { shippedBrainBytes } from "./content";
 
 // -- Matter.js, loaded without Phaser -------------------------------------------
 
@@ -46,18 +45,6 @@ export const STEP_MS = 1000 / WORLD_FPS;
 
 /** Project namespace the shipped brain documents deserialize under. */
 const PROJECT_NAMESPACE = "ecosim-rehearsal";
-
-/** Directory holding the brain documents the app ships for each archetype, from this module's own location. */
-const BRAIN_ASSET_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "public", "assets", "brain", "defs");
-
-/** The serialized brain document the app ships for `archetype`, from the artifact or from the app tree. */
-function shippedBrainBytes(archetype: Archetype): ArrayBuffer {
-  const bytes =
-    typeof SHIPPED_BRAIN_DEFS === "object"
-      ? Buffer.from(SHIPPED_BRAIN_DEFS[archetype] ?? "", "base64")
-      : readFileSync(join(BRAIN_ASSET_DIR, `default-${archetype}.brain`));
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-}
 
 /** The world-construction draws of one run, taken from its seeded stream. */
 function seededRandom(rng: () => number): WorldRandom {
@@ -415,10 +402,10 @@ class HeadlessScene {
 // -- World content --------------------------------------------------------------
 
 /** The brain the app ships for each archetype, deserialized through the app's own loader. */
-function loadShippedBrains(env: MindcraftEnvironment): Record<Archetype, IBrainDef> {
+function loadShippedBrains(env: MindcraftEnvironment, shipped: ShippedBrainDefs): Record<Archetype, IBrainDef> {
   const brains: Partial<Record<Archetype, IBrainDef>> = {};
   for (const archetype of ARCHETYPE_NAMES) {
-    const brain = deserializeBrainFromArrayBuffer(env, shippedBrainBytes(archetype), PROJECT_NAMESPACE);
+    const brain = deserializeBrainFromArrayBuffer(env, shippedBrainBytes(shipped, archetype), PROJECT_NAMESPACE);
     if (!brain) throw new Error(`the shipped ${archetype} brain did not deserialize`);
     brains[archetype] = brain;
   }
@@ -568,6 +555,8 @@ export interface RehearsalWorldOptions {
    */
   readonly next: () => number;
   readonly observer: WorldObserver;
+  /** The brain document the app ships for each archetype, which the world populates from. */
+  readonly shippedBrains: ShippedBrainDefs;
   /** Brains to run in place of the shipped defaults, built against {@link environment}. */
   readonly brains?: Partial<Record<Archetype, IBrainDef>>;
   /** World causes the run scripts. */
@@ -593,7 +582,7 @@ export interface RehearsalWorld {
  */
 export async function createRehearsalWorld(options: RehearsalWorldOptions): Promise<RehearsalWorld> {
   const { environment, next, observer } = options;
-  const brains = { ...loadShippedBrains(environment), ...options.brains };
+  const brains = { ...loadShippedBrains(environment, options.shippedBrains), ...options.brains };
 
   const scene = new HeadlessScene(next, observer);
   const engine = new Engine(scene as unknown as Playground, scene.obstacleBodies, headlessStore(environment, brains));

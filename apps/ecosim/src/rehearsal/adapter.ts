@@ -1,15 +1,14 @@
 import type { TargetAdapter, TargetManifest } from "@mindcraft-lang/assistant-bridge";
-import type { RehearsalWorld, WorldDriver, WorldStaging } from "@mindcraft-lang/assistant-bridge/kit";
-import { createRehearsalAdapter } from "@mindcraft-lang/assistant-bridge/kit";
+import type { RehearsalWorld, WorldDriver, WorldStaging } from "@mindcraft-lang/assistant-bridge/kit/rehearsal";
+import { createRehearsalAdapter, pairTileDocs } from "@mindcraft-lang/assistant-bridge/kit/rehearsal";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES } from "@/brain/archetypes";
 import { getSelf } from "@/brain/execution-context-types";
 import { createEcosimModule } from "@/brain/index";
-import { ecosimTileDocs } from "./tile-docs";
+import { appTileDocs } from "@/docs/manifest";
+import type { RehearsalContent, ShippedBrainDefs } from "./content";
+import { injectedContent } from "./content";
 import { createRehearsalWorld, SCENARIO_INPUT_KINDS } from "./world";
-
-/** Target identity the adapter reports: injected at build time, empty in a source run. */
-const IDENTITY = typeof TARGET_IDENTITY === "string" ? TARGET_IDENTITY : "";
 
 const MANIFEST: TargetManifest = {
   target: "ecosim, a top-down world of creatures",
@@ -22,7 +21,7 @@ const MANIFEST: TargetManifest = {
 };
 
 /** Stage one ecosim world with the brain under study driving the subject archetype. */
-async function stage(staging: WorldStaging): Promise<RehearsalWorld> {
+async function stage(shippedBrains: ShippedBrainDefs, staging: WorldStaging): Promise<RehearsalWorld> {
   const role = staging.subject as Archetype;
   /** The creature under study; unset until its first spawn. */
   let underStudy: Actor | undefined;
@@ -30,6 +29,7 @@ async function stage(staging: WorldStaging): Promise<RehearsalWorld> {
   const world = await createRehearsalWorld({
     environment: staging.environment,
     next: staging.next,
+    shippedBrains,
     brains: { [role]: staging.subjectBrain },
     scripted: { inputs: staging.inputs, subject: () => underStudy },
     observer: {
@@ -55,24 +55,32 @@ async function stage(staging: WorldStaging): Promise<RehearsalWorld> {
   };
 }
 
-/** The ecosim world driver: a whole seeded world of creatures, stepped at a fixed timestep. */
-const driver: WorldDriver = {
-  modules: () => [createEcosimModule()],
-  subjects: () => [...ARCHETYPE_NAMES],
-  inputKinds: () => SCENARIO_INPUT_KINDS,
-  stage,
-};
+/**
+ * The ecosim world driver: a whole seeded world of creatures, stepped at a
+ * fixed timestep, populated by the brains `shippedBrains` carries.
+ */
+function createDriver(shippedBrains: ShippedBrainDefs): WorldDriver {
+  return {
+    modules: () => [createEcosimModule()],
+    subjects: () => [...ARCHETYPE_NAMES],
+    inputKinds: () => SCENARIO_INPUT_KINDS,
+    stage: (staging) => stage(shippedBrains, staging),
+  };
+}
 
 /**
  * The ecosim target adapter: installs the ecosim module for authoring, and
  * rehearses a brain by running a whole ecosim world headlessly with the brain
  * under study driving one archetype's population.
+ *
+ * @param content The app assets the adapter rehearses over; defaults to the
+ * content this module graph was built with.
  */
-export function createTargetAdapter(): TargetAdapter {
+export function createTargetAdapter(content: RehearsalContent = injectedContent()): TargetAdapter {
   return createRehearsalAdapter({
-    targetIdentity: IDENTITY,
+    targetIdentity: content.targetIdentity,
     manifest: MANIFEST,
-    tileDocs: ecosimTileDocs,
-    driver,
+    tileDocs: () => pairTileDocs(content.tileDocs, appTileDocs),
+    driver: createDriver(content.shippedBrains),
   });
 }

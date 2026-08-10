@@ -3,16 +3,20 @@ import { describe, test } from "node:test";
 import { createAuthoringWorkspace, proposeEdit } from "@mindcraft-lang/assistant-bridge";
 import { ConformanceCheckCode, checkAdapterConformance } from "@mindcraft-lang/assistant-bridge/kit";
 import { createTargetAdapter } from "./adapter";
+import { sourceRehearsalContent } from "./source-content";
 
 /** Fixed steps each conformance run covers. */
 const RUN_THINKS = 200;
+
+/** The app's own assets, read from the tree these specs run in. */
+const CONTENT = sourceRehearsalContent();
 
 /** Scenario the conformance runs stage. */
 const SCENARIO = { seed: 20260805, subject: "herbivore" };
 
 /** A workspace carrying one rule: run away from a carnivore it can see. */
 function authoredWorkspace() {
-  const workspace = createAuthoringWorkspace(createTargetAdapter(), "conformance brain");
+  const workspace = createAuthoringWorkspace(createTargetAdapter(CONTENT), "conformance brain");
   const when = proposeEdit(workspace, {
     op: "placeTiles",
     ruleId: "0/0",

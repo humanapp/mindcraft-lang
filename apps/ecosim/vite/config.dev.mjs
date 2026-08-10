@@ -2,6 +2,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import { defineConfig } from "vite";
 import { uiPlugin } from "../../../packages/ui/src/vite-plugin.ts";
+import { rehearsalDefines } from "../src/rehearsal/source-content.ts";
 import { embeddedExtensions } from "./embedded-extensions.mjs";
 
 const appRoot = path.resolve(__dirname, ".."); // adjust if needed
@@ -12,6 +13,7 @@ export default defineConfig({
   base: "/",
   appType: "spa",
   plugins: [react(), uiPlugin(), embeddedExtensions()],
+  define: rehearsalDefines(),
   resolve: {
     alias: {
       "@": path.resolve(process.cwd(), "./src"),

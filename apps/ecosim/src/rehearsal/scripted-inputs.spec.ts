@@ -4,7 +4,11 @@ import type { AuthoringWorkspace, ScenarioInput, SimulationRun } from "@mindcraf
 import { createAuthoringWorkspace, proposeEdit } from "@mindcraft-lang/assistant-bridge";
 import { ARCHETYPE_NAMES } from "@/brain/archetypes";
 import { createTargetAdapter } from "./adapter";
+import { sourceRehearsalContent } from "./source-content";
 import { SCENARIO_INPUT_KINDS } from "./world";
+
+/** The app's own assets, read from the tree these specs run in. */
+const CONTENT = sourceRehearsalContent();
 
 /** Seed every run here stages its world from. */
 const SEED = 20260805;
@@ -32,7 +36,7 @@ const IN_CONTACT = 10;
 
 /** A workspace whose one rule wanders while `sensorTiles` reads true. */
 function gatedWorkspace(sensorTiles: string[]): AuthoringWorkspace {
-  const workspace = createAuthoringWorkspace(createTargetAdapter(), "scripted-input brain");
+  const workspace = createAuthoringWorkspace(createTargetAdapter(CONTENT), "scripted-input brain");
   const when = proposeEdit(workspace, { op: "placeTiles", ruleId: "0/0", side: "when", tileIds: sensorTiles });
   assert.equal(when.ok, true, JSON.stringify(when));
   const doSide = proposeEdit(workspace, {
@@ -87,7 +91,7 @@ function assertFlippedWithTheStaging(fired: readonly number[]): void {
 
 describe("scripted world causes in an ecosim rehearsal", () => {
   test("reads one percept kind per archetype, and reports them through the adapter", () => {
-    assert.deepEqual(createTargetAdapter().inputKinds(), SCENARIO_INPUT_KINDS);
+    assert.deepEqual(createTargetAdapter(CONTENT).inputKinds(), SCENARIO_INPUT_KINDS);
     assert.equal(SCENARIO_INPUT_KINDS.length, ARCHETYPE_NAMES.length);
   });
 

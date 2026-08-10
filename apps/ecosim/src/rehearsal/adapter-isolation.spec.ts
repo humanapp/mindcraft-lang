@@ -8,10 +8,14 @@ import type { Actor } from "@/brain/actor";
 import { createEcosimModule } from "@/brain/index";
 import { TileIds } from "@/brain/tileids";
 import { createTargetAdapter } from "./adapter";
+import { sourceRehearsalContent } from "./source-content";
 import { createRehearsalWorld } from "./world";
 
 /** Fixed-step thinks each rehearsal covers. */
 const RUN_THINKS = 120;
+
+/** The app's own assets, read from the tree these specs run in. */
+const CONTENT = sourceRehearsalContent();
 
 /** Scenario every rehearsal in this file stages. */
 const SCENARIO = { seed: 20260808, subject: "herbivore" };
@@ -27,7 +31,7 @@ const WORLD_SEEDS = [20260808, 20260809] as const;
  * under `movement` relative to it.
  */
 function authoredWorkspace(actorKind: string, movement: string): AuthoringWorkspace {
-  const workspace = createAuthoringWorkspace(createTargetAdapter(), "isolation brain");
+  const workspace = createAuthoringWorkspace(createTargetAdapter(CONTENT), "isolation brain");
   const when = proposeEdit(workspace, {
     op: "placeTiles",
     ruleId: "0/0",
@@ -88,6 +92,7 @@ function stageWorld(seed: number) {
     environment: createRehearsalEnvironment({ modules: [createEcosimModule()], rng: next }),
     next,
     observer: {},
+    shippedBrains: CONTENT.shippedBrains,
   });
 }
 

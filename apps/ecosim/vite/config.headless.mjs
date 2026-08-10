@@ -1,32 +1,11 @@
-import {
-  assertDependencyDistsFresh,
-  readTargetIdentity,
-  readTileDocContent,
-} from "@mindcraft-lang/assistant-bridge/kit";
-import { readdirSync, readFileSync } from "fs";
+import { assertDependencyDistsFresh } from "@mindcraft-lang/assistant-bridge/kit";
 import path from "path";
 import { defineConfig } from "vite";
+import { rehearsalDefines } from "../src/rehearsal/source-content.ts";
 
 const appDir = process.cwd();
 
 assertDependencyDistsFresh(appDir);
-
-// Target identity injected into the headless artifact as TARGET_IDENTITY.
-const targetIdentity = readTargetIdentity(appDir);
-
-// The app's own assets, injected so the artifact carries them and resolves
-// nothing from the tree that built it: the tile documentation, and the brain
-// document shipped for each archetype.
-const tileDocContent = readTileDocContent(path.resolve(appDir, "src/docs/content/en/tiles"));
-const brainDefsDir = path.resolve(appDir, "public/assets/brain/defs");
-const shippedBrainDefs = Object.fromEntries(
-  readdirSync(brainDefsDir)
-    .filter((file) => file.startsWith("default-") && file.endsWith(".brain"))
-    .map((file) => [
-      file.slice("default-".length, -".brain".length),
-      readFileSync(path.join(brainDefsDir, file)).toString("base64"),
-    ])
-);
 
 // Build output of packages linked into the app from this repository, which sits
 // outside node_modules.
@@ -47,11 +26,7 @@ export default defineConfig({
   ssr: {
     noExternal: true,
   },
-  define: {
-    TARGET_IDENTITY: JSON.stringify(targetIdentity),
-    TILE_DOC_CONTENT: JSON.stringify(tileDocContent),
-    SHIPPED_BRAIN_DEFS: JSON.stringify(shippedBrainDefs),
-  },
+  define: rehearsalDefines(),
   publicDir: false,
   logLevel: "warn",
   build: {
