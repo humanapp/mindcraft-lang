@@ -74,7 +74,7 @@ import {
 } from "./editor-return-focus";
 import { decideHistoryShortcut } from "./history-shortcut";
 import { RulePickupProvider, useRulePickupState } from "./RulePickupContext";
-import { kSidePanelRegionId } from "./side-panel";
+import { kSidePanelRegionId, sidePanelToggleLabel } from "./side-panel";
 
 // Top-edge brand accent. Uses each app's signature strip tokens when defined
 // (microbit-sim's blue->green->teal), else falls back to the brand primary/ring
@@ -872,8 +872,8 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                       <Button
                         className="hidden lg:flex h-8 w-8 px-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md"
                         onClick={toggleSidePanel}
-                        title="Side panel"
-                        aria-label="Toggle side panel"
+                        title={sidePanel?.label ?? "Side panel"}
+                        aria-label={sidePanelToggleLabel(sidePanel?.label)}
                         aria-expanded={isSidePanelOpen}
                         aria-controls={kSidePanelRegionId}
                       >

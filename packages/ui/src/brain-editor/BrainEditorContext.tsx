@@ -99,6 +99,11 @@ export interface BrainEditorConfig {
     toggle: () => void;
     /** What the region holds. It is put in on the region's first open. */
     content: ReactNode;
+    /**
+     * What the host calls the region. The control that toggles it reads its
+     * accessible name from this; a host that leaves it out gets a generic one.
+     */
+    label?: string;
   };
   /**
    * Sink for the printable document when the host cannot open the browser

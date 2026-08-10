@@ -1,6 +1,10 @@
-export type { AssistantContextValue, AssistantProviderProps } from "./AssistantProvider";
-export { AssistantProvider, useAssistant } from "./AssistantProvider";
+export type { AssistantProviderProps } from "./AssistantProvider";
+export { AssistantProvider } from "./AssistantProvider";
+export type { AssistantSurfaceProps } from "./AssistantSurface";
 export { AssistantSurface } from "./AssistantSurface";
+export type { AssistantContextValue } from "./assistant-context";
+export { useAssistant } from "./assistant-context";
 export type { AssistantChannel, AssistantConnect } from "./session/channel";
 export type { AssistantMachineOptions } from "./session/machine";
 export { AssistantStatus } from "./session/machine";
+export { createWebSocketConnect } from "./session/websocket-channel";

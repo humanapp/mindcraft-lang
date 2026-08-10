@@ -12,6 +12,15 @@ export function standsSidePanelContent(isOpen: boolean, hasBeenOpened: boolean):
   return isOpen || hasBeenOpened;
 }
 
+/**
+ * The accessible name the control toggling the side region carries, for a
+ * region the host calls `label`. Falls back to a generic name when `label` is
+ * absent or empty.
+ */
+export function sidePanelToggleLabel(label: string | undefined): string {
+  return label ? `Toggle ${label}` : "Toggle side panel";
+}
+
 /** What the region carries whatever it stands: its width, its column, and its step. */
 const regionClasses = `hidden min-h-0 w-80 shrink-0 flex-col overflow-hidden ${kSidePanelLayer}`;
 

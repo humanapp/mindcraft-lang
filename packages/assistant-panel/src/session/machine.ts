@@ -70,8 +70,13 @@ export class AssistantMachine {
     };
   };
 
-  /** Show `brainId`'s conversation. A turn already running keeps filling the brain it was sent for. */
+  /**
+   * Show `brainId`'s conversation. A turn already running keeps filling the
+   * brain it was sent for. Naming the brain already shown changes nothing and
+   * notifies nobody.
+   */
   setActiveBrain(brainId: string): void {
+    if (this.current.store.activeBrainId === brainId) return;
     this.commit({ store: withActiveBrain(this.current.store, brainId) });
   }
 

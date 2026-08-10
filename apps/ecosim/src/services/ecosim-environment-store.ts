@@ -40,6 +40,7 @@ import { ARCHETYPES } from "@/brain/archetypes";
 import type { Obstacle } from "@/brain/vision";
 import { defaultDesiredCounts } from "@/brain/world-definition";
 import { name as simName } from "../../package.json";
+import { type AppSettings, loadAppSettings, normalizeAppSettings, persistAppSettings } from "./app-settings";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
 import { ecosimDefaultExtensions, ecosimEmbeddedExtensions } from "./ecosim-embedded-extensions";
 import { ecosimLibraryCatalogMoves } from "./ecosim-extension-browser";
@@ -54,36 +55,7 @@ const ecosimMounts: readonly Mount[] = [];
 
 // -- AppSettings --
 
-const APP_SETTINGS_STORAGE_KEY = `${simName}:app-settings`;
-
-export interface AppSettings {
-  vscodeBridgeUrl: string;
-  showBridgePanel: boolean;
-}
-
-const DEFAULT_APP_SETTINGS: AppSettings = {
-  vscodeBridgeUrl: "vscode-bridge.mindcraft-lang.org",
-  showBridgePanel: true,
-};
-
 type AppSettingsListener = (settings: AppSettings, prev: AppSettings) => void;
-
-function loadAppSettings(): AppSettings {
-  try {
-    const raw = localStorage.getItem(APP_SETTINGS_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<AppSettings>;
-      return { ...DEFAULT_APP_SETTINGS, ...parsed };
-    }
-  } catch {
-    // corrupted data -- fall through to defaults
-  }
-  return { ...DEFAULT_APP_SETTINGS };
-}
-
-function persistAppSettings(settings: AppSettings): void {
-  localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-}
 
 // -- UiPreferences (per-project, non-portable) --
 
@@ -631,11 +603,7 @@ export class EcosimEnvironmentStore {
 
   updateAppSettings(patch: Partial<AppSettings>): void {
     const prev = this._appSettings;
-    const merged = { ...this._appSettings, ...patch };
-    if (!merged.vscodeBridgeUrl.trim()) {
-      merged.vscodeBridgeUrl = DEFAULT_APP_SETTINGS.vscodeBridgeUrl;
-    }
-    this._appSettings = merged;
+    this._appSettings = normalizeAppSettings({ ...this._appSettings, ...patch });
     persistAppSettings(this._appSettings);
     for (const fn of this._appSettingsListeners) {
       fn(this._appSettings, prev);

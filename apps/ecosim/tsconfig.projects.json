@@ -8,7 +8,7 @@
     },
     {
       "project": "src/rehearsal/tsconfig.json",
-      "include": ["src/rehearsal/**/*.ts", "src/vite-env.d.ts"],
+      "include": ["src/rehearsal/**/*.ts", "src/vite-env.d.ts", "src/build-defines.d.ts", "src/phaser-matter.d.ts"],
       "exclude": ["src/rehearsal/**/*.spec.ts"]
     },
     {
@@ -16,8 +16,8 @@
       "include": [
         "src/**/*.spec.ts",
         "src/vite-env.d.ts",
-        "src/rehearsal/build-defines.d.ts",
-        "src/rehearsal/phaser-matter.d.ts",
+        "src/build-defines.d.ts",
+        "src/phaser-matter.d.ts",
         "src/components/BrainDiagnostics.tsx",
         "src/components/CompileDiagnosticsConsole.tsx",
         "src/components/ConsoleOutputList.tsx",

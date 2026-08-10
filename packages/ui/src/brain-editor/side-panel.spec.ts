@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { sidePanelRegionClasses, standsSidePanelContent } from "./side-panel";
+import { sidePanelRegionClasses, sidePanelToggleLabel, standsSidePanelContent } from "./side-panel";
 
 describe("what the side region holds", () => {
   test("holds nothing until it has stood open", () => {
@@ -41,6 +41,18 @@ describe("the open side region", () => {
     const open = sidePanelRegionClasses(true);
     assert.match(open, /(^|\s)hidden(\s|$)/);
     assert.match(open, /(^|\s)lg:flex(\s|$)/);
+  });
+});
+
+describe("what the control toggling the side region is called", () => {
+  test("carries the name the host gave the region", () => {
+    assert.match(sidePanelToggleLabel("Herbivore Brain"), /Herbivore Brain/);
+  });
+
+  test("names the region itself when the host named it nothing", () => {
+    const generic = sidePanelToggleLabel(undefined);
+    assert.equal(generic, sidePanelToggleLabel(""));
+    assert.ok(generic.length > 0, "the control is never left unnamed");
   });
 });
 

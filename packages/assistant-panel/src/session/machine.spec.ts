@@ -8,12 +8,12 @@ import { ConversationTurnFailureCode, RelayDeclineCode, RelayRefusalCode } from 
 import type { RelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
 import { createRelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
 import { recordFor } from "../conversation/store";
+import type { ScriptedCall, ScriptedService } from "../testing/scripted-service";
+import { runScriptedService } from "../testing/scripted-service";
 import type { AssistantChannel } from "./channel";
 import type { AssistantMachineOptions, AssistantMachineState } from "./machine";
 import { AssistantMachine, AssistantStatus } from "./machine";
 import { sessionStatus } from "./sessions";
-import type { ScriptedCall, ScriptedService } from "./test-only-scripted-service";
-import { runScriptedService } from "./test-only-scripted-service";
 
 /** Tiles the fake target's brains are authored from. */
 const tiles = {

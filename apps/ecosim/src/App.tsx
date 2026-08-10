@@ -1,6 +1,6 @@
 import type { ProjectCollection, ProjectCollectionState, ProjectManifest } from "@mindcraft-lang/app-host";
 import { AppHostError } from "@mindcraft-lang/app-host";
-import { AssistantSurface } from "@mindcraft-lang/assistant-panel";
+import { AssistantProvider, createWebSocketConnect } from "@mindcraft-lang/assistant-panel";
 import type { BrainDef } from "@mindcraft-lang/core/app";
 import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
@@ -17,10 +17,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { toast } from "sonner";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
+import { ARCHETYPES } from "./brain/archetypes";
 import type { BrainLoadFailure } from "./brain/brain-load-failure";
 import { buildBrainEditorConfig } from "./brain/editor/config";
 import { dataTypeIconMap, dataTypeNameMap } from "./brain/editor/data-type-icons";
 import { createVfsAwareVisualProvider } from "./brain/editor/visual-provider";
+import { AssistantSidePanel } from "./components/AssistantSidePanel";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { NewWorkspaceDialog } from "./components/NewWorkspaceDialog";
 import { ProjectHeader } from "./components/ProjectHeader";
@@ -30,6 +32,11 @@ import { useEcosimEnvironment } from "./contexts/ecosim-environment";
 import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground, SceneBrainState } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
+import { createTargetAdapter } from "./rehearsal/adapter";
+import { assistantToolManifest } from "./services/assistant-manifest";
+import { assistantSessionUrl } from "./services/assistant-service-url";
+import type { EditedBrainWorkspaces } from "./services/edited-brain-workspaces";
+import { createEditedBrainWorkspaces } from "./services/edited-brain-workspaces";
 import { downloadTextFile } from "./utils/file-download";
 import { pickFile } from "./utils/file-upload";
 
@@ -59,11 +66,24 @@ function snapshotEqual(a: ScoreSnapshot, b: ScoreSnapshot): boolean {
   );
 }
 
+/** Name to present the entity by while the editor stands no working copy of it. */
+function archetypeBrainName(archetype: Archetype | null): string {
+  return archetype ? ARCHETYPES[archetype].brainName : "Brain";
+}
+
 /**
  * Wrapper that injects docs integration from the docs context, and the
  * assistant's conversation surface, into the brain editor config.
  */
-function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype | null; children: React.ReactNode }) {
+function DocsBrainEditorProvider({
+  archetype,
+  workspaces,
+  children,
+}: {
+  archetype: Archetype | null;
+  workspaces: EditedBrainWorkspaces;
+  children: React.ReactNode;
+}) {
   const {
     openDocsForTile,
     isOpen: isDocsOpen,
@@ -82,6 +102,7 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
     store.subscribeToCompileDiagnostics,
     store.getCompileDiagnosticsSnapshot
   );
+  const entityName = archetypeBrainName(archetype);
   const config = useMemo(() => {
     // A VFS revision bump re-creates the config so tiles re-resolve their
     // asset URLs against the new generation.
@@ -92,12 +113,19 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
       archetype: archetype ?? undefined,
       onTileDocs: openDocsForTile,
       docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs, reportMode: reportEditorMode },
-      sidePanel: { isOpen: isAssistantOpen, toggle: toggleAssistant, content: <AssistantSurface /> },
+      sidePanel: {
+        isOpen: isAssistantOpen,
+        toggle: toggleAssistant,
+        label: entityName,
+        content: <AssistantSidePanel isOpen={isAssistantOpen} fallbackName={entityName} workspaces={workspaces} />,
+      },
       isBrokenTile: (tile) => store.host.getTileCompileDiagnostics(tile.action.key) !== undefined,
     });
   }, [
     store,
     archetype,
+    entityName,
+    workspaces,
     vfsRevision,
     compileDiagnostics,
     openDocsForTile,
@@ -125,6 +153,14 @@ interface PickerProjectListState {
 
 function App() {
   const store = useEcosimEnvironment();
+  const assistant = useMemo(() => {
+    const adapter = createTargetAdapter();
+    return {
+      manifest: assistantToolManifest(adapter),
+      workspaces: createEditedBrainWorkspaces({ environment: store.env, adapter }),
+      connect: () => createWebSocketConnect(assistantSessionUrl(store.getAppSettings().assistantServiceUrl))(),
+    };
+  }, [store]);
   const [isBrainEditorOpen, setIsBrainEditorOpen] = useState(false);
   const [editingArchetype, setEditingArchetype] = useState<Archetype | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -704,168 +740,174 @@ function App() {
   }, []);
 
   return (
-    <DocsSidebarProvider
-      registry={docsRegistry}
-      tileCatalog={docsTileCatalog}
-      brainServices={store.env.brainServices}
-      libraries={docsLibraries}
-      dataTypeNames={dataTypeNameMap}
-      dataTypeIcons={dataTypeIconMap}
-      resolveTileVisual={docsResolveTileVisual}
+    <AssistantProvider
+      connect={assistant.connect}
+      manifest={assistant.manifest}
+      workspace={assistant.workspaces.workspaceFor}
     >
-      <div className="h-screen flex bg-background overflow-hidden">
-        <h1 className="sr-only">Mindcraft Simulation</h1>
-        {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
-        <main className="flex-1 min-w-0 relative bg-canvas" aria-label="Game canvas">
-          {activeWorkspaceLocked ? (
-            <div className="flex h-full min-h-screen items-center justify-center bg-background p-4 text-foreground">
-              <form
-                className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-2xl"
-                onSubmit={handleActiveWorkspaceUnlock}
-              >
-                <div className="mb-4 flex items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
-                    <Lock className="h-5 w-5" aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <h2 className="truncate text-lg font-semibold">Workspace Locked</h2>
-                    <p className="truncate text-sm text-muted-foreground">{activeWorkspaceName}</p>
+      <DocsSidebarProvider
+        registry={docsRegistry}
+        tileCatalog={docsTileCatalog}
+        brainServices={store.env.brainServices}
+        libraries={docsLibraries}
+        dataTypeNames={dataTypeNameMap}
+        dataTypeIcons={dataTypeIconMap}
+        resolveTileVisual={docsResolveTileVisual}
+      >
+        <div className="h-screen flex bg-background overflow-hidden">
+          <h1 className="sr-only">Mindcraft Simulation</h1>
+          {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
+          <main className="flex-1 min-w-0 relative bg-canvas" aria-label="Game canvas">
+            {activeWorkspaceLocked ? (
+              <div className="flex h-full min-h-screen items-center justify-center bg-background p-4 text-foreground">
+                <form
+                  className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-2xl"
+                  onSubmit={handleActiveWorkspaceUnlock}
+                >
+                  <div className="mb-4 flex items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
+                      <Lock className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <h2 className="truncate text-lg font-semibold">Workspace Locked</h2>
+                      <p className="truncate text-sm text-muted-foreground">{activeWorkspaceName}</p>
+                    </div>
                   </div>
-                </div>
-                <WorkspacePinInput
-                  label="PIN"
-                  value={activeUnlockPin}
-                  disabled={activeUnlockBusy}
-                  autoFocus
-                  labelClassName="text-sm font-medium text-foreground"
-                  inputClassName="border-input bg-background"
-                  buttonClassName="text-muted-foreground hover:text-foreground"
-                  resetVisibilityKey={projectCollectionState?.activeProjectCollection?.projectCollectionId}
-                  onValueChange={(value) => {
-                    setActiveUnlockPin(value);
-                    setActiveUnlockError(undefined);
-                  }}
-                />
-                {activeUnlockError && (
-                  <p className="mt-2 text-sm text-destructive" role="alert">
-                    {activeUnlockError}
-                  </p>
-                )}
-                <Button className="mt-4 w-full" type="submit" disabled={!activeUnlockPin || activeUnlockBusy}>
-                  {activeUnlockBusy ? "Unlocking..." : "Unlock Workspace"}
-                </Button>
-              </form>
-            </div>
-          ) : (
-            <PhaserGame store={store} onSceneBrainState={handleSceneBrainState} />
+                  <WorkspacePinInput
+                    label="PIN"
+                    value={activeUnlockPin}
+                    disabled={activeUnlockBusy}
+                    autoFocus
+                    labelClassName="text-sm font-medium text-foreground"
+                    inputClassName="border-input bg-background"
+                    buttonClassName="text-muted-foreground hover:text-foreground"
+                    resetVisibilityKey={projectCollectionState?.activeProjectCollection?.projectCollectionId}
+                    onValueChange={(value) => {
+                      setActiveUnlockPin(value);
+                      setActiveUnlockError(undefined);
+                    }}
+                  />
+                  {activeUnlockError && (
+                    <p className="mt-2 text-sm text-destructive" role="alert">
+                      {activeUnlockError}
+                    </p>
+                  )}
+                  <Button className="mt-4 w-full" type="submit" disabled={!activeUnlockPin || activeUnlockBusy}>
+                    {activeUnlockBusy ? "Unlocking..." : "Unlock Workspace"}
+                  </Button>
+                </form>
+              </div>
+            ) : (
+              <PhaserGame store={store} onSceneBrainState={handleSceneBrainState} />
+            )}
+            <ProjectHeader
+              projectName={projectName}
+              projectCollectionState={projectCollectionState}
+              onBrowseProjects={openProjectPickerForWorkspace}
+              onUnlockWorkspace={unlockWorkspace}
+              onNewProject={() => setIsNewProjectOpen(true)}
+              onNewWorkspace={() => setIsNewWorkspaceOpen(true)}
+              onExportProject={handleExportProject}
+              onImportProject={handleImportProject}
+            />
+            {!activeWorkspaceLocked && (
+              <button
+                type="button"
+                className="absolute top-3 right-3 z-40 md:hidden flex items-center justify-center w-10 h-10 rounded-lg bg-background/80 backdrop-blur border border-border shadow-md"
+                onClick={() => setIsSidebarOpen((o) => !o)}
+                aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
+              >
+                {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+            )}
+          </main>
+
+          {/* Backdrop -- mobile only */}
+          {!activeWorkspaceLocked && isSidebarOpen && (
+            <div
+              className="fixed inset-0 z-40 bg-black/50 md:hidden"
+              onClick={() => setIsSidebarOpen(false)}
+              aria-hidden="true"
+            />
           )}
-          <ProjectHeader
-            projectName={projectName}
-            projectCollectionState={projectCollectionState}
-            onBrowseProjects={openProjectPickerForWorkspace}
-            onUnlockWorkspace={unlockWorkspace}
-            onNewProject={() => setIsNewProjectOpen(true)}
-            onNewWorkspace={() => setIsNewWorkspaceOpen(true)}
-            onExportProject={handleExportProject}
-            onImportProject={handleImportProject}
-          />
+
           {!activeWorkspaceLocked && (
-            <button
-              type="button"
-              className="absolute top-3 right-3 z-40 md:hidden flex items-center justify-center w-10 h-10 rounded-lg bg-background/80 backdrop-blur border border-border shadow-md"
-              onClick={() => setIsSidebarOpen((o) => !o)}
-              aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
-            >
-              {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
+            <Sidebar
+              snapshot={snapshot}
+              timeSpeed={timeSpeed}
+              onTimeSpeedChange={handleTimeSpeedChange}
+              isPlaying={isPlaying}
+              onTogglePlay={handleTogglePlay}
+              onEditBrain={handleEditBrain}
+              brainsReady={scene !== null && brainsLoaded}
+              brainLoadFailure={brainLoadFailure}
+              onDesiredCountChange={handleDesiredCountChange}
+              onToggleDebug={handleToggleDebug}
+              debugEnabled={debugEnabled}
+              isOpen={isSidebarOpen}
+              onClose={() => setIsSidebarOpen(false)}
+            />
           )}
-        </main>
 
-        {/* Backdrop -- mobile only */}
-        {!activeWorkspaceLocked && isSidebarOpen && (
-          <div
-            className="fixed inset-0 z-40 bg-black/50 md:hidden"
-            onClick={() => setIsSidebarOpen(false)}
-            aria-hidden="true"
+          {/* Brain Editor Dialog (rendered at root for proper overlay) */}
+          <DocsBrainEditorProvider archetype={editingArchetype} workspaces={assistant.workspaces}>
+            <BrainEditorDialog
+              isOpen={isBrainEditorOpen}
+              onOpenChange={(open) => {
+                setIsBrainEditorOpen(open);
+                if (!open) {
+                  setEditingArchetype(null);
+                }
+              }}
+              srcBrainDef={getBrainDefForEditing()}
+              onSubmit={handleBrainSubmit}
+            />
+          </DocsBrainEditorProvider>
+
+          <ProjectPickerDialog
+            open={isPickerOpen}
+            onOpenChange={handleProjectPickerOpenChange}
+            title={`Projects in ${pickerWorkspace?.collection.name ?? "Workspace"}`}
+            description={
+              pickerWorkspace?.pending
+                ? `Choose a project to open this workspace, or close to stay in ${
+                    projectCollectionState?.activeProjectCollection?.name ?? "the current workspace"
+                  }.`
+                : "Select a project to open, or create a new one."
+            }
+            workspaceContext={pickerWorkspace?.context}
+            emptyStateMessage={
+              pickerProjectListReady
+                ? `${pickerWorkspace?.collection.name ?? "This workspace"} has no projects yet.`
+                : "Loading projects..."
+            }
+            projects={pickerItems}
+            activeProjectId={projectCollectionState?.activeProjectId}
+            projectDeletionDisabled={pickerWorkspace?.pending === true}
+            onSelect={handleSelectProject}
+            onDelete={handleDeleteProject}
+            onCreate={handleNewProject}
           />
-        )}
 
-        {!activeWorkspaceLocked && (
-          <Sidebar
-            snapshot={snapshot}
-            timeSpeed={timeSpeed}
-            onTimeSpeedChange={handleTimeSpeedChange}
-            isPlaying={isPlaying}
-            onTogglePlay={handleTogglePlay}
-            onEditBrain={handleEditBrain}
-            brainsReady={scene !== null && brainsLoaded}
-            brainLoadFailure={brainLoadFailure}
-            onDesiredCountChange={handleDesiredCountChange}
-            onToggleDebug={handleToggleDebug}
-            debugEnabled={debugEnabled}
-            isOpen={isSidebarOpen}
-            onClose={() => setIsSidebarOpen(false)}
+          <NewProjectDialog
+            open={isNewProjectOpen}
+            onOpenChange={handleNewProjectOpenChange}
+            onConfirm={handleNewProjectConfirm}
+            defaultName={defaultNewProjectName}
           />
-        )}
 
-        {/* Brain Editor Dialog (rendered at root for proper overlay) */}
-        <DocsBrainEditorProvider archetype={editingArchetype}>
-          <BrainEditorDialog
-            isOpen={isBrainEditorOpen}
-            onOpenChange={(open) => {
-              setIsBrainEditorOpen(open);
-              if (!open) {
-                setEditingArchetype(null);
-              }
-            }}
-            srcBrainDef={getBrainDefForEditing()}
-            onSubmit={handleBrainSubmit}
+          <NewWorkspaceDialog
+            open={isNewWorkspaceOpen}
+            onOpenChange={setIsNewWorkspaceOpen}
+            onConfirm={handleNewWorkspaceConfirm}
           />
-        </DocsBrainEditorProvider>
+        </div>
 
-        <ProjectPickerDialog
-          open={isPickerOpen}
-          onOpenChange={handleProjectPickerOpenChange}
-          title={`Projects in ${pickerWorkspace?.collection.name ?? "Workspace"}`}
-          description={
-            pickerWorkspace?.pending
-              ? `Choose a project to open this workspace, or close to stay in ${
-                  projectCollectionState?.activeProjectCollection?.name ?? "the current workspace"
-                }.`
-              : "Select a project to open, or create a new one."
-          }
-          workspaceContext={pickerWorkspace?.context}
-          emptyStateMessage={
-            pickerProjectListReady
-              ? `${pickerWorkspace?.collection.name ?? "This workspace"} has no projects yet.`
-              : "Loading projects..."
-          }
-          projects={pickerItems}
-          activeProjectId={projectCollectionState?.activeProjectId}
-          projectDeletionDisabled={pickerWorkspace?.pending === true}
-          onSelect={handleSelectProject}
-          onDelete={handleDeleteProject}
-          onCreate={handleNewProject}
-        />
-
-        <NewProjectDialog
-          open={isNewProjectOpen}
-          onOpenChange={handleNewProjectOpenChange}
-          onConfirm={handleNewProjectConfirm}
-          defaultName={defaultNewProjectName}
-        />
-
-        <NewWorkspaceDialog
-          open={isNewWorkspaceOpen}
-          onOpenChange={setIsNewWorkspaceOpen}
-          onConfirm={handleNewWorkspaceConfirm}
-        />
-      </div>
-
-      {/* Docs sidebar -- fixed overlay, sibling to main layout */}
-      <DocsSidebar />
-      <Toaster />
-    </DocsSidebarProvider>
+        {/* Docs sidebar -- fixed overlay, sibling to main layout */}
+        <DocsSidebar />
+        <Toaster />
+      </DocsSidebarProvider>
+    </AssistantProvider>
   );
 }
 

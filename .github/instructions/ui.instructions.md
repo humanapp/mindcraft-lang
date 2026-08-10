@@ -86,7 +86,7 @@ Host apps supply a `BrainEditorConfig` object with:
 
 | `onTileDocs` | `(tileDef: IBrainTileDef) => void` | Optional callback opening a tile's documentation (docs integration) |
 | `docsIntegration` | `{ isOpen, toggle, close }` | Optional docs sidebar controls for the editor toolbar |
-| `sidePanel` | `{ isOpen, toggle, content }` | Optional side region laid out beside the rules, holding host-supplied content |
+| `sidePanel` | `{ isOpen, toggle, content, label? }` | Optional side region laid out beside the rules, holding host-supplied content; `label` is what the host calls the region, which its toggle takes its accessible name from |
 
 ### CustomLiteralType
 

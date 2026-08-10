@@ -7,8 +7,8 @@
   },
   "include": [
     "src/vite-env.d.ts",
-    "src/rehearsal/build-defines.d.ts",
-    "src/rehearsal/phaser-matter.d.ts",
+    "src/build-defines.d.ts",
+    "src/phaser-matter.d.ts",
     "src/**/*.spec.ts",
     "src/components/BrainDiagnostics.tsx",
     "src/components/CompileDiagnosticsConsole.tsx",

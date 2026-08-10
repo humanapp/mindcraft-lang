@@ -28,7 +28,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ["@mindcraft-lang/core", "zod"],
+    exclude: ["@mindcraft-lang/core"],
   },
   server: {
     fs: {

@@ -4,8 +4,9 @@ import type { AuthoringWorkspace } from "@mindcraft-lang/assistant-bridge";
 import { FAKE_TARGET_IDENTITY } from "@mindcraft-lang/assistant-bridge/testing";
 import type { RelayToolManifest } from "@mindcraft-lang/assistant-relay";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { AssistantContextValue } from "./AssistantProvider";
-import { AssistantProvider, useAssistant } from "./AssistantProvider";
+import { AssistantProvider } from "./AssistantProvider";
+import type { AssistantContextValue } from "./assistant-context";
+import { useAssistant } from "./assistant-context";
 import type { AssistantChannel } from "./session/channel";
 
 /** What the client declares it serves. */

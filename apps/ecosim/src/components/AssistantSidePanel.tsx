@@ -1,0 +1,40 @@
+import { AssistantSurface, useAssistant } from "@mindcraft-lang/assistant-panel";
+import { useEditedBrain } from "@mindcraft-lang/ui";
+import { useEffect } from "react";
+import type { EditedBrainWorkspaces } from "@/services/edited-brain-workspaces";
+
+/** What the side region's tenant is given by the app that put it there. */
+export interface AssistantSidePanelProps {
+  /** Whether the editor's side region stands open. */
+  isOpen: boolean;
+  /** The entity's name to show while the editor stands no working copy of it yet. */
+  fallbackName: string;
+  /** The workspaces a turn's tool calls run against. */
+  workspaces: EditedBrainWorkspaces;
+}
+
+/**
+ * The conversation surface as this app mounts it: it stands the brain the
+ * editor is editing as the one an assistant turn may reach, shows that brain's
+ * conversation, and opens its session once the region is open.
+ */
+export function AssistantSidePanel({ isOpen, fallbackName, workspaces }: AssistantSidePanelProps) {
+  const edited = useEditedBrain();
+  const { setActiveBrain, openSession } = useAssistant();
+  const brainId = edited?.brainDef.id();
+
+  useEffect(() => {
+    workspaces.setEditedBrain(edited);
+    return () => workspaces.setEditedBrain(undefined);
+  }, [edited, workspaces]);
+
+  useEffect(() => {
+    if (brainId !== undefined) setActiveBrain(brainId);
+  }, [brainId, setActiveBrain]);
+
+  useEffect(() => {
+    if (isOpen && brainId !== undefined) openSession(brainId);
+  }, [isOpen, brainId, openSession]);
+
+  return <AssistantSurface name={edited?.brainDef.name() ?? fallbackName} />;
+}

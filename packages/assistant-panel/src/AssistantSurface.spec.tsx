@@ -1,6 +1,7 @@
 /**
- * Pins what the conversation surface stands: a disabled intent box, and a
- * mount that costs the session nothing.
+ * Pins what the bound surface stands: the entity the host named, an intent box
+ * that takes the keyboard from nobody, and a mount that costs the session
+ * nothing.
  */
 
 import assert from "node:assert/strict";
@@ -21,32 +22,43 @@ const manifest: RelayToolManifest = {
   catalogDigest: "0f3a19c2",
 };
 
+/** The entity the host says the open mind belongs to. */
+const entityName = "Herbivore Brain";
+
 /** A workspace accessor no test reaches. */
 function unreachedWorkspace(): AuthoringWorkspace {
   throw new Error("the surface specs serve no tool call");
 }
 
-describe("the conversation surface", () => {
-  test("stands an intent box that takes nothing", () => {
-    const markup = renderToStaticMarkup(<AssistantSurface />);
+/** Render the surface under a provider, counting the sessions the provider asks for. */
+function renderBound(): { markup: string; connects: number } {
+  let connects = 0;
+  const connect = (): Promise<AssistantChannel> => {
+    connects++;
+    return Promise.reject(new Error("no route to the service"));
+  };
 
-    assert.match(markup, /<textarea[^>]*\bdisabled\b/);
-    assert.match(markup, /<button[^>]*\bdisabled\b/);
+  const markup = renderToStaticMarkup(
+    <AssistantProvider connect={connect} manifest={manifest} workspace={unreachedWorkspace}>
+      <AssistantSurface name={entityName} />
+    </AssistantProvider>
+  );
+  return { markup, connects };
+}
+
+describe("the bound conversation surface", () => {
+  test("presents the entity the host named", () => {
+    assert.match(renderBound().markup, new RegExp(`data-assistant-entity="true"[^>]*>${entityName}<`));
+  });
+
+  test("stands an intent box that takes the keyboard from nobody", () => {
+    const { markup } = renderBound();
+
+    assert.match(markup, /<textarea[^>]*data-assistant-intent/);
+    assert.doesNotMatch(markup, /autofocus/i);
   });
 
   test("opens no session by standing under a provider", () => {
-    let connects = 0;
-    const connect = (): Promise<AssistantChannel> => {
-      connects++;
-      return Promise.reject(new Error("no route to the service"));
-    };
-
-    renderToStaticMarkup(
-      <AssistantProvider connect={connect} manifest={manifest} workspace={unreachedWorkspace}>
-        <AssistantSurface />
-      </AssistantProvider>
-    );
-
-    assert.equal(connects, 0);
+    assert.equal(renderBound().connects, 0);
   });
 });

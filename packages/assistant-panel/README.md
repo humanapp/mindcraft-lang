@@ -14,12 +14,15 @@ owns where the conversation is shown.
   `AssistantConnect`) -- one session per brain, opened when the brain's panel
   opens or on its first send, one turn at a time per brain, tool calls served
   through `@mindcraft-lang/assistant-bridge`
+- **WebSocket channel** (`createWebSocketConnect`) -- relay sessions over
+  browser WebSockets to the service address the app configures
 - **Per-brain conversations** -- one `ConversationRecord` per brain, the record
   format `@mindcraft-lang/assistant-relay` defines; a turn keeps filling the
   brain it was sent for whatever the host makes active afterwards
-- **Conversation surface** (`AssistantSurface`) -- the persona header, the
-  conversation body and the intent box, for the app to mount wherever it shows
-  the conversation
+- **Conversation surface** (`AssistantSurface`) -- the entity whose mind is
+  open, the conversation it has had with the person, and the box the next thing
+  to do is typed into; the app names the entity and mounts the surface wherever
+  it shows the conversation
 
 An app that does not import this package has no assistant in its tree at all.
 
@@ -58,11 +61,22 @@ tool manifest the handshake declares, and the workspace a brain's tool calls run
 against. Nothing connects until a brain's session is opened or its first `send`.
 
 ```tsx
-import { AssistantProvider, useAssistant } from "@mindcraft-lang/assistant-panel";
+import { AssistantProvider, AssistantSurface, createWebSocketConnect } from "@mindcraft-lang/assistant-panel";
 
-<AssistantProvider connect={openChannel} manifest={manifest} workspace={workspaceFor}>
+<AssistantProvider
+  connect={createWebSocketConnect(serviceUrl)}
+  manifest={manifest}
+  workspace={workspaceFor}
+>
   <App />
 </AssistantProvider>;
+```
+
+Mount the surface anywhere under the provider, naming the entity whose mind is
+open:
+
+```tsx
+<AssistantSurface name={editedBrain.name()} />
 ```
 
 ```tsx
@@ -74,14 +88,21 @@ const { status, record, send, stop, setActiveBrain, openSession } = useAssistant
 ```
 src/
   index.ts                          Barrel export
-  AssistantProvider.tsx             AssistantProvider, useAssistant, AssistantContextValue
-  AssistantSurface.tsx              AssistantSurface: persona header, conversation body, intent box
+  assistant-context.ts              AssistantContextValue, useAssistant
+  AssistantProvider.tsx             AssistantProvider
+  AssistantSurface.tsx              AssistantSurface: the surface bound to the standing session
+  ConversationView.tsx              What the surface draws, from the state it is handed
   conversation/
+    activity.ts                     What one recorded tool call reads as beneath the narration
     store.ts                        Per-brain records, active brain, and the update reducers
   session/
     channel.ts                      AssistantChannel, AssistantConnect
     machine.ts                      AssistantMachine
     sessions.ts                     AssistantStatus and each brain's session status
+    websocket-channel.ts            createWebSocketConnect
+  testing/
+    index.ts                        Barrel of the test utilities consumers may drive
+    scripted-service.ts             A service that plays scripted turns over a relay loopback
 ```
 
 ## Dependencies

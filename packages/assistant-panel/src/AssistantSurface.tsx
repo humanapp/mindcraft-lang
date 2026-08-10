@@ -1,36 +1,43 @@
+import { useState } from "react";
+import { useAssistant } from "./assistant-context";
+import { ConversationView } from "./ConversationView";
+import { AssistantStatus } from "./session/machine";
+
+/** What the host tells the surface about the entity it presents. */
+export interface AssistantSurfaceProps {
+  /** The name of the entity whose mind is open, as the host reads it from the document. */
+  name: string;
+}
+
 /**
- * The Assistant's conversation surface: the header its persona is read from,
- * the body its conversation fills, and the box an intent is typed into. The
- * intent box is disabled, and mounting the surface starts no session.
+ * The conversation surface bound to the standing session: it shows the active
+ * brain's conversation, sends what is typed, and stops a running turn. Mounting
+ * it starts no session, and it never takes the keyboard on its own.
  */
-export function AssistantSurface() {
+export function AssistantSurface({ name }: AssistantSurfaceProps) {
+  const { status, record, send, stop, openSession } = useAssistant();
+  const [intent, setIntent] = useState("");
+
+  const submit = (): void => {
+    const text = intent.trim();
+    if (text.length === 0) return;
+    setIntent("");
+    send(text);
+  };
+
+  const brainId = record?.brainId;
+  const retry = status === AssistantStatus.Failed && brainId !== undefined ? () => openSession(brainId) : undefined;
+
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
-      <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        <span className="h-8 w-8 shrink-0 rounded-full border border-border bg-muted" aria-hidden="true" />
-        <span className="truncate text-sm font-semibold text-card-foreground">Assistant</span>
-      </header>
-      <div className="min-h-0 grow overflow-y-auto px-3 py-4">
-        <p className="text-sm text-muted-foreground">
-          Say what you want your creation to do, and we can build it together.
-        </p>
-      </div>
-      <div className="flex shrink-0 items-end gap-2 border-t border-border p-2">
-        <textarea
-          className="min-h-16 grow resize-none rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          rows={2}
-          disabled
-          aria-label="What you want to make"
-          placeholder="Type what you want to make"
-        />
-        <button
-          type="button"
-          className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          disabled
-        >
-          Send
-        </button>
-      </div>
-    </div>
+    <ConversationView
+      name={name}
+      status={status}
+      record={record}
+      intent={intent}
+      onIntentChange={setIntent}
+      onSend={submit}
+      onStop={stop}
+      onRetry={retry}
+    />
   );
 }
