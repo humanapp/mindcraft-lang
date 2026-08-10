@@ -624,6 +624,64 @@ describe("rule commands round-trip the document", () => {
     assert.equal(ruleA.children().get(0), child);
   });
 
+  test("AddRuleCommand puts the same rule back on redo", () => {
+    const brain = newBrain();
+    const page = firstPage(brain);
+    const history = new BrainCommandHistory();
+
+    history.executeCommand(new AddRuleCommand(page));
+    const added = page.children().get(1) as BrainRuleDef;
+    added.do().appendTile(actuatorTile());
+    const ruleId = added.ruleId();
+
+    history.undo();
+    history.redo();
+
+    const again = page.children().get(1) as BrainRuleDef;
+    assert.equal(again, added);
+    assert.equal(again.ruleId(), ruleId);
+    assert.equal(again.do().tiles().size(), 1);
+  });
+
+  test("InsertRuleCommand puts the same rule back on redo", () => {
+    const { ruleA, page } = brainWithTwoRules();
+    const history = new BrainCommandHistory();
+    const command = new InsertRuleCommand(ruleA, "after");
+
+    history.executeCommand(command);
+    const inserted = command.insertedRule() as BrainRuleDef;
+    inserted.when().appendTile(sensorTile());
+    const ruleId = inserted.ruleId();
+
+    history.undo();
+    history.redo();
+
+    assert.equal(page.children().get(1), inserted);
+    assert.equal(command.insertedRule(), inserted);
+    assert.equal(inserted.ruleId(), ruleId);
+    assert.equal(inserted.when().tiles().size(), 1);
+  });
+
+  test("a rule put back by redo still reports its dirty state to its page", async () => {
+    const brain = newBrain();
+    const page = firstPage(brain);
+    const history = new BrainCommandHistory();
+
+    history.executeCommand(new AddRuleCommand(page));
+    const added = page.children().get(1) as BrainRuleDef;
+    history.undo();
+    history.redo();
+
+    const reported = new Promise<string>((resolve) => {
+      page.events().on("page_changed", ({ what }) => {
+        if (what === "rule_dirtyChanged") resolve(what);
+      });
+    });
+    added.when().appendTile(sensorTile());
+
+    assert.equal(await reported, "rule_dirtyChanged");
+  });
+
   test("DeleteRuleCommand restores the rule subtree on undo", () => {
     const { brain, ruleA } = brainWithTwoRules();
     const child = ruleA.appendNewRule();

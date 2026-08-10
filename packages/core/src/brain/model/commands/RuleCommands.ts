@@ -44,21 +44,33 @@ function getRuleState(rule: BrainRuleDef): RuleState {
 }
 
 /**
- * Command to add a new rule.
+ * Command to add a new rule at the end of a page.
+ *
+ * The rule the first execute appends is the rule every later execute puts back,
+ * at the index it was taken from, so its id and everything under it survive an
+ * undo/redo round trip.
  */
 export class AddRuleCommand implements BrainCommand {
   private addedRule?: BrainRuleDef;
+  private removedFrom = 0;
 
   constructor(private pageDef: BrainPageDef) {}
 
   execute(): void {
+    const added = this.addedRule;
+    if (added) {
+      this.pageDef.addRuleAtIndex(this.removedFrom, added);
+      return;
+    }
     this.addedRule = this.pageDef.appendNewRule() as BrainRuleDef;
   }
 
   undo(): void {
-    if (this.addedRule) {
-      this.addedRule.delete();
-    }
+    if (!this.addedRule) return;
+    const index = this.pageDef.children().indexOf(this.addedRule);
+    if (index < 0) return;
+    this.removedFrom = index;
+    this.pageDef.removeRuleAtIndex(index);
   }
 
   getDescription(): string {
@@ -77,12 +89,40 @@ function placementIndex(state: RuleState, placement: RulePlacement): number {
   return placement === "after" ? state.index + 1 : state.index;
 }
 
+/** Put `rule` into the list `location` names, at the index it names. */
+function addRuleAt(location: RuleLocation, rule: BrainRuleDef): void {
+  if (location.parentRule) {
+    location.parentRule.addRuleAtIndex(location.index, rule);
+  } else if (location.pageDef) {
+    location.pageDef.addRuleAtIndex(location.index, rule);
+  }
+}
+
+/**
+ * Take `rule` out of the list holding it, without disposing it, and report
+ * where it stood so {@link addRuleAt} can put it back.
+ */
+function takeRuleOut(rule: BrainRuleDef): RuleLocation {
+  const state = getRuleState(rule);
+  if (state.parentRule) {
+    state.parentRule.removeRuleAtIndex(state.index);
+  } else if (state.pageDef) {
+    state.pageDef.removeRuleAtIndex(state.index);
+  }
+  return { parentRule: state.parentRule, pageDef: state.pageDef, index: state.index };
+}
+
 /**
  * Command to insert a new empty rule beside an existing rule, at the same
  * indent level and on the side `placement` names.
+ *
+ * The rule the first execute inserts is the rule every later execute puts back,
+ * in the list and at the index it was taken from, so its id and everything
+ * under it survive an undo/redo round trip.
  */
 export class InsertRuleCommand implements BrainCommand {
   private insertedRule_?: BrainRuleDef;
+  private removedFrom?: RuleLocation;
 
   constructor(
     private targetRule: BrainRuleDef,
@@ -90,29 +130,27 @@ export class InsertRuleCommand implements BrainCommand {
   ) {}
 
   execute(): void {
-    const state = getRuleState(this.targetRule);
-    const newRule = new BrainRuleDef();
-    const index = placementIndex(state, this.placement);
-
-    if (state.parentRule) {
-      state.parentRule.addRuleAtIndex(index, newRule);
-    } else if (state.pageDef) {
-      state.pageDef.addRuleAtIndex(index, newRule);
+    const inserted = this.insertedRule_;
+    if (inserted && this.removedFrom) {
+      addRuleAt(this.removedFrom, inserted);
+      return;
     }
 
+    const state = getRuleState(this.targetRule);
+    const newRule = new BrainRuleDef();
+    addRuleAt(
+      { parentRule: state.parentRule, pageDef: state.pageDef, index: placementIndex(state, this.placement) },
+      newRule
+    );
     this.insertedRule_ = newRule;
   }
 
   undo(): void {
-    if (this.insertedRule_) {
-      this.insertedRule_.delete();
-    }
+    if (!this.insertedRule_) return;
+    this.removedFrom = takeRuleOut(this.insertedRule_);
   }
 
-  /**
-   * The rule the latest execute put into the page, or undefined before the
-   * command has run. A redo inserts a rule of its own, which this then names.
-   */
+  /** The rule this command inserts, or undefined before it has run. */
   insertedRule(): BrainRuleDef | undefined {
     return this.insertedRule_;
   }

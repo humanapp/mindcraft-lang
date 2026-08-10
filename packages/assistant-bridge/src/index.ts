@@ -36,8 +36,15 @@ export type {
 export { ruleSideName, serializeDiagParams, toToolDiagnostic } from "./tools/diagnostics.js";
 export type { ToolCallError, ToolCallOutcome } from "./tools/dispatch.js";
 export { executeToolCall, isToolName, ToolCallErrorCode } from "./tools/dispatch.js";
-export type { ProposalAccepted, ProposalRejected, ProposalResult, ProposalUnresolved } from "./tools/propose-edit.js";
-export { proposeEdit, resolveRunEntry } from "./tools/propose-edit.js";
+export type {
+  BatchAccepted,
+  BatchResult,
+  ProposalAccepted,
+  ProposalRejected,
+  ProposalResult,
+  ProposalUnresolved,
+} from "./tools/propose-edit.js";
+export { batchReplayStepMs, proposeEdit, proposeEditBatch, resolveRunEntry } from "./tools/propose-edit.js";
 export type { CatalogTile, CatalogView } from "./tools/read-catalog.js";
 export { readCatalog } from "./tools/read-catalog.js";
 export type { ProjectPage, ProjectRule, ProjectTile, ProjectView } from "./tools/read-project.js";
@@ -56,6 +63,7 @@ export type { SuggestedTile, SuggestionError, SuggestionView } from "./tools/sug
 export { suggestTiles } from "./tools/suggest-tiles.js";
 export { descriptionFromMarkdown, sessionTileDescriptions } from "./tools/tile-descriptions.js";
 export type {
+  ProposeEditBatchInput,
   ProposeEditInput,
   RuleSideName,
   TileRunEntry,
@@ -63,7 +71,13 @@ export type {
   ToolInput,
   ToolName,
 } from "./tools/tool-schemas.js";
-export { scenarioInputSchema, tileRunEntrySchema, toolDefinitions, toolInputSchemas } from "./tools/tool-schemas.js";
+export {
+  batchRuleIndex,
+  scenarioInputSchema,
+  tileRunEntrySchema,
+  toolDefinitions,
+  toolInputSchemas,
+} from "./tools/tool-schemas.js";
 export type { AuthoringWorkspace, AuthoringWorkspaceOptions, LocatedRule } from "./tools/workspace.js";
 export {
   allTiles,

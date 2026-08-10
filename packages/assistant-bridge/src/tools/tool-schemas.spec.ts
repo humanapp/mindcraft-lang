@@ -136,6 +136,7 @@ describe("tool input validation", () => {
       "placeTiles",
       "replaceTile",
       "deleteTile",
+      "batch",
     ]);
     assert.ok(
       (properties?.op as { description?: string })?.description?.includes("placeTiles takes ruleId, side, tileIds"),
@@ -164,6 +165,48 @@ describe("tool input validation", () => {
 
     assert.equal(properties?.ruleId?.description?.includes("insert:"), false);
     assert.ok((properties?.position?.description ?? "").includes("replace:"), "position differs by mode and says so");
+  });
+
+  test("advertises a batch command in the same flattened shape as a single command", () => {
+    const proposeEdit = toolDefinitions.find((tool) => tool.name === "propose_edit");
+    const properties = (proposeEdit?.inputSchema as { properties: Record<string, unknown> }).properties;
+    const commands = properties.commands as { items: { properties: Record<string, { enum?: string[] }> } };
+    const top = properties.op as { enum: string[] };
+
+    assert.deepEqual(
+      commands.items.properties.op?.enum,
+      top.enum.filter((op) => op !== "batch")
+    );
+    assert.deepEqual(Object.keys(commands.items.properties).sort(), Object.keys(properties).sort().slice(1));
+  });
+
+  test("tells the model how a batch command names a rule the batch itself makes", () => {
+    const proposeEdit = toolDefinitions.find((tool) => tool.name === "propose_edit");
+    const properties = (proposeEdit?.inputSchema as { properties?: Record<string, { description?: string }> })
+      .properties;
+
+    assert.ok((properties?.ruleId?.description ?? "").includes("#N"));
+    assert.ok((properties?.commands?.description ?? "").includes("#N"));
+  });
+
+  test("accepts a batch of two commands and refuses one carrying a single command", () => {
+    const command = { op: "addRule", pageIndex: 0 };
+
+    assert.equal(toolInputSchemas.propose_edit.safeParse({ op: "batch", commands: [command, command] }).success, true);
+    assert.equal(toolInputSchemas.propose_edit.safeParse({ op: "batch", commands: [command] }).success, false);
+  });
+
+  test("refuses a batch carrying a batch", () => {
+    assert.equal(
+      toolInputSchemas.propose_edit.safeParse({
+        op: "batch",
+        commands: [
+          { op: "addRule", pageIndex: 0 },
+          { op: "batch", commands: [] },
+        ],
+      }).success,
+      false
+    );
   });
 
   test("rejects an unknown operation", () => {

@@ -1,5 +1,5 @@
 import { compileBrain } from "./compile.js";
-import { proposeEdit } from "./propose-edit.js";
+import { proposeEdit, proposeEditBatch } from "./propose-edit.js";
 import { readCatalog } from "./read-catalog.js";
 import { readProject } from "./read-project.js";
 import { simulate } from "./simulate.js";
@@ -44,8 +44,10 @@ async function runTool(workspace: AuthoringWorkspace, name: ToolName, input: unk
   switch (name) {
     case "compile":
       return compileBrain(workspace);
-    case "propose_edit":
-      return proposeEdit(workspace, toolInputSchemas.propose_edit.parse(input));
+    case "propose_edit": {
+      const edit = toolInputSchemas.propose_edit.parse(input);
+      return edit.op === "batch" ? await proposeEditBatch(workspace, edit) : proposeEdit(workspace, edit);
+    }
     case "read_catalog":
       return readCatalog(workspace, toolInputSchemas.read_catalog.parse(input));
     case "read_project":

@@ -12,7 +12,21 @@ export type RuleSideName = z.infer<typeof ruleSideSchema>;
 /** The id a tool names a rule by: the rule's own durable id. */
 const ruleIdSchema = z
   .string()
-  .describe("Rule id, exactly as read_project reports it. It stays the rule's id as other rules come and go.");
+  .describe(
+    "Rule id, exactly as read_project reports it. It stays the rule's id as other rules come and go. Inside a batch, \"#N\" instead names the rule the batch's own command at index N creates."
+  );
+
+/** The form a batch command names a rule an earlier command in the same batch created. */
+const batchRulePattern = /^#(\d+)$/;
+
+/**
+ * The index of the batch command that creates the rule `ruleId` names. Returns
+ * `undefined` for a durable rule id.
+ */
+export function batchRuleIndex(ruleId: string): number | undefined {
+  const matched = batchRulePattern.exec(ruleId);
+  return matched ? Number(matched[1]) : undefined;
+}
 
 /** Input of `read_project`: the whole document, with nothing to select. */
 const readProjectInputSchema = z.object({});
@@ -71,8 +85,8 @@ export const tileRunEntrySchema = z.union([
 /** One tile an edit names: a tile id, or a factory tile with its mint input. */
 export type TileRunEntry = z.infer<typeof tileRunEntrySchema>;
 
-/** Input of `propose_edit`: one editor command, discriminated by `op`. */
-const proposeEditInputSchema = z.discriminatedUnion("op", [
+/** The editor commands `propose_edit` applies, one per `op`. */
+const editCommandBranches = [
   z.object({
     op: z.literal("addRule"),
     pageIndex: z.number().int().min(0).describe("Zero-based page index from read_project."),
@@ -124,6 +138,23 @@ const proposeEditInputSchema = z.discriminatedUnion("op", [
     side: ruleSideSchema,
     position: z.number().int().min(0).describe("Index of the tile being removed."),
   }),
+] as const;
+
+/** One editor command of `propose_edit`, discriminated by `op`. */
+const editCommandSchema = z.discriminatedUnion("op", editCommandBranches);
+
+/** Input of `propose_edit`: one editor command, or a batch of them, discriminated by `op`. */
+const proposeEditInputSchema = z.discriminatedUnion("op", [
+  ...editCommandBranches,
+  z.object({
+    op: z.literal("batch"),
+    commands: z
+      .array(editCommandSchema)
+      .min(2)
+      .describe(
+        'Commands to apply in order, judged as one end state; every one lands or none does. A command may name a rule an earlier command created, as "#N" for that command\'s index.'
+      ),
+  }),
 ]);
 
 /** Input of `compile`: the whole brain, with nothing to select. */
@@ -172,14 +203,17 @@ export type ToolName = keyof typeof toolInputSchemas;
 export type ToolInput<N extends ToolName> = z.infer<(typeof toolInputSchemas)[N]>;
 
 /** Parsed input of `propose_edit`, one editor command discriminated by `op`. */
-export type ProposeEditInput = z.infer<typeof proposeEditInputSchema>;
+export type ProposeEditInput = z.infer<typeof editCommandSchema>;
+
+/** Parsed batch form of `propose_edit`: an ordered run of editor commands. */
+export type ProposeEditBatchInput = Extract<z.infer<typeof proposeEditInputSchema>, { op: "batch" }>;
 
 /** Prescriptive when-to-call guidance carried with each tool. */
 const toolDescriptions: Record<ToolName, string> = {
   compile:
     "Build the whole brain and return its diagnostics. Call after a group of edits that should hold together, before claiming the brain is ready.",
   propose_edit:
-    "Apply one editor command to the document. The editor validates it: an accepted edit is in the document and undoable, and a rejected edit leaves the document untouched and returns the diagnostic code that rejected it. Read the code, adjust, and propose again. This is the only way to change the brain. Any tile that leaves an expression unfinished -- an operator, an opening paren, a NOT, a parameter awaiting its value -- is rejected on its own, because the editor validates the state the edit leaves behind. Place it with the tiles that finish it in one placeTiles call: the whole run lands together or not at all. A factory tile carries no value of its own and cannot be placed by id alone: name it as an object giving its tileId plus what to mint -- a value, optionally with a displayFormat, for a literal factory, or a name for a variable factory. Every place a tile is named takes that object, so a minted value can be placed by placeTile, swapped in by replaceTile, or carried in a placeTiles run. The minted tile joins the document's catalog, and a rejected edit takes the minting back with the placement.",
+    "Apply one editor command to the document. The editor validates it: an accepted edit is in the document and undoable, and a rejected edit leaves the document untouched and returns the diagnostic code that rejected it. Read the code, adjust, and propose again. This is the only way to change the brain. Any tile that leaves an expression unfinished -- an operator, an opening paren, a NOT, a parameter awaiting its value -- is rejected on its own, because the editor validates the state the edit leaves behind. Place it with the tiles that finish it in one placeTiles call: the whole run lands together or not at all. A factory tile carries no value of its own and cannot be placed by id alone: name it as an object giving its tileId plus what to mint -- a value, optionally with a displayFormat, for a literal factory, or a name for a variable factory. Every place a tile is named takes that object, so a minted value can be placed by placeTile, swapped in by replaceTile, or carried in a placeTiles run. The minted tile joins the document's catalog, and a rejected edit takes the minting back with the placement. Author one command per call, narrating each as it lands; that is the default. Reach for the batch op only when a plan must land or fail as one thing, such as a refactor or a structure of several rules whose half-applied form would be worse than none: the commands apply in order, only the state they leave is judged, and one undo takes the whole plan back. States in the middle of a batch may be broken. A command that cannot apply at all stops the batch and reports its index.",
   read_catalog:
     "List the tiles available in this world with their descriptions, argument grammar, and where they may be placed. Call before planning which tiles a goal needs.",
   read_project:
@@ -270,10 +304,27 @@ function flattenUnion(branches: readonly SchemaBranch[], discriminator: string):
       if (name in properties) continue;
       const shape = branch.properties?.[name] as Record<string, unknown>;
       const description = mergedDescription(branches, discriminator, name);
-      properties[name] = description === undefined ? shape : { ...shape, description };
+      properties[name] = flattenedShape(description === undefined ? shape : { ...shape, description });
     }
   }
   return { type: "object", properties, required: [discriminator], additionalProperties: false };
+}
+
+/**
+ * `shape` with every union of object branches it holds advertised flattened,
+ * including one standing as an array's item schema. A shape holding no such
+ * union comes back unchanged.
+ */
+function flattenedShape(shape: Record<string, unknown>): Record<string, unknown> {
+  const { oneOf, items, ...rest } = shape as {
+    oneOf?: SchemaBranch[];
+    items?: Record<string, unknown>;
+  };
+  if (oneOf) {
+    const discriminator = discriminatorOf(oneOf);
+    return discriminator ? { ...rest, ...flattenUnion(oneOf, discriminator) } : shape;
+  }
+  return items ? { ...rest, items: flattenedShape(items) } : shape;
 }
 
 /**
