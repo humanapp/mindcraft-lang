@@ -7,7 +7,7 @@ import { relayToolOutcomeSchema } from "./tool-calls.js";
  * Version {@link ConversationRecord} carries. A record states the version it
  * was written at, and a reader accepts only the versions it knows.
  */
-export const CONVERSATION_RECORD_VERSION = 1;
+export const CONVERSATION_RECORD_VERSION = 2;
 
 /** Something the person said, which started a turn. */
 export interface ConversationUserEntry {
@@ -44,13 +44,33 @@ export type ConversationTurnEnding =
   | { readonly kind: "end"; readonly code: RelayTurnEndCode }
   | { readonly kind: "failure"; readonly code: ConversationTurnFailureCode };
 
+/**
+ * One run of narration: the deltas that arrived with no tool call between them,
+ * joined in stream order.
+ */
+export interface ConversationNarrationSegment {
+  readonly kind: "narration";
+  readonly text: string;
+}
+
+/** One tool call the turn made at this point, and the answer it was given. */
+export interface ConversationToolCallStep {
+  readonly kind: "toolCall";
+  readonly call: ConversationToolCall;
+}
+
+/** One thing an assistant turn did. */
+export type ConversationTurnStep = ConversationNarrationSegment | ConversationToolCallStep;
+
 /** One assistant turn: what it narrated, what it called, and how it finished. */
 export interface ConversationAssistantEntry {
   readonly kind: "assistant";
-  /** The turn's narration deltas joined in stream order. */
-  readonly narration: string;
-  /** The turn's tool calls, in the order they were served. */
-  readonly toolCalls: readonly ConversationToolCall[];
+  /**
+   * What the turn narrated and what it called, in the order it arrived. A run
+   * of narration is one segment; the next segment starts after the tool calls
+   * that interrupted it.
+   */
+  readonly steps: readonly ConversationTurnStep[];
   /** How the turn finished; absent while it is still running. */
   readonly ending?: ConversationTurnEnding;
 }
@@ -61,9 +81,10 @@ export type ConversationEntry = ConversationUserEntry | ConversationAssistantEnt
 /**
  * The whole conversation held for one brain, in the order it happened.
  *
- * Tool inputs and the payloads that answered them are kept verbatim. Narration
- * is kept as the turn's joined text. Entries accumulate for the life of the
- * conversation; the record carries no size bound of its own.
+ * Tool inputs and the payloads that answered them are kept verbatim, and each
+ * turn keeps its narration interleaved with its calls in arrival order.
+ * Entries accumulate for the life of the conversation; the record carries no
+ * size bound of its own.
  */
 export interface ConversationRecord {
   /** {@link CONVERSATION_RECORD_VERSION} the record was written at. */
@@ -86,13 +107,18 @@ const conversationTurnEndingSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("failure"), code: z.enum(ConversationTurnFailureCode) }),
 ]);
 
+/** Schema of {@link ConversationTurnStep}. */
+const conversationTurnStepSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("narration"), text: z.string() }),
+  z.strictObject({ kind: z.literal("toolCall"), call: conversationToolCallSchema }),
+]);
+
 /** Schema of {@link ConversationEntry}. */
 const conversationEntrySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("user"), text: z.string() }),
   z.strictObject({
     kind: z.literal("assistant"),
-    narration: z.string(),
-    toolCalls: z.array(conversationToolCallSchema),
+    steps: z.array(conversationTurnStepSchema),
     ending: conversationTurnEndingSchema.optional(),
   }),
 ]);

@@ -13,35 +13,64 @@ const record: ConversationRecord = {
     { kind: "user", text: "make it hide in the dark" },
     {
       kind: "assistant",
-      narration: "reading what is hereplacing the sensor",
-      toolCalls: [
-        { name: "read_project", input: {}, outcome: { kind: "ok", payload: { pages: [] } } },
+      steps: [
+        { kind: "narration", text: "reading what is here" },
         {
-          name: "propose_edit",
-          input: { op: "placeTiles", ruleId: "0/0", side: "when", tileIds: ["tile.sensor->sensor.fake.signal"] },
-          outcome: { kind: "ok", payload: { accepted: true } },
+          kind: "toolCall",
+          call: { name: "read_project", input: {}, outcome: { kind: "ok", payload: { pages: [] } } },
         },
-        { name: "compile", input: {}, outcome: { kind: "ok", payload: { error: "unknown_tool" }, isError: true } },
-        { name: "simulate", input: { thinks: 30 }, outcome: { kind: "declined", code: RelayDeclineCode.UserStopped } },
+        { kind: "narration", text: "placing the sensor" },
         {
-          name: "suggest_tiles",
-          input: { mode: "insert" },
-          outcome: { kind: "takeover", code: RelayTakeoverCode.DocumentEdited },
+          kind: "toolCall",
+          call: {
+            name: "propose_edit",
+            input: { op: "placeTiles", ruleId: "0/0", side: "when", tileIds: ["tile.sensor->sensor.fake.signal"] },
+            outcome: { kind: "ok", payload: { accepted: true } },
+          },
+        },
+        {
+          kind: "toolCall",
+          call: {
+            name: "compile",
+            input: {},
+            outcome: { kind: "ok", payload: { error: "unknown_tool" }, isError: true },
+          },
+        },
+        {
+          kind: "toolCall",
+          call: {
+            name: "simulate",
+            input: { thinks: 30 },
+            outcome: { kind: "declined", code: RelayDeclineCode.UserStopped },
+          },
+        },
+        {
+          kind: "toolCall",
+          call: {
+            name: "suggest_tiles",
+            input: { mode: "insert" },
+            outcome: { kind: "takeover", code: RelayTakeoverCode.DocumentEdited },
+          },
         },
       ],
       ending: { kind: "end", code: RelayTurnEndCode.Complete },
     },
     { kind: "user", text: "stop" },
-    { kind: "assistant", narration: "", toolCalls: [], ending: { kind: "end", code: RelayTurnEndCode.Stopped } },
+    { kind: "assistant", steps: [], ending: { kind: "end", code: RelayTurnEndCode.Stopped } },
     { kind: "user", text: "try again" },
     {
       kind: "assistant",
-      narration: "looking again",
-      toolCalls: [],
+      steps: [{ kind: "narration", text: "looking again" }],
       ending: { kind: "failure", code: ConversationTurnFailureCode.Disconnected },
     },
+    { kind: "user", text: "cut off" },
+    {
+      kind: "assistant",
+      steps: [{ kind: "narration", text: "I was saying" }],
+      ending: { kind: "end", code: RelayTurnEndCode.Truncated },
+    },
     { kind: "user", text: "and again" },
-    { kind: "assistant", narration: "still going", toolCalls: [] },
+    { kind: "assistant", steps: [{ kind: "narration", text: "still going" }] },
   ],
 };
 
@@ -60,7 +89,7 @@ describe("the conversation record", () => {
       const failed: ConversationRecord = {
         version: CONVERSATION_RECORD_VERSION,
         brainId: "brain-1",
-        entries: [{ kind: "assistant", narration: "", toolCalls: [], ending: { kind: "failure", code } }],
+        entries: [{ kind: "assistant", steps: [], ending: { kind: "failure", code } }],
       };
       assert.deepEqual(conversationRecordSchema.parse(overTheWire(failed)), failed, code);
     }
@@ -76,7 +105,7 @@ describe("the conversation record", () => {
   test("refuses an entry carrying a field the format does not define", () => {
     const forged = {
       ...record,
-      entries: [{ kind: "assistant", narration: "", toolCalls: [], tokens: 412 }],
+      entries: [{ kind: "assistant", steps: [], tokens: 412 }],
     };
 
     assert.equal(conversationRecordSchema.safeParse(forged).success, false);
@@ -85,7 +114,7 @@ describe("the conversation record", () => {
   test("refuses a turn ending that is neither an end code nor a failure code", () => {
     const forged = {
       ...record,
-      entries: [{ kind: "assistant", narration: "", toolCalls: [], ending: { kind: "end", code: "disconnected" } }],
+      entries: [{ kind: "assistant", steps: [], ending: { kind: "end", code: "disconnected" } }],
     };
 
     assert.equal(conversationRecordSchema.safeParse(forged).success, false);

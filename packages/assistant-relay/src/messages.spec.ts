@@ -22,6 +22,7 @@ const downstream: readonly RelayDownstreamMessage[] = [
   },
   { type: "turn:end", code: RelayTurnEndCode.Complete },
   { type: "turn:end", code: RelayTurnEndCode.Stopped },
+  { type: "turn:end", code: RelayTurnEndCode.Truncated },
   { type: "turn:end", code: RelayTurnEndCode.Failed, message: "the model call did not complete" },
 ];
 
@@ -83,6 +84,15 @@ describe("the relay wire", () => {
       "turn:toolCalls",
       "turn:toolResults",
     ]);
+  });
+
+  test("names every code a turn ends with, as the wire spells it", () => {
+    assert.deepEqual(RelayTurnEndCode, {
+      Complete: "complete",
+      Stopped: "stopped",
+      Truncated: "truncated",
+      Failed: "failed",
+    });
   });
 
   test("refuses an upstream message carrying a field the wire does not define", () => {

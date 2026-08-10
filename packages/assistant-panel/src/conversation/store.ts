@@ -4,6 +4,7 @@ import type {
   ConversationRecord,
   ConversationToolCall,
   ConversationTurnEnding,
+  ConversationTurnStep,
 } from "@mindcraft-lang/assistant-relay";
 import { CONVERSATION_RECORD_VERSION } from "@mindcraft-lang/assistant-relay";
 
@@ -48,6 +49,18 @@ function openTurn(entries: readonly ConversationEntry[]): ConversationAssistantE
 }
 
 /**
+ * `steps` with `text` joined onto the segment they end in, or carrying a new
+ * segment when the last thing the turn did was call a tool. Empty text opens
+ * no segment and leaves `steps` as they stand.
+ */
+function withNarration(steps: readonly ConversationTurnStep[], text: string): readonly ConversationTurnStep[] {
+  if (text.length === 0) return steps;
+  const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
+  if (last?.kind !== "narration") return [...steps, { kind: "narration", text }];
+  return [...steps.slice(0, -1), { kind: "narration", text: last.text + text }];
+}
+
+/**
  * `record` with `update` applied. Narration, tool calls and an ending land on
  * the turn still running at the end of the record, which is opened when none
  * is.
@@ -59,13 +72,16 @@ function withUpdateApplied(record: ConversationRecord, update: ConversationUpdat
 
   const open = openTurn(record.entries);
   const before = open ? record.entries.slice(0, -1) : record.entries;
-  const turn: ConversationAssistantEntry = open ?? { kind: "assistant", narration: "", toolCalls: [] };
+  const turn: ConversationAssistantEntry = open ?? { kind: "assistant", steps: [] };
 
   switch (update.kind) {
     case "narration":
-      return { ...record, entries: [...before, { ...turn, narration: turn.narration + update.text }] };
+      return { ...record, entries: [...before, { ...turn, steps: withNarration(turn.steps, update.text) }] };
     case "toolCall":
-      return { ...record, entries: [...before, { ...turn, toolCalls: [...turn.toolCalls, update.call] }] };
+      return {
+        ...record,
+        entries: [...before, { ...turn, steps: [...turn.steps, { kind: "toolCall", call: update.call }] }],
+      };
     case "ending":
       return { ...record, entries: [...before, { ...turn, ending: update.ending }] };
   }

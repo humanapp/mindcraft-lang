@@ -27,7 +27,7 @@ const tileColorMap: Record<BrainTileKind, TileColorDef | undefined> = {
   factory: defaultTileColor,
   accessor: defaultTileColor,
   page: defaultTileColor,
-  output: undefined,
+  output: defaultTileColor,
   missing: { when: "#E57373", do: "#E57373" },
 };
 

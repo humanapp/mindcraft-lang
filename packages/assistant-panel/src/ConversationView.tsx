@@ -1,4 +1,12 @@
-import type { ConversationEntry, ConversationRecord, ConversationTurnEnding } from "@mindcraft-lang/assistant-relay";
+import type {
+  ConversationEntry,
+  ConversationRecord,
+  ConversationTurnEnding,
+  ConversationTurnStep,
+} from "@mindcraft-lang/assistant-relay";
+import { RelayTurnEndCode } from "@mindcraft-lang/assistant-relay";
+import { useEffect, useRef } from "react";
+import type { ToolActivity } from "./conversation/activity";
 import { toolActivity } from "./conversation/activity";
 import { AssistantStatus } from "./session/machine";
 
@@ -18,13 +26,68 @@ export interface ConversationViewProps {
   onStop: () => void;
   /** Open the session again after it failed; the retry control stands only when given. */
   onRetry?: (() => void) | undefined;
+  /** Put the last thing the person asked for again; a broken-off turn offers it only when given. */
+  onAskAgain?: (() => void) | undefined;
+}
+
+/** Pixels of slack at the foot of the transcript that still count as being at the bottom. */
+const bottomSlackPx = 24;
+
+/** Animation offsets of the presence mark's dots, in the order they are drawn. */
+const presenceDotDelays = ["0ms", "160ms", "320ms"] as const;
+
+/** One thing a turn did, as the transcript lays it out. */
+type LaidOutStep =
+  | { readonly kind: "narration"; readonly text: string }
+  | {
+      readonly kind: "activity";
+      readonly activity: ToolActivity;
+      /** Calls the line stands for; above one, the line says how many. */
+      readonly repeats: number;
+    };
+
+/** Whether two activity lines read identically, so one line can stand for both. */
+function readsTheSame(one: ToolActivity, other: ToolActivity): boolean {
+  return one.kind === other.kind && one.text === other.text;
+}
+
+/** `steps` in arrival order, with each run of identical activity lines folded into one line. */
+function laidOut(steps: readonly ConversationTurnStep[]): LaidOutStep[] {
+  const lines: LaidOutStep[] = [];
+  for (const step of steps) {
+    if (step.kind === "narration") {
+      lines.push({ kind: "narration", text: step.text });
+      continue;
+    }
+    const activity = toolActivity(step.call);
+    const last = lines[lines.length - 1];
+    if (last?.kind === "activity" && readsTheSame(last.activity, activity)) {
+      lines[lines.length - 1] = { ...last, repeats: last.repeats + 1 };
+      continue;
+    }
+    lines.push({ kind: "activity", activity, repeats: 1 });
+  }
+  return lines;
 }
 
 /** How a turn that did not simply finish reads, and `undefined` for one that did. */
-function endingNote(ending: ConversationTurnEnding | undefined): string | undefined {
-  if (!ending) return undefined;
-  if (ending.kind === "end") return ending.code === "complete" ? undefined : "I stopped there.";
-  return "I lost my connection, so I stopped there.";
+function endingNote(ending: ConversationTurnEnding): string | undefined {
+  if (ending.kind === "failure") return "I lost my connection, so I stopped there.";
+  switch (ending.code) {
+    case RelayTurnEndCode.Complete:
+      return undefined;
+    case RelayTurnEndCode.Stopped:
+      return "I stopped there.";
+    case RelayTurnEndCode.Truncated:
+      return "I lost my train of thought. Ask me again?";
+    case RelayTurnEndCode.Failed:
+      return "I could not finish that one.";
+  }
+}
+
+/** Whether `ending` is the entity breaking off mid-answer, which offers to be asked again. */
+function brokeOff(ending: ConversationTurnEnding): boolean {
+  return ending.kind === "end" && ending.code === RelayTurnEndCode.Truncated;
 }
 
 /** How the session's own state reads while it is not simply ready. */
@@ -34,8 +97,44 @@ function connectionNote(status: AssistantStatus): string | undefined {
   return undefined;
 }
 
+/** The entity's wordless presence, standing at the live edge of a turn that is still running. */
+function PresenceMark() {
+  return (
+    <div data-assistant-presence className="flex items-center gap-1 py-1" aria-hidden="true">
+      {presenceDotDelays.map((delay) => (
+        <span
+          key={delay}
+          style={{ animationDelay: delay }}
+          className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground motion-reduce:animate-none motion-reduce:opacity-50"
+        />
+      ))}
+    </div>
+  );
+}
+
+/** One line of what a turn did: a run of narration, or an activity line and how many calls it stands for. */
+function StepView({ step }: { step: LaidOutStep }) {
+  if (step.kind === "narration") {
+    return (
+      <p data-assistant-narration className="whitespace-pre-wrap text-sm text-card-foreground">
+        {step.text}
+      </p>
+    );
+  }
+  return (
+    <p
+      data-assistant-activity={step.activity.kind}
+      data-assistant-activity-repeats={step.repeats}
+      className="text-xs text-muted-foreground"
+    >
+      {step.activity.text}
+      {step.repeats > 1 && ` (x${step.repeats})`}
+    </p>
+  );
+}
+
 /** One entry of the conversation: what the person said, or one of the entity's turns. */
-function EntryView({ entry }: { entry: ConversationEntry }) {
+function EntryView({ entry, onAskAgain }: { entry: ConversationEntry; onAskAgain?: (() => void) | undefined }) {
   if (entry.kind === "user") {
     return (
       <p data-assistant-entry="user" className="rounded-md bg-muted px-2 py-1.5 text-sm text-foreground">
@@ -43,30 +142,30 @@ function EntryView({ entry }: { entry: ConversationEntry }) {
       </p>
     );
   }
-  const ending = endingNote(entry.ending);
+  const { ending } = entry;
+  const note = ending ? endingNote(ending) : undefined;
   return (
     <div data-assistant-entry="assistant" className="flex flex-col gap-1">
-      {entry.narration && (
-        <p data-assistant-narration className="whitespace-pre-wrap text-sm text-card-foreground">
-          {entry.narration}
-        </p>
-      )}
-      {entry.toolCalls.map((call, at) => {
-        const activity = toolActivity(call);
-        return (
-          <p
-            key={`${call.name}-${at}`}
-            data-assistant-activity={activity.kind}
-            className="text-xs text-muted-foreground"
-          >
-            {activity.text}
+      {laidOut(entry.steps).map((step, at) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a turn only ever appends, so a step keeps its position
+        <StepView key={`step-${at}`} step={step} />
+      ))}
+      {ending && note && (
+        <div className="flex items-center gap-2">
+          <p data-assistant-ending={ending.code} className="text-xs text-muted-foreground">
+            {note}
           </p>
-        );
-      })}
-      {ending && (
-        <p data-assistant-ending className="text-xs text-muted-foreground">
-          {ending}
-        </p>
+          {brokeOff(ending) && onAskAgain && (
+            <button
+              type="button"
+              data-assistant-ask-again
+              onClick={onAskAgain}
+              className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+            >
+              Try again
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -76,12 +175,29 @@ function EntryView({ entry }: { entry: ConversationEntry }) {
  * The Assistant's conversation surface: the entity whose mind is open, the
  * conversation it has had with the person, and the box the next thing to do is
  * typed into. It holds no state and starts nothing; the host drives it.
+ *
+ * The transcript follows its newest content unless the person has scrolled up,
+ * which holds it where they left it until they scroll back down.
  */
 export function ConversationView(props: ConversationViewProps) {
-  const { name, status, record, intent, onIntentChange, onSend, onStop, onRetry } = props;
+  const { name, status, record, intent, onIntentChange, onSend, onStop, onRetry, onAskAgain } = props;
   const entries = record?.entries ?? [];
   const running = status === AssistantStatus.TurnActive;
   const connection = connectionNote(status);
+  const transcript = useRef<HTMLDivElement>(null);
+  const followingBottom = useRef(true);
+
+  const noteScroll = (): void => {
+    const element = transcript.current;
+    if (!element) return;
+    followingBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight <= bottomSlackPx;
+  };
+
+  useEffect(() => {
+    const element = transcript.current;
+    if (!element || !followingBottom.current) return;
+    element.scrollTop = element.scrollHeight;
+  });
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
@@ -91,7 +207,11 @@ export function ConversationView(props: ConversationViewProps) {
           {name}
         </span>
       </header>
-      <div className="flex min-h-0 grow flex-col gap-3 overflow-y-auto px-3 py-4">
+      <div
+        ref={transcript}
+        onScroll={noteScroll}
+        className="flex min-h-0 grow flex-col gap-3 overflow-y-auto px-3 py-4"
+      >
         {entries.length === 0 ? (
           <p data-assistant-resting className="text-sm text-muted-foreground">
             Tell me what you want me to do.
@@ -99,9 +219,10 @@ export function ConversationView(props: ConversationViewProps) {
         ) : (
           entries.map((entry, at) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: a record only ever appends, so an entry keeps its position
-            <EntryView key={`entry-${at}`} entry={entry} />
+            <EntryView key={`entry-${at}`} entry={entry} onAskAgain={onAskAgain} />
           ))
         )}
+        {running && <PresenceMark />}
       </div>
       {connection && (
         <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">

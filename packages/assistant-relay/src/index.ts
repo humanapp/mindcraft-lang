@@ -1,9 +1,12 @@
 export type {
   ConversationAssistantEntry,
   ConversationEntry,
+  ConversationNarrationSegment,
   ConversationRecord,
   ConversationToolCall,
+  ConversationToolCallStep,
   ConversationTurnEnding,
+  ConversationTurnStep,
   ConversationUserEntry,
 } from "./conversation.js";
 export {

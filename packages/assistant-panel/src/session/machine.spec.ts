@@ -3,7 +3,12 @@ import { describe, test } from "node:test";
 import type { AuthoringWorkspace } from "@mindcraft-lang/assistant-bridge";
 import { createAuthoringWorkspace, executeToolCall } from "@mindcraft-lang/assistant-bridge";
 import { createTargetAdapter, FAKE_TARGET_IDENTITY, ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
-import type { ConversationRecord, RelayToolManifest } from "@mindcraft-lang/assistant-relay";
+import type {
+  ConversationEntry,
+  ConversationRecord,
+  ConversationToolCall,
+  RelayToolManifest,
+} from "@mindcraft-lang/assistant-relay";
 import { ConversationTurnFailureCode, RelayDeclineCode, RelayRefusalCode } from "@mindcraft-lang/assistant-relay";
 import type { RelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
 import { createRelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
@@ -162,6 +167,18 @@ function conversation(machine: AssistantMachine, brainId: string): ConversationR
   return recordFor(machine.getState().store, brainId);
 }
 
+/** What `entry` reads as: what the person said, or the turn's narration segments joined. */
+function saidIn(entry: ConversationEntry): string {
+  if (entry.kind === "user") return entry.text;
+  return entry.steps.map((step) => (step.kind === "narration" ? step.text : "")).join("");
+}
+
+/** The calls `entry` made, for a turn; empty for something the person said. */
+function callsIn(entry: ConversationEntry): ConversationToolCall[] {
+  if (entry.kind === "user") return [];
+  return entry.steps.flatMap((step) => (step.kind === "toolCall" ? [step.call] : []));
+}
+
 /** A script whose one turn narrates and then completes. */
 const oneQuietTurn: ScriptedService = {
   turns: [{ steps: [{ kind: "narration", text: "looking at it" }] }],
@@ -268,8 +285,7 @@ describe("opening the session", () => {
       { kind: "user", text: "make it hide" },
       {
         kind: "assistant",
-        narration: "",
-        toolCalls: [],
+        steps: [],
         ending: { kind: "failure", code: ConversationTurnFailureCode.NotConnected },
       },
     ]);
@@ -391,7 +407,7 @@ describe("a session per brain", () => {
 });
 
 describe("serving a turn's tool calls", () => {
-  test("serves the session catalog read and an authoring batch, and records both verbatim", async () => {
+  test("serves the session catalog read and an authoring batch, recording both verbatim in arrival order", async () => {
     const stand = harness({
       turns: [
         {
@@ -410,13 +426,16 @@ describe("serving a turn's tool calls", () => {
     await stand.served;
 
     const inProcess = freshWorkspace();
-    const expected = [];
+    const served = [];
     for (const call of [firstTurnCalls.catalog, ...firstTurnCalls.authoring]) {
-      const served = await executeToolCall(inProcess, call.name, call.input);
-      expected.push({
-        name: call.name,
-        input: call.input,
-        outcome: { kind: "ok", payload: JSON.parse(JSON.stringify(served.payload)) },
+      const answer = await executeToolCall(inProcess, call.name, call.input);
+      served.push({
+        kind: "toolCall" as const,
+        call: {
+          name: call.name,
+          input: call.input,
+          outcome: { kind: "ok", payload: JSON.parse(JSON.stringify(answer.payload)) },
+        },
       });
     }
 
@@ -424,8 +443,7 @@ describe("serving a turn's tool calls", () => {
       { kind: "user", text: "make it hide" },
       {
         kind: "assistant",
-        narration: "writing the rule",
-        toolCalls: expected,
+        steps: [served[0], { kind: "narration", text: "writing the rule" }, ...served.slice(1)],
         ending: { kind: "end", code: "complete" },
       },
     ]);
@@ -444,12 +462,14 @@ describe("serving a turn's tool calls", () => {
 
     assert.deepEqual(conversation(stand.machine, "brain-a").entries[1], {
       kind: "assistant",
-      narration: "",
-      toolCalls: [
+      steps: [
         {
-          name: firstTurnCalls.catalog.name,
-          input: firstTurnCalls.catalog.input,
-          outcome: { kind: "declined", code: RelayDeclineCode.UserStopped },
+          kind: "toolCall",
+          call: {
+            name: firstTurnCalls.catalog.name,
+            input: firstTurnCalls.catalog.input,
+            outcome: { kind: "declined", code: RelayDeclineCode.UserStopped },
+          },
         },
       ],
       ending: { kind: "end", code: "stopped" },
@@ -468,8 +488,7 @@ describe("serving a turn's tool calls", () => {
     assert.equal(stand.machine.getState().status, AssistantStatus.Ready);
     assert.deepEqual(conversation(stand.machine, "brain-a").entries[1], {
       kind: "assistant",
-      narration: "",
-      toolCalls: [],
+      steps: [],
       ending: { kind: "failure", code: ConversationTurnFailureCode.ToolServingFailed },
     });
 
@@ -495,8 +514,7 @@ describe("ending a turn", () => {
 
     assert.deepEqual(conversation(stand.machine, "brain-a").entries[1], {
       kind: "assistant",
-      narration: "",
-      toolCalls: [],
+      steps: [],
       ending: { kind: "end", code: "stopped" },
     });
   });
@@ -512,8 +530,7 @@ describe("ending a turn", () => {
 
     assert.deepEqual(conversation(stand.machine, "brain-a").entries[1], {
       kind: "assistant",
-      narration: "",
-      toolCalls: [],
+      steps: [],
       ending: { kind: "end", code: "stopped" },
     });
   });
@@ -533,8 +550,7 @@ describe("ending a turn", () => {
       { kind: "user", text: "make it hide" },
       {
         kind: "assistant",
-        narration: "looking at it",
-        toolCalls: [],
+        steps: [{ kind: "narration", text: "looking at it" }],
         ending: { kind: "failure", code: ConversationTurnFailureCode.Disconnected },
       },
     ]);
@@ -572,18 +588,13 @@ describe("conversations of more than one brain", () => {
     await settled(stand.machine);
     await stand.served;
 
-    assert.deepEqual(
-      conversation(stand.machine, "brain-a").entries.map((entry) =>
-        entry.kind === "user" ? entry.text : entry.narration
-      ),
-      ["first for a", "for a", "second for a", "for a again"]
-    );
-    assert.deepEqual(
-      conversation(stand.machine, "brain-b").entries.map((entry) =>
-        entry.kind === "user" ? entry.text : entry.narration
-      ),
-      ["first for b", "for b"]
-    );
+    assert.deepEqual(conversation(stand.machine, "brain-a").entries.map(saidIn), [
+      "first for a",
+      "for a",
+      "second for a",
+      "for a again",
+    ]);
+    assert.deepEqual(conversation(stand.machine, "brain-b").entries.map(saidIn), ["first for b", "for b"]);
   });
 
   test("keeps filling the brain a running turn was sent for after the active brain moves", async () => {
@@ -620,7 +631,8 @@ describe("conversations of more than one brain", () => {
     assert.equal(stand.machine.getState().store.activeBrainId, "brain-b");
     assert.deepEqual(conversation(stand.machine, "brain-b").entries, []);
     const turn = conversation(stand.machine, "brain-a").entries[1];
-    assert.equal(turn?.kind === "assistant" && turn.narration, "after the switch");
-    assert.equal(turn?.kind === "assistant" && turn.toolCalls.length, 1);
+    assert.ok(turn, "the turn stands in the record of the brain it was sent for");
+    assert.equal(saidIn(turn), "after the switch");
+    assert.equal(callsIn(turn).length, 1);
   });
 });

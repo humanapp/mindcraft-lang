@@ -31,6 +31,12 @@ export const RelayTurnEndCode = {
   /** A stop from the person ended the turn. */
   Stopped: "stopped",
   /**
+   * The assistant broke off mid-answer and there is no more of it coming. What
+   * it narrated and applied before breaking off stands; the person may ask
+   * again.
+   */
+  Truncated: "truncated",
+  /**
    * The service could not carry the turn to an answer. The document rests at
    * the last edit a tool call applied, valid and undoable.
    */

@@ -41,16 +41,16 @@ describe("the conversation store", () => {
 
     assert.deepEqual(recordFor(store, "brain-a").entries, [
       { kind: "user", text: "make it hide" },
-      { kind: "assistant", narration: "looking", toolCalls: [] },
+      { kind: "assistant", steps: [{ kind: "narration", text: "looking" }] },
     ]);
   });
 
-  test("joins narration deltas into the running turn in stream order", () => {
+  test("joins narration deltas into one segment in stream order", () => {
     let store = withUpdate(emptyConversationStore(), "brain-a", { kind: "narration", text: "look" });
     store = withUpdate(store, "brain-a", { kind: "narration", text: "ing at it" });
 
     assert.deepEqual(recordFor(store, "brain-a").entries, [
-      { kind: "assistant", narration: "looking at it", toolCalls: [] },
+      { kind: "assistant", steps: [{ kind: "narration", text: "looking at it" }] },
     ]);
   });
 
@@ -60,7 +60,39 @@ describe("the conversation store", () => {
     store = withUpdate(store, "brain-a", { kind: "toolCall", call: second });
 
     assert.deepEqual(recordFor(store, "brain-a").entries, [
-      { kind: "assistant", narration: "", toolCalls: [call, second] },
+      {
+        kind: "assistant",
+        steps: [
+          { kind: "toolCall", call },
+          { kind: "toolCall", call: second },
+        ],
+      },
+    ]);
+  });
+
+  test("opens no segment for a delta carrying no text", () => {
+    let store = withUpdate(emptyConversationStore(), "brain-a", { kind: "narration", text: "" });
+    store = withUpdate(store, "brain-a", { kind: "toolCall", call });
+    store = withUpdate(store, "brain-a", { kind: "narration", text: "" });
+
+    assert.deepEqual(recordFor(store, "brain-a").entries, [{ kind: "assistant", steps: [{ kind: "toolCall", call }] }]);
+  });
+
+  test("starts a new narration segment after a tool call, keeping arrival order", () => {
+    let store = withUpdate(emptyConversationStore(), "brain-a", { kind: "narration", text: "before" });
+    store = withUpdate(store, "brain-a", { kind: "toolCall", call });
+    store = withUpdate(store, "brain-a", { kind: "narration", text: "after" });
+    store = withUpdate(store, "brain-a", { kind: "narration", text: " that" });
+
+    assert.deepEqual(recordFor(store, "brain-a").entries, [
+      {
+        kind: "assistant",
+        steps: [
+          { kind: "narration", text: "before" },
+          { kind: "toolCall", call },
+          { kind: "narration", text: "after that" },
+        ],
+      },
     ]);
   });
 
@@ -69,7 +101,11 @@ describe("the conversation store", () => {
     store = withUpdate(store, "brain-a", { kind: "ending", ending: { kind: "end", code: "complete" } });
 
     assert.deepEqual(recordFor(store, "brain-a").entries, [
-      { kind: "assistant", narration: "done", toolCalls: [], ending: { kind: "end", code: "complete" } },
+      {
+        kind: "assistant",
+        steps: [{ kind: "narration", text: "done" }],
+        ending: { kind: "end", code: "complete" },
+      },
     ]);
   });
 
@@ -82,8 +118,7 @@ describe("the conversation store", () => {
     assert.deepEqual(recordFor(store, "brain-a").entries, [
       {
         kind: "assistant",
-        narration: "",
-        toolCalls: [],
+        steps: [],
         ending: { kind: "failure", code: ConversationTurnFailureCode.NotConnected },
       },
     ]);
@@ -95,8 +130,12 @@ describe("the conversation store", () => {
     store = withUpdate(store, "brain-a", { kind: "narration", text: "second" });
 
     assert.deepEqual(recordFor(store, "brain-a").entries, [
-      { kind: "assistant", narration: "first", toolCalls: [], ending: { kind: "end", code: "complete" } },
-      { kind: "assistant", narration: "second", toolCalls: [] },
+      {
+        kind: "assistant",
+        steps: [{ kind: "narration", text: "first" }],
+        ending: { kind: "end", code: "complete" },
+      },
+      { kind: "assistant", steps: [{ kind: "narration", text: "second" }] },
     ]);
   });
 
@@ -106,7 +145,9 @@ describe("the conversation store", () => {
     store = withUpdate(store, "brain-b", { kind: "narration", text: "for b" });
 
     assert.deepEqual(recordFor(store, "brain-a"), before);
-    assert.deepEqual(recordFor(store, "brain-b").entries, [{ kind: "assistant", narration: "for b", toolCalls: [] }]);
+    assert.deepEqual(recordFor(store, "brain-b").entries, [
+      { kind: "assistant", steps: [{ kind: "narration", text: "for b" }] },
+    ]);
   });
 
   test("leaves the store it was given unchanged", () => {

@@ -1,3 +1,4 @@
+import type { ConversationRecord } from "@mindcraft-lang/assistant-relay";
 import { useState } from "react";
 import { useAssistant } from "./assistant-context";
 import { ConversationView } from "./ConversationView";
@@ -7,6 +8,16 @@ import { AssistantStatus } from "./session/machine";
 export interface AssistantSurfaceProps {
   /** The name of the entity whose mind is open, as the host reads it from the document. */
   name: string;
+}
+
+/** The last thing the person asked for, or `undefined` when they have asked for nothing yet. */
+function lastAsked(record: ConversationRecord | undefined): string | undefined {
+  const entries = record?.entries ?? [];
+  for (let at = entries.length - 1; at >= 0; at--) {
+    const entry = entries[at];
+    if (entry?.kind === "user") return entry.text;
+  }
+  return undefined;
 }
 
 /**
@@ -27,6 +38,8 @@ export function AssistantSurface({ name }: AssistantSurfaceProps) {
 
   const brainId = record?.brainId;
   const retry = status === AssistantStatus.Failed && brainId !== undefined ? () => openSession(brainId) : undefined;
+  const asked = lastAsked(record);
+  const askAgain = asked === undefined ? undefined : () => send(asked);
 
   return (
     <ConversationView
@@ -38,6 +51,7 @@ export function AssistantSurface({ name }: AssistantSurfaceProps) {
       onSend={submit}
       onStop={stop}
       onRetry={retry}
+      onAskAgain={askAgain}
     />
   );
 }

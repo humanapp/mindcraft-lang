@@ -13,7 +13,11 @@ import type { AssistantChannel } from "@mindcraft-lang/assistant-panel/session/c
 import { AssistantMachine, AssistantStatus } from "@mindcraft-lang/assistant-panel/session/machine";
 import type { ScriptedService } from "@mindcraft-lang/assistant-panel/testing/scripted-service";
 import { runScriptedService } from "@mindcraft-lang/assistant-panel/testing/scripted-service";
-import type { ConversationAssistantEntry, ConversationRecord } from "@mindcraft-lang/assistant-relay";
+import type {
+  ConversationAssistantEntry,
+  ConversationRecord,
+  ConversationToolCall,
+} from "@mindcraft-lang/assistant-relay";
 import type { RelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
 import { createRelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
 import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
@@ -157,6 +161,16 @@ function onlyTurn(record: ConversationRecord): ConversationAssistantEntry {
   return turns[0] as ConversationAssistantEntry;
 }
 
+/** The calls `turn` made, in the order it made them. */
+function callsOf(turn: ConversationAssistantEntry): ConversationToolCall[] {
+  return turn.steps.flatMap((step) => (step.kind === "toolCall" ? [step.call] : []));
+}
+
+/** What `turn` narrated, as the transcript reads it end to end. */
+function narrationOf(turn: ConversationAssistantEntry): string {
+  return turn.steps.map((step) => (step.kind === "narration" ? step.text : "")).join("");
+}
+
 /** Resolves once `predicate` holds of the machine's state, or fails. */
 async function settle(stand: Stand, predicate: () => boolean): Promise<void> {
   for (let waited = 0; waited < 400; waited++) {
@@ -183,14 +197,19 @@ describe("a whole conversation over this app's composition", () => {
     const turn = onlyTurn(record);
     assert.deepEqual(turn.ending, { kind: "end", code: "complete" });
     assert.deepEqual(
-      turn.toolCalls.map((call) => call.name),
+      callsOf(turn).map((call) => call.name),
       ["read_catalog", "propose_edit", "propose_edit"]
     );
     assert.deepEqual(
-      turn.toolCalls.map((call) => call.outcome.kind),
+      callsOf(turn).map((call) => call.outcome.kind),
       ["ok", "ok", "ok"]
     );
-    assert.ok(turn.narration.length > 0, "the turn recorded what it narrated");
+    assert.ok(narrationOf(turn).length > 0, "the turn recorded what it narrated");
+    assert.deepEqual(
+      turn.steps.map((step) => step.kind),
+      ["narration", "toolCall", "toolCall", "toolCall", "narration"],
+      "the turn's narration and calls stand in the order they arrived"
+    );
     assert.deepEqual(ruleSideTileIds(edited.brainDef, "when"), [...authoredWhenTiles]);
     assert.deepEqual(ruleSideTileIds(edited.brainDef, "do"), [...authoredDoTiles]);
     assert.equal(edited.history.undoDepth(), authoredEdits);
