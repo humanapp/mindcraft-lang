@@ -97,7 +97,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, currentCell?: PageGridCell): stri
           },
           createElement(
             RuleSelectionProvider,
-            { value: ruleSelectionCell(currentCell, ruleDef.id()) },
+            { value: ruleSelectionCell(currentCell, ruleDef.ruleId()) },
             createElement(BrainRuleEditor, {
               ruleDef,
               lineNumber: 1,
@@ -115,7 +115,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, currentCell?: PageGridCell): stri
 /** The cells the model names for `ruleDef`'s own rows, in reading order. */
 function modelCells(ruleDef: BrainRuleDef, hasSentence: boolean): PageGridCell[] {
   const descriptor: RuleCellDescriptor = {
-    ruleId: ruleDef.id(),
+    ruleId: ruleDef.ruleId(),
     whenTileCount: ruleDef.when().tiles().size(),
     doTileCount: ruleDef.do().tiles().size(),
     whenAppendable: sideOffersAppendedTile({ ruleDef, side: RuleSide.When, catalogs, services }),
@@ -151,7 +151,7 @@ describe("the cells a rule card renders", () => {
     const { ruleDef } = makeBrain(services, [], []);
     const rendered = cellTags(renderRuleCard(ruleDef)).map((tag) => attributeOf(tag, kPageGridCellAttribute) as string);
     assert.deepEqual(rendered, modelCellKeys(ruleDef, true));
-    assert.ok(rendered.includes(pageGridCellKey({ kind: "sentence", ruleId: ruleDef.id() })));
+    assert.ok(rendered.includes(pageGridCellKey({ kind: "sentence", ruleId: ruleDef.ruleId() })));
   });
 
   test("no cell key is repeated", () => {
@@ -172,7 +172,7 @@ describe("the cells a rule card renders", () => {
 describe("the grid's one tab stop", () => {
   test("the named cell takes it and every other cell gives it up", () => {
     const ruleDef = makePopulatedRule("stop-named");
-    const named: PageGridCell = { kind: "tile", ruleId: ruleDef.id(), side: RuleSide.Do, tileIndex: 0 };
+    const named: PageGridCell = { kind: "tile", ruleId: ruleDef.ruleId(), side: RuleSide.Do, tileIndex: 0 };
     const namedKey = pageGridCellKey(named);
     const stops = new Map(
       cellTags(renderRuleCard(ruleDef, named)).map((tag) => [
@@ -187,7 +187,7 @@ describe("the grid's one tab stop", () => {
 
   test("no other control of the card is a tab stop", () => {
     const ruleDef = makePopulatedRule("stop-only");
-    const named: PageGridCell = { kind: "handle", ruleId: ruleDef.id() };
+    const named: PageGridCell = { kind: "handle", ruleId: ruleDef.ruleId() };
     for (const tag of tags(renderRuleCard(ruleDef, named))) {
       if (!tag.startsWith("<button")) continue;
       const key = attributeOf(tag, kPageGridCellAttribute);
@@ -198,7 +198,7 @@ describe("the grid's one tab stop", () => {
 
   test("the rule handle announces no menu, since it opens none", () => {
     const ruleDef = makePopulatedRule("handle-no-menu");
-    const handleKey = pageGridCellKey({ kind: "handle", ruleId: ruleDef.id() });
+    const handleKey = pageGridCellKey({ kind: "handle", ruleId: ruleDef.ruleId() });
     const handle = cellTags(renderRuleCard(ruleDef)).find(
       (tag) => attributeOf(tag, kPageGridCellAttribute) === handleKey
     );
@@ -251,7 +251,7 @@ describe("the selection's mark", () => {
 
   test("only the cell the selection rests on carries it", () => {
     const ruleDef = makePopulatedRule("mark-one");
-    const named: PageGridCell = { kind: "tile", ruleId: ruleDef.id(), side: RuleSide.Do, tileIndex: 0 };
+    const named: PageGridCell = { kind: "tile", ruleId: ruleDef.ruleId(), side: RuleSide.Do, tileIndex: 0 };
     const shapes = selectionShapes(renderRuleCard(ruleDef, named));
     const marked = [...shapes].filter(([, shape]) => shape !== undefined).map(([key]) => key);
     assert.deepEqual(marked, [pageGridCellKey(named)]);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { AuthoringWorkspace, ScenarioInput, SimulationRun } from "@mindcraft-lang/assistant-bridge";
 import { createAuthoringWorkspace, proposeEdit } from "@mindcraft-lang/assistant-bridge";
+import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
 import { ARCHETYPE_NAMES } from "@/brain/archetypes";
 import { createTargetAdapter } from "./adapter";
 import { sourceRehearsalContent } from "./source-content";
@@ -37,11 +38,12 @@ const IN_CONTACT = 10;
 /** A workspace whose one rule wanders while `sensorTiles` reads true. */
 function gatedWorkspace(sensorTiles: string[]): AuthoringWorkspace {
   const workspace = createAuthoringWorkspace(createTargetAdapter(CONTENT), "scripted-input brain");
-  const when = proposeEdit(workspace, { op: "placeTiles", ruleId: "0/0", side: "when", tileIds: sensorTiles });
+  const ruleId = ruleIdAt(workspace.brainDef, "0/0");
+  const when = proposeEdit(workspace, { op: "placeTiles", ruleId, side: "when", tileIds: sensorTiles });
   assert.equal(when.ok, true, JSON.stringify(when));
   const doSide = proposeEdit(workspace, {
     op: "placeTiles",
-    ruleId: "0/0",
+    ruleId,
     side: "do",
     tileIds: ["tile.actuator->actuator.move", "tile.modifier->modifier.movement.wander"],
   });
@@ -120,8 +122,9 @@ describe("scripted world causes in an ecosim rehearsal", () => {
   test("reproduces a scripted run exactly from the same seed", async () => {
     const tiles = ["tile.sensor->sensor.see", "tile.modifier->modifier.actor_kind.carnivore"];
 
-    const first = await rehearse(gatedWorkspace(tiles), "carnivore-ahead", IN_VIEW);
-    const second = await rehearse(gatedWorkspace(tiles), "carnivore-ahead", IN_VIEW);
+    const workspace = gatedWorkspace(tiles);
+    const first = await rehearse(workspace, "carnivore-ahead", IN_VIEW);
+    const second = await rehearse(workspace, "carnivore-ahead", IN_VIEW);
 
     assert.deepEqual(second, first);
   });

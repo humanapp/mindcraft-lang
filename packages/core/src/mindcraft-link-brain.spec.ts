@@ -338,20 +338,25 @@ describe("build diagnostics name the rule they came from", () => {
   });
 });
 
-/** `def` rebuilt in `environment` with `excludedRulePaths` emptied in it. */
+/** `def` rebuilt in `environment` with `excludedRuleIds` emptied in it. */
 function withRulesEmptied(
   environment: MindcraftEnvironment,
   def: BrainDef,
-  excludedRulePaths: readonly string[]
+  excludedRuleIds: readonly string[]
 ): IBrainDef {
-  return environment.deserializeBrainJson(brainJsonWithRulesEmptied(def.toJson(), excludedRulePaths));
+  return environment.deserializeBrainJson(brainJsonWithRulesEmptied(def.toJson(), excludedRuleIds));
+}
+
+/** Id of the root rule at `index` of `def`'s first page. */
+function rootRuleId(def: BrainDef, index: number): string {
+  return def.pages().get(0)!.children().get(index)!.ruleId();
 }
 
 describe("brainJsonWithRulesEmptied", () => {
   test("links the rest of the document when the error-bearing rule is emptied", () => {
     const { environment, def } = createPartlyBrokenBrain();
 
-    const result = environment.linkBrain(withRulesEmptied(environment, def, ["0/1"]));
+    const result = environment.linkBrain(withRulesEmptied(environment, def, [rootRuleId(def, 1)]));
 
     assert.ok(result.program, "the document builds with the broken rule emptied");
     assert.deepEqual(errorDiags(result), [], "an emptied rule reports no diagnostic");
@@ -360,7 +365,8 @@ describe("brainJsonWithRulesEmptied", () => {
   test("keeps the function id every rule path would otherwise have had", () => {
     const { environment, def } = createPartlyBrokenBrain();
 
-    const ruleIndex = environment.linkBrain(withRulesEmptied(environment, def, ["0/1"])).program!.ruleIndex;
+    const ruleIndex = environment.linkBrain(withRulesEmptied(environment, def, [rootRuleId(def, 1)])).program!
+      .ruleIndex;
 
     assert.equal(ruleIndex.get("0/0"), 0);
     assert.equal(ruleIndex.get("0/1"), 1);
@@ -368,7 +374,7 @@ describe("brainJsonWithRulesEmptied", () => {
 
   test("runs the rules it kept and never the rule it emptied", () => {
     const { environment, def } = createPartlyBrokenBrain();
-    const emptied = withRulesEmptied(environment, def, ["0/1"]);
+    const emptied = withRulesEmptied(environment, def, [rootRuleId(def, 1)]);
     const ruleIndex = environment.linkBrain(emptied).program!.ruleIndex;
 
     const evaluated: number[] = [];
@@ -389,7 +395,7 @@ describe("brainJsonWithRulesEmptied", () => {
     const whenOnlyTile = page.children().get(1)!.do().tiles().get(0);
     (page.children().get(1)! as BrainRuleDef).appendNewRule().do().appendTile(whenOnlyTile);
 
-    const result = environment.linkBrain(withRulesEmptied(environment, def, ["0/1"]));
+    const result = environment.linkBrain(withRulesEmptied(environment, def, [rootRuleId(def, 1)]));
 
     assert.ok(result.program, "the child rule's error is emptied with its parent");
   });
@@ -397,7 +403,7 @@ describe("brainJsonWithRulesEmptied", () => {
   test("leaves the document it was given untouched", () => {
     const { environment, def } = createPartlyBrokenBrain();
 
-    withRulesEmptied(environment, def, ["0/1"]);
+    withRulesEmptied(environment, def, [rootRuleId(def, 1)]);
 
     assert.deepEqual(errorRulePaths(environment.linkBrain(def)), ["0/1"], "the original still reports its error");
   });
@@ -411,7 +417,7 @@ describe("brainJsonWithRulesEmptied", () => {
 
   test("survives a serialize and deserialize round trip", () => {
     const { environment, def } = createPartlyBrokenBrain();
-    const emptied = withRulesEmptied(environment, def, ["0/1"]);
+    const emptied = withRulesEmptied(environment, def, [rootRuleId(def, 1)]);
 
     const reopened = environment.deserializeBrainJson(emptied.toJson() as BrainJson);
 
@@ -421,7 +427,7 @@ describe("brainJsonWithRulesEmptied", () => {
 
   test("still excludes after the document is cloned", () => {
     const { environment, def } = createPartlyBrokenBrain();
-    const emptied = withRulesEmptied(environment, def, ["0/1"]) as BrainDef;
+    const emptied = withRulesEmptied(environment, def, [rootRuleId(def, 1)]) as BrainDef;
 
     const copy = emptied.clone();
 

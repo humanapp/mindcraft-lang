@@ -137,7 +137,6 @@ export class DeleteRuleCommand implements BrainCommand {
   execute(): void {
     this.savedState = getRuleState(this.ruleToDelete);
     this.clonedRule = this.ruleToDelete.clone();
-    this.clonedRule.adoptRuleIds(this.ruleToDelete);
     this.ruleToDelete.delete();
   }
 

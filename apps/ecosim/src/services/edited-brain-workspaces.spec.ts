@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { AuthoringWorkspace, TargetAdapter } from "@mindcraft-lang/assistant-bridge";
 import { serveToolCalls } from "@mindcraft-lang/assistant-bridge/relay";
+import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
@@ -31,13 +32,11 @@ const CALL_TIMEOUT_MS = 15000;
 const authoringCalls = [
   {
     op: "placeTiles",
-    ruleId: "0/0",
     side: "when",
     tileIds: ["tile.sensor->sensor.see", `tile.modifier->${TileIds.Modifier.ActorKindCarnivore}`],
   },
   {
     op: "placeTiles",
-    ruleId: "0/0",
     side: "do",
     tileIds: [
       "tile.actuator->actuator.move",
@@ -91,7 +90,7 @@ function serveAuthoring(workspace: AuthoringWorkspace) {
     requests: authoringCalls.map((input, at) => ({
       requestId: `call-${at}`,
       name: "propose_edit",
-      input,
+      input: { ...input, ruleId: ruleIdAt(workspace.brainDef, "0/0") },
       timeoutMs: CALL_TIMEOUT_MS,
     })),
   });

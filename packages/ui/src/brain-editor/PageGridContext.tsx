@@ -18,21 +18,21 @@ export interface PageGridBinding {
    * The rule an insertion asked be composed, which that rule's card takes up
    * once and then gives back. Undefined while no insertion is waiting.
    */
-  readonly ruleToCompose: number | undefined;
+  readonly ruleToCompose: string | undefined;
   /** Asks that `ruleId` be composed, or gives the request back with undefined. */
-  composeRule(ruleId: number | undefined): void;
+  composeRule(ruleId: string | undefined): void;
   /**
    * Picks `ruleId` up: the arrow keys then move that rule until it is set down
    * or given back. Does nothing while another rule is already held.
    */
-  grabRule(ruleId: number): void;
+  grabRule(ruleId: string): void;
   /**
    * Takes `ruleId` one step in `direction` and reads the step out, leaving the
    * rule where it stands when the model refuses that step. A step of the rule
    * the page has picked up joins the batch that pick-up opened; every other step
    * is a history entry of its own.
    */
-  moveRule(ruleId: number, direction: RuleMoveDirection): void;
+  moveRule(ruleId: string, direction: RuleMoveDirection): void;
   /**
    * The element the armed rule renders its offering panel into: a zero-height
    * strip of the rules scroller, pinned to the scroller's left edge and outside

@@ -1,4 +1,6 @@
 import type { ExecutionContext, IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
+import type { IBrainRuleDef } from "@mindcraft-lang/core/brain";
+import { childRulePath, rootRulePath } from "@mindcraft-lang/core/brain";
 import type { BrainBuildDiagnostic } from "@mindcraft-lang/core/brain/compiler";
 import type { BrainJson } from "@mindcraft-lang/core/brain/model";
 import { brainJsonWithRulesEmptied } from "@mindcraft-lang/core/brain/model";
@@ -159,11 +161,28 @@ export interface RehearsalAdapterOptions {
   readonly driver: WorldDriver;
 }
 
+/** Durable rule id per rule path for `brainDef`, in document order. */
+function ruleIdsByPath(brainDef: IBrainDef): Map<string, string> {
+  const byPath = new Map<string, string>();
+  const walk = (rule: IBrainRuleDef, path: string) => {
+    byPath.set(path, rule.ruleId());
+    const children = rule.children();
+    for (let i = 0; i < children.size(); i++) walk(children.get(i), childRulePath(path, i));
+  };
+  const pages = brainDef.pages();
+  for (let p = 0; p < pages.size(); p++) {
+    const rules = pages.get(p).children();
+    for (let r = 0; r < rules.size(); r++) walk(rules.get(r), rootRulePath(p, r));
+  }
+  return byPath;
+}
+
 /**
- * Rule path per program funcId for `brainDef`. Throws {@link RehearsalRejection}
- * when the brain does not build in `environment`.
+ * Durable rule id per program funcId for `brainDef`, so what the run observes
+ * is reported under the id the document addresses each rule by. Throws
+ * {@link RehearsalRejection} when the brain does not build in `environment`.
  */
-function ruleFuncIdPaths(environment: MindcraftEnvironment, brainDef: IBrainDef): Map<number, string> {
+function ruleFuncIdRuleIds(environment: MindcraftEnvironment, brainDef: IBrainDef): Map<number, string> {
   const build = environment.linkBrain(brainDef);
   if (!build.program) {
     const errors: BrainBuildDiagnostic[] = [];
@@ -172,11 +191,13 @@ function ruleFuncIdPaths(environment: MindcraftEnvironment, brainDef: IBrainDef)
     });
     throw new RehearsalRejection(RehearsalRejectionCode.BrainDoesNotBuild, errors);
   }
-  const paths = new Map<number, string>();
+  const byPath = ruleIdsByPath(brainDef);
+  const ruleIds = new Map<number, string>();
   build.program.ruleIndex.forEach((funcId, rulePath) => {
-    paths.set(funcId, rulePath);
+    const ruleId = byPath.get(rulePath);
+    if (ruleId !== undefined) ruleIds.set(funcId, ruleId);
   });
-  return paths;
+  return ruleIds;
 }
 
 /**
@@ -184,7 +205,7 @@ function ruleFuncIdPaths(environment: MindcraftEnvironment, brainDef: IBrainDef)
  * event stream of its own brain.
  */
 class SubjectRecorder {
-  private readonly rulePaths = new Map<number, string>();
+  private readonly ruleIds = new Map<number, string>();
   private subject: RunningSubject | undefined;
   private gates: GateObservation[] = [];
   private dispatches: DispatchObservation[] = [];
@@ -203,9 +224,9 @@ class SubjectRecorder {
     private readonly labelOf: ValueLabel
   ) {}
 
-  /** Bind the rule paths of the brain under study; call before the subject appears. */
-  bindRulePaths(rulePaths: ReadonlyMap<number, string>): void {
-    for (const [funcId, path] of rulePaths) this.rulePaths.set(funcId, path);
+  /** Bind the rule ids of the brain under study; call before the subject appears. */
+  bindRuleIds(ruleIds: ReadonlyMap<number, string>): void {
+    for (const [funcId, ruleId] of ruleIds) this.ruleIds.set(funcId, ruleId);
   }
 
   /** One think of the participant under study per entry, in order. */
@@ -258,7 +279,7 @@ class SubjectRecorder {
 
   private ruleId(ruleFuncId: number | undefined): string {
     if (ruleFuncId === undefined) return "unattributed";
-    return this.rulePaths.get(ruleFuncId) ?? `funcId:${ruleFuncId}`;
+    return this.ruleIds.get(ruleFuncId) ?? `funcId:${ruleFuncId}`;
   }
 }
 
@@ -303,7 +324,7 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
   const subjectBrain = environment.deserializeBrainJson(
     brainJsonWithRulesEmptied(request.brainDef.toJson() as BrainJson, request.excludedRules ?? [])
   );
-  recorder.bindRulePaths(ruleFuncIdPaths(environment, subjectBrain));
+  recorder.bindRuleIds(ruleFuncIdRuleIds(environment, subjectBrain));
 
   const world = await driver.stage({
     environment,

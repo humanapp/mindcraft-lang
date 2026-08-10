@@ -4,7 +4,7 @@ import type { RuleMoveDirection } from "./page-grid-model";
 /** The rule the page holds picked up, and the steps it can take from where it stands now. */
 export interface RulePickup {
   /** The rule being moved, as its `id()` names it. */
-  readonly ruleId: number;
+  readonly ruleId: string;
   /** The directions the rule can move in right now, read again after every step. */
   readonly directions: readonly RuleMoveDirection[];
 }

@@ -4,6 +4,7 @@ import { describe, test } from "node:test";
 import type { AuthoringWorkspace, SimulationRun } from "@mindcraft-lang/assistant-bridge";
 import { createAuthoringWorkspace, proposeEdit } from "@mindcraft-lang/assistant-bridge";
 import { createRehearsalEnvironment, createSeededRng } from "@mindcraft-lang/assistant-bridge/kit";
+import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
 import type { Actor } from "@/brain/actor";
 import { createEcosimModule } from "@/brain/index";
 import { TileIds } from "@/brain/tileids";
@@ -34,14 +35,14 @@ function authoredWorkspace(actorKind: string, movement: string): AuthoringWorksp
   const workspace = createAuthoringWorkspace(createTargetAdapter(CONTENT), "isolation brain");
   const when = proposeEdit(workspace, {
     op: "placeTiles",
-    ruleId: "0/0",
+    ruleId: ruleIdAt(workspace.brainDef, "0/0"),
     side: "when",
     tileIds: ["tile.sensor->sensor.see", `tile.modifier->${actorKind}`],
   });
   assert.equal(when.ok, true, JSON.stringify(when));
   const doSide = proposeEdit(workspace, {
     op: "placeTiles",
-    ruleId: "0/0",
+    ruleId: ruleIdAt(workspace.brainDef, "0/0"),
     side: "do",
     tileIds: ["tile.actuator->actuator.move", `tile.modifier->${movement}`, "tile.literal->struct:<ActorRef>->it"],
   });
@@ -59,9 +60,28 @@ function seekingWorkspace(): AuthoringWorkspace {
   return authoredWorkspace(TileIds.Modifier.ActorKindPlant, TileIds.Modifier.MovementToward);
 }
 
-/** Hex SHA-256 of a whole run, byte for byte. */
+/**
+ * Hex SHA-256 of a whole run, with each rule id replaced by the order its rule
+ * was first observed in.
+ */
 function digestRun(run: SimulationRun): string {
-  return createHash("sha256").update(JSON.stringify(run)).digest("hex");
+  const ordinals = new Map<string, string>();
+  const ordinalOf = (ruleId: string): string => {
+    const seen = ordinals.get(ruleId);
+    if (seen !== undefined) return seen;
+    const ordinal = `rule-${ordinals.size}`;
+    ordinals.set(ruleId, ordinal);
+    return ordinal;
+  };
+  const observations = run.observations.map((think) => ({
+    gates: think.gates.map((gate) => ({ ...gate, ruleId: ordinalOf(gate.ruleId) })),
+    dispatches: think.dispatches.map((dispatch) =>
+      dispatch.ruleId === undefined ? dispatch : { ...dispatch, ruleId: ordinalOf(dispatch.ruleId) }
+    ),
+  }));
+  return createHash("sha256")
+    .update(JSON.stringify({ ...run, observations }))
+    .digest("hex");
 }
 
 /** Rehearse `workspace` against {@link SCENARIO}. */

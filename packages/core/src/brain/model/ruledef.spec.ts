@@ -5,7 +5,8 @@ import { List } from "@mindcraft-lang/core";
 import { type BrainServices, CoreCapabilityBits, mkVariableTileId } from "@mindcraft-lang/core/brain";
 import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { ParseDiagCode, type TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef, BrainPageDef, type BrainRuleDef, kMaxBrainRuleDepth } from "@mindcraft-lang/core/brain/model";
+import type { BrainJson, RuleJson } from "@mindcraft-lang/core/brain/model";
+import { BrainDef, BrainPageDef, BrainRuleDef, kMaxBrainRuleDepth } from "@mindcraft-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
   BrainTileLiteralDef,
@@ -46,19 +47,102 @@ describe("BrainRuleDef", () => {
     assert.equal(cloned.do().tiles().get(0).tileId, literalTile.tileId);
   });
 
-  test("id() returns stable, unique values", () => {
-    const brain = new BrainDef(services);
-    const page = new BrainPageDef();
-    brain.addPage(page);
+  describe("ruleId", () => {
+    /** A brain of one page carrying `count` root rules. */
+    function pageOfRules(count: number): { brain: BrainDef; page: BrainPageDef; rules: BrainRuleDef[] } {
+      const brain = new BrainDef(services);
+      const page = new BrainPageDef();
+      brain.addPage(page);
+      const rules: BrainRuleDef[] = [];
+      for (let i = 0; i < count; i++) rules.push(page.appendNewRule() as BrainRuleDef);
+      return { brain, page, rules };
+    }
 
-    const r1 = page.appendNewRule() as BrainRuleDef;
-    const r2 = page.appendNewRule() as BrainRuleDef;
+    /** Every rule of `brain`, at any depth, in document order. */
+    function allRules(brain: BrainDef): BrainRuleDef[] {
+      const out: BrainRuleDef[] = [];
+      const visit = (rules: readonly BrainRuleDef[]) => {
+        for (const rule of rules) {
+          out.push(rule);
+          visit(rule.children().toArray() as BrainRuleDef[]);
+        }
+      };
+      for (const page of brain.pages().toArray()) visit(page.children().toArray() as BrainRuleDef[]);
+      return out;
+    }
 
-    assert.equal(typeof r1.id(), "number");
-    assert.notEqual(r1.id(), r2.id());
-    const idBefore = r1.id();
-    r1.indent();
-    assert.equal(r1.id(), idBefore);
+    test("is minted at creation and no two rules of a document share one", () => {
+      const { brain, rules } = pageOfRules(2);
+      rules[0]!.appendNewRule();
+
+      const ids = allRules(brain).map((rule) => rule.ruleId());
+      assert.equal(ids.length, 3);
+      assert.equal(new Set(ids).size, 3);
+      for (const id of ids) assert.ok(id.length > 0);
+    });
+
+    test("survives the structural edits the editor already makes", () => {
+      const { brain, page, rules } = pageOfRules(3);
+      const before = rules.map((rule) => rule.ruleId());
+
+      rules[1]!.indent();
+      rules[2]!.moveUp();
+      rules[2]!.moveTo(undefined, page, 0);
+      __test__appendTile(rules[0]!.when(), services.edit.tiles.get("tile.op->add")!);
+
+      assert.deepEqual(
+        rules.map((rule) => rule.ruleId()),
+        before
+      );
+      assert.equal(new Set(allRules(brain).map((rule) => rule.ruleId())).size, 3);
+    });
+
+    test("round-trips through JSON, and a document saved without ids mints them on load", () => {
+      const { brain, rules } = pageOfRules(2);
+      rules[0]!.appendNewRule();
+      const saved = brain.toJson();
+      const ids = allRules(brain).map((rule) => rule.ruleId());
+
+      const reopened = BrainDef.fromJson(saved, services);
+      assert.deepEqual(
+        allRules(reopened).map((rule) => rule.ruleId()),
+        ids
+      );
+
+      const stripIds = (rule: RuleJson): RuleJson => ({
+        ...rule,
+        ruleId: undefined,
+        children: List.from(rule.children.toArray().map(stripIds)),
+      });
+      const legacy: BrainJson = {
+        ...saved,
+        pages: List.from(
+          saved.pages.toArray().map((page) => ({ ...page, rules: List.from(page.rules.toArray().map(stripIds)) }))
+        ),
+      };
+      const loaded = allRules(BrainDef.fromJson(legacy, services));
+      const minted = loaded.map((rule) => rule.ruleId());
+      assert.equal(minted.length, ids.length);
+      assert.equal(new Set(minted).size, minted.length);
+      for (const id of minted) assert.ok(id.length > 0);
+    });
+
+    test("mintNewRuleIds gives a deserialized copy a fresh identity for its whole subtree", () => {
+      const { brain, rules } = pageOfRules(1);
+      rules[0]!.appendNewRule();
+      const original = allRules(brain).map((rule) => rule.ruleId());
+
+      const copy = BrainRuleDef.fromJson(rules[0]!.toJson(), brain.pages().get(0), brain);
+      assert.deepEqual(
+        [copy.ruleId(), (copy.children().get(0) as BrainRuleDef).ruleId()],
+        original,
+        "a copy deserialized from the rule's own JSON carries its ids"
+      );
+
+      copy.mintNewRuleIds();
+      const renewed = [copy.ruleId(), (copy.children().get(0) as BrainRuleDef).ruleId()];
+      assert.equal(new Set([...original, ...renewed]).size, 4);
+    });
   });
 
   describe("moveTo", () => {

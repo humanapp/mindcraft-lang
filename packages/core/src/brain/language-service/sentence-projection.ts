@@ -60,8 +60,8 @@ export type SentenceSegment = SentenceWordSegment | SentenceGlueSegment;
  */
 export interface ParagraphRuleEntry {
   readonly kind: "rule";
-  /** `id()` of the rule whose clause this entry carries. */
-  readonly ruleId: number;
+  /** `ruleId()` of the rule whose clause this entry carries. */
+  readonly ruleId: string;
   readonly segments: ReadonlyList<SentenceSegment>;
 }
 
@@ -760,7 +760,7 @@ function glueEntry(text: string): ParagraphGlueEntry {
   return { kind: "glue", text };
 }
 
-function ruleEntry(ruleId: number, segments: ReadonlyList<SentenceSegment>): ParagraphRuleEntry {
+function ruleEntry(ruleId: string, segments: ReadonlyList<SentenceSegment>): ParagraphRuleEntry {
   return { kind: "rule", ruleId, segments };
 }
 
@@ -981,7 +981,7 @@ function attachChildRules(
       continue;
     }
     const childEntries = new List<ParagraphEntry>();
-    childEntries.push(ruleEntry(child.id(), projectChildClause(localizer, child).asReadonly()));
+    childEntries.push(ruleEntry(child.ruleId(), projectChildClause(localizer, child).asReadonly()));
 
     const childHasCondition = !child.when().tiles().isEmpty();
     const slots = new List<ParagraphSlot>();
@@ -1008,7 +1008,7 @@ function collectSentences(
       continue;
     }
     const entries = new List<ParagraphEntry>();
-    entries.push(ruleEntry(rule.id(), projectRuleClause(localizer, rule).asReadonly()));
+    entries.push(ruleEntry(rule.ruleId(), projectRuleClause(localizer, rule).asReadonly()));
     const built = attachChildRules(localizer, { entries, unfinished: isUnfinishedClause(rule) }, rule.children());
 
     const terminalSlots = new List<ParagraphSlot>();

@@ -3,11 +3,12 @@ import { describe, test } from "node:test";
 import type { DiagCode } from "@mindcraft-lang/core/brain/compiler";
 import { ParseDiagCode, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
 import { createTargetAdapter } from "../testing/index.js";
-import type { ProposalRejected } from "./propose-edit.js";
+import type { ProposalAccepted, ProposalRejected } from "./propose-edit.js";
 import { proposeEdit } from "./propose-edit.js";
+import { readProject } from "./read-project.js";
 import type { ProposeEditInput, TileRunEntry } from "./tool-schemas.js";
 import type { AuthoringWorkspace } from "./workspace.js";
-import { createAuthoringWorkspace } from "./workspace.js";
+import { createAuthoringWorkspace, locateRules } from "./workspace.js";
 
 /** Tiles the fake target's brains are authored from. */
 const tiles = {
@@ -20,8 +21,21 @@ const tiles = {
   boolean: "tile.literal->boolean:<boolean>->true",
 } as const;
 
-/** The rule every edit below is judged on. */
-const kRule = "0/0";
+/**
+ * Placeholder rule id the cases below are authored with; `at` swaps it for the
+ * id the document under test actually minted for its one rule.
+ */
+const kRule = "the-rule-under-test";
+
+/** Id of the one rule a fresh document opens with. */
+function firstRuleId(workspace: AuthoringWorkspace): string {
+  return locateRules(workspace.brainDef)[0]!.ruleId;
+}
+
+/** `input` addressed at `ruleId`, for a case authored against {@link kRule}. */
+function at(ruleId: string, input: ProposeEditInput): ProposeEditInput {
+  return "ruleId" in input ? { ...input, ruleId } : input;
+}
 
 /** The run that assigns a value to a variable, as a second statement would place it. */
 const assignment: TileRunEntry[] = [
@@ -33,26 +47,66 @@ const assignment: TileRunEntry[] = [
 /** A workspace over the fake target whose judged rule fires the one action on its DO side. */
 function workspaceWithAction(): AuthoringWorkspace {
   const ws = createAuthoringWorkspace(createTargetAdapter(), "fake brain");
-  const when = proposeEdit(ws, { op: "placeTiles", ruleId: kRule, side: "when", tileIds: [tiles.sensor] });
+  const ruleId = firstRuleId(ws);
+  const when = proposeEdit(ws, { op: "placeTiles", ruleId, side: "when", tileIds: [tiles.sensor] });
   assert.equal(when.ok, true, JSON.stringify(when));
-  const doSide = proposeEdit(ws, { op: "placeTiles", ruleId: kRule, side: "do", tileIds: [tiles.actuator] });
+  const doSide = proposeEdit(ws, { op: "placeTiles", ruleId, side: "do", tileIds: [tiles.actuator] });
   assert.equal(doSide.ok, true, JSON.stringify(doSide));
   return ws;
 }
 
-/** The refusal `input` produces on a workspace whose rule already fires the action. */
-function refuse(input: ProposeEditInput): ProposalRejected {
-  const result = proposeEdit(workspaceWithAction(), input);
+/** The refusal `input` produces on a workspace whose rule already fires the action, and that rule's id. */
+function refuse(input: ProposeEditInput): { refused: ProposalRejected; ruleId: string } {
+  const ws = workspaceWithAction();
+  const ruleId = firstRuleId(ws);
+  const result = proposeEdit(ws, at(ruleId, input));
   assert.equal(result.ok, false, JSON.stringify(result));
-  return result as ProposalRejected;
+  return { refused: result as ProposalRejected, ruleId };
 }
+
+describe("an edit addresses a rule by the id the document carries", () => {
+  test("reports an unresolved edit when the id names a rule this document does not hold", () => {
+    const ws = createAuthoringWorkspace(createTargetAdapter(), "fake brain");
+    const elsewhere = firstRuleId(createAuthoringWorkspace(createTargetAdapter(), "another brain"));
+
+    const result = proposeEdit(ws, { op: "placeTile", ruleId: elsewhere, side: "when", tileId: tiles.sensor });
+
+    assert.deepEqual(result, { ok: false, error: "unknown_rule", named: elsewhere });
+  });
+
+  test("refuses under the same id read_project reports the rule by", () => {
+    const ws = workspaceWithAction();
+    const readBack = readProject(ws).pages[0]!.rules[0]!.ruleId;
+
+    const refused = proposeEdit(ws, {
+      op: "placeTiles",
+      ruleId: readBack,
+      side: "do",
+      tileIds: assignment,
+    }) as ProposalRejected;
+
+    assert.equal(refused.ok, false, JSON.stringify(refused));
+    assert.equal(refused.params.ruleId, readBack);
+  });
+
+  test("reads an accepted edit back under the id the request named", () => {
+    const ws = createAuthoringWorkspace(createTargetAdapter(), "fake brain");
+    const ruleId = firstRuleId(ws);
+
+    const accepted = proposeEdit(ws, { op: "placeTile", ruleId, side: "when", tileId: tiles.sensor });
+
+    assert.equal(accepted.ok, true, JSON.stringify(accepted));
+    assert.equal((accepted as ProposalAccepted).rule.ruleId, ruleId);
+    assert.equal(readProject(ws).pages[0]!.rules[0]!.ruleId, ruleId);
+  });
+});
 
 describe("a refused proposal reports where the failure is", () => {
   test("names the rule and the tile a second statement on a full side starts at", () => {
-    const refused = refuse({ op: "placeTiles", ruleId: kRule, side: "do", tileIds: assignment });
+    const { refused, ruleId } = refuse({ op: "placeTiles", ruleId: kRule, side: "do", tileIds: assignment });
 
     assert.equal(refused.code, ParseDiagCode.UnexpectedExpressionAfterExpression);
-    assert.equal(refused.params.rulePath, kRule);
+    assert.equal(refused.params.ruleId, ruleId);
     assert.equal(refused.params.side, "do");
     assert.ok(
       String(refused.params.tileId).startsWith("tile.var->"),
@@ -61,12 +115,18 @@ describe("a refused proposal reports where the failure is", () => {
   });
 
   test("names the rule alongside the tile an expression placed ahead of the action displaces", () => {
-    const refused = refuse({ op: "placeTiles", ruleId: kRule, side: "do", position: 0, tileIds: assignment });
+    const { refused, ruleId } = refuse({
+      op: "placeTiles",
+      ruleId: kRule,
+      side: "do",
+      position: 0,
+      tileIds: assignment,
+    });
 
     assert.deepEqual(refused, {
       ok: false,
       code: ParseDiagCode.UnexpectedActionCallAfterExpression,
-      params: { tileId: tiles.actuator, rulePath: kRule, side: "do" },
+      params: { tileId: tiles.actuator, ruleId, side: "do" },
     });
   });
 
@@ -75,7 +135,7 @@ describe("a refused proposal reports where the failure is", () => {
 
     const result = proposeEdit(ws, {
       op: "placeTiles",
-      ruleId: kRule,
+      ruleId: firstRuleId(ws),
       side: "do",
       tileIds: [tiles.actuator, tiles.parameter, tiles.nil],
     });
@@ -86,7 +146,7 @@ describe("a refused proposal reports where the failure is", () => {
       params: {
         expectedTypeIds: ["number:<number>"],
         actualTypeIds: ["nil:<nil>"],
-        rulePath: kRule,
+        ruleId: firstRuleId(ws),
       },
     });
   });
@@ -159,17 +219,18 @@ describe("reporting a refusal decides nothing", () => {
   for (const verdictCase of verdictCases) {
     test(`keeps the verdict and the code for ${verdictCase.name}`, () => {
       const ws = createAuthoringWorkspace(createTargetAdapter(), "fake brain");
+      const ruleId = firstRuleId(ws);
       for (const input of verdictCase.before) {
-        const setup = proposeEdit(ws, input);
+        const setup = proposeEdit(ws, at(ruleId, input));
         assert.equal(setup.ok, true, JSON.stringify(setup));
       }
 
-      const result = proposeEdit(ws, verdictCase.edit);
+      const result = proposeEdit(ws, at(ruleId, verdictCase.edit));
 
       assert.equal(result.ok, verdictCase.code === undefined, JSON.stringify(result));
       if (verdictCase.code !== undefined) {
         assert.equal((result as ProposalRejected).code, verdictCase.code);
-        assert.equal((result as ProposalRejected).params.rulePath, kRule);
+        assert.equal((result as ProposalRejected).params.ruleId, ruleId);
       }
     });
   }

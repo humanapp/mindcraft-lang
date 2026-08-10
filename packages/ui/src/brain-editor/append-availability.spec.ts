@@ -205,7 +205,7 @@ describe("the add-tile control the decision stands", () => {
     );
     ruleDef.typecheck();
     const markup = renderRuleCard(ruleDef);
-    assert.ok(markup.includes(`data-rule-handle="${ruleDef.id()}"`));
+    assert.ok(markup.includes(`data-rule-handle="${ruleDef.ruleId()}"`));
   });
 
   test("a host supplying no services stands both controls", () => {

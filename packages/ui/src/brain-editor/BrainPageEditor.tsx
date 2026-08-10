@@ -232,10 +232,10 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
   );
 
   // The cells each rule stands, keyed by rule id.
-  const [ruleCells, setRuleCells] = useState<ReadonlyMap<number, RuleCellDescriptor>>(() => new Map());
+  const [ruleCells, setRuleCells] = useState<ReadonlyMap<string, RuleCellDescriptor>>(() => new Map());
   const [cursor, setCursor] = useState<PageGridCursor | undefined>(undefined);
   // The rule waiting to be composed, which the insertion that made it names.
-  const [ruleToCompose, setRuleToCompose] = useState<number | undefined>(undefined);
+  const [ruleToCompose, setRuleToCompose] = useState<string | undefined>(undefined);
   // The rows the selection was last settled against, which name the place its
   // cell stood in before the page's cells changed.
   const settledRowsRef = useRef<readonly (readonly PageGridCell[])[] | undefined>(undefined);
@@ -252,7 +252,7 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
   }, []);
 
   const descriptors = flattenedRules
-    .map((flatRule) => ruleCells.get(flatRule.ruleDef.id()))
+    .map((flatRule) => ruleCells.get(flatRule.ruleDef.ruleId()))
     .filter((descriptor): descriptor is RuleCellDescriptor => descriptor !== undefined);
   const rows = pageGridRows(descriptors);
   // True once every rule the page renders has registered the cells it stands,
@@ -367,14 +367,14 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
 
   /** The rule `ruleId` names, or undefined once the page no longer holds it. */
   const ruleById = useCallback(
-    (ruleId: number): BrainRuleDef | undefined =>
-      flattenedRulesRef.current.find((flatRule) => flatRule.ruleDef.id() === ruleId)?.ruleDef,
+    (ruleId: string): BrainRuleDef | undefined =>
+      flattenedRulesRef.current.find((flatRule) => flatRule.ruleDef.ruleId() === ruleId)?.ruleDef,
     []
   );
 
   /** Picks `ruleId` up, opening the batch its moves gather into. */
   const grabRule = useCallback(
-    (ruleId: number) => {
+    (ruleId: string) => {
       if (commandHistory.isBatchOpen()) return;
       const ruleDef = ruleById(ruleId);
       if (ruleDef === undefined) return;
@@ -388,8 +388,8 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
 
   // How many steps a rule has taken, and the rule that took the last of them.
   const [stepCount, setStepCount] = useState(0);
-  const steppedRuleIdRef = useRef<number | undefined>(undefined);
-  const heldRuleIdRef = useRef<number | undefined>(undefined);
+  const steppedRuleIdRef = useRef<string | undefined>(undefined);
+  const heldRuleIdRef = useRef<string | undefined>(undefined);
   heldRuleIdRef.current = pickup?.ruleId;
 
   // Brings the handle of a rule that has just taken a step back into view, in
@@ -407,7 +407,7 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
    * that pick-up opened; every other step is a history entry of its own.
    */
   const moveRule = useCallback(
-    (ruleId: number, direction: RuleMoveDirection) => {
+    (ruleId: string, direction: RuleMoveDirection) => {
       const ruleDef = ruleById(ruleId);
       if (ruleDef === undefined || !currentMoveDirections(ruleDef).includes(direction)) return;
       commandHistory.executeCommand(ruleMoveCommand(ruleDef, direction));
@@ -454,7 +454,7 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
     commandHistory.executeCommand(new AddRuleCommand(pageDef));
     const children = pageDef.children();
     const appended = children.get(children.size() - 1) as BrainRuleDef | undefined;
-    if (appended !== undefined) setRuleToCompose(appended.id());
+    if (appended !== undefined) setRuleToCompose(appended.ruleId());
   };
 
   const handleGridKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -572,8 +572,8 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
             >
               {flattenedRules.map((flatRule, index) => (
                 <RuleSelectionProvider
-                  key={flatRule.ruleDef.id()}
-                  value={ruleSelectionCell(cursor?.cell, flatRule.ruleDef.id())}
+                  key={flatRule.ruleDef.ruleId()}
+                  value={ruleSelectionCell(cursor?.cell, flatRule.ruleDef.ruleId())}
                 >
                   <BrainRuleEditor
                     ruleDef={flatRule.ruleDef}

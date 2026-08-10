@@ -61,7 +61,7 @@ export function BrainTileEditor({
   // structural row, named by where it stands among the tiles of its side.
   const pageGrid = usePageGrid();
   const selectedCell = useRuleSelection();
-  const cellKey = pageGridCellKey({ kind: "tile", ruleId: ruleDef.id(), side, tileIndex });
+  const cellKey = pageGridCellKey({ kind: "tile", ruleId: ruleDef.ruleId(), side, tileIndex });
   const cellName = `Tile ${tileIndex + 1} of ${ruleDef.side(side).tiles().size()}, ${tileAccessibleName(editorConfig, tileDef)}`;
   const isSelectedCell = selectedCell !== undefined && pageGridCellKey(selectedCell) === cellKey;
   const cellProps =

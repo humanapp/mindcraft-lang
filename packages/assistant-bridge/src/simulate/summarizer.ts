@@ -36,8 +36,8 @@ export interface RuleTotals {
 
 /** One rule the run was staged without, and why. */
 export interface ExcludedRule {
-  /** `pageIndex/ruleIndex[/childIndex...]` path of the rule left out. */
-  readonly rulePath: string;
+  /** Durable id of the rule left out. */
+  readonly ruleId: string;
   /** Stable codes of the build errors the rule carries, in report order. */
   readonly codes: readonly DiagCode[];
 }
@@ -56,7 +56,7 @@ export interface TraceSummary {
   readonly spansTruncated: boolean;
   readonly world: SimulationRun["world"];
   /**
-   * Rules the run was staged without, sorted by path. Every claim the account
+   * Rules the run was staged without, sorted by id. Every claim the account
    * makes holds only of the document with these rules disabled. Absent when the
    * run covered the whole document.
    */

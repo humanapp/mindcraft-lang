@@ -24,6 +24,10 @@ import { BrainTileSet } from "./tileset";
 /** Serialized form of an {@link IBrainRuleDef}: `when`/`do` tile-id lists, child rules, and optional comment. */
 export interface RuleJson {
   version: number;
+
+  /** Stable unique rule id. Optional; a missing id is minted on load. */
+  ruleId?: string;
+
   when: ReadonlyList<string>;
   do: ReadonlyList<string>;
   children: ReadonlyList<RuleJson>;
@@ -43,14 +47,9 @@ export const kMaxBrainRuleCommentLength = 500; // never reduce this value!
 // JSON serialization version.
 const kVersion = 1;
 
-// Module-scoped counter for assigning stable, process-unique ids to rules.
-// Used by UI layers as a React key so that structural moves do not unmount
-// the dragged rule mid-drag.
-let nextRuleId_ = 1;
-
 /** Concrete {@link IBrainRuleDef}: a single rule with `when` and `do` tile-sets and child rules. */
 export class BrainRuleDef implements IBrainRuleDef {
-  private id_: number;
+  private ruleId_: string;
   private page_?: IBrainPageDef;
   private ancestor_?: BrainRuleDef; // Next rule up in the tree, if any
   private readonly children_ = new List<BrainRuleDef>();
@@ -68,8 +67,13 @@ export class BrainRuleDef implements IBrainRuleDef {
    */
   private typecheckedWithPrecedingSibling_?: boolean;
 
-  constructor() {
-    this.id_ = nextRuleId_++;
+  /**
+   * @param ruleId - Id this rule is addressed by for as long as it exists, in
+   *   the document and in every save of it. Pass the id a serialized rule
+   *   carries to restore it; omit it to mint a fresh one.
+   */
+  constructor(ruleId?: string) {
+    this.ruleId_ = ruleId || SU.mkid();
     this.when_ = new BrainTileSet(this, RuleSide.When);
     this.do_ = new BrainTileSet(this, RuleSide.Do);
     this.subscribeToTileSet_(this.when_);
@@ -77,27 +81,24 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   /**
-   * Returns a stable, process-unique numeric id for this rule.
-   * Useful as a React key during structural mutations.
+   * The id this rule is addressed by. It is minted when the rule is created,
+   * serialized with the rule, and unchanged by every move, indent, insertion,
+   * and deletion around it.
    */
-  id(): number {
-    return this.id_;
+  ruleId(): string {
+    return this.ruleId_;
   }
 
   /**
-   * Takes on the id `source` carries, and gives each descendant the id of the
-   * descendant standing in the same place of `source`, so a rule rebuilt from a
-   * copy of another is addressed by the ids that other was addressed by.
-   *
-   * Walks both trees in child order. A descendant `source` has no counterpart
-   * for keeps the id it was minted with, and an id `source` still carries is
-   * then held by two rules, so call this only where `source` has left the page.
+   * Gives this rule and every rule beneath it a freshly minted id. Call it on a
+   * subtree deserialized from a copy of rules that are still in a document, so
+   * the two do not stand in one document under one set of ids.
    */
-  adoptRuleIds(source: BrainRuleDef): void {
-    this.id_ = source.id_;
-    for (let i = 0; i < this.children_.size() && i < source.children_.size(); i++) {
-      this.children_.get(i).adoptRuleIds(source.children_.get(i));
-    }
+  mintNewRuleIds(): void {
+    this.ruleId_ = SU.mkid();
+    this.children_.forEach((child) => {
+      child.mintNewRuleIds();
+    });
   }
 
   /**
@@ -685,6 +686,7 @@ export class BrainRuleDef implements IBrainRuleDef {
 
     const json: RuleJson = {
       version: kVersion,
+      ruleId: this.ruleId_,
       when: this.when_.toJson(),
       do: this.do_.toJson(),
       children: childRules,
@@ -697,7 +699,7 @@ export class BrainRuleDef implements IBrainRuleDef {
 
   static fromJson(json: RuleJson, page: IBrainPageDef, brain: IBrainDef): BrainRuleDef {
     const catalogs = brain.deserializationCatalogs();
-    const rule = new BrainRuleDef();
+    const rule = new BrainRuleDef(json.ruleId);
     rule.setPage(page);
     rule.deserializeJson(json, catalogs);
     return rule;
@@ -713,7 +715,7 @@ export class BrainRuleDef implements IBrainRuleDef {
 
     // Recursively deserialize child rules
     for (let i = 0; i < json.children.size(); i++) {
-      const child = new BrainRuleDef();
+      const child = new BrainRuleDef(json.children.get(i).ruleId);
       child.setPage(this.page());
       child.deserializeJson(json.children.get(i), catalogs);
       this.children_.push(child);

@@ -32,7 +32,7 @@ export function pageGridSelectionProps(shape: PageGridSelectionShape, selected: 
  * The cell is returned as it was passed, so two reads taken across a move the
  * rule is neither the source nor the destination of are the same value.
  */
-export function ruleSelectionCell(cursorCell: PageGridCell | undefined, ruleId: number): PageGridCell | undefined {
+export function ruleSelectionCell(cursorCell: PageGridCell | undefined, ruleId: string): PageGridCell | undefined {
   if (cursorCell === undefined || cursorCell.kind === "append-rule") return undefined;
   return cursorCell.ruleId === ruleId ? cursorCell : undefined;
 }

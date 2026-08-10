@@ -72,7 +72,7 @@ const insideCell = (key: string, withCommand = false): PageGridKeyPress => ({
   placement: "inside-cell",
 });
 
-const kRuleId = 7;
+const kRuleId = "r7";
 const handleCell: PageGridCell = { kind: "handle", ruleId: kRuleId };
 const tileCell: PageGridCell = { kind: "tile", ruleId: kRuleId, side: RuleSide.When, tileIndex: 2 };
 const appendCell: PageGridCell = { kind: "append", ruleId: kRuleId, side: RuleSide.Do };
@@ -244,7 +244,7 @@ describe("picking a rule up from its handle", () => {
 /** What `ruleDef` contributes to the grid, both add-tile answers taken from the oracle. */
 function describeRule(ruleDef: BrainRuleDef): RuleCellDescriptor {
   return {
-    ruleId: ruleDef.id(),
+    ruleId: ruleDef.ruleId(),
     whenTileCount: ruleDef.when().tiles().size(),
     doTileCount: ruleDef.do().tiles().size(),
     whenAppendable: sideOffersAppendedTile({ ruleDef, side: RuleSide.When, catalogs, services }),
@@ -273,7 +273,7 @@ describe("where the selection lands once its subject leaves", () => {
   test("a deleted tile hands the selection to whatever takes its place in the row", () => {
     const { rules } = makeThreeRulePage();
     const before = rowsWithout(rules);
-    const gone: PageGridCell = { kind: "tile", ruleId: rules[0].id(), side: RuleSide.When, tileIndex: 0 };
+    const gone: PageGridCell = { kind: "tile", ruleId: rules[0].ruleId(), side: RuleSide.When, tileIndex: 0 };
     const place = pageGridCellPosition(before, gone) as PageGridPosition;
 
     rules[0].when().removeTileAtIndex(0);
@@ -281,34 +281,34 @@ describe("where the selection lands once its subject leaves", () => {
     const after = rowsWithout(rules);
 
     const landed = resolvePageGridCursor(after, gone, place);
-    assert.deepEqual(landed?.cell, { kind: "append", ruleId: rules[0].id(), side: RuleSide.When });
+    assert.deepEqual(landed?.cell, { kind: "append", ruleId: rules[0].ruleId(), side: RuleSide.When });
     assert.equal(landed?.desiredColumn, place.column);
     // Without the place held the selection falls back to the rule's handle.
-    assert.deepEqual(resolvePageGridCursor(after, gone).cell, { kind: "handle", ruleId: rules[0].id() });
+    assert.deepEqual(resolvePageGridCursor(after, gone).cell, { kind: "handle", ruleId: rules[0].ruleId() });
   });
 
   test("a deleted rule hands the selection to the rule that takes its row", () => {
     const { rules } = makeThreeRulePage();
     const before = rowsWithout(rules);
-    const gone: PageGridCell = { kind: "handle", ruleId: rules[1].id() };
+    const gone: PageGridCell = { kind: "handle", ruleId: rules[1].ruleId() };
     const place = pageGridCellPosition(before, gone) as PageGridPosition;
     const after = rowsWithout(rules, rules[1]);
 
-    assert.deepEqual(resolvePageGridCursor(after, gone, place).cell, { kind: "handle", ruleId: rules[2].id() });
+    assert.deepEqual(resolvePageGridCursor(after, gone, place).cell, { kind: "handle", ruleId: rules[2].ruleId() });
   });
 
   test("the same deletion without a place held falls back to the page's first cell", () => {
     const { rules } = makeThreeRulePage();
-    const gone: PageGridCell = { kind: "handle", ruleId: rules[1].id() };
+    const gone: PageGridCell = { kind: "handle", ruleId: rules[1].ruleId() };
     const after = rowsWithout(rules, rules[1]);
 
-    assert.deepEqual(resolvePageGridCursor(after, gone).cell, { kind: "handle", ruleId: rules[0].id() });
+    assert.deepEqual(resolvePageGridCursor(after, gone).cell, { kind: "handle", ruleId: rules[0].ruleId() });
   });
 
   test("the page's last rule hands the selection to the add-rule control that takes its row", () => {
     const { rules } = makeThreeRulePage();
     const before = rowsWithout(rules);
-    const gone: PageGridCell = { kind: "handle", ruleId: rules[2].id() };
+    const gone: PageGridCell = { kind: "handle", ruleId: rules[2].ruleId() };
     const place = pageGridCellPosition(before, gone) as PageGridPosition;
     const after = rowsWithout(rules, rules[2]);
 
@@ -318,7 +318,7 @@ describe("where the selection lands once its subject leaves", () => {
   test("a place stands for nothing while the cell the selection rests on is still on the page", () => {
     const { rules } = makeThreeRulePage();
     const before = rowsWithout(rules);
-    const kept: PageGridCell = { kind: "handle", ruleId: rules[1].id() };
+    const kept: PageGridCell = { kind: "handle", ruleId: rules[1].ruleId() };
     const place = pageGridCellPosition(before, kept) as PageGridPosition;
     const after = rowsWithout(rules, rules[0]);
 
@@ -334,7 +334,7 @@ describe("the empty rule standing last on a page", () => {
     const { rules } = makeThreeRulePage();
     const last = rules[rules.length - 1];
     assert.equal(last.isEmpty(true), true);
-    const cell: PageGridCell = { kind: "handle", ruleId: last.id() };
+    const cell: PageGridCell = { kind: "handle", ruleId: last.ruleId() };
 
     assert.equal(asked(cell, onCell("Delete"))?.verb, "delete");
     assert.equal(asked(cell, onCell("x", true))?.verb, "cut");
@@ -353,7 +353,7 @@ describe("the page's add-rule control", () => {
     const appended = pageDef.children().get(before) as BrainRuleDef;
     assert.equal(appended.isEmpty(true), true);
     assert.equal(
-      rules.some((ruleDef) => ruleDef.id() === appended.id()),
+      rules.some((ruleDef) => ruleDef.ruleId() === appended.ruleId()),
       false
     );
 

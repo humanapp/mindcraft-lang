@@ -3,17 +3,17 @@ import { describe, test } from "node:test";
 import { RuleSide } from "@mindcraft-lang/core/brain";
 import { CompilationDiagCode, ParseDiagCode } from "@mindcraft-lang/core/brain/compiler";
 import type { BrainJson } from "@mindcraft-lang/core/brain/model";
-import { AddRuleCommand, AddTileCommand } from "@mindcraft-lang/core/brain/model";
+import { AddRuleCommand, AddTileCommand, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { RehearsalRejection, RehearsalRejectionCode } from "../kit/index.js";
 import type { TraceSummary } from "../simulate/summarizer.js";
-import { createTargetAdapter, FAKE_SUBJECT } from "../testing/index.js";
+import { createTargetAdapter, FAKE_SUBJECT, ruleIdAt } from "../testing/index.js";
 import type { CompileDiagnostic } from "./compile.js";
 import { compileBrain } from "./compile.js";
 import { proposeEdit } from "./propose-edit.js";
 import { readProject } from "./read-project.js";
 import { rulesToExclude, simulate } from "./simulate.js";
 import type { AuthoringWorkspace } from "./workspace.js";
-import { allTiles, createAuthoringWorkspace, findPage, findRule, findTile } from "./workspace.js";
+import { allTiles, createAuthoringWorkspace, findPage, findRule, findTile, locateRules } from "./workspace.js";
 
 /** Tiles the fake target's brains are authored from. */
 const tiles = {
@@ -24,8 +24,17 @@ const tiles = {
   numberFactory: "tile.lit.factory->number",
 } as const;
 
-/** Rule ids of the work-in-progress document, by the state each rule is in. */
-const wipRule = { clean: "0/0", warned: "0/1", broken: "0/2" } as const;
+/** Where the work-in-progress document's rules stand, by the state each rule is in. */
+const wipRulePath = { clean: "0/0", warned: "0/1", broken: "0/2" } as const;
+
+/** Durable ids of `workspace`'s rules, by the state each rule is in. */
+function wipRules(workspace: AuthoringWorkspace): Record<keyof typeof wipRulePath, string> {
+  return {
+    clean: ruleIdAt(workspace.brainDef, wipRulePath.clean),
+    warned: ruleIdAt(workspace.brainDef, wipRulePath.warned),
+    broken: ruleIdAt(workspace.brainDef, wipRulePath.broken),
+  };
+}
 
 /** Put `tileId` on `side` of `ruleId` through a core command, around `propose_edit`. */
 function place(workspace: AuthoringWorkspace, ruleId: string, side: RuleSide, tileId: string): void {
@@ -34,9 +43,9 @@ function place(workspace: AuthoringWorkspace, ruleId: string, side: RuleSide, ti
 }
 
 /**
- * The brain JSON of a project part-way through being written: rule `0/0` is
- * finished and builds, rule `0/1` carries a warning the build recovers from,
- * and rule `0/2` carries two error-severity placement mismatches. Authored
+ * The brain JSON of a project part-way through being written: the first rule is
+ * finished and builds, the second carries a warning the build recovers from,
+ * and the third carries two error-severity placement mismatches. Authored
  * through core commands, as a person editing the document would leave it.
  */
 function wipBrainJson(): BrainJson {
@@ -44,19 +53,20 @@ function wipBrainJson(): BrainJson {
   const page = findPage(workspace.brainDef, 0)!;
   workspace.history.executeCommand(new AddRuleCommand(page));
   workspace.history.executeCommand(new AddRuleCommand(page));
+  const rule = wipRules(workspace);
 
-  place(workspace, wipRule.clean, RuleSide.When, tiles.sensor);
-  place(workspace, wipRule.clean, RuleSide.Do, tiles.actuator);
-  place(workspace, wipRule.clean, RuleSide.Do, tiles.modifier);
+  place(workspace, rule.clean, RuleSide.When, tiles.sensor);
+  place(workspace, rule.clean, RuleSide.Do, tiles.actuator);
+  place(workspace, rule.clean, RuleSide.Do, tiles.modifier);
 
   // A second WHEN sensor is an expression code generation drops: a warning the
   // build recovers from.
-  place(workspace, wipRule.warned, RuleSide.When, tiles.sensor);
-  place(workspace, wipRule.warned, RuleSide.When, tiles.sensor);
+  place(workspace, rule.warned, RuleSide.When, tiles.sensor);
+  place(workspace, rule.warned, RuleSide.When, tiles.sensor);
 
   // An actuator cannot sit on a WHEN side; two of them are two errors.
-  place(workspace, wipRule.broken, RuleSide.When, tiles.actuator);
-  place(workspace, wipRule.broken, RuleSide.When, tiles.actuator);
+  place(workspace, rule.broken, RuleSide.When, tiles.actuator);
+  place(workspace, rule.broken, RuleSide.When, tiles.actuator);
 
   return workspace.brainDef.toJson() as BrainJson;
 }
@@ -93,26 +103,44 @@ describe("a session opened on a work-in-progress document", () => {
   });
 
   test("carries the document's pre-existing diagnostics in", () => {
-    const errors = documentErrors(wipWorkspace());
+    const workspace = wipWorkspace();
+    const errors = documentErrors(workspace);
 
     assert.equal(errors.length, 2);
     for (const error of errors) {
       assert.equal(error.code, ParseDiagCode.TilePlacementSideMismatch);
-      assert.equal(error.ruleId, wipRule.broken);
+      assert.equal(error.ruleId, wipRules(workspace).broken);
     }
   });
 
   test("names the parse code behind a standing drop as well as the drop", () => {
-    const diagnostics = documentDiagnostics(wipWorkspace());
+    const workspace = wipWorkspace();
+    const warned = wipRules(workspace).warned;
+    const diagnostics = documentDiagnostics(workspace);
 
     assert.ok(
-      diagnostics.includes(`${ParseDiagCode.UnexpectedActionCallAfterExpression}@${wipRule.warned}`),
+      diagnostics.includes(`${ParseDiagCode.UnexpectedActionCallAfterExpression}@${warned}`),
       JSON.stringify(diagnostics)
     );
     assert.ok(
-      diagnostics.includes(`${CompilationDiagCode.UncompilableExpressionDropped}@${wipRule.warned}`),
+      diagnostics.includes(`${CompilationDiagCode.UncompilableExpressionDropped}@${warned}`),
       JSON.stringify(diagnostics)
     );
+  });
+});
+
+describe("the key a standing diagnostic is counted under", () => {
+  test("stays the same when a rule inserted above moves every path below it", () => {
+    const workspace = wipWorkspace();
+    const page = findPage(workspace.brainDef, 0)!;
+    const before = documentDiagnostics(workspace);
+    const pathsBefore = locateRules(workspace.brainDef).map((located) => located.rulePath);
+
+    page.addRuleAtIndex(0, new BrainRuleDef());
+
+    const pathsAfter = locateRules(workspace.brainDef).map((located) => located.rulePath);
+    assert.equal(pathsAfter.length, pathsBefore.length + 1, "the insertion added a rule");
+    assert.deepEqual(documentDiagnostics(workspace), before);
   });
 });
 
@@ -122,7 +150,7 @@ describe("propose_edit judges an edit by what it introduced", () => {
 
     const edit = proposeEdit(workspace, {
       op: "placeTiles",
-      ruleId: wipRule.clean,
+      ruleId: wipRules(workspace).clean,
       side: "do",
       tileIds: [tiles.parameter, { tileId: tiles.numberFactory, value: 7 }],
     });
@@ -137,7 +165,7 @@ describe("propose_edit judges an edit by what it introduced", () => {
 
     const edit = proposeEdit(workspace, {
       op: "placeTile",
-      ruleId: wipRule.warned,
+      ruleId: wipRules(workspace).warned,
       side: "do",
       tileId: tiles.actuator,
     });
@@ -151,7 +179,7 @@ describe("propose_edit judges an edit by what it introduced", () => {
 
     const rejected = proposeEdit(workspace, {
       op: "placeTile",
-      ruleId: wipRule.warned,
+      ruleId: wipRules(workspace).warned,
       side: "when",
       tileId: tiles.sensor,
     });
@@ -171,7 +199,12 @@ describe("propose_edit judges an edit by what it introduced", () => {
   test("accepts an incremental repair that leaves one of two problems standing", () => {
     const workspace = wipWorkspace();
 
-    const repair = proposeEdit(workspace, { op: "deleteTile", ruleId: wipRule.broken, side: "when", position: 1 });
+    const repair = proposeEdit(workspace, {
+      op: "deleteTile",
+      ruleId: wipRules(workspace).broken,
+      side: "when",
+      position: 1,
+    });
 
     assert.equal(repair.ok, true, JSON.stringify(repair));
     assert.equal(documentErrors(workspace).length, 1, "the repair removed one of the two errors");
@@ -183,7 +216,7 @@ describe("propose_edit judges an edit by what it introduced", () => {
 
     const rejected = proposeEdit(workspace, {
       op: "placeTile",
-      ruleId: wipRule.clean,
+      ruleId: wipRules(workspace).clean,
       side: "when",
       tileId: tiles.sensor,
     });
@@ -199,7 +232,7 @@ describe("propose_edit judges an edit by what it introduced", () => {
 
     const rejected = proposeEdit(workspace, {
       op: "placeTile",
-      ruleId: wipRule.clean,
+      ruleId: wipRules(workspace).clean,
       side: "when",
       tileId: tiles.actuator,
     });
@@ -214,7 +247,7 @@ describe("propose_edit judges an edit by what it introduced", () => {
 
     const rejected = proposeEdit(workspace, {
       op: "placeTile",
-      ruleId: wipRule.broken,
+      ruleId: wipRules(workspace).broken,
       side: "when",
       tileId: tiles.actuator,
     });
@@ -233,7 +266,7 @@ describe("propose_edit judges an edit by what it introduced", () => {
 
     const rejected = proposeEdit(workspace, {
       op: "placeTiles",
-      ruleId: wipRule.clean,
+      ruleId: wipRules(workspace).clean,
       side: "when",
       tileIds: [{ tileId: tiles.numberFactory, value: 41 }, tiles.actuator],
     });
@@ -256,7 +289,7 @@ describe("simulate rehearses a document that does not wholly build", () => {
     const summary = (result as { summary: TraceSummary }).summary;
     assert.deepEqual(summary.excludedRules, [
       {
-        rulePath: wipRule.broken,
+        ruleId: wipRules(workspace).broken,
         codes: [ParseDiagCode.TilePlacementSideMismatch, ParseDiagCode.TilePlacementSideMismatch],
       },
     ]);
@@ -267,15 +300,17 @@ describe("simulate rehearses a document that does not wholly build", () => {
 
     const result = await simulate(workspace, { scenario: { seed: 7, subject: FAKE_SUBJECT }, thinks: 5 });
 
-    const ruleIds = (result as { summary: TraceSummary }).summary.rules.map((rule) => rule.ruleId);
-    assert.ok(ruleIds.includes(wipRule.clean), "the finished rule was rehearsed");
-    assert.ok(!ruleIds.includes(wipRule.broken), "the excluded rule reported nothing");
+    const rule = wipRules(workspace);
+    const ruleIds = (result as { summary: TraceSummary }).summary.rules.map((entry) => entry.ruleId);
+    assert.ok(ruleIds.includes(rule.clean), "the finished rule was rehearsed");
+    assert.ok(!ruleIds.includes(rule.broken), "the excluded rule reported nothing");
   });
 
   test("states no exclusion for a document that wholly builds", async () => {
     const workspace = wipWorkspace();
-    proposeEdit(workspace, { op: "deleteTile", ruleId: wipRule.broken, side: "when", position: 1 });
-    proposeEdit(workspace, { op: "deleteTile", ruleId: wipRule.broken, side: "when", position: 0 });
+    const broken = wipRules(workspace).broken;
+    proposeEdit(workspace, { op: "deleteTile", ruleId: broken, side: "when", position: 1 });
+    proposeEdit(workspace, { op: "deleteTile", ruleId: broken, side: "when", position: 0 });
 
     const result = await simulate(workspace, { scenario: { seed: 7, subject: FAKE_SUBJECT }, thinks: 5 });
 
@@ -285,25 +320,25 @@ describe("simulate rehearses a document that does not wholly build", () => {
 
   test("names one exclusion per rule, carrying every code that rule reports", () => {
     const excluded = rulesToExclude([
-      { code: 4001, severity: "error", ruleId: "0/2" },
-      { code: 1016, severity: "error", ruleId: "0/1" },
-      { code: 3002, severity: "warning", ruleId: "0/1" },
-      { code: 1016, severity: "error", ruleId: "0/2" },
+      { code: 4001, severity: "error", ruleId: "secondRule00002" },
+      { code: 1016, severity: "error", ruleId: "firstRule000001" },
+      { code: 3002, severity: "warning", ruleId: "firstRule000001" },
+      { code: 1016, severity: "error", ruleId: "secondRule00002" },
     ]);
 
     assert.deepEqual(excluded, [
-      { rulePath: "0/1", codes: [1016] },
-      { rulePath: "0/2", codes: [4001, 1016] },
+      { ruleId: "firstRule000001", codes: [1016] },
+      { ruleId: "secondRule00002", codes: [4001, 1016] },
     ]);
   });
 
   test("names no exclusion for a build that reports no error", () => {
-    assert.deepEqual(rulesToExclude([{ code: 3002, severity: "warning", ruleId: "0/1" }]), []);
+    assert.deepEqual(rulesToExclude([{ code: 3002, severity: "warning", ruleId: "firstRule000001" }]), []);
   });
 
   test("falls back rather than excluding when a build error names no rule", () => {
     const excluded = rulesToExclude([
-      { code: 1016, severity: "error", ruleId: "0/1" },
+      { code: 1016, severity: "error", ruleId: "firstRule000001" },
       { code: 4002, severity: "error" },
     ]);
 
@@ -324,11 +359,12 @@ describe("a rehearsal adapter refuses a brain that does not build", () => {
 
     assert.ok(rejection instanceof RehearsalRejection, String(rejection));
     assert.equal(rejection.code, RehearsalRejectionCode.BrainDoesNotBuild);
+    // A core build diagnostic carries `rulePath`.
     assert.deepEqual(
       rejection.diagnostics.map((diag) => `${diag.code}@${diag.params?.rulePath}`),
       [
-        `${ParseDiagCode.TilePlacementSideMismatch}@${wipRule.broken}`,
-        `${ParseDiagCode.TilePlacementSideMismatch}@${wipRule.broken}`,
+        `${ParseDiagCode.TilePlacementSideMismatch}@${wipRulePath.broken}`,
+        `${ParseDiagCode.TilePlacementSideMismatch}@${wipRulePath.broken}`,
       ]
     );
     assert.ok(
@@ -344,7 +380,7 @@ describe("a rehearsal adapter refuses a brain that does not build", () => {
       brainDef: workspace.brainDef,
       scenario: { seed: 7, subject: FAKE_SUBJECT },
       thinks: 5,
-      excludedRules: [wipRule.broken],
+      excludedRules: [wipRules(workspace).broken],
     });
 
     assert.equal(run.thinks, 5);

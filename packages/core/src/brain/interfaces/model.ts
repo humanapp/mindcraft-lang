@@ -77,7 +77,8 @@ export type BrainRuleDefEvents = {
 
 /** Definition of a single rule within a page: a `when` tile-set and a `do` tile-set, plus child rules and metadata. */
 export interface IBrainRuleDef {
-  id(): number;
+  /** Id this rule is addressed by, stable across every structural edit around it. */
+  ruleId(): string;
   page(): IBrainPageDef | undefined;
   setPage(page: IBrainPageDef | undefined): void;
   ancestor(): IBrainRuleDef | undefined;

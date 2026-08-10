@@ -80,7 +80,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, pickup: RulePickup | null): strin
 }
 
 /** The markup the handle of `ruleId` stands, from its addressing attribute to the tag that closes it. */
-function handleMarkup(markup: string, ruleId: number): string {
+function handleMarkup(markup: string, ruleId: string): string {
   const start = markup.indexOf(`data-rule-handle="${ruleId}"`);
   assert.ok(start >= 0, `the card stands a handle for rule ${ruleId}`);
   const end = markup.indexOf("</button>", start);
@@ -89,7 +89,7 @@ function handleMarkup(markup: string, ruleId: number): string {
 }
 
 /** Every movement marker the handle of `ruleId` paints, as its own opening tag. */
-function markerTags(markup: string, ruleId: number): string[] {
+function markerTags(markup: string, ruleId: string): string[] {
   return handleMarkup(markup, ruleId).match(/<path\b[^>]*>/g) ?? [];
 }
 
@@ -113,7 +113,7 @@ describe("the markers a grabbed rule's handle stands", () => {
   for (const directions of directionSets) {
     test(`stands one marker for each of ${directions.length}, and no more`, () => {
       const ruleDef = makePopulatedRule(`grabbed-${directions.length}`);
-      const markers = markerTags(renderRuleCard(ruleDef, { ruleId: ruleDef.id(), directions }), ruleDef.id());
+      const markers = markerTags(renderRuleCard(ruleDef, { ruleId: ruleDef.ruleId(), directions }), ruleDef.ruleId());
       assert.equal(markers.length, directions.length);
       assert.equal(new Set(markers).size, markers.length);
     });
@@ -121,10 +121,13 @@ describe("the markers a grabbed rule's handle stands", () => {
 
   test("stands nothing for a direction the pickup leaves out", () => {
     const ruleDef = makePopulatedRule("grabbed-one-way");
-    const one = markerTags(renderRuleCard(ruleDef, { ruleId: ruleDef.id(), directions: ["indent"] }), ruleDef.id());
+    const one = markerTags(
+      renderRuleCard(ruleDef, { ruleId: ruleDef.ruleId(), directions: ["indent"] }),
+      ruleDef.ruleId()
+    );
     const all = markerTags(
-      renderRuleCard(ruleDef, { ruleId: ruleDef.id(), directions: ["up", "down", "outdent", "indent"] }),
-      ruleDef.id()
+      renderRuleCard(ruleDef, { ruleId: ruleDef.ruleId(), directions: ["up", "down", "outdent", "indent"] }),
+      ruleDef.ruleId()
     );
     assert.equal(one.length, 1);
     assert.ok(all.includes(one[0]), "the one marker is the same one the full set stands for that direction");
@@ -132,13 +135,16 @@ describe("the markers a grabbed rule's handle stands", () => {
 
   test("stands none where the pickup names no direction at all", () => {
     const ruleDef = makePopulatedRule("grabbed-stuck");
-    assert.deepEqual(markerTags(renderRuleCard(ruleDef, { ruleId: ruleDef.id(), directions: [] }), ruleDef.id()), []);
+    assert.deepEqual(
+      markerTags(renderRuleCard(ruleDef, { ruleId: ruleDef.ruleId(), directions: [] }), ruleDef.ruleId()),
+      []
+    );
   });
 
   test("stands none on a rule the page is not holding", () => {
     const ruleDef = makePopulatedRule("not-grabbed");
-    const other: RulePickup = { ruleId: ruleDef.id() + 1, directions: ["up", "down"] };
-    assert.deepEqual(markerTags(renderRuleCard(ruleDef, other), ruleDef.id()), []);
-    assert.deepEqual(markerTags(renderRuleCard(ruleDef, null), ruleDef.id()), []);
+    const other: RulePickup = { ruleId: ruleDef.ruleId() + 1, directions: ["up", "down"] };
+    assert.deepEqual(markerTags(renderRuleCard(ruleDef, other), ruleDef.ruleId()), []);
+    assert.deepEqual(markerTags(renderRuleCard(ruleDef, null), ruleDef.ruleId()), []);
   });
 });

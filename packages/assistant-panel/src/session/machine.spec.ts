@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { AuthoringWorkspace } from "@mindcraft-lang/assistant-bridge";
 import { createAuthoringWorkspace, executeToolCall } from "@mindcraft-lang/assistant-bridge";
-import { createTargetAdapter, FAKE_TARGET_IDENTITY } from "@mindcraft-lang/assistant-bridge/testing";
+import { createTargetAdapter, FAKE_TARGET_IDENTITY, ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
 import type { ConversationRecord, RelayToolManifest } from "@mindcraft-lang/assistant-relay";
 import { ConversationTurnFailureCode, RelayDeclineCode, RelayRefusalCode } from "@mindcraft-lang/assistant-relay";
 import type { RelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
@@ -21,13 +21,22 @@ const tiles = {
   actuator: "tile.actuator->actuator.fake.emit",
 } as const;
 
+/** The document every workspace in this file opens on. */
+const openingDocument = createAuthoringWorkspace(createTargetAdapter(), "fake brain").brainDef.toJson();
+
+/** Id of the one rule {@link openingDocument} holds, which the authoring turn fills in. */
+const openingRuleId = ruleIdAt(
+  createAuthoringWorkspace(createTargetAdapter(), "fake brain", { brainJson: openingDocument }).brainDef,
+  "0/0"
+);
+
 /** The calls a first turn makes: the session catalog read, then a batch that authors a rule. */
 const firstTurnCalls = {
   catalog: { name: "read_catalog", input: {} },
   authoring: [
     { name: "read_catalog", input: { filter: "signal" } },
-    { name: "propose_edit", input: { op: "placeTiles", ruleId: "0/0", side: "when", tileIds: [tiles.sensor] } },
-    { name: "propose_edit", input: { op: "placeTiles", ruleId: "0/0", side: "do", tileIds: [tiles.actuator] } },
+    { name: "propose_edit", input: { op: "placeTiles", ruleId: openingRuleId, side: "when", tileIds: [tiles.sensor] } },
+    { name: "propose_edit", input: { op: "placeTiles", ruleId: openingRuleId, side: "do", tileIds: [tiles.actuator] } },
   ],
 } as const satisfies Record<string, ScriptedCall | readonly ScriptedCall[]>;
 
@@ -38,9 +47,6 @@ const manifest: RelayToolManifest = {
   morphology: false,
   catalogDigest: "0f3a19c2",
 };
-
-/** The document every workspace in this file opens on. */
-const openingDocument = createAuthoringWorkspace(createTargetAdapter(), "fake brain").brainDef.toJson();
 
 /** A workspace over the fake target, opened on {@link openingDocument}. */
 function freshWorkspace(): AuthoringWorkspace {

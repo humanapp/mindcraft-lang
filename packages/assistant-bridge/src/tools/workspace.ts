@@ -61,8 +61,13 @@ export function createAuthoringWorkspace(
 
 /** One rule in the document, with the id the model addresses it by. */
 export interface LocatedRule {
-  /** `pageIndex/ruleIndex[/childIndex...]`, the same path core's diagnostics report. */
+  /** The rule's durable id, which every tool addresses it by and which no edit around it changes. */
   readonly ruleId: string;
+  /**
+   * `pageIndex/ruleIndex[/childIndex...]`, the rule's position in the document
+   * right now, and the form core's diagnostics report rules under.
+   */
+  readonly rulePath: string;
   readonly rule: BrainRuleDef;
 }
 
@@ -72,15 +77,15 @@ export function toRuleSide(side: RuleSideName): RuleSide {
 }
 
 /** Walk `rule` and its descendants in document order, appending to `into`. */
-function walkRule(rule: BrainRuleDef, ruleId: string, into: LocatedRule[]): void {
-  into.push({ ruleId, rule });
+function walkRule(rule: BrainRuleDef, rulePath: string, into: LocatedRule[]): void {
+  into.push({ ruleId: rule.ruleId(), rulePath, rule });
   const children = rule.children();
   for (let i = 0; i < children.size(); i++) {
-    walkRule(children.get(i) as BrainRuleDef, childRulePath(ruleId, i), into);
+    walkRule(children.get(i) as BrainRuleDef, childRulePath(rulePath, i), into);
   }
 }
 
-/** Every rule in `brainDef`, in document order, each carrying its path id. */
+/** Every rule in `brainDef`, in document order, each carrying its id and its current path. */
 export function locateRules(brainDef: BrainDef): LocatedRule[] {
   const located: LocatedRule[] = [];
   const pages = brainDef.pages();
@@ -92,6 +97,17 @@ export function locateRules(brainDef: BrainDef): LocatedRule[] {
     }
   }
   return located;
+}
+
+/**
+ * The durable id of every rule in `brainDef`, keyed by the path core's
+ * diagnostics report it under. Build it fresh for each read: a path names a
+ * position, and an edit that moves a rule gives the path to another one.
+ */
+export function ruleIdsByPath(brainDef: BrainDef): Map<string, string> {
+  const byPath = new Map<string, string>();
+  for (const located of locateRules(brainDef)) byPath.set(located.rulePath, located.ruleId);
+  return byPath;
 }
 
 /** The rule `ruleId` names, or `undefined` when the document holds no such rule. */

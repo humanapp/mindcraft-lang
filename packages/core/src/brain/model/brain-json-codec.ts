@@ -354,6 +354,7 @@ class BrainJsonEncoder {
       do: encodeSide(rule.do().tiles()),
       children,
     };
+    if (ruleJson.ruleId !== undefined) result.ruleId = ruleJson.ruleId;
     if (ruleJson.comment !== undefined) result.comment = ruleJson.comment;
     return result;
   }
@@ -601,6 +602,7 @@ class BrainJsonDecoder {
       do: decodeSide(rule.do),
       children,
     };
+    if (rule.ruleId !== undefined) result.ruleId = rule.ruleId;
     if (rule.comment !== undefined) result.comment = rule.comment;
     return result;
   }

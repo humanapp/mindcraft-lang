@@ -18,11 +18,11 @@ const kSteppingModes = kEditorModes.filter((mode) => mode !== "text-literal" && 
 
 /** One rule, which the held-rule cases pick up. */
 const kRows = pageGridRows([
-  { ruleId: 1, whenTileCount: 1, doTileCount: 1, whenAppendable: true, doAppendable: true, hasSentence: true },
+  { ruleId: "r1", whenTileCount: 1, doTileCount: 1, whenAppendable: true, doAppendable: true, hasSentence: true },
 ]);
 
 /** The rule's handle, which is where the keyboard stands while the rule is held. */
-const kHandle: PageGridCell = { kind: "handle", ruleId: 1 };
+const kHandle: PageGridCell = { kind: "handle", ruleId: "r1" };
 
 describe("undo chord", () => {
   test("Z with the command modifier and no shift is the chord", () => {
@@ -87,19 +87,19 @@ describe("the chord while a rule is held", () => {
   const cursor = resolvePageGridCursor(kRows, kHandle);
 
   test("gives the held rule back", () => {
-    const result = decidePageKey(kRows, cursor, { key: "z", withCommand: true, placement: "on-cell" }, 1);
+    const result = decidePageKey(kRows, cursor, { key: "z", withCommand: true, placement: "on-cell" }, "r1");
     assert.deepEqual(result, { kind: "cancel" });
   });
 
   test("reads the same as Escape, which is the one reversal it makes", () => {
-    const chord = decidePageKey(kRows, cursor, { key: "z", withCommand: true, placement: "on-cell" }, 1);
-    const escapeKey = decidePageKey(kRows, cursor, { key: "Escape", withCommand: false, placement: "on-cell" }, 1);
+    const chord = decidePageKey(kRows, cursor, { key: "z", withCommand: true, placement: "on-cell" }, "r1");
+    const escapeKey = decidePageKey(kRows, cursor, { key: "Escape", withCommand: false, placement: "on-cell" }, "r1");
     assert.deepEqual(chord, escapeKey);
   });
 
   test("the redo bindings leave the held rule where it stands", () => {
     for (const key of ["Z", "y"]) {
-      const result = decidePageKey(kRows, cursor, { key, withCommand: true, placement: "on-cell" }, 1);
+      const result = decidePageKey(kRows, cursor, { key, withCommand: true, placement: "on-cell" }, "r1");
       assert.deepEqual(result, { kind: "inert" }, key);
     }
   });

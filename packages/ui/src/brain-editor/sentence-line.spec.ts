@@ -179,6 +179,6 @@ describe("sentence line rendering", () => {
 
   test("the sentence element belongs to the rule it reads", () => {
     const { ruleDef } = makeBrain([makeSensor("line-owner", "hear")], []);
-    assert.ok(renderSentence(ruleDef).includes(`data-rule-sentence="${ruleDef.id()}"`));
+    assert.ok(renderSentence(ruleDef).includes(`data-rule-sentence="${ruleDef.ruleId()}"`));
   });
 });

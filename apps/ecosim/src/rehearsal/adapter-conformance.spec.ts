@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createAuthoringWorkspace, proposeEdit } from "@mindcraft-lang/assistant-bridge";
 import { ConformanceCheckCode, checkAdapterConformance } from "@mindcraft-lang/assistant-bridge/kit";
+import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
 import { createTargetAdapter } from "./adapter";
 import { sourceRehearsalContent } from "./source-content";
 
@@ -19,14 +20,14 @@ function authoredWorkspace() {
   const workspace = createAuthoringWorkspace(createTargetAdapter(CONTENT), "conformance brain");
   const when = proposeEdit(workspace, {
     op: "placeTiles",
-    ruleId: "0/0",
+    ruleId: ruleIdAt(workspace.brainDef, "0/0"),
     side: "when",
     tileIds: ["tile.sensor->sensor.see", "tile.modifier->modifier.actor_kind.carnivore"],
   });
   assert.equal(when.ok, true, JSON.stringify(when));
   const doSide = proposeEdit(workspace, {
     op: "placeTiles",
-    ruleId: "0/0",
+    ruleId: ruleIdAt(workspace.brainDef, "0/0"),
     side: "do",
     tileIds: [
       "tile.actuator->actuator.move",
@@ -76,9 +77,10 @@ describe("the ecosim adapter against the bridge's conformance suite", () => {
       moves.some((move) => move.args.length > 0),
       "a move carries the arguments that say which way it went"
     );
+    const ruleId = ruleIdAt(workspace.brainDef, "0/0");
     assert.ok(
-      dispatches.every((dispatch) => dispatch.ruleId === undefined || dispatch.ruleId.startsWith("0/")),
-      "dispatches are attributed to rules of the brain under study"
+      dispatches.every((dispatch) => dispatch.ruleId === undefined || dispatch.ruleId === ruleId),
+      "dispatches are attributed to the rule of the brain under study that made them"
     );
   });
 });

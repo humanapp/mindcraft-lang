@@ -478,7 +478,7 @@ describe("the offering closed at an armed position", () => {
 describe("the sentence line's owner", () => {
   test("the rule card renders it whether or not the rule is being composed", () => {
     const { ruleDef } = makeBrain(services, [makeSensor(services, "owner-see")], []);
-    const marker = `data-rule-sentence="${ruleDef.id()}"`;
+    const marker = `data-rule-sentence="${ruleDef.ruleId()}"`;
     assert.equal(countOf(renderRuleCard(ruleDef, null), marker), 1, "settled");
     assert.equal(
       countOf(renderRuleCard(ruleDef, appendTarget(ruleDef, RuleSide.When, "sentence")), marker),

@@ -7,7 +7,7 @@ export interface RuleDragController {
    * Consumers re-render when this changes and apply lifted styling to the
    * matching rule.
    */
-  draggingRuleId: number | null;
+  draggingRuleId: string | null;
 
   /**
    * Begin a drag interaction for the given rule starting from a pointer-down

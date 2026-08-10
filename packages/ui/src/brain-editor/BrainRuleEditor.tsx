@@ -207,13 +207,13 @@ function BrainRuleEditorCard({
   const localizer = useLocalizer();
   // The cells this rule stands in the page's selection grid.
   const pageGrid = usePageGrid();
-  const ruleId = ruleDef.id();
+  const ruleId = ruleDef.ruleId();
   // The rule the page holds picked up.
   const rulePickup = useRulePickup();
   const isGrabbed = rulePickup.pickup?.ruleId === ruleId;
   const grabbedDirections = isGrabbed ? rulePickup.pickup?.directions : undefined;
   const dragController = useRuleDragController();
-  const isDragging = dragController.draggingRuleId === ruleDef.id();
+  const isDragging = dragController.draggingRuleId === ruleDef.ruleId();
   // A press on the handle starts drag tracking and nothing else. The controller
   // applies a movement threshold, so a press that releases without moving is
   // left as the plain press it was, and the keyboard lands on the handle as it
@@ -657,7 +657,7 @@ function BrainRuleEditorCard({
     const command = new InsertRuleCommand(ruleDef, "after");
     commandHistory.executeCommand(command);
     const inserted = command.insertedRule();
-    if (inserted !== undefined) composeRule?.(inserted.id());
+    if (inserted !== undefined) composeRule?.(inserted.ruleId());
   };
 
   /**
@@ -949,7 +949,7 @@ function BrainRuleEditorCard({
           transform: isDragging ? "scale(1.02)" : undefined,
           transition: isDragging ? "none" : "transform 120ms ease, opacity 120ms ease",
         }}
-        data-rule-id={ruleDef.id()}
+        data-rule-id={ruleDef.ruleId()}
         role="listitem"
         aria-label={`Rule ${lineNumber}${isDirty ? " (modified)" : ""}`}
         onDragOver={handleCandidateDragOver}
@@ -961,7 +961,7 @@ function BrainRuleEditorCard({
           <button
             type="button"
             className={`relative rounded-full self-center h-9 w-9 ${pillChromeClasses} hover:scale-105 ${pillTransitionClasses} font-semibold text-lg ${isDragging ? "cursor-grabbing" : "cursor-grab"}${isGrabbed ? ` ${kGrabbedRuleMarkerLayer}` : ""}`}
-            data-rule-handle={ruleDef.id()}
+            data-rule-handle={ruleDef.ruleId()}
             aria-label={`Rule ${lineNumber} of ${ruleCount}, handle${isDirty ? ", unsaved changes" : ""}`}
             onPointerDown={handleHandlePointerDown}
             onKeyDown={handleHandleKeyDown}
@@ -1122,7 +1122,7 @@ function BrainRuleEditorCard({
             type="button"
             onClick={() => enterSentence(undefined)}
             onKeyDown={handleSentenceCellKeyDown}
-            data-sentence-composer-entry={ruleDef.id()}
+            data-sentence-composer-entry={ruleDef.ruleId()}
             aria-label={`${sentenceCellName}, empty. ${kComposerEntryPrompt}`}
             {...cellProps({ kind: "sentence", ruleId }, "line")}
             className={`relative ${kRuleContentLayer} mt-1.5 ml-11 flex min-h-8 cursor-text items-center rounded-sm px-1 text-left ${kSentenceTypeClasses} text-brain-ink/45 italic transition-colors hover:text-brain-ink/70${sentenceCellSelected ? "" : " hover:bg-brain-ink/5"}`}

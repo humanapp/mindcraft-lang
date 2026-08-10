@@ -9,6 +9,11 @@ const ruleSideSchema = z.enum(["when", "do"]);
 /** {@link ruleSideSchema} as a type. */
 export type RuleSideName = z.infer<typeof ruleSideSchema>;
 
+/** The id a tool names a rule by: the rule's own durable id. */
+const ruleIdSchema = z
+  .string()
+  .describe("Rule id, exactly as read_project reports it. It stays the rule's id as other rules come and go.");
+
 /** Input of `read_project`: the whole document, with nothing to select. */
 const readProjectInputSchema = z.object({});
 
@@ -24,7 +29,7 @@ const readCatalogInputSchema = z.object({
 const suggestTilesInputSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("insert"),
-    ruleId: z.string().describe('Rule id from read_project, for example "0/1".'),
+    ruleId: ruleIdSchema,
     side: ruleSideSchema,
     position: z
       .number()
@@ -35,7 +40,7 @@ const suggestTilesInputSchema = z.discriminatedUnion("mode", [
   }),
   z.object({
     mode: z.literal("replace"),
-    ruleId: z.string(),
+    ruleId: ruleIdSchema,
     side: ruleSideSchema,
     position: z.number().int().min(0).describe("Index of the tile that would be replaced."),
   }),
@@ -74,7 +79,7 @@ const proposeEditInputSchema = z.discriminatedUnion("op", [
   }),
   z.object({
     op: z.literal("placeTile"),
-    ruleId: z.string(),
+    ruleId: ruleIdSchema,
     side: ruleSideSchema,
     tileId: tileRunEntrySchema.describe(
       "Tile to place: a tile id from read_catalog or suggest_tiles, or an object giving a factory tile's id plus what to mint."
@@ -83,7 +88,7 @@ const proposeEditInputSchema = z.discriminatedUnion("op", [
   }),
   z.object({
     op: z.literal("placeTiles"),
-    ruleId: z.string(),
+    ruleId: ruleIdSchema,
     side: ruleSideSchema,
     tileIds: z
       .array(tileRunEntrySchema)
@@ -100,7 +105,7 @@ const proposeEditInputSchema = z.discriminatedUnion("op", [
   }),
   z.object({
     op: z.literal("replaceTile"),
-    ruleId: z.string(),
+    ruleId: ruleIdSchema,
     side: ruleSideSchema,
     position: z.number().int().min(0).describe("Index of the tile being replaced."),
     tileId: tileRunEntrySchema.describe(
@@ -109,7 +114,7 @@ const proposeEditInputSchema = z.discriminatedUnion("op", [
   }),
   z.object({
     op: z.literal("deleteTile"),
-    ruleId: z.string(),
+    ruleId: ruleIdSchema,
     side: ruleSideSchema,
     position: z.number().int().min(0).describe("Index of the tile being removed."),
   }),

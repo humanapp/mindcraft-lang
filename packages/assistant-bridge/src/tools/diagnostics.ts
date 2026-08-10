@@ -51,14 +51,30 @@ function serializeDiagParam(key: string, value: unknown): DiagParamValue | undef
 }
 
 /**
- * Render a diagnostic's params in a JSON-serializable form. Returns `undefined`
- * when the diagnostic carries no params at all.
+ * Render a diagnostic's params in the JSON-serializable form the model reads.
+ * The `rulePath` core reports is replaced by `ruleId`, the durable id
+ * `ruleIds` holds for that path. A path `ruleIds` does not hold names a rule
+ * the document no longer has, and reaches the model as no address at all.
+ * Returns `undefined` when nothing is left to report.
+ *
+ * @param ruleIds - Durable rule id per rule path, for the document the
+ *   diagnostic was reported against.
  */
-export function serializeDiagParams(params: DiagParams | undefined): SerializedDiagParams | undefined {
+export function serializeDiagParams(
+  params: DiagParams | undefined,
+  ruleIds: ReadonlyMap<string, string>
+): SerializedDiagParams | undefined {
   if (!params) return undefined;
   const serialized: Record<string, DiagParamValue> = {};
   let count = 0;
   for (const [key, value] of Object.entries(params)) {
+    if (key === "rulePath") {
+      const ruleId = typeof value === "string" ? ruleIds.get(value) : undefined;
+      if (ruleId === undefined) continue;
+      serialized.ruleId = ruleId;
+      count++;
+      continue;
+    }
     const entry = serializeDiagParam(key, value);
     if (entry === undefined) continue;
     serialized[key] = entry;
@@ -67,8 +83,18 @@ export function serializeDiagParams(params: DiagParams | undefined): SerializedD
   return count === 0 ? undefined : serialized;
 }
 
-/** Build the model-facing diagnostic for `code` and its raw core params. */
-export function toToolDiagnostic(code: DiagCode, params: DiagParams | undefined): ToolDiagnostic {
-  const serialized = serializeDiagParams(params);
+/**
+ * Build the model-facing diagnostic for `code` and its raw core params, with
+ * the rule it names addressed by the id every tool uses.
+ *
+ * @param ruleIds - Durable rule id per rule path, for the document the
+ *   diagnostic was reported against.
+ */
+export function toToolDiagnostic(
+  code: DiagCode,
+  params: DiagParams | undefined,
+  ruleIds: ReadonlyMap<string, string>
+): ToolDiagnostic {
+  const serialized = serializeDiagParams(params, ruleIds);
   return serialized ? { code, params: serialized } : { code };
 }

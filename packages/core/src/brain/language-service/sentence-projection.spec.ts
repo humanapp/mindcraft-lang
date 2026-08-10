@@ -1326,7 +1326,7 @@ describe("the trigger word accessor", () => {
 
 /** A paragraph entry with its segments as a plain array, for golden comparison. */
 type FlatParagraphEntry =
-  | { readonly kind: "rule"; readonly ruleId: number; readonly segments: SentenceSegment[] }
+  | { readonly kind: "rule"; readonly ruleId: string; readonly segments: SentenceSegment[] }
   | { readonly kind: "glue"; readonly text: string };
 
 function paragraph(page: IBrainPageDef, withLocalizer?: Localizer): FlatParagraphEntry[] {
@@ -1344,7 +1344,7 @@ function paragraphAsText(page: IBrainPageDef, withLocalizer?: Localizer): string
 
 /** The expected entry carrying `rule`'s own clause. */
 function clause(rule: IBrainRuleDef, ...segments: SentenceSegment[]): FlatParagraphEntry {
-  return { kind: "rule", ruleId: rule.id(), segments };
+  return { kind: "rule", ruleId: rule.ruleId(), segments };
 }
 
 /** The expected glue entry between two rules' clauses. */
@@ -1361,11 +1361,11 @@ function childRule(rule: IBrainRuleDef, index: number): IBrainRuleDef {
 }
 
 /** Every rule of `page`, at any depth, keyed by its id. */
-function rulesById(page: IBrainPageDef): Map<number, IBrainRuleDef> {
-  const out = new Map<number, IBrainRuleDef>();
+function rulesById(page: IBrainPageDef): Map<string, IBrainRuleDef> {
+  const out = new Map<string, IBrainRuleDef>();
   const visit = (rules: readonly IBrainRuleDef[]) => {
     for (const rule of rules) {
-      out.set(rule.id(), rule);
+      out.set(rule.ruleId(), rule);
       visit(rule.children().toArray());
     }
   };
@@ -1958,12 +1958,12 @@ describe("page paragraph spans", () => {
     for (const page of fixturePages()) {
       const withTiles = [...rulesById(page).values()]
         .filter((rule) => !rule.when().tiles().isEmpty() || !rule.do().tiles().isEmpty())
-        .map((rule) => rule.id())
-        .sort((a, b) => a - b);
+        .map((rule) => rule.ruleId())
+        .sort();
       const projected = paragraph(page)
         .filter((entry) => entry.kind === "rule")
-        .map((entry) => (entry as { ruleId: number }).ruleId)
-        .sort((a, b) => a - b);
+        .map((entry) => (entry as { ruleId: string }).ruleId)
+        .sort();
 
       assert.deepEqual(projected, withTiles);
     }

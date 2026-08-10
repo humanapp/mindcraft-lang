@@ -17,10 +17,10 @@ export const kPageGridCellAttribute = "data-page-grid-cell";
  * adds a rule at the end.
  */
 export type PageGridCell =
-  | { readonly kind: "handle"; readonly ruleId: number }
-  | { readonly kind: "tile"; readonly ruleId: number; readonly side: RuleSide; readonly tileIndex: number }
-  | { readonly kind: "append"; readonly ruleId: number; readonly side: RuleSide }
-  | { readonly kind: "sentence"; readonly ruleId: number }
+  | { readonly kind: "handle"; readonly ruleId: string }
+  | { readonly kind: "tile"; readonly ruleId: string; readonly side: RuleSide; readonly tileIndex: number }
+  | { readonly kind: "append"; readonly ruleId: string; readonly side: RuleSide }
+  | { readonly kind: "sentence"; readonly ruleId: string }
   | { readonly kind: "append-rule" };
 
 /** The page's add-rule control, which stands the last row of every grid. */
@@ -33,7 +33,7 @@ export const kAppendRuleCell: PageGridCell = { kind: "append-rule" };
  */
 export interface RuleCellDescriptor {
   /** The rule these cells belong to, as {@link PageGridCell} names it. */
-  readonly ruleId: number;
+  readonly ruleId: string;
   /** How many tiles the WHEN side holds. */
   readonly whenTileCount: number;
   /** How many tiles the DO side holds. */
@@ -121,16 +121,16 @@ export function decidePageGridGrab(cell: PageGridCell, press: PageGridKeyPress):
  * control stands, which a paste appends to.
  */
 export type PageGridSubject =
-  | { readonly kind: "tile"; readonly ruleId: number; readonly side: RuleSide; readonly tileIndex: number }
-  | { readonly kind: "rule"; readonly ruleId: number }
-  | { readonly kind: "side-end"; readonly ruleId: number; readonly side: RuleSide };
+  | { readonly kind: "tile"; readonly ruleId: string; readonly side: RuleSide; readonly tileIndex: number }
+  | { readonly kind: "rule"; readonly ruleId: string }
+  | { readonly kind: "side-end"; readonly ruleId: string; readonly side: RuleSide };
 
 /**
  * Where a rule an insertion makes is put: straight after the rule `ruleId`
  * names, or at the end of the page.
  */
 export type PageGridInsertionPoint =
-  | { readonly kind: "after-rule"; readonly ruleId: number }
+  | { readonly kind: "after-rule"; readonly ruleId: string }
   | { readonly kind: "page-end" };
 
 /**
@@ -192,7 +192,7 @@ export function pageGridCellKey(cell: PageGridCell): string {
  * rule's sentence for a caret resting in a gap and for a rule standing at no
  * caret at all.
  */
-export function pageGridCellAfterComposing(ruleId: number, caret: CaretPosition | undefined): PageGridCell {
+export function pageGridCellAfterComposing(ruleId: string, caret: CaretPosition | undefined): PageGridCell {
   if (caret?.kind === "element") return { kind: "tile", ruleId, side: caret.side, tileIndex: caret.tileIndex };
   return { kind: "sentence", ruleId };
 }
@@ -362,7 +362,7 @@ export type PageKeyResult =
   | { readonly kind: "inert" }
   | { readonly kind: "consume" }
   | { readonly kind: "select"; readonly cursor: PageGridCursor }
-  | { readonly kind: "move-rule"; readonly ruleId: number; readonly direction: RuleMoveDirection }
+  | { readonly kind: "move-rule"; readonly ruleId: string; readonly direction: RuleMoveDirection }
   | { readonly kind: "drop" }
   | { readonly kind: "cancel" };
 
@@ -392,7 +392,7 @@ export function decidePageKey(
   rows: readonly (readonly PageGridCell[])[],
   cursor: PageGridCursor | undefined,
   press: PageGridKeyPress,
-  heldRuleId: number | undefined
+  heldRuleId: string | undefined
 ): PageKeyResult {
   if (heldRuleId === undefined) {
     if (press.withCommand && press.placement === "on-cell") {
@@ -459,7 +459,7 @@ function pageGridSubject(cell: PageGridCell): PageGridSubject | undefined {
  * Use it for an insertion's starting point only; read the subject an operation
  * acts on from {@link pageGridSubject}.
  */
-function pageGridOwningRule(cell: PageGridCell): number | undefined {
+function pageGridOwningRule(cell: PageGridCell): string | undefined {
   return cell.kind === "append-rule" ? undefined : cell.ruleId;
 }
 

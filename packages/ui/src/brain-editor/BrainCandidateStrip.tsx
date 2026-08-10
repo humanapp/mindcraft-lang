@@ -183,7 +183,7 @@ function revealBehavior(): ScrollBehavior {
  * `cellKey` or `ruleId` of undefined arms nothing and moves nothing, as does a
  * `ruleId` the document no longer holds a card for.
  */
-function revealArmedPosition(strip: HTMLElement | null, ruleId: number | undefined, cellKey: string | undefined): void {
+function revealArmedPosition(strip: HTMLElement | null, ruleId: string | undefined, cellKey: string | undefined): void {
   if (strip === null || cellKey === undefined || ruleId === undefined) return;
   const card = document.querySelector(`[data-rule-id="${ruleId}"]`);
   if (card === null) return;
@@ -467,7 +467,7 @@ function armedElement(target: ArmedTileTarget | null): CaretPosition | undefined
 function armedCaretCellKey(target: ArmedTileTarget | null): string | undefined {
   const position = armedCaretPosition(target);
   if (target === null || position === undefined) return undefined;
-  const ruleId = target.ruleDef.id();
+  const ruleId = target.ruleDef.ruleId();
   const tileCount = target.ruleDef.side(position.side).tiles().size();
   return pageGridCellKey(
     position.tileIndex < tileCount
@@ -829,7 +829,7 @@ export function useCandidateStripSurface({
   useEffect(() => {
     if (!isArmed) return;
     const armingControl = document.activeElement as HTMLElement | null;
-    const armedRuleId = target?.ruleDef.id();
+    const armedRuleId = target?.ruleDef.ruleId();
     return () => {
       const pickedUp = pickedUpKeyboardRef.current;
       pickedUpKeyboardRef.current = null;
@@ -868,7 +868,9 @@ export function useCandidateStripSurface({
   // is brought back into view.
   // biome-ignore lint/correctness/useExhaustiveDependencies: commitTick is an intentional trigger signal
   useEffect(() => {
-    const frame = requestAnimationFrame(() => revealArmedPosition(containerRef.current, armedRule?.id(), armedCellKey));
+    const frame = requestAnimationFrame(() =>
+      revealArmedPosition(containerRef.current, armedRule?.ruleId(), armedCellKey)
+    );
     return () => cancelAnimationFrame(frame);
   }, [commitTick]);
 

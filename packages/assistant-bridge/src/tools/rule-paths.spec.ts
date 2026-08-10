@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { createTargetAdapter } from "../testing/index.js";
 import type { AuthoringWorkspace } from "./workspace.js";
-import { createAuthoringWorkspace, findRule, locateRules } from "./workspace.js";
+import { createAuthoringWorkspace, findRule, locateRules, ruleIdsByPath } from "./workspace.js";
 
 /**
  * A workspace whose first page carries a nested rule tree: two top-level rules,
@@ -33,20 +33,45 @@ function compilerRulePaths(ws: AuthoringWorkspace): string[] {
 }
 
 describe("rule addressing across the compiler and the bridge", () => {
-  test("gives every rule of a nested document the same path on both sides", () => {
+  test("reads every rule of a nested document at the path the compiler keys it by", () => {
     const ws = nestedWorkspace();
 
-    const bridgePaths = locateRules(ws.brainDef).map((located) => located.ruleId);
+    const bridgePaths = locateRules(ws.brainDef).map((located) => located.rulePath);
 
     assert.equal(bridgePaths.length, 6);
     assert.deepEqual(bridgePaths, compilerRulePaths(ws));
   });
 
-  test("resolves every path the compiler reports back to a rule of the document", () => {
+  test("resolves every path the compiler reports to a rule the document holds", () => {
     const ws = nestedWorkspace();
+    const byPath = ruleIdsByPath(ws.brainDef);
 
     for (const rulePath of compilerRulePaths(ws)) {
-      assert.ok(findRule(ws.brainDef, rulePath), rulePath);
+      const ruleId = byPath.get(rulePath);
+      assert.ok(ruleId, rulePath);
+      assert.ok(findRule(ws.brainDef, ruleId), ruleId);
+    }
+  });
+
+  test("gives every rule of the document its own id", () => {
+    const ws = nestedWorkspace();
+
+    const ruleIds = locateRules(ws.brainDef).map((located) => located.ruleId);
+
+    assert.equal(new Set(ruleIds).size, ruleIds.length);
+  });
+
+  test("keeps each rule's id where inserting a rule above it moves every path below", () => {
+    const ws = nestedWorkspace();
+    const page = ws.brainDef.pages().get(0) as BrainPageDef;
+    const before = locateRules(ws.brainDef);
+
+    page.addRuleAtIndex(0, page.appendNewRule() as BrainRuleDef);
+
+    const after = new Map(locateRules(ws.brainDef).map((located) => [located.ruleId, located.rulePath]));
+    for (const located of before) {
+      assert.ok(after.has(located.ruleId), "the rule is still addressed by the id it had");
+      assert.notEqual(after.get(located.ruleId), located.rulePath, "and its path has moved");
     }
   });
 });

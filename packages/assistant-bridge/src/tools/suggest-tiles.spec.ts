@@ -7,7 +7,7 @@ import {
   collectRuleHierarchyOutputKeys,
   suggestTiles as coreSuggestTiles,
 } from "@mindcraft-lang/core/brain/language-service";
-import { createTargetAdapter } from "../testing/index.js";
+import { createTargetAdapter, ruleIdAt } from "../testing/index.js";
 import { proposeEdit } from "./propose-edit.js";
 import type { SuggestionView } from "./suggest-tiles.js";
 import { suggestTiles } from "./suggest-tiles.js";
@@ -24,14 +24,19 @@ const tiles = {
   numberFactory: "tile.lit.factory->number",
 } as const;
 
-/** A workspace holding `WHEN the signal is on DO emit loudly at strength 7` at `0/0`. */
+/** A workspace holding `WHEN the signal is on DO emit loudly at strength 7` in its one rule. */
 function authoredWorkspace(): AuthoringWorkspace {
   const ws = createAuthoringWorkspace(createTargetAdapter(), "fake brain");
-  const when = proposeEdit(ws, { op: "placeTiles", ruleId: "0/0", side: "when", tileIds: [tiles.sensor] });
+  const when = proposeEdit(ws, {
+    op: "placeTiles",
+    ruleId: ruleIdAt(ws.brainDef, "0/0"),
+    side: "when",
+    tileIds: [tiles.sensor],
+  });
   assert.equal(when.ok, true, JSON.stringify(when));
   const doSide = proposeEdit(ws, {
     op: "placeTiles",
-    ruleId: "0/0",
+    ruleId: ruleIdAt(ws.brainDef, "0/0"),
     side: "do",
     tileIds: [tiles.actuator, tiles.modifier, tiles.parameter, { tileId: tiles.numberFactory, value: 7 }],
   });
@@ -39,9 +44,9 @@ function authoredWorkspace(): AuthoringWorkspace {
   return ws;
 }
 
-/** How many tiles `side` of `0/0` holds. */
+/** How many tiles `side` of the document's one rule holds. */
 function tileCount(ws: AuthoringWorkspace, side: RuleSideName): number {
-  return findRule(ws.brainDef, "0/0")!.rule.side(toRuleSide(side)).tiles().size();
+  return findRule(ws.brainDef, ruleIdAt(ws.brainDef, "0/0"))!.rule.side(toRuleSide(side)).tiles().size();
 }
 
 /** The offering as two id lists, which is what two paths are compared on. */
@@ -56,7 +61,7 @@ interface OfferedIds {
  * capabilities and outputs the rule hierarchy provides.
  */
 function editorReplacementOffering(ws: AuthoringWorkspace, side: RuleSideName, tileIndex: number): OfferedIds {
-  const rule = findRule(ws.brainDef, "0/0")!.rule;
+  const rule = findRule(ws.brainDef, ruleIdAt(ws.brainDef, "0/0"))!.rule;
   const ruleSide = toRuleSide(side);
   const tileSet = ruleSide === RuleSide.When ? rule.when() : rule.do();
   const result = coreSuggestTiles(
@@ -90,7 +95,7 @@ function toolOffering(view: SuggestionView): OfferedIds {
 
 /** The tool's answer at `position`. Fails the test when the request is not answerable. */
 function offeringAt(ws: AuthoringWorkspace, side: RuleSideName, mode: "insert" | "replace", position: number) {
-  const view = suggestTiles(ws, { mode, ruleId: "0/0", side, position });
+  const view = suggestTiles(ws, { mode, ruleId: ruleIdAt(ws.brainDef, "0/0"), side, position });
   assert.ok("exact" in view, JSON.stringify(view));
   return view;
 }
@@ -113,12 +118,13 @@ describe("suggest_tiles replacement mode", () => {
   });
 
   test("echoes the mode and the position it answered for", () => {
-    const view = offeringAt(authoredWorkspace(), "do", "replace", 1);
+    const ws = authoredWorkspace();
+    const view = offeringAt(ws, "do", "replace", 1);
 
     assert.equal(view.mode, "replace");
     assert.equal(view.position, 1);
     assert.equal(view.side, "do");
-    assert.equal(view.ruleId, "0/0");
+    assert.equal(view.ruleId, ruleIdAt(ws.brainDef, "0/0"));
   });
 
   test("asks what may stand where a tile already stands, not what may follow it", () => {
@@ -134,14 +140,23 @@ describe("suggest_tiles replacement mode", () => {
   test("offers a tile the editor then accepts in that position", () => {
     const ws = authoredWorkspace();
     const position = tileCount(ws, "do") - 1;
-    const standing = findRule(ws.brainDef, "0/0")!.rule.side(RuleSide.Do).tiles().get(position)!.tileId;
+    const standing = findRule(ws.brainDef, ruleIdAt(ws.brainDef, "0/0"))!
+      .rule.side(RuleSide.Do)
+      .tiles()
+      .get(position)!.tileId;
     const offered = offeringAt(ws, "do", "replace", position)
       .exact.map((tile) => tile.tileId)
       .filter((tileId) => tileId !== standing);
     assert.ok(offered.length > 0, "the position offers something other than the tile already there");
 
     const landed = offered.filter((tileId) => {
-      const result = proposeEdit(ws, { op: "replaceTile", ruleId: "0/0", side: "do", position, tileId });
+      const result = proposeEdit(ws, {
+        op: "replaceTile",
+        ruleId: ruleIdAt(ws.brainDef, "0/0"),
+        side: "do",
+        position,
+        tileId,
+      });
       if (result.ok) ws.history.undo();
       return result.ok;
     });
@@ -153,10 +168,13 @@ describe("suggest_tiles replacement mode", () => {
     const ws = authoredWorkspace();
     const count = tileCount(ws, "when");
 
-    assert.deepEqual(suggestTiles(ws, { mode: "replace", ruleId: "0/0", side: "when", position: count }), {
-      error: "position_out_of_range",
-      named: String(count),
-    });
+    assert.deepEqual(
+      suggestTiles(ws, { mode: "replace", ruleId: ruleIdAt(ws.brainDef, "0/0"), side: "when", position: count }),
+      {
+        error: "position_out_of_range",
+        named: String(count),
+      }
+    );
     assert.deepEqual(suggestTiles(ws, { mode: "replace", ruleId: "9/9", side: "when", position: 0 }), {
       error: "unknown_rule",
       named: "9/9",
@@ -170,7 +188,7 @@ describe("suggest_tiles insert mode", () => {
     const count = tileCount(ws, "do");
 
     const atEnd = offeringAt(ws, "do", "insert", count);
-    const defaulted = suggestTiles(ws, { mode: "insert", ruleId: "0/0", side: "do" });
+    const defaulted = suggestTiles(ws, { mode: "insert", ruleId: ruleIdAt(ws.brainDef, "0/0"), side: "do" });
 
     assert.ok("exact" in defaulted);
     assert.equal(defaulted.position, count);
@@ -181,9 +199,12 @@ describe("suggest_tiles insert mode", () => {
     const ws = authoredWorkspace();
     const beyond = tileCount(ws, "when") + 1;
 
-    assert.deepEqual(suggestTiles(ws, { mode: "insert", ruleId: "0/0", side: "when", position: beyond }), {
-      error: "position_out_of_range",
-      named: String(beyond),
-    });
+    assert.deepEqual(
+      suggestTiles(ws, { mode: "insert", ruleId: ruleIdAt(ws.brainDef, "0/0"), side: "when", position: beyond }),
+      {
+        error: "position_out_of_range",
+        named: String(beyond),
+      }
+    );
   });
 });

@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { catalogDigest } from "../catalog/digest.js";
-import { createTargetAdapter, FAKE_EMIT_GRAMMAR_NOTE, FAKE_INPUT_KIND, FAKE_SUBJECT } from "../testing/index.js";
+import {
+  createTargetAdapter,
+  FAKE_EMIT_GRAMMAR_NOTE,
+  FAKE_INPUT_KIND,
+  FAKE_SUBJECT,
+  ruleIdAt,
+} from "../testing/index.js";
 import { executeToolCall } from "./dispatch.js";
 import { proposeEdit } from "./propose-edit.js";
 import { readCatalog } from "./read-catalog.js";
@@ -22,18 +28,23 @@ const tiles = {
   variableFactory: "tile.var.factory->number",
 } as const;
 
-/** A workspace over the fake target, one empty rule ready at `0/0`. */
+/** A workspace over the fake target, one empty rule ready on its first page. */
 function workspace(): AuthoringWorkspace {
   return createAuthoringWorkspace(createTargetAdapter(), "fake brain");
 }
 
-/** Author `WHEN the signal is on DO emit loudly at strength 7` into `0/0`. */
+/** Author `WHEN the signal is on DO emit loudly at strength 7` into the document's one rule. */
 function authorSignalRule(ws: AuthoringWorkspace): void {
-  const when = proposeEdit(ws, { op: "placeTiles", ruleId: "0/0", side: "when", tileIds: [tiles.sensor] });
+  const when = proposeEdit(ws, {
+    op: "placeTiles",
+    ruleId: ruleIdAt(ws.brainDef, "0/0"),
+    side: "when",
+    tileIds: [tiles.sensor],
+  });
   assert.equal(when.ok, true, JSON.stringify(when));
   const doSide = proposeEdit(ws, {
     op: "placeTiles",
-    ruleId: "0/0",
+    ruleId: ruleIdAt(ws.brainDef, "0/0"),
     side: "do",
     tileIds: [tiles.actuator, tiles.modifier, tiles.parameter, { tileId: tiles.numberFactory, value: 7 }],
   });
@@ -49,7 +60,8 @@ describe("the bridge tools over a real target", () => {
   });
 
   test("offers the target's own sensor at the start of a WHEN side", () => {
-    const offering = suggestTiles(workspace(), { mode: "insert", ruleId: "0/0", side: "when" });
+    const ws = workspace();
+    const offering = suggestTiles(ws, { mode: "insert", ruleId: ruleIdAt(ws.brainDef, "0/0"), side: "when" });
 
     assert.ok("exact" in offering, JSON.stringify(offering));
     assert.ok(offering.exact.some((tile) => tile.tileId === tiles.sensor));
@@ -73,7 +85,12 @@ describe("the bridge tools over a real target", () => {
   test("leaves the document untouched when an edit is rejected", () => {
     const ws = workspace();
 
-    const rejected = proposeEdit(ws, { op: "placeTile", ruleId: "0/0", side: "when", tileId: tiles.actuator });
+    const rejected = proposeEdit(ws, {
+      op: "placeTile",
+      ruleId: ruleIdAt(ws.brainDef, "0/0"),
+      side: "when",
+      tileId: tiles.actuator,
+    });
 
     assert.equal(rejected.ok, false);
     assert.deepEqual(readProject(ws).pages[0]?.rules[0]?.when, []);
@@ -85,7 +102,7 @@ describe("the bridge tools over a real target", () => {
 
     const minted = proposeEdit(ws, {
       op: "placeTiles",
-      ruleId: "0/0",
+      ruleId: ruleIdAt(ws.brainDef, "0/0"),
       side: "when",
       tileIds: [
         { tileId: tiles.variableFactory, name: "hunger" },
@@ -106,12 +123,17 @@ describe("the bridge tools over a real target", () => {
 
   test("mints a literal as a single placeTile lands it", () => {
     const ws = workspace();
-    const placed = proposeEdit(ws, { op: "placeTile", ruleId: "0/0", side: "do", tileId: tiles.asyncActuator });
+    const placed = proposeEdit(ws, {
+      op: "placeTile",
+      ruleId: ruleIdAt(ws.brainDef, "0/0"),
+      side: "do",
+      tileId: tiles.asyncActuator,
+    });
     assert.equal(placed.ok, true, JSON.stringify(placed));
 
     const minted = proposeEdit(ws, {
       op: "placeTile",
-      ruleId: "0/0",
+      ruleId: ruleIdAt(ws.brainDef, "0/0"),
       side: "do",
       tileId: { tileId: tiles.numberFactory, value: 50, displayFormat: "percent" },
     });
@@ -128,7 +150,7 @@ describe("the bridge tools over a real target", () => {
 
     const swapped = proposeEdit(ws, {
       op: "replaceTile",
-      ruleId: "0/0",
+      ruleId: ruleIdAt(ws.brainDef, "0/0"),
       side: "do",
       position,
       tileId: { tileId: tiles.numberFactory, value: 30 },
@@ -142,7 +164,12 @@ describe("the bridge tools over a real target", () => {
   test("reports a factory named without the input it mints from, minting nothing", () => {
     const ws = workspace();
 
-    const refused = proposeEdit(ws, { op: "placeTile", ruleId: "0/0", side: "when", tileId: tiles.numberFactory });
+    const refused = proposeEdit(ws, {
+      op: "placeTile",
+      ruleId: ruleIdAt(ws.brainDef, "0/0"),
+      side: "when",
+      tileId: tiles.numberFactory,
+    });
 
     assert.deepEqual(refused, { ok: false, error: "invalid_mint_input", named: tiles.numberFactory });
     assert.deepEqual(readProject(ws).pages[0]?.rules[0]?.when, []);
@@ -150,12 +177,17 @@ describe("the bridge tools over a real target", () => {
 
   test("drops a tile a rejected single-tile edit minted", () => {
     const ws = workspace();
-    const placed = proposeEdit(ws, { op: "placeTile", ruleId: "0/0", side: "when", tileId: tiles.sensor });
+    const placed = proposeEdit(ws, {
+      op: "placeTile",
+      ruleId: ruleIdAt(ws.brainDef, "0/0"),
+      side: "when",
+      tileId: tiles.sensor,
+    });
     assert.equal(placed.ok, true, JSON.stringify(placed));
 
     const rejected = proposeEdit(ws, {
       op: "placeTile",
-      ruleId: "0/0",
+      ruleId: ruleIdAt(ws.brainDef, "0/0"),
       side: "when",
       tileId: { tileId: tiles.numberFactory, value: 12 },
     });
@@ -173,7 +205,7 @@ describe("the bridge tools over a real target", () => {
     const ws = workspace();
     proposeEdit(ws, {
       op: "placeTiles",
-      ruleId: "0/0",
+      ruleId: ruleIdAt(ws.brainDef, "0/0"),
       side: "when",
       tileIds: [{ tileId: "tile.var.factory->boolean", name: "hunger" }],
     });
@@ -258,7 +290,11 @@ describe("the bridge tools over a real target", () => {
     const ws = workspace();
 
     const unknown = await executeToolCall(ws, "read_trace", {});
-    const invalid = await executeToolCall(ws, "suggest_tiles", { mode: "insert", ruleId: "0/0", side: "sideways" });
+    const invalid = await executeToolCall(ws, "suggest_tiles", {
+      mode: "insert",
+      ruleId: ruleIdAt(ws.brainDef, "0/0"),
+      side: "sideways",
+    });
 
     assert.equal(unknown.isError, true);
     assert.deepEqual(unknown.payload, { error: "unknown_tool", detail: "read_trace" });

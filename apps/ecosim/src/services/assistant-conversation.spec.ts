@@ -7,6 +7,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
 import { recordFor } from "@mindcraft-lang/assistant-panel/conversation/store";
 import type { AssistantChannel } from "@mindcraft-lang/assistant-panel/session/channel";
 import { AssistantMachine, AssistantStatus } from "@mindcraft-lang/assistant-panel/session/machine";
@@ -30,50 +31,53 @@ import { createEditedBrainWorkspaces } from "./edited-brain-workspaces";
 /** The app's own assets, read from the tree these specs run in. */
 const CONTENT = sourceRehearsalContent();
 
-/** The tiles one scripted turn authors: seeing a carnivore, then fleeing it. */
-const authoringCalls = [
-  {
-    name: "propose_edit",
-    input: {
-      op: "placeTiles",
-      ruleId: "0/0",
-      side: "when",
-      tileIds: ["tile.sensor->sensor.see", `tile.modifier->${TileIds.Modifier.ActorKindCarnivore}`],
-    },
-  },
-  {
-    name: "propose_edit",
-    input: {
-      op: "placeTiles",
-      ruleId: "0/0",
-      side: "do",
-      tileIds: [
-        "tile.actuator->actuator.move",
-        `tile.modifier->${TileIds.Modifier.MovementAwayFrom}`,
-        "tile.literal->struct:<ActorRef>->it",
-      ],
-    },
-  },
+/** The WHEN tiles one scripted turn authors: seeing a carnivore. */
+const authoredWhenTiles = ["tile.sensor->sensor.see", `tile.modifier->${TileIds.Modifier.ActorKindCarnivore}`] as const;
+
+/** The DO tiles one scripted turn authors: fleeing what it sees. */
+const authoredDoTiles = [
+  "tile.actuator->actuator.move",
+  `tile.modifier->${TileIds.Modifier.MovementAwayFrom}`,
+  "tile.literal->struct:<ActorRef>->it",
 ] as const;
 
-/** One turn that looks at the catalog, authors the rule, and finishes. */
-const authoringTurn: ScriptedService = {
-  turns: [
+/** Undoable history entries the authoring turn leaves, one per accepted run. */
+const authoredEdits = 2;
+
+/** The propose_edit calls the authoring turn makes against the rule `ruleId` names. */
+function authoringCalls(ruleId: string) {
+  return [
     {
-      steps: [
-        { kind: "narration", text: "I will watch for carnivores first." },
-        { kind: "toolCalls", calls: [{ name: "read_catalog", input: {} }] },
-        { kind: "toolCalls", calls: [...authoringCalls] },
-        { kind: "narration", text: "Now I run from them." },
-      ],
+      name: "propose_edit",
+      input: { op: "placeTiles", ruleId, side: "when", tileIds: [...authoredWhenTiles] },
     },
-  ],
-};
+    {
+      name: "propose_edit",
+      input: { op: "placeTiles", ruleId, side: "do", tileIds: [...authoredDoTiles] },
+    },
+  ];
+}
+
+/** One turn that looks at the catalog, authors the rule `ruleId` names, and finishes. */
+function authoringTurn(ruleId: string): ScriptedService {
+  return {
+    turns: [
+      {
+        steps: [
+          { kind: "narration", text: "I will watch for carnivores first." },
+          { kind: "toolCalls", calls: [{ name: "read_catalog", input: {} }] },
+          { kind: "toolCalls", calls: authoringCalls(ruleId) },
+          { kind: "narration", text: "Now I run from them." },
+        ],
+      },
+    ],
+  };
+}
 
 /** One turn that narrates and then waits to be stopped. */
-const haltingTurn: ScriptedService = {
-  turns: [{ steps: [{ kind: "narration", text: "Thinking about it." }, { kind: "awaitStop" }] }],
-};
+function haltingTurn(): ScriptedService {
+  return { turns: [{ steps: [{ kind: "narration", text: "Thinking about it." }, { kind: "awaitStop" }] }] };
+}
 
 /** The app's composition under test, and the sessions it opened. */
 interface Stand {
@@ -88,8 +92,12 @@ interface Stand {
   record(brainId: string): ConversationRecord;
 }
 
-/** Stand the app's composition with every session answered by `script`. */
-function appStand(script: ScriptedService): Stand {
+/**
+ * Stand the app's composition with every session answered by the script
+ * `script` builds for the rule the edited document opens with. Each session
+ * gets its own script, so a turn addresses the rule of the brain it is for.
+ */
+function appStand(script: (ruleId: string) => ScriptedService): Stand {
   const environment = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
   const adapter = createTargetAdapter(CONTENT);
   const workspaces = createEditedBrainWorkspaces({ environment, adapter });
@@ -99,7 +107,9 @@ function appStand(script: ScriptedService): Stand {
   const connect = (): Promise<AssistantChannel> => {
     connects++;
     const loopback: RelayLoopback = createRelayLoopback();
-    services.push(runScriptedService(loopback, script));
+    const activeBrainId = machine.getState().store.activeBrainId!;
+    const editedRuleId = ruleIdAt(workspaces.workspaceFor(activeBrainId).brainDef, "0/0");
+    services.push(runScriptedService(loopback, script(editedRuleId)));
     return Promise.resolve({
       send: (message) => loopback.toolServer.send(message),
       next: () => loopback.toolServer.next(),
@@ -181,9 +191,9 @@ describe("a whole conversation over this app's composition", () => {
       ["ok", "ok", "ok"]
     );
     assert.ok(turn.narration.length > 0, "the turn recorded what it narrated");
-    assert.deepEqual(ruleSideTileIds(edited.brainDef, "when"), [...authoringCalls[0].input.tileIds]);
-    assert.deepEqual(ruleSideTileIds(edited.brainDef, "do"), [...authoringCalls[1].input.tileIds]);
-    assert.equal(edited.history.undoDepth(), authoringCalls.length);
+    assert.deepEqual(ruleSideTileIds(edited.brainDef, "when"), [...authoredWhenTiles]);
+    assert.deepEqual(ruleSideTileIds(edited.brainDef, "do"), [...authoredDoTiles]);
+    assert.equal(edited.history.undoDepth(), authoredEdits);
   });
 
   test("ends the turn the person stopped", async () => {
@@ -231,8 +241,8 @@ describe("two brains edited in turn", () => {
       ["user", "assistant"]
     );
     assert.equal(stand.connects(), 2, "each brain opened its own session");
-    assert.deepEqual(ruleSideTileIds(herbivore.brainDef, "when"), [...authoringCalls[0].input.tileIds]);
-    assert.deepEqual(ruleSideTileIds(carnivore.brainDef, "when"), [...authoringCalls[0].input.tileIds]);
+    assert.deepEqual(ruleSideTileIds(herbivore.brainDef, "when"), [...authoredWhenTiles]);
+    assert.deepEqual(ruleSideTileIds(carnivore.brainDef, "when"), [...authoredWhenTiles]);
   });
 });
 

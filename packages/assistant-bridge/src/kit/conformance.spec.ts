@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { ADAPTER_CONTRACT_VERSION, AdapterNonconformanceCode } from "../target/adapter.js";
-import { createTargetAdapter, FAKE_INPUT_KIND, FAKE_SUBJECT, FAKE_TARGET_IDENTITY } from "../testing/index.js";
+import {
+  createTargetAdapter,
+  FAKE_INPUT_KIND,
+  FAKE_SUBJECT,
+  FAKE_TARGET_IDENTITY,
+  ruleIdAt,
+} from "../testing/index.js";
 import { proposeEdit } from "../tools/propose-edit.js";
 import type { AuthoringWorkspace } from "../tools/workspace.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";
@@ -22,13 +28,13 @@ function authoredWorkspace(): AuthoringWorkspace {
   const workspace = createAuthoringWorkspace(createTargetAdapter(), "conformance brain");
   proposeEdit(workspace, {
     op: "placeTiles",
-    ruleId: "0/0",
+    ruleId: ruleIdAt(workspace.brainDef, "0/0"),
     side: "when",
     tileIds: ["tile.sensor->sensor.fake.signal"],
   });
   proposeEdit(workspace, {
     op: "placeTiles",
-    ruleId: "0/0",
+    ruleId: ruleIdAt(workspace.brainDef, "0/0"),
     side: "do",
     tileIds: ["tile.actuator->actuator.fake.emit", "tile.modifier->modifier:fake.loudly"],
   });

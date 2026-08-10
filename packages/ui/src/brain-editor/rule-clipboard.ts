@@ -227,6 +227,9 @@ export function deserializeAllRulesFromClipboard(
   for (const ruleJson of currentClipboardData.ruleJsons) {
     const newRule = new BrainRuleDef();
     newRule.deserializeJson(ruleJson, catalogs);
+    // A paste stands beside the rules it was copied from, so it may not carry
+    // the ids they are addressed by.
+    newRule.mintNewRuleIds();
 
     if (pageRemapTable.size > 0) {
       remapPageTiles(newRule, pageRemapTable);

@@ -1,5 +1,5 @@
 import type { IBrainTileDef, ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
-import { isVariableFactoryTileId, rootRulePath } from "@mindcraft-lang/core/brain";
+import { isVariableFactoryTileId } from "@mindcraft-lang/core/brain";
 import type { BrainCommand, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   AddRuleCommand,
@@ -16,7 +16,7 @@ import type { ProjectRule } from "./read-project.js";
 import { readRule } from "./read-project.js";
 import { decideProposal, rejectionParams } from "./rejection-policy.js";
 import type { ProposeEditInput, TileRunEntry } from "./tool-schemas.js";
-import { type AuthoringWorkspace, findPage, findRule, findTile, toRuleSide } from "./workspace.js";
+import { type AuthoringWorkspace, findPage, findRule, findTile, ruleIdsByPath, toRuleSide } from "./workspace.js";
 
 /** An edit that landed in the document. */
 export interface ProposalAccepted {
@@ -34,9 +34,9 @@ export interface ProposalRejected {
   readonly code: number;
   /**
    * Machine-readable values that place and describe the refusal: what the
-   * rejecting diagnostic reports, the `pageIndex/ruleIndex[/childIndex...]`
-   * path of the rule under `rulePath`, and the `side` and `tileId` a companion
-   * diagnostic pins for the same failure when one does.
+   * rejecting diagnostic reports, the durable id of the rule under `ruleId`,
+   * and the `side` and `tileId` a companion diagnostic pins for the same
+   * failure when one does.
    */
   readonly params: SerializedDiagParams;
 }
@@ -89,13 +89,15 @@ function resolveEdit(workspace: AuthoringWorkspace, input: SingleCommandInput): 
   if (input.op === "addRule") {
     const page = findPage(workspace.brainDef, input.pageIndex);
     if (!page) return { ok: false, error: "unknown_page", named: String(input.pageIndex) };
-    const before = buildDiagnostics(workspace, rootRulePath(input.pageIndex, page.children().size()));
+    // The rule the command appends does not exist yet, so no diagnostic can
+    // name it.
+    const before = buildDiagnostics(workspace, undefined);
     return {
       command: new AddRuleCommand(page),
       resolveRule: () => {
         const rules = page.children();
-        const index = rules.size() - 1;
-        return { ruleId: rootRulePath(input.pageIndex, index), rule: rules.get(index) as BrainRuleDef };
+        const rule = rules.get(rules.size() - 1) as BrainRuleDef;
+        return { ruleId: rule.ruleId(), rule };
       },
       before,
     };
@@ -186,26 +188,30 @@ function ruleDiagnostics(rule: BrainRuleDef): ToolDiagnostic[] {
   // Both sides hold the same whole-rule typecheck result.
   const result = rule.when().typecheckResult();
   if (!result) return [];
+  const noRuleIds = new Map<string, string>();
   const diagnostics: ToolDiagnostic[] = [];
   result.parseResult.diags.forEach((diag) => {
-    diagnostics.push(toToolDiagnostic(diag.code, diag.params));
+    diagnostics.push(toToolDiagnostic(diag.code, diag.params, noRuleIds));
   });
   result.typeInfo.diags.forEach((diag) => {
-    diagnostics.push(toToolDiagnostic(diag.code, diag.params));
+    diagnostics.push(toToolDiagnostic(diag.code, diag.params, noRuleIds));
   });
   return diagnostics;
 }
 
 /**
  * Whole-brain build diagnostics that bear on this edit: every error, plus any
- * other diagnostic naming the edited rule.
+ * other diagnostic naming the rule `ruleId` is the durable id of. Pass
+ * `undefined` for an edit whose rule the document does not hold yet.
  */
-function buildDiagnostics(workspace: AuthoringWorkspace, ruleId: string): ToolDiagnostic[] {
+function buildDiagnostics(workspace: AuthoringWorkspace, ruleId: string | undefined): ToolDiagnostic[] {
   const build = workspace.environment.linkBrain(workspace.brainDef);
+  const ruleIds = ruleIdsByPath(workspace.brainDef);
   const diagnostics: ToolDiagnostic[] = [];
   build.diagnostics.forEach((diag) => {
-    if (diag.severity === "error" || diag.params?.rulePath === ruleId) {
-      diagnostics.push(toToolDiagnostic(diag.code, diag.params));
+    const diagnostic = toToolDiagnostic(diag.code, diag.params, ruleIds);
+    if (diag.severity === "error" || diagnostic.params?.ruleId === ruleId) {
+      diagnostics.push(diagnostic);
     }
   });
   return diagnostics;
@@ -220,10 +226,10 @@ function proposalDiagnostics(workspace: AuthoringWorkspace, ruleId: string, rule
   return [...ruleDiagnostics(rule), ...buildDiagnostics(workspace, ruleId)];
 }
 
-/** The key a diagnostic is counted under: its code, and the rule it names. */
+/** The key a diagnostic is counted under: its code, and the durable id of the rule it names. */
 function diagnosticKey(diagnostic: ToolDiagnostic): string {
-  const rulePath = diagnostic.params?.rulePath;
-  return `${diagnostic.code}@${typeof rulePath === "string" ? rulePath : ""}`;
+  const ruleId = diagnostic.params?.ruleId;
+  return `${diagnostic.code}@${typeof ruleId === "string" ? ruleId : ""}`;
 }
 
 /** How many diagnostics of each key `diagnostics` holds. */
@@ -238,7 +244,7 @@ function countByKey(diagnostics: readonly ToolDiagnostic[]): Map<string, number>
 
 /**
  * The rejection-relevant diagnostics an edit introduced: those whose
- * `(code, rulePath)` key the document reports more often after the edit than
+ * `(code, ruleId)` key the document reports more often after the edit than
  * before it. A diagnostic already standing in the document, in any rule and at
  * any severity, is not one of these, so an edit that leaves the document no
  * worse carries none. An edit that removes diagnostics without adding any
@@ -289,7 +295,7 @@ function decideApplied(
   transaction.keep();
   return {
     ok: true,
-    rule: readRule(rule, ruleId, workspace.environment.appServices.localizer),
+    rule: readRule(rule, workspace.environment.appServices.localizer),
     historyDepth: workspace.history.undoDepth(),
   };
 }

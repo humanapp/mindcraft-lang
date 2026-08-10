@@ -312,7 +312,7 @@ export function BrainRuleSentence({
 
   // The whole line is one cell of the page's selection grid, rendered as a
   // named group holding the line's own controls.
-  const cellKey = pageGridCellKey({ kind: "sentence", ruleId: ruleDef.id() });
+  const cellKey = pageGridCellKey({ kind: "sentence", ruleId: ruleDef.ruleId() });
   const isSelectedCell = selectedCell !== undefined && pageGridCellKey(selectedCell) === cellKey;
   const cellProps =
     pageGrid === undefined || cellName === undefined
@@ -380,7 +380,7 @@ export function BrainRuleSentence({
   return (
     <p
       className={`relative ${kRuleContentLayer} mt-1.5 ml-11 ${kSentenceTypeClasses} text-brain-ink/70`}
-      data-rule-sentence={ruleDef.id()}
+      data-rule-sentence={ruleDef.ruleId()}
       {...cellProps}
     >
       {segments.map((segment: SentenceSegment, index: number) => {
@@ -459,7 +459,7 @@ export function BrainRuleSentence({
         );
       })}
       {pivot.length > 0 && (
-        <span data-composer-pivot-comma={ruleDef.id()}>{pivot.map((segment) => segment.text).join("")}</span>
+        <span data-composer-pivot-comma={ruleDef.ruleId()}>{pivot.map((segment) => segment.text).join("")}</span>
       )}
       {boundary(segments.length)}
     </p>

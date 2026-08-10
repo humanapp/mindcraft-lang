@@ -636,22 +636,22 @@ describe("rule commands round-trip the document", () => {
     const { brain, ruleA } = brainWithTwoRules();
     const child = ruleA.appendNewRule();
     child.when().appendTile(sensorTile());
-    const ruleId = ruleA.id();
-    const childId = child.id();
+    const ruleId = ruleA.ruleId();
+    const childId = child.ruleId();
 
     const history = new BrainCommandHistory();
     history.executeCommand(new DeleteRuleCommand(ruleA));
     history.undo();
 
     const restored = firstPage(brain).children().get(0) as BrainRuleDef;
-    assert.equal(restored.id(), ruleId);
-    assert.equal((restored.children().get(0) as BrainRuleDef).id(), childId);
+    assert.equal(restored.ruleId(), ruleId);
+    assert.equal((restored.children().get(0) as BrainRuleDef).ruleId(), childId);
 
     history.redo();
     history.undo();
     const again = firstPage(brain).children().get(0) as BrainRuleDef;
-    assert.equal(again.id(), ruleId);
-    assert.equal((again.children().get(0) as BrainRuleDef).id(), childId);
+    assert.equal(again.ruleId(), ruleId);
+    assert.equal((again.children().get(0) as BrainRuleDef).ruleId(), childId);
   });
 
   test("MoveRuleUpCommand and MoveRuleDownCommand", () => {

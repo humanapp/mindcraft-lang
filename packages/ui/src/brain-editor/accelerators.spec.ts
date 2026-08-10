@@ -96,10 +96,10 @@ let facts: (mode: EditorMode) => ComposerInputFacts;
 
 /** Every cell of the page's grid a press can land on. */
 const kCells: readonly PageGridCell[] = [
-  { kind: "handle", ruleId: 1 },
-  { kind: "tile", ruleId: 1, side: RuleSide.When, tileIndex: 0 },
-  { kind: "append", ruleId: 1, side: RuleSide.When },
-  { kind: "sentence", ruleId: 1 },
+  { kind: "handle", ruleId: "r1" },
+  { kind: "tile", ruleId: "r1", side: RuleSide.When, tileIndex: 0 },
+  { kind: "append", ruleId: "r1", side: RuleSide.When },
+  { kind: "sentence", ruleId: "r1" },
   { kind: "append-rule" },
 ];
 
@@ -126,7 +126,7 @@ before(() => {
   );
   run = caretRun(ruleDef);
   rows = pageGridRows([
-    { ruleId: 1, whenTileCount: 1, doTileCount: 1, whenAppendable: true, doAppendable: true, hasSentence: true },
+    { ruleId: "r1", whenTileCount: 1, doTileCount: 1, whenAppendable: true, doAppendable: true, hasSentence: true },
   ]);
   const candidate: StripCandidate = {
     key: "lead",
@@ -205,7 +205,7 @@ function gridOutcome(press: Press): string {
 /** What the page makes of `press` while it holds rule 1. */
 function heldOutcome(press: Press): string {
   const cursor = resolvePageGridCursor(rows, kCells[0]);
-  return JSON.stringify(decidePageKey(rows, cursor, { ...press, placement: "on-cell" }, 1));
+  return JSON.stringify(decidePageKey(rows, cursor, { ...press, placement: "on-cell" }, "r1"));
 }
 
 /** What the composer makes of `press` in `mode`, over every state that mode is probed in. */
@@ -249,7 +249,7 @@ function isLive(mode: EditorMode, press: Press): boolean {
   }
   if (mode === "rule-held") {
     const cursor = resolvePageGridCursor(rows, kCells[0]);
-    return decidePageKey(rows, cursor, { ...press, placement: "on-cell" }, 1).kind !== "inert";
+    return decidePageKey(rows, cursor, { ...press, placement: "on-cell" }, "r1").kind !== "inert";
   }
   if (composerTrayToken(press.key, mode, kArmedElement) !== undefined) return true;
   const token = composerTokenForKey(press.key, "filter", press.withCommand);

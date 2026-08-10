@@ -47,7 +47,7 @@ export type SimulationResult =
 
 /**
  * The rules a rehearsal would have to be staged without for the document to
- * build, each with the codes it carries, sorted by path. Empty when the build
+ * build, each with the codes it carries, sorted by id. Empty when the build
  * has no error-severity diagnostic; `undefined` when some build error names no
  * rule, which no exclusion can work around.
  */
@@ -62,7 +62,7 @@ export function rulesToExclude(diagnostics: readonly CompileDiagnostic[]): Exclu
   }
   return [...codesByRule.entries()]
     .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([rulePath, codes]) => ({ rulePath, codes }));
+    .map(([ruleId, codes]) => ({ ruleId, codes }));
 }
 
 /**
@@ -94,7 +94,7 @@ export async function simulate(workspace: AuthoringWorkspace, input: ToolInput<"
     brainDef: workspace.brainDef,
     scenario: input.scenario,
     thinks: input.thinks,
-    ...(excludedRules.length > 0 ? { excludedRules: excludedRules.map((rule) => rule.rulePath) } : {}),
+    ...(excludedRules.length > 0 ? { excludedRules: excludedRules.map((rule) => rule.ruleId) } : {}),
   });
   return { ok: true, summary: summarizeRun(run, excludedRules) };
 }

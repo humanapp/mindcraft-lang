@@ -243,7 +243,7 @@ describe("the sentence composer's entry point", () => {
   test("an empty rule carries it", () => {
     const { ruleDef } = makeBrain([], []);
     const markup = renderRuleCard(ruleDef);
-    assert.equal(countOf(markup, `data-sentence-composer-entry="${ruleDef.id()}"`), 1);
+    assert.equal(countOf(markup, `data-sentence-composer-entry="${ruleDef.ruleId()}"`), 1);
   });
 
   test("an empty rule carries it at every indent depth", () => {
@@ -251,7 +251,7 @@ describe("the sentence composer's entry point", () => {
     for (const depth of [0, 1, 2, 3]) {
       const markup = renderRuleCard(ruleDef, { depth });
       assert.equal(
-        countOf(markup, `data-sentence-composer-entry="${ruleDef.id()}"`),
+        countOf(markup, `data-sentence-composer-entry="${ruleDef.ruleId()}"`),
         1,
         `an empty rule at depth ${depth} carries the entry`
       );
@@ -289,9 +289,9 @@ describe("the entry point across a page's rules", () => {
     new BrainCommandHistory().executeCommand(new InsertRuleCommand(settled, "before"));
     const inserted = pageDef.children().get(0) as BrainRuleDef;
     const markup = renderPage(pageDef);
-    assert.equal(countOf(markup, `data-sentence-composer-entry="${inserted.id()}"`), 1);
-    assert.equal(countOf(markup, `data-sentence-composer-entry="${trailing.id()}"`), 1);
-    assert.equal(countOf(markup, `data-sentence-composer-entry="${settled.id()}"`), 0);
+    assert.equal(countOf(markup, `data-sentence-composer-entry="${inserted.ruleId()}"`), 1);
+    assert.equal(countOf(markup, `data-sentence-composer-entry="${trailing.ruleId()}"`), 1);
+    assert.equal(countOf(markup, `data-sentence-composer-entry="${settled.ruleId()}"`), 0);
     assert.equal(countOf(markup, "data-sentence-composer-entry"), 2);
   });
 
@@ -300,7 +300,7 @@ describe("the entry point across a page's rules", () => {
     const trailing = pageDef.appendNewRule() as BrainRuleDef;
     new BrainCommandHistory().executeCommand(new IndentRuleCommand(trailing));
     const markup = renderPage(pageDef);
-    assert.equal(countOf(markup, `data-sentence-composer-entry="${trailing.id()}"`), 1);
+    assert.equal(countOf(markup, `data-sentence-composer-entry="${trailing.ruleId()}"`), 1);
   });
 });
 
@@ -356,7 +356,7 @@ describe("the filter input's position", () => {
     const markup = renderRuleCard(ruleDef, {
       target: appendTarget(ruleDef, RuleSide.When, "sentence"),
     });
-    assert.equal(countOf(markup, `data-rule-sentence="${ruleDef.id()}"`), 1);
+    assert.equal(countOf(markup, `data-rule-sentence="${ruleDef.ruleId()}"`), 1);
     assert.equal(countOf(markup, "data-sentence-tile-index"), 0);
   });
 });
@@ -466,16 +466,16 @@ describe("the sentence's one voice", () => {
     const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.When, "sentence") });
     assert.deepEqual(
       typeTokensOf(markup, 'data-strip-filter="sentence"'),
-      typeTokensOf(markup, `data-rule-sentence="${ruleDef.id()}"`)
+      typeTokensOf(markup, `data-rule-sentence="${ruleDef.ruleId()}"`)
     );
   });
 
   test("the entry point standing in for the line is set in it as well", () => {
     const { ruleDef: settled } = makeBrain([makeSensor("composer-voice-hear")], []);
-    const line = typeTokensOf(renderRuleCard(settled), `data-rule-sentence="${settled.id()}"`);
+    const line = typeTokensOf(renderRuleCard(settled), `data-rule-sentence="${settled.ruleId()}"`);
     const { ruleDef } = makeBrain([], []);
     const entry = renderRuleCard(ruleDef);
-    assert.deepEqual(typeTokensOf(entry, `data-sentence-composer-entry="${ruleDef.id()}"`), line);
+    assert.deepEqual(typeTokensOf(entry, `data-sentence-composer-entry="${ruleDef.ruleId()}"`), line);
   });
 });
 
@@ -507,7 +507,7 @@ describe("the pivot comma", () => {
   test("renders while composition sits on the armed DO side", () => {
     const { ruleDef } = makeBrain([makeObjectSensor("composer-comma-bump")], []);
     const markup = renderRuleCard(ruleDef, { target: appendTarget(ruleDef, RuleSide.Do, "sentence") });
-    assert.equal(countOf(markup, `${commaMarker}="${ruleDef.id()}"`), 1);
+    assert.equal(countOf(markup, `${commaMarker}="${ruleDef.ruleId()}"`), 1);
   });
 
   test("renders on an empty rule pivoted from its empty WHEN side", () => {
@@ -551,7 +551,7 @@ describe("the trigger word at the pivot", () => {
     const markup = renderRuleCard(ruleDef, {
       target: appendTarget(ruleDef, RuleSide.Do, "sentence"),
     });
-    assert.equal(countOf(markup, `data-composer-pivot-comma="${ruleDef.id()}"`), 1);
+    assert.equal(countOf(markup, `data-composer-pivot-comma="${ruleDef.ruleId()}"`), 1);
     assert.equal(sentenceReadingText(markup), `${trigger},`);
   });
 

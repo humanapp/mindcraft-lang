@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import type { RelayToolCallRequest, RelayToolResult } from "@mindcraft-lang/assistant-relay";
 import { correlateToolResults, RelayDeclineCode, RelayTakeoverCode } from "@mindcraft-lang/assistant-relay";
 import { createRelayLoopback, RelayLoopbackClosed } from "@mindcraft-lang/assistant-relay/testing";
-import { createTargetAdapter } from "../testing/index.js";
+import { createTargetAdapter, ruleIdAt } from "../testing/index.js";
 import { readProject } from "../tools/read-project.js";
 import type { AuthoringWorkspace } from "../tools/workspace.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";
@@ -64,8 +64,14 @@ describe("serving a relay tool-call batch", () => {
   test("answers a declined call without running it", async () => {
     const ws = workspace();
     const batch = requests(
-      { name: "propose_edit", input: { op: "placeTiles", ruleId: "0/0", side: "when", tileIds: [tiles.sensor] } },
-      { name: "propose_edit", input: { op: "placeTiles", ruleId: "0/0", side: "do", tileIds: [tiles.actuator] } }
+      {
+        name: "propose_edit",
+        input: { op: "placeTiles", ruleId: ruleIdAt(ws.brainDef, "0/0"), side: "when", tileIds: [tiles.sensor] },
+      },
+      {
+        name: "propose_edit",
+        input: { op: "placeTiles", ruleId: ruleIdAt(ws.brainDef, "0/0"), side: "do", tileIds: [tiles.actuator] },
+      }
     );
 
     const served = await serveToolCalls(ws, { type: "turn:toolCalls", requests: batch }, (request) =>
@@ -84,7 +90,7 @@ describe("serving a relay tool-call batch", () => {
     const ws = workspace();
     const batch = requests({
       name: "propose_edit",
-      input: { op: "placeTiles", ruleId: "0/0", side: "when", tileIds: [tiles.sensor] },
+      input: { op: "placeTiles", ruleId: ruleIdAt(ws.brainDef, "0/0"), side: "when", tileIds: [tiles.sensor] },
     });
 
     const served = await serveToolCalls(ws, { type: "turn:toolCalls", requests: batch }, () => ({
@@ -122,8 +128,14 @@ describe("serving a relay tool-call batch", () => {
     const loopback = createRelayLoopback();
     const ws = workspace();
     const batch = requests(
-      { name: "propose_edit", input: { op: "placeTiles", ruleId: "0/0", side: "when", tileIds: [tiles.sensor] } },
-      { name: "propose_edit", input: { op: "placeTiles", ruleId: "0/0", side: "do", tileIds: [tiles.actuator] } }
+      {
+        name: "propose_edit",
+        input: { op: "placeTiles", ruleId: ruleIdAt(ws.brainDef, "0/0"), side: "when", tileIds: [tiles.sensor] },
+      },
+      {
+        name: "propose_edit",
+        input: { op: "placeTiles", ruleId: ruleIdAt(ws.brainDef, "0/0"), side: "do", tileIds: [tiles.actuator] },
+      }
     );
 
     loopback.service.send({ type: "turn:toolCalls", requests: batch });

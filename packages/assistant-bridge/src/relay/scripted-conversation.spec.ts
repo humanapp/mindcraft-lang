@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { RelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
 import { createRelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
-import { createTargetAdapter, FAKE_SUBJECT } from "../testing/index.js";
+import { createTargetAdapter, FAKE_SUBJECT, ruleIdAt } from "../testing/index.js";
 import { executeToolCall } from "../tools/dispatch.js";
 import type { AuthoringWorkspace } from "../tools/workspace.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";
@@ -29,6 +29,18 @@ interface ScriptedStep {
   readonly calls: readonly ScriptedCall[];
 }
 
+/**
+ * The document both runs of the turn open on: one empty rule, taken from one
+ * workspace so every generated identity in it is shared.
+ */
+const openingDocument = createAuthoringWorkspace(createTargetAdapter(), "fake brain").brainDef.toJson();
+
+/** Id of the one rule {@link openingDocument} holds, which the turn authors. */
+const openingRuleId = ruleIdAt(
+  createAuthoringWorkspace(createTargetAdapter(), "fake brain", { brainJson: openingDocument }).brainDef,
+  "0/0"
+);
+
 /** Milliseconds a request in this turn allows for its answer. */
 const timeoutMs = 15000;
 
@@ -43,17 +55,20 @@ const script: readonly ScriptedStep[] = [
   },
   {
     narration: "checking what may open the WHEN",
-    calls: [{ name: "suggest_tiles", input: { mode: "insert", ruleId: "0/0", side: "when" } }],
+    calls: [{ name: "suggest_tiles", input: { mode: "insert", ruleId: openingRuleId, side: "when" } }],
   },
   {
     narration: "writing the rule",
     calls: [
-      { name: "propose_edit", input: { op: "placeTiles", ruleId: "0/0", side: "when", tileIds: [tiles.sensor] } },
+      {
+        name: "propose_edit",
+        input: { op: "placeTiles", ruleId: openingRuleId, side: "when", tileIds: [tiles.sensor] },
+      },
       {
         name: "propose_edit",
         input: {
           op: "placeTiles",
-          ruleId: "0/0",
+          ruleId: openingRuleId,
           side: "do",
           tileIds: [tiles.actuator, tiles.modifier, tiles.parameter, { tileId: tiles.numberFactory, value: 7 }],
         },
@@ -68,12 +83,6 @@ const script: readonly ScriptedStep[] = [
     ],
   },
 ];
-
-/**
- * The document both runs of the turn open on: one empty rule at `0/0`, taken
- * from one workspace so every generated identity in it is shared.
- */
-const openingDocument = createAuthoringWorkspace(createTargetAdapter(), "fake brain").brainDef.toJson();
 
 /** A workspace over the fake target, opened on {@link openingDocument}. */
 function workspace(): AuthoringWorkspace {

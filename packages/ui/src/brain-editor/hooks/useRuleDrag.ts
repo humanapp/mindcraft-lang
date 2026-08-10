@@ -19,7 +19,7 @@ interface DragState {
   startClientX: number;
   startClientY: number;
   started: boolean;
-  draggedSubtreeIds: Set<number>;
+  draggedSubtreeIds: Set<string>;
   draggedSubtreeMaxDepth: number;
   autoScrollFrame: number | null;
   autoScrollDirection: number;
@@ -40,7 +40,7 @@ export interface UseRuleDragOptions {
 
 /** Result of {@link useRuleDrag}: the id of the rule currently being dragged and a `beginDrag` starter. */
 export interface UseRuleDragResult {
-  draggingRuleId: number | null;
+  draggingRuleId: string | null;
   beginDrag: (rule: BrainRuleDef, event: React.PointerEvent<HTMLElement>) => boolean;
 }
 
@@ -60,10 +60,10 @@ function locationsEqual(a: RuleLocation, b: RuleLocation): boolean {
   return a.parentRule === b.parentRule && a.pageDef === b.pageDef && a.index === b.index;
 }
 
-function flattenPage(page: BrainPageDef, exclude: Set<number>): FlatEntry[] {
+function flattenPage(page: BrainPageDef, exclude: Set<string>): FlatEntry[] {
   const out: FlatEntry[] = [];
   const walk = (rule: BrainRuleDef, depth: number) => {
-    if (exclude.has(rule.id())) return;
+    if (exclude.has(rule.ruleId())) return;
     out.push({ rule, depth });
     const children = rule.children();
     for (let i = 0; i < children.size(); i++) {
@@ -77,10 +77,10 @@ function flattenPage(page: BrainPageDef, exclude: Set<number>): FlatEntry[] {
   return out;
 }
 
-function collectSubtreeIds(rule: BrainRuleDef): Set<number> {
-  const ids = new Set<number>();
+function collectSubtreeIds(rule: BrainRuleDef): Set<string> {
+  const ids = new Set<string>();
   const walk = (r: BrainRuleDef) => {
-    ids.add(r.id());
+    ids.add(r.ruleId());
     const children = r.children();
     for (let i = 0; i < children.size(); i++) {
       walk(children.get(i) as BrainRuleDef);
@@ -90,7 +90,7 @@ function collectSubtreeIds(rule: BrainRuleDef): Set<number> {
   return ids;
 }
 
-function findRuleElement(container: HTMLElement, ruleId: number): HTMLElement | null {
+function findRuleElement(container: HTMLElement, ruleId: string): HTMLElement | null {
   return container.querySelector(`[data-rule-id="${ruleId}"]`);
 }
 
@@ -167,7 +167,7 @@ function resolveTarget(page: BrainPageDef, flat: FlatEntry[], slot: number, dept
  * representing the net move.
  */
 export function useRuleDrag(opts: UseRuleDragOptions): UseRuleDragResult {
-  const [draggingRuleId, setDraggingRuleId] = useState<number | null>(null);
+  const [draggingRuleId, setDraggingRuleId] = useState<string | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const optsRef = useRef(opts);
   optsRef.current = opts;
@@ -203,7 +203,7 @@ export function useRuleDrag(opts: UseRuleDragOptions): UseRuleDragResult {
 
       let slot = flat.length;
       for (let i = 0; i < flat.length; i++) {
-        const el = findRuleElement(container, flat[i].rule.id());
+        const el = findRuleElement(container, flat[i].rule.ruleId());
         if (!el) continue;
         const r = el.getBoundingClientRect();
         const mid = r.top + r.height / 2;
@@ -215,7 +215,7 @@ export function useRuleDrag(opts: UseRuleDragOptions): UseRuleDragResult {
 
       let baseX = containerRect.left;
       for (let i = 0; i < flat.length; i++) {
-        const el = findRuleElement(container, flat[i].rule.id());
+        const el = findRuleElement(container, flat[i].rule.ruleId());
         if (!el) continue;
         const r = el.getBoundingClientRect();
         baseX = r.left - flat[i].depth * INDENT_PX * zoom;
@@ -338,7 +338,7 @@ export function useRuleDrag(opts: UseRuleDragOptions): UseRuleDragResult {
           drag.started = true;
 
           const container = optsRef.current.containerRef.current;
-          const sourceEl = container ? findRuleElement(container, drag.rule.id()) : null;
+          const sourceEl = container ? findRuleElement(container, drag.rule.ruleId()) : null;
           if (sourceEl) {
             const { el: ghost, rect } = createGhostElement(sourceEl, optsRef.current.zoom);
             drag.ghostEl = ghost;
@@ -346,7 +346,7 @@ export function useRuleDrag(opts: UseRuleDragOptions): UseRuleDragResult {
             drag.ghostOffsetY = drag.startClientY - rect.top;
           }
 
-          setDraggingRuleId(drag.rule.id());
+          setDraggingRuleId(drag.rule.ruleId());
         }
 
         if (drag.ghostEl) {

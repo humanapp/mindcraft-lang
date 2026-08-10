@@ -111,7 +111,7 @@ describe("deciding one proposed edit", () => {
 });
 
 /** The rule every corpus edit below was judged on. */
-const kRule = "0/0";
+const kRule = "ruleUnderTest01";
 
 /**
  * One refused edit's diagnostics as `propose_edit` reports them: the rule's own
@@ -130,14 +130,14 @@ const refusedCases: readonly RefusedCase[] = [
     name: "a second statement on a side that takes one",
     diagnostics: [
       { code: ParseDiagCode.UnexpectedExpressionAfterExpression },
-      { code: ParseDiagCode.UnexpectedExpressionAfterExpression, params: { rulePath: kRule } },
+      { code: ParseDiagCode.UnexpectedExpressionAfterExpression, params: { ruleId: kRule } },
       {
         code: CompilationDiagCode.UncompilableExpressionDropped,
-        params: { rulePath: kRule, side: "do", tileId: "tile.var->count" },
+        params: { ruleId: kRule, side: "do", tileId: "tile.var->count" },
       },
     ],
     code: ParseDiagCode.UnexpectedExpressionAfterExpression,
-    params: { rulePath: kRule, side: "do", tileId: "tile.var->count" },
+    params: { ruleId: kRule, side: "do", tileId: "tile.var->count" },
   },
   {
     name: "an expression placed ahead of the action it was meant to follow",
@@ -145,15 +145,15 @@ const refusedCases: readonly RefusedCase[] = [
       { code: ParseDiagCode.UnexpectedActionCallAfterExpression, params: { tileId: "tile.actuator->emit" } },
       {
         code: ParseDiagCode.UnexpectedActionCallAfterExpression,
-        params: { tileId: "tile.actuator->emit", rulePath: kRule },
+        params: { tileId: "tile.actuator->emit", ruleId: kRule },
       },
       {
         code: CompilationDiagCode.UncompilableExpressionDropped,
-        params: { rulePath: kRule, side: "do", tileId: "tile.actuator->emit" },
+        params: { ruleId: kRule, side: "do", tileId: "tile.actuator->emit" },
       },
     ],
     code: ParseDiagCode.UnexpectedActionCallAfterExpression,
-    params: { tileId: "tile.actuator->emit", rulePath: kRule, side: "do" },
+    params: { tileId: "tile.actuator->emit", ruleId: kRule, side: "do" },
   },
   {
     name: "a value of the wrong type in an argument slot",
@@ -164,7 +164,7 @@ const refusedCases: readonly RefusedCase[] = [
       },
     ],
     code: TypeDiagCode.DataTypeMismatch,
-    params: { expectedTypeIds: ["number:<number>"], actualTypeIds: ["nil:<nil>"], rulePath: kRule },
+    params: { expectedTypeIds: ["number:<number>"], actualTypeIds: ["nil:<nil>"], ruleId: kRule },
   },
 ];
 
@@ -179,23 +179,26 @@ describe("reporting the refusal", () => {
   }
 
   test("keeps the rule a diagnostic named itself over the rule the edit was judged on", () => {
-    const rejectedBy: ToolDiagnostic = { code: ParseDiagCode.TilePlacementSideMismatch, params: { rulePath: "0/2" } };
+    const rejectedBy: ToolDiagnostic = {
+      code: ParseDiagCode.TilePlacementSideMismatch,
+      params: { ruleId: "anotherRule0002" },
+    };
 
     const params = rejectionParams(rejectedBy, [rejectedBy], kRule);
 
-    assert.deepEqual(params, { rulePath: "0/2" });
+    assert.deepEqual(params, { ruleId: "anotherRule0002" });
   });
 
   test("takes no tile from a dropped expression reported in another rule", () => {
     const rejectedBy: ToolDiagnostic = { code: ParseDiagCode.UnexpectedExpressionAfterExpression };
     const elsewhere: ToolDiagnostic = {
       code: CompilationDiagCode.UncompilableExpressionDropped,
-      params: { rulePath: "0/3", side: "when", tileId: "tile.sensor->signal" },
+      params: { ruleId: "anotherRule0003", side: "when", tileId: "tile.sensor->signal" },
     };
 
     const params = rejectionParams(rejectedBy, [rejectedBy, elsewhere], kRule);
 
-    assert.deepEqual(params, { rulePath: kRule });
+    assert.deepEqual(params, { ruleId: kRule });
   });
 
   test("only ever adds params: no case loses a value its rejecting diagnostic reported", () => {

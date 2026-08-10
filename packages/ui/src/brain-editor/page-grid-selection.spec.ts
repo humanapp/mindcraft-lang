@@ -14,23 +14,23 @@ import { kAppendRuleCell, type PageGridCell } from "./page-grid-model";
 import { ruleSelectionCell } from "./page-grid-selection";
 
 /** The ids of the rules a page holds, in the order they stand. */
-const kRuleIds = [1, 2, 3] as const;
+const kRuleIds = ["r1", "r2", "r3"] as const;
 
 /** The rules reading a different selection across a move from `before` to `after`. */
-function concernedRules(before: PageGridCell | undefined, after: PageGridCell | undefined): number[] {
+function concernedRules(before: PageGridCell | undefined, after: PageGridCell | undefined): string[] {
   return kRuleIds.filter((ruleId) => ruleSelectionCell(before, ruleId) !== ruleSelectionCell(after, ruleId));
 }
 
 describe("ruleSelectionCell", () => {
   test("gives the rule holding the cell the cell itself", () => {
-    const cell: PageGridCell = { kind: "handle", ruleId: 2 };
-    assert.equal(ruleSelectionCell(cell, 2), cell);
+    const cell: PageGridCell = { kind: "handle", ruleId: "r2" };
+    assert.equal(ruleSelectionCell(cell, "r2"), cell);
   });
 
   test("gives every other rule nothing", () => {
-    const cell: PageGridCell = { kind: "tile", ruleId: 2, side: RuleSide.Do, tileIndex: 0 };
-    assert.equal(ruleSelectionCell(cell, 1), undefined);
-    assert.equal(ruleSelectionCell(cell, 3), undefined);
+    const cell: PageGridCell = { kind: "tile", ruleId: "r2", side: RuleSide.Do, tileIndex: 0 };
+    assert.equal(ruleSelectionCell(cell, "r1"), undefined);
+    assert.equal(ruleSelectionCell(cell, "r3"), undefined);
   });
 
   test("gives every rule nothing for the page's own add-rule control", () => {
@@ -42,23 +42,23 @@ describe("ruleSelectionCell", () => {
   });
 
   test("a move between two rules concerns those two and no other", () => {
-    const from: PageGridCell = { kind: "handle", ruleId: 1 };
-    const to: PageGridCell = { kind: "handle", ruleId: 3 };
-    assert.deepEqual(concernedRules(from, to), [1, 3]);
+    const from: PageGridCell = { kind: "handle", ruleId: "r1" };
+    const to: PageGridCell = { kind: "handle", ruleId: "r3" };
+    assert.deepEqual(concernedRules(from, to), ["r1", "r3"]);
   });
 
   test("a move within one rule concerns only that rule", () => {
-    const from: PageGridCell = { kind: "handle", ruleId: 2 };
-    const to: PageGridCell = { kind: "tile", ruleId: 2, side: RuleSide.When, tileIndex: 0 };
-    assert.deepEqual(concernedRules(from, to), [2]);
+    const from: PageGridCell = { kind: "handle", ruleId: "r2" };
+    const to: PageGridCell = { kind: "tile", ruleId: "r2", side: RuleSide.When, tileIndex: 0 };
+    assert.deepEqual(concernedRules(from, to), ["r2"]);
   });
 
   test("a move onto the page's add-rule control concerns only the rule it leaves", () => {
-    assert.deepEqual(concernedRules({ kind: "sentence", ruleId: 3 }, kAppendRuleCell), [3]);
+    assert.deepEqual(concernedRules({ kind: "sentence", ruleId: "r3" }, kAppendRuleCell), ["r3"]);
   });
 
   test("re-reading the same cell concerns no rule at all", () => {
-    const cell: PageGridCell = { kind: "append", ruleId: 2, side: RuleSide.When };
+    const cell: PageGridCell = { kind: "append", ruleId: "r2", side: RuleSide.When };
     assert.deepEqual(concernedRules(cell, cell), []);
   });
 });

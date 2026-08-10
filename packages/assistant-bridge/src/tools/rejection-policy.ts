@@ -94,24 +94,26 @@ export function decideProposal(diagnostics: readonly ToolDiagnostic[]): PolicyDe
 /**
  * The params a refusal reports for `rejectedBy`, filled out from the rest of
  * `diagnostics`: what `rejectedBy` reports itself, the rule the edit was judged
- * on (`editedRulePath`) when `rejectedBy` names no rule, and the side and tile
+ * on (`editedRuleId`) when `rejectedBy` names no rule, and the side and tile
  * that a dropped-expression diagnostic in the same rule pins for the same
  * failure. A value `rejectedBy` reports is never replaced, so the result always
- * carries every param it reported, plus `rulePath`.
+ * carries every param it reported, plus `ruleId`.
+ *
+ * @param editedRuleId - Durable id of the rule the edit was judged on.
  */
 export function rejectionParams(
   rejectedBy: ToolDiagnostic,
   diagnostics: readonly ToolDiagnostic[],
-  editedRulePath: string
+  editedRuleId: string
 ): SerializedDiagParams {
   const params: Record<string, DiagParamValue> = { ...rejectedBy.params };
-  const reported = params.rulePath;
-  const rulePath = typeof reported === "string" ? reported : editedRulePath;
-  params.rulePath = rulePath;
+  const reported = params.ruleId;
+  const ruleId = typeof reported === "string" ? reported : editedRuleId;
+  params.ruleId = ruleId;
 
   const dropped = diagnostics.find(
     (diagnostic) =>
-      diagnostic.code === CompilationDiagCode.UncompilableExpressionDropped && diagnostic.params?.rulePath === rulePath
+      diagnostic.code === CompilationDiagCode.UncompilableExpressionDropped && diagnostic.params?.ruleId === ruleId
   );
   for (const key of ["side", "tileId"] as const) {
     const value = dropped?.params?.[key];

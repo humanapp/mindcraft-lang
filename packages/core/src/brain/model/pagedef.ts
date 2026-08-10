@@ -96,7 +96,7 @@ export class BrainPageDef implements IBrainPageDef {
     }
     this.name_ = json.name;
     for (let i = 0; i < json.rules.size(); i++) {
-      const child = new BrainRuleDef();
+      const child = new BrainRuleDef(json.rules.get(i).ruleId);
       child.setPage(this);
       child.deserializeJson(json.rules.get(i), catalogs);
       this.children_.push(child);

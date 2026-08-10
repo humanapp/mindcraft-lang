@@ -6,7 +6,7 @@ import type { IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
  * Increment it whenever {@link TargetAdapter} or the shapes it exchanges change
  * in a way an already-built artifact cannot satisfy.
  */
-export const ADAPTER_CONTRACT_VERSION = 5;
+export const ADAPTER_CONTRACT_VERSION = 6;
 
 /** Facts about a target world that a session states to the model before it plans. */
 export interface TargetManifest {
@@ -73,11 +73,10 @@ export interface SimulationRequest {
   /** Number of fixed-step thinks to run. */
   readonly thinks: number;
   /**
-   * Rule paths to leave out of this run's build, each in
-   * `pageIndex/ruleIndex[/childIndex...]` form. An excluded rule and its whole
-   * subtree are absent from the program, so they report nothing and run
-   * nothing, and a brain whose every build error falls in an excluded rule
-   * still runs. Every other rule keeps the path it reports observations under.
+   * Durable ids of rules to leave out of this run's build. An excluded rule and
+   * its whole subtree are absent from the program, so they report nothing and
+   * run nothing, and a brain whose every build error falls in an excluded rule
+   * still runs. Every other rule keeps the id it reports observations under.
    * Absent when the run excludes nothing.
    */
   readonly excludedRules?: readonly string[];
@@ -85,7 +84,7 @@ export interface SimulationRequest {
 
 /** One rule's WHEN gate on one think. */
 export interface GateObservation {
-  /** Rule id in `pageIndex/ruleIndex[/childIndex...]` form. */
+  /** Durable id of the rule whose gate this is, as the document carries it. */
   readonly ruleId: string;
   /** `true` when the gate passed and the rule's DO section ran. */
   readonly fired: boolean;
@@ -102,7 +101,7 @@ export interface DispatchObservation {
    * slot the call filled, in slot order. Empty when the call filled none.
    */
   readonly args: readonly string[];
-  /** Rule the dispatch was attributed to, absent when the runtime could not attribute it. */
+  /** Durable id of the rule the dispatch was attributed to, absent when the runtime could not attribute it. */
   readonly ruleId?: string;
 }
 

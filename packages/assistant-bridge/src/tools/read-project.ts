@@ -1,6 +1,6 @@
 import type { ReadonlyList } from "@mindcraft-lang/core";
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { childRulePath, RuleSide, rootRulePath } from "@mindcraft-lang/core/brain";
+import { RuleSide } from "@mindcraft-lang/core/brain";
 import { tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { Localizer } from "@mindcraft-lang/core/localization";
@@ -15,7 +15,11 @@ export interface ProjectTile {
 
 /** One rule of the document, with its children nested beneath it. */
 export interface ProjectRule {
-  /** `pageIndex/ruleIndex[/childIndex...]`; the id every other tool addresses the rule by. */
+  /**
+   * The rule's durable id, which every other tool addresses it by. It is the
+   * rule's for as long as the rule exists: adding, moving, or removing rules
+   * around it does not change it.
+   */
   readonly ruleId: string;
   /** The author's note on the rule, absent when it has none. */
   readonly comment?: string;
@@ -47,18 +51,18 @@ function tileRefs(tiles: ReadonlyList<IBrainTileDef>, localizer: Localizer): Pro
 }
 
 /**
- * Read one rule and its descendants, addressed by `ruleId`. Each tile's label is
- * the word it reads by in the locale `localizer` renders.
+ * Read one rule and its descendants, each under its own durable id. Each tile's
+ * label is the word it reads by in the locale `localizer` renders.
  */
-export function readRule(rule: BrainRuleDef, ruleId: string, localizer: Localizer): ProjectRule {
+export function readRule(rule: BrainRuleDef, localizer: Localizer): ProjectRule {
   const children: ProjectRule[] = [];
   const childRules = rule.children();
   for (let i = 0; i < childRules.size(); i++) {
-    children.push(readRule(childRules.get(i) as BrainRuleDef, childRulePath(ruleId, i), localizer));
+    children.push(readRule(childRules.get(i) as BrainRuleDef, localizer));
   }
   const comment = rule.comment();
   return {
-    ruleId,
+    ruleId: rule.ruleId(),
     ...(comment ? { comment } : {}),
     when: tileRefs(rule.side(RuleSide.When).tiles(), localizer),
     do: tileRefs(rule.side(RuleSide.Do).tiles(), localizer),
@@ -76,7 +80,7 @@ export function readProject(workspace: AuthoringWorkspace): ProjectView {
     const rules: ProjectRule[] = [];
     const ruleDefs = page.children();
     for (let r = 0; r < ruleDefs.size(); r++) {
-      rules.push(readRule(ruleDefs.get(r) as BrainRuleDef, rootRulePath(p, r), localizer));
+      rules.push(readRule(ruleDefs.get(r) as BrainRuleDef, localizer));
     }
     pages.push({ pageIndex: p, name: page.name(), rules });
   }
