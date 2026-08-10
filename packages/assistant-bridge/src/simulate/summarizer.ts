@@ -23,15 +23,22 @@ export interface TraceSpan {
   readonly think: ThinkSummary;
 }
 
-/** Totals for one rule over the whole run. */
+/**
+ * Totals for one rule over the whole run. A rule with no WHEN condition reaches
+ * no gate, so it carries no gate totals: `evaluated`, `fired`, and
+ * `whenResults` are all absent for it, and what it did is in
+ * {@link RuleTotals.dispatched}.
+ */
 export interface RuleTotals {
   readonly ruleId: string;
   /** Thinks on which the rule reached its WHEN gate. */
-  readonly evaluated: number;
+  readonly evaluated?: number;
   /** Thinks on which the gate passed. */
-  readonly fired: number;
+  readonly fired?: number;
   /** Distinct WHEN results the rule produced, at most eight, in first-seen order. */
-  readonly whenResults: readonly string[];
+  readonly whenResults?: readonly string[];
+  /** Host action calls this rule made over the run, as `action(args)=count` entries, sorted by call. */
+  readonly dispatched: readonly string[];
 }
 
 /** One rule the run was staged without, and why. */
@@ -125,17 +132,27 @@ function compress(observations: readonly ThinkObservation[]): { spans: TraceSpan
   return { spans, truncated: false };
 }
 
-/** Accumulate per-rule totals across the run, in first-seen order. */
+/**
+ * Accumulate per-rule totals across the run, in first-seen order. A rule appears
+ * once it reaches a gate or dispatches an action, so a rule with no WHEN
+ * condition -- a child that runs on every fire of its parent -- is accounted for
+ * by what it dispatched.
+ */
 function ruleTotals(observations: readonly ThinkObservation[]): RuleTotals[] {
   const order: string[] = [];
   const evaluated = new Map<string, number>();
   const fired = new Map<string, number>();
   const results = new Map<string, string[]>();
+  const dispatches = new Map<string, DispatchObservation[]>();
+
+  const see = (ruleId: string) => {
+    if (!order.includes(ruleId)) order.push(ruleId);
+  };
 
   for (const observation of observations) {
     for (const gate of observation.gates) {
+      see(gate.ruleId);
       if (!evaluated.has(gate.ruleId)) {
-        order.push(gate.ruleId);
         evaluated.set(gate.ruleId, 0);
         fired.set(gate.ruleId, 0);
         results.set(gate.ruleId, []);
@@ -145,13 +162,21 @@ function ruleTotals(observations: readonly ThinkObservation[]): RuleTotals[] {
       const seen = results.get(gate.ruleId)!;
       if (seen.length < maxWhenResultsPerRule && !seen.includes(gate.result)) seen.push(gate.result);
     }
+    for (const dispatch of observation.dispatches) {
+      if (dispatch.ruleId === undefined) continue;
+      see(dispatch.ruleId);
+      const made = dispatches.get(dispatch.ruleId);
+      if (made) made.push(dispatch);
+      else dispatches.set(dispatch.ruleId, [dispatch]);
+    }
   }
 
   return order.map((ruleId) => ({
     ruleId,
-    evaluated: evaluated.get(ruleId)!,
-    fired: fired.get(ruleId)!,
-    whenResults: results.get(ruleId)!,
+    ...(evaluated.has(ruleId)
+      ? { evaluated: evaluated.get(ruleId)!, fired: fired.get(ruleId)!, whenResults: results.get(ruleId)! }
+      : {}),
+    dispatched: countDispatches(dispatches.get(ruleId) ?? []),
   }));
 }
 

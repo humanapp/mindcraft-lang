@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import type { IBrainDef } from "@mindcraft-lang/core/app";
+import type { IBrainRuleDef } from "@mindcraft-lang/core/brain";
 import { summarizeRun } from "../simulate/summarizer.js";
 import type { AdapterExpectation, SimulationRun, SimulationScenario, TargetAdapter } from "../target/adapter.js";
 import {
@@ -23,6 +24,8 @@ export const ConformanceCheckCode = {
   Boundedness: "boundedness",
   /** The run observed the WHEN gates of the brain under study. */
   GateEvents: "gate_events",
+  /** The run accounted for the nested rules of the brain under study. */
+  ChildRuleObservation: "child_rule_observation",
   /** The built artifact loads and publishes a conforming adapter in plain Node. */
   HeadlessPurity: "headless_purity",
   /** The built artifact documents its tiles and rehearses away from the tree that built it. */
@@ -95,15 +98,71 @@ function gateEvents(run: SimulationRun): ConformanceCheck {
 }
 
 /**
+ * Durable ids of every rule nested under another in `brainDef` that carries at
+ * least one tile, in document order.
+ */
+function actingNestedRuleIds(brainDef: IBrainDef): string[] {
+  const ids: string[] = [];
+  const walk = (rule: IBrainRuleDef, nested: boolean) => {
+    if (nested && rule.when().tiles().size() + rule.do().tiles().size() > 0) ids.push(rule.ruleId());
+    const children = rule.children();
+    for (let i = 0; i < children.size(); i++) walk(children.get(i), true);
+  };
+  const pages = brainDef.pages();
+  for (let p = 0; p < pages.size(); p++) {
+    const rules = pages.get(p).children();
+    for (let r = 0; r < rules.size(); r++) walk(rules.get(r), false);
+  }
+  return ids;
+}
+
+/**
+ * Confirm the run named every nested rule of `brainDef` that carries tiles, in
+ * a gate or a dispatch. Passes when the brain nests no such rule.
+ */
+function childRuleObservation(brainDef: IBrainDef, run: SimulationRun): ConformanceCheck {
+  const nested = actingNestedRuleIds(brainDef);
+  if (nested.length === 0) {
+    return {
+      code: ConformanceCheckCode.ChildRuleObservation,
+      ok: true,
+      detail: "the brain under study nests no rule that carries tiles",
+    };
+  }
+  const named = new Set<string>();
+  for (const think of run.observations) {
+    for (const gate of think.gates) named.add(gate.ruleId);
+    for (const dispatch of think.dispatches) {
+      if (dispatch.ruleId !== undefined) named.add(dispatch.ruleId);
+    }
+  }
+  const silent = nested.filter((ruleId) => !named.has(ruleId));
+  return {
+    code: ConformanceCheckCode.ChildRuleObservation,
+    ok: silent.length === 0,
+    detail:
+      silent.length === 0
+        ? `${nested.length} nested rules accounted for`
+        : `nothing was observed of nested rules ${silent.join(", ")}`,
+  };
+}
+
+/**
  * Run the checks a target's adapter must pass to be rehearsable: the same seed
- * reproduces the same run, the summarized run fits a tool result, and the run
- * observes the brain's WHEN gates. Runs the adapter twice.
+ * reproduces the same run, the summarized run fits a tool result, the run
+ * observes the brain's WHEN gates, and it accounts for the brain's nested rules.
+ * Runs the adapter twice.
  */
 export async function checkAdapterConformance(options: AdapterConformanceOptions): Promise<ConformanceReport> {
   const request = { brainDef: options.brainDef, scenario: options.scenario, thinks: options.thinks };
   const first = await options.adapter.run(request);
   const second = await options.adapter.run(request);
-  return report([determinism(first, second), boundedness(first), gateEvents(first)]);
+  return report([
+    determinism(first, second),
+    boundedness(first),
+    gateEvents(first),
+    childRuleObservation(options.brainDef, first),
+  ]);
 }
 
 const run = promisify(execFile);

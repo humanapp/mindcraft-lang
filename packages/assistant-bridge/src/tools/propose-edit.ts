@@ -4,6 +4,8 @@ import type { BrainCommand, BrainRuleDef } from "@mindcraft-lang/core/brain/mode
 import {
   AddRuleCommand,
   AddTileCommand,
+  IndentRuleCommand,
+  InsertRuleCommand,
   InsertTileCommand,
   RemoveTileCommand,
   ReplaceTileCommand,
@@ -47,8 +49,16 @@ export interface ProposalUnresolved {
   /**
    * `invalid_mint_input` reports a factory tile named without the input it
    * mints from, or with an input the factory makes no tile of.
+   * `rule_nesting_too_deep` reports a parent rule the document cannot nest
+   * another rule under.
    */
-  readonly error: "unknown_rule" | "unknown_page" | "unknown_tile" | "position_out_of_range" | "invalid_mint_input";
+  readonly error:
+    | "unknown_rule"
+    | "unknown_page"
+    | "unknown_tile"
+    | "position_out_of_range"
+    | "invalid_mint_input"
+    | "rule_nesting_too_deep";
   /** The rule id, page index, tile id, or position the request named. */
   readonly named: string;
 }
@@ -59,8 +69,62 @@ export type ProposalResult = ProposalAccepted | ProposalRejected | ProposalUnres
 /** The operation that places a run of tiles as one transaction. */
 type PlaceTilesInput = Extract<ProposeEditInput, { op: "placeTiles" }>;
 
+/** The operation that nests a new rule under an existing one. */
+type AddChildRuleInput = Extract<ProposeEditInput, { op: "addChildRule" }>;
+
 /** Every operation that runs a single editor command. */
-type SingleCommandInput = Exclude<ProposeEditInput, PlaceTilesInput>;
+type SingleCommandInput = Exclude<ProposeEditInput, PlaceTilesInput | AddChildRuleInput>;
+
+/**
+ * Nests a new empty rule under `parent` as its last child. Executing leaves the
+ * new rule nested and names it through {@link NestRuleCommand.nestedRule}; a
+ * document that cannot hold another level under `parent` leaves nothing behind
+ * and names no rule. Undoing takes the new rule back out.
+ */
+class NestRuleCommand implements BrainCommand {
+  private insert_?: InsertRuleCommand;
+  private indent_?: IndentRuleCommand;
+  private nested_?: BrainRuleDef;
+
+  constructor(private readonly parent: BrainRuleDef) {}
+
+  execute(): void {
+    this.insert_ = undefined;
+    this.indent_ = undefined;
+    this.nested_ = undefined;
+
+    const insert = new InsertRuleCommand(this.parent, "after");
+    insert.execute();
+    const inserted = insert.insertedRule();
+    if (!inserted) return;
+
+    const indent = new IndentRuleCommand(inserted);
+    indent.execute();
+    if (inserted.ancestor() !== this.parent) {
+      indent.undo();
+      insert.undo();
+      return;
+    }
+
+    this.insert_ = insert;
+    this.indent_ = indent;
+    this.nested_ = inserted;
+  }
+
+  undo(): void {
+    this.indent_?.undo();
+    this.insert_?.undo();
+  }
+
+  /** The rule the latest execute nested, or undefined when it nested none. */
+  nestedRule(): BrainRuleDef | undefined {
+    return this.nested_;
+  }
+
+  getDescription(): string {
+    return "Add child rule";
+  }
+}
 
 /** The command an edit runs, and the rule whose validity it decides. */
 interface ResolvedEdit {
@@ -346,6 +410,35 @@ function placeTileRun(workspace: AuthoringWorkspace, input: PlaceTilesInput): Pr
 }
 
 /**
+ * Nest a new empty rule under the rule the request names, as its last child. The
+ * new rule runs when its parent's WHEN passes: with no WHEN of its own it runs
+ * once per parent fire, and with one it is a further condition on the same
+ * trigger. Reports `unknown_rule` when the document holds no rule under that
+ * id, and `rule_nesting_too_deep` when it cannot hold another level there.
+ */
+function nestChildRule(workspace: AuthoringWorkspace, input: AddChildRuleInput): ProposalResult {
+  const parent = findRule(workspace.brainDef, input.parentRuleId);
+  if (!parent) return { ok: false, error: "unknown_rule", named: input.parentRuleId };
+
+  // The rule the command nests does not exist yet, so no diagnostic can name it.
+  const before = buildDiagnostics(workspace, undefined);
+  const command = new NestRuleCommand(parent.rule);
+  workspace.history.executeCommand(command);
+  const nested = command.nestedRule();
+  if (!nested) {
+    workspace.history.undo();
+    return { ok: false, error: "rule_nesting_too_deep", named: input.parentRuleId };
+  }
+
+  return decideApplied(workspace, nested.ruleId(), nested, before, {
+    keep: () => {},
+    takeBack: () => {
+      workspace.history.undo();
+    },
+  });
+}
+
+/**
  * Run one proposed edit through the editor's own command and validation path.
  * An accepted edit stays in the document as an undoable history entry; a
  * rejected edit is undone before returning, so the document rests exactly as it
@@ -355,6 +448,7 @@ function placeTileRun(workspace: AuthoringWorkspace, input: PlaceTilesInput): Pr
  */
 export function proposeEdit(workspace: AuthoringWorkspace, input: ProposeEditInput): ProposalResult {
   if (input.op === "placeTiles") return placeTileRun(workspace, input);
+  if (input.op === "addChildRule") return nestChildRule(workspace, input);
 
   const catalog = workspace.brainDef.catalog();
   const registeredBefore = catalogTileIds(catalog);

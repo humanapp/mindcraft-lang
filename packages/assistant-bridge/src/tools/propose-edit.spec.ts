@@ -101,6 +101,89 @@ describe("an edit addresses a rule by the id the document carries", () => {
   });
 });
 
+describe("nesting a rule under another", () => {
+  test("puts the new rule under the parent the request named, with an id of its own", () => {
+    const ws = workspaceWithAction();
+    const parentRuleId = firstRuleId(ws);
+
+    const result = proposeEdit(ws, { op: "addChildRule", parentRuleId });
+
+    assert.equal(result.ok, true, JSON.stringify(result));
+    const nested = (result as ProposalAccepted).rule;
+    assert.notEqual(nested.ruleId, parentRuleId);
+    const parent = readProject(ws).pages[0]!.rules[0]!;
+    assert.equal(parent.ruleId, parentRuleId, "the parent keeps its id");
+    assert.deepEqual(
+      parent.children.map((child) => child.ruleId),
+      [nested.ruleId],
+      "read_project reports the new rule under its parent"
+    );
+    assert.equal(readProject(ws).pages[0]!.rules.length, 1, "no rule joined the page");
+  });
+
+  test("adds each further child after the ones the parent already has", () => {
+    const ws = workspaceWithAction();
+    const parentRuleId = firstRuleId(ws);
+
+    const first = proposeEdit(ws, { op: "addChildRule", parentRuleId }) as ProposalAccepted;
+    const second = proposeEdit(ws, { op: "addChildRule", parentRuleId }) as ProposalAccepted;
+
+    assert.deepEqual(
+      readProject(ws).pages[0]!.rules[0]!.children.map((child) => child.ruleId),
+      [first.rule.ruleId, second.rule.ruleId]
+    );
+  });
+
+  test("lands as one undoable entry that takes the whole rule back", () => {
+    const ws = workspaceWithAction();
+    const parentRuleId = firstRuleId(ws);
+    const depthBefore = ws.history.undoDepth();
+
+    const result = proposeEdit(ws, { op: "addChildRule", parentRuleId }) as ProposalAccepted;
+
+    assert.equal(result.historyDepth, depthBefore + 1);
+    ws.history.undo();
+    assert.deepEqual(readProject(ws).pages[0]!.rules[0]!.children, []);
+    assert.equal(readProject(ws).pages[0]!.rules.length, 1, "the rule did not come back as a sibling");
+  });
+
+  test("reports a parent id the document does not hold, changing nothing", () => {
+    const ws = workspaceWithAction();
+    const elsewhere = firstRuleId(createAuthoringWorkspace(createTargetAdapter(), "another brain"));
+    const depthBefore = ws.history.undoDepth();
+
+    const result = proposeEdit(ws, { op: "addChildRule", parentRuleId: elsewhere });
+
+    assert.deepEqual(result, { ok: false, error: "unknown_rule", named: elsewhere });
+    assert.equal(ws.history.undoDepth(), depthBefore);
+    assert.deepEqual(readProject(ws).pages[0]!.rules[0]!.children, []);
+  });
+
+  test("reports a parent the document cannot nest another rule under, changing nothing", () => {
+    const ws = createAuthoringWorkspace(createTargetAdapter(), "deep brain");
+    let parentRuleId = firstRuleId(ws);
+    let depth = 0;
+    for (;;) {
+      const result = proposeEdit(ws, { op: "addChildRule", parentRuleId });
+      if (!result.ok) {
+        assert.deepEqual(result, { ok: false, error: "rule_nesting_too_deep", named: parentRuleId });
+        break;
+      }
+      parentRuleId = (result as ProposalAccepted).rule.ruleId;
+      depth++;
+      assert.ok(depth < 100, "nesting stops somewhere");
+    }
+
+    const depthBefore = ws.history.undoDepth();
+    assert.deepEqual(proposeEdit(ws, { op: "addChildRule", parentRuleId }), {
+      ok: false,
+      error: "rule_nesting_too_deep",
+      named: parentRuleId,
+    });
+    assert.equal(ws.history.undoDepth(), depthBefore, "the refusal left no history entry");
+  });
+});
+
 describe("a refused proposal reports where the failure is", () => {
   test("names the rule and the tile a second statement on a full side starts at", () => {
     const { refused, ruleId } = refuse({ op: "placeTiles", ruleId: kRule, side: "do", tileIds: assignment });

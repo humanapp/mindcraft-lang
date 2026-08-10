@@ -129,10 +129,21 @@ describe("tool input validation", () => {
     const proposeEdit = toolDefinitions.find((tool) => tool.name === "propose_edit");
     const properties = (proposeEdit?.inputSchema as { properties?: Record<string, { enum?: string[] }> }).properties;
 
-    assert.deepEqual(properties?.op?.enum, ["addRule", "placeTile", "placeTiles", "replaceTile", "deleteTile"]);
+    assert.deepEqual(properties?.op?.enum, [
+      "addRule",
+      "addChildRule",
+      "placeTile",
+      "placeTiles",
+      "replaceTile",
+      "deleteTile",
+    ]);
     assert.ok(
       (properties?.op as { description?: string })?.description?.includes("placeTiles takes ruleId, side, tileIds"),
       "the enum description names each operation's own arguments"
+    );
+    assert.ok(
+      (properties?.op as { description?: string })?.description?.includes("addChildRule takes parentRuleId"),
+      "the enum description names the operation that nests a rule"
     );
   });
 

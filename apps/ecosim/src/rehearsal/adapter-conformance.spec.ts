@@ -15,19 +15,23 @@ const CONTENT = sourceRehearsalContent();
 /** Scenario the conformance runs stage. */
 const SCENARIO = { seed: 20260805, subject: "herbivore" };
 
-/** A workspace carrying one rule: run away from a carnivore it can see. */
+/**
+ * A workspace carrying one rule -- run away from a carnivore it can see -- and a
+ * child rule under it that calls out on the same trigger.
+ */
 function authoredWorkspace() {
   const workspace = createAuthoringWorkspace(createTargetAdapter(CONTENT), "conformance brain");
+  const parentRuleId = ruleIdAt(workspace.brainDef, "0/0");
   const when = proposeEdit(workspace, {
     op: "placeTiles",
-    ruleId: ruleIdAt(workspace.brainDef, "0/0"),
+    ruleId: parentRuleId,
     side: "when",
     tileIds: ["tile.sensor->sensor.see", "tile.modifier->modifier.actor_kind.carnivore"],
   });
   assert.equal(when.ok, true, JSON.stringify(when));
   const doSide = proposeEdit(workspace, {
     op: "placeTiles",
-    ruleId: ruleIdAt(workspace.brainDef, "0/0"),
+    ruleId: parentRuleId,
     side: "do",
     tileIds: [
       "tile.actuator->actuator.move",
@@ -36,12 +40,22 @@ function authoredWorkspace() {
     ],
   });
   assert.equal(doSide.ok, true, JSON.stringify(doSide));
-  return workspace;
+  const child = proposeEdit(workspace, { op: "addChildRule", parentRuleId });
+  assert.equal(child.ok, true, JSON.stringify(child));
+  const childRuleId = (child as { rule: { ruleId: string } }).rule.ruleId;
+  const childDo = proposeEdit(workspace, {
+    op: "placeTiles",
+    ruleId: childRuleId,
+    side: "do",
+    tileIds: ["tile.actuator->actuator.say", { tileId: "tile.lit.factory->string", value: "run" }],
+  });
+  assert.equal(childDo.ok, true, JSON.stringify(childDo));
+  return { workspace, parentRuleId, childRuleId };
 }
 
 describe("the ecosim adapter against the bridge's conformance suite", () => {
-  test("is deterministic, bounded, and observes the brain's gates", async () => {
-    const workspace = authoredWorkspace();
+  test("is deterministic, bounded, and observes the brain's rules", async () => {
+    const { workspace } = authoredWorkspace();
 
     const report = await checkAdapterConformance({
       adapter: workspace.adapter,
@@ -55,13 +69,18 @@ describe("the ecosim adapter against the bridge's conformance suite", () => {
     }
     assert.deepEqual(
       report.checks.map((check) => check.code),
-      [ConformanceCheckCode.Determinism, ConformanceCheckCode.Boundedness, ConformanceCheckCode.GateEvents]
+      [
+        ConformanceCheckCode.Determinism,
+        ConformanceCheckCode.Boundedness,
+        ConformanceCheckCode.GateEvents,
+        ConformanceCheckCode.ChildRuleObservation,
+      ]
     );
     assert.equal(report.ok, true);
   });
 
   test("attributes what the creature under study dispatched, with the arguments it carried", async () => {
-    const workspace = authoredWorkspace();
+    const { workspace, parentRuleId, childRuleId } = authoredWorkspace();
 
     const run = await workspace.adapter.run({
       brainDef: workspace.brainDef,
@@ -77,10 +96,28 @@ describe("the ecosim adapter against the bridge's conformance suite", () => {
       moves.some((move) => move.args.length > 0),
       "a move carries the arguments that say which way it went"
     );
-    const ruleId = ruleIdAt(workspace.brainDef, "0/0");
     assert.ok(
-      dispatches.every((dispatch) => dispatch.ruleId === undefined || dispatch.ruleId === ruleId),
+      dispatches.every(
+        (dispatch) =>
+          dispatch.ruleId === undefined || dispatch.ruleId === parentRuleId || dispatch.ruleId === childRuleId
+      ),
       "dispatches are attributed to the rule of the brain under study that made them"
     );
+  });
+
+  test("names the child rule as the one that called out", async () => {
+    const { workspace, childRuleId } = authoredWorkspace();
+
+    const run = await workspace.adapter.run({
+      brainDef: workspace.brainDef,
+      scenario: SCENARIO,
+      thinks: RUN_THINKS,
+    });
+
+    const says = run.observations.flatMap((think) =>
+      think.dispatches.filter((dispatch) => dispatch.action === "actuator.say")
+    );
+    assert.ok(says.length > 0, "the child rule ran");
+    assert.deepEqual([...new Set(says.map((dispatch) => dispatch.ruleId))], [childRuleId]);
   });
 });

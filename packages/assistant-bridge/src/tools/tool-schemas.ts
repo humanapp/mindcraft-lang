@@ -78,6 +78,12 @@ const proposeEditInputSchema = z.discriminatedUnion("op", [
     pageIndex: z.number().int().min(0).describe("Zero-based page index from read_project."),
   }),
   z.object({
+    op: z.literal("addChildRule"),
+    parentRuleId: ruleIdSchema.describe(
+      "Rule id of the rule the new rule goes under, from read_project. The new rule is added after any children that rule already has, and runs when that rule's WHEN passes."
+    ),
+  }),
+  z.object({
     op: z.literal("placeTile"),
     ruleId: ruleIdSchema,
     side: ruleSideSchema,

@@ -21,7 +21,10 @@ export interface CatalogTile {
   readonly outputType?: string;
   /** Compact rendering of the tile's argument grammar; absent for tiles that take no arguments. */
   readonly args?: string;
-  /** Rule sides and nestings the tile may be placed in. */
+  /**
+   * Where the tile may be placed: the rule sides that accept it, plus `inline`
+   * for a tile that also stands inside a value expression.
+   */
   readonly placement: readonly string[];
   /** Capability bits the tile requires some tile above it to provide. */
   readonly requires: readonly string[];
@@ -63,14 +66,16 @@ function capabilityNames(bits: ReadonlyBitSet): string[] {
   return names;
 }
 
-/** The placement flags set on `tile`, as names. */
+/**
+ * The placement flags set on `tile` that the editor enforces, as names: the
+ * rule sides `validateTilePlacement` admits it on, and `inline` when the parser
+ * takes it as a value expression.
+ */
 function placementNames(tile: IBrainTileDef): string[] {
   const placement = tile.placement ?? 0;
   const names: string[] = [];
   if ((placement & TilePlacement.WhenSide) !== 0) names.push("when");
   if ((placement & TilePlacement.DoSide) !== 0) names.push("do");
-  if ((placement & TilePlacement.ChildRule) !== 0) names.push("childRule");
-  if ((placement & TilePlacement.InsideLoop) !== 0) names.push("insideLoop");
   if ((placement & TilePlacement.Inline) !== 0) names.push("inline");
   return names;
 }

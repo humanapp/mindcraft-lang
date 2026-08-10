@@ -13,9 +13,9 @@ export interface CatalogDigest {
 /** Render the rules of the tile language that hold for every target, as catalog-facing prose. */
 export function languageGrammarLegend(): string {
   return `These rules hold whatever the tiles are:
-- A rule side holds exactly one statement; two actions on one trigger need two rules.
+- A rule side holds exactly one statement; two actions on one trigger need two rules -- add the second under the first with addChildRule, and it runs whenever the first fires.
 - An action's empty \`value:\` slot takes the next value expression placed, whatever its type; fill it before placing anything else.
-- A sensor with its modifiers is a call, not an operand; wrap it in parentheses to combine it with and/or.`;
+- A sensor with its modifiers is a call, not an operand; reaching for parentheses around one is the signal to put the further condition in a child rule instead.`;
 }
 
 /** Fingerprint `text` as eight lowercase hex digits, the same in every runtime. */

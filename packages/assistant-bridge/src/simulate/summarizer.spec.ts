@@ -63,8 +63,49 @@ describe("trace summary", () => {
 
     const summary = summarizeRun(run(observations));
 
-    assert.deepEqual(summary.rules, [{ ruleId: "0/0", evaluated: 3, fired: 2, whenResults: ["false", "true"] }]);
+    assert.deepEqual(summary.rules, [
+      {
+        ruleId: "0/0",
+        evaluated: 3,
+        fired: 2,
+        whenResults: ["false", "true"],
+        dispatched: ["actuator.move()=3", "sensor.see()=3"],
+      },
+    ]);
     assert.deepEqual(summary.dispatchTotals, ["actuator.move()=3", "sensor.see()=3"]);
+  });
+
+  test("accounts for a rule that dispatched without reaching a gate", () => {
+    const observations: ThinkObservation[] = [
+      {
+        gates: [{ ruleId: "0/0", fired: true, result: "true" }],
+        dispatches: [
+          { action: "sensor.see", args: [], ruleId: "0/0" },
+          { action: "actuator.move", args: [], ruleId: "0/0/0" },
+        ],
+      },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.deepEqual(summary.rules, [
+      { ruleId: "0/0", evaluated: 1, fired: 1, whenResults: ["true"], dispatched: ["sensor.see()=1"] },
+      { ruleId: "0/0/0", dispatched: ["actuator.move()=1"] },
+    ]);
+  });
+
+  test("leaves a dispatch the runtime could not attribute out of the per-rule totals", () => {
+    const observations: ThinkObservation[] = [
+      {
+        gates: [{ ruleId: "0/0", fired: true, result: "true" }],
+        dispatches: [{ action: "actuator.move", args: [] }],
+      },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.deepEqual(summary.rules, [{ ruleId: "0/0", evaluated: 1, fired: 1, whenResults: ["true"], dispatched: [] }]);
+    assert.deepEqual(summary.dispatchTotals, ["actuator.move()=1"]);
   });
 
   test("counts calls of one action apart when their arguments differ", () => {
