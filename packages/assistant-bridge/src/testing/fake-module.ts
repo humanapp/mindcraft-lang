@@ -80,6 +80,9 @@ const signalSensor = {
   metadata: { label: "the signal is on" },
 } satisfies CreateHostSensorOptions;
 
+/** The usage rule the fake target's emit registers for a reader of the catalog. */
+export const FAKE_EMIT_GRAMMAR_NOTE = "loudly and strength may come in either order";
+
 const emitActuator = {
   key: FakeActionKeys.Emit,
   actionId: TARGET_ACTION_ID_BASE + 1,
@@ -87,7 +90,7 @@ const emitActuator = {
   callDef: emitCallDef,
   fn: { exec: execEmit },
   isAsync: false,
-  metadata: { label: "emit" },
+  metadata: { label: "emit", grammarNote: FAKE_EMIT_GRAMMAR_NOTE },
 } satisfies CreateHostActuatorOptions;
 
 const chimeActuator = {

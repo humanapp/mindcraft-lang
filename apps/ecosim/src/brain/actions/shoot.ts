@@ -38,10 +38,19 @@ const callDef = mkCallDef(bag(optional(AnonActorRef), optional(Rate)));
 const kAnonActorRefSlotId = getSlotId(callDef, AnonActorRef);
 const kRateSlotId = getSlotId(callDef, Rate);
 
-/** Default ms between consecutive shots from the same call-site. */
-const DEFAULT_SHOOT_RATE = 2; // shots per second
-const MAX_SHOOT_RATE = 5; // shots per second
-const MIN_SHOOT_RATE = 0; // shots per second
+/** Shots per second a call-site fires at when its call names no rate. */
+const DEFAULT_SHOOT_RATE = 2;
+
+/** Highest shots per second a call-site fires at. */
+const MAX_SHOOT_RATE = 5;
+
+/** Lowest shots per second a call-site fires at. */
+const MIN_SHOOT_RATE = 0;
+
+/** The requested shots-per-second `rate`, brought into the range the shooter fires at. */
+export function clampShootRate(rate: number): number {
+  return Math.max(MIN_SHOOT_RATE, Math.min(MAX_SHOOT_RATE, rate));
+}
 
 /** Energy cost to fire a single blip. */
 const SHOOT_ENERGY_COST = 5;
@@ -75,8 +84,7 @@ export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Val
     let cooldown = 1000 / DEFAULT_SHOOT_RATE; // Default cooldown in ms
     const rateValue = args.get(kRateSlotId) as NumberValue | undefined;
     if (rateValue && isNumberValue(rateValue)) {
-      const rate = Math.max(MIN_SHOOT_RATE, Math.min(MAX_SHOOT_RATE, rateValue.v));
-      cooldown = 1000 / rate;
+      cooldown = 1000 / clampShootRate(rateValue.v);
     }
 
     const target = resolveTargetActor(ctx, args, kAnonActorRefSlotId);
@@ -134,7 +142,11 @@ export default {
   callDef,
   fn: { onInitialized: initShoot, exec: execShoot },
   isAsync: false,
-  metadata: { label: "shoot", iconUrl: `${ICON_BASE}/shoot.svg` },
+  metadata: {
+    label: "shoot",
+    iconUrl: `${ICON_BASE}/shoot.svg`,
+    grammarNote: `rate clamps to ${MIN_SHOOT_RATE}..${MAX_SHOOT_RATE} shots per second`,
+  },
 } satisfies CreateHostActuatorOptions;
 
 export const parameters: ParameterTileInput[] = [

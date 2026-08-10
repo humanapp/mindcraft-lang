@@ -96,6 +96,18 @@ complete sentences within the structure. Both failure modes are real: a page of
 prose the reader must parse for the meaningful bits, and fragments so terse the
 reader has to ask what they mean.
 
+## Temporary Files and Deletion Discipline
+
+Never run `rm -rf`, `rm -r`, or any recursive or wildcard deletion you compose
+yourself. No cleanup convenience justifies the risk of wiping unexamined
+content. Established package scripts that clean their own build output are
+unaffected; the ban is on deletion commands an agent writes.
+
+- Create temporary files in the session scratchpad, never in the repo tree.
+- Track every temporary file you create by exact path, and delete each one
+  individually (`rm <exact-path>`) when done with it.
+- Never delete a file or directory you did not create this session.
+
 ## Generated Files -- Do Not Read
 
 Never read `packages/ts-compiler/src/compiler/lib-dts.generated.ts` when

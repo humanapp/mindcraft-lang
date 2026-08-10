@@ -31,6 +31,12 @@ export interface CatalogTile {
   readonly outputs: readonly string[];
   /** Type of WHEN result the tile consumes; absent for tiles that consume none. */
   readonly consumesWhenResult?: string;
+  /**
+   * A rule this tile's use obeys that its argument grammar does not state, in
+   * one plain sentence, as the tile's registration states it; absent when the
+   * tile adds no such rule.
+   */
+  readonly grammarNote?: string;
   /** `true` for a tile the editor hides from its pickers. */
   readonly hidden?: boolean;
   /** `true` for a tile kept only for documents that already use it. */
@@ -174,6 +180,7 @@ function describeTile(
     provides: capabilityNames(tile.capabilities()),
     outputs: outputKeys(tile),
     ...(consumesWhenResult ? { consumesWhenResult } : {}),
+    ...(tile.metadata?.grammarNote ? { grammarNote: tile.metadata.grammarNote } : {}),
     ...(tile.hidden ? { hidden: true } : {}),
     ...(tile.deprecated ? { deprecated: true } : {}),
   };

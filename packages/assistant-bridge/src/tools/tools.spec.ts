@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { catalogDigest } from "../catalog/digest.js";
-import { createTargetAdapter, FAKE_INPUT_KIND, FAKE_SUBJECT } from "../testing/index.js";
+import { createTargetAdapter, FAKE_EMIT_GRAMMAR_NOTE, FAKE_INPUT_KIND, FAKE_SUBJECT } from "../testing/index.js";
 import { executeToolCall } from "./dispatch.js";
 import { proposeEdit } from "./propose-edit.js";
 import { readCatalog } from "./read-catalog.js";
@@ -184,6 +184,19 @@ describe("the bridge tools over a real target", () => {
     assert.equal(view.tiles.length, 1);
     assert.equal(view.tiles[0]?.label, "hunger");
     assert.ok(digest.text.includes(" | hunger | "), digest.text);
+  });
+
+  test("carries a registered grammar note to the tile's catalog entry and digest line", () => {
+    const view = readCatalog(workspace(), {});
+    const emit = view.tiles.find((tile) => tile.tileId === tiles.actuator);
+    const sensor = view.tiles.find((tile) => tile.tileId === tiles.sensor);
+    const line = catalogDigest(view.tiles)
+      .text.split("\n")
+      .find((entry) => entry.startsWith(`${tiles.actuator} |`));
+
+    assert.equal(emit?.grammarNote, FAKE_EMIT_GRAMMAR_NOTE);
+    assert.equal(sensor?.grammarNote, undefined, "a tile registering no note carries none");
+    assert.ok(line?.includes(`note=${FAKE_EMIT_GRAMMAR_NOTE}`), line);
   });
 
   test("reads an anonymous argument out as the value type it takes, never as a tile to place", () => {

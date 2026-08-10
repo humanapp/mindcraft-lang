@@ -1,5 +1,5 @@
 export type { CatalogDigest } from "./catalog/digest.js";
-export { catalogDigest } from "./catalog/digest.js";
+export { catalogDigest, languageGrammarLegend } from "./catalog/digest.js";
 export type { ExcludedRule, RuleTotals, ThinkSummary, TraceSpan, TraceSummary } from "./simulate/summarizer.js";
 export { summarizeRun } from "./simulate/summarizer.js";
 export type {

@@ -63,6 +63,17 @@ describe("catalog digest", () => {
     assert.equal(digest.text.split("\n").length, 1, "a multi-line description stays on one line");
   });
 
+  test("carries the tile's grammar note on its own line and no other", () => {
+    const digest = catalogDigest([
+      tile({ tileId: "a", grammarNote: "rate clamps to 0..5\nshots per second" }),
+      tile({ tileId: "b" }),
+    ]);
+    const [noted, plain] = digest.text.split("\n");
+
+    assert.ok(noted?.includes("note=rate clamps to 0..5 shots per second"), digest.text);
+    assert.ok(!plain?.includes("note="), digest.text);
+  });
+
   test("carries the metadata the model plans from", () => {
     const digest = catalogDigest([
       tile({

@@ -10,6 +10,14 @@ export interface CatalogDigest {
   readonly hash: string;
 }
 
+/** Render the rules of the tile language that hold for every target, as catalog-facing prose. */
+export function languageGrammarLegend(): string {
+  return `These rules hold whatever the tiles are:
+- A rule side holds exactly one statement; two actions on one trigger need two rules.
+- An action's empty \`value:\` slot takes the next value expression placed, whatever its type; fill it before placing anything else.
+- A sensor with its modifiers is a call, not an operand; wrap it in parentheses to combine it with and/or.`;
+}
+
 /** Fingerprint `text` as eight lowercase hex digits, the same in every runtime. */
 function fingerprint(text: string): string {
   let hash = 0x811c9dc5;
@@ -36,6 +44,7 @@ function digestLine(tile: CatalogTile): string {
   if (tile.outputs.length > 0) fields.push(`outputs=${tile.outputs.join("+")}`);
   if (tile.consumesWhenResult) fields.push(`whenResult=${tile.consumesWhenResult}`);
   if (tile.deprecated) fields.push("deprecated");
+  if (tile.grammarNote) fields.push(`note=${oneLine(tile.grammarNote)}`);
   if (tile.description) fields.push(oneLine(tile.description));
   return fields.join(" | ");
 }
