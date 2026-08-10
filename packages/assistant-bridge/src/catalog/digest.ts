@@ -13,7 +13,7 @@ export interface CatalogDigest {
 /** Render the rules of the tile language that hold for every target, as catalog-facing prose. */
 export function languageGrammarLegend(): string {
   return `These rules hold whatever the tiles are:
-- A rule side holds exactly one statement; two actions on one trigger need two rules -- add the second under the first with addChildRule, and it runs whenever the first fires. An empty WHEN side always fires: every think for a top-level rule, once per fire of the rule above for a child.
+- A rule side holds exactly one statement; two actions on one trigger need two rules -- add the second under the first with addChildRule, and it runs each time the first finishes its DO. An empty WHEN side always fires: every think for a top-level rule, once per finished DO of the rule above for a child.
 - An action's empty \`value:\` slot takes the next value expression placed, whatever its type; fill it before placing anything else.
 - A sensor with its modifiers is a call, not an operand; reaching for parentheses around one is the signal to put the further condition in a child rule instead.`;
 }
