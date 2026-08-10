@@ -5,6 +5,7 @@ import type { List, ReadonlyList } from "../platform/list";
 import { Time } from "../platform/time";
 import { UniqueSet } from "../platform/uniqueset";
 import type { ExecutionContext } from "./context";
+import type { ActionKey } from "./function-defs";
 import { type AsyncHandle, ErrorCode, type ErrorValue, type HandleId, type StructValue, type Value } from "./value";
 
 ///////////////////////////
@@ -293,6 +294,11 @@ export interface Handle {
   error?: ErrorValue;
   waiters: UniqueSet<number>;
   createdAt: number;
+  /**
+   * Key of the host action whose asynchronous dispatch created this handle.
+   * Absent on a handle created by any other path.
+   */
+  actionKey?: ActionKey;
 }
 
 /** Events emitted by a {@link HandleTable}. */
@@ -321,7 +327,11 @@ export class HandleTable {
     return this.handles.size() < this.maxHandles;
   }
 
-  createPending(): HandleId {
+  /**
+   * Allocate a pending handle. Pass `actionKey` when the handle backs an
+   * asynchronous host-action call, so its settle can name the action.
+   */
+  createPending(actionKey?: ActionKey): HandleId {
     if (this.handles.size() >= this.maxHandles) {
       throwOverflow(`Handle limit exceeded: ${this.maxHandles}`);
     }
@@ -332,6 +342,7 @@ export class HandleTable {
       state: HandleState.PENDING,
       waiters: new UniqueSet<number>(),
       createdAt: Time.nowMs(),
+      actionKey,
     });
     return id;
   }

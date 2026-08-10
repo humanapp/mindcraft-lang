@@ -211,6 +211,18 @@ export class BrainRuntime implements IBrainRuntime {
         emitter.emit("host_action_dispatched", payload);
         vmEvents?.onHostActionDispatch?.(payload);
       },
+      onHostActionReturn: (payload) => {
+        emitter.emit("host_action_returned", payload);
+        vmEvents?.onHostActionReturn?.(payload);
+      },
+      onFiberWaiting: (payload) => {
+        emitter.emit("fiber_waiting", payload);
+        vmEvents?.onFiberWaiting?.(payload);
+      },
+      onHandleSettle: (payload) => {
+        emitter.emit("handle_settled", payload);
+        vmEvents?.onHandleSettle?.(payload);
+      },
     };
 
     // Thread the per-fiber caps into the VM config; undefined entries fall back
@@ -819,10 +831,14 @@ export class BrainRuntime implements IBrainRuntime {
       // A root rule re-fires only once it is dead and no descendant child-rule
       // fiber is still in flight (the rule quiesces while a child it spawned is
       // parked).
-      const needsRespawn =
-        this.shouldRespawnFiber(entry.fiberId) && !this.scheduler.hasLiveDescendantOfRoot(entry.funcId);
+      const dead = this.shouldRespawnFiber(entry.fiberId);
+      const heldByDescendant = dead && this.scheduler.hasLiveDescendantOfRoot(entry.funcId);
 
-      if (needsRespawn) {
+      if (heldByDescendant) {
+        this.emitter_.emit("root_rule_quiesced", { ruleFuncId: entry.funcId });
+        continue;
+      }
+      if (dead) {
         const newFiberId = this.scheduler.spawn(entry.funcId, List.empty(), this.executionContext);
         entry.fiberId = newFiberId;
       }

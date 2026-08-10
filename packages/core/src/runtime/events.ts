@@ -1,5 +1,5 @@
 import type { ReadonlyList } from "../platform/list";
-import type { ActionDescriptor } from "./function-defs";
+import type { ActionDescriptor, ActionKey } from "./function-defs";
 import type { ErrorValue, HandleId, Value } from "./value";
 
 /** Payload emitted when a fiber faults. */
@@ -23,6 +23,30 @@ export interface FiberCancelledEvent {
 export interface FiberWaitingEvent {
   fiberId: number;
   handleId: HandleId;
+  /** funcId of the rule the wait is attributed to, or `undefined` when the frame resolves to no rule. */
+  ruleFuncId: number | undefined;
+}
+
+/** Terminal state an asynchronous call's handle settled in. */
+export enum HandleOutcome {
+  /** The call produced a value. */
+  RESOLVED = "resolved",
+  /** The call failed with an error. */
+  REJECTED = "rejected",
+  /** The call was cancelled before it produced anything. */
+  CANCELLED = "cancelled",
+}
+
+/**
+ * Payload emitted when the handle of an asynchronous host-action call settles.
+ * `handleId` joins the settle to the {@link HostActionDispatchEvent} that
+ * created the handle; a handle abandoned without settling reports nothing.
+ */
+export interface HandleSettleEvent {
+  handleId: HandleId;
+  outcome: HandleOutcome;
+  /** Key of the action whose dispatch created the handle. */
+  actionKey: ActionKey;
 }
 
 /** Payload emitted when a rule's WHEN evaluation reaches its gate. */
@@ -48,6 +72,11 @@ export interface HostActionDispatchEvent {
   args: ReadonlyList<Value>;
   /** funcId of the rule the dispatch is attributed to, or `undefined` when the frame resolves to no rule. */
   ruleFuncId: number | undefined;
+  /**
+   * Handle the call's result settles on, present only on an asynchronous
+   * dispatch. Joins the dispatch to its {@link HandleSettleEvent}.
+   */
+  handleId?: HandleId;
 }
 
 /** Payload emitted when a host-action call returns control to the runtime. */
@@ -96,4 +125,11 @@ export interface VmEvents {
    * whose body throws reports nothing.
    */
   onHostActionReturn?: (payload: HostActionReturnEvent) => void;
+  /**
+   * Called once per asynchronous host-action call whose handle settles, at the
+   * moment it settles and before any fiber waiting on it resumes. A handle the
+   * runtime abandons without settling -- the pending handle of a cancelled
+   * fiber -- reports nothing.
+   */
+  onHandleSettle?: (payload: HandleSettleEvent) => void;
 }

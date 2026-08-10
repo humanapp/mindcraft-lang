@@ -1,4 +1,5 @@
 import type { MindcraftEnvironment, ReadonlyList } from "@mindcraft-lang/core";
+import type { IBrainDef } from "@mindcraft-lang/core/app";
 import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
 import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import { childRulePath, RuleSide, rootRulePath } from "@mindcraft-lang/core/brain";
@@ -86,7 +87,7 @@ function walkRule(rule: BrainRuleDef, rulePath: string, into: LocatedRule[]): vo
 }
 
 /** Every rule in `brainDef`, in document order, each carrying its id and its current path. */
-export function locateRules(brainDef: BrainDef): LocatedRule[] {
+export function locateRules(brainDef: IBrainDef): LocatedRule[] {
   const located: LocatedRule[] = [];
   const pages = brainDef.pages();
   for (let p = 0; p < pages.size(); p++) {
@@ -99,12 +100,17 @@ export function locateRules(brainDef: BrainDef): LocatedRule[] {
   return located;
 }
 
+/** True when `rulePath` names a rule nested under another rule. */
+export function isNestedRulePath(rulePath: string): boolean {
+  return rulePath.split("/").length > 2;
+}
+
 /**
  * The durable id of every rule in `brainDef`, keyed by the path core's
  * diagnostics report it under. Build it fresh for each read: a path names a
  * position, and an edit that moves a rule gives the path to another one.
  */
-export function ruleIdsByPath(brainDef: BrainDef): Map<string, string> {
+export function ruleIdsByPath(brainDef: IBrainDef): Map<string, string> {
   const byPath = new Map<string, string>();
   for (const located of locateRules(brainDef)) byPath.set(located.rulePath, located.ruleId);
   return byPath;

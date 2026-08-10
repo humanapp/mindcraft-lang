@@ -1,13 +1,12 @@
 import type { ExecutionContext, IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
-import type { IBrainRuleDef } from "@mindcraft-lang/core/brain";
-import { childRulePath, rootRulePath } from "@mindcraft-lang/core/brain";
 import type { BrainBuildDiagnostic } from "@mindcraft-lang/core/brain/compiler";
 import type { BrainJson } from "@mindcraft-lang/core/brain/model";
 import { brainJsonWithRulesEmptied } from "@mindcraft-lang/core/brain/model";
-import type { IBrainRuntime, NumberPrecision } from "@mindcraft-lang/core/runtime";
+import type { HandleId, IBrainRuntime, NumberPrecision } from "@mindcraft-lang/core/runtime";
+import { HandleOutcome } from "@mindcraft-lang/core/runtime";
 import type {
-  DispatchObservation,
   GateObservation,
+  PageSwitchObservation,
   ScenarioInput,
   ScenarioInputKind,
   SimulationRequest,
@@ -16,7 +15,8 @@ import type {
   TargetManifest,
   ThinkObservation,
 } from "../target/adapter.js";
-import { ADAPTER_CONTRACT_VERSION } from "../target/adapter.js";
+import { ADAPTER_CONTRACT_VERSION, DispatchOutcome } from "../target/adapter.js";
+import { ruleIdsByPath } from "../tools/workspace.js";
 import { createRehearsalEnvironment, createSeededRng } from "./environment.js";
 import type { NumberText, ValueLabel } from "./value-text.js";
 import { createTileNamer, createValueLabeler, renderArgs, renderValue } from "./value-text.js";
@@ -161,22 +161,6 @@ export interface RehearsalAdapterOptions {
   readonly driver: WorldDriver;
 }
 
-/** Durable rule id per rule path for `brainDef`, in document order. */
-function ruleIdsByPath(brainDef: IBrainDef): Map<string, string> {
-  const byPath = new Map<string, string>();
-  const walk = (rule: IBrainRuleDef, path: string) => {
-    byPath.set(path, rule.ruleId());
-    const children = rule.children();
-    for (let i = 0; i < children.size(); i++) walk(children.get(i), childRulePath(path, i));
-  };
-  const pages = brainDef.pages();
-  for (let p = 0; p < pages.size(); p++) {
-    const rules = pages.get(p).children();
-    for (let r = 0; r < rules.size(); r++) walk(rules.get(r), rootRulePath(p, r));
-  }
-  return byPath;
-}
-
 /**
  * Durable rule id per program funcId for `brainDef`, so what the run observes
  * is reported under the id the document addresses each rule by. Throws
@@ -200,6 +184,29 @@ function ruleFuncIdRuleIds(environment: MindcraftEnvironment, brainDef: IBrainDe
   return ruleIds;
 }
 
+/** How a run reports the terminal state a call's handle settled in. */
+function outcomeOf(outcome: HandleOutcome): DispatchOutcome {
+  if (outcome === HandleOutcome.REJECTED) return DispatchOutcome.Rejected;
+  if (outcome === HandleOutcome.CANCELLED) return DispatchOutcome.Cancelled;
+  return DispatchOutcome.Resolved;
+}
+
+/** A dispatch the recorder is still filling in as the call's lifecycle unfolds. */
+type RecordedDispatch = {
+  action: string;
+  args: readonly string[];
+  ruleId?: string;
+  output?: string;
+  outcome?: DispatchOutcome;
+  settledAfter?: number;
+};
+
+/** One call whose handle has not settled yet, with the think it was made on. */
+interface InFlightCall {
+  readonly dispatch: RecordedDispatch;
+  readonly think: number;
+}
+
 /**
  * Collects what the participant under study did, one think at a time, from the
  * event stream of its own brain.
@@ -208,8 +215,21 @@ class SubjectRecorder {
   private readonly ruleIds = new Map<number, string>();
   private subject: RunningSubject | undefined;
   private gates: GateObservation[] = [];
-  private dispatches: DispatchObservation[] = [];
+  private dispatches: RecordedDispatch[] = [];
+  private waiting: string[] = [];
+  private quiesced: string[] = [];
+  private pageSwitch: PageSwitchObservation | undefined;
+  /** Index of the page just left, held until the page entered is known. */
+  private leftPage: number | undefined;
   private readonly thinks: ThinkObservation[] = [];
+  /** Zero-based index of the think being recorded. */
+  private think = 0;
+  /** Calls whose handle is still pending, keyed by the handle they settle on. */
+  private readonly inFlight = new Map<HandleId, InFlightCall>();
+  /** The rule parked on each handle, for the handles a rule is parked on. */
+  private readonly parkedOn = new Map<HandleId, string>();
+  /** The call awaiting its return report, with the output name the action declares. */
+  private returning: { dispatch: RecordedDispatch; outputName: string | undefined } | undefined;
   /** `false` once the participant under study is gone, after which nothing is recorded. */
   private recording = false;
 
@@ -235,9 +255,11 @@ class SubjectRecorder {
   }
 
   /**
-   * Start recording the participant under study: its brain's WHEN gates and the
-   * host actions it dispatches. Both are rendered as the events arrive, while
-   * the values they carry are still the ones the call saw.
+   * Start recording the participant under study: its brain's WHEN gates, the
+   * host actions it dispatches and how each of those calls ends, the rules it
+   * parks and holds, and the pages it switches between. Everything a call
+   * carried is rendered as the event arrives, while the values are still the
+   * ones the call saw.
    */
   observeSubject(subject: RunningSubject): void {
     if (this.subject) return;
@@ -246,20 +268,65 @@ class SubjectRecorder {
     const events = subject.brain.events();
     events.on("rule_when_evaluated", ({ ruleFuncId, result, fired }) => {
       if (!this.recording) return;
+      const ruleId = this.ruleId(ruleFuncId);
+      this.running(ruleId);
       this.gates.push({
-        ruleId: this.ruleId(ruleFuncId),
+        ruleId,
         fired,
         result: renderValue(result, this.numberText, this.labelOf),
       });
     });
-    events.on("host_action_dispatched", ({ descriptor, args, ruleFuncId }) => {
+    events.on("host_action_dispatched", ({ descriptor, args, ruleFuncId, handleId }) => {
       if (!this.recording) return;
       const ruleId = ruleFuncId === undefined ? undefined : this.ruleId(ruleFuncId);
-      this.dispatches.push({
+      if (ruleId) this.running(ruleId);
+      const dispatch: RecordedDispatch = {
         action: descriptor.key,
         args: renderArgs(descriptor.callDef.argSlots, args, this.nameOf, this.numberText, this.labelOf),
         ...(ruleId ? { ruleId } : {}),
-      });
+      };
+      this.dispatches.push(dispatch);
+      this.returning = { dispatch, outputName: descriptor.outputs?.[0]?.name };
+      if (handleId !== undefined) this.inFlight.set(handleId, { dispatch, think: this.think });
+    });
+    events.on("host_action_returned", ({ result }) => {
+      const returning = this.returning;
+      this.returning = undefined;
+      if (!this.recording || !returning || result === undefined || returning.outputName === undefined) return;
+      returning.dispatch.output = `${returning.outputName}=${renderValue(result, this.numberText, this.labelOf)}`;
+    });
+    events.on("fiber_waiting", ({ handleId, ruleFuncId }) => {
+      if (!this.recording || ruleFuncId === undefined) return;
+      const ruleId = this.ruleId(ruleFuncId);
+      this.parkedOn.set(handleId, ruleId);
+      if (!this.waiting.includes(ruleId)) this.waiting.push(ruleId);
+    });
+    events.on("handle_settled", ({ handleId, outcome }) => {
+      if (!this.recording) return;
+      this.unpark(handleId);
+      const call = this.inFlight.get(handleId);
+      if (!call) return;
+      this.inFlight.delete(handleId);
+      const settledAfter = this.think - call.think;
+      if (settledAfter > 0) call.dispatch.settledAfter = settledAfter;
+      if (settledAfter > 0 || outcome !== HandleOutcome.RESOLVED) call.dispatch.outcome = outcomeOf(outcome);
+    });
+    events.on("root_rule_quiesced", ({ ruleFuncId }) => {
+      if (!this.recording) return;
+      this.quiesced.push(this.ruleId(ruleFuncId));
+    });
+    events.on("page_deactivated", ({ pageIndex }) => {
+      if (!this.recording) return;
+      // Leaving a page cancels every fiber it had running, parked ones included.
+      this.parkedOn.clear();
+      this.waiting = [];
+      this.leftPage = pageIndex;
+    });
+    events.on("page_activated", ({ pageIndex }) => {
+      if (!this.recording) return;
+      const from = this.leftPage;
+      this.leftPage = undefined;
+      this.pageSwitch = from === undefined ? { to: pageIndex } : { from, to: pageIndex };
     });
   }
 
@@ -268,13 +335,50 @@ class SubjectRecorder {
     this.recording = false;
   }
 
+  /**
+   * Close the run: every call still in flight ended nowhere the run could see,
+   * so it is reported as unended. Call it once the last think is closed.
+   */
+  closeRun(): void {
+    for (const call of this.inFlight.values()) call.dispatch.outcome = DispatchOutcome.Pending;
+    this.inFlight.clear();
+  }
+
   /** Close the current think, keeping it only while the participant under study lives. */
   closeThink(): void {
     if (this.recording) {
-      this.thinks.push({ gates: this.gates, dispatches: this.dispatches });
+      this.thinks.push({
+        gates: this.gates,
+        dispatches: this.dispatches,
+        ...(this.waiting.length > 0 ? { waiting: [...this.waiting] } : {}),
+        ...(this.quiesced.length > 0 ? { quiesced: this.quiesced } : {}),
+        ...(this.pageSwitch ? { pageSwitch: this.pageSwitch } : {}),
+      });
     }
     this.gates = [];
     this.dispatches = [];
+    this.quiesced = [];
+    this.pageSwitch = undefined;
+    this.think++;
+  }
+
+  /** Note that `ruleId` is executing, so it is no longer parked on anything. */
+  private running(ruleId: string): void {
+    const index = this.waiting.indexOf(ruleId);
+    if (index < 0) return;
+    this.waiting.splice(index, 1);
+    for (const [handleId, parked] of this.parkedOn) {
+      if (parked === ruleId) this.parkedOn.delete(handleId);
+    }
+  }
+
+  /** Note that whatever rule was parked on `handleId` is parked no longer. */
+  private unpark(handleId: HandleId): void {
+    const ruleId = this.parkedOn.get(handleId);
+    if (ruleId === undefined) return;
+    this.parkedOn.delete(handleId);
+    const index = this.waiting.indexOf(ruleId);
+    if (index >= 0) this.waiting.splice(index, 1);
   }
 
   private ruleId(ruleFuncId: number | undefined): string {
@@ -346,6 +450,7 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
     if (!world.subjectPresent()) recorder.release();
     recorder.closeThink();
   }
+  recorder.closeRun();
 
   const finalPopulation = world.participants();
   const brainsExecuted = world.brainsExecuted();

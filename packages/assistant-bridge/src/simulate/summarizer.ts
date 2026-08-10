@@ -10,8 +10,18 @@ export interface ThinkSummary {
   readonly fired: readonly string[];
   /** WHEN result of every rule that reached its gate, as `ruleId=value` entries. */
   readonly when: readonly string[];
-  /** Host action calls dispatched, as `action(args)=count` entries. */
+  /**
+   * Host action calls dispatched, as `action(args)[notes]=count@ruleId` entries
+   * sorted by call, with the notes and the rule id omitted where there are
+   * none. See {@link dispatchCall} for the notes a call carries.
+   */
   readonly dispatched: readonly string[];
+  /** Rules parked on an asynchronous call at the end of the think; absent when none was. */
+  readonly waiting?: readonly string[];
+  /** Root rules a rule below them held from re-firing this think; absent when none was. */
+  readonly quiesced?: readonly string[];
+  /** The page change this think began with, as `from->to` page indices; absent when the page held. */
+  readonly page?: string;
 }
 
 /** A run of consecutive thinks whose summaries are identical. */
@@ -76,13 +86,25 @@ const maxWhenResultsPerRule = 8;
 /**
  * One dispatch as the summary counts it: the action key with the arguments the
  * call carried, so calls of one action that differ in their arguments are
- * counted apart.
+ * counted apart, followed by a bracketed, comma-separated note list when the
+ * call has anything further to report. The notes, in order:
+ *
+ * - `output=value`, what the call reported back, for an action declaring one;
+ * - the call's outcome, for a call that did not simply end where it was made;
+ * - `+n`, the thinks between the call and its ending, for one that ended later.
+ *
+ * A synchronous call of an action that declares no output carries no notes at
+ * all.
  */
 function dispatchCall(dispatch: DispatchObservation): string {
-  return `${dispatch.action}(${dispatch.args.join(",")})`;
+  const notes: string[] = [];
+  if (dispatch.output !== undefined) notes.push(dispatch.output);
+  if (dispatch.outcome !== undefined) notes.push(dispatch.outcome);
+  if (dispatch.settledAfter !== undefined) notes.push(`+${dispatch.settledAfter}`);
+  return `${dispatch.action}(${dispatch.args.join(",")})${notes.length > 0 ? `[${notes.join(",")}]` : ""}`;
 }
 
-/** Count dispatches by call, as `action(args)=count` entries sorted by call. */
+/** Count dispatches by call, as `action(args)[notes]=count` entries sorted by call. */
 function countDispatches(dispatches: Iterable<DispatchObservation>): string[] {
   const counts = new Map<string, number>();
   for (const dispatch of dispatches) {
@@ -90,6 +112,32 @@ function countDispatches(dispatches: Iterable<DispatchObservation>): string[] {
     counts.set(call, (counts.get(call) ?? 0) + 1);
   }
   return [...counts.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([call, count]) => `${call}=${count}`);
+}
+
+/**
+ * Count dispatches by call and by the rule that made them, as
+ * `action(args)[notes]=count@ruleId` entries sorted by call, so one think's
+ * detail names which rule dispatched what. A call the runtime could not
+ * attribute carries no `@ruleId`.
+ */
+function countAttributedDispatches(dispatches: Iterable<DispatchObservation>): string[] {
+  const counts = new Map<string, { call: string; ruleId: string | undefined; count: number }>();
+  for (const dispatch of dispatches) {
+    const call = dispatchCall(dispatch);
+    const seen = counts.get(`${call}@${dispatch.ruleId ?? ""}`);
+    if (seen) seen.count++;
+    else counts.set(`${call}@${dispatch.ruleId ?? ""}`, { call, ruleId: dispatch.ruleId, count: 1 });
+  }
+  return [...counts.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([, entry]) => `${entry.call}=${entry.count}${entry.ruleId === undefined ? "" : `@${entry.ruleId}`}`);
+}
+
+/** The page change a think began with, as `from->to` page indices. */
+function pageSwitchText(observation: ThinkObservation): string | undefined {
+  const change = observation.pageSwitch;
+  if (!change) return undefined;
+  return `${change.from === undefined ? "" : change.from}->${change.to}`;
 }
 
 /** Reduce one think's observations to the form spans compare and compress. */
@@ -100,8 +148,16 @@ function summarizeThink(observation: ThinkObservation): ThinkSummary {
     if (gate.fired) fired.push(gate.ruleId);
     when.push(`${gate.ruleId}=${gate.result}`);
   }
+  const page = pageSwitchText(observation);
 
-  return { fired, when, dispatched: countDispatches(observation.dispatches) };
+  return {
+    fired,
+    when,
+    dispatched: countAttributedDispatches(observation.dispatches),
+    ...(observation.waiting && observation.waiting.length > 0 ? { waiting: observation.waiting } : {}),
+    ...(observation.quiesced && observation.quiesced.length > 0 ? { quiesced: observation.quiesced } : {}),
+    ...(page ? { page } : {}),
+  };
 }
 
 /** True when two think summaries carry identical content. */
@@ -109,7 +165,10 @@ function sameThink(a: ThinkSummary, b: ThinkSummary): boolean {
   return (
     a.fired.join(",") === b.fired.join(",") &&
     a.when.join(",") === b.when.join(",") &&
-    a.dispatched.join(",") === b.dispatched.join(",")
+    a.dispatched.join(",") === b.dispatched.join(",") &&
+    (a.waiting ?? []).join(",") === (b.waiting ?? []).join(",") &&
+    (a.quiesced ?? []).join(",") === (b.quiesced ?? []).join(",") &&
+    a.page === b.page
   );
 }
 

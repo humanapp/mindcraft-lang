@@ -3,7 +3,13 @@ import type { Dict } from "../platform/dict";
 import type { List, ReadonlyList } from "../platform/list";
 import type { EventEmitterConsumer } from "../util";
 import type { HostActionBinding } from "./context";
-import type { HostActionDispatchEvent, RuleWhenGateEvent } from "./events";
+import type {
+  FiberWaitingEvent,
+  HandleSettleEvent,
+  HostActionDispatchEvent,
+  HostActionReturnEvent,
+  RuleWhenGateEvent,
+} from "./events";
 import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from "./function-defs";
 import type { Program, ProgramArtifact } from "./program";
 import type { ITypeRegistry, TypeId } from "./type-defs";
@@ -181,6 +187,25 @@ export type BrainEvents = {
    * the notification.
    */
   host_action_dispatched: HostActionDispatchEvent;
+  /**
+   * One host-action call, reported as it hands control back to the runtime,
+   * carrying the value a synchronous call produced. An asynchronous call
+   * reports `result: undefined` here and settles later.
+   */
+  host_action_returned: HostActionReturnEvent;
+  /**
+   * One fiber parking on a handle, reported as it parks. The fiber runs nothing
+   * further until the handle settles, so the rule the payload names is waiting
+   * from this point on.
+   */
+  fiber_waiting: FiberWaitingEvent;
+  /** One asynchronous host-action call's handle settling, reported before any waiter resumes. */
+  handle_settled: HandleSettleEvent;
+  /**
+   * One root rule held from re-firing this think because a rule below it is
+   * still in flight. Emitted once per think for each held root rule.
+   */
+  root_rule_quiesced: { ruleFuncId: number };
   //  variable_changed: { varId: string; oldValue: Value | undefined; newValue: Value };
 };
 

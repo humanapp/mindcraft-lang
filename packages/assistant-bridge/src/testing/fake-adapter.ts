@@ -2,7 +2,7 @@ import type { MindcraftBrain } from "@mindcraft-lang/core/app";
 import type { RehearsalWorld, WorldDriver, WorldStaging } from "../kit/index.js";
 import { createRehearsalAdapter } from "../kit/index.js";
 import type { ScenarioInputKind, TargetAdapter, TargetManifest } from "../target/adapter.js";
-import type { FakeWorldState } from "./fake-module.js";
+import type { FakeRinging, FakeWorldState } from "./fake-module.js";
 import { createFakeModule } from "./fake-module.js";
 
 /** Mindcraft identity the fake target's adapter reports itself as. */
@@ -28,6 +28,9 @@ const manifest: TargetManifest = {
 /** Milliseconds one think of the fake world advances. */
 const stepMs = 1000 / 60;
 
+/** Thinks a call of `actuator.fake.ring` stays in flight before the fake world settles it. */
+export const FAKE_RING_THINKS = 2;
+
 /**
  * The fake world: one participant running the brain under study, and a signal
  * the seeded stream raises or lowers before every think, or that the scenario
@@ -42,6 +45,8 @@ class FakeWorld implements RehearsalWorld {
   private think = 0;
   /** The scripted signal level in force, or `undefined` while the seeded stream drives it. */
   private scripted: boolean | undefined;
+  /** Ring calls in flight, each with the think it was made on. */
+  private ringing: { ring: FakeRinging; at: number }[] = [];
 
   constructor(private readonly staging: WorldStaging) {
     this.brain = staging.environment.createBrain(staging.subjectBrain, { context: this.state });
@@ -50,12 +55,21 @@ class FakeWorld implements RehearsalWorld {
   }
 
   step(): void {
+    for (const entry of this.ringing) {
+      if (this.think - entry.at >= FAKE_RING_THINKS) entry.ring.settle();
+    }
+    this.ringing = this.ringing.filter((entry) => this.think - entry.at < FAKE_RING_THINKS);
+
     const drawn = this.staging.next() < 0.5;
     for (const input of this.staging.inputs) {
       if (input.at === this.think) this.scripted = Boolean(input.value);
     }
     this.state.signal = this.scripted ?? drawn;
     this.brain.think(this.time);
+
+    for (const ring of this.state.ringing ?? []) this.ringing.push({ ring, at: this.think });
+    this.state.ringing = [];
+
     this.time += stepMs;
     this.think++;
   }

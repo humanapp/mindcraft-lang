@@ -30,7 +30,7 @@ describe("trace summary", () => {
       {
         from: 0,
         thinks: 200,
-        think: { fired: [], when: ["0/0=false"], dispatched: ["sensor.see()=1"] },
+        think: { fired: [], when: ["0/0=false"], dispatched: ["sensor.see()=1@0/0"] },
       },
     ]);
   });
@@ -162,6 +162,116 @@ describe("trace summary", () => {
     const summary = summarizeRun(run(busy));
 
     assert.ok(JSON.stringify(summary).length < 16000, "the summary fits a tool result");
+  });
+
+  test("names the rule behind each call in a think's own detail", () => {
+    const observations: ThinkObservation[] = [
+      {
+        gates: [{ ruleId: "0/0", fired: true, result: "true" }],
+        dispatches: [
+          { action: "actuator.move", args: [], ruleId: "0/0" },
+          { action: "actuator.move", args: [], ruleId: "0/0/0" },
+          { action: "actuator.move", args: [] },
+        ],
+      },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.deepEqual(summary.spans[0]?.think.dispatched, [
+      "actuator.move()=1",
+      "actuator.move()=1@0/0",
+      "actuator.move()=1@0/0/0",
+    ]);
+    assert.deepEqual(summary.dispatchTotals, ["actuator.move()=3"], "the run totals stay attribution-free");
+  });
+
+  test("leaves a call that ends where it was made unadorned", () => {
+    const observations: ThinkObservation[] = [
+      {
+        gates: [],
+        dispatches: [{ action: "actuator.chime", args: [], ruleId: "0/0" }],
+      },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.deepEqual(summary.dispatchTotals, ["actuator.chime()=1"]);
+  });
+
+  test("renders a call's declared output, outcome, and how long it took", () => {
+    const observations: ThinkObservation[] = [
+      {
+        gates: [],
+        dispatches: [
+          { action: "actuator.shoot", args: ["per/sec=8"], ruleId: "0/0", output: "shot fired=false" },
+          { action: "actuator.ring", args: [], ruleId: "0/0", outcome: "resolved", settledAfter: 2 },
+          { action: "actuator.ring", args: [], ruleId: "0/1", outcome: "pending" },
+        ],
+      },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.deepEqual(summary.dispatchTotals, [
+      "actuator.ring()[pending]=1",
+      "actuator.ring()[resolved,+2]=1",
+      "actuator.shoot(per/sec=8)[shot fired=false]=1",
+    ]);
+  });
+
+  test("counts calls of one action apart when only their endings differ", () => {
+    const observations: ThinkObservation[] = [
+      {
+        gates: [],
+        dispatches: [
+          { action: "actuator.ring", args: [], ruleId: "0/0" },
+          { action: "actuator.ring", args: [], ruleId: "0/0", outcome: "pending" },
+        ],
+      },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.deepEqual(summary.dispatchTotals, ["actuator.ring()=1", "actuator.ring()[pending]=1"]);
+  });
+
+  test("carries a think's waiting, quiesced, and page change into its span", () => {
+    const observations: ThinkObservation[] = [
+      { gates: [], dispatches: [], waiting: ["0/0"], quiesced: ["0/1"], pageSwitch: { from: 0, to: 2 } },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.deepEqual(summary.spans[0]?.think.waiting, ["0/0"]);
+    assert.deepEqual(summary.spans[0]?.think.quiesced, ["0/1"]);
+    assert.equal(summary.spans[0]?.think.page, "0->2");
+  });
+
+  test("leaves a think in which nothing waited or switched pages carrying neither", () => {
+    const summary = summarizeRun(run([think("0/0", true, "true")]));
+
+    assert.equal(summary.spans[0]?.think.waiting, undefined);
+    assert.equal(summary.spans[0]?.think.quiesced, undefined);
+    assert.equal(summary.spans[0]?.think.page, undefined);
+  });
+
+  test("starts a new span where only what a rule is waiting on changes", () => {
+    const observations: ThinkObservation[] = [
+      { gates: [], dispatches: [] },
+      { gates: [], dispatches: [], waiting: ["0/0"] },
+      { gates: [], dispatches: [], waiting: ["0/0"] },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.deepEqual(
+      summary.spans.map((span) => [span.from, span.thinks]),
+      [
+        [0, 1],
+        [1, 2],
+      ]
+    );
   });
 
   test("carries the world observation through unchanged", () => {

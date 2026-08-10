@@ -6,7 +6,7 @@ import type { IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
  * Increment it whenever {@link TargetAdapter} or the shapes it exchanges change
  * in a way an already-built artifact cannot satisfy.
  */
-export const ADAPTER_CONTRACT_VERSION = 6;
+export const ADAPTER_CONTRACT_VERSION = 7;
 
 /** Facts about a target world that a session states to the model before it plans. */
 export interface TargetManifest {
@@ -92,23 +92,92 @@ export interface GateObservation {
   readonly result: string;
 }
 
+/**
+ * How a dispatched call ended, or that it had not ended when the run did. A
+ * call the runtime makes synchronously ends as it is made and reports no
+ * outcome at all.
+ *
+ * `dropped`, `preempted`, and `background-end` name endings of the OPERATION a
+ * call starts: a call the world declined because a subsystem was busy, an
+ * operation another call interrupted, and the true end of an operation that ran
+ * on after its call returned. They are reserved for observations a target
+ * publishes about its own operations.
+ */
+export const DispatchOutcome = {
+  /** The call produced a value. */
+  Resolved: "resolved",
+  /** The call failed with an error. */
+  Rejected: "rejected",
+  /** The call was cancelled before it produced anything. */
+  Cancelled: "cancelled",
+  /** The call had not ended when the run did, so nothing about its ending is known. */
+  Pending: "pending",
+  /** Reserved: the world declined the call outright. */
+  Dropped: "dropped",
+  /** Reserved: another call interrupted the operation this one started. */
+  Preempted: "preempted",
+  /** Reserved: the operation this call started ran to its own end after the call returned. */
+  BackgroundEnd: "background-end",
+} as const;
+
+/** How a dispatched call ended, or that it had not ended when the run did. */
+export type DispatchOutcome = (typeof DispatchOutcome)[keyof typeof DispatchOutcome];
+
 /** One host action the brain under study dispatched on one think. */
 export interface DispatchObservation {
   /** Stable action key, for example `actuator.move`. */
   readonly action: string;
   /**
-   * The arguments the call carried, rendered as `name=value` for every argument
-   * slot the call filled, in slot order. Empty when the call filled none.
+   * The values the call REQUESTED for every argument slot it filled, rendered
+   * as `name=value` in slot order. Empty when the call filled none.
    */
   readonly args: readonly string[];
   /** Durable id of the rule the dispatch was attributed to, absent when the runtime could not attribute it. */
   readonly ruleId?: string;
+  /**
+   * What the call reported back, as `output=value`, named by the first output
+   * the action declares. Absent for an action that declares no output.
+   */
+  readonly output?: string;
+  /**
+   * How the call ended. Absent when the ending is unremarkable: a synchronous
+   * call, which ends as it is made, and an asynchronous call that resolved on
+   * the same think it was made.
+   */
+  readonly outcome?: DispatchOutcome;
+  /**
+   * Thinks between the call and its ending, present only when it ended on a
+   * later think than it was made.
+   */
+  readonly settledAfter?: number;
+}
+
+/** A page change the brain under study made. */
+export interface PageSwitchObservation {
+  /** Zero-based index of the page left, absent when the run began on the page entered. */
+  readonly from?: number;
+  /** Zero-based index of the page entered. */
+  readonly to: number;
 }
 
 /** Everything observed of the brain under study during one think. */
 export interface ThinkObservation {
   readonly gates: readonly GateObservation[];
   readonly dispatches: readonly DispatchObservation[];
+  /**
+   * Durable ids of the rules parked on an asynchronous call at the end of this
+   * think, in the order they parked. Absent when no rule was parked; a running
+   * rule is named nowhere.
+   */
+  readonly waiting?: readonly string[];
+  /**
+   * Durable ids of the root rules held from re-firing this think because a rule
+   * below them was still in flight, in document order. Absent when none was
+   * held.
+   */
+  readonly quiesced?: readonly string[];
+  /** The page change this think began with; absent when the brain stayed on its page. */
+  readonly pageSwitch?: PageSwitchObservation;
 }
 
 /** What the staged world looked like, independent of the brain under study. */

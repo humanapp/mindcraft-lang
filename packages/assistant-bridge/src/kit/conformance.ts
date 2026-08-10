@@ -5,7 +5,6 @@ import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import type { IBrainDef } from "@mindcraft-lang/core/app";
-import type { IBrainRuleDef } from "@mindcraft-lang/core/brain";
 import { summarizeRun } from "../simulate/summarizer.js";
 import type { AdapterExpectation, SimulationRun, SimulationScenario, TargetAdapter } from "../target/adapter.js";
 import {
@@ -14,7 +13,7 @@ import {
   adapterNonconformance,
   readAdapterArtifact,
 } from "../target/adapter.js";
-import { createAuthoringWorkspace } from "../tools/workspace.js";
+import { createAuthoringWorkspace, isNestedRulePath, locateRules } from "../tools/workspace.js";
 
 /** Which property of a rehearsal adapter a check covers. */
 export const ConformanceCheckCode = {
@@ -102,18 +101,12 @@ function gateEvents(run: SimulationRun): ConformanceCheck {
  * least one tile, in document order.
  */
 function actingNestedRuleIds(brainDef: IBrainDef): string[] {
-  const ids: string[] = [];
-  const walk = (rule: IBrainRuleDef, nested: boolean) => {
-    if (nested && rule.when().tiles().size() + rule.do().tiles().size() > 0) ids.push(rule.ruleId());
-    const children = rule.children();
-    for (let i = 0; i < children.size(); i++) walk(children.get(i), true);
-  };
-  const pages = brainDef.pages();
-  for (let p = 0; p < pages.size(); p++) {
-    const rules = pages.get(p).children();
-    for (let r = 0; r < rules.size(); r++) walk(rules.get(r), false);
-  }
-  return ids;
+  return locateRules(brainDef)
+    .filter(
+      (located) =>
+        isNestedRulePath(located.rulePath) && located.rule.when().tiles().size() + located.rule.do().tiles().size() > 0
+    )
+    .map((located) => located.ruleId);
 }
 
 /**

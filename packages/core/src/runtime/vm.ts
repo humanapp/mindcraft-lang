@@ -10,6 +10,7 @@ import type { FunctionBytecode, Instr } from "./bytecode";
 import { Op } from "./bytecode";
 import type { BytecodeExecutableAction, ExecutionContext, HostActionBinding } from "./context";
 import type { VmEvents } from "./events";
+import { HandleOutcome } from "./events";
 import type { Program, ProgramStructField } from "./program";
 import { resolveProgramTypeId } from "./program";
 import { RuleFiringState } from "./rule-services";
@@ -300,12 +301,29 @@ export class VM implements IVM {
     this.handles = injectedHandles ?? new HandleTable(this.config.maxHandles);
     this.events = events;
 
-    // Wire HandleTable events to forward to VM consumers
-    // This allows external components to listen to handle completion via VM
     this.handles.events.on("completed", (handleId) => {
-      // Handle completion is managed internally by onHandleCompleted callback
-      // from scheduler when it subscribes to handle events
+      this.reportHandleSettle(handleId);
     });
+  }
+
+  /**
+   * Report one settled handle to {@link VmEvents.onHandleSettle}. Only handles
+   * created by an asynchronous host-action dispatch carry an action key, so
+   * every reported settle joins a dispatch report.
+   */
+  private reportHandleSettle(handleId: HandleId): void {
+    const listener = this.events?.onHandleSettle;
+    if (!listener) return;
+    const handle = this.handles.get(handleId);
+    if (!handle || handle.actionKey === undefined) return;
+    if (handle.state === HandleState.PENDING) return;
+    const outcome =
+      handle.state === HandleState.RESOLVED
+        ? HandleOutcome.RESOLVED
+        : handle.state === HandleState.REJECTED
+          ? HandleOutcome.REJECTED
+          : HandleOutcome.CANCELLED;
+    listener({ handleId, outcome, actionKey: handle.actionKey });
   }
 
   /**
@@ -1232,7 +1250,7 @@ export class VM implements IVM {
       fiber.vstack.pop();
     }
 
-    const hid = this.handles.createPending();
+    const hid = this.handles.createPending(action.descriptor.key);
     this.push(fiber, V.handle(hid));
 
     this.bindExecutionContext(fiber, frame, callSiteId);
@@ -1241,6 +1259,7 @@ export class VM implements IVM {
       descriptor: action.descriptor,
       args,
       ruleFuncId: fiber.executionContext.currentRuleFuncId,
+      handleId: hid,
     });
     try {
       action.execAsync(fiber.executionContext, args, this.makeAsyncHandle(hid));
@@ -1294,7 +1313,11 @@ export class VM implements IVM {
     };
 
     h.waiters.add(fiber.id);
-    this.events?.onFiberWaiting?.({ fiberId: fiber.id, handleId: hv.id });
+    this.events?.onFiberWaiting?.({
+      fiberId: fiber.id,
+      handleId: hv.id,
+      ruleFuncId: this.resolveFrameRuleFuncId(fiber.executionContext, frame),
+    });
 
     return { status: VmStatus.WAITING, handleId: hv.id };
   }

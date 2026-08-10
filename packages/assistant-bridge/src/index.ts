@@ -8,6 +8,7 @@ export type {
   AdapterNonconformance,
   DispatchObservation,
   GateObservation,
+  PageSwitchObservation,
   ScenarioInput,
   ScenarioInputKind,
   SimulationRequest,
@@ -23,6 +24,7 @@ export {
   AdapterNonconformanceCode,
   adapterMethods,
   adapterNonconformance,
+  DispatchOutcome,
   readAdapterArtifact,
 } from "./target/adapter.js";
 export type { CompileDiagnostic, CompileResult } from "./tools/compile.js";
@@ -85,6 +87,8 @@ export {
   findPage,
   findRule,
   findTile,
+  isNestedRulePath,
   locateRules,
+  ruleIdsByPath,
   toRuleSide,
 } from "./tools/workspace.js";
