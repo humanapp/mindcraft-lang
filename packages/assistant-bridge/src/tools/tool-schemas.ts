@@ -94,7 +94,7 @@ const editCommandBranches = [
   z.object({
     op: z.literal("addChildRule"),
     parentRuleId: ruleIdSchema.describe(
-      "Rule id of the rule the new rule goes under, from read_project. The new rule is added after any children that rule already has, and runs when that rule's WHEN passes."
+      "Rule id of the rule the new rule goes under, from read_project. The new rule is added after any children that rule already has, and runs each time that rule finishes its DO."
     ),
   }),
   z.object({
