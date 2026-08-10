@@ -8,7 +8,14 @@ import {
   ParseDiagCode,
   TypeDiagCode,
 } from "@mindcraft-lang/core/brain/compiler";
-import { acceptedDiagCodes, decideProposal, proposalPolicy, proposalVerdict } from "./rejection-policy.js";
+import type { ToolDiagnostic } from "./diagnostics.js";
+import {
+  acceptedDiagCodes,
+  decideProposal,
+  proposalPolicy,
+  proposalVerdict,
+  rejectionParams,
+} from "./rejection-policy.js";
 
 /** Every numeric member of the four core diagnostic-code enums. */
 function everyDiagCode(): DiagCode[] {
@@ -100,5 +107,121 @@ describe("deciding one proposed edit", () => {
     ]);
 
     assert.equal(decision.rejectedBy?.code, ParseDiagCode.UnexpectedExpressionAfterExpression);
+  });
+});
+
+/** The rule every corpus edit below was judged on. */
+const kRule = "0/0";
+
+/**
+ * One refused edit's diagnostics as `propose_edit` reports them: the rule's own
+ * typecheck first, then the whole-brain build, which attributes each diagnostic
+ * to the rule it was reported in.
+ */
+interface RefusedCase {
+  readonly name: string;
+  readonly diagnostics: readonly ToolDiagnostic[];
+  readonly code: DiagCode;
+  readonly params: Record<string, unknown>;
+}
+
+const refusedCases: readonly RefusedCase[] = [
+  {
+    name: "a second statement on a side that takes one",
+    diagnostics: [
+      { code: ParseDiagCode.UnexpectedExpressionAfterExpression },
+      { code: ParseDiagCode.UnexpectedExpressionAfterExpression, params: { rulePath: kRule } },
+      {
+        code: CompilationDiagCode.UncompilableExpressionDropped,
+        params: { rulePath: kRule, side: "do", tileId: "tile.var->count" },
+      },
+    ],
+    code: ParseDiagCode.UnexpectedExpressionAfterExpression,
+    params: { rulePath: kRule, side: "do", tileId: "tile.var->count" },
+  },
+  {
+    name: "an expression placed ahead of the action it was meant to follow",
+    diagnostics: [
+      { code: ParseDiagCode.UnexpectedActionCallAfterExpression, params: { tileId: "tile.actuator->emit" } },
+      {
+        code: ParseDiagCode.UnexpectedActionCallAfterExpression,
+        params: { tileId: "tile.actuator->emit", rulePath: kRule },
+      },
+      {
+        code: CompilationDiagCode.UncompilableExpressionDropped,
+        params: { rulePath: kRule, side: "do", tileId: "tile.actuator->emit" },
+      },
+    ],
+    code: ParseDiagCode.UnexpectedActionCallAfterExpression,
+    params: { tileId: "tile.actuator->emit", rulePath: kRule, side: "do" },
+  },
+  {
+    name: "a value of the wrong type in an argument slot",
+    diagnostics: [
+      {
+        code: TypeDiagCode.DataTypeMismatch,
+        params: { expectedTypeIds: ["number:<number>"], actualTypeIds: ["nil:<nil>"] },
+      },
+    ],
+    code: TypeDiagCode.DataTypeMismatch,
+    params: { expectedTypeIds: ["number:<number>"], actualTypeIds: ["nil:<nil>"], rulePath: kRule },
+  },
+];
+
+describe("reporting the refusal", () => {
+  for (const refused of refusedCases) {
+    test(`reports the rule, and any tile pinned for it, on ${refused.name}`, () => {
+      const decision = decideProposal(refused.diagnostics);
+
+      assert.equal(decision.rejectedBy?.code, refused.code);
+      assert.deepEqual(rejectionParams(decision.rejectedBy!, refused.diagnostics, kRule), refused.params);
+    });
+  }
+
+  test("keeps the rule a diagnostic named itself over the rule the edit was judged on", () => {
+    const rejectedBy: ToolDiagnostic = { code: ParseDiagCode.TilePlacementSideMismatch, params: { rulePath: "0/2" } };
+
+    const params = rejectionParams(rejectedBy, [rejectedBy], kRule);
+
+    assert.deepEqual(params, { rulePath: "0/2" });
+  });
+
+  test("takes no tile from a dropped expression reported in another rule", () => {
+    const rejectedBy: ToolDiagnostic = { code: ParseDiagCode.UnexpectedExpressionAfterExpression };
+    const elsewhere: ToolDiagnostic = {
+      code: CompilationDiagCode.UncompilableExpressionDropped,
+      params: { rulePath: "0/3", side: "when", tileId: "tile.sensor->signal" },
+    };
+
+    const params = rejectionParams(rejectedBy, [rejectedBy, elsewhere], kRule);
+
+    assert.deepEqual(params, { rulePath: kRule });
+  });
+
+  test("only ever adds params: no case loses a value its rejecting diagnostic reported", () => {
+    const corpus: readonly (readonly ToolDiagnostic[])[] = [
+      [],
+      [{ code: TypeDiagCode.DataTypeConverted }],
+      [
+        { code: TypeDiagCode.DataTypeConverted },
+        { code: ParseDiagCode.UnexpectedExpressionAfterExpression, params: { tileId: "tile.sensor->x" } },
+      ],
+      [{ code: CompilationDiagCode.UncompilableExpressionDropped }, { code: ParseDiagCode.TilePlacementSideMismatch }],
+      [{ code: ParseDiagCode.UnexpectedExpressionAfterExpression }, { code: TypeDiagCode.DataTypeMismatch }],
+      ...refusedCases.map((refused) => refused.diagnostics),
+    ];
+
+    for (const diagnostics of corpus) {
+      const decision = decideProposal(diagnostics);
+      if (!decision.rejectedBy) {
+        assert.equal(decision.verdict, "accept");
+        continue;
+      }
+      const params = rejectionParams(decision.rejectedBy, diagnostics, kRule);
+      assert.equal(decision.verdict, "reject");
+      for (const [key, value] of Object.entries(decision.rejectedBy.params ?? {})) {
+        assert.deepEqual(params[key], value, `${key} survives reporting`);
+      }
+    }
   });
 });

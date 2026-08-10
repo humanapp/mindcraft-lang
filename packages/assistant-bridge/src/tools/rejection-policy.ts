@@ -6,7 +6,7 @@ import {
   ParseDiagCode,
   TypeDiagCode,
 } from "@mindcraft-lang/core/brain/compiler";
-import type { ToolDiagnostic } from "./diagnostics.js";
+import type { DiagParamValue, SerializedDiagParams, ToolDiagnostic } from "./diagnostics.js";
 
 /** What the bridge does with a proposed edit that produced a given diagnostic. */
 export type ProposalVerdict = "accept" | "reject";
@@ -89,4 +89,33 @@ export function decideProposal(diagnostics: readonly ToolDiagnostic[]): PolicyDe
     }
   }
   return rejectedBy ? { verdict: "reject", rejectedBy } : { verdict: "accept" };
+}
+
+/**
+ * The params a refusal reports for `rejectedBy`, filled out from the rest of
+ * `diagnostics`: what `rejectedBy` reports itself, the rule the edit was judged
+ * on (`editedRulePath`) when `rejectedBy` names no rule, and the side and tile
+ * that a dropped-expression diagnostic in the same rule pins for the same
+ * failure. A value `rejectedBy` reports is never replaced, so the result always
+ * carries every param it reported, plus `rulePath`.
+ */
+export function rejectionParams(
+  rejectedBy: ToolDiagnostic,
+  diagnostics: readonly ToolDiagnostic[],
+  editedRulePath: string
+): SerializedDiagParams {
+  const params: Record<string, DiagParamValue> = { ...rejectedBy.params };
+  const reported = params.rulePath;
+  const rulePath = typeof reported === "string" ? reported : editedRulePath;
+  params.rulePath = rulePath;
+
+  const dropped = diagnostics.find(
+    (diagnostic) =>
+      diagnostic.code === CompilationDiagCode.UncompilableExpressionDropped && diagnostic.params?.rulePath === rulePath
+  );
+  for (const key of ["side", "tileId"] as const) {
+    const value = dropped?.params?.[key];
+    if (value !== undefined && params[key] === undefined) params[key] = value;
+  }
+  return params;
 }

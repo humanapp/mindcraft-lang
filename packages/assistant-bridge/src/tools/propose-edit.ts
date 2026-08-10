@@ -10,11 +10,11 @@ import {
 } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileFactoryDef } from "@mindcraft-lang/core/brain/tiles";
 import { manufactureLiteralTile, manufactureVariableTile } from "@mindcraft-lang/core/brain/tiles";
-import type { ToolDiagnostic } from "./diagnostics.js";
+import type { SerializedDiagParams, ToolDiagnostic } from "./diagnostics.js";
 import { toToolDiagnostic } from "./diagnostics.js";
 import type { ProjectRule } from "./read-project.js";
 import { readRule } from "./read-project.js";
-import { decideProposal } from "./rejection-policy.js";
+import { decideProposal, rejectionParams } from "./rejection-policy.js";
 import type { ProposeEditInput, TileRunEntry } from "./tool-schemas.js";
 import { type AuthoringWorkspace, findPage, findRule, findTile, toRuleSide } from "./workspace.js";
 
@@ -32,8 +32,13 @@ export interface ProposalRejected {
   readonly ok: false;
   /** Stable diagnostic code that rejected the edit. */
   readonly code: number;
-  /** Machine-readable values the diagnostic reports; absent when it carries none. */
-  readonly params?: ToolDiagnostic["params"];
+  /**
+   * Machine-readable values that place and describe the refusal: what the
+   * rejecting diagnostic reports, the `pageIndex/ruleIndex[/childIndex...]`
+   * path of the rule under `rulePath`, and the `side` and `tileId` a companion
+   * diagnostic pins for the same failure when one does.
+   */
+  readonly params: SerializedDiagParams;
 }
 
 /** An edit that never reached validation because the request named something absent. */
@@ -176,8 +181,9 @@ function dropTilesRegisteredSince(catalog: ITileCatalog, before: ReadonlySet<str
   }
 }
 
-/** Every diagnostic the rule's own typecheck reported, parse and type alike, across both sides. */
+/** Every parse and type diagnostic `rule`'s own typecheck reported, for the whole rule. */
 function ruleDiagnostics(rule: BrainRuleDef): ToolDiagnostic[] {
+  // Both sides hold the same whole-rule typecheck result.
   const result = rule.when().typecheckResult();
   if (!result) return [];
   const diagnostics: ToolDiagnostic[] = [];
@@ -272,11 +278,12 @@ function decideApplied(
   before: readonly ToolDiagnostic[],
   transaction: EditTransaction
 ): ProposalResult {
-  const decision = decideProposal(newDiagnostics(before, proposalDiagnostics(workspace, ruleId, rule)));
+  const introduced = newDiagnostics(before, proposalDiagnostics(workspace, ruleId, rule));
+  const decision = decideProposal(introduced);
   if (decision.verdict === "reject") {
     transaction.takeBack();
     const rejection = decision.rejectedBy!;
-    return { ok: false, code: rejection.code, ...(rejection.params ? { params: rejection.params } : {}) };
+    return { ok: false, code: rejection.code, params: rejectionParams(rejection, introduced, ruleId) };
   }
 
   transaction.keep();
