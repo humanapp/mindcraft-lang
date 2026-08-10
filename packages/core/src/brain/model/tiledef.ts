@@ -1,5 +1,5 @@
 import { List, type ReadonlyList } from "../../platform/list";
-import type { ActionDescriptor, TileId, TypeId } from "../../runtime";
+import { type ActionDescriptor, mkOutputVarKey, type TileId, type TypeId } from "../../runtime";
 import { BitSet, type ReadonlyBitSet } from "../../util/bitset";
 import type {
   BrainTileDefCreateOptions,
@@ -64,5 +64,9 @@ export abstract class BrainActionTileBase extends BrainTileDefBase implements IB
   constructor(tileId: TileId, action: ActionDescriptor, opts: BrainTileDefCreateOptions) {
     super(tileId, opts);
     this.action = action;
+    // An action provides the identity key of every output its descriptor declares.
+    if (opts.providedOutputs === undefined && action.outputs !== undefined) {
+      this.providedOutputs_ = List.from(action.outputs.map((output) => mkOutputVarKey(output.type, output.name)));
+    }
   }
 }

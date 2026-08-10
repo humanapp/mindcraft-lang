@@ -60,6 +60,14 @@ export const appTileDocs: readonly AppTileDocMeta[] = [
     contentKey: "shoot",
   },
 
+  // -- Outputs ---------------------------------------------------------------
+  {
+    tileId: "tile.out->boolean:<boolean>.shot fired",
+    tags: ["projectile", "outcome", "output"],
+    category: "Actuators",
+    contentKey: "output-shot-fired",
+  },
+
   // -- Parameters & Modifiers: entity type modifiers -------------------------
   {
     tileId: "tile.modifier->modifier.actor_kind.carnivore",

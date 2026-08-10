@@ -708,6 +708,55 @@ describe("Brain behavioral -- rule variables (regression)", () => {
     );
   });
 
+  test("a built-in actuator's ActionDescriptor outputs derive an inline tile a rule below it reads", () => {
+    const outVarName = "actuator-output-out";
+
+    const actuatorDef = defineHost(
+      createHostActuator({
+        key: "test-output-actuator",
+        actionId: 5102,
+        fnId: 6102,
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        outputs: [{ name: "acted", type: CoreTypeIds.Boolean, label: "acted" }],
+        fn: {
+          exec: (ctx) => {
+            setSensorOutput(ctx, CoreTypeIds.Boolean, "acted", TRUE_VALUE);
+            return VOID_VALUE;
+          },
+        },
+      })
+    );
+
+    const actuator = actuatorDef.tile as BrainTileActuatorDef;
+    const outputTiles = buildDescriptorOutputTiles(actuatorDef.descriptor.outputs!);
+    assert.equal(outputTiles.length, 1, "one output tile per declared output");
+    const actedTile = outputTiles[0];
+    assert.equal(actedTile.outputType, CoreTypeIds.Boolean);
+    assert.ok(
+      actuator.providedOutputs().indexOf(actedTile.outputKey) >= 0,
+      "the actuator provides the output tile's identity key"
+    );
+
+    // The rule's DO writes the output; the rule below it reads the value back.
+    const brainDef = new BrainDef(services);
+    const pageResult = brainDef.appendNewPage();
+    assert.ok(pageResult.success);
+    const parent = pageResult.value!.page.children().get(0) as BrainRuleDef;
+    __test__appendTile(parent.do(), actuator as never);
+    const child = parent.appendNewRule();
+    for (const tile of [mkVar(outVarName, CoreTypeIds.Boolean), opAssign, actedTile]) {
+      __test__appendTile(child.do(), tile as never);
+    }
+
+    const brain = runBrain(brainDef);
+
+    assert.equal(
+      extractBooleanValue(brain.getVariable(outVarName)!),
+      true,
+      "the output value must round-trip from the actuator write to a rule below it"
+    );
+  });
+
   test("WHEN_END captures the WHEN result into the rule's __whenResult variable", () => {
     const brainVarName = "whenresult-out";
 

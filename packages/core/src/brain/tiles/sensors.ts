@@ -1,12 +1,5 @@
 import { Error } from "../../platform/error";
-import { List } from "../../platform/list";
-import {
-  type ActionDescriptor,
-  mkOutputVarKey,
-  mkSensorTileId,
-  type TypeId,
-  type UserActionIdentity,
-} from "../../runtime";
+import { type ActionDescriptor, mkSensorTileId, type TypeId, type UserActionIdentity } from "../../runtime";
 import fnCurrentPage from "../../runtime/sensors/current-page";
 import fnOnPageEntered from "../../runtime/sensors/on-page-entered";
 import fnOtherwise from "../../runtime/sensors/otherwise";
@@ -65,10 +58,6 @@ export class BrainTileSensorDef extends BrainActionTileBase {
     }
     // Default sensors to WhenSide placement if not specified
     if (opts.placement === undefined) opts.placement = TilePlacement.WhenSide;
-    // A sensor provides the identity key of every output its descriptor declares.
-    if (opts.providedOutputs === undefined && action.outputs !== undefined) {
-      opts.providedOutputs = List.from(action.outputs.map((output) => mkOutputVarKey(output.type, output.name)));
-    }
     super(mkSensorTileId(sensorId), action, opts);
     this.sensorId = sensorId;
     this.outputType = action.outputType;

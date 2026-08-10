@@ -3,14 +3,14 @@ import { type BrainTileDefCreateOptions, TilePlacement } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 
 /**
- * Tile definition for a sensor output value-tile: an inline, read-only value
- * exposed by a sensor's declared output. The tile reads the backing rule
+ * Tile definition for an action output value-tile: an inline, read-only value
+ * exposed by an action's declared output. The tile reads the backing rule
  * variable keyed by {@link mkOutputVarKey} (`__out.<outputType>.<name>`), which
- * the sensor writes via `setOutput`.
+ * the action writes via `setSensorOutput`.
  *
- * Identity is the `(outputType, name)` pair: two sensors declaring the same
+ * Identity is the `(outputType, name)` pair: two actions declaring the same
  * identity produce the same {@link mkOutputTileId tile id} and therefore one
- * shared tile. The tile is offered downstream only when a sensor listing its
+ * shared tile. The tile is offered downstream only when an action listing its
  * {@link outputKey} in its `providedOutputs` is present in the rule hierarchy.
  */
 export class BrainTileOutputDef extends BrainTileDefBase {
@@ -48,11 +48,11 @@ export class BrainTileOutputDef extends BrainTileDefBase {
 }
 
 /**
- * Build the inline output value-tiles for a built-in sensor's declared
- * {@link ActionOutputSpec} outputs. The declaring sensor exposes each tile's
+ * Build the inline output value-tiles for a built-in action's declared
+ * {@link ActionOutputSpec} outputs. The declaring action exposes each tile's
  * {@link BrainTileOutputDef.outputKey} through its `providedOutputs`, which gates
- * the tile downstream; the sensor writes each output with {@link setSensorOutput}
- * and the tile reads the matching backing rule variable.
+ * the tile downstream; the action writes each output with `setSensorOutput` and
+ * the tile reads the matching backing rule variable.
  */
 export function buildDescriptorOutputTiles(outputs: readonly ActionOutputSpec[]): BrainTileOutputDef[] {
   const tiles: BrainTileOutputDef[] = [];

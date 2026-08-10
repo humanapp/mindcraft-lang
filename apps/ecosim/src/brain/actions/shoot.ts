@@ -1,8 +1,9 @@
 import {
+  type BrainTileOutputDef,
   bag,
+  buildDescriptorOutputTiles,
   CoreTypeIds,
   type CreateHostActuatorOptions,
-  choice,
   type ExecutionContext,
   FALSE_VALUE,
   getCallSiteState,
@@ -10,16 +11,15 @@ import {
   isNumberValue,
   logger,
   mkCallDef,
-  mod,
   type NumberValue,
   optional,
   type ParameterTileInput,
   param,
   type ReadonlyList,
   setCallSiteState,
+  setSensorOutput,
   TRUE_VALUE,
   type Value,
-  VOID_VALUE,
 } from "@mindcraft-lang/core/app";
 import { EcosimHostActions } from "@/brain/abi-ids";
 import { getSelf } from "@/brain/execution-context-types";
@@ -63,6 +63,22 @@ const SHOOT_ENERGY_COST = 5;
  */
 const SHOOT_KICKBACK_IMPULSE = 1.5;
 
+/** Output name reporting whether the call just made put a blip into flight. */
+const SHOT_FIRED_OUTPUT = "shot fired";
+
+/** The named outputs the `shoot` actuator exposes. */
+const outputs = [
+  {
+    name: SHOT_FIRED_OUTPUT,
+    type: CoreTypeIds.Boolean,
+    label: "the shot fired",
+    iconUrl: `${ICON_BASE}/shoot.svg`,
+  },
+] satisfies NonNullable<CreateHostActuatorOptions["outputs"]>;
+
+/** Inline output value-tiles the `shoot` actuator exposes; register them alongside it. */
+export const outputTiles: readonly BrainTileOutputDef[] = buildDescriptorOutputTiles(outputs);
+
 type ShootState = {
   nextShootTime: number;
 };
@@ -71,15 +87,21 @@ function initShoot(ctx: ExecutionContext): void {
   setCallSiteState(ctx, { nextShootTime: 0 } satisfies ShootState);
 }
 
-export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
+/**
+ * Put one blip into flight, or decline to. Declines when there is no acting
+ * actor, while the call-site's cooldown is still running, when the shooter
+ * cannot pay the shot's energy, when the resolved target sits on top of the
+ * shooter, and when the world's blip pool is exhausted.
+ */
+function launchBlip(ctx: ExecutionContext, args: ReadonlyList<Value>): boolean {
   try {
     const self = getSelf(ctx);
-    if (!self) return VOID_VALUE;
+    if (!self) return false;
 
     const now = self.engine.simTime;
     const state = getCallSiteState<ShootState>(ctx)!;
 
-    if (now < state.nextShootTime) return FALSE_VALUE;
+    if (now < state.nextShootTime) return false;
 
     let cooldown = 1000 / DEFAULT_SHOOT_RATE; // Default cooldown in ms
     const rateValue = args.get(kRateSlotId) as NumberValue | undefined;
@@ -90,7 +112,7 @@ export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Val
     const target = resolveTargetActor(ctx, args, kAnonActorRefSlotId);
 
     // Drain energy from the shooter to pay for the shot. If they can't afford it, abort.
-    if (self.energy < SHOOT_ENERGY_COST) return FALSE_VALUE;
+    if (self.energy < SHOOT_ENERGY_COST) return false;
     self.drainEnergy(SHOOT_ENERGY_COST);
 
     // Compute direction: toward the target if one exists, otherwise shoot forward.
@@ -100,7 +122,7 @@ export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Val
       const dx = target.sprite.x - self.sprite.x;
       const dy = target.sprite.y - self.sprite.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 1) return FALSE_VALUE;
+      if (dist < 1) return false;
       dirX = dx / dist;
       dirY = dy / dist;
     } else {
@@ -111,7 +133,7 @@ export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Val
 
     // Delegate the actual blip creation to the engine (may fail at cap)
     const blip = self.engine.spawnBlip(self.actorId, self.sprite.x, self.sprite.y, dirX, dirY);
-    if (!blip) return FALSE_VALUE;
+    if (!blip) return false;
 
     // Apply kickback: velocity impulse in the opposite direction of the blip.
     const body = self.sprite.body as MatterJS.BodyType | null;
@@ -130,11 +152,23 @@ export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Val
 
     state.nextShootTime = now + cooldown;
 
-    return TRUE_VALUE;
+    return true;
   } catch (error) {
     logger.error("Error executing shoot action:", error);
-    return FALSE_VALUE;
+    return false;
   }
+}
+
+/**
+ * Fire a blip and report whether it went out. Returns TRUE when a blip was put
+ * into flight and FALSE otherwise, and writes the same verdict to the
+ * actuator's `shot fired` output, which the rule holding the call and every
+ * rule below it can read.
+ */
+export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
+  const fired = launchBlip(ctx, args) ? TRUE_VALUE : FALSE_VALUE;
+  setSensorOutput(ctx, CoreTypeIds.Boolean, SHOT_FIRED_OUTPUT, fired);
+  return fired;
 }
 
 export default {
@@ -142,6 +176,7 @@ export default {
   callDef,
   fn: { onInitialized: initShoot, exec: execShoot },
   isAsync: false,
+  outputs,
   metadata: {
     label: "shoot",
     iconUrl: `${ICON_BASE}/shoot.svg`,

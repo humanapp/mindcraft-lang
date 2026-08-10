@@ -9,7 +9,7 @@ import fnEat, { parameters as eatParameters } from "./actions/eat";
 import fnMove, { modifiers as moveModifiers, parameters as moveParameters } from "./actions/move";
 import fnSay, { parameters as sayParameters } from "./actions/say";
 import fnSee, { modifiers as seeModifiers } from "./actions/see";
-import fnShoot, { parameters as shootParameters } from "./actions/shoot";
+import fnShoot, { outputTiles as shootOutputTiles, parameters as shootParameters } from "./actions/shoot";
 import fnTurn, { modifiers as turnModifiers, parameters as turnParameters } from "./actions/turn";
 import { registerBrainContext } from "./brain-context";
 import { registerEngineContext } from "./engine-context";
@@ -40,6 +40,9 @@ export function createEcosimModule(): MindcraftModule {
       api.registerHostActuator(createHostActuator(fnMove));
       api.registerHostActuator(createHostActuator(fnSay));
       api.registerHostActuator(createHostActuator(fnShoot));
+      for (const outputTile of shootOutputTiles) {
+        api.registerTile(outputTile);
+      }
       api.registerHostActuator(createHostActuator(fnTurn));
 
       api.registerModifiers([...bumpModifiers, ...seeModifiers, ...moveModifiers, ...turnModifiers]);

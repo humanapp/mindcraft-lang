@@ -131,7 +131,7 @@ export interface InsertionContext {
    */
   availableCapabilities?: ReadonlyBitSet;
   /**
-   * The output identity keys (see `mkOutputVarKey`) provided by sensors in the
+   * The output identity keys (see `mkOutputVarKey`) provided by actions in the
    * current rule hierarchy. An output tile is offered only when this is present
    * and contains its `outputKey`; when undefined, no output tile is offered
    * (fail closed).

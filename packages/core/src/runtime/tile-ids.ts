@@ -111,8 +111,8 @@ export function mkModifierTileId(modifierId: string): string {
 }
 
 /**
- * Tile id for a sensor output value-tile, keyed by output identity (the
- * `typeId` of the value plus the output `name`). Two sensors declaring the same
+ * Tile id for an action output value-tile, keyed by output identity (the
+ * `typeId` of the value plus the output `name`). Two actions declaring the same
  * `(typeId, name)` produce the same id and therefore share a single tile.
  */
 export function mkOutputTileId(typeId: string, name: string): string {
@@ -120,9 +120,9 @@ export function mkOutputTileId(typeId: string, name: string): string {
 }
 
 /**
- * Backing rule-variable key for a sensor output, keyed by output identity. The
- * `setOutput` write and the output tile read both resolve to this key, so a
- * shared `(typeId, name)` identity round-trips through one rule variable.
+ * Backing rule-variable key for an action output, keyed by output identity. The
+ * `setSensorOutput` write and the output tile read both resolve to this key, so
+ * a shared `(typeId, name)` identity round-trips through one rule variable.
  */
 export function mkOutputVarKey(typeId: string, name: string): string {
   return `__out.${typeId}.${name}`;

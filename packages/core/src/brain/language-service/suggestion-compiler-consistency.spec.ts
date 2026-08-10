@@ -1708,7 +1708,7 @@ describe("compiler validation of accessor pairing, placement, output providers, 
       "pipeline rejects with OutputTileMissingProvider"
     );
     assert.ok(
-      outcome.messages.some((m) => m.includes(`"signal"`) && m.includes("no providing sensor")),
+      outcome.messages.some((m) => m.includes(`"signal"`) && m.includes("no providing action")),
       "message names the output tile and the missing provider"
     );
   });

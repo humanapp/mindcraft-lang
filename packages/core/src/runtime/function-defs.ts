@@ -120,9 +120,9 @@ export type ActionKey = string;
 export type ActionKind = "sensor" | "actuator" | "conversion";
 
 /**
- * One named, typed output a built-in sensor exposes. The `(type, name)` pair is
+ * One named, typed output a built-in action exposes. The `(type, name)` pair is
  * the output identity: it derives a downstream inline output value-tile and the
- * backing rule variable the sensor writes and that tile reads. The `type` is an
+ * backing rule variable the action writes and that tile reads. The `type` is an
  * already-resolved {@link TypeId}.
  */
 export interface ActionOutputSpec {
@@ -137,14 +137,14 @@ export interface ActionOutputSpec {
   tags?: readonly string[];
 }
 
-/** Static metadata for a registered action: its key, kind, call grammar, async flag, and (for sensors) output type and named outputs. */
+/** Static metadata for a registered action: its key, kind, call grammar, async flag, named outputs, and (for sensors) output type. */
 export type ActionDescriptor = {
   key: ActionKey;
   kind: ActionKind;
   callDef: BrainActionCallDef;
   isAsync: boolean;
   outputType?: TypeId;
-  /** Named, typed outputs a sensor exposes; each surfaces as an inline output value-tile. */
+  /** Named, typed outputs the action exposes; each surfaces as an inline output value-tile. */
   outputs?: readonly ActionOutputSpec[];
 };
 

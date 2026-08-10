@@ -215,8 +215,11 @@ export type CreateHostSensorOptions = (SyncHostActionOptions | AsyncHostActionOp
   readonly inline?: boolean;
 };
 
-/** Options for {@link createHostActuator}. Actuators do not return a value. */
-export type CreateHostActuatorOptions = SyncHostActionOptions | AsyncHostActionOptions;
+/** Options for {@link createHostActuator}. Actuators do not return a value, and may expose named `outputs`. */
+export type CreateHostActuatorOptions = (SyncHostActionOptions | AsyncHostActionOptions) & {
+  /** Named, typed outputs this actuator exposes as inline output value-tiles. */
+  readonly outputs?: readonly ActionOutputSpec[];
+};
 
 /** Build a {@link HostSensorDefinition} from `options`. */
 export function createHostSensor(options: CreateHostSensorOptions): HostSensorDefinition {
@@ -258,6 +261,7 @@ export function createHostActuator(options: CreateHostActuatorOptions): HostActu
     kind: "actuator",
     callDef: options.callDef,
     isAsync,
+    outputs: options.outputs,
   };
   const hostFn: HostFn = options.isAsync
     ? adaptAsyncActionFn(options.fn)

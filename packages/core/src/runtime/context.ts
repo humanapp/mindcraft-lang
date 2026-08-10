@@ -216,14 +216,14 @@ export function setRuleVariable(ctx: ExecutionContext, name: string, value: Valu
 }
 
 /**
- * Write a built-in sensor's named, typed output for the current evaluation. Sugar
+ * Write a built-in action's named, typed output for the current evaluation. Sugar
  * over {@link setRuleVariable} keyed by {@link mkOutputVarKey}; the matching
- * output value-tile reads the same backing rule variable. Pass `NIL_VALUE` to
- * clear an output.
+ * output value-tile reads the same backing rule variable, in the writing rule or
+ * any rule below it. Pass `NIL_VALUE` to clear an output.
  *
  * @param ctx - The execution context
  * @param typeId - The output's resolved {@link TypeId}
- * @param name - The output name as declared on the sensor's descriptor
+ * @param name - The output name as declared on the action's descriptor
  * @param value - The value to store
  */
 export function setSensorOutput(ctx: ExecutionContext, typeId: TypeId, name: string, value: Value): void {

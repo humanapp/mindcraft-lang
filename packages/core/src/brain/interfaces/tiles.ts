@@ -124,7 +124,7 @@ export interface BrainTileDefCreateOptions {
   persist?: boolean;
   capabilities?: BitSet;
   requirements?: BitSet;
-  /** Output identity keys (see `mkOutputVarKey`) this tile provides; sensors declaring outputs set these so their output value-tiles surface downstream. */
+  /** Output identity keys (see `mkOutputVarKey`) this tile provides; actions declaring outputs set these so their output value-tiles surface downstream. */
   providedOutputs?: ReadonlyList<string>;
   /**
    * Declares that this tile requires the rule's WHEN result, set to the `TypeId`

@@ -1368,7 +1368,7 @@ export function validateOutputProviders(
     const label = tileSentenceWord(tile, localizer);
     diags.push({
       code: ParseDiagCode.OutputTileMissingProvider,
-      message: `Output tile "${label}" has no providing sensor in this rule or an enclosing rule`,
+      message: `Output tile "${label}" has no providing action in this rule or an enclosing rule`,
       span: { from: i, to: i + 1 },
       params: { tileId: tile.tileId, tileLabel: label, outputKey: outputDef.outputKey },
     });

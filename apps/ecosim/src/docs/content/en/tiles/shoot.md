@@ -49,7 +49,7 @@ Place `tile:tile.actuator->actuator.shoot` on the **DO** side of a rule to launc
 
 | Parameter                             | Type   | Description                                              |
 | ------------------------------------- | ------ | -------------------------------------------------------- |
-| `tile:tile.parameter->parameter.rate` | Number | The per-second rate of fire. Maximum: `5`. Default: `1`. |
+| `tile:tile.parameter->parameter.rate` | Number | The per-second rate of fire. Maximum: `5`. Default: `2`. |
 
 ## See Also
 
