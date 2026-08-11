@@ -17,7 +17,7 @@ import {
 } from "@mindcraft-lang/assistant-relay";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ConversationViewProps } from "./ConversationView";
-import { ConversationView } from "./ConversationView";
+import { ConversationView, intentKeyAction } from "./ConversationView";
 import { ToolActivityKind } from "./conversation/activity";
 import { AssistantStatus } from "./session/machine";
 
@@ -357,5 +357,31 @@ describe("a session that is not simply ready", () => {
 
   test("offers no retry for a failure the host gave no way back from", () => {
     assert.doesNotMatch(render({ status: AssistantStatus.Failed }), /data-assistant-retry/);
+  });
+});
+
+describe("a key pressed in the intent box", () => {
+  test("plain Enter sends what is typed", () => {
+    assert.equal(intentKeyAction("Enter", false, false, false, "make a heart"), "send");
+  });
+
+  test("Shift+Enter falls through to the newline it types", () => {
+    assert.equal(intentKeyAction("Enter", true, false, false, "make a heart"), "pass");
+  });
+
+  test("an Enter mid-composition belongs to the composition", () => {
+    assert.equal(intentKeyAction("Enter", false, true, false, "make a heart"), "pass");
+  });
+
+  test("Enter during a running turn is swallowed, not sent", () => {
+    assert.equal(intentKeyAction("Enter", false, false, true, "make a heart"), "swallow");
+  });
+
+  test("Enter over whitespace is swallowed, not sent", () => {
+    assert.equal(intentKeyAction("Enter", false, false, false, "   "), "swallow");
+  });
+
+  test("any other key falls through to typing", () => {
+    assert.equal(intentKeyAction("a", false, false, false, "make a heart"), "pass");
   });
 });

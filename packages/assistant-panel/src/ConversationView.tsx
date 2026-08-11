@@ -72,6 +72,28 @@ function laidOut(steps: readonly ConversationTurnStep[]): LaidOutStep[] {
   return lines;
 }
 
+/** What a key pressed in the intent box does: send the intent, swallow the key, or fall through to typing. */
+export type IntentKeyAction = "send" | "swallow" | "pass";
+
+/**
+ * Resolve a keydown in the intent box. Enter sends; Shift+Enter falls through
+ * to the newline it types; an Enter mid-IME-composition belongs to the
+ * composition. A plain Enter that cannot send -- a turn already running (the
+ * control beside the box is Stop), or nothing but whitespace to send -- is
+ * swallowed, keeping Shift+Enter the one newline gesture.
+ */
+export function intentKeyAction(
+  key: string,
+  shiftKey: boolean,
+  isComposing: boolean,
+  running: boolean,
+  intent: string
+): IntentKeyAction {
+  if (key !== "Enter" || shiftKey || isComposing) return "pass";
+  if (running || intent.trim().length === 0) return "swallow";
+  return "send";
+}
+
 /** How a turn cut short before the service could end it reads, by what cut it. */
 function failureNote(code: ConversationTurnFailureCode): string {
   switch (code) {
@@ -265,6 +287,12 @@ export function ConversationView(props: ConversationViewProps) {
           rows={2}
           value={intent}
           onChange={(event) => onIntentChange(event.target.value)}
+          onKeyDown={(event) => {
+            const action = intentKeyAction(event.key, event.shiftKey, event.nativeEvent.isComposing, running, intent);
+            if (action === "pass") return;
+            event.preventDefault();
+            if (action === "send") onSend();
+          }}
           aria-label="What we should build"
           placeholder="Tell me your idea..."
         />
