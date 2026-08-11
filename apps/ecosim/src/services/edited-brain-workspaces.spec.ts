@@ -10,6 +10,8 @@ import { describe, test } from "node:test";
 import type { AuthoringWorkspace, TargetAdapter } from "@mindcraft-lang/assistant-bridge";
 import { serveToolCalls } from "@mindcraft-lang/assistant-bridge/relay";
 import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
+import type { EditedBrainWorkspaces } from "@mindcraft-lang/assistant-panel";
+import { createEditedBrainWorkspaces, NoEditedBrain, NoEditedBrainCode } from "@mindcraft-lang/assistant-panel";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
@@ -19,8 +21,6 @@ import { createEcosimModule } from "@/brain/index";
 import { TileIds } from "@/brain/tileids";
 import { createTargetAdapter } from "@/rehearsal/adapter";
 import { sourceRehearsalContent } from "@/rehearsal/source-content";
-import type { EditedBrainWorkspaces } from "./edited-brain-workspaces";
-import { createEditedBrainWorkspaces, NoEditedBrain, NoEditedBrainCode } from "./edited-brain-workspaces";
 
 /** The app's own assets, read from the tree these specs run in. */
 const CONTENT = sourceRehearsalContent();

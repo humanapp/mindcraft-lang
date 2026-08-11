@@ -48,7 +48,9 @@
   },
   "dependencies": {
     "@mindcraft-lang/assistant-bridge": "file:../assistant-bridge",
-    "@mindcraft-lang/assistant-relay": "file:../assistant-relay"
+    "@mindcraft-lang/assistant-relay": "file:../assistant-relay",
+    "@mindcraft-lang/core": "file:../core",
+    "@mindcraft-lang/ui": "file:../ui"
   },
   "peerDependencies": {
     "react": "^19.0.0",

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { assistantSessionUrl } from "@mindcraft-lang/assistant-panel";
 import { name as simName } from "../../package.json";
 import { DEFAULT_APP_SETTINGS, loadAppSettings, normalizeAppSettings, persistAppSettings } from "./app-settings";
 
@@ -80,5 +81,12 @@ describe("app settings", () => {
   it("keeps a non-empty address as given", () => {
     const normalized = normalizeAppSettings({ ...DEFAULT_APP_SETTINGS, assistantServiceUrl: "localhost:8787" });
     assert.equal(normalized.assistantServiceUrl, "localhost:8787");
+  });
+
+  it("derives a secure session address from the shipped assistant default", () => {
+    assert.equal(
+      assistantSessionUrl(DEFAULT_APP_SETTINGS.assistantServiceUrl),
+      `wss://${DEFAULT_APP_SETTINGS.assistantServiceUrl}/api/assistant/session`
+    );
   });
 });

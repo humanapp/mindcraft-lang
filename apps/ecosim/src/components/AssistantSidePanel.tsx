@@ -1,7 +1,7 @@
+import type { EditedBrainWorkspaces } from "@mindcraft-lang/assistant-panel";
 import { AssistantSurface, useAssistant } from "@mindcraft-lang/assistant-panel";
 import { useEditedBrain } from "@mindcraft-lang/ui";
 import { useEffect } from "react";
-import type { EditedBrainWorkspaces } from "@/services/edited-brain-workspaces";
 
 /** What the side region's tenant is given by the app that put it there. */
 export interface AssistantSidePanelProps {

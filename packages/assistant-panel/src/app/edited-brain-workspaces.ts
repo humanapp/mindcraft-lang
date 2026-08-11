@@ -3,7 +3,7 @@ import { sessionTileDescriptions } from "@mindcraft-lang/assistant-bridge";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { List } from "@mindcraft-lang/core/app";
 import type { ITileCatalog } from "@mindcraft-lang/core/brain";
-import type { EditedBrain } from "@mindcraft-lang/ui";
+import type { EditedBrain } from "@mindcraft-lang/ui/brain-editor/EditedBrainContext";
 
 /** Why a brain's tool calls found no working copy of it to run against. */
 export const NoEditedBrainCode = {
@@ -56,7 +56,7 @@ export interface EditedBrainWorkspaces {
 }
 
 /**
- * Build the workspaces this app serves an assistant's tool calls through. The
+ * Build the workspaces a host app serves an assistant's tool calls through. The
  * working copy they run against is whatever the editor stands at the time of
  * the call.
  */

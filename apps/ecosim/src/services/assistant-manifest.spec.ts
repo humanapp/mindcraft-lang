@@ -12,11 +12,11 @@ import {
   readCatalog,
   toolDefinitions,
 } from "@mindcraft-lang/assistant-bridge";
+import { assistantToolManifest } from "@mindcraft-lang/assistant-panel";
 import { List } from "@mindcraft-lang/core/app";
 import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { createTargetAdapter } from "@/rehearsal/adapter";
 import { sourceRehearsalContent } from "@/rehearsal/source-content";
-import { assistantToolManifest } from "./assistant-manifest";
 
 /** The app's own assets, read from the tree these specs run in. */
 const CONTENT = sourceRehearsalContent();

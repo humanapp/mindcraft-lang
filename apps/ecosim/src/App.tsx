@@ -1,6 +1,13 @@
 import type { ProjectCollection, ProjectCollectionState, ProjectManifest } from "@mindcraft-lang/app-host";
 import { AppHostError } from "@mindcraft-lang/app-host";
-import { AssistantProvider, createWebSocketConnect } from "@mindcraft-lang/assistant-panel";
+import type { EditedBrainWorkspaces } from "@mindcraft-lang/assistant-panel";
+import {
+  AssistantProvider,
+  assistantSessionUrl,
+  assistantToolManifest,
+  createEditedBrainWorkspaces,
+  createWebSocketConnect,
+} from "@mindcraft-lang/assistant-panel";
 import type { BrainDef } from "@mindcraft-lang/core/app";
 import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
@@ -33,10 +40,6 @@ import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground, SceneBrainState } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { createTargetAdapter } from "./rehearsal/adapter";
-import { assistantToolManifest } from "./services/assistant-manifest";
-import { assistantSessionUrl } from "./services/assistant-service-url";
-import type { EditedBrainWorkspaces } from "./services/edited-brain-workspaces";
-import { createEditedBrainWorkspaces } from "./services/edited-brain-workspaces";
 import { downloadTextFile } from "./utils/file-download";
 import { pickFile } from "./utils/file-upload";
 

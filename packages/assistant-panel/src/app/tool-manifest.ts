@@ -13,10 +13,10 @@ import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 const catalogBrainName = "catalog";
 
 /**
- * The tiles `adapter` installs into an authoring environment, without the tiles
- * any one document mints for itself.
+ * The tiles `adapter` installs into an authoring environment, as a session
+ * states them, without the tiles any one document mints for itself.
  */
-function installedTiles(adapter: TargetAdapter): readonly CatalogTile[] {
+export function installedTiles(adapter: TargetAdapter): readonly CatalogTile[] {
   const workspace = createAuthoringWorkspace(adapter, catalogBrainName);
   const installed: AuthoringWorkspace = {
     ...workspace,
@@ -26,9 +26,9 @@ function installedTiles(adapter: TargetAdapter): readonly CatalogTile[] {
 }
 
 /**
- * What this app declares it serves when it opens a relay session, all read from
- * `adapter`: the target it authors for, the bridge tools it answers, and the
- * fingerprint of the tiles the adapter installs.
+ * What a host app declares it serves when it opens a relay session, all read
+ * from `adapter`: the target it authors for, the bridge tools it answers, and
+ * the fingerprint of the tiles the adapter installs.
  */
 export function assistantToolManifest(adapter: TargetAdapter): RelayToolManifest {
   return {

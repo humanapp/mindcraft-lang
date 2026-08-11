@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DEFAULT_APP_SETTINGS } from "./app-settings";
-import { assistantSessionUrl } from "./assistant-service-url";
+import { assistantSessionUrl } from "./service-url";
 
 const SESSION_PATH = "/api/assistant/session";
 
@@ -31,12 +30,5 @@ describe("assistant service session URL", () => {
     for (const [input, expected] of cases) {
       assert.equal(assistantSessionUrl(input), expected, input);
     }
-  });
-
-  it("derives a secure address from the shipped default", () => {
-    assert.equal(
-      assistantSessionUrl(DEFAULT_APP_SETTINGS.assistantServiceUrl),
-      `wss://${DEFAULT_APP_SETTINGS.assistantServiceUrl}${SESSION_PATH}`
-    );
   });
 });

@@ -3,7 +3,7 @@ const kAssistantSessionPath = "api/assistant/session";
 
 /**
  * Composes the WebSocket address of the assistant service's session endpoint
- * from the `assistantServiceUrl` app setting.
+ * from the service address a host app holds.
  *
  * `serviceUrl` is a host with an optional port; a scheme, if present, is
  * stripped and re-derived: the localhost family ("localhost", "127.0.0.1",

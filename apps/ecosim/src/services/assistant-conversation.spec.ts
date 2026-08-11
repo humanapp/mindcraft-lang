@@ -8,6 +8,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
+import type { EditedBrainWorkspaces } from "@mindcraft-lang/assistant-panel";
+import { assistantToolManifest, createEditedBrainWorkspaces } from "@mindcraft-lang/assistant-panel";
 import { recordFor } from "@mindcraft-lang/assistant-panel/conversation/store";
 import type { AssistantChannel } from "@mindcraft-lang/assistant-panel/session/channel";
 import { AssistantMachine, AssistantStatus } from "@mindcraft-lang/assistant-panel/session/machine";
@@ -28,9 +30,6 @@ import { createEcosimModule } from "@/brain/index";
 import { TileIds } from "@/brain/tileids";
 import { createTargetAdapter } from "@/rehearsal/adapter";
 import { sourceRehearsalContent } from "@/rehearsal/source-content";
-import { assistantToolManifest } from "./assistant-manifest";
-import type { EditedBrainWorkspaces } from "./edited-brain-workspaces";
-import { createEditedBrainWorkspaces } from "./edited-brain-workspaces";
 
 /** The app's own assets, read from the tree these specs run in. */
 const CONTENT = sourceRehearsalContent();
