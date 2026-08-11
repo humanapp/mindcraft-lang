@@ -3,7 +3,7 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
-import type { IBrain, IConversionRegistry, IOperatorOverloads, ITypeRegistry } from "../../runtime";
+import type { IBrain, IConversionRegistry, IOperatorOverloads, IRngServices, ITypeRegistry } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util/event-emitter";
 import { type OpResult, opFailure, opSuccess } from "../../util/op-result";
 import { Brain } from "../brain";
@@ -20,6 +20,7 @@ import type { BrainServices } from "../services";
 import { type CatalogTileJson, TileCatalog } from "../tiles/catalog";
 import { BrainTilePageDef } from "../tiles/pagetiles";
 import type { PersistedIdRef } from "./brain-json-persisted";
+import { mintDocumentId } from "./document-id";
 import { BrainPageDef, type PageJson } from "./pagedef";
 import type { RuleJson } from "./ruledef";
 
@@ -148,7 +149,7 @@ export class BrainDef implements IBrainDef {
 
   constructor(services: BrainServices, id?: string) {
     this.services_ = services;
-    this.id_ = id ?? this.mintBrainId_();
+    this.id_ = id ?? mintDocumentId(services.app.rng);
   }
 
   setExtraCatalogs(catalogs: ReadonlyList<ITileCatalog> | undefined): void {
@@ -177,6 +178,10 @@ export class BrainDef implements IBrainDef {
 
   servicesLocalizer(): Localizer {
     return this.services_.app.localizer;
+  }
+
+  servicesRng(): IRngServices {
+    return this.services_.app.rng;
   }
 
   static emptyBrainDef(services: BrainServices, name?: string): BrainDef {
@@ -231,16 +236,8 @@ export class BrainDef implements IBrainDef {
     return new Brain(this, this.services_);
   }
 
-  private mintPageId_(): string {
-    return SU.mkid(16, () => this.services_.app.rng.next());
-  }
-
-  private mintBrainId_(): string {
-    return SU.mkid(16, () => this.services_.app.rng.next());
-  }
-
   appendNewPage(): OpResult<{ page: BrainPageDef; index: number }> {
-    const page = new BrainPageDef(this.mintPageId_());
+    const page = new BrainPageDef(this.services_.app.rng);
     const addPageResult = this.addPage(page);
     if (!addPageResult.success) {
       return opFailure(BrainDefWarningCode.MaxPagesExceeded);
@@ -294,7 +291,7 @@ export class BrainDef implements IBrainDef {
   }
 
   insertNewPageAtIndex(index: number): OpResult<{ page: BrainPageDef; index: number }> {
-    const page = new BrainPageDef(this.mintPageId_());
+    const page = new BrainPageDef(this.services_.app.rng);
     // Add a blank rule to the new page
     page.appendNewRule();
     return this.insertPageAtIndex(index, page);
@@ -418,7 +415,7 @@ export class BrainDef implements IBrainDef {
 
     for (let i = 0; i < json.pages.size(); i++) {
       const pageJson = json.pages.get(i);
-      const page = new BrainPageDef(pageJson.pageId);
+      const page = new BrainPageDef(this.services_.app.rng, pageJson.pageId);
       this.pages_.push(page);
       page.setBrain(this);
       this.subscribeToPage_(page);
@@ -459,7 +456,7 @@ export class BrainDef implements IBrainDef {
     // Restore pages
     for (let i = 0; i < json.pages.size(); i++) {
       const pageJson = json.pages.get(i);
-      const page = new BrainPageDef(pageJson.pageId);
+      const page = new BrainPageDef(brain.services_.app.rng, pageJson.pageId);
       brain.addPage(page);
       page.deserializeJson(pageJson, catalogs);
     }

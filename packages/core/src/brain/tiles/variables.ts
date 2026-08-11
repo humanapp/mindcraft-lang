@@ -1,5 +1,4 @@
 import { Error } from "../../platform/error";
-import { StringUtils as SU } from "../../platform/string";
 import { CoreTypeIds, CoreTypeNames, type TileId, type TypeId } from "../../runtime";
 import {
   type BrainTileDefCreateOptions,
@@ -9,6 +8,7 @@ import {
   mkVariableTileId,
   TilePlacement,
 } from "../interfaces";
+import { mintDocumentId } from "../model/document-id";
 import { BrainTileDefBase } from "../model/tiledef";
 
 /** Serialized form of a {@link BrainTileVariableDef}. */
@@ -78,7 +78,7 @@ export function createVariableFactoryTileDef(
   factoryId: string,
   producedDataType: TypeId,
   opts: BrainTileDefCreateOptions = {},
-  services?: BrainServices
+  services: BrainServices
 ): BrainTileFactoryDef {
   return new BrainTileFactoryDef(
     mkVariableFactoryTileId(factoryId),
@@ -102,15 +102,9 @@ export function registerVariableFactoryTileDef(
 function manufactureVarTileDef(
   factoryTileDef: BrainTileFactoryDef,
   opts: { [key: string]: unknown },
-  services?: BrainServices
+  services: BrainServices
 ): BrainTileVariableDef {
-  let uniqueId: string;
-  if (services) {
-    const rng = services.app.rng;
-    uniqueId = SU.mkid(16, () => rng.next());
-  } else {
-    uniqueId = SU.mkid();
-  }
+  const uniqueId = mintDocumentId(services.app.rng);
   const varName: string = (opts.name ? opts.name : uniqueId) as string;
   const varType: TypeId = (factoryTileDef.producedDataType as TypeId) || CoreTypeIds.Unknown;
   const tileDef = new BrainTileVariableDef(mkVariableTileId(uniqueId), varName, varType, uniqueId);

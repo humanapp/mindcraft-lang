@@ -52,9 +52,9 @@
       "types": "./dist/kit/index.d.ts",
       "import": "./dist/kit/index.js"
     },
-    "./kit/rehearsal": {
-      "types": "./dist/kit/rehearsal.d.ts",
-      "import": "./dist/kit/rehearsal.js"
+    "./kit/node": {
+      "types": "./dist/kit/node.d.ts",
+      "import": "./dist/kit/node.js"
     },
     "./relay": {
       "types": "./dist/relay/index.d.ts",

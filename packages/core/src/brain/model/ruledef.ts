@@ -4,7 +4,7 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { task, type thread } from "../../platform/task";
 import { UniqueSet } from "../../platform/uniqueset";
-import type { IConversionRegistry } from "../../runtime";
+import type { IConversionRegistry, IRngServices } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import { BitSet } from "../../util/bitset";
 import { collectProvidedCapabilities, collectProvidedOutputKeys, parseRule } from "../compiler";
@@ -18,6 +18,7 @@ import {
   RuleSide,
 } from "../interfaces";
 import { getRuleWhenResultType } from "../language-service/tile-suggestions";
+import { mintDocumentId } from "./document-id";
 import type { BrainPageDef } from "./pagedef";
 import { BrainTileSet } from "./tileset";
 
@@ -49,6 +50,7 @@ const kVersion = 1;
 
 /** Concrete {@link IBrainRuleDef}: a single rule with `when` and `do` tile-sets and child rules. */
 export class BrainRuleDef implements IBrainRuleDef {
+  private readonly rng_: IRngServices;
   private ruleId_: string;
   private page_?: IBrainPageDef;
   private ancestor_?: BrainRuleDef; // Next rule up in the tree, if any
@@ -68,12 +70,15 @@ export class BrainRuleDef implements IBrainRuleDef {
   private typecheckedWithPrecedingSibling_?: boolean;
 
   /**
+   * @param rng - The environment's random stream (`services.app.rng`), which
+   *   this rule and every rule it creates mint their ids from.
    * @param ruleId - Id this rule is addressed by for as long as it exists, in
    *   the document and in every save of it. Pass the id a serialized rule
    *   carries to restore it; omit it to mint a fresh one.
    */
-  constructor(ruleId?: string) {
-    this.ruleId_ = ruleId || SU.mkid();
+  constructor(rng: IRngServices, ruleId?: string) {
+    this.rng_ = rng;
+    this.ruleId_ = ruleId || mintDocumentId(rng);
     this.when_ = new BrainTileSet(this, RuleSide.When);
     this.do_ = new BrainTileSet(this, RuleSide.Do);
     this.subscribeToTileSet_(this.when_);
@@ -95,7 +100,7 @@ export class BrainRuleDef implements IBrainRuleDef {
    * the two do not stand in one document under one set of ids.
    */
   mintNewRuleIds(): void {
-    this.ruleId_ = SU.mkid();
+    this.ruleId_ = mintDocumentId(this.rng_);
     this.children_.forEach((child) => {
       child.mintNewRuleIds();
     });
@@ -609,7 +614,7 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   appendNewRule(): BrainRuleDef {
-    const rule = new BrainRuleDef();
+    const rule = new BrainRuleDef(this.rng_);
     this.children_.push(rule);
     rule.ancestor_ = this;
     this.subscribeToChildRule_(rule);
@@ -670,7 +675,7 @@ export class BrainRuleDef implements IBrainRuleDef {
     const brain = this.brain();
     const page = this.page();
     if (!brain || !page) {
-      const newRule = new BrainRuleDef();
+      const newRule = new BrainRuleDef(this.rng_);
       return newRule;
     }
     return BrainRuleDef.fromJson(json, page, brain);
@@ -699,7 +704,7 @@ export class BrainRuleDef implements IBrainRuleDef {
 
   static fromJson(json: RuleJson, page: IBrainPageDef, brain: IBrainDef): BrainRuleDef {
     const catalogs = brain.deserializationCatalogs();
-    const rule = new BrainRuleDef(json.ruleId);
+    const rule = new BrainRuleDef(brain.servicesRng(), json.ruleId);
     rule.setPage(page);
     rule.deserializeJson(json, catalogs);
     return rule;
@@ -715,7 +720,7 @@ export class BrainRuleDef implements IBrainRuleDef {
 
     // Recursively deserialize child rules
     for (let i = 0; i < json.children.size(); i++) {
-      const child = new BrainRuleDef(json.children.get(i).ruleId);
+      const child = new BrainRuleDef(this.rng_, json.children.get(i).ruleId);
       child.setPage(this.page());
       child.deserializeJson(json.children.get(i), catalogs);
       this.children_.push(child);

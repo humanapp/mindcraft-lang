@@ -43,7 +43,7 @@ export type UserTileSurface = UserAuthoredProgram | UserTileDefinition;
  * the struct's registered type id, so every program collecting one declared
  * type derives the identical tile set (register-if-absent by tile id).
  */
-export function buildStructTypeTiles(program: UserAuthoredProgram, services?: BrainServices): readonly IBrainTileDef[] {
+export function buildStructTypeTiles(program: UserAuthoredProgram, services: BrainServices): readonly IBrainTileDef[] {
   const tiles: IBrainTileDef[] = [];
   for (const structType of program.structTypes ?? []) {
     if (structType.accessors) {

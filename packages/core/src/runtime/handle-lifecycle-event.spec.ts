@@ -78,7 +78,7 @@ function makeActions(mode: SettleMode, holder: HeldHandles): BrainActionRegistry
     descriptor,
     execAsync: (_ctx, _args, handle) => {
       if (mode === "atDispatch") handle.resolve(VOID_VALUE);
-      else if (mode === "reject") handle.reject({ code: ErrorCode.HostError, message: "probe" });
+      else if (mode === "reject") handle.reject(ErrorCode.HostError, "probe");
       else holder.held.push(handle);
     },
   };
@@ -247,7 +247,7 @@ describe("asynchronous call lifecycle", () => {
 
     runtime.startup();
     runtime.think(1);
-    assert.deepEqual(observed.settles, []);
+    assert.equal(observed.settles.length, 0);
 
     holder.held[0]?.resolve(VOID_VALUE);
 

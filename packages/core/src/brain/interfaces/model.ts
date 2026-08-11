@@ -3,6 +3,7 @@ import type { List, ReadonlyList } from "../../platform/list";
 import type { IConversionRegistry } from "../../runtime/conversion-defs";
 import type { IBrain } from "../../runtime/host-bindings";
 import type { IOperatorOverloads } from "../../runtime/operator-defs";
+import type { IRngServices } from "../../runtime/services";
 import type { ITypeRegistry } from "../../runtime/type-defs";
 import type { EventEmitterConsumer } from "../../util/event-emitter";
 import type { OpResult } from "../../util/op-result";
@@ -35,6 +36,8 @@ export interface IBrainDef {
   servicesOperatorOverloads(): IOperatorOverloads;
   /** The display-time localizer edit-time code renders user-visible text through. */
   servicesLocalizer(): Localizer;
+  /** The environment's random stream, which this document's brain, page, and rule ids are minted from. */
+  servicesRng(): IRngServices;
   typecheck(): void;
   compile(): IBrain;
   appendNewPage(): OpResult<{ page: IBrainPageDef; index: number }>;

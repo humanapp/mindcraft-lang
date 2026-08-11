@@ -1,4 +1,4 @@
-import { assertDependencyDistsFresh } from "@mindcraft-lang/assistant-bridge/kit";
+import { assertDependencyDistsFresh } from "@mindcraft-lang/assistant-bridge/kit/node";
 import path from "path";
 import { defineConfig } from "vite";
 import { rehearsalDefines } from "../src/rehearsal/source-content.ts";

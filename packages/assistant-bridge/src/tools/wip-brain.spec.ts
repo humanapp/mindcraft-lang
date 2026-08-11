@@ -136,7 +136,7 @@ describe("the key a standing diagnostic is counted under", () => {
     const before = documentDiagnostics(workspace);
     const pathsBefore = locateRules(workspace.brainDef).map((located) => located.rulePath);
 
-    page.addRuleAtIndex(0, new BrainRuleDef());
+    page.addRuleAtIndex(0, new BrainRuleDef(workspace.brainDef.servicesRng()));
 
     const pathsAfter = locateRules(workspace.brainDef).map((located) => located.rulePath);
     assert.equal(pathsAfter.length, pathsBefore.length + 1, "the insertion added a rule");

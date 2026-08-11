@@ -1,4 +1,4 @@
-import type { TileDocContent } from "@mindcraft-lang/assistant-bridge/kit/rehearsal";
+import type { TileDocContent } from "@mindcraft-lang/assistant-bridge/kit";
 
 /** The brain document the app ships for each archetype, base64-encoded and keyed by archetype name. */
 export type ShippedBrainDefs = Readonly<Record<string, string>>;

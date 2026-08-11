@@ -1,6 +1,6 @@
 import type { TargetAdapter, TargetManifest } from "@mindcraft-lang/assistant-bridge";
-import type { RehearsalWorld, WorldDriver, WorldStaging } from "@mindcraft-lang/assistant-bridge/kit/rehearsal";
-import { createRehearsalAdapter, pairTileDocs } from "@mindcraft-lang/assistant-bridge/kit/rehearsal";
+import type { RehearsalWorld, WorldDriver, WorldStaging } from "@mindcraft-lang/assistant-bridge/kit";
+import { createRehearsalAdapter, pairTileDocs } from "@mindcraft-lang/assistant-bridge/kit";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES } from "@/brain/archetypes";
 import { getSelf } from "@/brain/execution-context-types";

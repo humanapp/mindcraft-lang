@@ -776,7 +776,7 @@ describe("rule commands round-trip the document", () => {
     let producerCalls = 0;
     const command = new PasteRulesCommand(ruleB, "before", (destBrain) => {
       producerCalls++;
-      const rule = new BrainRuleDef();
+      const rule = new BrainRuleDef(destBrain.servicesRng());
       rule.deserializeJson(copiedRuleJson, destBrain.deserializationCatalogs());
       return List.from([rule]);
     });
@@ -798,7 +798,7 @@ describe("rule commands round-trip the document", () => {
     const { brain, ruleA, ruleB } = brainWithTwoRules();
     const copiedRuleJson = ruleA.toJson();
     const command = new PasteRulesCommand(ruleA, "after", (destBrain) => {
-      const rule = new BrainRuleDef();
+      const rule = new BrainRuleDef(destBrain.servicesRng());
       rule.deserializeJson(copiedRuleJson, destBrain.deserializationCatalogs());
       return List.from([rule]);
     });
@@ -1224,7 +1224,7 @@ const workingCopyIsolationCases: WorkingCopyIsolationCase[] = [
     makeCommand: (brain) => {
       const copiedRuleJson = ruleAt(brain, 0).toJson();
       return new PasteRulesCommand(ruleAt(brain, 1), "before", (destBrain) => {
-        const rule = new BrainRuleDef();
+        const rule = new BrainRuleDef(destBrain.servicesRng());
         rule.deserializeJson(copiedRuleJson, destBrain.deserializationCatalogs());
         return List.from([rule]);
       });

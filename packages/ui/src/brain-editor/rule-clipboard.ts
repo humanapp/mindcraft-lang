@@ -225,7 +225,7 @@ export function deserializeAllRulesFromClipboard(
   const results: BrainRuleDef[] = [];
 
   for (const ruleJson of currentClipboardData.ruleJsons) {
-    const newRule = new BrainRuleDef();
+    const newRule = new BrainRuleDef(destBrain.servicesRng());
     newRule.deserializeJson(ruleJson, catalogs);
     // A paste stands beside the rules it was copied from, so it may not carry
     // the ids they are addressed by.

@@ -136,8 +136,11 @@ export class InsertRuleCommand implements BrainCommand {
       return;
     }
 
+    const brain = this.targetRule.brain();
+    if (!brain) return;
+
     const state = getRuleState(this.targetRule);
-    const newRule = new BrainRuleDef();
+    const newRule = new BrainRuleDef(brain.servicesRng());
     addRuleAt(
       { parentRule: state.parentRule, pageDef: state.pageDef, index: placementIndex(state, this.placement) },
       newRule

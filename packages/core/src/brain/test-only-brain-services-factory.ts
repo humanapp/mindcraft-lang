@@ -1,4 +1,5 @@
 import type { ProfileNumerics } from "../runtime/profile-numerics";
+import type { IRngServices } from "../runtime/services";
 import { installCoreBrainComponents } from ".";
 import type { IBrainTileDef, IBrainTileSet } from "./interfaces";
 import type { BrainServices } from "./services";
@@ -13,10 +14,14 @@ import { createAppServices, createBrainServices } from "./services-factory";
  *
  * @param options - Optional app-tier overrides; `numerics` selects the
  *   profile numerics captured by the registered core components (defaults
- *   to f64).
+ *   to f64), and `rng` supplies the random stream document ids are minted
+ *   from (defaults to an unseeded one).
  */
-export function __test__createBrainServices(options?: { numerics?: ProfileNumerics }): BrainServices {
-  return installCoreBrainComponents(createBrainServices(createAppServices(undefined, options?.numerics)));
+export function __test__createBrainServices(options?: {
+  numerics?: ProfileNumerics;
+  rng?: IRngServices;
+}): BrainServices {
+  return installCoreBrainComponents(createBrainServices(createAppServices(options?.rng, options?.numerics)));
 }
 
 /**

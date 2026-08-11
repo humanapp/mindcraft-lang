@@ -2,8 +2,10 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
+import type { IRngServices } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import type { BrainPageDefEvents, IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog } from "../interfaces";
+import { mintDocumentId } from "./document-id";
 import { BrainRuleDef, type RuleJson } from "./ruledef";
 
 /** Serialized form of an {@link IBrainPageDef}: stable id, name, and rule tree. */
@@ -27,14 +29,23 @@ const kVersion = 2;
 /** Concrete {@link IBrainPageDef}: a named page with a list of {@link BrainRuleDef}s. */
 export class BrainPageDef implements IBrainPageDef {
   private name_: string = "Unnamed Page";
+  private readonly rng_: IRngServices;
   private readonly pageId_: string;
   private brain_?: IBrainDef;
   private readonly children_ = new List<BrainRuleDef>();
   private readonly emitter_ = new EventEmitter<BrainPageDefEvents>();
   private readonly ruleSubscriptions_ = new Dict<BrainRuleDef, () => void>();
 
-  constructor(pageId?: string) {
-    this.pageId_ = pageId || SU.mkid();
+  /**
+   * @param rng - The environment's random stream (`services.app.rng`), which
+   *   this page and every rule it creates mint their ids from.
+   * @param pageId - Id this page is addressed by for as long as it exists. Pass
+   *   the id a serialized page carries to restore it; omit it to mint a fresh
+   *   one.
+   */
+  constructor(rng: IRngServices, pageId?: string) {
+    this.rng_ = rng;
+    this.pageId_ = pageId || mintDocumentId(rng);
   }
 
   pageId(): string {
@@ -76,7 +87,7 @@ export class BrainPageDef implements IBrainPageDef {
 
   clone(): BrainPageDef {
     const json = this.toJson();
-    const newPage = new BrainPageDef();
+    const newPage = new BrainPageDef(this.rng_);
     const brain = this.brain_;
     const catalogs = brain ? brain.deserializationCatalogs() : new List<ITileCatalog>();
     newPage.deserializeJson(json, catalogs);
@@ -96,7 +107,7 @@ export class BrainPageDef implements IBrainPageDef {
     }
     this.name_ = json.name;
     for (let i = 0; i < json.rules.size(); i++) {
-      const child = new BrainRuleDef(json.rules.get(i).ruleId);
+      const child = new BrainRuleDef(this.rng_, json.rules.get(i).ruleId);
       child.setPage(this);
       child.deserializeJson(json.rules.get(i), catalogs);
       this.children_.push(child);
@@ -105,7 +116,7 @@ export class BrainPageDef implements IBrainPageDef {
   }
 
   appendNewRule(): BrainRuleDef {
-    const rule = new BrainRuleDef();
+    const rule = new BrainRuleDef(this.rng_);
     this.children_.push(rule);
     rule.setPage(this);
     this.subscribeToRule_(rule);

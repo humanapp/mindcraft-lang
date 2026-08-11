@@ -26,7 +26,7 @@ before(() => {
 describe("BrainRuleDef", () => {
   test("clone resolves both global and brain-local tiles", () => {
     const brain = new BrainDef(services);
-    const page = new BrainPageDef();
+    const page = new BrainPageDef(services.app.rng);
     brain.addPage(page);
 
     const rule = page.appendNewRule() as BrainRuleDef;
@@ -51,7 +51,7 @@ describe("BrainRuleDef", () => {
     /** A brain of one page carrying `count` root rules. */
     function pageOfRules(count: number): { brain: BrainDef; page: BrainPageDef; rules: BrainRuleDef[] } {
       const brain = new BrainDef(services);
-      const page = new BrainPageDef();
+      const page = new BrainPageDef(services.app.rng);
       brain.addPage(page);
       const rules: BrainRuleDef[] = [];
       for (let i = 0; i < count; i++) rules.push(page.appendNewRule() as BrainRuleDef);
@@ -148,7 +148,7 @@ describe("BrainRuleDef", () => {
   describe("moveTo", () => {
     test("reorders siblings within page", () => {
       const brain = new BrainDef(services);
-      const page = new BrainPageDef();
+      const page = new BrainPageDef(services.app.rng);
       brain.addPage(page);
       const a = page.appendNewRule() as BrainRuleDef;
       const b = page.appendNewRule() as BrainRuleDef;
@@ -162,7 +162,7 @@ describe("BrainRuleDef", () => {
 
     test("moves page-level rule under another rule", () => {
       const brain = new BrainDef(services);
-      const page = new BrainPageDef();
+      const page = new BrainPageDef(services.app.rng);
       brain.addPage(page);
       const a = page.appendNewRule() as BrainRuleDef;
       const b = page.appendNewRule() as BrainRuleDef;
@@ -177,7 +177,7 @@ describe("BrainRuleDef", () => {
 
     test("moves child rule back to page level", () => {
       const brain = new BrainDef(services);
-      const page = new BrainPageDef();
+      const page = new BrainPageDef(services.app.rng);
       brain.addPage(page);
       const a = page.appendNewRule() as BrainRuleDef;
       const b = page.appendNewRule() as BrainRuleDef;
@@ -191,7 +191,7 @@ describe("BrainRuleDef", () => {
 
     test("no-op when moving to current location", () => {
       const brain = new BrainDef(services);
-      const page = new BrainPageDef();
+      const page = new BrainPageDef(services.app.rng);
       brain.addPage(page);
       const a = page.appendNewRule() as BrainRuleDef;
       const b = page.appendNewRule() as BrainRuleDef;
@@ -203,7 +203,7 @@ describe("BrainRuleDef", () => {
 
     test("rejects moving rule into its own descendant", () => {
       const brain = new BrainDef(services);
-      const page = new BrainPageDef();
+      const page = new BrainPageDef(services.app.rng);
       brain.addPage(page);
       const a = page.appendNewRule() as BrainRuleDef;
       const b = page.appendNewRule() as BrainRuleDef;
@@ -216,7 +216,7 @@ describe("BrainRuleDef", () => {
 
     test("rejects when both or neither destination provided", () => {
       const brain = new BrainDef(services);
-      const page = new BrainPageDef();
+      const page = new BrainPageDef(services.app.rng);
       brain.addPage(page);
       const a = page.appendNewRule() as BrainRuleDef;
 
@@ -225,7 +225,7 @@ describe("BrainRuleDef", () => {
 
     test("subtree moves with the rule", () => {
       const brain = new BrainDef(services);
-      const page = new BrainPageDef();
+      const page = new BrainPageDef(services.app.rng);
       brain.addPage(page);
       const a = page.appendNewRule() as BrainRuleDef;
       const b = page.appendNewRule() as BrainRuleDef;
@@ -249,7 +249,7 @@ describe("BrainRuleDef", () => {
      */
     function pageWithNestedChild(): { page: BrainPageDef; parent: BrainRuleDef; child: BrainRuleDef } {
       const brain = new BrainDef(services);
-      const page = new BrainPageDef();
+      const page = new BrainPageDef(services.app.rng);
       brain.addPage(page);
       const parent = page.appendNewRule() as BrainRuleDef;
       const child = parent.appendNewRule() as BrainRuleDef;
