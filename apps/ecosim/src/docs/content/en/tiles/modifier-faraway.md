@@ -45,10 +45,10 @@ in rather than reaching further out.
       ],
       "do": [
         "tile.actuator->actuator.move",
-        "tile.modifier->modifier.movement.toward"
+        "tile.modifier->modifier.movement.awayfrom"
       ],
       "children": [],
-      "comment": "Move toward a far away carnivore."
+      "comment": "When a carnivore shows up in the distance, run the other way while there is still time."
     }
   ],
   "catalog": []

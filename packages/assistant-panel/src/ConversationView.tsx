@@ -38,6 +38,15 @@ const bottomSlackPx = 24;
 /** Animation offsets of the presence mark's dots, in the order they are drawn. */
 const presenceDotDelays = ["0ms", "160ms", "320ms"] as const;
 
+/**
+ * The bubble every line of the entity's own voice is drawn in: its narration,
+ * its note about how a turn ended, and its presence mark.
+ */
+const entityBubbleClasses = "max-w-[85%] self-start rounded-[14px] rounded-bl-[4px] bg-brain-ink/8 px-3 py-2";
+
+/** The bubble what the person asked is drawn in, standing at the side of the transcript they speak from. */
+const askBubbleClasses = "max-w-[85%] self-end rounded-[14px] rounded-br-[4px] bg-primary/20 px-3 py-2";
+
 /** One thing a turn did, as the transcript lays it out. */
 type LaidOutStep =
   | { readonly kind: "narration"; readonly text: string }
@@ -98,7 +107,7 @@ export function intentKeyAction(
 function failureNote(code: ConversationTurnFailureCode): string {
   switch (code) {
     case ConversationTurnFailureCode.NotConnected:
-      return "I cannot hear you right now. Try again in a moment?";
+      return "I could not hear you just then.";
     case ConversationTurnFailureCode.Disconnected:
       return "I lost my connection, so I stopped there.";
     case ConversationTurnFailureCode.ToolServingFailed:
@@ -123,7 +132,8 @@ function endingNote(ending: ConversationTurnEnding): string | undefined {
 
 /** Whether `ending` is the entity breaking off mid-answer, which offers to be asked again. */
 function brokeOff(ending: ConversationTurnEnding): boolean {
-  return ending.kind === "end" && ending.code === RelayTurnEndCode.Truncated;
+  if (ending.kind === "failure") return ending.code === ConversationTurnFailureCode.ToolServingFailed;
+  return ending.code === RelayTurnEndCode.Truncated;
 }
 
 /** How the session's own state reads while it is not simply ready. */
@@ -133,10 +143,18 @@ function connectionNote(status: AssistantStatus): string | undefined {
   return undefined;
 }
 
-/** The entity's wordless presence, standing at the live edge of a turn that is still running. */
+/**
+ * The entity's wordless presence, standing at the live edge of a turn that is
+ * still running: the bubble its next narration will arrive in, still forming.
+ */
 function PresenceMark() {
   return (
-    <div data-assistant-presence className="flex items-center gap-1 py-1" aria-hidden="true">
+    <div
+      data-assistant-bubble="entity"
+      data-assistant-presence
+      className={`${entityBubbleClasses} flex items-center gap-1`}
+      aria-hidden="true"
+    >
       {presenceDotDelays.map((delay) => (
         <span
           key={delay}
@@ -152,8 +170,10 @@ function PresenceMark() {
 function StepView({ step }: { step: LaidOutStep }) {
   if (step.kind === "narration") {
     return (
-      <div data-assistant-narration className="text-sm text-card-foreground">
-        <SafeMarkdown text={step.text} />
+      <div data-assistant-bubble="entity" className={entityBubbleClasses}>
+        <div data-assistant-narration className="text-sm text-card-foreground">
+          <SafeMarkdown text={step.text} />
+        </div>
       </div>
     );
   }
@@ -173,7 +193,11 @@ function StepView({ step }: { step: LaidOutStep }) {
 function EntryView({ entry, onAskAgain }: { entry: ConversationEntry; onAskAgain?: (() => void) | undefined }) {
   if (entry.kind === "user") {
     return (
-      <p data-assistant-entry="user" className="rounded-md bg-muted px-2 py-1.5 text-sm text-foreground">
+      <p
+        data-assistant-entry="user"
+        data-assistant-bubble="ask"
+        className={`${askBubbleClasses} text-sm text-foreground`}
+      >
         {entry.text}
       </p>
     );
@@ -181,16 +205,18 @@ function EntryView({ entry, onAskAgain }: { entry: ConversationEntry; onAskAgain
   const { ending } = entry;
   const note = ending ? endingNote(ending) : undefined;
   return (
-    <div data-assistant-entry="assistant" className="flex flex-col gap-1">
+    <div data-assistant-entry="assistant" className="flex flex-col items-start gap-2">
       {laidOut(entry.steps).map((step, at) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: a turn only ever appends, so a step keeps its position
         <StepView key={`step-${at}`} step={step} />
       ))}
       {ending && note && (
-        <div className="flex items-center gap-2">
-          <p data-assistant-ending={ending.code} className="text-xs text-muted-foreground">
-            {note}
-          </p>
+        <div className="flex w-full items-center gap-2">
+          <div data-assistant-bubble="entity" className={entityBubbleClasses}>
+            <p data-assistant-ending={ending.code} className="text-sm text-muted-foreground italic">
+              {note}
+            </p>
+          </div>
           {brokeOff(ending) && onAskAgain && (
             <button
               type="button"

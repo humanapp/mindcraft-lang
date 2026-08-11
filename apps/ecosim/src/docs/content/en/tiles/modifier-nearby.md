@@ -36,15 +36,15 @@ the count: 100, then 100 / sqrt(2) = 70.7, then 100 / sqrt(3) = 57.7.
       "version": 1,
       "when": [
         "tile.sensor->sensor.see",
-        "tile.modifier->modifier.actor_kind.carnivore",
+        "tile.modifier->modifier.actor_kind.plant",
         "tile.modifier->modifier.distance.nearby"
       ],
       "do": [
         "tile.actuator->actuator.move",
-        "tile.modifier->modifier.movement.awayfrom"
+        "tile.modifier->modifier.movement.toward"
       ],
       "children": [],
-      "comment": "Move away from a nearby carnivore."
+      "comment": "When a plant is close by, walk over to it -- lunch within reach."
     }
   ],
   "catalog": []

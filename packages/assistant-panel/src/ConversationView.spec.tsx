@@ -1,15 +1,20 @@
 /**
  * Pins the structure the conversation surface renders for each state a session
- * can be in: the order a turn's narration and status lines land in, how
- * repeated lines fold, what marks a turn that did not simply finish, when the
- * entity's presence stands at the live edge, which control the intent box
- * stands beside, what a lost session offers, and which lines read markup in
- * what they carry.
+ * can be in: the order a turn's narration and status lines land in, which
+ * container each of them is drawn in, how repeated lines fold, what marks a
+ * turn that did not simply finish, when the entity's presence stands at the
+ * live edge, which control the intent box stands beside, what a lost session
+ * offers, and which lines read markup in what they carry.
  */
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { ConversationEntry, ConversationRecord, ConversationToolCall } from "@mindcraft-lang/assistant-relay";
+import type {
+  ConversationEntry,
+  ConversationRecord,
+  ConversationToolCall,
+  ConversationTurnEnding,
+} from "@mindcraft-lang/assistant-relay";
 import {
   CONVERSATION_RECORD_VERSION,
   ConversationTurnFailureCode,
@@ -67,6 +72,14 @@ function render(overrides: Partial<ConversationViewProps> = {}): string {
   return renderToStaticMarkup(<ConversationView {...props} />);
 }
 
+/** A record where the person asked for something and the entity's turn ended on `ending`. */
+function asked(ending: ConversationTurnEnding): ConversationRecord {
+  return record([
+    { kind: "user", text: "make me hide" },
+    { kind: "assistant", steps: [], ending },
+  ]);
+}
+
 /** Matches an activity line standing at `kind`. */
 function activityLine(kind: string): RegExp {
   return new RegExp(`data-assistant-activity="${kind}"`);
@@ -81,6 +94,16 @@ function countOf(markup: string, pattern: RegExp): number {
 function laidOutLines(markup: string): string[] {
   const marks = markup.match(/data-assistant-(?:narration|activity|ending|presence)(?!-)(?:="[^"]*")?/g) ?? [];
   return marks.map((mark) => mark.replace(/^data-assistant-/, "").replace(/="true"$/, ""));
+}
+
+/** The kind of every bubble the transcript drew, in the order they were rendered. */
+function bubbleKinds(markup: string): string[] {
+  return [...markup.matchAll(/data-assistant-bubble="([^"]*)"/g)].map((match) => match[1] ?? "");
+}
+
+/** The kind of bubble the line marked `mark` is drawn inside, or `undefined` where no bubble holds it. */
+function bubbleAround(markup: string, mark: string): string | undefined {
+  return new RegExp(`data-assistant-bubble="([^"]*)"[^>]*>\\s*<[^>]*\\b${mark}\\b`).exec(markup)?.[1];
 }
 
 /** What the ending line marked `code` reads as, for comparing one ending against another. */
@@ -124,6 +147,36 @@ describe("a conversation with turns in it", () => {
     assert.match(markup, /data-assistant-entry="assistant"/);
     assert.match(markup, /data-assistant-narration/);
     assert.doesNotMatch(markup, /data-assistant-resting/);
+  });
+
+  test("stands what the person asked in its own kind of container, apart from what the entity said", () => {
+    const markup = render({
+      record: record([
+        { kind: "user", text: "I want you to run away" },
+        { kind: "assistant", steps: [{ kind: "narration", text: "I will watch for them first." }] },
+      ]),
+    });
+
+    assert.deepEqual(bubbleKinds(markup), ["ask", "entity"]);
+    assert.equal(bubbleAround(markup, "data-assistant-narration"), "entity");
+  });
+
+  test("draws each run of narration in a container of its own and leaves the activity between them bare", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "narration", text: "Starting with the seeing part." },
+            { kind: "toolCall", call: catalogRead },
+            { kind: "narration", text: "That one does not belong there." },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(laidOutLines(markup), ["narration", `activity="${ToolActivityKind.Read}"`, "narration"]);
+    assert.deepEqual(bubbleKinds(markup), ["entity", "entity"]);
   });
 
   test("lays narration and activity out in the order they arrived", () => {
@@ -287,19 +340,44 @@ describe("how a turn ended", () => {
     assert.equal(new Set(notes).size, codes.length, "no two failures read alike");
   });
 
-  test("offers to be asked again only where the entity broke off mid-answer", () => {
-    const brokeOff = record([
-      { kind: "user", text: "make me hide" },
-      { kind: "assistant", steps: [], ending: { kind: "end", code: RelayTurnEndCode.Truncated } },
-    ]);
-    const stopped = record([
-      { kind: "user", text: "make me hide" },
-      { kind: "assistant", steps: [], ending: { kind: "end", code: RelayTurnEndCode.Stopped } },
-    ]);
+  test("says how a turn ended in the same kind of container the entity speaks in", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [{ kind: "narration", text: "Looking." }],
+          ending: { kind: "end", code: RelayTurnEndCode.Truncated },
+        },
+      ]),
+    });
 
-    assert.match(render({ record: brokeOff, onAskAgain: () => {} }), /<button[^>]*data-assistant-ask-again/);
-    assert.doesNotMatch(render({ record: stopped, onAskAgain: () => {} }), /data-assistant-ask-again/);
-    assert.doesNotMatch(render({ record: brokeOff }), /data-assistant-ask-again/);
+    assert.deepEqual(bubbleKinds(markup), ["entity", "entity"]);
+    assert.equal(bubbleAround(markup, "data-assistant-ending"), bubbleAround(markup, "data-assistant-narration"));
+  });
+
+  test("offers to be asked again where the entity broke off mid-answer, and nowhere else", () => {
+    const truncated: ConversationTurnEnding = { kind: "end", code: RelayTurnEndCode.Truncated };
+    const invites: readonly ConversationTurnEnding[] = [
+      truncated,
+      { kind: "failure", code: ConversationTurnFailureCode.ToolServingFailed },
+    ];
+    const declines: readonly ConversationTurnEnding[] = [
+      { kind: "end", code: RelayTurnEndCode.Complete },
+      { kind: "end", code: RelayTurnEndCode.Stopped },
+      { kind: "end", code: RelayTurnEndCode.Failed },
+      { kind: "failure", code: ConversationTurnFailureCode.NotConnected },
+      { kind: "failure", code: ConversationTurnFailureCode.Disconnected },
+    ];
+
+    for (const ending of invites) {
+      const markup = render({ record: asked(ending), onAskAgain: () => {} });
+      assert.match(markup, /<button[^>]*data-assistant-ask-again/, ending.code);
+    }
+    for (const ending of declines) {
+      const markup = render({ record: asked(ending), onAskAgain: () => {} });
+      assert.doesNotMatch(markup, /data-assistant-ask-again/, ending.code);
+    }
+    assert.doesNotMatch(render({ record: asked(truncated) }), /data-assistant-ask-again/);
   });
 });
 
@@ -309,12 +387,13 @@ describe("the entity's presence while a turn runs", () => {
     { kind: "assistant", steps: [{ kind: "narration", text: "Looking." }] },
   ]);
 
-  test("stands at the end of the transcript while the turn is open", () => {
+  test("stands at the end of the transcript while the turn is open, in a container of the entity's own", () => {
     const markup = render({ status: AssistantStatus.TurnActive, record: running });
     const lines = laidOutLines(markup);
 
     assert.match(markup, /data-assistant-presence/);
     assert.equal(lines[lines.length - 1], "presence");
+    assert.deepEqual(bubbleKinds(markup), ["ask", "entity", "entity"]);
   });
 
   test("is gone once the turn is over, however it ended", () => {
