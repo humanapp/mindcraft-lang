@@ -9,7 +9,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { ConversationEntry, ConversationRecord, ConversationToolCall } from "@mindcraft-lang/assistant-relay";
-import { CONVERSATION_RECORD_VERSION, RelayTurnEndCode } from "@mindcraft-lang/assistant-relay";
+import {
+  CONVERSATION_RECORD_VERSION,
+  ConversationTurnFailureCode,
+  RelayTurnEndCode,
+} from "@mindcraft-lang/assistant-relay";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ConversationViewProps } from "./ConversationView";
 import { ConversationView } from "./ConversationView";
@@ -76,6 +80,13 @@ function countOf(markup: string, pattern: RegExp): number {
 function laidOutLines(markup: string): string[] {
   const marks = markup.match(/data-assistant-(?:narration|activity|ending|presence)(?!-)(?:="[^"]*")?/g) ?? [];
   return marks.map((mark) => mark.replace(/^data-assistant-/, "").replace(/="true"$/, ""));
+}
+
+/** What the ending line marked `code` reads as, for comparing one ending against another. */
+function endingNote(markup: string, code: string): string {
+  const note = new RegExp(`data-assistant-ending="${code}"[^>]*>([^<]*)<`).exec(markup)?.[1];
+  assert.ok(note !== undefined, `the view marks the ending ${code}`);
+  return note;
 }
 
 /** The send control's own tag, which carries whether it takes a click. */
@@ -224,8 +235,22 @@ describe("how a turn ended", () => {
       assert.match(markup, new RegExp(`data-assistant-ending="${code}"`), code);
     }
 
-    const cut = record([{ kind: "assistant", steps: [], ending: { kind: "failure", code: "disconnected" } }]);
-    assert.match(render({ record: cut }), /data-assistant-ending="disconnected"/);
+    for (const code of Object.values(ConversationTurnFailureCode)) {
+      const cut = record([{ kind: "assistant", steps: [], ending: { kind: "failure", code } }]);
+      assert.match(render({ record: cut }), new RegExp(`data-assistant-ending="${code}"`), code);
+    }
+  });
+
+  test("says something of its own about each way a turn was cut short", () => {
+    const codes = Object.values(ConversationTurnFailureCode);
+
+    const notes = codes.map((code) => {
+      const cut = record([{ kind: "assistant", steps: [], ending: { kind: "failure", code } }]);
+      return endingNote(render({ record: cut }), code);
+    });
+
+    for (const [at, note] of notes.entries()) assert.ok(note.length > 0, codes[at]);
+    assert.equal(new Set(notes).size, codes.length, "no two failures read alike");
   });
 
   test("offers to be asked again only where the entity broke off mid-answer", () => {

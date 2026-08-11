@@ -1,7 +1,12 @@
 import type { AuthoringWorkspace } from "@mindcraft-lang/assistant-bridge";
 import type { ToolCallMediator } from "@mindcraft-lang/assistant-bridge/relay";
-import { serveToolCalls } from "@mindcraft-lang/assistant-bridge/relay";
-import type { ConversationTurnEnding, RelayToolManifest, RelayToolResultBatch } from "@mindcraft-lang/assistant-relay";
+import { serveToolCalls, unservedToolResults } from "@mindcraft-lang/assistant-bridge/relay";
+import type {
+  ConversationTurnEnding,
+  RelayToolCallBatch,
+  RelayToolManifest,
+  RelayToolResultBatch,
+} from "@mindcraft-lang/assistant-relay";
 import { ASSISTANT_RELAY_PROTOCOL_VERSION, ConversationTurnFailureCode } from "@mindcraft-lang/assistant-relay";
 import type { ConversationStore, ConversationUpdate } from "../conversation/store";
 import { emptyConversationStore, withActiveBrain, withUpdate } from "../conversation/store";
@@ -10,6 +15,16 @@ import type { SessionStatuses } from "./sessions";
 import { AssistantStatus, emptySessions, sessionStatus, withSessionStatus } from "./sessions";
 
 export { AssistantStatus } from "./sessions";
+
+/**
+ * Milliseconds one attempt to open a session waits for the service to accept
+ * it. An attempt that runs out closes whatever socket it opened and leaves the
+ * brain holding no session.
+ */
+export const sessionOpenTimeoutMs = 8000;
+
+/** What a bounded wait answers with once it has run out. */
+const runOut = Symbol("session open timeout");
 
 /** What the machine exposes to whatever renders it. */
 export interface AssistantMachineState {
@@ -29,7 +44,8 @@ export interface AssistantMachineOptions {
   /**
    * The live workspace a brain's tool calls run against. Called once per served
    * batch with the brain the running turn belongs to, which is not necessarily
-   * the active one. Throwing fails that batch's turn and keeps the session.
+   * the active one. Throwing answers every call of that batch with an error and
+   * leaves the turn running.
    */
   readonly workspace: (brainId: string) => AuthoringWorkspace;
   /** Consulted before each call in a batch; every call runs when absent. */
@@ -137,6 +153,14 @@ export class AssistantMachine {
     this.commit({ store: withUpdate(this.current.store, brainId, update) });
   }
 
+  /** Record every call of `asked` on `brainId`'s turn with the outcome `answered` gave it. */
+  private recordBatch(brainId: string, asked: RelayToolCallBatch, answered: RelayToolResultBatch): void {
+    for (const [index, request] of asked.requests.entries()) {
+      const outcome = answered.results[index]!.outcome;
+      this.record(brainId, { kind: "toolCall", call: { name: request.name, input: request.input, outcome } });
+    }
+  }
+
   private dropChannel(brainId: string): void {
     this.channels.get(brainId)?.close();
     this.channels.delete(brainId);
@@ -180,7 +204,10 @@ export class AssistantMachine {
         return undefined;
       }
       this.opening.delete(brainId);
-      if (channel) this.channels.set(brainId, channel);
+      if (channel) {
+        this.channels.set(brainId, channel);
+        this.dropWhenClosed(brainId, channel);
+      }
       this.settle(brainId, channel ? AssistantStatus.Ready : AssistantStatus.Failed);
       return channel;
     });
@@ -189,23 +216,55 @@ export class AssistantMachine {
     return attempt;
   }
 
-  /** One accepted relay session, or `undefined` when the service refused it or could not be reached. */
+  /**
+   * Give `brainId` up as holding no session the moment `channel` closes,
+   * leaving a turn of its own running to finish on its own terms. A channel the
+   * brain has already given up for another leaves the machine untouched.
+   */
+  private dropWhenClosed(brainId: string, channel: AssistantChannel): void {
+    void channel.closed.then(() => {
+      if (this.channels.get(brainId) !== channel) return;
+      this.channels.delete(brainId);
+      this.settle(brainId, AssistantStatus.Idle);
+    });
+  }
+
+  /**
+   * One accepted relay session, or `undefined` when the service refused it,
+   * could not be reached, or did not accept it within
+   * {@link sessionOpenTimeoutMs}. An attempt that runs out closes the socket it
+   * opened, however late that socket arrives.
+   */
   private async handshake(): Promise<AssistantChannel | undefined> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const runsOut = new Promise<typeof runOut>((resolve) => {
+      timer = setTimeout(() => resolve(runOut), sessionOpenTimeoutMs);
+    });
     try {
-      const channel = await this.options.connect();
-      channel.send({
+      const connecting = this.options.connect();
+      const connected = await Promise.race([connecting, runsOut]);
+      if (connected === runOut) {
+        void connecting.then(
+          (late) => late.close(),
+          () => {}
+        );
+        return undefined;
+      }
+      connected.send({
         type: "session:connect",
         protocolVersion: ASSISTANT_RELAY_PROTOCOL_VERSION,
         manifest: this.options.manifest,
       });
-      const opening = await channel.next();
-      if (opening.type !== "session:accepted") {
-        channel.close();
+      const opening = await Promise.race([connected.next(), runsOut]);
+      if (opening === runOut || opening.type !== "session:accepted") {
+        connected.close();
         return undefined;
       }
-      return channel;
+      return connected;
     } catch {
       return undefined;
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -243,13 +302,20 @@ export class AssistantMachine {
           try {
             served = await serveToolCalls(this.options.workspace(brainId), message, this.options.mediate);
           } catch {
-            this.finish(brainId, { kind: "failure", code: ConversationTurnFailureCode.ToolServingFailed });
-            return;
+            const unserved = unservedToolResults(message);
+            this.recordBatch(brainId, message, unserved);
+            try {
+              channel.send(unserved);
+            } catch {
+              // A session that cannot be told the batch went unserved is left
+              // waiting for it, so it goes with the turn.
+              this.dropChannel(brainId);
+              this.finish(brainId, { kind: "failure", code: ConversationTurnFailureCode.ToolServingFailed });
+              return;
+            }
+            break;
           }
-          for (const [index, request] of message.requests.entries()) {
-            const outcome = served.results[index]!.outcome;
-            this.record(brainId, { kind: "toolCall", call: { name: request.name, input: request.input, outcome } });
-          }
+          this.recordBatch(brainId, message, served);
           channel.send(served);
           break;
         }

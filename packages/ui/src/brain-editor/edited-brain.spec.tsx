@@ -18,6 +18,9 @@ before(() => {
   services = __test__createBrainServices();
 });
 
+/** A reveal for an edited brain stood outside a rendered editor. */
+function unwatchedReveal(): void {}
+
 /** Render a probe under `value` and hand back what the probe read. */
 function readThrough(value: EditedBrain | undefined): EditedBrain | undefined {
   let read: EditedBrain | undefined;
@@ -35,7 +38,11 @@ function readThrough(value: EditedBrain | undefined): EditedBrain | undefined {
 
 describe("the brain a tenant is handed", () => {
   test("is the working copy and the history it was stood with", () => {
-    const edited: EditedBrain = { brainDef: BrainDef.emptyBrainDef(services), history: new BrainCommandHistory() };
+    const edited: EditedBrain = {
+      brainDef: BrainDef.emptyBrainDef(services),
+      history: new BrainCommandHistory(),
+      reveal: unwatchedReveal,
+    };
 
     const read = readThrough(edited);
 
@@ -46,13 +53,21 @@ describe("the brain a tenant is handed", () => {
   test("names the brain being edited by the working copy's id", () => {
     const source = BrainDef.emptyBrainDef(services);
 
-    const read = readThrough({ brainDef: source.workingCopy(), history: new BrainCommandHistory() });
+    const read = readThrough({
+      brainDef: source.workingCopy(),
+      history: new BrainCommandHistory(),
+      reveal: unwatchedReveal,
+    });
 
     assert.equal(read?.brainDef.id(), source.id());
   });
 
   test("takes an edit run through it, which the history takes back", () => {
-    const edited: EditedBrain = { brainDef: BrainDef.emptyBrainDef(services), history: new BrainCommandHistory() };
+    const edited: EditedBrain = {
+      brainDef: BrainDef.emptyBrainDef(services),
+      history: new BrainCommandHistory(),
+      reveal: unwatchedReveal,
+    };
     const read = readThrough(edited);
     const pagesBefore = edited.brainDef.pages().size();
 

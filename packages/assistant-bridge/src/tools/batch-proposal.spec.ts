@@ -7,7 +7,7 @@ import { batchReplayStepMs, proposeEdit, proposeEditBatch } from "./propose-edit
 import type { ProjectRule } from "./read-project.js";
 import { readProject } from "./read-project.js";
 import type { ProposeEditInput } from "./tool-schemas.js";
-import type { AuthoringWorkspace } from "./workspace.js";
+import type { AuthoringWorkspace, LandedEdit } from "./workspace.js";
 import { createAuthoringWorkspace, locateRules } from "./workspace.js";
 
 /** Tiles the fake target's brains are authored from. */
@@ -385,5 +385,72 @@ describe("a batch runs through the same path a single proposal does", () => {
     assert.equal(rejected.ok, false);
     assert.equal(rejected.commandIndex, undefined);
     assert.equal(rejected.code, ParseDiagCode.TilePlacementSideMismatch);
+  });
+});
+
+describe("what a watching workspace is told about landed edits", () => {
+  /** A fresh workspace whose landed edits are gathered as they are reported. */
+  function watched(): { readonly ws: AuthoringWorkspace; readonly landed: LandedEdit[] } {
+    const landed: LandedEdit[] = [];
+    return { ws: { ...workspace(), onEditLanded: (edit) => landed.push(edit) }, landed };
+  }
+
+  /** Durable id of the page at `pageIndex` of `ws`. */
+  function pageIdAt(ws: AuthoringWorkspace, pageIndex: number): string {
+    return ws.brainDef.pages().get(pageIndex).pageId();
+  }
+
+  test("names the page and rule one accepted proposal landed on", () => {
+    const { ws, landed } = watched();
+    const ruleId = firstRuleId(ws);
+
+    const result = proposeEdit(ws, { op: "placeTiles", ruleId, side: "when", tileIds: [tiles.sensor] });
+
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.deepEqual(landed, [{ pageId: pageIdAt(ws, 0), ruleId }]);
+  });
+
+  test("names the page a rule made away from the shown one stands on", () => {
+    const { ws, landed } = watched();
+    ws.brainDef.appendNewPage();
+
+    const result = proposeEdit(ws, { op: "addRule", pageIndex: 1 });
+
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(landed.length, 1);
+    assert.equal(landed[0]?.pageId, pageIdAt(ws, 1));
+  });
+
+  test("says nothing about a proposal the policy refused", async () => {
+    const { ws, landed } = watched();
+    const ruleId = firstRuleId(ws);
+
+    const result = await proposeEditBatch(ws, {
+      op: "batch",
+      commands: [
+        { op: "placeTiles", ruleId, side: "when", tileIds: [tiles.sensor] },
+        { op: "placeTiles", ruleId, side: "do", tileIds: [tiles.actuator, tiles.parameter, tiles.nil] },
+      ],
+    });
+
+    assert.equal(result.ok, false, JSON.stringify(result));
+    assert.deepEqual(landed, []);
+  });
+
+  test("names one place per step of an accepted batch's replay, in the order the steps land", async () => {
+    const { ws, landed } = watched();
+    const ruleId = firstRuleId(ws);
+
+    const result = await proposeEditBatch(ws, { op: "batch", commands: twoRuleBuild(ruleId) });
+
+    assert.equal(result.ok, true, JSON.stringify(result));
+    const pageId = pageIdAt(ws, 0);
+    const madeRuleId = locateRules(ws.brainDef)[1]!.ruleId;
+    assert.deepEqual(landed, [
+      { pageId, ruleId },
+      { pageId, ruleId },
+      { pageId, ruleId: madeRuleId },
+      { pageId, ruleId: madeRuleId },
+    ]);
   });
 });

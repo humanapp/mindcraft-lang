@@ -52,7 +52,7 @@ import { ArmedTargetProvider, useArmedTargetState } from "./ArmedTargetContext";
 import { keyboardIsInCandidateStrip } from "./BrainCandidateStrip";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainEditorSidePanel } from "./BrainEditorSidePanel";
-import { BrainPageEditor } from "./BrainPageEditor";
+import { BrainPageEditor, type RuleReveal } from "./BrainPageEditor";
 import { BrainPrintDialog } from "./BrainPrintDialog";
 import { LatchedBrainRulesRegion } from "./BrainRulesRegion";
 import {
@@ -62,7 +62,7 @@ import {
   onBrainClipboardChanged,
 } from "./brain-clipboard";
 import { hasDiscardableEdits } from "./discard-guard";
-import { EditedBrainProvider } from "./EditedBrainContext";
+import { type EditedBrainPlace, EditedBrainProvider } from "./EditedBrainContext";
 import { kDialogChromeLayer } from "./editor-layers";
 import { deriveEditorMode, type EditorMode } from "./editor-mode";
 import {
@@ -147,6 +147,22 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
 
   // Command history for undo/redo
   const [commandHistory] = useState(() => new BrainCommandHistory());
+  // The rule the editor has been asked to bring into view, which the page
+  // showing it scrolls to as it renders.
+  const [revealRule, setRevealRule] = useState<RuleReveal | undefined>(undefined);
+  const brainDefRef = useRef(brainDef);
+  brainDefRef.current = brainDef;
+
+  const reveal = useCallback((place: EditedBrainPlace) => {
+    const pages = brainDefRef.current?.pages();
+    if (pages === undefined) return;
+    for (let index = 0; index < pages.size(); index++) {
+      if ((pages.get(index) as BrainPageDef).pageId() !== place.pageId) continue;
+      setCurrentPageNumber(index + 1);
+      setRevealRule({ ruleId: place.ruleId });
+      return;
+    }
+  }, []);
   // Armed target for the tile picker, shared with the rule and tile editors.
   const armedTarget = useArmedTargetState();
   const rulePickup = useRulePickupState();
@@ -236,6 +252,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setOpeningDepth(commandHistory.undoDepth());
       setBrainReplaced(false);
       setIsConfirmingDiscard(false);
+      setRevealRule(undefined);
     } else if (!isOpen) {
       // Clear working copy when dialog closes
       setBrainDef(undefined);
@@ -243,6 +260,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setOpeningDepth(0);
       setBrainReplaced(false);
       setIsConfirmingDiscard(false);
+      setRevealRule(undefined);
     }
   }, [isOpen, srcBrainDef, commandHistory]);
 
@@ -314,11 +332,12 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
 
   const holdsDiscardableEdits = hasDiscardableEdits({ undoDepth, openingDepth, brainReplaced });
 
-  // What the side region's tenant edits: the working copy standing right now
-  // and the history the editor's own undo runs through.
+  // What the side region's tenant edits: the working copy standing right now,
+  // the history the editor's own undo runs through, and the way into the rule
+  // an edit landed on.
   const editedBrain = useMemo(
-    () => (brainDef === undefined ? undefined : { brainDef, history: commandHistory }),
-    [brainDef, commandHistory]
+    () => (brainDef === undefined ? undefined : { brainDef, history: commandHistory, reveal }),
+    [brainDef, commandHistory, reveal]
   );
 
   const rulesRegion = (
@@ -331,6 +350,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
               pageDef={currentPageDef as BrainPageDef}
               commandHistory={commandHistory}
               zoom={zoom}
+              revealRule={revealRule}
             />
           </RulePickupProvider>
         </ArmedTargetProvider>

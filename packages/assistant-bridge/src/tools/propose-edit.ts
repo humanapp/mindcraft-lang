@@ -446,6 +446,15 @@ function refusalFor(
   };
 }
 
+/** Tell `workspace`'s watcher that an edit has just landed on `located`, where the document now holds it. */
+function reportLanded(workspace: AuthoringWorkspace, located: RuleRef): void {
+  const watcher = workspace.onEditLanded;
+  if (watcher === undefined) return;
+  const pageId = located.rule.page()?.pageId();
+  if (pageId === undefined) return;
+  watcher({ pageId, ruleId: located.ruleId });
+}
+
 /** How an applied edit is kept or taken back once the policy has judged it. */
 interface EditTransaction {
   /** Leave the applied commands in the document and in the history. */
@@ -473,6 +482,7 @@ function decideApplied(
   }
 
   transaction.keep();
+  reportLanded(workspace, located);
   return {
     ok: true,
     rule: readRule(located.rule, workspace.environment.appServices.localizer),
@@ -601,11 +611,13 @@ export async function proposeEditBatch(
   const standing = standingRules(workspace, input);
   const before = proposalDiagnostics(workspace, standing);
 
-  const applied: BrainCommand[] = [];
+  // Each editor command, under the index of the batch command that built it, so
+  // the replay can say which rule the step it just took touched.
+  const applied: { readonly command: BrainCommand; readonly at: number }[] = [];
   const touched: RuleRef[] = [];
   const made = new Map<number, RuleRef>();
   const undoApplied = () => {
-    for (let i = applied.length - 1; i >= 0; i--) applied[i]?.undo();
+    for (let i = applied.length - 1; i >= 0; i--) applied[i]?.command.undo();
   };
   const rollBack = () => {
     undoApplied();
@@ -627,7 +639,7 @@ export async function proposeEditBatch(
 
     for (const editorCommand of built.commands) {
       editorCommand.execute();
-      applied.push(editorCommand);
+      applied.push({ command: editorCommand, at: index });
     }
 
     const located = built.resolveRule();
@@ -649,9 +661,11 @@ export async function proposeEditBatch(
   }
 
   workspace.history.beginBatch(`Apply ${input.commands.length} edits`);
-  for (const [index, command] of applied.entries()) {
+  for (const [index, step] of applied.entries()) {
     if (index > 0) await pause(batchReplayStepMs);
-    workspace.history.executeCommand(command);
+    workspace.history.executeCommand(step.command);
+    const landedOn = touched[step.at];
+    if (landedOn) reportLanded(workspace, landedOn);
   }
   workspace.history.endBatch();
 

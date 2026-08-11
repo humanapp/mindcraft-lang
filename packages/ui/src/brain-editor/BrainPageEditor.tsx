@@ -37,10 +37,20 @@ import { useRulePickup } from "./RulePickupContext";
 import { RuleSelectionProvider } from "./RuleSelectionContext";
 import { type RevisionRuleNode, ruleRevisions } from "./rule-revision";
 
+/**
+ * One ask to bring a rule into view. Each ask is its own object, so asking for
+ * the same rule again brings it into view again.
+ */
+export interface RuleReveal {
+  readonly ruleId: string;
+}
+
 interface BrainPageEditorProps {
   pageDef: BrainPageDef;
   commandHistory: BrainCommandHistory;
   zoom?: number;
+  /** The rule to bring into view; absent while nothing has been asked for. */
+  revealRule?: RuleReveal | undefined;
 }
 
 type FlattenedRule = {
@@ -175,7 +185,7 @@ function restingPlace(ruleDef: BrainRuleDef, direction: RuleMoveDirection, pageD
 }
 
 /** Renders the rules of a single brain page as a flattened, indented list of {@link BrainRuleEditor} rows. */
-export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPageEditorProps) {
+export function BrainPageEditor({ pageDef, commandHistory, zoom = 1, revealRule }: BrainPageEditorProps) {
   // Bumped by every change the page can see, which re-reads the rules the page
   // holds and the revision each of them stands at. The count itself is read for
   // nothing; a rule recomputes from its own revision, not from this.
@@ -399,6 +409,15 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1 }: BrainPage
     const handle = containerRef.current?.querySelector<HTMLElement>(`[data-rule-handle="${steppedRuleIdRef.current}"]`);
     handle?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [stepCount]);
+
+  // Brings the handle of the rule that was asked for into view, scrolling by the
+  // least that puts it there and leaving the keyboard and the selection where
+  // they rest.
+  useLayoutEffect(() => {
+    if (revealRule === undefined) return;
+    const handle = containerRef.current?.querySelector<HTMLElement>(`[data-rule-handle="${revealRule.ruleId}"]`);
+    handle?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [revealRule]);
 
   /**
    * Takes `ruleId` one step in `direction` and reads out where it came to rest,

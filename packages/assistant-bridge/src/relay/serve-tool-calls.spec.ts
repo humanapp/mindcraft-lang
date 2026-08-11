@@ -4,10 +4,12 @@ import type { RelayToolCallRequest, RelayToolResult } from "@mindcraft-lang/assi
 import { correlateToolResults, RelayDeclineCode, RelayTakeoverCode } from "@mindcraft-lang/assistant-relay";
 import { createRelayLoopback, RelayLoopbackClosed } from "@mindcraft-lang/assistant-relay/testing";
 import { createTargetAdapter, ruleIdAt } from "../testing/index.js";
+import type { ToolCallError } from "../tools/dispatch.js";
+import { ToolCallErrorCode } from "../tools/dispatch.js";
 import { readProject } from "../tools/read-project.js";
 import type { AuthoringWorkspace } from "../tools/workspace.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";
-import { serveToolCalls } from "./serve-tool-calls.js";
+import { serveToolCalls, unservedToolResults } from "./serve-tool-calls.js";
 
 /** Tiles the fake target's brains are authored from. */
 const tiles = {
@@ -155,5 +157,22 @@ describe("serving a relay tool-call batch", () => {
     );
     assert.deepEqual(rule?.do, [], "the call that never ran applied nothing");
     assert.equal(ws.history.undoDepth(), 1, "the document rests on one undoable edit");
+  });
+});
+
+describe("answering a batch that could not be served at all", () => {
+  test("answers every request the batch asked, correlated one for one", () => {
+    const batch = requests({ name: "read_project", input: {} }, { name: "compile", input: {} });
+
+    const unserved = unservedToolResults({ type: "turn:toolCalls", requests: batch });
+
+    const correlation = correlateToolResults(batch, unserved.results);
+    assert.equal(correlation.ok, true);
+    assert.equal(unserved.type, "turn:toolResults");
+    for (const result of unserved.results) {
+      assert.ok(result.outcome.kind === "ok", "the answer is an outcome the wire carries");
+      assert.equal(result.outcome.isError, true);
+      assert.equal((result.outcome.payload as ToolCallError).error, ToolCallErrorCode.ServingFailed);
+    }
   });
 });

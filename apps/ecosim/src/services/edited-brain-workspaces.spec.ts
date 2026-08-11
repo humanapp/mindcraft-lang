@@ -16,7 +16,7 @@ import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainCommandHistory, BrainDef } from "@mindcraft-lang/core/brain/model";
-import type { EditedBrain } from "@mindcraft-lang/ui";
+import type { EditedBrain, EditedBrainPlace } from "@mindcraft-lang/ui";
 import { createEcosimModule } from "@/brain/index";
 import { TileIds } from "@/brain/tileids";
 import { createTargetAdapter } from "@/rehearsal/adapter";
@@ -65,11 +65,12 @@ function projectBrain(stand: AppStand, name: string): BrainDef {
   return BrainDef.emptyBrainDef(stand.environment.brainServices, name);
 }
 
-/** The working copy and history an editor opened on `source` stands. */
-function editorOpenedOn(stand: AppStand, source: BrainDef): EditedBrain {
+/** The working copy, history, and reveal an editor opened on `source` stands. */
+function editorOpenedOn(stand: AppStand, source: BrainDef, reveal: EditedBrain["reveal"] = () => {}): EditedBrain {
   return {
     brainDef: source.workingCopy(List.from(stand.environment.tileCatalogs())),
     history: new BrainCommandHistory(),
+    reveal,
   };
 }
 
@@ -182,6 +183,21 @@ describe("a turn's edits served over the standing working copy", () => {
     assert.deepEqual(ruleSideTileIds(edited.brainDef, "when"), []);
     assert.equal(edited.history.canUndo(), false);
     assert.deepEqual(ruleSideTileIds(source, "when"), [], "the project's own brain takes no edit of the turn's");
+  });
+
+  test("tell the editor's reveal the page and rule each of them landed on", async () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+    const revealed: EditedBrainPlace[] = [];
+    const edited = editorOpenedOn(stand, source, (place) => revealed.push(place));
+    stand.workspaces.setEditedBrain(edited);
+
+    await serveAuthoring(stand.workspaces.workspaceFor(source.id()));
+
+    const page = edited.brainDef.pages().get(0) as BrainPageDef;
+    const rule = page.children().get(0) as BrainRuleDef;
+    const place = { pageId: page.pageId(), ruleId: rule.ruleId() };
+    assert.deepEqual(revealed, [place, place]);
   });
 
   test("stop landing anywhere once the editor is gone", async () => {

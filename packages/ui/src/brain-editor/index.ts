@@ -50,6 +50,7 @@ export { BrainEditorProvider, useBrainEditorConfig, useLocalizer, useTr } from "
 export type { BrainEditorDialogProps } from "./BrainEditorDialog";
 // Components
 export { BrainEditorDialog } from "./BrainEditorDialog";
+export type { RuleReveal } from "./BrainPageEditor";
 export { BrainPageEditor } from "./BrainPageEditor";
 export { BrainPrintDialog } from "./BrainPrintDialog";
 export { BrainPrintTextView } from "./BrainPrintTextView";
@@ -68,7 +69,7 @@ export { CreateLiteralDialog } from "./CreateLiteralDialog";
 export { CreateVariableDialog } from "./CreateVariableDialog";
 export { DisplayFormatPicker } from "./DisplayFormatPicker";
 // What the side region's tenant edits: the standing working copy and its history
-export type { EditedBrain } from "./EditedBrainContext";
+export type { EditedBrain, EditedBrainPlace } from "./EditedBrainContext";
 export { EditedBrainProvider, useEditedBrain } from "./EditedBrainContext";
 export { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
 export type { EditorArmingFacts, EditorMode, EditorModeFacts } from "./editor-mode";

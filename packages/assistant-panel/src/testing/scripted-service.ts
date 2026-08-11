@@ -25,6 +25,10 @@ export interface ScriptedTurn {
 export interface ScriptedService {
   /** When set, the handshake is refused with this code and no turn is played. */
   readonly refusal?: RelayRefusalCode;
+  /** When set, the handshake is read and never answered, and the session is left standing open. */
+  readonly silent?: boolean;
+  /** When set, the session is closed as soon as the handshake has been accepted, before any turn. */
+  readonly closesWhenIdle?: boolean;
   readonly turns?: readonly ScriptedTurn[];
 }
 
@@ -95,6 +99,7 @@ export async function runScriptedService(loopback: RelayLoopback, script: Script
     for (;;) {
       const message = await service.next();
       if (message.type === "session:connect") {
+        if (script.silent) return;
         if (script.refusal) {
           service.send({
             type: "session:refused",
@@ -104,6 +109,10 @@ export async function runScriptedService(loopback: RelayLoopback, script: Script
           return;
         }
         service.send({ type: "session:accepted", sessionId: scriptedSessionId });
+        if (script.closesWhenIdle) {
+          service.close();
+          return;
+        }
         continue;
       }
       if (message.type !== "session:userMessage") continue;

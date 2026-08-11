@@ -4,7 +4,8 @@ import type {
   ConversationTurnEnding,
   ConversationTurnStep,
 } from "@mindcraft-lang/assistant-relay";
-import { RelayTurnEndCode } from "@mindcraft-lang/assistant-relay";
+import { ConversationTurnFailureCode, RelayTurnEndCode } from "@mindcraft-lang/assistant-relay";
+import { kBrainDeskFill } from "@mindcraft-lang/ui/brain-editor/brain-desk";
 import { useEffect, useRef } from "react";
 import type { ToolActivity } from "./conversation/activity";
 import { toolActivity } from "./conversation/activity";
@@ -70,9 +71,21 @@ function laidOut(steps: readonly ConversationTurnStep[]): LaidOutStep[] {
   return lines;
 }
 
+/** How a turn cut short before the service could end it reads, by what cut it. */
+function failureNote(code: ConversationTurnFailureCode): string {
+  switch (code) {
+    case ConversationTurnFailureCode.NotConnected:
+      return "I cannot hear you right now. Try again in a moment?";
+    case ConversationTurnFailureCode.Disconnected:
+      return "I lost my connection, so I stopped there.";
+    case ConversationTurnFailureCode.ToolServingFailed:
+      return "Something went wrong while I was working, so I stopped there. Ask me again?";
+  }
+}
+
 /** How a turn that did not simply finish reads, and `undefined` for one that did. */
 function endingNote(ending: ConversationTurnEnding): string | undefined {
-  if (ending.kind === "failure") return "I lost my connection, so I stopped there.";
+  if (ending.kind === "failure") return failureNote(ending.code);
   switch (ending.code) {
     case RelayTurnEndCode.Complete:
       return undefined;
@@ -200,7 +213,10 @@ export function ConversationView(props: ConversationViewProps) {
   });
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+    <div
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border"
+      style={{ background: kBrainDeskFill }}
+    >
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <span className="h-8 w-8 shrink-0 rounded-full border border-border bg-muted" aria-hidden="true" />
         <span data-assistant-entity className="truncate text-sm font-semibold text-card-foreground">
@@ -214,7 +230,7 @@ export function ConversationView(props: ConversationViewProps) {
       >
         {entries.length === 0 ? (
           <p data-assistant-resting className="text-sm text-muted-foreground">
-            Tell me what you want me to do.
+            Hi! What should we build?
           </p>
         ) : (
           entries.map((entry, at) => (
@@ -248,8 +264,8 @@ export function ConversationView(props: ConversationViewProps) {
           rows={2}
           value={intent}
           onChange={(event) => onIntentChange(event.target.value)}
-          aria-label="What you want me to do"
-          placeholder="Tell me what to do"
+          aria-label="What we should build"
+          placeholder="Tell me your idea..."
         />
         {running ? (
           <button

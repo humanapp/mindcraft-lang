@@ -5,7 +5,8 @@ import type {
   RelayToolResult,
   RelayToolResultBatch,
 } from "@mindcraft-lang/assistant-relay";
-import { executeToolCall } from "../tools/dispatch.js";
+import type { ToolCallError } from "../tools/dispatch.js";
+import { executeToolCall, ToolCallErrorCode } from "../tools/dispatch.js";
 import type { AuthoringWorkspace } from "../tools/workspace.js";
 
 /** An answer the person's mediation gives a call in place of running it: `declined` or `takeover`. */
@@ -46,4 +47,24 @@ export async function serveToolCalls(
     });
   }
   return { type: "turn:toolResults", results };
+}
+
+/** What the payload of an unserved call states beside its error code. */
+const unservedDetail = "the client could not run the call";
+
+/**
+ * Answer every request in `batch` with the error outcome of a call the client
+ * could not run, in request order. Send it in place of a batch whose serving
+ * threw, so the turn waiting on the batch gets an answer for every call it
+ * asked for.
+ */
+export function unservedToolResults(batch: RelayToolCallBatch): RelayToolResultBatch {
+  const payload: ToolCallError = { error: ToolCallErrorCode.ServingFailed, detail: unservedDetail };
+  return {
+    type: "turn:toolResults",
+    results: batch.requests.map((request) => ({
+      requestId: request.requestId,
+      outcome: { kind: "ok", payload, isError: true },
+    })),
+  };
 }

@@ -10,6 +10,8 @@ export interface AssistantChannel {
   send(message: RelayUpstreamMessage): void;
   next(): Promise<RelayDownstreamMessage>;
   close(): void;
+  /** Resolves once the session has closed, whether the service dropped it or `close` ended it. Never rejects. */
+  readonly closed: Promise<void>;
 }
 
 /**

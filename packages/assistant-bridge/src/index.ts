@@ -81,7 +81,7 @@ export {
   toolDefinitions,
   toolInputSchemas,
 } from "./tools/tool-schemas.js";
-export type { AuthoringWorkspace, AuthoringWorkspaceOptions, LocatedRule } from "./tools/workspace.js";
+export type { AuthoringWorkspace, AuthoringWorkspaceOptions, LandedEdit, LocatedRule } from "./tools/workspace.js";
 export {
   allTiles,
   createAuthoringWorkspace,

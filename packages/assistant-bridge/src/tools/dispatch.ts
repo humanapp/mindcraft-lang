@@ -14,6 +14,8 @@ export const ToolCallErrorCode = {
   UnknownTool: "unknown_tool",
   /** The input did not match the named tool's schema. */
   InvalidInput: "invalid_input",
+  /** The client could not run the call, so nothing of it reached a tool. */
+  ServingFailed: "serving_failed",
 } as const;
 
 /** Why the bridge could not serve a call at all. */

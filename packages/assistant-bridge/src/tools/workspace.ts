@@ -9,6 +9,14 @@ import type { TargetAdapter } from "../target/adapter.js";
 import { sessionTileDescriptions } from "./tile-descriptions.js";
 import type { RuleSideName } from "./tool-schemas.js";
 
+/** Where one accepted edit came to rest in the document. */
+export interface LandedEdit {
+  /** Durable id of the page holding the rule the edit touched. */
+  readonly pageId: string;
+  /** Durable id of the rule the edit touched. */
+  readonly ruleId: string;
+}
+
 /**
  * The live objects one authoring session edits: a real environment, the brain
  * document under authoring, the command history every edit runs through, the
@@ -23,6 +31,12 @@ export interface AuthoringWorkspace {
   /** Author description text keyed by tile id; a tile with no documented description is absent. */
   readonly descriptions: ReadonlyMap<string, string>;
   readonly adapter: TargetAdapter;
+  /**
+   * Called as each accepted edit lands in the document, once per editor command
+   * a proposal runs, in the order they run. Absent for a workspace nobody
+   * watches.
+   */
+  readonly onEditLanded?: (edit: LandedEdit) => void;
 }
 
 /** What a session workspace opens with, when it does not open empty. */

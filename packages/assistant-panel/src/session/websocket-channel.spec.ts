@@ -172,6 +172,16 @@ describe("a relay session over a WebSocket", () => {
     await assert.rejects(reading);
   });
 
+  test("settles its closure when the session is lost", async () => {
+    const stand = await serviceStand();
+    const channel = await connectTo(stand);
+    await readFrames(stand, 1);
+
+    await stand.drop();
+
+    await channel.closed;
+  });
+
   test("opens no session when nothing answers the address", async () => {
     const stand = await serviceStand();
     await stand.stop();

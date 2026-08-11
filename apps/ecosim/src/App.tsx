@@ -80,10 +80,13 @@ function archetypeBrainName(archetype: Archetype | null): string {
  */
 function DocsBrainEditorProvider({
   archetype,
+  brainId,
   workspaces,
   children,
 }: {
   archetype: Archetype | null;
+  /** Document id of the brain the editor is opening on, absent while it opens on none. */
+  brainId: string | undefined;
   workspaces: EditedBrainWorkspaces;
   children: React.ReactNode;
 }) {
@@ -95,8 +98,20 @@ function DocsBrainEditorProvider({
     reportEditorMode,
   } = useDocsSidebar();
   const store = useEcosimEnvironment();
-  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
-  const toggleAssistant = useCallback(() => setIsAssistantOpen((open) => !open), []);
+  // Whether the panel stands open, per brain the editor has opened on. A brain
+  // not in it stands closed. Held for as long as the app runs, and no longer.
+  const [assistantOpenByBrain, setAssistantOpenByBrain] = useState<Record<string, boolean>>({});
+  // Where the panel stands while the editor names no brain, which nothing is
+  // remembered for.
+  const [isAssistantOpenForNoBrain, setIsAssistantOpenForNoBrain] = useState(false);
+  const isAssistantOpen = brainId === undefined ? isAssistantOpenForNoBrain : assistantOpenByBrain[brainId] === true;
+  const toggleAssistant = useCallback(() => {
+    if (brainId === undefined) {
+      setIsAssistantOpenForNoBrain((open) => !open);
+      return;
+    }
+    setAssistantOpenByBrain((open) => ({ ...open, [brainId]: open[brainId] !== true }));
+  }, [brainId]);
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
   // Rebuild the config (and thus the isBrokenTile predicate identity) after each
   // workspace compile so broken-tile badges appear/disappear as tiles change
@@ -721,11 +736,7 @@ function App() {
     });
   }, [scene, store]);
 
-  const getBrainDefForEditing = (): BrainDef | undefined => {
-    if (editingArchetype) {
-      return scene?.getBrainDef(editingArchetype);
-    }
-  };
+  const brainDefForEditing: BrainDef | undefined = editingArchetype ? scene?.getBrainDef(editingArchetype) : undefined;
 
   const handleBrainSubmit = (brainDef: BrainDef) => {
     if (editingArchetype) {
@@ -853,7 +864,11 @@ function App() {
           )}
 
           {/* Brain Editor Dialog (rendered at root for proper overlay) */}
-          <DocsBrainEditorProvider archetype={editingArchetype} workspaces={assistant.workspaces}>
+          <DocsBrainEditorProvider
+            archetype={editingArchetype}
+            brainId={brainDefForEditing?.id()}
+            workspaces={assistant.workspaces}
+          >
             <BrainEditorDialog
               isOpen={isBrainEditorOpen}
               onOpenChange={(open) => {
@@ -862,7 +877,7 @@ function App() {
                   setEditingArchetype(null);
                 }
               }}
-              srcBrainDef={getBrainDefForEditing()}
+              srcBrainDef={brainDefForEditing}
               onSubmit={handleBrainSubmit}
             />
           </DocsBrainEditorProvider>

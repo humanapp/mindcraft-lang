@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { LoadingIndicator } from "../ui/loading-indicator";
+import { kBrainDeskFill } from "./brain-desk";
 import { type RulesAreaStand, rulesAreaStand, useLatchedPage } from "./rules-latch";
 
 /** Props for {@link BrainRulesRegion}. */
@@ -20,8 +21,7 @@ export function BrainRulesRegion({ stand, children }: BrainRulesRegionProps) {
     <section
       className="overflow-hidden grow rounded-lg"
       style={{
-        background:
-          "radial-gradient(130% 90% at 50% -10%, var(--color-brain-desk-glow) 0%, transparent 55%), radial-gradient(circle at center, rgba(255, 255, 255, 0.035) 1px, transparent 1.3px), linear-gradient(160deg, var(--color-brain-desk-from) 0%, var(--color-brain-desk-to) 100%)",
+        background: `radial-gradient(130% 90% at 50% -10%, var(--color-brain-desk-glow) 0%, transparent 55%), radial-gradient(circle at center, rgba(255, 255, 255, 0.035) 1px, transparent 1.3px), ${kBrainDeskFill}`,
         backgroundSize: "100% 100%, 22px 22px, 100% 100%",
         boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 4px 20px rgba(0, 0, 0, 0.45)",
       }}

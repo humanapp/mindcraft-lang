@@ -22,6 +22,8 @@ export interface RelayLoopbackEnd<Out, In> {
   next(): Promise<In>;
   /** Close the pairing from this end. Closing twice does nothing further. */
   close(): void;
+  /** Resolves once the pairing has closed, from either end. */
+  readonly closed: Promise<void>;
 }
 
 /**
@@ -72,12 +74,17 @@ export function createRelayLoopback(): RelayLoopback {
   const toService = new Mailbox<RelayUpstreamMessage>();
   const toToolServer = new Mailbox<RelayDownstreamMessage>();
   let open = true;
+  let settleClosed: () => void = () => {};
+  const closed = new Promise<void>((resolve) => {
+    settleClosed = resolve;
+  });
 
   const close = (): void => {
     if (!open) return;
     open = false;
     toService.close();
     toToolServer.close();
+    settleClosed();
   };
 
   return {
@@ -88,6 +95,7 @@ export function createRelayLoopback(): RelayLoopback {
       },
       next: () => toService.next(),
       close,
+      closed,
     },
     toolServer: {
       send: (message) => {
@@ -96,6 +104,7 @@ export function createRelayLoopback(): RelayLoopback {
       },
       next: () => toToolServer.next(),
       close,
+      closed,
     },
   };
 }

@@ -117,6 +117,7 @@ function appStand(script: (ruleId: string) => ScriptedService): Stand {
       send: (message) => loopback.toolServer.send(message),
       next: () => loopback.toolServer.next(),
       close: () => loopback.toolServer.close(),
+      closed: loopback.toolServer.closed,
     });
   };
 
@@ -134,6 +135,7 @@ function appStand(script: (ruleId: string) => ScriptedService): Stand {
         List.from(environment.tileCatalogs())
       ),
       history: new BrainCommandHistory(),
+      reveal: () => {},
     }),
     connects: () => connects,
     settled: async () => {

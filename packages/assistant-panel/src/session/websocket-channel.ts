@@ -66,11 +66,16 @@ export function createWebSocketConnect(url: string): AssistantConnect {
       const socket = new WebSocket(url);
       const inbox = new Inbox();
       let opened = false;
+      let settleClosed: () => void = () => {};
+      const closed = new Promise<void>((settle) => {
+        settleClosed = settle;
+      });
 
       const channel: AssistantChannel = {
         send: (message) => socket.send(JSON.stringify(message)),
         next: () => inbox.next(),
         close: () => socket.close(),
+        closed,
       };
 
       socket.addEventListener("open", () => {
@@ -87,10 +92,12 @@ export function createWebSocketConnect(url: string): AssistantConnect {
       });
       socket.addEventListener("close", () => {
         inbox.close();
+        settleClosed();
         if (!opened) reject(new AssistantSocketClosed());
       });
       socket.addEventListener("error", () => {
         inbox.close();
+        settleClosed();
         if (!opened) reject(new AssistantSocketClosed());
       });
     });

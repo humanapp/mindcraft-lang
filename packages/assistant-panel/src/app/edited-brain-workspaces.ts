@@ -43,8 +43,9 @@ export interface EditedBrainWorkspacesOptions {
 export interface EditedBrainWorkspaces {
   /**
    * The workspace `brainId`'s tool calls run against: the working copy standing
-   * right now and the history the editor's own undo runs through, so an edit
-   * served through it is an entry the child can take back. Throws
+   * right now, the history the editor's own undo runs through, so an edit
+   * served through it is an entry the child can take back, and the editor's own
+   * reveal, which each landed edit brings its rule into view through. Throws
    * {@link NoEditedBrain} while no editor stands `brainId`'s working copy.
    *
    * One function for the life of the app: it dereferences the working copy on
@@ -68,7 +69,7 @@ export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOption
   return {
     workspaceFor: (brainId: string): AuthoringWorkspace => {
       if (edited === undefined) throw new NoEditedBrain(NoEditedBrainCode.NoEditorOpen, brainId);
-      const { brainDef, history } = edited;
+      const { brainDef, history, reveal } = edited;
       if (brainDef.id() !== brainId) throw new NoEditedBrain(NoEditedBrainCode.AnotherBrainEdited, brainId);
       return {
         environment,
@@ -77,6 +78,7 @@ export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOption
         catalogs: List.from<ITileCatalog>([...environment.tileCatalogs(), brainDef.catalog()]),
         descriptions,
         adapter,
+        onEditLanded: reveal,
       };
     },
     setEditedBrain: (next: EditedBrain | undefined): void => {
