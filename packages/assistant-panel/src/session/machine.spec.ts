@@ -624,6 +624,79 @@ describe("ending a turn", () => {
   });
 });
 
+describe("stopping every running turn", () => {
+  test("stops every running turn, whichever brain is active", async () => {
+    const stand = harness({ turns: [{ steps: [{ kind: "awaitStop" }] }] });
+
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.send("make it hide");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.setActiveBrain("brain-b");
+    stand.machine.send("make it jump");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+
+    stand.machine.stopAll();
+    await settledFor(stand.machine, "brain-a");
+    await settledFor(stand.machine, "brain-b");
+    await stand.served;
+
+    for (const brainId of ["brain-a", "brain-b"]) {
+      assert.deepEqual(
+        endingOf(conversation(stand.machine, brainId).entries[1]!),
+        { kind: "end", code: "stopped" },
+        `${brainId}'s turn was stopped`
+      );
+    }
+  });
+
+  test("stops a turn still waiting for its session", async () => {
+    const stand = harness({ turns: [{ steps: [{ kind: "awaitStop" }] }] });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    stand.machine.stopAll();
+    await settled(stand.machine);
+    await stand.served;
+
+    assert.deepEqual(endingOf(conversation(stand.machine, "brain-a").entries[1]!), {
+      kind: "end",
+      code: "stopped",
+    });
+  });
+
+  test("changes nothing when no turn is running", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await settled(stand.machine);
+    const before = stand.machine.getState();
+
+    stand.machine.stopAll();
+
+    assert.equal(stand.machine.getState(), before, "the machine stands exactly where it did");
+    assert.equal(stand.closed(), 0, "no session was closed");
+    await stand.served;
+  });
+
+  test("a move to another brain leaves the running turn alone", async () => {
+    const stand = harness({ turns: [{ steps: [{ kind: "awaitStop" }] }] });
+
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.send("make it hide");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.setActiveBrain("brain-b");
+    await flush();
+
+    assert.equal(sessionStatus(stand.machine.getState().sessions, "brain-a"), AssistantStatus.TurnActive);
+    assert.equal(conversation(stand.machine, "brain-a").entries.length, 1, "the turn has closed nothing off");
+
+    stand.machine.stopAll();
+    await settledFor(stand.machine, "brain-a");
+    await stand.served;
+  });
+});
+
 describe("losing a session and opening another", () => {
   test("gives the brain up as holding none when the service closes an idle session, and opens a fresh one to send on", async () => {
     const scripts: ScriptedService[] = [{ closesWhenIdle: true }, oneQuietTurn];

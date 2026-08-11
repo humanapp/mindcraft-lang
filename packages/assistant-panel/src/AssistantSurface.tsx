@@ -8,6 +8,13 @@ import { AssistantStatus } from "./session/machine";
 export interface AssistantSurfaceProps {
   /** The name of the entity whose mind is open, as the host reads it from the document. */
   name: string;
+  /**
+   * Hand the keyboard to whatever the host stands the surface in, called as the
+   * keyboard leaves the intent box. Answers whether the host took it; the
+   * surface lands the keyboard on itself when the host took none, and whenever
+   * this is not given.
+   */
+  onLeaveIntent?: (() => boolean) | undefined;
 }
 
 /** The last thing the person asked for, or `undefined` when they have asked for nothing yet. */
@@ -25,7 +32,7 @@ function lastAsked(record: ConversationRecord | undefined): string | undefined {
  * brain's conversation, sends what is typed, and stops a running turn. Mounting
  * it starts no session, and it never takes the keyboard on its own.
  */
-export function AssistantSurface({ name }: AssistantSurfaceProps) {
+export function AssistantSurface({ name, onLeaveIntent }: AssistantSurfaceProps) {
   const { status, record, send, stop, openSession } = useAssistant();
   const [intent, setIntent] = useState("");
 
@@ -52,6 +59,7 @@ export function AssistantSurface({ name }: AssistantSurfaceProps) {
       onStop={stop}
       onRetry={retry}
       onAskAgain={askAgain}
+      onLeaveIntent={onLeaveIntent}
     />
   );
 }

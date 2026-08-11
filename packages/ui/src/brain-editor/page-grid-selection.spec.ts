@@ -1,17 +1,20 @@
 /**
- * Pins which rules a move of the page's selection concerns. A rule reads its own
+ * Pins which rules a move of the page's selection concerns, and which element a
+ * caller from outside the page hands the keyboard to. A rule reads its own
  * selection from `ruleSelectionCell`, so the rules that read a different value
  * across a move are exactly the rules that have anything to repaint.
  *
- * The cases below fix that reach in both directions: a move between two rules
+ * The move cases fix that reach in both directions: a move between two rules
  * concerns those two and no other, and a move within one rule concerns only it.
+ * The handoff cases install a stand-in root, so nothing here depends on a DOM
+ * being present.
  */
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { RuleSide } from "@mindcraft-lang/core/brain";
-import { kAppendRuleCell, type PageGridCell } from "./page-grid-model";
-import { ruleSelectionCell } from "./page-grid-selection";
+import { kAppendRuleCell, kPageGridCellAttribute, type PageGridCell } from "./page-grid-model";
+import { pageGridTabStop, ruleSelectionCell, takePageGridKeyboard } from "./page-grid-selection";
 
 /** The ids of the rules a page holds, in the order they stand. */
 const kRuleIds = ["r1", "r2", "r3"] as const;
@@ -60,5 +63,69 @@ describe("ruleSelectionCell", () => {
   test("re-reading the same cell concerns no rule at all", () => {
     const cell: PageGridCell = { kind: "append", ruleId: "r2", side: RuleSide.When };
     assert.deepEqual(concernedRules(cell, cell), []);
+  });
+});
+
+/** A stand-in cell, recording each time the keyboard was given to it. */
+interface FakeCell {
+  focused: number;
+  focus: (options?: FocusOptions) => void;
+}
+
+/** A cell that counts the times it is handed the keyboard, and the options it was handed it with. */
+function cell(): FakeCell & { lastOptions: FocusOptions | undefined } {
+  const made = {
+    focused: 0,
+    lastOptions: undefined as FocusOptions | undefined,
+    focus(options?: FocusOptions) {
+      made.focused++;
+      made.lastOptions = options;
+    },
+  };
+  return made;
+}
+
+/** A stand-in root answering `tabStop` for any query, recording every selector it is queried with in `queried`. */
+function rootWith(tabStop: FakeCell | null, queried: string[] = []) {
+  return {
+    querySelector: (selector: string) => {
+      queried.push(selector);
+      return tabStop;
+    },
+  } as unknown as ParentNode;
+}
+
+describe("the cell a caller from outside the page hands the keyboard to", () => {
+  test("is the one cell of the grid carrying the page's tab stop", () => {
+    const queried: string[] = [];
+    pageGridTabStop(rootWith(null, queried));
+
+    assert.equal(queried.length, 1);
+    assert.match(queried[0]!, new RegExp(`\\[${kPageGridCellAttribute}\\]`));
+    assert.match(queried[0]!, /\[tabindex="0"\]/);
+  });
+
+  test("is nothing at all for a root standing no such cell", () => {
+    assert.equal(pageGridTabStop(rootWith(null)), null);
+  });
+});
+
+describe("handing the keyboard to the page", () => {
+  test("gives it to the cell the selection rests on, and says it was taken", () => {
+    const tabStop = cell();
+
+    assert.equal(takePageGridKeyboard(rootWith(tabStop)), true);
+    assert.equal(tabStop.focused, 1);
+  });
+
+  test("moves the view none of the way to the cell it hands the keyboard to", () => {
+    const tabStop = cell();
+    takePageGridKeyboard(rootWith(tabStop));
+
+    assert.equal(tabStop.lastOptions?.preventScroll, true);
+  });
+
+  test("says it was not taken where the page stands no cell to navigate from", () => {
+    assert.equal(takePageGridKeyboard(rootWith(null)), false);
   });
 });

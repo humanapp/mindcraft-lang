@@ -129,6 +129,22 @@ export class AssistantMachine {
   stop(): void {
     const brainId = this.current.store.activeBrainId;
     if (brainId === undefined) return;
+    this.askToStop(brainId);
+  }
+
+  /**
+   * Ask every running turn to stop, whatever brain it was sent for and whether
+   * or not that brain is the active one. A turn still waiting for its session is
+   * asked as soon as the session opens. Changes nothing when no turn is running.
+   */
+  stopAll(): void {
+    for (const [brainId, status] of this.current.sessions) {
+      if (status === AssistantStatus.TurnActive) this.askToStop(brainId);
+    }
+  }
+
+  /** Ask `brainId`'s turn to stop, doing nothing when no turn of its is running. */
+  private askToStop(brainId: string): void {
     if (sessionStatus(this.current.sessions, brainId) !== AssistantStatus.TurnActive) return;
     const channel = this.channels.get(brainId);
     if (channel) channel.send({ type: "turn:stop" });

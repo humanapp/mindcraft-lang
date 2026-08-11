@@ -1,14 +1,19 @@
 /**
  * Pins the editor's side region: when its content is put in, what a closed
- * region does with the space and the keyboard, and the width the region lays
- * out from.
+ * region does with the space and the keyboard, and where an open one lays out
+ * at a narrow editor and at a wide one.
  */
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { sidePanelRegionClasses, sidePanelToggleLabel, standsSidePanelContent } from "./side-panel";
+import {
+  kSidePanelLayoutClasses,
+  sidePanelRegionClasses,
+  sidePanelToggleLabel,
+  standsSidePanelContent,
+} from "./side-panel";
 
 describe("what the side region holds", () => {
   test("holds nothing until it has stood open", () => {
@@ -31,16 +36,46 @@ describe("the closed side region", () => {
     assert.doesNotMatch(closed, /translate|opacity|invisible/);
   });
 
-  test("claims no width the rules could have had", () => {
-    assert.doesNotMatch(sidePanelRegionClasses(false), /(^|\s)lg:flex(\s|$)/);
+  test("claims no space the rules could have had, at any width", () => {
+    assert.doesNotMatch(sidePanelRegionClasses(false), /(^|\s)(lg:)?(flex|basis-\[|w-80)(\s|$)/);
   });
 });
 
 describe("the open side region", () => {
-  test("lays out only from the width the editor has room for both at", () => {
+  test("stands at every width, narrow ones included", () => {
     const open = sidePanelRegionClasses(true);
-    assert.match(open, /(^|\s)hidden(\s|$)/);
-    assert.match(open, /(^|\s)lg:flex(\s|$)/);
+    assert.match(open, /(^|\s)flex(\s|$)/);
+    assert.doesNotMatch(open, /(^|\s)hidden(\s|$)/);
+  });
+
+  test("takes a bounded share of the height it is stacked in, rather than growing with what it holds", () => {
+    const open = sidePanelRegionClasses(true);
+    assert.match(open, /(^|\s)basis-\[\d+%\](\s|$)/);
+    assert.match(open, /(^|\s)grow-0(\s|$)/);
+    assert.match(open, /(^|\s)shrink-0(\s|$)/);
+  });
+
+  test("takes its own column at its side of the rules once there is room for both across", () => {
+    const open = sidePanelRegionClasses(true);
+    assert.match(open, /(^|\s)lg:w-80(\s|$)/);
+    assert.match(open, /(^|\s)lg:basis-auto(\s|$)/);
+    assert.match(open, /(^|\s)lg:order-first(\s|$)/);
+  });
+
+  test("scrolls nothing of its own, leaving that to what it holds", () => {
+    assert.match(sidePanelRegionClasses(true), /(^|\s)overflow-hidden(\s|$)/);
+  });
+});
+
+describe("the box holding the rules and the side region", () => {
+  test("stacks them until there is room for both across, and stands them in a row from there", () => {
+    assert.match(kSidePanelLayoutClasses, /(^|\s)flex-col(\s|$)/);
+    assert.match(kSidePanelLayoutClasses, /(^|\s)lg:flex-row(\s|$)/);
+  });
+
+  test("is the editor's one growing box, and shrinks under what it holds", () => {
+    assert.match(kSidePanelLayoutClasses, /(^|\s)grow(\s|$)/);
+    assert.match(kSidePanelLayoutClasses, /(^|\s)min-h-0(\s|$)/);
   });
 });
 

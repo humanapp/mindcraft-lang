@@ -21,15 +21,30 @@ export function sidePanelToggleLabel(label: string | undefined): string {
   return label ? `Toggle ${label}` : "Toggle side panel";
 }
 
-/** What the region carries whatever it stands: its width, its column, and its step. */
-const regionClasses = `hidden min-h-0 w-80 shrink-0 flex-col overflow-hidden ${kSidePanelLayer}`;
+/**
+ * The classes the box holding the rules and the side region carries. It stands
+ * them in one column, the rules above the region, until the editor is wide
+ * enough for both side by side, where it turns into a row. It grows into the
+ * space the editor leaves between its header and its buttons.
+ */
+export const kSidePanelLayoutClasses = "flex grow min-h-0 flex-col gap-2 sm:gap-3 lg:flex-row";
+
+/** What the region carries whatever it stands: its column, its own overflow, and its step. */
+const regionClasses = `min-h-0 flex-col overflow-hidden ${kSidePanelLayer}`;
+
+/**
+ * What an open region takes of the editor: a share of the height it is stacked
+ * in, and a column of the editor's width, at its own side of the rules, from
+ * the width there is room for both at.
+ */
+const openRegionClasses = "flex shrink-0 grow-0 basis-[45%] lg:order-first lg:w-80 lg:basis-auto";
 
 /**
  * The classes the side region carries while it stands `isOpen`. A closed region
  * is laid out nowhere, so what it holds takes no space, no pointer and no
- * keyboard; an open one lays out only from the width the editor has room for
- * both it and the rules at.
+ * keyboard. An open one stands at every width: below the rules while the editor
+ * is too narrow to hold both across, and beside them once it is wide enough.
  */
 export function sidePanelRegionClasses(isOpen: boolean): string {
-  return isOpen ? `${regionClasses} lg:flex` : regionClasses;
+  return isOpen ? `${openRegionClasses} ${regionClasses}` : `hidden ${regionClasses}`;
 }

@@ -73,8 +73,9 @@ import {
   takeReturnFocus,
 } from "./editor-return-focus";
 import { decideHistoryShortcut } from "./history-shortcut";
+import { takePageGridKeyboard } from "./page-grid-selection";
 import { RulePickupProvider, useRulePickupState } from "./RulePickupContext";
-import { kSidePanelRegionId, sidePanelToggleLabel } from "./side-panel";
+import { kSidePanelLayoutClasses, kSidePanelRegionId, sidePanelToggleLabel } from "./side-panel";
 
 // Top-edge brand accent. Uses each app's signature strip tokens when defined
 // (microbit-sim's blue->green->teal), else falls back to the brand primary/ring
@@ -332,12 +333,14 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
 
   const holdsDiscardableEdits = hasDiscardableEdits({ undoDepth, openingDepth, brainReplaced });
 
+  const takeKeyboard = useCallback(() => takePageGridKeyboard(document), []);
+
   // What the side region's tenant edits: the working copy standing right now,
-  // the history the editor's own undo runs through, and the way into the rule
-  // an edit landed on.
+  // the history the editor's own undo runs through, the way into the rule an
+  // edit landed on, and the way to hand the keyboard back to the page.
   const editedBrain = useMemo(
-    () => (brainDef === undefined ? undefined : { brainDef, history: commandHistory, reveal }),
-    [brainDef, commandHistory, reveal]
+    () => (brainDef === undefined ? undefined : { brainDef, history: commandHistory, reveal, takeKeyboard }),
+    [brainDef, commandHistory, reveal, takeKeyboard]
   );
 
   const rulesRegion = (
@@ -890,7 +893,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                   {toggleSidePanel && (
                     <>
                       <Button
-                        className="hidden lg:flex h-8 w-8 px-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md"
+                        className="h-8 w-8 px-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md"
                         onClick={toggleSidePanel}
                         title={sidePanel?.label ?? "Side panel"}
                         aria-label={sidePanelToggleLabel(sidePanel?.label)}
@@ -899,7 +902,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                       >
                         <PanelLeft className="h-4 w-4" aria-hidden="true" />
                       </Button>
-                      <span className="hidden lg:block w-px h-5 bg-border" aria-hidden="true" />
+                      <span className="w-px h-5 bg-border" aria-hidden="true" />
                     </>
                   )}
                   <Button
@@ -1110,11 +1113,11 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
             </DialogTitle>
           </DialogHeader>
           {sidePanel ? (
-            <div className="flex grow min-h-0 gap-2 sm:gap-3">
+            <div className={kSidePanelLayoutClasses}>
+              {rulesRegion}
               <EditedBrainProvider value={editedBrain}>
                 <BrainEditorSidePanel isOpen={isSidePanelOpen} content={sidePanel.content} />
               </EditedBrainProvider>
-              {rulesRegion}
             </div>
           ) : (
             rulesRegion

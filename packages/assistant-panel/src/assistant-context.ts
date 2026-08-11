@@ -11,6 +11,11 @@ export interface AssistantContextValue {
   readonly send: (text: string) => void;
   /** Ask the running turn to stop. */
   readonly stop: () => void;
+  /**
+   * Ask every running turn to stop, whatever brain it was sent for. Call it
+   * where the surface the turns were started from is being closed for good.
+   */
+  readonly stopAll: () => void;
   /** Show a brain's conversation, opening an empty one when the brain has none. */
   readonly setActiveBrain: (brainId: string) => void;
   /** Open a brain's session now, so its first send finds one standing. */

@@ -29,6 +29,7 @@ export function AssistantProvider({ children, connect, manifest, workspace, medi
     () => ({
       send: (text: string) => machine.send(text),
       stop: () => machine.stop(),
+      stopAll: () => machine.stopAll(),
       setActiveBrain: (brainId: string) => machine.setActiveBrain(brainId),
       openSession: (brainId: string) => machine.openSession(brainId),
     }),

@@ -30,6 +30,12 @@ export interface ConversationViewProps {
   onRetry?: (() => void) | undefined;
   /** Put the last thing the person asked for again; a broken-off turn offers it only when given. */
   onAskAgain?: (() => void) | undefined;
+  /**
+   * Hand the keyboard to whatever stands around the panel, called as it leaves
+   * the intent box. Answers whether anything took it; the panel lands the
+   * keyboard on itself when nothing did, and whenever this is not given.
+   */
+  onLeaveIntent?: (() => boolean) | undefined;
 }
 
 /** Pixels of slack at the foot of the transcript that still count as being at the bottom. */
@@ -81,8 +87,11 @@ function laidOut(steps: readonly ConversationTurnStep[]): LaidOutStep[] {
   return lines;
 }
 
-/** What a key pressed in the intent box does: send the intent, swallow the key, or fall through to typing. */
-export type IntentKeyAction = "send" | "swallow" | "pass";
+/**
+ * What a key pressed in the intent box does: send the intent, leave the box,
+ * swallow the key, or fall through to typing.
+ */
+export type IntentKeyAction = "send" | "leave" | "swallow" | "pass";
 
 /**
  * Resolve a keydown in the intent box. Enter sends; Shift+Enter falls through
@@ -90,6 +99,9 @@ export type IntentKeyAction = "send" | "swallow" | "pass";
  * composition. A plain Enter that cannot send -- a turn already running (the
  * control beside the box is Stop), or nothing but whitespace to send -- is
  * swallowed, keeping Shift+Enter the one newline gesture.
+ *
+ * Escape leaves the box, keeping what is typed in it; an Escape
+ * mid-IME-composition belongs to the composition, which cancels on it.
  */
 export function intentKeyAction(
   key: string,
@@ -98,7 +110,9 @@ export function intentKeyAction(
   running: boolean,
   intent: string
 ): IntentKeyAction {
-  if (key !== "Enter" || shiftKey || isComposing) return "pass";
+  if (isComposing) return "pass";
+  if (key === "Escape") return "leave";
+  if (key !== "Enter" || shiftKey) return "pass";
   if (running || intent.trim().length === 0) return "swallow";
   return "send";
 }
@@ -242,12 +256,39 @@ function EntryView({ entry, onAskAgain }: { entry: ConversationEntry; onAskAgain
  * which holds it where they left it until they scroll back down.
  */
 export function ConversationView(props: ConversationViewProps) {
-  const { name, status, record, intent, onIntentChange, onSend, onStop, onRetry, onAskAgain } = props;
+  const { name, status, record, intent, onIntentChange, onSend, onStop, onRetry, onAskAgain, onLeaveIntent } = props;
   const entries = record?.entries ?? [];
   const running = status === AssistantStatus.TurnActive;
   const connection = connectionNote(status);
   const transcript = useRef<HTMLDivElement>(null);
   const followingBottom = useRef(true);
+  const surface = useRef<HTMLDivElement>(null);
+  const intentBox = useRef<HTMLTextAreaElement>(null);
+  const serving = useRef({ running, intent, onSend, onLeaveIntent });
+  serving.current = { running, intent, onSend, onLeaveIntent };
+
+  // The intent box's keys are served at the window, whose capture pass runs
+  // ahead of the document the editor listens for Escape on. A leaving press
+  // goes no further, and offers the keyboard to whatever stands around the
+  // panel before the panel's own surface takes it.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      const box = intentBox.current;
+      if (box === null || event.target !== box) return;
+      const held = serving.current;
+      const action = intentKeyAction(event.key, event.shiftKey, event.isComposing, held.running, held.intent);
+      if (action === "pass") return;
+      event.preventDefault();
+      if (action === "send") held.onSend();
+      if (action === "leave") {
+        event.stopPropagation();
+        if (held.onLeaveIntent?.() !== true) surface.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, []);
 
   const noteScroll = (): void => {
     const element = transcript.current;
@@ -263,7 +304,9 @@ export function ConversationView(props: ConversationViewProps) {
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border"
+      ref={surface}
+      tabIndex={-1}
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border outline-none"
       style={{ background: kBrainDeskFill }}
     >
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
@@ -308,17 +351,12 @@ export function ConversationView(props: ConversationViewProps) {
       )}
       <div className="flex shrink-0 items-end gap-2 border-t border-border p-2">
         <textarea
+          ref={intentBox}
           data-assistant-intent
           className="min-h-16 grow resize-none rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:text-base"
           rows={2}
           value={intent}
           onChange={(event) => onIntentChange(event.target.value)}
-          onKeyDown={(event) => {
-            const action = intentKeyAction(event.key, event.shiftKey, event.nativeEvent.isComposing, running, intent);
-            if (action === "pass") return;
-            event.preventDefault();
-            if (action === "send") onSend();
-          }}
           aria-label="What we should build"
           placeholder="Tell me your idea..."
         />

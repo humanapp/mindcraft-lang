@@ -65,12 +65,13 @@ function projectBrain(stand: AppStand, name: string): BrainDef {
   return BrainDef.emptyBrainDef(stand.environment.brainServices, name);
 }
 
-/** The working copy, history, and reveal an editor opened on `source` stands. */
+/** What an editor opened on `source` stands: its working copy, history, reveal, and keyboard handoff. */
 function editorOpenedOn(stand: AppStand, source: BrainDef, reveal: EditedBrain["reveal"] = () => {}): EditedBrain {
   return {
     brainDef: source.workingCopy(List.from(stand.environment.tileCatalogs())),
     history: new BrainCommandHistory(),
     reveal,
+    takeKeyboard: () => false,
   };
 }
 

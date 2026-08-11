@@ -7,12 +7,14 @@ import {
   assistantToolManifest,
   createEditedBrainWorkspaces,
   createWebSocketConnect,
+  useAssistant,
 } from "@mindcraft-lang/assistant-panel";
 import type { BrainDef } from "@mindcraft-lang/core/app";
 import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
 import {
   BrainEditorDialog,
+  type BrainEditorDialogProps,
   BrainEditorProvider,
   Button,
   ProjectPickerDialog,
@@ -155,6 +157,28 @@ function DocsBrainEditorProvider({
     toggleAssistant,
   ]);
   return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
+}
+
+/**
+ * The brain editor as this app stands it. Closing it -- by saving or by
+ * discarding -- ends whatever the assistant is still doing.
+ */
+function ClosingBrainEditor({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
+  const { stopAll } = useAssistant();
+  return (
+    <BrainEditorDialog
+      isOpen={isOpen}
+      onOpenChange={(open) => {
+        if (!open) stopAll();
+        onOpenChange(open);
+      }}
+      srcBrainDef={srcBrainDef}
+      onSubmit={(newBrainDef) => {
+        stopAll();
+        onSubmit(newBrainDef);
+      }}
+    />
+  );
 }
 
 interface PickerWorkspace {
@@ -869,7 +893,7 @@ function App() {
             brainId={brainDefForEditing?.id()}
             workspaces={assistant.workspaces}
           >
-            <BrainEditorDialog
+            <ClosingBrainEditor
               isOpen={isBrainEditorOpen}
               onOpenChange={(open) => {
                 setIsBrainEditorOpen(open);

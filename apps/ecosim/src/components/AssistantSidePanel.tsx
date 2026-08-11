@@ -36,5 +36,5 @@ export function AssistantSidePanel({ isOpen, fallbackName, workspaces }: Assista
     if (isOpen && brainId !== undefined) openSession(brainId);
   }, [isOpen, brainId, openSession]);
 
-  return <AssistantSurface name={edited?.brainDef.name() ?? fallbackName} />;
+  return <AssistantSurface name={edited?.brainDef.name() ?? fallbackName} onLeaveIntent={edited?.takeKeyboard} />;
 }

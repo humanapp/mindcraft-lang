@@ -27,6 +27,13 @@ export interface EditedBrain {
    * nothing for a place the edited brain does not hold.
    */
   readonly reveal: (place: EditedBrainPlace) => void;
+  /**
+   * Give the keyboard to the cell the edited page's selection rests on, which
+   * the arrow keys then move. Answers whether that cell took it; an editor
+   * showing no page to navigate takes none and leaves the keyboard where it
+   * was, for the caller to land itself.
+   */
+  readonly takeKeyboard: () => boolean;
 }
 
 const EditedBrainContext = createContext<EditedBrain | undefined>(undefined);

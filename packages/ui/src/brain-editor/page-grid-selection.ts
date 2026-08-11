@@ -1,4 +1,4 @@
-import type { PageGridCell } from "./page-grid-model";
+import { kPageGridCellAttribute, type PageGridCell } from "./page-grid-model";
 
 /**
  * How the page's selection is painted on the cell it rests on, which that cell's
@@ -35,4 +35,28 @@ export function pageGridSelectionProps(shape: PageGridSelectionShape, selected: 
 export function ruleSelectionCell(cursorCell: PageGridCell | undefined, ruleId: string): PageGridCell | undefined {
   if (cursorCell === undefined || cursorCell.kind === "append-rule") return undefined;
   return cursorCell.ruleId === ruleId ? cursorCell : undefined;
+}
+
+/** Matches the one grid cell carrying the page's tab stop, which the arrow keys move the selection from. */
+const kPageGridTabStopSelector = `[${kPageGridCellAttribute}][tabindex="0"]`;
+
+/**
+ * The cell of `root`'s page grid that the selection rests on, which the arrow
+ * keys move from. Null while `root` stands no page grid, and while the grid it
+ * stands offers no tab stop.
+ */
+export function pageGridTabStop(root: ParentNode): HTMLElement | null {
+  return root.querySelector<HTMLElement>(kPageGridTabStopSelector);
+}
+
+/**
+ * Give the keyboard to the cell `root`'s page grid rests its selection on,
+ * without moving the view. Answers whether a cell took it; a root standing no
+ * such cell takes none and leaves the keyboard where it was.
+ */
+export function takePageGridKeyboard(root: ParentNode): boolean {
+  const target = pageGridTabStop(root);
+  if (target === null) return false;
+  target.focus({ preventScroll: true });
+  return true;
 }

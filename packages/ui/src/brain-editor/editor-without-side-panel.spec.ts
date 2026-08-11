@@ -73,7 +73,24 @@ describe("what the editor stands over its side region", () => {
     assert.match(dialogSource, /brainDef,\s*history:\s*commandHistory/);
   });
 
+  test("stands the way back to the page's own keyboard, taken from the standing document", () => {
+    assert.match(dialogSource, /takeKeyboard\s*=\s*useCallback\(\(\)\s*=>\s*takePageGridKeyboard\(document\)/);
+    assert.match(dialogSource, /reveal,\s*takeKeyboard\s*\}/);
+  });
+
   test("wraps the region the host's content is put in", () => {
     assert.match(dialogSource, /<EditedBrainProvider[^>]*>\s*<BrainEditorSidePanel/);
+  });
+
+  test("stands the rules, then the region, then the buttons, which is the order a stacked editor reads in", () => {
+    const box = dialogSource.indexOf("kSidePanelLayoutClasses}>");
+    const rules = dialogSource.indexOf("{rulesRegion}", box);
+    const region = dialogSource.indexOf("<BrainEditorSidePanel", box);
+    const buttons = dialogSource.indexOf("<DialogFooter", box);
+
+    assert.ok(box >= 0, "the rules and the region share one box");
+    assert.ok(rules > box, "the rules stand first in it");
+    assert.ok(region > rules, "the region stands after the rules");
+    assert.ok(buttons > region, "the buttons stand after both");
   });
 });

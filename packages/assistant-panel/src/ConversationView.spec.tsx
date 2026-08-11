@@ -463,4 +463,20 @@ describe("a key pressed in the intent box", () => {
   test("any other key falls through to typing", () => {
     assert.equal(intentKeyAction("a", false, false, false, "make a heart"), "pass");
   });
+
+  test("Escape leaves the box rather than closing anything", () => {
+    assert.equal(intentKeyAction("Escape", false, false, false, "make a heart"), "leave");
+  });
+
+  test("Escape leaves an empty box just the same", () => {
+    assert.equal(intentKeyAction("Escape", false, false, false, ""), "leave");
+  });
+
+  test("Escape leaves the box while a turn is running too", () => {
+    assert.equal(intentKeyAction("Escape", false, false, true, "make a heart"), "leave");
+  });
+
+  test("an Escape mid-composition belongs to the composition", () => {
+    assert.equal(intentKeyAction("Escape", false, true, false, "make a heart"), "pass");
+  });
 });

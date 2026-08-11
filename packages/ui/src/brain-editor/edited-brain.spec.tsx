@@ -21,6 +21,11 @@ before(() => {
 /** A reveal for an edited brain stood outside a rendered editor. */
 function unwatchedReveal(): void {}
 
+/** A keyboard handoff for an edited brain stood outside a rendered editor, which no page takes. */
+function unwatchedTakeKeyboard(): boolean {
+  return false;
+}
+
 /** Render a probe under `value` and hand back what the probe read. */
 function readThrough(value: EditedBrain | undefined): EditedBrain | undefined {
   let read: EditedBrain | undefined;
@@ -42,6 +47,7 @@ describe("the brain a tenant is handed", () => {
       brainDef: BrainDef.emptyBrainDef(services),
       history: new BrainCommandHistory(),
       reveal: unwatchedReveal,
+      takeKeyboard: unwatchedTakeKeyboard,
     };
 
     const read = readThrough(edited);
@@ -57,6 +63,7 @@ describe("the brain a tenant is handed", () => {
       brainDef: source.workingCopy(),
       history: new BrainCommandHistory(),
       reveal: unwatchedReveal,
+      takeKeyboard: unwatchedTakeKeyboard,
     });
 
     assert.equal(read?.brainDef.id(), source.id());
@@ -67,6 +74,7 @@ describe("the brain a tenant is handed", () => {
       brainDef: BrainDef.emptyBrainDef(services),
       history: new BrainCommandHistory(),
       reveal: unwatchedReveal,
+      takeKeyboard: unwatchedTakeKeyboard,
     };
     const read = readThrough(edited);
     const pagesBefore = edited.brainDef.pages().size();
