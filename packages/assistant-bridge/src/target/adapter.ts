@@ -6,7 +6,7 @@ import type { IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
  * Increment it whenever {@link TargetAdapter} or the shapes it exchanges change
  * in a way an already-built artifact cannot satisfy.
  */
-export const ADAPTER_CONTRACT_VERSION = 7;
+export const ADAPTER_CONTRACT_VERSION = 8;
 
 /** Facts about a target world that a session states to the model before it plans. */
 export interface TargetManifest {
@@ -29,8 +29,9 @@ export interface ScenarioInputKind {
   /** Name a {@link ScenarioInput} gives as its `kind`, spelled exactly. */
   readonly name: string;
   /**
-   * One plain sentence stating what a level of this kind means in this world
-   * and the range it is read over.
+   * One plain sentence stating what an entry of this kind delivers in this
+   * world: what its value means, the range it is read over, and whether it is a
+   * level that holds or a single arrival.
    */
   readonly description: string;
 }
@@ -44,8 +45,13 @@ export interface ScenarioInput {
   readonly kind: string;
   /** Zero-based think this input is applied before. */
   readonly at: number;
-  /** Level `kind` is set to, holding until another entry of the same kind changes it. */
-  readonly value: number | boolean;
+  /**
+   * What `kind` is delivered. A kind that describes a level holds this value
+   * until another entry of the same kind changes it; a kind that describes an
+   * arrival delivers it once, on this think alone. The kind's own description
+   * says which it is.
+   */
+  readonly value: number | boolean | string;
 }
 
 /**
@@ -98,10 +104,7 @@ export interface GateObservation {
  * outcome at all.
  *
  * `dropped`, `preempted`, and `background-end` name endings of the OPERATION a
- * call starts: a call the world declined because a subsystem was busy, an
- * operation another call interrupted, and the true end of an operation that ran
- * on after its call returned. They are reserved for observations a target
- * publishes about its own operations.
+ * call starts, and only the target that ran the operation reports one.
  */
 export const DispatchOutcome = {
   /** The call produced a value. */
@@ -112,16 +115,26 @@ export const DispatchOutcome = {
   Cancelled: "cancelled",
   /** The call had not ended when the run did, so nothing about its ending is known. */
   Pending: "pending",
-  /** Reserved: the world declined the call outright. */
+  /** The world would not run the operation, so nothing happened. */
   Dropped: "dropped",
-  /** Reserved: another call interrupted the operation this one started. */
+  /** Another call interrupted the operation this one started, before it finished. */
   Preempted: "preempted",
-  /** Reserved: the operation this call started ran to its own end after the call returned. */
+  /** The operation this call started ran to its own end after the call returned. */
   BackgroundEnd: "background-end",
 } as const;
 
 /** How a dispatched call ended, or that it had not ended when the run did. */
 export type DispatchOutcome = (typeof DispatchOutcome)[keyof typeof DispatchOutcome];
+
+/**
+ * How an operation ended, as the target that ran it reports. A target publishes
+ * one through its rehearsal staging, and a published ending stands in place of
+ * whatever the call's handle settle said about the call.
+ */
+export type OperationEnding =
+  | typeof DispatchOutcome.Dropped
+  | typeof DispatchOutcome.Preempted
+  | typeof DispatchOutcome.BackgroundEnd;
 
 /** One host action the brain under study dispatched on one think. */
 export interface DispatchObservation {
@@ -142,12 +155,14 @@ export interface DispatchObservation {
   /**
    * How the call ended. Absent when the ending is unremarkable: a synchronous
    * call, which ends as it is made, and an asynchronous call that resolved on
-   * the same think it was made.
+   * the same think it was made. An {@link OperationEnding} the target published
+   * about the operation the call started stands here in place of the call's own
+   * ending.
    */
   readonly outcome?: DispatchOutcome;
   /**
-   * Thinks between the call and its ending, present only when it ended on a
-   * later think than it was made.
+   * Thinks between the call and the ending {@link outcome} names, present only
+   * when that ending fell on a later think than the call.
    */
   readonly settledAfter?: number;
 }

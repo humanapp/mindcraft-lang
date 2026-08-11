@@ -2,7 +2,8 @@ import type { MindcraftBrain } from "@mindcraft-lang/core/app";
 import type { RehearsalWorld, WorldDriver, WorldStaging } from "../kit/index.js";
 import { createRehearsalAdapter } from "../kit/index.js";
 import type { ScenarioInputKind, TargetAdapter, TargetManifest } from "../target/adapter.js";
-import type { FakeRinging, FakeWorldState } from "./fake-module.js";
+import { DispatchOutcome } from "../target/adapter.js";
+import type { FakeWorldState } from "./fake-module.js";
 import { createFakeModule } from "./fake-module.js";
 
 /** Mindcraft identity the fake target's adapter reports itself as. */
@@ -28,13 +29,13 @@ const manifest: TargetManifest = {
 /** Milliseconds one think of the fake world advances. */
 const stepMs = 1000 / 60;
 
-/** Thinks a call of `actuator.fake.ring` stays in flight before the fake world settles it. */
+/** Thinks a ring holds the fake world's bell before the world settles it. */
 export const FAKE_RING_THINKS = 2;
 
 /**
- * The fake world: one participant running the brain under study, and a signal
- * the seeded stream raises or lowers before every think, or that the scenario
- * scripts.
+ * The fake world: one participant running the brain under study, a signal the
+ * seeded stream raises or lowers before every think, or that the scenario
+ * scripts, and one bell a ring leases while it rings.
  */
 class FakeWorld implements RehearsalWorld {
   private readonly state: FakeWorldState = { signal: false };
@@ -45,8 +46,10 @@ class FakeWorld implements RehearsalWorld {
   private think = 0;
   /** The scripted signal level in force, or `undefined` while the seeded stream drives it. */
   private scripted: boolean | undefined;
-  /** Ring calls in flight, each with the think it was made on. */
-  private ringing: { ring: FakeRinging; at: number }[] = [];
+  /** Handle of the ring the bell is being timed for, absent while the bell is free. */
+  private timedRing: number | undefined;
+  /** Think the ring being timed started on. */
+  private ringStartedOn = 0;
 
   constructor(private readonly staging: WorldStaging) {
     this.brain = staging.environment.createBrain(staging.subjectBrain, { context: this.state });
@@ -55,10 +58,7 @@ class FakeWorld implements RehearsalWorld {
   }
 
   step(): void {
-    for (const entry of this.ringing) {
-      if (this.think - entry.at >= FAKE_RING_THINKS) entry.ring.settle();
-    }
-    this.ringing = this.ringing.filter((entry) => this.think - entry.at < FAKE_RING_THINKS);
+    this.settleElapsedRing();
 
     const drawn = this.staging.next() < 0.5;
     for (const input of this.staging.inputs) {
@@ -66,12 +66,47 @@ class FakeWorld implements RehearsalWorld {
     }
     this.state.signal = this.scripted ?? drawn;
     this.brain.think(this.time);
-
-    for (const ring of this.state.ringing ?? []) this.ringing.push({ ring, at: this.think });
-    this.state.ringing = [];
+    this.publishEndings();
+    this.timeTheHeldRing();
 
     this.time += stepMs;
     this.think++;
+  }
+
+  /**
+   * End the ring holding the bell once it has rung for its whole duration: a
+   * ring its caller waited on settles its handle, and one made in the background
+   * publishes the end of an operation whose call is long over.
+   */
+  private settleElapsedRing(): void {
+    const bell = this.state.bell;
+    if (bell === undefined || bell.handleId !== this.timedRing) return;
+    if (this.think - this.ringStartedOn < FAKE_RING_THINKS) return;
+    this.state.bell = undefined;
+    this.timedRing = undefined;
+    if (bell.inBackground) {
+      this.staging.publishOperationEnding({ handleId: bell.handleId, ending: DispatchOutcome.BackgroundEnd });
+      return;
+    }
+    bell.settle();
+  }
+
+  /** Publish every ending the think's rings produced, in the order they happened. */
+  private publishEndings(): void {
+    for (const ending of this.state.endings ?? []) this.staging.publishOperationEnding(ending);
+    this.state.endings = [];
+  }
+
+  /** Start timing whichever ring holds the bell now, if it is not the one already timed. */
+  private timeTheHeldRing(): void {
+    const bell = this.state.bell;
+    if (bell === undefined) {
+      this.timedRing = undefined;
+      return;
+    }
+    if (bell.handleId === this.timedRing) return;
+    this.timedRing = bell.handleId;
+    this.ringStartedOn = this.think;
   }
 
   subjectPresent(): boolean {

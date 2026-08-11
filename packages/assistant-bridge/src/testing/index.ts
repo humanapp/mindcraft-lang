@@ -6,7 +6,7 @@ export {
   FAKE_SUBJECT,
   FAKE_TARGET_IDENTITY,
 } from "./fake-adapter.js";
-export type { FakeRinging, FakeWorldState } from "./fake-module.js";
+export type { FakeBell, FakeWorldState } from "./fake-module.js";
 export {
   createFakeModule,
   FAKE_EMIT_GRAMMAR_NOTE,

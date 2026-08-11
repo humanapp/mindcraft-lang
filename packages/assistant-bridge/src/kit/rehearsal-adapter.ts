@@ -6,6 +6,7 @@ import type { HandleId, IBrainRuntime, NumberPrecision } from "@mindcraft-lang/c
 import { HandleOutcome } from "@mindcraft-lang/core/runtime";
 import type {
   GateObservation,
+  OperationEnding,
   PageSwitchObservation,
   ScenarioInput,
   ScenarioInputKind,
@@ -82,6 +83,20 @@ export interface RunningSubject {
   runs(ctx: ExecutionContext): boolean;
 }
 
+/**
+ * One operation of the staged world ending, as the world reports it. The handle
+ * names which call started the operation, so the run can say how a call the
+ * document made turned out.
+ */
+export interface OperationEndingReport {
+  /**
+   * Handle the call that started the operation was dispatched on, as the
+   * `AsyncHandle` handed to the action body carries it.
+   */
+  readonly handleId: HandleId;
+  readonly ending: OperationEnding;
+}
+
 /** What the kit hands a world driver to stage one rehearsal. */
 export interface WorldStaging {
   /** The environment the world runs in, carrying core's modules and the target's. */
@@ -106,6 +121,14 @@ export interface WorldStaging {
    * as that participant starts executing; nothing is observed before it.
    */
   observeSubject(subject: RunningSubject): void;
+  /**
+   * Report how one operation of this world ended, at the moment it ends. The
+   * run attributes the ending to the call whose handle the report names, and a
+   * report naming a handle no observed call was dispatched on is ignored. Call
+   * it only for the endings the runtime cannot see for itself; an operation
+   * that ran to its end while its caller waited needs no report.
+   */
+  publishOperationEnding(report: OperationEndingReport): void;
 }
 
 /** A staged world the kit's run loop advances. */
@@ -201,10 +224,12 @@ type RecordedDispatch = {
   settledAfter?: number;
 };
 
-/** One call whose handle has not settled yet, with the think it was made on. */
-interface InFlightCall {
+/** One asynchronous call of the run, with the think it was made on. */
+interface RecordedCall {
   readonly dispatch: RecordedDispatch;
   readonly think: number;
+  /** `true` once the call's handle has settled. */
+  settled: boolean;
 }
 
 /**
@@ -224,8 +249,8 @@ class SubjectRecorder {
   private readonly thinks: ThinkObservation[] = [];
   /** Zero-based index of the think being recorded. */
   private think = 0;
-  /** Calls whose handle is still pending, keyed by the handle they settle on. */
-  private readonly inFlight = new Map<HandleId, InFlightCall>();
+  /** Every asynchronous call of the run, keyed by the handle it was dispatched on. */
+  private readonly calls = new Map<HandleId, RecordedCall>();
   /** The rule parked on each handle, for the handles a rule is parked on. */
   private readonly parkedOn = new Map<HandleId, string>();
   /** The call awaiting its return report, with the output name the action declares. */
@@ -287,7 +312,7 @@ class SubjectRecorder {
       };
       this.dispatches.push(dispatch);
       this.returning = { dispatch, outputName: descriptor.outputs?.[0]?.name };
-      if (handleId !== undefined) this.inFlight.set(handleId, { dispatch, think: this.think });
+      if (handleId !== undefined) this.calls.set(handleId, { dispatch, think: this.think, settled: false });
     });
     events.on("host_action_returned", ({ result }) => {
       const returning = this.returning;
@@ -304,9 +329,9 @@ class SubjectRecorder {
     events.on("handle_settled", ({ handleId, outcome }) => {
       if (!this.recording) return;
       this.unpark(handleId);
-      const call = this.inFlight.get(handleId);
+      const call = this.calls.get(handleId);
       if (!call) return;
-      this.inFlight.delete(handleId);
+      call.settled = true;
       const settledAfter = this.think - call.think;
       if (settledAfter > 0) call.dispatch.settledAfter = settledAfter;
       if (settledAfter > 0 || outcome !== HandleOutcome.RESOLVED) call.dispatch.outcome = outcomeOf(outcome);
@@ -330,18 +355,34 @@ class SubjectRecorder {
     });
   }
 
+  /**
+   * Record how one operation of the world ended against the call that started
+   * it, replacing whatever the call's own handle settle said. A report naming a
+   * handle no recorded call was dispatched on is ignored.
+   */
+  operationEnded({ handleId, ending }: OperationEndingReport): void {
+    if (!this.recording) return;
+    const call = this.calls.get(handleId);
+    if (!call) return;
+    call.dispatch.outcome = ending;
+    const endedAfter = this.think - call.think;
+    if (endedAfter > 0) call.dispatch.settledAfter = endedAfter;
+  }
+
   /** Stop recording; called once the participant under study has left the world. */
   release(): void {
     this.recording = false;
   }
 
   /**
-   * Close the run: every call still in flight ended nowhere the run could see,
-   * so it is reported as unended. Call it once the last think is closed.
+   * Close the run: every call that never ended anywhere the run could see is
+   * reported as unended. Call it once the last think is closed.
    */
   closeRun(): void {
-    for (const call of this.inFlight.values()) call.dispatch.outcome = DispatchOutcome.Pending;
-    this.inFlight.clear();
+    for (const call of this.calls.values()) {
+      if (!call.settled) call.dispatch.outcome = DispatchOutcome.Pending;
+    }
+    this.calls.clear();
   }
 
   /** Close the current think, keeping it only while the participant under study lives. */
@@ -438,6 +479,9 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
     next,
     observeSubject: (running) => {
       recorder.observeSubject(running);
+    },
+    publishOperationEnding: (report) => {
+      recorder.operationEnded(report);
     },
   });
 

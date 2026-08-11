@@ -254,7 +254,7 @@ describe("tool input validation", () => {
     assert.equal(toolInputSchemas.simulate.safeParse({ scenario: { seed: 1, subject: "herbivore" } }).success, false);
   });
 
-  test("accepts a scenario scripting percepts of any kind, at any think, of either value shape", () => {
+  test("accepts a scenario scripting percepts of any kind, at any think, of any value shape", () => {
     const parsed = toolInputSchemas.simulate.safeParse({
       scenario: {
         seed: 1,
@@ -262,6 +262,7 @@ describe("tool input validation", () => {
         inputs: [
           { kind: "button-a", at: 2, value: true },
           { kind: "light-level", at: 0, value: 40 },
+          { kind: "radio-message-string", at: 4, value: "go" },
         ],
       },
       thinks: 10,
@@ -277,7 +278,7 @@ describe("tool input validation", () => {
       { kind: "button-a", at: 0 },
       { kind: "", at: 0, value: true },
       { kind: "button-a", at: -1, value: true },
-      { kind: "button-a", at: 0, value: "down" },
+      { kind: "button-a", at: 0, value: { level: 1 } },
     ]) {
       const parsed = toolInputSchemas.simulate.safeParse({
         scenario: { seed: 1, subject: "device", inputs: [input] },

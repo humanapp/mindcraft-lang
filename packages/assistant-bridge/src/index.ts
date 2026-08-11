@@ -8,6 +8,7 @@ export type {
   AdapterNonconformance,
   DispatchObservation,
   GateObservation,
+  OperationEnding,
   PageSwitchObservation,
   ScenarioInput,
   ScenarioInputKind,

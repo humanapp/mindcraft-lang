@@ -15,6 +15,8 @@ import {
   createHostActuator,
   createHostSensor,
   FALSE_VALUE,
+  getSlotId,
+  isNilValue,
   mkCallDef,
   mod,
   optional,
@@ -25,6 +27,9 @@ import {
   TRUE_VALUE,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
+import type { HandleId } from "@mindcraft-lang/core/runtime";
+import type { OperationEndingReport } from "../kit/index.js";
+import { DispatchOutcome } from "../target/adapter.js";
 
 /** Tile ids the fake target's arguments are addressed by. */
 export const FakeTileIds = {
@@ -32,6 +37,10 @@ export const FakeTileIds = {
   Loudly: "modifier:fake.loudly",
   /** Parameter carrying how hard to emit. */
   Strength: "parameter:fake.strength",
+  /** Modifier making a ring take the bell from whatever holds it. */
+  Immediately: "modifier:fake.immediately",
+  /** Modifier making a ring return at once, leaving the bell ringing behind it. */
+  InBackground: "modifier:fake.in-background",
 } as const;
 
 /** Action keys the fake target's brains dispatch. */
@@ -40,16 +49,20 @@ export const FakeActionKeys = {
   Emit: "actuator.fake.emit",
   /** The asynchronous actuator that settles at dispatch. */
   Chime: "actuator.fake.chime",
-  /** The asynchronous actuator the world settles thinks later. */
+  /** The asynchronous actuator that leases the world's one bell. */
   Ring: "actuator.fake.ring",
 } as const;
 
 /** Name of the output the fake target's emit reports back. */
 export const FAKE_EMIT_OUTPUT = "emitted";
 
-/** One `actuator.fake.ring` call the world has taken and not yet settled. */
-export interface FakeRinging {
-  /** Settle the call, releasing whatever rule is parked on it. */
+/** The `actuator.fake.ring` call holding the world's one bell while it rings. */
+export interface FakeBell {
+  /** Handle the ringing call was dispatched on. */
+  readonly handleId: HandleId;
+  /** `true` when the ringer did not park on the bell and its handle is already settled. */
+  readonly inBackground: boolean;
+  /** Settle the ringing call's handle, releasing whatever rule is parked on it. */
   settle(): void;
 }
 
@@ -59,18 +72,31 @@ export interface FakeWorldState {
   signal: boolean;
   /** Whether the next `actuator.fake.emit` call reports that it emitted. */
   emits?: boolean;
-  /** Calls of `actuator.fake.ring` still in flight, in the order they were made. */
-  ringing?: FakeRinging[];
+  /** The ring holding the bell, absent while the bell is free. */
+  bell?: FakeBell;
+  /** Operation endings the world has yet to publish, in the order they happened. */
+  endings?: OperationEndingReport[];
 }
 
 const Loudly = mod(FakeTileIds.Loudly);
+const Immediately = mod(FakeTileIds.Immediately);
+const InBackground = mod(FakeTileIds.InBackground);
 const Strength = param(FakeTileIds.Strength);
 const AnonNumber = param(CoreParameterId.AnonymousNumber, { anonymous: true });
 
 const signalCallDef = mkCallDef(bag());
 const emitCallDef = mkCallDef(bag(optional(Loudly), optional(Strength)));
 const chimeCallDef = mkCallDef(bag(optional(AnonNumber)));
-const ringCallDef = mkCallDef(bag());
+const ringCallDef = mkCallDef(bag(optional(Immediately), optional(InBackground)));
+
+const kRingImmediatelySlotId = getSlotId(ringCallDef, Immediately);
+const kRingInBackgroundSlotId = getSlotId(ringCallDef, InBackground);
+
+/** True when the modifier arg at `slotId` is present, so its tile is attached. */
+function hasModifier(args: ReadonlyList<Value>, slotId: number): boolean {
+  const value = args.get(slotId);
+  return value !== undefined && !isNilValue(value);
+}
 
 /** Report the signal the world staged for this think. */
 function execSignal(ctx: ExecutionContext): Value {
@@ -91,23 +117,42 @@ function execChime(_ctx: ExecutionContext, _args: ReadonlyList<Value>, handle: A
 }
 
 /**
- * Hand the handle to the world and return, so the issuing rule parks until the
- * world settles the ring. A world that never settles it leaves the rule parked
- * for the rest of the run.
+ * Take the world's one bell and ring it, parking the issuing rule until the
+ * world settles the ring. A ring made while the bell is held is dropped and
+ * settles at once, unless it carries `immediately`, which takes the bell from
+ * the holder and ends the holder's ring as preempted. A ring carrying
+ * `in background` settles at once and leaves the bell ringing behind it.
  */
-function execRing(ctx: ExecutionContext, _args: ReadonlyList<Value>, handle: AsyncHandle): void {
+function execRing(ctx: ExecutionContext, args: ReadonlyList<Value>, handle: AsyncHandle): void {
   const state = ctx.data as FakeWorldState | undefined;
   if (!state) {
     handle.resolve(VOID_VALUE);
     return;
   }
-  const ringing = state.ringing ?? [];
-  state.ringing = ringing;
-  ringing.push({
+  const endings = state.endings ?? [];
+  state.endings = endings;
+  const held = state.bell;
+  if (held !== undefined) {
+    if (!hasModifier(args, kRingImmediatelySlotId)) {
+      handle.resolve(VOID_VALUE);
+      endings.push({ handleId: handle.id, ending: DispatchOutcome.Dropped });
+      return;
+    }
+    state.bell = undefined;
+    held.settle();
+    endings.push({ handleId: held.handleId, ending: DispatchOutcome.Preempted });
+  }
+  const inBackground = hasModifier(args, kRingInBackgroundSlotId);
+  state.bell = {
+    handleId: handle.id,
+    inBackground,
     settle: () => {
       handle.resolve(VOID_VALUE);
     },
-  });
+  };
+  if (inBackground) {
+    handle.resolve(VOID_VALUE);
+  }
 }
 
 const signalSensor = {
@@ -164,10 +209,10 @@ const ringActuator = {
  * The module the fake target installs: one boolean sensor reading the staged
  * signal, one synchronous actuator taking a modifier and a named parameter and
  * reporting a declared output, one asynchronous actuator taking an anonymous
- * number and settling at dispatch, and one asynchronous actuator the world
- * settles when it chooses. A rehearsal over it observes gates, both dispatch
- * kinds with their arguments, a declared output's value, and a call whose
- * lifecycle spans thinks.
+ * number and settling at dispatch, and one asynchronous actuator that leases
+ * the world's one bell. A rehearsal over it observes gates, both dispatch kinds
+ * with their arguments, a declared output's value, a call whose lifecycle spans
+ * thinks, and every operation ending a world publishes.
  */
 export function createFakeModule(): MindcraftModule {
   return {
@@ -177,7 +222,11 @@ export function createFakeModule(): MindcraftModule {
       api.registerHostActuator(createHostActuator(emitActuator));
       api.registerHostActuator(createHostActuator(chimeActuator));
       api.registerHostActuator(createHostActuator(ringActuator));
-      api.registerModifiers([{ id: FakeTileIds.Loudly, label: "loudly" }]);
+      api.registerModifiers([
+        { id: FakeTileIds.Loudly, label: "loudly" },
+        { id: FakeTileIds.Immediately, label: "immediately" },
+        { id: FakeTileIds.InBackground, label: "in background" },
+      ]);
       api.registerParameters([{ id: FakeTileIds.Strength, dataType: CoreTypeIds.Number, label: "strength" }]);
     },
   };

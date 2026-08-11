@@ -10,6 +10,7 @@
 export type { RehearsalEnvironmentOptions } from "./environment.js";
 export { createRehearsalEnvironment, createSeededRng } from "./environment.js";
 export type {
+  OperationEndingReport,
   RehearsalAdapterOptions,
   RehearsalWorld,
   RunningSubject,
