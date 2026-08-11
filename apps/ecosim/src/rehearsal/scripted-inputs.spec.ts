@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { AuthoringWorkspace, ScenarioInput, SimulationRun } from "@mindcraft-lang/assistant-bridge";
 import { createAuthoringWorkspace, proposeEdit } from "@mindcraft-lang/assistant-bridge";
+import { createRehearsalEnvironment, createSeededRng } from "@mindcraft-lang/assistant-bridge/kit";
 import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
+import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES } from "@/brain/archetypes";
+import { createEcosimModule } from "@/brain/index";
 import { createTargetAdapter } from "./adapter";
 import { sourceRehearsalContent } from "./source-content";
-import { SCENARIO_INPUT_KINDS } from "./world";
+import { createRehearsalWorld, SCENARIO_INPUT_KINDS } from "./world";
 
 /** The app's own assets, read from the tree these specs run in. */
 const CONTENT = sourceRehearsalContent();
@@ -74,8 +77,16 @@ function firedThinks(run: SimulationRun): number[] {
   return thinks;
 }
 
-/** Assert `fired` covers the staged stretch and nothing outside it, allowing the sensing lag. */
-function assertFlippedWithTheStaging(fired: readonly number[]): void {
+/**
+ * Assert `run` lasted past the staged stretch, and that its gate passed over
+ * that stretch and nothing outside it, allowing the sensing lag.
+ */
+function assertFlippedWithTheStaging(run: SimulationRun): void {
+  assert.ok(
+    run.thinks > CLEARED + SENSING_LAG,
+    `the creature under study left the world on think ${run.thinks}, before the staged stretch had played out`
+  );
+  const fired = firedThinks(run);
   assert.deepEqual(
     fired.filter((think) => think < PLACED),
     [],
@@ -104,8 +115,7 @@ describe("scripted world causes in an ecosim rehearsal", () => {
       IN_VIEW
     );
 
-    assert.equal(run.thinks, RUN_THINKS, "the creature under study lived through the run");
-    assertFlippedWithTheStaging(firedThinks(run));
+    assertFlippedWithTheStaging(run);
   });
 
   test("a creature staged in contact turns the bump sensor on, and taking it away turns it off", async () => {
@@ -115,8 +125,37 @@ describe("scripted world causes in an ecosim rehearsal", () => {
       IN_CONTACT
     );
 
-    assert.equal(run.thinks, RUN_THINKS, "the creature under study lived through the run");
-    assertFlippedWithTheStaging(firedThinks(run));
+    assertFlippedWithTheStaging(run);
+  });
+
+  test("holds the staged kind to one creature from the world's first step", async () => {
+    const staged: Archetype = "carnivore";
+    let underStudy: Actor | undefined;
+    const next = createSeededRng(SEED);
+    const world = await createRehearsalWorld({
+      environment: createRehearsalEnvironment({ modules: [createEcosimModule()], rng: next }),
+      next,
+      shippedBrains: CONTENT.shippedBrains,
+      observer: {
+        onSpawn: (actor: Actor) => {
+          if (underStudy === undefined && actor.archetype === SUBJECT) underStudy = actor;
+        },
+      },
+      scripted: { inputs: [{ kind: `${staged}-ahead`, at: 0, value: IN_VIEW }], subject: () => underStudy },
+    });
+
+    const counts: number[] = [];
+    for (let think = 0; think < RUN_THINKS; think++) {
+      world.step();
+      counts.push(world.actors().filter((actor) => actor.archetype === staged).length);
+    }
+    world.shutdown();
+
+    assert.deepEqual(
+      [...new Set(counts)],
+      [1],
+      `the world held ${Math.max(...counts)} creatures of the staged kind at its fullest`
+    );
   });
 
   test("reproduces a scripted run exactly from the same seed", async () => {

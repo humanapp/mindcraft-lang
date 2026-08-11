@@ -16,8 +16,6 @@ import {
   blipCollisionFilter,
   boundaryWalls,
   defaultDesiredCounts,
-  generateObstacles,
-  obstacleBodyOptions,
   randomFacing,
   randomSpawnPosition,
   WORLD_FPS,
@@ -181,13 +179,14 @@ interface WorldListener {
 /**
  * The `Playground` surface the engine and actors depend on, backed by a real
  * Matter engine stepped directly by {@link HeadlessScene.step}. Owns the world
- * bodies (walls, obstacles, actor bodies, blip bodies), the collision wiring
- * that turns Matter pairs into engine bump / blip events, and the seeded
- * placement its world construction draws.
+ * bodies (walls, actor bodies, blip bodies), the collision wiring that turns
+ * Matter pairs into engine bump / blip events, and the seeded placement its
+ * world construction draws.
  */
 class HeadlessScene {
   readonly scale = { width: WORLD_WIDTH, height: WORLD_HEIGHT };
   readonly matterEngine: MatterJS.Engine;
+  /** Static line-of-sight blockers; a rehearsal arena holds none. */
   readonly obstacleBodies: MatterJS.BodyType[] = [];
   readonly matter: { world: unknown };
   readonly add = {
@@ -248,7 +247,6 @@ class HeadlessScene {
     };
 
     this.createWalls();
-    this.createObstacles();
     this.wireMatterEvents();
   }
 
@@ -280,15 +278,6 @@ class HeadlessScene {
         frictionStatic: 0,
       });
       MatterComposite.add(this.matterWorld, body);
-    }
-  }
-
-  private createObstacles(): void {
-    for (const { x, y, width, height, rotation } of generateObstacles(this.random)) {
-      const body = MatterBodies.rectangle(x, y, width, height, obstacleBodyOptions(rotation));
-      MatterBody.setStatic(body, true);
-      MatterComposite.add(this.matterWorld, body);
-      this.obstacleBodies.push(body);
     }
   }
 
@@ -464,7 +453,7 @@ export interface ScriptedCauses {
 class StagedCreatures {
   /** Distance in world pixels each staged archetype stands at; zero for a kind taken out of the world. */
   private readonly heldAt = new Map<Archetype, number>();
-  /** The creature the staging put in the world for each archetype it holds one of. */
+  /** The creature standing at the staged distance for each archetype the staging holds one of. */
   private readonly standing = new Map<Archetype, Actor>();
 
   constructor(
@@ -485,9 +474,9 @@ class StagedCreatures {
   }
 
   /**
-   * Put every held creature where the scenario holds it, spawning one for a
-   * staged kind the world has none of. Does nothing until the creature under
-   * study is in the world.
+   * Put every held creature where the scenario holds it, taking over the
+   * world's own creature of a staged kind, or spawning one when the world
+   * has none. Does nothing until the creature under study is in the world.
    */
   place(): void {
     const subject = this.causes.subject();
@@ -497,7 +486,7 @@ class StagedCreatures {
       const facing = subject.sprite.rotation;
       const x = subject.sprite.x + Math.cos(facing) * distance;
       const y = subject.sprite.y + Math.sin(facing) * distance;
-      const creature = this.standingCreature(archetype, x, y, facing);
+      const creature = this.standingCreature(archetype, subject, x, y, facing);
       if (!creature) continue;
       creature.sprite.setPosition(x, y);
       creature.sprite.setVelocity(0, 0);
@@ -521,14 +510,41 @@ class StagedCreatures {
     }
   }
 
-  /** The creature standing for `archetype`, spawned at (`x`, `y`) facing `facing` when none is. */
-  private standingCreature(archetype: Archetype, x: number, y: number, facing: number): Actor | undefined {
+  /**
+   * The creature standing for `archetype`: the one the staging already holds
+   * while it lives, else a creature of that kind the world put there on its
+   * own, else one spawned at (`x`, `y`) facing `facing`. Never `subject`.
+   */
+  private standingCreature(
+    archetype: Archetype,
+    subject: Actor,
+    x: number,
+    y: number,
+    facing: number
+  ): Actor | undefined {
     const held = this.standing.get(archetype);
     if (held && this.engine.getActorById(held.actorId) === held) return held;
+    const taken = this.takeOver(archetype, subject);
+    if (taken) {
+      this.standing.set(archetype, taken);
+      return taken;
+    }
     this.scene.placeNextSpawn(x, y, facing);
     const spawned = this.engine.spawn(archetype);
     if (spawned) this.standing.set(archetype, spawned);
     return spawned;
+  }
+
+  /**
+   * A creature of `archetype` the staging can hold in place of spawning its
+   * own: one the world's own population keeps, neither the creature under
+   * study nor one this staging has already drained.
+   */
+  private takeOver(archetype: Archetype, subject: Actor): Actor | undefined {
+    for (const actor of this.engine.getActorsByArchetype(archetype)) {
+      if (actor !== subject && actor.energy > 0) return actor;
+    }
+    return undefined;
   }
 }
 
@@ -550,8 +566,8 @@ export interface RehearsalWorldOptions {
   readonly environment: MindcraftEnvironment;
   /**
    * The run's seeded random stream. Every world-construction choice draws from
-   * it -- obstacle layout, spawn positions, spawn facing -- so the same stream
-   * reproduces the world exactly.
+   * it -- spawn positions, spawn facing -- so the same stream reproduces the
+   * world exactly.
    */
   readonly next: () => number;
   readonly observer: WorldObserver;
@@ -565,7 +581,7 @@ export interface RehearsalWorldOptions {
 
 /** A staged, running rehearsal world. */
 export interface RehearsalWorld {
-  /** Static obstacle bodies the world was built with. */
+  /** Static line-of-sight blockers standing in the world; a rehearsal arena holds none. */
   readonly obstacleCount: number;
   /** Advance the world one fixed step of {@link STEP_MS} milliseconds. */
   step(): void;

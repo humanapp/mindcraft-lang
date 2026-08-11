@@ -43,7 +43,7 @@ Rules:
   id strings, `callDef` structures, `getSlotId` lookups, and every gameplay
   threshold (nearby 100 px, far away 300 px, vision range and FOV, eat cooldown
   and bite, shoot rates / cost / kickback, quickly and slowly multipliers,
-  priority default 0.5, wander expiry, memory expiry, `VISION_PHASES`,
+  priority default 0.5, wander expiry, `VISION_PHASES`,
   `MAX_SPAWNS_PER_TICK`, respawn delays, energy configs) are copied exactly.
 - `abi-ids.ts` and `tileids.ts` are **byte-identical** to ecosim's. Verify with
   `diff` after touching either side.

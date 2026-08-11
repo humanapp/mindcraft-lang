@@ -220,7 +220,7 @@ describe("headless whole-world rehearsal", () => {
       0
     );
     assert.equal(peakPopulation, expectedPopulation, "the world populates to the app's default counts");
-    assert.equal(first.obstacleCount, 4, "the world carries the scene's obstacle set");
+    assert.equal(first.obstacleCount, 0, "a rehearsal arena stands clear of line-of-sight blockers");
     assert.equal(first.brainsExecuted, 3, "one distinct brain def per archetype is executing");
     assert.ok(first.observations.thinks > 0, "brains thought during the run");
     assert.ok(first.observations.totalDispatch.has("sensor.see"), "brains sensed each other");

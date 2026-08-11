@@ -6,7 +6,6 @@ import {
   type ExecutionContext,
   extractNumberValue,
   FALSE_VALUE,
-  getCallSiteState,
   getSlotId,
   List,
   logger,
@@ -15,12 +14,9 @@ import {
   mkListValue,
   mkNumberValue,
   mod,
-  type NumberValue,
   optional,
   type ReadonlyList,
   repeated,
-  type StructValue,
-  setCallSiteState,
   setRuleVariable,
   TRUE_VALUE,
   type Value,
@@ -56,26 +52,10 @@ const kDistanceFarAwaySlotId = getSlotId(callDef, FarAway);
 const kNearbyDistanceThresholdSq = 100 * 100; // 100 pixels
 const kFarAwayDistanceThresholdSq = 300 * 300; // 300 pixels
 
-type SeeState = {
-  rememberedActorId?: NumberValue; // ID of the last seen actor that passed filters, if any
-  rememberedPos?: StructValue; // Position of the last seen actor that passed filters, if any
-  memoryExpiration: number; // Timestamp when the remembered actor ID should be forgotten
-};
-
-function initSee(ctx: ExecutionContext): void {
-  setCallSiteState(ctx, {
-    rememberedActorId: undefined,
-    rememberedPos: undefined,
-    memoryExpiration: 0,
-  } satisfies SeeState);
-}
-
 function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   try {
     // Get the Actor from the execution context (optional - sensor can work without it)
     const selfActor = getSelf(ctx);
-
-    let state = getCallSiteState<SeeState>(ctx)!;
 
     if (!selfActor) {
       logger.warn("See sensor invoked without an actor in context");
@@ -87,17 +67,6 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
 
     if (!hasSeen) {
       return FALSE_VALUE;
-    }
-
-    // Check if remembered actor has expired
-    const now = selfActor.engine.simTime;
-    if (state.rememberedPos !== undefined && now > state.memoryExpiration) {
-      state = {
-        rememberedActorId: undefined,
-        rememberedPos: undefined,
-        memoryExpiration: 0,
-      } satisfies SeeState;
-      setCallSiteState(ctx, state);
     }
 
     const bHasCarnivoreFilter = hasArg(args, kActorKindCarnivoreSlotId);
@@ -170,12 +139,6 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
     const seenActor = sightResult.actor;
     const targetPos = new Vector2(seenActor.sprite.x, seenActor.sprite.y);
 
-    // Set as remembered actor
-    state.rememberedPos = mkVector2Value(targetPos);
-    state.rememberedActorId = mkNumberValue(seenActor.actorId);
-    state.memoryExpiration = now + ctx.services.app.rng.next() * 2000 + 500; // Remember for 0.5-2.5s of sim time
-    setCallSiteState(ctx, state);
-
     // Store targets for the DO side to access
     const seenActors = filteredSightQueue.filter((sr) => sr.actor.sprite.body !== undefined).map((sr) => sr.actor);
     setRuleVariable(
@@ -188,8 +151,8 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
       "targetPositions",
       mkListValue("", List.from(seenActors.map((actor) => mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y)))))
     );
-    setRuleVariable(ctx, "targetActor", state.rememberedActorId!);
-    setRuleVariable(ctx, "targetPos", state.rememberedPos!);
+    setRuleVariable(ctx, "targetActor", mkNumberValue(seenActor.actorId));
+    setRuleVariable(ctx, "targetPos", mkVector2Value(targetPos));
     selfActor.debugTargetPositions.set(seenActor.actorId, targetPos);
     return TRUE_VALUE;
   } catch (error) {
@@ -202,7 +165,6 @@ export default {
   ...EcosimHostActions.See,
   callDef,
   fn: {
-    onInitialized: initSee,
     exec: execSee,
   },
   isAsync: false,
