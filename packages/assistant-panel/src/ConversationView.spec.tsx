@@ -3,7 +3,8 @@
  * can be in: the order a turn's narration and status lines land in, how
  * repeated lines fold, what marks a turn that did not simply finish, when the
  * entity's presence stands at the live edge, which control the intent box
- * stands beside, and what a lost session offers.
+ * stands beside, what a lost session offers, and which lines read markup in
+ * what they carry.
  */
 
 import assert from "node:assert/strict";
@@ -211,6 +212,39 @@ describe("a conversation with turns in it", () => {
     ]);
     assert.equal(countOf(markup, /data-assistant-activity-repeats="2"/), 1);
     assert.equal(countOf(markup, /data-assistant-activity-repeats="1"/), 1);
+  });
+});
+
+describe("markup in what is said", () => {
+  test("reads the entity's narration as the markdown subset, under the mark the line carries", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [{ kind: "narration", text: "**Two** things:\n\n- one `here`\n- and *another*" }],
+        },
+      ]),
+    });
+
+    assert.match(markup, /data-assistant-narration/);
+    assert.match(markup, /<strong[^>]*>Two<\/strong>/);
+    assert.match(markup, /<ul[^>]*>/);
+    assert.equal(countOf(markup, /<li[^>]*>/), 2);
+    assert.match(markup, /<code[^>]*>here<\/code>/);
+    assert.match(markup, /<em[^>]*>another<\/em>/);
+  });
+
+  test("leaves what the person typed literal, whatever markup it holds", () => {
+    const markup = render({
+      record: record([{ kind: "user", text: "**not loud** and <b>not this</b> and `not typed`" }]),
+    });
+
+    assert.match(markup, /data-assistant-entry="user"/);
+    assert.match(markup, /\*\*not loud\*\*/);
+    assert.match(markup, /&lt;b&gt;/);
+    assert.doesNotMatch(markup, /<strong/);
+    assert.doesNotMatch(markup, /<code/);
+    assert.doesNotMatch(markup, /<b>/);
   });
 });
 

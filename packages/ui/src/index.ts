@@ -8,6 +8,8 @@ export * from "./brain-editor";
 export * from "./extension-browser";
 // Shared utility library
 export * from "./lib";
+// Safe-subset markdown renderer
+export * from "./markdown";
 // Self-contained print document builder and transport
 export * from "./print/standalone-print-document";
 // Project picker

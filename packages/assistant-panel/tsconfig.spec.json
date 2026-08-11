@@ -3,6 +3,8 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["src/**/*.spec.ts", "src/**/*.tsx"],
+  /* A spec's JSX is transformed under these options only where the file is included, so every
+     source a spec renders is listed -- the shared package's included too. */
+  "include": ["src/**/*.spec.ts", "src/**/*.tsx", "../ui/src/markdown/**/*.tsx"],
   "exclude": ["node_modules"]
 }

@@ -6,6 +6,7 @@ import type {
 } from "@mindcraft-lang/assistant-relay";
 import { ConversationTurnFailureCode, RelayTurnEndCode } from "@mindcraft-lang/assistant-relay";
 import { kBrainDeskFill } from "@mindcraft-lang/ui/brain-editor/brain-desk";
+import { SafeMarkdown } from "@mindcraft-lang/ui/markdown/SafeMarkdown";
 import { useEffect, useRef } from "react";
 import type { ToolActivity } from "./conversation/activity";
 import { toolActivity } from "./conversation/activity";
@@ -125,13 +126,13 @@ function PresenceMark() {
   );
 }
 
-/** One line of what a turn did: a run of narration, or an activity line and how many calls it stands for. */
+/** One thing a turn did: a run of narration, or an activity line and how many calls it stands for. */
 function StepView({ step }: { step: LaidOutStep }) {
   if (step.kind === "narration") {
     return (
-      <p data-assistant-narration className="whitespace-pre-wrap text-sm text-card-foreground">
-        {step.text}
-      </p>
+      <div data-assistant-narration className="text-sm text-card-foreground">
+        <SafeMarkdown text={step.text} />
+      </div>
     );
   }
   return (
