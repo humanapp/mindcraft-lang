@@ -111,6 +111,7 @@ export const relayUpstreamMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("session:connect"),
     protocolVersion: z.number().int().positive(),
     manifest: relayToolManifestSchema,
+    conversation: z.unknown().optional(),
   }),
   z.strictObject({ type: z.literal("turn:toolResults"), results: z.array(relayToolResultSchema) }),
   z.strictObject({ type: z.literal("session:userMessage"), text: z.string() }),

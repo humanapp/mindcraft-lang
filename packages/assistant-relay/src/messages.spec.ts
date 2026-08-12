@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { CONVERSATION_RECORD_VERSION, conversationRecordSchema } from "./conversation.js";
 import type { RelayDownstreamMessage, RelayUpstreamMessage } from "./messages.js";
 import { RelayTurnEndCode, relayDownstreamMessageSchema, relayUpstreamMessageSchema } from "./messages.js";
 import { ASSISTANT_RELAY_PROTOCOL_VERSION, RelayRefusalCode } from "./session.js";
@@ -36,6 +37,31 @@ const upstream: readonly RelayUpstreamMessage[] = [
       tools: ["compile", "read_project"],
       morphology: false,
       catalogDigest: "0f3a19c2",
+    },
+  },
+  {
+    type: "session:connect",
+    protocolVersion: ASSISTANT_RELAY_PROTOCOL_VERSION,
+    manifest: {
+      target: "example-org/trg-fake",
+      tools: ["compile", "read_project"],
+      morphology: false,
+      catalogDigest: "0f3a19c2",
+    },
+    conversation: {
+      version: CONVERSATION_RECORD_VERSION,
+      brainId: "brain-a",
+      entries: [
+        { kind: "user", text: "make it hide in the dark" },
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "narration", text: "placing the sensor" },
+            { kind: "toolCall", call: { name: "propose_edit", input: {}, outcome: { kind: "ok", payload: {} } } },
+          ],
+          ending: { kind: "end", code: RelayTurnEndCode.Complete },
+        },
+      ],
     },
   },
   {
@@ -109,6 +135,25 @@ describe("the relay wire", () => {
     };
 
     assert.equal(relayUpstreamMessageSchema.safeParse(forged).success, false);
+  });
+
+  test("admits a connect whose conversation the record schema would reject, so the service can drop it alone", () => {
+    const carried = {
+      type: "session:connect",
+      protocolVersion: ASSISTANT_RELAY_PROTOCOL_VERSION,
+      manifest: {
+        target: "example-org/trg-fake",
+        tools: [],
+        morphology: false,
+        catalogDigest: "0f3a19c2",
+      },
+      conversation: { version: CONVERSATION_RECORD_VERSION + 1, brainId: "brain-a", entries: [] },
+    };
+
+    const parsed = relayUpstreamMessageSchema.safeParse(carried);
+
+    assert.equal(parsed.success, true);
+    assert.equal(conversationRecordSchema.safeParse(carried.conversation).success, false);
   });
 
   test("refuses a tool manifest carrying a field the wire does not define", () => {

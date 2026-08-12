@@ -8,9 +8,15 @@ import type {
   ConversationRecord,
   ConversationToolCall,
   ConversationTurnEnding,
+  RelayConnect,
   RelayToolManifest,
 } from "@mindcraft-lang/assistant-relay";
-import { ConversationTurnFailureCode, RelayDeclineCode, RelayRefusalCode } from "@mindcraft-lang/assistant-relay";
+import {
+  CONVERSATION_RECORD_VERSION,
+  ConversationTurnFailureCode,
+  RelayDeclineCode,
+  RelayRefusalCode,
+} from "@mindcraft-lang/assistant-relay";
 import type { RelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
 import { createRelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
 import { recordFor } from "../conversation/store";
@@ -18,7 +24,7 @@ import type { ScriptedCall, ScriptedService } from "../testing/scripted-service"
 import { runScriptedService } from "../testing/scripted-service";
 import type { AssistantChannel } from "./channel";
 import type { AssistantMachineOptions, AssistantMachineState } from "./machine";
-import { AssistantMachine, AssistantStatus, sessionOpenTimeoutMs } from "./machine";
+import { AssistantMachine, AssistantStatus, sessionOpenTimeoutMs, sessionReopenDelaysMs } from "./machine";
 import { sessionStatus } from "./sessions";
 
 /** Tiles the fake target's brains are authored from. */
@@ -66,6 +72,10 @@ interface Harness {
   connects(): number;
   /** How many of the channels it was given are closed. */
   closed(): number;
+  /** The handshake of every session the machine opened, in the order it opened them. */
+  handshakes(): readonly RelayConnect[];
+  /** Close the session opened at `at` from the service's end, as the service dropping it. */
+  drop(at: number): void;
   /** Resolves once every session's scripted service has played out its script. */
   readonly served: Promise<void>;
 }
@@ -79,6 +89,8 @@ interface HarnessOptions {
   readonly dropsWhenServing?: boolean;
   /** Fails every attempt to open a session. */
   readonly unreachable?: boolean;
+  /** Fails every attempt to open a session from this one on, counting from zero. */
+  readonly unreachableFrom?: number;
   /** Never answers an attempt to open a session, leaving the open in flight forever. */
   readonly unanswered?: boolean;
 }
@@ -93,6 +105,8 @@ function harness(script: ScriptedService | ((at: number) => ScriptedService), op
   const opened: AssistantChannel[] = [];
   const closes: AssistantChannel[] = [];
   const services: Promise<void>[] = [];
+  const loopbacks: RelayLoopback[] = [];
+  const handshakes: RelayConnect[] = [];
   let connects = 0;
 
   const workspace = (brainId: string): AuthoringWorkspace => {
@@ -108,13 +122,19 @@ function harness(script: ScriptedService | ((at: number) => ScriptedService), op
   };
 
   const connect = (): Promise<AssistantChannel> => {
-    connects++;
-    if (options.unreachable) return Promise.reject(new Error("no route to the service"));
+    const at = connects++;
+    if (options.unreachable || at >= (options.unreachableFrom ?? Number.POSITIVE_INFINITY)) {
+      return Promise.reject(new Error("no route to the service"));
+    }
     if (options.unanswered) return new Promise<AssistantChannel>(() => {});
     const loopback: RelayLoopback = createRelayLoopback();
+    loopbacks.push(loopback);
     services.push(runScriptedService(loopback, typeof script === "function" ? script(services.length) : script));
     const channel: AssistantChannel = {
-      send: (message) => loopback.toolServer.send(message),
+      send: (message) => {
+        if (message.type === "session:connect") handshakes.push(message);
+        loopback.toolServer.send(message);
+      },
       next: () => loopback.toolServer.next(),
       close: () => {
         closes.push(channel);
@@ -135,6 +155,12 @@ function harness(script: ScriptedService | ((at: number) => ScriptedService), op
     }),
     connects: () => connects,
     closed: () => closes.length,
+    handshakes: () => handshakes,
+    drop: (at: number) => {
+      const loopback = loopbacks[at];
+      if (!loopback) throw new Error(`no session was opened at ${at}`);
+      loopback.service.close();
+    },
     get served(): Promise<void> {
       return Promise.all(services).then(() => undefined);
     },
@@ -598,8 +624,10 @@ describe("ending a turn", () => {
     stand.machine.send("make it hide");
     await settled(stand.machine);
     await stand.served;
+    await flush();
 
     assert.equal(stand.machine.getState().status, AssistantStatus.Failed);
+    assert.equal(stand.connects(), 1, "a drop under a running turn is the turn's to report, not a session to reopen");
     assert.deepEqual(conversation(stand.machine, "brain-a").entries, [
       { kind: "user", text: "make it hide" },
       {
@@ -698,17 +726,17 @@ describe("stopping every running turn", () => {
 });
 
 describe("losing a session and opening another", () => {
-  test("gives the brain up as holding none when the service closes an idle session, and opens a fresh one to send on", async () => {
+  test("opens another session itself when the service closes an idle one, and takes the next turn on it", async () => {
     const scripts: ScriptedService[] = [{ closesWhenIdle: true }, oneQuietTurn];
     const stand = harness((at) => scripts[at]!);
     stand.machine.setActiveBrain("brain-a");
 
     stand.machine.openSession("brain-a");
-    await until(stand.machine, (state) => state.status === AssistantStatus.Idle && stand.connects() === 1);
+    await until(stand.machine, (state) => state.status === AssistantStatus.Ready && stand.connects() === 2);
     stand.machine.send("make it hide");
     await settled(stand.machine);
 
-    assert.equal(stand.connects(), 2);
+    assert.equal(stand.connects(), 2, "the send found the session the machine had already opened");
     assert.equal(stand.machine.getState().status, AssistantStatus.Ready);
     assert.deepEqual(conversation(stand.machine, "brain-a").entries, [
       { kind: "user", text: "make it hide" },
@@ -794,6 +822,212 @@ describe("losing a session and opening another", () => {
 
     assert.equal(stand.connects(), 2);
     assert.equal(stand.machine.getState().status, AssistantStatus.Ready);
+    await stand.served;
+  });
+});
+
+describe("reopening a session the service dropped", () => {
+  /** Let everything already queued run, without advancing a mocked clock. */
+  async function drain(): Promise<void> {
+    for (let step = 0; step < 20; step++) await Promise.resolve();
+  }
+
+  /** Resolve once `brainId`'s session stands at `status`. */
+  function standsAt(machine: AssistantMachine, brainId: string, status: AssistantStatus): Promise<void> {
+    return until(machine, (state) => sessionStatus(state.sessions, brainId) === status);
+  }
+
+  test("opens another session itself, showing the person nothing on the way", async () => {
+    const stand = harness(oneQuietTurn);
+    const seen: string[] = [];
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.openSession("brain-a");
+    await settled(stand.machine);
+    stand.machine.subscribe(() => {
+      const status = stand.machine.getState().status;
+      if (seen[seen.length - 1] !== status) seen.push(status);
+    });
+
+    stand.drop(0);
+    await until(stand.machine, () => stand.connects() === 2);
+    await drain();
+
+    assert.equal(stand.machine.getState().status, AssistantStatus.Ready);
+    assert.deepEqual(
+      seen.filter((status) => status === AssistantStatus.Connecting || status === AssistantStatus.Failed),
+      [],
+      "a reopen that lands never puts the session where the person would read a wait or a fault"
+    );
+  });
+
+  test("stands one reopen per brain, whatever else drops", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.openSession("brain-a");
+    stand.machine.openSession("brain-b");
+    await standsAt(stand.machine, "brain-a", AssistantStatus.Ready);
+    await standsAt(stand.machine, "brain-b", AssistantStatus.Ready);
+
+    stand.drop(0);
+    stand.drop(1);
+    await until(stand.machine, () => stand.connects() === 4);
+    await drain();
+
+    assert.equal(stand.connects(), 4, "each brain reopened once");
+    assert.equal(sessionStatus(stand.machine.getState().sessions, "brain-a"), AssistantStatus.Ready);
+    assert.equal(sessionStatus(stand.machine.getState().sessions, "brain-b"), AssistantStatus.Ready);
+  });
+
+  test("stands the brain failed once its whole budget is spent, and opens on the next ask", async () => {
+    const stand = harness(oneQuietTurn, { unreachableFrom: 1 });
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.openSession("brain-a");
+    await settled(stand.machine);
+
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const failed = standsAt(stand.machine, "brain-a", AssistantStatus.Failed);
+      stand.drop(0);
+      for (const delayMs of sessionReopenDelaysMs) {
+        await drain();
+        mock.timers.tick(delayMs);
+      }
+      await drain();
+      await failed;
+
+      assert.equal(
+        stand.connects(),
+        1 + sessionReopenDelaysMs.length,
+        "one attempt per entry of the schedule, and no more"
+      );
+    } finally {
+      mock.timers.reset();
+    }
+
+    stand.machine.openSession("brain-a");
+    await standsAt(stand.machine, "brain-a", AssistantStatus.Connecting);
+  });
+
+  test("reopens no session the machine closed itself", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.openSession("brain-a");
+    await settled(stand.machine);
+
+    stand.machine.close();
+    await flush();
+
+    assert.equal(stand.connects(), 1);
+    assert.equal(stand.machine.getState().status, AssistantStatus.Idle);
+  });
+
+  test("gives a reopen up for a send that comes while it is still trying", async () => {
+    const stand = harness(oneQuietTurn, { unreachableFrom: 1 });
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.openSession("brain-a");
+    await settled(stand.machine);
+
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      stand.drop(0);
+      await drain();
+      assert.equal(stand.connects(), 2, "the immediate attempt was made and failed");
+
+      stand.machine.send("make it hide");
+      await drain();
+
+      assert.equal(stand.connects(), 3, "the send opened its own session");
+      mock.timers.tick(sessionReopenDelaysMs.reduce((total, delayMs) => total + delayMs, 0));
+      await drain();
+
+      assert.equal(stand.connects(), 3, "the reopen stood down rather than keep trying under the send");
+    } finally {
+      mock.timers.reset();
+    }
+  });
+});
+
+describe("carrying the conversation into a session", () => {
+  test("opens the first session of a brain with no conversation on it", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.openSession("brain-a");
+    await settled(stand.machine);
+
+    assert.equal(stand.handshakes().length, 1);
+    assert.equal(stand.handshakes()[0]?.conversation, undefined);
+  });
+
+  test("carries what it holds on the session the person asks for after a turn was cut off", async () => {
+    const scripts: ScriptedService[] = [
+      { turns: [{ steps: [{ kind: "narration", text: "looking at it" }, { kind: "close" }] }] },
+      oneQuietTurn,
+    ];
+    const stand = harness((at) => scripts[at]!);
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await settled(stand.machine);
+    stand.machine.send("try again");
+    await settled(stand.machine);
+    await stand.served;
+
+    const carried = stand.handshakes()[1]?.conversation;
+    assert.equal(stand.connects(), 2);
+    assert.equal(carried?.version, CONVERSATION_RECORD_VERSION);
+    assert.equal(carried?.brainId, "brain-a");
+    assert.deepEqual(
+      carried?.entries.map((entry) => entry.kind),
+      ["user", "assistant", "user"],
+      "the cut-off turn and the ask that follows it both cross"
+    );
+    assert.deepEqual(endingOf(carried?.entries[1] as ConversationEntry), {
+      kind: "failure",
+      code: ConversationTurnFailureCode.Disconnected,
+    });
+  });
+
+  test("carries what it holds on the session it reopens itself", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await settled(stand.machine);
+    stand.drop(0);
+    await until(stand.machine, () => stand.connects() === 2);
+
+    const carried = stand.handshakes()[1]?.conversation;
+    assert.equal(carried?.brainId, "brain-a");
+    assert.deepEqual(
+      carried?.entries.map((entry) => entry.kind),
+      ["user", "assistant"]
+    );
+    stand.machine.close();
+    await stand.served;
+  });
+
+  test("carries each brain's own conversation, and no other brain's", async () => {
+    const stand = harness(oneQuietTurn);
+
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.send("make it hide");
+    await settledFor(stand.machine, "brain-a");
+    stand.machine.setActiveBrain("brain-b");
+    stand.machine.send("make it seek");
+    await settledFor(stand.machine, "brain-b");
+    stand.drop(0);
+    stand.drop(1);
+    await until(stand.machine, () => stand.connects() === 4);
+
+    assert.deepEqual(
+      stand
+        .handshakes()
+        .slice(2)
+        .map((connect) => connect.conversation?.brainId),
+      ["brain-a", "brain-b"]
+    );
+    stand.machine.close();
     await stand.served;
   });
 });

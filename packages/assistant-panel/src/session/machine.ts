@@ -9,7 +9,7 @@ import type {
 } from "@mindcraft-lang/assistant-relay";
 import { ASSISTANT_RELAY_PROTOCOL_VERSION, ConversationTurnFailureCode } from "@mindcraft-lang/assistant-relay";
 import type { ConversationStore, ConversationUpdate } from "../conversation/store";
-import { emptyConversationStore, withActiveBrain, withUpdate } from "../conversation/store";
+import { emptyConversationStore, recordFor, withActiveBrain, withUpdate } from "../conversation/store";
 import type { AssistantChannel, AssistantConnect } from "./channel";
 import type { SessionStatuses } from "./sessions";
 import { AssistantStatus, emptySessions, sessionStatus, withSessionStatus } from "./sessions";
@@ -23,8 +23,20 @@ export { AssistantStatus } from "./sessions";
  */
 export const sessionOpenTimeoutMs = 8000;
 
+/**
+ * Milliseconds each quiet reopen attempt waits before it is made, in order. The
+ * first attempt is immediate, and a brain whose whole budget runs out without a
+ * session settles {@link AssistantStatus.Failed}.
+ */
+export const sessionReopenDelaysMs: readonly number[] = [0, 1000, 3000, 9000, 27000];
+
 /** What a bounded wait answers with once it has run out. */
 const runOut = Symbol("session open timeout");
+
+/** Resolve after `ms` milliseconds. */
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /** What the machine exposes to whatever renders it. */
 export interface AssistantMachineState {
@@ -69,6 +81,8 @@ export class AssistantMachine {
   };
   private readonly channels = new Map<string, AssistantChannel>();
   private readonly opening = new Map<string, Promise<AssistantChannel | undefined>>();
+  /** The quiet reopen the machine still expects for a brain, by the token that loop holds. */
+  private readonly reopening = new Map<string, symbol>();
   /** Brains whose running turn was asked to stop while it was still waiting for a session. */
   private readonly stopRequested = new Set<string>();
   private readonly listeners = new Set<() => void>();
@@ -155,6 +169,7 @@ export class AssistantMachine {
   close(): void {
     for (const brainId of [...this.channels.keys()]) this.dropChannel(brainId);
     this.opening.clear();
+    this.reopening.clear();
     this.stopRequested.clear();
     this.commit({ sessions: emptySessions() });
   }
@@ -207,12 +222,14 @@ export class AssistantMachine {
    * flight share that one open.
    */
   private openChannel(brainId: string): Promise<AssistantChannel | undefined> {
+    // Standing the brain's quiet reopen down, so this open is the only one live.
+    this.reopening.delete(brainId);
     const held = this.channels.get(brainId);
     if (held) return Promise.resolve(held);
     const inFlight = this.opening.get(brainId);
     if (inFlight) return inFlight;
 
-    const attempt: Promise<AssistantChannel | undefined> = this.handshake().then((channel) => {
+    const attempt: Promise<AssistantChannel | undefined> = this.handshake(brainId).then((channel) => {
       // An open the machine no longer expects belongs to a session it has been
       // stood down from.
       if (this.opening.get(brainId) !== attempt) {
@@ -233,25 +250,63 @@ export class AssistantMachine {
   }
 
   /**
-   * Give `brainId` up as holding no session the moment `channel` closes,
-   * leaving a turn of its own running to finish on its own terms. A channel the
-   * brain has already given up for another leaves the machine untouched.
+   * Give `brainId` up as holding no session the moment `channel` closes, and
+   * open another quietly, leaving a turn of its own running to finish on its
+   * own terms. A channel the brain has already given up for another leaves the
+   * machine untouched.
    */
   private dropWhenClosed(brainId: string, channel: AssistantChannel): void {
     void channel.closed.then(() => {
       if (this.channels.get(brainId) !== channel) return;
       this.channels.delete(brainId);
       this.settle(brainId, AssistantStatus.Idle);
+      void this.reopen(brainId);
     });
   }
 
   /**
-   * One accepted relay session, or `undefined` when the service refused it,
-   * could not be reached, or did not accept it within
-   * {@link sessionOpenTimeoutMs}. An attempt that runs out closes the socket it
-   * opened, however late that socket arrives.
+   * Open `brainId`'s session again after the service dropped it, one attempt per
+   * entry of {@link sessionReopenDelaysMs} and nothing shown for an attempt that
+   * lands. A brain the whole budget cannot open a session for settles
+   * {@link AssistantStatus.Failed}, for the person to ask again. Does nothing
+   * while a turn of the brain's is running, and one loop stands per brain.
    */
-  private async handshake(): Promise<AssistantChannel | undefined> {
+  private async reopen(brainId: string): Promise<void> {
+    if (this.reopening.has(brainId)) return;
+    if (sessionStatus(this.current.sessions, brainId) === AssistantStatus.TurnActive) return;
+    const token = Symbol("reopen");
+    this.reopening.set(brainId, token);
+    try {
+      for (const delayMs of sessionReopenDelaysMs) {
+        if (delayMs > 0) await pause(delayMs);
+        if (this.reopening.get(brainId) !== token) return;
+        const channel = await this.handshake(brainId);
+        if (this.reopening.get(brainId) !== token) {
+          channel?.close();
+          return;
+        }
+        if (channel) {
+          this.channels.set(brainId, channel);
+          this.dropWhenClosed(brainId, channel);
+          this.settle(brainId, AssistantStatus.Ready);
+          return;
+        }
+      }
+      this.settle(brainId, AssistantStatus.Failed);
+    } finally {
+      if (this.reopening.get(brainId) === token) this.reopening.delete(brainId);
+    }
+  }
+
+  /**
+   * One accepted relay session for `brainId`, or `undefined` when the service
+   * refused it, could not be reached, or did not accept it within
+   * {@link sessionOpenTimeoutMs}. The handshake carries the conversation the
+   * brain already holds, so the service can rebuild the context of a session it
+   * did not run. An attempt that runs out closes the socket it opened, however
+   * late that socket arrives.
+   */
+  private async handshake(brainId: string): Promise<AssistantChannel | undefined> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const runsOut = new Promise<typeof runOut>((resolve) => {
       timer = setTimeout(() => resolve(runOut), sessionOpenTimeoutMs);
@@ -266,10 +321,12 @@ export class AssistantMachine {
         );
         return undefined;
       }
+      const held = recordFor(this.current.store, brainId);
       connected.send({
         type: "session:connect",
         protocolVersion: ASSISTANT_RELAY_PROTOCOL_VERSION,
         manifest: this.options.manifest,
+        ...(held.entries.length > 0 ? { conversation: held } : {}),
       });
       const opening = await Promise.race([connected.next(), runsOut]);
       if (opening === runOut || opening.type !== "session:accepted") {

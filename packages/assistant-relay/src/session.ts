@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ConversationRecord } from "./conversation.js";
 
 /**
  * Version of the relay wire this package defines. A session speaks one version
@@ -42,6 +43,14 @@ export interface RelayConnect {
   /** Wire version the client holds, as {@link ASSISTANT_RELAY_PROTOCOL_VERSION} spells it. */
   readonly protocolVersion: number;
   readonly manifest: RelayToolManifest;
+  /**
+   * The conversation the client holds for the brain the session is for, which
+   * the service rebuilds its model context from. Absent when the client holds
+   * none. The wire admits any value here and the service reads it against
+   * `conversationRecordSchema`: a record it cannot read is dropped and the
+   * session opens anyway.
+   */
+  readonly conversation?: ConversationRecord;
 }
 
 /** The session is open, and this is what to call it. */
