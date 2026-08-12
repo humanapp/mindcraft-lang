@@ -38,7 +38,7 @@ export enum HandleOutcome {
 }
 
 /**
- * Payload emitted when the handle of an asynchronous host-action call settles.
+ * Payload emitted when the handle of an asynchronous action call settles.
  * `handleId` joins the settle to the {@link HostActionDispatchEvent} that
  * created the handle; a handle abandoned without settling reports nothing.
  */
@@ -59,7 +59,10 @@ export interface RuleWhenGateEvent {
   fired: boolean;
 }
 
-/** Payload emitted when the runtime dispatches a host action. */
+/**
+ * Payload emitted when the runtime dispatches an action, host-bound or
+ * bytecode-bound.
+ */
 export interface HostActionDispatchEvent {
   /** Static metadata of the dispatched action: its key, kind, call grammar, and async flag. */
   descriptor: ActionDescriptor;
@@ -79,17 +82,23 @@ export interface HostActionDispatchEvent {
   handleId?: HandleId;
 }
 
-/** Payload emitted when a host-action call returns control to the runtime. */
+/** Payload emitted when an action call returns control to the runtime. */
 export interface HostActionReturnEvent {
-  /** Stable registry id of the action the call dispatched. */
+  /** How the dispatched action is implemented; selects what `actionId` counts. */
+  binding: "host" | "bytecode";
+  /**
+   * Identity of the action the call dispatched: the stable registry id for a
+   * host-bound action, the index in `Program.actions` for a bytecode-bound one.
+   */
   actionId: number;
   /** Call-site id the dispatch was bound to; keys the per-callsite host state. */
   callSiteId: number;
   /**
-   * Positional argument values the binding received, with an unsupplied slot
-   * filled by `NIL_VALUE`. Read it during the notification: a synchronous call
-   * passes a view over the live operand stack, which the runtime unwinds as
-   * soon as the notification returns.
+   * Positional argument values, with an unsupplied slot filled by `NIL_VALUE`:
+   * the values a host binding received, or the parameter slots of a bytecode
+   * body as they stand when it hands control back. Read it during the
+   * notification: a synchronous host call passes a view over the live operand
+   * stack, which the runtime unwinds as soon as the notification returns.
    */
   args: ReadonlyList<Value>;
   /**
@@ -112,21 +121,21 @@ export interface VmEvents {
    */
   onRuleWhenGate?: (payload: RuleWhenGateEvent) => void;
   /**
-   * Called once per host-action call, at the moment the runtime hands the call
-   * to the action's body and before that body runs. Synchronous and
-   * asynchronous actions both report; an asynchronous call reports when it
-   * starts, not when its handle settles.
+   * Called once per action call, host-bound or bytecode-bound, at the moment
+   * the runtime hands the call to the action's body and before that body runs.
+   * Synchronous and asynchronous actions both report; an asynchronous call
+   * reports when it starts, not when its handle settles.
    */
   onHostActionDispatch?: (payload: HostActionDispatchEvent) => void;
   /**
-   * Called once per host-action call, at the moment the call hands control back
-   * to the runtime: after a synchronous body has produced its result, and after
-   * an asynchronous body has started and yielded its pending handle. A call
-   * whose body throws reports nothing.
+   * Called once per action call, host-bound or bytecode-bound, at the moment
+   * the call hands control back to the runtime: after a synchronous body has
+   * produced its result, and after an asynchronous body has started and
+   * yielded its pending handle. A call whose body faults reports nothing.
    */
   onHostActionReturn?: (payload: HostActionReturnEvent) => void;
   /**
-   * Called once per asynchronous host-action call whose handle settles, at the
+   * Called once per asynchronous action call whose handle settles, at the
    * moment it settles and before any fiber waiting on it resumes. A handle the
    * runtime abandons without settling -- the pending handle of a cancelled
    * fiber -- reports nothing.

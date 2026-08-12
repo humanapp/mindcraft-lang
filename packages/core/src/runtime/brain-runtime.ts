@@ -467,25 +467,25 @@ export class BrainRuntime implements IBrainRuntime {
   /**
    * Run the bytecode initializer hook for an action.
    */
-  private runBytecodeInitializerHook(action: BytecodeExecutableAction, callSiteId: number): void {
+  private runBytecodeInitializerHook(action: BytecodeExecutableAction, actionSlot: number, callSiteId: number): void {
     if (action.initializerFuncId === undefined) return;
-    this.runBytecodeHook(action, callSiteId, action.initializerFuncId, "initialization");
+    this.runBytecodeHook(action, actionSlot, callSiteId, action.initializerFuncId, "initialization");
   }
 
   /**
    * Run the bytecode activation hook for an action.
    */
-  private runBytecodeActivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
+  private runBytecodeActivationHook(action: BytecodeExecutableAction, actionSlot: number, callSiteId: number): void {
     if (action.activationFuncId === undefined) return;
-    this.runBytecodeHook(action, callSiteId, action.activationFuncId, "activation");
+    this.runBytecodeHook(action, actionSlot, callSiteId, action.activationFuncId, "activation");
   }
 
   /**
    * Run the bytecode deactivation hook for an action.
    */
-  private runBytecodeDeactivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
+  private runBytecodeDeactivationHook(action: BytecodeExecutableAction, actionSlot: number, callSiteId: number): void {
     if (action.deactivationFuncId === undefined) return;
-    this.runBytecodeHook(action, callSiteId, action.deactivationFuncId, "deactivation");
+    this.runBytecodeHook(action, actionSlot, callSiteId, action.deactivationFuncId, "deactivation");
   }
 
   /**
@@ -511,7 +511,13 @@ export class BrainRuntime implements IBrainRuntime {
    * Spawn a synchronous fiber for a hook function and run it to completion.
    * Throws a platform {@link Error} if the fiber faults or suspends.
    */
-  private runBytecodeHook(action: BytecodeExecutableAction, callSiteId: number, funcId: number, label: string): void {
+  private runBytecodeHook(
+    action: BytecodeExecutableAction,
+    actionSlot: number,
+    callSiteId: number,
+    funcId: number,
+    label: string
+  ): void {
     const executionContext = this.executionContext;
     const vm = this.vm;
     const scheduler = this.scheduler;
@@ -524,6 +530,7 @@ export class BrainRuntime implements IBrainRuntime {
     const hookFiber = vm.spawnFiber(this.nextInlineFiberId--, funcId, List.empty(), hookContext);
     const hookFrame = hookFiber.frames.get(0)!;
     hookFrame.actionBinding = {
+      actionSlot,
       actionKey: action.descriptor.key,
       callSiteId,
       isAsync: false,
@@ -765,11 +772,11 @@ export class BrainRuntime implements IBrainRuntime {
       if (action.initializerFuncId !== undefined) {
         const newlyAllocated = this.callsiteStore.ensure(site.callSiteId);
         if (newlyAllocated) {
-          this.runBytecodeInitializerHook(action, site.callSiteId);
+          this.runBytecodeInitializerHook(action, site.actionSlot, site.callSiteId);
         }
       }
       if (action.activationFuncId !== undefined) {
-        this.runBytecodeActivationHook(action, site.callSiteId);
+        this.runBytecodeActivationHook(action, site.actionSlot, site.callSiteId);
       }
     }
 
@@ -838,7 +845,7 @@ export class BrainRuntime implements IBrainRuntime {
       const action = actions ? actions.get(site.actionSlot) : undefined;
       if (!action) continue;
       if (action.deactivationFuncId !== undefined) {
-        this.runBytecodeDeactivationHook(action, site.callSiteId);
+        this.runBytecodeDeactivationHook(action, site.actionSlot, site.callSiteId);
       }
     }
   }

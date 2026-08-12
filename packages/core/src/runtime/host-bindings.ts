@@ -181,16 +181,16 @@ export type BrainEvents = {
    */
   rule_when_evaluated: RuleWhenGateEvent;
   /**
-   * One host-action call, reported as the runtime hands it to the action's
-   * body. Both synchronous and asynchronous actions report, each at the moment
-   * the call is made. The payload's argument container is only valid during
-   * the notification.
+   * One action call, host-bound or bytecode-bound, reported as the runtime
+   * hands it to the action's body. Both synchronous and asynchronous actions
+   * report, each at the moment the call is made. The payload's argument
+   * container is only valid during the notification.
    */
   host_action_dispatched: HostActionDispatchEvent;
   /**
-   * One host-action call, reported as it hands control back to the runtime,
-   * carrying the value a synchronous call produced. An asynchronous call
-   * reports `result: undefined` here and settles later.
+   * One action call, host-bound or bytecode-bound, reported as it hands control
+   * back to the runtime, carrying the value a synchronous call produced. An
+   * asynchronous call reports `result: undefined` here and settles later.
    */
   host_action_returned: HostActionReturnEvent;
   /**
@@ -199,7 +199,7 @@ export type BrainEvents = {
    * from this point on.
    */
   fiber_waiting: FiberWaitingEvent;
-  /** One asynchronous host-action call's handle settling, reported before any waiter resumes. */
+  /** One asynchronous action call's handle settling, reported before any waiter resumes. */
   handle_settled: HandleSettleEvent;
   /**
    * One root rule held from re-firing this think because a rule below it is

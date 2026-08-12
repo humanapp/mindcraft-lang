@@ -1106,7 +1106,12 @@ export class VM implements IVM {
     for (let i = 0; i < argc; i++) {
       fiber.vstack.pop();
     }
-    this.enterBytecodeActionFrame(fiber, frame, action, args, callSiteId);
+    this.enterBytecodeActionFrame(fiber, frame, action, args, callSiteId, actionSlot);
+    this.events?.onHostActionDispatch?.({
+      descriptor: action.descriptor,
+      args,
+      ruleFuncId: fiber.executionContext.currentRuleFuncId,
+    });
     return undefined;
   }
 
@@ -1139,12 +1144,12 @@ export class VM implements IVM {
     for (let i = 0; i < argc; i++) {
       fiber.vstack.pop();
     }
-    const childFiber = this.spawnBytecodeActionFiber(fiber, action, args, callSiteId);
+    const childFiber = this.spawnBytecodeActionFiber(fiber, action, args, callSiteId, actionSlot);
     if (!scheduler.addFiber) {
       throw new Error(`ACTION_CALL_ASYNC: scheduler cannot add child fibers for ${actionKey}`);
     }
 
-    const hid = this.handles.createPending();
+    const hid = this.handles.createPending(actionKey);
     childFiber.asyncResultHandleId = hid;
 
     try {
@@ -1156,6 +1161,19 @@ export class VM implements IVM {
 
     this.push(fiber, V.handle(hid));
     this.bindExecutionContext(fiber, frame, callSiteId);
+    this.events?.onHostActionDispatch?.({
+      descriptor: action.descriptor,
+      args,
+      ruleFuncId: fiber.executionContext.currentRuleFuncId,
+      handleId: hid,
+    });
+    this.events?.onHostActionReturn?.({
+      binding: "bytecode",
+      actionId: actionSlot,
+      callSiteId,
+      args,
+      result: undefined,
+    });
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
@@ -1206,7 +1224,7 @@ export class VM implements IVM {
       ruleFuncId: fiber.executionContext.currentRuleFuncId,
     });
     const result = action.execSync(fiber.executionContext, args);
-    this.events?.onHostActionReturn?.({ actionId, callSiteId, args, result });
+    this.events?.onHostActionReturn?.({ binding: "host", actionId, callSiteId, args, result });
     for (let i = 0; i < argc; i++) {
       fiber.vstack.pop();
     }
@@ -1267,7 +1285,7 @@ export class VM implements IVM {
       this.handles.delete(hid);
       throw error;
     }
-    this.events?.onHostActionReturn?.({ actionId, callSiteId, args, result: undefined });
+    this.events?.onHostActionReturn?.({ binding: "host", actionId, callSiteId, args, result: undefined });
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
@@ -2024,7 +2042,8 @@ export class VM implements IVM {
     callerFrame: Frame,
     action: BytecodeExecutableAction,
     args: ReadonlyList<Value>,
-    callSiteId: number
+    callSiteId: number,
+    actionSlot: number
   ): void {
     if (fiber.frames.size() >= this.config.maxFrameDepth) {
       throwOverflow(`Stack overflow: frame depth limit ${this.config.maxFrameDepth} exceeded`);
@@ -2052,6 +2071,7 @@ export class VM implements IVM {
       locals,
       ruleFuncId,
       actionBinding: {
+        actionSlot,
         actionKey: action.descriptor.key,
         callSiteId,
         isAsync: false,
@@ -2063,7 +2083,8 @@ export class VM implements IVM {
     parentFiber: Fiber,
     action: BytecodeExecutableAction,
     args: List<Value>,
-    callSiteId: number
+    callSiteId: number,
+    actionSlot: number
   ): Fiber {
     const childContext: ExecutionContext = { ...parentFiber.executionContext };
     const childFiber = this.spawnFiber(this.nextInternalFiberId--, action.entryFuncId, args, childContext);
@@ -2074,6 +2095,7 @@ export class VM implements IVM {
     childContext.currentRuleFuncId = ruleFuncId;
     childFrame.ruleFuncId = ruleFuncId;
     childFrame.actionBinding = {
+      actionSlot,
       actionKey: action.descriptor.key,
       callSiteId,
       isAsync: true,
@@ -2084,6 +2106,41 @@ export class VM implements IVM {
 
   private onFrameExited(fiber: Fiber, frame: Frame): void {
     this.syncExecutionContextFromTopFrame(fiber);
+  }
+
+  /**
+   * Report the hand-back of a synchronous bytecode-action call whose frame has
+   * just been popped with `result`. Call only for a frame that still has a
+   * caller below it: a hook frame and an asynchronous action's child frame are
+   * their fiber's entry frame and are not dispatch hand-backs. The reported
+   * args are the body's parameter slots, skipping an injected context slot.
+   */
+  private reportBytecodeActionReturn(frame: Frame, result: Value): void {
+    const actionBinding = frame.actionBinding;
+    if (!actionBinding || actionBinding.isAsync) {
+      return;
+    }
+    const listener = this.events?.onHostActionReturn;
+    if (!listener) {
+      return;
+    }
+
+    const fn = this.prog.functions.get(frame.funcId);
+    if (!fn) {
+      return;
+    }
+    const firstParam = fn.injectCtxTypeIdx !== undefined ? 1 : 0;
+    const args = List.empty<Value>();
+    for (let i = firstParam; i < fn.numParams; i++) {
+      args.push(frame.locals.get(i)!);
+    }
+    listener({
+      binding: "bytecode",
+      actionId: actionBinding.actionSlot,
+      callSiteId: actionBinding.callSiteId,
+      args,
+      result,
+    });
   }
 
   private resolveAsyncActionHandle(fiber: Fiber, result: Value): void {
@@ -2299,6 +2356,9 @@ export class VM implements IVM {
     }
 
     this.onFrameExited(fiber, frame);
+    if (fiber.frames.size() > 0) {
+      this.reportBytecodeActionReturn(frame, retv);
+    }
 
     // Debug mode: check for stack leaks before cleanup
     if (this.config.debugStackChecks) {

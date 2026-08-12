@@ -205,6 +205,8 @@ export enum FiberState {
 
 /** Per-frame binding describing the action and call-site whose state slots back this frame. */
 export interface ActionFrameBinding {
+  /** Index of the bound action in `Program.actions`. */
+  actionSlot: number;
   actionKey: string;
   callSiteId: number;
   isAsync: boolean;
