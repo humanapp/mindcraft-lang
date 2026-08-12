@@ -30,9 +30,23 @@ export interface ProjectRule {
 
 /** One page of the document. */
 export interface ProjectPage {
+  /**
+   * The page's durable id, which `deletePage` addresses it by and which adding
+   * or removing pages around it does not change.
+   */
+  readonly pageId: string;
+  /** The page's position in the document right now, which pages coming and going do change. */
   readonly pageIndex: number;
   readonly name: string;
   readonly rules: readonly ProjectRule[];
+}
+
+/** One page of the document as an accepted edit reports it. */
+export interface ProjectPageRef {
+  readonly pageId: string;
+  /** The page's position at the moment the edit reported it. */
+  readonly pageIndex: number;
+  readonly name: string;
 }
 
 /** The whole brain document as `read_project` returns it. */
@@ -82,7 +96,7 @@ export function readProject(workspace: AuthoringWorkspace): ProjectView {
     for (let r = 0; r < ruleDefs.size(); r++) {
       rules.push(readRule(ruleDefs.get(r) as BrainRuleDef, localizer));
     }
-    pages.push({ pageIndex: p, name: page.name(), rules });
+    pages.push({ pageId: page.pageId(), pageIndex: p, name: page.name(), rules });
   }
   return { brainName: workspace.brainDef.name(), pages };
 }

@@ -11,10 +11,18 @@ import type { RuleSideName } from "./tool-schemas.js";
 
 /** Where one accepted edit came to rest in the document. */
 export interface LandedEdit {
-  /** Durable id of the page holding the rule the edit touched. */
+  /**
+   * Durable id of the page to show. It is the page holding the rule the edit
+   * touched, and for an edit that removed a page, a page the document still
+   * holds.
+   */
   readonly pageId: string;
-  /** Durable id of the rule the edit touched. */
-  readonly ruleId: string;
+  /**
+   * Durable id of the rule the edit touched. Absent for an edit that removed a
+   * page, which leaves no rule to show. An edit that removed a rule still names
+   * it, so the editor can show the place it stood.
+   */
+  readonly ruleId?: string;
 }
 
 /**
@@ -140,6 +148,42 @@ export function findPage(brainDef: BrainDef, pageIndex: number): BrainPageDef | 
   const pages = brainDef.pages();
   if (pageIndex < 0 || pageIndex >= pages.size()) return undefined;
   return pages.get(pageIndex) as BrainPageDef;
+}
+
+/** One page in the document, with the id the model addresses it by and where it stands now. */
+export interface LocatedPage {
+  readonly pageId: string;
+  readonly pageIndex: number;
+  readonly page: BrainPageDef;
+}
+
+/** The page `pageId` names, or `undefined` when the document holds no such page. */
+export function findPageById(brainDef: BrainDef, pageId: string): LocatedPage | undefined {
+  const pages = brainDef.pages();
+  for (let i = 0; i < pages.size(); i++) {
+    const page = pages.get(i) as BrainPageDef;
+    if (page.pageId() === pageId) return { pageId, pageIndex: i, page };
+  }
+  return undefined;
+}
+
+/**
+ * Durable ids of the rules in `brainDef` that name `tileId` anywhere on either
+ * of their sides, in document order.
+ */
+export function rulesNamingTile(brainDef: BrainDef, tileId: string): string[] {
+  const naming: string[] = [];
+  for (const located of locateRules(brainDef)) {
+    const sides = [located.rule.side(RuleSide.When).tiles(), located.rule.side(RuleSide.Do).tiles()];
+    const names = sides.some((tiles) => {
+      for (let i = 0; i < tiles.size(); i++) {
+        if (tiles.get(i)!.tileId === tileId) return true;
+      }
+      return false;
+    });
+    if (names) naming.push(located.ruleId);
+  }
+  return naming;
 }
 
 /** The tile `tileId` names in any of `catalogs`, or `undefined` when none holds it. */

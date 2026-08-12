@@ -96,7 +96,7 @@ describe("an edit addresses a rule by the id the document carries", () => {
     const accepted = proposeEdit(ws, { op: "placeTile", ruleId, side: "when", tileId: tiles.sensor });
 
     assert.equal(accepted.ok, true, JSON.stringify(accepted));
-    assert.equal((accepted as ProposalAccepted).rule.ruleId, ruleId);
+    assert.equal((accepted as ProposalAccepted).rule?.ruleId, ruleId);
     assert.equal(readProject(ws).pages[0]!.rules[0]!.ruleId, ruleId);
   });
 });
@@ -109,7 +109,7 @@ describe("nesting a rule under another", () => {
     const result = proposeEdit(ws, { op: "addChildRule", parentRuleId });
 
     assert.equal(result.ok, true, JSON.stringify(result));
-    const nested = (result as ProposalAccepted).rule;
+    const nested = (result as ProposalAccepted).rule!;
     assert.notEqual(nested.ruleId, parentRuleId);
     const parent = readProject(ws).pages[0]!.rules[0]!;
     assert.equal(parent.ruleId, parentRuleId, "the parent keeps its id");
@@ -130,7 +130,7 @@ describe("nesting a rule under another", () => {
 
     assert.deepEqual(
       readProject(ws).pages[0]!.rules[0]!.children.map((child) => child.ruleId),
-      [first.rule.ruleId, second.rule.ruleId]
+      [first.rule!.ruleId, second.rule!.ruleId]
     );
   });
 
@@ -169,7 +169,7 @@ describe("nesting a rule under another", () => {
         assert.deepEqual(result, { ok: false, error: "rule_nesting_too_deep", named: parentRuleId });
         break;
       }
-      parentRuleId = (result as ProposalAccepted).rule.ruleId;
+      parentRuleId = (result as ProposalAccepted).rule!.ruleId;
       depth++;
       assert.ok(depth < 100, "nesting stops somewhere");
     }

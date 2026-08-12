@@ -3,10 +3,15 @@ import type { BrainPageDef } from "../pagedef";
 import type { BrainCommand } from "./BrainCommand";
 
 /**
- * Command to add a new page to the brain.
+ * Command to add a new page to the brain, appended or inserted at an index.
+ *
+ * The page the first execute makes is the page every later execute puts back,
+ * so its id, its page tile, and the rule it opens with survive an undo/redo
+ * round trip. A brain already holding the maximum number of pages gains none
+ * and leaves nothing to undo.
  */
 export class AddPageCommand implements BrainCommand {
-  private addedIndex?: number;
+  private addedPage?: BrainPageDef;
 
   constructor(
     private brainDef: BrainDef,
@@ -14,22 +19,31 @@ export class AddPageCommand implements BrainCommand {
   ) {}
 
   execute(): void {
-    if (this.insertAtIndex !== undefined) {
-      const result = this.brainDef.insertNewPageAtIndex(this.insertAtIndex);
-      if (result.success) {
-        this.addedIndex = result.value.index;
+    const added = this.addedPage;
+    if (added) {
+      if (this.insertAtIndex !== undefined) {
+        this.brainDef.insertPageAtIndex(this.insertAtIndex, added);
+      } else {
+        this.brainDef.addPage(added);
       }
-    } else {
-      const result = this.brainDef.appendNewPage();
-      if (result.success) {
-        this.addedIndex = result.value.index;
-      }
+      return;
+    }
+
+    const result =
+      this.insertAtIndex !== undefined
+        ? this.brainDef.insertNewPageAtIndex(this.insertAtIndex)
+        : this.brainDef.appendNewPage();
+    if (result.success) {
+      this.addedPage = result.value.page;
     }
   }
 
   undo(): void {
-    if (this.addedIndex !== undefined) {
-      this.brainDef.removePageAtIndex(this.addedIndex!);
+    const added = this.addedPage;
+    if (!added) return;
+    const index = this.brainDef.pages().indexOf(added);
+    if (index >= 0) {
+      this.brainDef.removePageAtIndex(index);
     }
   }
 
@@ -40,10 +54,15 @@ export class AddPageCommand implements BrainCommand {
 
 /**
  * Command to remove a page from the brain.
+ *
+ * `pageIndex` locates the page the first execute takes out; from then on the
+ * command holds that page itself, so it removes and restores the same page --
+ * with its id, its rules, and its page tile -- wherever pages around it have
+ * moved to.
  */
 export class RemovePageCommand implements BrainCommand {
   private removedPage?: BrainPageDef;
-  private pageToRemove?: BrainPageDef;
+  private removedFrom = 0;
 
   constructor(
     private brainDef: BrainDef,
@@ -51,19 +70,18 @@ export class RemovePageCommand implements BrainCommand {
   ) {}
 
   execute(): void {
-    const page = this.pageToRemove || this.brainDef.pages().get(this.pageIndex);
-    if (page) {
-      this.removedPage = page as BrainPageDef;
-      this.brainDef.removePageAtIndex(this.pageIndex);
-      this.pageToRemove = undefined;
-    }
+    const page = this.removedPage ?? (this.brainDef.pages().get(this.pageIndex) as BrainPageDef | undefined);
+    if (!page) return;
+    const index = this.brainDef.pages().indexOf(page);
+    if (index < 0) return;
+    this.removedPage = page;
+    this.removedFrom = index;
+    this.brainDef.removePageAtIndex(index);
   }
 
   undo(): void {
     if (this.removedPage) {
-      const removedPage = this.removedPage;
-      this.brainDef.insertPageAtIndex(this.pageIndex, removedPage);
-      this.pageToRemove = removedPage;
+      this.brainDef.insertPageAtIndex(this.removedFrom, this.removedPage);
     }
   }
 
@@ -73,14 +91,18 @@ export class RemovePageCommand implements BrainCommand {
 }
 
 /**
- * Command to replace the last remaining page with a new empty page.
- * This is a special case command that handles deleting the last page
- * and adding a new empty one as an atomic operation for proper undo/redo.
+ * Command to replace the last remaining page with a new empty page, taking the
+ * old page out and putting a blank one in as one undoable step, so a brain
+ * never rests holding no page at all.
+ *
+ * Both pages are held from the first execute onwards: the same page comes out
+ * and the same blank page goes in on every later execute, so both ids survive
+ * an undo/redo round trip.
  */
 export class ReplaceLastPageCommand implements BrainCommand {
   private removedPage?: BrainPageDef;
   private addedPage?: BrainPageDef;
-  private pageToRemove?: BrainPageDef;
+  private removedFrom = 0;
 
   constructor(
     private brainDef: BrainDef,
@@ -88,30 +110,32 @@ export class ReplaceLastPageCommand implements BrainCommand {
   ) {}
 
   execute(): void {
-    const page = this.pageToRemove || this.brainDef.pages().get(this.pageIndex);
-    if (page) {
-      this.removedPage = page as BrainPageDef;
-      this.brainDef.removePageAtIndex(this.pageIndex);
+    const page = this.removedPage ?? (this.brainDef.pages().get(this.pageIndex) as BrainPageDef | undefined);
+    if (!page) return;
+    const index = this.brainDef.pages().indexOf(page);
+    if (index < 0) return;
+    this.removedPage = page;
+    this.removedFrom = index;
+    this.brainDef.removePageAtIndex(index);
 
-      const result = this.brainDef.appendNewPage();
-      if (result.success) {
-        this.addedPage = result.value.page;
-      }
-
-      this.pageToRemove = undefined;
+    const added = this.addedPage;
+    if (added) {
+      this.brainDef.addPage(added);
+      return;
+    }
+    const result = this.brainDef.appendNewPage();
+    if (result.success) {
+      this.addedPage = result.value.page;
     }
   }
 
   undo(): void {
     if (this.addedPage && this.removedPage) {
-      const addedPage = this.addedPage;
-      const removedPage = this.removedPage;
-      const addedIndex = this.brainDef.pages().indexOf(addedPage);
+      const addedIndex = this.brainDef.pages().indexOf(this.addedPage);
       if (addedIndex >= 0) {
         this.brainDef.removePageAtIndex(addedIndex);
       }
-      this.brainDef.insertPageAtIndex(this.pageIndex, removedPage);
-      this.pageToRemove = removedPage;
+      this.brainDef.insertPageAtIndex(this.removedFrom, this.removedPage);
     }
   }
 

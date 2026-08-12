@@ -136,6 +136,9 @@ describe("tool input validation", () => {
       "placeTiles",
       "replaceTile",
       "deleteTile",
+      "addPage",
+      "deleteRule",
+      "deletePage",
       "batch",
     ]);
     assert.ok(
@@ -145,6 +148,14 @@ describe("tool input validation", () => {
     assert.ok(
       (properties?.op as { description?: string })?.description?.includes("addChildRule takes parentRuleId"),
       "the enum description names the operation that nests a rule"
+    );
+    assert.ok(
+      (properties?.op as { description?: string })?.description?.includes("addPage takes name"),
+      "the enum description names the operation that makes a page"
+    );
+    assert.ok(
+      (properties?.op as { description?: string })?.description?.includes("deletePage takes pageId"),
+      "the enum description names the operation that removes a page"
     );
   });
 

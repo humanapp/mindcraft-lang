@@ -160,7 +160,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     for (let index = 0; index < pages.size(); index++) {
       if ((pages.get(index) as BrainPageDef).pageId() !== place.pageId) continue;
       setCurrentPageNumber(index + 1);
-      setRevealRule({ ruleId: place.ruleId });
+      if (place.ruleId !== undefined) setRevealRule({ ruleId: place.ruleId });
       return;
     }
   }, []);

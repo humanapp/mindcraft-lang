@@ -75,7 +75,7 @@ describe("a batch lands as one thing or not at all", () => {
     assert.equal(ws.history.undoDepth(), depthBefore);
   });
 
-  test("reports one rule per command, under the ids the document ends up holding", async () => {
+  test("reports one outcome per command, under the ids the document ends up holding", async () => {
     const ws = workspace();
     const ruleId = firstRuleId(ws);
 
@@ -83,11 +83,11 @@ describe("a batch lands as one thing or not at all", () => {
 
     const standing = readProject(ws).pages[0]!.rules.map((rule) => rule.ruleId);
     assert.deepEqual(
-      result.rules.map((rule) => rule.ruleId),
+      result.results.map((outcome) => outcome.rule?.ruleId),
       [standing[0], standing[0], standing[1], standing[1]]
     );
     assert.deepEqual(
-      result.rules[3]?.do.map((tile) => tile.tileId),
+      result.results[3]?.rule?.do.map((tile) => tile.tileId),
       [tiles.actuator]
     );
   });
@@ -111,7 +111,7 @@ describe("a batch lands as one thing or not at all", () => {
     const rules = readProject(ws).pages[0]!.rules;
     assert.equal(rules.length, 2);
     const child = rules[1]!.children[0];
-    assert.equal(child?.ruleId, result.rules[3]?.ruleId);
+    assert.equal(child?.ruleId, result.results[3]?.rule?.ruleId);
     assert.deepEqual(
       child?.do.map((tile) => tile.tileId),
       [tiles.actuator]

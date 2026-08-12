@@ -1,10 +1,11 @@
 import type { BrainCommandHistory, BrainDef } from "@mindcraft-lang/core/brain/model";
 import { createContext, type ReactNode, useContext } from "react";
 
-/** A rule of the edited brain, named by its own durable id and the page holding it. */
+/** A place in the edited brain: a page, and the rule of it to show when there is one. */
 export interface EditedBrainPlace {
   readonly pageId: string;
-  readonly ruleId: string;
+  /** Durable id of the rule to bring into view; absent to show the page alone. */
+  readonly ruleId?: string;
 }
 
 /**
@@ -22,9 +23,9 @@ export interface EditedBrain {
   readonly brainDef: BrainDef;
   readonly history: BrainCommandHistory;
   /**
-   * Bring `place`'s rule into view, moving to its page first when the editor is
-   * showing another one. Moves neither the selection nor the keyboard, and does
-   * nothing for a place the edited brain does not hold.
+   * Show `place`: move to its page when the editor is showing another one, and
+   * bring its rule into view when it names one. Moves neither the selection nor
+   * the keyboard, and does nothing for a page the edited brain does not hold.
    */
   readonly reveal: (place: EditedBrainPlace) => void;
   /**

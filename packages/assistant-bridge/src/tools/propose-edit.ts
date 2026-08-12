@@ -1,12 +1,16 @@
 import type { IBrainTileDef, ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
-import { isVariableFactoryTileId } from "@mindcraft-lang/core/brain";
-import type { BrainCommand, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { isVariableFactoryTileId, mkPageTileId } from "@mindcraft-lang/core/brain";
+import type { BrainCommand, BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
+  AddPageCommand,
   AddRuleCommand,
   AddTileCommand,
+  DeleteRuleCommand,
   IndentRuleCommand,
   InsertRuleCommand,
   InsertTileCommand,
+  kMaxBrainPageCount,
+  RemovePageCommand,
   RemoveTileCommand,
   ReplaceTileCommand,
 } from "@mindcraft-lang/core/brain/model";
@@ -14,18 +18,34 @@ import type { BrainTileFactoryDef } from "@mindcraft-lang/core/brain/tiles";
 import { manufactureLiteralTile, manufactureVariableTile } from "@mindcraft-lang/core/brain/tiles";
 import type { SerializedDiagParams, ToolDiagnostic } from "./diagnostics.js";
 import { toToolDiagnostic } from "./diagnostics.js";
-import type { ProjectRule } from "./read-project.js";
+import type { ProjectPageRef, ProjectRule } from "./read-project.js";
 import { readRule } from "./read-project.js";
 import { decideProposal, rejectionParams } from "./rejection-policy.js";
 import type { ProposeEditBatchInput, ProposeEditInput, TileRunEntry } from "./tool-schemas.js";
-import { batchRuleIndex } from "./tool-schemas.js";
-import { type AuthoringWorkspace, findPage, findRule, findTile, ruleIdsByPath, toRuleSide } from "./workspace.js";
+import { batchPageTileIndex, batchRuleIndex } from "./tool-schemas.js";
+import type { AuthoringWorkspace, LandedEdit } from "./workspace.js";
+import { findPage, findPageById, findRule, findTile, ruleIdsByPath, rulesNamingTile, toRuleSide } from "./workspace.js";
+
+/**
+ * What one command of a proposal left in, or took out of, the document.
+ *
+ * A command that added or changed a rule reports it under {@link rule}, read
+ * back once the whole proposal stands in the document. A command that removed
+ * something reports it as it stood the moment before it went, and says which
+ * kind of thing it was under {@link removed}.
+ */
+export interface EditOutcome {
+  /** The rule the command left standing, or the rule it removed. Absent for a command that removed a page. */
+  readonly rule?: ProjectRule;
+  /** The page `addPage` minted, or the page `deletePage` removed. Absent for every other command. */
+  readonly page?: ProjectPageRef;
+  /** What the command took out of the document; absent for a command that added or changed. */
+  readonly removed?: "rule" | "page";
+}
 
 /** An edit that landed in the document. */
-export interface ProposalAccepted {
+export interface ProposalAccepted extends EditOutcome {
   readonly ok: true;
-  /** The rule the edit produced, read back from the document. */
-  readonly rule: ProjectRule;
   /** Command-history depth after the edit; every entry is undoable. */
   readonly historyDepth: number;
 }
@@ -33,11 +53,8 @@ export interface ProposalAccepted {
 /** A batch of edits that landed in the document together. */
 export interface BatchAccepted {
   readonly ok: true;
-  /**
-   * The rules the batch's commands affected, one per command and in that order,
-   * read back from the document once the whole batch stands in it.
-   */
-  readonly rules: readonly ProjectRule[];
+  /** What the batch's commands left behind, one per command and in that order. */
+  readonly results: readonly EditOutcome[];
   /** Command-history depth after the batch, which the batch raised by one. */
   readonly historyDepth: number;
 }
@@ -65,6 +82,10 @@ export interface ProposalUnresolved {
    * `rule_nesting_too_deep` reports a parent rule the document cannot nest
    * another rule under. `unknown_batch_reference` reports a `#N` naming no
    * command of the batch that creates a rule before this one runs.
+   * `page_limit_reached` reports a document already holding as many pages as a
+   * brain may have. `last_page` reports an attempt to remove the only page a
+   * brain has left. `page_still_referenced` reports a page other rules still
+   * switch to, and names them under {@link referencedBy}.
    */
   readonly error:
     | "unknown_rule"
@@ -73,9 +94,14 @@ export interface ProposalUnresolved {
     | "position_out_of_range"
     | "invalid_mint_input"
     | "rule_nesting_too_deep"
-    | "unknown_batch_reference";
-  /** The rule id, page index, tile id, or position the request named. */
+    | "unknown_batch_reference"
+    | "page_limit_reached"
+    | "last_page"
+    | "page_still_referenced";
+  /** The rule id, page id, page index, tile id, position, or limit the request ran into. */
   readonly named: string;
+  /** Durable ids of the rules still naming what the request asked to remove. */
+  readonly referencedBy?: readonly string[];
   /** Index in the batch of the command that named it; absent outside a batch. */
   readonly commandIndex?: number;
 }
@@ -155,14 +181,80 @@ class NestRuleCommand implements BrainCommand {
   }
 }
 
-/** The editor commands one proposed edit runs, and the rule its verdict is judged on. */
+/**
+ * Appends a page and gives it `name` when one is asked for. The first execute
+ * makes the page and names it, and names it through {@link MakePageCommand.page};
+ * every later execute puts that same page back, so its id, its name, and the
+ * rule it opens with survive an undo/redo round trip. A brain that cannot hold
+ * another page leaves nothing behind and names no page. Undoing takes the page
+ * back out.
+ */
+class MakePageCommand implements BrainCommand {
+  private readonly add_: AddPageCommand;
+  private page_?: BrainPageDef;
+
+  constructor(
+    private readonly brainDef: BrainDef,
+    private readonly name?: string
+  ) {
+    this.add_ = new AddPageCommand(brainDef);
+  }
+
+  execute(): void {
+    const before = this.brainDef.pages().size();
+    this.add_.execute();
+    if (this.page_ !== undefined) return;
+    const pages = this.brainDef.pages();
+    if (pages.size() !== before + 1) return;
+    const page = pages.get(pages.size() - 1) as BrainPageDef;
+    if (this.name !== undefined) page.setName(this.name);
+    this.page_ = page;
+  }
+
+  undo(): void {
+    this.add_.undo();
+  }
+
+  /** The page this command makes, or undefined when the brain cannot hold another. */
+  page(): BrainPageDef | undefined {
+    return this.page_;
+  }
+
+  getDescription(): string {
+    return this.name === undefined ? "Add page" : `Add page "${this.name}"`;
+  }
+}
+
+/** What one edit left behind, read once its commands have run. */
+interface EditLanding {
+  /** The rule the edit is judged on and reports. Absent for an edit that took its subject out of the document. */
+  readonly judged?: RuleRef;
+  /** What the edit reports beyond {@link judged}, captured as the edit ran. */
+  readonly outcome: EditOutcome;
+  /** Where the editor should look now. Absent for an edit with no place to show. */
+  readonly landed?: LandedEdit;
+}
+
+/** The editor commands one proposed edit runs, and what they leave behind. */
 interface BuiltEdit {
   /** Commands to execute in the order given. */
   readonly commands: readonly BrainCommand[];
-  /** The rule the edit affects, read after its commands have run. */
-  readonly resolveRule: () => RuleRef | undefined;
-  /** What to report when the commands ran but left no rule to judge. */
+  /** What the edit left behind, read after its commands have run. */
+  readonly land: () => EditLanding | undefined;
+  /** What to report when the commands ran but left nothing behind. */
   readonly absent?: ProposalUnresolved;
+  /** How the history entry reads when the edit runs more than one command. */
+  readonly historyLabel?: string;
+}
+
+/** The landing of an edit that leaves `located` standing and shows it where it is. */
+function ruleLanding(located: RuleRef): EditLanding {
+  const pageId = located.rule.page()?.pageId();
+  return {
+    judged: located,
+    outcome: {},
+    ...(pageId === undefined ? {} : { landed: { pageId, ruleId: located.ruleId } }),
+  };
 }
 
 /** The command that puts `tile` at `position` on `side` of `rule`, which currently holds `tileCount` tiles. */
@@ -178,9 +270,17 @@ function placementCommand(
     : new InsertTileCommand(rule, side, position, tile);
 }
 
-/** The rule an edit runs against, or `undefined` for an edit that makes its own. */
+/** The operations that name no rule of the document at all. */
+type RulelessInput = Extract<ProposeEditInput, { op: "addRule" | "addPage" | "deletePage" }>;
+
+/** True for an operation that names no rule of the document at all. */
+function namesNoRule(input: ProposeEditInput): input is RulelessInput {
+  return input.op === "addRule" || input.op === "addPage" || input.op === "deletePage";
+}
+
+/** The rule an edit runs against, or `undefined` for an edit that makes its own or names none. */
 function editTarget(workspace: AuthoringWorkspace, input: ProposeEditInput): RuleRef | ProposalUnresolved | undefined {
-  if (input.op === "addRule") return undefined;
+  if (namesNoRule(input)) return undefined;
   const named = input.op === "addChildRule" ? input.parentRuleId : input.ruleId;
   const located = findRule(workspace.brainDef, named);
   return located ?? { ok: false, error: "unknown_rule", named };
@@ -195,48 +295,140 @@ function editTarget(workspace: AuthoringWorkspace, input: ProposeEditInput): Rul
 function buildEdit(
   workspace: AuthoringWorkspace,
   input: ProposeEditInput,
-  target: RuleRef | undefined
+  target: RuleRef | undefined,
+  madePages?: ReadonlyMap<number, string>
 ): BuiltEdit | ProposalUnresolved {
   if (input.op === "addRule") {
     const page = findPage(workspace.brainDef, input.pageIndex);
     if (!page) return { ok: false, error: "unknown_page", named: String(input.pageIndex) };
     return {
       commands: [new AddRuleCommand(page)],
-      resolveRule: () => {
+      land: () => {
         const rules = page.children();
         const rule = rules.get(rules.size() - 1) as BrainRuleDef;
-        return { ruleId: rule.ruleId(), rule };
+        return ruleLanding({ ruleId: rule.ruleId(), rule });
       },
     };
   }
 
+  if (input.op === "addPage") return addPageEdit(workspace, input.name);
+  if (input.op === "deletePage") return deletePageEdit(workspace, input.pageId);
+
   const located = target as RuleRef;
   if (input.op === "addChildRule") return nestedEdit(located, input);
+  if (input.op === "deleteRule") return deleteRuleEdit(workspace, located);
 
   const side = toRuleSide(input.side);
   const tileCount = located.rule.side(side).tiles().size();
-  const resolveRule = () => located;
+  const land = () => ruleLanding(located);
 
   if (input.op === "deleteTile") {
     if (input.position >= tileCount)
       return { ok: false, error: "position_out_of_range", named: String(input.position) };
-    return { commands: [new RemoveTileCommand(located.rule, side, input.position)], resolveRule };
+    return { commands: [new RemoveTileCommand(located.rule, side, input.position)], land };
   }
 
-  if (input.op === "placeTiles") return tileRunEdit(workspace, input, located, side, tileCount);
+  if (input.op === "placeTiles") return tileRunEdit(workspace, input, located, side, tileCount, madePages);
 
-  const tile = resolveRunEntry(workspace, input.tileId);
+  const tile = resolveRunEntry(workspace, input.tileId, madePages);
   if ("ok" in tile) return tile;
 
   if (input.op === "replaceTile") {
     if (input.position >= tileCount)
       return { ok: false, error: "position_out_of_range", named: String(input.position) };
-    return { commands: [new ReplaceTileCommand(located.rule, side, input.position, tile)], resolveRule };
+    return { commands: [new ReplaceTileCommand(located.rule, side, input.position, tile)], land };
   }
 
   const position = input.position ?? tileCount;
   if (position > tileCount) return { ok: false, error: "position_out_of_range", named: String(position) };
-  return { commands: [placementCommand(located.rule, side, position, tileCount, tile)], resolveRule };
+  return { commands: [placementCommand(located.rule, side, position, tileCount, tile)], land };
+}
+
+/**
+ * The edit that appends a page. The page arrives holding one empty rule, and
+ * that rule is what the edit is judged on, reports, and shows, so a batch can
+ * name it as `#N` and fill the new page in the same run.
+ */
+function addPageEdit(workspace: AuthoringWorkspace, name?: string): BuiltEdit | ProposalUnresolved {
+  const brainDef = workspace.brainDef;
+  const atLimit: ProposalUnresolved = { ok: false, error: "page_limit_reached", named: String(kMaxBrainPageCount) };
+  if (brainDef.pages().size() >= kMaxBrainPageCount) return atLimit;
+
+  const command = new MakePageCommand(brainDef, name);
+  return {
+    commands: [command],
+    land: () => {
+      const page = command.page();
+      const opening = page?.children().get(0) as BrainRuleDef | undefined;
+      if (!page || !opening) return undefined;
+      return {
+        judged: { ruleId: opening.ruleId(), rule: opening },
+        outcome: { page: { pageId: page.pageId(), pageIndex: brainDef.pages().indexOf(page), name: page.name() } },
+        landed: { pageId: page.pageId(), ruleId: opening.ruleId() },
+      };
+    },
+    absent: atLimit,
+  };
+}
+
+/**
+ * The edit that removes `located` and every rule nested under it. The rule is
+ * read before it goes, so the edit reports what came out, and the editor is
+ * shown the page it stood on.
+ */
+function deleteRuleEdit(workspace: AuthoringWorkspace, located: RuleRef): BuiltEdit {
+  const rule = readRule(located.rule, workspace.environment.appServices.localizer);
+  const pageId = located.rule.page()?.pageId();
+  return {
+    commands: [new DeleteRuleCommand(located.rule)],
+    land: () => ({
+      outcome: { rule, removed: "rule" },
+      ...(pageId === undefined ? {} : { landed: { pageId, ruleId: located.ruleId } }),
+    }),
+  };
+}
+
+/** Durable ids of `page`'s rules and of every rule nested under them. */
+function ruleIdsOn(page: BrainPageDef): Set<string> {
+  const ids = new Set<string>();
+  const collect = (rule: BrainRuleDef): void => {
+    ids.add(rule.ruleId());
+    const children = rule.children();
+    for (let i = 0; i < children.size(); i++) collect(children.get(i) as BrainRuleDef);
+  };
+  const rules = page.children();
+  for (let i = 0; i < rules.size(); i++) collect(rules.get(i) as BrainRuleDef);
+  return ids;
+}
+
+/**
+ * The edit that removes the page `pageId` names and every rule on it. Reports
+ * `last_page` for the only page a brain has left, and `page_still_referenced`,
+ * naming them, when rules elsewhere in the document switch to this page. The
+ * editor is shown a page the document still holds.
+ */
+function deletePageEdit(workspace: AuthoringWorkspace, pageId: string): BuiltEdit | ProposalUnresolved {
+  const brainDef = workspace.brainDef;
+  const located = findPageById(brainDef, pageId);
+  if (!located) return { ok: false, error: "unknown_page", named: pageId };
+  if (brainDef.pages().size() <= 1) return { ok: false, error: "last_page", named: pageId };
+
+  const goingWithIt = ruleIdsOn(located.page);
+  const referencedBy = rulesNamingTile(brainDef, mkPageTileId(pageId)).filter((ruleId) => !goingWithIt.has(ruleId));
+  if (referencedBy.length > 0) return { ok: false, error: "page_still_referenced", named: pageId, referencedBy };
+
+  const removed: ProjectPageRef = { pageId, pageIndex: located.pageIndex, name: located.page.name() };
+  return {
+    commands: [new RemovePageCommand(brainDef, located.pageIndex)],
+    land: () => {
+      const pages = brainDef.pages();
+      const surviving = pages.get(Math.min(located.pageIndex, pages.size() - 1)) as BrainPageDef | undefined;
+      return {
+        outcome: { page: removed, removed: "page" },
+        ...(surviving === undefined ? {} : { landed: { pageId: surviving.pageId() } }),
+      };
+    },
+  };
 }
 
 /** The edit that nests a new rule under `parent`. */
@@ -244,9 +436,9 @@ function nestedEdit(parent: RuleRef, input: AddChildRuleInput): BuiltEdit {
   const command = new NestRuleCommand(parent.rule);
   return {
     commands: [command],
-    resolveRule: () => {
+    land: () => {
       const nested = command.nestedRule();
-      return nested ? { ruleId: nested.ruleId(), rule: nested } : undefined;
+      return nested ? ruleLanding({ ruleId: nested.ruleId(), rule: nested }) : undefined;
     },
     absent: { ok: false, error: "rule_nesting_too_deep", named: input.parentRuleId },
   };
@@ -262,14 +454,15 @@ function tileRunEdit(
   input: PlaceTilesInput,
   located: RuleRef,
   side: RuleSide,
-  tileCount: number
+  tileCount: number,
+  madePages?: ReadonlyMap<number, string>
 ): BuiltEdit | ProposalUnresolved {
   const position = input.position ?? tileCount;
   if (position > tileCount) return { ok: false, error: "position_out_of_range", named: String(position) };
 
   const tiles: IBrainTileDef[] = [];
   for (const entry of input.tileIds) {
-    const tile = resolveRunEntry(workspace, entry);
+    const tile = resolveRunEntry(workspace, entry, madePages);
     if ("ok" in tile) return tile;
     tiles.push(tile);
   }
@@ -278,7 +471,11 @@ function tileRunEdit(
   const commands = tiles.map((tile, index) =>
     placementCommand(located.rule, side, position + index, tileCount + index, tile)
   );
-  return { commands, resolveRule: () => located };
+  return {
+    commands,
+    land: () => ruleLanding(located),
+    historyLabel: commands.length === 1 ? "Place tile" : `Place ${commands.length} tiles`,
+  };
 }
 
 /** A run entry in its object form: the tile it names, plus any mint input. */
@@ -287,14 +484,27 @@ type TileMint = Exclude<TileRunEntry, string>;
 /**
  * The tile one entry of a run names. An entry naming a factory tile mints the
  * tile its input describes and registers it in the document's catalog, reusing
- * an equivalent tile the catalog already holds. Returns `invalid_mint_input`
- * when the entry names a factory without the input that factory mints from.
+ * an equivalent tile the catalog already holds. An entry of the form `#N.page`
+ * names the page tile of the page `madePages` records the batch's command at
+ * index N as having made. Returns `invalid_mint_input` when the entry names a
+ * factory without the input that factory mints from, and
+ * `unknown_batch_reference` for a `#N.page` naming no command of the batch that
+ * makes a page before this one runs.
  */
 export function resolveRunEntry(
   workspace: AuthoringWorkspace,
-  entry: TileRunEntry
+  entry: TileRunEntry,
+  madePages?: ReadonlyMap<number, string>
 ): IBrainTileDef | ProposalUnresolved {
   const mint: TileMint = typeof entry === "string" ? { tileId: entry } : entry;
+  const madeIndex = batchPageTileIndex(mint.tileId);
+  if (madeIndex !== undefined) {
+    const pageId = madePages?.get(madeIndex);
+    if (pageId === undefined) return { ok: false, error: "unknown_batch_reference", named: mint.tileId };
+    const pageTile = findTile(workspace.catalogs, mkPageTileId(pageId));
+    if (!pageTile) return { ok: false, error: "unknown_tile", named: mkPageTileId(pageId) };
+    return pageTile;
+  }
   const tile = findTile(workspace.catalogs, mint.tileId);
   if (!tile) return { ok: false, error: "unknown_tile", named: mint.tileId };
   if (tile.kind !== "factory") return tile;
@@ -446,13 +656,16 @@ function refusalFor(
   };
 }
 
-/** Tell `workspace`'s watcher that an edit has just landed on `located`, where the document now holds it. */
-function reportLanded(workspace: AuthoringWorkspace, located: RuleRef): void {
-  const watcher = workspace.onEditLanded;
-  if (watcher === undefined) return;
-  const pageId = located.rule.page()?.pageId();
-  if (pageId === undefined) return;
-  watcher({ pageId, ruleId: located.ruleId });
+/** Tell `workspace`'s watcher where an edit has just come to rest. */
+function reportLanded(workspace: AuthoringWorkspace, landed: LandedEdit | undefined): void {
+  if (landed === undefined) return;
+  workspace.onEditLanded?.(landed);
+}
+
+/** What an accepted landing reports back, reading its rule as the document holds it now. */
+function outcomeOf(workspace: AuthoringWorkspace, landing: EditLanding): EditOutcome {
+  if (!landing.judged) return landing.outcome;
+  return { ...landing.outcome, rule: readRule(landing.judged.rule, workspace.environment.appServices.localizer) };
 }
 
 /** How an applied edit is kept or taken back once the policy has judged it. */
@@ -467,25 +680,26 @@ interface EditTransaction {
  * Judge the edit now standing in the document against the proposal policy,
  * keeping it or taking it back through `transaction`. Validation reads the end
  * state, so a sequence of commands is judged once, by what it leaves behind,
- * and only against the diagnostics the edit introduced over `before`.
+ * and only against the diagnostics the edit introduced over `before`. An edit
+ * that removed its subject is judged on the whole document alone.
  */
 function decideApplied(
   workspace: AuthoringWorkspace,
-  located: RuleRef,
+  landing: EditLanding,
   before: readonly ToolDiagnostic[],
   transaction: EditTransaction
 ): ProposalResult {
-  const refusal = refusalFor(workspace, [located], before);
+  const refusal = refusalFor(workspace, landing.judged ? [landing.judged] : [], before);
   if (refusal) {
     transaction.takeBack();
     return refusal;
   }
 
   transaction.keep();
-  reportLanded(workspace, located);
+  reportLanded(workspace, landing.landed);
   return {
     ok: true,
-    rule: readRule(located.rule, workspace.environment.appServices.localizer),
+    ...outcomeOf(workspace, landing),
     historyDepth: workspace.history.undoDepth(),
   };
 }
@@ -513,9 +727,8 @@ export function proposeEdit(workspace: AuthoringWorkspace, input: ProposeEditInp
     return built;
   }
 
-  const runs = input.op === "placeTiles";
-  if (runs)
-    workspace.history.beginBatch(built.commands.length === 1 ? "Place tile" : `Place ${built.commands.length} tiles`);
+  const runs = built.commands.length > 1 || input.op === "placeTiles";
+  if (runs) workspace.history.beginBatch(built.historyLabel ?? "Edit");
   for (const command of built.commands) workspace.history.executeCommand(command);
 
   const takeBack = () => {
@@ -524,13 +737,13 @@ export function proposeEdit(workspace: AuthoringWorkspace, input: ProposeEditInp
     dropTilesRegisteredSince(catalog, registeredBefore);
   };
 
-  const located = built.resolveRule();
-  if (!located) {
+  const landing = built.land();
+  if (!landing) {
     takeBack();
     return built.absent as ProposalUnresolved;
   }
 
-  return decideApplied(workspace, located, before, {
+  return decideApplied(workspace, landing, before, {
     keep: () => {
       if (runs) workspace.history.endBatch();
     },
@@ -556,7 +769,7 @@ function batchTarget(
   input: ProposeEditInput,
   made: ReadonlyMap<number, RuleRef>
 ): RuleRef | ProposalUnresolved | undefined {
-  if (input.op === "addRule") return undefined;
+  if (namesNoRule(input)) return undefined;
   const named = input.op === "addChildRule" ? input.parentRuleId : input.ruleId;
   const index = batchRuleIndex(named);
   if (index === undefined) return editTarget(workspace, input);
@@ -568,7 +781,7 @@ function standingRules(workspace: AuthoringWorkspace, input: ProposeEditBatchInp
   const rules: RuleRef[] = [];
   const seen = new Set<string>();
   for (const command of input.commands) {
-    if (command.op === "addRule") continue;
+    if (namesNoRule(command)) continue;
     const named = command.op === "addChildRule" ? command.parentRuleId : command.ruleId;
     if (batchRuleIndex(named) !== undefined || seen.has(named)) continue;
     seen.add(named);
@@ -578,14 +791,27 @@ function standingRules(workspace: AuthoringWorkspace, input: ProposeEditBatchInp
   return rules;
 }
 
-/** The rules a batch is judged on: those it named and those it made, each once. */
-function judgedRules(standing: readonly RuleRef[], touched: readonly RuleRef[]): RuleRef[] {
-  const judged: RuleRef[] = [...standing];
-  const seen = new Set(standing.map((located) => located.ruleId));
-  for (const located of touched) {
-    if (seen.has(located.ruleId)) continue;
+/**
+ * The rules a batch is judged on: those it named and those its commands left
+ * standing, each once. A rule the batch took out of the document is not among
+ * them, however it was named.
+ */
+function judgedRules(
+  workspace: AuthoringWorkspace,
+  standing: readonly RuleRef[],
+  landings: readonly EditLanding[]
+): RuleRef[] {
+  const judged: RuleRef[] = [];
+  const seen = new Set<string>();
+  const add = (located: RuleRef): void => {
+    if (seen.has(located.ruleId)) return;
+    if (!findRule(workspace.brainDef, located.ruleId)) return;
     seen.add(located.ruleId);
     judged.push(located);
+  };
+  for (const located of standing) add(located);
+  for (const landing of landings) {
+    if (landing.judged) add(landing.judged);
   }
   return judged;
 }
@@ -612,10 +838,11 @@ export async function proposeEditBatch(
   const before = proposalDiagnostics(workspace, standing);
 
   // Each editor command, under the index of the batch command that built it, so
-  // the replay can say which rule the step it just took touched.
+  // the replay can say where the step it just took came to rest.
   const applied: { readonly command: BrainCommand; readonly at: number }[] = [];
-  const touched: RuleRef[] = [];
+  const landings: EditLanding[] = [];
   const made = new Map<number, RuleRef>();
+  const madePages = new Map<number, string>();
   const undoApplied = () => {
     for (let i = applied.length - 1; i >= 0; i--) applied[i]?.command.undo();
   };
@@ -631,7 +858,7 @@ export async function proposeEditBatch(
       return { ...target, commandIndex: index };
     }
 
-    const built = buildEdit(workspace, command, target);
+    const built = buildEdit(workspace, command, target, madePages);
     if ("ok" in built) {
       rollBack();
       return { ...built, commandIndex: index };
@@ -642,16 +869,19 @@ export async function proposeEditBatch(
       applied.push({ command: editorCommand, at: index });
     }
 
-    const located = built.resolveRule();
-    if (!located) {
+    const landing = built.land();
+    if (!landing) {
       rollBack();
       return { ...(built.absent as ProposalUnresolved), commandIndex: index };
     }
-    if (command.op === "addRule" || command.op === "addChildRule") made.set(index, located);
-    touched.push(located);
+    if (landing.judged && (command.op === "addRule" || command.op === "addChildRule" || command.op === "addPage")) {
+      made.set(index, landing.judged);
+    }
+    if (landing.outcome.page && command.op === "addPage") madePages.set(index, landing.outcome.page.pageId);
+    landings.push(landing);
   }
 
-  const refusal = refusalFor(workspace, judgedRules(standing, touched), before);
+  const refusal = refusalFor(workspace, judgedRules(workspace, standing, landings), before);
   // Every command comes back out either way: a refused batch leaves nothing
   // behind, and an accepted one is replayed a command at a time.
   undoApplied();
@@ -664,15 +894,13 @@ export async function proposeEditBatch(
   for (const [index, step] of applied.entries()) {
     if (index > 0) await pause(batchReplayStepMs);
     workspace.history.executeCommand(step.command);
-    const landedOn = touched[step.at];
-    if (landedOn) reportLanded(workspace, landedOn);
+    reportLanded(workspace, landings[step.at]?.landed);
   }
   workspace.history.endBatch();
 
-  const localizer = workspace.environment.appServices.localizer;
   return {
     ok: true,
-    rules: touched.map((located) => readRule(located.rule, localizer)),
+    results: landings.map((landing) => outcomeOf(workspace, landing)),
     historyDepth: workspace.history.undoDepth(),
   };
 }

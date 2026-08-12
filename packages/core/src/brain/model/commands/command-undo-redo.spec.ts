@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { CoreVariableFactoryId, mkVariableFactoryTileId, RuleSide } from "@mindcraft-lang/core/brain";
+import { CoreVariableFactoryId, isPageTileId, mkVariableFactoryTileId, RuleSide } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
   AddPageCommand,
@@ -110,10 +110,8 @@ function numberVariableTile(brain: BrainDef, varName: string): BrainTileVariable
 
 // ---- Document shape --------------------------------------------------------
 // The round-trip oracle is a structural projection of the document: brain
-// name plus, per page, the page name and serialized rule tree (tile-id lists,
-// comments, children). Page ids are excluded because page-creating commands
-// mint a fresh page id on redo; catalog residue (hidden page tiles) is
-// asserted separately where a command owns catalog changes.
+// name plus, per page, the page id, the page name, and the serialized rule
+// tree (tile-id lists, comments, children).
 
 interface RuleShape {
   when: string[];
@@ -132,13 +130,17 @@ function ruleShape(json: RuleJson): RuleShape {
   return shape;
 }
 
-function documentShape(brain: BrainDef): { name: string; pages: { name: string; rules: RuleShape[] }[] } {
+function documentShape(brain: BrainDef): {
+  name: string;
+  pages: { pageId: string; name: string; rules: RuleShape[] }[];
+} {
   return {
     name: brain.name(),
     pages: brain
       .pages()
       .toArray()
       .map((page) => ({
+        pageId: page.pageId(),
         name: page.name(),
         rules: (page as BrainPageDef).toJson().rules.toArray().map(ruleShape),
       })),
@@ -514,6 +516,95 @@ describe("page commands round-trip the document", () => {
     assertCommandRoundTrip(brain, new ReplaceLastPageCommand(brain, 0));
     assert.equal(brain.pages().size(), 1);
     assert.equal(firstRule(brain).do().tiles().size(), 0, "redo leaves a blank replacement page");
+  });
+});
+
+describe("page commands keep the page they act on across undo and redo", () => {
+  /** Page ids of `brain`, in document order. */
+  function pageIds(brain: BrainDef): string[] {
+    return brain
+      .pages()
+      .toArray()
+      .map((page) => page.pageId());
+  }
+
+  /** Ids of every page tile the brain's own catalog holds, in sorted order. */
+  function pageTileIds(brain: BrainDef): string[] {
+    return catalogShape(brain)
+      .map((entry) => entry.tileId)
+      .filter((tileId) => isPageTileId(tileId));
+  }
+
+  test("AddPageCommand puts the same page back on redo", () => {
+    const brain = newBrain();
+    const history = new BrainCommandHistory();
+
+    history.executeCommand(new AddPageCommand(brain));
+    const added = pageIds(brain);
+    history.undo();
+    history.redo();
+
+    assert.deepEqual(pageIds(brain), added, "redo restores the page the first execute made");
+  });
+
+  test("AddPageCommand leaves no orphan page tile behind after undo and redo", () => {
+    const brain = newBrain();
+    const history = new BrainCommandHistory();
+
+    history.executeCommand(new AddPageCommand(brain));
+    const afterExecute = pageTileIds(brain);
+    history.undo();
+    history.redo();
+
+    assert.deepEqual(pageTileIds(brain), afterExecute, "no page tile of a discarded page accumulates");
+    assert.equal(pageTileIds(brain).length, brain.pages().size(), "one page tile per living page");
+  });
+
+  test("AddPageCommand keeps the rule the new page opens with", () => {
+    const brain = newBrain();
+    const history = new BrainCommandHistory();
+
+    history.executeCommand(new AddPageCommand(brain));
+    const openingRuleId = (brain.pages().get(1).children().get(0) as BrainRuleDef).ruleId();
+    history.undo();
+    history.redo();
+
+    assert.equal((brain.pages().get(1).children().get(0) as BrainRuleDef).ruleId(), openingRuleId);
+  });
+
+  test("RemovePageCommand takes out the page it first located, not whatever index now holds", () => {
+    const brain = newBrain();
+    const history = new BrainCommandHistory();
+    brain.appendNewPage();
+    brain.appendNewPage();
+    const [first, second, third] = pageIds(brain);
+
+    const remove = new RemovePageCommand(brain, 1);
+    history.executeCommand(remove);
+    assert.deepEqual(pageIds(brain), [first, third]);
+    history.undo();
+    assert.deepEqual(pageIds(brain), [first, second, third]);
+
+    brain.removePageAtIndex(0);
+    assert.deepEqual(pageIds(brain), [second, third], "the page the command holds now stands at another index");
+    history.redo();
+
+    assert.deepEqual(pageIds(brain), [third], "redo removes the same page from wherever it now stands");
+  });
+
+  test("ReplaceLastPageCommand keeps both the page it removed and the blank one it added", () => {
+    const brain = newBrain();
+    const history = new BrainCommandHistory();
+    const original = pageIds(brain)[0];
+
+    history.executeCommand(new ReplaceLastPageCommand(brain, 0));
+    const replacement = pageIds(brain)[0];
+    assert.notEqual(replacement, original);
+    history.undo();
+    assert.deepEqual(pageIds(brain), [original]);
+    history.redo();
+
+    assert.deepEqual(pageIds(brain), [replacement], "redo puts back the same blank page");
   });
 });
 

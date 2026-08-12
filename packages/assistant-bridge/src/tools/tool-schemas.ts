@@ -16,8 +16,16 @@ const ruleIdSchema = z
     "Rule id, exactly as read_project reports it. It stays the rule's id as other rules come and go. Inside a batch, \"#N\" instead names the rule the batch's own command at index N creates."
   );
 
+/** The id a tool names a page by: the page's own durable id. */
+const pageIdSchema = z
+  .string()
+  .describe("Page id, exactly as read_project reports it. It stays the page's id as other pages come and go.");
+
 /** The form a batch command names a rule an earlier command in the same batch created. */
 const batchRulePattern = /^#(\d+)$/;
+
+/** The form a batch command names the page tile of a page an earlier command in the same batch created. */
+const batchPageTilePattern = /^#(\d+)\.page$/;
 
 /**
  * The index of the batch command that creates the rule `ruleId` names. Returns
@@ -25,6 +33,15 @@ const batchRulePattern = /^#(\d+)$/;
  */
 export function batchRuleIndex(ruleId: string): number | undefined {
   const matched = batchRulePattern.exec(ruleId);
+  return matched ? Number(matched[1]) : undefined;
+}
+
+/**
+ * The index of the batch command whose page `tileId` names the page tile of.
+ * Returns `undefined` for any other tile id.
+ */
+export function batchPageTileIndex(tileId: string): number | undefined {
+  const matched = batchPageTilePattern.exec(tileId);
   return matched ? Number(matched[1]) : undefined;
 }
 
@@ -64,7 +81,9 @@ const suggestTilesInputSchema = z.discriminatedUnion("mode", [
  * One tile an edit names: a tile id on its own, or a factory tile id together
  * with the input it mints its tile from -- `value`, and optionally
  * `displayFormat`, for a literal factory; `name` for a variable factory. Every
- * `propose_edit` operation that names a tile takes this shape.
+ * `propose_edit` operation that names a tile takes this shape. Inside a batch,
+ * the tile id `"#N.page"` names the page tile of the page the batch's own
+ * command at index N creates.
  */
 export const tileRunEntrySchema = z.union([
   z.string(),
@@ -137,6 +156,26 @@ const editCommandBranches = [
     ruleId: ruleIdSchema,
     side: ruleSideSchema,
     position: z.number().int().min(0).describe("Index of the tile being removed."),
+  }),
+  z.object({
+    op: z.literal("addPage"),
+    name: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("What the page is called, in the person's words; omit to leave it with the default name."),
+  }),
+  z.object({
+    op: z.literal("deleteRule"),
+    ruleId: ruleIdSchema.describe(
+      "Rule id of the rule to remove, from read_project. Any rules nested under it go with it."
+    ),
+  }),
+  z.object({
+    op: z.literal("deletePage"),
+    pageId: pageIdSchema.describe(
+      "Page id of the page to remove, from read_project. Every rule on it goes with it. The pages after it shift down one, so put deletes last in a batch that also addresses pages by pageIndex."
+    ),
   }),
 ] as const;
 
@@ -213,7 +252,7 @@ const toolDescriptions: Record<ToolName, string> = {
   compile:
     "Build the whole brain and return its diagnostics. Call after a group of edits that should hold together, before claiming the brain is ready.",
   propose_edit:
-    "Apply one editor command to the document. The editor validates it: an accepted edit is in the document and undoable, and a rejected edit leaves the document untouched and returns the diagnostic code that rejected it. Read the code, adjust, and propose again. This is the only way to change the brain. Any tile that leaves an expression unfinished -- an operator, an opening paren, a NOT, a parameter awaiting its value -- is rejected on its own, because the editor validates the state the edit leaves behind. Place it with the tiles that finish it in one placeTiles call: the whole run lands together or not at all. A factory tile carries no value of its own and cannot be placed by id alone: name it as an object giving its tileId plus what to mint -- a value, optionally with a displayFormat, for a literal factory, or a name for a variable factory. Every place a tile is named takes that object, so a minted value can be placed by placeTile, swapped in by replaceTile, or carried in a placeTiles run. The minted tile joins the document's catalog, and a rejected edit takes the minting back with the placement. Author one command per call, narrating each as it lands; that is the default. Reach for the batch op only when a plan must land or fail as one thing, such as a refactor or a structure of several rules whose half-applied form would be worse than none: the commands apply in order, only the state they leave is judged, and one undo takes the whole plan back. States in the middle of a batch may be broken. A command that cannot apply at all stops the batch and reports its index.",
+    'Apply one editor command to the document. The editor validates it: an accepted edit is in the document and undoable, and a rejected edit leaves the document untouched and returns the diagnostic code that rejected it. Read the code, adjust, and propose again. This is the only way to change the brain. Any tile that leaves an expression unfinished -- an operator, an opening paren, a NOT, a parameter awaiting its value -- is rejected on its own, because the editor validates the state the edit leaves behind. Place it with the tiles that finish it in one placeTiles call: the whole run lands together or not at all. A factory tile carries no value of its own and cannot be placed by id alone: name it as an object giving its tileId plus what to mint -- a value, optionally with a displayFormat, for a literal factory, or a name for a variable factory. Every place a tile is named takes that object, so a minted value can be placed by placeTile, swapped in by replaceTile, or carried in a placeTiles run. The minted tile joins the document\'s catalog, and a rejected edit takes the minting back with the placement. Pages are how a brain holds more than one mode: addPage appends a page, gives it the name you pass, and reports the pageId it minted; the page arrives holding one empty rule you can fill straight away. Inside a batch that rule is what "#N" names for the addPage command at index N, and "#N.page" names the new page\'s own tile -- the tile you place after switch-page to send yourself there, since its id does not exist until the page does. Name every page you make something the person would recognise. A page appended this way sits one past the last page read_project reported, which is the pageIndex addRule takes for it. deleteRule removes a rule and everything nested under it; deletePage removes a page and every rule on it. Both are refused when something would be left dangling: a page another rule still switches to comes back as page_still_referenced naming those rules, so retarget or remove them first -- a batch may do both at once, since only the end state is judged -- and the only page left in the brain comes back as last_page, because a brain always has somewhere to be; empty its rules instead. Removing a page shifts every page after it down one, so put deletes last in a batch that also names pages by pageIndex. Author one command per call, narrating each as it lands; that is the default. Reach for the batch op only when a plan must land or fail as one thing, such as a refactor or a structure of several rules whose half-applied form would be worse than none: the commands apply in order, only the state they leave is judged, and one undo takes the whole plan back. States in the middle of a batch may be broken. A command that cannot apply at all stops the batch and reports its index.',
   read_catalog:
     "List the tiles available in this world with their descriptions, argument grammar, and where they may be placed. Call before planning which tiles a goal needs.",
   read_project:
