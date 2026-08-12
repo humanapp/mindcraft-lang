@@ -140,8 +140,10 @@ Variable access is **slot-keyed at dispatch time**. The `LOAD_VAR_SLOT` and `STO
 
 `Brain` owns the value list:
 
-- `Brain.variables: List<Value | undefined>` -- one entry per slot. `undefined` means the slot has never been written; bytecode reads observe `NIL_VALUE`.
-- `Brain.varSlotByName: Dict<string, number>` -- name -> slot map, rebuilt at program load from `Program.variableNames` via the private `installVariableTable(programVariableNames)` helper. Hot-reload copies values forward by name; variables present only in the previous program are dropped.
+- `Brain.variables: List<Value | undefined>` -- one entry per slot. `undefined` means the slot holds no value; bytecode reads observe `NIL_VALUE`. At program load each slot is seeded with its type's starting value from `Program.variableInitValues`, so only a slot whose type declares none starts `undefined`.
+- `Brain.varSlotByName: Dict<string, number>` -- name -> slot map, rebuilt at program load from `Program.variableNames` via the private `installVariableTable(program)` helper. Hot-reload copies values forward by name; variables present only in the previous program are dropped.
+
+Starting values are resolved entirely by the brain compiler: it reads the slot type's `TypeDef.zero`, interns the value into `constantPools.values`, and records the pool index per slot in `Program.variableInitValues`. `Number`, `Boolean`, and `String` declare a zero (`0`, `false`, `""`); every other type starts nil. No VM applies a zero policy of its own -- each only seeds from that list, so all VMs agree by construction.
 
 Name-keyed access is available to host code via `Brain` / `IBrain`: `getVariable`, `setVariable`, `clearVariable`, `clearVariables`. Writing through `setVariable(name, value)` for a name not present in `variableNames` lazy-extends the value list with a fresh slot; that slot is **not addressable from bytecode** and is dropped on the next `installVariableTable` call.
 

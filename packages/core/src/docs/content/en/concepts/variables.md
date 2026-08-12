@@ -6,6 +6,13 @@ Variables let a brain store a value and read it back in a later rule or a later 
 
 To create a variable: select a "Create a Variable" tile from the tile picker for the data type you want, give it a name, and your new variable will be added to the brain you're editing.
 
+## Starting Value
+
+A brand-new variable already holds the empty value for its data type: a number starts at `0`,
+a true/false starts at `false`, and a text starts at `""` (the empty text).
+You can read a variable straight away, before any rule has assigned to it -- a rule like
+"WHEN the count is under three" works from the very first frame.
+
 ## Reading a Variable
 
 Once a variable tile is created, it appears as a named tile in the tile picker.

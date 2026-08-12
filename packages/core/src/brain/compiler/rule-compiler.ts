@@ -12,6 +12,7 @@ import {
   CoreTypeIds,
   isBytecodeConversion,
   NativeType,
+  NO_VARIABLE_INIT,
 } from "../../runtime";
 import { NIL_VALUE, type Value } from "../../runtime/value";
 import type { IBrainTileDef, ITileCatalog } from "../interfaces";
@@ -58,6 +59,18 @@ interface CompilationContext {
   variableIndices: Dict<string, number>;
   /** List of variable names, in order of first occurrence */
   variableNames: List<string>;
+  /** Data type each variable slot was minted at, keyed by variable name */
+  variableTypes: Dict<string, TypeId>;
+  /**
+   * Per-slot starting-value index into the value constant pool, or
+   * {@link NO_VARIABLE_INIT}. Parallel to {@link variableNames}.
+   */
+  variableInitValues: List<number>;
+  /**
+   * Names already reported by a {@link CompilationDiagCode.VariableTypeConflict},
+   * keyed `<varName>|<conflicting typeId>`, so each conflicting pair reports once.
+   */
+  reportedVariableConflicts: Dict<string, boolean>;
   /** Maps action keys to their program-local action slot */
   actionIndices: Dict<string, number>;
   /** Program-local action refs (bytecode actions only), populated on first use */
@@ -400,8 +413,7 @@ export class ExprCompiler implements ExprVisitor<void> {
   visitVariable(expr: VariableExpr): void {
     // Variables are always r-values in this context (loads)
     // For l-values, see visitAssignment which handles stores
-    const varName = expr.tileDef.varName;
-    const varNameIdx = this.getOrCreateVariableIndex(varName);
+    const varNameIdx = this.getOrCreateVariableIndex(expr.tileDef.varName, expr.tileDef.varType, expr.nodeId);
     this.emitter.loadVarSlot(varNameIdx);
   }
 
@@ -415,12 +427,20 @@ export class ExprCompiler implements ExprVisitor<void> {
   }
 
   /**
-   * Get the index for a variable name, creating a new entry if needed.
-   * Variables are stored in the execution context by name.
+   * Slot id for `varName`, minting one on first occurrence. A minted slot
+   * records `varType` and resolves that type's starting value into the value
+   * constant pool. A later occurrence of the same name at a different type
+   * shares the slot and reports a
+   * {@link CompilationDiagCode.VariableTypeConflict}.
+   *
+   * @param varName - Variable name carried by the variable tile.
+   * @param varType - Data type the tile declares the variable at.
+   * @param nodeId - Node id the conflict diagnostic points at.
    */
-  private getOrCreateVariableIndex(varName: string): number {
+  private getOrCreateVariableIndex(varName: string, varType: TypeId, nodeId: number): number {
     const existingIdx = this.context.variableIndices.get(varName);
     if (existingIdx !== undefined) {
+      this.reportVariableTypeConflictIfAny(varName, varType, nodeId);
       return existingIdx;
     }
 
@@ -428,7 +448,49 @@ export class ExprCompiler implements ExprVisitor<void> {
     const newIdx = this.context.variableNames.size();
     this.context.variableIndices.set(varName, newIdx);
     this.context.variableNames.push(varName);
+    this.context.variableTypes.set(varName, varType);
+    this.context.variableInitValues.push(this.resolveVariableInit(varType));
     return newIdx;
+  }
+
+  /**
+   * Value-pool index of `varType`'s starting value, or
+   * {@link NO_VARIABLE_INIT} when the type declares none.
+   */
+  private resolveVariableInit(varType: TypeId): number {
+    const zero = this.context.typeRegistry.get(varType)?.zero;
+    if (zero === undefined) {
+      return NO_VARIABLE_INIT;
+    }
+    return this.context.constantPool.addOther(zero);
+  }
+
+  /** Report a slot whose name is reused at a second data type, once per name/type pair. */
+  private reportVariableTypeConflictIfAny(varName: string, varType: TypeId, nodeId: number): void {
+    const boundType = this.context.variableTypes.get(varName);
+    if (boundType === undefined || boundType === varType) {
+      return;
+    }
+    const reportKey = `${varName}|${varType}`;
+    if (this.context.reportedVariableConflicts.get(reportKey) !== undefined) {
+      return;
+    }
+    this.context.reportedVariableConflicts.set(reportKey, true);
+    const message =
+      `Variable '${varName}' is used as both '${boundType}' and '${varType}'; ` +
+      `both share one slot, which holds '${boundType}' values.`;
+    logger.warn(message);
+    this.context.diags.push({
+      code: CompilationDiagCode.VariableTypeConflict,
+      severity: diagnosticSeverity(CompilationDiagCode.VariableTypeConflict),
+      message,
+      nodeId,
+      params: {
+        varName,
+        expectedTypeIds: List.from([boundType]),
+        actualTypeIds: List.from([varType]),
+      },
+    });
   }
 
   // ==========================================
@@ -467,8 +529,11 @@ export class ExprCompiler implements ExprVisitor<void> {
       // 2. Duplicate it (so assignment can also return a value)
       // 3. Store to the target variable
       // Result: value remains on stack (assignment is an expression)
-      const varName = expr.target.tileDef.varName;
-      const varNameIdx = this.getOrCreateVariableIndex(varName);
+      const varNameIdx = this.getOrCreateVariableIndex(
+        expr.target.tileDef.varName,
+        expr.target.tileDef.varType,
+        expr.target.nodeId
+      );
 
       // Emit value expression (pushes result onto stack), converting it into
       // the variable's type if inference annotated a conversion

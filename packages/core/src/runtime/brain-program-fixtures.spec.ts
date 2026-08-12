@@ -44,6 +44,13 @@ const { byteArrayFromUint8Array, byteArrayToUint8Array } = stream;
 
 const PROFILE_ID = 0;
 const PRECISION: NumberPrecision = "f32";
+
+/**
+ * With `MINDCRAFT_REGENERATE_GOLDENS=1` every golden below is rewritten from
+ * the freshly built artifact; otherwise only a missing golden is written and
+ * the committed bytes must match.
+ */
+const REGENERATE_GOLDENS = process.env.MINDCRAFT_REGENERATE_GOLDENS === "1";
 const typeRegistry = __test__createBrainServices().runtime.types;
 
 // ---- Fixtures ----
@@ -366,6 +373,7 @@ function leanNormalize(json: LinkedBrainProgramJson, precision: NumberPrecision)
       },
       types: p.types ?? [],
       variableNames: p.variableNames,
+      ...(p.variableInitValues !== undefined ? { variableInitValues: p.variableInitValues } : {}),
       ...(p.actions !== undefined ? { actions: p.actions } : {}),
       ...(p.ruleFuncIds !== undefined ? { ruleFuncIds: p.ruleFuncIds } : {}),
       ...(p.ruleAncestors !== undefined ? { ruleAncestors: p.ruleAncestors } : {}),
@@ -388,7 +396,7 @@ for (const fixture of FIXTURES) {
 
     const canonicalJson = linkedBrainProgramToJson(linkedBrainProgramFromJson(fixture.program));
     const jsonText = `${JSON.stringify(canonicalJson, null, 2)}\n`;
-    if (!existsSync(jsonPath)) {
+    if (REGENERATE_GOLDENS || !existsSync(jsonPath)) {
       writeFileSync(jsonPath, jsonText);
     }
     const committedJsonText = readFileSync(jsonPath, "utf8");
@@ -399,7 +407,7 @@ for (const fixture of FIXTURES) {
 
     const bytes = linkedBrainProgramToBytes(program, { profileId: PROFILE_ID, precision: PRECISION, typeRegistry });
     const generated = Buffer.from(byteArrayToUint8Array(bytes) as Uint8Array);
-    if (!existsSync(binPath)) {
+    if (REGENERATE_GOLDENS || !existsSync(binPath)) {
       writeFileSync(binPath, generated);
     }
     const committedBin = readFileSync(binPath);
@@ -417,7 +425,7 @@ for (const fixture of FIXTURES) {
       precision: PRECISION,
       typeRegistry,
     });
-    if (!existsSync(dumpPath)) {
+    if (REGENERATE_GOLDENS || !existsSync(dumpPath)) {
       writeFileSync(dumpPath, dumpText);
     }
     const committedDumpText = readFileSync(dumpPath, "utf8");

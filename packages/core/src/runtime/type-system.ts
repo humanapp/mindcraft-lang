@@ -43,7 +43,7 @@ import {
   type TypeId,
   type UnionTypeDef,
 } from "./type-defs";
-import { type BufferValue, bufferToHex, isBufferValue, type Value } from "./value";
+import { type BufferValue, bufferToHex, FALSE_VALUE, isBufferValue, type Value } from "./value";
 import type { StructFieldGetterFn } from "./vm-types";
 
 /**
@@ -224,6 +224,7 @@ export class TypeRegistry implements ITypeRegistry {
       codec: new BooleanCodec(),
       name,
       atomId,
+      zero: FALSE_VALUE,
     });
     return typeId;
   }
@@ -239,6 +240,7 @@ export class TypeRegistry implements ITypeRegistry {
       codec: new NumberCodec(),
       name,
       atomId,
+      zero: { t: NativeType.Number, v: 0 },
     });
     return typeId;
   }
@@ -254,6 +256,7 @@ export class TypeRegistry implements ITypeRegistry {
       codec: new StringCodec(),
       name,
       atomId,
+      zero: { t: NativeType.String, v: "" },
     });
     return typeId;
   }

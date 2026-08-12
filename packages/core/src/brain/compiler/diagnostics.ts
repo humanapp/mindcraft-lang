@@ -133,6 +133,16 @@ export enum CompilationDiagCode {
    * expression starts at when one resolves.
    */
   UncompilableExpressionDropped = 3002,
+
+  /**
+   * Two variable tiles share a name but declare different data types, and the
+   * compiler gave them one slot. The slot takes the type of the first
+   * occurrence in compilation order, including that type's starting value; the
+   * later occurrence reads and writes the same slot at its own declared type.
+   * Emitted at "warning" severity: the program still compiles, links, and
+   * runs. `params` names the variable and both type ids.
+   */
+  VariableTypeConflict = 3003,
 }
 
 /**
@@ -215,6 +225,9 @@ export interface DiagParams {
 
   /** Key of the action the diagnostic is about. */
   readonly actionKey?: string;
+
+  /** Name of the brain variable the diagnostic is about. */
+  readonly varName?: string;
 }
 
 /**
@@ -258,6 +271,7 @@ export function diagnosticSeverity(code: DiagCode): DiagnosticSeverity {
       return "warning";
 
     case CompilationDiagCode.UncompilableExpressionDropped:
+    case CompilationDiagCode.VariableTypeConflict:
       return "warning";
 
     default:

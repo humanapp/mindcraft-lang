@@ -23,7 +23,7 @@ functions 2
     instr 3d
     instr 1f
 vars 1
-  var 0 "enabled"
+  var 0 "enabled" init -
 actions 1
   action 0 entry 1 init - activate - deactivate -
 rulefuncs 1

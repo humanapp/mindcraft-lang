@@ -486,6 +486,16 @@ compiler's job, performed once at program build, and re-bound to the
 host's value list at program load via the orchestrator's
 variable-table install step.
 
+Every slot is seeded at program load with its starting value, so a
+`LOAD_VAR_SLOT` before any store observes that value. The starting values
+travel with the program: `Program.variableInitValues` holds, per slot, an
+index into `constantPools.values` or a none-marker, and a conforming VM
+materializes the referenced constant into the slot at load. A VM applies no
+zero policy of its own; the brain compiler resolves each slot type's zero and
+emits the constant, so a slot whose entry is the none-marker starts `NIL`.
+The type table is fixed: `Number` starts `0`, `Boolean` starts `false`,
+`String` starts `""`, and every other type starts `NIL`.
+
 `STORE_VAR_SLOT` deep-copies struct values before writing
 (consulting `ITypeRegistry`); primitive values are written by
 reference. The slot list grows lazily on out-of-range writes from
@@ -981,7 +991,7 @@ to buffers is a separate host-function surface, not part of this
 opcode contract).
 
 In the binary `.mcprogram` value encoding (the `CVAL` section, format
-version 3), a buffer is the value tag byte `12`, then a var-uint byte
+version 4), a buffer is the value tag byte `12`, then a var-uint byte
 count, then exactly that many raw bytes (distinct from the UTF-8
 length-prefixed string encoding). The tag and encoding are append-only:
 a buffer-free program never emits them, and the format version is
@@ -1044,7 +1054,7 @@ local handles) and compares types as integers.
 
 #### TYPS binary section
 
-The binary `.mcprogram` form (format version 3) encodes the table as
+The binary `.mcprogram` form (format version 4) encodes the table as
 the `TYPS` section, positioned after `CSTR` and before `CNUM` so the
 later sections can reference it. Layout: a var-uint entry count, then
 per entry a tag byte followed by its fields (all var-uints):

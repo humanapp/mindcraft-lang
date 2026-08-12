@@ -1,6 +1,7 @@
 import type { Dict } from "../platform/dict";
 import type { List } from "../platform/list";
 import type { StableIdOwner } from "./abi-ids";
+import type { Value } from "./value";
 import type { StructFieldGetterFn, StructFieldSetterFn, StructSnapshotNativeFn } from "./vm-types";
 
 // ----------------------------------------------------
@@ -121,6 +122,12 @@ export interface TypeDef {
    * types. Once assigned, never changed or reused.
    */
   atomId?: number;
+  /**
+   * The value a brain variable of this type holds before anything writes to
+   * it. Absent when the type has no meaningful empty value, in which case an
+   * unwritten variable of the type reads as nil.
+   */
+  zero?: Value;
 }
 
 /** Primitive value backing an {@link EnumSymbolDef}. */

@@ -8,7 +8,7 @@ import { Op } from "../../runtime/bytecode";
 import type { BytecodeExecutableAction } from "../../runtime/context";
 import type { LinkedBrainProgram, PageMetadata } from "../../runtime/host-bindings";
 import type { Program, ProgramTypeEntry, SystemRegistration } from "../../runtime/program";
-import { remapProgramTypeEntry } from "../../runtime/program";
+import { anyVariableInit, NO_VARIABLE_INIT, remapProgramTypeEntry, variableInitAt } from "../../runtime/program";
 import { NativeType } from "../../runtime/type-defs";
 import type { Value } from "../../runtime/value";
 import { forEachValueTypeId, isFunctionValue } from "../../runtime/value";
@@ -115,7 +115,11 @@ interface ReachableConstSets {
   types: UniqueSet<number>;
 }
 
-function markReachableConstants(program: Program, reachableFuncs: UniqueSet<number>): ReachableConstSets {
+function markReachableConstants(
+  program: Program,
+  reachableFuncs: UniqueSet<number>,
+  reachableVars: UniqueSet<number>
+): ReachableConstSets {
   const values = new UniqueSet<number>();
   const numbers = new UniqueSet<number>();
   const strings = new UniqueSet<number>();
@@ -150,6 +154,16 @@ function markReachableConstants(program: Program, reachableFuncs: UniqueSet<numb
       ) {
         types.add(ins.b);
       }
+    }
+  }
+
+  // A surviving variable slot keeps its starting value alive even though no
+  // instruction pushes it.
+  for (let i = 0; i < program.variableNames.size(); i++) {
+    if (!reachableVars.has(i)) continue;
+    const init = variableInitAt(program, i);
+    if (init !== NO_VARIABLE_INIT) {
+      values.add(init);
     }
   }
 
@@ -373,6 +387,25 @@ interface DedupResult {
   functions: List<FunctionBytecode>;
   constantPools: ConstantPools;
   types: List<ProgramTypeEntry>;
+  /** Old-to-new value-pool index map, for indices the instructions do not carry. */
+  valueRemap: Dict<number, number>;
+}
+
+/**
+ * Rewrite each starting-value pool index through `valueRemap`. Returns
+ * `undefined` when `inits` is absent.
+ */
+function remapVariableInits(
+  inits: List<number> | undefined,
+  valueRemap: Dict<number, number>
+): List<number> | undefined {
+  if (inits === undefined) return undefined;
+  const remapped = List.empty<number>();
+  for (let i = 0; i < inits.size(); i++) {
+    const init = inits.get(i);
+    remapped.push(init === NO_VARIABLE_INIT ? NO_VARIABLE_INIT : (valueRemap.get(init) ?? init));
+  }
+  return remapped;
 }
 
 function dedupValues(constants: List<Value>): {
@@ -544,6 +577,7 @@ function deduplicateConstants(
       values: r.newConstants,
     },
     types: t.newTypes,
+    valueRemap: r.remap,
   };
 }
 
@@ -598,8 +632,8 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
   const program = linked.program;
   const programTypes = program.types ?? List.empty<ProgramTypeEntry>();
   const reachableFuncs = markReachableFunctions(program, linked.pages);
-  const reachableConsts = markReachableConstants(program, reachableFuncs);
   const reachableVars = markReachableVariableNames(program, reachableFuncs);
+  const reachableConsts = markReachableConstants(program, reachableFuncs, reachableVars);
 
   const funcsDead = reachableFuncs.size() < program.functions.size();
   const valuesDead = reachableConsts.values.size() < program.constantPools.values.size();
@@ -611,12 +645,14 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
   if (!funcsDead && !valuesDead && !numbersDead && !stringsDead && !typesDead && !varsDead) {
     const dedup = deduplicateConstants(program.functions, program.constantPools, programTypes);
     if (dedup) {
+      const dedupedInits = remapVariableInits(program.variableInitValues, dedup.valueRemap);
       return {
         program: {
           ...program,
           functions: dedup.functions,
           constantPools: dedup.constantPools,
           types: dedup.types,
+          ...(dedupedInits === undefined ? {} : { variableInitValues: dedupedInits }),
         },
         ruleIndex: linked.ruleIndex,
         pages: linked.pages,
@@ -720,9 +756,12 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
   }
 
   const newVariableNames = List.empty<string>();
+  const newVariableInitValues = List.empty<number>();
   for (let i = 0; i < program.variableNames.size(); i++) {
     if (!reachableVars.has(i)) continue;
     newVariableNames.push(program.variableNames.get(i));
+    const init = variableInitAt(program, i);
+    newVariableInitValues.push(init === NO_VARIABLE_INIT ? NO_VARIABLE_INIT : (constRemap.values.get(init) ?? init));
   }
 
   const newEntryPoint = program.entryPoint !== undefined ? funcRemap.get(program.entryPoint) : undefined;
@@ -781,11 +820,13 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
   };
   let resultTypes = newTypes;
 
+  let resultVariableInits = newVariableInitValues;
   const dedup = deduplicateConstants(newFunctions, resultPools, newTypes);
   if (dedup) {
     resultFunctions = dedup.functions;
     resultPools = dedup.constantPools;
     resultTypes = dedup.types;
+    resultVariableInits = remapVariableInits(newVariableInitValues, dedup.valueRemap) ?? newVariableInitValues;
   }
 
   const newRuleFuncIds = new UniqueSet<number>();
@@ -836,6 +877,7 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
       constantPools: resultPools,
       types: resultTypes,
       variableNames: newVariableNames,
+      ...(anyVariableInit(resultVariableInits) ? { variableInitValues: resultVariableInits } : {}),
       entryPoint: newEntryPoint,
       actions: newActions,
       ruleFuncIds: newRuleFuncIds,

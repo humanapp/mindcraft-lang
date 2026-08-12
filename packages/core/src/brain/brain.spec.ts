@@ -126,6 +126,16 @@ function buildBrain(whenTiles: readonly unknown[], doTiles: readonly unknown[]):
   return brainDef;
 }
 
+/** Slot id `varName` was assigned in the brain's loaded program. Fails the test when the name has no slot. */
+function slotIdOf(brain: IBrain, varName: string): number {
+  const program = brain.getProgram();
+  assert.ok(program, "brain has a loaded program");
+  for (let i = 0; i < program.variableNames.size(); i++) {
+    if (program.variableNames.get(i) === varName) return i;
+  }
+  assert.fail(`no slot for variable '${varName}'`);
+}
+
 function runBrain(brainDef: BrainDef, ticks = 1): IBrain {
   const brain = brainDef.compile();
   brain.initialize();
@@ -236,7 +246,7 @@ describe("Brain behavioral -- WHEN condition", () => {
     const brainDef = buildBrain([mkBoolLiteral(false)], [v, opAssign, mkLiteral(1)]);
     const brain = runBrain(brainDef);
 
-    assert.equal(brain.getVariable(v.varName), undefined, "variable should not be set");
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 0, "variable should still hold its starting value");
   });
 
   test("empty WHEN -> always true (DO executes)", () => {
@@ -340,7 +350,11 @@ describe("Brain behavioral -- presence gate", () => {
     const sensor = makeSensor(CoreTypeIds.Number, true);
     sensor.deliver(NIL_VALUE);
     const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
-    assert.equal(brain.getVariable(v.varName), undefined, "DO must be skipped when the sensor delivers nil");
+    assert.equal(
+      extractNumberValue(brain.getVariable(v.varName)),
+      0,
+      "DO must be skipped when the sensor delivers nil"
+    );
   });
 
   test("a non-presence-gated sensor delivering 0 stays truthiness-gated and skips its DO", () => {
@@ -348,7 +362,11 @@ describe("Brain behavioral -- presence gate", () => {
     const sensor = makeSensor(CoreTypeIds.Number, false);
     sensor.deliver(mkNumberValue(0));
     const brain = runBrain(buildBrain([sensor.tile], [v, opAssign, mkLiteral(1)]));
-    assert.equal(brain.getVariable(v.varName), undefined, "0 is falsy, so a truthiness-gated rule must not fire");
+    assert.equal(
+      extractNumberValue(brain.getVariable(v.varName)),
+      0,
+      "0 is falsy, so a truthiness-gated rule must not fire"
+    );
   });
 
   test("WHEN_END_PRESENT is emitted only for a bare presence-gated sensor WHEN root", () => {
@@ -2487,7 +2505,7 @@ describe("Brain behavioral -- nil value overloads", () => {
     const brainDef = buildBrain([mkLiteral(5), opEq, mkNilLiteral()], [v, opAssign, mkLiteral(99)]);
     const brain = runBrain(brainDef);
 
-    assert.equal(brain.getVariable(v.varName), undefined, "DO should not execute");
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 0, "DO should not execute");
   });
 });
 
@@ -2532,7 +2550,7 @@ describe("Brain behavioral -- timeout sensor", () => {
       brain.think(t);
     }
 
-    assert.equal(brain.getVariable(v.varName), undefined, "timeout should not have fired before 5s");
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 0, "timeout should not have fired before 5s");
 
     // Continue past the upper bound (6s). Timeout MUST fire by then.
     for (let t = 4016; t <= 7000; t += 16) {
@@ -2632,7 +2650,7 @@ describe("Brain -- slot-keyed variable storage", () => {
     assert.equal(readAfter, persisted, "value should survive re-initialize when name is still in variableNames");
   });
 
-  test("clearVariable resets slot so name-keyed read returns undefined and slot-keyed read returns NIL", () => {
+  test("clearVariable returns a slot of a type with a starting value to that value", () => {
     const v = mkVar("clearable");
     const brainDef = buildBrain([], [v, opAssign, mkLiteral(1)]);
     const brain = brainDef.compile();
@@ -2641,15 +2659,44 @@ describe("Brain -- slot-keyed variable storage", () => {
     brain.setVariable(v.varName, mkNumberValue(5));
     brain.clearVariable(v.varName);
 
-    assert.equal(brain.getVariable(v.varName), undefined, "name-keyed read of cleared slot returns undefined");
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 0, "name-keyed read of cleared slot returns zero");
 
-    const program = brain.getProgram();
-    let slotId = -1;
-    for (let i = 0; i < program!.variableNames.size(); i++) {
-      if (program!.variableNames.get(i) === v.varName) slotId = i;
-    }
-    assert.ok(slotId >= 0);
-    assert.equal(brain.getVariableBySlot(slotId).t, NativeType.Nil, "slot-keyed read of cleared slot returns NIL");
+    const slotId = slotIdOf(brain, v.varName);
+    const slotValue = brain.getVariableBySlot(slotId);
+    assert.equal(slotValue.t, NativeType.Number, "slot-keyed read of cleared slot returns a number");
+    assert.equal(extractNumberValue(slotValue), 0, "slot-keyed read of cleared slot returns zero");
+  });
+
+  test("clearVariables returns every slot of a type with a starting value to that value", () => {
+    const first = mkVar("clear-all-a");
+    const second = mkVar("clear-all-b");
+    const brainDef = buildBrain([], [first, opAssign, second]);
+    const brain = brainDef.compile();
+    brain.initialize();
+
+    brain.setVariable(first.varName, mkNumberValue(5));
+    brain.setVariable(second.varName, mkNumberValue(7));
+    brain.clearVariables();
+
+    assert.equal(extractNumberValue(brain.getVariable(first.varName)), 0);
+    assert.equal(extractNumberValue(brain.getVariable(second.varName)), 0);
+  });
+
+  test("clearVariable returns a slot of a type with no starting value to holding no value", () => {
+    const v = mkVar("clearable-nil", CoreTypeIds.Any);
+    const brainDef = buildBrain([], [v, opAssign, mkLiteral(1)]);
+    const brain = brainDef.compile();
+    brain.initialize();
+
+    brain.setVariable(v.varName, mkNumberValue(5));
+    brain.clearVariable(v.varName);
+
+    assert.equal(brain.getVariable(v.varName), undefined, "name-keyed read of cleared slot returns undefined");
+    assert.equal(
+      brain.getVariableBySlot(slotIdOf(brain, v.varName)).t,
+      NativeType.Nil,
+      "slot-keyed read of cleared slot returns NIL"
+    );
   });
 });
 

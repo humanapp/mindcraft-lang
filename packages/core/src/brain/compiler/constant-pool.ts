@@ -89,13 +89,13 @@ export class ConstantPool {
 
   /**
    * Add a `Value` to the residual sub-pool, returning its index.
-   * Deduplicates primitive-shaped residual values (`Nil`, `Boolean`, `Enum`);
-   * complex shapes (`List`, `Map`, `Struct`, `Function`, ...) are not deduped
-   * because deep equality is impractical at compile time.
+   * Deduplicates primitive-shaped values (`Nil`, `Boolean`, `Number`,
+   * `String`, `Enum`); complex shapes (`List`, `Map`, `Struct`, `Function`,
+   * ...) are not deduped.
    *
-   * Callers must not pass plain `NumberValue` or `StringValue` here; route
-   * those through {@link addNumber} / {@link addString}, or use {@link addValue}
-   * to dispatch automatically.
+   * Call this only for a value the residual pool must hold whatever its tag,
+   * such as a variable's starting value; route a value reached by a
+   * `PUSH_CONST*` operand through {@link addValue}.
    */
   addOther(value: Value): number {
     this.typeTable?.internValue(value);
@@ -164,6 +164,10 @@ export class ConstantPool {
         return "nil";
       case NativeType.Boolean:
         return `bool:${value.v}`;
+      case NativeType.Number:
+        return `num:${value.v}`;
+      case NativeType.String:
+        return `str:${value.v}`;
       case NativeType.Enum:
         return `enum:${value.typeId}:${value.v}`;
       case NativeType.List:

@@ -7,6 +7,7 @@ import type { BytecodeExecutableAction, ExecutionContext } from "./context";
 import type { VmEvents } from "./events";
 import type { BrainEvents, IBrainRuntime, PageMetadata } from "./host-bindings";
 import type { Program } from "./program";
+import { NO_VARIABLE_INIT, variableInitAt } from "./program";
 import {
   createProgramServices,
   createRuleFiringServices,
@@ -42,10 +43,17 @@ export class BrainRuntime implements IBrainRuntime {
    * Variable storage at the Brain level, indexed by compiler-assigned slot id.
    * Slot ids correspond to positions in the loaded program's variableNames pool;
    * they are the operand of LOAD_VAR_SLOT / STORE_VAR_SLOT. A slot value of
-   * `undefined` means the slot has never been written; bytecode reads of such
-   * slots observe `NIL_VALUE`.
+   * `undefined` means the slot holds no value; bytecode reads of such slots
+   * observe `NIL_VALUE`.
    */
   private variables: List<Value | undefined> = List.empty();
+
+  /**
+   * Starting value of each slot in {@link variables}, or `undefined` for a slot
+   * whose type declares none. Slots are seeded with these at program load and
+   * returned to them by {@link clearVariable} / {@link clearVariables}.
+   */
+  private variableZeros: List<Value | undefined> = List.empty();
 
   /**
    * Map from variable name to slot id. Populated from `Program.variableNames`
@@ -177,7 +185,7 @@ export class BrainRuntime implements IBrainRuntime {
     this.callsiteStore = callsiteStore;
     this.ruleVariableStores = ruleVariableStores;
 
-    this.installVariableTable(program.variableNames, previousVariables);
+    this.installVariableTable(program, previousVariables);
 
     for (let i = 0; i < pageMetadata.size(); i++) {
       const meta = pageMetadata.get(i);
@@ -284,11 +292,13 @@ export class BrainRuntime implements IBrainRuntime {
   /**
    * Get a variable value by its name. The brain looks up the slot id assigned
    * to the name (either by the loaded program or lazily by a previous host
-   * write) and returns the slot's current value, or `undefined` if the name
-   * has never been associated with a slot.
+   * write) and returns the slot's current value. A variable of a type with a
+   * starting value returns that value until something writes to it. Returns
+   * `undefined` only when the name has no slot, or when its type declares no
+   * starting value and nothing has written to it.
    *
    * @param varId - Variable name
-   * @returns The variable's current value, or undefined if not found
+   * @returns The variable's current value, or undefined per the rule above
    */
   getVariable<T extends Value>(varId: string): T | undefined {
     const slotId = this.varSlotByName.get(varId);
@@ -315,13 +325,15 @@ export class BrainRuntime implements IBrainRuntime {
     }
     const newSlot = this.variables.size();
     this.variables.push(value);
+    this.variableZeros.push(undefined);
     this.varSlotByName.set(varId, newSlot);
   }
 
   /**
-   * Clear a variable by its name. Resets the underlying slot to the
-   * never-written sentinel; the slot itself is retained so subsequent
-   * bytecode operands remain valid (and observe `NIL_VALUE`).
+   * Clear a variable by its name. Resets the underlying slot to its type's
+   * starting value, or to holding no value when the type declares none; the
+   * slot itself is retained so subsequent bytecode operands remain valid (a
+   * slot holding no value reads as `NIL_VALUE`).
    *
    * @param varId - Variable name
    */
@@ -329,24 +341,31 @@ export class BrainRuntime implements IBrainRuntime {
     const slotId = this.varSlotByName.get(varId);
     if (slotId === undefined) return;
     if (slotId < this.variables.size()) {
-      this.variables.set(slotId, undefined);
+      this.variables.set(slotId, this.zeroForSlot(slotId));
     }
   }
 
   /**
-   * Reset every slot to the never-written sentinel while preserving the
-   * program-derived slot layout (slot ids and `varSlotByName` mappings
-   * remain stable).
+   * Reset every slot to its type's starting value, or to holding no value when
+   * the type declares none, while preserving the program-derived slot layout
+   * (slot ids and `varSlotByName` mappings remain stable).
    */
   clearVariables(): void {
     for (let i = 0; i < this.variables.size(); i++) {
-      this.variables.set(i, undefined);
+      this.variables.set(i, this.zeroForSlot(i));
     }
   }
 
+  /** Starting value of `slotId`, or `undefined` when its type declares none. */
+  private zeroForSlot(slotId: number): Value | undefined {
+    if (slotId < 0 || slotId >= this.variableZeros.size()) return undefined;
+    return this.variableZeros.get(slotId);
+  }
+
   /**
-   * Read a variable by its compiler-assigned slot id. Returns `NIL_VALUE`
-   * if the slot is out of range or has never been written. Called by the
+   * Read a variable by its compiler-assigned slot id. Returns the slot's
+   * starting value until something writes to it, and `NIL_VALUE` when the slot
+   * is out of range or its type declares no starting value. Called by the
    * VM dispatch loop on every `LOAD_VAR_SLOT`.
    */
   getVariableBySlot(slotId: number): Value {
@@ -521,34 +540,40 @@ export class BrainRuntime implements IBrainRuntime {
   }
 
   /**
-   * Wire variable storage to a program's `variableNames` pool.
-   * Allocates a fresh slot list of size `programVariableNames.size()`
-   * with the never-written sentinel, builds a fresh name->slot map, and
-   * copies any previously-set values forward by name -- preserving values
+   * Wire variable storage to `program`'s `variableNames` pool.
+   * Allocates one slot per pool entry, builds a fresh name->slot map,
+   * resolves each slot's starting value from `program.variableInitValues`,
+   * and copies any previously-set values forward by name -- preserving values
    * for variables that exist in both the previous and the new program.
    * Variables present only in the previous program are dropped; variables
-   * new to the program start unwritten (read as `NIL_VALUE` from bytecode,
-   * `undefined` from the name-keyed `getVariable`).
+   * new to the program start at their type's starting value, or hold no value
+   * when the type declares none.
    */
-  private installVariableTable(programVariableNames: List<string>, previousVariables?: VariableSnapshot): void {
+  private installVariableTable(program: Program, previousVariables?: VariableSnapshot): void {
     const previousValues = previousVariables?.values ?? List.empty<Value | undefined>();
     const previousSlots = previousVariables?.slotsByName ?? new Dict<string, number>();
 
+    const programVariableNames = program.variableNames;
     const newSize = programVariableNames.size();
     const newValues = List.empty<Value | undefined>();
+    const newZeros = List.empty<Value | undefined>();
     const newSlots = new Dict<string, number>();
     for (let i = 0; i < newSize; i++) {
       const name = programVariableNames.get(i)!;
       newSlots.set(name, i);
+      const initIdx = variableInitAt(program, i);
+      const zero = initIdx === NO_VARIABLE_INIT ? undefined : program.constantPools.values.get(initIdx);
+      newZeros.push(zero);
       const oldSlot = previousSlots.get(name);
       if (oldSlot !== undefined && oldSlot < previousValues.size()) {
         newValues.push(previousValues.get(oldSlot));
       } else {
-        newValues.push(undefined);
+        newValues.push(zero);
       }
     }
 
     this.variables = newValues;
+    this.variableZeros = newZeros;
     this.varSlotByName = newSlots;
   }
 

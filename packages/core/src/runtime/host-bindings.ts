@@ -225,13 +225,22 @@ export type BrainEvents = {
 export interface IBrainRuntime {
   /** Event stream for brain lifecycle notifications (page activated / deactivated). */
   events(): EventEmitterConsumer<BrainEvents>;
+  /**
+   * Current value of the named variable. A variable whose type declares a
+   * starting value holds that value until something writes to it; `undefined`
+   * means the name has no slot, or its type declares no starting value and
+   * nothing has written to it.
+   */
   getVariable(varId: string): Value | undefined;
   setVariable(varId: string, value: Value): void;
+  /** Reset the named variable to its type's starting value, or to holding no value when its type declares none. */
   clearVariable(varId: string): void;
+  /** Reset every variable, each per {@link clearVariable}. */
   clearVariables(): void;
   /**
-   * Read a variable by its compiler-assigned slot id. Returns `NIL_VALUE`
-   * if the slot is out of range or has never been written.
+   * Read a variable by its compiler-assigned slot id. Returns the slot's
+   * starting value until something writes to it, and `NIL_VALUE` when the slot
+   * is out of range or its type declares no starting value.
    */
   getVariableBySlot(slotId: number): Value;
   /** Linked executable program currently loaded into the brain's VM. */

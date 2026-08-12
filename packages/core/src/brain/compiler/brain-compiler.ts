@@ -12,8 +12,10 @@ import type {
   IOperatorOverloads,
   ITypeRegistry,
   PageMetadata,
+  TypeId,
   UnlinkedBrainProgram,
 } from "../../runtime";
+import { anyVariableInit } from "../../runtime";
 import { BYTECODE_VERSION, type FunctionBytecode, type Instr, Op } from "../../runtime/bytecode";
 import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
 import type { IBrainDef, IBrainPageDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../interfaces";
@@ -133,6 +135,12 @@ export class BrainCompiler {
   private variableNames: List<string>;
   /** Maps variable names to their index in variableNames */
   private variableIndices: Dict<string, number>;
+  /** Data type each variable slot was minted at, keyed by variable name */
+  private variableTypes: Dict<string, TypeId>;
+  /** Per-slot starting-value index into the value constant pool, parallel to variableNames */
+  private variableInitValues: List<number>;
+  /** Variable name/type pairs already reported as a slot-sharing conflict */
+  private reportedVariableConflicts: Dict<string, boolean>;
   /** Program-local action refs shared across all compiled rules */
   private actionRefs: List<ActionRef>;
   /** Maps action keys to their program-local slot */
@@ -163,6 +171,9 @@ export class BrainCompiler {
     this.localizer = localizer;
     this.variableNames = List.empty();
     this.variableIndices = Dict.empty();
+    this.variableTypes = Dict.empty();
+    this.variableInitValues = List.empty();
+    this.reportedVariableConflicts = Dict.empty();
     this.actionRefs = List.empty();
     this.actionIndices = Dict.empty();
     this.nextCallSiteIdCounter = { value: 1 };
@@ -191,6 +202,9 @@ export class BrainCompiler {
     this.nextFuncId = 0;
     this.variableNames = List.empty();
     this.variableIndices = Dict.empty();
+    this.variableTypes = Dict.empty();
+    this.variableInitValues = List.empty();
+    this.reportedVariableConflicts = Dict.empty();
     this.actionRefs = List.empty();
     this.actionIndices = Dict.empty();
     this.nextCallSiteIdCounter = { value: 0 };
@@ -216,6 +230,7 @@ export class BrainCompiler {
       constantPools: this.constantPool.toPools(),
       types: this.constantPool.typeEntries(),
       variableNames: this.variableNames,
+      ...(anyVariableInit(this.variableInitValues) ? { variableInitValues: this.variableInitValues } : {}),
       entryPoint: 0, // First page's first rule
       ruleIndex: this.ruleIndex,
       ruleFuncIds: this.ruleFuncIds,
@@ -580,6 +595,9 @@ export class BrainCompiler {
     const context = {
       variableIndices: this.variableIndices,
       variableNames: this.variableNames,
+      variableTypes: this.variableTypes,
+      variableInitValues: this.variableInitValues,
+      reportedVariableConflicts: this.reportedVariableConflicts,
       actionIndices: this.actionIndices,
       actionRefs: this.actionRefs,
       actionResolver: this.actionResolver,

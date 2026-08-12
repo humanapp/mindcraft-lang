@@ -161,6 +161,12 @@ export interface BrainProgramJson {
   /** Variable names indexed by compiler-assigned variable slot. */
   readonly variableNames: readonly string[];
 
+  /**
+   * Per-slot starting value as a `constantPools.values` index, or `-1` for a
+   * slot that starts unwritten. Absent when no slot has a starting value.
+   */
+  readonly variableInitValues?: readonly number[];
+
   /** Optional entry function id. */
   readonly entryPoint?: number;
 
@@ -237,6 +243,10 @@ function brainProgramFromJson(json: BrainProgramJson): Program {
 
   if (json.types !== undefined) {
     program.types = listFromJson(json.types, typeEntryFromJson);
+  }
+
+  if (json.variableInitValues !== undefined) {
+    program.variableInitValues = List.from(json.variableInitValues);
   }
 
   if (json.entryPoint !== undefined) {
@@ -446,6 +456,7 @@ function brainProgramToJson(program: Program): BrainProgramJson {
     constantPools: constantPoolsToJson(program.constantPools),
     ...(program.types !== undefined ? { types: listToJson(program.types, typeEntryToJson) } : {}),
     variableNames: program.variableNames.toArray(),
+    ...(program.variableInitValues !== undefined ? { variableInitValues: program.variableInitValues.toArray() } : {}),
     ...(program.entryPoint !== undefined ? { entryPoint: program.entryPoint } : {}),
     ...(program.actions !== undefined ? { actions: listToJson(program.actions, bytecodeExecutableActionToJson) } : {}),
     ...(program.ruleFuncIds !== undefined ? { ruleFuncIds: program.ruleFuncIds.toArray() } : {}),

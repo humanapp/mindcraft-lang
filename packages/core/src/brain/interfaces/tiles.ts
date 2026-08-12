@@ -373,12 +373,6 @@ export enum CoreVariableFactoryId {
   Boolean = "boolean",
   Number = "number",
   String = "string",
-  BooleanList = "boolean.list",
-  NumberList = "number.list",
-  StringList = "string.list",
-  BooleanMap = "boolean.map",
-  NumberMap = "number.map",
-  StringMap = "string.map",
 }
 
 export enum CoreLiteralFactoryId {
@@ -391,12 +385,6 @@ export const CoreVariableFactoryTileIds: string[] = [
   mkVariableFactoryTileId(CoreVariableFactoryId.Boolean),
   mkVariableFactoryTileId(CoreVariableFactoryId.Number),
   mkVariableFactoryTileId(CoreVariableFactoryId.String),
-  mkVariableFactoryTileId(CoreVariableFactoryId.BooleanList),
-  mkVariableFactoryTileId(CoreVariableFactoryId.NumberList),
-  mkVariableFactoryTileId(CoreVariableFactoryId.StringList),
-  mkVariableFactoryTileId(CoreVariableFactoryId.BooleanMap),
-  mkVariableFactoryTileId(CoreVariableFactoryId.NumberMap),
-  mkVariableFactoryTileId(CoreVariableFactoryId.StringMap),
 ];
 
 export function isCoreVariableFactoryTileId(tileId: string): boolean {

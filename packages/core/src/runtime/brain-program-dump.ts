@@ -56,7 +56,7 @@
  *   function <idx> params <n> locals <n> ctx <typeIdx|-> code <instrCount>
  *     instr <op> <operand>...
  * vars <count>
- *   var <idx> "<name>"
+ *   var <idx> "<name>" init <valueIdx|->
  * actions <count>
  *   action <idx> entry <funcId> init <funcId|-> activate <funcId|-> deactivate <funcId|->
  * rulefuncs <count>
@@ -109,6 +109,7 @@ import { buildProgramTypeIndex, type NumberPrecision, type ProgramTypeIndex } fr
 import { type Instr, instrOperandMismatch, OPERAND_SCHEMA, type OperandSpec } from "./bytecode";
 import type { ActionCallSiteEntry, LinkedBrainProgram } from "./host-bindings";
 import type { ProgramTypeEntry } from "./program";
+import { NO_VARIABLE_INIT, variableInitAt } from "./program";
 import { type ITypeRegistry, NativeType } from "./type-defs";
 import type { Value } from "./value";
 
@@ -440,7 +441,9 @@ export function linkedBrainProgramToCanonicalDump(
   const variableNames = p.variableNames;
   w.line(0, `vars ${hexU32(variableNames.size())}`);
   for (let i = 0; i < variableNames.size(); i++) {
-    w.line(1, `var ${hexU32(i)} ${quoted(variableNames.get(i))}`);
+    const init = variableInitAt(p, i);
+    const initToken = init === NO_VARIABLE_INIT ? "-" : hexU32(init);
+    w.line(1, `var ${hexU32(i)} ${quoted(variableNames.get(i))} init ${initToken}`);
   }
 
   const actions = p.actions;

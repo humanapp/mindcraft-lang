@@ -161,6 +161,14 @@ export interface Program {
   types?: List<ProgramTypeEntry>;
   /** Named variable identifiers for cross-context variable access */
   variableNames: List<string>;
+  /**
+   * Per-variable-slot starting value, as an index into
+   * `constantPools.values`, or {@link NO_VARIABLE_INIT} for a slot that starts
+   * unwritten. Parallel to {@link variableNames} when present. Absent when no
+   * slot has a starting value, which is equivalent to an all-
+   * {@link NO_VARIABLE_INIT} list; read it through {@link variableInitAt}.
+   */
+  variableInitValues?: List<number>;
   entryPoint?: number;
   /**
    * Bytecode action bindings keyed by program-local action slot. Populated by
@@ -196,6 +204,28 @@ export interface Program {
    * that reference no System; treated as empty in that case.
    */
   systems?: List<SystemRegistration>;
+}
+
+/** {@link Program.variableInitValues} entry for a slot that starts unwritten. */
+export const NO_VARIABLE_INIT = -1;
+
+/**
+ * Starting-value pool index for variable slot `slotId`, or
+ * {@link NO_VARIABLE_INIT} when the slot starts unwritten. Handles the absent
+ * {@link Program.variableInitValues} list and slot ids past its end.
+ */
+export function variableInitAt(program: Program, slotId: number): number {
+  const inits = program.variableInitValues;
+  if (inits === undefined || slotId < 0 || slotId >= inits.size()) return NO_VARIABLE_INIT;
+  return inits.get(slotId);
+}
+
+/** True when `inits` gives at least one slot a starting value. */
+export function anyVariableInit(inits: List<number>): boolean {
+  for (let i = 0; i < inits.size(); i++) {
+    if (inits.get(i) !== NO_VARIABLE_INIT) return true;
+  }
+  return false;
 }
 
 /**

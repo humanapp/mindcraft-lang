@@ -27,6 +27,7 @@ import type { BytecodeExecutableAction } from "./context";
 import { CoreTypeNames, mkTypeId } from "./core-types";
 import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
 import type { Program, ProgramTypeEntry, SystemRegistration } from "./program";
+import { NO_VARIABLE_INIT, variableInitAt } from "./program";
 import { MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC } from "./program-image";
 import { type EnumTypeDef, type ITypeRegistry, NativeType, type TypeId } from "./type-defs";
 import type { Value } from "./value";
@@ -125,7 +126,7 @@ export type BrainProgramBinaryCodecErrorCode =
   (typeof BrainProgramBinaryCodecErrorCode)[keyof typeof BrainProgramBinaryCodecErrorCode];
 
 /** Current binary `.mcprogram` envelope/format version. */
-export const BINARY_PROGRAM_FORMAT_VERSION = 3;
+export const BINARY_PROGRAM_FORMAT_VERSION = 4;
 
 /** The file magic identifying a binary `.mcprogram`, as a cross-platform list of bytes. */
 const MAGIC = List.from(MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC as readonly number[]);
@@ -359,7 +360,7 @@ export function linkedBrainProgramToBytes(
   writeCnumSection(s, linkedProgram.constantPools.numbers, precision);
   writeCvalSection(s, linkedProgram.constantPools.values, interner, encodeTypes, precision);
   writeFuncSection(s, linkedProgram);
-  writeVarsSection(s, linkedProgram.variableNames, interner);
+  writeVarsSection(s, linkedProgram, interner);
   if (linkedProgram.actions !== undefined) {
     writeActsSection(s, linkedProgram.actions);
   }
@@ -726,10 +727,18 @@ function writeValue(
   }
 }
 
-function writeVarsSection(s: MemoryStream, variableNames: List<string>, interner: StringInterner): void {
+/**
+ * Writes the slot count, then per slot the name's string index and the
+ * starting value's `CVAL` index biased by one, with `0` for a slot that starts
+ * unwritten.
+ */
+function writeVarsSection(s: MemoryStream, program: Program, interner: StringInterner): void {
+  const variableNames = program.variableNames;
   s.writeVarUint(variableNames.size());
   for (let i = 0; i < variableNames.size(); i++) {
     s.writeVarUint(interner.intern(variableNames.get(i)));
+    const init = variableInitAt(program, i);
+    s.writeVarUint(init === NO_VARIABLE_INIT ? 0 : init + 1);
   }
 }
 
@@ -863,7 +872,7 @@ export function linkedBrainProgramFromBytes(
   const numbers = readCnumSection(s, precision);
   const values = readCvalSection(s, strings, resolvedTypes.context, precision);
   const functions = readFuncSection(s);
-  const variableNames = readVarsSection(s, strings);
+  const vars = readVarsSection(s, strings);
   const actions = (presence & PRESENCE_ACTS) !== 0 ? readActsSection(s) : undefined;
   const ruleFuncIds = (presence & PRESENCE_RULF) !== 0 ? readRulfSection(s) : undefined;
   const ruleAncestors = (presence & PRESENCE_RANC) !== 0 ? readRancSection(s) : undefined;
@@ -880,7 +889,8 @@ export function linkedBrainProgramFromBytes(
     functions,
     constantPools,
     types: resolvedTypes.entries,
-    variableNames,
+    variableNames: vars.names,
+    ...(vars.initValues !== undefined ? { variableInitValues: vars.initValues } : {}),
     ...(actions !== undefined ? { actions } : {}),
     ...(ruleFuncIds !== undefined ? { ruleFuncIds } : {}),
     ...(ruleAncestors !== undefined ? { ruleAncestors } : {}),
@@ -1364,13 +1374,24 @@ function readValue(
   }
 }
 
-function readVarsSection(s: MemoryStream, strings: StringTable): string[] {
+function readVarsSection(s: MemoryStream, strings: StringTable): VarsSection {
   const count = s.readVarUint();
   const names: string[] = [];
+  const initValues: number[] = [];
+  let anyInit = false;
   for (let i = 0; i < count; i++) {
     names.push(strings.get(s.readVarUint()));
+    const biased = s.readVarUint();
+    if (biased !== 0) anyInit = true;
+    initValues.push(biased === 0 ? NO_VARIABLE_INIT : biased - 1);
   }
-  return names;
+  return { names, initValues: anyInit ? initValues : undefined };
+}
+
+/** Decoded `VARS` section: one name per slot, plus the starting values when any slot has one. */
+interface VarsSection {
+  readonly names: string[];
+  readonly initValues?: number[];
 }
 
 function readActsSection(s: MemoryStream): BrainProgramExecutableActionJson[] {

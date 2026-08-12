@@ -467,7 +467,8 @@ describe("VM -- variable operations", () => {
     }
   });
 
-  test("LOAD_VAR_SLOT returns NIL for unset variable", () => {
+  // The program built here carries no starting value for the slot.
+  test("LOAD_VAR_SLOT returns NIL for a slot with no starting value", () => {
     const ctx = mkCtx();
 
     const prog = mkProgram([mkFunc([{ op: Op.LOAD_VAR_SLOT, a: 0 }, { op: Op.RET }])], [], ["unset"]);

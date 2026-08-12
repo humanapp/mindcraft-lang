@@ -14,7 +14,7 @@ import type {
   UnlinkedBrainProgram,
 } from "../../runtime/host-bindings";
 import type { ProgramArtifact, ProgramTypeEntry, SystemRegistration } from "../../runtime/program";
-import { remapProgramTypeEntry } from "../../runtime/program";
+import { anyVariableInit, NO_VARIABLE_INIT, remapProgramTypeEntry, variableInitAt } from "../../runtime/program";
 import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
 import type { IBrainDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../interfaces";
@@ -299,6 +299,7 @@ function appendArtifactTables(
   pools: MutableConstantPools,
   types: List<ProgramTypeEntry>,
   variableNames: List<string>,
+  variableInitValues: List<number>,
   systemSlotByIdentity: Dict<string, number>,
   systemRegistry: List<SystemRegistration>
 ): BytecodeExecutableAction {
@@ -352,6 +353,8 @@ function appendArtifactTables(
 
   for (let i = 0; i < artifact.variableNames.size(); i++) {
     variableNames.push(artifact.variableNames.get(i)!);
+    const init = variableInitAt(artifact, i);
+    variableInitValues.push(init === NO_VARIABLE_INIT ? NO_VARIABLE_INIT : init + constOffsets.values);
   }
 
   for (let i = 0; i < artifact.functions.size(); i++) {
@@ -401,6 +404,7 @@ export function linkBrainProgram(
   };
   const types = List.empty<ProgramTypeEntry>();
   const variableNames = List.empty<string>();
+  const variableInitValues = List.empty<number>();
   const actions = List.empty<BytecodeExecutableAction>();
   const systemRegistry = List.empty<SystemRegistration>();
   const systemSlotByIdentity = new Dict<string, number>();
@@ -424,6 +428,7 @@ export function linkBrainProgram(
   }
   for (let i = 0; i < program.variableNames.size(); i++) {
     variableNames.push(program.variableNames.get(i)!);
+    variableInitValues.push(variableInitAt(program, i));
   }
 
   for (let i = 0; i < program.actionRefs.size(); i++) {
@@ -472,6 +477,7 @@ export function linkBrainProgram(
         pools,
         types,
         variableNames,
+        variableInitValues,
         systemSlotByIdentity,
         systemRegistry
       )
@@ -494,6 +500,7 @@ export function linkBrainProgram(
         },
         types,
         variableNames,
+        ...(anyVariableInit(variableInitValues) ? { variableInitValues } : {}),
         entryPoint: program.entryPoint,
         actions,
         ruleFuncIds: program.ruleFuncIds,

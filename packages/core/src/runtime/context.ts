@@ -107,7 +107,9 @@ export interface ExecutionContext {
    * Read a variable by its compiler-assigned slot index. The slot index is
    * the operand of `LOAD_VAR_SLOT` and corresponds to a position in the
    * loaded program's `variableNames` list. Returns the slot's current value,
-   * or `NIL_VALUE` if the slot has never been written.
+   * which is its type's starting value until something writes to it, or
+   * `NIL_VALUE` when the slot is out of range or its type declares no
+   * starting value.
    *
    * @param slotId - Slot index assigned by the compiler
    */
