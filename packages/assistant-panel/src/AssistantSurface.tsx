@@ -15,6 +15,12 @@ export interface AssistantSurfaceProps {
    * this is not given.
    */
   onLeaveIntent?: (() => boolean) | undefined;
+  /**
+   * How many times the person themselves opened the panel. Each new count lands
+   * the keyboard in the intent box. Absent for an open the person did not ask
+   * for, which lands the keyboard nowhere.
+   */
+  opensByPerson?: number | undefined;
 }
 
 /** The last thing the person asked for, or `undefined` when they have asked for nothing yet. */
@@ -32,7 +38,7 @@ function lastAsked(record: ConversationRecord | undefined): string | undefined {
  * brain's conversation, sends what is typed, and stops a running turn. Mounting
  * it starts no session, and it never takes the keyboard on its own.
  */
-export function AssistantSurface({ name, onLeaveIntent }: AssistantSurfaceProps) {
+export function AssistantSurface({ name, onLeaveIntent, opensByPerson }: AssistantSurfaceProps) {
   const { status, record, send, stop, openSession } = useAssistant();
   const [intent, setIntent] = useState("");
 
@@ -60,6 +66,7 @@ export function AssistantSurface({ name, onLeaveIntent }: AssistantSurfaceProps)
       onRetry={retry}
       onAskAgain={askAgain}
       onLeaveIntent={onLeaveIntent}
+      opensByPerson={opensByPerson}
     />
   );
 }

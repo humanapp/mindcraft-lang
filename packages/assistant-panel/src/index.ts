@@ -11,4 +11,5 @@ export { useAssistant } from "./assistant-context";
 export type { AssistantChannel, AssistantConnect } from "./session/channel";
 export type { AssistantMachineOptions } from "./session/machine";
 export { AssistantStatus } from "./session/machine";
+export type { SessionPresence } from "./session/presence";
 export { createWebSocketConnect } from "./session/websocket-channel";

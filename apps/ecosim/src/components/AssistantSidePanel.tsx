@@ -11,6 +11,13 @@ export interface AssistantSidePanelProps {
   fallbackName: string;
   /** The workspaces a turn's tool calls run against. */
   workspaces: EditedBrainWorkspaces;
+  /**
+   * How many times the person themselves opened the region. Each new count
+   * lands the keyboard in the intent box. Absent while every open so far was
+   * one the person did not ask for, restored from where the region stood
+   * before, which lands the keyboard nowhere.
+   */
+  opensByPerson?: number | undefined;
 }
 
 /**
@@ -18,7 +25,7 @@ export interface AssistantSidePanelProps {
  * editor is editing as the one an assistant turn may reach, shows that brain's
  * conversation, and opens its session once the region is open.
  */
-export function AssistantSidePanel({ isOpen, fallbackName, workspaces }: AssistantSidePanelProps) {
+export function AssistantSidePanel({ isOpen, fallbackName, workspaces, opensByPerson }: AssistantSidePanelProps) {
   const edited = useEditedBrain();
   const { setActiveBrain, openSession } = useAssistant();
   const brainId = edited?.brainDef.id();
@@ -36,5 +43,11 @@ export function AssistantSidePanel({ isOpen, fallbackName, workspaces }: Assista
     if (isOpen && brainId !== undefined) openSession(brainId);
   }, [isOpen, brainId, openSession]);
 
-  return <AssistantSurface name={edited?.brainDef.name() ?? fallbackName} onLeaveIntent={edited?.takeKeyboard} />;
+  return (
+    <AssistantSurface
+      name={edited?.brainDef.name() ?? fallbackName}
+      onLeaveIntent={edited?.takeKeyboard}
+      opensByPerson={opensByPerson}
+    />
+  );
 }

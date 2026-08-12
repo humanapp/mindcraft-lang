@@ -12,14 +12,13 @@ export interface AssistantProviderProps extends AssistantMachineOptions {
 
 /**
  * Stands the assistant over the tree it wraps. A brain's session is opened by
- * `openSession` or by its first send, and every session is closed when the
- * provider unmounts. The machine is built from the options the first render
- * gives and is not rebuilt when they change.
+ * `openSession` or by its first send, the brain named active is dialed for
+ * quietly whenever it holds none, and every session is closed when the provider
+ * unmounts. The machine is built from the options the first render gives and is
+ * not rebuilt when they change.
  */
-export function AssistantProvider({ children, connect, manifest, workspace, mediate }: AssistantProviderProps) {
-  const [machine] = useState(
-    () => new AssistantMachine({ connect, manifest, workspace, ...(mediate ? { mediate } : {}) })
-  );
+export function AssistantProvider({ children, ...options }: AssistantProviderProps) {
+  const [machine] = useState(() => new AssistantMachine(options));
 
   useEffect(() => () => machine.close(), [machine]);
 

@@ -107,12 +107,23 @@ function DocsBrainEditorProvider({
   // remembered for.
   const [isAssistantOpenForNoBrain, setIsAssistantOpenForNoBrain] = useState(false);
   const isAssistantOpen = brainId === undefined ? isAssistantOpenForNoBrain : assistantOpenByBrain[brainId] === true;
+  // How many times the person themselves opened the panel. An open the editor
+  // restores from what the panel stood at before raises nothing, so it takes no
+  // keyboard.
+  const [assistantOpensByPerson, setAssistantOpensByPerson] = useState<number | undefined>(undefined);
   const toggleAssistant = useCallback(() => {
+    if (!isAssistantOpen) setAssistantOpensByPerson((opens) => (opens ?? 0) + 1);
     if (brainId === undefined) {
       setIsAssistantOpenForNoBrain((open) => !open);
       return;
     }
     setAssistantOpenByBrain((open) => ({ ...open, [brainId]: open[brainId] !== true }));
+  }, [brainId, isAssistantOpen]);
+  // The count is scoped to one editing: the editor standing another brain, or
+  // none, starts it over, so an open restored from memory takes no keyboard.
+  useEffect(() => {
+    void brainId;
+    setAssistantOpensByPerson(undefined);
   }, [brainId]);
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
   // Rebuild the config (and thus the isBrokenTile predicate identity) after each
@@ -137,7 +148,14 @@ function DocsBrainEditorProvider({
         isOpen: isAssistantOpen,
         toggle: toggleAssistant,
         label: entityName,
-        content: <AssistantSidePanel isOpen={isAssistantOpen} fallbackName={entityName} workspaces={workspaces} />,
+        content: (
+          <AssistantSidePanel
+            isOpen={isAssistantOpen}
+            fallbackName={entityName}
+            workspaces={workspaces}
+            opensByPerson={assistantOpensByPerson}
+          />
+        ),
       },
       isBrokenTile: (tile) => store.host.getTileCompileDiagnostics(tile.action.key) !== undefined,
     });
@@ -155,6 +173,7 @@ function DocsBrainEditorProvider({
     reportEditorMode,
     isAssistantOpen,
     toggleAssistant,
+    assistantOpensByPerson,
   ]);
   return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
 }

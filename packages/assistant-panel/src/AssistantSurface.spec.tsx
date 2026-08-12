@@ -1,11 +1,13 @@
 /**
  * Pins what the bound surface stands: the entity the host named, an intent box
- * that takes the keyboard from nobody, and a mount that costs the session
- * nothing.
+ * that takes the keyboard from nobody it was not handed to, and a mount that
+ * costs the session nothing.
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import type { AuthoringWorkspace } from "@mindcraft-lang/assistant-bridge";
 import { FAKE_TARGET_IDENTITY } from "@mindcraft-lang/assistant-bridge/testing";
 import type { RelayToolManifest } from "@mindcraft-lang/assistant-relay";
@@ -56,6 +58,12 @@ describe("the bound conversation surface", () => {
 
     assert.match(markup, /<textarea[^>]*data-assistant-intent/);
     assert.doesNotMatch(markup, /autofocus/i);
+  });
+
+  test("hands the opens the person asked for down to the view holding the intent box", () => {
+    const source = readFileSync(fileURLToPath(new URL("./AssistantSurface.tsx", import.meta.url)), "utf8");
+
+    assert.match(source, /opensByPerson=\{opensByPerson\}/);
   });
 
   test("opens no session by standing under a provider", () => {

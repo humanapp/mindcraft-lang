@@ -8,6 +8,7 @@ import { AssistantProvider } from "./AssistantProvider";
 import type { AssistantContextValue } from "./assistant-context";
 import { useAssistant } from "./assistant-context";
 import type { AssistantChannel } from "./session/channel";
+import type { SessionPresence } from "./session/presence";
 
 /** What the client declares it serves. */
 const manifest: RelayToolManifest = {
@@ -21,6 +22,12 @@ const manifest: RelayToolManifest = {
 function unreachedWorkspace(): AuthoringWorkspace {
   throw new Error("the provider specs serve no tool call");
 }
+
+/** A page nobody is looking at, so no session is dialed for beyond the ones a test asks for. */
+const pageOutOfView: SessionPresence = {
+  inView: () => false,
+  subscribe: () => () => {},
+};
 
 /** The session the last render bound, and the markup that render produced. */
 interface Rendered {
@@ -44,7 +51,7 @@ function render(): Rendered {
   }
 
   const markup = renderToStaticMarkup(
-    <AssistantProvider connect={connect} manifest={manifest} workspace={unreachedWorkspace}>
+    <AssistantProvider connect={connect} manifest={manifest} workspace={unreachedWorkspace} presence={pageOutOfView}>
       <Probe />
     </AssistantProvider>
   );

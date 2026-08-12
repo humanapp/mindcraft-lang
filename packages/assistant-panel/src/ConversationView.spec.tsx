@@ -4,11 +4,14 @@
  * container each of them is drawn in, how repeated lines fold, what marks a
  * turn that did not simply finish, when the entity's presence stands at the
  * live edge, which control the intent box stands beside, what a lost session
- * offers, and which lines read markup in what they carry.
+ * offers, which lines read markup in what they carry, and which opens of the
+ * panel land the keyboard in the intent box.
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import type {
   ConversationEntry,
   ConversationRecord,
@@ -22,7 +25,7 @@ import {
 } from "@mindcraft-lang/assistant-relay";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ConversationViewProps } from "./ConversationView";
-import { ConversationView, intentKeyAction } from "./ConversationView";
+import { ConversationView, intentKeyAction, landKeyboardInIntent } from "./ConversationView";
 import { ToolActivityKind } from "./conversation/activity";
 import { AssistantStatus } from "./session/machine";
 
@@ -478,5 +481,41 @@ describe("a key pressed in the intent box", () => {
 
   test("an Escape mid-composition belongs to the composition", () => {
     assert.equal(intentKeyAction("Escape", false, true, false, "make a heart"), "pass");
+  });
+});
+
+/** An intent box standing in no document, recording every way it was asked to take the keyboard. */
+function boxTakingKeyboard(): { box: HTMLTextAreaElement; takes: FocusOptions[] } {
+  const takes: FocusOptions[] = [];
+  const box = {
+    focus: (options?: FocusOptions) => {
+      takes.push(options ?? {});
+    },
+  } as unknown as HTMLTextAreaElement;
+  return { box, takes };
+}
+
+const viewSource = readFileSync(fileURLToPath(new URL("./ConversationView.tsx", import.meta.url)), "utf8");
+
+describe("the keyboard when the panel is opened", () => {
+  test("an open the person asked for lands the keyboard in the intent box, scrolling nothing to do it", () => {
+    const { box, takes } = boxTakingKeyboard();
+
+    landKeyboardInIntent(box, 1);
+
+    assert.deepEqual(takes, [{ preventScroll: true }]);
+  });
+
+  test("an open the person did not ask for lands the keyboard nowhere", () => {
+    const { box, takes } = boxTakingKeyboard();
+
+    landKeyboardInIntent(box, undefined);
+
+    assert.deepEqual(takes, []);
+  });
+
+  test("the box the view stands is the one an open lands the keyboard in, once per open counted", () => {
+    assert.match(viewSource, /landKeyboardInIntent\(intentBox\.current,\s*opensByPerson\)/);
+    assert.match(viewSource, /\},\s*\[opensByPerson\]\)/);
   });
 });

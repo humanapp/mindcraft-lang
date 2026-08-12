@@ -11,6 +11,8 @@ import { ASSISTANT_RELAY_PROTOCOL_VERSION, ConversationTurnFailureCode } from "@
 import type { ConversationStore, ConversationUpdate } from "../conversation/store";
 import { emptyConversationStore, recordFor, withActiveBrain, withUpdate } from "../conversation/store";
 import type { AssistantChannel, AssistantConnect } from "./channel";
+import type { SessionPresence } from "./presence";
+import { documentPresence } from "./presence";
 import type { SessionStatuses } from "./sessions";
 import { AssistantStatus, emptySessions, sessionStatus, withSessionStatus } from "./sessions";
 
@@ -24,19 +26,19 @@ export { AssistantStatus } from "./sessions";
 export const sessionOpenTimeoutMs = 8000;
 
 /**
- * Milliseconds each quiet reopen attempt waits before it is made, in order. The
- * first attempt is immediate, and a brain whose whole budget runs out without a
- * session settles {@link AssistantStatus.Failed}.
+ * Milliseconds the leading quiet reopen attempts wait before they are made, in
+ * order. Every attempt after these waits {@link sessionReopenIntervalMs}.
  */
-export const sessionReopenDelaysMs: readonly number[] = [0, 1000, 3000, 9000, 27000];
+export const sessionReopenHeadDelaysMs: readonly number[] = [0, 1000];
+
+/** Milliseconds between quiet reopen attempts once {@link sessionReopenHeadDelaysMs} is spent, before their spread. */
+export const sessionReopenIntervalMs = 5000;
+
+/** Milliseconds wide the spread each steady reopen delay is lengthened by, drawn fresh from [0, this). */
+export const sessionReopenJitterMs = 3000;
 
 /** What a bounded wait answers with once it has run out. */
 const runOut = Symbol("session open timeout");
-
-/** Resolve after `ms` milliseconds. */
-function pause(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /** What the machine exposes to whatever renders it. */
 export interface AssistantMachineState {
@@ -62,16 +64,40 @@ export interface AssistantMachineOptions {
   readonly workspace: (brainId: string) => AuthoringWorkspace;
   /** Consulted before each call in a batch; every call runs when absent. */
   readonly mediate?: ToolCallMediator;
+  /** Where the page stands for the quiet reopen loop; read from the document and the window when absent. */
+  readonly presence?: SessionPresence;
+  /** Entropy in [0, 1), drawn once per steady reopen delay for its spread; `Math.random` when absent. */
+  readonly random?: () => number;
 }
+
+/** A quiet reopen loop the machine still expects for one brain. */
+interface ReopenLoop {
+  /** Ends the wait the loop stands in, so it can see it is no longer expected. */
+  standDown: () => void;
+}
+
+/** Why one handshake stood no session up. */
+type HandshakeFailure =
+  /** The service answered the handshake with a refusal. */
+  | "refused"
+  /** The service could not be reached, answered nothing in time, or answered something other than an acceptance. */
+  | "unavailable";
+
+/** What one handshake came to. */
+type HandshakeOutcome =
+  | { readonly kind: "opened"; readonly channel: AssistantChannel }
+  | { readonly kind: HandshakeFailure };
 
 /**
  * One assistant session per brain, and the conversations they fill.
  *
  * A brain's session is opened by {@link AssistantMachine.openSession} or by its
  * first {@link AssistantMachine.send}, and is held until the machine is stood
- * down or the service drops it; several brains' sessions stand at once. Each
- * runs one turn at a time, and a turn keeps filling the record of the brain it
- * was sent for whatever the host makes active afterwards.
+ * down or the service drops it; several brains' sessions stand at once. The
+ * brain being shown is dialed for quietly whenever it holds no session, until
+ * one stands or the service refuses it. Each session runs one turn at a time,
+ * and a turn keeps filling the record of the brain it was sent for whatever the
+ * host makes active afterwards.
  */
 export class AssistantMachine {
   private current: AssistantMachineState = {
@@ -81,13 +107,20 @@ export class AssistantMachine {
   };
   private readonly channels = new Map<string, AssistantChannel>();
   private readonly opening = new Map<string, Promise<AssistantChannel | undefined>>();
-  /** The quiet reopen the machine still expects for a brain, by the token that loop holds. */
-  private readonly reopening = new Map<string, symbol>();
+  /** The quiet reopen the machine still expects for a brain. */
+  private readonly reopening = new Map<string, ReopenLoop>();
+  /** Brains the service refused a session to, until the person asks for one again. */
+  private readonly refused = new Set<string>();
   /** Brains whose running turn was asked to stop while it was still waiting for a session. */
   private readonly stopRequested = new Set<string>();
   private readonly listeners = new Set<() => void>();
+  private readonly presence: SessionPresence;
+  private readonly random: () => number;
 
-  constructor(private readonly options: AssistantMachineOptions) {}
+  constructor(private readonly options: AssistantMachineOptions) {
+    this.presence = options.presence ?? documentPresence();
+    this.random = options.random ?? Math.random;
+  }
 
   /** The machine's state; a new object exactly when something observable changed. */
   readonly getState = (): AssistantMachineState => this.current;
@@ -102,12 +135,17 @@ export class AssistantMachine {
 
   /**
    * Show `brainId`'s conversation. A turn already running keeps filling the
-   * brain it was sent for. Naming the brain already shown changes nothing and
+   * brain it was sent for. The brain named takes the quiet dialing over: the one
+   * it replaces stops being dialed for, and this one is dialed for while it
+   * holds no session. Naming the brain already shown changes nothing and
    * notifies nobody.
    */
   setActiveBrain(brainId: string): void {
-    if (this.current.store.activeBrainId === brainId) return;
+    const shown = this.current.store.activeBrainId;
+    if (shown === brainId) return;
     this.commit({ store: withActiveBrain(this.current.store, brainId) });
+    if (shown !== undefined) this.standDownReopen(shown);
+    void this.reopen(brainId);
   }
 
   /**
@@ -169,7 +207,8 @@ export class AssistantMachine {
   close(): void {
     for (const brainId of [...this.channels.keys()]) this.dropChannel(brainId);
     this.opening.clear();
-    this.reopening.clear();
+    for (const brainId of [...this.reopening.keys()]) this.standDownReopen(brainId);
+    this.refused.clear();
     this.stopRequested.clear();
     this.commit({ sessions: emptySessions() });
   }
@@ -203,46 +242,56 @@ export class AssistantMachine {
     this.commit({ sessions: withSessionStatus(this.current.sessions, brainId, status) });
   }
 
-  /** Close `brainId`'s running turn with `ending` and stand its session back up. */
+  /**
+   * Close `brainId`'s running turn with `ending` and stand its session back up.
+   * A turn that ends holding no session leaves the brain failed and dialed for
+   * quietly.
+   */
   private finish(brainId: string, ending: ConversationTurnEnding): void {
     this.stopRequested.delete(brainId);
     this.record(brainId, { kind: "ending", ending });
+    const held = this.channels.has(brainId);
     this.commit({
       sessions: withSessionStatus(
         this.current.sessions,
         brainId,
-        this.channels.has(brainId) ? AssistantStatus.Ready : AssistantStatus.Failed
+        held ? AssistantStatus.Ready : AssistantStatus.Failed
       ),
     });
+    if (!held) void this.reopen(brainId);
   }
 
   /**
    * `brainId`'s session, opening one when it holds none. Answers `undefined`
    * when no session could be opened. Callers arriving while an open is in
-   * flight share that one open.
+   * flight share that one open. A brain the service refused a session to before
+   * is asked for again.
    */
   private openChannel(brainId: string): Promise<AssistantChannel | undefined> {
     // Standing the brain's quiet reopen down, so this open is the only one live.
-    this.reopening.delete(brainId);
+    this.standDownReopen(brainId);
+    this.refused.delete(brainId);
     const held = this.channels.get(brainId);
     if (held) return Promise.resolve(held);
     const inFlight = this.opening.get(brainId);
     if (inFlight) return inFlight;
 
-    const attempt: Promise<AssistantChannel | undefined> = this.handshake(brainId).then((channel) => {
+    const attempt: Promise<AssistantChannel | undefined> = this.handshake(brainId).then((outcome) => {
       // An open the machine no longer expects belongs to a session it has been
       // stood down from.
       if (this.opening.get(brainId) !== attempt) {
-        channel?.close();
+        if (outcome.kind === "opened") outcome.channel.close();
         return undefined;
       }
       this.opening.delete(brainId);
-      if (channel) {
-        this.channels.set(brainId, channel);
-        this.dropWhenClosed(brainId, channel);
+      if (outcome.kind !== "opened") {
+        this.giveUp(brainId, outcome.kind);
+        return undefined;
       }
-      this.settle(brainId, channel ? AssistantStatus.Ready : AssistantStatus.Failed);
-      return channel;
+      this.channels.set(brainId, outcome.channel);
+      this.dropWhenClosed(brainId, outcome.channel);
+      this.settle(brainId, AssistantStatus.Ready);
+      return outcome.channel;
     });
     this.opening.set(brainId, attempt);
     this.settle(brainId, AssistantStatus.Connecting);
@@ -250,10 +299,21 @@ export class AssistantMachine {
   }
 
   /**
+   * Stand `brainId` at failed for a handshake that came to `failure`, and dial
+   * on quietly for it. A refusal is marked instead of dialed on: nothing dials
+   * for the brain again until the person asks for a session.
+   */
+  private giveUp(brainId: string, failure: HandshakeFailure): void {
+    if (failure === "refused") this.refused.add(brainId);
+    this.settle(brainId, AssistantStatus.Failed);
+    void this.reopen(brainId);
+  }
+
+  /**
    * Give `brainId` up as holding no session the moment `channel` closes, and
-   * open another quietly, leaving a turn of its own running to finish on its
-   * own terms. A channel the brain has already given up for another leaves the
-   * machine untouched.
+   * open another quietly while it is the brain being shown, leaving a turn of
+   * its own running to finish on its own terms. A channel the brain has already
+   * given up for another leaves the machine untouched.
    */
   private dropWhenClosed(brainId: string, channel: AssistantChannel): void {
     void channel.closed.then(() => {
@@ -265,48 +325,112 @@ export class AssistantMachine {
   }
 
   /**
-   * Open `brainId`'s session again after the service dropped it, one attempt per
-   * entry of {@link sessionReopenDelaysMs} and nothing shown for an attempt that
-   * lands. A brain the whole budget cannot open a session for settles
-   * {@link AssistantStatus.Failed}, for the person to ask again. Does nothing
-   * while a turn of the brain's is running, and one loop stands per brain.
+   * Whether a quiet reopen belongs to `brainId` as things stand: it is the brain
+   * being shown, it holds no session and none is being opened for it, no turn of
+   * its is running, the service has not refused it, and no loop of its own
+   * already stands.
    */
-  private async reopen(brainId: string): Promise<void> {
-    if (this.reopening.has(brainId)) return;
-    if (sessionStatus(this.current.sessions, brainId) === AssistantStatus.TurnActive) return;
-    const token = Symbol("reopen");
-    this.reopening.set(brainId, token);
-    try {
-      for (const delayMs of sessionReopenDelaysMs) {
-        if (delayMs > 0) await pause(delayMs);
-        if (this.reopening.get(brainId) !== token) return;
-        const channel = await this.handshake(brainId);
-        if (this.reopening.get(brainId) !== token) {
-          channel?.close();
-          return;
-        }
-        if (channel) {
-          this.channels.set(brainId, channel);
-          this.dropWhenClosed(brainId, channel);
-          this.settle(brainId, AssistantStatus.Ready);
-          return;
-        }
-      }
-      this.settle(brainId, AssistantStatus.Failed);
-    } finally {
-      if (this.reopening.get(brainId) === token) this.reopening.delete(brainId);
-    }
+  private wantsReopen(brainId: string): boolean {
+    return (
+      this.current.store.activeBrainId === brainId &&
+      !this.reopening.has(brainId) &&
+      !this.refused.has(brainId) &&
+      !this.channels.has(brainId) &&
+      !this.opening.has(brainId) &&
+      sessionStatus(this.current.sessions, brainId) !== AssistantStatus.TurnActive
+    );
   }
 
   /**
-   * One accepted relay session for `brainId`, or `undefined` when the service
-   * refused it, could not be reached, or did not accept it within
-   * {@link sessionOpenTimeoutMs}. The handshake carries the conversation the
-   * brain already holds, so the service can rebuild the context of a session it
-   * did not run. An attempt that runs out closes the socket it opened, however
-   * late that socket arrives.
+   * Open `brainId`'s session for as long as it takes and with nothing shown for
+   * an attempt that lands: the attempts of {@link sessionReopenHeadDelaysMs},
+   * then one every {@link sessionReopenIntervalMs} plus its spread. Does nothing
+   * unless {@link wantsReopen} says the brain wants one, so one loop stands at a
+   * time and it is the shown brain's. A refusal ends the loop and stands the
+   * brain at failed.
    */
-  private async handshake(brainId: string): Promise<AssistantChannel | undefined> {
+  private async reopen(brainId: string): Promise<void> {
+    if (!this.wantsReopen(brainId)) return;
+    const loop: ReopenLoop = { standDown: () => {} };
+    this.reopening.set(brainId, loop);
+    try {
+      for (let attempt = 0; ; attempt++) {
+        await this.whenDue(loop, this.reopenDelayMs(attempt));
+        if (this.reopening.get(brainId) !== loop) return;
+        const outcome = await this.handshake(brainId);
+        if (this.reopening.get(brainId) !== loop) {
+          if (outcome.kind === "opened") outcome.channel.close();
+          return;
+        }
+        if (outcome.kind === "opened") {
+          this.channels.set(brainId, outcome.channel);
+          this.dropWhenClosed(brainId, outcome.channel);
+          this.settle(brainId, AssistantStatus.Ready);
+          return;
+        }
+        if (outcome.kind === "refused") {
+          this.giveUp(brainId, outcome.kind);
+          return;
+        }
+      }
+    } finally {
+      if (this.reopening.get(brainId) === loop) this.reopening.delete(brainId);
+    }
+  }
+
+  /** End `brainId`'s quiet reopen, leaving nothing of it waiting. */
+  private standDownReopen(brainId: string): void {
+    this.reopening.get(brainId)?.standDown();
+    this.reopening.delete(brainId);
+  }
+
+  /** How long the reopen attempt at `attempt`, counting from zero, waits before it is made. */
+  private reopenDelayMs(attempt: number): number {
+    return sessionReopenHeadDelaysMs[attempt] ?? sessionReopenIntervalMs + this.spreadMs();
+  }
+
+  /** A fresh draw from the spread a steady reopen delay is lengthened by. */
+  private spreadMs(): number {
+    return Math.floor(this.random() * sessionReopenJitterMs);
+  }
+
+  /**
+   * Resolve once `loop`'s next attempt is due: `delayMs` after it was asked for
+   * with the page in view, or a spread after the page comes back into view or
+   * the browser comes back online. A loop stood down resolves at once, and one
+   * waiting out of view waits until something above happens.
+   */
+  private whenDue(loop: ReopenLoop, delayMs: number): Promise<void> {
+    return new Promise((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const disarm = (): void => {
+        if (timer !== undefined) clearTimeout(timer);
+        timer = undefined;
+      };
+      const due = (): void => {
+        disarm();
+        unsubscribe();
+        loop.standDown = () => {};
+        resolve();
+      };
+      const unsubscribe = this.presence.subscribe(() => {
+        disarm();
+        if (this.presence.inView()) timer = setTimeout(due, this.spreadMs());
+      });
+      loop.standDown = due;
+      if (this.presence.inView()) timer = setTimeout(due, delayMs);
+    });
+  }
+
+  /**
+   * What one attempt to open `brainId`'s session came to: the session the
+   * service accepted, the refusal it answered with, or unavailable when it could
+   * not be reached or said nothing within {@link sessionOpenTimeoutMs}. The
+   * handshake carries the conversation the brain already holds, so the service
+   * can rebuild the context of a session it did not run. An attempt that runs
+   * out closes the socket it opened, however late that socket arrives.
+   */
+  private async handshake(brainId: string): Promise<HandshakeOutcome> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const runsOut = new Promise<typeof runOut>((resolve) => {
       timer = setTimeout(() => resolve(runOut), sessionOpenTimeoutMs);
@@ -319,7 +443,7 @@ export class AssistantMachine {
           (late) => late.close(),
           () => {}
         );
-        return undefined;
+        return { kind: "unavailable" };
       }
       const held = recordFor(this.current.store, brainId);
       connected.send({
@@ -331,11 +455,11 @@ export class AssistantMachine {
       const opening = await Promise.race([connected.next(), runsOut]);
       if (opening === runOut || opening.type !== "session:accepted") {
         connected.close();
-        return undefined;
+        return { kind: opening !== runOut && opening.type === "session:refused" ? "refused" : "unavailable" };
       }
-      return connected;
+      return { kind: "opened", channel: connected };
     } catch {
-      return undefined;
+      return { kind: "unavailable" };
     } finally {
       clearTimeout(timer);
     }

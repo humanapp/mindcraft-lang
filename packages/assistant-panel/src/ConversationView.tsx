@@ -36,6 +36,12 @@ export interface ConversationViewProps {
    * keyboard on itself when nothing did, and whenever this is not given.
    */
   onLeaveIntent?: (() => boolean) | undefined;
+  /**
+   * How many times the person themselves opened the panel. Each new count lands
+   * the keyboard in the intent box. Absent for an open the person did not ask
+   * for, which lands the keyboard nowhere.
+   */
+  opensByPerson?: number | undefined;
 }
 
 /** Pixels of slack at the foot of the transcript that still count as being at the bottom. */
@@ -115,6 +121,17 @@ export function intentKeyAction(
   if (key !== "Enter" || shiftKey) return "pass";
   if (running || intent.trim().length === 0) return "swallow";
   return "send";
+}
+
+/**
+ * Land the keyboard in `box` for an open the person asked for, leaving what
+ * stands around the box scrolled where it is. `opens` counts the opens the
+ * person asked for; an absent count is an open they did not ask for, which
+ * lands the keyboard nowhere.
+ */
+export function landKeyboardInIntent(box: HTMLTextAreaElement | null, opens: number | undefined): void {
+  if (opens === undefined) return;
+  box?.focus({ preventScroll: true });
 }
 
 /** How a turn cut short before the service could end it reads, by what cut it. */
@@ -256,7 +273,19 @@ function EntryView({ entry, onAskAgain }: { entry: ConversationEntry; onAskAgain
  * which holds it where they left it until they scroll back down.
  */
 export function ConversationView(props: ConversationViewProps) {
-  const { name, status, record, intent, onIntentChange, onSend, onStop, onRetry, onAskAgain, onLeaveIntent } = props;
+  const {
+    name,
+    status,
+    record,
+    intent,
+    onIntentChange,
+    onSend,
+    onStop,
+    onRetry,
+    onAskAgain,
+    onLeaveIntent,
+    opensByPerson,
+  } = props;
   const entries = record?.entries ?? [];
   const running = status === AssistantStatus.TurnActive;
   const connection = connectionNote(status);
@@ -289,6 +318,10 @@ export function ConversationView(props: ConversationViewProps) {
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, []);
+
+  useEffect(() => {
+    landKeyboardInIntent(intentBox.current, opensByPerson);
+  }, [opensByPerson]);
 
   const noteScroll = (): void => {
     const element = transcript.current;
