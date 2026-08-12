@@ -173,7 +173,7 @@ export interface AppEnvironmentHostOptions {
    * Host-supplied RNG. The bridge app forwards this to
    * {@link createMindcraftEnvironment} so brains pull randomness from the host
    * (e.g. the simulator's seeded RNG). When omitted, the environment falls back
-   * to a `Math.random()`-backed default.
+   * to a default-seeded one, which draws the same sequence every run.
    */
   rng?: IRngServices;
 

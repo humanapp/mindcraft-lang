@@ -18,10 +18,13 @@ function num(args: ReadonlyList<Value>, index: number): number {
  * Transcendental and square-root bodies capture `services.app.numerics`
  * and compute results at the profile's precision; the exact builtins
  * (abs, ceil, floor, round, min, max) stay on the platform math ops.
+ * `$$math_random` draws from `services.app.rng`, the environment's own
+ * random stream.
  */
 export function registerMathBuiltins(services: BrainServices) {
   const { functions } = services.runtime;
   const numerics = services.app.numerics;
+  const rng = services.app.rng;
 
   functions.register(
     CoreFuncId.MathAbs,
@@ -162,7 +165,7 @@ export function registerMathBuiltins(services: BrainServices) {
     "$$math_random",
     false,
     {
-      exec: () => mkNumberValue(MathOps.random()),
+      exec: () => mkNumberValue(numerics.round(rng.next())),
     },
     mathCallDef
   );

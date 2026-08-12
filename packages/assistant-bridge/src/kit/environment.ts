@@ -1,5 +1,5 @@
 import type { MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
+import { coreModule, createMindcraftEnvironment, Rng } from "@mindcraft-lang/core/app";
 import type { NumberPrecision } from "@mindcraft-lang/core/runtime";
 import { createProfileNumerics } from "@mindcraft-lang/core/runtime";
 
@@ -9,11 +9,8 @@ import { createProfileNumerics } from "@mindcraft-lang/core/runtime";
  * reproducible.
  */
 export function createSeededRng(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
+  const rng = new Rng(seed);
+  return () => rng.next();
 }
 
 /** How a rehearsal environment is built. */

@@ -27,7 +27,7 @@ import {
   type ActionKind,
   type BrainDef,
   coreModule,
-  MathOps,
+  createEntropySeededRng,
   type MindcraftEnvironment,
   mkActionTileId,
 } from "@mindcraft-lang/core/app";
@@ -323,9 +323,7 @@ export class EcosimEnvironmentStore {
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,
       saveBindingToken,
-      rng: {
-        next: () => MathOps.random(),
-      },
+      rng: createEntropySeededRng(),
       onDidCompile: (_result, tileResult) => {
         if (tileResult && instanceRef) {
           instanceRef.userTileDocEntries = buildDocEntries(tileResult.metadata);

@@ -113,7 +113,7 @@ export class BitSet implements ReadonlyBitSet, BitSetData {
     const data = new List<number>();
 
     for (let i = 0; i < len; i++) {
-      data.push((MathOps.random() * 4294967296) | 0);
+      data.push((MathOps.entropy() * 4294967296) | 0);
     }
 
     if (m > 0) {

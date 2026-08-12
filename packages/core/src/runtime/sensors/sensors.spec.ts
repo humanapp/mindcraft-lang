@@ -7,6 +7,7 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import {
   type BrainSyncFunctionEntry,
   CoreHostActions,
+  createF64ProfileNumerics,
   type ExecutionContext,
   extractNumberValue,
   FALSE_VALUE,
@@ -275,7 +276,7 @@ describe("random sensor", () => {
 
   test("returns value from brain.rng()", () => {
     const ctx = mkCtx({
-      services: { app: { rng: { next: () => 0.42 } } } as never,
+      services: { app: { rng: { next: () => 0.42 }, numerics: createF64ProfileNumerics() } } as never,
     });
     const args = mkArgs();
 
@@ -288,7 +289,9 @@ describe("random sensor", () => {
     let call = 0;
     const values = [0.1, 0.9];
     const ctx = mkCtx({
-      services: { app: { rng: { next: () => values[call++]! } } } as never,
+      services: {
+        app: { rng: { next: () => values[call++]! }, numerics: createF64ProfileNumerics() },
+      } as never,
     });
     const args = mkArgs();
 

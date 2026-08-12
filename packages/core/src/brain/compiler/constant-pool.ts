@@ -178,7 +178,7 @@ export class ConstantPool {
       case "err":
         return undefined;
       default:
-        return `unknown:${MathOps.random()}`;
+        return `unknown:${MathOps.entropy()}`;
     }
   }
 }

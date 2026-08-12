@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { List } from "@mindcraft-lang/core";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
-import type { IBrainRuntime, NumberPrecision } from "@mindcraft-lang/core/runtime";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import type {
+  BrainSyncFunctionEntry,
+  ExecutionContext,
+  IBrainRuntime,
+  NumberPrecision,
+  Value,
+} from "@mindcraft-lang/core/runtime";
+import { CoreFuncId, extractNumberValue } from "@mindcraft-lang/core/runtime";
 import { createFakeModule } from "../testing/fake-module.js";
 import { FAKE_SUBJECT, FAKE_TARGET_IDENTITY } from "../testing/index.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";
@@ -73,8 +82,8 @@ function recordingDriver(precision?: NumberPrecision): {
   };
 }
 
-/** Rehearse an empty brain over `driver` for one think. */
-async function rehearseOver(driver: WorldDriver): Promise<void> {
+/** Rehearse an empty brain over `driver` for one think, at `seed`. */
+async function rehearseOver(driver: WorldDriver, seed = 1): Promise<void> {
   const adapter = createRehearsalAdapter({
     targetIdentity: FAKE_TARGET_IDENTITY,
     manifest: { target: "a world", thing: "their signaller", provides: [] },
@@ -82,7 +91,43 @@ async function rehearseOver(driver: WorldDriver): Promise<void> {
     driver,
   });
   const workspace = createAuthoringWorkspace(adapter, "precision brain");
-  await adapter.run({ brainDef: workspace.brainDef, scenario: { seed: 1, subject: FAKE_SUBJECT }, thinks: 1 });
+  await adapter.run({ brainDef: workspace.brainDef, scenario: { seed, subject: FAKE_SUBJECT }, thinks: 1 });
+}
+
+/** Draws `$$math_random` from `environment` `count` times, as a brain's compiled `Math.random()` does. */
+function mathRandomDraws(environment: MindcraftEnvironment, count: number): number[] {
+  const services: BrainServices = environment.withServices((brainServices) => brainServices);
+  const entry = services.runtime.functions.getSyncById(CoreFuncId.MathRandom) as BrainSyncFunctionEntry | undefined;
+  assert.ok(entry, "the core module registers $$math_random");
+  const ctx = { services, fiberId: 0, time: 0, dt: 0, currentTick: 0 } as unknown as ExecutionContext;
+  const drawn: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const value = extractNumberValue(entry.fn.exec(ctx, List.empty<Value>()));
+    assert.ok(value !== undefined, "$$math_random returns a number");
+    drawn.push(value);
+  }
+  return drawn;
+}
+
+/** How many draws a replay comparison covers. */
+const REPLAY_DRAWS = 8;
+
+/** Rehearse at `seed` and report what the brain-side `$$math_random` drew while the world was staged. */
+async function rehearsalDraws(seed: number): Promise<number[]> {
+  let drawn: number[] | undefined;
+  await rehearseOver(
+    {
+      modules: () => [createFakeModule()],
+      subjects: () => [FAKE_SUBJECT],
+      stage: (staging: WorldStaging) => {
+        drawn = mathRandomDraws(staging.environment, REPLAY_DRAWS);
+        return Promise.resolve(stageOneParticipant(staging));
+      },
+    },
+    seed
+  );
+  assert.ok(drawn, "the driver was staged");
+  return drawn;
 }
 
 describe("a rehearsal environment", () => {
@@ -122,5 +167,19 @@ describe("a rehearsal over a world driver", () => {
     await rehearseOver(recorded.driver);
 
     assert.equal(roundingOf(recorded.staged()), SAMPLE);
+  });
+
+  test("reproduces the brain's random draws when the same seed is rehearsed again", async () => {
+    const first = await rehearsalDraws(20260812);
+    const replayed = await rehearsalDraws(20260812);
+
+    assert.deepEqual(replayed, first);
+  });
+
+  test("draws differently under a different seed", async () => {
+    const first = await rehearsalDraws(20260812);
+    const other = await rehearsalDraws(31415926);
+
+    assert.notDeepEqual(other, first);
   });
 });

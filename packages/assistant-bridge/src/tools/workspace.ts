@@ -1,6 +1,6 @@
 import type { MindcraftEnvironment, ReadonlyList } from "@mindcraft-lang/core";
 import type { IBrainDef } from "@mindcraft-lang/core/app";
-import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
+import { coreModule, createEntropySeededRng, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
 import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import { childRulePath, RuleSide, rootRulePath } from "@mindcraft-lang/core/brain";
 import type { BrainJson, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
@@ -68,7 +68,10 @@ export function createAuthoringWorkspace(
   brainName: string,
   options?: AuthoringWorkspaceOptions
 ): AuthoringWorkspace {
-  const environment = createMindcraftEnvironment({ modules: [coreModule(), ...adapter.modules()] });
+  const environment = createMindcraftEnvironment({
+    modules: [coreModule(), ...adapter.modules()],
+    rng: createEntropySeededRng(),
+  });
   const brainDef = options?.brainJson
     ? (environment.deserializeBrainJson(options.brainJson) as BrainDef)
     : BrainDef.emptyBrainDef(environment.brainServices, brainName);

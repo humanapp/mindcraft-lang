@@ -1,4 +1,4 @@
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
+import { coreModule, createEntropySeededRng, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { RunService, Workspace } from "@rbxts/services";
 import { createEcosimModule } from "server/brain";
 import { Engine } from "server/brain/engine";
@@ -8,7 +8,10 @@ import { createAppLogger } from "shared/logging";
 const log = createAppLogger("server");
 
 const arena = buildArena(Workspace);
-const environment = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+const environment = createMindcraftEnvironment({
+  modules: [coreModule(), createEcosimModule()],
+  rng: createEntropySeededRng(),
+});
 const engine = new Engine(environment, arena.obstacles, arena.actorContainer);
 
 engine.loadBrains();

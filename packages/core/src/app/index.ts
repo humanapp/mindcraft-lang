@@ -110,6 +110,7 @@ export { mkTypeId, NativeType } from "../runtime";
 
 export { MathOps } from "../platform/math";
 export type { AppServices, IRngServices } from "../runtime";
+export { createEntropySeededRng, Rng } from "../runtime/rng";
 
 // -- Runtime values & helpers ---------------------------------------------------
 

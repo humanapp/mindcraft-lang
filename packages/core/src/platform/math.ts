@@ -8,7 +8,11 @@ export declare const MathOps: {
   round: (n: number) => number;
   /** Rounds to the nearest IEEE-754 binary32 (single-precision f32) value. */
   fround: (n: number) => number;
-  random: () => number;
+  /**
+   * Returns a non-deterministic value in `[0, 1)` from the platform's own
+   * generator. Nothing about the sequence is reproducible across runs.
+   */
+  entropy: () => number;
   min: (a: number, b: number) => number;
   max: (a: number, b: number) => number;
   clz32: (n: number) => number;

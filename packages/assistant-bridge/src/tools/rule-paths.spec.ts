@@ -61,6 +61,13 @@ describe("rule addressing across the compiler and the bridge", () => {
     assert.equal(new Set(ruleIds).size, ruleIds.length);
   });
 
+  test("mints ids no other workspace of the same target holds", () => {
+    const first = locateRules(nestedWorkspace().brainDef).map((located) => located.ruleId);
+    const second = locateRules(nestedWorkspace().brainDef).map((located) => located.ruleId);
+
+    assert.equal(new Set([...first, ...second]).size, first.length + second.length);
+  });
+
   test("keeps each rule's id where inserting a rule above it moves every path below", () => {
     const ws = nestedWorkspace();
     const page = ws.brainDef.pages().get(0) as BrainPageDef;

@@ -4,9 +4,6 @@
  * Platform-agnostic math operations - Roblox implementation
  */
 
-// Internal state for random number generator
-let randomSeed = 1;
-
 export const MathOps = {
   ceil: (n: number) => {
     const floored = n | 0;
@@ -22,12 +19,7 @@ export const MathOps = {
     buffer.writef32(b, 0, n);
     return buffer.readf32(b, 0);
   },
-  random: () => {
-    // Simple LCG (Linear Congruential Generator) for cross-platform deterministic random
-    // Uses a = 1664525, c = 1013904223, m = 2^32 (Numerical Recipes parameters)
-    randomSeed = (randomSeed * 1664525 + 1013904223) >>> 0;
-    return randomSeed / 4294967296; // Convert to [0, 1)
-  },
+  entropy: () => math.random(),
   min: (a: number, b: number) => (a < b ? a : b),
   max: (a: number, b: number) => (a > b ? a : b),
   clz32: (n: number) => {

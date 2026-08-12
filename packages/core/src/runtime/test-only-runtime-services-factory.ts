@@ -1,12 +1,12 @@
 import { createDefaultLocalizer } from "../localization/localizer";
 import { Dict } from "../platform/dict";
-import { MathOps } from "../platform/math";
 import { BrainActionRegistry } from "./action-registry";
 import { createCallsiteStore } from "./callsite-store";
 import { ConversionRegistry } from "./conversions";
 import { FunctionRegistry } from "./functions";
 import { OperatorOverloads, OperatorTable } from "./operators";
 import { createF64ProfileNumerics } from "./profile-numerics";
+import { Rng } from "./rng";
 import { createRuleFiringServices, type RuleFiringState } from "./rule-services";
 import type {
   AppServices,
@@ -124,11 +124,7 @@ export function __test__createPlatformServices(options?: __test__PlatformService
       conversions: shared?.conversions ?? new ConversionRegistry(functions),
     },
     app: {
-      rng: app?.rng ?? {
-        next(): number {
-          return MathOps.random();
-        },
-      },
+      rng: app?.rng ?? new Rng(),
       numerics: app?.numerics ?? createF64ProfileNumerics(),
       localizer: app?.localizer ?? createDefaultLocalizer(),
     },

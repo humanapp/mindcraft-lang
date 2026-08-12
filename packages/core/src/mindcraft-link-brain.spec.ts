@@ -14,23 +14,7 @@ import { CompilationDiagCode, ParseDiagCode } from "@mindcraft-lang/core/brain/c
 import type { BrainJson, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainDef, brainJsonWithRulesEmptied } from "@mindcraft-lang/core/brain/model";
 import { BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
-import {
-  CoreTypeIds,
-  type IRngServices,
-  linkedBrainProgramToJson,
-  mkCallDef,
-  TRUE_VALUE,
-} from "@mindcraft-lang/core/runtime";
-
-function makeSeededRng(seed: number): IRngServices {
-  let state = seed >>> 0;
-  return {
-    next(): number {
-      state = (state * 1664525 + 1013904223) >>> 0;
-      return state / 4294967296;
-    },
-  };
-}
+import { CoreTypeIds, linkedBrainProgramToJson, mkCallDef, Rng, TRUE_VALUE } from "@mindcraft-lang/core/runtime";
 
 function getEnvironmentServices(environment: MindcraftEnvironment): BrainServices {
   return (environment as unknown as { brainServices: BrainServices }).brainServices;
@@ -266,7 +250,7 @@ describe("linked program serialization determinism", () => {
     const sensor = createHostSensorModule("host-sensor", "host.sensor");
     const environment = createMindcraftEnvironment({
       modules: [coreModule(), sensor.module],
-      rng: makeSeededRng(seed),
+      rng: new Rng(seed),
     });
     const def = createSensorBrainDef(getEnvironmentServices(environment), "Sensor", sensor.tile);
     const result = environment.linkBrain(def);

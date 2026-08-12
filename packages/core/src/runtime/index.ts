@@ -25,6 +25,7 @@ export * from "./operators";
 export * from "./profile-numerics";
 export * from "./program";
 export * from "./program-image";
+export * from "./rng";
 export * from "./rule-services";
 export * from "./runtime-services";
 export * from "./services";

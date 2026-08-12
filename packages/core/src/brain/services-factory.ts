@@ -1,5 +1,4 @@
 import { createDefaultLocalizer, type Localizer } from "../localization/localizer";
-import { MathOps } from "../platform/math";
 import type {
   AppServices,
   EditLangServices,
@@ -18,6 +17,7 @@ import { ConversionRegistry } from "../runtime/conversions";
 import { FunctionRegistry } from "../runtime/functions";
 import { OperatorOverloads, OperatorTable } from "../runtime/operators";
 import { createF64ProfileNumerics, type ProfileNumerics } from "../runtime/profile-numerics";
+import { createEntropySeededRng, Rng } from "../runtime/rng";
 import { TypeRegistry } from "../runtime/type-system";
 import type { IBrainTileDefBuilder, ITileCatalog } from "./interfaces";
 import { BrainServices } from "./services";
@@ -85,13 +85,13 @@ export function createTileBuilder(): IBrainTileDefBuilder {
   return new BrainTileDefBuilder();
 }
 
-/** Default {@link IRngServices} implementation backed by {@link MathOps.random}. */
+/**
+ * Creates the {@link IRngServices} an environment falls back to: an
+ * {@link Rng} on its default seed, so an environment given no stream draws the
+ * same sequence every run.
+ */
 export function createDefaultRng(): IRngServices {
-  return {
-    next(): number {
-      return MathOps.random();
-    },
-  };
+  return new Rng();
 }
 
 /**
