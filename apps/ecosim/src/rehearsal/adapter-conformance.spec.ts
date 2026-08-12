@@ -79,6 +79,25 @@ describe("the ecosim adapter against the bridge's conformance suite", () => {
     assert.equal(report.ok, true);
   });
 
+  test("counts the brains that executed, not the creatures still standing at the end", async () => {
+    const { workspace } = authoredWorkspace();
+
+    const settled = await workspace.adapter.run({
+      brainDef: workspace.brainDef,
+      scenario: SCENARIO,
+      thinks: RUN_THINKS,
+    });
+    const populating = await workspace.adapter.run({ brainDef: workspace.brainDef, scenario: SCENARIO, thinks: 1 });
+
+    assert.equal(settled.world.brainsExecuted, 3, "every archetype's brain ran over a settled run");
+    assert.ok(populating.world.finalPopulation > 0, "the world populates during its first step");
+    assert.equal(
+      populating.world.brainsExecuted,
+      0,
+      "the creatures the first step spawns have not run their brains when that step closes"
+    );
+  });
+
   test("attributes what the creature under study dispatched, with the arguments it carried", async () => {
     const { workspace, parentRuleId, childRuleId } = authoredWorkspace();
 

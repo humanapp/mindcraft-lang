@@ -15,6 +15,7 @@ export type {
   SimulationRequest,
   SimulationRun,
   SimulationScenario,
+  SubjectStateChannel,
   TargetAdapter,
   TargetManifest,
   ThinkObservation,

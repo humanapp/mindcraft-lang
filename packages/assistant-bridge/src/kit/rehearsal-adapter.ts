@@ -12,6 +12,7 @@ import type {
   ScenarioInputKind,
   SimulationRequest,
   SimulationRun,
+  SubjectStateChannel,
   TargetAdapter,
   TargetManifest,
   ThinkObservation,
@@ -141,6 +142,14 @@ export interface RehearsalWorld {
   participants(): number;
   /** Distinct brains that have executed in this world, the subject's included. */
   brainsExecuted(): number;
+  /**
+   * Read every channel the driver declares, as the value each holds right now,
+   * keyed by channel name and rendered by the target. Called once per think,
+   * after the step, while the subject is still present. Omit the method for a
+   * world that declares no channel; a channel the driver declares and this map
+   * omits is reported as unchanged.
+   */
+  readState?(): ReadonlyMap<string, string>;
   /** Tear the world down; no step follows. */
   shutdown(): void;
 }
@@ -160,6 +169,13 @@ export interface WorldDriver {
    * register none, which refuses every scripted input.
    */
   inputKinds?(): readonly ScenarioInputKind[];
+  /**
+   * State channels of the subject this target reports, in the order a delta
+   * lists them. Omit the method to declare none, which reports no state at all.
+   * A world staged by this driver reads them through
+   * {@link RehearsalWorld.readState}.
+   */
+  stateChannels?(): readonly SubjectStateChannel[];
   /**
    * Precision the target's device computes numbers at, applied to every brain
    * in the rehearsal environment. Omit the method for the host's native double
@@ -244,6 +260,10 @@ class SubjectRecorder {
   private waiting: string[] = [];
   private quiesced: string[] = [];
   private pageSwitch: PageSwitchObservation | undefined;
+  /** Channel changes recorded on the think being recorded, as `name=value`. */
+  private state: string[] = [];
+  /** Last value emitted for each channel, for the channels that have emitted one. */
+  private readonly heldState = new Map<string, string>();
   /** Index of the page just left, held until the page entered is known. */
   private leftPage: number | undefined;
   private readonly thinks: ThinkObservation[] = [];
@@ -369,6 +389,21 @@ class SubjectRecorder {
     if (endedAfter > 0) call.dispatch.settledAfter = endedAfter;
   }
 
+  /**
+   * Record the state channels of `values` that differ from the value last
+   * recorded for them, against the think being recorded. Every channel differs
+   * on the first think, so the first entry a channel gets is the value it
+   * started the run at.
+   */
+  recordState(values: ReadonlyMap<string, string>): void {
+    if (!this.recording) return;
+    for (const [name, value] of values) {
+      if (this.heldState.get(name) === value) continue;
+      this.heldState.set(name, value);
+      this.state.push(`${name}=${value}`);
+    }
+  }
+
   /** Stop recording; called once the participant under study has left the world. */
   release(): void {
     this.recording = false;
@@ -394,12 +429,14 @@ class SubjectRecorder {
         ...(this.waiting.length > 0 ? { waiting: [...this.waiting] } : {}),
         ...(this.quiesced.length > 0 ? { quiesced: this.quiesced } : {}),
         ...(this.pageSwitch ? { pageSwitch: this.pageSwitch } : {}),
+        ...(this.state.length > 0 ? { state: this.state } : {}),
       });
     }
     this.gates = [];
     this.dispatches = [];
     this.quiesced = [];
     this.pageSwitch = undefined;
+    this.state = [];
     this.think++;
   }
 
@@ -443,8 +480,12 @@ function scheduledInputs(driver: WorldDriver, inputs: readonly ScenarioInput[]):
   return [...inputs].sort((a, b) => a.at - b.at);
 }
 
-/** Run one rehearsal end to end over `driver`. */
-async function rehearse(options: RehearsalAdapterOptions, request: SimulationRequest): Promise<SimulationRun> {
+/** Run one rehearsal end to end over `driver`, recorded under `runId`. */
+async function rehearse(
+  options: RehearsalAdapterOptions,
+  runId: string,
+  request: SimulationRequest
+): Promise<SimulationRun> {
   const { driver } = options;
   const { subject, seed } = request.scenario;
   const subjects = driver.subjects();
@@ -491,7 +532,12 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
   for (let think = 0; think < request.thinks; think++) {
     world.step();
     if (think === 0) initialPopulation = world.participants();
-    if (!world.subjectPresent()) recorder.release();
+    if (world.subjectPresent()) {
+      const values = world.readState?.();
+      if (values) recorder.recordState(values);
+    } else {
+      recorder.release();
+    }
     recorder.closeThink();
   }
   recorder.closeRun();
@@ -502,10 +548,16 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
 
   const observations = recorder.observations();
   return {
+    runId,
     thinks: observations.length,
     observations,
     world: { initialPopulation, finalPopulation, brainsExecuted },
   };
+}
+
+/** Id of the `count`-th rehearsal one adapter has run, counting from one. */
+function runIdOf(count: number): string {
+  return `run-${count}`;
 }
 
 /**
@@ -513,9 +565,13 @@ async function rehearse(options: RehearsalAdapterOptions, request: SimulationReq
  * environment, the brain substitution, gate and dispatch observation, the run
  * loop, and the run packaging; the driver owns only its world.
  *
+ * Each adapter numbers its own runs from one, so the ids a caller sees depend
+ * only on how many rehearsals it has asked this adapter for.
+ *
  * This API is provisional.
  */
 export function createRehearsalAdapter(options: RehearsalAdapterOptions): TargetAdapter {
+  let runs = 0;
   return {
     contractVersion: ADAPTER_CONTRACT_VERSION,
     targetIdentity: options.targetIdentity,
@@ -524,6 +580,10 @@ export function createRehearsalAdapter(options: RehearsalAdapterOptions): Target
     tileDocs: () => options.tileDocs(),
     subjects: () => options.driver.subjects(),
     inputKinds: () => options.driver.inputKinds?.() ?? [],
-    run: (request: SimulationRequest) => rehearse(options, request),
+    stateChannels: () => options.driver.stateChannels?.() ?? [],
+    run: (request: SimulationRequest) => {
+      runs++;
+      return rehearse(options, runIdOf(runs), request);
+    },
   };
 }

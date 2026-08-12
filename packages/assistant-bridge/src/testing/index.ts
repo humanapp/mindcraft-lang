@@ -1,8 +1,10 @@
 export type { TargetAdapter } from "../target/adapter.js";
 export {
   createTargetAdapter,
+  FAKE_BELL_CHANNEL,
   FAKE_INPUT_KIND,
   FAKE_RING_THINKS,
+  FAKE_SIGNAL_CHANNEL,
   FAKE_SUBJECT,
   FAKE_TARGET_IDENTITY,
 } from "./fake-adapter.js";

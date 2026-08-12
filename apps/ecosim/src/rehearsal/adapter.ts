@@ -1,6 +1,7 @@
 import type { TargetAdapter, TargetManifest } from "@mindcraft-lang/assistant-bridge";
 import type { RehearsalWorld, WorldDriver, WorldStaging } from "@mindcraft-lang/assistant-bridge/kit";
 import { createRehearsalAdapter, pairTileDocs } from "@mindcraft-lang/assistant-bridge/kit";
+import type { IBrainDef } from "@mindcraft-lang/core/app";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES } from "@/brain/archetypes";
 import { getSelf } from "@/brain/execution-context-types";
@@ -25,6 +26,8 @@ async function stage(shippedBrains: ShippedBrainDefs, staging: WorldStaging): Pr
   const role = staging.subject as Archetype;
   /** The creature under study; unset until its first spawn. */
   let underStudy: Actor | undefined;
+  /** Every brain document that has driven a creature through a step of this world. */
+  const executed = new Set<IBrainDef>();
 
   const world = await createRehearsalWorld({
     environment: staging.environment,
@@ -47,10 +50,14 @@ async function stage(shippedBrains: ShippedBrainDefs, staging: WorldStaging): Pr
   });
 
   return {
-    step: () => world.step(),
+    // A step runs the creatures standing when it opens.
+    step: () => {
+      for (const actor of world.actors()) executed.add(actor.brainDef);
+      world.step();
+    },
     subjectPresent: () => world.actors().some((actor) => actor === underStudy),
     participants: () => world.actors().length,
-    brainsExecuted: () => new Set(world.actors().map((actor) => actor.brainDef)).size,
+    brainsExecuted: () => executed.size,
     shutdown: () => world.shutdown(),
   };
 }

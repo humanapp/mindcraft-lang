@@ -4,6 +4,9 @@ import type { DispatchObservation, SimulationRun, ThinkObservation } from "../ta
 /** Spans a summary keeps before it stops and reports itself truncated. */
 const maxSpans = 80;
 
+/** State changes a summary keeps before it stops and reports itself truncated. */
+const maxStateChanges = 80;
+
 /** One think of the brain under study, in the form the summary compresses. */
 export interface ThinkSummary {
   /** Rules whose gate passed, in the order the runtime reached them. */
@@ -61,6 +64,8 @@ export interface ExcludedRule {
 
 /** The bounded account of one rehearsal that `simulate` returns. */
 export interface TraceSummary {
+  /** Id the rehearsal this account is of is addressed by. */
+  readonly runId: string;
   /** Thinks the run executed. */
   readonly thinks: number;
   /** Per-rule totals, in document order of first appearance. */
@@ -71,6 +76,15 @@ export interface TraceSummary {
   readonly spans: readonly TraceSpan[];
   /** `true` when {@link spans} was cut at the span budget and does not cover the whole run. */
   readonly spansTruncated: boolean;
+  /**
+   * Subject state changes over the run, as `think channel=value`, in think
+   * order. A channel appears only on the thinks its value changed on, and its
+   * first entry is the value it started the run at. Absent when the target
+   * declares no channel.
+   */
+  readonly state?: readonly string[];
+  /** `true` when {@link state} was cut at its budget and does not cover the whole run. */
+  readonly stateTruncated?: boolean;
   readonly world: SimulationRun["world"];
   /**
    * Rules the run was staged without, sorted by id. Every claim the account
@@ -160,16 +174,26 @@ function summarizeThink(observation: ThinkObservation): ThinkSummary {
   };
 }
 
+/**
+ * How each field of a {@link ThinkSummary} reads as text for comparison, one
+ * entry per field. The key set is the summary's own, so a field added to
+ * {@link ThinkSummary} without an entry here does not compile.
+ */
+const thinkFieldText: { readonly [K in keyof Required<ThinkSummary>]: (think: ThinkSummary) => string } = {
+  fired: (think) => think.fired.join(","),
+  when: (think) => think.when.join(","),
+  dispatched: (think) => think.dispatched.join(","),
+  waiting: (think) => (think.waiting ?? []).join(","),
+  quiesced: (think) => (think.quiesced ?? []).join(","),
+  page: (think) => think.page ?? "",
+};
+
+/** Every field of a think summary, read as text. */
+const thinkFields = Object.values(thinkFieldText);
+
 /** True when two think summaries carry identical content. */
 function sameThink(a: ThinkSummary, b: ThinkSummary): boolean {
-  return (
-    a.fired.join(",") === b.fired.join(",") &&
-    a.when.join(",") === b.when.join(",") &&
-    a.dispatched.join(",") === b.dispatched.join(",") &&
-    (a.waiting ?? []).join(",") === (b.waiting ?? []).join(",") &&
-    (a.quiesced ?? []).join(",") === (b.quiesced ?? []).join(",") &&
-    a.page === b.page
-  );
+  return thinkFields.every((read) => read(a) === read(b));
 }
 
 /** Compress consecutive identical thinks into spans, stopping at the span budget. */
@@ -245,19 +269,39 @@ function dispatchTotals(observations: readonly ThinkObservation[]): string[] {
 }
 
 /**
+ * The run's state changes as `think channel=value` entries in think order,
+ * stopping at the change budget.
+ */
+function stateChanges(observations: readonly ThinkObservation[]): { changes: string[]; truncated: boolean } {
+  const changes: string[] = [];
+  for (let think = 0; think < observations.length; think++) {
+    for (const change of observations[think]!.state ?? []) {
+      if (changes.length === maxStateChanges) return { changes, truncated: true };
+      changes.push(`${think} ${change}`);
+    }
+  }
+  return { changes, truncated: false };
+}
+
+/**
  * Reduce one rehearsal to the bounded account `simulate` returns: per-rule
- * totals, dispatch totals, and run-length compressed per-think detail. Pass
- * `excludedRules` when the run was staged without some of the document's rules,
- * so the account states what its claims are scoped to.
+ * totals, dispatch totals, run-length compressed per-think detail, and the
+ * subject's state changes over the run. Pass `excludedRules` when the run was
+ * staged without some of the document's rules, so the account states what its
+ * claims are scoped to.
  */
 export function summarizeRun(run: SimulationRun, excludedRules?: readonly ExcludedRule[]): TraceSummary {
   const { spans, truncated } = compress(run.observations);
+  const state = stateChanges(run.observations);
   return {
+    runId: run.runId,
     thinks: run.thinks,
     rules: ruleTotals(run.observations),
     dispatchTotals: dispatchTotals(run.observations),
     spans,
     spansTruncated: truncated,
+    ...(state.changes.length > 0 ? { state: state.changes } : {}),
+    ...(state.truncated ? { stateTruncated: true } : {}),
     world: run.world,
     ...(excludedRules && excludedRules.length > 0 ? { excludedRules } : {}),
   };

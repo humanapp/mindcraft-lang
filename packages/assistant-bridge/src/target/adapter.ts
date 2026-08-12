@@ -6,7 +6,7 @@ import type { IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
  * Increment it whenever {@link TargetAdapter} or the shapes it exchanges change
  * in a way an already-built artifact cannot satisfy.
  */
-export const ADAPTER_CONTRACT_VERSION = 8;
+export const ADAPTER_CONTRACT_VERSION = 9;
 
 /** Facts about a target world that a session states to the model before it plans. */
 export interface TargetManifest {
@@ -32,6 +32,20 @@ export interface ScenarioInputKind {
    * One plain sentence stating what an entry of this kind delivers in this
    * world: what its value means, the range it is read over, and whether it is a
    * level that holds or a single arrival.
+   */
+  readonly description: string;
+}
+
+/**
+ * One observable state channel of the subject, named and explained by the
+ * target itself.
+ */
+export interface SubjectStateChannel {
+  /** Name a state delta reports this channel under, spelled exactly. */
+  readonly name: string;
+  /**
+   * One plain sentence stating what this channel shows and how to read its
+   * value: what the encoding means, and what a value of it tells the reader.
    */
   readonly description: string;
 }
@@ -193,6 +207,13 @@ export interface ThinkObservation {
   readonly quiesced?: readonly string[];
   /** The page change this think began with; absent when the brain stayed on its page. */
   readonly pageSwitch?: PageSwitchObservation;
+  /**
+   * Declared state channels whose value changed on this think, as `name=value`,
+   * in the order the target reports them. Every declared channel appears on the
+   * first think, which carries the value each started the run at. Absent when
+   * no channel changed; a channel absent from a think held its last value.
+   */
+  readonly state?: readonly string[];
 }
 
 /** What the staged world looked like, independent of the brain under study. */
@@ -207,6 +228,11 @@ export interface WorldObservation {
 
 /** One completed rehearsal. */
 export interface SimulationRun {
+  /**
+   * Id this rehearsal is addressed by, unique among the runs of the adapter
+   * that produced it and stable across reruns of the same sequence.
+   */
+  readonly runId: string;
   /** Thinks the subject actually executed; at most the requested count. */
   readonly thinks: number;
   /** One entry per executed think, in order. */
@@ -245,6 +271,11 @@ export interface TargetAdapter {
   /** Scenario input kinds this target reads; empty when it scripts no percepts. */
   inputKinds(): readonly ScenarioInputKind[];
   /**
+   * State channels of the subject this target reports per think; empty when it
+   * reports none. A run's {@link ThinkObservation.state} names only these.
+   */
+  stateChannels(): readonly SubjectStateChannel[];
+  /**
    * Run one rehearsal. Throws a `ScenarioRejection` if `scenario.subject` is
    * not one of {@link subjects} or an input names a kind outside
    * {@link inputKinds}, and a `RehearsalRejection` carrying the build's
@@ -258,7 +289,15 @@ export interface TargetAdapter {
  * The adapter surface an artifact must carry: every member name a host calls on
  * a {@link TargetAdapter}.
  */
-export const adapterMethods = ["manifest", "modules", "tileDocs", "subjects", "inputKinds", "run"] as const;
+export const adapterMethods = [
+  "manifest",
+  "modules",
+  "tileDocs",
+  "subjects",
+  "inputKinds",
+  "stateChannels",
+  "run",
+] as const;
 
 /** Why an artifact could not stand in as a target adapter. */
 export const AdapterNonconformanceCode = {

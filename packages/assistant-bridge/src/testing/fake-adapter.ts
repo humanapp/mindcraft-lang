@@ -1,7 +1,7 @@
 import type { MindcraftBrain } from "@mindcraft-lang/core/app";
 import type { RehearsalWorld, WorldDriver, WorldStaging } from "../kit/index.js";
 import { createRehearsalAdapter } from "../kit/index.js";
-import type { ScenarioInputKind, TargetAdapter, TargetManifest } from "../target/adapter.js";
+import type { ScenarioInputKind, SubjectStateChannel, TargetAdapter, TargetManifest } from "../target/adapter.js";
 import { DispatchOutcome } from "../target/adapter.js";
 import type { FakeWorldState } from "./fake-module.js";
 import { createFakeModule } from "./fake-module.js";
@@ -18,6 +18,18 @@ export const FAKE_INPUT_KIND = "signal";
 /** The one percept kind a fake scenario may script, as the driver registers it. */
 const inputKinds: readonly ScenarioInputKind[] = [
   { name: FAKE_INPUT_KIND, description: "Whether the signal is on: true holds it on, false holds it off." },
+];
+
+/** Name of the state channel reporting whether the fake world's signal is on. */
+export const FAKE_SIGNAL_CHANNEL = "signal-level";
+
+/** Name of the state channel reporting whether the fake world's bell is ringing. */
+export const FAKE_BELL_CHANNEL = "bell";
+
+/** The state channels the fake world reports, as the driver declares them. */
+const stateChannels: readonly SubjectStateChannel[] = [
+  { name: FAKE_SIGNAL_CHANNEL, description: "Whether the signal is on right now, as `on` or `off`." },
+  { name: FAKE_BELL_CHANNEL, description: "Whether the bell is ringing, as `ringing` or `quiet`." },
 ];
 
 const manifest: TargetManifest = {
@@ -121,6 +133,13 @@ class FakeWorld implements RehearsalWorld {
     return 1;
   }
 
+  readState(): ReadonlyMap<string, string> {
+    return new Map([
+      [FAKE_SIGNAL_CHANNEL, this.state.signal ? "on" : "off"],
+      [FAKE_BELL_CHANNEL, this.state.bell === undefined ? "quiet" : "ringing"],
+    ]);
+  }
+
   shutdown(): void {
     this.alive = false;
     this.brain.shutdown();
@@ -132,6 +151,7 @@ const driver: WorldDriver = {
   modules: () => [createFakeModule()],
   subjects: () => [FAKE_SUBJECT],
   inputKinds: () => inputKinds,
+  stateChannels: () => stateChannels,
   stage: (staging: WorldStaging) => Promise.resolve(new FakeWorld(staging)),
 };
 

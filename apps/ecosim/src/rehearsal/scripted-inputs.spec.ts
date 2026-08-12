@@ -54,6 +54,12 @@ function gatedWorkspace(sensorTiles: string[]): AuthoringWorkspace {
   return workspace;
 }
 
+/** What a run recorded, which the same seed must reproduce exactly. */
+function recorded(run: SimulationRun): Omit<SimulationRun, "runId"> {
+  const { runId: _addressedAs, ...rest } = run;
+  return rest;
+}
+
 /** Rehearse `workspace` over a scenario that stages `kind` at `distance` between the two thinks. */
 function rehearse(workspace: AuthoringWorkspace, kind: string, distance: number): Promise<SimulationRun> {
   const inputs: ScenarioInput[] = [
@@ -165,6 +171,7 @@ describe("scripted world causes in an ecosim rehearsal", () => {
     const first = await rehearse(workspace, "carnivore-ahead", IN_VIEW);
     const second = await rehearse(workspace, "carnivore-ahead", IN_VIEW);
 
-    assert.deepEqual(second, first);
+    assert.deepEqual(recorded(second), recorded(first));
+    assert.notEqual(second.runId, first.runId, "each run is addressable on its own");
   });
 });

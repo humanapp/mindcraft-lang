@@ -66,9 +66,15 @@ function report(checks: readonly ConformanceCheck[]): ConformanceReport {
   return { ok: checks.every((check) => check.ok), checks };
 }
 
+/** What a run recorded, which two runs of one seed must match on exactly. */
+function recorded(run: SimulationRun): string {
+  const { runId: _addressedAs, ...rest } = run;
+  return JSON.stringify(rest);
+}
+
 /** Compare two runs of the same seed. */
 function determinism(first: SimulationRun, second: SimulationRun): ConformanceCheck {
-  const ok = JSON.stringify(first) === JSON.stringify(second);
+  const ok = recorded(first) === recorded(second);
   return {
     code: ConformanceCheckCode.Determinism,
     ok,

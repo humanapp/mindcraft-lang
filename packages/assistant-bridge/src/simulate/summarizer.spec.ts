@@ -13,6 +13,7 @@ function think(ruleId: string, fired: boolean, result: string, ...actions: strin
 
 function run(observations: readonly ThinkObservation[]): SimulationRun {
   return {
+    runId: "run-1",
     thinks: observations.length,
     observations,
     world: { initialPopulation: 12, finalPopulation: 9, brainsExecuted: 3 },
@@ -278,5 +279,85 @@ describe("trace summary", () => {
     const summary = summarizeRun(run([think("0/0", true, "true")]));
 
     assert.deepEqual(summary.world, { initialPopulation: 12, finalPopulation: 9, brainsExecuted: 3 });
+  });
+
+  test("addresses the account by the id of the run it summarizes", () => {
+    const summary = summarizeRun({ ...run([think("0/0", true, "true")]), runId: "run-7" });
+
+    assert.equal(summary.runId, "run-7");
+  });
+
+  test("starts a new span where only the page a think entered changes", () => {
+    const observations: ThinkObservation[] = [
+      { gates: [], dispatches: [], pageSwitch: { from: 0, to: 1 } },
+      { gates: [], dispatches: [], pageSwitch: { from: 1, to: 2 } },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.equal(summary.spans.length, 2);
+  });
+
+  test("starts a new span where only what a rule held from re-firing changes", () => {
+    const observations: ThinkObservation[] = [
+      { gates: [], dispatches: [], quiesced: ["0/0"] },
+      { gates: [], dispatches: [], quiesced: ["0/1"] },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.equal(summary.spans.length, 2);
+  });
+
+  test("keeps a state change out of the span key, so an animating channel compresses to one span", () => {
+    const observations = Array.from(
+      { length: 200 },
+      (_, i): ThinkObservation => ({ ...think("0/0", true, "true", "actuator.show"), state: [`display=${i}`] })
+    );
+
+    const summary = summarizeRun(run(observations));
+
+    assert.equal(summary.spans.length, 1);
+    assert.equal(summary.spansTruncated, false);
+    assert.deepEqual(summary.spans[0], {
+      from: 0,
+      thinks: 200,
+      think: { fired: ["0/0"], when: ["0/0=true"], dispatched: ["actuator.show()=1@0/0"] },
+    });
+  });
+
+  test("logs each state change under the think it fell on", () => {
+    const observations: ThinkObservation[] = [
+      { gates: [], dispatches: [], state: ["display=00000", "speaker=idle"] },
+      { gates: [], dispatches: [] },
+      { gates: [], dispatches: [], state: ["display=09990"] },
+      { gates: [], dispatches: [], state: ["speaker=giggle#1"] },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.deepEqual(summary.state, ["0 display=00000", "0 speaker=idle", "2 display=09990", "3 speaker=giggle#1"]);
+    assert.equal(summary.stateTruncated, undefined);
+  });
+
+  test("leaves a run whose target reports no state carrying no change log", () => {
+    const summary = summarizeRun(run([think("0/0", true, "true")]));
+
+    assert.equal(summary.state, undefined);
+    assert.equal(summary.stateTruncated, undefined);
+  });
+
+  test("cuts the change log at its budget when the display changes every think", () => {
+    const busy = Array.from(
+      { length: 200 },
+      (_, i): ThinkObservation => ({ gates: [], dispatches: [], state: [`display=${i}`] })
+    );
+
+    const summary = summarizeRun(run(busy));
+
+    assert.equal(summary.state?.length, 80);
+    assert.equal(summary.stateTruncated, true);
+    assert.equal(summary.state?.[0], "0 display=0");
+    assert.equal(summary.state?.[79], "79 display=79");
   });
 });
