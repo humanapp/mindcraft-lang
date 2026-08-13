@@ -30,15 +30,15 @@ jobs:
       - name: Install packages
         run: npm run install:packages
 
-      - name: Build packages
-        working-directory: apps/ecosim
-        run: npm run build:deps
-
       - name: Install ecosim dependencies
         working-directory: apps/ecosim
         run: |
           rm -f package-lock.json
           npm install
+
+      - name: Build packages
+        working-directory: apps/ecosim
+        run: npm run build:deps
 
       - name: Build ecosim
         working-directory: apps/ecosim
