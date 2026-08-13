@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="100%" height="100%" viewBox="0 0 2400 2400" version="1.1" xmlns="http://www.w3.org/2000/svg" style="stroke-linecap:round;stroke-linejoin:round;">
+    <!-- Leftward arrow with a W label. Painted in passes: white halo, dark outline, color fill. -->
+    <path d="M380,1200 L950,1580 L950,1340 L1450,1340 L1450,1060 L950,1060 L950,820 Z" fill="white" stroke="white" stroke-width="260"/>
+    <path d="M380,1200 L950,1580 L950,1340 L1450,1340 L1450,1060 L950,1060 L950,820 Z" fill="rgb(54,53,53)" stroke="rgb(54,53,53)" stroke-width="120"/>
+    <path d="M380,1200 L950,1580 L950,1340 L1450,1340 L1450,1060 L950,1060 L950,820 Z" fill="rgb(255,241,0)"/>
+    <text x="1930" y="1440" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="620" text-anchor="middle" fill="white" stroke="white" stroke-width="180">W</text>
+    <text x="1930" y="1440" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="620" text-anchor="middle" fill="rgb(54,53,53)">W</text>
+</svg>
