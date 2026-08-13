@@ -35,6 +35,7 @@ import { pageGridSelectionProps, ruleSelectionCell } from "./page-grid-selection
 import { RuleDragProvider } from "./RuleDragContext";
 import { useRulePickup } from "./RulePickupContext";
 import { RuleSelectionProvider } from "./RuleSelectionContext";
+import { releaseHeldRule } from "./rule-pickup-release";
 import { type RevisionRuleNode, ruleRevisions } from "./rule-revision";
 
 /**
@@ -542,15 +543,12 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1, revealRule 
     [registerRule, ruleToCompose, grabRule, moveRule, offeringRail]
   );
 
-  // A page that stops rendering gives back any rule it holds and closes its
-  // open batch.
+  // The pick-up as it stands at the last render, which the cleanup running
+  // after it reads.
   const rulePickupRef = useRef(rulePickup);
   rulePickupRef.current = rulePickup;
   useEffect(() => {
-    return () => {
-      if (commandHistory.isBatchOpen()) commandHistory.abortBatch();
-      rulePickupRef.current.setPickup(null);
-    };
+    return () => releaseHeldRule(commandHistory, rulePickupRef.current);
   }, [commandHistory]);
 
   return (
