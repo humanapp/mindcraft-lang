@@ -1,4 +1,4 @@
-import type { IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
+import type { CompiledActionBundle, IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
 
 /**
  * Version of the adapter contract this package defines. A loader compares it
@@ -6,7 +6,7 @@ import type { IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
  * Increment it whenever {@link TargetAdapter} or the shapes it exchanges change
  * in a way an already-built artifact cannot satisfy.
  */
-export const ADAPTER_CONTRACT_VERSION = 9;
+export const ADAPTER_CONTRACT_VERSION = 10;
 
 /** Facts about a target world that a session states to the model before it plans. */
 export interface TargetManifest {
@@ -100,6 +100,15 @@ export interface SimulationRequest {
    * Absent when the run excludes nothing.
    */
   readonly excludedRules?: readonly string[];
+  /**
+   * Compiled user actions and the tiles they back, as the authoring
+   * environment holds them. The run installs this before it reads the
+   * document, so a tile the document names that no target module registers --
+   * a project-authored tile, or one an installed library contributes --
+   * resolves in the staged world. Absent when the authoring environment
+   * carries no compiled actions.
+   */
+  readonly actionBundle?: CompiledActionBundle;
 }
 
 /** One rule's WHEN gate on one think. */
@@ -278,9 +287,9 @@ export interface TargetAdapter {
   /**
    * Run one rehearsal. Throws a `ScenarioRejection` if `scenario.subject` is
    * not one of {@link subjects} or an input names a kind outside
-   * {@link inputKinds}, and a `RehearsalRejection` carrying the build's
-   * error-severity `BrainBuildDiagnostic` entries if the brain does not build
-   * once {@link SimulationRequest.excludedRules} has been applied.
+   * {@link inputKinds}, and a `RehearsalRejection` if the staged world holds no
+   * tile for something the document names, or if the brain does not build once
+   * {@link SimulationRequest.excludedRules} has been applied.
    */
   run(request: SimulationRequest): Promise<SimulationRun>;
 }

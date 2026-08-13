@@ -429,6 +429,14 @@ export interface MindcraftEnvironment {
   /** Compiles and links a brain definition into a {@link BrainBuildResult}. */
   linkBrain(definition: IBrainDef): BrainBuildResult;
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate;
+  /**
+   * The action bundle this environment currently holds, as a fresh
+   * {@link CompiledActionBundle} another environment can apply with
+   * {@link replaceActionBundle}. `undefined` until a bundle has been applied.
+   * The tiles are the ones the bundle registered; the actions are the compiled
+   * artifacts backing them, in the environment's own key order.
+   */
+  appliedActionBundle(): CompiledActionBundle | undefined;
   onBrainsInvalidated(listener: (event: BrainInvalidationEvent) => void): () => void;
   rebuildInvalidatedBrains(brains?: readonly MindcraftBrain[]): void;
   tileCatalogs(): readonly ITileCatalog[];
@@ -886,6 +894,8 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   readonly appServices: AppServices;
   private readonly bundleCatalog = new TileCatalog();
   private readonly bundleResolver = new Dict<string, CompiledActionArtifact>();
+  /** Revision of the bundle last applied, or undefined while none has been. */
+  private bundleRevision: string | undefined;
   /** `(fromType, toType)` pairs this environment registered from the active bundle's conversion artifacts. */
   private readonly bundleConversionPairs = new List<{ fromType: TypeId; toType: TypeId }>();
   private readonly trackedBrains = List.empty<ManagedMindcraftBrain>();
@@ -969,6 +979,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     const hasChangedActions = !changedActionKeySet.isEmpty();
 
     this.replaceCatalogContents(this.bundleCatalog, List.from(bundle.tiles));
+    this.bundleRevision = bundle.revision;
 
     this.bundleResolver.clear();
     const nextKeys = nextActions.keys();
@@ -1004,6 +1015,17 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     }
 
     return event;
+  }
+
+  appliedActionBundle(): CompiledActionBundle | undefined {
+    if (this.bundleRevision === undefined) {
+      return undefined;
+    }
+    return {
+      revision: this.bundleRevision,
+      tiles: this.bundleCatalog.getAll().toArray(),
+      actions: copyActionArtifacts(this.bundleResolver),
+    };
   }
 
   onBrainsInvalidated(listener: (event: BrainInvalidationEvent) => void): () => void {

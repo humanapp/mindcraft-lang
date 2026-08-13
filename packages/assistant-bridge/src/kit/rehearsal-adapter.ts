@@ -18,7 +18,7 @@ import type {
   ThinkObservation,
 } from "../target/adapter.js";
 import { ADAPTER_CONTRACT_VERSION, DispatchOutcome } from "../target/adapter.js";
-import { ruleIdsByPath } from "../tools/workspace.js";
+import { locateRules, ruleIdsByPath } from "../tools/workspace.js";
 import { createRehearsalEnvironment, createSeededRng } from "./environment.js";
 import type { NumberText, ValueLabel } from "./value-text.js";
 import { createTileNamer, createValueLabeler, renderArgs, renderValue } from "./value-text.js";
@@ -52,6 +52,8 @@ export class ScenarioRejection extends Error {
 export const RehearsalRejectionCode = {
   /** The brain does not build, so there was no program to run. */
   BrainDoesNotBuild: "rehearsal_brain_does_not_build",
+  /** The staged world holds no tile for something the document names. */
+  TilesUnresolved: "rehearsal_tiles_unresolved",
 } as const;
 
 /** Why a rehearsal adapter could not run the brain it was given. */
@@ -59,16 +61,25 @@ export type RehearsalRejectionCode = (typeof RehearsalRejectionCode)[keyof typeo
 
 /**
  * A brain a rehearsal adapter could not run, carrying the reason as a code and
- * the build errors that stopped it. A rehearsal that raises this staged no
- * world and observed nothing.
+ * what stopped it: the build errors for a brain that does not build, and the
+ * tile ids the staged world could not resolve for one whose tiles are not all
+ * present. A rehearsal that raises this staged no world and observed nothing.
  */
 export class RehearsalRejection extends Error {
   constructor(
     readonly code: RehearsalRejectionCode,
-    /** The error-severity build diagnostics, in the order the build reported them. */
-    readonly diagnostics: readonly BrainBuildDiagnostic[]
+    /** The error-severity build diagnostics, in the order the build reported them; empty when the build was not reached. */
+    readonly diagnostics: readonly BrainBuildDiagnostic[],
+    /** Tile ids the staged world resolved nothing for, in document order; empty when every tile resolved. */
+    readonly unresolvedTiles: readonly string[] = []
   ) {
-    super(`${code}: ${diagnostics.map((diag) => `${diag.code}@${diag.params?.rulePath ?? "document"}`).join(", ")}`);
+    super(
+      `${code}: ${
+        unresolvedTiles.length > 0
+          ? unresolvedTiles.join(", ")
+          : diagnostics.map((diag) => `${diag.code}@${diag.params?.rulePath ?? "document"}`).join(", ")
+      }`
+    );
     this.name = "RehearsalRejection";
   }
 }
@@ -221,6 +232,25 @@ function ruleFuncIdRuleIds(environment: MindcraftEnvironment, brainDef: IBrainDe
     if (ruleId !== undefined) ruleIds.set(funcId, ruleId);
   });
   return ruleIds;
+}
+
+/**
+ * Tile ids `brainDef` names that the environment it was read into holds no
+ * definition for, in document order and without repeats. Each one stands in the
+ * document as a missing-tile placeholder.
+ */
+function unresolvedTileIds(brainDef: IBrainDef): string[] {
+  const unresolved: string[] = [];
+  for (const located of locateRules(brainDef)) {
+    for (const side of [located.rule.when(), located.rule.do()]) {
+      const tiles = side.tiles();
+      for (let i = 0; i < tiles.size(); i++) {
+        const tile = tiles.get(i)!;
+        if (tile.kind === "missing" && !unresolved.includes(tile.tileId)) unresolved.push(tile.tileId);
+      }
+    }
+  }
+  return unresolved;
 }
 
 /** How a run reports the terminal state a call's handle settled in. */
@@ -500,6 +530,9 @@ async function rehearse(
     rng: next,
     precision: driver.precision?.(),
   });
+  if (request.actionBundle) {
+    environment.replaceActionBundle(request.actionBundle);
+  }
   const numberText: NumberText = (value) => environment.appServices.numerics.formatNumber(value);
   const recorder = new SubjectRecorder(
     createTileNamer(() => environment.tileCatalogs(), environment.appServices.localizer),
@@ -510,6 +543,10 @@ async function rehearse(
   const subjectBrain = environment.deserializeBrainJson(
     brainJsonWithRulesEmptied(request.brainDef.toJson() as BrainJson, request.excludedRules ?? [])
   );
+  const unresolved = unresolvedTileIds(subjectBrain);
+  if (unresolved.length > 0) {
+    throw new RehearsalRejection(RehearsalRejectionCode.TilesUnresolved, [], unresolved);
+  }
   recorder.bindRuleIds(ruleFuncIdRuleIds(environment, subjectBrain));
 
   const world = await driver.stage({

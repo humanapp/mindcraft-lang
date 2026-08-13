@@ -7,6 +7,8 @@
 
 export type {
   BrainJsonMigration,
+  CompiledActionArtifact,
+  CompiledActionBundle,
   CreateBrainOptions,
   CreateHostActuatorOptions,
   CreateHostSensorOptions,

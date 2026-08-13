@@ -13,7 +13,9 @@ import {
   adapterNonconformance,
   readAdapterArtifact,
 } from "../target/adapter.js";
+import { proposeEdit } from "../tools/propose-edit.js";
 import { createAuthoringWorkspace, isNestedRulePath, locateRules } from "../tools/workspace.js";
+import { USER_TILE_ACTION_KEY, USER_TILE_ID, userTileBundle } from "./user-tile-bundle.js";
 
 /** Which property of a rehearsal adapter a check covers. */
 export const ConformanceCheckCode = {
@@ -25,6 +27,8 @@ export const ConformanceCheckCode = {
   GateEvents: "gate_events",
   /** The run accounted for the nested rules of the brain under study. */
   ChildRuleObservation: "child_rule_observation",
+  /** A compiled user tile the request carries resolves in the staged world and its dispatches are observed. */
+  UserTileObservation: "user_tile_observation",
   /** The built artifact loads and publishes a conforming adapter in plain Node. */
   HeadlessPurity: "headless_purity",
   /** The built artifact documents its tiles and rehearses away from the tree that built it. */
@@ -146,11 +150,64 @@ function childRuleObservation(brainDef: IBrainDef, run: SimulationRun): Conforma
   };
 }
 
+/** Name the user-tile check opens its throwaway document under. */
+const userTileBrainName = "user-tile";
+
+/** A failed user-tile check carrying `detail`. */
+function noUserTile(detail: string): ConformanceCheck {
+  return { code: ConformanceCheckCode.UserTileObservation, ok: false, detail };
+}
+
+/**
+ * Rehearse a document written against a compiled action bundle the adapter's
+ * own modules do not carry: a single rule whose DO side drives one user-authored
+ * actuator, with the bundle travelling on the request. The staged world must
+ * resolve the tile from that bundle and report the calls it made, so a target
+ * that stages its world without the request's compiled actions fails here.
+ */
+async function userTileObservation(options: AdapterConformanceOptions): Promise<ConformanceCheck> {
+  const { adapter } = options;
+  const workspace = createAuthoringWorkspace(adapter, userTileBrainName);
+  const actionBundle = userTileBundle();
+  workspace.environment.replaceActionBundle(actionBundle);
+
+  const ruleId = locateRules(workspace.brainDef)[0]?.ruleId;
+  if (ruleId === undefined) return noUserTile("a fresh document holds no rule to author into");
+  const placed = proposeEdit(workspace, { op: "placeTile", ruleId, side: "do", tileId: USER_TILE_ID });
+  if (!placed.ok) return noUserTile(`the editor refused the user tile: ${JSON.stringify(placed)}`);
+
+  let run: SimulationRun;
+  try {
+    run = await adapter.run({
+      brainDef: workspace.brainDef,
+      scenario: options.scenario,
+      thinks: options.thinks,
+      actionBundle,
+    });
+  } catch (cause) {
+    return noUserTile(`the run refused the document: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
+
+  const dispatched = run.observations.reduce(
+    (total, think) => total + think.dispatches.filter((dispatch) => dispatch.action === USER_TILE_ACTION_KEY).length,
+    0
+  );
+  return {
+    code: ConformanceCheckCode.UserTileObservation,
+    ok: dispatched > 0,
+    detail:
+      dispatched > 0
+        ? `${dispatched} calls of the carried user action observed over ${run.thinks} thinks`
+        : `nothing was observed of ${USER_TILE_ACTION_KEY} over ${run.thinks} thinks`,
+  };
+}
+
 /**
  * Run the checks a target's adapter must pass to be rehearsable: the same seed
  * reproduces the same run, the summarized run fits a tool result, the run
- * observes the brain's WHEN gates, and it accounts for the brain's nested rules.
- * Runs the adapter twice.
+ * observes the brain's WHEN gates, it accounts for the brain's nested rules, and
+ * it resolves and observes a compiled user tile the request carries. Runs the
+ * adapter three times.
  */
 export async function checkAdapterConformance(options: AdapterConformanceOptions): Promise<ConformanceReport> {
   const request = { brainDef: options.brainDef, scenario: options.scenario, thinks: options.thinks };
@@ -161,6 +218,7 @@ export async function checkAdapterConformance(options: AdapterConformanceOptions
     boundedness(first),
     gateEvents(first),
     childRuleObservation(options.brainDef, first),
+    await userTileObservation(options),
   ]);
 }
 

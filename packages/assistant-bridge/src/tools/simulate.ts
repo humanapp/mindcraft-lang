@@ -69,7 +69,10 @@ export function rulesToExclude(diagnostics: readonly CompileDiagnostic[]): Exclu
  * Run the current brain in a bounded rehearsal and summarize what happened.
  * Compiles first. A brain whose build errors all fall in rules that can be
  * named is rehearsed without those rules, and the account states them; a build
- * error naming no rule blocks the run and is reported with its diagnostics.
+ * error naming no rule blocks the run and is reported with its diagnostics. The
+ * compiled actions the workspace's environment holds travel with the request,
+ * so the staged world carries the same user tiles the document was written
+ * against.
  */
 export async function simulate(workspace: AuthoringWorkspace, input: ToolInput<"simulate">): Promise<SimulationResult> {
   const subjects = workspace.adapter.subjects();
@@ -90,11 +93,13 @@ export async function simulate(workspace: AuthoringWorkspace, input: ToolInput<"
     return { ok: false, error: "does_not_compile", diagnostics: compiled.diagnostics };
   }
 
+  const actionBundle = workspace.environment.appliedActionBundle();
   const run = await workspace.adapter.run({
     brainDef: workspace.brainDef,
     scenario: input.scenario,
     thinks: input.thinks,
     ...(excludedRules.length > 0 ? { excludedRules: excludedRules.map((rule) => rule.ruleId) } : {}),
+    ...(actionBundle ? { actionBundle } : {}),
   });
   return { ok: true, summary: summarizeRun(run, excludedRules) };
 }

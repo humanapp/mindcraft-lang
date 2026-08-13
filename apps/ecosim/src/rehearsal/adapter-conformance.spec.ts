@@ -74,6 +74,7 @@ describe("the ecosim adapter against the bridge's conformance suite", () => {
         ConformanceCheckCode.Boundedness,
         ConformanceCheckCode.GateEvents,
         ConformanceCheckCode.ChildRuleObservation,
+        ConformanceCheckCode.UserTileObservation,
       ]
     );
     assert.equal(report.ok, true);
