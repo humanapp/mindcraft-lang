@@ -1,6 +1,6 @@
 {
   "name": "Ecosystem Simulator",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "identity": "mindcraft-lang/trg-ecosim",
   "description": "Program the brains of carnivores, herbivores, and plants in a live 2D ecosystem with Mindcraft.",
   "targets": {
@@ -25,6 +25,10 @@
       "app/assets/brain/icons/bump.svg",
       "app/assets/brain/icons/carnivore.svg",
       "app/assets/brain/icons/close-paren.svg",
+      "app/assets/brain/icons/direction_east.svg",
+      "app/assets/brain/icons/direction_north.svg",
+      "app/assets/brain/icons/direction_south.svg",
+      "app/assets/brain/icons/direction_west.svg",
       "app/assets/brain/icons/divide.svg",
       "app/assets/brain/icons/duration.svg",
       "app/assets/brain/icons/eat.svg",
@@ -74,10 +78,13 @@
       "app/assets/brain/icons/toward.svg",
       "app/assets/brain/icons/ts-logo-128.svg",
       "app/assets/brain/icons/turn.svg",
+      "app/assets/brain/icons/turn_around.svg",
+      "app/assets/brain/icons/turn_left.svg",
+      "app/assets/brain/icons/turn_right.svg",
       "app/assets/brain/icons/wander.svg",
       "app/assets/fonts/latinmodern-math.woff2",
-      "app/assets/main-B7QQNwKm.js",
-      "app/assets/main-hru7F0An.css",
+      "app/assets/main-BLGL4qsu.js",
+      "app/assets/main-a5twcPri.css",
       "app/assets/phaser-BG365Q_w.js",
       "app/favicon.png",
       "app/index.html",
@@ -87,8 +94,8 @@
       "app/sitemap.xml"
     ]
   },
-  "buildVersion": "0.1.3",
   "rehearsalAdapter": {
     "path": "rehearsal/adapter.js"
-  }
+  },
+  "buildVersion": "0.1.4"
 }
