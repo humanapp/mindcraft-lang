@@ -6,6 +6,7 @@ import {
   assistantSessionUrl,
   assistantToolManifest,
   createEditedBrainWorkspaces,
+  createPersonActivity,
   createWebSocketConnect,
   useAssistant,
 } from "@mindcraft-lang/assistant-panel";
@@ -216,9 +217,11 @@ function App() {
   const store = useEcosimEnvironment();
   const assistant = useMemo(() => {
     const adapter = createTargetAdapter();
+    const activity = createPersonActivity();
     return {
       manifest: assistantToolManifest(adapter),
-      workspaces: createEditedBrainWorkspaces({ environment: store.env, adapter }),
+      activity,
+      workspaces: createEditedBrainWorkspaces({ environment: store.env, adapter, activity }),
       connect: () => createWebSocketConnect(assistantSessionUrl(store.getAppSettings().assistantServiceUrl))(),
     };
   }, [store]);
@@ -801,6 +804,7 @@ function App() {
       connect={assistant.connect}
       manifest={assistant.manifest}
       workspace={assistant.workspaces.workspaceFor}
+      activity={assistant.activity}
     >
       <DocsSidebarProvider
         registry={docsRegistry}

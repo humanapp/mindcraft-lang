@@ -3,11 +3,46 @@ import type { IBrainDef } from "@mindcraft-lang/core/app";
 import { coreModule, createEntropySeededRng, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
 import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import { childRulePath, RuleSide, rootRulePath } from "@mindcraft-lang/core/brain";
-import type { BrainJson, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type {
+  BrainCommand,
+  BrainEditOrigin,
+  BrainJson,
+  BrainPageDef,
+  BrainRuleDef,
+} from "@mindcraft-lang/core/brain/model";
 import { BrainCommandHistory, BrainDef } from "@mindcraft-lang/core/brain/model";
 import type { TargetAdapter } from "../target/adapter.js";
 import { sessionTileDescriptions } from "./tile-descriptions.js";
 import type { RuleSideName } from "./tool-schemas.js";
+
+/**
+ * The editing surface a tool call reaches the document's command history
+ * through: the commands it runs, the batches it groups them into, the steps it
+ * takes back, and the depth and changes it reads. `BrainCommandHistory`
+ * satisfies it.
+ */
+export interface BrainEditHistory {
+  /** Run `command` and put it on the undo stack, or into the open batch. */
+  executeCommand(command: BrainCommand): void;
+  /** Open a batch: every command run until the batch closes takes one entry, described by `description`. */
+  beginBatch(description: string): void;
+  /** Close the open batch, adding its commands as one entry. Does nothing when no batch is open. */
+  endBatch(): void;
+  /** Close the open batch, undoing every command it gathered and adding no entry. */
+  abortBatch(): void;
+  /** Take the newest entry back. Does nothing while a batch is open or the undo stack is empty. */
+  undo(): void;
+  /** Reapply the entry most recently taken back. Does nothing while a batch is open or nothing was taken back. */
+  redo(): void;
+  /** Number of entries on the undo stack; commands gathered by an open batch are not counted. */
+  undoDepth(): number;
+  /** Drop every entry, leaving nothing to take back or reapply. */
+  clear(): void;
+  /** How the entry `undo` would take back describes itself, or undefined while the undo stack is empty. */
+  getUndoDescription(): string | undefined;
+  /** Call `callback` with the origin of each change to the history. Returns the unsubscribe. */
+  onChange(callback: (origin: BrainEditOrigin) => void): () => void;
+}
 
 /** Where one accepted edit came to rest in the document. */
 export interface LandedEdit {
@@ -34,7 +69,7 @@ export interface LandedEdit {
 export interface AuthoringWorkspace {
   readonly environment: MindcraftEnvironment;
   readonly brainDef: BrainDef;
-  readonly history: BrainCommandHistory;
+  readonly history: BrainEditHistory;
   readonly catalogs: ReadonlyList<ITileCatalog>;
   /** Author description text keyed by tile id; a tile with no documented description is absent. */
   readonly descriptions: ReadonlyMap<string, string>;

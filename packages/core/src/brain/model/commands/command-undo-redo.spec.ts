@@ -25,6 +25,7 @@ import {
   type BrainCommand,
   BrainCommandHistory,
   BrainDef,
+  BrainEditOrigin,
   type BrainPageDef,
   BrainRuleDef,
   DeleteRuleCommand,
@@ -1376,4 +1377,112 @@ describe("commands run against a working copy leave the source brain untouched",
       assert.deepEqual(brainSnapshot(source), sourceSnapshot, "the source brain must be untouched");
     });
   }
+});
+
+describe("BrainCommandHistory change origin", () => {
+  /** The origins the changes made by `work` were reported under, in order. */
+  function originsOf(history: BrainCommandHistory, work: () => void): BrainEditOrigin[] {
+    const seen: BrainEditOrigin[] = [];
+    const stopListening = history.onChange((origin) => {
+      seen.push(origin);
+    });
+    work();
+    stopListening();
+    return seen;
+  }
+
+  test("reports a change made outside any scope as the person's", () => {
+    const history = new BrainCommandHistory();
+    const state = { value: 0 };
+
+    const seen = originsOf(history, () => {
+      history.executeCommand(new CounterCommand(state));
+      history.undo();
+      history.redo();
+      history.recordCommand(new CounterCommand(state));
+      history.clear();
+    });
+
+    assert.deepEqual(seen, Array(5).fill(BrainEditOrigin.Person));
+  });
+
+  test("reports every change a scope makes under that scope's origin", () => {
+    const history = new BrainCommandHistory();
+    const state = { value: 0 };
+
+    const seen = originsOf(history, () => {
+      history.runAs(BrainEditOrigin.Tool, () => {
+        history.beginBatch("edit");
+        history.executeCommand(new CounterCommand(state));
+        history.endBatch();
+        history.undo();
+      });
+    });
+
+    // beginBatch alone notifies nobody: the command joining the batch, the
+    // batch closing, and the undo are the three changes.
+    assert.deepEqual(seen, [BrainEditOrigin.Tool, BrainEditOrigin.Tool, BrainEditOrigin.Tool]);
+  });
+
+  test("an aborted batch reports under the scope that opened it", () => {
+    const history = new BrainCommandHistory();
+    const state = { value: 0 };
+
+    const seen = originsOf(history, () => {
+      history.runAs(BrainEditOrigin.Tool, () => {
+        history.beginBatch("edit");
+        history.executeCommand(new CounterCommand(state));
+        history.abortBatch();
+      });
+    });
+
+    assert.deepEqual(seen, [BrainEditOrigin.Tool, BrainEditOrigin.Tool]);
+    assert.equal(state.value, 0, "the abort took the command back");
+  });
+
+  test("puts the origin that stood before back once a scope ends", () => {
+    const history = new BrainCommandHistory();
+    const state = { value: 0 };
+
+    const seen = originsOf(history, () => {
+      history.runAs(BrainEditOrigin.Editor, () => {
+        history.executeCommand(new CounterCommand(state));
+      });
+      history.executeCommand(new CounterCommand(state));
+    });
+
+    assert.deepEqual(seen, [BrainEditOrigin.Editor, BrainEditOrigin.Person]);
+  });
+
+  test("puts the origin back when the scope's work throws", () => {
+    const history = new BrainCommandHistory();
+    const state = { value: 0 };
+
+    assert.throws(() =>
+      history.runAs(BrainEditOrigin.Tool, () => {
+        throw new Error("edit failed");
+      })
+    );
+
+    const seen = originsOf(history, () => {
+      history.executeCommand(new CounterCommand(state));
+    });
+    assert.deepEqual(seen, [BrainEditOrigin.Person]);
+  });
+
+  test("the innermost scope running is the origin a change carries", () => {
+    const history = new BrainCommandHistory();
+    const state = { value: 0 };
+
+    const seen = originsOf(history, () => {
+      history.runAs(BrainEditOrigin.Tool, () => {
+        history.runAs(BrainEditOrigin.Editor, () => {
+          history.executeCommand(new CounterCommand(state));
+        });
+        history.executeCommand(new CounterCommand(state));
+      });
+    });
+
+    assert.deepEqual(seen, [BrainEditOrigin.Editor, BrainEditOrigin.Tool]);
+  });
 });

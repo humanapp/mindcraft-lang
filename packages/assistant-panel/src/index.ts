@@ -4,6 +4,8 @@ export type { AssistantSurfaceProps } from "./AssistantSurface";
 export { AssistantSurface } from "./AssistantSurface";
 export type { EditedBrainWorkspaces, EditedBrainWorkspacesOptions } from "./app/edited-brain-workspaces";
 export { createEditedBrainWorkspaces, NoEditedBrain, NoEditedBrainCode } from "./app/edited-brain-workspaces";
+export type { PersonActivity, PersonActivityOptions } from "./app/person-activity";
+export { createPersonActivity, personInteractionWindowMs, watchPersonInteraction } from "./app/person-activity";
 export { assistantSessionUrl } from "./app/service-url";
 export { assistantToolManifest, installedTiles } from "./app/tool-manifest";
 export type { AssistantContextValue } from "./assistant-context";

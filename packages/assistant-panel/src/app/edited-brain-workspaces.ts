@@ -1,9 +1,13 @@
-import type { AuthoringWorkspace, TargetAdapter } from "@mindcraft-lang/assistant-bridge";
+import type { AuthoringWorkspace, BrainEditHistory, TargetAdapter } from "@mindcraft-lang/assistant-bridge";
 import { sessionTileDescriptions } from "@mindcraft-lang/assistant-bridge";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { List } from "@mindcraft-lang/core/app";
 import type { ITileCatalog } from "@mindcraft-lang/core/brain";
+import type { BrainCommandHistory } from "@mindcraft-lang/core/brain/model";
+import { BrainEditOrigin } from "@mindcraft-lang/core/brain/model";
 import type { EditedBrain } from "@mindcraft-lang/ui/brain-editor/EditedBrainContext";
+import type { PersonActivity } from "./person-activity";
+import { watchPersonInteraction } from "./person-activity";
 
 /** Why a brain's tool calls found no working copy of it to run against. */
 export const NoEditedBrainCode = {
@@ -37,6 +41,17 @@ export interface EditedBrainWorkspacesOptions {
   readonly environment: MindcraftEnvironment;
   /** The target the workspaces rehearse through. */
   readonly adapter: TargetAdapter;
+  /**
+   * Where the person's own acting on the edited brain is recorded, and read
+   * from to leave the view alone while they are working. Absent leaves every
+   * landed edit bringing its rule into view and records nothing.
+   */
+  readonly activity?: PersonActivity;
+  /**
+   * The document the person's acting on the rules is watched in; read from the
+   * global `document` when absent, and watched by nobody where there is none.
+   */
+  readonly doc?: Document;
 }
 
 /** The workspace accessor, and the seam the standing working copy reaches it through. */
@@ -52,8 +67,33 @@ export interface EditedBrainWorkspaces {
    * every call, so a holder that read it once still reaches the current one.
    */
   readonly workspaceFor: (brainId: string) => AuthoringWorkspace;
-  /** Stand `edited` as the brain being edited, and `undefined` once no editor stands one. */
+  /**
+   * Stand `edited` as the brain being edited, and `undefined` once no editor
+   * stands one. The brain standing is the one whose rules the person's acting
+   * is watched on and whose document changes are recorded.
+   */
   readonly setEditedBrain: (edited: EditedBrain | undefined) => void;
+}
+
+/**
+ * The history a tool call reaches `history` through, with every change it makes
+ * reported as the tool's. Each call is marked on its own, so a change the
+ * person makes while a call is waiting on something is still theirs.
+ */
+function toolEditHistory(history: BrainCommandHistory): BrainEditHistory {
+  const asTool = (work: () => void): void => history.runAs(BrainEditOrigin.Tool, work);
+  return {
+    executeCommand: (command) => asTool(() => history.executeCommand(command)),
+    beginBatch: (description) => asTool(() => history.beginBatch(description)),
+    endBatch: () => asTool(() => history.endBatch()),
+    abortBatch: () => asTool(() => history.abortBatch()),
+    undo: () => asTool(() => history.undo()),
+    redo: () => asTool(() => history.redo()),
+    clear: () => asTool(() => history.clear()),
+    undoDepth: () => history.undoDepth(),
+    getUndoDescription: () => history.getUndoDescription(),
+    onChange: (callback) => history.onChange(callback),
+  };
 }
 
 /**
@@ -62,9 +102,28 @@ export interface EditedBrainWorkspaces {
  * the call.
  */
 export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOptions): EditedBrainWorkspaces {
-  const { environment, adapter } = options;
+  const { environment, adapter, activity } = options;
+  const doc = options.doc ?? (typeof document === "undefined" ? undefined : document);
   const descriptions = sessionTileDescriptions(adapter.tileDocs());
   let edited: EditedBrain | undefined;
+  // What the brain standing right now is being watched through, released as
+  // soon as another brain stands or none does.
+  let stopWatching: (() => void) | undefined;
+
+  const watch = (next: EditedBrain | undefined): void => {
+    stopWatching?.();
+    stopWatching = undefined;
+    if (activity === undefined || next === undefined) return;
+    const brainId = next.brainDef.id();
+    const stopListening = next.history.onChange((origin) => {
+      if (origin === BrainEditOrigin.Person) activity.noteMutation(brainId);
+    });
+    const stopInteractions = doc === undefined ? undefined : watchPersonInteraction(activity, brainId, doc);
+    stopWatching = () => {
+      stopListening();
+      stopInteractions?.();
+    };
+  };
 
   return {
     workspaceFor: (brainId: string): AuthoringWorkspace => {
@@ -74,15 +133,19 @@ export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOption
       return {
         environment,
         brainDef,
-        history,
+        history: toolEditHistory(history),
         catalogs: List.from<ITileCatalog>([...environment.tileCatalogs(), brainDef.catalog()]),
         descriptions,
         adapter,
-        onEditLanded: reveal,
+        onEditLanded: (landed) => {
+          if (activity?.isInteracting(brainId) === true) return;
+          reveal(landed);
+        },
       };
     },
     setEditedBrain: (next: EditedBrain | undefined): void => {
       edited = next;
+      watch(next);
     },
   };
 }

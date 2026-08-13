@@ -7,7 +7,12 @@ import type {
   RelayToolManifest,
   RelayToolResultBatch,
 } from "@mindcraft-lang/assistant-relay";
-import { ASSISTANT_RELAY_PROTOCOL_VERSION, ConversationTurnFailureCode } from "@mindcraft-lang/assistant-relay";
+import {
+  ASSISTANT_RELAY_PROTOCOL_VERSION,
+  ConversationTurnFailureCode,
+  RelayTakeoverCode,
+} from "@mindcraft-lang/assistant-relay";
+import type { PersonActivity } from "../app/person-activity";
 import type { ConversationStore, ConversationUpdate } from "../conversation/store";
 import { emptyConversationStore, recordFor, withActiveBrain, withUpdate } from "../conversation/store";
 import type { AssistantChannel, AssistantConnect } from "./channel";
@@ -62,8 +67,14 @@ export interface AssistantMachineOptions {
    * leaves the turn running.
    */
   readonly workspace: (brainId: string) => AuthoringWorkspace;
-  /** Consulted before each call in a batch; every call runs when absent. */
+  /** Consulted before each call in a batch once the person has not taken the turn over; every call runs when absent. */
   readonly mediate?: ToolCallMediator;
+  /**
+   * Where the person's own changes to a brain's document are recorded. A change
+   * made since a turn started answers that turn's next batch with a takeover.
+   * Absent leaves every batch to {@link mediate}.
+   */
+  readonly activity?: PersonActivity;
   /** Where the page stands for the quiet reopen loop; read from the document and the window when absent. */
   readonly presence?: SessionPresence;
   /** Entropy in [0, 1), drawn once per steady reopen delay for its spread; `Math.random` when absent. */
@@ -113,6 +124,8 @@ export class AssistantMachine {
   private readonly refused = new Set<string>();
   /** Brains whose running turn was asked to stop while it was still waiting for a session. */
   private readonly stopRequested = new Set<string>();
+  /** What the person had changed of a brain's document when its running turn started. */
+  private readonly changesAtTurnStart = new Map<string, number>();
   private readonly listeners = new Set<() => void>();
   private readonly presence: SessionPresence;
   private readonly random: () => number;
@@ -166,6 +179,7 @@ export class AssistantMachine {
     const brainId = store.activeBrainId;
     if (brainId === undefined) return;
     if (sessionStatus(sessions, brainId) === AssistantStatus.TurnActive) return;
+    this.changesAtTurnStart.set(brainId, this.options.activity?.mutations(brainId) ?? 0);
     this.commit({
       sessions: withSessionStatus(sessions, brainId, AssistantStatus.TurnActive),
       store: withUpdate(store, brainId, { kind: "user", text }),
@@ -210,7 +224,25 @@ export class AssistantMachine {
     for (const brainId of [...this.reopening.keys()]) this.standDownReopen(brainId);
     this.refused.clear();
     this.stopRequested.clear();
+    this.changesAtTurnStart.clear();
     this.commit({ sessions: emptySessions() });
+  }
+
+  /**
+   * What answers `brainId`'s running turn's calls without running them: a
+   * takeover for every call once the person has changed the document since the
+   * turn started, and whatever the host's own mediation says otherwise.
+   */
+  private mediatorFor(brainId: string): ToolCallMediator | undefined {
+    const { activity, mediate } = this.options;
+    if (activity === undefined) return mediate;
+    const changed = this.changesAtTurnStart.get(brainId) ?? 0;
+    return (request) => {
+      if (activity.mutations(brainId) > changed) {
+        return { kind: "takeover", code: RelayTakeoverCode.DocumentEdited };
+      }
+      return mediate?.(request);
+    };
   }
 
   private commit(change: Partial<Omit<AssistantMachineState, "status">>): void {
@@ -249,6 +281,7 @@ export class AssistantMachine {
    */
   private finish(brainId: string, ending: ConversationTurnEnding): void {
     this.stopRequested.delete(brainId);
+    this.changesAtTurnStart.delete(brainId);
     this.record(brainId, { kind: "ending", ending });
     const held = this.channels.has(brainId);
     this.commit({
@@ -497,7 +530,7 @@ export class AssistantMachine {
         case "turn:toolCalls": {
           let served: RelayToolResultBatch;
           try {
-            served = await serveToolCalls(this.options.workspace(brainId), message, this.options.mediate);
+            served = await serveToolCalls(this.options.workspace(brainId), message, this.mediatorFor(brainId));
           } catch {
             const unserved = unservedToolResults(message);
             this.recordBatch(brainId, message, unserved);

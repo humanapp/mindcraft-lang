@@ -87,6 +87,8 @@ export {
   hasRuleInClipboard,
   onClipboardChanged,
 } from "./rule-clipboard";
+// What marks the region the rules lay out in
+export { kBrainRulesAttribute } from "./rules-region";
 // Sentence projection consumption
 export type { SentenceSegmentIdentity } from "./sentence-reflection";
 export { changedSentenceSegments, sentenceSegmentIdentities } from "./sentence-reflection";

@@ -10,15 +10,18 @@ import type {
   ConversationTurnEnding,
   RelayConnect,
   RelayToolManifest,
+  RelayToolOutcome,
 } from "@mindcraft-lang/assistant-relay";
 import {
   CONVERSATION_RECORD_VERSION,
   ConversationTurnFailureCode,
   RelayDeclineCode,
   RelayRefusalCode,
+  RelayTakeoverCode,
 } from "@mindcraft-lang/assistant-relay";
 import type { RelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
 import { createRelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
+import { createPersonActivity } from "../app/person-activity";
 import { recordFor } from "../conversation/store";
 import type { ScriptedCall, ScriptedService } from "../testing/scripted-service";
 import { runScriptedService } from "../testing/scripted-service";
@@ -103,6 +106,8 @@ interface HarnessOptions {
   readonly unreachableUntil?: number;
   /** Never answers an attempt to open a session, leaving the open in flight forever. */
   readonly unanswered?: boolean;
+  /** Where the person's own changes to a brain's document are recorded; none are recorded when absent. */
+  readonly activity?: AssistantMachineOptions["activity"];
   /** Where the page stands for the machine's reopen loop; in view and never changing when absent. */
   readonly presence?: AssistantMachineOptions["presence"];
   /** The entropy the machine draws each steady reopen delay's spread from. */
@@ -169,6 +174,7 @@ function harness(script: ScriptedService | ((at: number) => ScriptedService), op
       manifest,
       workspace,
       ...(options.mediate ? { mediate: options.mediate } : {}),
+      ...(options.activity ? { activity: options.activity } : {}),
       ...(options.presence ? { presence: options.presence } : {}),
       ...(options.random ? { random: options.random } : {}),
     }),
@@ -1607,5 +1613,129 @@ describe("conversations of more than one brain", () => {
     assert.ok(turn, "the turn stands in the record of the brain it was sent for");
     assert.equal(saidIn(turn), "after the switch");
     assert.equal(callsIn(turn).length, 1);
+  });
+});
+
+describe("a turn the person takes over", () => {
+  /** The one call a taken-over turn's batch asks for. */
+  const batch = { turns: [{ steps: [{ kind: "toolCalls", calls: [firstTurnCalls.catalog] }] }] } as const;
+
+  /** The outcome `turn` answered its one call with. */
+  function onlyOutcome(turn: ConversationEntry): RelayToolOutcome {
+    const calls = callsIn(turn);
+    assert.equal(calls.length, 1, "the turn answered exactly one call");
+    return calls[0]!.outcome;
+  }
+
+  test("answers every call of a batch with a takeover once the person changed the document mid-turn", async () => {
+    const activity = createPersonActivity();
+    const stand = harness(batch, { activity });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    activity.noteMutation("brain-a");
+    await settled(stand.machine);
+    await stand.served;
+
+    const turn = conversation(stand.machine, "brain-a").entries[1]!;
+    assert.deepEqual(onlyOutcome(turn), { kind: "takeover", code: RelayTakeoverCode.DocumentEdited });
+    assert.deepEqual(endingOf(turn), { kind: "end", code: "stopped" });
+    assert.equal(stand.machine.getState().status, AssistantStatus.Ready, "the session stays standing");
+  });
+
+  test("serves the batch when the person's change came before the turn started", async () => {
+    const activity = createPersonActivity();
+    const stand = harness(batch, { activity });
+    stand.machine.setActiveBrain("brain-a");
+
+    activity.noteMutation("brain-a");
+    stand.machine.send("make it hide");
+    await settled(stand.machine);
+    await stand.served;
+
+    const turn = conversation(stand.machine, "brain-a").entries[1]!;
+    assert.equal(onlyOutcome(turn).kind, "ok");
+    assert.deepEqual(endingOf(turn), { kind: "end", code: "complete" });
+  });
+
+  test("takes the turn over in place of asking the host's own mediation", async () => {
+    const activity = createPersonActivity();
+    const consulted = mock.fn(() => ({ kind: "declined", code: RelayDeclineCode.UserStopped }) as const);
+    const stand = harness(batch, { activity, mediate: consulted });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    activity.noteMutation("brain-a");
+    await settled(stand.machine);
+    await stand.served;
+
+    const turn = conversation(stand.machine, "brain-a").entries[1]!;
+    assert.deepEqual(onlyOutcome(turn), { kind: "takeover", code: RelayTakeoverCode.DocumentEdited });
+    assert.equal(consulted.mock.callCount(), 0);
+  });
+
+  test("leaves the host's own mediation to answer while the person has changed nothing", async () => {
+    const activity = createPersonActivity();
+    const stand = harness(batch, {
+      activity,
+      mediate: () => ({ kind: "declined", code: RelayDeclineCode.UserStopped }),
+    });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await settled(stand.machine);
+    await stand.served;
+
+    const turn = conversation(stand.machine, "brain-a").entries[1]!;
+    assert.deepEqual(onlyOutcome(turn), { kind: "declined", code: RelayDeclineCode.UserStopped });
+  });
+
+  test("leaves a turn of another brain alone", async () => {
+    const activity = createPersonActivity();
+    const stand = harness(batch, { activity });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    activity.noteMutation("brain-b");
+    await settled(stand.machine);
+    await stand.served;
+
+    const turn = conversation(stand.machine, "brain-a").entries[1]!;
+    assert.equal(onlyOutcome(turn).kind, "ok");
+  });
+
+  test("takes the next turn on its own terms, with the taken-over turn still in the record", async () => {
+    const activity = createPersonActivity();
+    const stand = harness(
+      {
+        turns: [
+          { steps: [{ kind: "toolCalls", calls: [firstTurnCalls.catalog] }] },
+          {
+            steps: [
+              { kind: "toolCalls", calls: [firstTurnCalls.catalog] },
+              { kind: "narration", text: "and again" },
+            ],
+          },
+        ],
+      },
+      { activity }
+    );
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    activity.noteMutation("brain-a");
+    await settled(stand.machine);
+
+    stand.machine.send("carry on");
+    await settled(stand.machine);
+    await stand.served;
+
+    const entries = conversation(stand.machine, "brain-a").entries;
+    assert.deepEqual(
+      entries.map((entry) => entry.kind),
+      ["user", "assistant", "user", "assistant"]
+    );
+    assert.equal(onlyOutcome(entries[3]!).kind, "ok");
+    assert.deepEqual(endingOf(entries[3]!), { kind: "end", code: "complete" });
   });
 });

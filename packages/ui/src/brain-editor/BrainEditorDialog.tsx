@@ -4,6 +4,7 @@ import {
   AddRuleCommand,
   BrainCommandHistory,
   BrainDef,
+  BrainEditOrigin,
   type BrainPageDef,
   brainJsonFromPlain,
   deserializePersistedBrainJson,
@@ -243,12 +244,16 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setBrainDef(newBrainDef);
       setCurrentPageNumber(1);
       setTotalPageCount(newBrainDef.pages().size());
-      commandHistory.clear(); // Clear history when opening dialog
-      // A brain holding no rule at all is given one to start from, through the
-      // history, so it can be taken straight back.
-      if (brainHoldsNoRule(newBrainDef)) {
-        commandHistory.executeCommand(new AddRuleCommand(newBrainDef.pages().get(0) as BrainPageDef));
-      }
+      // Standing the working copy up is the editor's own change, not the
+      // person's: it clears the history and, for a brain holding no rule at
+      // all, gives it one to start from through the history so it can be taken
+      // straight back.
+      commandHistory.runAs(BrainEditOrigin.Editor, () => {
+        commandHistory.clear();
+        if (brainHoldsNoRule(newBrainDef)) {
+          commandHistory.executeCommand(new AddRuleCommand(newBrainDef.pages().get(0) as BrainPageDef));
+        }
+      });
       // Everything on the history from here on is the user's own work.
       setOpeningDepth(commandHistory.undoDepth());
       setBrainReplaced(false);
@@ -257,7 +262,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     } else if (!isOpen) {
       // Clear working copy when dialog closes
       setBrainDef(undefined);
-      commandHistory.clear();
+      commandHistory.runAs(BrainEditOrigin.Editor, () => commandHistory.clear());
       setOpeningDepth(0);
       setBrainReplaced(false);
       setIsConfirmingDiscard(false);

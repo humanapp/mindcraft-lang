@@ -49,22 +49,59 @@ class BatchedCommand implements BrainCommand {
   }
 }
 
+/** Who a change to a {@link BrainCommandHistory} came from. */
+export const BrainEditOrigin = {
+  /** The person editing, through a control they operated themselves. */
+  Person: "person",
+  /** A tool call, run against the authoring workspace on the person's behalf. */
+  Tool: "tool",
+  /** The editor itself, standing a working copy up or taking it down. */
+  Editor: "editor",
+} as const;
+
+/** Union of all {@link BrainEditOrigin} values. */
+export type BrainEditOrigin = (typeof BrainEditOrigin)[keyof typeof BrainEditOrigin];
+
 /**
  * Manages the undo/redo stack for brain editing commands.
  *
  * Commands normally take one entry each. While a batch opened with
  * {@link beginBatch} stands open, every command run joins a single entry
  * instead, and an operation made of several commands undoes and redoes as one.
+ *
+ * Every change carries the origin it was run under, which
+ * {@link BrainCommandHistory.onChange} listeners are told. A change run outside
+ * any {@link BrainCommandHistory.runAs} scope is the person's.
  */
 export class BrainCommandHistory {
   private readonly undoStack = new List<BrainCommand>();
   private readonly redoStack = new List<BrainCommand>();
-  private readonly listeners = new List<() => void>();
+  private readonly listeners = new List<(origin: BrainEditOrigin) => void>();
   // The commands gathered by the open batch, or undefined while none is open.
   private batch?: List<BrainCommand>;
   private batchDescription = "";
+  // The origin every change is reported under while no runAs scope stands.
+  private origin: BrainEditOrigin = BrainEditOrigin.Person;
 
   constructor(private maxHistorySize: number = 100) {}
+
+  /**
+   * Run `work` with every change it makes reported under `origin`, and put the
+   * origin that stood before back afterwards, however `work` ends. Scopes
+   * nest: the innermost one running is the origin a change carries.
+   *
+   * `work` must be synchronous. An origin held across an `await` also covers
+   * whatever the person does while the wait runs.
+   */
+  runAs(origin: BrainEditOrigin, work: () => void): void {
+    const stood = this.origin;
+    this.origin = origin;
+    try {
+      work();
+    } finally {
+      this.origin = stood;
+    }
+  }
 
   /**
    * Execute a command and add it to the undo stack, or to the open batch when
@@ -230,13 +267,13 @@ export class BrainCommandHistory {
   }
 
   /**
-   * Register `callback` to be notified when the history changes. Several
-   * callbacks may be registered at once, and each change notifies them in the
-   * order they registered. Call the returned function to stop notifying this
-   * callback; it leaves every other registration standing, and calling it twice
-   * does nothing further.
+   * Register `callback` to be notified when the history changes, with the
+   * origin the change was run under. Several callbacks may be registered at
+   * once, and each change notifies them in the order they registered. Call the
+   * returned function to stop notifying this callback; it leaves every other
+   * registration standing, and calling it twice does nothing further.
    */
-  onChange(callback: () => void): () => void {
+  onChange(callback: (origin: BrainEditOrigin) => void): () => void {
     this.listeners.push(callback);
     let registered = true;
     return () => {
@@ -249,7 +286,7 @@ export class BrainCommandHistory {
 
   private notifyChange(): void {
     for (let i = 0; i < this.listeners.size(); i++) {
-      this.listeners.get(i)();
+      this.listeners.get(i)(this.origin);
     }
   }
 

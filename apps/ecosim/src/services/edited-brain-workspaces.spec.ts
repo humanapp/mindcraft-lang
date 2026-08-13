@@ -10,12 +10,18 @@ import { describe, test } from "node:test";
 import type { AuthoringWorkspace, TargetAdapter } from "@mindcraft-lang/assistant-bridge";
 import { serveToolCalls } from "@mindcraft-lang/assistant-bridge/relay";
 import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
-import type { EditedBrainWorkspaces } from "@mindcraft-lang/assistant-panel";
-import { createEditedBrainWorkspaces, NoEditedBrain, NoEditedBrainCode } from "@mindcraft-lang/assistant-panel";
+import type { EditedBrainWorkspaces, PersonActivity } from "@mindcraft-lang/assistant-panel";
+import {
+  createEditedBrainWorkspaces,
+  createPersonActivity,
+  NoEditedBrain,
+  NoEditedBrainCode,
+  personInteractionWindowMs,
+} from "@mindcraft-lang/assistant-panel";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainCommandHistory, BrainDef } from "@mindcraft-lang/core/brain/model";
+import { AddRuleCommand, BrainCommandHistory, BrainDef, BrainEditOrigin } from "@mindcraft-lang/core/brain/model";
 import type { EditedBrain, EditedBrainPlace } from "@mindcraft-lang/ui";
 import { createEcosimModule } from "@/brain/index";
 import { TileIds } from "@/brain/tileids";
@@ -51,13 +57,27 @@ interface AppStand {
   readonly environment: MindcraftEnvironment;
   readonly adapter: TargetAdapter;
   readonly workspaces: EditedBrainWorkspaces;
+  /** Where the person's own acting is recorded, over a clock the test moves itself. */
+  readonly activity: PersonActivity;
+  /** Move the clock the activity reads on by `ms`. */
+  readonly pass: (ms: number) => void;
 }
 
 /** Stand an environment carrying this app's module, with the target adapter it authors for. */
 function appStand(): AppStand {
   const environment = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
   const adapter = createTargetAdapter(CONTENT);
-  return { environment, adapter, workspaces: createEditedBrainWorkspaces({ environment, adapter }) };
+  let at = 0;
+  const activity = createPersonActivity({ now: () => at });
+  return {
+    environment,
+    adapter,
+    activity,
+    pass: (ms: number) => {
+      at += ms;
+    },
+    workspaces: createEditedBrainWorkspaces({ environment, adapter, activity }),
+  };
 }
 
 /** A brain of this app's, as the project holds it. */
@@ -127,9 +147,12 @@ describe("the workspace a brain's tool calls run against", () => {
     const workspace = stand.workspaces.workspaceFor(source.id());
 
     assert.equal(workspace.brainDef, edited.brainDef);
-    assert.equal(workspace.history, edited.history);
     assert.equal(workspace.environment, stand.environment);
     assert.equal(workspace.adapter, stand.adapter);
+
+    const page = edited.brainDef.pages().get(0) as BrainPageDef;
+    workspace.history.executeCommand(new AddRuleCommand(page));
+    assert.equal(edited.history.undoDepth(), 1, "the workspace runs commands through the editor's own history");
   });
 
   test("follows the editor from one brain to the next", () => {
@@ -213,5 +236,108 @@ describe("a turn's edits served over the standing working copy", () => {
       () => stand.workspaces.workspaceFor(source.id()),
       (error: unknown) => error instanceof NoEditedBrain && error.code === NoEditedBrainCode.NoEditorOpen
     );
+  });
+});
+
+describe("what the person's own hands are recorded as", () => {
+  test("a turn's edits record nothing, whatever they do to the document", async () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+    const edited = editorOpenedOn(stand, source);
+    stand.workspaces.setEditedBrain(edited);
+
+    const served = await serveAuthoring(stand.workspaces.workspaceFor(source.id()));
+
+    assert.deepEqual(
+      served.results.map((result) => result.outcome.kind),
+      ["ok", "ok"],
+      "the edits really ran"
+    );
+    assert.ok(edited.history.undoDepth() > 0, "the edits really reached the history");
+    assert.equal(stand.activity.mutations(source.id()), 0);
+  });
+
+  test("a command the editor runs outside a turn is the person's", () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+    const edited = editorOpenedOn(stand, source);
+    stand.workspaces.setEditedBrain(edited);
+
+    edited.history.executeCommand(new AddRuleCommand(edited.brainDef.pages().get(0) as BrainPageDef));
+
+    assert.equal(stand.activity.mutations(source.id()), 1);
+  });
+
+  test("taking a turn's edit back is the person's", async () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+    const edited = editorOpenedOn(stand, source);
+    stand.workspaces.setEditedBrain(edited);
+    await serveAuthoring(stand.workspaces.workspaceFor(source.id()));
+    assert.equal(stand.activity.mutations(source.id()), 0);
+
+    edited.history.undo();
+
+    assert.equal(stand.activity.mutations(source.id()), 1);
+  });
+
+  test("a change the editor marks as its own records nothing", () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+    const edited = editorOpenedOn(stand, source);
+    stand.workspaces.setEditedBrain(edited);
+
+    edited.history.runAs(BrainEditOrigin.Editor, () => {
+      edited.history.executeCommand(new AddRuleCommand(edited.brainDef.pages().get(0) as BrainPageDef));
+      edited.history.clear();
+    });
+
+    assert.equal(stand.activity.mutations(source.id()), 0);
+  });
+
+  test("stops recording the brain the editor has moved off", () => {
+    const stand = appStand();
+    const herbivore = projectBrain(stand, "herbivore");
+    const edited = editorOpenedOn(stand, herbivore);
+    stand.workspaces.setEditedBrain(edited);
+    stand.workspaces.setEditedBrain(undefined);
+
+    edited.history.executeCommand(new AddRuleCommand(edited.brainDef.pages().get(0) as BrainPageDef));
+
+    assert.equal(stand.activity.mutations(herbivore.id()), 0);
+  });
+});
+
+describe("bringing a landed edit into view while the person is working", () => {
+  /** The places a turn's edits over `stand` were brought into view at. */
+  async function revealedBy(stand: AppStand, source: BrainDef): Promise<EditedBrainPlace[]> {
+    const revealed: EditedBrainPlace[] = [];
+    stand.workspaces.setEditedBrain(editorOpenedOn(stand, source, (place) => revealed.push(place)));
+    await serveAuthoring(stand.workspaces.workspaceFor(source.id()));
+    return revealed;
+  }
+
+  test("leaves the view alone while the person has just touched the rules", async () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+    stand.activity.noteInteraction(source.id());
+
+    assert.deepEqual(await revealedBy(stand, source), []);
+  });
+
+  test("brings the rule into view again once the window has run out", async () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+    stand.activity.noteInteraction(source.id());
+    stand.pass(personInteractionWindowMs);
+
+    assert.equal((await revealedBy(stand, source)).length, authoringCalls.length);
+  });
+
+  test("brings the rule into view when the person has touched nothing", async () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+
+    assert.equal((await revealedBy(stand, source)).length, authoringCalls.length);
   });
 });
