@@ -55,6 +55,14 @@ export interface DocsEntries {
 }
 
 /**
+ * Placeholder a tile doc's markdown may use to reference its own tile id, so
+ * shared content such as brain fences need not repeat the id it is registered
+ * under. Substituted with the entry's tile id at registration.
+ */
+// biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholder is the literal text doc authors write
+export const kTileIdPlaceholder = "${tileId}";
+
+/**
  * The docs registry consumed by the sidebar. Holds all contributed entries
  * from core and the app. The sidebar never knows where an entry came from.
  */
@@ -67,7 +75,10 @@ export class DocsRegistry {
   register(entries: DocsEntries): void {
     if (entries.tiles) {
       for (const t of entries.tiles) {
-        this._tiles.set(t.tileId, t);
+        const content = t.content.includes(kTileIdPlaceholder)
+          ? t.content.split(kTileIdPlaceholder).join(t.tileId)
+          : t.content;
+        this._tiles.set(t.tileId, { ...t, content });
       }
     }
     if (entries.patterns) {
