@@ -222,7 +222,14 @@ const simulateInputSchema = z.object({
       inputs: z.array(scenarioInputSchema).optional().describe("Percepts to script into the run; omit to script none."),
     })
     .describe("Staged world description; the run is a bounded, deterministic rehearsal."),
-  thinks: z.number().int().min(1).max(5000).describe("Number of fixed-step thinks to run."),
+  thinks: z
+    .number()
+    .int()
+    .min(1)
+    .max(5000)
+    .describe(
+      "Number of fixed-step thinks to run; an action that takes time to play out needs many of them to finish, so size the run to what the brain does."
+    ),
 });
 
 /** Every tool input schema, keyed by tool name. */
@@ -258,7 +265,7 @@ const toolDescriptions: Record<ToolName, string> = {
   read_project:
     "Read the current brain: its pages, rules, and the tiles on each rule side. Call at the start of a request and again whenever the document may have changed under you.",
   simulate:
-    "Run the compiled brain in a bounded rehearsal and return a summary of what happened: which rules fired, what their WHEN evaluated to, which actions dispatched, and how the state of the thing you are programming changed as it ran. Call before claiming the brain does something.",
+    "Run the compiled brain in a bounded rehearsal and return a summary of what happened: which rules fired, what their WHEN evaluated to, which actions dispatched, and how the state of the thing you are programming changed as it ran. Call before claiming the brain does something. A call the summary reports as pending had not finished when the run ended, so run again with more thinks before concluding anything about the brain from what did not appear.",
   suggest_tiles:
     "Ask the editor which tiles are legal at one position. Insert mode answers what may go in at a spot; call before placing a tile you are not certain of, and ask again after each placement to see what may follow. Every tile it offers can be placed there, but one that leaves the expression unfinished only lands in a placeTiles run that finishes it. Replace mode answers what may stand in for a tile already there; that is the move for a tile that is wrong rather than missing, so ask in replace mode first and then swap it with a propose_edit replaceTile.",
 };
