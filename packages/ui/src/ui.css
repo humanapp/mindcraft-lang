@@ -51,6 +51,9 @@
   --color-ring: oklch(9% 0 0);
   /* Brain editor canvas: the recessed page "desk" and the rule-row cards that
      sit on it. Rule stops read above the desk stops so a rule reads as a card.
+     --color-brain-panel fills the candidate offering, a panel standing on the
+     desk holding cards of its own, and reads a step above the rule stops so it
+     is legible as their container.
      --color-brain-armed is the ring drawn around the tile the tile picker is
      armed on; it must stay clear of every hue a tile fill can take. */
   --color-brain-desk-from: #191338;
@@ -58,6 +61,7 @@
   --color-brain-desk-glow: rgba(139, 108, 243, 0.14);
   --color-brain-rule-from: #16143a;
   --color-brain-rule-to: #8b6cf3;
+  --color-brain-panel: #241c4d;
   --color-brain-armed: #eef1f5;
   /* The editor's accent, worn by FILLS AND RINGS: the ring around the band the
      keyboard is walking, the filter box's focus border, the pivot's current

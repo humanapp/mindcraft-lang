@@ -91,6 +91,8 @@
   --color-brain-desk-glow: transparent;
   --color-brain-rule-from: oklch(19% 0.045 262);
   --color-brain-rule-to: oklch(19% 0.045 262);
+  /* Candidate offering: a raised tray, clear of both the desk and its own cards. */
+  --color-brain-panel: oklch(32% 0.05 262);
   --color-brain-armed: oklch(92% 0.012 262);
   /* Editor accent, on the desk and as the ink read on top of it: the app's
      blue, at the weight each role is read on the desk. */

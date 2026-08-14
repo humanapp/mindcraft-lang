@@ -32,7 +32,6 @@ import { adjustColor, readableInk, saturateColor } from "../lib/color";
 import type { ArmedTileTarget } from "./ArmedTargetContext";
 import { resolveTypeDisplayName } from "./action-arg-tiles";
 import { useBrainEditorConfig, useLocalizer } from "./BrainEditorContext";
-import { kBrainDeskFill } from "./brain-desk";
 import {
   type CandidateEntry,
   decideStripFocusTarget,
@@ -103,8 +102,9 @@ const kStripFilterAttribute = "data-strip-filter";
 /** The elements the strip stands, as one selector. */
 const kStripElements = `[${kStripFilterAttribute}],[${kStripPanelAttribute}],[${kStripPopupAttribute}]`;
 
+/** Surface the offering panel stands on, a step above the rule cards it holds. */
 const stripPanelStyle = {
-  background: kBrainDeskFill,
+  background: "var(--color-brain-panel)",
   boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.45)",
 };
 
