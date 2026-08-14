@@ -221,7 +221,7 @@ function App() {
     return {
       manifest: assistantToolManifest(adapter),
       activity,
-      workspaces: createEditedBrainWorkspaces({ environment: store.env, adapter }),
+      workspaces: createEditedBrainWorkspaces({ environment: store.env, adapter, activity }),
       connect: () => createWebSocketConnect(assistantSessionUrl(store.getAppSettings().assistantServiceUrl))(),
     };
   }, [store]);
@@ -804,6 +804,7 @@ function App() {
       connect={assistant.connect}
       manifest={assistant.manifest}
       workspace={assistant.workspaces.workspaceFor}
+      activity={assistant.activity}
     >
       <DocsSidebarProvider
         registry={docsRegistry}
