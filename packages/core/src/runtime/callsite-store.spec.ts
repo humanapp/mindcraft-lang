@@ -66,6 +66,13 @@ describe("createCallsiteStore -- state slots", () => {
     assert.deepEqual(store.getSlot(30, 99), NIL_VALUE);
   });
 
+  test("getSlot reads a never-written slot of an allocated callsite as nil", () => {
+    const store = createCallsiteStore();
+    store.ensure(70);
+    assert.deepEqual(store.getSlot(70, 0), NIL_VALUE);
+    assert.deepEqual(store.getSlot(70, 5), NIL_VALUE);
+  });
+
   test("getSlot on an unallocated callsite does not allocate", () => {
     const store = createCallsiteStore();
     assert.deepEqual(store.getSlot(40, 0), NIL_VALUE);

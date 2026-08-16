@@ -103,8 +103,8 @@ const kSlowlyMultiplier = 1; // each Slowly decreases speed by 100% of base (50%
 
 /** Compute speed multiplier from quickly/slowly repeat counts. */
 function getSpeedMultiplier(args: ReadonlyList<Value>): number {
-  const quicklyCount = extractNumberValue(args.get(kQuicklySlotId)) ?? 0;
-  const slowlyCount = extractNumberValue(args.get(kSlowlySlotId)) ?? 0;
+  const quicklyCount = extractNumberValue(args.at(kQuicklySlotId)) ?? 0;
+  const slowlyCount = extractNumberValue(args.at(kSlowlySlotId)) ?? 0;
   if (quicklyCount > 0) return 1 + quicklyCount * kQuicklyMultiplier; // 1.5x, 2x, 2.5x
   if (slowlyCount > 0) return 1 / (1 + slowlyCount * kSlowlyMultiplier); // ~0.5x, 0.33x, 0.25x
   return 1;
@@ -112,7 +112,7 @@ function getSpeedMultiplier(args: ReadonlyList<Value>): number {
 
 /** Extract priority weight (default 0.5). */
 function getWeight(args: ReadonlyList<Value>): number {
-  return extractNumberValue(args.get(kPrioritySlotId)) ?? 0.5;
+  return extractNumberValue(args.at(kPrioritySlotId)) ?? 0.5;
 }
 
 // ---------------------------------------------------------------------------

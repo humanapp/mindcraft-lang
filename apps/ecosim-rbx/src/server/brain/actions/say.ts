@@ -44,11 +44,11 @@ function execSay(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
     let text: string | undefined;
     const hasStringArg = hasArg(args, kAnonymousStringSlotId);
     if (hasStringArg) {
-      const stringValue = args.get(kAnonymousStringSlotId);
+      const stringValue = args.at(kAnonymousStringSlotId);
       text = extractStringValue(stringValue);
     }
 
-    const durationSecs = extractNumberValue(args.get(kDurationSlotId));
+    const durationSecs = extractNumberValue(args.at(kDurationSlotId));
     selfActor.displayString(text, durationSecs);
   } catch (error) {
     logger.error("Error executing Say actuator:", error);

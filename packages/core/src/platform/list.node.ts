@@ -1,7 +1,10 @@
 export interface ReadonlyList<T> {
   size(): number;
   isEmpty(): boolean;
+  /** Returns the element at `i`. Faults when `i < 0` or `i >= size()`. */
   get(i: number): T;
+  /** Returns the element at `i`, or `undefined` when `i < 0` or `i >= size()`. */
+  at(i: number): T | undefined;
   forEach(fn: (v: T, i: number) => void): void;
   map<U>(fn: (v: T, i: number) => U): ReadonlyList<U>;
   filter(fn: (v: T, i: number) => boolean): ReadonlyList<T>;
@@ -37,8 +40,15 @@ export class List<T> implements ReadonlyList<T> {
   isEmpty() {
     return this.xs.length === 0;
   }
-  get(i: number) {
+  get(i: number): T {
+    if (i < 0 || i >= this.xs.length) {
+      throw new Error(`List index out of range: ${i} (size ${this.xs.length})`);
+    }
     return this.xs[i]!;
+  }
+  at(i: number): T | undefined {
+    if (i < 0 || i >= this.xs.length) return undefined;
+    return this.xs[i];
   }
   set(i: number, v: T) {
     this.xs[i] = v;
@@ -59,7 +69,7 @@ export class List<T> implements ReadonlyList<T> {
   insert(i: number, v: T) {
     this.xs.splice(i, 0, v);
   }
-  remove(i: number) {
+  remove(i: number): T | undefined {
     return this.xs.splice(i, 1)[0];
   }
   clear() {
@@ -155,8 +165,13 @@ class Sublist<T> implements ReadonlyList<T> {
 
   get(i: number): T {
     if (i < 0 || i >= this._count) {
-      throw new Error(`Sublist index out of range: ${i}`);
+      throw new Error(`Sublist index out of range: ${i} (size ${this._count})`);
     }
+    return this._list.get(this._start + i);
+  }
+
+  at(i: number): T | undefined {
+    if (i < 0 || i >= this._count) return undefined;
     return this._list.get(this._start + i);
   }
 

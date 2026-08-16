@@ -838,7 +838,7 @@ export class TypeRegistry implements ITypeRegistry {
         compatible = false;
         return;
       }
-      const sourceField = sourceStruct.fields.get(sourceFieldIndex);
+      const sourceField = sourceStruct.fields.at(sourceFieldIndex);
       if (!sourceField) {
         compatible = false;
         return;

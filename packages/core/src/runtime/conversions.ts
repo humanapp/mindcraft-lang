@@ -191,7 +191,7 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices)
   }
 
   const enumDef = enumType as EnumTypeDef;
-  const firstSymbol = enumDef.symbols.get(0);
+  const firstSymbol = enumDef.symbols.at(0);
   if (!firstSymbol) {
     return;
   }

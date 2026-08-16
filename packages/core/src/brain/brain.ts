@@ -84,12 +84,12 @@ export class Brain implements IBrain {
 
     this.unsubs.push(
       this.runtime.events().on("page_activated", ({ pageIndex }) => {
-        this.pages.get(pageIndex)?.activate();
+        this.pages.at(pageIndex)?.activate();
       })
     );
     this.unsubs.push(
       this.runtime.events().on("page_deactivated", ({ pageIndex }) => {
-        this.pages.get(pageIndex)?.deactivate();
+        this.pages.at(pageIndex)?.deactivate();
       })
     );
   }

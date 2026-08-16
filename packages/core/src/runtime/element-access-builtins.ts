@@ -34,7 +34,7 @@ function parseArrayIndexString(key: string): number | undefined {
 }
 
 function readListIndex(list: ListValue, index: number): Value {
-  return list.v.get(index) ?? NIL_VALUE;
+  return list.v.at(index) ?? NIL_VALUE;
 }
 
 function readStringIndex(source: string, index: number): Value {
@@ -89,11 +89,11 @@ export function registerElementAccessBuiltins(services: BrainServices) {
     false,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
-        const list = args.get(0);
+        const list = args.at(0);
         if (!list || list.t !== NativeType.List) {
           return NIL_VALUE;
         }
-        return listGetJs(list as ListValue, args.get(1));
+        return listGetJs(list as ListValue, args.at(1));
       },
     },
     elementAccessCallDef
@@ -105,11 +105,11 @@ export function registerElementAccessBuiltins(services: BrainServices) {
     false,
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
-        const source = args.get(0);
+        const source = args.at(0);
         if (!source || source.t !== NativeType.String) {
           return NIL_VALUE;
         }
-        return stringGetJs((source as StringValue).v, args.get(1));
+        return stringGetJs((source as StringValue).v, args.at(1));
       },
     },
     elementAccessCallDef

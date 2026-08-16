@@ -624,7 +624,7 @@ function BrainRuleEditorCard({
       return true;
     }
     if (subject.kind !== "tile") return false;
-    const tileDef = ruleDef.side(subject.side).tiles().get(subject.tileIndex);
+    const tileDef = ruleDef.side(subject.side).tiles().at(subject.tileIndex);
     if (!tileDef) return false;
     copyTileToClipboard(tileDef, ruleDef.brain());
     return true;
@@ -700,7 +700,7 @@ function BrainRuleEditorCard({
   const editPointAnchor = stripTarget?.anchorTileIndex;
   const anchorTileDef =
     stripTarget !== null && editPointAnchor !== undefined
-      ? ruleDef.side(stripTarget.side).tiles().get(editPointAnchor)
+      ? ruleDef.side(stripTarget.side).tiles().at(editPointAnchor)
       : undefined;
   const editPoint: StripEditPointBinding | undefined =
     stripTarget !== null && editPointAnchor !== undefined && !isComposing

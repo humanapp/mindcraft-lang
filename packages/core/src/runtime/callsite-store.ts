@@ -83,7 +83,7 @@ export function createCallsiteStore(): ICallsiteStore {
       if (!record) {
         return NIL_VALUE;
       }
-      return record.slots.get(slotIdx) ?? NIL_VALUE;
+      return record.slots.at(slotIdx) ?? NIL_VALUE;
     },
     setSlot(callSiteId: number, slotIdx: number, value: Value): void {
       const record = ensureRecord(callSiteId);

@@ -288,8 +288,8 @@ describe("linkedBrainProgramFromJson", () => {
     });
 
     assert.equal(linked.program.functions.size(), 1);
-    assert.equal(linked.program.functions.get(0)?.code.size(), 1);
-    assert.equal(linked.program.functions.get(0)?.name, undefined);
+    assert.equal(linked.program.functions.get(0).code.size(), 1);
+    assert.equal(linked.program.functions.get(0).name, undefined);
     assert.equal(linked.program.constantPools.numbers.get(0), 42);
     assert.equal(linked.program.constantPools.strings.get(0), "message");
     assert.equal(linked.program.constantPools.values.get(0), VOID_VALUE);
@@ -308,7 +308,7 @@ describe("linkedBrainProgramFromJson", () => {
     assert.equal(linked.program.ruleFuncIds?.has(0), true);
     assert.equal(linked.program.ruleAncestors?.get(2), 0);
     assert.equal(linked.ruleIndex.size(), 0);
-    assert.equal(linked.pages.get(0)?.rootRuleFuncIds.get(0), 0);
-    assert.equal(linked.pages.get(0)?.actionCallSites.get(0)?.callSiteId, 1);
+    assert.equal(linked.pages.get(0).rootRuleFuncIds.get(0), 0);
+    assert.equal(linked.pages.get(0).actionCallSites.get(0).callSiteId, 1);
   });
 });

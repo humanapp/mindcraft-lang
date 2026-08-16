@@ -120,7 +120,7 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   const slots = List.empty<Value>();
   return {
     services: __test__createPlatformServices(),
-    getVariableBySlot: (slotId: number) => slots.get(slotId) ?? NIL_VALUE,
+    getVariableBySlot: (slotId: number) => slots.at(slotId) ?? NIL_VALUE,
     setVariableBySlot: (slotId: number, value: Value) => {
       while (slots.size() <= slotId) slots.push(NIL_VALUE);
       slots.set(slotId, value);
@@ -3272,7 +3272,7 @@ describe("VM -- slot-keyed variable dispatch", () => {
       services: counterServices,
       getVariableBySlot: (slotId: number) => {
         counter.slot++;
-        return slots.get(slotId) ?? NIL_VALUE;
+        return slots.at(slotId) ?? NIL_VALUE;
       },
       setVariableBySlot: (slotId: number, value: Value) => {
         counter.slot++;

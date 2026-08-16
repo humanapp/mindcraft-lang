@@ -31,7 +31,7 @@ function entryAt<T extends ProgramTypeEntry["tag"]>(
   idx: number,
   tag: T
 ): Extract<ProgramTypeEntry, { tag: T }> {
-  const entry = pool.typeEntries().get(idx);
+  const entry = pool.typeEntries().at(idx);
   assert.ok(entry, `expected a type entry at index ${idx}`);
   assert.equal(entry.tag, tag);
   return entry as Extract<ProgramTypeEntry, { tag: T }>;
@@ -100,7 +100,7 @@ describe("ProgramTypeTableBuilder", () => {
       const memberIdx = unionEntry.members.get(i);
       assert.ok(memberIdx !== undefined && memberIdx < unionIdx);
       const memberEntry = pool.typeEntries().get(memberIdx);
-      assert.equal(memberEntry?.typeId, def.memberTypeIds.get(i));
+      assert.equal(memberEntry.typeId, def.memberTypeIds.get(i));
     }
   });
 

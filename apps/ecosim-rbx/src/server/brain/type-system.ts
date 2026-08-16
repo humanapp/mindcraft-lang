@@ -425,7 +425,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
         const lhs = extractVector2(args.get(0) as StructValue);
-        const scalar = extractNumberValue(args.get(1));
+        const scalar = extractNumberValue(args.at(1));
         if (!lhs || scalar === undefined) return VOID_VALUE;
         return mkVector2Value(lhs.mul(scalar));
       },
@@ -440,7 +440,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
         const lhs = extractVector2(args.get(0) as StructValue);
-        const scalar = extractNumberValue(args.get(1));
+        const scalar = extractNumberValue(args.at(1));
         if (!lhs || scalar === undefined) return VOID_VALUE;
         return mkVector2Value(lhs.div(scalar));
       },
@@ -529,7 +529,7 @@ export function registerTypes(api: MindcraftModuleApi) {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
         const lhs = extractVector2(args.get(0) as StructValue);
         const goal = extractVector2(args.get(1) as StructValue);
-        const alpha = extractNumberValue(args.get(2));
+        const alpha = extractNumberValue(args.at(2));
         if (!lhs || !goal || alpha === undefined) return VOID_VALUE;
         return mkVector2Value(lhs.Lerp(goal, alpha));
       },
@@ -559,7 +559,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     {
       exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
         const lhs = extractVector2(args.get(0) as StructValue);
-        const angle = extractNumberValue(args.get(1));
+        const angle = extractNumberValue(args.at(1));
         if (!lhs || angle === undefined) return VOID_VALUE;
         return mkVector2Value(lhs.rotate(angle));
       },

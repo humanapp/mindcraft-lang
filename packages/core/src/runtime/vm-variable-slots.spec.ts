@@ -19,7 +19,7 @@ test("STORE_VAR_SLOT and LOAD_VAR_SLOT round-trip a value through the execution 
   const slots = List.empty<Value>();
   const ctx: ExecutionContext = {
     services: __test__createPlatformServices(),
-    getVariableBySlot: (slotId) => slots.get(slotId) ?? NIL_VALUE,
+    getVariableBySlot: (slotId) => slots.at(slotId) ?? NIL_VALUE,
     setVariableBySlot: (slotId, value) => {
       while (slots.size() <= slotId) {
         slots.push(NIL_VALUE);

@@ -1,7 +1,10 @@
 export interface ReadonlyList<T extends defined> {
   size(): number;
   isEmpty(): boolean;
+  /** Returns the element at `i`. Faults when `i < 0` or `i >= size()`. */
   get(i: number): T;
+  /** Returns the element at `i`, or `undefined` when `i < 0` or `i >= size()`. */
+  at(i: number): T | undefined;
   forEach(fn: (v: T, i: number) => void): void;
   map<U extends defined>(fn: (v: T, i: number) => U): ReadonlyList<U>;
   filter(fn: (v: T, i: number) => boolean): ReadonlyList<T>;
@@ -39,7 +42,15 @@ export class List<T extends defined> implements ReadonlyList<T> {
   isEmpty() {
     return this.size() === 0;
   }
-  get(i: number) {
+  get(i: number): T {
+    const n = this.xs.size();
+    if (i < 0 || i >= n) {
+      error(`List index out of range: ${i} (size ${n})`);
+    }
+    return this.xs[i];
+  }
+  at(i: number): T | undefined {
+    if (i < 0 || i >= this.xs.size()) return undefined;
     return this.xs[i];
   }
   set(i: number, v: T) {

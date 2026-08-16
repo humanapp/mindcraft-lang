@@ -702,7 +702,7 @@ export class ExprCompiler implements ExprVisitor<void> {
     const gathered = new Dict<number, boolean>();
     for (let i = 0; i < slotExprs.size(); i++) {
       const slot = slotExprs.get(i);
-      const argSlot = argSlots.get(slot.slotId);
+      const argSlot = argSlots.at(slot.slotId);
       if (argSlot?.repeated) {
         if (gathered.get(slot.slotId)) {
           continue;

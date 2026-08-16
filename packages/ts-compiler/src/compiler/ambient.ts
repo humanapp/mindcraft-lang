@@ -794,7 +794,7 @@ function buildAmbientDeclarationsFromRegistry(registry: ITypeRegistry): string {
 function findField(def: StructTypeDef, name: string) {
   for (let i = 0; i < def.fields.size(); i++) {
     const field = def.fields.get(i);
-    if (field?.name === name) return field;
+    if (field.name === name) return field;
   }
   return undefined;
 }
@@ -802,7 +802,7 @@ function findField(def: StructTypeDef, name: string) {
 function hasMethod(def: StructTypeDef, name: string): boolean {
   if (!def.methods) return false;
   for (let i = 0; i < def.methods.size(); i++) {
-    if (def.methods.get(i)?.name === name) return true;
+    if (def.methods.get(i).name === name) return true;
   }
   return false;
 }

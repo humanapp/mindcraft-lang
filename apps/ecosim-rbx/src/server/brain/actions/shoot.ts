@@ -93,7 +93,7 @@ function launchBlip(ctx: ExecutionContext, args: ReadonlyList<Value>): boolean {
     if (now < state.nextShootTime) return false;
 
     let cooldown = 1000 / DEFAULT_SHOOT_RATE; // Default cooldown in ms
-    const rateValue = args.get(kRateSlotId) as NumberValue | undefined;
+    const rateValue = args.at(kRateSlotId) as NumberValue | undefined;
     if (rateValue && isNumberValue(rateValue)) {
       const rate = math.max(MIN_SHOOT_RATE, math.min(MAX_SHOOT_RATE, rateValue.v));
       cooldown = 1000 / rate;

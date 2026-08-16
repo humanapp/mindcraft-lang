@@ -75,8 +75,8 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
     const bHasPlantFilter = hasArg(args, kActorKindPlantSlotId);
     let nearbyThresholdSq = kNearbyDistanceThresholdSq;
     let farAwayThresholdSq = kFarAwayDistanceThresholdSq;
-    const nearbyCount = extractNumberValue(args.get(kDistanceNearbySlotId)) ?? 0;
-    const farAwayCount = extractNumberValue(args.get(kDistanceFarAwaySlotId)) ?? 0;
+    const nearbyCount = extractNumberValue(args.at(kDistanceNearbySlotId)) ?? 0;
+    const farAwayCount = extractNumberValue(args.at(kDistanceFarAwaySlotId)) ?? 0;
     if (nearbyCount > 0) {
       // decrease nearby threshold for each additional nearby modifier (e.g., "see herbivore nearby nearby" is more restrictive than "see herbivore nearby")
       nearbyThresholdSq = kNearbyDistanceThresholdSq / nearbyCount;

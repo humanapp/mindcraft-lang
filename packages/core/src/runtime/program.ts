@@ -66,7 +66,7 @@ export type ProgramTypeEntry =
  * program has no type table or the index is out of range.
  */
 export function resolveProgramTypeId(types: List<ProgramTypeEntry> | undefined, idx: number): TypeId {
-  const entry = types?.get(idx);
+  const entry = types?.at(idx);
   if (!entry) {
     throw new Error(`Type-table index ${idx} out of range (table size ${types ? types.size() : 0})`);
   }

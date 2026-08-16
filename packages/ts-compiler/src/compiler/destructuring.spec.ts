@@ -78,7 +78,7 @@ function mkScheduler(): Scheduler {
 function getStructField(source: StructValue, fieldName: string): Value | undefined {
   const def = services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
   const fieldIndex = def?.fieldIndexByName.get(fieldName);
-  return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
+  return fieldIndex === undefined ? undefined : source.v?.at(fieldIndex);
 }
 
 function assertNumberField(source: StructValue, fieldName: string, expected: number, message?: string): void {

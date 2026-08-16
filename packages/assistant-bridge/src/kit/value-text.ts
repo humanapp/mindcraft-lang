@@ -229,7 +229,7 @@ export function renderArgs(
 ): string[] {
   const rendered: string[] = [];
   for (let i = 0; i < slots.size(); i++) {
-    const value = args.get(i);
+    const value = args.at(i);
     if (value === undefined || isUnfilled(value)) continue;
     const argSpec = slots.get(i).argSpec;
     const text = renderValue(value, numberText, labelOf);

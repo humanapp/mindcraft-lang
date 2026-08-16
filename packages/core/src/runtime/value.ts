@@ -243,7 +243,7 @@ export function getClosedStructFieldByName(
   fieldName: string
 ): Value | undefined {
   const fieldIndex = typeDef.fieldIndexByName.get(fieldName);
-  return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
+  return fieldIndex === undefined ? undefined : source.v?.at(fieldIndex);
 }
 /** Build a native-backed {@link StructValue} with no field map. */
 export function mkNativeStructValue(typeId: TypeId, native: unknown): StructValue {

@@ -590,7 +590,7 @@ function resolveSingleStepConversion(
   }
 
   const conversionPath = services.shared.conversions.findBestPath(fromTypeId, toTypeId, 1);
-  const conversion = conversionPath?.get(0);
+  const conversion = conversionPath?.at(0);
   if (!conversion) {
     return undefined;
   }
@@ -10914,7 +10914,7 @@ function isNativeBackedStruct(def: StructTypeDef): boolean {
 
 function findStructField(def: StructTypeDef, fieldName: string) {
   const fieldIndex = def.fieldIndexByName.get(fieldName);
-  return fieldIndex !== undefined ? def.fields.get(fieldIndex) : undefined;
+  return fieldIndex !== undefined ? def.fields.at(fieldIndex) : undefined;
 }
 
 function isIndexedStruct(_def: StructTypeDef): boolean {

@@ -1493,7 +1493,7 @@ export class VM implements IVM {
       throw new Error("LIST_GET: index must be number");
     }
     const idx = MathOps.floor(index.v);
-    const item = list.v.get(idx);
+    const item = list.v.at(idx);
     this.push(fiber, item ?? V.nil());
     frame.pc++;
     return undefined;
@@ -1768,7 +1768,7 @@ export class VM implements IVM {
     if (typeDef?.fieldGetter) {
       return typeDef.fieldGetter(source, fieldId, fiber.executionContext) ?? V.nil();
     }
-    return source.v?.get(fieldId) ?? V.nil();
+    return source.v?.at(fieldId) ?? V.nil();
   }
 
   /**
@@ -2125,7 +2125,7 @@ export class VM implements IVM {
       return;
     }
 
-    const fn = this.prog.functions.get(frame.funcId);
+    const fn = this.prog.functions.at(frame.funcId);
     if (!fn) {
       return;
     }
@@ -2366,7 +2366,7 @@ export class VM implements IVM {
       const actualStackSize = fiber.vstack.size();
       if (actualStackSize > frame.base) {
         const leaked = actualStackSize - frame.base;
-        const fn = this.prog.functions.get(frame.funcId);
+        const fn = this.prog.functions.at(frame.funcId);
         const fnName = fn?.name ?? `func[${frame.funcId}]`;
         logger.warn(
           `[VM] Stack leak detected in ${fnName}: expected stack at ${frame.base}, found ${actualStackSize} (${leaked} extra values). Cleaning up.`

@@ -739,7 +739,7 @@ export class BrainRuntime implements IBrainRuntime {
    * calls `BrainPage.activate()` synchronously inside the emit.
    */
   private activatePage(pageIndex: number): void {
-    const meta = this.pageMetadata.get(pageIndex);
+    const meta = this.pageMetadata.at(pageIndex);
     if (!meta) return;
 
     this.activeRuleFiberIds = List.empty();
@@ -827,7 +827,7 @@ export class BrainRuntime implements IBrainRuntime {
 
   private runDeactivationHooksForCurrentPage(): void {
     if (!this.isValidPageIndex(this.currentPageIndex)) return;
-    const meta = this.pageMetadata.get(this.currentPageIndex);
+    const meta = this.pageMetadata.at(this.currentPageIndex);
     if (!meta) return;
 
     for (let i = 0; i < meta.actionCallSites.size(); i++) {

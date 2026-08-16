@@ -73,7 +73,7 @@ function run(code: Instr[], actions: BrainActionRegistry, handles: HandleTable, 
 describe("HOST_ACTION_CALL dispatch", () => {
   test("dispatches a sync host action by stable id and returns its result", () => {
     const actions = new BrainActionRegistry();
-    const action = registerSyncAction(actions, "echo", (args) => args.get(0) ?? NIL_VALUE);
+    const action = registerSyncAction(actions, "echo", (args) => args.at(0) ?? NIL_VALUE);
     const handles = new HandleTable(10);
 
     const result = run(

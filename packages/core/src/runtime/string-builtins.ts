@@ -19,7 +19,7 @@ function num(args: ReadonlyList<Value>, index: number): number {
 }
 
 function optNum(args: ReadonlyList<Value>, index: number): number | undefined {
-  const val = args.get(index);
+  const val = args.at(index);
   if (val === undefined || val.t === NativeType.Nil) return undefined;
   return (val as NumberValue).v;
 }

@@ -13,7 +13,7 @@ import { EcosimTypeIds, extractVector2, resolveActor } from "@/brain/type-system
 
 /** True when a positional action arg slot contains a non-nil value. */
 export function hasArg(args: ReadonlyList<Value>, slotId: number): boolean {
-  const value = args.get(slotId);
+  const value = args.at(slotId);
   return value !== undefined && !isNilValue(value);
 }
 
@@ -33,7 +33,7 @@ export function resolveTargetPosition(
 ): Vector2 | undefined {
   // 1. Explicit anonymous actor-ref argument
   if (actorRefSlotId !== undefined) {
-    const targetActorValue = args.get(actorRefSlotId);
+    const targetActorValue = args.at(actorRefSlotId);
     if (targetActorValue && !isNilValue(targetActorValue)) {
       const targetActor = resolveActor(targetActorValue as StructValue, ctx);
       if (targetActor) {
@@ -71,7 +71,7 @@ export function resolveTargetActor(
 ): Actor | undefined {
   // 1. Explicit anonymous actor-ref argument
   if (actorRefSlotId !== undefined) {
-    const targetActorValue = args.get(actorRefSlotId);
+    const targetActorValue = args.at(actorRefSlotId);
     if (targetActorValue !== undefined && !isNilValue(targetActorValue)) {
       return resolveActor(targetActorValue as StructValue, ctx);
     }

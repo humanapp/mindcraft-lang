@@ -1,5 +1,6 @@
 /**
- * Tests for List.subview() -- the ReadonlyList<T> subrange view.
+ * Tests for the List indexed reads -- get()/at() -- and for List.subview(),
+ * the ReadonlyList<T> subrange view.
  *
  * Roblox-ts copy semantics are documented in list.rbx.ts and verified by
  * `npm run build` (rbxtsc). The Node implementation is a zero-copy view;
@@ -11,6 +12,107 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import { List, type ReadonlyList } from "@mindcraft-lang/core";
+
+describe("List.get -- out of range faults", () => {
+  test("get(-1) faults, naming the index and the size", () => {
+    const list = List.from([10, 20, 30]);
+    assert.throws(
+      () => list.get(-1),
+      (e: Error) => /-1/.test(e.message) && /3/.test(e.message)
+    );
+  });
+
+  test("get(size()) faults, naming the index and the size", () => {
+    const list = List.from([10, 20, 30]);
+    assert.throws(
+      () => list.get(3),
+      (e: Error) => /3/.test(e.message)
+    );
+  });
+
+  test("get(size() + 1) faults", () => {
+    const list = List.from([10, 20, 30]);
+    assert.throws(() => list.get(4));
+  });
+
+  test("get(0) on an empty list faults, naming the index and the size", () => {
+    const list = List.empty<number>();
+    assert.throws(
+      () => list.get(0),
+      (e: Error) => /0/.test(e.message)
+    );
+  });
+
+  test("get returns the element for every in-range index", () => {
+    const list = List.from([10, 20, 30]);
+    assert.equal(list.get(0), 10);
+    assert.equal(list.get(2), 30);
+  });
+});
+
+describe("List.at -- out of range yields undefined", () => {
+  test("at() returns undefined at the indexes get() faults on", () => {
+    const list = List.from([10, 20, 30]);
+    assert.equal(list.at(-1), undefined);
+    assert.equal(list.at(3), undefined);
+    assert.equal(list.at(4), undefined);
+  });
+
+  test("at(0) on an empty list returns undefined", () => {
+    assert.equal(List.empty<number>().at(0), undefined);
+  });
+
+  test("at() returns the element for every in-range index", () => {
+    const list = List.from([10, 20, 30]);
+    assert.equal(list.at(0), 10);
+    assert.equal(list.at(1), 20);
+    assert.equal(list.at(2), 30);
+  });
+
+  test("at() distinguishes a stored undefined from an out-of-range read only by index", () => {
+    const list = List.from<number | undefined>([undefined]);
+    assert.equal(list.at(0), undefined);
+    assert.equal(list.size(), 1);
+  });
+});
+
+describe("List.subview -- get/at bounds on the view", () => {
+  test("view get(-1) and get(size()) fault, naming the index and the size", () => {
+    const view = List.from([10, 20, 30, 40, 50]).subview(1, 3);
+    assert.throws(
+      () => view.get(-1),
+      (e: Error) => /-1/.test(e.message) && /3/.test(e.message)
+    );
+    assert.throws(
+      () => view.get(3),
+      (e: Error) => /3/.test(e.message)
+    );
+  });
+
+  test("view get(size() + 1) faults", () => {
+    const view = List.from([10, 20, 30, 40, 50]).subview(1, 3);
+    assert.throws(() => view.get(4));
+  });
+
+  test("get(0) on an empty view faults", () => {
+    const view = List.from([10, 20, 30]).subview(1, 0);
+    assert.throws(() => view.get(0));
+  });
+
+  test("view at() returns undefined out of range and the element in range", () => {
+    const view = List.from([10, 20, 30, 40, 50]).subview(1, 3);
+    assert.equal(view.at(-1), undefined);
+    assert.equal(view.at(3), undefined);
+    assert.equal(view.at(0), 20);
+    assert.equal(view.at(2), 40);
+  });
+
+  test("at() on a view of a view addresses the original list", () => {
+    const inner = List.from([0, 10, 20, 30, 40, 50]).subview(1, 4).subview(1, 2);
+    assert.equal(inner.at(0), 20);
+    assert.equal(inner.at(2), undefined);
+  });
+});
 
 describe("List.subview -- basic addressing", () => {
   test("size() returns count", () => {

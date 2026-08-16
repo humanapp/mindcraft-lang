@@ -2,7 +2,10 @@
 export declare interface ReadonlyList<T> {
   size(): number;
   isEmpty(): boolean;
+  /** Returns the element at `i`. Faults when `i < 0` or `i >= size()`. */
   get(i: number): T;
+  /** Returns the element at `i`, or `undefined` when `i < 0` or `i >= size()`. */
+  at(i: number): T | undefined;
   forEach(fn: (v: T, i: number) => void): void;
   map<U>(fn: (v: T, i: number) => U): ReadonlyList<U>;
   filter(fn: (v: T, i: number) => boolean): ReadonlyList<T>;
@@ -39,7 +42,10 @@ export declare class List<T> implements ReadonlyList<T> {
 
   size(): number;
   isEmpty(): boolean;
+  /** Returns the element at `i`. Faults when `i < 0` or `i >= size()`. */
   get(i: number): T;
+  /** Returns the element at `i`, or `undefined` when `i < 0` or `i >= size()`. */
+  at(i: number): T | undefined;
   set(i: number, v: T): void;
   push(...v: T[]): void;
   pop(): T | undefined;

@@ -291,7 +291,7 @@ export class Actor {
   }
 
   pageActivated = ({ pageIndex }: { pageIndex: number }) => {
-    const page = this.brainDef.pages().get(pageIndex);
+    const page = this.brainDef.pages().at(pageIndex);
     this.hasVision = page !== undefined && pageHasCapability(page, TileCapabilityBits.Vision);
   };
 

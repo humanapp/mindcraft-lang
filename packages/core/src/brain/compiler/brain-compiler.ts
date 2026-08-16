@@ -325,7 +325,7 @@ export class BrainCompiler {
       if (visitedFuncs.has(funcId)) continue;
       visitedFuncs.add(funcId);
 
-      const fn = this.functions.get(funcId);
+      const fn = this.functions.at(funcId);
       if (!fn) continue;
 
       const childFuncIds = List.empty<number>();

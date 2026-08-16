@@ -57,7 +57,7 @@ export function registerEngineContext(api: MindcraftModuleApi) {
       exec: (ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
         const selfActor = getSelf(ctx);
         if (!selfActor) return mkListValue(actorRefListTypeId, List.empty());
-        const archetypeStr = extractStringValue(args.get(1));
+        const archetypeStr = extractStringValue(args.at(1));
         if (archetypeStr === undefined || !VALID_ARCHETYPES.has(archetypeStr)) {
           return mkListValue(actorRefListTypeId, List.empty());
         }
@@ -77,7 +77,7 @@ export function registerEngineContext(api: MindcraftModuleApi) {
       exec: (ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
         const selfActor = getSelf(ctx);
         if (!selfActor) return NIL_VALUE;
-        const id = extractNumberValue(args.get(1));
+        const id = extractNumberValue(args.at(1));
         if (id === undefined) return NIL_VALUE;
         const actor = selfActor.engine.getActorById(id);
         if (!actor) return NIL_VALUE;
