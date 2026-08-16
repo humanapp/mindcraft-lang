@@ -9,7 +9,6 @@ import { kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 import { kPageGridSelectionAttribute } from "./page-grid-selection";
 import { TileValue } from "./TileValue";
 import type { TileBadge } from "./tile-badges";
-import { isProjectAuthoredActionTile } from "./tile-library-groups";
 import {
   kDefaultTileHue,
   resolveTileVisual,
@@ -74,7 +73,7 @@ function measureTileLabelWidth(label: string): number {
 export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
   ({ tileDef, side, badge, className = "", style, ...props }, ref) => {
     const editorConfig = useBrainEditorConfig();
-    const { dataTypeIcons, dataTypeNames, projectNamespace } = editorConfig;
+    const { dataTypeIcons, dataTypeNames } = editorConfig;
     const [isOverflowing, setIsOverflowing] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [labelBasedWidth, setLabelBasedWidth] = useState<number | undefined>(undefined);
@@ -90,7 +89,6 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
     const isValueTile = category === "value";
     const isParamTile = category === "parameter";
     const isFactoryTile = category === "factory";
-    const isProjectAuthoredAction = isProjectAuthoredActionTile(tileDef, projectNamespace);
     const isActionTile = isActionTileDef(tileDef);
     const isAsyncAction = isActionTile && tileDef.action.isAsync === true;
     let tileTypeIcon: string | undefined;
@@ -200,23 +198,6 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
               aria-hidden="true"
             />
           )}
-          {isProjectAuthoredAction && (
-            <div
-              style={{
-                backgroundColor: darkerSaturatedColor,
-                WebkitMaskImage: `url(${staticAssetUrl("assets/brain/icons/ts-logo-128.svg")})`,
-                WebkitMaskSize: "contain",
-                WebkitMaskRepeat: "no-repeat",
-                WebkitMaskPosition: "center",
-                maskImage: `url(${staticAssetUrl("assets/brain/icons/ts-logo-128.svg")})`,
-                maskSize: "contain",
-                maskRepeat: "no-repeat",
-                maskPosition: "center",
-              }}
-              className="absolute top-1 right-1 w-4 h-4 pointer-events-none"
-              aria-hidden="true"
-            />
-          )}
           <div className={`flex-1 flex flex-col items-center justify-center relative ${kRuleContentLayer}`}>
             {isValueTile ? (
               <div className="min-h-16 flex-1 flex items-center justify-center text-lg font-semibold text-center px-2 overflow-hidden w-full">
@@ -235,7 +216,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
               <img
                 src={iconUrl}
                 alt=""
-                className={`h-16 w-full ${isFactoryTile ? "scale-50" : ""}`}
+                className={`h-16 w-full object-contain ${isFactoryTile ? "scale-50" : ""}`}
                 aria-hidden="true"
               />
             )}
