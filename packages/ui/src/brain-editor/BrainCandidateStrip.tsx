@@ -452,10 +452,12 @@ export interface StripRuleBinding {
 
 /**
  * The tile the armed position stands on: the element `target` replaces, and
- * undefined where the position addresses no placed tile.
+ * undefined where the position addresses no placed tile -- a position standing
+ * in a gap, and one whose tile index is past the end of its side.
  */
 function armedElement(target: ArmedTileTarget | null): CaretPosition | undefined {
   if (target === null || target.mode !== "replace" || target.tileIndex === undefined) return undefined;
+  if (target.tileIndex >= target.ruleDef.side(target.side).tiles().size()) return undefined;
   return { kind: "element", side: target.side, tileIndex: target.tileIndex };
 }
 

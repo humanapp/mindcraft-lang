@@ -630,9 +630,10 @@ function BrainRuleEditorCard({
     return true;
   };
 
-  /** Takes `subject` out of the page. */
+  /** Takes `subject` out of the page, ending any arming standing on this rule. */
   const removeSubject = (subject: PageGridSubject): void => {
     if (subject.kind === "side-end") return;
+    if (stripTarget !== null) armedTarget.disarm();
     commandHistory.executeCommand(
       subject.kind === "rule"
         ? new DeleteRuleCommand(ruleDef)
